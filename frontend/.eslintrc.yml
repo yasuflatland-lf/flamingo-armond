@@ -1,0 +1,31 @@
+env:
+  browser: true
+  es2021: true
+parser: '@typescript-eslint/parser'
+parserOptions:
+  ecmaFeatures:
+    jsx: true
+  ecmaVersion: latest
+  project: ./tsconfig.json
+plugins:
+  - react
+  - react-hooks
+  - '@typescript-eslint'
+  - jest-dom
+  - testing-library
+extends:
+  - plugin:react/recommended
+  - plugin:react-hooks/recommended
+  - airbnb
+  - airbnb-typescript
+  - prettier
+overrides:
+  - files:
+      - '**/__tests__/**/*.+(ts|tsx|js)'
+      - '**/?(*.)+(spec|test).+(ts|tsx|js)'
+    extends:
+      - plugin:jest-dom/recommended
+      - plugin:testing-library/react
+ignorePatterns:
+  - vite.config.ts
+  - vitest.setup.ts
