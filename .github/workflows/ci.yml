@@ -1,0 +1,27 @@
+name: flamingo-armond CI
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  frontend:
+    runs-on: ubuntu-22.04
+    environment: Test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.13.1'
+      - name: Install yarn
+        run: npm install -g yarn
+        working-directory: ./frontend
+      - name: Clean install
+        run: yarn install --frozen-lockfile
+        working-directory: ./frontend
+      - name: Test
+        run: yarn run test
+        working-directory: ./frontend
