@@ -8,7 +8,7 @@ function App() {
 
     return (
         <>
-            <h1>TOP</h1>
+            <h1 className="text-3xl font-bold underline">Top</h1>
             <nav>
                 <ul>
                     <li><Link to="/">Home</Link></li>
