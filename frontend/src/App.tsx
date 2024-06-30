@@ -1,11 +1,10 @@
 import React from 'react';
-import { Routes, Route, Link } from 'react-router-dom';
+import {Link, Route, Routes} from 'react-router-dom';
 import Home from './pages/Home';
 import About from './pages/About';
 import './App.css'
 
 function App() {
-
     return (
         <>
             <h1 className="text-3xl font-bold underline">Top</h1>
