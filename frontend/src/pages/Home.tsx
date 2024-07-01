@@ -1,7 +1,5 @@
 import React, { useState } from "react";
-
 import SwipeableCard from "../components/SwipeableCard.tsx";
-import "./Home.css";
 
 function Home() {
   const [cards] = useState([
@@ -21,15 +19,15 @@ function Home() {
   };
 
   return (
-    <div className="swipeable-cards-container">
-      {cards.length > 0 && (
-        <SwipeableCard
-          key={cards[currentCardIndex].id}
-          content={cards[currentCardIndex].content}
-          onSwiped={handleSwiped}
-        />
-      )}
-    </div>
+      <div className="">
+        {cards.length > 0 && (
+            <SwipeableCard
+                key={cards[currentCardIndex].id}
+                content={cards[currentCardIndex].content}
+                onSwiped={handleSwiped}
+            />
+        )}
+      </div>
   );
 }
 

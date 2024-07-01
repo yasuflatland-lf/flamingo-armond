@@ -28,7 +28,7 @@ function SwipeableCard({ content, onSwiped }: SwipeableCardProps) {
   return (
     <div
       {...handlers}
-      className={`swipeable-card ${isFlipped ? "flipped" : ""}`}
+      className={`swipeable-card ${isFlipped ? "flipped" : ""} justify-center`}
     >
       <div className="swipeable-card-content">{content}</div>
       <div className="swipeable-card-back">{content} (Back)</div>
