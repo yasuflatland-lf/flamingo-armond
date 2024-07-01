@@ -12,6 +12,8 @@ import Login from "./pages/Login"; // Import your SignIn component
 import Home from "./pages/Home"; // Import your Home component
 import Error404 from "./pages/Error404";
 import Settings from "./pages/Settings";
+import WordList from "./pages/WordList";
+import LoadingPage from "./components/LoadingPage.tsx";
 
 // Mocking the isLogin variable for the sake of this example
 const isLogin = true; // This should be replaced with your actual login check logic
@@ -37,6 +39,8 @@ function Router() {
           <Route path="/" element={<Home />} />
         </Route>
         <Route path="/settings" element={<Settings />} />
+        <Route path="/list" element={<WordList />} />
+        <Route path="/ldtest" element={<LoadingPage />} />
         <Route path="*" element={<Error404 />} />
       </Routes>
     </BrowserRouter>
