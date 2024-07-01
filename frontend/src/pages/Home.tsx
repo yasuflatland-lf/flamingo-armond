@@ -11,7 +11,7 @@ import SwipeableCard from "../components/SwipeableCard.tsx";
 // SwiperCore.use([Navigation, Pagination]);
 
 function Home() {
-    const [cards, setCards] = useState([
+    const [cards] = useState([
         {id: 1, content: 'Card 1'},
         {id: 2, content: 'Card 2'},
         {id: 3, content: 'Card 3'},
