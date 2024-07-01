@@ -1,11 +1,10 @@
 import React from "react";
-import { Link, Route, Routes } from "react-router-dom";
-import Home from "../pages/Home";
-import Login from "../pages/Login";
+import { Link } from "react-router-dom";
 import { IoIosHome } from "react-icons/io";
 import { AiFillDislike } from "react-icons/ai";
 import { FcLike } from "react-icons/fc";
 import { FaPlus } from "react-icons/fa";
+import { VscAccount } from "react-icons/vsc";
 
 function Menu() {
   return (
@@ -38,14 +37,12 @@ function Menu() {
             </Link>
           </button>
           <button className="text-white bg-transparent border-none text-base cursor-pointer hover:text-gray-400">
-            <Link to="/login">Login</Link>
+            <Link to="/account">
+              <VscAccount className="text-2xl" />
+            </Link>
           </button>
         </div>
       </div>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
-      </Routes>
     </>
   );
 }

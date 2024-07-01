@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import SwipeableCard from "../components/SwipeableCard.tsx";
+import TopMenu from "../components/TopMenu.tsx";
+import Menu from "../components/Menu.tsx";
 
 function Home() {
   const [cards] = useState([
@@ -20,6 +22,7 @@ function Home() {
 
   return (
     <>
+      <TopMenu />
       {cards.length > 0 && (
         <SwipeableCard
           key={cards[currentCardIndex].id}
@@ -27,6 +30,7 @@ function Home() {
           onSwiped={handleSwiped}
         />
       )}
+      <Menu />
     </>
   );
 }
