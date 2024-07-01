@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useSwipeable } from 'react-swipeable';
+import './SwipeableCard.css'
 
 interface SwipeableCardProps {
     content: string;

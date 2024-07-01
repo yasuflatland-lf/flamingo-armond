@@ -1,14 +1,7 @@
 import React, {useState} from 'react';
 
-// Import Swiper styles
-import "swiper/css";
-import "swiper/css/effect-coverflow";
-import 'swiper/css/navigation';
-import 'swiper/css/pagination';
 import SwipeableCard from "../components/SwipeableCard.tsx";
-
-// Initialize Swiper modules
-// SwiperCore.use([Navigation, Pagination]);
+import './Home.css'
 
 function Home() {
     const [cards] = useState([
