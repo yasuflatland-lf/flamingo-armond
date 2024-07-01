@@ -10,7 +10,7 @@ function Menu() {
   return (
     <>
       <div className="fixed bottom-0 w-full bg-pink-700 flex flex-col justify-around z-50">
-        <div className="flex justify-around w-full bg-white py-6">
+        <div className="flex justify-around w-full bg-white py-4">
           <button className="bg-transparent border-none text-base cursor-pointer hover:text-gray-400">
             <span className="icon-[mdi-light--home] text-4xl">
               <FcLike />
@@ -23,22 +23,20 @@ function Menu() {
           </button>
         </div>
 
-        <div className="flex justify-around py-2">
+        <div className="flex justify-around pt-2 pb-6">
           <button className="text-white bg-transparent border-none text-base cursor-pointer hover:text-gray-400">
             <Link to="/">
-              <span className="icon-[mdi-light--home] text-2xl">
-                <IoIosHome />
-              </span>
+              <IoIosHome className="text-3xl" />
             </Link>
           </button>
-          <button className="bg-white text-pink-700 rounded-full w-16 h-16 flex items-center justify-center shadow-lg hover:bg-gray-200">
+          <button className="bg-white text-pink-700 rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:bg-gray-200">
             <Link to="/center">
               <FaPlus className="text-3xl" />
             </Link>
           </button>
           <button className="text-white bg-transparent border-none text-base cursor-pointer hover:text-gray-400">
             <Link to="/account">
-              <VscAccount className="text-2xl" />
+              <VscAccount className="text-3xl" />
             </Link>
           </button>
         </div>
