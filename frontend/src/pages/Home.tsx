@@ -19,15 +19,15 @@ function Home() {
   };
 
   return (
-      <div className="">
-        {cards.length > 0 && (
-            <SwipeableCard
-                key={cards[currentCardIndex].id}
-                content={cards[currentCardIndex].content}
-                onSwiped={handleSwiped}
-            />
-        )}
-      </div>
+    <>
+      {cards.length > 0 && (
+        <SwipeableCard
+          key={cards[currentCardIndex].id}
+          content={cards[currentCardIndex].content}
+          onSwiped={handleSwiped}
+        />
+      )}
+    </>
   );
 }
 
