@@ -31,7 +31,7 @@ function Menu() {
               </span>
             </Link>
           </button>
-          <button className="z-100 bg-white text-pink-700 rounded-full w-16 h-16 flex items-center justify-center shadow-lg hover:bg-gray-200">
+          <button className="bg-white text-pink-700 rounded-full w-16 h-16 flex items-center justify-center shadow-lg hover:bg-gray-200">
             <Link to="/center">
               <FaPlus className="text-3xl" />
             </Link>

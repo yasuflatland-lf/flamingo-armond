@@ -1,5 +1,6 @@
 import React from "react";
 import { IoIosSearch, IoIosSettings } from "react-icons/io";
+import { Link } from "react-router-dom";
 
 function TopMenu() {
   return (
@@ -7,7 +8,9 @@ function TopMenu() {
       <div className="fixed top-0 w-full flex justify-end py-2.5 pr-4 z-50">
         <button className="text-white bg-transparent border-none text-base cursor-pointer hover:text-gray-400">
           <span className="icon-[mdi-light--home] text-2xl">
-            <IoIosSettings />
+            <Link to="/settings">
+              <IoIosSettings />
+            </Link>
           </span>
         </button>
       </div>
