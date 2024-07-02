@@ -21,15 +21,22 @@ function SwipeableCard({ content, onSwiped }: SwipeableCardProps) {
     onSwipedUp: () => handleSwipe("up"),
     onSwipedDown: () => handleSwipe("down"),
     onSwiping: (eventData) => handleSwiping(eventData),
+    onTap: (eventData) => handleTapping(eventData),
   });
 
   const handleSwipe = (dir: string) => {
-    setWatermark(null);
-    setIsFlipped(true);
-    setTimeout(() => {
+    if(dir === "up" ) {
+      setWatermark(null);
+      setIsFlipped(true);
+    } else {
+      setWatermark(null);
       onSwiped(dir);
-      setIsFlipped(false);
-    }, 600); // Match the duration of the CSS transition
+    }
+  };
+
+  const handleTapping = ({ dir }: { dir: string }) => {
+    setIsFlipped(false);
+    console.log(dir);
   };
 
   const handleSwiping = ({ dir }: { dir: string }) => {

@@ -13,11 +13,12 @@ function Home() {
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
 
   const handleSwiped = (dir: string) => {
-    if (dir === "left") {
-      setCurrentCardIndex((prev) => (prev > 0 ? prev - 1 : cards.length - 1));
-    } else if (dir === "right") {
-      setCurrentCardIndex((prev) => (prev + 1) % cards.length);
-    }
+    setCurrentCardIndex((prev) => (prev + 1) % cards.length);
+    // if (dir === "left") {
+    //   setCurrentCardIndex((prev) => (prev > 0 ? prev - 1 : cards.length - 1));
+    // } else if (dir === "right") {
+    //   setCurrentCardIndex((prev) => (prev + 1) % cards.length);
+    // }
   };
 
   return (
