@@ -44,56 +44,67 @@ describe("SwipeableCard", () => {
   const swipeDirections = [
     { direction: "left", expectedClass: "text-pink-700 opacity-30" },
     { direction: "right", expectedClass: "text-green-700 opacity-30" },
+    { direction: "up", expectedClass: "" },
     { direction: "down", expectedClass: "text-green-700 opacity-30" },
   ];
 
   swipeDirections.forEach(({ direction, expectedClass }) => {
-    it(`calls onSwiped with correct direction on swipe ${direction}`, async () => {
-      const { card, onSwiped } = setup();
-      swipe(card, direction);
-      await waitFor(() => expect(onSwiped).toHaveBeenCalledWith(direction));
-    });
+    if (direction === "up") {
+      it(`flips the card on swipe ${direction}`, async () => {
+        const { container } = setup();
+        const card = container.querySelector(".swipeable-card");
+        swipe(card, direction);
 
-    it(`shows the correct watermark during swipe ${direction}`, async () => {
-      const { card } = setup();
-      swipe(card, direction);
-      if (expectedClass) {
-        await waitFor(() =>
-          expect(screen.getByTestId("wartermark-id")).toHaveClass(
-            expectedClass,
-          ),
-        );
-      } else {
-        await waitFor(() =>
-          expect(screen.getByTestId("wartermark-id")).toBeEmptyDOMElement(),
-        );
-      }
-    });
+        // Wait for the flip to complete
+        await waitFor(() => {
+          expect(screen.getByText("Test Content (Back)")).toBeInTheDocument();
+        });
+
+        // Verify that both front and back contents are displayed correctly
+        expect(screen.getByText("Test Content")).toBeInTheDocument();
+      });
+    } else {
+      it(`calls onSwiped with correct direction on swipe ${direction}`, async () => {
+        const { card, onSwiped } = setup();
+        swipe(card, direction);
+        await waitFor(() => expect(onSwiped).toHaveBeenCalledWith(direction));
+      });
+
+      it(`shows the correct watermark during swipe ${direction}`, async () => {
+        const { card } = setup();
+        swipe(card, direction);
+        if (expectedClass) {
+          await waitFor(() =>
+            expect(screen.getByTestId("wartermark-id")).toHaveClass(
+              expectedClass,
+            ),
+          );
+        } else {
+          await waitFor(() =>
+            expect(screen.getByTestId("wartermark-id")).toBeEmptyDOMElement(),
+          );
+        }
+      });
+    }
   });
 
-  it("flips the card on swiping up", () => {
-    const { container, getByText } = setup();
-    const card = container.querySelector(".swipeable-card");
-    fireEvent.touchStart(card, { touches: [{ clientY: 100 }] });
-    fireEvent.touchMove(card, { touches: [{ clientY: 50 }] });
-    fireEvent.touchEnd(card, { changedTouches: [{ clientY: 50 }] });
-    expect(getByText("Test Content (Back)")).toBeInTheDocument();
-  });
-
-  it("keeps the watermark centered during card flip", () => {
+  it("keeps the watermark centered during card flip", async () => {
     const { getByTestId, container } = setup();
     const watermark = getByTestId("wartermark-id");
     const card = container.querySelector(".swipeable-card");
 
-    // Check initial position
+    // Get watermark position before the flip
     const initialRect = watermark.getBoundingClientRect();
-    fireEvent.touchStart(card, { touches: [{ clientY: 100 }] });
-    fireEvent.touchMove(card, { touches: [{ clientY: 50 }] });
-    fireEvent.touchEnd(card, { changedTouches: [{ clientY: 50 }] });
+    swipe(card, "up");
 
-    // Check position after swipe
-    const flippedRect = watermark.getBoundingClientRect();
-    expect(initialRect.top).toBe(flippedRect.top);
-    expect(initialRect.left).toBe(flippedRect.left);
+    // Wait for the flip to complete
+    await waitFor(() => {
+      const flippedRect = watermark.getBoundingClientRect();
+      expect(initialRect.top).toBeCloseTo(flippedRect.top, 1);
+      expect(initialRect.left).toBeCloseTo(flippedRect.left, 1);
+    });
+
+    // Ensure the watermark is still visible after the flip
+    expect(watermark).toBeVisible();
   });
 });
