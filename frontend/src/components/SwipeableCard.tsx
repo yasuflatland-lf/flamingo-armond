@@ -14,6 +14,7 @@ function SwipeableCard({ content, onSwiped }: SwipeableCardProps) {
   const [isFlipped, setIsFlipped] = useState(false);
   const [watermark, setWatermark] = useState<React.ReactNode>(null);
   const [watermarkColor, setWatermarkColor] = useState("");
+  const [swipeClass, setSwipeClass] = useState("");
 
   const handlers = useSwipeable({
     onSwipedLeft: () => handleSwipe("left"),
@@ -25,11 +26,12 @@ function SwipeableCard({ content, onSwiped }: SwipeableCardProps) {
   });
 
   const handleSwipe = (dir: string) => {
-    if(dir === "up" ) {
+    if (dir === "up") {
       setWatermark(null);
       setIsFlipped(true);
     } else {
       setWatermark(null);
+      setSwipeClass("");
       onSwiped(dir);
     }
   };
@@ -41,36 +43,42 @@ function SwipeableCard({ content, onSwiped }: SwipeableCardProps) {
 
   const handleSwiping = ({ dir }: { dir: string }) => {
     if (dir === "Left") {
+      setSwipeClass("swipe-left");
       setWatermark(<IoIosHeart />);
       setWatermarkColor("text-pink-700 opacity-30");
     } else if (dir === "Right") {
+      setSwipeClass("swipe-right");
       setWatermark(<AiFillDislike />);
       setWatermarkColor("text-green-700 opacity-30");
     } else if (dir === "Down") {
+      setSwipeClass("");
       setWatermark(<GrValidate />);
       setWatermarkColor("text-green-700 opacity-30");
     } else {
+      setSwipeClass("");
       setWatermark(null);
       setWatermarkColor("");
     }
   };
 
   return (
-    <div
-      {...handlers}
-      className={`swipeable-card ${isFlipped ? "flipped" : ""} justify-center p-8`}
-    >
+    <>
       <div
         data-testid="wartermark-id"
         className={`watermark ${watermarkColor}`}
       >
         {watermark}
       </div>
-      <h1 className="font-mono text-4xl font-extrabold swipeable-card-content">
-        {content}
-      </h1>
-      <div className="swipeable-card-back">{content} (Back)</div>
-    </div>
+      <div
+        {...handlers}
+        className={`swipeable-card ${isFlipped ? "flipped" : ""} ${swipeClass} justify-center p-8`}
+      >
+        <h1 className="font-mono text-4xl font-extrabold swipeable-card-content">
+          {content}
+        </h1>
+        <div className="swipeable-card-back">{content} (Back)</div>
+      </div>
+    </>
   );
 }
 

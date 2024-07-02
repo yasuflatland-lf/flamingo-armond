@@ -44,7 +44,6 @@ describe("SwipeableCard", () => {
   const swipeDirections = [
     { direction: "left", expectedClass: "text-pink-700 opacity-30" },
     { direction: "right", expectedClass: "text-green-700 opacity-30" },
-    { direction: "up", expectedClass: "" },
     { direction: "down", expectedClass: "text-green-700 opacity-30" },
   ];
 
@@ -70,5 +69,31 @@ describe("SwipeableCard", () => {
         );
       }
     });
+  });
+
+  it("flips the card on swiping up", () => {
+    const { container, getByText } = setup();
+    const card = container.querySelector(".swipeable-card");
+    fireEvent.touchStart(card, { touches: [{ clientY: 100 }] });
+    fireEvent.touchMove(card, { touches: [{ clientY: 50 }] });
+    fireEvent.touchEnd(card, { changedTouches: [{ clientY: 50 }] });
+    expect(getByText("Test Content (Back)")).toBeInTheDocument();
+  });
+
+  it("keeps the watermark centered during card flip", () => {
+    const { getByTestId, container } = setup();
+    const watermark = getByTestId("wartermark-id");
+    const card = container.querySelector(".swipeable-card");
+
+    // Check initial position
+    const initialRect = watermark.getBoundingClientRect();
+    fireEvent.touchStart(card, { touches: [{ clientY: 100 }] });
+    fireEvent.touchMove(card, { touches: [{ clientY: 50 }] });
+    fireEvent.touchEnd(card, { changedTouches: [{ clientY: 50 }] });
+
+    // Check position after swipe
+    const flippedRect = watermark.getBoundingClientRect();
+    expect(initialRect.top).toBe(flippedRect.top);
+    expect(initialRect.left).toBe(flippedRect.left);
   });
 });
