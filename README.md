@@ -5,3 +5,8 @@ Tinder like Flashcard App
 ## frontend
 - React
 - Vite
+
+# Run Locally
+```
+docker compose up --build
+```
