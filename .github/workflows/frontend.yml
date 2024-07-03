@@ -9,6 +9,7 @@ on:
 
 jobs:
   frontend:
+    name: frontend CI
     runs-on: ubuntu-22.04
     environment: Test
     steps:

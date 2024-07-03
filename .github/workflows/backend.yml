@@ -1,0 +1,35 @@
+name: flamingo-armond backend CI
+
+on:
+  push:
+    branches:
+      - master
+
+    paths:
+      - 'backend/**'
+jobs:
+  backend:
+    name: backend CI
+    runs-on: ubuntu-22.04
+    environment: Test
+    steps:       
+      - name: Set up Go 1.22.5
+        uses: actions/setup-go@v5  
+        with:
+          go-version: '1.22.5'
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Goose
+        run: go install github.com/pressly/goose/v3/cmd/goose@latest     
+
+      - name: Fetch dependant Go modules
+        run: |-
+          go get -v -t -d ./...
+        working-directory: ./backend
+
+      - name: Test code
+        run: |-
+          go test -v ./...
+        working-directory: ./backend
