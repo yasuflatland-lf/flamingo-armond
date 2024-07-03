@@ -5,9 +5,9 @@ import Menu from "../components/Menu.tsx";
 
 function Home() {
   const [cards] = useState([
-    { id: 1, content: "Brown Fox Leap Over The Box" },
-    { id: 2, content: "Card 2" },
-    { id: 3, content: "Card 3" },
+    { id: 1, content: "Brown Fox Leap Over The Box", subtitle: "sub 1" },
+    { id: 2, content: "Card 2", subtitle: "sub 2" },
+    { id: 3, content: "Card 3", subtitle: "sub 3" },
   ]);
 
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
@@ -28,6 +28,7 @@ function Home() {
         <SwipeableCard
           key={cards[currentCardIndex].id}
           content={cards[currentCardIndex].content}
+          subtitle={cards[currentCardIndex].subtitle}
           onSwiped={handleSwiped}
         />
       )}

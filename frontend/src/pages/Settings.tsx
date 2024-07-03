@@ -1,6 +1,5 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { IoIosSettings } from "react-icons/io";
 
 function Settings() {
   return (

@@ -6,11 +6,12 @@ import { GrValidate } from "react-icons/gr";
 import "./SwipeableCard.css";
 
 interface SwipeableCardProps {
+  subtitle: string;
   content: string;
   onSwiped: (dir: string) => void;
 }
 
-function SwipeableCard({ content, onSwiped }: SwipeableCardProps) {
+function SwipeableCard({ subtitle, content, onSwiped }: SwipeableCardProps) {
   const [isFlipped, setIsFlipped] = useState(false);
   const [watermark, setWatermark] = useState<React.ReactNode>(null);
   const [watermarkColor, setWatermarkColor] = useState("");
@@ -73,9 +74,13 @@ function SwipeableCard({ content, onSwiped }: SwipeableCardProps) {
         {...handlers}
         className={`swipeable-card ${isFlipped ? "flipped" : ""} ${swipeClass} justify-center p-8`}
       >
-        <h1 className="font-mono text-4xl font-extrabold swipeable-card-content">
-          {content}
-        </h1>
+        <div className="flex flex-col items-start  swipeable-card-content">
+          <h4 className="text-gray-400 font-mono text-md whitespace-pre-wrap">
+            {subtitle}
+          </h4>
+          <h1 className="font-mono text-4xl font-extrabold">{content}</h1>
+        </div>
+
         <div className="swipeable-card-back">{content} (Back)</div>
       </div>
     </>

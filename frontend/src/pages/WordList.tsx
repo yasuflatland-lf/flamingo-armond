@@ -1,9 +1,9 @@
-import Settings from "./Settings.tsx";
+import React, { useEffect, useState } from "react";
 import TopMenu from "../components/TopMenu";
 import Menu from "../components/Menu.tsx";
-import { FaChevronRight, FaChevronLeft } from "react-icons/fa";
+import { FaChevronLeft, FaChevronRight } from "react-icons/fa";
 
-const people = [
+const peopleInit = [
   {
     name: "Leslie Alexander",
     email: "leslie.alexander@example.com",
@@ -59,7 +59,25 @@ const people = [
 ];
 
 function WordList() {
+  const [people, setPeople] = useState([]);
   const likeMenu = false;
+
+  useEffect(() => {
+    // Replace with your API endpoint
+    const apiEndpoint = "https://api.example.com/people";
+
+    const fetchData = async () => {
+      try {
+        const response = await fetch(apiEndpoint);
+        const data = await response.json();
+        setPeople(data);
+      } catch (error) {
+        console.error("Error fetching data: ", error);
+      }
+    };
+
+    fetchData();
+  }, []);
 
   return (
     <>
@@ -141,7 +159,6 @@ function WordList() {
                 <span className="sr-only">Previous</span>
                 <FaChevronLeft className="h-5 w-5" aria-hidden="true" />
               </a>
-              {/* Current: "z-10 bg-indigo-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600", Default: "text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:outline-offset-0" */}
               <a
                 href="#"
                 aria-current="page"

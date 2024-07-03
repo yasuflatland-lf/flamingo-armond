@@ -30,4 +30,10 @@ describe("LoadingPage", () => {
       "bg-pink-700 flex flex-col items-center justify-center h-screen bg-gray-100",
     );
   });
+
+  it("displays a custom loading message when passed as a prop", () => {
+    const customMessage = "Please wait...";
+    render(<LoadingPage message={customMessage} />);
+    expect(screen.getByText(customMessage)).toBeInTheDocument();
+  });
 });
