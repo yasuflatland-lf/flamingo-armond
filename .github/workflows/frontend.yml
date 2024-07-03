@@ -1,9 +1,11 @@
-name: flamingo-armond CI
+name: flamingo-armond frontend CI
 
 on:
   push:
     branches:
       - master
+    paths:
+      - 'frontend/**'      
 
 jobs:
   frontend:
