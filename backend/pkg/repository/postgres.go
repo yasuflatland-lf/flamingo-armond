@@ -1,11 +1,12 @@
-package backend
+package repository
 
 import (
 	"fmt"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 	"os"
 	"os/exec"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 type DBConfig struct {
@@ -17,23 +18,23 @@ type DBConfig struct {
 	SSLMode  string
 }
 
-type Postgress struct {
+type Postgres struct {
 	Config DBConfig
 	DB     *gorm.DB
 }
 
-func NewPostgress(config DBConfig) *Postgress {
-	return &Postgress{Config: config}
+func NewPostgres(config DBConfig) *Postgres {
+	return &Postgres{Config: config}
 }
 
-func (pg *Postgress) DSN() string {
+func (pg *Postgres) DSN() string {
 	return fmt.Sprintf(
 		"host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
 		pg.Config.Host, pg.Config.User, pg.Config.Password, pg.Config.DBName, pg.Config.Port, pg.Config.SSLMode,
 	)
 }
 
-func (pg *Postgress) Open() error {
+func (pg *Postgres) Open() error {
 	dsn := pg.DSN()
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
@@ -43,8 +44,9 @@ func (pg *Postgress) Open() error {
 	return nil
 }
 
-func (pg *Postgress) runGooseMigrations(dsn string) error {
-	cmd := exec.Command("goose", "-dir", "db/migrations", "postgres", dsn, "up")
+func (pg *Postgres) runGooseMigrations() error {
+	dsn := pg.DSN()
+	cmd := exec.Command("goose", "-dir", "../../db/migrations", "postgres", dsn, "up")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {

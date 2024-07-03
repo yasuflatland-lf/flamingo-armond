@@ -1,4 +1,4 @@
-package backend
+package repository
 
 import (
 	"context"
@@ -11,9 +11,16 @@ import (
 )
 
 type User struct {
-	ID    uint
-	Name  string
-	Email string
+	ID   string `gorm:"primaryKey"`
+	Name string `gorm:"not null"`
+}
+
+type Todo struct {
+	ID     string `gorm:"primaryKey"`
+	Text   string `gorm:"not null"`
+	Done   bool   `gorm:"not null;default:false"`
+	UserID string `gorm:"not null"`
+	User   User   `gorm:"foreignKey:UserID;references:ID"`
 }
 
 func setupTestContainer() (testcontainers.Container, *DBConfig, error) {
@@ -77,7 +84,7 @@ func TestPostgress(t *testing.T) {
 		}
 	}()
 
-	pg := NewPostgress(*config)
+	pg := NewPostgres(*config)
 	if err := pg.Open(); err != nil {
 		t.Fatalf("Could not open database: %v", err)
 	}
@@ -85,6 +92,8 @@ func TestPostgress(t *testing.T) {
 	if err := pg.runGooseMigrations(); err != nil {
 		t.Fatalf("Goose migration failed: %v", err)
 	}
+
+	pg.DB.AutoMigrate(&User{}, &Todo{})
 
 	t.Run("TestCountUsersInitiallyZero", func(t *testing.T) {
 		var userCount int64
@@ -98,7 +107,7 @@ func TestPostgress(t *testing.T) {
 	})
 
 	t.Run("TestCreateUser", func(t *testing.T) {
-		newUser := User{Name: "John Doe", Email: "john.doe@example.com"}
+		newUser := User{ID: "1", Name: "John Doe"}
 		if err := pg.DB.Create(&newUser).Error; err != nil {
 			t.Fatalf("Failed to create user: %v", err)
 		}
@@ -115,7 +124,7 @@ func TestPostgress(t *testing.T) {
 
 	t.Run("TestUpdateUser", func(t *testing.T) {
 		var user User
-		if err := pg.DB.First(&user, "email = ?", "john.doe@example.com").Error; err != nil {
+		if err := pg.DB.First(&user, "id = ?", "1").Error; err != nil {
 			t.Fatalf("Failed to find user: %v", err)
 		}
 
@@ -125,7 +134,7 @@ func TestPostgress(t *testing.T) {
 		}
 
 		var updatedUser User
-		if err := pg.DB.First(&updatedUser, user.ID).Error; err != nil {
+		if err := pg.DB.First(&updatedUser, "id = ?", "1").Error; err != nil {
 			t.Fatalf("Failed to find updated user: %v", err)
 		}
 
@@ -136,7 +145,7 @@ func TestPostgress(t *testing.T) {
 
 	t.Run("TestDeleteUser", func(t *testing.T) {
 		var user User
-		if err := pg.DB.First(&user, "email = ?", "john.doe@example.com").Error; err != nil {
+		if err := pg.DB.First(&user, "id = ?", "1").Error; err != nil {
 			t.Fatalf("Failed to find user: %v", err)
 		}
 
@@ -151,6 +160,68 @@ func TestPostgress(t *testing.T) {
 
 		if userCount != 0 {
 			t.Fatalf("Expected 0 users, got %d", userCount)
+		}
+	})
+
+	t.Run("TestCreateTodo", func(t *testing.T) {
+		newUser := User{ID: "2", Name: "Jane Doe"}
+		if err := pg.DB.Create(&newUser).Error; err != nil {
+			t.Fatalf("Failed to create user: %v", err)
+		}
+
+		newTodo := Todo{ID: "1", Text: "Test Todo", UserID: "2"}
+		if err := pg.DB.Create(&newTodo).Error; err != nil {
+			t.Fatalf("Failed to create todo: %v", err)
+		}
+
+		var todoCount int64
+		if err := pg.DB.Model(&Todo{}).Count(&todoCount).Error; err != nil {
+			t.Fatalf("Failed to count todos: %v", err)
+		}
+
+		if todoCount != 1 {
+			t.Fatalf("Expected 1 todo, got %d", todoCount)
+		}
+	})
+
+	t.Run("TestUpdateTodo", func(t *testing.T) {
+		var todo Todo
+		if err := pg.DB.First(&todo, "id = ?", "1").Error; err != nil {
+			t.Fatalf("Failed to find todo: %v", err)
+		}
+
+		todo.Text = "Updated Todo Text"
+		if err := pg.DB.Save(&todo).Error; err != nil {
+			t.Fatalf("Failed to update todo: %v", err)
+		}
+
+		var updatedTodo Todo
+		if err := pg.DB.First(&updatedTodo, "id = ?", "1").Error; err != nil {
+			t.Fatalf("Failed to find updated todo: %v", err)
+		}
+
+		if updatedTodo.Text != "Updated Todo Text" {
+			t.Fatalf("Expected todo text to be 'Updated Todo Text', got '%s'", updatedTodo.Text)
+		}
+	})
+
+	t.Run("TestDeleteTodo", func(t *testing.T) {
+		var todo Todo
+		if err := pg.DB.First(&todo, "id = ?", "1").Error; err != nil {
+			t.Fatalf("Failed to find todo: %v", err)
+		}
+
+		if err := pg.DB.Delete(&todo).Error; err != nil {
+			t.Fatalf("Failed to delete todo: %v", err)
+		}
+
+		var todoCount int64
+		if err := pg.DB.Model(&Todo{}).Count(&todoCount).Error; err != nil {
+			t.Fatalf("Failed to count todos: %v", err)
+		}
+
+		if todoCount != 0 {
+			t.Fatalf("Expected 0 todos, got %d", todoCount)
 		}
 	})
 }

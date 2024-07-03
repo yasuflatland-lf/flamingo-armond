@@ -4,7 +4,6 @@ go 1.22.5
 
 require (
 	github.com/99designs/gqlgen v0.17.49
-	github.com/glassonion1/logz v0.3.13
 	github.com/labstack/echo/v4 v4.12.0
 	github.com/testcontainers/testcontainers-go v0.31.0
 	github.com/vektah/gqlparser/v2 v2.5.16
