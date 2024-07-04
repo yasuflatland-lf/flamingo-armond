@@ -2,7 +2,7 @@
 #
 # https://gqlgen.com/getting-started/
 
-type Todo {
+type Card {
   id: ID!
   text: String!
   done: Boolean!
@@ -15,14 +15,14 @@ type User {
 }
 
 type Query {
-  todos: [Todo!]!
+  cards: [Card!]!
 }
 
-input NewTodo {
+input NewCard {
   text: String!
   userId: String!
 }
 
 type Mutation {
-  createTodo(input: NewTodo!): Todo!
+  createTodo(input: NewCard!): Card!
 }
