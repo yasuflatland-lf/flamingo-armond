@@ -11,10 +11,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func TestPostgres_Open(t *testing.T) {
-	ctx := context.Background()
-
-	// Create the PostgreSQL container
+func setupTestDB(ctx context.Context) (*Postgres, func(), error) {
 	req := testcontainers.ContainerRequest{
 		Image:        "postgres:13",
 		ExposedPorts: []string{"5432/tcp"},
@@ -31,25 +28,21 @@ func TestPostgres_Open(t *testing.T) {
 		Started:          true,
 	})
 	if err != nil {
-		t.Fatalf("failed to start postgres container: %s", err)
+		return nil, nil, fmt.Errorf("failed to start postgres container: %w", err)
 	}
-	defer func() {
-		if err := pgContainer.Terminate(ctx); err != nil {
-			log.Fatalf("failed to terminate postgres container: %s", err)
-		}
-	}()
 
 	host, err := pgContainer.Host(ctx)
 	if err != nil {
-		t.Fatalf("failed to get container host: %s", err)
+		pgContainer.Terminate(ctx)
+		return nil, nil, fmt.Errorf("failed to get container host: %w", err)
 	}
 
 	port, err := pgContainer.MappedPort(ctx, "5432")
 	if err != nil {
-		t.Fatalf("failed to get container port: %s", err)
+		pgContainer.Terminate(ctx)
+		return nil, nil, fmt.Errorf("failed to get container port: %w", err)
 	}
 
-	// Set up the Postgres configuration
 	config := DBConfig{
 		Host:     host,
 		User:     "testuser",
@@ -59,16 +52,31 @@ func TestPostgres_Open(t *testing.T) {
 		SSLMode:  "disable",
 	}
 
-	// Initialize the Postgres struct
 	pg := NewPostgres(config)
-
-	// Open the database connection
 	err = pg.Open()
 	if err != nil {
-		t.Fatalf("failed to open database: %s", err)
+		pgContainer.Terminate(ctx)
+		return nil, nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Verify the connection
+	cleanup := func() {
+		if err := pgContainer.Terminate(ctx); err != nil {
+			log.Fatalf("failed to terminate postgres container: %s", err)
+		}
+	}
+
+	return pg, cleanup, nil
+}
+
+func TestPostgres_Open(t *testing.T) {
+	ctx := context.Background()
+
+	pg, cleanup, err := setupTestDB(ctx)
+	if err != nil {
+		t.Fatalf("setupTestDB failed: %s", err)
+	}
+	defer cleanup()
+
 	sqlDB, err := pg.DB.DB()
 	if err != nil {
 		t.Fatalf("failed to get sql.DB: %s", err)
@@ -79,11 +87,10 @@ func TestPostgres_Open(t *testing.T) {
 		t.Fatalf("failed to ping database: %s", err)
 	}
 
-	// Run Goose migrations (if needed)
-	// err = pg.runGooseMigrations()
-	// if err != nil {
-	// 	t.Fatalf("goose migration failed: %s", err)
-	// }
+	err = pg.runGooseMigrations()
+	if err != nil {
+		t.Fatalf("goose migration failed: %s", err)
+	}
 
 	fmt.Println("Database connection established successfully!")
 }
@@ -91,61 +98,12 @@ func TestPostgres_Open(t *testing.T) {
 func TestPostgres_runGooseMigrations(t *testing.T) {
 	ctx := context.Background()
 
-	// Create the PostgreSQL container
-	req := testcontainers.ContainerRequest{
-		Image:        "postgres:13",
-		ExposedPorts: []string{"5432/tcp"},
-		Env: map[string]string{
-			"POSTGRES_USER":     "testuser",
-			"POSTGRES_PASSWORD": "testpassword",
-			"POSTGRES_DB":       "testdb",
-		},
-		WaitingFor: wait.ForListeningPort("5432/tcp").WithStartupTimeout(5 * time.Minute),
-	}
-
-	pgContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
+	pg, cleanup, err := setupTestDB(ctx)
 	if err != nil {
-		t.Fatalf("failed to start postgres container: %s", err)
+		t.Fatalf("setupTestDB failed: %s", err)
 	}
-	defer func() {
-		if err := pgContainer.Terminate(ctx); err != nil {
-			log.Fatalf("failed to terminate postgres container: %s", err)
-		}
-	}()
+	defer cleanup()
 
-	host, err := pgContainer.Host(ctx)
-	if err != nil {
-		t.Fatalf("failed to get container host: %s", err)
-	}
-
-	port, err := pgContainer.MappedPort(ctx, "5432")
-	if err != nil {
-		t.Fatalf("failed to get container port: %s", err)
-	}
-
-	// Set up the Postgres configuration
-	config := DBConfig{
-		Host:     host,
-		User:     "testuser",
-		Password: "testpassword",
-		DBName:   "testdb",
-		Port:     port.Port(),
-		SSLMode:  "disable",
-	}
-
-	// Initialize the Postgres struct
-	pg := NewPostgres(config)
-
-	// Open the database connection
-	err = pg.Open()
-	if err != nil {
-		t.Fatalf("failed to open database: %s", err)
-	}
-
-	// Run Goose migrations
 	err = pg.runGooseMigrations()
 	if err != nil {
 		t.Fatalf("goose migration failed: %s", err)

@@ -10,14 +10,124 @@ import (
 	"fmt"
 )
 
-// CreateTodo is the resolver for the createTodo field.
-func (r *mutationResolver) CreateTodo(ctx context.Context, input model.NewCard) (*model.Card, error) {
-	panic(fmt.Errorf("not implemented: CreateTodo - createTodo"))
+// CreateCard is the resolver for the createCard field.
+func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCard) (*model.Card, error) {
+	panic(fmt.Errorf("not implemented: CreateCard - createCard"))
+}
+
+// UpdateCard is the resolver for the updateCard field.
+func (r *mutationResolver) UpdateCard(ctx context.Context, id string, input model.NewCard) (*model.Card, error) {
+	panic(fmt.Errorf("not implemented: UpdateCard - updateCard"))
+}
+
+// DeleteCard is the resolver for the deleteCard field.
+func (r *mutationResolver) DeleteCard(ctx context.Context, id string) (bool, error) {
+	panic(fmt.Errorf("not implemented: DeleteCard - deleteCard"))
+}
+
+// CreateUser is the resolver for the createUser field.
+func (r *mutationResolver) CreateUser(ctx context.Context, input model.NewUser) (*model.User, error) {
+	panic(fmt.Errorf("not implemented: CreateUser - createUser"))
+}
+
+// UpdateUser is the resolver for the updateUser field.
+func (r *mutationResolver) UpdateUser(ctx context.Context, id string, name string) (*model.User, error) {
+	panic(fmt.Errorf("not implemented: UpdateUser - updateUser"))
+}
+
+// DeleteUser is the resolver for the deleteUser field.
+func (r *mutationResolver) DeleteUser(ctx context.Context, id string) (bool, error) {
+	panic(fmt.Errorf("not implemented: DeleteUser - deleteUser"))
+}
+
+// CreateCardGroup is the resolver for the createCardGroup field.
+func (r *mutationResolver) CreateCardGroup(ctx context.Context, input model.NewCardGroup) (*model.CardGroup, error) {
+	panic(fmt.Errorf("not implemented: CreateCardGroup - createCardGroup"))
+}
+
+// UpdateCardGroup is the resolver for the updateCardGroup field.
+func (r *mutationResolver) UpdateCardGroup(ctx context.Context, id string, name string) (*model.CardGroup, error) {
+	panic(fmt.Errorf("not implemented: UpdateCardGroup - updateCardGroup"))
+}
+
+// DeleteCardGroup is the resolver for the deleteCardGroup field.
+func (r *mutationResolver) DeleteCardGroup(ctx context.Context, id string) (bool, error) {
+	panic(fmt.Errorf("not implemented: DeleteCardGroup - deleteCardGroup"))
+}
+
+// CreateRole is the resolver for the createRole field.
+func (r *mutationResolver) CreateRole(ctx context.Context, input model.NewRole) (*model.Role, error) {
+	panic(fmt.Errorf("not implemented: CreateRole - createRole"))
+}
+
+// UpdateRole is the resolver for the updateRole field.
+func (r *mutationResolver) UpdateRole(ctx context.Context, id string, name string) (*model.Role, error) {
+	panic(fmt.Errorf("not implemented: UpdateRole - updateRole"))
+}
+
+// DeleteRole is the resolver for the deleteRole field.
+func (r *mutationResolver) DeleteRole(ctx context.Context, id string) (bool, error) {
+	panic(fmt.Errorf("not implemented: DeleteRole - deleteRole"))
+}
+
+// AddUserToCardGroup is the resolver for the addUserToCardGroup field.
+func (r *mutationResolver) AddUserToCardGroup(ctx context.Context, userID string, cardGroupID string) (bool, error) {
+	panic(fmt.Errorf("not implemented: AddUserToCardGroup - addUserToCardGroup"))
+}
+
+// RemoveUserFromCardGroup is the resolver for the removeUserFromCardGroup field.
+func (r *mutationResolver) RemoveUserFromCardGroup(ctx context.Context, userID string, cardGroupID string) (bool, error) {
+	panic(fmt.Errorf("not implemented: RemoveUserFromCardGroup - removeUserFromCardGroup"))
+}
+
+// AssignRoleToUser is the resolver for the assignRoleToUser field.
+func (r *mutationResolver) AssignRoleToUser(ctx context.Context, userID string, roleID string) (bool, error) {
+	panic(fmt.Errorf("not implemented: AssignRoleToUser - assignRoleToUser"))
+}
+
+// RemoveRoleFromUser is the resolver for the removeRoleFromUser field.
+func (r *mutationResolver) RemoveRoleFromUser(ctx context.Context, userID string, roleID string) (bool, error) {
+	panic(fmt.Errorf("not implemented: RemoveRoleFromUser - removeRoleFromUser"))
 }
 
 // Cards is the resolver for the cards field.
 func (r *queryResolver) Cards(ctx context.Context) ([]*model.Card, error) {
 	panic(fmt.Errorf("not implemented: Cards - cards"))
+}
+
+// Card is the resolver for the card field.
+func (r *queryResolver) Card(ctx context.Context, id string) (*model.Card, error) {
+	panic(fmt.Errorf("not implemented: Card - card"))
+}
+
+// Users is the resolver for the users field.
+func (r *queryResolver) Users(ctx context.Context) ([]*model.User, error) {
+	panic(fmt.Errorf("not implemented: Users - users"))
+}
+
+// User is the resolver for the user field.
+func (r *queryResolver) User(ctx context.Context, id string) (*model.User, error) {
+	panic(fmt.Errorf("not implemented: User - user"))
+}
+
+// CardGroups is the resolver for the cardGroups field.
+func (r *queryResolver) CardGroups(ctx context.Context) ([]*model.CardGroup, error) {
+	panic(fmt.Errorf("not implemented: CardGroups - cardGroups"))
+}
+
+// CardGroup is the resolver for the cardGroup field.
+func (r *queryResolver) CardGroup(ctx context.Context, id string) (*model.CardGroup, error) {
+	panic(fmt.Errorf("not implemented: CardGroup - cardGroup"))
+}
+
+// Roles is the resolver for the roles field.
+func (r *queryResolver) Roles(ctx context.Context) ([]*model.Role, error) {
+	panic(fmt.Errorf("not implemented: Roles - roles"))
+}
+
+// Role is the resolver for the role field.
+func (r *queryResolver) Role(ctx context.Context, id string) (*model.Role, error) {
+	panic(fmt.Errorf("not implemented: Role - role"))
 }
 
 // Mutation returns MutationResolver implementation.

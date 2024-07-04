@@ -12,6 +12,10 @@ ORG_PATH := ${CURDIR}
 ENVS = \
 	export TF_VAR_HOME=$(HOME);
 
+.PHONY: update
+update: ## Update go.mod
+	go mod tidy
+
 .PHONY: gen
 gen: ## Generate GraphQL implementations
 	printf "${GREEN} Clean up files\n\n"; \
@@ -30,9 +34,18 @@ fmt: ## Format code
 
 .PHONY: test
 test: ## Run tests
-	printf "${GREEN}Run all tests\n\n"; \
- 	${ENV} go test -v ./...;
+	printf "${GREEN}Run all tests\n\n${WHITE}"; \
+	go clean -testcache; \
+ 	go test -v -race -run=./... -bench=./... ./...; \
 	printf "${GREEN}Done\n"; \
+
+.PHONY: init
+init: ## Init go.mod and go.sum
+	printf "${GREEN}Init go.mod and go.sum\n\n${WHITE}"; \
+	rm -fR go.mod go.sum; \
+	go mod init backend; \
+	go mod tidy;
+	printf "${GREEN}Done\n${WHITE}"; \
 
 .PHONY: help
 help: ## Display this help screen

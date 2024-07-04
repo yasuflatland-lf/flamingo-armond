@@ -4,25 +4,92 @@
 
 type Card {
   id: ID!
-  text: String!
-  done: Boolean!
-  user: User!
+  front: String!
+  back: String!
+  review_date: String!
+  interval_days: Int!
+  created: String!
+  updated: String!
+  cardGroup: CardGroup!
+}
+
+type CardGroup {
+  id: ID!
+  name: String!
+  created: String!
+  updated: String!
+  cards: [Card!]!
+  users: [User!]!
+}
+
+type Role {
+  id: ID!
+  name: String!
+  users: [User!]!
 }
 
 type User {
   id: ID!
   name: String!
+  created: String!
+  updated: String!
+  cardGroups: [CardGroup!]!
+  roles: [Role!]!
+}
+
+
+input NewCard {
+  front: String!
+  back: String!
+  review_date: String!
+  interval_days: Int = 1
+  cardgroup_id: ID!
+}
+
+input NewCardGroup {
+  name: String!
+}
+
+input NewUser {
+  id: ID!
+  name: String!
+}
+
+input NewRole {
+  name: String!
 }
 
 type Query {
   cards: [Card!]!
-}
-
-input NewCard {
-  text: String!
-  userId: String!
+  card(id: ID!): Card
+  users: [User!]!
+  user(id: ID!): User
+  cardGroups: [CardGroup!]!
+  cardGroup(id: ID!): CardGroup
+  roles: [Role!]!
+  role(id: ID!): Role
 }
 
 type Mutation {
-  createTodo(input: NewCard!): Card!
+  createCard(input: NewCard!): Card!
+  updateCard(id: ID!, input: NewCard!): Card!
+  deleteCard(id: ID!): Boolean!
+
+  createUser(input: NewUser!): User!
+  updateUser(id: ID!, name: String!): User!
+  deleteUser(id: ID!): Boolean!
+
+  createCardGroup(input: NewCardGroup!): CardGroup!
+  updateCardGroup(id: ID!, name: String!): CardGroup!
+  deleteCardGroup(id: ID!): Boolean!
+
+  createRole(input: NewRole!): Role!
+  updateRole(id: ID!, name: String!): Role!
+  deleteRole(id: ID!): Boolean!
+
+  addUserToCardGroup(userId: ID!, cardGroupId: ID!): Boolean!
+  removeUserFromCardGroup(userId: ID!, cardGroupId: ID!): Boolean!
+
+  assignRoleToUser(userId: ID!, roleId: ID!): Boolean!
+  removeRoleFromUser(userId: ID!, roleId: ID!): Boolean!
 }
