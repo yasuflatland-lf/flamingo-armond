@@ -4,7 +4,9 @@ go 1.22.5
 
 require (
 	github.com/99designs/gqlgen v0.17.49
+	github.com/jomei/notionapi v1.13.1
 	github.com/labstack/echo/v4 v4.12.0
+	github.com/steinfletcher/apitest v1.5.16
 	github.com/stretchr/testify v1.9.0
 	github.com/testcontainers/testcontainers-go v0.31.0
 	github.com/vektah/gqlparser/v2 v2.5.16
