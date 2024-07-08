@@ -2,7 +2,8 @@ package notion
 
 import (
 	"encoding/json"
-	"fmt"
+	"golang.org/x/xerrors"
+
 	"io/ioutil"
 	"net/http"
 )
@@ -38,7 +39,7 @@ func NewClient(apiToken string) *Client {
 func (c *Client) GetPage(pageID string) (*NotionPage, error) {
 	req, err := http.NewRequest("GET", c.baseURL+pageID, nil)
 	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
+		return nil, xerrors.Errorf("error creating request: %v", err)
 	}
 
 	// Set headers
@@ -48,21 +49,21 @@ func (c *Client) GetPage(pageID string) (*NotionPage, error) {
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error sending request: %v", err)
+		return nil, xerrors.Errorf("error sending request: %v", err)
 	}
 	defer resp.Body.Close()
 
 	// Read response body
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error reading response body: %v", err)
+		return nil, xerrors.Errorf("error reading response body: %v", err)
 	}
 
 	// Decode response body into NotionPage struct
 	var notionPage NotionPage
 	err = json.Unmarshal(body, &notionPage)
 	if err != nil {
-		return nil, fmt.Errorf("error unmarshalling response body: %v", err)
+		return nil, xerrors.Errorf("error unmarshalling response body: %v", err)
 	}
 
 	return &notionPage, nil

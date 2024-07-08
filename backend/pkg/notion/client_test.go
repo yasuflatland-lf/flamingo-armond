@@ -40,6 +40,14 @@ func mockResponseData() NotionPage {
 	}
 }
 
+// newMockClient creates a new Client with the given test server
+func newMockClient(ts *httptest.Server) *Client {
+	client := NewClient("test_token")
+	client.baseURL = ts.URL + "/"
+	client.client = ts.Client()
+	return client
+}
+
 // TestGetPageSuccess tests the GetPage function for a successful response
 func TestGetPageSuccess(t *testing.T) {
 	mockResponse := mockResponseData()
@@ -53,11 +61,7 @@ func TestGetPageSuccess(t *testing.T) {
 	})
 	defer ts.Close()
 
-	client := &Client{
-		apiToken: "test_token",
-		client:   ts.Client(),
-		baseURL:  ts.URL + "/",
-	}
+	client := newMockClient(ts)
 
 	page, err := client.GetPage("test_page_id")
 	if err != nil {
@@ -97,11 +101,7 @@ func TestGetPageError(t *testing.T) {
 	})
 	defer ts.Close()
 
-	client := &Client{
-		apiToken: "test_token",
-		client:   ts.Client(),
-		baseURL:  ts.URL + "/",
-	}
+	client := newMockClient(ts)
 
 	_, err := client.GetPage("test_page_id")
 	if err == nil {
@@ -122,11 +122,7 @@ func TestGetPageConcurrent(t *testing.T) {
 	})
 	defer ts.Close()
 
-	client := &Client{
-		apiToken: "test_token",
-		client:   ts.Client(),
-		baseURL:  ts.URL + "/",
-	}
+	client := newMockClient(ts)
 
 	var wg sync.WaitGroup
 	concurrentRequests := 10

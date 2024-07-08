@@ -27,3 +27,13 @@ At the root directory, run
 ```
 docker compose up --build
 ```
+
+# Tips
+
+## How to Install goyacc
+
+1. Run `go install golang.org/x/tools/cmd/goyacc@latest`
+2. Set below in your shell initlizier. For example, if it's `.zshrc`, add below.
+    ```azure
+    export PATH=$PATH:$(go env GOPATH)/bin
+    ```

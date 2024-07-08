@@ -10,7 +10,7 @@ RESET=`tput sgr0`
 ORG_PATH := ${CURDIR}
 
 ENVS = \
-	export TF_VAR_HOME=$(HOME);
+	export TF_VAR_HOME=$(HOME); \
 
 .PHONY: update
 update: ## Update go.mod
@@ -45,6 +45,13 @@ init: ## Init go.mod and go.sum
 	rm -fR go.mod go.sum; \
 	go mod init backend; \
 	go mod tidy;
+	printf "${GREEN}Done\n${WHITE}"; \
+
+.PHONY: parsergen
+parsergen: ## Generate Card data parser
+	printf "${GREEN}Generate parser.go\n\n${WHITE}"; \
+	go install golang.org/x/tools/cmd/goyacc@master ; \
+	goyacc -o ./pkg/notion/parser.go -p yy ./pkg/notion/parser.y; \
 	printf "${GREEN}Done\n${WHITE}"; \
 
 .PHONY: help
