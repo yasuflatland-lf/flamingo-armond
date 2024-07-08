@@ -22,6 +22,11 @@ type CardGroup struct {
 	Users   []*User `json:"users"`
 }
 
+type CardGroupUser struct {
+	CardgroupID string `json:"cardgroup_id"`
+	UserID      string `json:"user_id"`
+}
+
 type Mutation struct {
 }
 

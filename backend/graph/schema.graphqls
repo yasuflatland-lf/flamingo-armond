@@ -37,6 +37,10 @@ type User {
   roles: [Role!]!
 }
 
+type CardGroupUser {
+  cardgroup_id: ID!
+  user_id: ID!
+}
 
 input NewCard {
   front: String!

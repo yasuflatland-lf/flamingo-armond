@@ -52,6 +52,7 @@ parsergen: ## Generate Card data parser
 	printf "${GREEN}Generate parser.go\n\n${WHITE}"; \
 	go install golang.org/x/tools/cmd/goyacc@master ; \
 	goyacc -o ./pkg/notion/parser.go -p yy ./pkg/notion/parser.y; \
+	rm -fR y.output; \
 	printf "${GREEN}Done\n${WHITE}"; \
 
 .PHONY: help
