@@ -1,6 +1,4 @@
-# GraphQL schema example
-#
-# https://gqlgen.com/getting-started/
+# schema.graphql
 
 type Card {
   id: ID!
@@ -10,6 +8,7 @@ type Card {
   interval_days: Int!
   created: String!
   updated: String!
+  cardgroup_id: ID!
   cardGroup: CardGroup!
 }
 
@@ -35,11 +34,6 @@ type User {
   updated: String!
   cardGroups: [CardGroup!]!
   roles: [Role!]!
-}
-
-type CardGroupUser {
-  cardgroup_id: ID!
-  user_id: ID!
 }
 
 input NewCard {

@@ -33,7 +33,7 @@ CREATE TABLE cards
             ON DELETE CASCADE
 );
 
-CREATE TABLE cardgroups_users
+CREATE TABLE cardgroup_users
 (
     cardgroup_id INTEGER      NOT NULL,
     user_id      TEXT NOT NULL,
@@ -48,7 +48,7 @@ CREATE TABLE roles
     name TEXT NOT NULL UNIQUE
 );
 
-CREATE TABLE users_roles
+CREATE TABLE user_roles
 (
     user_id TEXT NOT NULL,
     role_id INTEGER      NOT NULL,

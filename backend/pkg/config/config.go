@@ -1,0 +1,32 @@
+package config
+
+import (
+	"github.com/caarlos0/env/v11"
+	"golang.org/x/xerrors"
+)
+
+// Config structure holds all the configuration values
+type Config struct {
+	// System Settings
+	Port    int    `env:"PORT" envDefault:"1323"`
+	GqlPort int    `env:"GQL_PORT" envDefault:"8080"`
+	GoEnv   string `env:"GO_ENV" envDefault:"dev"`
+
+	// PostgreSQL configuration
+	PGHost     string `env:"PG_HOST" envDefault:"localhost"`
+	PGUser     string `env:"PG_USER"`
+	PGPassword string `env:"PG_PASSWORD"`
+	PGDBName   string `env:"PG_DBNAME"`
+	PGPort     string `env:"PG_PORT" envDefault:"5432"`
+	PGSSLMode  string `env:"PG_SSLMODE" envDefault:"disable"`
+}
+
+// Cfg is the package-level variable that holds the parsed configuration
+var Cfg Config
+
+// init function initializes the package-level variable Cfg by parsing environment variables
+func init() {
+	if err := env.Parse(&Cfg); err != nil {
+		xerrors.Errorf("Failed to parse environment variables: %+v", err)
+	}
+}

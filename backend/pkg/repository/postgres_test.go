@@ -87,7 +87,7 @@ func TestPostgres_Open(t *testing.T) {
 		t.Fatalf("failed to ping database: %s", err)
 	}
 
-	err = pg.runGooseMigrations()
+	err = pg.RunGooseMigrations()
 	if err != nil {
 		t.Fatalf("goose migration failed: %s", err)
 	}
@@ -104,7 +104,7 @@ func TestPostgres_runGooseMigrations(t *testing.T) {
 	}
 	defer cleanup()
 
-	err = pg.runGooseMigrations()
+	err = pg.RunGooseMigrations()
 	if err != nil {
 		t.Fatalf("goose migration failed: %s", err)
 	}

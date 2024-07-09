@@ -44,7 +44,7 @@ func (pg *Postgres) Open() error {
 	return nil
 }
 
-func (pg *Postgres) runGooseMigrations() error {
+func (pg *Postgres) RunGooseMigrations() error {
 	dsn := pg.DSN()
 	cmd := exec.Command("goose", "-dir", "../../db/migrations", "postgres", dsn, "up")
 	cmd.Stdout = os.Stdout

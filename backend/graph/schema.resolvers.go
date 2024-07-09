@@ -7,127 +7,363 @@ package graph
 import (
 	"backend/graph/model"
 	"context"
-	"fmt"
 )
 
 // CreateCard is the resolver for the createCard field.
 func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCard) (*model.Card, error) {
-	panic(fmt.Errorf("not implemented: CreateCard - createCard"))
+	db := r.Resolver.DB
+	card := &model.Card{
+		Front:        input.Front,
+		Back:         input.Back,
+		ReviewDate:   input.ReviewDate,
+		IntervalDays: *input.IntervalDays,
+		CardgroupID:  input.CardgroupID,
+	}
+
+	if err := db.Create(card).Error; err != nil {
+		return nil, err
+	}
+
+	return card, nil
 }
 
 // UpdateCard is the resolver for the updateCard field.
 func (r *mutationResolver) UpdateCard(ctx context.Context, id string, input model.NewCard) (*model.Card, error) {
-	panic(fmt.Errorf("not implemented: UpdateCard - updateCard"))
+	db := r.Resolver.DB
+	var card model.Card
+
+	if err := db.First(&card, id).Error; err != nil {
+		return nil, err
+	}
+
+	card.Front = input.Front
+	card.Back = input.Back
+	card.ReviewDate = input.ReviewDate
+	card.IntervalDays = *input.IntervalDays
+	card.CardgroupID = input.CardgroupID
+
+	if err := db.Save(&card).Error; err != nil {
+		return nil, err
+	}
+
+	return &card, nil
 }
 
 // DeleteCard is the resolver for the deleteCard field.
 func (r *mutationResolver) DeleteCard(ctx context.Context, id string) (bool, error) {
-	panic(fmt.Errorf("not implemented: DeleteCard - deleteCard"))
+	db := r.Resolver.DB
+	if err := db.Delete(&model.Card{}, id).Error; err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // CreateUser is the resolver for the createUser field.
 func (r *mutationResolver) CreateUser(ctx context.Context, input model.NewUser) (*model.User, error) {
-	panic(fmt.Errorf("not implemented: CreateUser - createUser"))
+	db := r.Resolver.DB
+	user := &model.User{
+		ID:   input.ID,
+		Name: input.Name,
+	}
+
+	if err := db.Create(user).Error; err != nil {
+		return nil, err
+	}
+
+	return user, nil
 }
 
 // UpdateUser is the resolver for the updateUser field.
 func (r *mutationResolver) UpdateUser(ctx context.Context, id string, name string) (*model.User, error) {
-	panic(fmt.Errorf("not implemented: UpdateUser - updateUser"))
+	db := r.Resolver.DB
+	var user model.User
+
+	if err := db.First(&user, id).Error; err != nil {
+		return nil, err
+	}
+
+	user.Name = name
+
+	if err := db.Save(&user).Error; err != nil {
+		return nil, err
+	}
+
+	return &user, nil
 }
 
 // DeleteUser is the resolver for the deleteUser field.
 func (r *mutationResolver) DeleteUser(ctx context.Context, id string) (bool, error) {
-	panic(fmt.Errorf("not implemented: DeleteUser - deleteUser"))
+	db := r.Resolver.DB
+	if err := db.Delete(&model.User{}, id).Error; err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // CreateCardGroup is the resolver for the createCardGroup field.
 func (r *mutationResolver) CreateCardGroup(ctx context.Context, input model.NewCardGroup) (*model.CardGroup, error) {
-	panic(fmt.Errorf("not implemented: CreateCardGroup - createCardGroup"))
+	db := r.Resolver.DB
+	cardGroup := &model.CardGroup{
+		Name: input.Name,
+	}
+
+	if err := db.Create(cardGroup).Error; err != nil {
+		return nil, err
+	}
+
+	return cardGroup, nil
 }
 
 // UpdateCardGroup is the resolver for the updateCardGroup field.
 func (r *mutationResolver) UpdateCardGroup(ctx context.Context, id string, name string) (*model.CardGroup, error) {
-	panic(fmt.Errorf("not implemented: UpdateCardGroup - updateCardGroup"))
+	db := r.Resolver.DB
+	var cardGroup model.CardGroup
+
+	if err := db.First(&cardGroup, id).Error; err != nil {
+		return nil, err
+	}
+
+	cardGroup.Name = name
+
+	if err := db.Save(&cardGroup).Error; err != nil {
+		return nil, err
+	}
+
+	return &cardGroup, nil
 }
 
 // DeleteCardGroup is the resolver for the deleteCardGroup field.
 func (r *mutationResolver) DeleteCardGroup(ctx context.Context, id string) (bool, error) {
-	panic(fmt.Errorf("not implemented: DeleteCardGroup - deleteCardGroup"))
+	db := r.Resolver.DB
+	if err := db.Delete(&model.CardGroup{}, id).Error; err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // CreateRole is the resolver for the createRole field.
 func (r *mutationResolver) CreateRole(ctx context.Context, input model.NewRole) (*model.Role, error) {
-	panic(fmt.Errorf("not implemented: CreateRole - createRole"))
+	db := r.Resolver.DB
+	role := &model.Role{
+		Name: input.Name,
+	}
+
+	if err := db.Create(role).Error; err != nil {
+		return nil, err
+	}
+
+	return role, nil
 }
 
 // UpdateRole is the resolver for the updateRole field.
 func (r *mutationResolver) UpdateRole(ctx context.Context, id string, name string) (*model.Role, error) {
-	panic(fmt.Errorf("not implemented: UpdateRole - updateRole"))
+	db := r.Resolver.DB
+	var role model.Role
+
+	if err := db.First(&role, id).Error; err != nil {
+		return nil, err
+	}
+
+	role.Name = name
+
+	if err := db.Save(&role).Error; err != nil {
+		return nil, err
+	}
+
+	return &role, nil
 }
 
 // DeleteRole is the resolver for the deleteRole field.
 func (r *mutationResolver) DeleteRole(ctx context.Context, id string) (bool, error) {
-	panic(fmt.Errorf("not implemented: DeleteRole - deleteRole"))
+	db := r.Resolver.DB
+	if err := db.Delete(&model.Role{}, id).Error; err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // AddUserToCardGroup is the resolver for the addUserToCardGroup field.
 func (r *mutationResolver) AddUserToCardGroup(ctx context.Context, userID string, cardGroupID string) (bool, error) {
-	panic(fmt.Errorf("not implemented: AddUserToCardGroup - addUserToCardGroup"))
+	db := r.Resolver.DB
+	var cardGroup model.CardGroup
+	var user model.User
+
+	if err := db.First(&cardGroup, cardGroupID).Error; err != nil {
+		return false, err
+	}
+
+	if err := db.First(&user, userID).Error; err != nil {
+		return false, err
+	}
+
+	if err := db.Model(&cardGroup).Association("Users").Append(&user); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // RemoveUserFromCardGroup is the resolver for the removeUserFromCardGroup field.
 func (r *mutationResolver) RemoveUserFromCardGroup(ctx context.Context, userID string, cardGroupID string) (bool, error) {
-	panic(fmt.Errorf("not implemented: RemoveUserFromCardGroup - removeUserFromCardGroup"))
+	db := r.Resolver.DB
+	var cardGroup model.CardGroup
+	var user model.User
+
+	if err := db.First(&cardGroup, cardGroupID).Error; err != nil {
+		return false, err
+	}
+
+	if err := db.First(&user, userID).Error; err != nil {
+		return false, err
+	}
+
+	if err := db.Model(&cardGroup).Association("Users").Delete(&user); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // AssignRoleToUser is the resolver for the assignRoleToUser field.
 func (r *mutationResolver) AssignRoleToUser(ctx context.Context, userID string, roleID string) (bool, error) {
-	panic(fmt.Errorf("not implemented: AssignRoleToUser - assignRoleToUser"))
+	db := r.Resolver.DB
+	var role model.Role
+	var user model.User
+
+	if err := db.First(&role, roleID).Error; err != nil {
+		return false, err
+	}
+
+	if err := db.First(&user, userID).Error; err != nil {
+		return false, err
+	}
+
+	if err := db.Model(&user).Association("Roles").Append(&role); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // RemoveRoleFromUser is the resolver for the removeRoleFromUser field.
 func (r *mutationResolver) RemoveRoleFromUser(ctx context.Context, userID string, roleID string) (bool, error) {
-	panic(fmt.Errorf("not implemented: RemoveRoleFromUser - removeRoleFromUser"))
+	db := r.Resolver.DB
+	var role model.Role
+	var user model.User
+
+	if err := db.First(&role, roleID).Error; err != nil {
+		return false, err
+	}
+
+	if err := db.First(&user, userID).Error; err != nil {
+		return false, err
+	}
+
+	if err := db.Model(&user).Association("Roles").Delete(&role); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // Cards is the resolver for the cards field.
 func (r *queryResolver) Cards(ctx context.Context) ([]*model.Card, error) {
-	panic(fmt.Errorf("not implemented: Cards - cards"))
+	db := r.Resolver.DB
+	var cards []*model.Card
+
+	if err := db.Find(&cards).Error; err != nil {
+		return nil, err
+	}
+
+	return cards, nil
 }
 
 // Card is the resolver for the card field.
 func (r *queryResolver) Card(ctx context.Context, id string) (*model.Card, error) {
-	panic(fmt.Errorf("not implemented: Card - card"))
+	db := r.Resolver.DB
+	var card model.Card
+
+	if err := db.First(&card, id).Error; err != nil {
+		return nil, err
+	}
+
+	return &card, nil
 }
 
 // Users is the resolver for the users field.
 func (r *queryResolver) Users(ctx context.Context) ([]*model.User, error) {
-	panic(fmt.Errorf("not implemented: Users - users"))
+	db := r.Resolver.DB
+	var users []*model.User
+
+	if err := db.Find(&users).Error; err != nil {
+		return nil, err
+	}
+
+	return users, nil
 }
 
 // User is the resolver for the user field.
 func (r *queryResolver) User(ctx context.Context, id string) (*model.User, error) {
-	panic(fmt.Errorf("not implemented: User - user"))
+	db := r.Resolver.DB
+	var user model.User
+
+	if err := db.First(&user, id).Error; err != nil {
+		return nil, err
+	}
+
+	return &user, nil
 }
 
 // CardGroups is the resolver for the cardGroups field.
 func (r *queryResolver) CardGroups(ctx context.Context) ([]*model.CardGroup, error) {
-	panic(fmt.Errorf("not implemented: CardGroups - cardGroups"))
+	db := r.Resolver.DB
+	var cardGroups []*model.CardGroup
+
+	if err := db.Find(&cardGroups).Error; err != nil {
+		return nil, err
+	}
+
+	return cardGroups, nil
 }
 
 // CardGroup is the resolver for the cardGroup field.
 func (r *queryResolver) CardGroup(ctx context.Context, id string) (*model.CardGroup, error) {
-	panic(fmt.Errorf("not implemented: CardGroup - cardGroup"))
+	db := r.Resolver.DB
+	var cardGroup model.CardGroup
+
+	if err := db.First(&cardGroup, id).Error; err != nil {
+		return nil, err
+	}
+
+	return &cardGroup, nil
 }
 
 // Roles is the resolver for the roles field.
 func (r *queryResolver) Roles(ctx context.Context) ([]*model.Role, error) {
-	panic(fmt.Errorf("not implemented: Roles - roles"))
+	db := r.Resolver.DB
+	var roles []*model.Role
+
+	if err := db.Find(&roles).Error; err != nil {
+		return nil, err
+	}
+
+	return roles, nil
 }
 
 // Role is the resolver for the role field.
 func (r *queryResolver) Role(ctx context.Context, id string) (*model.Role, error) {
-	panic(fmt.Errorf("not implemented: Role - role"))
+	db := r.Resolver.DB
+	var role model.Role
+
+	if err := db.First(&role, id).Error; err != nil {
+		return nil, err
+	}
+
+	return &role, nil
 }
 
 // Mutation returns MutationResolver implementation.

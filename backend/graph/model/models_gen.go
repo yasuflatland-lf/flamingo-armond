@@ -10,6 +10,7 @@ type Card struct {
 	IntervalDays int        `json:"interval_days"`
 	Created      string     `json:"created"`
 	Updated      string     `json:"updated"`
+	CardgroupID  string     `json:"cardgroup_id"`
 	CardGroup    *CardGroup `json:"cardGroup"`
 }
 
@@ -20,11 +21,6 @@ type CardGroup struct {
 	Updated string  `json:"updated"`
 	Cards   []*Card `json:"cards"`
 	Users   []*User `json:"users"`
-}
-
-type CardGroupUser struct {
-	CardgroupID string `json:"cardgroup_id"`
-	UserID      string `json:"user_id"`
 }
 
 type Mutation struct {

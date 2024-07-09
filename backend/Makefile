@@ -16,10 +16,14 @@ ENVS = \
 update: ## Update go.mod
 	go mod tidy
 
-.PHONY: gen
-gen: ## Generate GraphQL implementations
+.PHONY: clear_gen
+clear_gen: ## Clear GraphQL implementations
 	printf "${GREEN} Clean up files\n\n"; \
 	cd ./graph; rm -fR generated.go resolver.go schema.resolvers.go model; cd ${ORG_PATH} ; \
+	printf "${GREEN}Done\n"; \
+
+.PHONY: gen
+gen: ## Generate GraphQL implementations
 	printf "${GREEN} Update gqlgen\n\n"; \
  	go get github.com/99designs/gqlgen@latest; cd ${ORG_PATH} ; \
 	printf "${GREEN} Generating GraphQL related sources\n\n"; \
