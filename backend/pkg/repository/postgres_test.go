@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"backend/pkg/config"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -17,9 +18,9 @@ func setupTestDB(ctx context.Context) (*Postgres, func(), error) {
 		Image:        "postgres:latest",
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
-			"POSTGRES_USER":     "testuser",
-			"POSTGRES_PASSWORD": "testpassword",
-			"POSTGRES_DB":       "testdb",
+			"POSTGRES_USER":     config.Cfg.PGUser,
+			"POSTGRES_PASSWORD": config.Cfg.PGPassword,
+			"POSTGRES_DB":       config.Cfg.PGDBName,
 		},
 		WaitingFor: wait.ForListeningPort("5432/tcp").WithStartupTimeout(5 * time.Minute),
 	}
@@ -46,9 +47,9 @@ func setupTestDB(ctx context.Context) (*Postgres, func(), error) {
 
 	config := DBConfig{
 		Host:     host,
-		User:     "testuser",
-		Password: "testpassword",
-		DBName:   "testdb",
+		User:     config.Cfg.PGUser,
+		Password: config.Cfg.PGPassword,
+		DBName:   config.Cfg.PGDBName,
 		Port:     port.Port(),
 		SSLMode:  "disable",
 	}
@@ -70,6 +71,7 @@ func setupTestDB(ctx context.Context) (*Postgres, func(), error) {
 
 // TestPostgres_Open tests the opening of a Postgres connection and running of migrations.
 func TestPostgres_Open(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	pg, cleanup, err := setupTestDB(ctx)
@@ -96,6 +98,7 @@ func TestPostgres_Open(t *testing.T) {
 
 // TestPostgres_RunGooseMigrations tests running Goose migrations on the Postgres database.
 func TestPostgres_RunGooseMigrations(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	pg, cleanup, err := setupTestDB(ctx)
