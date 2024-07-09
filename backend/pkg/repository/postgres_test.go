@@ -11,6 +11,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+// setupTestDB sets up a Postgres test container and returns the connection and a cleanup function.
 func setupTestDB(ctx context.Context) (*Postgres, func(), error) {
 	req := testcontainers.ContainerRequest{
 		Image:        "postgres:latest",
@@ -53,8 +54,7 @@ func setupTestDB(ctx context.Context) (*Postgres, func(), error) {
 	}
 
 	pg := NewPostgres(config)
-	err = pg.Open()
-	if err != nil {
+	if err = pg.Open(); err != nil {
 		pgContainer.Terminate(ctx)
 		return nil, nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -68,6 +68,7 @@ func setupTestDB(ctx context.Context) (*Postgres, func(), error) {
 	return pg, cleanup, nil
 }
 
+// TestPostgres_Open tests the opening of a Postgres connection and running of migrations.
 func TestPostgres_Open(t *testing.T) {
 	ctx := context.Background()
 
@@ -82,20 +83,19 @@ func TestPostgres_Open(t *testing.T) {
 		t.Fatalf("failed to get sql.DB: %s", err)
 	}
 
-	err = sqlDB.Ping()
-	if err != nil {
+	if err = sqlDB.Ping(); err != nil {
 		t.Fatalf("failed to ping database: %s", err)
 	}
 
-	err = pg.RunGooseMigrations()
-	if err != nil {
+	if err = pg.RunGooseMigrations(); err != nil {
 		t.Fatalf("goose migration failed: %s", err)
 	}
 
-	fmt.Println("Database connection established successfully!")
+	t.Log("Database connection established and migrations ran successfully!")
 }
 
-func TestPostgres_runGooseMigrations(t *testing.T) {
+// TestPostgres_RunGooseMigrations tests running Goose migrations on the Postgres database.
+func TestPostgres_RunGooseMigrations(t *testing.T) {
 	ctx := context.Background()
 
 	pg, cleanup, err := setupTestDB(ctx)
@@ -104,10 +104,9 @@ func TestPostgres_runGooseMigrations(t *testing.T) {
 	}
 	defer cleanup()
 
-	err = pg.RunGooseMigrations()
-	if err != nil {
+	if err = pg.RunGooseMigrations(); err != nil {
 		t.Fatalf("goose migration failed: %s", err)
 	}
 
-	fmt.Println("Goose migrations ran successfully!")
+	t.Log("Goose migrations ran successfully!")
 }
