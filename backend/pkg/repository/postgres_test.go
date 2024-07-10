@@ -12,6 +12,8 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+var migrationFilePath = "../../db/migrations"
+
 // setupTestDB sets up a Postgres test container and returns the connection and a cleanup function.
 func setupTestDB(ctx context.Context) (*Postgres, func(), error) {
 	req := testcontainers.ContainerRequest{
@@ -89,7 +91,7 @@ func TestPostgres_Open(t *testing.T) {
 		t.Fatalf("failed to ping database: %s", err)
 	}
 
-	if err = pg.RunGooseMigrations(); err != nil {
+	if err = pg.RunGooseMigrations(migrationFilePath); err != nil {
 		t.Fatalf("goose migration failed: %s", err)
 	}
 
@@ -107,7 +109,7 @@ func TestPostgres_RunGooseMigrations(t *testing.T) {
 	}
 	defer cleanup()
 
-	if err = pg.RunGooseMigrations(); err != nil {
+	if err = pg.RunGooseMigrations(migrationFilePath); err != nil {
 		t.Fatalf("goose migration failed: %s", err)
 	}
 

@@ -63,7 +63,6 @@ func (r *mutationResolver) DeleteCard(ctx context.Context, id string) (bool, err
 func (r *mutationResolver) CreateUser(ctx context.Context, input model.NewUser) (*model.User, error) {
 	db := r.Resolver.DB
 	user := &model.User{
-		ID:   input.ID,
 		Name: input.Name,
 	}
 

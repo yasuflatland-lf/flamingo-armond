@@ -43,7 +43,6 @@ type NewRole struct {
 }
 
 type NewUser struct {
-	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 

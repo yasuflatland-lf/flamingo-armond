@@ -40,7 +40,7 @@ fmt: ## Format code
 test: ## Run tests
 	printf "${GREEN}Run all tests\n\n${WHITE}"; \
 	go clean -testcache; \
- 	go test -v -race -run=./... -bench=./... ./...; \
+ 	go test -race -run=./... -bench=./... ./...; \
 	printf "${GREEN}Done\n"; \
 
 .PHONY: init

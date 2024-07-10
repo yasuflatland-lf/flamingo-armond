@@ -1,5 +1,3 @@
-# schema.graphql
-
 type Card {
   id: ID!
   front: String!
@@ -49,7 +47,6 @@ input NewCardGroup {
 }
 
 input NewUser {
-  id: ID!
   name: String!
 }
 

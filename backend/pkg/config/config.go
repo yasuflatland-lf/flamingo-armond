@@ -14,9 +14,9 @@ type Config struct {
 
 	// PostgreSQL configuration
 	PGHost     string `env:"PG_HOST" envDefault:"localhost"`
-	PGUser     string `env:"PG_USER"`
-	PGPassword string `env:"PG_PASSWORD"`
-	PGDBName   string `env:"PG_DBNAME"`
+	PGUser     string `env:"PG_USER" envDefault:"testuser"`
+	PGPassword string `env:"PG_PASSWORD" envDefault:"testpassword"`
+	PGDBName   string `env:"PG_DBNAME" envDefault:"testdb"`
 	PGPort     string `env:"PG_PORT" envDefault:"5432"`
 	PGSSLMode  string `env:"PG_SSLMODE" envDefault:"disable"`
 }

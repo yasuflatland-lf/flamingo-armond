@@ -3,23 +3,23 @@
 
 CREATE TABLE users
 (
-    id      TEXT PRIMARY KEY,
+    id      BIGSERIAL PRIMARY KEY,
     name    TEXT NOT NULL,
-    created TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE cardgroups
 (
-    id      SERIAL PRIMARY KEY,
+    id      BIGSERIAL PRIMARY KEY,
     name    TEXT NOT NULL,
-    created TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE cards
 (
-    id            SERIAL PRIMARY KEY,
+    id            BIGSERIAL PRIMARY KEY,
     front         TEXT         NOT NULL,
     back          TEXT         NOT NULL,
     review_date   TIMESTAMP    NOT NULL,
@@ -35,8 +35,8 @@ CREATE TABLE cards
 
 CREATE TABLE cardgroup_users
 (
-    cardgroup_id INTEGER      NOT NULL,
-    user_id      TEXT NOT NULL,
+    cardgroup_id BIGINT NOT NULL,
+    user_id      BIGINT NOT NULL,
     PRIMARY KEY (cardgroup_id, user_id),
     FOREIGN KEY (cardgroup_id) REFERENCES cardgroups (id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
@@ -44,14 +44,14 @@ CREATE TABLE cardgroup_users
 
 CREATE TABLE roles
 (
-    id   SERIAL PRIMARY KEY,
+    id   BIGSERIAL PRIMARY KEY,
     name TEXT NOT NULL UNIQUE
 );
 
 CREATE TABLE user_roles
 (
-    user_id TEXT NOT NULL,
-    role_id INTEGER      NOT NULL,
+    user_id BIGINT NOT NULL,
+    role_id BIGINT NOT NULL,
     PRIMARY KEY (user_id, role_id),
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     FOREIGN KEY (role_id) REFERENCES roles (id) ON DELETE CASCADE
@@ -60,9 +60,9 @@ CREATE TABLE user_roles
 -- +goose Down
 -- SQL section 'Down' is executed when this migration is rolled back.
 
-DROP TABLE IF EXISTS users_roles;
+DROP TABLE IF EXISTS user_roles;
 DROP TABLE IF EXISTS roles;
-DROP TABLE IF EXISTS card_groups_users;
+DROP TABLE IF EXISTS cardgroup_users;
 DROP TABLE IF EXISTS cards;
-DROP TABLE IF EXISTS card_groups;
+DROP TABLE IF EXISTS cardgroups;
 DROP TABLE IF EXISTS users;

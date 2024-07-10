@@ -16,6 +16,8 @@ import (
 	"net/http"
 )
 
+var migrationFilePath = "./db/migrations"
+
 func main() {
 
 	e := echo.New()
@@ -77,7 +79,7 @@ func initializeDatabase() *gorm.DB {
 	}
 
 	// Run migrations
-	if err := pg.RunGooseMigrations(); err != nil {
+	if err := pg.RunGooseMigrations(migrationFilePath); err != nil {
 		log.Fatalf("failed to run migrations: %v", err)
 	}
 
