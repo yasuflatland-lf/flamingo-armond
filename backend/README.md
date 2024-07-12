@@ -57,3 +57,9 @@ make help
     ```azure
     export PATH=$PATH:$(go env GOPATH)/bin
     ```
+   
+## How to Access the Docker Image
+Run `docker images` and get `IMAGE ID`
+```
+ docker run -it <IMAGE ID> /bin/sh  
+```

@@ -4,16 +4,19 @@ import (
 	"backend/graph"
 	"backend/pkg/config"
 	"backend/pkg/repository"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"golang.org/x/xerrors"
 	"gorm.io/gorm"
-	"log"
-	"net/http"
 )
 
 var migrationFilePath = "./db/migrations"
@@ -55,7 +58,12 @@ func main() {
 		return nil
 	})
 
-	xerrors.Errorf("connect to http://localhost:%d/ for GraphQL playground", config.Cfg.GqlPort)
+	err := e.Start(":" + strconv.Itoa(config.Cfg.Port))
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	log.Printf("connect to http://localhost:%d/ for GraphQL playground", config.Cfg.Port)
 }
 
 // initializeDatabase encapsulates the database configuration and initialization logic
@@ -78,10 +86,29 @@ func initializeDatabase() *gorm.DB {
 		log.Fatalf("failed to connect to the database: %v", err)
 	}
 
-	// Run migrations
-	if err := pg.RunGooseMigrations(migrationFilePath); err != nil {
-		log.Fatalf("failed to run migrations: %v", err)
+	// Get Full path to the migration DB file.
+	fullPath, err := getFullPath(migrationFilePath)
+	if err != nil {
+		log.Fatalf("Failed to get full path to the migration db file : %+v", err)
 	}
 
+	// Run migrations
+	log.Printf("Data Migration start ===============")
+	if err := pg.RunGooseMigrations(fullPath); err != nil {
+		log.Fatalf("failed to run migrations: %v", err)
+	}
+	log.Printf("Data Migration Done ===============")
+
 	return pg.DB
+}
+
+// getFullPath takes a relative path and returns the full absolute path
+func getFullPath(migrationFilePath string) (string, error) {
+	cleanedPath := filepath.Clean(migrationFilePath)
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	fullPath := filepath.Join(currentDir, cleanedPath)
+	return fullPath, nil
 }

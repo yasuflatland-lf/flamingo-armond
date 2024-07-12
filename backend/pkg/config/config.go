@@ -8,15 +8,14 @@ import (
 // Config structure holds all the configuration values
 type Config struct {
 	// System Settings
-	Port    int    `env:"PORT" envDefault:"1323"`
-	GqlPort int    `env:"GQL_PORT" envDefault:"8080"`
-	GoEnv   string `env:"GO_ENV" envDefault:"dev"`
+	Port  int    `env:"PORT" envDefault:"1323"`
+	GoEnv string `env:"GO_ENV" envDefault:"dev"`
 
 	// PostgreSQL configuration
 	PGHost     string `env:"PG_HOST" envDefault:"localhost"`
 	PGUser     string `env:"PG_USER" envDefault:"testuser"`
 	PGPassword string `env:"PG_PASSWORD" envDefault:"testpassword"`
-	PGDBName   string `env:"PG_DBNAME" envDefault:"testdb"`
+	PGDBName   string `env:"PG_DBNAME" envDefault:"flamingodb"`
 	PGPort     string `env:"PG_PORT" envDefault:"5432"`
 	PGSSLMode  string `env:"PG_SSLMODE" envDefault:"disable"`
 }
