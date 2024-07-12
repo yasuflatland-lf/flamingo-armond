@@ -3,6 +3,8 @@ package flashcard
 import (
 	"backend/pkg/repository"
 	"context"
+	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -74,7 +76,7 @@ func createTestCardGroup(t *testing.T, db *gorm.DB, name string) CardGroup {
 	return cardGroup
 }
 
-func createTestCard(t *testing.T, db *gorm.DB, front, back string, reviewDate time.Time, intervalDays int, cardGroupID uint) Card {
+func createTestCard(t *testing.T, db *gorm.DB, front, back string, reviewDate time.Time, intervalDays int, cardGroupID int64) Card {
 	t.Helper()
 	card := Card{
 		Front:        front,
@@ -91,7 +93,12 @@ func createTestCard(t *testing.T, db *gorm.DB, front, back string, reviewDate ti
 
 func createTestUser(t *testing.T, db *gorm.DB, id, name string) User {
 	t.Helper()
-	user := User{ID: id, Name: name}
+	parsedId, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	user := User{ID: parsedId, Name: name}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("could not create test user: %v", err)
 	}

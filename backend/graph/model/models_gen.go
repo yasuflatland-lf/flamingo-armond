@@ -2,36 +2,40 @@
 
 package model
 
+import (
+	"time"
+)
+
 type Card struct {
 	ID           string     `json:"id"`
 	Front        string     `json:"front"`
 	Back         string     `json:"back"`
-	ReviewDate   string     `json:"review_date"`
+	ReviewDate   time.Time  `json:"review_date"`
 	IntervalDays int        `json:"interval_days"`
-	Created      string     `json:"created"`
-	Updated      string     `json:"updated"`
+	Created      time.Time  `json:"created"`
+	Updated      time.Time  `json:"updated"`
 	CardgroupID  string     `json:"cardgroup_id"`
 	CardGroup    *CardGroup `json:"cardGroup"`
 }
 
 type CardGroup struct {
-	ID      string  `json:"id"`
-	Name    string  `json:"name"`
-	Created string  `json:"created"`
-	Updated string  `json:"updated"`
-	Cards   []*Card `json:"cards"`
-	Users   []*User `json:"users"`
+	ID      string    `json:"id"`
+	Name    string    `json:"name"`
+	Created time.Time `json:"created"`
+	Updated time.Time `json:"updated"`
+	Cards   []*Card   `json:"cards"`
+	Users   []*User   `json:"users"`
 }
 
 type Mutation struct {
 }
 
 type NewCard struct {
-	Front        string `json:"front"`
-	Back         string `json:"back"`
-	ReviewDate   string `json:"review_date"`
-	IntervalDays *int   `json:"interval_days,omitempty"`
-	CardgroupID  string `json:"cardgroup_id"`
+	Front        string    `json:"front"`
+	Back         string    `json:"back"`
+	ReviewDate   time.Time `json:"review_date"`
+	IntervalDays *int      `json:"interval_days,omitempty"`
+	CardgroupID  string    `json:"cardgroup_id"`
 }
 
 type NewCardGroup struct {
@@ -58,8 +62,8 @@ type Role struct {
 type User struct {
 	ID         string       `json:"id"`
 	Name       string       `json:"name"`
-	Created    string       `json:"created"`
-	Updated    string       `json:"updated"`
+	Created    time.Time    `json:"created"`
+	Updated    time.Time    `json:"updated"`
 	CardGroups []*CardGroup `json:"cardGroups"`
 	Roles      []*Role      `json:"roles"`
 }

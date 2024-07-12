@@ -4,7 +4,7 @@
 CREATE TABLE users
 (
     id      BIGSERIAL PRIMARY KEY,
-    name    TEXT NOT NULL,
+    name    TEXT      NOT NULL,
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -12,7 +12,7 @@ CREATE TABLE users
 CREATE TABLE cardgroups
 (
     id      BIGSERIAL PRIMARY KEY,
-    name    TEXT NOT NULL,
+    name    TEXT      NOT NULL,
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -20,17 +20,14 @@ CREATE TABLE cardgroups
 CREATE TABLE cards
 (
     id            BIGSERIAL PRIMARY KEY,
-    front         TEXT         NOT NULL,
-    back          TEXT         NOT NULL,
-    review_date   TIMESTAMP    NOT NULL,
-    interval_days INT          NOT NULL DEFAULT 1,
-    created       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated       TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    cardgroup_id  INTEGER      NOT NULL,
-    CONSTRAINT fk_cardgroup
-        FOREIGN KEY (cardgroup_id)
-            REFERENCES cardgroups (id)
-            ON DELETE CASCADE
+    front         TEXT      NOT NULL,
+    back          TEXT      NOT NULL,
+    review_date   TIMESTAMP NOT NULL,
+    interval_days INT       NOT NULL DEFAULT 1,
+    created       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    cardgroup_id  INTEGER   NOT NULL,
+    FOREIGN KEY (cardgroup_id) REFERENCES cardgroups (id) ON DELETE CASCADE
 );
 
 CREATE TABLE cardgroup_users

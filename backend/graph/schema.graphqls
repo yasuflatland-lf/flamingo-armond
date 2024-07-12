@@ -1,11 +1,13 @@
+scalar Time
+
 type Card {
   id: ID!
   front: String!
   back: String!
-  review_date: String!
+  review_date: Time!
   interval_days: Int!
-  created: String!
-  updated: String!
+  created: Time!
+  updated: Time!
   cardgroup_id: ID!
   cardGroup: CardGroup!
 }
@@ -13,8 +15,8 @@ type Card {
 type CardGroup {
   id: ID!
   name: String!
-  created: String!
-  updated: String!
+  created: Time!
+  updated: Time!
   cards: [Card!]!
   users: [User!]!
 }
@@ -28,8 +30,8 @@ type Role {
 type User {
   id: ID!
   name: String!
-  created: String!
-  updated: String!
+  created: Time!
+  updated: Time!
   cardGroups: [CardGroup!]!
   roles: [Role!]!
 }
@@ -37,7 +39,7 @@ type User {
 input NewCard {
   front: String!
   back: String!
-  review_date: String!
+  review_date: Time!
   interval_days: Int = 1
   cardgroup_id: ID!
 }

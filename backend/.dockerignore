@@ -3,3 +3,4 @@ README.md
 Makefile
 ./testutils
 gqlgen.yml
+**/*_test.go

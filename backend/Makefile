@@ -27,7 +27,6 @@ gen: ## Generate GraphQL implementations
 	printf "${GREEN} Update gqlgen\n\n"; \
  	go get github.com/99designs/gqlgen@latest; cd ${ORG_PATH} ; \
 	printf "${GREEN} Generating GraphQL related sources\n\n"; \
- 	go get github.com/99designs/gqlgen@latest; cd ${ORG_PATH} ; \
 	go run github.com/99designs/gqlgen generate; cd ${ORG_PATH}; \
 	printf "${GREEN}Done\n"; \
 
