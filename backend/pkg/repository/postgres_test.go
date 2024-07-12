@@ -15,14 +15,14 @@ import (
 var migrationFilePath = "../../db/migrations"
 
 // setupTestDB sets up a Postgres test container and returns the connection and a cleanup function.
-func setupTestDB(ctx context.Context) (*Postgres, func(), error) {
+func setupTestDB(ctx context.Context, dbName string) (*Postgres, func(), error) {
 	req := testcontainers.ContainerRequest{
 		Image:        "postgres:latest",
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
 			"POSTGRES_USER":     config.Cfg.PGUser,
 			"POSTGRES_PASSWORD": config.Cfg.PGPassword,
-			"POSTGRES_DB":       config.Cfg.PGDBName,
+			"POSTGRES_DB":       dbName,
 		},
 		WaitingFor: wait.ForListeningPort("5432/tcp").WithStartupTimeout(5 * time.Minute),
 	}
@@ -51,7 +51,7 @@ func setupTestDB(ctx context.Context) (*Postgres, func(), error) {
 		Host:     host,
 		User:     config.Cfg.PGUser,
 		Password: config.Cfg.PGPassword,
-		DBName:   config.Cfg.PGDBName,
+		DBName:   dbName,
 		Port:     port.Port(),
 		SSLMode:  "disable",
 	}
@@ -76,7 +76,7 @@ func TestPostgres_Open(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	pg, cleanup, err := setupTestDB(ctx)
+	pg, cleanup, err := setupTestDB(ctx, config.Cfg.PGDBName)
 	if err != nil {
 		t.Fatalf("setupTestDB failed: %s", err)
 	}
@@ -103,7 +103,7 @@ func TestPostgres_RunGooseMigrations(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	pg, cleanup, err := setupTestDB(ctx)
+	pg, cleanup, err := setupTestDB(ctx, config.Cfg.PGDBName)
 	if err != nil {
 		t.Fatalf("setupTestDB failed: %s", err)
 	}
@@ -114,4 +114,40 @@ func TestPostgres_RunGooseMigrations(t *testing.T) {
 	}
 
 	t.Log("Goose migrations ran successfully!")
+}
+
+// TestDatabaseCreation checks if the 'flamingodb' database is created.
+func TestDatabaseCreation(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	// Use a temporary database name for this test
+	pg, cleanup, err := setupTestDB(ctx, config.Cfg.PGDBName)
+	if err != nil {
+		t.Fatalf("setupTestDB failed: %s", err)
+	}
+	defer cleanup()
+
+	sqlDB, err := pg.DB.DB()
+	if err != nil {
+		t.Fatalf("failed to get sql.DB: %s", err)
+	}
+
+	if err = sqlDB.Ping(); err != nil {
+		t.Fatalf("failed to ping database: %s", err)
+	}
+
+	// Check if the database 'flamingodb' exists
+	var exists bool
+	query := fmt.Sprintf("SELECT EXISTS(SELECT datname FROM pg_catalog.pg_database WHERE datname = '%s')", config.Cfg.PGDBName)
+	err = sqlDB.QueryRow(query).Scan(&exists)
+	if err != nil {
+		t.Fatalf("failed to check database existence: %s", err)
+	}
+
+	if !exists {
+		t.Fatalf("database %s does not exist", config.Cfg.PGDBName)
+	}
+
+	t.Logf("Database %s exists", config.Cfg.PGDBName)
 }
