@@ -1,0 +1,5 @@
+.env*
+README.md
+Makefile
+./testutils
+gqlgen.yml
