@@ -1,20 +1,21 @@
 package flashcard
 
 import (
+	"backend/pkg/model"
 	"gorm.io/gorm"
 	"time"
 )
 
 // GetDueCards retrieves flashcards that are due for review
-func GetDueCards(db *gorm.DB) ([]Card, error) {
-	var cards []Card
+func GetDueCards(db *gorm.DB) ([]model.Card, error) {
+	var cards []model.Card
 	now := time.Now()
 	result := db.Where("review_date <= ?", now).Find(&cards)
 	return cards, result.Error
 }
 
 // UpdateCardReview updates the review date and interval of a flashcard
-func UpdateCardReview(card *Card, db *gorm.DB) error {
+func UpdateCardReview(card *model.Card, db *gorm.DB) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.First(&card, card.ID).Error; err != nil {
 			return err
@@ -29,7 +30,7 @@ func UpdateCardReview(card *Card, db *gorm.DB) error {
 }
 
 // CreateCardReview creates a new card review entry
-func CreateCardReview(card *Card, db *gorm.DB) error {
+func CreateCardReview(card *model.Card, db *gorm.DB) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(card).Error; err != nil {
 			return err
@@ -41,9 +42,9 @@ func CreateCardReview(card *Card, db *gorm.DB) error {
 // MigrateDB performs the database migration for the Card struct
 func MigrateDB(db *gorm.DB) error {
 	return db.AutoMigrate(
-		&CardGroup{},
-		&Card{},
-		&User{},
-		&Role{},
+		&model.CardGroup{},
+		&model.Card{},
+		&model.User{},
+		&model.Role{},
 	)
 }

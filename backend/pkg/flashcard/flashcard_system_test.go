@@ -1,6 +1,7 @@
 package flashcard
 
 import (
+	"backend/pkg/model"
 	"backend/pkg/repository"
 	"context"
 	"fmt"
@@ -67,18 +68,18 @@ func setupTestDB(t *testing.T) (*gorm.DB, func()) {
 	}
 }
 
-func createTestCardGroup(t *testing.T, db *gorm.DB, name string) CardGroup {
+func createTestCardGroup(t *testing.T, db *gorm.DB, name string) model.CardGroup {
 	t.Helper()
-	cardGroup := CardGroup{Name: name}
+	cardGroup := model.CardGroup{Name: name}
 	if err := db.Create(&cardGroup).Error; err != nil {
 		t.Fatalf("could not create test card group: %v", err)
 	}
 	return cardGroup
 }
 
-func createTestCard(t *testing.T, db *gorm.DB, front, back string, reviewDate time.Time, intervalDays int, cardGroupID int64) Card {
+func createTestCard(t *testing.T, db *gorm.DB, front, back string, reviewDate time.Time, intervalDays int, cardGroupID int64) model.Card {
 	t.Helper()
-	card := Card{
+	card := model.Card{
 		Front:        front,
 		Back:         back,
 		ReviewDate:   reviewDate,
@@ -91,23 +92,23 @@ func createTestCard(t *testing.T, db *gorm.DB, front, back string, reviewDate ti
 	return card
 }
 
-func createTestUser(t *testing.T, db *gorm.DB, id, name string) User {
+func createTestUser(t *testing.T, db *gorm.DB, id, name string) model.User {
 	t.Helper()
 	parsedId, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	user := User{ID: parsedId, Name: name}
+	user := model.User{ID: parsedId, Name: name}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("could not create test user: %v", err)
 	}
 	return user
 }
 
-func createTestRole(t *testing.T, db *gorm.DB, name string) Role {
+func createTestRole(t *testing.T, db *gorm.DB, name string) model.Role {
 	t.Helper()
-	role := Role{Name: name}
+	role := model.Role{Name: name}
 	if err := db.Create(&role).Error; err != nil {
 		t.Fatalf("could not create test role: %v", err)
 	}
@@ -138,14 +139,14 @@ func TestFlashcardFunctions(t *testing.T) {
 		err := UpdateCardReview(&card, db)
 		assert.NoError(t, err)
 
-		var updatedCard Card
+		var updatedCard model.Card
 		db.First(&updatedCard, card.ID)
 		assert.Equal(t, 2, updatedCard.IntervalDays)
 		assert.True(t, updatedCard.ReviewDate.After(time.Now()))
 	})
 
 	t.Run("Test CreateCardReview", func(t *testing.T) {
-		newCard := Card{
+		newCard := model.Card{
 			Front:        "New Card",
 			Back:         "Test",
 			ReviewDate:   time.Now(),
@@ -156,7 +157,7 @@ func TestFlashcardFunctions(t *testing.T) {
 		err := CreateCardReview(&newCard, db)
 		assert.NoError(t, err)
 
-		var createdCard Card
+		var createdCard model.Card
 		result := db.First(&createdCard, newCard.ID)
 		assert.NoError(t, result.Error)
 		assert.Equal(t, "New Card", createdCard.Front)
@@ -166,7 +167,7 @@ func TestFlashcardFunctions(t *testing.T) {
 			t.Logf("Failed to retrieve the created card. ID: %d, Front: %s", newCard.ID, createdCard.Front)
 
 			// Let's try to fetch all cards to see what's in the database
-			var allCards []Card
+			var allCards []model.Card
 			db.Find(&allCards)
 			t.Logf("All cards in database: %+v", allCards)
 		}
@@ -225,7 +226,7 @@ func TestFlashcardFunctions(t *testing.T) {
 		role := createTestRole(t, db, "User")
 
 		// Test CardGroup - Card relationship
-		var fetchedCardGroup CardGroup
+		var fetchedCardGroup model.CardGroup
 		db.Preload("Cards").First(&fetchedCardGroup, cardGroup.ID)
 		assert.Len(t, fetchedCardGroup.Cards, 2)
 		assert.Equal(t, card1.ID, fetchedCardGroup.Cards[0].ID)
@@ -233,7 +234,7 @@ func TestFlashcardFunctions(t *testing.T) {
 
 		// Test User - CardGroup relationship
 		db.Model(&user).Association("CardGroups").Append(&cardGroup)
-		var fetchedUser User
+		var fetchedUser model.User
 		db.Preload("CardGroups").First(&fetchedUser, "id = ?", user.ID)
 		assert.Len(t, fetchedUser.CardGroups, 1)
 		assert.Equal(t, cardGroup.ID, fetchedUser.CardGroups[0].ID)
@@ -249,7 +250,7 @@ func TestFlashcardFunctions(t *testing.T) {
 
 		// Test deletion cascade
 		db.Delete(&cardGroup)
-		var deletedCards []Card
+		var deletedCards []model.Card
 		db.Where("cardgroup_id = ?", cardGroup.ID).Find(&deletedCards)
 		assert.Len(t, deletedCards, 0)
 	})

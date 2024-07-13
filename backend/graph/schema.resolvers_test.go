@@ -71,7 +71,7 @@ func TestGraphQLResolvers(t *testing.T) {
 			"input": map[string]interface{}{
 				"front":         "front",
 				"back":          "back",
-				"review_date":   "2024-07-10",
+				"review_date":   "2024-07-10T00:00:00Z",
 				"interval_days": 1,
 				"cardgroup_id":  "1",
 			},
@@ -90,7 +90,7 @@ func TestGraphQLResolvers(t *testing.T) {
 			"query":     query,
 			"variables": input,
 		})
-		expected := `{"data":{"createCard":{"front":"front","back":"back","review_date":"2024-07-10","interval_days":1,"cardgroup_id":"1"}}}`
+		expected := `{"data":{"createCard":{"front":"front","back":"back","review_date":"2024-07-10T00:00:00Z","interval_days":1,"cardgroup_id":"1"}}}`
 		testGraphQLQuery(t, e, jsonInput, expected)
 	})
 
