@@ -19,7 +19,7 @@ func setupTestDB(t *testing.T) (*gorm.DB, func()) {
 	ctx := context.Background()
 
 	req := testcontainers.ContainerRequest{
-		Image:        "postgres:latest",
+		Image:        "postgres:16",
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
 			"POSTGRES_USER":     "test",

@@ -1,5 +1,5 @@
 # Framingo Armond
-Tinder like Flashcard App. 
+🔥Tinder like Flashcard App. 
 
 # Environment
 This repository is structured as a mono repository. 
@@ -17,8 +17,9 @@ This repository is structured as a mono repository.
 ## backend
 - Go
 - Echo
+- gqlgen (GraphQL)
   
 # Run Locally
 ```
-docker compose up --build
+make server
 ```

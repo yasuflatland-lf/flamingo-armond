@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"backend/pkg/repository"
+
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -14,7 +15,7 @@ import (
 // SetupTestDB sets up a Postgres test container and returns the connection and a cleanup function.
 func SetupTestDB(ctx context.Context, user, password, dbName string) (*repository.Postgres, func(), error) {
 	req := testcontainers.ContainerRequest{
-		Image:        "postgres:latest",
+		Image:        "postgres:16",
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
 			"POSTGRES_USER":     user,

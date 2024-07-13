@@ -63,3 +63,14 @@ Run `docker images` and get `IMAGE ID`
 ```
  docker run -it <IMAGE ID> /bin/sh  
 ```
+
+## Postgres SQL utilities
+### Show the list of databases
+```
+SELECT datname FROM pg_database;
+```
+
+### Show users of the database
+```
+SELECT usename FROM pg_catalog.pg_user;
+```

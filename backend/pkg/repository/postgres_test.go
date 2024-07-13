@@ -17,7 +17,7 @@ var migrationFilePath = "../../db/migrations"
 // setupTestDB sets up a Postgres test container and returns the connection and a cleanup function.
 func setupTestDB(ctx context.Context, dbName string) (*Postgres, func(), error) {
 	req := testcontainers.ContainerRequest{
-		Image:        "postgres:latest",
+		Image:        "postgres:16",
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
 			"POSTGRES_USER":     config.Cfg.PGUser,
