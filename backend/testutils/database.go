@@ -13,7 +13,7 @@ import (
 )
 
 // SetupTestDB sets up a Postgres test container and returns the connection and a cleanup function.
-func SetupTestDB(ctx context.Context, user, password, dbName string) (*repository.Postgres, func(), error) {
+func SetupTestDB(ctx context.Context, user, password, dbName string) (*repository.Postgres, func(migrationFilePath string), error) {
 	req := testcontainers.ContainerRequest{
 		Image:        "postgres:16",
 		ExposedPorts: []string{"5432/tcp"},
@@ -60,7 +60,12 @@ func SetupTestDB(ctx context.Context, user, password, dbName string) (*repositor
 		return nil, nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	cleanup := func() {
+	cleanup := func(migrationFilePath string) {
+		// Run migrations
+		if err := pg.RunGooseMigrationsDown(migrationFilePath); err != nil {
+			log.Fatalf("failed to run migrations: %v", err)
+		}
+
 		if err := pgContainer.Terminate(ctx); err != nil {
 			log.Fatalf("failed to terminate postgres container: %s", err)
 		}

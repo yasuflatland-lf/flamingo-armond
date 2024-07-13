@@ -44,13 +44,24 @@ func (pg *Postgres) Open() error {
 	return nil
 }
 
-func (pg *Postgres) RunGooseMigrations(path string) error {
+func (pg *Postgres) RunGooseMigrationsUp(path string) error {
 	dsn := pg.DSN()
 	cmd := exec.Command("goose", "-dir", path, "postgres", dsn, "up")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("goose migration failed: %w", err)
+	}
+	return nil
+}
+
+func (pg *Postgres) RunGooseMigrationsDown(path string) error {
+	dsn := pg.DSN()
+	cmd := exec.Command("goose", "-dir", path, "postgres", dsn, "down")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("goose migration down failed: %w", err)
 	}
 	return nil
 }

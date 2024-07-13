@@ -42,7 +42,7 @@ func CreateCardReview(card *model.Card, db *gorm.DB) error {
 // MigrateDB performs the database migration for the Card struct
 func MigrateDB(db *gorm.DB) error {
 	return db.AutoMigrate(
-		&model.CardGroup{},
+		&model.Cardgroup{},
 		&model.Card{},
 		&model.User{},
 		&model.Role{},

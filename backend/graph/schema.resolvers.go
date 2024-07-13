@@ -6,363 +6,474 @@ package graph
 
 import (
 	"backend/graph/model"
+	repository "backend/pkg/model"
 	"context"
+	"fmt"
+	"time"
 )
 
 // CreateCard is the resolver for the createCard field.
 func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCard) (*model.Card, error) {
-	db := r.Resolver.DB
-	card := &model.Card{
-		Front:        input.Front,
-		Back:         input.Back,
-		ReviewDate:   input.ReviewDate,
-		IntervalDays: *input.IntervalDays,
-		CardgroupID:  input.CardgroupID,
+	gormCard := convertToGormCard(input)
+	result := r.DB.Create(&gormCard)
+	if result.Error != nil {
+		return nil, result.Error
 	}
-
-	if err := db.Create(card).Error; err != nil {
-		return nil, err
-	}
-
-	return card, nil
+	return &model.Card{
+		ID:           gormCard.ID,
+		Front:        gormCard.Front,
+		Back:         gormCard.Back,
+		ReviewDate:   gormCard.ReviewDate,
+		IntervalDays: gormCard.IntervalDays,
+		Created:      gormCard.Created,
+		Updated:      gormCard.Updated,
+	}, nil
 }
 
 // UpdateCard is the resolver for the updateCard field.
-func (r *mutationResolver) UpdateCard(ctx context.Context, id string, input model.NewCard) (*model.Card, error) {
-	db := r.Resolver.DB
-	var card model.Card
-
-	if err := db.First(&card, id).Error; err != nil {
+func (r *mutationResolver) UpdateCard(ctx context.Context, id int64, input model.NewCard) (*model.Card, error) {
+	var card repository.Card
+	if err := r.DB.First(&card, id).Error; err != nil {
 		return nil, err
 	}
-
 	card.Front = input.Front
 	card.Back = input.Back
 	card.ReviewDate = input.ReviewDate
-	card.IntervalDays = *input.IntervalDays
-	card.CardgroupID = input.CardgroupID
-
-	if err := db.Save(&card).Error; err != nil {
+	card.IntervalDays = func() int {
+		if input.IntervalDays != nil {
+			return *input.IntervalDays
+		}
+		return card.IntervalDays
+	}()
+	card.Updated = time.Now()
+	if err := r.DB.Save(&card).Error; err != nil {
 		return nil, err
 	}
-
-	return &card, nil
+	return &model.Card{
+		ID:           card.ID,
+		Front:        card.Front,
+		Back:         card.Back,
+		ReviewDate:   card.ReviewDate,
+		IntervalDays: card.IntervalDays,
+		Created:      card.Created,
+		Updated:      card.Updated,
+	}, nil
 }
 
 // DeleteCard is the resolver for the deleteCard field.
-func (r *mutationResolver) DeleteCard(ctx context.Context, id string) (bool, error) {
-	db := r.Resolver.DB
-	if err := db.Delete(&model.Card{}, id).Error; err != nil {
+func (r *mutationResolver) DeleteCard(ctx context.Context, id int64) (bool, error) {
+	if err := r.DB.Delete(&repository.Card{}, id).Error; err != nil {
 		return false, err
 	}
-
-	return true, nil
-}
-
-// CreateUser is the resolver for the createUser field.
-func (r *mutationResolver) CreateUser(ctx context.Context, input model.NewUser) (*model.User, error) {
-	db := r.Resolver.DB
-	user := &model.User{
-		Name: input.Name,
-	}
-
-	if err := db.Create(user).Error; err != nil {
-		return nil, err
-	}
-
-	return user, nil
-}
-
-// UpdateUser is the resolver for the updateUser field.
-func (r *mutationResolver) UpdateUser(ctx context.Context, id string, name string) (*model.User, error) {
-	db := r.Resolver.DB
-	var user model.User
-
-	if err := db.First(&user, id).Error; err != nil {
-		return nil, err
-	}
-
-	user.Name = name
-
-	if err := db.Save(&user).Error; err != nil {
-		return nil, err
-	}
-
-	return &user, nil
-}
-
-// DeleteUser is the resolver for the deleteUser field.
-func (r *mutationResolver) DeleteUser(ctx context.Context, id string) (bool, error) {
-	db := r.Resolver.DB
-	if err := db.Delete(&model.User{}, id).Error; err != nil {
-		return false, err
-	}
-
 	return true, nil
 }
 
 // CreateCardGroup is the resolver for the createCardGroup field.
 func (r *mutationResolver) CreateCardGroup(ctx context.Context, input model.NewCardGroup) (*model.CardGroup, error) {
-	db := r.Resolver.DB
-	cardGroup := &model.CardGroup{
-		Name: input.Name,
+	gormCardGroup := convertToGormCardGroup(input)
+	result := r.DB.Create(&gormCardGroup)
+	if result.Error != nil {
+		return nil, result.Error
 	}
-
-	if err := db.Create(cardGroup).Error; err != nil {
-		return nil, err
-	}
-
-	return cardGroup, nil
+	return &model.CardGroup{
+		ID:      gormCardGroup.ID,
+		Name:    gormCardGroup.Name,
+		Created: gormCardGroup.Created,
+		Updated: gormCardGroup.Updated,
+	}, nil
 }
 
 // UpdateCardGroup is the resolver for the updateCardGroup field.
-func (r *mutationResolver) UpdateCardGroup(ctx context.Context, id string, name string) (*model.CardGroup, error) {
-	db := r.Resolver.DB
-	var cardGroup model.CardGroup
-
-	if err := db.First(&cardGroup, id).Error; err != nil {
+func (r *mutationResolver) UpdateCardGroup(ctx context.Context, id int64, input model.NewCardGroup) (*model.CardGroup, error) {
+	var cardGroup repository.Cardgroup
+	if err := r.DB.First(&cardGroup, id).Error; err != nil {
 		return nil, err
 	}
-
-	cardGroup.Name = name
-
-	if err := db.Save(&cardGroup).Error; err != nil {
+	cardGroup.Name = input.Name
+	cardGroup.Updated = time.Now()
+	if err := r.DB.Save(&cardGroup).Error; err != nil {
 		return nil, err
 	}
-
-	return &cardGroup, nil
+	return &model.CardGroup{
+		ID:      cardGroup.ID,
+		Name:    cardGroup.Name,
+		Created: cardGroup.Created,
+		Updated: cardGroup.Updated,
+	}, nil
 }
 
 // DeleteCardGroup is the resolver for the deleteCardGroup field.
-func (r *mutationResolver) DeleteCardGroup(ctx context.Context, id string) (bool, error) {
-	db := r.Resolver.DB
-	if err := db.Delete(&model.CardGroup{}, id).Error; err != nil {
+func (r *mutationResolver) DeleteCardGroup(ctx context.Context, id int64) (bool, error) {
+	if err := r.DB.Delete(&repository.Cardgroup{}, id).Error; err != nil {
 		return false, err
 	}
+	return true, nil
+}
 
+// CreateUser is the resolver for the createUser field.
+func (r *mutationResolver) CreateUser(ctx context.Context, input model.NewUser) (*model.User, error) {
+	gormUser := convertToGormUser(input)
+	result := r.DB.Create(&gormUser)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return &model.User{
+		ID:      gormUser.ID,
+		Name:    gormUser.Name,
+		Created: gormUser.Created,
+		Updated: gormUser.Updated,
+	}, nil
+}
+
+// UpdateUser is the resolver for the updateUser field.
+func (r *mutationResolver) UpdateUser(ctx context.Context, id int64, input model.NewUser) (*model.User, error) {
+	var user repository.User
+	if err := r.DB.First(&user, id).Error; err != nil {
+		return nil, err
+	}
+	user.Name = input.Name
+	user.Updated = time.Now()
+	if err := r.DB.Save(&user).Error; err != nil {
+		return nil, err
+	}
+	return &model.User{
+		ID:      user.ID,
+		Name:    user.Name,
+		Created: user.Created,
+		Updated: user.Updated,
+	}, nil
+}
+
+// DeleteUser is the resolver for the deleteUser field.
+func (r *mutationResolver) DeleteUser(ctx context.Context, id int64) (bool, error) {
+	if err := r.DB.Delete(&repository.User{}, id).Error; err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
 // CreateRole is the resolver for the createRole field.
 func (r *mutationResolver) CreateRole(ctx context.Context, input model.NewRole) (*model.Role, error) {
-	db := r.Resolver.DB
-	role := &model.Role{
-		Name: input.Name,
+	gormRole := convertToGormRole(input)
+	result := r.DB.Create(&gormRole)
+	if result.Error != nil {
+		return nil, result.Error
 	}
-
-	if err := db.Create(role).Error; err != nil {
-		return nil, err
-	}
-
-	return role, nil
+	return &model.Role{
+		ID:   gormRole.ID,
+		Name: gormRole.Name,
+	}, nil
 }
 
 // UpdateRole is the resolver for the updateRole field.
-func (r *mutationResolver) UpdateRole(ctx context.Context, id string, name string) (*model.Role, error) {
-	db := r.Resolver.DB
-	var role model.Role
-
-	if err := db.First(&role, id).Error; err != nil {
+func (r *mutationResolver) UpdateRole(ctx context.Context, id int64, input model.NewRole) (*model.Role, error) {
+	var role repository.Role
+	if err := r.DB.First(&role, id).Error; err != nil {
 		return nil, err
 	}
-
-	role.Name = name
-
-	if err := db.Save(&role).Error; err != nil {
+	role.Name = input.Name
+	if err := r.DB.Save(&role).Error; err != nil {
 		return nil, err
 	}
-
-	return &role, nil
+	return &model.Role{
+		ID:   role.ID,
+		Name: role.Name,
+	}, nil
 }
 
 // DeleteRole is the resolver for the deleteRole field.
-func (r *mutationResolver) DeleteRole(ctx context.Context, id string) (bool, error) {
-	db := r.Resolver.DB
-	if err := db.Delete(&model.Role{}, id).Error; err != nil {
+func (r *mutationResolver) DeleteRole(ctx context.Context, id int64) (bool, error) {
+	if err := r.DB.Delete(&repository.Role{}, id).Error; err != nil {
 		return false, err
 	}
-
 	return true, nil
 }
 
 // AddUserToCardGroup is the resolver for the addUserToCardGroup field.
-func (r *mutationResolver) AddUserToCardGroup(ctx context.Context, userID string, cardGroupID string) (bool, error) {
-	db := r.Resolver.DB
-	var cardGroup model.CardGroup
-	var user model.User
-
-	if err := db.First(&cardGroup, cardGroupID).Error; err != nil {
-		return false, err
+func (r *mutationResolver) AddUserToCardGroup(ctx context.Context, userID int64, cardGroupID int64) (*model.CardGroup, error) {
+	var user repository.User
+	var cardGroup repository.Cardgroup
+	if err := r.DB.First(&user, userID).Error; err != nil {
+		return nil, err
 	}
-
-	if err := db.First(&user, userID).Error; err != nil {
-		return false, err
+	if err := r.DB.First(&cardGroup, cardGroupID).Error; err != nil {
+		return nil, err
 	}
-
-	if err := db.Model(&cardGroup).Association("Users").Append(&user); err != nil {
-		return false, err
+	if err := r.DB.Model(&cardGroup).Association("Users").Append(&user); err != nil {
+		return nil, err
 	}
-
-	return true, nil
+	return &model.CardGroup{
+		ID:      cardGroup.ID,
+		Name:    cardGroup.Name,
+		Created: cardGroup.Created,
+		Updated: cardGroup.Updated,
+	}, nil
 }
 
 // RemoveUserFromCardGroup is the resolver for the removeUserFromCardGroup field.
-func (r *mutationResolver) RemoveUserFromCardGroup(ctx context.Context, userID string, cardGroupID string) (bool, error) {
-	db := r.Resolver.DB
-	var cardGroup model.CardGroup
-	var user model.User
-
-	if err := db.First(&cardGroup, cardGroupID).Error; err != nil {
-		return false, err
+func (r *mutationResolver) RemoveUserFromCardGroup(ctx context.Context, userID int64, cardGroupID int64) (*model.CardGroup, error) {
+	var user repository.User
+	var cardGroup repository.Cardgroup
+	if err := r.DB.First(&user, userID).Error; err != nil {
+		return nil, err
 	}
-
-	if err := db.First(&user, userID).Error; err != nil {
-		return false, err
+	if err := r.DB.First(&cardGroup, cardGroupID).Error; err != nil {
+		return nil, err
 	}
-
-	if err := db.Model(&cardGroup).Association("Users").Delete(&user); err != nil {
-		return false, err
+	if err := r.DB.Model(&cardGroup).Association("Users").Delete(&user); err != nil {
+		return nil, err
 	}
-
-	return true, nil
+	return &model.CardGroup{
+		ID:      cardGroup.ID,
+		Name:    cardGroup.Name,
+		Created: cardGroup.Created,
+		Updated: cardGroup.Updated,
+	}, nil
 }
 
 // AssignRoleToUser is the resolver for the assignRoleToUser field.
-func (r *mutationResolver) AssignRoleToUser(ctx context.Context, userID string, roleID string) (bool, error) {
-	db := r.Resolver.DB
-	var role model.Role
-	var user model.User
-
-	if err := db.First(&role, roleID).Error; err != nil {
-		return false, err
+func (r *mutationResolver) AssignRoleToUser(ctx context.Context, userID int64, roleID int64) (*model.User, error) {
+	var user repository.User
+	var role repository.Role
+	if err := r.DB.First(&user, userID).Error; err != nil {
+		return nil, err
 	}
-
-	if err := db.First(&user, userID).Error; err != nil {
-		return false, err
+	if err := r.DB.First(&role, roleID).Error; err != nil {
+		return nil, err
 	}
-
-	if err := db.Model(&user).Association("Roles").Append(&role); err != nil {
-		return false, err
+	if err := r.DB.Model(&user).Association("Roles").Append(&role); err != nil {
+		return nil, err
 	}
-
-	return true, nil
+	return &model.User{
+		ID:      user.ID,
+		Name:    user.Name,
+		Created: user.Created,
+		Updated: user.Updated,
+	}, nil
 }
 
 // RemoveRoleFromUser is the resolver for the removeRoleFromUser field.
-func (r *mutationResolver) RemoveRoleFromUser(ctx context.Context, userID string, roleID string) (bool, error) {
-	db := r.Resolver.DB
-	var role model.Role
-	var user model.User
-
-	if err := db.First(&role, roleID).Error; err != nil {
-		return false, err
+func (r *mutationResolver) RemoveRoleFromUser(ctx context.Context, userID int64, roleID int64) (*model.User, error) {
+	var user repository.User
+	var role repository.Role
+	if err := r.DB.First(&user, userID).Error; err != nil {
+		return nil, err
 	}
-
-	if err := db.First(&user, userID).Error; err != nil {
-		return false, err
+	if err := r.DB.First(&role, roleID).Error; err != nil {
+		return nil, err
 	}
-
-	if err := db.Model(&user).Association("Roles").Delete(&role); err != nil {
-		return false, err
+	if err := r.DB.Model(&user).Association("Roles").Delete(&role); err != nil {
+		return nil, err
 	}
-
-	return true, nil
+	return &model.User{
+		ID:      user.ID,
+		Name:    user.Name,
+		Created: user.Created,
+		Updated: user.Updated,
+	}, nil
 }
 
 // Cards is the resolver for the cards field.
 func (r *queryResolver) Cards(ctx context.Context) ([]*model.Card, error) {
-	db := r.Resolver.DB
-	var cards []*model.Card
-
-	if err := db.Find(&cards).Error; err != nil {
+	var cards []repository.Card
+	if err := r.DB.Find(&cards).Error; err != nil {
 		return nil, err
 	}
-
-	return cards, nil
+	var gqlCards []*model.Card
+	for _, card := range cards {
+		gqlCards = append(gqlCards, &model.Card{
+			ID:           card.ID,
+			Front:        card.Front,
+			Back:         card.Back,
+			ReviewDate:   card.ReviewDate,
+			IntervalDays: card.IntervalDays,
+			Created:      card.Created,
+			Updated:      card.Updated,
+		})
+	}
+	return gqlCards, nil
 }
 
 // Card is the resolver for the card field.
-func (r *queryResolver) Card(ctx context.Context, id string) (*model.Card, error) {
-	db := r.Resolver.DB
-	var card model.Card
-
-	if err := db.First(&card, id).Error; err != nil {
+func (r *queryResolver) Card(ctx context.Context, id int64) (*model.Card, error) {
+	var card repository.Card
+	if err := r.DB.First(&card, id).Error; err != nil {
 		return nil, err
 	}
-
-	return &card, nil
-}
-
-// Users is the resolver for the users field.
-func (r *queryResolver) Users(ctx context.Context) ([]*model.User, error) {
-	db := r.Resolver.DB
-	var users []*model.User
-
-	if err := db.Find(&users).Error; err != nil {
-		return nil, err
-	}
-
-	return users, nil
-}
-
-// User is the resolver for the user field.
-func (r *queryResolver) User(ctx context.Context, id string) (*model.User, error) {
-	db := r.Resolver.DB
-	var user model.User
-
-	if err := db.First(&user, id).Error; err != nil {
-		return nil, err
-	}
-
-	return &user, nil
+	return &model.Card{
+		ID:           card.ID,
+		Front:        card.Front,
+		Back:         card.Back,
+		ReviewDate:   card.ReviewDate,
+		IntervalDays: card.IntervalDays,
+		Created:      card.Created,
+		Updated:      card.Updated,
+	}, nil
 }
 
 // CardGroups is the resolver for the cardGroups field.
 func (r *queryResolver) CardGroups(ctx context.Context) ([]*model.CardGroup, error) {
-	db := r.Resolver.DB
-	var cardGroups []*model.CardGroup
-
-	if err := db.Find(&cardGroups).Error; err != nil {
+	var cardGroups []repository.Cardgroup
+	if err := r.DB.Find(&cardGroups).Error; err != nil {
 		return nil, err
 	}
-
-	return cardGroups, nil
+	var gqlCardGroups []*model.CardGroup
+	for _, cardGroup := range cardGroups {
+		gqlCardGroups = append(gqlCardGroups, &model.CardGroup{
+			ID:      cardGroup.ID,
+			Name:    cardGroup.Name,
+			Created: cardGroup.Created,
+			Updated: cardGroup.Updated,
+		})
+	}
+	return gqlCardGroups, nil
 }
 
 // CardGroup is the resolver for the cardGroup field.
-func (r *queryResolver) CardGroup(ctx context.Context, id string) (*model.CardGroup, error) {
-	db := r.Resolver.DB
-	var cardGroup model.CardGroup
-
-	if err := db.First(&cardGroup, id).Error; err != nil {
+func (r *queryResolver) CardGroup(ctx context.Context, id int64) (*model.CardGroup, error) {
+	var cardGroup repository.Cardgroup
+	if err := r.DB.First(&cardGroup, id).Error; err != nil {
 		return nil, err
 	}
-
-	return &cardGroup, nil
+	return &model.CardGroup{
+		ID:      cardGroup.ID,
+		Name:    cardGroup.Name,
+		Created: cardGroup.Created,
+		Updated: cardGroup.Updated,
+	}, nil
 }
 
 // Roles is the resolver for the roles field.
 func (r *queryResolver) Roles(ctx context.Context) ([]*model.Role, error) {
-	db := r.Resolver.DB
-	var roles []*model.Role
-
-	if err := db.Find(&roles).Error; err != nil {
+	var roles []repository.Role
+	if err := r.DB.Find(&roles).Error; err != nil {
 		return nil, err
 	}
-
-	return roles, nil
+	var gqlRoles []*model.Role
+	for _, role := range roles {
+		gqlRoles = append(gqlRoles, &model.Role{
+			ID:   role.ID,
+			Name: role.Name,
+		})
+	}
+	return gqlRoles, nil
 }
 
 // Role is the resolver for the role field.
-func (r *queryResolver) Role(ctx context.Context, id string) (*model.Role, error) {
-	db := r.Resolver.DB
-	var role model.Role
-
-	if err := db.First(&role, id).Error; err != nil {
+func (r *queryResolver) Role(ctx context.Context, id int64) (*model.Role, error) {
+	var role repository.Role
+	if err := r.DB.First(&role, id).Error; err != nil {
 		return nil, err
 	}
+	return &model.Role{
+		ID:   role.ID,
+		Name: role.Name,
+	}, nil
+}
 
-	return &role, nil
+// Users is the resolver for the users field.
+func (r *queryResolver) Users(ctx context.Context) ([]*model.User, error) {
+	var users []repository.User
+	if err := r.DB.Find(&users).Error; err != nil {
+		return nil, err
+	}
+	var gqlUsers []*model.User
+	for _, user := range users {
+		gqlUsers = append(gqlUsers, &model.User{
+			ID:      user.ID,
+			Name:    user.Name,
+			Created: user.Created,
+			Updated: user.Updated,
+		})
+	}
+	return gqlUsers, nil
+}
+
+// User is the resolver for the user field.
+func (r *queryResolver) User(ctx context.Context, id int64) (*model.User, error) {
+	var user repository.User
+	if err := r.DB.First(&user, id).Error; err != nil {
+		return nil, err
+	}
+	return &model.User{
+		ID:      user.ID,
+		Name:    user.Name,
+		Created: user.Created,
+		Updated: user.Updated,
+	}, nil
+}
+
+// CardsByCardGroup is the resolver for the cardsByCardGroup field.
+func (r *queryResolver) CardsByCardGroup(ctx context.Context, cardGroupID int64) ([]*model.Card, error) {
+	var cards []repository.Card
+	if err := r.DB.Where("card_group_id = ?", cardGroupID).Find(&cards).Error; err != nil {
+		return nil, err
+	}
+	var gqlCards []*model.Card
+	for _, card := range cards {
+		gqlCards = append(gqlCards, &model.Card{
+			ID:           card.ID,
+			Front:        card.Front,
+			Back:         card.Back,
+			ReviewDate:   card.ReviewDate,
+			IntervalDays: card.IntervalDays,
+			Created:      card.Created,
+			Updated:      card.Updated,
+		})
+	}
+	return gqlCards, nil
+}
+
+// UserRole is the resolver for the userRole field.
+func (r *queryResolver) UserRole(ctx context.Context, userID int64) (*model.Role, error) {
+	var user repository.User
+	if err := r.DB.Preload("Roles").First(&user, userID).Error; err != nil {
+		return nil, err
+	}
+	if len(user.Roles) == 0 {
+		return nil, fmt.Errorf("user has no role")
+	}
+	role := user.Roles[0] // Assuming a user has only one role
+	return &model.Role{
+		ID:   role.ID,
+		Name: role.Name,
+	}, nil
+}
+
+// CardGroupsByUser is the resolver for the cardGroupsByUser field.
+func (r *queryResolver) CardGroupsByUser(ctx context.Context, userID int64) ([]*model.CardGroup, error) {
+	var user repository.User
+	if err := r.DB.Preload("CardGroups").First(&user, userID).Error; err != nil {
+		return nil, err
+	}
+	var gqlCardGroups []*model.CardGroup
+	for _, group := range user.CardGroups {
+		gqlCardGroups = append(gqlCardGroups, &model.CardGroup{
+			ID:      group.ID,
+			Name:    group.Name,
+			Created: group.Created,
+			Updated: group.Updated,
+		})
+	}
+	return gqlCardGroups, nil
+}
+
+// UsersByRole is the resolver for the usersByRole field.
+func (r *queryResolver) UsersByRole(ctx context.Context, roleID int64) ([]*model.User, error) {
+	var role repository.Role
+	if err := r.DB.Preload("Users").First(&role, roleID).Error; err != nil {
+		return nil, err
+	}
+	var gqlUsers []*model.User
+	for _, user := range role.Users {
+		gqlUsers = append(gqlUsers, &model.User{
+			ID:      user.ID,
+			Name:    user.Name,
+			Created: user.Created,
+			Updated: user.Updated,
+		})
+	}
+	return gqlUsers, nil
 }
 
 // Mutation returns MutationResolver implementation.
@@ -373,3 +484,45 @@ func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
+
+// !!! WARNING !!!
+// The code below was going to be deleted when updating resolvers. It has been copied here so you have
+// one last chance to move it out of harms way if you want. There are two reasons this happens:
+//   - When renaming or deleting a resolver the old code will be put in here. You can safely delete
+//     it when you're done.
+//   - You have helper methods in this file. Move them out to keep these resolver files clean.
+func convertToGormCard(input model.NewCard) repository.Card {
+	return repository.Card{
+		Front:      input.Front,
+		Back:       input.Back,
+		ReviewDate: input.ReviewDate,
+		IntervalDays: func() int {
+			if input.IntervalDays != nil {
+				return *input.IntervalDays
+			}
+			return 1
+		}(),
+		CardGroupID: input.CardgroupID,
+		Created:     time.Now(),
+		Updated:     time.Now(),
+	}
+}
+func convertToGormCardGroup(input model.NewCardGroup) repository.Cardgroup {
+	return repository.Cardgroup{
+		Name:    input.Name,
+		Created: time.Now(),
+		Updated: time.Now(),
+	}
+}
+func convertToGormUser(input model.NewUser) repository.User {
+	return repository.User{
+		Name:    input.Name,
+		Created: time.Now(),
+		Updated: time.Now(),
+	}
+}
+func convertToGormRole(input model.NewRole) repository.Role {
+	return repository.Role{
+		Name: input.Name,
+	}
+}

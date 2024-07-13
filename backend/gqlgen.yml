@@ -76,10 +76,7 @@ autobind:
 models:
   ID:
     model:
-      - github.com/99designs/gqlgen/graphql.ID
-      - github.com/99designs/gqlgen/graphql.Int
       - github.com/99designs/gqlgen/graphql.Int64
-      - github.com/99designs/gqlgen/graphql.Int32
   Int:
     model:
       - github.com/99designs/gqlgen/graphql.Int
@@ -88,15 +85,3 @@ models:
   Time:
     model:
       - github.com/99designs/gqlgen/graphql.Time
-  Card:
-    model:
-      - github.com/yasuflatland-lf/flamingo-armond/backend/pkg/model.Card
-  CardGroup:
-    model:
-      - github.com/yasuflatland-lf/flamingo-armond/backend/pkg/model.CardGroup
-  Role:
-    model:
-      - github.com/yasuflatland-lf/flamingo-armond/backend/pkg/model.Role
-  User:
-    model:
-      - github.com/yasuflatland-lf/flamingo-armond/backend/pkg/model.User

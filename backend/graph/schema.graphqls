@@ -8,7 +8,6 @@ type Card {
   interval_days: Int!
   created: Time!
   updated: Time!
-  cardgroup_id: ID!
   cardGroup: CardGroup!
 }
 
@@ -59,34 +58,34 @@ input NewRole {
 type Query {
   cards: [Card!]!
   card(id: ID!): Card
-  users: [User!]!
-  user(id: ID!): User
   cardGroups: [CardGroup!]!
   cardGroup(id: ID!): CardGroup
   roles: [Role!]!
   role(id: ID!): Role
+  users: [User!]!
+  user(id: ID!): User
+  # New Queries
+  cardsByCardGroup(cardGroupId: ID!): [Card!]!
+  userRole(userId: ID!): Role
+  cardGroupsByUser(userId: ID!): [CardGroup!]!
+  usersByRole(roleId: ID!): [User!]!
 }
 
 type Mutation {
   createCard(input: NewCard!): Card!
   updateCard(id: ID!, input: NewCard!): Card!
   deleteCard(id: ID!): Boolean!
-
-  createUser(input: NewUser!): User!
-  updateUser(id: ID!, name: String!): User!
-  deleteUser(id: ID!): Boolean!
-
   createCardGroup(input: NewCardGroup!): CardGroup!
-  updateCardGroup(id: ID!, name: String!): CardGroup!
+  updateCardGroup(id: ID!, input: NewCardGroup!): CardGroup!
   deleteCardGroup(id: ID!): Boolean!
-
+  createUser(input: NewUser!): User!
+  updateUser(id: ID!, input: NewUser!): User!
+  deleteUser(id: ID!): Boolean!
   createRole(input: NewRole!): Role!
-  updateRole(id: ID!, name: String!): Role!
+  updateRole(id: ID!, input: NewRole!): Role!
   deleteRole(id: ID!): Boolean!
-
-  addUserToCardGroup(userId: ID!, cardGroupId: ID!): Boolean!
-  removeUserFromCardGroup(userId: ID!, cardGroupId: ID!): Boolean!
-
-  assignRoleToUser(userId: ID!, roleId: ID!): Boolean!
-  removeRoleFromUser(userId: ID!, roleId: ID!): Boolean!
+  addUserToCardGroup(userId: ID!, cardGroupId: ID!): CardGroup!
+  removeUserFromCardGroup(userId: ID!, cardGroupId: ID!): CardGroup!
+  assignRoleToUser(userId: ID!, roleId: ID!): User!
+  removeRoleFromUser(userId: ID!, roleId: ID!): User!
 }

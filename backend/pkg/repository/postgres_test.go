@@ -63,6 +63,11 @@ func setupTestDB(ctx context.Context, dbName string) (*Postgres, func(), error) 
 	}
 
 	cleanup := func() {
+		// Run migrations
+		if err := pg.RunGooseMigrationsUp(migrationFilePath); err != nil {
+			log.Fatalf("failed to run migrations: %v", err)
+		}
+
 		if err := pgContainer.Terminate(ctx); err != nil {
 			log.Fatalf("failed to terminate postgres container: %s", err)
 		}
@@ -91,7 +96,7 @@ func TestPostgres_Open(t *testing.T) {
 		t.Fatalf("failed to ping database: %s", err)
 	}
 
-	if err = pg.RunGooseMigrations(migrationFilePath); err != nil {
+	if err = pg.RunGooseMigrationsUp(migrationFilePath); err != nil {
 		t.Fatalf("goose migration failed: %s", err)
 	}
 
@@ -109,7 +114,7 @@ func TestPostgres_RunGooseMigrations(t *testing.T) {
 	}
 	defer cleanup()
 
-	if err = pg.RunGooseMigrations(migrationFilePath); err != nil {
+	if err = pg.RunGooseMigrationsUp(migrationFilePath); err != nil {
 		t.Fatalf("goose migration failed: %s", err)
 	}
 

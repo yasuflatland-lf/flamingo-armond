@@ -94,7 +94,7 @@ func initializeDatabase() *gorm.DB {
 
 	// Run migrations
 	log.Printf("Data Migration start ===============")
-	if err := pg.RunGooseMigrations(fullPath); err != nil {
+	if err := pg.RunGooseMigrationsUp(fullPath); err != nil {
 		log.Fatalf("failed to run migrations: %v", err)
 	}
 	log.Printf("Data Migration Done ===============")

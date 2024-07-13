@@ -68,9 +68,9 @@ func setupTestDB(t *testing.T) (*gorm.DB, func()) {
 	}
 }
 
-func createTestCardGroup(t *testing.T, db *gorm.DB, name string) model.CardGroup {
+func createTestCardGroup(t *testing.T, db *gorm.DB, name string) model.Cardgroup {
 	t.Helper()
-	cardGroup := model.CardGroup{Name: name}
+	cardGroup := model.Cardgroup{Name: name}
 	if err := db.Create(&cardGroup).Error; err != nil {
 		t.Fatalf("could not create test card group: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestFlashcardFunctions(t *testing.T) {
 		assert.True(t, card.Updated.After(createdTime))
 	})
 
-	t.Run("Test CardGroup Model", func(t *testing.T) {
+	t.Run("Test Cardgroup Model", func(t *testing.T) {
 		assert.NotZero(t, cardGroup.ID)
 		assert.Equal(t, "Test Group", cardGroup.Name)
 		assert.NotZero(t, cardGroup.Created)
@@ -225,14 +225,14 @@ func TestFlashcardFunctions(t *testing.T) {
 		user := createTestUser(t, db, "user2", "Relationship User")
 		role := createTestRole(t, db, "User")
 
-		// Test CardGroup - Card relationship
-		var fetchedCardGroup model.CardGroup
+		// Test Cardgroup - Card relationship
+		var fetchedCardGroup model.Cardgroup
 		db.Preload("Cards").First(&fetchedCardGroup, cardGroup.ID)
 		assert.Len(t, fetchedCardGroup.Cards, 2)
 		assert.Equal(t, card1.ID, fetchedCardGroup.Cards[0].ID)
 		assert.Equal(t, card2.ID, fetchedCardGroup.Cards[1].ID)
 
-		// Test User - CardGroup relationship
+		// Test User - Cardgroup relationship
 		db.Model(&user).Association("CardGroups").Append(&cardGroup)
 		var fetchedUser model.User
 		db.Preload("CardGroups").First(&fetchedUser, "id = ?", user.ID)
