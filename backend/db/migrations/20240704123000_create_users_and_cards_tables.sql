@@ -1,7 +1,7 @@
 -- +goose Up
 -- SQL in section 'Up' is executed when this migration is applied.
 
-CREATE TABLE users
+CREATE TABLE IF NOT EXISTS users
 (
     id      BIGSERIAL PRIMARY KEY,
     name    TEXT      NOT NULL,
@@ -9,7 +9,7 @@ CREATE TABLE users
     updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE cardgroups
+CREATE TABLE IF NOT EXISTS cardgroups
 (
     id      BIGSERIAL PRIMARY KEY,
     name    TEXT      NOT NULL,
@@ -17,7 +17,7 @@ CREATE TABLE cardgroups
     updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE cards
+CREATE TABLE IF NOT EXISTS cards
 (
     id            BIGSERIAL PRIMARY KEY,
     front         TEXT      NOT NULL,
@@ -28,31 +28,31 @@ CREATE TABLE cards
     updated       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     cardgroup_id  INTEGER   NOT NULL,
     FOREIGN KEY (cardgroup_id) REFERENCES cardgroups (id) ON DELETE CASCADE
-);
+    );
 
-CREATE TABLE cardgroup_users
+CREATE TABLE IF NOT EXISTS cardgroup_users
 (
     cardgroup_id BIGINT NOT NULL,
     user_id      BIGINT NOT NULL,
     PRIMARY KEY (cardgroup_id, user_id),
     FOREIGN KEY (cardgroup_id) REFERENCES cardgroups (id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-);
+    );
 
-CREATE TABLE roles
+CREATE TABLE IF NOT EXISTS roles
 (
     id   BIGSERIAL PRIMARY KEY,
     name TEXT NOT NULL UNIQUE
 );
 
-CREATE TABLE user_roles
+CREATE TABLE IF NOT EXISTS user_roles
 (
     user_id BIGINT NOT NULL,
     role_id BIGINT NOT NULL,
     PRIMARY KEY (user_id, role_id),
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
     FOREIGN KEY (role_id) REFERENCES roles (id) ON DELETE CASCADE
-);
+    );
 
 -- +goose Down
 -- SQL section 'Down' is executed when this migration is rolled back.

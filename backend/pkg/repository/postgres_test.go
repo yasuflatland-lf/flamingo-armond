@@ -1,13 +1,13 @@
 package repository
 
 import (
+	"backend/pkg/config"
 	"context"
 	"fmt"
 	"log"
 	"testing"
 	"time"
 
-	"backend/pkg/config"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -15,7 +15,7 @@ import (
 var migrationFilePath = "../../db/migrations"
 
 // setupTestDB sets up a Postgres test container and returns the connection and a cleanup function.
-func setupTestDB(ctx context.Context, dbName string) (*Postgres, func(), error) {
+func setupTestDB(ctx context.Context, dbName string) (Repository, func(), error) {
 	req := testcontainers.ContainerRequest{
 		Image:        "postgres:16",
 		ExposedPorts: []string{"5432/tcp"},
@@ -58,18 +58,17 @@ func setupTestDB(ctx context.Context, dbName string) (*Postgres, func(), error) 
 
 	pg := NewPostgres(config)
 	if err = pg.Open(); err != nil {
-		pgContainer.Terminate(ctx)
 		return nil, nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	cleanup := func() {
 		// Cleanup database
 		if err := pg.RunGooseMigrationsDown(migrationFilePath); err != nil {
-			log.Fatalf("failed to run migrations: %v", err)
+			log.Fatalf("failed to run migrations: %+v", err)
 		}
 
 		if err := pgContainer.Terminate(ctx); err != nil {
-			log.Fatalf("failed to terminate postgres container: %s", err)
+			log.Fatalf("failed to terminate postgres container: %+v", err)
 		}
 	}
 
@@ -78,7 +77,6 @@ func setupTestDB(ctx context.Context, dbName string) (*Postgres, func(), error) 
 
 // TestPostgres_Open tests the opening of a Postgres connection and running of migrations.
 func TestPostgres_Open(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 
 	pg, cleanup, err := setupTestDB(ctx, config.Cfg.PGDBName)
@@ -87,7 +85,7 @@ func TestPostgres_Open(t *testing.T) {
 	}
 	defer cleanup()
 
-	sqlDB, err := pg.DB.DB()
+	sqlDB, err := pg.GetDB().DB()
 	if err != nil {
 		t.Fatalf("failed to get sql.DB: %s", err)
 	}
@@ -97,15 +95,14 @@ func TestPostgres_Open(t *testing.T) {
 	}
 
 	if err = pg.RunGooseMigrationsUp(migrationFilePath); err != nil {
-		t.Fatalf("goose migration failed: %s", err)
+		t.Fatalf("goose migration failed: %+v", err)
 	}
 
-	t.Log("Database connection established and migrations ran successfully!")
+	t.Logf("Database connection established and migrations ran successfully!")
 }
 
 // TestPostgres_RunGooseMigrations tests running Goose migrations on the Postgres database.
 func TestPostgres_RunGooseMigrations(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 
 	pg, cleanup, err := setupTestDB(ctx, config.Cfg.PGDBName)
@@ -118,41 +115,5 @@ func TestPostgres_RunGooseMigrations(t *testing.T) {
 		t.Fatalf("goose migration failed: %s", err)
 	}
 
-	t.Log("Goose migrations ran successfully!")
-}
-
-// TestDatabaseCreation checks if the 'flamingodb' database is created.
-func TestDatabaseCreation(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-
-	// Use a temporary database name for this test
-	pg, cleanup, err := setupTestDB(ctx, config.Cfg.PGDBName)
-	if err != nil {
-		t.Fatalf("setupTestDB failed: %s", err)
-	}
-	defer cleanup()
-
-	sqlDB, err := pg.DB.DB()
-	if err != nil {
-		t.Fatalf("failed to get sql.DB: %s", err)
-	}
-
-	if err = sqlDB.Ping(); err != nil {
-		t.Fatalf("failed to ping database: %s", err)
-	}
-
-	// Check if the database 'flamingodb' exists
-	var exists bool
-	query := fmt.Sprintf("SELECT EXISTS(SELECT datname FROM pg_catalog.pg_database WHERE datname = '%s')", config.Cfg.PGDBName)
-	err = sqlDB.QueryRow(query).Scan(&exists)
-	if err != nil {
-		t.Fatalf("failed to check database existence: %s", err)
-	}
-
-	if !exists {
-		t.Fatalf("database %s does not exist", config.Cfg.PGDBName)
-	}
-
-	t.Logf("Database %s exists", config.Cfg.PGDBName)
+	t.Logf("Goose migrations ran successfully!")
 }

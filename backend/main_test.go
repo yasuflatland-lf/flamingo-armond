@@ -10,7 +10,6 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"backend/pkg/config"
@@ -20,13 +19,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestMain(m *testing.M) {
-	// Set up the test environment
-	code := m.Run()
-	os.Exit(code)
-}
+func TestMainSmoke(t *testing.T) {
+	t.Parallel()
 
-func TestGraphQLServer(t *testing.T) {
 	ctx := context.Background()
 	user := "test"
 	password := "test"
@@ -45,11 +40,11 @@ func TestGraphQLServer(t *testing.T) {
 	}
 
 	// Override the config values for testing
-	config.Cfg.PGHost = pg.Config.Host
-	config.Cfg.PGUser = pg.Config.User
-	config.Cfg.PGPassword = pg.Config.Password
-	config.Cfg.PGDBName = pg.Config.DBName
-	config.Cfg.PGPort = pg.Config.Port
+	config.Cfg.PGHost = pg.GetConfig().Host
+	config.Cfg.PGUser = pg.GetConfig().User
+	config.Cfg.PGPassword = pg.GetConfig().Password
+	config.Cfg.PGDBName = pg.GetConfig().DBName
+	config.Cfg.PGPort = pg.GetConfig().Port
 	config.Cfg.PGSSLMode = "disable"
 	config.Cfg.Port = 8080
 
@@ -60,7 +55,7 @@ func TestGraphQLServer(t *testing.T) {
 
 	// Create a new resolver with the database connection
 	resolver := &graph.Resolver{
-		DB: pg.DB,
+		DB: pg.GetDB(),
 	}
 
 	srv := handler.NewDefaultServer(graph.NewExecutableSchema(graph.Config{Resolvers: resolver}))

@@ -28,8 +28,12 @@ type Postgres struct {
 }
 
 // NewPostgres creates a new instance of Postgres with the given configuration.
-func NewPostgres(config DBConfig) *Postgres {
+func NewPostgres(config DBConfig) Repository {
 	return &Postgres{Config: config}
+}
+
+func (pg *Postgres) GetConfig() DBConfig {
+	return pg.Config
 }
 
 // GetDB returns the underlying gorm.DB instance.
@@ -103,5 +107,5 @@ func InitializeDatabase(config DBConfig) *gorm.DB {
 	}
 	log.Printf("Data Migration Done ===============")
 
-	return pg.DB
+	return pg.GetDB()
 }

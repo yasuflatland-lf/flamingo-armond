@@ -46,7 +46,7 @@ func TestMain(m *testing.M) {
 	}
 
 	// Setup Echo server
-	db = pg.DB
+	db = pg.GetDB()
 	e = setupEchoServer(db)
 
 	// Run the tests
@@ -125,6 +125,7 @@ func removeField(data map[string]interface{}, field string) {
 }
 
 func runServersTest(t *testing.T, fn func(*testing.T)) {
+
 	// Begin a new transaction
 	tx := db.Begin()
 	if tx.Error != nil {
@@ -170,6 +171,8 @@ func runServersTest(t *testing.T, fn func(*testing.T)) {
 }
 
 func TestMutationResolver(t *testing.T) {
+	t.Helper()
+
 	runServersTest(t, func(t *testing.T) {
 		t.Run("CreateCard", func(t *testing.T) {
 
@@ -416,6 +419,8 @@ func TestMutationResolver(t *testing.T) {
 }
 
 func TestQueryResolver(t *testing.T) {
+	t.Helper()
+
 	runServersTest(t, func(t *testing.T) {
 		t.Run("Cards", func(t *testing.T) {
 
