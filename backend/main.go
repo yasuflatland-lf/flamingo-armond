@@ -6,8 +6,6 @@ import (
 	"backend/pkg/repository"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 
 	"github.com/99designs/gqlgen/graphql/handler"
@@ -16,7 +14,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"gorm.io/gorm"
 )
 
 var migrationFilePath = "./db/migrations"
@@ -28,7 +25,16 @@ func main() {
 	e.Use(middleware.Recover())
 
 	// Initialize the database
-	db := initializeDatabase()
+	dbConfig := repository.DBConfig{
+		Host:              config.Cfg.PGHost,
+		User:              config.Cfg.PGUser,
+		Password:          config.Cfg.PGPassword,
+		DBName:            config.Cfg.PGDBName,
+		Port:              config.Cfg.PGPort,
+		SSLMode:           config.Cfg.PGSSLMode,
+		MigrationFilePath: migrationFilePath,
+	}
+	db := repository.InitializeDatabase(dbConfig)
 
 	// Create a new resolver with the database connection
 	resolver := &graph.Resolver{
@@ -64,51 +70,4 @@ func main() {
 	}
 
 	log.Printf("connect to http://localhost:%d/ for GraphQL playground", config.Cfg.Port)
-}
-
-// initializeDatabase encapsulates the database configuration and initialization logic
-func initializeDatabase() *gorm.DB {
-	// Database configuration
-	dbConfig := repository.DBConfig{
-		Host:     config.Cfg.PGHost,
-		User:     config.Cfg.PGUser,
-		Password: config.Cfg.PGPassword,
-		DBName:   config.Cfg.PGDBName,
-		Port:     config.Cfg.PGPort,
-		SSLMode:  config.Cfg.PGSSLMode,
-	}
-
-	// Initialize the Postgres instance
-	pg := repository.NewPostgres(dbConfig)
-
-	// Open the database connection
-	if err := pg.Open(); err != nil {
-		log.Fatalf("failed to connect to the database: %v", err)
-	}
-
-	// Get Full path to the migration DB file.
-	fullPath, err := getFullPath(migrationFilePath)
-	if err != nil {
-		log.Fatalf("Failed to get full path to the migration db file : %+v", err)
-	}
-
-	// Run migrations
-	log.Printf("Data Migration start ===============")
-	if err := pg.RunGooseMigrationsUp(fullPath); err != nil {
-		log.Fatalf("failed to run migrations: %v", err)
-	}
-	log.Printf("Data Migration Done ===============")
-
-	return pg.DB
-}
-
-// getFullPath takes a relative path and returns the full absolute path
-func getFullPath(migrationFilePath string) (string, error) {
-	cleanedPath := filepath.Clean(migrationFilePath)
-	currentDir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	fullPath := filepath.Join(currentDir, cleanedPath)
-	return fullPath, nil
 }

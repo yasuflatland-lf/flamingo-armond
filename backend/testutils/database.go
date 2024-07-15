@@ -61,7 +61,7 @@ func SetupTestDB(ctx context.Context, user, password, dbName string) (*repositor
 	}
 
 	cleanup := func(migrationFilePath string) {
-		// Run migrations
+		// Clean up database
 		if err := pg.RunGooseMigrationsDown(migrationFilePath); err != nil {
 			log.Fatalf("failed to run migrations: %v", err)
 		}

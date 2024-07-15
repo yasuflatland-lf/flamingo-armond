@@ -36,13 +36,13 @@ func TestMain(m *testing.M) {
 	// Set up the test database
 	pg, cleanup, err := testutils.SetupTestDB(ctx, config.Cfg.PGUser, config.Cfg.PGPassword, config.Cfg.PGDBName)
 	if err != nil {
-		log.Fatalf("Failed to setup test database: %v", err)
+		log.Fatalf("Failed to setup test database: %+v", err)
 	}
 	defer cleanup(migrationFilePath)
 
 	// Run migrations
 	if err := pg.RunGooseMigrationsUp(migrationFilePath); err != nil {
-		log.Fatalf("failed to run migrations: %v", err)
+		log.Fatalf("failed to run migrations: %+v", err)
 	}
 
 	// Setup Echo server
