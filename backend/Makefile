@@ -38,7 +38,7 @@ fmt: ## Format code
 .PHONY: test
 test: ## Run tests
 	printf "${GREEN}Run all tests\n\n${WHITE}"; \
-	go clean -testcache; \
+	go clean -cache -testcache -i -r; \
  	go test -race -run=./... -bench=./... ./...; \
 	printf "${GREEN}Done\n"; \
 

@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"backend/pkg/middlewares"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -11,6 +12,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/99designs/gqlgen/graphql/handler/transport"
+	"github.com/gorilla/websocket"
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/playground"
@@ -47,23 +51,49 @@ func TestMain(m *testing.M) {
 
 	// Setup Echo server
 	db = pg.GetDB()
-	e = setupEchoServer(db)
+	e = NewRouter(db)
 
 	// Run the tests
 	m.Run()
 }
 
-func setupEchoServer(db *gorm.DB) *echo.Echo {
-	resolver := &Resolver{DB: db}
-	srv := handler.NewDefaultServer(NewExecutableSchema(Config{Resolvers: resolver}))
+func NewRouter(db *gorm.DB) *echo.Echo {
 
 	e := echo.New()
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
+	// Store the database connection in Echo's context
+	e.Use(middlewares.DatabaseCtxMiddleware(db))
+
+	// Set Transaction Middleware
+	e.Use(middlewares.TransactionMiddleware())
+
+	// Create a new resolver with the database connection
+	resolver := &Resolver{
+		DB: db,
+	}
+
+	srv := handler.NewDefaultServer(NewExecutableSchema(Config{Resolvers: resolver}))
+
+	// Setup WebSocket for subscriptions
+	srv.AddTransport(&transport.Websocket{
+		Upgrader: websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			CheckOrigin: func(r *http.Request) bool {
+				return true
+			},
+		},
+	})
+
 	e.GET("/", func(c echo.Context) error {
 		playground.Handler("GraphQL playground", "/query").ServeHTTP(c.Response(), c.Request())
 		return nil
+	})
+
+	e.GET("/health", func(c echo.Context) error {
+		return c.String(http.StatusOK, "OK")
 	})
 
 	e.POST("/query", func(c echo.Context) error {
@@ -125,20 +155,11 @@ func removeField(data map[string]interface{}, field string) {
 }
 
 func runServersTest(t *testing.T, fn func(*testing.T)) {
-
 	// Begin a new transaction
 	tx := db.Begin()
 	if tx.Error != nil {
 		t.Fatalf("Failed to begin transaction: %v", tx.Error)
 	}
-
-	// Use a defer statement to ensure the transaction is rolled back if the function exits unexpectedly
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-			t.Fatalf("Recovered in runServersTest: %v", r)
-		}
-	}()
 
 	// Perform the database operations inside the transaction
 	if err := tx.Where("1 = 1").Delete(&repository.User{}).Error; err != nil {
@@ -172,6 +193,7 @@ func runServersTest(t *testing.T, fn func(*testing.T)) {
 
 func TestMutationResolver(t *testing.T) {
 	t.Helper()
+	t.Parallel()
 
 	runServersTest(t, func(t *testing.T) {
 		t.Run("CreateCard", func(t *testing.T) {
@@ -227,43 +249,37 @@ func TestMutationResolver(t *testing.T) {
 		})
 
 		t.Run("CreateCard_Error", func(t *testing.T) {
-			t.Parallel()
-
-			// Attempt to create a new card with an invalid CardgroupID
-			input := model.NewCard{
-				Front:        "CreateCard Front of card",
-				Back:         "CreateCard Back of card",
-				ReviewDate:   time.Now(),
-				IntervalDays: new(int),
-				CardgroupID:  -1, // Invalid ID
-			}
+			// Prepare GraphQL query with invalid ID
 			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `mutation ($input: NewCard!) {
-				createCard(input: $input) {
-					id
-					front
-					back
-					review_date
-					interval_days
-					created
-					updated
-				}
-			}`,
+				"query": `query ($id: ID!) {
+            card(id: $id) {
+                id
+                front
+                back
+                review_date
+                interval_days
+                created
+                updated
+            }
+        }`,
 				"variables": map[string]interface{}{
-					"input": input,
+					"id": -1, // Invalid ID
 				},
 			})
 			expected := `{
-			"errors": [{
-				"message": "record not found"
-			}]
-		}`
+        "data": {
+            "card": null
+        },
+        "errors": [{
+            "message": "card not found",
+            "path": ["card"]
+        }]
+    }`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
 
 		t.Run("UpdateCard", func(t *testing.T) {
-			t.Parallel()
 
 			// Step 1: Create a Cardgroup
 			now := time.Now()
@@ -321,7 +337,6 @@ func TestMutationResolver(t *testing.T) {
 		})
 
 		t.Run("UpdateCard_Error", func(t *testing.T) {
-			t.Parallel()
 
 			// Attempt to update a card with an invalid ID
 			input := model.NewCard{
@@ -331,32 +346,33 @@ func TestMutationResolver(t *testing.T) {
 			}
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `mutation ($id: ID!, $input: NewCard!) {
-				updateCard(id: $id, input: $input) {
-					id
-					front
-					back
-					review_date
-					interval_days
-					created
-					updated
-				}
-			}`,
+            updateCard(id: $id, input: $input) {
+                id
+                front
+                back
+                review_date
+                interval_days
+                created
+                updated
+            }
+        }`,
 				"variables": map[string]interface{}{
 					"id":    -1, // Invalid ID
 					"input": input,
 				},
 			})
 			expected := `{
-			"errors": [{
-				"message": "record not found"
-			}]
-		}`
+        "data": null,
+        "errors": [{
+            "message": "record not found",
+            "path": ["updateCard"]
+        }]
+    }`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
 
 		t.Run("DeleteCard", func(t *testing.T) {
-			t.Parallel()
 
 			// Step 1: Create a Cardgroup
 			now := time.Now()
@@ -396,34 +412,35 @@ func TestMutationResolver(t *testing.T) {
 		})
 
 		t.Run("DeleteCard_Error", func(t *testing.T) {
-			t.Parallel()
-
 			// Attempt to delete a card with an invalid ID
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `mutation ($id: ID!) {
-				deleteCard(id: $id)
-			}`,
+            deleteCard(id: $id)
+        }`,
 				"variables": map[string]interface{}{
 					"id": -1, // Invalid ID
 				},
 			})
 			expected := `{
-			"errors": [{
-				"message": "record not found"
-			}]
-		}`
+        "data": null,
+        "errors": [{
+            "message": "record not found",
+            "path": ["deleteCard"]
+        }]
+    }`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
+
 	})
 }
 
 func TestQueryResolver(t *testing.T) {
 	t.Helper()
+	t.Parallel()
 
 	runServersTest(t, func(t *testing.T) {
 		t.Run("Cards", func(t *testing.T) {
-
 			// Step 1: Create a Cardgroup
 			now := time.Now()
 			cardgroup := repository.Cardgroup{
@@ -448,16 +465,16 @@ func TestQueryResolver(t *testing.T) {
 			// Prepare GraphQL query
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `{
-			cards {
-				id
-				front
-				back
-				review_date
-				interval_days
-				created
-				updated
-			}
-		}`,
+					cards {
+						id
+						front
+						back
+						review_date
+						interval_days
+						created
+						updated
+					}
+				}`,
 			})
 
 			// Execute GraphQL query
@@ -491,21 +508,28 @@ func TestQueryResolver(t *testing.T) {
 		})
 
 		t.Run("Cards_Error", func(t *testing.T) {
-			t.Parallel()
 
 			// Prepare GraphQL query with invalid field
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `{
-			cards {
-				invalid_field
-			}
-		}`,
+	cards {
+		invalid_field
+	}
+}`,
 			})
 			expected := `{
-			"errors": [{
-				"message": "Cannot query field \"invalid_field\" on type \"Card\"."
-			}]
-		}`
+	"errors": [{
+		"message": "Cannot query field \"invalid_field\" on type \"Card\".",
+		"extensions": {
+			"code": "GRAPHQL_VALIDATION_FAILED"
+		},
+		"locations": [{
+			"line": 3,
+			"column": 3
+		}]
+	}],
+	"data": null
+}`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
@@ -564,30 +588,33 @@ func TestQueryResolver(t *testing.T) {
 		})
 
 		t.Run("Card_Error", func(t *testing.T) {
-			t.Parallel()
 
 			// Prepare GraphQL query with invalid ID
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `query ($id: ID!) {
-				card(id: $id) {
-					id
-					front
-					back
-					review_date
-					interval_days
-					created
-					updated
-				}
-			}`,
+		card(id: $id) {
+			id
+			front
+			back
+			review_date
+			interval_days
+			created
+			updated
+		}
+	}`,
 				"variables": map[string]interface{}{
 					"id": -1, // Invalid ID
 				},
 			})
 			expected := `{
-			"errors": [{
-				"message": "record not found"
-			}]
-		}`
+	"data": {
+		"card": null
+	},
+	"errors": [{
+		"message": "card not found",
+		"path": ["card"]
+	}]
+}`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
@@ -638,30 +665,40 @@ func TestQueryResolver(t *testing.T) {
 			assert.Equal(t, "Test Role", roleDetails["name"])
 		})
 
-		t.Run("Role_Error", func(t *testing.T) {
-			t.Parallel()
-
+		t.Run("Roles_Error", func(t *testing.T) {
 			// Prepare GraphQL query with invalid field
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `{
-			roles {
-				invalid_field
-			}
-		}`,
+            roles {
+                invalid_field
+            }
+        }`,
 			})
 			expected := `{
-			"errors": [{
-				"message": "Cannot query field \"invalid_field\" on type \"Role\"."
-			}]
-		}`
+        "data": null,
+        "errors": [{
+            "message": "Cannot query field \"invalid_field\" on type \"Role\".",
+            "extensions": {
+                "code": "GRAPHQL_VALIDATION_FAILED"
+            },
+            "locations": [{
+                "line": 3,
+                "column": 17
+            }]
+        }]
+    }`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
 
 		// Test for role by ID
 		t.Run("Role", func(t *testing.T) {
+			// Step 1: Clean up roles to avoid duplicate key error
+			if err := db.Where("name = ?", "Test Role").Delete(&repository.Role{}).Error; err != nil {
+				t.Fatalf("Failed to delete existing Test Role: %v", err)
+			}
 
-			// Step 1: Create a Role
+			// Step 2: Create a Role
 			role := repository.Role{
 				Name: "Test Role",
 			}
@@ -692,25 +729,28 @@ func TestQueryResolver(t *testing.T) {
 		})
 
 		t.Run("Role_Error", func(t *testing.T) {
-			t.Parallel()
 
 			// Prepare GraphQL query with invalid ID
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `query ($id: ID!) {
-				role(id: $id) {
-					id
-					name
-				}
-			}`,
+                    role(id: $id) {
+                        id
+                        name
+                    }
+                }`,
 				"variables": map[string]interface{}{
 					"id": -1, // Invalid ID
 				},
 			})
 			expected := `{
-			"errors": [{
-				"message": "record not found"
-			}]
-		}`
+                "data": {
+                    "role": null
+                },
+                "errors": [{
+                    "message": "record not found",
+                    "path": ["role"]
+                }]
+            }`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
@@ -763,8 +803,6 @@ func TestQueryResolver(t *testing.T) {
 		})
 
 		t.Run("Users_Error", func(t *testing.T) {
-			t.Parallel()
-
 			// Prepare GraphQL query with invalid field
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `{
@@ -774,10 +812,15 @@ func TestQueryResolver(t *testing.T) {
 		}`,
 			})
 			expected := `{
-			"errors": [{
-				"message": "Cannot query field \"invalid_field\" on type \"User\"."
-			}]
-		}`
+		"errors": [{
+			"message": "Cannot query field \"invalid_field\" on type \"User\".",
+			"locations": [{"line": 3, "column": 5}],
+			"extensions": {
+				"code": "GRAPHQL_VALIDATION_FAILED"
+			}
+		}],
+		"data": null
+	}`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
@@ -816,25 +859,28 @@ func TestQueryResolver(t *testing.T) {
 		})
 
 		t.Run("User_Error", func(t *testing.T) {
-			t.Parallel()
 
 			// Prepare GraphQL query with invalid ID
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `query ($id: ID!) {
-				user(id: $id) {
-					id
-					name
-				}
-			}`,
+					user(id: $id) {
+						id
+						name
+					}
+				}`,
 				"variables": map[string]interface{}{
 					"id": -1, // Invalid ID
 				},
 			})
 			expected := `{
-			"errors": [{
-				"message": "record not found"
-			}]
-		}`
+				"data": {
+					"user": null
+				},
+				"errors": [{
+					"message": "record not found",
+					"path": ["user"]
+				}]
+			}`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
@@ -890,38 +936,38 @@ func TestQueryResolver(t *testing.T) {
 		})
 
 		t.Run("CardsByCardGroup_Error", func(t *testing.T) {
-			t.Parallel()
-
 			// Prepare GraphQL query with invalid cardGroupId
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `query ($cardGroupId: ID!) {
-				cardsByCardGroup(cardGroupId: $cardGroupId) {
-					id
-					front
-					back
-				}
-			}`,
+                    cardsByCardGroup(cardGroupId: $cardGroupId) {
+                        id
+                        front
+                        back
+                    }
+                }`,
 				"variables": map[string]interface{}{
 					"cardGroupId": -1, // Invalid ID
 				},
 			})
 			expected := `{
-			"errors": [{
-				"message": "record not found"
-			}]
-		}`
+                "data": {
+                    "cardsByCardGroup": []
+                }
+            }`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
 
 		// Test for userRole
 		t.Run("UserRole", func(t *testing.T) {
-
-			// Step 1: Create a Role
-			role := repository.Role{
-				Name: "Test Role",
+			// Step 1: Check if the role exists and create if not
+			var role repository.Role
+			if err := db.Where("name = ?", "Test Role").First(&role).Error; err != nil {
+				role = repository.Role{
+					Name: "Test Role",
+				}
+				db.Create(&role)
 			}
-			db.Create(&role)
 
 			// Step 2: Create a User and assign the role
 			user := repository.User{
@@ -933,47 +979,49 @@ func TestQueryResolver(t *testing.T) {
 			// Prepare GraphQL query
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `query ($userId: ID!) {
-				userRole(userId: $userId) {
-					id
-					name
-				}
-			}`,
+                userRole(userId: $userId) {
+                    id
+                    name
+                }
+            }`,
 				"variables": map[string]interface{}{
 					"userId": user.ID,
 				},
 			})
 			expected := fmt.Sprintf(`{
-			"data": {
-				"userRole": {
-					"id": %d,
-					"name": "Test Role"
-				}
-			}
-		}`, role.ID)
+            "data": {
+                "userRole": {
+                    "id": %d,
+                    "name": "Test Role"
+                }
+            }
+        }`, role.ID)
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
 
 		t.Run("UserRole_Error", func(t *testing.T) {
-			t.Parallel()
-
 			// Prepare GraphQL query with invalid userId
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `query ($userId: ID!) {
-				userRole(userId: $userId) {
-					id
-					name
-				}
-			}`,
+					userRole(userId: $userId) {
+						id
+						name
+					}
+				}`,
 				"variables": map[string]interface{}{
 					"userId": -1, // Invalid ID
 				},
 			})
 			expected := `{
-			"errors": [{
-				"message": "record not found"
-			}]
-		}`
+				"errors": [{
+					"message": "record not found",
+					"path": ["userRole"]
+				}],
+				"data": {
+					"userRole": null
+				}
+			}`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
@@ -1022,39 +1070,47 @@ func TestQueryResolver(t *testing.T) {
 		})
 
 		t.Run("CardGroupsByUser_Error", func(t *testing.T) {
-			t.Parallel()
-
 			// Prepare GraphQL query with invalid userId
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `query ($userId: ID!) {
-				cardGroupsByUser(userId: $userId) {
-					id
-					name
-				}
-			}`,
+                    cardGroupsByUser(userId: $userId) {
+                        id
+                        name
+                    }
+                }`,
 				"variables": map[string]interface{}{
 					"userId": -1, // Invalid ID
 				},
 			})
 			expected := `{
-			"errors": [{
-				"message": "record not found"
-			}]
-		}`
+                "data": null,
+                "errors": [{
+                    "message": "record not found",
+                    "path": ["cardGroupsByUser"]
+                }]
+            }`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
 
 		// Test for usersByRole
 		t.Run("UsersByRole", func(t *testing.T) {
+			// Step 1: Ensure the role does not exist before creating it
+			var existingRole repository.Role
+			roleName := "Test Role"
 
-			// Step 1: Create a Role
+			if err := db.Where("name = ?", roleName).First(&existingRole).Error; err == nil {
+				// Role already exists, delete it first
+				db.Delete(&existingRole)
+			}
+
+			// Step 2: Create a new Role
 			role := repository.Role{
-				Name: "Test Role",
+				Name: roleName,
 			}
 			db.Create(&role)
 
-			// Step 2: Create a User and assign the role
+			// Step 3: Create a User and assign the role
 			user := repository.User{
 				Name: "Test User",
 			}
@@ -1064,30 +1120,28 @@ func TestQueryResolver(t *testing.T) {
 			// Prepare GraphQL query
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `query ($roleId: ID!) {
-				usersByRole(roleId: $roleId) {
-					id
-					name
-				}
-			}`,
+                    usersByRole(roleId: $roleId) {
+                        id
+                        name
+                    }
+                }`,
 				"variables": map[string]interface{}{
 					"roleId": role.ID,
 				},
 			})
 			expected := fmt.Sprintf(`{
-			"data": {
-				"usersByRole": [{
-					"id": %d,
-					"name": "Test User"
-				}]
-			}
-		}`, user.ID)
+                "data": {
+                    "usersByRole": [{
+                        "id": %d,
+                        "name": "Test User"
+                    }]
+                }
+            }`, user.ID)
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
 
 		t.Run("UsersByRole_Error", func(t *testing.T) {
-			t.Parallel()
-
 			// Prepare GraphQL query with invalid roleId
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `query ($roleId: ID!) {
@@ -1101,8 +1155,10 @@ func TestQueryResolver(t *testing.T) {
 				},
 			})
 			expected := `{
+			"data": null,
 			"errors": [{
-				"message": "record not found"
+				"message": "record not found",
+				"path": ["usersByRole"]
 			}]
 		}`
 

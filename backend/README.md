@@ -4,7 +4,7 @@ Backend server implementation for Flamingo Armond by Go.
 # Precondition
 - Go 1.22.5
 - Echo v4.12.0
-- Gorm v1.25.10
+- Gorm v1.25.10 (ORM)
 - Goose v3 (Data migration)
 - gqlgen v0.17.49 (GraphQL code generator and framework)
 

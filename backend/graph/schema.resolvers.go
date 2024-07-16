@@ -8,7 +8,10 @@ import (
 	"backend/graph/model"
 	repository "backend/pkg/model"
 	"context"
+	"errors"
 	"fmt"
+	"gorm.io/gorm"
+	"strings"
 	"time"
 )
 
@@ -17,6 +20,9 @@ func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCard) 
 	gormCard := convertToGormCard(input)
 	result := r.DB.Create(&gormCard)
 	if result.Error != nil {
+		if strings.Contains(result.Error.Error(), "foreign key constraint") {
+			return nil, fmt.Errorf("invalid card group ID")
+		}
 		return nil, result.Error
 	}
 	return &model.Card{
@@ -62,8 +68,12 @@ func (r *mutationResolver) UpdateCard(ctx context.Context, id int64, input model
 
 // DeleteCard is the resolver for the deleteCard field.
 func (r *mutationResolver) DeleteCard(ctx context.Context, id int64) (bool, error) {
-	if err := r.DB.Delete(&repository.Card{}, id).Error; err != nil {
-		return false, err
+	result := r.DB.Delete(&repository.Card{}, id)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return false, fmt.Errorf("record not found")
 	}
 	return true, nil
 }
@@ -104,8 +114,12 @@ func (r *mutationResolver) UpdateCardGroup(ctx context.Context, id int64, input 
 
 // DeleteCardGroup is the resolver for the deleteCardGroup field.
 func (r *mutationResolver) DeleteCardGroup(ctx context.Context, id int64) (bool, error) {
-	if err := r.DB.Delete(&repository.Cardgroup{}, id).Error; err != nil {
-		return false, err
+	result := r.DB.Delete(&repository.Cardgroup{}, id)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return false, fmt.Errorf("record not found")
 	}
 	return true, nil
 }
@@ -115,6 +129,9 @@ func (r *mutationResolver) CreateUser(ctx context.Context, input model.NewUser) 
 	gormUser := convertToGormUser(input)
 	result := r.DB.Create(&gormUser)
 	if result.Error != nil {
+		if strings.Contains(result.Error.Error(), "unique constraint") {
+			return nil, fmt.Errorf("user already exists")
+		}
 		return nil, result.Error
 	}
 	return &model.User{
@@ -298,6 +315,9 @@ func (r *queryResolver) Cards(ctx context.Context) ([]*model.Card, error) {
 func (r *queryResolver) Card(ctx context.Context, id int64) (*model.Card, error) {
 	var card repository.Card
 	if err := r.DB.First(&card, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("card not found")
+		}
 		return nil, err
 	}
 	return &model.Card{
@@ -406,7 +426,7 @@ func (r *queryResolver) User(ctx context.Context, id int64) (*model.User, error)
 // CardsByCardGroup is the resolver for the cardsByCardGroup field.
 func (r *queryResolver) CardsByCardGroup(ctx context.Context, cardGroupID int64) ([]*model.Card, error) {
 	var cards []repository.Card
-	if err := r.DB.Where("card_group_id = ?", cardGroupID).Find(&cards).Error; err != nil {
+	if err := r.DB.Where("cardgroup_id = ?", cardGroupID).Find(&cards).Error; err != nil {
 		return nil, err
 	}
 	var gqlCards []*model.Card

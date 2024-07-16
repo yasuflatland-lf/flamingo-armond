@@ -37,13 +37,19 @@ func setupTestDB(ctx context.Context, dbName string) (Repository, func(), error)
 
 	host, err := pgContainer.Host(ctx)
 	if err != nil {
-		pgContainer.Terminate(ctx)
+		err := pgContainer.Terminate(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
 		return nil, nil, fmt.Errorf("failed to get container host: %w", err)
 	}
 
 	port, err := pgContainer.MappedPort(ctx, "5432")
 	if err != nil {
-		pgContainer.Terminate(ctx)
+		err := pgContainer.Terminate(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
 		return nil, nil, fmt.Errorf("failed to get container port: %w", err)
 	}
 
