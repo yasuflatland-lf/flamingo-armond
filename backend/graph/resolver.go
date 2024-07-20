@@ -1,8 +1,12 @@
 package graph
 
-import "gorm.io/gorm"
+import (
+	"backend/graph/services"
+	"gorm.io/gorm"
+)
 
 // Resolver struct updated to include a DB field.
 type Resolver struct {
-	DB *gorm.DB
+	DB  *gorm.DB
+	Srv services.Services
 }

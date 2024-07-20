@@ -9,11 +9,16 @@ import (
 
 //go:generate mockgen -source=$GOFILE -package=$GOPACKAGE -destination=../../mock/$GOPACKAGE/service_mock.go
 type Services interface {
-	UserService
+	CardService
 }
 
 type CardService interface {
-	GetUserByID(ctx context.Context, id string) (*model.User, error)
+	GetCardByID(ctx context.Context, id int64) (*model.Card, error)
+	CreateCard(ctx context.Context, input model.NewCard) (*model.Card, error)
+	UpdateCard(ctx context.Context, id int64, input model.NewCard) (*model.Card, error)
+	DeleteCard(ctx context.Context, id int64) (bool, error)
+	Cards(ctx context.Context) ([]*model.Card, error)
+	CardsByCardGroup(ctx context.Context, cardGroupID int64) ([]*model.Card, error)
 }
 
 type services struct {

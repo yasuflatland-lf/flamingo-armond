@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"backend/graph/services"
 	"backend/pkg/middlewares"
 	"bytes"
 	"context"
@@ -69,9 +70,13 @@ func NewRouter(db *gorm.DB) *echo.Echo {
 	// Set Transaction Middleware
 	e.Use(middlewares.TransactionMiddleware())
 
+	// Create services
+	service := services.New(db)
+
 	// Create a new resolver with the database connection
 	resolver := &Resolver{
-		DB: db,
+		DB:  db,
+		Srv: service,
 	}
 
 	srv := handler.NewDefaultServer(NewExecutableSchema(Config{Resolvers: resolver}))
