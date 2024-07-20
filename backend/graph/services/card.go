@@ -1,5 +1,3 @@
-// card.go
-
 package services
 
 import (
@@ -46,9 +44,9 @@ func convertToCard(card repository.Card) *model.Card {
 	}
 }
 
-func (c *cardService) GetCardByID(ctx context.Context, id int64) (*model.Card, error) {
+func (s *cardService) GetCardByID(ctx context.Context, id int64) (*model.Card, error) {
 	var card repository.Card
-	if err := c.db.WithContext(ctx).First(&card, id).Error; err != nil {
+	if err := s.db.WithContext(ctx).First(&card, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("card not found")
 		}
@@ -57,9 +55,9 @@ func (c *cardService) GetCardByID(ctx context.Context, id int64) (*model.Card, e
 	return convertToCard(card), nil
 }
 
-func (c *cardService) CreateCard(ctx context.Context, input model.NewCard) (*model.Card, error) {
+func (s *cardService) CreateCard(ctx context.Context, input model.NewCard) (*model.Card, error) {
 	gormCard := convertToGormCard(input)
-	result := c.db.WithContext(ctx).Create(gormCard)
+	result := s.db.WithContext(ctx).Create(gormCard)
 	if result.Error != nil {
 		if strings.Contains(result.Error.Error(), "foreign key constraint") {
 			return nil, fmt.Errorf("invalid card group ID")
@@ -69,9 +67,9 @@ func (c *cardService) CreateCard(ctx context.Context, input model.NewCard) (*mod
 	return convertToCard(*gormCard), nil
 }
 
-func (c *cardService) UpdateCard(ctx context.Context, id int64, input model.NewCard) (*model.Card, error) {
+func (s *cardService) UpdateCard(ctx context.Context, id int64, input model.NewCard) (*model.Card, error) {
 	var card repository.Card
-	if err := c.db.WithContext(ctx).First(&card, id).Error; err != nil {
+	if err := s.db.WithContext(ctx).First(&card, id).Error; err != nil {
 		return nil, err
 	}
 	card.Front = input.Front
@@ -84,14 +82,14 @@ func (c *cardService) UpdateCard(ctx context.Context, id int64, input model.NewC
 		return card.IntervalDays
 	}()
 	card.Updated = time.Now()
-	if err := c.db.WithContext(ctx).Save(&card).Error; err != nil {
+	if err := s.db.WithContext(ctx).Save(&card).Error; err != nil {
 		return nil, err
 	}
 	return convertToCard(card), nil
 }
 
-func (c *cardService) DeleteCard(ctx context.Context, id int64) (bool, error) {
-	result := c.db.WithContext(ctx).Delete(&repository.Card{}, id)
+func (s *cardService) DeleteCard(ctx context.Context, id int64) (bool, error) {
+	result := s.db.WithContext(ctx).Delete(&repository.Card{}, id)
 	if result.Error != nil {
 		return false, result.Error
 	}
@@ -101,9 +99,9 @@ func (c *cardService) DeleteCard(ctx context.Context, id int64) (bool, error) {
 	return true, nil
 }
 
-func (c *cardService) Cards(ctx context.Context) ([]*model.Card, error) {
+func (s *cardService) Cards(ctx context.Context) ([]*model.Card, error) {
 	var cards []repository.Card
-	if err := c.db.WithContext(ctx).Find(&cards).Error; err != nil {
+	if err := s.db.WithContext(ctx).Find(&cards).Error; err != nil {
 		return nil, err
 	}
 	var gqlCards []*model.Card
@@ -113,9 +111,9 @@ func (c *cardService) Cards(ctx context.Context) ([]*model.Card, error) {
 	return gqlCards, nil
 }
 
-func (c *cardService) CardsByCardGroup(ctx context.Context, cardGroupID int64) ([]*model.Card, error) {
+func (s *cardService) CardsByCardGroup(ctx context.Context, cardGroupID int64) ([]*model.Card, error) {
 	var cards []repository.Card
-	if err := c.db.WithContext(ctx).Where("cardgroup_id = ?", cardGroupID).Find(&cards).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("cardgroup_id = ?", cardGroupID).Find(&cards).Error; err != nil {
 		return nil, err
 	}
 	var gqlCards []*model.Card
