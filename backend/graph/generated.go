@@ -103,9 +103,11 @@ type ComplexityRoot struct {
 	}
 
 	Role struct {
-		ID    func(childComplexity int) int
-		Name  func(childComplexity int) int
-		Users func(childComplexity int) int
+		Created func(childComplexity int) int
+		ID      func(childComplexity int) int
+		Name    func(childComplexity int) int
+		Updated func(childComplexity int) int
+		Users   func(childComplexity int) int
 	}
 
 	User struct {
@@ -584,6 +586,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.UsersByRole(childComplexity, args["roleId"].(int64)), true
 
+	case "Role.created":
+		if e.complexity.Role.Created == nil {
+			break
+		}
+
+		return e.complexity.Role.Created(childComplexity), true
+
 	case "Role.id":
 		if e.complexity.Role.ID == nil {
 			break
@@ -597,6 +606,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Role.Name(childComplexity), true
+
+	case "Role.updated":
+		if e.complexity.Role.Updated == nil {
+			break
+		}
+
+		return e.complexity.Role.Updated(childComplexity), true
 
 	case "Role.users":
 		if e.complexity.Role.Users == nil {
@@ -2552,6 +2568,10 @@ func (ec *executionContext) fieldContext_Mutation_createRole(ctx context.Context
 				return ec.fieldContext_Role_id(ctx, field)
 			case "name":
 				return ec.fieldContext_Role_name(ctx, field)
+			case "created":
+				return ec.fieldContext_Role_created(ctx, field)
+			case "updated":
+				return ec.fieldContext_Role_updated(ctx, field)
 			case "users":
 				return ec.fieldContext_Role_users(ctx, field)
 			}
@@ -2615,6 +2635,10 @@ func (ec *executionContext) fieldContext_Mutation_updateRole(ctx context.Context
 				return ec.fieldContext_Role_id(ctx, field)
 			case "name":
 				return ec.fieldContext_Role_name(ctx, field)
+			case "created":
+				return ec.fieldContext_Role_created(ctx, field)
+			case "updated":
+				return ec.fieldContext_Role_updated(ctx, field)
 			case "users":
 				return ec.fieldContext_Role_users(ctx, field)
 			}
@@ -3265,6 +3289,10 @@ func (ec *executionContext) fieldContext_Query_roles(_ context.Context, field gr
 				return ec.fieldContext_Role_id(ctx, field)
 			case "name":
 				return ec.fieldContext_Role_name(ctx, field)
+			case "created":
+				return ec.fieldContext_Role_created(ctx, field)
+			case "updated":
+				return ec.fieldContext_Role_updated(ctx, field)
 			case "users":
 				return ec.fieldContext_Role_users(ctx, field)
 			}
@@ -3314,6 +3342,10 @@ func (ec *executionContext) fieldContext_Query_role(ctx context.Context, field g
 				return ec.fieldContext_Role_id(ctx, field)
 			case "name":
 				return ec.fieldContext_Role_name(ctx, field)
+			case "created":
+				return ec.fieldContext_Role_created(ctx, field)
+			case "updated":
+				return ec.fieldContext_Role_updated(ctx, field)
 			case "users":
 				return ec.fieldContext_Role_users(ctx, field)
 			}
@@ -3571,6 +3603,10 @@ func (ec *executionContext) fieldContext_Query_userRole(ctx context.Context, fie
 				return ec.fieldContext_Role_id(ctx, field)
 			case "name":
 				return ec.fieldContext_Role_name(ctx, field)
+			case "created":
+				return ec.fieldContext_Role_created(ctx, field)
+			case "updated":
+				return ec.fieldContext_Role_updated(ctx, field)
 			case "users":
 				return ec.fieldContext_Role_users(ctx, field)
 			}
@@ -3946,6 +3982,94 @@ func (ec *executionContext) fieldContext_Role_name(_ context.Context, field grap
 	return fc, nil
 }
 
+func (ec *executionContext) _Role_created(ctx context.Context, field graphql.CollectedField, obj *model.Role) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Role_created(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Created, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(time.Time)
+	fc.Result = res
+	return ec.marshalNTime2timeᚐTime(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Role_created(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Role",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Role_updated(ctx context.Context, field graphql.CollectedField, obj *model.Role) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Role_updated(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Updated, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(time.Time)
+	fc.Result = res
+	return ec.marshalNTime2timeᚐTime(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Role_updated(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Role",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Role_users(ctx context.Context, field graphql.CollectedField, obj *model.Role) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Role_users(ctx, field)
 	if err != nil {
@@ -4281,6 +4405,10 @@ func (ec *executionContext) fieldContext_User_roles(_ context.Context, field gra
 				return ec.fieldContext_Role_id(ctx, field)
 			case "name":
 				return ec.fieldContext_Role_name(ctx, field)
+			case "created":
+				return ec.fieldContext_Role_created(ctx, field)
+			case "updated":
+				return ec.fieldContext_Role_updated(ctx, field)
 			case "users":
 				return ec.fieldContext_Role_users(ctx, field)
 			}
@@ -6074,7 +6202,7 @@ func (ec *executionContext) unmarshalInputNewCard(ctx context.Context, obj inter
 		asMap["interval_days"] = 1
 	}
 
-	fieldsInOrder := [...]string{"front", "back", "review_date", "interval_days", "cardgroup_id"}
+	fieldsInOrder := [...]string{"front", "back", "review_date", "interval_days", "cardgroup_id", "created", "updated"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -6116,6 +6244,20 @@ func (ec *executionContext) unmarshalInputNewCard(ctx context.Context, obj inter
 				return it, err
 			}
 			it.CardgroupID = data
+		case "created":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("created"))
+			data, err := ec.unmarshalNTime2timeᚐTime(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Created = data
+		case "updated":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("updated"))
+			data, err := ec.unmarshalNTime2timeᚐTime(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Updated = data
 		}
 	}
 
@@ -6129,7 +6271,7 @@ func (ec *executionContext) unmarshalInputNewCardGroup(ctx context.Context, obj 
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"name"}
+	fieldsInOrder := [...]string{"name", "created", "updated"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -6143,6 +6285,20 @@ func (ec *executionContext) unmarshalInputNewCardGroup(ctx context.Context, obj 
 				return it, err
 			}
 			it.Name = data
+		case "created":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("created"))
+			data, err := ec.unmarshalNTime2timeᚐTime(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Created = data
+		case "updated":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("updated"))
+			data, err := ec.unmarshalNTime2timeᚐTime(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Updated = data
 		}
 	}
 
@@ -6156,7 +6312,7 @@ func (ec *executionContext) unmarshalInputNewRole(ctx context.Context, obj inter
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"name"}
+	fieldsInOrder := [...]string{"name", "created", "updated"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -6170,6 +6326,20 @@ func (ec *executionContext) unmarshalInputNewRole(ctx context.Context, obj inter
 				return it, err
 			}
 			it.Name = data
+		case "created":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("created"))
+			data, err := ec.unmarshalNTime2timeᚐTime(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Created = data
+		case "updated":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("updated"))
+			data, err := ec.unmarshalNTime2timeᚐTime(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Updated = data
 		}
 	}
 
@@ -6183,7 +6353,7 @@ func (ec *executionContext) unmarshalInputNewUser(ctx context.Context, obj inter
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"name"}
+	fieldsInOrder := [...]string{"name", "created", "updated"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -6197,6 +6367,20 @@ func (ec *executionContext) unmarshalInputNewUser(ctx context.Context, obj inter
 				return it, err
 			}
 			it.Name = data
+		case "created":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("created"))
+			data, err := ec.unmarshalNTime2timeᚐTime(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Created = data
+		case "updated":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("updated"))
+			data, err := ec.unmarshalNTime2timeᚐTime(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Updated = data
 		}
 	}
 
@@ -6820,6 +7004,16 @@ func (ec *executionContext) _Role(ctx context.Context, sel ast.SelectionSet, obj
 			}
 		case "name":
 			out.Values[i] = ec._Role_name(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "created":
+			out.Values[i] = ec._Role_created(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "updated":
+			out.Values[i] = ec._Role_updated(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}

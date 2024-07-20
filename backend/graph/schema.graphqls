@@ -23,6 +23,8 @@ type CardGroup {
 type Role {
   id: ID!
   name: String!
+  created: Time!
+  updated: Time!
   users: [User!]!
 }
 
@@ -40,19 +42,27 @@ input NewCard {
   back: String!
   review_date: Time!
   interval_days: Int = 1
-  cardgroup_id: ID!
+  cardgroup_id: ID!,
+  created: Time!,
+  updated: Time!,
 }
 
 input NewCardGroup {
-  name: String!
+  name: String!,
+  created: Time!,
+  updated: Time!,
 }
 
 input NewUser {
-  name: String!
+  name: String!,
+  created: Time!,
+  updated: Time!,
 }
 
 input NewRole {
   name: String!
+  created: Time!,
+  updated: Time!,
 }
 
 type Query {

@@ -23,9 +23,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 
+	repository "backend/graph/db"
 	"backend/graph/model"
 	"backend/pkg/config"
-	repository "backend/pkg/model"
 	"backend/testutils"
 )
 
@@ -621,7 +621,6 @@ func TestQueryResolver(t *testing.T) {
 
 		// Test for roles
 		t.Run("Roles", func(t *testing.T) {
-
 			// Step 1: Create a Role
 			role := repository.Role{
 				Name: "Test Role",
@@ -631,11 +630,12 @@ func TestQueryResolver(t *testing.T) {
 			// Prepare GraphQL query
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `{
-					roles {
-						id
-						name
-					}
-			}`})
+                    roles {
+                        id
+                        name
+                    }
+                }`,
+			})
 
 			// Execute GraphQL query
 			req := httptest.NewRequest(http.MethodPost, "/query", bytes.NewBuffer(jsonInput))

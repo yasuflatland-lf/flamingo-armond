@@ -35,27 +35,37 @@ type NewCard struct {
 	ReviewDate   time.Time `json:"review_date"`
 	IntervalDays *int      `json:"interval_days,omitempty"`
 	CardgroupID  int64     `json:"cardgroup_id"`
+	Created      time.Time `json:"created"`
+	Updated      time.Time `json:"updated"`
 }
 
 type NewCardGroup struct {
-	Name string `json:"name"`
+	Name    string    `json:"name"`
+	Created time.Time `json:"created"`
+	Updated time.Time `json:"updated"`
 }
 
 type NewRole struct {
-	Name string `json:"name"`
+	Name    string    `json:"name"`
+	Created time.Time `json:"created"`
+	Updated time.Time `json:"updated"`
 }
 
 type NewUser struct {
-	Name string `json:"name"`
+	Name    string    `json:"name"`
+	Created time.Time `json:"created"`
+	Updated time.Time `json:"updated"`
 }
 
 type Query struct {
 }
 
 type Role struct {
-	ID    int64   `json:"id"`
-	Name  string  `json:"name"`
-	Users []*User `json:"users"`
+	ID      int64     `json:"id"`
+	Name    string    `json:"name"`
+	Created time.Time `json:"created"`
+	Updated time.Time `json:"updated"`
+	Users   []*User   `json:"users"`
 }
 
 type User struct {
