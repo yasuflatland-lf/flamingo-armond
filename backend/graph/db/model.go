@@ -21,7 +21,7 @@ type Card struct {
 	IntervalDays int       `gorm:"column:interval_days;default:1;not null"`
 	Created      time.Time `gorm:"column:created;autoCreateTime"`
 	Updated      time.Time `gorm:"column:updated;autoCreateTime"`
-	CardGroupID  int64     `gorm:"column:cardgroup_id;foreignKey:cardgroup_id"`
+	CardGroupID  int64     `gorm:"column:cardgroup_id"`
 }
 
 type Cardgroup struct {
@@ -29,7 +29,7 @@ type Cardgroup struct {
 	Name    string    `gorm:"column:name;not null"`
 	Created time.Time `gorm:"column:created;autoCreateTime"`
 	Updated time.Time `gorm:"column:updated;autoCreateTime"`
-	Cards   []Card    `gorm:"foreignKey:cardgroup_id"`
+	Cards   []Card    `gorm:"foreignKey:CardGroupID"`
 	Users   []User    `gorm:"many2many:cardgroup_users"`
 }
 

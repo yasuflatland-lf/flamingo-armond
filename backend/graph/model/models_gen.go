@@ -41,6 +41,8 @@ type NewCard struct {
 
 type NewCardGroup struct {
 	Name    string    `json:"name"`
+	CardIds []int64   `json:"card_ids"`
+	UserIds []int64   `json:"user_ids"`
 	Created time.Time `json:"created"`
 	Updated time.Time `json:"updated"`
 }
@@ -53,6 +55,7 @@ type NewRole struct {
 
 type NewUser struct {
 	Name    string    `json:"name"`
+	RoleIds []int64   `json:"role_ids"`
 	Created time.Time `json:"created"`
 	Updated time.Time `json:"updated"`
 }

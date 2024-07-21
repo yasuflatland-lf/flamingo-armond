@@ -159,48 +159,11 @@ func removeField(data map[string]interface{}, field string) {
 	}
 }
 
-func runServersTest(t *testing.T, fn func(*testing.T)) {
-	// Begin a new transaction
-	tx := db.Begin()
-	if tx.Error != nil {
-		t.Fatalf("Failed to begin transaction: %v", tx.Error)
-	}
-
-	// Perform the database operations inside the transaction
-	if err := tx.Where("1 = 1").Delete(&repository.User{}).Error; err != nil {
-		tx.Rollback()
-		t.Fatalf("Failed to delete users: %v", err)
-	}
-
-	if err := tx.Where("1 = 1").Delete(&repository.Role{}).Error; err != nil {
-		tx.Rollback()
-		t.Fatalf("Failed to delete roles: %v", err)
-	}
-
-	if err := tx.Where("1 = 1").Delete(&repository.Card{}).Error; err != nil {
-		tx.Rollback()
-		t.Fatalf("Failed to delete cards: %v", err)
-	}
-
-	if err := tx.Where("1 = 1").Delete(&repository.Cardgroup{}).Error; err != nil {
-		tx.Rollback()
-		t.Fatalf("Failed to delete card groups: %v", err)
-	}
-
-	// Call the provided test function
-	fn(t)
-
-	// Commit the transaction if all operations succeed
-	if err := tx.Commit().Error; err != nil {
-		t.Fatalf("Failed to commit transaction: %v", err)
-	}
-}
-
 func TestMutationResolver(t *testing.T) {
 	t.Helper()
 	t.Parallel()
 
-	runServersTest(t, func(t *testing.T) {
+	testutils.RunServersTest(t, db, func(t *testing.T) {
 		t.Run("CreateCard", func(t *testing.T) {
 
 			// Step 1: Create a Cardgroup
@@ -444,7 +407,7 @@ func TestQueryResolver(t *testing.T) {
 	t.Helper()
 	t.Parallel()
 
-	runServersTest(t, func(t *testing.T) {
+	testutils.RunServersTest(t, db, func(t *testing.T) {
 		t.Run("Cards", func(t *testing.T) {
 			// Step 1: Create a Cardgroup
 			now := time.Now()

@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS cards
     created       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     cardgroup_id  INTEGER   NOT NULL,
-    FOREIGN KEY (cardgroup_id) REFERENCES cardgroups (id) ON DELETE CASCADE
+    FOREIGN KEY (cardgroup_id) REFERENCES cardgroups (id)
     );
 CREATE INDEX idx_cards_id ON cards(id);
 

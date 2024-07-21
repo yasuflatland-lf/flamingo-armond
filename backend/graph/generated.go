@@ -6271,7 +6271,7 @@ func (ec *executionContext) unmarshalInputNewCardGroup(ctx context.Context, obj 
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"name", "created", "updated"}
+	fieldsInOrder := [...]string{"name", "card_ids", "user_ids", "created", "updated"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -6285,6 +6285,20 @@ func (ec *executionContext) unmarshalInputNewCardGroup(ctx context.Context, obj 
 				return it, err
 			}
 			it.Name = data
+		case "card_ids":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("card_ids"))
+			data, err := ec.unmarshalNID2ᚕint64ᚄ(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.CardIds = data
+		case "user_ids":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("user_ids"))
+			data, err := ec.unmarshalNID2ᚕint64ᚄ(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.UserIds = data
 		case "created":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("created"))
 			data, err := ec.unmarshalNTime2timeᚐTime(ctx, v)
@@ -6353,7 +6367,7 @@ func (ec *executionContext) unmarshalInputNewUser(ctx context.Context, obj inter
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"name", "created", "updated"}
+	fieldsInOrder := [...]string{"name", "role_ids", "created", "updated"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -6367,6 +6381,13 @@ func (ec *executionContext) unmarshalInputNewUser(ctx context.Context, obj inter
 				return it, err
 			}
 			it.Name = data
+		case "role_ids":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("role_ids"))
+			data, err := ec.unmarshalNID2ᚕint64ᚄ(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.RoleIds = data
 		case "created":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("created"))
 			data, err := ec.unmarshalNTime2timeᚐTime(ctx, v)
@@ -7579,6 +7600,38 @@ func (ec *executionContext) marshalNID2int64(ctx context.Context, sel ast.Select
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) unmarshalNID2ᚕint64ᚄ(ctx context.Context, v interface{}) ([]int64, error) {
+	var vSlice []interface{}
+	if v != nil {
+		vSlice = graphql.CoerceList(v)
+	}
+	var err error
+	res := make([]int64, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNID2int64(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalNID2ᚕint64ᚄ(ctx context.Context, sel ast.SelectionSet, v []int64) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	for i := range v {
+		ret[i] = ec.marshalNID2int64(ctx, sel, v[i])
+	}
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) unmarshalNInt2int(ctx context.Context, v interface{}) (int, error) {

@@ -49,12 +49,15 @@ input NewCard {
 
 input NewCardGroup {
   name: String!,
+  card_ids: [ID!]
+  user_ids: [ID!]!
   created: Time!,
   updated: Time!,
 }
 
 input NewUser {
   name: String!,
+  role_ids: [ID!]!
   created: Time!,
   updated: Time!,
 }
@@ -74,7 +77,6 @@ type Query {
   role(id: ID!): Role
   users: [User!]!
   user(id: ID!): User
-  # New Queries
   cardsByCardGroup(cardGroupId: ID!): [Card!]!
   userRole(userId: ID!): Role
   cardGroupsByUser(userId: ID!): [CardGroup!]!
