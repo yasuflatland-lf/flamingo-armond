@@ -6,6 +6,10 @@ import (
 	"backend/pkg/config"
 	"backend/pkg/middlewares"
 	"backend/pkg/repository"
+	"log"
+	"net/http"
+	"strconv"
+
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/99designs/gqlgen/graphql/playground"
@@ -13,9 +17,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"gorm.io/gorm"
-	"log"
-	"net/http"
-	"strconv"
 )
 
 func NewRouter(db *gorm.DB) *echo.Echo {
