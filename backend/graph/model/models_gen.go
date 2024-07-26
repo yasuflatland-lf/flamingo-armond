@@ -8,10 +8,10 @@ import (
 
 type Card struct {
 	ID           int64      `json:"id"`
-	Front        string     `json:"front"`
-	Back         string     `json:"back"`
+	Front        string     `json:"front" validate:"required,min=1"`
+	Back         string     `json:"back" validate:"required,min=1"`
 	ReviewDate   time.Time  `json:"review_date"`
-	IntervalDays int        `json:"interval_days"`
+	IntervalDays int        `json:"interval_days" validate:"gte=1"`
 	Created      time.Time  `json:"created"`
 	Updated      time.Time  `json:"updated"`
 	CardGroup    *CardGroup `json:"cardGroup"`
@@ -19,7 +19,7 @@ type Card struct {
 
 type CardGroup struct {
 	ID      int64     `json:"id"`
-	Name    string    `json:"name"`
+	Name    string    `json:"name" validate:"required,fl_name,min=1"`
 	Created time.Time `json:"created"`
 	Updated time.Time `json:"updated"`
 	Cards   []*Card   `json:"cards"`
@@ -30,31 +30,31 @@ type Mutation struct {
 }
 
 type NewCard struct {
-	Front        string    `json:"front"`
-	Back         string    `json:"back"`
+	Front        string    `json:"front" validate:"required,min=1"`
+	Back         string    `json:"back" validate:"required,min=1"`
 	ReviewDate   time.Time `json:"review_date"`
-	IntervalDays *int      `json:"interval_days,omitempty"`
+	IntervalDays *int      `json:"interval_days,omitempty" validate:"gte=1"`
 	CardgroupID  int64     `json:"cardgroup_id"`
 	Created      time.Time `json:"created"`
 	Updated      time.Time `json:"updated"`
 }
 
 type NewCardGroup struct {
-	Name    string    `json:"name"`
-	CardIds []int64   `json:"card_ids"`
+	Name    string    `json:"name" validate:"required,min=1"`
+	CardIds []int64   `json:"card_ids,omitempty"`
 	UserIds []int64   `json:"user_ids"`
 	Created time.Time `json:"created"`
 	Updated time.Time `json:"updated"`
 }
 
 type NewRole struct {
-	Name    string    `json:"name"`
+	Name    string    `json:"name" validate:"required,fl_name,min=1"`
 	Created time.Time `json:"created"`
 	Updated time.Time `json:"updated"`
 }
 
 type NewUser struct {
-	Name    string    `json:"name"`
+	Name    string    `json:"name" validate:"required,fl_name,min=1"`
 	RoleIds []int64   `json:"role_ids"`
 	Created time.Time `json:"created"`
 	Updated time.Time `json:"updated"`
@@ -65,7 +65,7 @@ type Query struct {
 
 type Role struct {
 	ID      int64     `json:"id"`
-	Name    string    `json:"name"`
+	Name    string    `json:"name" validate:"required,fl_name,min=1"`
 	Created time.Time `json:"created"`
 	Updated time.Time `json:"updated"`
 	Users   []*User   `json:"users"`
@@ -73,7 +73,7 @@ type Role struct {
 
 type User struct {
 	ID         int64        `json:"id"`
-	Name       string       `json:"name"`
+	Name       string       `json:"name" validate:"required,fl_name,min=1"`
 	Created    time.Time    `json:"created"`
 	Updated    time.Time    `json:"updated"`
 	CardGroups []*CardGroup `json:"cardGroups"`

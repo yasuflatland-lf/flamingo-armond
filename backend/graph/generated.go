@@ -6287,7 +6287,7 @@ func (ec *executionContext) unmarshalInputNewCardGroup(ctx context.Context, obj 
 			it.Name = data
 		case "card_ids":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("card_ids"))
-			data, err := ec.unmarshalNID2ᚕint64ᚄ(ctx, v)
+			data, err := ec.unmarshalOID2ᚕint64ᚄ(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -8106,6 +8106,44 @@ func (ec *executionContext) marshalOCardGroup2ᚖbackendᚋgraphᚋmodelᚐCardG
 		return graphql.Null
 	}
 	return ec._CardGroup(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalOID2ᚕint64ᚄ(ctx context.Context, v interface{}) ([]int64, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var vSlice []interface{}
+	if v != nil {
+		vSlice = graphql.CoerceList(v)
+	}
+	var err error
+	res := make([]int64, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNID2int64(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalOID2ᚕint64ᚄ(ctx context.Context, sel ast.SelectionSet, v []int64) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	for i := range v {
+		ret[i] = ec.marshalNID2int64(ctx, sel, v[i])
+	}
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) unmarshalOInt2ᚖint(ctx context.Context, v interface{}) (*int, error) {

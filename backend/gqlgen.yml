@@ -85,3 +85,6 @@ models:
   Time:
     model:
       - github.com/99designs/gqlgen/graphql.Time
+directives:
+  validation:
+    skip_runtime: true

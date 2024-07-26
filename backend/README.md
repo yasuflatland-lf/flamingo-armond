@@ -45,6 +45,11 @@ This backend uses some generated code. Here are the steps to generate code.
 2. At `/backend`, run `make parsergen`
 
 # Tips
+## How to generate GraphQL Model under /graph/model
+Right under the 
+```
+ go run ./cmd/gqlgenerate
+```
 ## How to see the Make Commands
 ```
 make help
