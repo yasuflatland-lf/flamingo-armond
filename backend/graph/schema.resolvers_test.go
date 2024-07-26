@@ -73,10 +73,14 @@ func NewRouter(db *gorm.DB) *echo.Echo {
 	// Create services
 	service := services.New(db)
 
+	// Validator
+	validateWrapper := services.NewValidateWrapper()
+
 	// Create a new resolver with the database connection
 	resolver := &Resolver{
 		DB:  db,
 		Srv: service,
+		VW:  validateWrapper,
 	}
 
 	srv := handler.NewDefaultServer(NewExecutableSchema(Config{Resolvers: resolver}))
@@ -165,7 +169,6 @@ func TestMutationResolver(t *testing.T) {
 
 	testutils.RunServersTest(t, db, func(t *testing.T) {
 		t.Run("CreateCard", func(t *testing.T) {
-
 			// Step 1: Create a Cardgroup
 			now := time.Now()
 			cardgroup := repository.Cardgroup{
@@ -176,42 +179,43 @@ func TestMutationResolver(t *testing.T) {
 			db.Create(&cardgroup)
 
 			// Step 2: Create a new card with the CardgroupID
+			intervalDays := 1
 			input := model.NewCard{
 				Front:        "CreateCard Front of card",
 				Back:         "CreateCard Back of card",
 				ReviewDate:   now,
-				IntervalDays: new(int),
+				IntervalDays: &intervalDays, // Properly initialized
 				CardgroupID:  cardgroup.ID,
 			}
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `mutation ($input: NewCard!) {
-				createCard(input: $input) {
-					id
-					front
-					back
-					review_date
-					interval_days
-					created
-					updated
-				}
-			}`,
+                    createCard(input: $input) {
+                        id
+                        front
+                        back
+                        review_date
+                        interval_days
+                        created
+                        updated
+                    }
+                }`,
 				"variables": map[string]interface{}{
 					"input": input,
 				},
 			})
 			expected := fmt.Sprintf(`{
-			"data": {
-				"createCard": {
-					"id": 1,
-					"front": "CreateCard Front of card",
-					"back": "CreateCard Back of card",
-					"review_date": "%s",
-					"interval_days": 1,
-					"created": "%s",
-					"updated": "%s"
-				}
-			}
-		}`, cardgroup.Created.Format(time.RFC3339Nano), cardgroup.Created.Format(time.RFC3339Nano), cardgroup.Updated.Format(time.RFC3339Nano))
+                "data": {
+                    "createCard": {
+                        "id": 1,
+                        "front": "CreateCard Front of card",
+                        "back": "CreateCard Back of card",
+                        "review_date": "%s",
+                        "interval_days": 1,
+                        "created": "%s",
+                        "updated": "%s"
+                    }
+                }
+            }`, cardgroup.Created.Format(time.RFC3339Nano), cardgroup.Created.Format(time.RFC3339Nano), cardgroup.Updated.Format(time.RFC3339Nano))
 
 			testGraphQLQuery(t, e, jsonInput, expected, "data.createCard.id", "data.createCard.created", "data.createCard.updated", "data.createCard.review_date")
 		})
@@ -239,7 +243,7 @@ func TestMutationResolver(t *testing.T) {
             "card": null
         },
         "errors": [{
-            "message": "card not found",
+            "message": "invalid id: -1",
             "path": ["card"]
         }]
     }`
@@ -383,19 +387,19 @@ func TestMutationResolver(t *testing.T) {
 			// Attempt to delete a card with an invalid ID
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `mutation ($id: ID!) {
-            deleteCard(id: $id)
-        }`,
+                    deleteCard(id: $id)
+                }`,
 				"variables": map[string]interface{}{
 					"id": -1, // Invalid ID
 				},
 			})
 			expected := `{
-        "data": null,
-        "errors": [{
-            "message": "record not found",
-            "path": ["deleteCard"]
-        }]
-    }`
+                "data": null,
+                "errors": [{
+                    "message": "invalid id: -1",
+                    "path": ["deleteCard"]
+                }]
+            }`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
@@ -556,33 +560,32 @@ func TestQueryResolver(t *testing.T) {
 		})
 
 		t.Run("Card_Error", func(t *testing.T) {
-
 			// Prepare GraphQL query with invalid ID
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `query ($id: ID!) {
-		card(id: $id) {
-			id
-			front
-			back
-			review_date
-			interval_days
-			created
-			updated
-		}
-	}`,
+					card(id: $id) {
+						id
+						front
+						back
+						review_date
+						interval_days
+						created
+						updated
+					}
+				}`,
 				"variables": map[string]interface{}{
 					"id": -1, // Invalid ID
 				},
 			})
 			expected := `{
-	"data": {
-		"card": null
-	},
-	"errors": [{
-		"message": "card not found",
-		"path": ["card"]
-	}]
-}`
+				"data": {
+					"card": null
+				},
+				"errors": [{
+					"message": "invalid id: -1",
+					"path": ["card"]
+				}]
+			}`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
@@ -697,7 +700,6 @@ func TestQueryResolver(t *testing.T) {
 		})
 
 		t.Run("Role_Error", func(t *testing.T) {
-
 			// Prepare GraphQL query with invalid ID
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `query ($id: ID!) {
@@ -715,7 +717,7 @@ func TestQueryResolver(t *testing.T) {
                     "role": null
                 },
                 "errors": [{
-                    "message": "record not found",
+                    "message": "invalid id: -1",
                     "path": ["role"]
                 }]
             }`
@@ -827,28 +829,26 @@ func TestQueryResolver(t *testing.T) {
 		})
 
 		t.Run("User_Error", func(t *testing.T) {
-
-			// Prepare GraphQL query with invalid ID
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `query ($id: ID!) {
-					user(id: $id) {
-						id
-						name
-					}
-				}`,
+            user(id: $id) {
+                id
+                name
+            }
+        }`,
 				"variables": map[string]interface{}{
 					"id": -1, // Invalid ID
 				},
 			})
 			expected := `{
-				"data": {
-					"user": null
-				},
-				"errors": [{
-					"message": "record not found",
-					"path": ["user"]
-				}]
-			}`
+        "data": {
+            "user": null
+        },
+        "errors": [{
+            "message": "invalid id: -1",
+            "path": ["user"]
+        }]
+    }`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
@@ -918,9 +918,11 @@ func TestQueryResolver(t *testing.T) {
 				},
 			})
 			expected := `{
-                "data": {
-                    "cardsByCardGroup": []
-                }
+                "data": null,
+                "errors": [{
+                    "message": "invalid cardGroupID: -1",
+                    "path": ["cardsByCardGroup"]
+                }]
             }`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
@@ -972,24 +974,24 @@ func TestQueryResolver(t *testing.T) {
 			// Prepare GraphQL query with invalid userId
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `query ($userId: ID!) {
-					userRole(userId: $userId) {
-						id
-						name
-					}
-				}`,
+                    userRole(userId: $userId) {
+                        id
+                        name
+                    }
+                }`,
 				"variables": map[string]interface{}{
 					"userId": -1, // Invalid ID
 				},
 			})
 			expected := `{
-				"errors": [{
-					"message": "record not found",
-					"path": ["userRole"]
-				}],
-				"data": {
-					"userRole": null
-				}
-			}`
+                "data": {
+                    "userRole": null
+                },
+                "errors": [{
+                    "message": "invalid userID: -1",
+                    "path": ["userRole"]
+                }]
+            }`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
@@ -1053,7 +1055,7 @@ func TestQueryResolver(t *testing.T) {
 			expected := `{
                 "data": null,
                 "errors": [{
-                    "message": "record not found",
+                    "message": "invalid userID: -1",
                     "path": ["cardGroupsByUser"]
                 }]
             }`
@@ -1123,12 +1125,12 @@ func TestQueryResolver(t *testing.T) {
 				},
 			})
 			expected := `{
-			"data": null,
-			"errors": [{
-				"message": "record not found",
-				"path": ["usersByRole"]
-			}]
-		}`
+				"data": null,
+				"errors": [{
+					"message": "invalid roleID: -1",
+					"path": ["usersByRole"]
+				}]
+			}`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})

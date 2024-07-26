@@ -34,10 +34,14 @@ func NewRouter(db *gorm.DB) *echo.Echo {
 	// Create services
 	service := services.New(db)
 
+	// Validator
+	validateWrapper := services.NewValidateWrapper()
+
 	// Create a new resolver
 	resolver := &graph.Resolver{
 		DB:  db,
 		Srv: service,
+		VW:  validateWrapper,
 	}
 
 	srv := handler.NewDefaultServer(graph.NewExecutableSchema(graph.Config{Resolvers: resolver}))

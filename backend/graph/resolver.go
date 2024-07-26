@@ -10,4 +10,5 @@ import (
 type Resolver struct {
 	DB  *gorm.DB
 	Srv services.Services
+	VW  services.ValidateWrapper
 }
