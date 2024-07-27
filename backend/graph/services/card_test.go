@@ -52,6 +52,7 @@ func (suite *CardTestSuite) TearDownSuite() {
 
 func (suite *CardTestSuite) SetupSubTest() {
 	t := suite.T()
+	t.Helper()
 	testutils.RunServersTest(t, suite.db, nil)
 }
 
@@ -61,6 +62,8 @@ func (suite *CardTestSuite) TestCardService() {
 	userService := suite.sv.(services.UserService)
 	roleService := suite.sv.(services.RoleService)
 	ctx := context.Background()
+	t := suite.T()
+	t.Helper()
 
 	suite.Run("Normal_ListCards", func() {
 		// Arrange

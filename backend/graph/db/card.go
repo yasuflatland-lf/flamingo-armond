@@ -9,12 +9,16 @@ import (
 	"time"
 )
 
-func (c *Card) BeforeSave(tx *gorm.DB) (err error) {
+// BeforeCreate hook to validate the front and back fields
+func (c *Card) BeforeCreate(tx *gorm.DB) (err error) {
+	return c.validateAtCreate(c)
+}
 
+// BeforeUpdate hook
+func (c *Card) BeforeUpdate(tx *gorm.DB) (err error) {
 	return c.validateStruct(c)
 }
 
-// ValidateStruct 関数
 func (c *Card) validateStruct(card *Card) error {
 	v := customValidator.NewValidateWrapper()
 	err := v.Validator().Struct(card)
@@ -23,6 +27,22 @@ func (c *Card) validateStruct(card *Card) error {
 			return errors.New(fmt.Sprintf("Field validation for '%s' failed on the '%s' tag", err.Field(), err.Tag()))
 		}
 	}
+	return nil
+}
+
+// ValidateFrontAndBack function to validate only front and back fields
+func (c *Card) validateAtCreate(card *Card) error {
+	v := customValidator.NewValidateWrapper()
+	err := v.Validator().Var(card.Front, "required,min=1") // Assuming you want to check if 'front' is required
+	if err != nil {
+		return errors.New(fmt.Sprintf("Field validation for 'front' failed %+v", err))
+	}
+
+	err = v.Validator().Var(card.Back, "required,min=1") // Assuming you want to check if 'back' is required
+	if err != nil {
+		return errors.New(fmt.Sprintf("Field validation for 'back' failed %+v", err))
+	}
+
 	return nil
 }
 

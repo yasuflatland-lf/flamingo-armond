@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users
     updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_users_id ON users(id);
+CREATE INDEX idx_users_name ON users(name);
 
 CREATE TABLE IF NOT EXISTS cardgroups
 (
@@ -32,6 +33,10 @@ CREATE TABLE IF NOT EXISTS cards
     FOREIGN KEY (cardgroup_id) REFERENCES cardgroups (id)
     );
 CREATE INDEX idx_cards_id ON cards(id);
+CREATE INDEX idx_cards_front ON cards(front);
+CREATE INDEX idx_cards_back ON cards(back);
+CREATE INDEX idx_cards_cardgroup_id ON cards(cardgroup_id);
+CREATE INDEX idx_cards_interval_days ON cards(interval_days);
 
 CREATE TABLE IF NOT EXISTS cardgroup_users
 (

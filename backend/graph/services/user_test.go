@@ -50,6 +50,7 @@ func (suite *UserTestSuite) TearDownSuite() {
 
 func (suite *UserTestSuite) SetupSubTest() {
 	t := suite.T()
+	t.Helper()
 	testutils.RunServersTest(t, suite.db, nil)
 }
 
@@ -57,10 +58,10 @@ func (suite *UserTestSuite) TestUserService() {
 	userService := suite.sv.(services.UserService)
 	roleService := suite.sv.(services.RoleService)
 	ctx := context.Background()
+	t := suite.T()
+	t.Helper()
 
 	suite.Run("Normal_CreateUser", func() {
-		t := suite.T()
-
 		// Create a role
 		newRole := model.NewRole{
 			Name: "Test Role",
@@ -82,7 +83,6 @@ func (suite *UserTestSuite) TestUserService() {
 	})
 
 	suite.Run("Error_CreateUser", func() {
-		t := suite.T()
 
 		// Create a role
 		newRole := model.NewRole{
@@ -105,7 +105,6 @@ func (suite *UserTestSuite) TestUserService() {
 	})
 
 	suite.Run("Normal_GetUserByID", func() {
-		t := suite.T()
 
 		// Create a role
 		newRole := model.NewRole{
@@ -129,7 +128,6 @@ func (suite *UserTestSuite) TestUserService() {
 	})
 
 	suite.Run("Error_GetUserByID", func() {
-		t := suite.T()
 
 		fetchedUser, err := userService.GetUserByID(ctx, -1) // Invalid ID
 		assert.Error(t, err)
@@ -137,8 +135,6 @@ func (suite *UserTestSuite) TestUserService() {
 	})
 
 	suite.Run("Normal_UpdateUser", func() {
-		t := suite.T()
-
 		// Create a role
 		newRole := model.NewRole{
 			Name: "Test Role",
@@ -163,7 +159,6 @@ func (suite *UserTestSuite) TestUserService() {
 	})
 
 	suite.Run("Error_UpdateUser", func() {
-		t := suite.T()
 
 		updateInput := model.NewUser{Name: "Updated User"}
 
@@ -173,7 +168,6 @@ func (suite *UserTestSuite) TestUserService() {
 	})
 
 	suite.Run("Normal_DeleteUser", func() {
-		t := suite.T()
 
 		// Create a role
 		newRole := model.NewRole{
@@ -197,7 +191,6 @@ func (suite *UserTestSuite) TestUserService() {
 	})
 
 	suite.Run("Error_DeleteUser", func() {
-		t := suite.T()
 
 		deleted, err := userService.DeleteUser(ctx, -1) // Invalid ID
 		assert.NoError(t, err)
@@ -205,7 +198,6 @@ func (suite *UserTestSuite) TestUserService() {
 	})
 
 	suite.Run("Normal_ListUsers", func() {
-		t := suite.T()
 
 		// Create a role
 		newRole := model.NewRole{

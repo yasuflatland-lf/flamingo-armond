@@ -49,6 +49,7 @@ func (suite *CardGroupTestSuite) TearDownSuite() {
 
 func (suite *CardGroupTestSuite) SetupSubTest() {
 	t := suite.T()
+	t.Helper()
 	testutils.RunServersTest(t, suite.db, nil)
 }
 
@@ -57,9 +58,10 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 	userService := suite.sv.(services.UserService)
 	roleService := suite.sv.(services.RoleService)
 	ctx := context.Background()
+	t := suite.T()
+	t.Helper()
 
 	suite.Run("Normal_CreateCardGroup", func() {
-		t := suite.T()
 
 		createdGroup, err := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
 		assert.NoError(t, err)
@@ -67,7 +69,6 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 	})
 
 	suite.Run("Error_CreateCardGroup", func() {
-		t := suite.T()
 
 		// Create a role
 		newRole := model.NewRole{
@@ -99,7 +100,6 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 	})
 
 	suite.Run("Normal_GetCardGroupByID", func() {
-		t := suite.T()
 
 		input := model.NewCardGroup{Name: "Test Group"}
 		createdGroup, _ := cardGroupService.CreateCardGroup(context.Background(), input)
@@ -111,7 +111,6 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 	})
 
 	suite.Run("Error_GetCardGroupByID", func() {
-		t := suite.T()
 
 		fetchedGroup, err := cardGroupService.GetCardGroupByID(context.Background(), -1) // Invalid ID
 
@@ -120,7 +119,6 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 	})
 
 	suite.Run("Normal_UpdateCardGroup", func() {
-		t := suite.T()
 
 		input := model.NewCardGroup{Name: "Test Group"}
 		createdGroup, _ := cardGroupService.CreateCardGroup(context.Background(), input)
@@ -134,7 +132,6 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 	})
 
 	suite.Run("Error_UpdateCardGroup", func() {
-		t := suite.T()
 
 		updateInput := model.NewCardGroup{Name: "Updated Group"}
 
@@ -145,7 +142,6 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 	})
 
 	suite.Run("Normal_DeleteCardGroup", func() {
-		t := suite.T()
 
 		input := model.NewCardGroup{Name: "Test Group"}
 		createdGroup, _ := cardGroupService.CreateCardGroup(context.Background(), input)
@@ -157,7 +153,6 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 	})
 
 	suite.Run("Error_DeleteCardGroup", func() {
-		t := suite.T()
 
 		deleted, err := cardGroupService.DeleteCardGroup(context.Background(), -1) // Invalid ID
 
@@ -166,7 +161,6 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 	})
 
 	suite.Run("Normal_ListCardGroups", func() {
-		t := suite.T()
 
 		input1 := model.NewCardGroup{Name: "Test Group 1"}
 		input2 := model.NewCardGroup{Name: "Test Group 2"}
@@ -180,7 +174,6 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 	})
 
 	suite.Run("Normal_AddUserToCardGroup", func() {
-		t := suite.T()
 
 		ctx := context.Background()
 		userService := suite.sv.(services.UserService)
@@ -214,7 +207,6 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 	})
 
 	suite.Run("Error_AddUserToCardGroup", func() {
-		t := suite.T()
 
 		userID := int64(-1)      // Invalid user ID
 		cardGroupID := int64(-1) // Invalid card group ID
@@ -226,7 +218,6 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 	})
 
 	suite.Run("Normal_RemoveUserFromCardGroup", func() {
-		t := suite.T()
 
 		// Create a user
 		newUser := model.NewUser{
@@ -261,7 +252,6 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 	})
 
 	suite.Run("Error_RemoveUserFromCardGroup", func() {
-		t := suite.T()
 
 		userID := int64(-1)      // Invalid user ID
 		cardGroupID := int64(-1) // Invalid card group ID

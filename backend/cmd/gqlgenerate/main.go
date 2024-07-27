@@ -1,36 +1,26 @@
 package main
 
 import (
+	"backend/pkg/logger"
 	"fmt"
-	"log"
-	"os"
-
 	"github.com/99designs/gqlgen/api"
 	"github.com/99designs/gqlgen/codegen/config"
 	"github.com/99designs/gqlgen/plugin/modelgen"
 	"github.com/vektah/gqlparser/v2/ast"
 )
 
-// Exit codes
-const (
-	exitCodeConfigLoadError = 2
-	exitCodeGenerateError   = 3
-)
-
 func main() {
-	// Initialize logger
-	logger := log.New(os.Stdout, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 
 	// Load the GraphQL configuration
 	cfg, err := loadGraphQLConfig()
 	if err != nil {
-		logger.Fatalf("Error loading GraphQL config: %v", err)
+		logger.Logger.Error("Error loading GraphQL config: %v", err)
 	}
 
 	// Generate the GraphQL server code
-	err = generateGraphQLCode(cfg, logger)
+	err = generateGraphQLCode(cfg)
 	if err != nil {
-		logger.Fatalf("Error generating GraphQL code: %v", err)
+		logger.Logger.Error("Error generating GraphQL code: %v", err)
 	}
 }
 
@@ -44,7 +34,7 @@ func loadGraphQLConfig() (*config.Config, error) {
 }
 
 // generateGraphQLCode generates the GraphQL server code using the provided config
-func generateGraphQLCode(cfg *config.Config, logger *log.Logger) error {
+func generateGraphQLCode(cfg *config.Config) error {
 	// Attaching the mutation function onto modelgen plugin
 	p := modelgen.Plugin{
 		FieldHook: ValidationFieldHook,
@@ -55,7 +45,7 @@ func generateGraphQLCode(cfg *config.Config, logger *log.Logger) error {
 	if err != nil {
 		return fmt.Errorf("code generation failed: %w", err)
 	}
-	logger.Println("GraphQL code generation successful")
+	logger.Logger.Info("GraphQL code generation successful")
 	return nil
 }
 

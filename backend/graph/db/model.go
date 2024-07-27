@@ -5,7 +5,7 @@ import (
 )
 
 type User struct {
-	ID         int64       `gorm:"column:id;primaryKey" validate:"number,fl_id"`
+	ID         int64       `gorm:"column:id;primaryKey" validate:"number"`
 	Name       string      `gorm:"column:name;not null" validate:"required,fl_name"`
 	Created    time.Time   `gorm:"column:created;autoCreateTime"`
 	Updated    time.Time   `gorm:"column:updated;autoCreateTime"`

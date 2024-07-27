@@ -54,12 +54,12 @@ func (v *validateWrapper) NameValidation(fl validator.FieldLevel) bool {
 
 	// Define a regular expression to match unwanted Unicode categories
 	// Refer https://www.tohoho-web.com/ex/regexp.html#unicode Properties section.
-	re := regexp.MustCompile(`[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Pc}\p{Pd}\p{Pe}\p{Pf}\p{Pi}\p{Po}\p{Ps}\p{Mc}\p{Me}\p{Mn}\p{Sc}\p{Sm}\p{Zl}\p{Zp}]`)
+	re := regexp.MustCompile(`^[^!:;]+$`)
 	if re.MatchString(name) {
-		return false
+		return true
 	}
 
-	return true
+	return false
 }
 
 func (v *validateWrapper) DatetimeValidation(fl validator.FieldLevel) bool {

@@ -19,12 +19,39 @@ func TestValidation(t *testing.T) {
 	}{
 		// Valid cases
 		{"Valid User Name", "fl_name", "ValidName", "required,alpha", true},
-		{"Valid DateTime", "fl_datetime", time.Now().Format(time.RFC3339), "fl_datetime", true},
+		{"Valid User Name2", "fl_name", "Tanaka Hideyuki", "required,fl_name", true},
+		{"Valid User Name3", "fl_name", "Raphaël Maël", "required,fl_name", true},
 
 		// Invalid cases
 		{"Invalid User Name", "fl_name", "Invalid Name!", "required,fl_name", false},
 		{"Empty User Name", "fl_name", "", "required,fl_name", false},
-		{"Invalid DateTime", "fl_datetime", "invalid-date-time", "fl_datetime", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateWrapper.Validator().Var(tt.value, tt.tag)
+			if (err == nil) != tt.valid {
+				t.Errorf("expected valid: %v, got error: %v", tt.valid, err)
+			}
+		})
+	}
+}
+
+func TestDateTimeValidation(t *testing.T) {
+	validateWrapper := validator.NewValidateWrapper()
+	invalidTime, _ := time.Parse(time.Now().Format(time.DateTime), "0000-00-00")
+	tests := []struct {
+		name  string
+		value time.Time
+		tag   string
+		valid bool
+	}{
+		// Valid cases
+		{"Valid DateTime", time.Now(), "fl_datetime", true},
+
+		// Invalid cases
+		{"Invalid DateTime", invalidTime, "fl_datetime", false},
 	}
 
 	for _, tt := range tests {

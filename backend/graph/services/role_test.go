@@ -48,6 +48,7 @@ func (suite *RoleTestSuite) TearDownSuite() {
 
 func (suite *RoleTestSuite) SetupSubTest() {
 	t := suite.T()
+	t.Helper()
 	testutils.RunServersTest(t, suite.db, nil)
 }
 
@@ -55,9 +56,10 @@ func (suite *RoleTestSuite) TestRoleService() {
 	userService := suite.sv.(services.UserService)
 	roleService := suite.sv.(services.RoleService)
 	ctx := context.Background()
+	t := suite.T()
+	t.Helper()
 
 	suite.Run("Normal_CreateRole", func() {
-		t := suite.T()
 
 		newRole := model.NewRole{
 			Name: "Test Role",
@@ -70,7 +72,6 @@ func (suite *RoleTestSuite) TestRoleService() {
 	})
 
 	suite.Run("Error_CreateRole", func() {
-		t := suite.T()
 
 		newRole := model.NewRole{
 			Name: "", // Invalid name
@@ -83,7 +84,6 @@ func (suite *RoleTestSuite) TestRoleService() {
 	})
 
 	suite.Run("Normal_GetRoleByID", func() {
-		t := suite.T()
 
 		newRole := model.NewRole{Name: "Test Role"}
 		createdRole, _ := roleService.CreateRole(ctx, newRole)
@@ -95,7 +95,6 @@ func (suite *RoleTestSuite) TestRoleService() {
 	})
 
 	suite.Run("Error_GetRoleByID", func() {
-		t := suite.T()
 
 		fetchedRole, err := roleService.GetRoleByID(ctx, -1) // Invalid ID
 
@@ -104,7 +103,6 @@ func (suite *RoleTestSuite) TestRoleService() {
 	})
 
 	suite.Run("Normal_UpdateRole", func() {
-		t := suite.T()
 
 		newRole := model.NewRole{Name: "Test Role"}
 		createdRole, _ := roleService.CreateRole(ctx, newRole)
@@ -118,7 +116,6 @@ func (suite *RoleTestSuite) TestRoleService() {
 	})
 
 	suite.Run("Error_UpdateRole", func() {
-		t := suite.T()
 
 		updateRole := model.NewRole{Name: "Updated Role"}
 
@@ -129,7 +126,6 @@ func (suite *RoleTestSuite) TestRoleService() {
 	})
 
 	suite.Run("Normal_DeleteRole", func() {
-		t := suite.T()
 
 		newRole := model.NewRole{Name: "Test Role"}
 		createdRole, _ := roleService.CreateRole(ctx, newRole)
@@ -141,7 +137,6 @@ func (suite *RoleTestSuite) TestRoleService() {
 	})
 
 	suite.Run("Error_DeleteRole", func() {
-		t := suite.T()
 
 		deleted, err := roleService.DeleteRole(ctx, -1) // Invalid ID
 
@@ -150,7 +145,6 @@ func (suite *RoleTestSuite) TestRoleService() {
 	})
 
 	suite.Run("Normal_AssignRoleToUser", func() {
-		t := suite.T()
 
 		// Create a user and role
 		newUser := model.NewUser{Name: "Test User", Created: time.Now(), Updated: time.Now()}
@@ -167,7 +161,6 @@ func (suite *RoleTestSuite) TestRoleService() {
 	})
 
 	suite.Run("Error_AssignRoleToUser", func() {
-		t := suite.T()
 
 		updatedUser, err := roleService.AssignRoleToUser(ctx, -1, -1) // Invalid IDs
 
@@ -176,7 +169,6 @@ func (suite *RoleTestSuite) TestRoleService() {
 	})
 
 	suite.Run("Normal_RemoveRoleFromUser", func() {
-		t := suite.T()
 
 		// Create a user and role
 		newUser := model.NewUser{Name: "Test User", Created: time.Now(), Updated: time.Now()}
@@ -196,7 +188,6 @@ func (suite *RoleTestSuite) TestRoleService() {
 	})
 
 	suite.Run("Error_RemoveRoleFromUser", func() {
-		t := suite.T()
 
 		updatedUser, err := roleService.RemoveRoleFromUser(ctx, -1, -1) // Invalid IDs
 
@@ -205,7 +196,6 @@ func (suite *RoleTestSuite) TestRoleService() {
 	})
 
 	suite.Run("Normal_ListRoles", func() {
-		t := suite.T()
 
 		newRole1 := model.NewRole{Name: "Test Role 1"}
 		newRole2 := model.NewRole{Name: "Test Role 2"}
