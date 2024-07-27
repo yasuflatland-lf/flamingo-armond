@@ -6,6 +6,7 @@ import (
 	"backend/pkg/config"
 	"backend/pkg/middlewares"
 	"backend/pkg/repository"
+	"backend/pkg/validator"
 	"log"
 	"net/http"
 	"strconv"
@@ -35,7 +36,7 @@ func NewRouter(db *gorm.DB) *echo.Echo {
 	service := services.New(db)
 
 	// Validator
-	validateWrapper := services.NewValidateWrapper()
+	validateWrapper := validator.NewValidateWrapper()
 
 	// Create a new resolver
 	resolver := &graph.Resolver{

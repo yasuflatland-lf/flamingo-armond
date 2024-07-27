@@ -1,14 +1,14 @@
-package services_test
+package validator_test
 
 import (
 	"backend/graph/db"
-	"backend/graph/services"
+	"backend/pkg/validator"
 	"testing"
 	"time"
 )
 
 func TestValidation(t *testing.T) {
-	validateWrapper := services.NewValidateWrapper()
+	validateWrapper := validator.NewValidateWrapper()
 
 	tests := []struct {
 		name  string
@@ -39,7 +39,7 @@ func TestValidation(t *testing.T) {
 }
 
 func TestModelValidation(t *testing.T) {
-	contributor := services.NewValidateWrapper()
+	contributor := validator.NewValidateWrapper()
 
 	tests := []struct {
 		name  string

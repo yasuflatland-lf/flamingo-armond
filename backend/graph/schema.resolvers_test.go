@@ -3,6 +3,7 @@ package graph
 import (
 	"backend/graph/services"
 	"backend/pkg/middlewares"
+	"backend/pkg/validator"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -74,7 +75,7 @@ func NewRouter(db *gorm.DB) *echo.Echo {
 	service := services.New(db)
 
 	// Validator
-	validateWrapper := services.NewValidateWrapper()
+	validateWrapper := validator.NewValidateWrapper()
 
 	// Create a new resolver with the database connection
 	resolver := &Resolver{

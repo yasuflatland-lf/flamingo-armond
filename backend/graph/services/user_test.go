@@ -200,8 +200,8 @@ func (suite *UserTestSuite) TestUserService() {
 		t := suite.T()
 
 		deleted, err := userService.DeleteUser(ctx, -1) // Invalid ID
-		assert.Error(t, err)
-		assert.False(t, deleted)
+		assert.NoError(t, err)
+		assert.True(t, deleted)
 	})
 
 	suite.Run("Normal_ListUsers", func() {

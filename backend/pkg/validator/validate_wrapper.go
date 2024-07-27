@@ -1,6 +1,7 @@
-package services
+package validator
 
 import (
+	"errors"
 	"fmt"
 	"github.com/go-playground/validator/v10"
 	"regexp"
@@ -13,6 +14,7 @@ type validateWrapper struct {
 
 type ValidateWrapper interface {
 	Validator() *validator.Validate
+	ValidateStruct(*interface{}) error
 }
 
 func NewValidateWrapper(options ...validator.Option) ValidateWrapper {
@@ -26,6 +28,7 @@ func NewValidateWrapper(options ...validator.Option) ValidateWrapper {
 		ValidatorInstance: validatorInstance,
 	}
 
+	validatorInstance.RegisterValidation("fl_id", wrapper.IDValidation)
 	validatorInstance.RegisterValidation("fl_name", wrapper.NameValidation)
 	validatorInstance.RegisterValidation("fl_datetime", wrapper.DatetimeValidation)
 	return wrapper
@@ -35,7 +38,17 @@ func (v *validateWrapper) Validator() *validator.Validate {
 	return v.ValidatorInstance
 }
 
-// User, Role name validaion
+func (v *validateWrapper) ValidateStruct(s *interface{}) error {
+	err := v.ValidatorInstance.Struct(s)
+	if err != nil {
+		for _, err := range err.(validator.ValidationErrors) {
+			return errors.New(fmt.Sprintf("Field validation for '%s' failed on the '%s' tag", err.Field(), err.Tag()))
+		}
+	}
+	return nil
+}
+
+// User, Role name validation
 func (v *validateWrapper) NameValidation(fl validator.FieldLevel) bool {
 	name := fl.Field().String()
 
@@ -50,11 +63,28 @@ func (v *validateWrapper) NameValidation(fl validator.FieldLevel) bool {
 }
 
 func (v *validateWrapper) DatetimeValidation(fl validator.FieldLevel) bool {
-
-	_, err := time.Parse(time.RFC3339, fl.Field().String())
-	fmt.Println(err)
-	if err != nil {
+	dateTime, ok := fl.Field().Interface().(time.Time)
+	if !ok {
 		return false
 	}
+
+	// Example: Ensure the time is not zero (i.e., it has been set)
+	if dateTime.IsZero() {
+		return false
+	}
+
+	return true
+}
+
+func (v *validateWrapper) IDValidation(fl validator.FieldLevel) bool {
+	intValue, ok := fl.Field().Interface().(int64)
+	if !ok {
+		return false
+	}
+
+	if intValue < 0 {
+		return false
+	}
+
 	return true
 }

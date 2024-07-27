@@ -2,6 +2,7 @@ package graph
 
 import (
 	"backend/graph/services"
+	"backend/pkg/validator"
 
 	"gorm.io/gorm"
 )
@@ -10,5 +11,5 @@ import (
 type Resolver struct {
 	DB  *gorm.DB
 	Srv services.Services
-	VW  services.ValidateWrapper
+	VW  validator.ValidateWrapper
 }
