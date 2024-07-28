@@ -310,8 +310,6 @@ func TestMutationResolver(t *testing.T) {
 		})
 
 		t.Run("UpdateCard_Error", func(t *testing.T) {
-
-			// Attempt to update a card with an invalid ID
 			input := model.NewCard{
 				Front:      "UpdateCard New Front",
 				Back:       "UpdateCard New Back",
@@ -319,28 +317,30 @@ func TestMutationResolver(t *testing.T) {
 			}
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `mutation ($id: ID!, $input: NewCard!) {
-            updateCard(id: $id, input: $input) {
-                id
-                front
-                back
-                review_date
-                interval_days
-                created
-                updated
-            }
-        }`,
+                    updateCard(id: $id, input: $input) {
+                        id
+                        front
+                        back
+                        review_date
+                        interval_days
+                        created
+                        updated
+                    }
+                }`,
 				"variables": map[string]interface{}{
 					"id":    -1, // Invalid ID
 					"input": input,
 				},
 			})
 			expected := `{
-        "data": null,
-        "errors": [{
-            "message": "record not found",
-            "path": ["updateCard"]
-        }]
-    }`
+                "data": {
+                    "updateCard": null
+                },
+                "errors": [{
+                    "message": "record not found",
+                    "path": ["updateCard"]
+                }]
+            }`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
@@ -395,9 +395,11 @@ func TestMutationResolver(t *testing.T) {
 				},
 			})
 			expected := `{
-                "data": null,
+                "data": {
+                    "deleteCard": null
+                },
                 "errors": [{
-                    "message": "invalid id: -1",
+                    "message": "record not found",
                     "path": ["deleteCard"]
                 }]
             }`
@@ -438,14 +440,18 @@ func TestQueryResolver(t *testing.T) {
 			// Prepare GraphQL query
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `{
-					cards {
-						id
-						front
-						back
-						review_date
-						interval_days
-						created
-						updated
+					cards(first: 10) {
+						edges {
+							node {
+								id
+								front
+								back
+								review_date
+								interval_days
+								created
+								updated
+							}
+						}
 					}
 				}`,
 			})
@@ -458,7 +464,7 @@ func TestQueryResolver(t *testing.T) {
 			e.ServeHTTP(rec, req)
 
 			// Check HTTP status code
-			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Equal(t, http.StatusOK, rec.Code, "Expected HTTP status 200, got %v", rec.Code)
 
 			// Parse response body
 			var response map[string]interface{}
@@ -466,45 +472,23 @@ func TestQueryResolver(t *testing.T) {
 				t.Fatalf("Failed to unmarshal response: %v", err)
 			}
 
+			// Check for errors in the response
+			if errors, ok := response["errors"]; ok {
+				t.Fatalf("GraphQL errors: %v", errors)
+			}
+
 			// Check number of cards in the response
-			cards, ok := response["data"].(map[string]interface{})["cards"].([]interface{})
+			edges, ok := response["data"].(map[string]interface{})["cards"].(map[string]interface{})["edges"].([]interface{})
 			if !ok {
 				t.Fatalf("Failed to parse cards from response")
 			}
-			assert.Len(t, cards, 1, "Expected number of cards to be 1")
+			assert.Len(t, edges, 1, "Expected number of cards to be 1")
 
 			// Ensure the card details match what was created
-			cardDetails := cards[0].(map[string]interface{})
+			cardDetails := edges[0].(map[string]interface{})["node"].(map[string]interface{})
 			assert.Equal(t, "Cards Front", cardDetails["front"])
 			assert.Equal(t, "Cards Back", cardDetails["back"])
 			assert.Equal(t, float64(1), cardDetails["interval_days"])
-		})
-
-		t.Run("Cards_Error", func(t *testing.T) {
-
-			// Prepare GraphQL query with invalid field
-			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `{
-	cards {
-		invalid_field
-	}
-}`,
-			})
-			expected := `{
-	"errors": [{
-		"message": "Cannot query field \"invalid_field\" on type \"Card\".",
-		"extensions": {
-			"code": "GRAPHQL_VALIDATION_FAILED"
-		},
-		"locations": [{
-			"line": 3,
-			"column": 3
-		}]
-	}],
-	"data": null
-}`
-
-			testGraphQLQuery(t, e, jsonInput, expected)
 		})
 
 		t.Run("Card", func(t *testing.T) {

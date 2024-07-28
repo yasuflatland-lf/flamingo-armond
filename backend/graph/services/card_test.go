@@ -217,7 +217,7 @@ func (suite *CardTestSuite) TestCardService() {
 
 		// Assert
 		assert.NoError(suite.T(), err)
-		assert.True(suite.T(), deleted)
+		assert.True(suite.T(), *deleted)
 	})
 
 	suite.Run("Error_CardNotFound_Delete", func() {
@@ -226,7 +226,7 @@ func (suite *CardTestSuite) TestCardService() {
 
 		// Assert
 		assert.Error(suite.T(), err)
-		assert.False(suite.T(), deleted)
+		assert.False(suite.T(), *deleted)
 	})
 
 	suite.Run("Normal_ListCardsByCardGroup", func() {

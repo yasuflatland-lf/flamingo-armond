@@ -187,14 +187,14 @@ func (suite *UserTestSuite) TestUserService() {
 
 		deleted, err := userService.DeleteUser(ctx, createdUser.ID)
 		assert.NoError(t, err)
-		assert.True(t, deleted)
+		assert.True(t, *deleted)
 	})
 
 	suite.Run("Error_DeleteUser", func() {
 
 		deleted, err := userService.DeleteUser(ctx, -1) // Invalid ID
 		assert.NoError(t, err)
-		assert.True(t, deleted)
+		assert.True(t, *deleted)
 	})
 
 	suite.Run("Normal_ListUsers", func() {

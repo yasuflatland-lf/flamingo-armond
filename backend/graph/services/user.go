@@ -11,7 +11,8 @@ import (
 )
 
 type userService struct {
-	db *gorm.DB
+	db           *gorm.DB
+	defaultLimit int
 }
 
 func convertToGormUser(input model.NewUser) *db.User {
@@ -38,12 +39,7 @@ func (s *userService) GetUsersByRole(ctx context.Context, roleID int64) ([]*mode
 	}
 	var gqlUsers []*model.User
 	for _, user := range role.Users {
-		gqlUsers = append(gqlUsers, &model.User{
-			ID:      user.ID,
-			Name:    user.Name,
-			Created: user.Created,
-			Updated: user.Updated,
-		})
+		gqlUsers = append(gqlUsers, convertToUser(user))
 	}
 	return gqlUsers, nil
 }
@@ -58,7 +54,7 @@ func (s *userService) GetUserByID(ctx context.Context, id int64) (*model.User, e
 
 func (s *userService) CreateUser(ctx context.Context, input model.NewUser) (*model.User, error) {
 	gormUser := convertToGormUser(input)
-	result := s.db.WithContext(ctx).Create(&gormUser)
+	result := s.db.WithContext(ctx).Create(gormUser)
 	if result.Error != nil {
 		if strings.Contains(result.Error.Error(), "unique constraint") {
 			return nil, fmt.Errorf("user already exists")
@@ -81,11 +77,13 @@ func (s *userService) UpdateUser(ctx context.Context, id int64, input model.NewU
 	return convertToUser(user), nil
 }
 
-func (s *userService) DeleteUser(ctx context.Context, id int64) (bool, error) {
+func (s *userService) DeleteUser(ctx context.Context, id int64) (*bool, error) {
+	success := true
 	if err := s.db.WithContext(ctx).Delete(&db.User{}, id).Error; err != nil {
-		return false, err
+		success = false
+		return &success, err
 	}
-	return true, nil
+	return &success, nil
 }
 
 func (s *userService) Users(ctx context.Context) ([]*model.User, error) {
@@ -98,4 +96,106 @@ func (s *userService) Users(ctx context.Context) ([]*model.User, error) {
 		gqlUsers = append(gqlUsers, convertToUser(user))
 	}
 	return gqlUsers, nil
+}
+
+func (s *userService) PaginatedUsers(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.UserConnection, error) {
+	var users []db.User
+	query := s.db.WithContext(ctx)
+
+	if after != nil {
+		query = query.Where("id > ?", *after)
+	}
+	if before != nil {
+		query = query.Where("id < ?", *before)
+	}
+	if first != nil {
+		query = query.Order("id asc").Limit(*first)
+	} else if last != nil {
+		query = query.Order("id desc").Limit(*last)
+	} else {
+		query = query.Order("id asc").Limit(s.defaultLimit)
+	}
+
+	if err := query.Find(&users).Error; err != nil {
+		return nil, err
+	}
+
+	var edges []*model.UserEdge
+	var nodes []*model.User
+	for _, user := range users {
+		node := convertToUser(user)
+		edges = append(edges, &model.UserEdge{
+			Cursor: user.ID,
+			Node:   node,
+		})
+		nodes = append(nodes, node)
+	}
+
+	pageInfo := &model.PageInfo{}
+	if len(users) > 0 {
+		pageInfo.HasNextPage = len(users) == s.defaultLimit
+		pageInfo.HasPreviousPage = len(users) == s.defaultLimit
+		if len(edges) > 0 {
+			pageInfo.StartCursor = &edges[0].Cursor
+			pageInfo.EndCursor = &edges[len(edges)-1].Cursor
+		}
+	}
+
+	return &model.UserConnection{
+		Edges:      edges,
+		Nodes:      nodes,
+		PageInfo:   pageInfo,
+		TotalCount: len(users),
+	}, nil
+}
+
+func (s *userService) PaginatedUsersByRole(ctx context.Context, roleID int64, first *int, after *int64, last *int, before *int64) (*model.UserConnection, error) {
+	var users []db.User
+	query := s.db.WithContext(ctx).Model(&db.Role{ID: roleID})
+
+	if after != nil {
+		query = query.Where("id > ?", *after)
+	}
+	if before != nil {
+		query = query.Where("id < ?", *before)
+	}
+	if first != nil {
+		query = query.Order("id asc").Limit(*first)
+	} else if last != nil {
+		query = query.Order("id desc").Limit(*last)
+	} else {
+		query = query.Order("id asc").Limit(s.defaultLimit)
+	}
+
+	if err := query.Association("Users").Find(&users).Error; err != nil {
+		return nil, fmt.Errorf("error %+v", err())
+	}
+
+	var edges []*model.UserEdge
+	var nodes []*model.User
+	for _, user := range users {
+		node := convertToUser(user)
+		edges = append(edges, &model.UserEdge{
+			Cursor: user.ID,
+			Node:   node,
+		})
+		nodes = append(nodes, node)
+	}
+
+	pageInfo := &model.PageInfo{}
+	if len(users) > 0 {
+		pageInfo.HasNextPage = len(users) == s.defaultLimit
+		pageInfo.HasPreviousPage = len(users) == s.defaultLimit
+		if len(edges) > 0 {
+			pageInfo.StartCursor = &edges[0].Cursor
+			pageInfo.EndCursor = &edges[len(edges)-1].Cursor
+		}
+	}
+
+	return &model.UserConnection{
+		Edges:      edges,
+		Nodes:      nodes,
+		PageInfo:   pageInfo,
+		TotalCount: len(users),
+	}, nil
 }

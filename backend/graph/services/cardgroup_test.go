@@ -149,7 +149,7 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 		deleted, err := cardGroupService.DeleteCardGroup(context.Background(), createdGroup.ID)
 
 		assert.NoError(t, err)
-		assert.True(t, deleted)
+		assert.True(t, *deleted)
 	})
 
 	suite.Run("Error_DeleteCardGroup", func() {
@@ -157,7 +157,7 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 		deleted, err := cardGroupService.DeleteCardGroup(context.Background(), -1) // Invalid ID
 
 		assert.Error(t, err)
-		assert.False(t, deleted)
+		assert.False(t, *deleted)
 	})
 
 	suite.Run("Normal_ListCardGroups", func() {

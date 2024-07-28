@@ -133,15 +133,15 @@ func (suite *RoleTestSuite) TestRoleService() {
 		deleted, err := roleService.DeleteRole(ctx, createdRole.ID)
 
 		assert.NoError(t, err)
-		assert.True(t, deleted)
+		assert.True(t, *deleted)
 	})
 
 	suite.Run("Error_DeleteRole", func() {
 
 		deleted, err := roleService.DeleteRole(ctx, -1) // Invalid ID
 
-		assert.NoError(t, err)
-		assert.True(t, deleted)
+		assert.Error(t, err)
+		assert.False(t, *deleted)
 	})
 
 	suite.Run("Normal_AssignRoleToUser", func() {

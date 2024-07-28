@@ -18,9 +18,11 @@ type CardService interface {
 	GetCardByID(ctx context.Context, id int64) (*model.Card, error)
 	CreateCard(ctx context.Context, input model.NewCard) (*model.Card, error)
 	UpdateCard(ctx context.Context, id int64, input model.NewCard) (*model.Card, error)
-	DeleteCard(ctx context.Context, id int64) (bool, error)
+	DeleteCard(ctx context.Context, id int64) (*bool, error)
 	Cards(ctx context.Context) ([]*model.Card, error)
 	CardsByCardGroup(ctx context.Context, cardGroupID int64) ([]*model.Card, error)
+	PaginatedCards(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.CardConnection, error)
+	PaginatedCardsByCardGroup(ctx context.Context, cardGroupID int64, first *int, after *int64, last *int, before *int64) (*model.CardConnection, error)
 }
 
 type CardGroupService interface {
@@ -28,10 +30,12 @@ type CardGroupService interface {
 	CreateCardGroup(ctx context.Context, input model.NewCardGroup) (*model.CardGroup, error)
 	CardGroups(ctx context.Context) ([]*model.CardGroup, error)
 	UpdateCardGroup(ctx context.Context, id int64, input model.NewCardGroup) (*model.CardGroup, error)
-	DeleteCardGroup(ctx context.Context, id int64) (bool, error)
+	DeleteCardGroup(ctx context.Context, id int64) (*bool, error)
 	AddUserToCardGroup(ctx context.Context, userID int64, cardGroupID int64) (*model.CardGroup, error)
 	RemoveUserFromCardGroup(ctx context.Context, userID int64, cardGroupID int64) (*model.CardGroup, error)
 	GetCardGroupsByUser(ctx context.Context, userID int64) ([]*model.CardGroup, error)
+	PaginatedCardGroups(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.CardGroupConnection, error)
+	PaginatedCardGroupsByUser(ctx context.Context, userID int64, first *int, after *int64, last *int, before *int64) (*model.CardGroupConnection, error)
 }
 
 type UserService interface {
@@ -40,7 +44,9 @@ type UserService interface {
 	GetUserByID(ctx context.Context, id int64) (*model.User, error)
 	CreateUser(ctx context.Context, input model.NewUser) (*model.User, error)
 	UpdateUser(ctx context.Context, id int64, input model.NewUser) (*model.User, error)
-	DeleteUser(ctx context.Context, id int64) (bool, error)
+	DeleteUser(ctx context.Context, id int64) (*bool, error)
+	PaginatedUsers(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.UserConnection, error)
+	PaginatedUsersByRole(ctx context.Context, roleID int64, first *int, after *int64, last *int, before *int64) (*model.UserConnection, error)
 }
 
 type RoleService interface {
@@ -48,10 +54,11 @@ type RoleService interface {
 	GetRoleByID(ctx context.Context, id int64) (*model.Role, error)
 	CreateRole(ctx context.Context, input model.NewRole) (*model.Role, error)
 	UpdateRole(ctx context.Context, id int64, input model.NewRole) (*model.Role, error)
-	DeleteRole(ctx context.Context, id int64) (bool, error)
+	DeleteRole(ctx context.Context, id int64) (*bool, error)
 	AssignRoleToUser(ctx context.Context, userID int64, roleID int64) (*model.User, error)
 	RemoveRoleFromUser(ctx context.Context, userID int64, roleID int64) (*model.User, error)
 	Roles(ctx context.Context) ([]*model.Role, error)
+	PaginatedRoles(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.RoleConnection, error)
 }
 
 type services struct {
@@ -63,9 +70,9 @@ type services struct {
 
 func New(db *gorm.DB) Services {
 	return &services{
-		cardService:      &cardService{db: db},
-		cardGroupService: &cardGroupService{db: db},
-		userService:      &userService{db: db},
-		roleService:      &roleService{db: db},
+		cardService:      &cardService{db: db, defaultLimit: 20},
+		cardGroupService: &cardGroupService{db: db, defaultLimit: 20},
+		userService:      &userService{db: db, defaultLimit: 20},
+		roleService:      &roleService{db: db, defaultLimit: 20},
 	}
 }

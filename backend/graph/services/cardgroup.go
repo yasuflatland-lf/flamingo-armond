@@ -1,6 +1,5 @@
 package services
 
-import "C"
 import (
 	repository "backend/graph/db"
 	"backend/graph/model"
@@ -12,7 +11,8 @@ import (
 )
 
 type cardGroupService struct {
-	db *gorm.DB
+	db           *gorm.DB
+	defaultLimit int
 }
 
 func convertToGormCardGroup(input model.NewCardGroup) *repository.Cardgroup {
@@ -56,12 +56,7 @@ func (s *cardGroupService) CardGroups(ctx context.Context) ([]*model.CardGroup, 
 	}
 	var gqlCardGroups []*model.CardGroup
 	for _, cardGroup := range cardGroups {
-		gqlCardGroups = append(gqlCardGroups, &model.CardGroup{
-			ID:      cardGroup.ID,
-			Name:    cardGroup.Name,
-			Created: cardGroup.Created,
-			Updated: cardGroup.Updated,
-		})
+		gqlCardGroups = append(gqlCardGroups, convertToCardGroup(cardGroup))
 	}
 	return gqlCardGroups, nil
 }
@@ -79,15 +74,17 @@ func (s *cardGroupService) UpdateCardGroup(ctx context.Context, id int64, input 
 	return convertToCardGroup(cardGroup), nil
 }
 
-func (s *cardGroupService) DeleteCardGroup(ctx context.Context, id int64) (bool, error) {
+func (s *cardGroupService) DeleteCardGroup(ctx context.Context, id int64) (*bool, error) {
+	success := false
 	result := s.db.WithContext(ctx).Delete(&repository.Cardgroup{}, id)
 	if result.Error != nil {
-		return false, result.Error
+		return &success, result.Error
 	}
 	if result.RowsAffected == 0 {
-		return false, fmt.Errorf("record not found")
+		return &success, fmt.Errorf("record not found")
 	}
-	return true, nil
+	success = true
+	return &success, nil
 }
 
 func (s *cardGroupService) AddUserToCardGroup(ctx context.Context, userID int64, cardGroupID int64) (*model.CardGroup, error) {
@@ -127,12 +124,109 @@ func (s *cardGroupService) GetCardGroupsByUser(ctx context.Context, userID int64
 	}
 	var gqlCardGroups []*model.CardGroup
 	for _, group := range user.CardGroups {
-		gqlCardGroups = append(gqlCardGroups, &model.CardGroup{
-			ID:      group.ID,
-			Name:    group.Name,
-			Created: group.Created,
-			Updated: group.Updated,
-		})
+		gqlCardGroups = append(gqlCardGroups, convertToCardGroup(group))
 	}
 	return gqlCardGroups, nil
+}
+
+func (s *cardGroupService) PaginatedCardGroups(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.CardGroupConnection, error) {
+	var cardGroups []repository.Cardgroup
+	query := s.db.WithContext(ctx)
+
+	if after != nil {
+		query = query.Where("id > ?", *after)
+	}
+	if before != nil {
+		query = query.Where("id < ?", *before)
+	}
+	if first != nil {
+		query = query.Order("id asc").Limit(*first)
+	} else if last != nil {
+		query = query.Order("id desc").Limit(*last)
+	} else {
+		query = query.Order("id asc").Limit(s.defaultLimit)
+	}
+
+	if err := query.Find(&cardGroups).Error; err != nil {
+		return nil, err
+	}
+
+	var edges []*model.CardGroupEdge
+	var nodes []*model.CardGroup
+	for _, cardGroup := range cardGroups {
+		node := convertToCardGroup(cardGroup)
+		edges = append(edges, &model.CardGroupEdge{
+			Cursor: cardGroup.ID,
+			Node:   node,
+		})
+		nodes = append(nodes, node)
+	}
+
+	pageInfo := &model.PageInfo{}
+	if len(cardGroups) > 0 {
+		pageInfo.HasNextPage = len(cardGroups) == s.defaultLimit
+		pageInfo.HasPreviousPage = len(cardGroups) == s.defaultLimit
+		if len(edges) > 0 {
+			pageInfo.StartCursor = &edges[0].Cursor
+			pageInfo.EndCursor = &edges[len(edges)-1].Cursor
+		}
+	}
+
+	return &model.CardGroupConnection{
+		Edges:      edges,
+		Nodes:      nodes,
+		PageInfo:   pageInfo,
+		TotalCount: len(cardGroups),
+	}, nil
+}
+
+func (s *cardGroupService) PaginatedCardGroupsByUser(ctx context.Context, userID int64, first *int, after *int64, last *int, before *int64) (*model.CardGroupConnection, error) {
+	var cardGroups []repository.Cardgroup
+	query := s.db.WithContext(ctx).Model(&repository.User{ID: userID})
+
+	if after != nil {
+		query = query.Where("id > ?", *after)
+	}
+	if before != nil {
+		query = query.Where("id < ?", *before)
+	}
+	if first != nil {
+		query = query.Order("id asc").Limit(*first)
+	} else if last != nil {
+		query = query.Order("id desc").Limit(*last)
+	} else {
+		query = query.Order("id asc").Limit(s.defaultLimit)
+	}
+
+	if err := query.Association("CardGroups").Find(&cardGroups).Error; err != nil {
+		return nil, fmt.Errorf("error %+v", err())
+	}
+
+	var edges []*model.CardGroupEdge
+	var nodes []*model.CardGroup
+	for _, cardGroup := range cardGroups {
+		node := convertToCardGroup(cardGroup)
+		edges = append(edges, &model.CardGroupEdge{
+			Cursor: cardGroup.ID,
+			Node:   node,
+		})
+		nodes = append(nodes, node)
+	}
+
+	pageInfo := &model.PageInfo{}
+	if len(cardGroups) > 0 {
+		pageInfo.HasNextPage = len(cardGroups) == s.defaultLimit
+		pageInfo.HasPreviousPage = len(cardGroups) == s.defaultLimit
+		if len(edges) > 0 {
+			pageInfo.StartCursor = &edges[0].Cursor
+			pageInfo.EndCursor = &edges[len(edges)-1].Cursor
+		}
+	}
+
+	return &model.CardGroupConnection{
+		Edges:      edges,
+		Nodes:      nodes,
+		PageInfo:   pageInfo,
+		TotalCount: len(cardGroups),
+	}, nil
 }

@@ -4,7 +4,18 @@ directive @validation(
   format: String
 ) on INPUT_FIELD_DEFINITION | ARGUMENT_DEFINITION | FIELD_DEFINITION
 
-type Card {
+interface Node {
+  id: ID!
+}
+
+type PageInfo {
+  endCursor: ID
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: ID
+}
+
+type Card implements Node {
   id: ID!
   front: String! @validation(format: "required,min=1")
   back: String! @validation(format: "required,min=1")
@@ -15,30 +26,78 @@ type Card {
   cardGroup: CardGroup!
 }
 
-type CardGroup {
+type CardGroup implements Node {
   id: ID!
   name: String! @validation(format: "required,fl_name,min=1")
   created: Time!
   updated: Time!
-  cards: [Card!]!
-  users: [User!]!
+  cards(first: Int, after: ID, last: Int, before: ID): CardConnection!
+  users(first: Int, after: ID, last: Int, before: ID): UserConnection!
 }
 
-type Role {
-  id: ID!
-  name: String! @validation(format: "required,fl_name,min=1")
-  created: Time!
-  updated: Time!
-  users: [User!]!
+type CardEdge {
+  cursor: ID!
+  node: Card!
 }
 
-type User {
+type CardConnection {
+  edges: [CardEdge]
+  nodes: [Card]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type UserEdge {
+  cursor: ID!
+  node: User!
+}
+
+type UserConnection {
+  edges: [UserEdge]
+  nodes: [User]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type Role implements Node {
   id: ID!
   name: String! @validation(format: "required,fl_name,min=1")
   created: Time!
   updated: Time!
-  cardGroups: [CardGroup!]!
-  roles: [Role!]!
+  users(first: Int, after: ID, last: Int, before: ID): UserConnection!
+}
+
+type User implements Node {
+  id: ID!
+  name: String! @validation(format: "required,fl_name,min=1")
+  created: Time!
+  updated: Time!
+  cardGroups(first: Int, after: ID, last: Int, before: ID): CardGroupConnection!
+  roles(first: Int, after: ID, last: Int, before: ID): RoleConnection!
+}
+
+type RoleEdge {
+  cursor: ID!
+  node: Role!
+}
+
+type RoleConnection {
+  edges: [RoleEdge]
+  nodes: [Role]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type CardGroupEdge {
+  cursor: ID!
+  node: CardGroup!
+}
+
+type CardGroupConnection {
+  edges: [CardGroupEdge]
+  nodes: [CardGroup]
+  pageInfo: PageInfo!
+  totalCount: Int!
 }
 
 input NewCard {
@@ -73,35 +132,35 @@ input NewRole {
 }
 
 type Query {
-  cards: [Card!]!
-  card(id: ID!): Card
-  cardGroups: [CardGroup!]!
-  cardGroup(id: ID!): CardGroup
-  roles: [Role!]!
-  role(id: ID!): Role
-  users: [User!]!
-  user(id: ID!): User
-  cardsByCardGroup(cardGroupId: ID!): [Card!]!
-  userRole(userId: ID!): Role
-  cardGroupsByUser(userId: ID!): [CardGroup!]!
-  usersByRole(roleId: ID!): [User!]!
+    cards(first: Int, after: ID, last: Int, before: ID): CardConnection
+    card(id: ID!): Card
+    cardGroups(first: Int, after: ID, last: Int, before: ID): CardGroupConnection
+    cardGroup(id: ID!): CardGroup
+    roles(first: Int, after: ID, last: Int, before: ID): RoleConnection
+    role(id: ID!): Role
+    users(first: Int, after: ID, last: Int, before: ID): UserConnection
+    user(id: ID!): User
+    cardsByCardGroup(cardGroupID: ID!, first: Int, after: ID, last: Int, before: ID): CardConnection
+    userRole(userID: ID!): Role
+    cardGroupsByUser(userID: ID!, first: Int, after: ID, last: Int, before: ID): CardGroupConnection
+    usersByRole(roleID: ID!, first: Int, after: ID, last: Int, before: ID): UserConnection
 }
-
+# Mutation Type
 type Mutation {
-  createCard(input: NewCard!): Card!
-  updateCard(id: ID!, input: NewCard!): Card!
-  deleteCard(id: ID!): Boolean!
-  createCardGroup(input: NewCardGroup!): CardGroup!
-  updateCardGroup(id: ID!, input: NewCardGroup!): CardGroup!
-  deleteCardGroup(id: ID!): Boolean!
-  createUser(input: NewUser!): User!
-  updateUser(id: ID!, input: NewUser!): User!
-  deleteUser(id: ID!): Boolean!
-  createRole(input: NewRole!): Role!
-  updateRole(id: ID!, input: NewRole!): Role!
-  deleteRole(id: ID!): Boolean!
-  addUserToCardGroup(userId: ID!, cardGroupId: ID!): CardGroup!
-  removeUserFromCardGroup(userId: ID!, cardGroupId: ID!): CardGroup!
-  assignRoleToUser(userId: ID!, roleId: ID!): User!
-  removeRoleFromUser(userId: ID!, roleId: ID!): User!
+  createCard(input: NewCard!): Card
+  updateCard(id: ID!, input: NewCard!): Card
+  deleteCard(id: ID!): Boolean
+  createCardGroup(input: NewCardGroup!): CardGroup
+  updateCardGroup(id: ID!, input: NewCardGroup!): CardGroup
+  deleteCardGroup(id: ID!): Boolean
+  createUser(input: NewUser!): User
+  updateUser(id: ID!, input: NewUser!): User
+  deleteUser(id: ID!): Boolean
+  createRole(input: NewRole!): Role
+  updateRole(id: ID!, input: NewRole!): Role
+  deleteRole(id: ID!): Boolean
+  addUserToCardGroup(userID: ID!, cardGroupID: ID!): CardGroup
+  removeUserFromCardGroup(userID: ID!, cardGroupID: ID!): CardGroup
+  assignRoleToUser(userID: ID!, roleID: ID!): User
+  removeRoleFromUser(userID: ID!, roleID: ID!): User
 }

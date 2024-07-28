@@ -12,7 +12,8 @@ import (
 )
 
 type cardService struct {
-	db *gorm.DB
+	db           *gorm.DB
+	defaultLimit int
 }
 
 func convertToGormCard(input model.NewCard) *repository.Card {
@@ -88,15 +89,18 @@ func (s *cardService) UpdateCard(ctx context.Context, id int64, input model.NewC
 	return convertToCard(card), nil
 }
 
-func (s *cardService) DeleteCard(ctx context.Context, id int64) (bool, error) {
+func (s *cardService) DeleteCard(ctx context.Context, id int64) (*bool, error) {
 	result := s.db.WithContext(ctx).Delete(&repository.Card{}, id)
 	if result.Error != nil {
-		return false, result.Error
+		return nil, result.Error
 	}
-	if result.RowsAffected == 0 {
-		return false, fmt.Errorf("record not found")
+
+	success := result.RowsAffected > 0
+	if !success {
+		return &success, fmt.Errorf("record not found")
 	}
-	return true, nil
+
+	return &success, nil
 }
 
 func (s *cardService) Cards(ctx context.Context) ([]*model.Card, error) {
@@ -121,4 +125,106 @@ func (s *cardService) CardsByCardGroup(ctx context.Context, cardGroupID int64) (
 		gqlCards = append(gqlCards, convertToCard(card))
 	}
 	return gqlCards, nil
+}
+
+func (s *cardService) PaginatedCards(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.CardConnection, error) {
+	var cards []repository.Card
+	query := s.db.WithContext(ctx)
+
+	if after != nil {
+		query = query.Where("id > ?", *after)
+	}
+	if before != nil {
+		query = query.Where("id < ?", *before)
+	}
+	if first != nil {
+		query = query.Order("id asc").Limit(*first)
+	} else if last != nil {
+		query = query.Order("id desc").Limit(*last)
+	} else {
+		query = query.Order("id asc").Limit(s.defaultLimit)
+	}
+
+	if err := query.Find(&cards).Error; err != nil {
+		return nil, err
+	}
+
+	var edges []*model.CardEdge
+	var nodes []*model.Card
+	for _, card := range cards {
+		node := convertToCard(card)
+		edges = append(edges, &model.CardEdge{
+			Cursor: card.ID,
+			Node:   node,
+		})
+		nodes = append(nodes, node)
+	}
+
+	pageInfo := &model.PageInfo{}
+	if len(cards) > 0 {
+		pageInfo.HasNextPage = len(cards) == s.defaultLimit
+		pageInfo.HasPreviousPage = len(cards) == s.defaultLimit
+		if len(edges) > 0 {
+			pageInfo.StartCursor = &edges[0].Cursor
+			pageInfo.EndCursor = &edges[len(edges)-1].Cursor
+		}
+	}
+
+	return &model.CardConnection{
+		Edges:      edges,
+		Nodes:      nodes,
+		PageInfo:   pageInfo,
+		TotalCount: len(cards),
+	}, nil
+}
+
+func (s *cardService) PaginatedCardsByCardGroup(ctx context.Context, cardGroupID int64, first *int, after *int64, last *int, before *int64) (*model.CardConnection, error) {
+	var cards []repository.Card
+	query := s.db.WithContext(ctx).Where("cardgroup_id = ?", cardGroupID)
+
+	if after != nil {
+		query = query.Where("id > ?", *after)
+	}
+	if before != nil {
+		query = query.Where("id < ?", *before)
+	}
+	if first != nil {
+		query = query.Order("id asc").Limit(*first)
+	} else if last != nil {
+		query = query.Order("id desc").Limit(*last)
+	} else {
+		query = query.Order("id asc").Limit(s.defaultLimit)
+	}
+
+	if err := query.Find(&cards).Error; err != nil {
+		return nil, err
+	}
+
+	var edges []*model.CardEdge
+	var nodes []*model.Card
+	for _, card := range cards {
+		node := convertToCard(card)
+		edges = append(edges, &model.CardEdge{
+			Cursor: card.ID,
+			Node:   node,
+		})
+		nodes = append(nodes, node)
+	}
+
+	pageInfo := &model.PageInfo{}
+	if len(cards) > 0 {
+		pageInfo.HasNextPage = len(cards) == s.defaultLimit
+		pageInfo.HasPreviousPage = len(cards) == s.defaultLimit
+		if len(edges) > 0 {
+			pageInfo.StartCursor = &edges[0].Cursor
+			pageInfo.EndCursor = &edges[len(edges)-1].Cursor
+		}
+	}
+
+	return &model.CardConnection{
+		Edges:      edges,
+		Nodes:      nodes,
+		PageInfo:   pageInfo,
+		TotalCount: len(cards),
+	}, nil
 }
