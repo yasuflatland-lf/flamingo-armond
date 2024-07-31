@@ -199,3 +199,11 @@ func (s *userService) PaginatedUsersByRole(ctx context.Context, roleID int64, fi
 		TotalCount: len(users),
 	}, nil
 }
+
+func (s *userService) GetUsersByIDs(ctx context.Context, ids []int64) ([]*model.User, error) {
+	var users []*model.User
+	if err := s.db.Where("id IN ?", ids).Find(&users).Error; err != nil {
+		return nil, err
+	}
+	return users, nil
+}

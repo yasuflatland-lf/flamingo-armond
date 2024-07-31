@@ -6,9 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"gorm.io/gorm"
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type cardService struct {
@@ -227,4 +228,12 @@ func (s *cardService) PaginatedCardsByCardGroup(ctx context.Context, cardGroupID
 		PageInfo:   pageInfo,
 		TotalCount: len(cards),
 	}, nil
+}
+
+func (s *cardService) GetCardsByIDs(ctx context.Context, ids []int64) ([]*model.Card, error) {
+	var cards []*model.Card
+	if err := s.db.Where("id IN ?", ids).Find(&cards).Error; err != nil {
+		return nil, err
+	}
+	return cards, nil
 }

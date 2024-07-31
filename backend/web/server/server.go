@@ -40,9 +40,10 @@ func NewRouter(db *gorm.DB) *echo.Echo {
 
 	// Create a new resolver
 	resolver := &graph.Resolver{
-		DB:  db,
-		Srv: service,
-		VW:  validateWrapper,
+		DB:      db,
+		Srv:     service,
+		VW:      validateWrapper,
+		Loaders: graph.NewLoaders(service),
 	}
 
 	srv := handler.NewDefaultServer(graph.NewExecutableSchema(graph.Config{Resolvers: resolver}))

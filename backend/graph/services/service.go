@@ -23,6 +23,7 @@ type CardService interface {
 	CardsByCardGroup(ctx context.Context, cardGroupID int64) ([]*model.Card, error)
 	PaginatedCards(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.CardConnection, error)
 	PaginatedCardsByCardGroup(ctx context.Context, cardGroupID int64, first *int, after *int64, last *int, before *int64) (*model.CardConnection, error)
+	GetCardsByIDs(ctx context.Context, ids []int64) ([]*model.Card, error)
 }
 
 type CardGroupService interface {
@@ -36,6 +37,7 @@ type CardGroupService interface {
 	GetCardGroupsByUser(ctx context.Context, userID int64) ([]*model.CardGroup, error)
 	PaginatedCardGroups(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.CardGroupConnection, error)
 	PaginatedCardGroupsByUser(ctx context.Context, userID int64, first *int, after *int64, last *int, before *int64) (*model.CardGroupConnection, error)
+	GetCardGroupsByIDs(ctx context.Context, ids []int64) ([]*model.CardGroup, error)
 }
 
 type UserService interface {
@@ -47,6 +49,7 @@ type UserService interface {
 	DeleteUser(ctx context.Context, id int64) (*bool, error)
 	PaginatedUsers(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.UserConnection, error)
 	PaginatedUsersByRole(ctx context.Context, roleID int64, first *int, after *int64, last *int, before *int64) (*model.UserConnection, error)
+	GetUsersByIDs(ctx context.Context, ids []int64) ([]*model.User, error)
 }
 
 type RoleService interface {
@@ -59,6 +62,7 @@ type RoleService interface {
 	RemoveRoleFromUser(ctx context.Context, userID int64, roleID int64) (*model.User, error)
 	Roles(ctx context.Context) ([]*model.Role, error)
 	PaginatedRoles(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.RoleConnection, error)
+	GetRolesByIDs(ctx context.Context, ids []int64) ([]*model.Role, error)
 }
 
 type services struct {

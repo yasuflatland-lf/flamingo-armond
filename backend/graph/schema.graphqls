@@ -132,13 +132,13 @@ input NewRole {
 }
 
 type Query {
-    cards(first: Int, after: ID, last: Int, before: ID): CardConnection
+#    cards(first: Int, after: ID, last: Int, before: ID): CardConnection
+#    users(first: Int, after: ID, last: Int, before: ID): UserConnection
+#    cardGroups(first: Int, after: ID, last: Int, before: ID): CardGroupConnection
+#    roles(first: Int, after: ID, last: Int, before: ID): RoleConnection
     card(id: ID!): Card
-    cardGroups(first: Int, after: ID, last: Int, before: ID): CardGroupConnection
     cardGroup(id: ID!): CardGroup
-    roles(first: Int, after: ID, last: Int, before: ID): RoleConnection
     role(id: ID!): Role
-    users(first: Int, after: ID, last: Int, before: ID): UserConnection
     user(id: ID!): User
     cardsByCardGroup(cardGroupID: ID!, first: Int, after: ID, last: Int, before: ID): CardConnection
     userRole(userID: ID!): Role

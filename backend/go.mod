@@ -7,6 +7,7 @@ require (
 	github.com/caarlos0/env/v11 v11.1.0
 	github.com/go-playground/validator/v10 v10.22.0
 	github.com/gorilla/websocket v1.5.0
+	github.com/graph-gophers/dataloader/v7 v7.1.0
 	github.com/labstack/echo/v4 v4.12.0
 	github.com/labstack/gommon v0.4.2
 	github.com/pkg/errors v0.9.1
@@ -14,7 +15,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.31.0
 	github.com/vektah/gqlparser/v2 v2.5.16
 	golang.org/x/net v0.26.0
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
+	golang.org/x/xerrors v0.0.0-20220609144429-65e65417b02f
 	gorm.io/driver/postgres v1.5.9
 	gorm.io/gorm v1.25.10
 )

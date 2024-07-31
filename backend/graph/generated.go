@@ -40,8 +40,12 @@ type Config struct {
 }
 
 type ResolverRoot interface {
+	Card() CardResolver
+	CardGroup() CardGroupResolver
 	Mutation() MutationResolver
 	Query() QueryResolver
+	Role() RoleResolver
+	User() UserResolver
 }
 
 type DirectiveRoot struct {
@@ -121,15 +125,11 @@ type ComplexityRoot struct {
 	Query struct {
 		Card             func(childComplexity int, id int64) int
 		CardGroup        func(childComplexity int, id int64) int
-		CardGroups       func(childComplexity int, first *int, after *int64, last *int, before *int64) int
 		CardGroupsByUser func(childComplexity int, userID int64, first *int, after *int64, last *int, before *int64) int
-		Cards            func(childComplexity int, first *int, after *int64, last *int, before *int64) int
 		CardsByCardGroup func(childComplexity int, cardGroupID int64, first *int, after *int64, last *int, before *int64) int
 		Role             func(childComplexity int, id int64) int
-		Roles            func(childComplexity int, first *int, after *int64, last *int, before *int64) int
 		User             func(childComplexity int, id int64) int
 		UserRole         func(childComplexity int, userID int64) int
-		Users            func(childComplexity int, first *int, after *int64, last *int, before *int64) int
 		UsersByRole      func(childComplexity int, roleID int64, first *int, after *int64, last *int, before *int64) int
 	}
 
@@ -175,6 +175,13 @@ type ComplexityRoot struct {
 	}
 }
 
+type CardResolver interface {
+	CardGroup(ctx context.Context, obj *model.Card) (*model.CardGroup, error)
+}
+type CardGroupResolver interface {
+	Cards(ctx context.Context, obj *model.CardGroup, first *int, after *int64, last *int, before *int64) (*model.CardConnection, error)
+	Users(ctx context.Context, obj *model.CardGroup, first *int, after *int64, last *int, before *int64) (*model.UserConnection, error)
+}
 type MutationResolver interface {
 	CreateCard(ctx context.Context, input model.NewCard) (*model.Card, error)
 	UpdateCard(ctx context.Context, id int64, input model.NewCard) (*model.Card, error)
@@ -194,18 +201,21 @@ type MutationResolver interface {
 	RemoveRoleFromUser(ctx context.Context, userID int64, roleID int64) (*model.User, error)
 }
 type QueryResolver interface {
-	Cards(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.CardConnection, error)
 	Card(ctx context.Context, id int64) (*model.Card, error)
-	CardGroups(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.CardGroupConnection, error)
 	CardGroup(ctx context.Context, id int64) (*model.CardGroup, error)
-	Roles(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.RoleConnection, error)
 	Role(ctx context.Context, id int64) (*model.Role, error)
-	Users(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.UserConnection, error)
 	User(ctx context.Context, id int64) (*model.User, error)
 	CardsByCardGroup(ctx context.Context, cardGroupID int64, first *int, after *int64, last *int, before *int64) (*model.CardConnection, error)
 	UserRole(ctx context.Context, userID int64) (*model.Role, error)
 	CardGroupsByUser(ctx context.Context, userID int64, first *int, after *int64, last *int, before *int64) (*model.CardGroupConnection, error)
 	UsersByRole(ctx context.Context, roleID int64, first *int, after *int64, last *int, before *int64) (*model.UserConnection, error)
+}
+type RoleResolver interface {
+	Users(ctx context.Context, obj *model.Role, first *int, after *int64, last *int, before *int64) (*model.UserConnection, error)
+}
+type UserResolver interface {
+	CardGroups(ctx context.Context, obj *model.User, first *int, after *int64, last *int, before *int64) (*model.CardGroupConnection, error)
+	Roles(ctx context.Context, obj *model.User, first *int, after *int64, last *int, before *int64) (*model.RoleConnection, error)
 }
 
 type executableSchema struct {
@@ -663,18 +673,6 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.CardGroup(childComplexity, args["id"].(int64)), true
 
-	case "Query.cardGroups":
-		if e.complexity.Query.CardGroups == nil {
-			break
-		}
-
-		args, err := ec.field_Query_cardGroups_args(context.TODO(), rawArgs)
-		if err != nil {
-			return 0, false
-		}
-
-		return e.complexity.Query.CardGroups(childComplexity, args["first"].(*int), args["after"].(*int64), args["last"].(*int), args["before"].(*int64)), true
-
 	case "Query.cardGroupsByUser":
 		if e.complexity.Query.CardGroupsByUser == nil {
 			break
@@ -686,18 +684,6 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Query.CardGroupsByUser(childComplexity, args["userID"].(int64), args["first"].(*int), args["after"].(*int64), args["last"].(*int), args["before"].(*int64)), true
-
-	case "Query.cards":
-		if e.complexity.Query.Cards == nil {
-			break
-		}
-
-		args, err := ec.field_Query_cards_args(context.TODO(), rawArgs)
-		if err != nil {
-			return 0, false
-		}
-
-		return e.complexity.Query.Cards(childComplexity, args["first"].(*int), args["after"].(*int64), args["last"].(*int), args["before"].(*int64)), true
 
 	case "Query.cardsByCardGroup":
 		if e.complexity.Query.CardsByCardGroup == nil {
@@ -723,18 +709,6 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.Role(childComplexity, args["id"].(int64)), true
 
-	case "Query.roles":
-		if e.complexity.Query.Roles == nil {
-			break
-		}
-
-		args, err := ec.field_Query_roles_args(context.TODO(), rawArgs)
-		if err != nil {
-			return 0, false
-		}
-
-		return e.complexity.Query.Roles(childComplexity, args["first"].(*int), args["after"].(*int64), args["last"].(*int), args["before"].(*int64)), true
-
 	case "Query.user":
 		if e.complexity.Query.User == nil {
 			break
@@ -758,18 +732,6 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Query.UserRole(childComplexity, args["userID"].(int64)), true
-
-	case "Query.users":
-		if e.complexity.Query.Users == nil {
-			break
-		}
-
-		args, err := ec.field_Query_users_args(context.TODO(), rawArgs)
-		if err != nil {
-			return 0, false
-		}
-
-		return e.complexity.Query.Users(childComplexity, args["first"].(*int), args["after"].(*int64), args["last"].(*int), args["before"].(*int64)), true
 
 	case "Query.usersByRole":
 		if e.complexity.Query.UsersByRole == nil {
@@ -1564,48 +1526,6 @@ func (ec *executionContext) field_Query_cardGroupsByUser_args(ctx context.Contex
 	return args, nil
 }
 
-func (ec *executionContext) field_Query_cardGroups_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
-	var err error
-	args := map[string]interface{}{}
-	var arg0 *int
-	if tmp, ok := rawArgs["first"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("first"))
-		arg0, err = ec.unmarshalOInt2ᚖint(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["first"] = arg0
-	var arg1 *int64
-	if tmp, ok := rawArgs["after"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("after"))
-		arg1, err = ec.unmarshalOID2ᚖint64(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["after"] = arg1
-	var arg2 *int
-	if tmp, ok := rawArgs["last"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("last"))
-		arg2, err = ec.unmarshalOInt2ᚖint(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["last"] = arg2
-	var arg3 *int64
-	if tmp, ok := rawArgs["before"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("before"))
-		arg3, err = ec.unmarshalOID2ᚖint64(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["before"] = arg3
-	return args, nil
-}
-
 func (ec *executionContext) field_Query_card_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
@@ -1672,48 +1592,6 @@ func (ec *executionContext) field_Query_cardsByCardGroup_args(ctx context.Contex
 	return args, nil
 }
 
-func (ec *executionContext) field_Query_cards_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
-	var err error
-	args := map[string]interface{}{}
-	var arg0 *int
-	if tmp, ok := rawArgs["first"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("first"))
-		arg0, err = ec.unmarshalOInt2ᚖint(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["first"] = arg0
-	var arg1 *int64
-	if tmp, ok := rawArgs["after"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("after"))
-		arg1, err = ec.unmarshalOID2ᚖint64(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["after"] = arg1
-	var arg2 *int
-	if tmp, ok := rawArgs["last"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("last"))
-		arg2, err = ec.unmarshalOInt2ᚖint(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["last"] = arg2
-	var arg3 *int64
-	if tmp, ok := rawArgs["before"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("before"))
-		arg3, err = ec.unmarshalOID2ᚖint64(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["before"] = arg3
-	return args, nil
-}
-
 func (ec *executionContext) field_Query_role_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
@@ -1726,48 +1604,6 @@ func (ec *executionContext) field_Query_role_args(ctx context.Context, rawArgs m
 		}
 	}
 	args["id"] = arg0
-	return args, nil
-}
-
-func (ec *executionContext) field_Query_roles_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
-	var err error
-	args := map[string]interface{}{}
-	var arg0 *int
-	if tmp, ok := rawArgs["first"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("first"))
-		arg0, err = ec.unmarshalOInt2ᚖint(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["first"] = arg0
-	var arg1 *int64
-	if tmp, ok := rawArgs["after"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("after"))
-		arg1, err = ec.unmarshalOID2ᚖint64(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["after"] = arg1
-	var arg2 *int
-	if tmp, ok := rawArgs["last"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("last"))
-		arg2, err = ec.unmarshalOInt2ᚖint(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["last"] = arg2
-	var arg3 *int64
-	if tmp, ok := rawArgs["before"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("before"))
-		arg3, err = ec.unmarshalOID2ᚖint64(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["before"] = arg3
 	return args, nil
 }
 
@@ -1849,48 +1685,6 @@ func (ec *executionContext) field_Query_usersByRole_args(ctx context.Context, ra
 		}
 	}
 	args["before"] = arg4
-	return args, nil
-}
-
-func (ec *executionContext) field_Query_users_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
-	var err error
-	args := map[string]interface{}{}
-	var arg0 *int
-	if tmp, ok := rawArgs["first"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("first"))
-		arg0, err = ec.unmarshalOInt2ᚖint(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["first"] = arg0
-	var arg1 *int64
-	if tmp, ok := rawArgs["after"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("after"))
-		arg1, err = ec.unmarshalOID2ᚖint64(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["after"] = arg1
-	var arg2 *int
-	if tmp, ok := rawArgs["last"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("last"))
-		arg2, err = ec.unmarshalOInt2ᚖint(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["last"] = arg2
-	var arg3 *int64
-	if tmp, ok := rawArgs["before"]; ok {
-		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("before"))
-		arg3, err = ec.unmarshalOID2ᚖint64(ctx, tmp)
-		if err != nil {
-			return nil, err
-		}
-	}
-	args["before"] = arg3
 	return args, nil
 }
 
@@ -2380,7 +2174,7 @@ func (ec *executionContext) _Card_cardGroup(ctx context.Context, field graphql.C
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.CardGroup, nil
+		return ec.resolvers.Card().CardGroup(rctx, obj)
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -2401,8 +2195,8 @@ func (ec *executionContext) fieldContext_Card_cardGroup(_ context.Context, field
 	fc = &graphql.FieldContext{
 		Object:     "Card",
 		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
+		IsMethod:   true,
+		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
 			case "id":
@@ -2924,7 +2718,7 @@ func (ec *executionContext) _CardGroup_cards(ctx context.Context, field graphql.
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.Cards, nil
+		return ec.resolvers.CardGroup().Cards(rctx, obj, fc.Args["first"].(*int), fc.Args["after"].(*int64), fc.Args["last"].(*int), fc.Args["before"].(*int64))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -2945,8 +2739,8 @@ func (ec *executionContext) fieldContext_CardGroup_cards(ctx context.Context, fi
 	fc = &graphql.FieldContext{
 		Object:     "CardGroup",
 		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
+		IsMethod:   true,
+		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
 			case "edges":
@@ -2989,7 +2783,7 @@ func (ec *executionContext) _CardGroup_users(ctx context.Context, field graphql.
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.Users, nil
+		return ec.resolvers.CardGroup().Users(rctx, obj, fc.Args["first"].(*int), fc.Args["after"].(*int64), fc.Args["last"].(*int), fc.Args["before"].(*int64))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -3010,8 +2804,8 @@ func (ec *executionContext) fieldContext_CardGroup_users(ctx context.Context, fi
 	fc = &graphql.FieldContext{
 		Object:     "CardGroup",
 		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
+		IsMethod:   true,
+		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
 			case "edges":
@@ -4516,68 +4310,6 @@ func (ec *executionContext) fieldContext_PageInfo_startCursor(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Query_cards(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Query_cards(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().Cards(rctx, fc.Args["first"].(*int), fc.Args["after"].(*int64), fc.Args["last"].(*int), fc.Args["before"].(*int64))
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*model.CardConnection)
-	fc.Result = res
-	return ec.marshalOCardConnection2ᚖbackendᚋgraphᚋmodelᚐCardConnection(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Query_cards(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Query",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			switch field.Name {
-			case "edges":
-				return ec.fieldContext_CardConnection_edges(ctx, field)
-			case "nodes":
-				return ec.fieldContext_CardConnection_nodes(ctx, field)
-			case "pageInfo":
-				return ec.fieldContext_CardConnection_pageInfo(ctx, field)
-			case "totalCount":
-				return ec.fieldContext_CardConnection_totalCount(ctx, field)
-			}
-			return nil, fmt.Errorf("no field named %q was found under type CardConnection", field.Name)
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Query_cards_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
 func (ec *executionContext) _Query_card(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Query_card(ctx, field)
 	if err != nil {
@@ -4642,68 +4374,6 @@ func (ec *executionContext) fieldContext_Query_card(ctx context.Context, field g
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_card_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Query_cardGroups(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Query_cardGroups(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().CardGroups(rctx, fc.Args["first"].(*int), fc.Args["after"].(*int64), fc.Args["last"].(*int), fc.Args["before"].(*int64))
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*model.CardGroupConnection)
-	fc.Result = res
-	return ec.marshalOCardGroupConnection2ᚖbackendᚋgraphᚋmodelᚐCardGroupConnection(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Query_cardGroups(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Query",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			switch field.Name {
-			case "edges":
-				return ec.fieldContext_CardGroupConnection_edges(ctx, field)
-			case "nodes":
-				return ec.fieldContext_CardGroupConnection_nodes(ctx, field)
-			case "pageInfo":
-				return ec.fieldContext_CardGroupConnection_pageInfo(ctx, field)
-			case "totalCount":
-				return ec.fieldContext_CardGroupConnection_totalCount(ctx, field)
-			}
-			return nil, fmt.Errorf("no field named %q was found under type CardGroupConnection", field.Name)
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Query_cardGroups_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -4776,68 +4446,6 @@ func (ec *executionContext) fieldContext_Query_cardGroup(ctx context.Context, fi
 	return fc, nil
 }
 
-func (ec *executionContext) _Query_roles(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Query_roles(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().Roles(rctx, fc.Args["first"].(*int), fc.Args["after"].(*int64), fc.Args["last"].(*int), fc.Args["before"].(*int64))
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*model.RoleConnection)
-	fc.Result = res
-	return ec.marshalORoleConnection2ᚖbackendᚋgraphᚋmodelᚐRoleConnection(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Query_roles(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Query",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			switch field.Name {
-			case "edges":
-				return ec.fieldContext_RoleConnection_edges(ctx, field)
-			case "nodes":
-				return ec.fieldContext_RoleConnection_nodes(ctx, field)
-			case "pageInfo":
-				return ec.fieldContext_RoleConnection_pageInfo(ctx, field)
-			case "totalCount":
-				return ec.fieldContext_RoleConnection_totalCount(ctx, field)
-			}
-			return nil, fmt.Errorf("no field named %q was found under type RoleConnection", field.Name)
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Query_roles_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
 func (ec *executionContext) _Query_role(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Query_role(ctx, field)
 	if err != nil {
@@ -4896,68 +4504,6 @@ func (ec *executionContext) fieldContext_Query_role(ctx context.Context, field g
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_role_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Query_users(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Query_users(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().Users(rctx, fc.Args["first"].(*int), fc.Args["after"].(*int64), fc.Args["last"].(*int), fc.Args["before"].(*int64))
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*model.UserConnection)
-	fc.Result = res
-	return ec.marshalOUserConnection2ᚖbackendᚋgraphᚋmodelᚐUserConnection(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Query_users(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Query",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			switch field.Name {
-			case "edges":
-				return ec.fieldContext_UserConnection_edges(ctx, field)
-			case "nodes":
-				return ec.fieldContext_UserConnection_nodes(ctx, field)
-			case "pageInfo":
-				return ec.fieldContext_UserConnection_pageInfo(ctx, field)
-			case "totalCount":
-				return ec.fieldContext_UserConnection_totalCount(ctx, field)
-			}
-			return nil, fmt.Errorf("no field named %q was found under type UserConnection", field.Name)
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Query_users_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -5599,7 +5145,7 @@ func (ec *executionContext) _Role_users(ctx context.Context, field graphql.Colle
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.Users, nil
+		return ec.resolvers.Role().Users(rctx, obj, fc.Args["first"].(*int), fc.Args["after"].(*int64), fc.Args["last"].(*int), fc.Args["before"].(*int64))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -5620,8 +5166,8 @@ func (ec *executionContext) fieldContext_Role_users(ctx context.Context, field g
 	fc = &graphql.FieldContext{
 		Object:     "Role",
 		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
+		IsMethod:   true,
+		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
 			case "edges":
@@ -6138,7 +5684,7 @@ func (ec *executionContext) _User_cardGroups(ctx context.Context, field graphql.
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.CardGroups, nil
+		return ec.resolvers.User().CardGroups(rctx, obj, fc.Args["first"].(*int), fc.Args["after"].(*int64), fc.Args["last"].(*int), fc.Args["before"].(*int64))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -6159,8 +5705,8 @@ func (ec *executionContext) fieldContext_User_cardGroups(ctx context.Context, fi
 	fc = &graphql.FieldContext{
 		Object:     "User",
 		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
+		IsMethod:   true,
+		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
 			case "edges":
@@ -6203,7 +5749,7 @@ func (ec *executionContext) _User_roles(ctx context.Context, field graphql.Colle
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.Roles, nil
+		return ec.resolvers.User().Roles(rctx, obj, fc.Args["first"].(*int), fc.Args["after"].(*int64), fc.Args["last"].(*int), fc.Args["before"].(*int64))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -6224,8 +5770,8 @@ func (ec *executionContext) fieldContext_User_roles(ctx context.Context, field g
 	fc = &graphql.FieldContext{
 		Object:     "User",
 		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
+		IsMethod:   true,
+		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
 			case "edges":
@@ -8605,43 +8151,74 @@ func (ec *executionContext) _Card(ctx context.Context, sel ast.SelectionSet, obj
 		case "id":
 			out.Values[i] = ec._Card_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "front":
 			out.Values[i] = ec._Card_front(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "back":
 			out.Values[i] = ec._Card_back(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "review_date":
 			out.Values[i] = ec._Card_review_date(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "interval_days":
 			out.Values[i] = ec._Card_interval_days(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "created":
 			out.Values[i] = ec._Card_created(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "updated":
 			out.Values[i] = ec._Card_updated(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "cardGroup":
-			out.Values[i] = ec._Card_cardGroup(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Card_cardGroup(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8771,33 +8348,95 @@ func (ec *executionContext) _CardGroup(ctx context.Context, sel ast.SelectionSet
 		case "id":
 			out.Values[i] = ec._CardGroup_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "name":
 			out.Values[i] = ec._CardGroup_name(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "created":
 			out.Values[i] = ec._CardGroup_created(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "updated":
 			out.Values[i] = ec._CardGroup_updated(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "cards":
-			out.Values[i] = ec._CardGroup_cards(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._CardGroup_cards(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "users":
-			out.Values[i] = ec._CardGroup_users(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._CardGroup_users(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -9086,25 +8725,6 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("Query")
-		case "cards":
-			field := field
-
-			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Query_cards(ctx, field)
-				return res
-			}
-
-			rrm := func(ctx context.Context) graphql.Marshaler {
-				return ec.OperationContext.RootResolverMiddleware(ctx,
-					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "card":
 			field := field
 
@@ -9115,25 +8735,6 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_card(ctx, field)
-				return res
-			}
-
-			rrm := func(ctx context.Context) graphql.Marshaler {
-				return ec.OperationContext.RootResolverMiddleware(ctx,
-					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
-		case "cardGroups":
-			field := field
-
-			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Query_cardGroups(ctx, field)
 				return res
 			}
 
@@ -9162,25 +8763,6 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
-		case "roles":
-			field := field
-
-			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Query_roles(ctx, field)
-				return res
-			}
-
-			rrm := func(ctx context.Context) graphql.Marshaler {
-				return ec.OperationContext.RootResolverMiddleware(ctx,
-					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "role":
 			field := field
 
@@ -9191,25 +8773,6 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_role(ctx, field)
-				return res
-			}
-
-			rrm := func(ctx context.Context) graphql.Marshaler {
-				return ec.OperationContext.RootResolverMiddleware(ctx,
-					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
-		case "users":
-			field := field
-
-			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Query_users(ctx, field)
 				return res
 			}
 
@@ -9359,28 +8922,59 @@ func (ec *executionContext) _Role(ctx context.Context, sel ast.SelectionSet, obj
 		case "id":
 			out.Values[i] = ec._Role_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "name":
 			out.Values[i] = ec._Role_name(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "created":
 			out.Values[i] = ec._Role_created(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "updated":
 			out.Values[i] = ec._Role_updated(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "users":
-			out.Values[i] = ec._Role_users(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Role_users(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -9510,33 +9104,95 @@ func (ec *executionContext) _User(ctx context.Context, sel ast.SelectionSet, obj
 		case "id":
 			out.Values[i] = ec._User_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "name":
 			out.Values[i] = ec._User_name(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "created":
 			out.Values[i] = ec._User_created(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "updated":
 			out.Values[i] = ec._User_updated(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "cardGroups":
-			out.Values[i] = ec._User_cardGroups(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._User_cardGroups(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "roles":
-			out.Values[i] = ec._User_roles(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._User_roles(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -10003,6 +9659,10 @@ func (ec *executionContext) marshalNCard2ᚖbackendᚋgraphᚋmodelᚐCard(ctx c
 	return ec._Card(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNCardConnection2backendᚋgraphᚋmodelᚐCardConnection(ctx context.Context, sel ast.SelectionSet, v model.CardConnection) graphql.Marshaler {
+	return ec._CardConnection(ctx, sel, &v)
+}
+
 func (ec *executionContext) marshalNCardConnection2ᚖbackendᚋgraphᚋmodelᚐCardConnection(ctx context.Context, sel ast.SelectionSet, v *model.CardConnection) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
@@ -10013,6 +9673,10 @@ func (ec *executionContext) marshalNCardConnection2ᚖbackendᚋgraphᚋmodelᚐ
 	return ec._CardConnection(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNCardGroup2backendᚋgraphᚋmodelᚐCardGroup(ctx context.Context, sel ast.SelectionSet, v model.CardGroup) graphql.Marshaler {
+	return ec._CardGroup(ctx, sel, &v)
+}
+
 func (ec *executionContext) marshalNCardGroup2ᚖbackendᚋgraphᚋmodelᚐCardGroup(ctx context.Context, sel ast.SelectionSet, v *model.CardGroup) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
@@ -10021,6 +9685,10 @@ func (ec *executionContext) marshalNCardGroup2ᚖbackendᚋgraphᚋmodelᚐCardG
 		return graphql.Null
 	}
 	return ec._CardGroup(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNCardGroupConnection2backendᚋgraphᚋmodelᚐCardGroupConnection(ctx context.Context, sel ast.SelectionSet, v model.CardGroupConnection) graphql.Marshaler {
+	return ec._CardGroupConnection(ctx, sel, &v)
 }
 
 func (ec *executionContext) marshalNCardGroupConnection2ᚖbackendᚋgraphᚋmodelᚐCardGroupConnection(ctx context.Context, sel ast.SelectionSet, v *model.CardGroupConnection) graphql.Marshaler {
@@ -10135,6 +9803,10 @@ func (ec *executionContext) marshalNRole2ᚖbackendᚋgraphᚋmodelᚐRole(ctx c
 	return ec._Role(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNRoleConnection2backendᚋgraphᚋmodelᚐRoleConnection(ctx context.Context, sel ast.SelectionSet, v model.RoleConnection) graphql.Marshaler {
+	return ec._RoleConnection(ctx, sel, &v)
+}
+
 func (ec *executionContext) marshalNRoleConnection2ᚖbackendᚋgraphᚋmodelᚐRoleConnection(ctx context.Context, sel ast.SelectionSet, v *model.RoleConnection) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
@@ -10183,6 +9855,10 @@ func (ec *executionContext) marshalNUser2ᚖbackendᚋgraphᚋmodelᚐUser(ctx c
 		return graphql.Null
 	}
 	return ec._User(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNUserConnection2backendᚋgraphᚋmodelᚐUserConnection(ctx context.Context, sel ast.SelectionSet, v model.UserConnection) graphql.Marshaler {
+	return ec._UserConnection(ctx, sel, &v)
 }
 
 func (ec *executionContext) marshalNUserConnection2ᚖbackendᚋgraphᚋmodelᚐUserConnection(ctx context.Context, sel ast.SelectionSet, v *model.UserConnection) graphql.Marshaler {
@@ -10796,13 +10472,6 @@ func (ec *executionContext) marshalORole2ᚖbackendᚋgraphᚋmodelᚐRole(ctx c
 		return graphql.Null
 	}
 	return ec._Role(ctx, sel, v)
-}
-
-func (ec *executionContext) marshalORoleConnection2ᚖbackendᚋgraphᚋmodelᚐRoleConnection(ctx context.Context, sel ast.SelectionSet, v *model.RoleConnection) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	return ec._RoleConnection(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalORoleEdge2ᚕᚖbackendᚋgraphᚋmodelᚐRoleEdge(ctx context.Context, sel ast.SelectionSet, v []*model.RoleEdge) graphql.Marshaler {

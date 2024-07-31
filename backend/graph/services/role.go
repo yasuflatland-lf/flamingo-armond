@@ -235,3 +235,11 @@ func (s *roleService) PaginatedRolesByUser(ctx context.Context, userID int64, fi
 		TotalCount: len(roles),
 	}, nil
 }
+
+func (s *roleService) GetRolesByIDs(ctx context.Context, ids []int64) ([]*model.Role, error) {
+	var roles []*model.Role
+	if err := s.db.Where("id IN ?", ids).Find(&roles).Error; err != nil {
+		return nil, err
+	}
+	return roles, nil
+}

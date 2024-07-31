@@ -230,3 +230,11 @@ func (s *cardGroupService) PaginatedCardGroupsByUser(ctx context.Context, userID
 		TotalCount: len(cardGroups),
 	}, nil
 }
+
+func (s *cardGroupService) GetCardGroupsByIDs(ctx context.Context, ids []int64) ([]*model.CardGroup, error) {
+	var cardGroups []*model.CardGroup
+	if err := s.db.Where("id IN ?", ids).Find(&cardGroups).Error; err != nil {
+		return nil, err
+	}
+	return cardGroups, nil
+}

@@ -85,6 +85,27 @@ models:
   Time:
     model:
       - github.com/99designs/gqlgen/graphql.Time
+  Card:
+    fields:
+      cardGroup:
+        resolver: true
+  CardGroup:
+    fields:
+      cards:
+        resolver: true
+      users:
+        resolver: true
+  User:
+    fields:
+      cardGroups:
+        resolver: true
+      roles:
+        resolver: true
+  Role:
+    fields:
+      users:
+        resolver: true
+
 directives:
   validation:
     skip_runtime: true
