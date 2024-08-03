@@ -4,10 +4,6 @@ directive @validation(
   format: String
 ) on INPUT_FIELD_DEFINITION | ARGUMENT_DEFINITION | FIELD_DEFINITION
 
-interface Node {
-  id: ID!
-}
-
 type PageInfo {
   endCursor: ID
   hasNextPage: Boolean!
@@ -15,7 +11,7 @@ type PageInfo {
   startCursor: ID
 }
 
-type Card implements Node {
+type Card {
   id: ID!
   front: String! @validation(format: "required,min=1")
   back: String! @validation(format: "required,min=1")
@@ -23,10 +19,11 @@ type Card implements Node {
   interval_days: Int! @validation(format: "gte=1")
   created: Time!
   updated: Time!
+  cardGroupID: ID!
   cardGroup: CardGroup!
 }
 
-type CardGroup implements Node {
+type CardGroup {
   id: ID!
   name: String! @validation(format: "required,fl_name,min=1")
   created: Time!
@@ -59,7 +56,7 @@ type UserConnection {
   totalCount: Int!
 }
 
-type Role implements Node {
+type Role {
   id: ID!
   name: String! @validation(format: "required,fl_name,min=1")
   created: Time!
@@ -67,7 +64,7 @@ type Role implements Node {
   users(first: Int, after: ID, last: Int, before: ID): UserConnection!
 }
 
-type User implements Node {
+type User {
   id: ID!
   name: String! @validation(format: "required,fl_name,min=1")
   created: Time!
@@ -132,10 +129,6 @@ input NewRole {
 }
 
 type Query {
-#    cards(first: Int, after: ID, last: Int, before: ID): CardConnection
-#    users(first: Int, after: ID, last: Int, before: ID): UserConnection
-#    cardGroups(first: Int, after: ID, last: Int, before: ID): CardGroupConnection
-#    roles(first: Int, after: ID, last: Int, before: ID): RoleConnection
     card(id: ID!): Card
     cardGroup(id: ID!): CardGroup
     role(id: ID!): Role

@@ -3,6 +3,7 @@ package services
 import (
 	repository "backend/graph/db"
 	"backend/graph/model"
+	"backend/pkg/logger"
 	"context"
 	"fmt"
 	"time"
@@ -181,26 +182,33 @@ func (s *cardGroupService) PaginatedCardGroups(ctx context.Context, first *int, 
 }
 
 func (s *cardGroupService) PaginatedCardGroupsByUser(ctx context.Context, userID int64, first *int, after *int64, last *int, before *int64) (*model.CardGroupConnection, error) {
+	var user repository.User
 	var cardGroups []repository.Cardgroup
-	query := s.db.WithContext(ctx).Model(&repository.User{ID: userID})
 
-	if after != nil {
-		query = query.Where("id > ?", *after)
-	}
-	if before != nil {
-		query = query.Where("id < ?", *before)
-	}
-	if first != nil {
-		query = query.Order("id asc").Limit(*first)
-	} else if last != nil {
-		query = query.Order("id desc").Limit(*last)
-	} else {
-		query = query.Order("id asc").Limit(s.defaultLimit)
+	// Fetch the user and preload the card groups with pagination conditions
+	query := s.db.WithContext(ctx).Model(&user).Where("id = ?", userID).Preload("CardGroups", func(db *gorm.DB) *gorm.DB {
+		if after != nil {
+			db = db.Where("cardgroups.id > ?", *after)
+		}
+		if before != nil {
+			db = db.Where("cardgroups.id < ?", *before)
+		}
+		if first != nil {
+			db = db.Order("cardgroups.id asc").Limit(*first)
+		} else if last != nil {
+			db = db.Order("cardgroups.id desc").Limit(*last)
+		} else {
+			db = db.Order("cardgroups.id asc").Limit(s.defaultLimit)
+		}
+		return db
+	})
+
+	if err := query.Find(&user).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "CardGroups fetch error", err)
+		return nil, fmt.Errorf("CardGroups %+v", err)
 	}
 
-	if err := query.Association("CardGroups").Find(&cardGroups).Error; err != nil {
-		return nil, fmt.Errorf("error %+v", err())
-	}
+	cardGroups = user.CardGroups
 
 	var edges []*model.CardGroupEdge
 	var nodes []*model.CardGroup
@@ -230,10 +238,9 @@ func (s *cardGroupService) PaginatedCardGroupsByUser(ctx context.Context, userID
 		TotalCount: len(cardGroups),
 	}, nil
 }
-
 func (s *cardGroupService) GetCardGroupsByIDs(ctx context.Context, ids []int64) ([]*model.CardGroup, error) {
 	var cardGroups []*model.CardGroup
-	if err := s.db.Where("id IN ?", ids).Find(&cardGroups).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&cardGroups).Error; err != nil {
 		return nil, err
 	}
 	return cardGroups, nil

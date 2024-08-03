@@ -3,6 +3,7 @@ package services
 import (
 	repository "backend/graph/db"
 	"backend/graph/model"
+	"backend/pkg/logger"
 	"context"
 	"errors"
 	"fmt"
@@ -72,6 +73,7 @@ func (s *cardService) CreateCard(ctx context.Context, input model.NewCard) (*mod
 func (s *cardService) UpdateCard(ctx context.Context, id int64, input model.NewCard) (*model.Card, error) {
 	var card repository.Card
 	if err := s.db.WithContext(ctx).First(&card, id).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Card does not exist : %d", id)
 		return nil, err
 	}
 	card.Front = input.Front
@@ -84,7 +86,9 @@ func (s *cardService) UpdateCard(ctx context.Context, id int64, input model.NewC
 		return card.IntervalDays
 	}()
 	card.Updated = time.Now()
+
 	if err := s.db.WithContext(ctx).Save(&card).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Card Save %+v", err)
 		return nil, err
 	}
 	return convertToCard(card), nil
@@ -93,11 +97,13 @@ func (s *cardService) UpdateCard(ctx context.Context, id int64, input model.NewC
 func (s *cardService) DeleteCard(ctx context.Context, id int64) (*bool, error) {
 	result := s.db.WithContext(ctx).Delete(&repository.Card{}, id)
 	if result.Error != nil {
+		logger.Logger.ErrorContext(ctx, "Delete error %+v", result.Error)
 		return nil, result.Error
 	}
 
 	success := result.RowsAffected > 0
 	if !success {
+		logger.Logger.ErrorContext(ctx, "record not found")
 		return &success, fmt.Errorf("record not found")
 	}
 
@@ -232,7 +238,7 @@ func (s *cardService) PaginatedCardsByCardGroup(ctx context.Context, cardGroupID
 
 func (s *cardService) GetCardsByIDs(ctx context.Context, ids []int64) ([]*model.Card, error) {
 	var cards []*model.Card
-	if err := s.db.Where("id IN ?", ids).Find(&cards).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&cards).Error; err != nil {
 		return nil, err
 	}
 	return cards, nil

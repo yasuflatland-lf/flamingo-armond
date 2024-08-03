@@ -3,18 +3,18 @@ package graph
 import (
 	"backend/graph/model"
 	"backend/graph/services"
+	"backend/pkg/logger"
 	"context"
 	"errors"
-	"strconv"
 
 	"github.com/graph-gophers/dataloader/v7"
 )
 
 type Loaders struct {
-	CardLoader      dataloader.Interface[string, *model.Card]
-	UserLoader      dataloader.Interface[string, *model.User]
-	RoleLoader      dataloader.Interface[string, *model.Role]
-	CardGroupLoader dataloader.Interface[string, *model.CardGroup]
+	CardLoader      dataloader.Interface[int64, *model.Card]
+	UserLoader      dataloader.Interface[int64, *model.User]
+	RoleLoader      dataloader.Interface[int64, *model.Role]
+	CardGroupLoader dataloader.Interface[int64, *model.CardGroup]
 }
 
 func NewLoaders(srv services.Services) *Loaders {
@@ -24,10 +24,10 @@ func NewLoaders(srv services.Services) *Loaders {
 	cardGroupBatcher := &cardGroupBatcher{Srv: srv}
 
 	return &Loaders{
-		CardLoader:      dataloader.NewBatchedLoader[string, *model.Card](cardBatcher.BatchGetCards),
-		UserLoader:      dataloader.NewBatchedLoader[string, *model.User](userBatcher.BatchGetUsers),
-		RoleLoader:      dataloader.NewBatchedLoader[string, *model.Role](roleBatcher.BatchGetRoles),
-		CardGroupLoader: dataloader.NewBatchedLoader[string, *model.CardGroup](cardGroupBatcher.BatchGetCardGroups),
+		CardLoader:      dataloader.NewBatchedLoader[int64, *model.Card](cardBatcher.BatchGetCards),
+		UserLoader:      dataloader.NewBatchedLoader[int64, *model.User](userBatcher.BatchGetUsers),
+		RoleLoader:      dataloader.NewBatchedLoader[int64, *model.Role](roleBatcher.BatchGetRoles),
+		CardGroupLoader: dataloader.NewBatchedLoader[int64, *model.CardGroup](cardGroupBatcher.BatchGetCardGroups),
 	}
 }
 
@@ -35,20 +35,10 @@ type cardBatcher struct {
 	Srv services.Services
 }
 
-func (c *cardBatcher) BatchGetCards(ctx context.Context, keys []string) []*dataloader.Result[*model.Card] {
-	ids := make([]int64, len(keys))
-	for i, key := range keys {
-		id, err := strconv.ParseInt(key, 10, 64)
-		if err != nil {
-			return []*dataloader.Result[*model.Card]{{
-				Error: err,
-			}}
-		}
-		ids[i] = id
-	}
-
-	cards, err := c.Srv.GetCardsByIDs(ctx, ids)
+func (c *cardBatcher) BatchGetCards(ctx context.Context, keys []int64) []*dataloader.Result[*model.Card] {
+	cards, err := c.Srv.GetCardsByIDs(ctx, keys)
 	if err != nil {
+		logger.Logger.ErrorContext(ctx, "No cards found", err)
 		return make([]*dataloader.Result[*model.Card], len(keys))
 	}
 
@@ -59,8 +49,7 @@ func (c *cardBatcher) BatchGetCards(ctx context.Context, keys []string) []*datal
 
 	results := make([]*dataloader.Result[*model.Card], len(keys))
 	for i, key := range keys {
-		id, _ := strconv.ParseInt(key, 10, 64)
-		if card, ok := cardMap[id]; ok {
+		if card, ok := cardMap[key]; ok {
 			results[i] = &dataloader.Result[*model.Card]{Data: card}
 		} else {
 			results[i] = &dataloader.Result[*model.Card]{Error: errors.New("card not found")}
@@ -73,20 +62,10 @@ type userBatcher struct {
 	Srv services.Services
 }
 
-func (u *userBatcher) BatchGetUsers(ctx context.Context, keys []string) []*dataloader.Result[*model.User] {
-	ids := make([]int64, len(keys))
-	for i, key := range keys {
-		id, err := strconv.ParseInt(key, 10, 64)
-		if err != nil {
-			return []*dataloader.Result[*model.User]{{
-				Error: err,
-			}}
-		}
-		ids[i] = id
-	}
-
-	users, err := u.Srv.GetUsersByIDs(ctx, ids)
+func (u *userBatcher) BatchGetUsers(ctx context.Context, keys []int64) []*dataloader.Result[*model.User] {
+	users, err := u.Srv.GetUsersByIDs(ctx, keys)
 	if err != nil {
+		logger.Logger.ErrorContext(ctx, "No users found", err)
 		return make([]*dataloader.Result[*model.User], len(keys))
 	}
 
@@ -97,8 +76,7 @@ func (u *userBatcher) BatchGetUsers(ctx context.Context, keys []string) []*datal
 
 	results := make([]*dataloader.Result[*model.User], len(keys))
 	for i, key := range keys {
-		id, _ := strconv.ParseInt(key, 10, 64)
-		if user, ok := userMap[id]; ok {
+		if user, ok := userMap[key]; ok {
 			results[i] = &dataloader.Result[*model.User]{Data: user}
 		} else {
 			results[i] = &dataloader.Result[*model.User]{Error: errors.New("user not found")}
@@ -111,20 +89,10 @@ type roleBatcher struct {
 	Srv services.Services
 }
 
-func (r *roleBatcher) BatchGetRoles(ctx context.Context, keys []string) []*dataloader.Result[*model.Role] {
-	ids := make([]int64, len(keys))
-	for i, key := range keys {
-		id, err := strconv.ParseInt(key, 10, 64)
-		if err != nil {
-			return []*dataloader.Result[*model.Role]{{
-				Error: err,
-			}}
-		}
-		ids[i] = id
-	}
-
-	roles, err := r.Srv.GetRolesByIDs(ctx, ids)
+func (r *roleBatcher) BatchGetRoles(ctx context.Context, keys []int64) []*dataloader.Result[*model.Role] {
+	roles, err := r.Srv.GetRolesByIDs(ctx, keys)
 	if err != nil {
+		logger.Logger.ErrorContext(ctx, "No roles found", err)
 		return make([]*dataloader.Result[*model.Role], len(keys))
 	}
 
@@ -135,8 +103,7 @@ func (r *roleBatcher) BatchGetRoles(ctx context.Context, keys []string) []*datal
 
 	results := make([]*dataloader.Result[*model.Role], len(keys))
 	for i, key := range keys {
-		id, _ := strconv.ParseInt(key, 10, 64)
-		if role, ok := roleMap[id]; ok {
+		if role, ok := roleMap[key]; ok {
 			results[i] = &dataloader.Result[*model.Role]{Data: role}
 		} else {
 			results[i] = &dataloader.Result[*model.Role]{Error: errors.New("role not found")}
@@ -149,20 +116,10 @@ type cardGroupBatcher struct {
 	Srv services.Services
 }
 
-func (c *cardGroupBatcher) BatchGetCardGroups(ctx context.Context, keys []string) []*dataloader.Result[*model.CardGroup] {
-	ids := make([]int64, len(keys))
-	for i, key := range keys {
-		id, err := strconv.ParseInt(key, 10, 64)
-		if err != nil {
-			return []*dataloader.Result[*model.CardGroup]{{
-				Error: err,
-			}}
-		}
-		ids[i] = id
-	}
-
-	cardGroups, err := c.Srv.GetCardGroupsByIDs(ctx, ids)
+func (c *cardGroupBatcher) BatchGetCardGroups(ctx context.Context, keys []int64) []*dataloader.Result[*model.CardGroup] {
+	cardGroups, err := c.Srv.GetCardGroupsByIDs(ctx, keys)
 	if err != nil {
+		logger.Logger.ErrorContext(ctx, "No cardGroups found", err)
 		return make([]*dataloader.Result[*model.CardGroup], len(keys))
 	}
 
@@ -173,8 +130,7 @@ func (c *cardGroupBatcher) BatchGetCardGroups(ctx context.Context, keys []string
 
 	results := make([]*dataloader.Result[*model.CardGroup], len(keys))
 	for i, key := range keys {
-		id, _ := strconv.ParseInt(key, 10, 64)
-		if cardGroup, ok := cardGroupMap[id]; ok {
+		if cardGroup, ok := cardGroupMap[key]; ok {
 			results[i] = &dataloader.Result[*model.CardGroup]{Data: cardGroup}
 		} else {
 			results[i] = &dataloader.Result[*model.CardGroup]{Error: errors.New("card group not found")}

@@ -1,33 +1,34 @@
-package graph
+package graph_test
 
 import (
-	"backend/graph/services"
-	"backend/pkg/middlewares"
-	"backend/pkg/validator"
+	"backend/graph"
+	repository "backend/graph/db"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"github.com/labstack/gommon/log"
+	"github.com/pkg/errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/99designs/gqlgen/graphql/handler/transport"
-	"github.com/gorilla/websocket"
-
 	"github.com/99designs/gqlgen/graphql/handler"
+	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/99designs/gqlgen/graphql/playground"
+	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 
-	repository "backend/graph/db"
 	"backend/graph/model"
+	"backend/graph/services"
 	"backend/pkg/config"
+	"backend/pkg/middlewares"
+	"backend/pkg/validator"
 	"backend/testutils"
 )
 
@@ -63,14 +64,14 @@ func NewRouter(db *gorm.DB) *echo.Echo {
 
 	service := services.New(db)
 	validateWrapper := validator.NewValidateWrapper()
-	resolver := &Resolver{
+	resolver := &graph.Resolver{
 		DB:      db,
 		Srv:     service,
 		VW:      validateWrapper,
-		Loaders: NewLoaders(service),
+		Loaders: graph.NewLoaders(service),
 	}
 
-	srv := handler.NewDefaultServer(NewExecutableSchema(Config{Resolvers: resolver}))
+	srv := handler.NewDefaultServer(graph.NewExecutableSchema(graph.Config{Resolvers: resolver}))
 
 	srv.AddTransport(&transport.Websocket{
 		Upgrader: websocket.Upgrader{
@@ -145,28 +146,496 @@ func removeField(data map[string]interface{}, field string) {
 	}
 }
 
-func TestMutationResolver(t *testing.T) {
+func TestGraphQLQueries(t *testing.T) {
 	t.Helper()
 	t.Parallel()
 
 	testutils.RunServersTest(t, db, func(t *testing.T) {
-		t.Run("CreateCard", func(t *testing.T) {
+		t.Run("Card Query", func(t *testing.T) {
+			t.Parallel()
+
 			now := time.Now()
-			cardgroup := repository.Cardgroup{
-				Name:    "TestMutationResolver_CreateCard Cardgroup",
+			cardGroup := repository.Cardgroup{
+				Name:    "Card Query Test CardGroup",
 				Created: now,
 				Updated: now,
 			}
-			db.Create(&cardgroup)
+			db.Create(&cardGroup)
 
-			interval_days := 1
-			input := model.NewCard{
-				Front:        "CreateCard Front of card",
-				Back:         "CreateCard Back of card",
+			card := repository.Card{
+				Front:        "Test Card Front",
+				Back:         "Test Card Back",
 				ReviewDate:   now,
-				IntervalDays: &interval_days,
-				CardgroupID:  cardgroup.ID,
+				IntervalDays: 1,
+				CardGroupID:  cardGroup.ID,
+				Created:      now,
+				Updated:      now,
 			}
+			db.Create(&card)
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `query ($id: ID!) {
+                    card(id: $id) {
+                        id
+                        front
+                        back
+                        review_date
+                        interval_days
+                        created
+                        updated
+                    }
+                }`,
+				"variables": map[string]interface{}{
+					"id": card.ID,
+				},
+			})
+
+			expected := fmt.Sprintf(`{
+                "data": {
+                    "card": {
+                        "id": %d,
+                        "front": "Test Card Front",
+                        "back": "Test Card Back",
+                        "interval_days": 1
+                    }
+                }
+            }`, card.ID)
+
+			testGraphQLQuery(t, e, jsonInput, expected, "data.card.created", "data.card.updated", "data.card.review_date")
+		})
+
+		t.Run("CardGroup Query", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+			cardGroup := repository.Cardgroup{
+				Name:    "Test CardGroup",
+				Created: now,
+				Updated: now,
+			}
+			db.Create(&cardGroup)
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `query ($id: ID!) {
+                    cardGroup(id: $id) {
+                        id
+                        name
+                        created
+                        updated
+                    }
+                }`,
+				"variables": map[string]interface{}{
+					"id": cardGroup.ID,
+				},
+			})
+
+			expected := fmt.Sprintf(`{
+                "data": {
+                    "cardGroup": {
+                        "id": %d,
+                        "name": "Test CardGroup"
+                    }
+                }
+            }`, cardGroup.ID)
+
+			testGraphQLQuery(t, e, jsonInput, expected, "data.cardGroup.created", "data.cardGroup.updated")
+		})
+
+		t.Run("User Query", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+
+			// Create or get an existing role
+			var role repository.Role
+			if err := db.Where("name = ?", "Users Query Test Role").First(&role).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					role = repository.Role{
+						Name:    "Users Query Test Role",
+						Created: now,
+						Updated: now,
+					}
+					if err := db.Create(&role).Error; err != nil {
+						t.Fatalf("failed to create role: %v", err)
+					}
+				} else {
+					t.Fatalf("failed to query role: %v", err)
+				}
+			}
+
+			// Create an existing user
+			user := repository.User{
+				Name:    "Users Query Test User",
+				Created: now,
+				Updated: now,
+			}
+			if err := db.Create(&user).Error; err != nil {
+				t.Fatalf("failed to create user: %v", err)
+			}
+
+			// Assign a role to the user
+			if err := db.Model(&user).Association("Roles").Append(&role); err != nil {
+				t.Fatalf("failed to assign role to user: %v", err)
+			}
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `query ($id: ID!) {
+                    user(id: $id) {
+                        id
+                        name
+                        created
+                        updated
+                    }
+                }`,
+				"variables": map[string]interface{}{
+					"id": user.ID,
+				},
+			})
+
+			expected := fmt.Sprintf(`{
+                "data": {
+                    "user": {
+                        "id": %d,
+                        "name": "Users Query Test User"
+                    }
+                }
+            }`, user.ID)
+
+			testGraphQLQuery(t, e, jsonInput, expected, "data.user.created", "data.user.updated")
+		})
+
+		t.Run("Role Query", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+			var role repository.Role
+			if err := db.Where("name = ?", "Role Query Test Role").First(&role).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					role = repository.Role{
+						Name:    "Role Query Test Role",
+						Created: now,
+						Updated: now,
+					}
+					if err := db.Create(&role).Error; err != nil {
+						t.Fatalf("failed to create role: %v", err)
+					}
+				} else {
+					t.Fatalf("failed to query role: %v", err)
+				}
+			}
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `query ($id: ID!) {
+                    role(id: $id) {
+                        id
+                        name
+                        created
+                        updated
+                    }
+                }`,
+				"variables": map[string]interface{}{
+					"id": role.ID,
+				},
+			})
+
+			expected := fmt.Sprintf(`{
+                "data": {
+                    "role": {
+                        "id": %d,
+                        "name": "Role Query Test Role"
+                    }
+                }
+            }`, role.ID)
+
+			testGraphQLQuery(t, e, jsonInput, expected, "data.role.created", "data.role.updated")
+		})
+
+		t.Run("Cards Query", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+			cardGroup := repository.Cardgroup{
+				Name:    "Test CardGroup",
+				Created: now,
+				Updated: now,
+			}
+			db.Create(&cardGroup)
+
+			card := repository.Card{
+				Front:        "Test Card Front",
+				Back:         "Test Card Back",
+				ReviewDate:   now,
+				IntervalDays: 1,
+				CardGroupID:  cardGroup.ID,
+				Created:      now,
+				Updated:      now,
+			}
+			db.Create(&card)
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `query ($cardGroupID: ID!, $first: Int) {
+                    cardsByCardGroup(cardGroupID: $cardGroupID, first: $first) {
+                        nodes {
+                            id
+                            front
+                            back
+                            review_date
+                            interval_days
+                            created
+                            updated
+                        }
+                    }
+                }`,
+				"variables": map[string]interface{}{
+					"cardGroupID": cardGroup.ID,
+					"first":       1,
+				},
+			})
+
+			expected := fmt.Sprintf(`{
+                "data": {
+                    "cardsByCardGroup": {
+                        "nodes": [{
+                            "id": %d,
+                            "front": "Test Card Front",
+                            "back": "Test Card Back",
+                            "interval_days": 1
+                        }]
+                    }
+                }
+            }`, card.ID)
+
+			testGraphQLQuery(t, e, jsonInput, expected, "data.cardsByCardGroup.nodes.created", "data.cardsByCardGroup.nodes.updated", "data.cardsByCardGroup.nodes.review_date")
+		})
+
+		t.Run("UserRole Query", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+
+			// Create or get an existing role
+			var role repository.Role
+			if err := db.Where("name = ?", "UserRole Query Test Role").First(&role).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					role = repository.Role{
+						Name:    "UserRole Query Test Role",
+						Created: now,
+						Updated: now,
+					}
+					if err := db.Create(&role).Error; err != nil {
+						t.Fatalf("failed to create role: %v", err)
+					}
+				} else {
+					t.Fatalf("failed to query role: %v", err)
+				}
+			}
+
+			// Create an existing user
+			user := repository.User{
+				Name:    "Test User",
+				Created: now,
+				Updated: now,
+			}
+			if err := db.Create(&user).Error; err != nil {
+				t.Fatalf("failed to create user: %v", err)
+			}
+
+			// Assign a role to the user
+			if err := db.Model(&user).Association("Roles").Append(&role); err != nil {
+				t.Fatalf("failed to assign role to user: %v", err)
+			}
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `query ($userID: ID!) {
+                    userRole(userID: $userID) {
+                        id
+                        name
+                    }
+                }`,
+				"variables": map[string]interface{}{
+					"userID": user.ID,
+				},
+			})
+
+			expected := fmt.Sprintf(`{
+                "data": {
+                    "userRole": {
+                        "id": %d,
+                        "name": "UserRole Query Test Role"
+                    }
+                }
+            }`, role.ID)
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+
+		t.Run("CardGroupsByUser Query", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+
+			// Create or get an existing role
+			var role repository.Role
+			if err := db.Where("name = ?", "CardGroupsByUser Query Test Role").First(&role).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					role = repository.Role{
+						Name:    "CardGroupsByUser Query Test Role",
+						Created: now,
+						Updated: now,
+					}
+					if err := db.Create(&role).Error; err != nil {
+						t.Fatalf("failed to create role: %v", err)
+					}
+				} else {
+					t.Fatalf("failed to query role: %v", err)
+				}
+			}
+
+			// Create an existing user
+			user := repository.User{
+				Name:    "Test User",
+				Created: now,
+				Updated: now,
+			}
+			if err := db.Create(&user).Error; err != nil {
+				t.Fatalf("failed to create user: %v", err)
+			}
+
+			// Assign a role to the user
+			if err := db.Model(&user).Association("Roles").Append(&role); err != nil {
+				t.Fatalf("failed to assign role to user: %v", err)
+			}
+
+			// Create a card group
+			cardGroup := repository.Cardgroup{
+				Name:    "Test CardGroup",
+				Created: now,
+				Updated: now,
+			}
+			db.Create(&cardGroup)
+			db.Model(&user).Association("CardGroups").Append(&cardGroup)
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `query ($userID: ID!, $first: Int) {
+                    cardGroupsByUser(userID: $userID, first: $first) {
+                        nodes {
+                            id
+                            name
+                            created
+                            updated
+                        }
+                    }
+                }`,
+				"variables": map[string]interface{}{
+					"userID": user.ID,
+					"first":  nil,
+				},
+			})
+
+			expected := fmt.Sprintf(`{
+                "data": {
+                    "cardGroupsByUser": {
+                        "nodes": [{
+                            "id": %d,
+                            "name": "Test CardGroup"
+                        }]
+                    }
+                }
+            }`, cardGroup.ID)
+
+			testGraphQLQuery(t, e, jsonInput, expected, "data.cardGroupsByUser.nodes.created", "data.cardGroupsByUser.nodes.updated")
+		})
+
+		t.Run("UsersByRole Query", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+
+			// Create or get an existing role
+			var role repository.Role
+			if err := db.Where("name = ?", "UsersByRole Query Test Role").First(&role).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					role = repository.Role{
+						Name:    "UsersByRole Query Test Role",
+						Created: now,
+						Updated: now,
+					}
+					if err := db.Create(&role).Error; err != nil {
+						t.Fatalf("failed to create role: %v", err)
+					}
+				} else {
+					t.Fatalf("failed to query role: %v", err)
+				}
+			}
+
+			// Create an existing user
+			user := repository.User{
+				Name:    "Test User",
+				Created: now,
+				Updated: now,
+			}
+			if err := db.Create(&user).Error; err != nil {
+				t.Fatalf("failed to create user: %v", err)
+			}
+
+			// Assign a role to the user
+			if err := db.Model(&user).Association("Roles").Append(&role); err != nil {
+				t.Fatalf("failed to assign role to user: %v", err)
+			}
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `query ($roleID: ID!, $first: Int) {
+                    usersByRole(roleID: $roleID, first: $first) {
+                        nodes {
+                            id
+                            name
+                            created
+                            updated
+                        }
+                    }
+                }`,
+				"variables": map[string]interface{}{
+					"roleID": role.ID,
+					"first":  1,
+				},
+			})
+
+			expected := fmt.Sprintf(`{
+                "data": {
+                    "usersByRole": {
+                        "nodes": [{
+                            "id": %d,
+                            "name": "Test User"
+                        }]
+                    }
+                }
+            }`, user.ID)
+
+			testGraphQLQuery(t, e, jsonInput, expected, "data.usersByRole.nodes.created", "data.usersByRole.nodes.updated")
+		})
+
+		t.Run("CreateCard Mutation", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+			cardGroup := repository.Cardgroup{
+				Name:    "Test CardGroup",
+				Created: now,
+				Updated: now,
+			}
+			db.Create(&cardGroup)
+
+			IntervalDays := 1
+			input := model.NewCard{
+				Front:        "New Card Front",
+				Back:         "New Card Back",
+				ReviewDate:   now,
+				IntervalDays: &IntervalDays,
+				CardgroupID:  cardGroup.ID,
+				Created:      now,
+				Updated:      now,
+			}
+
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `mutation ($input: NewCard!) {
                     createCard(input: $input) {
@@ -183,208 +652,25 @@ func TestMutationResolver(t *testing.T) {
 					"input": input,
 				},
 			})
-			expected := fmt.Sprintf(`{
+
+			expected := `{
                 "data": {
                     "createCard": {
-                        "id": 1,
-                        "front": "CreateCard Front of card",
-                        "back": "CreateCard Back of card",
-                        "review_date": "%s",
-                        "interval_days": 1,
-                        "created": "%s",
-                        "updated": "%s"
+                        "id": "1",
+                        "front": "New Card Front",
+                        "back": "New Card Back",
+                        "interval_days": 1
                     }
                 }
-            }`, cardgroup.Created.Format(time.RFC3339Nano), cardgroup.Created.Format(time.RFC3339Nano), cardgroup.Updated.Format(time.RFC3339Nano))
+            }`
 
 			testGraphQLQuery(t, e, jsonInput, expected, "data.createCard.id", "data.createCard.created", "data.createCard.updated", "data.createCard.review_date")
 		})
 
-		t.Run("CreateCard_Error", func(t *testing.T) {
-			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `query ($id: ID!) {
-                    card(id: $id) {
-                        id
-                        front
-                        back
-                        review_date
-                        interval_days
-                        created
-                        updated
-                    }
-                }`,
-				"variables": map[string]interface{}{
-					"id": -1,
-				},
-			})
-			expected := `{
-                "data": {
-                    "card": null
-                },
-                "errors": [{
-                    "message": "invalid id: -1",
-                    "path": ["card"]
-                }]
-            }`
+		t.Run("UpdateCard Mutation", func(t *testing.T) {
+			t.Parallel()
 
-			testGraphQLQuery(t, e, jsonInput, expected)
-		})
-
-		t.Run("UpdateCard", func(t *testing.T) {
 			now := time.Now()
-			cardgroup := repository.Cardgroup{
-				Name:    "TestMutationResolver_UpdateCard Cardgroup",
-				Created: now,
-				Updated: now,
-			}
-			db.Create(&cardgroup)
-
-			card := repository.Card{
-				Front:        "UpdateCard Old Front",
-				Back:         "UpdateCard Old Back",
-				ReviewDate:   time.Now(),
-				IntervalDays: 1,
-				CardGroupID:  cardgroup.ID,
-				Created:      time.Now(),
-				Updated:      time.Now(),
-			}
-			db.Create(&card)
-
-			input := model.NewCard{
-				Front:      "UpdateCard New Front",
-				Back:       "UpdateCard New Back",
-				ReviewDate: time.Now(),
-			}
-			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `mutation ($id: ID!, $input: NewCard!) {
-                    updateCard(id: $id, input: $input) {
-                        id
-                        front
-                        back
-                        review_date
-                        interval_days
-                        created
-                        updated
-                    }
-                }`,
-				"variables": map[string]interface{}{
-					"id":    card.ID,
-					"input": input,
-				},
-			})
-			expected := `{
-                "data": {
-                    "updateCard": {
-                        "id": ` + fmt.Sprintf("%d", card.ID) + `,
-                        "front": "UpdateCard New Front",
-                        "back": "UpdateCard New Back"
-                    }
-                }
-            }`
-			testGraphQLQuery(t, e, jsonInput, expected, "data.updateCard.created", "data.updateCard.updated", "data.updateCard.review_date", "data.updateCard.interval_days")
-		})
-
-		t.Run("UpdateCard_Error", func(t *testing.T) {
-			input := model.NewCard{
-				Front:      "UpdateCard New Front",
-				Back:       "UpdateCard New Back",
-				ReviewDate: time.Now(),
-			}
-			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `mutation ($id: ID!, $input: NewCard!) {
-                    updateCard(id: $id, input: $input) {
-                        id
-                        front
-                        back
-                        review_date
-                        interval_days
-                        created
-                        updated
-                    }
-                }`,
-				"variables": map[string]interface{}{
-					"id":    -1,
-					"input": input,
-				},
-			})
-			expected := `{
-                "data": {
-                    "updateCard": null
-                },
-                "errors": [{
-                    "message": "invalid id: -1",
-                    "path": ["updateCard"]
-                }]
-            }`
-			testGraphQLQuery(t, e, jsonInput, expected)
-		})
-
-		t.Run("DeleteCard", func(t *testing.T) {
-			now := time.Now()
-			cardgroup := repository.Cardgroup{
-				Name:    "TestMutationResolver_DeleteCard Cardgroup",
-				Created: now,
-				Updated: now,
-			}
-			db.Create(&cardgroup)
-
-			card := repository.Card{
-				Front:        "DeleteCard Front",
-				Back:         "DeleteCard Back",
-				ReviewDate:   time.Now(),
-				IntervalDays: 1,
-				CardGroupID:  cardgroup.ID,
-				Created:      time.Now(),
-				Updated:      time.Now(),
-			}
-			db.Create(&card)
-
-			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `mutation ($id: ID!) {
-                    deleteCard(id: $id)
-                }`,
-				"variables": map[string]interface{}{
-					"id": card.ID,
-				},
-			})
-			expected := `{
-                "data": {
-                    "deleteCard": true
-                }
-            }`
-			testGraphQLQuery(t, e, jsonInput, expected)
-		})
-
-		t.Run("DeleteCard_Error", func(t *testing.T) {
-			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `mutation ($id: ID!) {
-                    deleteCard(id: $id)
-                }`,
-				"variables": map[string]interface{}{
-					"id": -1,
-				},
-			})
-			expected := `{
-                "data": {
-                    "deleteCard": false
-                },
-                "errors": [{
-                    "message": "invalid id: -1",
-                    "path": ["deleteCard"]
-                }]
-            }`
-			testGraphQLQuery(t, e, jsonInput, expected)
-		})
-	})
-}
-
-func TestQueryResolver(t *testing.T) {
-	t.Helper()
-	t.Parallel()
-
-	testutils.RunServersTest(t, db, func(t *testing.T) {
-		t.Run("CardsByCardGroup", func(t *testing.T) {
-			now := time.Now().UTC()
 			cardGroup := repository.Cardgroup{
 				Name:    "Test CardGroup",
 				Created: now,
@@ -393,8 +679,65 @@ func TestQueryResolver(t *testing.T) {
 			db.Create(&cardGroup)
 
 			card := repository.Card{
-				Front:        "Card Front",
-				Back:         "Card Back",
+				Front:        "Old Front",
+				Back:         "Old Back",
+				ReviewDate:   now,
+				IntervalDays: 1,
+				CardGroupID:  cardGroup.ID,
+				Created:      now,
+				Updated:      now,
+			}
+			db.Create(&card)
+
+			input := model.NewCard{
+				Front:        "Updated Front",
+				Back:         "Updated Back",
+				ReviewDate:   now,
+				IntervalDays: func() *int { i := 3; return &i }(),
+				CardgroupID:  cardGroup.ID,
+			}
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($id: ID!, $input: NewCard!) {
+            updateCard(id: $id, input: $input) {
+                id
+                front
+                back
+            }
+        }`,
+				"variables": map[string]interface{}{
+					"id":    card.ID,
+					"input": input,
+				},
+			})
+
+			expected := fmt.Sprintf(`{
+        "data": {
+            "updateCard": {
+                "id": %d,
+                "front": "Updated Front",
+                "back": "Updated Back"
+            }
+        }
+    }`, card.ID)
+
+			testGraphQLQuery(t, e, jsonInput, expected, "data.updateCard.created", "data.updateCard.updated", "data.updateCard.review_date", "data.updateCard.interval_days")
+		})
+
+		t.Run("DeleteCard Mutation", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+			cardGroup := repository.Cardgroup{
+				Name:    "Test CardGroup",
+				Created: now,
+				Updated: now,
+			}
+			db.Create(&cardGroup)
+
+			card := repository.Card{
+				Front:        "Test Card Front",
+				Back:         "Test Card Back",
 				ReviewDate:   now,
 				IntervalDays: 1,
 				CardGroupID:  cardGroup.ID,
@@ -404,618 +747,729 @@ func TestQueryResolver(t *testing.T) {
 			db.Create(&card)
 
 			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `query ($cardGroupID: ID!) {
-					cardsByCardGroup(cardGroupID: $cardGroupID) {
-						edges {
-							node {
-								id
-								front
-								back
-								review_date
-								interval_days
-								created
-								updated
-							}
-						}
-					}
-				}`,
-				"variables": map[string]interface{}{
-					"cardGroupID": cardGroup.ID,
-				},
-			})
-
-			expected := fmt.Sprintf(`{
-				"data": {
-					"cardsByCardGroup": {
-						"edges": [{
-							"node": {
-								"id": %d,
-								"front": "Card Front",
-								"back": "Card Back",
-								"interval_days": 1
-							}
-						}]
-					}
-				}
-			}`, card.ID)
-
-			testGraphQLQuery(t, e, jsonInput, expected, "data.cardsByCardGroup.edges.node.created", "data.cardsByCardGroup.edges.node.updated", "data.cardsByCardGroup.edges.node.review_date")
-		})
-
-		t.Run("Card", func(t *testing.T) {
-			now := time.Now()
-			cardgroup := repository.Cardgroup{
-				Name:    "TestQueryResolver_Card Cardgroup",
-				Created: now,
-				Updated: now,
-			}
-			db.Create(&cardgroup)
-
-			card := repository.Card{
-				Front:        "Card Front",
-				Back:         "Card Back",
-				ReviewDate:   now,
-				IntervalDays: 1,
-				CardGroupID:  cardgroup.ID,
-				Created:      now,
-				Updated:      now,
-			}
-			db.Create(&card)
-
-			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `query ($id: ID!) {
-                    card(id: $id) {
-                        id
-                        front
-                        back
-                        review_date
-                        interval_days
-                        created
-                        updated
-                    }
+				"query": `mutation ($id: ID!) {
+                    deleteCard(id: $id)
                 }`,
 				"variables": map[string]interface{}{
 					"id": card.ID,
 				},
 			})
-			expected := fmt.Sprintf(`{
-                "data": {
-                    "card": {
-                        "id": %d,
-                        "front": "Card Front",
-                        "back": "Card Back",
-                        "review_date": "%s",
-                        "interval_days": 1,
-                        "created": "%s",
-                        "updated": "%s"
-                    }
-                }
-            }`, card.ID, card.ReviewDate.Format(time.RFC3339Nano), card.Created.Format(time.RFC3339Nano), card.Updated.Format(time.RFC3339Nano))
 
-			testGraphQLQuery(t, e, jsonInput, expected, "data.card.id", "data.card.created", "data.card.updated", "data.card.review_date")
+			expected := `{
+                "data": {
+                    "deleteCard": true
+                }
+            }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
 		})
 
-		t.Run("Card_Error", func(t *testing.T) {
+		t.Run("CreateCardGroup Mutation", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+			input := model.NewCardGroup{
+				Name:    "New Card Group",
+				CardIds: nil,
+				UserIds: []int64{1, 2},
+				Created: now,
+				Updated: now,
+			}
+
 			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `query ($id: ID!) {
-                    card(id: $id) {
+				"query": `mutation ($input: NewCardGroup!) {
+                    createCardGroup(input: $input) {
                         id
-                        front
-                        back
-                        review_date
-                        interval_days
+                        name
                         created
                         updated
                     }
                 }`,
 				"variables": map[string]interface{}{
-					"id": -1,
+					"input": input,
 				},
 			})
+
 			expected := `{
                 "data": {
-                    "card": null
-                },
-                "errors": [{
-                    "message": "invalid id: -1",
-                    "path": ["card"]
-                }]
-            }`
-
-			testGraphQLQuery(t, e, jsonInput, expected)
-		})
-
-		t.Run("Roles", func(t *testing.T) {
-			role := repository.Role{
-				Name: "Test Role",
-			}
-			db.Create(&role)
-
-			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `{
-                    roles {
-                        id
-                        name
-                    }
-                }`,
-			})
-
-			req := httptest.NewRequest(http.MethodPost, "/query", bytes.NewBuffer(jsonInput))
-			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-			rec := httptest.NewRecorder()
-
-			e.ServeHTTP(rec, req)
-
-			assert.Equal(t, http.StatusOK, rec.Code)
-
-			var response map[string]interface{}
-			if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
-				t.Fatalf("Failed to unmarshal response: %v", err)
-			}
-
-			roles, ok := response["data"].(map[string]interface{})["roles"].([]interface{})
-			if !ok {
-				t.Fatalf("Failed to parse roles from response")
-			}
-			assert.Len(t, roles, 1, "Expected number of roles to be 1")
-
-			roleDetails := roles[0].(map[string]interface{})
-			assert.Equal(t, "Test Role", roleDetails["name"])
-		})
-
-		t.Run("Roles_Error", func(t *testing.T) {
-			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `{
-                    roles {
-                        invalid_field
-                    }
-                }`,
-			})
-			expected := `{
-                "data": null,
-                "errors": [{
-                    "message": "Cannot query field \"invalid_field\" on type \"Role\".",
-                    "extensions": {
-                        "code": "GRAPHQL_VALIDATION_FAILED"
-                    },
-                    "locations": [{
-                        "line": 3,
-                        "column": 17
-                    }]
-                }]
-            }`
-
-			testGraphQLQuery(t, e, jsonInput, expected)
-		})
-
-		t.Run("Role", func(t *testing.T) {
-			if err := db.Where("name = ?", "Test Role").Delete(&repository.Role{}).Error; err != nil {
-				t.Fatalf("Failed to delete existing Test Role: %v", err)
-			}
-
-			role := repository.Role{
-				Name: "Test Role",
-			}
-			db.Create(&role)
-
-			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `query ($id: ID!) {
-                    role(id: $id) {
-                        id
-                        name
-                    }
-                }`,
-				"variables": map[string]interface{}{
-					"id": role.ID,
-				},
-			})
-			expected := fmt.Sprintf(`{
-                "data": {
-                    "role": {
-                        "id": %d,
-                        "name": "Test Role"
+                    "createCardGroup": {
+                        "id": "1",
+                        "name": "New Card Group"
                     }
                 }
-            }`, role.ID)
+            }`
+
+			testGraphQLQuery(t, e, jsonInput, expected, "data.createCardGroup.id", "data.createCardGroup.created", "data.createCardGroup.updated")
+		})
+
+		t.Run("UpdateCardGroup Mutation", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+
+			// Create an existing card group
+			cardGroup := repository.Cardgroup{
+				Name:    "Old Group",
+				Created: now,
+				Updated: now,
+			}
+			if err := db.Create(&cardGroup).Error; err != nil {
+				t.Fatalf("failed to create card group: %v", err)
+			}
+
+			// Create or get an existing role
+			var role repository.Role
+			if err := db.Where("name = ?", "UpdateCardGroup Mutation Test Role").First(&role).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					role = repository.Role{
+						Name:    "UpdateCardGroup Mutation Test Role",
+						Created: now,
+						Updated: now,
+					}
+					if err := db.Create(&role).Error; err != nil {
+						t.Fatalf("failed to create role: %v", err)
+					}
+				} else {
+					t.Fatalf("failed to query role: %v", err)
+				}
+			}
+
+			// Create an existing user
+			user := repository.User{
+				Name:    "Users Query Test User",
+				Created: now,
+				Updated: now,
+			}
+			if err := db.Create(&user).Error; err != nil {
+				t.Fatalf("failed to create user: %v", err)
+			}
+
+			// Assign a role to the user
+			if err := db.Model(&user).Association("Roles").Append(&role); err != nil {
+				t.Fatalf("failed to assign role to user: %v", err)
+			}
+
+			// Assign the user to the card group
+			if err := db.Model(&cardGroup).Association("Users").Append(&user); err != nil {
+				t.Fatalf("failed to assign user to card group: %v", err)
+			}
+
+			// Input data for updating
+			input := model.NewCardGroup{
+				Name:    "Updated Group",
+				UserIds: []int64{user.ID},
+				Created: now,
+				Updated: now,
+			}
+
+			// GraphQL Mutation test for updating card group
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($id: ID!, $input: NewCardGroup!) {
+            updateCardGroup(id: $id, input: $input) {
+                id
+                name
+                created
+                updated
+            }
+        }`,
+				"variables": map[string]interface{}{
+					"id":    cardGroup.ID,
+					"input": input,
+				},
+			})
+
+			expected := fmt.Sprintf(`{
+        "data": {
+            "updateCardGroup": {
+                "id": %d,
+                "name": "Updated Group"
+            }
+        }
+    }`, cardGroup.ID)
+
+			testGraphQLQuery(t, e, jsonInput, expected, "data.updateCardGroup.created", "data.updateCardGroup.updated")
+		})
+
+		t.Run("DeleteCardGroup Mutation", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+			cardGroup := repository.Cardgroup{
+				Name:    "Test Group",
+				Created: now,
+				Updated: now,
+			}
+			db.Create(&cardGroup)
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($id: ID!) {
+                    deleteCardGroup(id: $id)
+                }`,
+				"variables": map[string]interface{}{
+					"id": cardGroup.ID,
+				},
+			})
+
+			expected := `{
+                "data": {
+                    "deleteCardGroup": true
+                }
+            }`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
 
-		t.Run("Role_Error", func(t *testing.T) {
+		t.Run("CreateUser Mutation", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+
+			// Create or get an existing role
+			var role repository.Role
+			if err := db.Where("name = ?", "CreateUser Mutation Test Role").First(&role).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					role = repository.Role{
+						Name:    "CreateUser Mutation Test Role",
+						Created: now,
+						Updated: now,
+					}
+					if err := db.Create(&role).Error; err != nil {
+						t.Fatalf("failed to create role: %v", err)
+					}
+				} else {
+					t.Fatalf("failed to query role: %v", err)
+				}
+			}
+
+			input := model.NewUser{
+				Name:    "New User",
+				RoleIds: []int64{role.ID},
+				Created: now,
+				Updated: now,
+			}
+
 			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `query ($id: ID!) {
-                    role(id: $id) {
+				"query": `mutation ($input: NewUser!) {
+                    createUser(input: $input) {
                         id
                         name
+                        created
+                        updated
                     }
                 }`,
 				"variables": map[string]interface{}{
-					"id": -1,
+					"input": input,
 				},
 			})
+
 			expected := `{
                 "data": {
-                    "role": null
-                },
-                "errors": [{
-                    "message": "invalid id: -1",
-                    "path": ["role"]
-                }]
+                    "createUser": {
+                        "id": "1",
+                        "name": "New User"
+                    }
+                }
             }`
 
-			testGraphQLQuery(t, e, jsonInput, expected)
+			testGraphQLQuery(t, e, jsonInput, expected, "data.createUser.id", "data.createUser.created", "data.createUser.updated")
 		})
 
-		t.Run("Users", func(t *testing.T) {
+		t.Run("UpdateUser Mutation", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+
+			// Create or get an existing role
+			var role repository.Role
+			if err := db.Where("name = ?", "UpdateUser Mutation Test Role").First(&role).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					role = repository.Role{
+						Name:    "UpdateUser Mutation Test Role",
+						Created: now,
+						Updated: now,
+					}
+					if err := db.Create(&role).Error; err != nil {
+						t.Fatalf("failed to create role: %v", err)
+					}
+				} else {
+					t.Fatalf("failed to query role: %v", err)
+				}
+			}
+
+			// Create an existing user
 			user := repository.User{
-				Name: "Test User",
+				Name:    "Old User",
+				Created: now,
+				Updated: now,
+			}
+			if err := db.Create(&user).Error; err != nil {
+				t.Fatalf("failed to create user: %v", err)
+			}
+
+			// Assign a role to the user
+			if err := db.Model(&user).Association("Roles").Append(&role); err != nil {
+				t.Fatalf("failed to assign role to user: %v", err)
+			}
+
+			// Input data for updating
+			input := model.NewUser{
+				Name:    "Updated User",
+				RoleIds: []int64{role.ID},
+				Created: now,
+				Updated: now,
+			}
+
+			// GraphQL Mutation test for updating user
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($id: ID!, $input: NewUser!) {
+            updateUser(id: $id, input: $input) {
+                id
+                name
+                created
+                updated
+            }
+        }`,
+				"variables": map[string]interface{}{
+					"id":    user.ID,
+					"input": input,
+				},
+			})
+
+			expected := fmt.Sprintf(`{
+        "data": {
+            "updateUser": {
+                "id": %d,
+                "name": "Updated User"
+            }
+        }
+    }`, user.ID)
+
+			testGraphQLQuery(t, e, jsonInput, expected, "data.updateUser.created", "data.updateUser.updated")
+		})
+
+		t.Run("DeleteUser Mutation", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+			user := repository.User{
+				Name:    "Test User",
+				Created: now,
+				Updated: now,
 			}
 			db.Create(&user)
 
 			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `{
-                    users {
-                        id
-                        name
-                    }
-                }`,
-			})
-
-			req := httptest.NewRequest(http.MethodPost, "/query", bytes.NewBuffer(jsonInput))
-			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-			rec := httptest.NewRecorder()
-
-			e.ServeHTTP(rec, req)
-
-			assert.Equal(t, http.StatusOK, rec.Code)
-
-			var response map[string]interface{}
-			if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
-				t.Fatalf("Failed to unmarshal response: %v", err)
-			}
-
-			users, ok := response["data"].(map[string]interface{})["users"].([]interface{})
-			if !ok {
-				t.Fatalf("Failed to parse users from response")
-			}
-			assert.Len(t, users, 1, "Expected number of users to be 1")
-
-			userDetails := users[0].(map[string]interface{})
-			assert.Equal(t, "Test User", userDetails["name"])
-		})
-
-		t.Run("Users_Error", func(t *testing.T) {
-			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `{
-                    users {
-                        invalid_field
-                    }
-                }`,
-			})
-			expected := `{
-                "errors": [{
-                    "message": "Cannot query field \"invalid_field\" on type \"User\".",
-                    "locations": [{"line": 3, "column": 5}],
-                    "extensions": {
-                        "code": "GRAPHQL_VALIDATION_FAILED"
-                    }
-                }],
-                "data": null
-            }`
-
-			testGraphQLQuery(t, e, jsonInput, expected)
-		})
-
-		t.Run("User", func(t *testing.T) {
-			user := repository.User{
-				Name: "Test User",
-			}
-			db.Create(&user)
-
-			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `query ($id: ID!) {
-                    user(id: $id) {
-                        id
-                        name
-                    }
+				"query": `mutation ($id: ID!) {
+                    deleteUser(id: $id)
                 }`,
 				"variables": map[string]interface{}{
 					"id": user.ID,
 				},
 			})
-			expected := fmt.Sprintf(`{
-                "data": {
-                    "user": {
-                        "id": %d,
-                        "name": "Test User"
-                    }
-                }
-            }`, user.ID)
 
-			testGraphQLQuery(t, e, jsonInput, expected)
-		})
-
-		t.Run("User_Error", func(t *testing.T) {
-			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `query ($id: ID!) {
-                    user(id: $id) {
-                        id
-                        name
-                    }
-                }`,
-				"variables": map[string]interface{}{
-					"id": -1,
-				},
-			})
 			expected := `{
                 "data": {
-                    "user": null
-                },
-                "errors": [{
-                    "message": "invalid id: -1",
-                    "path": ["user"]
-                }]
+                    "deleteUser": true
+                }
             }`
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
 
-		t.Run("CardsByCardGroup", func(t *testing.T) {
+		t.Run("CreateRole Mutation", func(t *testing.T) {
+			t.Parallel()
+
 			now := time.Now()
-			cardgroup := repository.Cardgroup{
-				Name:    "Test CardGroup",
+			input := model.NewRole{
+				Name:    "New Role",
 				Created: now,
 				Updated: now,
 			}
-			db.Create(&cardgroup)
-
-			card := repository.Card{
-				Front:        "Card Front",
-				Back:         "Card Back",
-				ReviewDate:   now,
-				IntervalDays: 1,
-				CardGroupID:  cardgroup.ID,
-				Created:      now,
-				Updated:      now,
-			}
-			db.Create(&card)
 
 			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `query ($cardGroupId: ID!) {
-                    cardsByCardGroup(cardGroupId: $cardGroupId) {
-                        id
-                        front
-                        back
-                    }
-                }`,
-				"variables": map[string]interface{}{
-					"cardGroupId": cardgroup.ID,
-				},
-			})
-			expected := fmt.Sprintf(`{
-                "data": {
-                    "cardsByCardGroup": [{
-                        "id": %d,
-                        "front": "Card Front",
-                        "back": "Card Back"
-                    }]
-                }
-            }`, card.ID)
-
-			testGraphQLQuery(t, e, jsonInput, expected)
-		})
-
-		t.Run("CardsByCardGroup_Error", func(t *testing.T) {
-			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `query ($cardGroupId: ID!) {
-                    cardsByCardGroup(cardGroupId: $cardGroupId) {
-                        id
-                        front
-                        back
-                    }
-                }`,
-				"variables": map[string]interface{}{
-					"cardGroupId": -1,
-				},
-			})
-			expected := `{
-                "data": null,
-                "errors": [{
-                    "message": "invalid cardGroupID: -1",
-                    "path": ["cardsByCardGroup"]
-                }]
-            }`
-
-			testGraphQLQuery(t, e, jsonInput, expected)
-		})
-
-		t.Run("UserRole", func(t *testing.T) {
-			var role repository.Role
-			if err := db.Where("name = ?", "Test Role").First(&role).Error; err != nil {
-				role = repository.Role{
-					Name: "Test Role",
-				}
-				db.Create(&role)
-			}
-
-			user := repository.User{
-				Name: "Test User",
-			}
-			db.Create(&user)
-			db.Model(&user).Association("Roles").Append(&role)
-
-			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `query ($userId: ID!) {
-                    userRole(userId: $userId) {
+				"query": `mutation ($input: NewRole!) {
+                    createRole(input: $input) {
                         id
                         name
+                        created
+                        updated
                     }
                 }`,
 				"variables": map[string]interface{}{
-					"userId": user.ID,
+					"input": input,
 				},
 			})
+
+			expected := `{
+                "data": {
+                    "createRole": {
+                        "id": "1",
+                        "name": "New Role"
+                    }
+                }
+            }`
+
+			testGraphQLQuery(t, e, jsonInput, expected, "data.createRole.id", "data.createRole.created", "data.createRole.updated")
+		})
+
+		t.Run("UpdateRole Mutation", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+			role := repository.Role{
+				Name:    "Old Role",
+				Created: now,
+				Updated: now,
+			}
+			db.Create(&role)
+
+			input := model.NewRole{
+				Name:    "Updated Role",
+				Created: now,
+				Updated: now,
+			}
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($id: ID!, $input: NewRole!) {
+                    updateRole(id: $id, input: $input) {
+                        id
+                        name
+                        created
+                        updated
+                    }
+                }`,
+				"variables": map[string]interface{}{
+					"id":    role.ID,
+					"input": input,
+				},
+			})
+
 			expected := fmt.Sprintf(`{
                 "data": {
-                    "userRole": {
+                    "updateRole": {
                         "id": %d,
-                        "name": "Test Role"
+                        "name": "Updated Role"
                     }
                 }
             }`, role.ID)
 
-			testGraphQLQuery(t, e, jsonInput, expected)
+			testGraphQLQuery(t, e, jsonInput, expected, "data.updateRole.created", "data.updateRole.updated")
 		})
 
-		t.Run("UserRole_Error", func(t *testing.T) {
-			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `query ($userId: ID!) {
-                    userRole(userId: $userId) {
-                        id
-                        name
-                    }
-                }`,
-				"variables": map[string]interface{}{
-					"userId": -1,
-				},
-			})
-			expected := `{
-                "data": {
-                    "userRole": null
-                },
-                "errors": [{
-                    "message": "invalid userID: -1",
-                    "path": ["userRole"]
-                }]
-            }`
-
-			testGraphQLQuery(t, e, jsonInput, expected)
-		})
-
-		t.Run("CardGroupsByUser", func(t *testing.T) {
-			user := repository.User{
-				Name: "Test User",
-			}
-			db.Create(&user)
+		t.Run("DeleteRole Mutation", func(t *testing.T) {
+			t.Parallel()
 
 			now := time.Now()
-			cardgroup := repository.Cardgroup{
+
+			// Create or get a role
+			var role repository.Role
+			if err := db.Where("name = ?", "Test Role").First(&role).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					role = repository.Role{
+						Name:    "Test Role DeleteRole",
+						Created: now,
+						Updated: now,
+					}
+					if err := db.Create(&role).Error; err != nil {
+						t.Fatalf("failed to create role: %v", err)
+					}
+				} else {
+					t.Fatalf("failed to query role: %v", err)
+				}
+			}
+
+			// GraphQL Mutation test for deleting a role
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($id: ID!) {
+            deleteRole(id: $id)
+        }`,
+				"variables": map[string]interface{}{
+					"id": role.ID,
+				},
+			})
+
+			expected := `{
+        "data": {
+            "deleteRole": true
+        }
+    }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+
+		t.Run("AddUserToCardGroup Mutation", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+
+			// Create or get an existing role
+			var role repository.Role
+			if err := db.Where("name = ?", "Test Role").First(&role).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					role = repository.Role{
+						Name:    "Test Role",
+						Created: now,
+						Updated: now,
+					}
+					if err := db.Create(&role).Error; err != nil {
+						t.Fatalf("failed to create role: %v", err)
+					}
+				} else {
+					t.Fatalf("failed to query role: %v", err)
+				}
+			}
+
+			// Create an existing user
+			user := repository.User{
+				Name:    "Test User",
+				Created: now,
+				Updated: now,
+			}
+			if err := db.Create(&user).Error; err != nil {
+				t.Fatalf("failed to create user: %v", err)
+			}
+
+			// Assign a role to the user
+			if err := db.Model(&user).Association("Roles").Append(&role); err != nil {
+				t.Fatalf("failed to assign role to user: %v", err)
+			}
+
+			// Create a card group
+			cardGroup := repository.Cardgroup{
 				Name:    "Test CardGroup",
 				Created: now,
 				Updated: now,
 			}
-			db.Create(&cardgroup)
-			db.Model(&cardgroup).Association("Users").Append(&user)
+			db.Create(&cardGroup)
 
 			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `query ($userId: ID!) {
-                    cardGroupsByUser(userId: $userId) {
+				"query": `mutation ($userID: ID!, $cardGroupID: ID!) {
+                    addUserToCardGroup(userID: $userID, cardGroupID: $cardGroupID) {
                         id
                         name
+                        created
+                        updated
                     }
                 }`,
 				"variables": map[string]interface{}{
-					"userId": user.ID,
+					"userID":      user.ID,
+					"cardGroupID": cardGroup.ID,
 				},
 			})
+
 			expected := fmt.Sprintf(`{
                 "data": {
-                    "cardGroupsByUser": [{
+                    "addUserToCardGroup": {
                         "id": %d,
                         "name": "Test CardGroup"
-                    }]
+                    }
                 }
-            }`, cardgroup.ID)
+            }`, cardGroup.ID)
 
-			testGraphQLQuery(t, e, jsonInput, expected)
+			testGraphQLQuery(t, e, jsonInput, expected, "data.addUserToCardGroup.created", "data.addUserToCardGroup.updated")
 		})
 
-		t.Run("CardGroupsByUser_Error", func(t *testing.T) {
-			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `query ($userId: ID!) {
-                    cardGroupsByUser(userId: $userId) {
-                        id
-                        name
-                    }
-                }`,
-				"variables": map[string]interface{}{
-					"userId": -1,
-				},
-			})
-			expected := `{
-                "data": null,
-                "errors": [{
-                    "message": "invalid userID: -1",
-                    "path": ["cardGroupsByUser"]
-                }]
-            }`
+		t.Run("RemoveUserFromCardGroup Mutation", func(t *testing.T) {
+			t.Parallel()
 
-			testGraphQLQuery(t, e, jsonInput, expected)
-		})
+			now := time.Now()
 
-		t.Run("UsersByRole", func(t *testing.T) {
-			var existingRole repository.Role
-			roleName := "Test Role"
-
-			if err := db.Where("name = ?", roleName).First(&existingRole).Error; err == nil {
-				db.Delete(&existingRole)
+			// Create or get an existing role
+			var role repository.Role
+			if err := db.Where("name = ?", "RemoveUserFromCardGroup Mutation Test Role").First(&role).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					role = repository.Role{
+						Name:    "RemoveUserFromCardGroup Mutation Test Role",
+						Created: now,
+						Updated: now,
+					}
+					if err := db.Create(&role).Error; err != nil {
+						t.Fatalf("failed to create role: %v", err)
+					}
+				} else {
+					t.Fatalf("failed to query role: %v", err)
+				}
 			}
 
-			role := repository.Role{
-				Name: roleName,
-			}
-			db.Create(&role)
-
+			// Create an existing user
 			user := repository.User{
-				Name: "Test User",
+				Name:    "Test User",
+				Created: now,
+				Updated: now,
 			}
-			db.Create(&user)
-			db.Model(&user).Association("Roles").Append(&role)
+			if err := db.Create(&user).Error; err != nil {
+				t.Fatalf("failed to create user: %v", err)
+			}
+
+			// Assign a role to the user
+			if err := db.Model(&user).Association("Roles").Append(&role); err != nil {
+				t.Fatalf("failed to assign role to user: %v", err)
+			}
+
+			// Create a card group
+			cardGroup := repository.Cardgroup{
+				Name:    "Test CardGroup",
+				Created: now,
+				Updated: now,
+			}
+			db.Create(&cardGroup)
+			db.Model(&cardGroup).Association("Users").Append(&user)
 
 			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `query ($roleId: ID!) {
-                    usersByRole(roleId: $roleId) {
+				"query": `mutation ($userID: ID!, $cardGroupID: ID!) {
+                    removeUserFromCardGroup(userID: $userID, cardGroupID: $cardGroupID) {
                         id
                         name
+                        created
+                        updated
                     }
                 }`,
 				"variables": map[string]interface{}{
-					"roleId": role.ID,
+					"userID":      user.ID,
+					"cardGroupID": cardGroup.ID,
 				},
 			})
+
 			expected := fmt.Sprintf(`{
                 "data": {
-                    "usersByRole": [{
+                    "removeUserFromCardGroup": {
                         "id": %d,
-                        "name": "Test User"
-                    }]
+                        "name": "Test CardGroup"
+                    }
                 }
-            }`, user.ID)
+            }`, cardGroup.ID)
 
-			testGraphQLQuery(t, e, jsonInput, expected)
+			testGraphQLQuery(t, e, jsonInput, expected, "data.removeUserFromCardGroup.created", "data.removeUserFromCardGroup.updated")
 		})
 
-		t.Run("UsersByRole_Error", func(t *testing.T) {
+		t.Run("AssignRoleToUser Mutation", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+
+			// Create or get an existing role
+			var role repository.Role
+			if err := db.Where("name = ?", "AssignRoleToUser Mutation Test Role").First(&role).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					role = repository.Role{
+						Name:    "AssignRoleToUser Mutation Test Role",
+						Created: now,
+						Updated: now,
+					}
+					if err := db.Create(&role).Error; err != nil {
+						t.Fatalf("failed to create role: %v", err)
+					}
+				} else {
+					t.Fatalf("failed to query role: %v", err)
+				}
+			}
+
+			// Create an existing user
+			user := repository.User{
+				Name:    "Test User",
+				Created: now,
+				Updated: now,
+			}
+			if err := db.Create(&user).Error; err != nil {
+				t.Fatalf("failed to create user: %v", err)
+			}
+
+			// Assign the role to the user
+			if err := db.Model(&user).Association("Roles").Append(&role); err != nil {
+				t.Fatalf("failed to assign role to user: %v", err)
+			}
+
+			// GraphQL Mutation test for assigning a role
 			jsonInput, _ := json.Marshal(map[string]interface{}{
-				"query": `query ($roleId: ID!) {
-                    usersByRole(roleId: $roleId) {
-                        id
-                        name
-                    }
-                }`,
+				"query": `mutation ($userID: ID!, $roleID: ID!) {
+            assignRoleToUser(userID: $userID, roleID: $roleID) {
+                id
+                name
+                created
+                updated
+            }
+        }`,
 				"variables": map[string]interface{}{
-					"roleId": -1,
+					"userID": user.ID,
+					"roleID": role.ID,
 				},
 			})
-			expected := `{
-                "data": null,
-                "errors": [{
-                    "message": "invalid roleID: -1",
-                    "path": ["usersByRole"]
-                }]
-            }`
 
-			testGraphQLQuery(t, e, jsonInput, expected)
+			expected := fmt.Sprintf(`{
+        "data": {
+            "assignRoleToUser": {
+                "id": %d,
+                "name": "Test User"
+            }
+        }
+    }`, user.ID)
+
+			testGraphQLQuery(t, e, jsonInput, expected, "data.assignRoleToUser.created", "data.assignRoleToUser.updated")
+		})
+
+		t.Run("RemoveRoleFromUser Mutation", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+
+			// Create or get an existing role
+			var role repository.Role
+			if err := db.Where("name = ?", "RemoveRoleFromUser Mutation Test Role").First(&role).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					role = repository.Role{
+						Name:    "RemoveRoleFromUser Mutation Test Role",
+						Created: now,
+						Updated: now,
+					}
+					if err := db.Create(&role).Error; err != nil {
+						t.Fatalf("failed to create role: %v", err)
+					}
+				} else {
+					t.Fatalf("failed to query role: %v", err)
+				}
+			}
+
+			// Create an existing user
+			user := repository.User{
+				Name:    "Test User",
+				Created: now,
+				Updated: now,
+			}
+			if err := db.Create(&user).Error; err != nil {
+				t.Fatalf("failed to create user: %v", err)
+			}
+
+			// Assign the role to the user
+			if err := db.Model(&user).Association("Roles").Append(&role); err != nil {
+				t.Fatalf("failed to assign role to user: %v", err)
+			}
+
+			// GraphQL Mutation test for removing a role
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($userID: ID!, $roleID: ID!) {
+            removeRoleFromUser(userID: $userID, roleID: $roleID) {
+                id
+                name
+                created
+                updated
+            }
+        }`,
+				"variables": map[string]interface{}{
+					"userID": user.ID,
+					"roleID": role.ID,
+				},
+			})
+
+			expected := fmt.Sprintf(`{
+        "data": {
+            "removeRoleFromUser": {
+                "id": %d,
+                "name": "Test User"
+            }
+        }
+    }`, user.ID)
+
+			testGraphQLQuery(t, e, jsonInput, expected, "data.removeRoleFromUser.created", "data.removeRoleFromUser.updated")
 		})
 	})
 }

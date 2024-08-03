@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS cards
     updated       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     cardgroup_id  INTEGER   NOT NULL,
     FOREIGN KEY (cardgroup_id) REFERENCES cardgroups (id)
-    );
+);
 CREATE INDEX idx_cards_id ON cards(id);
 CREATE INDEX idx_cards_front ON cards(front);
 CREATE INDEX idx_cards_back ON cards(back);

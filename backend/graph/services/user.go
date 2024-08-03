@@ -150,30 +150,53 @@ func (s *userService) PaginatedUsers(ctx context.Context, first *int, after *int
 }
 
 func (s *userService) PaginatedUsersByRole(ctx context.Context, roleID int64, first *int, after *int64, last *int, before *int64) (*model.UserConnection, error) {
-	var users []db.User
-	query := s.db.WithContext(ctx).Model(&db.Role{ID: roleID})
+	var role db.Role
+	if err := s.db.WithContext(ctx).Preload("Users").First(&role, roleID).Error; err != nil {
+		return nil, fmt.Errorf("error fetching role: %+v", err)
+	}
 
+	query := s.db.WithContext(ctx).Model(&role).Association("Users")
+
+	var users []db.User
+	if err := query.Find(&users); err != nil {
+		return nil, fmt.Errorf("error fetching users by role: %+v", err)
+	}
+
+	// Implement pagination logic
+	start := 0
+	end := len(users)
 	if after != nil {
-		query = query.Where("id > ?", *after)
+		for i, user := range users {
+			if user.ID > *after {
+				start = i + 1
+				break
+			}
+		}
 	}
 	if before != nil {
-		query = query.Where("id < ?", *before)
+		for i, user := range users {
+			if user.ID >= *before {
+				end = i
+				break
+			}
+		}
 	}
 	if first != nil {
-		query = query.Order("id asc").Limit(*first)
-	} else if last != nil {
-		query = query.Order("id desc").Limit(*last)
-	} else {
-		query = query.Order("id asc").Limit(s.defaultLimit)
+		if start+*first < end {
+			end = start + *first
+		}
+	}
+	if last != nil {
+		if end-*last > start {
+			start = end - *last
+		}
 	}
 
-	if err := query.Association("Users").Find(&users).Error; err != nil {
-		return nil, fmt.Errorf("error %+v", err())
-	}
+	paginatedUsers := users[start:end]
 
 	var edges []*model.UserEdge
 	var nodes []*model.User
-	for _, user := range users {
+	for _, user := range paginatedUsers {
 		node := convertToUser(user)
 		edges = append(edges, &model.UserEdge{
 			Cursor: user.ID,
@@ -184,8 +207,8 @@ func (s *userService) PaginatedUsersByRole(ctx context.Context, roleID int64, fi
 
 	pageInfo := &model.PageInfo{}
 	if len(users) > 0 {
-		pageInfo.HasNextPage = len(users) == s.defaultLimit
-		pageInfo.HasPreviousPage = len(users) == s.defaultLimit
+		pageInfo.HasNextPage = end < len(users)
+		pageInfo.HasPreviousPage = start > 0
 		if len(edges) > 0 {
 			pageInfo.StartCursor = &edges[0].Cursor
 			pageInfo.EndCursor = &edges[len(edges)-1].Cursor
@@ -201,9 +224,13 @@ func (s *userService) PaginatedUsersByRole(ctx context.Context, roleID int64, fi
 }
 
 func (s *userService) GetUsersByIDs(ctx context.Context, ids []int64) ([]*model.User, error) {
-	var users []*model.User
-	if err := s.db.Where("id IN ?", ids).Find(&users).Error; err != nil {
+	var users []db.User
+	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&users).Error; err != nil {
 		return nil, err
 	}
-	return users, nil
+	var gqlUsers []*model.User
+	for _, user := range users {
+		gqlUsers = append(gqlUsers, convertToUser(user))
+	}
+	return gqlUsers, nil
 }

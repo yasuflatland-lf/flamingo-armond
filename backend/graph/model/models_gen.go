@@ -6,11 +6,6 @@ import (
 	"time"
 )
 
-type Node interface {
-	IsNode()
-	GetID() int64
-}
-
 type Card struct {
 	ID           int64      `json:"id"`
 	Front        string     `json:"front" validate:"required,min=1"`
@@ -19,11 +14,9 @@ type Card struct {
 	IntervalDays int        `json:"interval_days" validate:"gte=1"`
 	Created      time.Time  `json:"created"`
 	Updated      time.Time  `json:"updated"`
+	CardGroupID  int64      `json:"cardGroupID"`
 	CardGroup    *CardGroup `json:"cardGroup"`
 }
-
-func (Card) IsNode()           {}
-func (this Card) GetID() int64 { return this.ID }
 
 type CardConnection struct {
 	Edges      []*CardEdge `json:"edges,omitempty"`
@@ -45,9 +38,6 @@ type CardGroup struct {
 	Cards   *CardConnection `json:"cards"`
 	Users   *UserConnection `json:"users"`
 }
-
-func (CardGroup) IsNode()           {}
-func (this CardGroup) GetID() int64 { return this.ID }
 
 type CardGroupConnection struct {
 	Edges      []*CardGroupEdge `json:"edges,omitempty"`
@@ -113,9 +103,6 @@ type Role struct {
 	Users   *UserConnection `json:"users"`
 }
 
-func (Role) IsNode()           {}
-func (this Role) GetID() int64 { return this.ID }
-
 type RoleConnection struct {
 	Edges      []*RoleEdge `json:"edges,omitempty"`
 	Nodes      []*Role     `json:"nodes,omitempty"`
@@ -136,9 +123,6 @@ type User struct {
 	CardGroups *CardGroupConnection `json:"cardGroups"`
 	Roles      *RoleConnection      `json:"roles"`
 }
-
-func (User) IsNode()           {}
-func (this User) GetID() int64 { return this.ID }
 
 type UserConnection struct {
 	Edges      []*UserEdge `json:"edges,omitempty"`

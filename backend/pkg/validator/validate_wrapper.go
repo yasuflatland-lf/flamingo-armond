@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-playground/validator/v10"
+	"reflect"
 	"regexp"
 	"time"
 )
@@ -14,7 +15,7 @@ type validateWrapper struct {
 
 type ValidateWrapper interface {
 	Validator() *validator.Validate
-	ValidateStruct(*interface{}) error
+	ValidateStruct(s interface{}) error
 }
 
 func NewValidateWrapper(options ...validator.Option) ValidateWrapper {
@@ -38,11 +39,12 @@ func (v *validateWrapper) Validator() *validator.Validate {
 	return v.ValidatorInstance
 }
 
-func (v *validateWrapper) ValidateStruct(s *interface{}) error {
+func (v *validateWrapper) ValidateStruct(s interface{}) error {
 	err := v.ValidatorInstance.Struct(s)
 	if err != nil {
 		for _, err := range err.(validator.ValidationErrors) {
-			return errors.New(fmt.Sprintf("Field validation for '%s' failed on the '%s' tag", err.Field(), err.Tag()))
+			typeName := reflect.TypeOf(s).Elem().Name()
+			return errors.New(fmt.Sprintf("Field validation for the interface<%s>'s '%s' failed on the '%s' tag", typeName, err.Field(), err.Tag()))
 		}
 	}
 	return nil
