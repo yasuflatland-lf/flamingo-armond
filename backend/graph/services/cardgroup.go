@@ -130,57 +130,6 @@ func (s *cardGroupService) GetCardGroupsByUser(ctx context.Context, userID int64
 	return gqlCardGroups, nil
 }
 
-func (s *cardGroupService) PaginatedCardGroups(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.CardGroupConnection, error) {
-	var cardGroups []repository.Cardgroup
-	query := s.db.WithContext(ctx)
-
-	if after != nil {
-		query = query.Where("id > ?", *after)
-	}
-	if before != nil {
-		query = query.Where("id < ?", *before)
-	}
-	if first != nil {
-		query = query.Order("id asc").Limit(*first)
-	} else if last != nil {
-		query = query.Order("id desc").Limit(*last)
-	} else {
-		query = query.Order("id asc").Limit(s.defaultLimit)
-	}
-
-	if err := query.Find(&cardGroups).Error; err != nil {
-		return nil, err
-	}
-
-	var edges []*model.CardGroupEdge
-	var nodes []*model.CardGroup
-	for _, cardGroup := range cardGroups {
-		node := convertToCardGroup(cardGroup)
-		edges = append(edges, &model.CardGroupEdge{
-			Cursor: cardGroup.ID,
-			Node:   node,
-		})
-		nodes = append(nodes, node)
-	}
-
-	pageInfo := &model.PageInfo{}
-	if len(cardGroups) > 0 {
-		pageInfo.HasNextPage = len(cardGroups) == s.defaultLimit
-		pageInfo.HasPreviousPage = len(cardGroups) == s.defaultLimit
-		if len(edges) > 0 {
-			pageInfo.StartCursor = &edges[0].Cursor
-			pageInfo.EndCursor = &edges[len(edges)-1].Cursor
-		}
-	}
-
-	return &model.CardGroupConnection{
-		Edges:      edges,
-		Nodes:      nodes,
-		PageInfo:   pageInfo,
-		TotalCount: len(cardGroups),
-	}, nil
-}
-
 func (s *cardGroupService) PaginatedCardGroupsByUser(ctx context.Context, userID int64, first *int, after *int64, last *int, before *int64) (*model.CardGroupConnection, error) {
 	var user repository.User
 	var cardGroups []repository.Cardgroup
@@ -238,10 +187,17 @@ func (s *cardGroupService) PaginatedCardGroupsByUser(ctx context.Context, userID
 		TotalCount: len(cardGroups),
 	}, nil
 }
+
 func (s *cardGroupService) GetCardGroupsByIDs(ctx context.Context, ids []int64) ([]*model.CardGroup, error) {
-	var cardGroups []*model.CardGroup
+	var cardGroups []*repository.Cardgroup
 	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&cardGroups).Error; err != nil {
 		return nil, err
 	}
-	return cardGroups, nil
+
+	var gqlCardGroups []*model.CardGroup
+	for _, cardGroup := range cardGroups {
+		gqlCardGroups = append(gqlCardGroups, convertToCardGroup(*cardGroup))
+	}
+
+	return gqlCardGroups, nil
 }

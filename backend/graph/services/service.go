@@ -21,7 +21,6 @@ type CardService interface {
 	DeleteCard(ctx context.Context, id int64) (*bool, error)
 	Cards(ctx context.Context) ([]*model.Card, error)
 	CardsByCardGroup(ctx context.Context, cardGroupID int64) ([]*model.Card, error)
-	PaginatedCards(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.CardConnection, error)
 	PaginatedCardsByCardGroup(ctx context.Context, cardGroupID int64, first *int, after *int64, last *int, before *int64) (*model.CardConnection, error)
 	GetCardsByIDs(ctx context.Context, ids []int64) ([]*model.Card, error)
 }
@@ -35,7 +34,6 @@ type CardGroupService interface {
 	AddUserToCardGroup(ctx context.Context, userID int64, cardGroupID int64) (*model.CardGroup, error)
 	RemoveUserFromCardGroup(ctx context.Context, userID int64, cardGroupID int64) (*model.CardGroup, error)
 	GetCardGroupsByUser(ctx context.Context, userID int64) ([]*model.CardGroup, error)
-	PaginatedCardGroups(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.CardGroupConnection, error)
 	PaginatedCardGroupsByUser(ctx context.Context, userID int64, first *int, after *int64, last *int, before *int64) (*model.CardGroupConnection, error)
 	GetCardGroupsByIDs(ctx context.Context, ids []int64) ([]*model.CardGroup, error)
 }
@@ -47,7 +45,6 @@ type UserService interface {
 	CreateUser(ctx context.Context, input model.NewUser) (*model.User, error)
 	UpdateUser(ctx context.Context, id int64, input model.NewUser) (*model.User, error)
 	DeleteUser(ctx context.Context, id int64) (*bool, error)
-	PaginatedUsers(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.UserConnection, error)
 	PaginatedUsersByRole(ctx context.Context, roleID int64, first *int, after *int64, last *int, before *int64) (*model.UserConnection, error)
 	GetUsersByIDs(ctx context.Context, ids []int64) ([]*model.User, error)
 }
@@ -61,7 +58,6 @@ type RoleService interface {
 	AssignRoleToUser(ctx context.Context, userID int64, roleID int64) (*model.User, error)
 	RemoveRoleFromUser(ctx context.Context, userID int64, roleID int64) (*model.User, error)
 	Roles(ctx context.Context) ([]*model.Role, error)
-	PaginatedRoles(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.RoleConnection, error)
 	GetRolesByIDs(ctx context.Context, ids []int64) ([]*model.Role, error)
 }
 

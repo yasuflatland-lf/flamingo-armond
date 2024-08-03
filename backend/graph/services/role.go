@@ -1,7 +1,7 @@
 package services
 
 import (
-	"backend/graph/db"
+	repository "backend/graph/db"
 	"backend/graph/model"
 	"context"
 	"fmt"
@@ -13,7 +13,7 @@ type roleService struct {
 	defaultLimit int
 }
 
-func convertToRole(role db.Role) *model.Role {
+func convertToRole(role repository.Role) *model.Role {
 	return &model.Role{
 		ID:      role.ID,
 		Name:    role.Name,
@@ -22,14 +22,14 @@ func convertToRole(role db.Role) *model.Role {
 	}
 }
 
-func convertToGormRole(input model.NewRole) db.Role {
-	return db.Role{
+func convertToGormRole(input model.NewRole) repository.Role {
+	return repository.Role{
 		Name: input.Name,
 	}
 }
 
 func (s *roleService) GetRoleByUserID(ctx context.Context, userID int64) (*model.Role, error) {
-	var user db.User
+	var user repository.User
 	if err := s.db.WithContext(ctx).Preload("Roles").First(&user, userID).Error; err != nil {
 		return nil, err
 	}
@@ -41,7 +41,7 @@ func (s *roleService) GetRoleByUserID(ctx context.Context, userID int64) (*model
 }
 
 func (s *roleService) GetRoleByID(ctx context.Context, id int64) (*model.Role, error) {
-	var role db.Role
+	var role repository.Role
 	if err := s.db.WithContext(ctx).First(&role, id).Error; err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func (s *roleService) CreateRole(ctx context.Context, input model.NewRole) (*mod
 }
 
 func (s *roleService) UpdateRole(ctx context.Context, id int64, input model.NewRole) (*model.Role, error) {
-	var role db.Role
+	var role repository.Role
 	if err := s.db.WithContext(ctx).First(&role, id).Error; err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func (s *roleService) UpdateRole(ctx context.Context, id int64, input model.NewR
 
 func (s *roleService) DeleteRole(ctx context.Context, id int64) (*bool, error) {
 	success := false
-	result := s.db.WithContext(ctx).Delete(&db.Role{}, id)
+	result := s.db.WithContext(ctx).Delete(&repository.Role{}, id)
 	if result.Error != nil {
 		return &success, result.Error
 	}
@@ -83,8 +83,8 @@ func (s *roleService) DeleteRole(ctx context.Context, id int64) (*bool, error) {
 }
 
 func (s *roleService) AssignRoleToUser(ctx context.Context, userID int64, roleID int64) (*model.User, error) {
-	var user db.User
-	var role db.Role
+	var user repository.User
+	var role repository.Role
 	if err := s.db.WithContext(ctx).First(&user, userID).Error; err != nil {
 		return nil, err
 	}
@@ -103,17 +103,23 @@ func (s *roleService) AssignRoleToUser(ctx context.Context, userID int64, roleID
 }
 
 func (s *roleService) RemoveRoleFromUser(ctx context.Context, userID int64, roleID int64) (*model.User, error) {
-	var user db.User
-	var role db.Role
-	if err := s.db.WithContext(ctx).First(&user, userID).Error; err != nil {
+	var user repository.User
+
+	// Fetch the user along with the specified role in one query
+	if err := s.db.WithContext(ctx).Preload("Roles", "id = ?", roleID).First(&user, userID).Error; err != nil {
 		return nil, err
 	}
-	if err := s.db.WithContext(ctx).First(&role, roleID).Error; err != nil {
+
+	// Check if the role exists in the user's roles
+	if len(user.Roles) == 0 {
+		return nil, fmt.Errorf("role not found for user")
+	}
+
+	// Remove the role from the user's roles
+	if err := s.db.WithContext(ctx).Model(&user).Association("Roles").Delete(&user.Roles[0]); err != nil {
 		return nil, err
 	}
-	if err := s.db.WithContext(ctx).Model(&user).Association("Roles").Delete(&role); err != nil {
-		return nil, err
-	}
+
 	return &model.User{
 		ID:      user.ID,
 		Name:    user.Name,
@@ -123,7 +129,7 @@ func (s *roleService) RemoveRoleFromUser(ctx context.Context, userID int64, role
 }
 
 func (s *roleService) Roles(ctx context.Context) ([]*model.Role, error) {
-	var roles []db.Role
+	var roles []repository.Role
 	if err := s.db.WithContext(ctx).Find(&roles).Error; err != nil {
 		return nil, err
 	}
@@ -134,60 +140,9 @@ func (s *roleService) Roles(ctx context.Context) ([]*model.Role, error) {
 	return gqlRoles, nil
 }
 
-func (s *roleService) PaginatedRoles(ctx context.Context, first *int, after *int64, last *int, before *int64) (*model.RoleConnection, error) {
-	var roles []db.Role
-	query := s.db.WithContext(ctx)
-
-	if after != nil {
-		query = query.Where("id > ?", *after)
-	}
-	if before != nil {
-		query = query.Where("id < ?", *before)
-	}
-	if first != nil {
-		query = query.Order("id asc").Limit(*first)
-	} else if last != nil {
-		query = query.Order("id desc").Limit(*last)
-	} else {
-		query = query.Order("id asc").Limit(s.defaultLimit)
-	}
-
-	if err := query.Find(&roles).Error; err != nil {
-		return nil, err
-	}
-
-	var edges []*model.RoleEdge
-	var nodes []*model.Role
-	for _, role := range roles {
-		node := convertToRole(role)
-		edges = append(edges, &model.RoleEdge{
-			Cursor: role.ID,
-			Node:   node,
-		})
-		nodes = append(nodes, node)
-	}
-
-	pageInfo := &model.PageInfo{}
-	if len(roles) > 0 {
-		pageInfo.HasNextPage = len(roles) == s.defaultLimit
-		pageInfo.HasPreviousPage = len(roles) == s.defaultLimit
-		if len(edges) > 0 {
-			pageInfo.StartCursor = &edges[0].Cursor
-			pageInfo.EndCursor = &edges[len(edges)-1].Cursor
-		}
-	}
-
-	return &model.RoleConnection{
-		Edges:      edges,
-		Nodes:      nodes,
-		PageInfo:   pageInfo,
-		TotalCount: len(roles),
-	}, nil
-}
-
 func (s *roleService) PaginatedRolesByUser(ctx context.Context, userID int64, first *int, after *int64, last *int, before *int64) (*model.RoleConnection, error) {
-	var roles []db.Role
-	query := s.db.WithContext(ctx).Model(&db.User{ID: userID})
+	var roles []repository.Role
+	query := s.db.WithContext(ctx).Model(&repository.User{ID: userID})
 
 	if after != nil {
 		query = query.Where("id > ?", *after)
@@ -237,9 +192,15 @@ func (s *roleService) PaginatedRolesByUser(ctx context.Context, userID int64, fi
 }
 
 func (s *roleService) GetRolesByIDs(ctx context.Context, ids []int64) ([]*model.Role, error) {
-	var roles []*model.Role
+	var roles []*repository.Role
 	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&roles).Error; err != nil {
 		return nil, err
 	}
-	return roles, nil
+
+	var gqlRoles []*model.Role
+	for _, role := range roles {
+		gqlRoles = append(gqlRoles, convertToRole(*role))
+	}
+
+	return gqlRoles, nil
 }

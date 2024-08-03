@@ -15,19 +15,19 @@ type Card struct {
 	Created      time.Time  `json:"created"`
 	Updated      time.Time  `json:"updated"`
 	CardGroupID  int64      `json:"cardGroupID"`
-	CardGroup    *CardGroup `json:"cardGroup"`
+	CardGroup    *CardGroup `json:"cardGroup" validate:"-"`
 }
 
 type CardConnection struct {
-	Edges      []*CardEdge `json:"edges,omitempty"`
-	Nodes      []*Card     `json:"nodes,omitempty"`
+	Edges      []*CardEdge `json:"edges,omitempty" validate:"-"`
+	Nodes      []*Card     `json:"nodes,omitempty" validate:"-"`
 	PageInfo   *PageInfo   `json:"pageInfo"`
 	TotalCount int         `json:"totalCount"`
 }
 
 type CardEdge struct {
 	Cursor int64 `json:"cursor"`
-	Node   *Card `json:"node"`
+	Node   *Card `json:"node" validate:"-"`
 }
 
 type CardGroup struct {
@@ -35,20 +35,20 @@ type CardGroup struct {
 	Name    string          `json:"name" validate:"required,fl_name,min=1"`
 	Created time.Time       `json:"created"`
 	Updated time.Time       `json:"updated"`
-	Cards   *CardConnection `json:"cards"`
-	Users   *UserConnection `json:"users"`
+	Cards   *CardConnection `json:"cards" validate:"-"`
+	Users   *UserConnection `json:"users" validate:"-"`
 }
 
 type CardGroupConnection struct {
-	Edges      []*CardGroupEdge `json:"edges,omitempty"`
-	Nodes      []*CardGroup     `json:"nodes,omitempty"`
+	Edges      []*CardGroupEdge `json:"edges,omitempty" validate:"-"`
+	Nodes      []*CardGroup     `json:"nodes,omitempty" validate:"-"`
 	PageInfo   *PageInfo        `json:"pageInfo"`
 	TotalCount int              `json:"totalCount"`
 }
 
 type CardGroupEdge struct {
 	Cursor int64      `json:"cursor"`
-	Node   *CardGroup `json:"node"`
+	Node   *CardGroup `json:"node" validate:"-"`
 }
 
 type Mutation struct {
@@ -100,19 +100,19 @@ type Role struct {
 	Name    string          `json:"name" validate:"required,fl_name,min=1"`
 	Created time.Time       `json:"created"`
 	Updated time.Time       `json:"updated"`
-	Users   *UserConnection `json:"users"`
+	Users   *UserConnection `json:"users" validate:"-"`
 }
 
 type RoleConnection struct {
-	Edges      []*RoleEdge `json:"edges,omitempty"`
-	Nodes      []*Role     `json:"nodes,omitempty"`
+	Edges      []*RoleEdge `json:"edges,omitempty" validate:"-"`
+	Nodes      []*Role     `json:"nodes,omitempty" validate:"-"`
 	PageInfo   *PageInfo   `json:"pageInfo"`
 	TotalCount int         `json:"totalCount"`
 }
 
 type RoleEdge struct {
 	Cursor int64 `json:"cursor"`
-	Node   *Role `json:"node"`
+	Node   *Role `json:"node" validate:"-"`
 }
 
 type User struct {
@@ -120,18 +120,18 @@ type User struct {
 	Name       string               `json:"name" validate:"required,fl_name,min=1"`
 	Created    time.Time            `json:"created"`
 	Updated    time.Time            `json:"updated"`
-	CardGroups *CardGroupConnection `json:"cardGroups"`
-	Roles      *RoleConnection      `json:"roles"`
+	CardGroups *CardGroupConnection `json:"cardGroups" validate:"-"`
+	Roles      *RoleConnection      `json:"roles" validate:"-"`
 }
 
 type UserConnection struct {
-	Edges      []*UserEdge `json:"edges,omitempty"`
-	Nodes      []*User     `json:"nodes,omitempty"`
+	Edges      []*UserEdge `json:"edges,omitempty" validate:"-"`
+	Nodes      []*User     `json:"nodes,omitempty" validate:"-"`
 	PageInfo   *PageInfo   `json:"pageInfo"`
 	TotalCount int         `json:"totalCount"`
 }
 
 type UserEdge struct {
 	Cursor int64 `json:"cursor"`
-	Node   *User `json:"node"`
+	Node   *User `json:"node" validate:"-"`
 }

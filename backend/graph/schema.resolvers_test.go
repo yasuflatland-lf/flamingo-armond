@@ -7,13 +7,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/labstack/gommon/log"
-	"github.com/pkg/errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/labstack/gommon/log"
+	"github.com/pkg/errors"
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/transport"

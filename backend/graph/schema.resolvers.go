@@ -28,6 +28,8 @@ func (r *cardGroupResolver) Cards(ctx context.Context, obj *model.CardGroup, fir
 	for _, edge := range obj.Cards.Edges {
 		cardIDs = append(cardIDs, edge.Node.ID)
 	}
+
+	// Load the cards using dataloader
 	thunks := r.Loaders.CardLoader.LoadMany(ctx, cardIDs)
 	cards, err := thunks()
 	if err != nil {
@@ -35,10 +37,51 @@ func (r *cardGroupResolver) Cards(ctx context.Context, obj *model.CardGroup, fir
 		return nil, fmt.Errorf("fetch by dataloader: %+v", err)
 	}
 
-	for i, card := range cards {
-		cards[i] = card
+	// Implement pagination logic
+	start := 0
+	end := len(cards)
+	if after != nil {
+		start = int(*after) + 1
 	}
-	return &model.CardConnection{Nodes: cards}, nil
+	if before != nil {
+		end = int(*before)
+	}
+	if first != nil {
+		end = start + *first
+		if end > len(cards) {
+			end = len(cards)
+		}
+	}
+	if last != nil {
+		start = end - *last
+		if start < 0 {
+			start = 0
+		}
+	}
+
+	paginatedCards := cards[start:end]
+
+	// Prepare edges
+	edges := make([]*model.CardEdge, len(paginatedCards))
+	for i, card := range paginatedCards {
+		edges[i] = &model.CardEdge{
+			Node:   card,
+			Cursor: card.ID,
+		}
+	}
+
+	// Prepare PageInfo
+	pageInfo := &model.PageInfo{
+		StartCursor:     &paginatedCards[0].ID,
+		EndCursor:       &paginatedCards[len(paginatedCards)-1].ID,
+		HasNextPage:     end < len(cards),
+		HasPreviousPage: start > 0,
+	}
+
+	return &model.CardConnection{
+		Edges:    edges,
+		PageInfo: pageInfo,
+	}, nil
 }
 
 // Users is the resolver for the users field in CardGroup.
@@ -47,6 +90,8 @@ func (r *cardGroupResolver) Users(ctx context.Context, obj *model.CardGroup, fir
 	for _, edge := range obj.Users.Edges {
 		userIDs = append(userIDs, edge.Node.ID)
 	}
+
+	// Load the users using dataloader
 	thunks := r.Loaders.UserLoader.LoadMany(ctx, userIDs)
 	users, err := thunks()
 	if err != nil {
@@ -54,10 +99,51 @@ func (r *cardGroupResolver) Users(ctx context.Context, obj *model.CardGroup, fir
 		return nil, fmt.Errorf("fetch by dataloader: %+v", err)
 	}
 
-	for i, user := range users {
-		users[i] = user
+	// Implement pagination logic
+	start := 0
+	end := len(users)
+	if after != nil {
+		start = int(*after) + 1
 	}
-	return &model.UserConnection{Nodes: users}, nil
+	if before != nil {
+		end = int(*before)
+	}
+	if first != nil {
+		end = start + *first
+		if end > len(users) {
+			end = len(users)
+		}
+	}
+	if last != nil {
+		start = end - *last
+		if start < 0 {
+			start = 0
+		}
+	}
+
+	paginatedUsers := users[start:end]
+
+	// Prepare edges
+	edges := make([]*model.UserEdge, len(paginatedUsers))
+	for i, user := range paginatedUsers {
+		edges[i] = &model.UserEdge{
+			Node:   user,
+			Cursor: user.ID,
+		}
+	}
+
+	// Prepare PageInfo
+	pageInfo := &model.PageInfo{
+		StartCursor:     &paginatedUsers[0].ID,
+		EndCursor:       &paginatedUsers[len(paginatedUsers)-1].ID,
+		HasNextPage:     end < len(users),
+		HasPreviousPage: start > 0,
+	}
+
+	return &model.UserConnection{
+		Edges:    edges,
+		PageInfo: pageInfo,
+	}, nil
 }
 
 // CreateCard is the resolver for the createCard field.
@@ -154,110 +240,88 @@ func (r *mutationResolver) DeleteRole(ctx context.Context, id int64) (*bool, err
 
 // AddUserToCardGroup is the resolver for the addUserToCardGroup field.
 func (r *mutationResolver) AddUserToCardGroup(ctx context.Context, userID int64, cardGroupID int64) (*model.CardGroup, error) {
-	if userID <= 0 || cardGroupID <= 0 {
-		logger.Logger.ErrorContext(ctx, "Validation error", fmt.Errorf("invalid userID or cardGroupID"))
-		return nil, fmt.Errorf("invalid userID or cardGroupID")
-	}
 	return r.Srv.AddUserToCardGroup(ctx, userID, cardGroupID)
 }
 
 // RemoveUserFromCardGroup is the resolver for the removeUserFromCardGroup field.
 func (r *mutationResolver) RemoveUserFromCardGroup(ctx context.Context, userID int64, cardGroupID int64) (*model.CardGroup, error) {
-	if userID <= 0 || cardGroupID <= 0 {
-		logger.Logger.ErrorContext(ctx, "Validation error", fmt.Errorf("invalid userID or cardGroupID"))
-		return nil, fmt.Errorf("invalid userID or cardGroupID")
-	}
 	return r.Srv.RemoveUserFromCardGroup(ctx, userID, cardGroupID)
 }
 
 // AssignRoleToUser is the resolver for the assignRoleToUser field.
 func (r *mutationResolver) AssignRoleToUser(ctx context.Context, userID int64, roleID int64) (*model.User, error) {
-	if userID <= 0 || roleID <= 0 {
-		logger.Logger.ErrorContext(ctx, "Validation error", fmt.Errorf("invalid userID or roleID"))
-		return nil, fmt.Errorf("invalid userID or roleID")
-	}
 	return r.Srv.AssignRoleToUser(ctx, userID, roleID)
 }
 
 // RemoveRoleFromUser is the resolver for the removeRoleFromUser field.
 func (r *mutationResolver) RemoveRoleFromUser(ctx context.Context, userID int64, roleID int64) (*model.User, error) {
-	if userID <= 0 || roleID <= 0 {
-		logger.Logger.ErrorContext(ctx, "Validation error", fmt.Errorf("invalid userID or roleID"))
-		return nil, fmt.Errorf("invalid userID or roleID")
-	}
 	return r.Srv.RemoveRoleFromUser(ctx, userID, roleID)
 }
 
 // Card is the resolver for the card field.
 func (r *queryResolver) Card(ctx context.Context, id int64) (*model.Card, error) {
-	if id <= 0 {
-		logger.Logger.ErrorContext(ctx, "Validation error", fmt.Errorf("invalid id: %d", id))
-		return nil, fmt.Errorf("invalid id: %d", id)
+	// Use DataLoader to fetch the Card by ID
+	thunk := r.Loaders.CardLoader.Load(ctx, id)
+	card, err := thunk()
+	if err != nil {
+		logger.Logger.ErrorContext(ctx, "Card", fmt.Errorf("fetch by dataloader: %+v", err))
+		return nil, fmt.Errorf("fetch by dataloader: %+v", err)
 	}
-	return r.Srv.GetCardByID(ctx, id)
+
+	return card, nil
 }
 
 // CardGroup is the resolver for the cardGroup field.
 func (r *queryResolver) CardGroup(ctx context.Context, id int64) (*model.CardGroup, error) {
-	if id <= 0 {
-		logger.Logger.ErrorContext(ctx, "Validation error", fmt.Errorf("invalid id: %d", id))
-		return nil, fmt.Errorf("invalid id: %d", id)
+	thunk := r.Loaders.CardGroupLoader.Load(ctx, id)
+	cardGroup, err := thunk()
+	if err != nil {
+		logger.Logger.ErrorContext(ctx, "CardGroup", fmt.Errorf("fetch by dataloader: %+v", err))
+		return nil, fmt.Errorf("fetch by dataloader: %+v", err)
 	}
-	return r.Srv.GetCardGroupByID(ctx, id)
+	return cardGroup, nil
 }
 
 // Role is the resolver for the role field.
 func (r *queryResolver) Role(ctx context.Context, id int64) (*model.Role, error) {
-	if id <= 0 {
-		logger.Logger.ErrorContext(ctx, "Validation error", fmt.Errorf("invalid id: %d", id))
-		return nil, fmt.Errorf("invalid id: %d", id)
+	thunk := r.Loaders.RoleLoader.Load(ctx, id)
+	role, err := thunk()
+	if err != nil {
+		logger.Logger.ErrorContext(ctx, "Role", fmt.Errorf("fetch by dataloader: %+v", err))
+		return nil, fmt.Errorf("fetch by dataloader: %+v", err)
 	}
-	return r.Srv.GetRoleByID(ctx, id)
+
+	return role, nil
 }
 
 // User is the resolver for the user field.
 func (r *queryResolver) User(ctx context.Context, id int64) (*model.User, error) {
-	user, err := r.Srv.GetUserByID(ctx, id)
+	thunk := r.Loaders.UserLoader.Load(ctx, id)
+	user, err := thunk()
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "User", fmt.Errorf("fetch user by ID: %+v", err))
-		return nil, fmt.Errorf("fetch user by ID: %+v", err)
+		logger.Logger.ErrorContext(ctx, "User", fmt.Errorf("fetch by dataloader: %+v", err))
+		return nil, fmt.Errorf("fetch by dataloader: %+v", err)
 	}
 	return user, nil
 }
 
 // CardsByCardGroup is the resolver for the cardsByCardGroup field.
 func (r *queryResolver) CardsByCardGroup(ctx context.Context, cardGroupID int64, first *int, after *int64, last *int, before *int64) (*model.CardConnection, error) {
-	if cardGroupID <= 0 {
-		logger.Logger.ErrorContext(ctx, "Validation error", fmt.Errorf("invalid cardGroupID: %d", cardGroupID))
-		return nil, fmt.Errorf("invalid cardGroupID: %d", cardGroupID)
-	}
 	return r.Srv.PaginatedCardsByCardGroup(ctx, cardGroupID, first, after, last, before)
 }
 
 // UserRole is the resolver for the userRole field.
 func (r *queryResolver) UserRole(ctx context.Context, userID int64) (*model.Role, error) {
-	if userID <= 0 {
-		logger.Logger.ErrorContext(ctx, "User", fmt.Errorf("invalid userID: %d", userID))
-		return nil, fmt.Errorf("invalid userID: %d", userID)
-	}
 	return r.Srv.GetRoleByUserID(ctx, userID)
 }
 
 // CardGroupsByUser is the resolver for the cardGroupsByUser field.
 func (r *queryResolver) CardGroupsByUser(ctx context.Context, userID int64, first *int, after *int64, last *int, before *int64) (*model.CardGroupConnection, error) {
-	if userID <= 0 {
-		logger.Logger.ErrorContext(ctx, "User", fmt.Errorf("invalid userID: %d", userID))
-		return nil, fmt.Errorf("invalid userID: %d", userID)
-	}
 	return r.Srv.PaginatedCardGroupsByUser(ctx, userID, first, after, last, before)
 }
 
 // UsersByRole is the resolver for the usersByRole field.
 func (r *queryResolver) UsersByRole(ctx context.Context, roleID int64, first *int, after *int64, last *int, before *int64) (*model.UserConnection, error) {
-	if roleID <= 0 {
-		logger.Logger.ErrorContext(ctx, "Role", fmt.Errorf("invalid roleID: %d", roleID))
-		return nil, fmt.Errorf("invalid roleID: %d", roleID)
-	}
 	return r.Srv.PaginatedUsersByRole(ctx, roleID, first, after, last, before)
 }
 

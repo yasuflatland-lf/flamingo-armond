@@ -20,7 +20,7 @@ type Card {
   created: Time!
   updated: Time!
   cardGroupID: ID!
-  cardGroup: CardGroup!
+  cardGroup: CardGroup! @validation(format: "-")
 }
 
 type CardGroup {
@@ -28,30 +28,30 @@ type CardGroup {
   name: String! @validation(format: "required,fl_name,min=1")
   created: Time!
   updated: Time!
-  cards(first: Int, after: ID, last: Int, before: ID): CardConnection!
-  users(first: Int, after: ID, last: Int, before: ID): UserConnection!
+  cards(first: Int, after: ID, last: Int, before: ID): CardConnection! @validation(format: "-")
+  users(first: Int, after: ID, last: Int, before: ID): UserConnection! @validation(format: "-")
 }
 
 type CardEdge {
   cursor: ID!
-  node: Card!
+  node: Card! @validation(format: "-")
 }
 
 type CardConnection {
-  edges: [CardEdge]
-  nodes: [Card]
+  edges: [CardEdge] @validation(format: "-")
+  nodes: [Card] @validation(format: "-")
   pageInfo: PageInfo!
   totalCount: Int!
 }
 
 type UserEdge {
   cursor: ID!
-  node: User!
+  node: User! @validation(format: "-")
 }
 
 type UserConnection {
-  edges: [UserEdge]
-  nodes: [User]
+  edges: [UserEdge] @validation(format: "-")
+  nodes: [User] @validation(format: "-")
   pageInfo: PageInfo!
   totalCount: Int!
 }
@@ -61,7 +61,7 @@ type Role {
   name: String! @validation(format: "required,fl_name,min=1")
   created: Time!
   updated: Time!
-  users(first: Int, after: ID, last: Int, before: ID): UserConnection!
+  users(first: Int, after: ID, last: Int, before: ID): UserConnection! @validation(format: "-")
 }
 
 type User {
@@ -69,30 +69,30 @@ type User {
   name: String! @validation(format: "required,fl_name,min=1")
   created: Time!
   updated: Time!
-  cardGroups(first: Int, after: ID, last: Int, before: ID): CardGroupConnection!
-  roles(first: Int, after: ID, last: Int, before: ID): RoleConnection!
+  cardGroups(first: Int, after: ID, last: Int, before: ID): CardGroupConnection! @validation(format: "-")
+  roles(first: Int, after: ID, last: Int, before: ID): RoleConnection! @validation(format: "-")
 }
 
 type RoleEdge {
   cursor: ID!
-  node: Role!
+  node: Role! @validation(format: "-")
 }
 
 type RoleConnection {
-  edges: [RoleEdge]
-  nodes: [Role]
+  edges: [RoleEdge] @validation(format: "-")
+  nodes: [Role] @validation(format: "-")
   pageInfo: PageInfo!
   totalCount: Int!
 }
 
 type CardGroupEdge {
   cursor: ID!
-  node: CardGroup!
+  node: CardGroup! @validation(format: "-")
 }
 
 type CardGroupConnection {
-  edges: [CardGroupEdge]
-  nodes: [CardGroup]
+  edges: [CardGroupEdge] @validation(format: "-")
+  nodes: [CardGroup] @validation(format: "-")
   pageInfo: PageInfo!
   totalCount: Int!
 }
