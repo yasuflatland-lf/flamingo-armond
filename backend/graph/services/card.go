@@ -51,8 +51,11 @@ func (s *cardService) GetCardByID(ctx context.Context, id int64) (*model.Card, e
 	var card repository.Card
 	if err := s.db.WithContext(ctx).First(&card, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("card not found")
+			err := fmt.Errorf("card not found")
+			logger.Logger.ErrorContext(ctx, "Card not found: %d", id)
+			return nil, err
 		}
+		logger.Logger.ErrorContext(ctx, "Failed to get card by ID", err)
 		return nil, err
 	}
 	return convertToCard(card), nil
@@ -63,8 +66,11 @@ func (s *cardService) CreateCard(ctx context.Context, input model.NewCard) (*mod
 	result := s.db.WithContext(ctx).Create(gormCard)
 	if result.Error != nil {
 		if strings.Contains(result.Error.Error(), "foreign key constraint") {
-			return nil, fmt.Errorf("invalid card group ID")
+			err := fmt.Errorf("invalid card group ID")
+			logger.Logger.ErrorContext(ctx, "Failed to create card: invalid card group ID", err)
+			return nil, err
 		}
+		logger.Logger.ErrorContext(ctx, "Failed to create card", result.Error)
 		return nil, result.Error
 	}
 	return convertToCard(*gormCard), nil
@@ -73,7 +79,7 @@ func (s *cardService) CreateCard(ctx context.Context, input model.NewCard) (*mod
 func (s *cardService) UpdateCard(ctx context.Context, id int64, input model.NewCard) (*model.Card, error) {
 	var card repository.Card
 	if err := s.db.WithContext(ctx).First(&card, id).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Card does not exist : %d", id)
+		logger.Logger.ErrorContext(ctx, "Card does not exist: %d", id)
 		return nil, err
 	}
 	card.Front = input.Front
@@ -88,7 +94,7 @@ func (s *cardService) UpdateCard(ctx context.Context, id int64, input model.NewC
 	card.Updated = time.Now()
 
 	if err := s.db.WithContext(ctx).Save(&card).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Card Save %+v", err)
+		logger.Logger.ErrorContext(ctx, "Failed to save card", err)
 		return nil, err
 	}
 	return convertToCard(card), nil
@@ -97,14 +103,15 @@ func (s *cardService) UpdateCard(ctx context.Context, id int64, input model.NewC
 func (s *cardService) DeleteCard(ctx context.Context, id int64) (*bool, error) {
 	result := s.db.WithContext(ctx).Delete(&repository.Card{}, id)
 	if result.Error != nil {
-		logger.Logger.ErrorContext(ctx, "Delete error %+v", result.Error)
+		logger.Logger.ErrorContext(ctx, "Failed to delete card", result.Error)
 		return nil, result.Error
 	}
 
 	success := result.RowsAffected > 0
 	if !success {
-		logger.Logger.ErrorContext(ctx, "record not found")
-		return &success, fmt.Errorf("record not found")
+		err := fmt.Errorf("record not found")
+		logger.Logger.ErrorContext(ctx, "Card not found for deletion", err)
+		return &success, err
 	}
 
 	return &success, nil
@@ -113,6 +120,7 @@ func (s *cardService) DeleteCard(ctx context.Context, id int64) (*bool, error) {
 func (s *cardService) Cards(ctx context.Context) ([]*model.Card, error) {
 	var cards []repository.Card
 	if err := s.db.WithContext(ctx).Find(&cards).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to retrieve cards", err)
 		return nil, err
 	}
 	var gqlCards []*model.Card
@@ -125,6 +133,7 @@ func (s *cardService) Cards(ctx context.Context) ([]*model.Card, error) {
 func (s *cardService) CardsByCardGroup(ctx context.Context, cardGroupID int64) ([]*model.Card, error) {
 	var cards []repository.Card
 	if err := s.db.WithContext(ctx).Where("cardgroup_id = ?", cardGroupID).Find(&cards).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to retrieve cards by card group ID", err)
 		return nil, err
 	}
 	var gqlCards []*model.Card
@@ -153,6 +162,7 @@ func (s *cardService) PaginatedCardsByCardGroup(ctx context.Context, cardGroupID
 	}
 
 	if err := query.Find(&cards).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to retrieve paginated cards by card group ID", err)
 		return nil, err
 	}
 
@@ -188,7 +198,7 @@ func (s *cardService) PaginatedCardsByCardGroup(ctx context.Context, cardGroupID
 func (s *cardService) GetCardsByIDs(ctx context.Context, ids []int64) ([]*model.Card, error) {
 	var cards []*repository.Card
 	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&cards).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "cards by ids", err)
+		logger.Logger.ErrorContext(ctx, "Failed to retrieve cards by IDs", err)
 		return nil, err
 	}
 

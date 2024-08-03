@@ -36,6 +36,7 @@ func convertToCardGroup(cardGroup repository.Cardgroup) *model.CardGroup {
 func (s *cardGroupService) GetCardGroupByID(ctx context.Context, id int64) (*model.CardGroup, error) {
 	var cardGroup repository.Cardgroup
 	if err := s.db.First(&cardGroup, id).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to get card group by ID", err)
 		return nil, err
 	}
 	return convertToCardGroup(cardGroup), nil
@@ -45,6 +46,7 @@ func (s *cardGroupService) CreateCardGroup(ctx context.Context, input model.NewC
 	gormCardGroup := convertToGormCardGroup(input)
 	result := s.db.WithContext(ctx).Create(gormCardGroup)
 	if result.Error != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to create card group", result.Error)
 		return nil, result.Error
 	}
 	return convertToCardGroup(*gormCardGroup), nil
@@ -53,6 +55,7 @@ func (s *cardGroupService) CreateCardGroup(ctx context.Context, input model.NewC
 func (s *cardGroupService) CardGroups(ctx context.Context) ([]*model.CardGroup, error) {
 	var cardGroups []repository.Cardgroup
 	if err := s.db.WithContext(ctx).Find(&cardGroups).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to retrieve card groups", err)
 		return nil, err
 	}
 	var gqlCardGroups []*model.CardGroup
@@ -65,11 +68,13 @@ func (s *cardGroupService) CardGroups(ctx context.Context) ([]*model.CardGroup, 
 func (s *cardGroupService) UpdateCardGroup(ctx context.Context, id int64, input model.NewCardGroup) (*model.CardGroup, error) {
 	var cardGroup repository.Cardgroup
 	if err := s.db.WithContext(ctx).First(&cardGroup, id).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to find card group for update", err)
 		return nil, err
 	}
 	cardGroup.Name = input.Name
 	cardGroup.Updated = time.Now()
 	if err := s.db.WithContext(ctx).Save(&cardGroup).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to update card group", err)
 		return nil, err
 	}
 	return convertToCardGroup(cardGroup), nil
@@ -79,10 +84,13 @@ func (s *cardGroupService) DeleteCardGroup(ctx context.Context, id int64) (*bool
 	success := false
 	result := s.db.WithContext(ctx).Delete(&repository.Cardgroup{}, id)
 	if result.Error != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to delete card group", result.Error)
 		return &success, result.Error
 	}
 	if result.RowsAffected == 0 {
-		return &success, fmt.Errorf("record not found")
+		err := fmt.Errorf("record not found")
+		logger.Logger.ErrorContext(ctx, "Card group not found for deletion", err)
+		return &success, err
 	}
 	success = true
 	return &success, nil
@@ -92,12 +100,15 @@ func (s *cardGroupService) AddUserToCardGroup(ctx context.Context, userID int64,
 	var user repository.User
 	var cardGroup repository.Cardgroup
 	if err := s.db.WithContext(ctx).First(&user, userID).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to find user for adding to card group", err)
 		return nil, err
 	}
 	if err := s.db.WithContext(ctx).First(&cardGroup, cardGroupID).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to find card group for adding user", err)
 		return nil, err
 	}
 	if err := s.db.Model(&cardGroup).Association("Users").Append(&user); err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to add user to card group", err)
 		return nil, err
 	}
 	return convertToCardGroup(cardGroup), nil
@@ -107,12 +118,15 @@ func (s *cardGroupService) RemoveUserFromCardGroup(ctx context.Context, userID i
 	var user repository.User
 	var cardGroup repository.Cardgroup
 	if err := s.db.WithContext(ctx).First(&user, userID).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to find user for removing from card group", err)
 		return nil, err
 	}
 	if err := s.db.WithContext(ctx).First(&cardGroup, cardGroupID).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to find card group for removing user", err)
 		return nil, err
 	}
 	if err := s.db.Model(&cardGroup).Association("Users").Delete(&user); err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to remove user from card group", err)
 		return nil, err
 	}
 	return convertToCardGroup(cardGroup), nil
@@ -121,6 +135,7 @@ func (s *cardGroupService) RemoveUserFromCardGroup(ctx context.Context, userID i
 func (s *cardGroupService) GetCardGroupsByUser(ctx context.Context, userID int64) ([]*model.CardGroup, error) {
 	var user repository.User
 	if err := s.db.WithContext(ctx).Preload("CardGroups").First(&user, userID).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to get card groups by user ID", err)
 		return nil, err
 	}
 	var gqlCardGroups []*model.CardGroup
@@ -153,8 +168,8 @@ func (s *cardGroupService) PaginatedCardGroupsByUser(ctx context.Context, userID
 	})
 
 	if err := query.Find(&user).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "CardGroups fetch error", err)
-		return nil, fmt.Errorf("CardGroups %+v", err)
+		logger.Logger.ErrorContext(ctx, "Failed to get paginated card groups by user", err)
+		return nil, fmt.Errorf("error fetching paginated card groups by user: %+v", err)
 	}
 
 	cardGroups = user.CardGroups
@@ -191,6 +206,7 @@ func (s *cardGroupService) PaginatedCardGroupsByUser(ctx context.Context, userID
 func (s *cardGroupService) GetCardGroupsByIDs(ctx context.Context, ids []int64) ([]*model.CardGroup, error) {
 	var cardGroups []*repository.Cardgroup
 	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&cardGroups).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to retrieve card groups by IDs", err)
 		return nil, err
 	}
 

@@ -3,6 +3,7 @@ package services
 import (
 	"backend/graph/db"
 	"backend/graph/model"
+	"backend/pkg/logger"
 	"context"
 	"fmt"
 	"gorm.io/gorm"
@@ -35,6 +36,7 @@ func convertToUser(user db.User) *model.User {
 func (s *userService) GetUsersByRole(ctx context.Context, roleID int64) ([]*model.User, error) {
 	var role db.Role
 	if err := s.db.WithContext(ctx).Preload("Users").First(&role, roleID).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to get role by ID", err)
 		return nil, err
 	}
 	var gqlUsers []*model.User
@@ -47,6 +49,7 @@ func (s *userService) GetUsersByRole(ctx context.Context, roleID int64) ([]*mode
 func (s *userService) GetUserByID(ctx context.Context, id int64) (*model.User, error) {
 	var user db.User
 	if err := s.db.First(&user, id).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to get user by ID", err)
 		return nil, err
 	}
 	return convertToUser(user), nil
@@ -57,8 +60,11 @@ func (s *userService) CreateUser(ctx context.Context, input model.NewUser) (*mod
 	result := s.db.WithContext(ctx).Create(gormUser)
 	if result.Error != nil {
 		if strings.Contains(result.Error.Error(), "unique constraint") {
-			return nil, fmt.Errorf("user already exists")
+			err := fmt.Errorf("user already exists")
+			logger.Logger.ErrorContext(ctx, "Failed to create user: user already exists", err)
+			return nil, err
 		}
+		logger.Logger.ErrorContext(ctx, "Failed to create user", result.Error)
 		return nil, result.Error
 	}
 	return convertToUser(*gormUser), nil
@@ -67,11 +73,13 @@ func (s *userService) CreateUser(ctx context.Context, input model.NewUser) (*mod
 func (s *userService) UpdateUser(ctx context.Context, id int64, input model.NewUser) (*model.User, error) {
 	var user db.User
 	if err := s.db.WithContext(ctx).First(&user, id).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to find user for update", err)
 		return nil, err
 	}
 	user.Name = input.Name
 	user.Updated = time.Now()
 	if err := s.db.WithContext(ctx).Save(&user).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to update user", err)
 		return nil, err
 	}
 	return convertToUser(user), nil
@@ -80,6 +88,7 @@ func (s *userService) UpdateUser(ctx context.Context, id int64, input model.NewU
 func (s *userService) DeleteUser(ctx context.Context, id int64) (*bool, error) {
 	success := true
 	if err := s.db.WithContext(ctx).Delete(&db.User{}, id).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to delete user", err)
 		success = false
 		return &success, err
 	}
@@ -89,6 +98,7 @@ func (s *userService) DeleteUser(ctx context.Context, id int64) (*bool, error) {
 func (s *userService) Users(ctx context.Context) ([]*model.User, error) {
 	var users []db.User
 	if err := s.db.Find(&users).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to retrieve users", err)
 		return nil, err
 	}
 	var gqlUsers []*model.User
@@ -101,6 +111,7 @@ func (s *userService) Users(ctx context.Context) ([]*model.User, error) {
 func (s *userService) PaginatedUsersByRole(ctx context.Context, roleID int64, first *int, after *int64, last *int, before *int64) (*model.UserConnection, error) {
 	var role db.Role
 	if err := s.db.WithContext(ctx).Preload("Users").First(&role, roleID).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Error fetching role", err)
 		return nil, fmt.Errorf("error fetching role: %+v", err)
 	}
 
@@ -108,6 +119,7 @@ func (s *userService) PaginatedUsersByRole(ctx context.Context, roleID int64, fi
 
 	var users []db.User
 	if err := query.Find(&users); err != nil {
+		logger.Logger.ErrorContext(ctx, "Error fetching users by role", err)
 		return nil, fmt.Errorf("error fetching users by role: %+v", err)
 	}
 
@@ -175,6 +187,7 @@ func (s *userService) PaginatedUsersByRole(ctx context.Context, roleID int64, fi
 func (s *userService) GetUsersByIDs(ctx context.Context, ids []int64) ([]*model.User, error) {
 	var users []db.User
 	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&users).Error; err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to retrieve users by IDs", err)
 		return nil, err
 	}
 	var gqlUsers []*model.User
