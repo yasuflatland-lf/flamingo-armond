@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/99designs/gqlgen/graphql/handler/extension"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -73,6 +74,9 @@ func NewRouter(db *gorm.DB) *echo.Echo {
 	}
 
 	srv := handler.NewDefaultServer(graph.NewExecutableSchema(graph.Config{Resolvers: resolver}))
+
+	// GraphQL Complexity configuration
+	srv.Use(extension.FixedComplexityLimit(config.Cfg.GQLComplexity))
 
 	srv.AddTransport(&transport.Websocket{
 		Upgrader: websocket.Upgrader{

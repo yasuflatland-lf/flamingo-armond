@@ -7,6 +7,7 @@ import (
 	"backend/pkg/middlewares"
 	"backend/pkg/repository"
 	"backend/pkg/validator"
+	"github.com/99designs/gqlgen/graphql/handler/extension"
 	"log"
 	"net/http"
 	"strconv"
@@ -47,6 +48,9 @@ func NewRouter(db *gorm.DB) *echo.Echo {
 	}
 
 	srv := handler.NewDefaultServer(graph.NewExecutableSchema(graph.Config{Resolvers: resolver}))
+
+	// GraphQL Complexity configuration
+	srv.Use(extension.FixedComplexityLimit(config.Cfg.GQLComplexity))
 
 	// Setup WebSocket for subscriptions
 	srv.AddTransport(&transport.Websocket{

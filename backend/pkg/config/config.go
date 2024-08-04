@@ -11,6 +11,9 @@ type Config struct {
 	Port  int    `env:"PORT" envDefault:"1323"`
 	GoEnv string `env:"GO_ENV" envDefault:"dev"`
 
+	// GraphQL related configurations
+	GQLComplexity int `env:"GQL_COMPLEXITY" envDefault:"10"`
+
 	// PostgreSQL configuration
 	PGHost     string `env:"PG_HOST" envDefault:"localhost"`
 	PGUser     string `env:"PG_USER" envDefault:"testuser"`
