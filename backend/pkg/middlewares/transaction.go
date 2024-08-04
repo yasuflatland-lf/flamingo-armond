@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"backend/pkg/logger"
 	"bytes"
 	"encoding/json"
 	"github.com/labstack/echo/v4"
@@ -30,6 +31,9 @@ func DatabaseCtxMiddleware(db *gorm.DB) echo.MiddlewareFunc {
 func TransactionMiddleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
+			// Get the standard context from echo.Context
+			ctx := c.Request().Context()
+
 			// Check if the request is POST and the path is /query
 			if c.Request().Method != http.MethodPost || c.Path() != "/query" {
 				return next(c)
@@ -37,12 +41,14 @@ func TransactionMiddleware() echo.MiddlewareFunc {
 
 			db, ok := c.Get(DbContext).(*gorm.DB)
 			if !ok {
+				logger.Logger.ErrorContext(ctx, "Database connection not found")
 				return echo.NewHTTPError(http.StatusInternalServerError, "Database connection not found")
 			}
 
 			// Read the body
 			bodyBytes, err := io.ReadAll(c.Request().Body)
 			if err != nil {
+				logger.Logger.ErrorContext(ctx, "Failed to read request body: %v", err)
 				return echo.NewHTTPError(http.StatusBadRequest, "Invalid request payload")
 			}
 
@@ -51,6 +57,7 @@ func TransactionMiddleware() echo.MiddlewareFunc {
 
 			var gqlReq GraphQLRequest
 			if err := json.Unmarshal(bodyBytes, &gqlReq); err != nil {
+				logger.Logger.ErrorContext(ctx, "Failed to unmarshal request body: %v", err)
 				return echo.NewHTTPError(http.StatusBadRequest, "Invalid request payload")
 			}
 
@@ -58,6 +65,7 @@ func TransactionMiddleware() echo.MiddlewareFunc {
 			if strings.HasPrefix(strings.TrimSpace(gqlReq.Query), "mutation") {
 				tx := db.Begin()
 				if tx.Error != nil {
+					logger.Logger.ErrorContext(ctx, "Failed to start transaction: %v", tx.Error)
 					return echo.NewHTTPError(http.StatusInternalServerError, "Failed to start transaction")
 				}
 
@@ -67,11 +75,11 @@ func TransactionMiddleware() echo.MiddlewareFunc {
 						panic(r)
 					} else if c.Response().Status >= http.StatusBadRequest {
 						if err := tx.Rollback().Error; err != nil {
-							c.Logger().Error("Failed to rollback transaction: ", err)
+							logger.Logger.ErrorContext(ctx, "Failed to rollback transaction: %v", err)
 						}
 					} else {
 						if err := tx.Commit().Error; err != nil {
-							c.Logger().Error("Failed to commit transaction: ", err)
+							logger.Logger.ErrorContext(ctx, "Failed to commit transaction: %v", err)
 						}
 					}
 				}()

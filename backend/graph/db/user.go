@@ -4,7 +4,7 @@ import (
 	customValidator "backend/pkg/validator"
 	"fmt"
 	"github.com/go-playground/validator/v10"
-	"github.com/pkg/errors"
+	"github.com/m-mizutani/goerr"
 	"gorm.io/gorm"
 	"time"
 )
@@ -22,7 +22,7 @@ func (u *User) validateStruct(user *User) error {
 	err := v.Validator().Struct(user)
 	if err != nil {
 		for _, err := range err.(validator.ValidationErrors) {
-			return errors.New(fmt.Sprintf("Field validation for '%s' failed on the '%s' tag", err.Field(), err.Tag()))
+			return goerr.Wrap(err, fmt.Sprintf("Field validation for '%s' failed on the '%s' tag", err.Field(), err.Tag()))
 		}
 	}
 	return nil
@@ -34,7 +34,7 @@ func (u *User) validateAtCreate(user *User) error {
 	err := v.Validator().Var(user.Name, "required,fl_name,min=1")
 	if err != nil {
 		for _, err := range err.(validator.ValidationErrors) {
-			return errors.New(fmt.Sprintf("Field validation for '%s' failed on the '%s' tag", err.Field(), err.Tag()))
+			return goerr.Wrap(err, fmt.Sprintf("Field validation for '%s' failed on the '%s' tag", err.Field(), err.Tag()))
 		}
 	}
 	return nil

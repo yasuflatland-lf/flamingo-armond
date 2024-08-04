@@ -3,6 +3,7 @@ package repository
 import (
 	"backend/pkg/utils"
 	"fmt"
+	"github.com/m-mizutani/goerr"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"log"
@@ -54,7 +55,8 @@ func (pg *Postgres) Open() error {
 	dsn := pg.DSN()
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		return fmt.Errorf("failed to connect database: %w", err)
+
+		return goerr.Wrap(err, "failed to connect database")
 	}
 	pg.DB = db
 	return nil
@@ -67,7 +69,7 @@ func (pg *Postgres) RunGooseMigrationsUp(path string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("goose migration failed: %w", err)
+		return goerr.Wrap(err, "goose migration failed")
 	}
 	return nil
 }
@@ -79,7 +81,7 @@ func (pg *Postgres) RunGooseMigrationsDown(path string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("goose migration down failed: %w", err)
+		return goerr.Wrap(err, "goose migration down failed")
 	}
 	return nil
 }
@@ -91,7 +93,7 @@ func InitializeDatabase(config DBConfig) *gorm.DB {
 
 	// Open the database connection
 	if err := pg.Open(); err != nil {
-		log.Fatalf("failed to connect to the database: %v", err)
+		log.Fatalf("failed to connect to the database: %+v", err)
 	}
 
 	// Get Full path to the migration DB file.

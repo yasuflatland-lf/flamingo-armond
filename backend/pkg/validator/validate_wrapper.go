@@ -1,9 +1,9 @@
 package validator
 
 import (
-	"errors"
 	"fmt"
 	"github.com/go-playground/validator/v10"
+	"github.com/m-mizutani/goerr"
 	"reflect"
 	"regexp"
 	"time"
@@ -44,7 +44,7 @@ func (v *validateWrapper) ValidateStruct(s interface{}) error {
 	if err != nil {
 		for _, err := range err.(validator.ValidationErrors) {
 			typeName := reflect.TypeOf(s).Elem().Name()
-			return errors.New(fmt.Sprintf("Field validation for the interface<%s>'s '%s' failed on the '%s' tag", typeName, err.Field(), err.Tag()))
+			return goerr.Wrap(err, fmt.Sprintf("Field validation for the interface<%s>'s '%s' failed on the '%s' tag", typeName, err.Field(), err.Tag()))
 		}
 	}
 	return nil

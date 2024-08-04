@@ -2,7 +2,7 @@ package config
 
 import (
 	"github.com/caarlos0/env/v11"
-	"golang.org/x/xerrors"
+	"log/slog"
 )
 
 // Config structure holds all the configuration values
@@ -29,6 +29,6 @@ var Cfg Config
 // init function initializes the package-level variable Cfg by parsing environment variables
 func init() {
 	if err := env.Parse(&Cfg); err != nil {
-		xerrors.Errorf("Failed to parse environment variables: %+v", err)
+		slog.Error("Failed to parse environment variables: %+v", err)
 	}
 }

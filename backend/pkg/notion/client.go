@@ -1,9 +1,10 @@
 package notion
 
 import (
+	"backend/pkg/logger"
+	"context"
 	"encoding/json"
-	"golang.org/x/xerrors"
-
+	"github.com/m-mizutani/goerr"
 	"io/ioutil"
 	"net/http"
 )
@@ -36,10 +37,11 @@ func NewClient(apiToken string) *Client {
 }
 
 // GetPage retrieves the content of a specified page ID
-func (c *Client) GetPage(pageID string) (*NotionPage, error) {
+func (c *Client) GetPage(ctx context.Context, pageID string) (*NotionPage, error) {
 	req, err := http.NewRequest("GET", c.baseURL+pageID, nil)
 	if err != nil {
-		return nil, xerrors.Errorf("error creating request: %v", err)
+		logger.Logger.ErrorContext(ctx, "Error creating request", err)
+		return nil, goerr.Wrap(err, "error creating request")
 	}
 
 	// Set headers
@@ -49,21 +51,24 @@ func (c *Client) GetPage(pageID string) (*NotionPage, error) {
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, xerrors.Errorf("error sending request: %v", err)
+		logger.Logger.ErrorContext(ctx, "Error sending request", err)
+		return nil, goerr.Wrap(err, "error sending request")
 	}
 	defer resp.Body.Close()
 
 	// Read response body
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, xerrors.Errorf("error reading response body: %v", err)
+		logger.Logger.ErrorContext(ctx, "Error reading response body", err)
+		return nil, goerr.Wrap(err, "error reading response body")
 	}
 
 	// Decode response body into NotionPage struct
 	var notionPage NotionPage
 	err = json.Unmarshal(body, &notionPage)
 	if err != nil {
-		return nil, xerrors.Errorf("error unmarshalling response body: %v", err)
+		logger.Logger.ErrorContext(ctx, "Error unmarshalling response body", err)
+		return nil, goerr.Wrap(err, "error unmarshalling response body")
 	}
 
 	return &notionPage, nil

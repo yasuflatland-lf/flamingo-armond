@@ -4,7 +4,7 @@ import (
 	customValidator "backend/pkg/validator"
 	"fmt"
 	"github.com/go-playground/validator/v10"
-	"github.com/pkg/errors"
+	"github.com/m-mizutani/goerr"
 	"gorm.io/gorm"
 	"time"
 )
@@ -24,7 +24,7 @@ func (c *Card) validateStruct(card *Card) error {
 	err := v.Validator().Struct(card)
 	if err != nil {
 		for _, err := range err.(validator.ValidationErrors) {
-			return errors.New(fmt.Sprintf("Field validation for '%s' failed on the '%s' tag", err.Field(), err.Tag()))
+			return goerr.Wrap(err, fmt.Sprintf("Field validation for '%s' failed on the '%s' tag", err.Field(), err.Tag()))
 		}
 	}
 	return nil
@@ -35,18 +35,18 @@ func (c *Card) validateAtCreate(card *Card) error {
 	v := customValidator.NewValidateWrapper()
 	err := v.Validator().Var(card.Front, "required,min=1") // Assuming you want to check if 'front' is required
 	if err != nil {
-		return errors.New(fmt.Sprintf("Field validation for 'front' failed %+v", err))
+		return goerr.Wrap(err, fmt.Sprintf("Field validation for 'front' failed %+v", err))
 	}
 
 	err = v.Validator().Var(card.Back, "required,min=1") // Assuming you want to check if 'back' is required
 	if err != nil {
-		return errors.New(fmt.Sprintf("Field validation for 'back' failed %+v", err))
+		return goerr.Wrap(err, fmt.Sprintf("Field validation for 'back' failed %+v", err))
 	}
 
 	return nil
 }
 
-// Updating data in same transaction
+// AfterUpdate Updating data in same transaction
 func (c *Card) AfterUpdate(tx *gorm.DB) (err error) {
 
 	tx.Model(&Card{}).Where("id = ?", c.ID).Update("updated", time.Now())

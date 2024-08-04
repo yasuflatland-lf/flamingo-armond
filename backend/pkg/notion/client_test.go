@@ -1,6 +1,7 @@
 package notion
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -62,8 +63,9 @@ func TestGetPageSuccess(t *testing.T) {
 	defer ts.Close()
 
 	client := newMockClient(ts)
+	ctx := context.Background()
 
-	page, err := client.GetPage("test_page_id")
+	page, err := client.GetPage(ctx, "test_page_id")
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -78,7 +80,7 @@ func TestGetPageSuccess(t *testing.T) {
 		t.Errorf("Expected last edited time %v, got %v", mockResponse.LastEditedTime, page.LastEditedTime)
 	}
 	if page.Properties["title"] != mockResponse.Properties["title"] {
-		t.Errorf("Expected title %v, got %v", mockResponse.Properties["title"], page.Properties["title"])
+		t.Errorf("Expected title %+v", mockResponse.Properties["title"])
 	}
 
 	content, ok := page.Properties["content"].([]interface{})
@@ -102,8 +104,9 @@ func TestGetPageError(t *testing.T) {
 	defer ts.Close()
 
 	client := newMockClient(ts)
+	ctx := context.Background()
 
-	_, err := client.GetPage("test_page_id")
+	_, err := client.GetPage(ctx, "test_page_id")
 	if err == nil {
 		t.Fatalf("Expected error, got none")
 	}
@@ -123,6 +126,7 @@ func TestGetPageConcurrent(t *testing.T) {
 	defer ts.Close()
 
 	client := newMockClient(ts)
+	ctx := context.Background()
 
 	var wg sync.WaitGroup
 	concurrentRequests := 10
@@ -131,7 +135,7 @@ func TestGetPageConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			page, err := client.GetPage("test_page_id")
+			page, err := client.GetPage(ctx, "test_page_id")
 			if err != nil {
 				t.Errorf("Expected no error, got %v", err)
 			}

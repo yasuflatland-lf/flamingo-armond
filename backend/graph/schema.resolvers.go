@@ -6,9 +6,9 @@ package graph
 
 import (
 	"backend/graph/model"
-	"backend/pkg/logger"
 	"context"
 	"fmt"
+	"github.com/m-mizutani/goerr"
 )
 
 // CardGroup is the resolver for the cardGroup field in Card.
@@ -16,8 +16,7 @@ func (r *cardResolver) CardGroup(ctx context.Context, obj *model.Card) (*model.C
 	thunk := r.Loaders.CardGroupLoader.Load(ctx, obj.CardGroup.ID)
 	cardGroup, err := thunk()
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "CardGroup", fmt.Errorf("fetch by dataloader: %+v", err))
-		return nil, fmt.Errorf("fetch by dataloader: %+v", err)
+		return nil, goerr.Wrap(err, "fetch by CardGroup")
 	}
 	return cardGroup, nil
 }
@@ -33,8 +32,7 @@ func (r *cardGroupResolver) Cards(ctx context.Context, obj *model.CardGroup, fir
 	thunks := r.Loaders.CardLoader.LoadMany(ctx, cardIDs)
 	cards, err := thunks()
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "Cards", fmt.Errorf("fetch by dataloader: %+v", err))
-		return nil, fmt.Errorf("fetch by dataloader: %+v", err)
+		return nil, goerr.Wrap(fmt.Errorf("fetch by Cards: %+v", err))
 	}
 
 	// Implement pagination logic
@@ -95,8 +93,7 @@ func (r *cardGroupResolver) Users(ctx context.Context, obj *model.CardGroup, fir
 	thunks := r.Loaders.UserLoader.LoadMany(ctx, userIDs)
 	users, err := thunks()
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "Users", fmt.Errorf("fetch by dataloader: %+v", err))
-		return nil, fmt.Errorf("fetch by dataloader: %+v", err)
+		return nil, goerr.Wrap(fmt.Errorf("fetch by Users: %+v", err))
 	}
 
 	// Implement pagination logic
@@ -149,8 +146,7 @@ func (r *cardGroupResolver) Users(ctx context.Context, obj *model.CardGroup, fir
 // CreateCard is the resolver for the createCard field.
 func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCard) (*model.Card, error) {
 	if err := r.VW.ValidateStruct(input); err != nil {
-		logger.Logger.ErrorContext(ctx, "Validation error", err)
-		return nil, fmt.Errorf("invalid input: %+v", err)
+		return nil, goerr.Wrap(err, "invalid input CreateCard")
 	}
 	return r.Srv.CreateCard(ctx, input)
 }
@@ -158,8 +154,7 @@ func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCard) 
 // UpdateCard is the resolver for the updateCard field.
 func (r *mutationResolver) UpdateCard(ctx context.Context, id int64, input model.NewCard) (*model.Card, error) {
 	if err := r.VW.ValidateStruct(input); err != nil {
-		logger.Logger.ErrorContext(ctx, "Validation error", err)
-		return nil, fmt.Errorf("invalid input: %+v", err)
+		return nil, goerr.Wrap(err, "invalid input UpdateCard")
 	}
 	return r.Srv.UpdateCard(ctx, id, input)
 }
@@ -172,8 +167,7 @@ func (r *mutationResolver) DeleteCard(ctx context.Context, id int64) (*bool, err
 // CreateCardGroup is the resolver for the createCardGroup field.
 func (r *mutationResolver) CreateCardGroup(ctx context.Context, input model.NewCardGroup) (*model.CardGroup, error) {
 	if err := r.VW.ValidateStruct(input); err != nil {
-		logger.Logger.ErrorContext(ctx, "Validation error", err)
-		return nil, fmt.Errorf("invalid input: %+v", err)
+		return nil, goerr.Wrap(err, "invalid input CreateCardGroup")
 	}
 	return r.Srv.CreateCardGroup(ctx, input)
 }
@@ -181,8 +175,7 @@ func (r *mutationResolver) CreateCardGroup(ctx context.Context, input model.NewC
 // UpdateCardGroup is the resolver for the updateCardGroup field.
 func (r *mutationResolver) UpdateCardGroup(ctx context.Context, id int64, input model.NewCardGroup) (*model.CardGroup, error) {
 	if err := r.VW.ValidateStruct(input); err != nil {
-		logger.Logger.ErrorContext(ctx, "Validation error", err)
-		return nil, fmt.Errorf("invalid input: %+v", err)
+		return nil, goerr.Wrap(err, "invalid input UpdateCardGroup")
 	}
 	return r.Srv.UpdateCardGroup(ctx, id, input)
 }
@@ -195,8 +188,7 @@ func (r *mutationResolver) DeleteCardGroup(ctx context.Context, id int64) (*bool
 // CreateUser is the resolver for the createUser field.
 func (r *mutationResolver) CreateUser(ctx context.Context, input model.NewUser) (*model.User, error) {
 	if err := r.VW.ValidateStruct(input); err != nil {
-		logger.Logger.ErrorContext(ctx, "Validation error", err)
-		return nil, fmt.Errorf("invalid input: %+v", err)
+		return nil, goerr.Wrap(err, "invalid input CreateUser")
 	}
 	return r.Srv.CreateUser(ctx, input)
 }
@@ -204,8 +196,7 @@ func (r *mutationResolver) CreateUser(ctx context.Context, input model.NewUser) 
 // UpdateUser is the resolver for the updateUser field.
 func (r *mutationResolver) UpdateUser(ctx context.Context, id int64, input model.NewUser) (*model.User, error) {
 	if err := r.VW.ValidateStruct(input); err != nil {
-		logger.Logger.ErrorContext(ctx, "Validation error", err)
-		return nil, fmt.Errorf("invalid input: %+v", err)
+		return nil, goerr.Wrap(err, "invalid input UpdateUser")
 	}
 	return r.Srv.UpdateUser(ctx, id, input)
 }
@@ -218,8 +209,7 @@ func (r *mutationResolver) DeleteUser(ctx context.Context, id int64) (*bool, err
 // CreateRole is the resolver for the createRole field.
 func (r *mutationResolver) CreateRole(ctx context.Context, input model.NewRole) (*model.Role, error) {
 	if err := r.VW.ValidateStruct(input); err != nil {
-		logger.Logger.ErrorContext(ctx, "Validation error", err)
-		return nil, fmt.Errorf("invalid input: %+v", err)
+		return nil, goerr.Wrap(err, "invalid input CreateRole")
 	}
 	return r.Srv.CreateRole(ctx, input)
 }
@@ -227,8 +217,7 @@ func (r *mutationResolver) CreateRole(ctx context.Context, input model.NewRole) 
 // UpdateRole is the resolver for the updateRole field.
 func (r *mutationResolver) UpdateRole(ctx context.Context, id int64, input model.NewRole) (*model.Role, error) {
 	if err := r.VW.ValidateStruct(input); err != nil {
-		logger.Logger.ErrorContext(ctx, "Validation error", err)
-		return nil, fmt.Errorf("invalid input: %+v", err)
+		return nil, goerr.Wrap(err, "invalid input UpdateRole")
 	}
 	return r.Srv.UpdateRole(ctx, id, input)
 }
@@ -264,8 +253,7 @@ func (r *queryResolver) Card(ctx context.Context, id int64) (*model.Card, error)
 	thunk := r.Loaders.CardLoader.Load(ctx, id)
 	card, err := thunk()
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "Card", fmt.Errorf("fetch by dataloader: %+v", err))
-		return nil, fmt.Errorf("fetch by dataloader: %+v", err)
+		return nil, goerr.Wrap(err, "invalid input Card")
 	}
 
 	return card, nil
@@ -276,8 +264,7 @@ func (r *queryResolver) CardGroup(ctx context.Context, id int64) (*model.CardGro
 	thunk := r.Loaders.CardGroupLoader.Load(ctx, id)
 	cardGroup, err := thunk()
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "CardGroup", fmt.Errorf("fetch by dataloader: %+v", err))
-		return nil, fmt.Errorf("fetch by dataloader: %+v", err)
+		return nil, goerr.Wrap(err, "invalid input CardGroup")
 	}
 	return cardGroup, nil
 }
@@ -287,8 +274,7 @@ func (r *queryResolver) Role(ctx context.Context, id int64) (*model.Role, error)
 	thunk := r.Loaders.RoleLoader.Load(ctx, id)
 	role, err := thunk()
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "Role", fmt.Errorf("fetch by dataloader: %+v", err))
-		return nil, fmt.Errorf("fetch by dataloader: %+v", err)
+		return nil, goerr.Wrap(err, "invalid input Role")
 	}
 
 	return role, nil
@@ -299,8 +285,7 @@ func (r *queryResolver) User(ctx context.Context, id int64) (*model.User, error)
 	thunk := r.Loaders.UserLoader.Load(ctx, id)
 	user, err := thunk()
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "User", fmt.Errorf("fetch by dataloader: %+v", err))
-		return nil, fmt.Errorf("fetch by dataloader: %+v", err)
+		return nil, goerr.Wrap(err, "invalid input User")
 	}
 	return user, nil
 }
@@ -336,8 +321,7 @@ func (r *roleResolver) Users(ctx context.Context, obj *model.Role, first *int, a
 	thunks := r.Loaders.UserLoader.LoadMany(ctx, userIDs)
 	users, err := thunks()
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "Users", fmt.Errorf("fetch by dataloader: %+v", err))
-		return nil, fmt.Errorf("fetch by dataloader: %+v", err)
+		return nil, goerr.Wrap(fmt.Errorf("fetch by dataloader: %+v", err))
 	}
 
 	// Implement pagination logic
@@ -396,8 +380,7 @@ func (r *userResolver) CardGroups(ctx context.Context, obj *model.User, first *i
 	thunks := r.Loaders.CardGroupLoader.LoadMany(ctx, cardGroupIDs)
 	cardGroups, err := thunks()
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "CardGroups", fmt.Errorf("fetch by dataloader: %+v", err))
-		return nil, fmt.Errorf("fetch by dataloader: %+v", err)
+		return nil, goerr.Wrap(fmt.Errorf("fetch by dataloader: %+v", err))
 	}
 
 	for i, cardGroup := range cardGroups {
@@ -415,8 +398,7 @@ func (r *userResolver) Roles(ctx context.Context, obj *model.User, first *int, a
 	thunks := r.Loaders.RoleLoader.LoadMany(ctx, roleIDs)
 	roles, err := thunks()
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "Roles", fmt.Errorf("fetch by dataloader: %+v", err))
-		return nil, fmt.Errorf("fetch by dataloader: %+v", err)
+		return nil, goerr.Wrap(fmt.Errorf("fetch by dataloader: %+v", err))
 	}
 
 	for i, role := range roles {
