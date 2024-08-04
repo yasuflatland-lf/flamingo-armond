@@ -1474,3 +1474,648 @@ func TestGraphQLQueries(t *testing.T) {
 		})
 	})
 }
+
+func TestGraphQLErrors(t *testing.T) {
+	t.Helper()
+	t.Parallel()
+
+	testutils.RunServersTest(t, db, func(t *testing.T) {
+		t.Run("Card Query with Invalid ID", func(t *testing.T) {
+			t.Parallel()
+
+			invalidID := "invalid-id"
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `query ($id: ID!) {
+                card(id: $id) {
+                    id
+                    front
+                    back
+                    review_date
+                    interval_days
+                    created
+                    updated
+                }
+            }`,
+				"variables": map[string]interface{}{
+					"id": invalidID,
+				},
+			})
+
+			expected := `{
+            "errors": [
+                {
+                    "message": "strconv.ParseInt: parsing \"invalid-id\": invalid syntax",
+                    "path": ["card", "id"]
+                }
+            ],
+            "data": {
+                "card": null
+            }
+        }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+
+		t.Run("CreateCard with Missing Fields", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+			cardGroup := model.CardGroup{
+				Name:    "Test CardGroup",
+				Created: now,
+				Updated: now,
+			}
+			db.Create(&cardGroup)
+
+			// Missing `front` and `back` fields
+			input := map[string]interface{}{
+				"review_date":   now,
+				"interval_days": 1,
+				"cardgroup_id":  cardGroup.ID,
+				"created":       now,
+				"updated":       now,
+			}
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($input: NewCard!) {
+                createCard(input: $input) {
+                    id
+                    front
+                    back
+                    review_date
+                    interval_days
+                    created
+                    updated
+                }
+            }`,
+				"variables": map[string]interface{}{
+					"input": input,
+				},
+			})
+
+			expected := `{
+            "errors": [
+                {
+                    "extensions": {
+                        "code": "GRAPHQL_VALIDATION_FAILED"
+                    },
+                    "message": "must be defined",
+                    "path": ["variable", "input", "front"]
+                }
+            ],
+            "data": null
+        }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+
+		t.Run("UpdateCard with Invalid ID", func(t *testing.T) {
+			t.Parallel()
+
+			invalidID := "invalid-id"
+			now := time.Now()
+			input := model.NewCard{
+				Front:        "Updated Front",
+				Back:         "Updated Back",
+				ReviewDate:   now,
+				IntervalDays: func() *int { i := 3; return &i }(),
+			}
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($id: ID!, $input: NewCard!) {
+                updateCard(id: $id, input: $input) {
+                    id
+                    front
+                    back
+                }
+            }`,
+				"variables": map[string]interface{}{
+					"id":    invalidID,
+					"input": input,
+				},
+			})
+
+			expected := `{
+            "errors": [
+                {
+                    "message": "strconv.ParseInt: parsing \"invalid-id\": invalid syntax",
+                    "path": ["updateCard", "id"]
+                }
+            ],
+            "data": {
+                "updateCard": null
+            }
+        }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+
+		t.Run("DeleteCard with Invalid ID", func(t *testing.T) {
+			t.Parallel()
+
+			invalidID := "invalid-id"
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($id: ID!) {
+                deleteCard(id: $id)
+            }`,
+				"variables": map[string]interface{}{
+					"id": invalidID,
+				},
+			})
+
+			expected := `{
+            "errors": [
+                {
+                    "message": "strconv.ParseInt: parsing \"invalid-id\": invalid syntax",
+                    "path": ["deleteCard", "id"]
+                }
+            ],
+            "data": {
+                "deleteCard": null
+            }
+        }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+
+		t.Run("CreateCardGroup with Missing Name", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+			// Missing `name` field
+			input := map[string]interface{}{
+				"user_ids": []int64{1, 2},
+				"created":  now,
+				"updated":  now,
+			}
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($input: NewCardGroup!) {
+                createCardGroup(input: $input) {
+                    id
+                    name
+                    created
+                    updated
+                }
+            }`,
+				"variables": map[string]interface{}{
+					"input": input,
+				},
+			})
+
+			expected := `{
+            "errors": [
+                {
+                    "extensions": {
+                        "code": "GRAPHQL_VALIDATION_FAILED"
+                    },
+                    "message": "must be defined",
+                    "path": ["variable", "input", "name"]
+                }
+            ],
+            "data": null
+        }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+
+		t.Run("UpdateCardGroup with Invalid ID", func(t *testing.T) {
+			t.Parallel()
+
+			invalidID := "invalid-id"
+			now := time.Now()
+			input := model.NewCardGroup{
+				Name:    "Updated Group",
+				UserIds: []int64{1, 2},
+				Created: now,
+				Updated: now,
+			}
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($id: ID!, $input: NewCardGroup!) {
+                updateCardGroup(id: $id, input: $input) {
+                    id
+                    name
+                    created
+                    updated
+                }
+            }`,
+				"variables": map[string]interface{}{
+					"id":    invalidID,
+					"input": input,
+				},
+			})
+
+			expected := `{
+            "errors": [
+                {
+                    "message": "strconv.ParseInt: parsing \"invalid-id\": invalid syntax",
+                    "path": ["updateCardGroup", "id"]
+                }
+            ],
+            "data": {
+                "updateCardGroup": null
+            }
+        }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+
+		t.Run("DeleteCardGroup with Invalid ID", func(t *testing.T) {
+			t.Parallel()
+
+			invalidID := "invalid-id"
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($id: ID!) {
+                deleteCardGroup(id: $id)
+            }`,
+				"variables": map[string]interface{}{
+					"id": invalidID,
+				},
+			})
+
+			expected := `{
+            "errors": [
+                {
+                    "message": "strconv.ParseInt: parsing \"invalid-id\": invalid syntax",
+                    "path": ["deleteCardGroup", "id"]
+                }
+            ],
+            "data": {
+                "deleteCardGroup": null
+            }
+        }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+
+		t.Run("CreateUser with Missing Name", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+			// Missing `name` field
+			input := map[string]interface{}{
+				"role_ids": []int64{1, 2},
+				"created":  now,
+				"updated":  now,
+			}
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($input: NewUser!) {
+                createUser(input: $input) {
+                    id
+                    name
+                    created
+                    updated
+                }
+            }`,
+				"variables": map[string]interface{}{
+					"input": input,
+				},
+			})
+
+			expected := `{
+            "errors": [
+                {
+                    "extensions": {
+                        "code": "GRAPHQL_VALIDATION_FAILED"
+                    },
+                    "message": "must be defined",
+                    "path": ["variable", "input", "name"]
+                }
+            ],
+            "data": null
+        }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+
+		t.Run("UpdateUser with Invalid ID", func(t *testing.T) {
+			t.Parallel()
+
+			invalidID := "invalid-id"
+			now := time.Now()
+			input := model.NewUser{
+				Name:    "Updated User",
+				RoleIds: []int64{1, 2},
+				Created: now,
+				Updated: now,
+			}
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($id: ID!, $input: NewUser!) {
+                updateUser(id: $id, input: $input) {
+                    id
+                    name
+                    created
+                    updated
+                }
+            }`,
+				"variables": map[string]interface{}{
+					"id":    invalidID,
+					"input": input,
+				},
+			})
+
+			expected := `{
+            "errors": [
+                {
+                    "message": "strconv.ParseInt: parsing \"invalid-id\": invalid syntax",
+                    "path": ["updateUser", "id"]
+                }
+            ],
+            "data": {
+                "updateUser": null
+            }
+        }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+
+		t.Run("DeleteUser with Invalid ID", func(t *testing.T) {
+			t.Parallel()
+
+			invalidID := "invalid-id"
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($id: ID!) {
+                deleteUser(id: $id)
+            }`,
+				"variables": map[string]interface{}{
+					"id": invalidID,
+				},
+			})
+
+			expected := `{
+            "errors": [
+                {
+                    "message": "strconv.ParseInt: parsing \"invalid-id\": invalid syntax",
+                    "path": ["deleteUser", "id"]
+                }
+            ],
+            "data": {
+                "deleteUser": null
+            }
+        }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+
+		t.Run("CreateRole with Missing Name", func(t *testing.T) {
+			t.Parallel()
+
+			now := time.Now()
+			// Missing `name` field
+			input := map[string]interface{}{
+				"created": now,
+				"updated": now,
+			}
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($input: NewRole!) {
+                createRole(input: $input) {
+                    id
+                    name
+                    created
+                    updated
+                }
+            }`,
+				"variables": map[string]interface{}{
+					"input": input,
+				},
+			})
+
+			expected := `{
+            "errors": [
+                {
+                    "extensions": {
+                        "code": "GRAPHQL_VALIDATION_FAILED"
+                    },
+                    "message": "must be defined",
+                    "path": ["variable", "input", "name"]
+                }
+            ],
+            "data": null
+        }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+
+		t.Run("UpdateRole with Invalid ID", func(t *testing.T) {
+			t.Parallel()
+
+			invalidID := "invalid-id"
+			now := time.Now()
+			input := model.NewRole{
+				Name:    "Updated Role",
+				Created: now,
+				Updated: now,
+			}
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($id: ID!, $input: NewRole!) {
+                updateRole(id: $id, input: $input) {
+                    id
+                    name
+                    created
+                    updated
+                }
+            }`,
+				"variables": map[string]interface{}{
+					"id":    invalidID,
+					"input": input,
+				},
+			})
+
+			expected := `{
+            "errors": [
+                {
+                    "message": "strconv.ParseInt: parsing \"invalid-id\": invalid syntax",
+                    "path": ["updateRole", "id"]
+                }
+            ],
+            "data": {
+                "updateRole": null
+            }
+        }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+
+		t.Run("DeleteRole with Invalid ID", func(t *testing.T) {
+			t.Parallel()
+
+			invalidID := "invalid-id"
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($id: ID!) {
+                deleteRole(id: $id)
+            }`,
+				"variables": map[string]interface{}{
+					"id": invalidID,
+				},
+			})
+
+			expected := `{
+            "errors": [
+                {
+                    "message": "strconv.ParseInt: parsing \"invalid-id\": invalid syntax",
+                    "path": ["deleteRole", "id"]
+                }
+            ],
+            "data": {
+                "deleteRole": null
+            }
+        }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+
+		t.Run("AddUserToCardGroup with Invalid IDs", func(t *testing.T) {
+			t.Parallel()
+
+			invalidUserID := "invalid-user-id"
+			invalidCardGroupID := "invalid-cardgroup-id"
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($userID: ID!, $cardGroupID: ID!) {
+                addUserToCardGroup(userID: $userID, cardGroupID: $cardGroupID) {
+                    id
+                    name
+                    created
+                    updated
+                }
+            }`,
+				"variables": map[string]interface{}{
+					"userID":      invalidUserID,
+					"cardGroupID": invalidCardGroupID,
+				},
+			})
+
+			expected := `{
+            "errors": [
+                {
+                    "message": "strconv.ParseInt: parsing \"invalid-user-id\": invalid syntax",
+                    "path": ["addUserToCardGroup", "userID"]
+                }
+            ],
+            "data": {
+                "addUserToCardGroup": null
+            }
+        }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+
+		t.Run("RemoveUserFromCardGroup with Invalid IDs", func(t *testing.T) {
+			t.Parallel()
+
+			invalidUserID := "invalid-user-id"
+			invalidCardGroupID := "invalid-cardgroup-id"
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($userID: ID!, $cardGroupID: ID!) {
+                removeUserFromCardGroup(userID: $userID, cardGroupID: $cardGroupID) {
+                    id
+                    name
+                    created
+                    updated
+                }
+            }`,
+				"variables": map[string]interface{}{
+					"userID":      invalidUserID,
+					"cardGroupID": invalidCardGroupID,
+				},
+			})
+
+			expected := `{
+            "errors": [
+                {
+                    "message": "strconv.ParseInt: parsing \"invalid-user-id\": invalid syntax",
+                    "path": ["removeUserFromCardGroup", "userID"]
+                }
+            ],
+            "data": {
+                "removeUserFromCardGroup": null
+            }
+        }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+
+		t.Run("AssignRoleToUser with Invalid IDs", func(t *testing.T) {
+			t.Parallel()
+
+			invalidUserID := "invalid-user-id"
+			invalidRoleID := "invalid-role-id"
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($userID: ID!, $roleID: ID!) {
+                assignRoleToUser(userID: $userID, roleID: $roleID) {
+                    id
+                    name
+                    created
+                    updated
+                }
+            }`,
+				"variables": map[string]interface{}{
+					"userID": invalidUserID,
+					"roleID": invalidRoleID,
+				},
+			})
+
+			expected := `{
+            "errors": [
+                {
+                    "message": "strconv.ParseInt: parsing \"invalid-user-id\": invalid syntax",
+                    "path": ["assignRoleToUser", "userID"]
+                }
+            ],
+            "data": {
+                "assignRoleToUser": null
+            }
+        }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+
+		t.Run("RemoveRoleFromUser with Invalid IDs", func(t *testing.T) {
+			t.Parallel()
+
+			invalidUserID := "invalid-user-id"
+			invalidRoleID := "invalid-role-id"
+
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($userID: ID!, $roleID: ID!) {
+                removeRoleFromUser(userID: $userID, roleID: $roleID) {
+                    id
+                    name
+                    created
+                    updated
+                }
+            }`,
+				"variables": map[string]interface{}{
+					"userID": invalidUserID,
+					"roleID": invalidRoleID,
+				},
+			})
+
+			expected := `{
+            "errors": [
+                {
+                    "message": "strconv.ParseInt: parsing \"invalid-user-id\": invalid syntax",
+                    "path": ["removeRoleFromUser", "userID"]
+                }
+            ],
+            "data": {
+                "removeRoleFromUser": null
+            }
+        }`
+
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
+	})
+}
