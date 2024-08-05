@@ -1,0 +1,44 @@
+version: 1
+
+services:
+  - type: web
+    plan: free
+    name: flamingo-backend
+    runtime: go
+    repo: https://github.com/yasuflatland-lf/flamingo-armond
+    rootDir: backend
+    buildCommand: go mod download && go build -o main .
+    startCommand: ./main
+    healthCheckPath: /health
+    envVars:
+      - key: GQL_COMPLEXITY
+        sync: false
+      - key: PG_HOST
+        sync: false
+      - key: PG_USER
+        sync: false
+      - key: PG_PASSWORD
+        sync: false
+      - key: PG_DBNAME
+        sync: false
+      - key: PG_PORT
+        sync: false
+      - key: PG_SSLMODE
+        sync: false
+
+  - type: web
+    name: flamingo-frontend
+    runtime: static
+    repo: https://github.com/yasuflatland-lf/flamingo-armond
+    rootDir: frontend
+    buildCommand: npm install -g pnpm && pnpm install && pnpm run build
+    staticPublishPath: frontend/build
+    buildFilter:
+        paths:
+        - src/**/*.tsx
+        ignoredPaths:
+        - src/**/*.test.*
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: sameorigin    

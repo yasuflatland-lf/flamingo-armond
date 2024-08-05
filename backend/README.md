@@ -88,6 +88,12 @@ Right under the root, run below.
 make help
 ```
 
+## How to test the production database connection.
+There is a smoke test to connect to the production database in `main_test.go`
+```
+go test -run "Test with Production Database"
+```
+
 ## How to Install goyacc
 
 1. Run `go install golang.org/x/tools/cmd/goyacc@latest`
