@@ -80,17 +80,17 @@ func NewRouter(db *gorm.DB) *echo.Echo {
 	return e
 }
 
-func StartServer(migrationFilePath string) {
+func StartServer(dbConfig repository.DBConfig) {
 	// Initialize the database
-	dbConfig := repository.DBConfig{
-		Host:              config.Cfg.PGHost,
-		User:              config.Cfg.PGUser,
-		Password:          config.Cfg.PGPassword,
-		DBName:            config.Cfg.PGDBName,
-		Port:              config.Cfg.PGPort,
-		SSLMode:           config.Cfg.PGSSLMode,
-		MigrationFilePath: migrationFilePath,
-	}
+	//dbConfig := repository.DBConfig{
+	//	Host:              config.Cfg.PGHost,
+	//	User:              config.Cfg.PGUser,
+	//	Password:          config.Cfg.PGPassword,
+	//	DBName:            config.Cfg.PGDBName,
+	//	Port:              config.Cfg.PGPort,
+	//	SSLMode:           config.Cfg.PGSSLMode,
+	//	MigrationFilePath: migrationFilePath,
+	//}
 	db := repository.InitializeDatabase(dbConfig)
 
 	router := NewRouter(db)

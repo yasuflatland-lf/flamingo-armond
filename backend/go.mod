@@ -8,6 +8,7 @@ require (
 	github.com/go-playground/validator/v10 v10.22.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/graph-gophers/dataloader/v7 v7.1.0
+	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v4 v4.12.0
 	github.com/labstack/gommon v0.4.2
 	github.com/m-mizutani/goerr v0.1.14

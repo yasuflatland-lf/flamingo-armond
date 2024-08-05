@@ -6,6 +6,9 @@ import (
 	"backend/web/server"
 	"context"
 	"fmt"
+	"github.com/caarlos0/env/v11"
+	"github.com/joho/godotenv"
+	"github.com/m-mizutani/goerr"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,7 +16,20 @@ import (
 	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"log"
 )
+
+func init() {
+	// Load .env file
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found")
+	}
+
+	// Parse environment variables into the config.Cfg
+	if err := env.Parse(&config.Cfg); err != nil {
+		log.Fatalf("Failed to parse environment variables: %+v", err)
+	}
+}
 
 func setupTestDB(t *testing.T) (*httptest.Server, func()) {
 	t.Helper()
@@ -33,15 +49,6 @@ func setupTestDB(t *testing.T) (*httptest.Server, func()) {
 	if err := pg.RunGooseMigrationsUp(migrationFilePath); err != nil {
 		t.Fatalf("failed to run migrations: %+v", err)
 	}
-
-	// Override the config values for testing
-	config.Cfg.PGHost = pg.GetConfig().Host
-	config.Cfg.PGUser = pg.GetConfig().User
-	config.Cfg.PGPassword = pg.GetConfig().Password
-	config.Cfg.PGDBName = pg.GetConfig().DBName
-	config.Cfg.PGPort = pg.GetConfig().Port
-	config.Cfg.PGSSLMode = "disable"
-	config.Cfg.Port = 8080
 
 	// Initialize the Echo router using the NewRouter function
 	e := server.NewRouter(pg.GetDB())
@@ -64,7 +71,7 @@ func setupProdDB() (*gorm.DB, error) {
 		config.Cfg.PGSSLMode)
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		return nil, err
+		return nil, goerr.Wrap(err)
 	}
 	return db, nil
 }
@@ -103,6 +110,8 @@ func TestMainSmoke(t *testing.T) {
 	})
 
 	t.Run("Test with Production Database", func(t *testing.T) {
+		// Comment out this when you want to do a smoke test against production database.
+		t.SkipNow()
 		ts, cleanup := setupProdServer(t)
 		defer cleanup()
 

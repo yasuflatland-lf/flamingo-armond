@@ -20,7 +20,7 @@ type Config struct {
 	PGPassword string `env:"PG_PASSWORD" envDefault:"testpassword"`
 	PGDBName   string `env:"PG_DBNAME" envDefault:"flamingodb"`
 	PGPort     string `env:"PG_PORT" envDefault:"5432"`
-	PGSSLMode  string `env:"PG_SSLMODE" envDefault:"disable"`
+	PGSSLMode  string `env:"PG_SSLMODE" envDefault:"allow"`
 }
 
 // Cfg is the package-level variable that holds the parsed configuration
