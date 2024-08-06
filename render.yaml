@@ -1,4 +1,4 @@
-version: 1
+version: "1"
 
 services:
   - type: web
@@ -7,24 +7,15 @@ services:
     runtime: go
     repo: https://github.com/yasuflatland-lf/flamingo-armond
     rootDir: backend
-    buildCommand: go mod download && go build -o main .
+    buildCommand: |
+      go install github.com/pressly/goose/v3/cmd/goose@latest && \
+      go mod download && \
+      go build -o main .
     startCommand: ./main
     healthCheckPath: /health
     envVars:
-      - key: GQL_COMPLEXITY
-        sync: false
-      - key: PG_HOST
-        sync: false
-      - key: PG_USER
-        sync: false
-      - key: PG_PASSWORD
-        sync: false
-      - key: PG_DBNAME
-        sync: false
-      - key: PG_PORT
-        sync: false
-      - key: PG_SSLMODE
-        sync: false
+      - fromGroup: flamingo-armond
+
 
   - type: web
     name: flamingo-frontend
@@ -33,6 +24,8 @@ services:
     rootDir: frontend
     buildCommand: npm install -g pnpm && pnpm install && pnpm run build
     staticPublishPath: frontend/build
+    envVars:
+      - fromGroup: flamingo-armond    
     buildFilter:
         paths:
         - src/**/*.tsx
