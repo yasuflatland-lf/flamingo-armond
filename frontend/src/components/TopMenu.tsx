@@ -1,11 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, KeyboardEvent } from "react";
 import { IoIosSearch, IoIosSettings } from "react-icons/io";
 import { Link } from "react-router-dom";
 
 function TopMenu() {
   const [searchTerm, setSearchTerm] = useState("");
 
-  const handleKeyDown = async (event) => {
+  const handleKeyDown = async (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
       // Call the REST API
       try {

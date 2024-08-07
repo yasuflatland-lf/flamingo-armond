@@ -11,14 +11,10 @@ function Home() {
   ]);
 
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const likeMenu = true;
 
-  const handleSwiped = (dir: string) => {
+  const handleSwiped = () => {
     setCurrentCardIndex((prev) => (prev + 1) % cards.length);
-    // if (dir === "left") {
-    //   setCurrentCardIndex((prev) => (prev > 0 ? prev - 1 : cards.length - 1));
-    // } else if (dir === "right") {
-    //   setCurrentCardIndex((prev) => (prev + 1) % cards.length);
-    // }
   };
 
   return (
@@ -32,7 +28,7 @@ function Home() {
           onSwiped={handleSwiped}
         />
       )}
-      <Menu />
+      <Menu  likeMenu={likeMenu}/>
     </>
   );
 }

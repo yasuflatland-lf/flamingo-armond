@@ -11,7 +11,7 @@ const mockPeople = [
     email: "leslie.alexander@example.com",
     role: "Co-Founder / CEO",
     imageUrl:
-      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+        "https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
     lastSeen: "3h ago",
     lastSeenDateTime: "2023-01-23T13:23Z",
   },
@@ -20,19 +20,18 @@ const mockPeople = [
     email: "michael.foster@example.com",
     role: "Co-Founder / CTO",
     imageUrl:
-      "https://images.unsplash.com/photo-1519244703995-f4e0f30006d5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+        "https://images.unsplash.com/photo-1519244703995-f4e0f30006d5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
     lastSeen: "3h ago",
     lastSeenDateTime: "2023-01-23T13:23Z",
   },
-  // Add more mock people if necessary
 ];
 
 // Helper function to render the component
 const renderComponent = () => {
   return render(
-    <MemoryRouter>
-      <WordList />
-    </MemoryRouter>,
+      <MemoryRouter>
+        <WordList />
+      </MemoryRouter>,
   );
 };
 
@@ -40,10 +39,10 @@ describe("WordList Component", () => {
   beforeEach(() => {
     // Mock the fetch function
     global.fetch = vi.fn(() =>
-      Promise.resolve({
-        json: () => Promise.resolve(mockPeople),
-      }),
-    ) as jest.Mock;
+        Promise.resolve({
+          json: () => Promise.resolve(mockPeople),
+        }),
+    ) as unknown as jest.Mock;
   });
 
   it("renders the component and shows the loading state initially", () => {
@@ -72,16 +71,16 @@ describe("WordList Component", () => {
         email: "tom.cook@example.com",
         role: "Director of Product",
         imageUrl:
-          "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
+            "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80",
         lastSeen: null,
       },
     ];
 
     global.fetch = vi.fn(() =>
-      Promise.resolve({
-        json: () => Promise.resolve(mockPeopleWithOnlineStatus),
-      }),
-    ) as jest.Mock;
+        Promise.resolve({
+          json: () => Promise.resolve(mockPeopleWithOnlineStatus),
+        }),
+    ) as unknown as jest.Mock;
 
     renderComponent();
 

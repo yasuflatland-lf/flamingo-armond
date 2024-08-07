@@ -16,14 +16,15 @@ import WordList from "./pages/WordList";
 import LoadingPage from "./components/LoadingPage.tsx";
 
 // Mocking the isLogin variable for the sake of this example
-const isLogin = true; // This should be replaced with your actual login check logic
+// This should be replaced with your actual login check logic
+const isLogin = true;
 
 const PrivateRoutes = () => {
   const location = useLocation();
 
-  // 未ログインチェック
-  // （isLoginを判定する処理は省略してます）
-  if (isLogin === false) {
+  // Unauthenticated check
+  // (The process for determining isLogin is omitted)
+  if (!isLogin) {
     return <Navigate to="/login" state={{ redirectPath: location.pathname }} />;
   }
   return <Outlet />;
@@ -34,7 +35,7 @@ function Router() {
     <BrowserRouter>
       <Routes>
         <Route path="login" element={<Login />} />
-        {/* PrivateRoutes内に設定された画面はサインインが必須になる */}
+        {/* Screens set within PrivateRoutes require sign-in */}
         <Route element={<PrivateRoutes />}>
           <Route path="/" element={<Home />} />
         </Route>

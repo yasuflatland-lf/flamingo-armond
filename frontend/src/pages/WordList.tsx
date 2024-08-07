@@ -3,7 +3,16 @@ import TopMenu from "../components/TopMenu";
 import Menu from "../components/Menu.tsx";
 import { FaChevronLeft, FaChevronRight } from "react-icons/fa";
 
-const peopleInit = [
+interface Person {
+  name: string;
+  email: string;
+  role: string;
+  imageUrl: string;
+  lastSeen: string | null;
+  lastSeenDateTime?: string;
+}
+
+const peopleInit: Person[] = [
   {
     name: "Leslie Alexander",
     email: "leslie.alexander@example.com",
@@ -59,7 +68,7 @@ const peopleInit = [
 ];
 
 function WordList() {
-  const [people, setPeople] = useState([]);
+  const [people, setPeople] = useState<Person[]>([]);
   const likeMenu = false;
 
   useEffect(() => {

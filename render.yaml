@@ -23,7 +23,7 @@ services:
     repo: https://github.com/yasuflatland-lf/flamingo-armond
     rootDir: frontend
     buildCommand: npm install -g pnpm && pnpm install && pnpm run build
-    staticPublishPath: frontend/build
+    staticPublishPath: dist
     envVars:
       - fromGroup: flamingo-armond    
     buildFilter:
