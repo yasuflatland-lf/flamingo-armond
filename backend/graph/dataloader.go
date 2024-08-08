@@ -11,10 +11,11 @@ import (
 )
 
 type Loaders struct {
-	CardLoader      dataloader.Interface[int64, *model.Card]
-	UserLoader      dataloader.Interface[int64, *model.User]
-	RoleLoader      dataloader.Interface[int64, *model.Role]
-	CardGroupLoader dataloader.Interface[int64, *model.CardGroup]
+	CardLoader        dataloader.Interface[int64, *model.Card]
+	UserLoader        dataloader.Interface[int64, *model.User]
+	RoleLoader        dataloader.Interface[int64, *model.Role]
+	CardGroupLoader   dataloader.Interface[int64, *model.CardGroup]
+	SwipeRecordLoader dataloader.Interface[int64, *model.SwipeRecord]
 }
 
 func NewLoaders(srv services.Services) *Loaders {
@@ -22,12 +23,14 @@ func NewLoaders(srv services.Services) *Loaders {
 	userBatcher := &userBatcher{Srv: srv}
 	roleBatcher := &roleBatcher{Srv: srv}
 	cardGroupBatcher := &cardGroupBatcher{Srv: srv}
+	swipeRecordBatcher := &swipeRecordBatcher{Srv: srv}
 
 	return &Loaders{
-		CardLoader:      dataloader.NewBatchedLoader[int64, *model.Card](cardBatcher.BatchGetCards),
-		UserLoader:      dataloader.NewBatchedLoader[int64, *model.User](userBatcher.BatchGetUsers),
-		RoleLoader:      dataloader.NewBatchedLoader[int64, *model.Role](roleBatcher.BatchGetRoles),
-		CardGroupLoader: dataloader.NewBatchedLoader[int64, *model.CardGroup](cardGroupBatcher.BatchGetCardGroups),
+		CardLoader:        dataloader.NewBatchedLoader[int64, *model.Card](cardBatcher.BatchGetCards),
+		UserLoader:        dataloader.NewBatchedLoader[int64, *model.User](userBatcher.BatchGetUsers),
+		RoleLoader:        dataloader.NewBatchedLoader[int64, *model.Role](roleBatcher.BatchGetRoles),
+		CardGroupLoader:   dataloader.NewBatchedLoader[int64, *model.CardGroup](cardGroupBatcher.BatchGetCardGroups),
+		SwipeRecordLoader: dataloader.NewBatchedLoader[int64, *model.SwipeRecord](swipeRecordBatcher.BatchGetSwipeRecords),
 	}
 }
 
@@ -134,6 +137,33 @@ func (c *cardGroupBatcher) BatchGetCardGroups(ctx context.Context, keys []int64)
 			results[i] = &dataloader.Result[*model.CardGroup]{Data: cardGroup}
 		} else {
 			results[i] = &dataloader.Result[*model.CardGroup]{Error: errors.New("card group not found")}
+		}
+	}
+	return results
+}
+
+type swipeRecordBatcher struct {
+	Srv services.Services
+}
+
+func (s *swipeRecordBatcher) BatchGetSwipeRecords(ctx context.Context, keys []int64) []*dataloader.Result[*model.SwipeRecord] {
+	swipeRecords, err := s.Srv.GetSwipeRecordsByIDs(ctx, keys)
+	if err != nil {
+		logger.Logger.ErrorContext(ctx, "No swipe records found", err)
+		return make([]*dataloader.Result[*model.SwipeRecord], len(keys))
+	}
+
+	swipeRecordMap := make(map[int64]*model.SwipeRecord)
+	for _, swipeRecord := range swipeRecords {
+		swipeRecordMap[swipeRecord.ID] = swipeRecord
+	}
+
+	results := make([]*dataloader.Result[*model.SwipeRecord], len(keys))
+	for i, key := range keys {
+		if swipeRecord, ok := swipeRecordMap[key]; ok {
+			results[i] = &dataloader.Result[*model.SwipeRecord]{Data: swipeRecord}
+		} else {
+			results[i] = &dataloader.Result[*model.SwipeRecord]{Error: errors.New("swipe record not found")}
 		}
 	}
 	return results

@@ -43,3 +43,11 @@ type Role struct {
 	Created time.Time `gorm:"column:created;autoCreateTime"`
 	Updated time.Time `gorm:"column:updated;autoCreateTime"`
 }
+
+type SwipeRecord struct {
+	ID        int64     `gorm:"column:id;primaryKey" validate:"number"`
+	UserID    int64     `gorm:"column:user_id" validate:"number"`
+	Direction string    `gorm:"column:direction;not null" validate:"required"`
+	Created   time.Time `gorm:"column:created;autoCreateTime"`
+	Updated   time.Time `gorm:"column:updated;autoCreateTime"`
+}

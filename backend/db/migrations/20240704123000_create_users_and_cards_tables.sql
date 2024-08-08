@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS cardgroup_users
 (
     cardgroup_id BIGINT NOT NULL,
     user_id      BIGINT NOT NULL,
+    state   INT   DEFAULT 1,
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (cardgroup_id, user_id),
@@ -50,6 +51,7 @@ CREATE TABLE IF NOT EXISTS cardgroup_users
     );
 CREATE INDEX idx_cardgroup_users_cardgroup_id ON cardgroup_users(cardgroup_id);
 CREATE INDEX idx_cardgroup_users_user_id ON cardgroup_users(user_id);
+CREATE INDEX idx_cardgroup_users_state ON cardgroup_users(state);
 
 CREATE TABLE IF NOT EXISTS roles
 (
@@ -72,6 +74,18 @@ CREATE TABLE IF NOT EXISTS user_roles
     );
 CREATE INDEX idx_user_roles_user_id ON user_roles(user_id);
 CREATE INDEX idx_user_roles_role_id ON user_roles(role_id);
+
+CREATE TABLE IF NOT EXISTS swipe_records
+(
+    id   BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    direction TEXT NOT NULL,
+    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+CREATE INDEX idx_swipe_records_id ON swipe_records(id);
+CREATE INDEX idx_swipe_records_user_id ON swipe_records(user_id);
 
 -- +goose statementbegin
 -- When the updated column is not changed, assign NULL
@@ -160,4 +174,5 @@ DROP TABLE IF EXISTS roles;
 DROP TABLE IF EXISTS cardgroup_users;
 DROP TABLE IF EXISTS cards;
 DROP TABLE IF EXISTS cardgroups;
+DROP TABLE IF EXISTS swipe_records;
 DROP TABLE IF EXISTS users;

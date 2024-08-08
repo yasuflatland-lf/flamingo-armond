@@ -12,6 +12,7 @@ type Services interface {
 	CardGroupService
 	UserService
 	RoleService
+	SwipeRecordService
 }
 
 type CardService interface {
@@ -61,18 +62,31 @@ type RoleService interface {
 	GetRolesByIDs(ctx context.Context, ids []int64) ([]*model.Role, error)
 }
 
+type SwipeRecordService interface {
+	GetSwipeRecordByID(ctx context.Context, id int64) (*model.SwipeRecord, error)
+	CreateSwipeRecord(ctx context.Context, input model.NewSwipeRecord) (*model.SwipeRecord, error)
+	UpdateSwipeRecord(ctx context.Context, id int64, input model.NewSwipeRecord) (*model.SwipeRecord, error)
+	DeleteSwipeRecord(ctx context.Context, id int64) (*bool, error)
+	SwipeRecords(ctx context.Context) ([]*model.SwipeRecord, error)
+	SwipeRecordsByUser(ctx context.Context, userID int64) ([]*model.SwipeRecord, error)
+	PaginatedSwipeRecordsByUser(ctx context.Context, userID int64, first *int, after *int64, last *int, before *int64) (*model.SwipeRecordConnection, error)
+	GetSwipeRecordsByIDs(ctx context.Context, ids []int64) ([]*model.SwipeRecord, error)
+}
+
 type services struct {
 	*cardService
 	*cardGroupService
 	*userService
 	*roleService
+	*swipeRecordService
 }
 
 func New(db *gorm.DB) Services {
 	return &services{
-		cardService:      &cardService{db: db, defaultLimit: 20},
-		cardGroupService: &cardGroupService{db: db, defaultLimit: 20},
-		userService:      &userService{db: db, defaultLimit: 20},
-		roleService:      &roleService{db: db, defaultLimit: 20},
+		cardService:        &cardService{db: db, defaultLimit: 20},
+		cardGroupService:   &cardGroupService{db: db, defaultLimit: 20},
+		userService:        &userService{db: db, defaultLimit: 20},
+		roleService:        &roleService{db: db, defaultLimit: 20},
+		swipeRecordService: &swipeRecordService{db: db, defaultLimit: 20},
 	}
 }

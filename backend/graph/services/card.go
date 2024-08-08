@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -52,7 +53,7 @@ func (s *cardService) GetCardByID(ctx context.Context, id int64) (*model.Card, e
 	if err := s.db.WithContext(ctx).First(&card, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			err := fmt.Errorf("card not found")
-			logger.Logger.ErrorContext(ctx, "Card not found: %d", id)
+			logger.Logger.ErrorContext(ctx, "Card not found:", slog.String("id", fmt.Sprintf("%d", id)))
 			return nil, err
 		}
 		logger.Logger.ErrorContext(ctx, "Failed to get card by ID", err)
@@ -79,7 +80,7 @@ func (s *cardService) CreateCard(ctx context.Context, input model.NewCard) (*mod
 func (s *cardService) UpdateCard(ctx context.Context, id int64, input model.NewCard) (*model.Card, error) {
 	var card repository.Card
 	if err := s.db.WithContext(ctx).First(&card, id).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Card does not exist: %d", id)
+		logger.Logger.ErrorContext(ctx, "Card does not exist", slog.String("id", fmt.Sprintf("%d", id)))
 		return nil, err
 	}
 	card.Front = input.Front

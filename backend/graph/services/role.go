@@ -178,8 +178,8 @@ func (s *roleService) PaginatedRolesByUser(ctx context.Context, userID int64, fi
 	}
 
 	if err := query.Association("Roles").Find(&roles).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Error retrieving paginated roles by user", err)
-		return nil, fmt.Errorf("error %+v", err)
+		logger.Logger.ErrorContext(ctx, "Error retrieving paginated roles by user", "error", err)
+		return nil, fmt.Errorf("error %+v", err())
 	}
 
 	var edges []*model.RoleEdge

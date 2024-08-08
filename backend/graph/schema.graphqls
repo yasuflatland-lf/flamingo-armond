@@ -97,6 +97,26 @@ type CardGroupConnection {
   totalCount: Int!
 }
 
+type SwipeRecord {
+  id: ID!
+  userId: ID!
+  direction: String! @validation(format: "required")
+  created: Time!
+  updated: Time!
+}
+
+type SwipeRecordEdge {
+  cursor: ID!
+  node: SwipeRecord! @validation(format: "-")
+}
+
+type SwipeRecordConnection {
+  edges: [SwipeRecordEdge] @validation(format: "-")
+  nodes: [SwipeRecord] @validation(format: "-")
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
 input NewCard {
   front: String! @validation(format: "required,min=1")
   back: String! @validation(format: "required,min=1")
@@ -108,7 +128,7 @@ input NewCard {
 }
 
 input NewCardGroup {
-  name: String!, @validation(format: "required,min=1")
+  name: String! @validation(format: "required,min=1")
   card_ids: [ID!]
   user_ids: [ID!]!
   created: Time!,
@@ -116,7 +136,7 @@ input NewCardGroup {
 }
 
 input NewUser {
-  name: String!, @validation(format: "required,fl_name,min=1")
+  name: String! @validation(format: "required,fl_name,min=1")
   role_ids: [ID!]!
   created: Time!,
   updated: Time!,
@@ -128,17 +148,27 @@ input NewRole {
   updated: Time!,
 }
 
-type Query {
-    card(id: ID!): Card
-    cardGroup(id: ID!): CardGroup
-    role(id: ID!): Role
-    user(id: ID!): User
-    cardsByCardGroup(cardGroupID: ID!, first: Int, after: ID, last: Int, before: ID): CardConnection
-    userRole(userID: ID!): Role
-    cardGroupsByUser(userID: ID!, first: Int, after: ID, last: Int, before: ID): CardGroupConnection
-    usersByRole(roleID: ID!, first: Int, after: ID, last: Int, before: ID): UserConnection
+input NewSwipeRecord {
+  userId: ID! @validation(format: "required")
+  direction: String! @validation(format: "required")
+  created: Time!
+  updated: Time!
 }
-# Mutation Type
+
+
+type Query {
+  card(id: ID!): Card
+  cardGroup(id: ID!): CardGroup
+  role(id: ID!): Role
+  user(id: ID!): User
+  swipeRecord(id: ID!): SwipeRecord
+  cardsByCardGroup(cardGroupID: ID!, first: Int, after: ID, last: Int, before: ID): CardConnection
+  userRole(userID: ID!): Role
+  cardGroupsByUser(userID: ID!, first: Int, after: ID, last: Int, before: ID): CardGroupConnection
+  usersByRole(roleID: ID!, first: Int, after: ID, last: Int, before: ID): UserConnection
+  swipeRecords(userID: ID!,first: Int, after: ID, last: Int, before: ID): SwipeRecordConnection
+}
+
 type Mutation {
   createCard(input: NewCard!): Card
   updateCard(id: ID!, input: NewCard!): Card
@@ -156,4 +186,7 @@ type Mutation {
   removeUserFromCardGroup(userID: ID!, cardGroupID: ID!): CardGroup
   assignRoleToUser(userID: ID!, roleID: ID!): User
   removeRoleFromUser(userID: ID!, roleID: ID!): User
+  createSwipeRecord(input: NewSwipeRecord!): SwipeRecord
+  updateSwipeRecord(id: ID!, input: NewSwipeRecord!): SwipeRecord
+  deleteSwipeRecord(id: ID!): Boolean
 }

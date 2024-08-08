@@ -103,16 +103,19 @@ type ComplexityRoot struct {
 		CreateCard              func(childComplexity int, input model.NewCard) int
 		CreateCardGroup         func(childComplexity int, input model.NewCardGroup) int
 		CreateRole              func(childComplexity int, input model.NewRole) int
+		CreateSwipeRecord       func(childComplexity int, input model.NewSwipeRecord) int
 		CreateUser              func(childComplexity int, input model.NewUser) int
 		DeleteCard              func(childComplexity int, id int64) int
 		DeleteCardGroup         func(childComplexity int, id int64) int
 		DeleteRole              func(childComplexity int, id int64) int
+		DeleteSwipeRecord       func(childComplexity int, id int64) int
 		DeleteUser              func(childComplexity int, id int64) int
 		RemoveRoleFromUser      func(childComplexity int, userID int64, roleID int64) int
 		RemoveUserFromCardGroup func(childComplexity int, userID int64, cardGroupID int64) int
 		UpdateCard              func(childComplexity int, id int64, input model.NewCard) int
 		UpdateCardGroup         func(childComplexity int, id int64, input model.NewCardGroup) int
 		UpdateRole              func(childComplexity int, id int64, input model.NewRole) int
+		UpdateSwipeRecord       func(childComplexity int, id int64, input model.NewSwipeRecord) int
 		UpdateUser              func(childComplexity int, id int64, input model.NewUser) int
 	}
 
@@ -129,6 +132,8 @@ type ComplexityRoot struct {
 		CardGroupsByUser func(childComplexity int, userID int64, first *int, after *int64, last *int, before *int64) int
 		CardsByCardGroup func(childComplexity int, cardGroupID int64, first *int, after *int64, last *int, before *int64) int
 		Role             func(childComplexity int, id int64) int
+		SwipeRecord      func(childComplexity int, id int64) int
+		SwipeRecords     func(childComplexity int, userID int64, first *int, after *int64, last *int, before *int64) int
 		User             func(childComplexity int, id int64) int
 		UserRole         func(childComplexity int, userID int64) int
 		UsersByRole      func(childComplexity int, roleID int64, first *int, after *int64, last *int, before *int64) int
@@ -150,6 +155,26 @@ type ComplexityRoot struct {
 	}
 
 	RoleEdge struct {
+		Cursor func(childComplexity int) int
+		Node   func(childComplexity int) int
+	}
+
+	SwipeRecord struct {
+		Created   func(childComplexity int) int
+		Direction func(childComplexity int) int
+		ID        func(childComplexity int) int
+		Updated   func(childComplexity int) int
+		UserID    func(childComplexity int) int
+	}
+
+	SwipeRecordConnection struct {
+		Edges      func(childComplexity int) int
+		Nodes      func(childComplexity int) int
+		PageInfo   func(childComplexity int) int
+		TotalCount func(childComplexity int) int
+	}
+
+	SwipeRecordEdge struct {
 		Cursor func(childComplexity int) int
 		Node   func(childComplexity int) int
 	}
@@ -200,16 +225,21 @@ type MutationResolver interface {
 	RemoveUserFromCardGroup(ctx context.Context, userID int64, cardGroupID int64) (*model.CardGroup, error)
 	AssignRoleToUser(ctx context.Context, userID int64, roleID int64) (*model.User, error)
 	RemoveRoleFromUser(ctx context.Context, userID int64, roleID int64) (*model.User, error)
+	CreateSwipeRecord(ctx context.Context, input model.NewSwipeRecord) (*model.SwipeRecord, error)
+	UpdateSwipeRecord(ctx context.Context, id int64, input model.NewSwipeRecord) (*model.SwipeRecord, error)
+	DeleteSwipeRecord(ctx context.Context, id int64) (*bool, error)
 }
 type QueryResolver interface {
 	Card(ctx context.Context, id int64) (*model.Card, error)
 	CardGroup(ctx context.Context, id int64) (*model.CardGroup, error)
 	Role(ctx context.Context, id int64) (*model.Role, error)
 	User(ctx context.Context, id int64) (*model.User, error)
+	SwipeRecord(ctx context.Context, id int64) (*model.SwipeRecord, error)
 	CardsByCardGroup(ctx context.Context, cardGroupID int64, first *int, after *int64, last *int, before *int64) (*model.CardConnection, error)
 	UserRole(ctx context.Context, userID int64) (*model.Role, error)
 	CardGroupsByUser(ctx context.Context, userID int64, first *int, after *int64, last *int, before *int64) (*model.CardGroupConnection, error)
 	UsersByRole(ctx context.Context, roleID int64, first *int, after *int64, last *int, before *int64) (*model.UserConnection, error)
+	SwipeRecords(ctx context.Context, userID int64, first *int, after *int64, last *int, before *int64) (*model.SwipeRecordConnection, error)
 }
 type RoleResolver interface {
 	Users(ctx context.Context, obj *model.Role, first *int, after *int64, last *int, before *int64) (*model.UserConnection, error)
@@ -497,6 +527,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Mutation.CreateRole(childComplexity, args["input"].(model.NewRole)), true
 
+	case "Mutation.createSwipeRecord":
+		if e.complexity.Mutation.CreateSwipeRecord == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_createSwipeRecord_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.CreateSwipeRecord(childComplexity, args["input"].(model.NewSwipeRecord)), true
+
 	case "Mutation.createUser":
 		if e.complexity.Mutation.CreateUser == nil {
 			break
@@ -544,6 +586,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Mutation.DeleteRole(childComplexity, args["id"].(int64)), true
+
+	case "Mutation.deleteSwipeRecord":
+		if e.complexity.Mutation.DeleteSwipeRecord == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_deleteSwipeRecord_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.DeleteSwipeRecord(childComplexity, args["id"].(int64)), true
 
 	case "Mutation.deleteUser":
 		if e.complexity.Mutation.DeleteUser == nil {
@@ -616,6 +670,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Mutation.UpdateRole(childComplexity, args["id"].(int64), args["input"].(model.NewRole)), true
+
+	case "Mutation.updateSwipeRecord":
+		if e.complexity.Mutation.UpdateSwipeRecord == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_updateSwipeRecord_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.UpdateSwipeRecord(childComplexity, args["id"].(int64), args["input"].(model.NewSwipeRecord)), true
 
 	case "Mutation.updateUser":
 		if e.complexity.Mutation.UpdateUser == nil {
@@ -716,6 +782,30 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Query.Role(childComplexity, args["id"].(int64)), true
+
+	case "Query.swipeRecord":
+		if e.complexity.Query.SwipeRecord == nil {
+			break
+		}
+
+		args, err := ec.field_Query_swipeRecord_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.SwipeRecord(childComplexity, args["id"].(int64)), true
+
+	case "Query.swipeRecords":
+		if e.complexity.Query.SwipeRecords == nil {
+			break
+		}
+
+		args, err := ec.field_Query_swipeRecords_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.SwipeRecords(childComplexity, args["userID"].(int64), args["first"].(*int), args["after"].(*int64), args["last"].(*int), args["before"].(*int64)), true
 
 	case "Query.user":
 		if e.complexity.Query.User == nil {
@@ -835,6 +925,83 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.RoleEdge.Node(childComplexity), true
 
+	case "SwipeRecord.created":
+		if e.complexity.SwipeRecord.Created == nil {
+			break
+		}
+
+		return e.complexity.SwipeRecord.Created(childComplexity), true
+
+	case "SwipeRecord.direction":
+		if e.complexity.SwipeRecord.Direction == nil {
+			break
+		}
+
+		return e.complexity.SwipeRecord.Direction(childComplexity), true
+
+	case "SwipeRecord.id":
+		if e.complexity.SwipeRecord.ID == nil {
+			break
+		}
+
+		return e.complexity.SwipeRecord.ID(childComplexity), true
+
+	case "SwipeRecord.updated":
+		if e.complexity.SwipeRecord.Updated == nil {
+			break
+		}
+
+		return e.complexity.SwipeRecord.Updated(childComplexity), true
+
+	case "SwipeRecord.userId":
+		if e.complexity.SwipeRecord.UserID == nil {
+			break
+		}
+
+		return e.complexity.SwipeRecord.UserID(childComplexity), true
+
+	case "SwipeRecordConnection.edges":
+		if e.complexity.SwipeRecordConnection.Edges == nil {
+			break
+		}
+
+		return e.complexity.SwipeRecordConnection.Edges(childComplexity), true
+
+	case "SwipeRecordConnection.nodes":
+		if e.complexity.SwipeRecordConnection.Nodes == nil {
+			break
+		}
+
+		return e.complexity.SwipeRecordConnection.Nodes(childComplexity), true
+
+	case "SwipeRecordConnection.pageInfo":
+		if e.complexity.SwipeRecordConnection.PageInfo == nil {
+			break
+		}
+
+		return e.complexity.SwipeRecordConnection.PageInfo(childComplexity), true
+
+	case "SwipeRecordConnection.totalCount":
+		if e.complexity.SwipeRecordConnection.TotalCount == nil {
+			break
+		}
+
+		return e.complexity.SwipeRecordConnection.TotalCount(childComplexity), true
+
+	case "SwipeRecordEdge.cursor":
+		if e.complexity.SwipeRecordEdge.Cursor == nil {
+			break
+		}
+
+		return e.complexity.SwipeRecordEdge.Cursor(childComplexity), true
+
+	case "SwipeRecordEdge.node":
+		if e.complexity.SwipeRecordEdge.Node == nil {
+			break
+		}
+
+		return e.complexity.SwipeRecordEdge.Node(childComplexity), true
+
 	case "User.cardGroups":
 		if e.complexity.User.CardGroups == nil {
 			break
@@ -940,6 +1107,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputNewCard,
 		ec.unmarshalInputNewCardGroup,
 		ec.unmarshalInputNewRole,
+		ec.unmarshalInputNewSwipeRecord,
 		ec.unmarshalInputNewUser,
 	)
 	first := true
@@ -1234,6 +1402,21 @@ func (ec *executionContext) field_Mutation_createRole_args(ctx context.Context, 
 	return args, nil
 }
 
+func (ec *executionContext) field_Mutation_createSwipeRecord_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 model.NewSwipeRecord
+	if tmp, ok := rawArgs["input"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("input"))
+		arg0, err = ec.unmarshalNNewSwipeRecord2backendᚋgraphᚋmodelᚐNewSwipeRecord(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Mutation_createUser_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
@@ -1280,6 +1463,21 @@ func (ec *executionContext) field_Mutation_deleteCard_args(ctx context.Context, 
 }
 
 func (ec *executionContext) field_Mutation_deleteRole_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 int64
+	if tmp, ok := rawArgs["id"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+		arg0, err = ec.unmarshalNID2int64(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_deleteSwipeRecord_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
 	var arg0 int64
@@ -1421,6 +1619,30 @@ func (ec *executionContext) field_Mutation_updateRole_args(ctx context.Context, 
 	if tmp, ok := rawArgs["input"]; ok {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("input"))
 		arg1, err = ec.unmarshalNNewRole2backendᚋgraphᚋmodelᚐNewRole(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["input"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_updateSwipeRecord_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 int64
+	if tmp, ok := rawArgs["id"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+		arg0, err = ec.unmarshalNID2int64(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["id"] = arg0
+	var arg1 model.NewSwipeRecord
+	if tmp, ok := rawArgs["input"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("input"))
+		arg1, err = ec.unmarshalNNewSwipeRecord2backendᚋgraphᚋmodelᚐNewSwipeRecord(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
@@ -1612,6 +1834,72 @@ func (ec *executionContext) field_Query_role_args(ctx context.Context, rawArgs m
 		}
 	}
 	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_swipeRecord_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 int64
+	if tmp, ok := rawArgs["id"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+		arg0, err = ec.unmarshalNID2int64(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_swipeRecords_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 int64
+	if tmp, ok := rawArgs["userID"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("userID"))
+		arg0, err = ec.unmarshalNID2int64(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["userID"] = arg0
+	var arg1 *int
+	if tmp, ok := rawArgs["first"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("first"))
+		arg1, err = ec.unmarshalOInt2ᚖint(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["first"] = arg1
+	var arg2 *int64
+	if tmp, ok := rawArgs["after"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("after"))
+		arg2, err = ec.unmarshalOID2ᚖint64(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["after"] = arg2
+	var arg3 *int
+	if tmp, ok := rawArgs["last"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("last"))
+		arg3, err = ec.unmarshalOInt2ᚖint(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["last"] = arg3
+	var arg4 *int64
+	if tmp, ok := rawArgs["before"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("before"))
+		arg4, err = ec.unmarshalOID2ᚖint64(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["before"] = arg4
 	return args, nil
 }
 
@@ -4200,6 +4488,186 @@ func (ec *executionContext) fieldContext_Mutation_removeRoleFromUser(ctx context
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_createSwipeRecord(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_createSwipeRecord(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().CreateSwipeRecord(rctx, fc.Args["input"].(model.NewSwipeRecord))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*model.SwipeRecord)
+	fc.Result = res
+	return ec.marshalOSwipeRecord2ᚖbackendᚋgraphᚋmodelᚐSwipeRecord(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_createSwipeRecord(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_SwipeRecord_id(ctx, field)
+			case "userId":
+				return ec.fieldContext_SwipeRecord_userId(ctx, field)
+			case "direction":
+				return ec.fieldContext_SwipeRecord_direction(ctx, field)
+			case "created":
+				return ec.fieldContext_SwipeRecord_created(ctx, field)
+			case "updated":
+				return ec.fieldContext_SwipeRecord_updated(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type SwipeRecord", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createSwipeRecord_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_updateSwipeRecord(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_updateSwipeRecord(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().UpdateSwipeRecord(rctx, fc.Args["id"].(int64), fc.Args["input"].(model.NewSwipeRecord))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*model.SwipeRecord)
+	fc.Result = res
+	return ec.marshalOSwipeRecord2ᚖbackendᚋgraphᚋmodelᚐSwipeRecord(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_updateSwipeRecord(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_SwipeRecord_id(ctx, field)
+			case "userId":
+				return ec.fieldContext_SwipeRecord_userId(ctx, field)
+			case "direction":
+				return ec.fieldContext_SwipeRecord_direction(ctx, field)
+			case "created":
+				return ec.fieldContext_SwipeRecord_created(ctx, field)
+			case "updated":
+				return ec.fieldContext_SwipeRecord_updated(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type SwipeRecord", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_updateSwipeRecord_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_deleteSwipeRecord(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_deleteSwipeRecord(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().DeleteSwipeRecord(rctx, fc.Args["id"].(int64))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*bool)
+	fc.Result = res
+	return ec.marshalOBoolean2ᚖbool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_deleteSwipeRecord(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_deleteSwipeRecord_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _PageInfo_endCursor(ctx context.Context, field graphql.CollectedField, obj *model.PageInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_PageInfo_endCursor(ctx, field)
 	if err != nil {
@@ -4638,6 +5106,70 @@ func (ec *executionContext) fieldContext_Query_user(ctx context.Context, field g
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_swipeRecord(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_swipeRecord(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().SwipeRecord(rctx, fc.Args["id"].(int64))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*model.SwipeRecord)
+	fc.Result = res
+	return ec.marshalOSwipeRecord2ᚖbackendᚋgraphᚋmodelᚐSwipeRecord(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Query_swipeRecord(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_SwipeRecord_id(ctx, field)
+			case "userId":
+				return ec.fieldContext_SwipeRecord_userId(ctx, field)
+			case "direction":
+				return ec.fieldContext_SwipeRecord_direction(ctx, field)
+			case "created":
+				return ec.fieldContext_SwipeRecord_created(ctx, field)
+			case "updated":
+				return ec.fieldContext_SwipeRecord_updated(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type SwipeRecord", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_swipeRecord_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_cardsByCardGroup(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Query_cardsByCardGroup(ctx, field)
 	if err != nil {
@@ -4882,6 +5414,68 @@ func (ec *executionContext) fieldContext_Query_usersByRole(ctx context.Context, 
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_usersByRole_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_swipeRecords(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_swipeRecords(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().SwipeRecords(rctx, fc.Args["userID"].(int64), fc.Args["first"].(*int), fc.Args["after"].(*int64), fc.Args["last"].(*int), fc.Args["before"].(*int64))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*model.SwipeRecordConnection)
+	fc.Result = res
+	return ec.marshalOSwipeRecordConnection2ᚖbackendᚋgraphᚋmodelᚐSwipeRecordConnection(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Query_swipeRecords(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "edges":
+				return ec.fieldContext_SwipeRecordConnection_edges(ctx, field)
+			case "nodes":
+				return ec.fieldContext_SwipeRecordConnection_nodes(ctx, field)
+			case "pageInfo":
+				return ec.fieldContext_SwipeRecordConnection_pageInfo(ctx, field)
+			case "totalCount":
+				return ec.fieldContext_SwipeRecordConnection_totalCount(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type SwipeRecordConnection", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_swipeRecords_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -5551,6 +6145,524 @@ func (ec *executionContext) fieldContext_RoleEdge_node(_ context.Context, field 
 				return ec.fieldContext_Role_users(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Role", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SwipeRecord_id(ctx context.Context, field graphql.CollectedField, obj *model.SwipeRecord) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SwipeRecord_id(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.ID, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int64)
+	fc.Result = res
+	return ec.marshalNID2int64(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SwipeRecord_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SwipeRecord",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SwipeRecord_userId(ctx context.Context, field graphql.CollectedField, obj *model.SwipeRecord) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SwipeRecord_userId(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.UserID, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int64)
+	fc.Result = res
+	return ec.marshalNID2int64(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SwipeRecord_userId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SwipeRecord",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SwipeRecord_direction(ctx context.Context, field graphql.CollectedField, obj *model.SwipeRecord) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SwipeRecord_direction(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Direction, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SwipeRecord_direction(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SwipeRecord",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SwipeRecord_created(ctx context.Context, field graphql.CollectedField, obj *model.SwipeRecord) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SwipeRecord_created(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Created, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(time.Time)
+	fc.Result = res
+	return ec.marshalNTime2timeᚐTime(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SwipeRecord_created(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SwipeRecord",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SwipeRecord_updated(ctx context.Context, field graphql.CollectedField, obj *model.SwipeRecord) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SwipeRecord_updated(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Updated, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(time.Time)
+	fc.Result = res
+	return ec.marshalNTime2timeᚐTime(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SwipeRecord_updated(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SwipeRecord",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SwipeRecordConnection_edges(ctx context.Context, field graphql.CollectedField, obj *model.SwipeRecordConnection) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SwipeRecordConnection_edges(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Edges, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]*model.SwipeRecordEdge)
+	fc.Result = res
+	return ec.marshalOSwipeRecordEdge2ᚕᚖbackendᚋgraphᚋmodelᚐSwipeRecordEdge(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SwipeRecordConnection_edges(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SwipeRecordConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "cursor":
+				return ec.fieldContext_SwipeRecordEdge_cursor(ctx, field)
+			case "node":
+				return ec.fieldContext_SwipeRecordEdge_node(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type SwipeRecordEdge", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SwipeRecordConnection_nodes(ctx context.Context, field graphql.CollectedField, obj *model.SwipeRecordConnection) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SwipeRecordConnection_nodes(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Nodes, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]*model.SwipeRecord)
+	fc.Result = res
+	return ec.marshalOSwipeRecord2ᚕᚖbackendᚋgraphᚋmodelᚐSwipeRecord(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SwipeRecordConnection_nodes(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SwipeRecordConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_SwipeRecord_id(ctx, field)
+			case "userId":
+				return ec.fieldContext_SwipeRecord_userId(ctx, field)
+			case "direction":
+				return ec.fieldContext_SwipeRecord_direction(ctx, field)
+			case "created":
+				return ec.fieldContext_SwipeRecord_created(ctx, field)
+			case "updated":
+				return ec.fieldContext_SwipeRecord_updated(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type SwipeRecord", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SwipeRecordConnection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *model.SwipeRecordConnection) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SwipeRecordConnection_pageInfo(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.PageInfo, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.PageInfo)
+	fc.Result = res
+	return ec.marshalNPageInfo2ᚖbackendᚋgraphᚋmodelᚐPageInfo(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SwipeRecordConnection_pageInfo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SwipeRecordConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "endCursor":
+				return ec.fieldContext_PageInfo_endCursor(ctx, field)
+			case "hasNextPage":
+				return ec.fieldContext_PageInfo_hasNextPage(ctx, field)
+			case "hasPreviousPage":
+				return ec.fieldContext_PageInfo_hasPreviousPage(ctx, field)
+			case "startCursor":
+				return ec.fieldContext_PageInfo_startCursor(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type PageInfo", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SwipeRecordConnection_totalCount(ctx context.Context, field graphql.CollectedField, obj *model.SwipeRecordConnection) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SwipeRecordConnection_totalCount(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.TotalCount, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	fc.Result = res
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SwipeRecordConnection_totalCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SwipeRecordConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SwipeRecordEdge_cursor(ctx context.Context, field graphql.CollectedField, obj *model.SwipeRecordEdge) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SwipeRecordEdge_cursor(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Cursor, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int64)
+	fc.Result = res
+	return ec.marshalNID2int64(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SwipeRecordEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SwipeRecordEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SwipeRecordEdge_node(ctx context.Context, field graphql.CollectedField, obj *model.SwipeRecordEdge) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SwipeRecordEdge_node(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Node, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.SwipeRecord)
+	fc.Result = res
+	return ec.marshalNSwipeRecord2ᚖbackendᚋgraphᚋmodelᚐSwipeRecord(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SwipeRecordEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SwipeRecordEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_SwipeRecord_id(ctx, field)
+			case "userId":
+				return ec.fieldContext_SwipeRecord_userId(ctx, field)
+			case "direction":
+				return ec.fieldContext_SwipeRecord_direction(ctx, field)
+			case "created":
+				return ec.fieldContext_SwipeRecord_created(ctx, field)
+			case "updated":
+				return ec.fieldContext_SwipeRecord_updated(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type SwipeRecord", field.Name)
 		},
 	}
 	return fc, nil
@@ -8106,6 +9218,54 @@ func (ec *executionContext) unmarshalInputNewRole(ctx context.Context, obj inter
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputNewSwipeRecord(ctx context.Context, obj interface{}) (model.NewSwipeRecord, error) {
+	var it model.NewSwipeRecord
+	asMap := map[string]interface{}{}
+	for k, v := range obj.(map[string]interface{}) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"userId", "direction", "created", "updated"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "userId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("userId"))
+			data, err := ec.unmarshalNID2int64(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.UserID = data
+		case "direction":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("direction"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Direction = data
+		case "created":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("created"))
+			data, err := ec.unmarshalNTime2timeᚐTime(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Created = data
+		case "updated":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("updated"))
+			data, err := ec.unmarshalNTime2timeᚐTime(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Updated = data
+		}
+	}
+
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputNewUser(ctx context.Context, obj interface{}) (model.NewUser, error) {
 	var it model.NewUser
 	asMap := map[string]interface{}{}
@@ -8665,6 +9825,18 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_removeRoleFromUser(ctx, field)
 			})
+		case "createSwipeRecord":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createSwipeRecord(ctx, field)
+			})
+		case "updateSwipeRecord":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_updateSwipeRecord(ctx, field)
+			})
+		case "deleteSwipeRecord":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_deleteSwipeRecord(ctx, field)
+			})
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8831,6 +10003,25 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "swipeRecord":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_swipeRecord(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "cardsByCardGroup":
 			field := field
 
@@ -8898,6 +10089,25 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_usersByRole(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "swipeRecords":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_swipeRecords(ctx, field)
 				return res
 			}
 
@@ -9094,6 +10304,157 @@ func (ec *executionContext) _RoleEdge(ctx context.Context, sel ast.SelectionSet,
 			}
 		case "node":
 			out.Values[i] = ec._RoleEdge_node(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var swipeRecordImplementors = []string{"SwipeRecord"}
+
+func (ec *executionContext) _SwipeRecord(ctx context.Context, sel ast.SelectionSet, obj *model.SwipeRecord) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, swipeRecordImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SwipeRecord")
+		case "id":
+			out.Values[i] = ec._SwipeRecord_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "userId":
+			out.Values[i] = ec._SwipeRecord_userId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "direction":
+			out.Values[i] = ec._SwipeRecord_direction(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "created":
+			out.Values[i] = ec._SwipeRecord_created(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "updated":
+			out.Values[i] = ec._SwipeRecord_updated(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var swipeRecordConnectionImplementors = []string{"SwipeRecordConnection"}
+
+func (ec *executionContext) _SwipeRecordConnection(ctx context.Context, sel ast.SelectionSet, obj *model.SwipeRecordConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, swipeRecordConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SwipeRecordConnection")
+		case "edges":
+			out.Values[i] = ec._SwipeRecordConnection_edges(ctx, field, obj)
+		case "nodes":
+			out.Values[i] = ec._SwipeRecordConnection_nodes(ctx, field, obj)
+		case "pageInfo":
+			out.Values[i] = ec._SwipeRecordConnection_pageInfo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalCount":
+			out.Values[i] = ec._SwipeRecordConnection_totalCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var swipeRecordEdgeImplementors = []string{"SwipeRecordEdge"}
+
+func (ec *executionContext) _SwipeRecordEdge(ctx context.Context, sel ast.SelectionSet, obj *model.SwipeRecordEdge) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, swipeRecordEdgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SwipeRecordEdge")
+		case "cursor":
+			out.Values[i] = ec._SwipeRecordEdge_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "node":
+			out.Values[i] = ec._SwipeRecordEdge_node(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -9808,6 +11169,11 @@ func (ec *executionContext) unmarshalNNewRole2backendᚋgraphᚋmodelᚐNewRole(
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
+func (ec *executionContext) unmarshalNNewSwipeRecord2backendᚋgraphᚋmodelᚐNewSwipeRecord(ctx context.Context, v interface{}) (model.NewSwipeRecord, error) {
+	res, err := ec.unmarshalInputNewSwipeRecord(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
 func (ec *executionContext) unmarshalNNewUser2backendᚋgraphᚋmodelᚐNewUser(ctx context.Context, v interface{}) (model.NewUser, error) {
 	res, err := ec.unmarshalInputNewUser(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -9860,6 +11226,16 @@ func (ec *executionContext) marshalNString2string(ctx context.Context, sel ast.S
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) marshalNSwipeRecord2ᚖbackendᚋgraphᚋmodelᚐSwipeRecord(ctx context.Context, sel ast.SelectionSet, v *model.SwipeRecord) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._SwipeRecord(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNTime2timeᚐTime(ctx context.Context, v interface{}) (time.Time, error) {
@@ -10566,6 +11942,109 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 	}
 	res := graphql.MarshalString(*v)
 	return res
+}
+
+func (ec *executionContext) marshalOSwipeRecord2ᚕᚖbackendᚋgraphᚋmodelᚐSwipeRecord(ctx context.Context, sel ast.SelectionSet, v []*model.SwipeRecord) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalOSwipeRecord2ᚖbackendᚋgraphᚋmodelᚐSwipeRecord(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	return ret
+}
+
+func (ec *executionContext) marshalOSwipeRecord2ᚖbackendᚋgraphᚋmodelᚐSwipeRecord(ctx context.Context, sel ast.SelectionSet, v *model.SwipeRecord) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._SwipeRecord(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOSwipeRecordConnection2ᚖbackendᚋgraphᚋmodelᚐSwipeRecordConnection(ctx context.Context, sel ast.SelectionSet, v *model.SwipeRecordConnection) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._SwipeRecordConnection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOSwipeRecordEdge2ᚕᚖbackendᚋgraphᚋmodelᚐSwipeRecordEdge(ctx context.Context, sel ast.SelectionSet, v []*model.SwipeRecordEdge) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalOSwipeRecordEdge2ᚖbackendᚋgraphᚋmodelᚐSwipeRecordEdge(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	return ret
+}
+
+func (ec *executionContext) marshalOSwipeRecordEdge2ᚖbackendᚋgraphᚋmodelᚐSwipeRecordEdge(ctx context.Context, sel ast.SelectionSet, v *model.SwipeRecordEdge) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._SwipeRecordEdge(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalOUser2ᚕᚖbackendᚋgraphᚋmodelᚐUser(ctx context.Context, sel ast.SelectionSet, v []*model.User) graphql.Marshaler {

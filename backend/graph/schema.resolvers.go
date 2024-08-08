@@ -8,6 +8,7 @@ import (
 	"backend/graph/model"
 	"context"
 	"fmt"
+
 	"github.com/m-mizutani/goerr"
 )
 
@@ -247,6 +248,27 @@ func (r *mutationResolver) RemoveRoleFromUser(ctx context.Context, userID int64,
 	return r.Srv.RemoveRoleFromUser(ctx, userID, roleID)
 }
 
+// CreateSwipeRecord is the resolver for the createSwipeRecord field.
+func (r *mutationResolver) CreateSwipeRecord(ctx context.Context, input model.NewSwipeRecord) (*model.SwipeRecord, error) {
+	if err := r.VW.ValidateStruct(input); err != nil {
+		return nil, goerr.Wrap(err, "invalid input CreateSwipeRecord")
+	}
+	return r.Srv.CreateSwipeRecord(ctx, input)
+}
+
+// UpdateSwipeRecord is the resolver for the updateSwipeRecord field.
+func (r *mutationResolver) UpdateSwipeRecord(ctx context.Context, id int64, input model.NewSwipeRecord) (*model.SwipeRecord, error) {
+	if err := r.VW.ValidateStruct(input); err != nil {
+		return nil, goerr.Wrap(err, "invalid input UpdateSwipeRecord")
+	}
+	return r.Srv.UpdateSwipeRecord(ctx, id, input)
+}
+
+// DeleteSwipeRecord is the resolver for the deleteSwipeRecord field.
+func (r *mutationResolver) DeleteSwipeRecord(ctx context.Context, id int64) (*bool, error) {
+	return r.Srv.DeleteSwipeRecord(ctx, id)
+}
+
 // Card is the resolver for the card field.
 func (r *queryResolver) Card(ctx context.Context, id int64) (*model.Card, error) {
 	// Use DataLoader to fetch the Card by ID
@@ -290,6 +312,18 @@ func (r *queryResolver) User(ctx context.Context, id int64) (*model.User, error)
 	return user, nil
 }
 
+// SwipeRecord is the resolver for the swipeRecord field.
+func (r *queryResolver) SwipeRecord(ctx context.Context, id int64) (*model.SwipeRecord, error) {
+	// Use DataLoader to fetch the SwipeRecord by ID
+	thunk := r.Loaders.SwipeRecordLoader.Load(ctx, id)
+	swipeRecord, err := thunk()
+	if err != nil {
+		return nil, goerr.Wrap(err, "fetch by SwipeRecord")
+	}
+
+	return swipeRecord, nil
+}
+
 // CardsByCardGroup is the resolver for the cardsByCardGroup field.
 func (r *queryResolver) CardsByCardGroup(ctx context.Context, cardGroupID int64, first *int, after *int64, last *int, before *int64) (*model.CardConnection, error) {
 	return r.Srv.PaginatedCardsByCardGroup(ctx, cardGroupID, first, after, last, before)
@@ -308,6 +342,11 @@ func (r *queryResolver) CardGroupsByUser(ctx context.Context, userID int64, firs
 // UsersByRole is the resolver for the usersByRole field.
 func (r *queryResolver) UsersByRole(ctx context.Context, roleID int64, first *int, after *int64, last *int, before *int64) (*model.UserConnection, error) {
 	return r.Srv.PaginatedUsersByRole(ctx, roleID, first, after, last, before)
+}
+
+// SwipeRecords is the resolver for the swipeRecords field.
+func (r *queryResolver) SwipeRecords(ctx context.Context, userID int64, first *int, after *int64, last *int, before *int64) (*model.SwipeRecordConnection, error) {
+	return r.Srv.PaginatedSwipeRecordsByUser(ctx, userID, first, after, last, before)
 }
 
 // Users is the resolver for the users field in Role.

@@ -78,6 +78,13 @@ type NewRole struct {
 	Updated time.Time `json:"updated"`
 }
 
+type NewSwipeRecord struct {
+	UserID    int64     `json:"userId" validate:"required"`
+	Direction string    `json:"direction" validate:"required"`
+	Created   time.Time `json:"created"`
+	Updated   time.Time `json:"updated"`
+}
+
 type NewUser struct {
 	Name    string    `json:"name" validate:"required,fl_name,min=1"`
 	RoleIds []int64   `json:"role_ids"`
@@ -113,6 +120,26 @@ type RoleConnection struct {
 type RoleEdge struct {
 	Cursor int64 `json:"cursor"`
 	Node   *Role `json:"node" validate:"-"`
+}
+
+type SwipeRecord struct {
+	ID        int64     `json:"id"`
+	UserID    int64     `json:"userId"`
+	Direction string    `json:"direction" validate:"required"`
+	Created   time.Time `json:"created"`
+	Updated   time.Time `json:"updated"`
+}
+
+type SwipeRecordConnection struct {
+	Edges      []*SwipeRecordEdge `json:"edges,omitempty" validate:"-"`
+	Nodes      []*SwipeRecord     `json:"nodes,omitempty" validate:"-"`
+	PageInfo   *PageInfo          `json:"pageInfo"`
+	TotalCount int                `json:"totalCount"`
+}
+
+type SwipeRecordEdge struct {
+	Cursor int64        `json:"cursor"`
+	Node   *SwipeRecord `json:"node" validate:"-"`
 }
 
 type User struct {
