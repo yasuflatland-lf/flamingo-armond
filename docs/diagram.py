@@ -26,7 +26,7 @@ with Diagram("Flamingo Service Architecture",  filename="diagram", show=False):
     
     backend >> database
     backend >> Edge(label="Authentication (Google)") >> auth
-    frontend >> Edge(label="Authentication (Google)") >> auth
-    github >> Edge(label="Deploy") >> render
+    frontend >> auth
+    github >> Edge(label="Deploy to Render") >> render
     tablet >> frontend
     mobile >> frontend

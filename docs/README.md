@@ -12,4 +12,4 @@ This directory
 1. Install [Diagrams](https://diagrams.mingrammer.com/docs/getting-started/installation#quick-start)
 
 ## Generate Image
-2. Run `phthon diagram.py`
+2. Run `python diagram.py`
