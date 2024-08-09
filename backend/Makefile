@@ -39,9 +39,37 @@ fmt: ## Format code
 test: ## Run tests
 	printf "${GREEN}Run all tests\n\n${WHITE}"; \
 	go clean -cache -testcache -i -r; \
-	go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest; \
- 	go test -race -json -v -coverprofile=coverage.txt ./... 2>&1 | tee /tmp/gotest.log | gotestfmt; \
+ 	go test -cover -race -json -v ./... ; \
 	printf "${GREEN}Done\n"; \
+
+# Directories to exclude from coverage (use | to separate multiple directories)
+EXCLUDE_DIRS=backend/pkg/notion
+
+.PHONY: pre-coverage
+pre-coverage: ## Generate coverage report for all packages
+	@echo "mode: count" > coverage.out
+	@for d in $(shell go list ./...); do \
+		skip=false; \
+		for exclude in $(EXCLUDE_DIRS); do \
+			case $$d in *$$exclude*) skip=true;; esac; \
+		done; \
+		if [ "$$skip" = false ]; then \
+			output=$$(go test -coverprofile=profile.out -covermode=count $$d 2>&1); \
+			coverage=$$(echo "$$output" | awk '/coverage:/{print $$2}' | sed 's/%//'); \
+			case "$$output" in \
+				*\[no\ test\ files\]*) echo "Skipping $$d: no test files";; \
+				*coverage:\ 0.0*) echo "Skipping $$d: coverage is 0.0%";; \
+				*) \
+					echo "$$output"; \
+					[ -f profile.out ] && tail -n +2 profile.out >> coverage.out && rm profile.out;; \
+			esac; \
+		fi \
+	done
+
+.PHONY: cover
+cover: pre-coverage ## Generate report from coverage data
+	@go tool cover -func=coverage.out
+	@echo "Coverage report generated at cover"
 
 .PHONY: init
 init: ## Init go.mod and go.sum
