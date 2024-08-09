@@ -68,8 +68,9 @@ pre-coverage: ## Generate coverage report for all packages
 
 .PHONY: cover
 cover: pre-coverage ## Generate report from coverage data
-	@go tool cover -func=coverage.out
-	@echo "Coverage report generated at cover"
+	@TOTAL_COVERAGE=$$(go tool cover -func=coverage.out | grep '^total:' | awk '{print $$3}'); \
+	printf "\033[32mTotal coverage: %s\033[0m\n" "$$TOTAL_COVERAGE"; \
+	rm -f coverage.out;
 
 .PHONY: init
 init: ## Init go.mod and go.sum
