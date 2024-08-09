@@ -48,6 +48,29 @@ func convertToCard(card repository.Card) *model.Card {
 	}
 }
 
+func convertCardConnection(cards []repository.Card, hasPrevPage, hasNextPage bool) *model.CardConnection {
+	var result model.CardConnection
+
+	for _, dbc := range cards {
+		card := convertToCard(dbc)
+
+		// Use the ID directly as it is already of type int64
+		result.Edges = append(result.Edges, &model.CardEdge{Cursor: card.ID, Node: card})
+		result.Nodes = append(result.Nodes, card)
+	}
+	result.TotalCount = len(cards)
+
+	result.PageInfo = &model.PageInfo{}
+	if result.TotalCount != 0 {
+		result.PageInfo.StartCursor = &result.Nodes[0].ID
+		result.PageInfo.EndCursor = &result.Nodes[result.TotalCount-1].ID
+	}
+	result.PageInfo.HasPreviousPage = hasPrevPage
+	result.PageInfo.HasNextPage = hasNextPage
+
+	return &result
+}
+
 func (s *cardService) GetCardByID(ctx context.Context, id int64) (*model.Card, error) {
 	var card repository.Card
 	if err := s.db.WithContext(ctx).First(&card, id).Error; err != nil {
@@ -167,33 +190,32 @@ func (s *cardService) PaginatedCardsByCardGroup(ctx context.Context, cardGroupID
 		return nil, err
 	}
 
-	var edges []*model.CardEdge
-	var nodes []*model.Card
-	for _, card := range cards {
-		node := convertToCard(card)
-		edges = append(edges, &model.CardEdge{
-			Cursor: card.ID,
-			Node:   node,
-		})
-		nodes = append(nodes, node)
-	}
+	var hasNextPage, hasPrevPage bool
+	var count int64
 
-	pageInfo := &model.PageInfo{}
-	if len(cards) > 0 {
-		pageInfo.HasNextPage = len(cards) == s.defaultLimit
-		pageInfo.HasPreviousPage = len(cards) == s.defaultLimit
-		if len(edges) > 0 {
-			pageInfo.StartCursor = &edges[0].Cursor
-			pageInfo.EndCursor = &edges[len(edges)-1].Cursor
+	if len(cards) != 0 {
+		startCursor, endCursor := cards[0].ID, cards[len(cards)-1].ID
+
+		err := s.db.WithContext(ctx).Model(&repository.Card{}).
+			Where("cardgroup_id = ?", cardGroupID).
+			Where("id < ?", startCursor).
+			Count(&count).Error
+		if err != nil {
+			return nil, err
 		}
+		hasPrevPage = count > 0
+
+		err = s.db.WithContext(ctx).Model(&repository.Card{}).
+			Where("cardgroup_id = ?", cardGroupID).
+			Where("id > ?", endCursor).
+			Count(&count).Error
+		if err != nil {
+			return nil, err
+		}
+		hasNextPage = count > 0
 	}
 
-	return &model.CardConnection{
-		Edges:      edges,
-		Nodes:      nodes,
-		PageInfo:   pageInfo,
-		TotalCount: len(cards),
-	}, nil
+	return convertCardConnection(cards, hasPrevPage, hasNextPage), nil
 }
 
 func (s *cardService) GetCardsByIDs(ctx context.Context, ids []int64) ([]*model.Card, error) {

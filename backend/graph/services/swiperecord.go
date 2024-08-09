@@ -41,11 +41,11 @@ func (s *swipeRecordService) GetSwipeRecordByID(ctx context.Context, id int64) (
 	var swipeRecord repository.SwipeRecord
 	if err := s.db.WithContext(ctx).First(&swipeRecord, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			err := fmt.Errorf("swipe record not found")
-			logger.Logger.ErrorContext(ctx, "Swipe record not found:", "id", id)
+			err := fmt.Errorf("swipe record not found: id=%d", id)
+			logger.Logger.ErrorContext(ctx, err.Error())
 			return nil, err
 		}
-		logger.Logger.ErrorContext(ctx, "Failed to get swipe record by ID", err)
+		logger.Logger.ErrorContext(ctx, "Failed to get swipe record by ID:", err)
 		return nil, err
 	}
 	return convertToSwipeRecord(swipeRecord), nil
@@ -57,10 +57,10 @@ func (s *swipeRecordService) CreateSwipeRecord(ctx context.Context, input model.
 	if result.Error != nil {
 		if strings.Contains(result.Error.Error(), "foreign key constraint") {
 			err := fmt.Errorf("invalid swipe ID or card ID")
-			logger.Logger.ErrorContext(ctx, "Failed to create swipe record: invalid swipe ID or card ID", err)
+			logger.Logger.ErrorContext(ctx, "Failed to create swipe record:", err)
 			return nil, err
 		}
-		logger.Logger.ErrorContext(ctx, "Failed to create swipe record", result.Error)
+		logger.Logger.ErrorContext(ctx, "Failed to create swipe record:", result.Error)
 		return nil, result.Error
 	}
 	return convertToSwipeRecord(*gormSwipeRecord), nil
@@ -69,14 +69,14 @@ func (s *swipeRecordService) CreateSwipeRecord(ctx context.Context, input model.
 func (s *swipeRecordService) UpdateSwipeRecord(ctx context.Context, id int64, input model.NewSwipeRecord) (*model.SwipeRecord, error) {
 	var swipeRecord repository.SwipeRecord
 	if err := s.db.WithContext(ctx).First(&swipeRecord, id).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Swipe record does not exist: ", "id", id)
+		logger.Logger.ErrorContext(ctx, fmt.Sprintf("Swipe record does not exist: id=%d", id), err)
 		return nil, err
 	}
 	swipeRecord.Direction = input.Direction
 	swipeRecord.Updated = time.Now()
 
 	if err := s.db.WithContext(ctx).Save(&swipeRecord).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to save swipe record", err)
+		logger.Logger.ErrorContext(ctx, "Failed to update swipe record:", err)
 		return nil, err
 	}
 	return convertToSwipeRecord(swipeRecord), nil
@@ -85,14 +85,14 @@ func (s *swipeRecordService) UpdateSwipeRecord(ctx context.Context, id int64, in
 func (s *swipeRecordService) DeleteSwipeRecord(ctx context.Context, id int64) (*bool, error) {
 	result := s.db.WithContext(ctx).Delete(&repository.SwipeRecord{}, id)
 	if result.Error != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to delete swipe record", result.Error)
+		logger.Logger.ErrorContext(ctx, "Failed to delete swipe record:", result.Error)
 		return nil, result.Error
 	}
 
 	success := result.RowsAffected > 0
 	if !success {
-		err := fmt.Errorf("record not found")
-		logger.Logger.ErrorContext(ctx, "Swipe record not found for deletion", err)
+		err := fmt.Errorf("record not found: id=%d", id)
+		logger.Logger.ErrorContext(ctx, "Swipe record not found for deletion:", err)
 		return &success, err
 	}
 
@@ -102,7 +102,7 @@ func (s *swipeRecordService) DeleteSwipeRecord(ctx context.Context, id int64) (*
 func (s *swipeRecordService) SwipeRecords(ctx context.Context) ([]*model.SwipeRecord, error) {
 	var swipeRecords []repository.SwipeRecord
 	if err := s.db.WithContext(ctx).Find(&swipeRecords).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to retrieve swipe records", err)
+		logger.Logger.ErrorContext(ctx, "Failed to retrieve swipe records:", err)
 		return nil, err
 	}
 	var gqlSwipeRecords []*model.SwipeRecord
@@ -113,9 +113,14 @@ func (s *swipeRecordService) SwipeRecords(ctx context.Context) ([]*model.SwipeRe
 }
 
 func (s *swipeRecordService) SwipeRecordsByUser(ctx context.Context, userID int64) ([]*model.SwipeRecord, error) {
+	if userID <= 0 {
+		logger.Logger.ErrorContext(ctx, "User ID must be larger than 0", "user_id", userID)
+		return nil, fmt.Errorf("user ID must be larger than 0. It's %d", userID)
+	}
+
 	var swipeRecords []repository.SwipeRecord
 	if err := s.db.WithContext(ctx).Where("user_id = ?", userID).Find(&swipeRecords).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to retrieve swipe records by user ID", err)
+		logger.Logger.ErrorContext(ctx, "Failed to retrieve swipe records by user ID:", err)
 		return nil, err
 	}
 	var gqlSwipeRecords []*model.SwipeRecord
@@ -144,7 +149,7 @@ func (s *swipeRecordService) PaginatedSwipeRecordsByUser(ctx context.Context, us
 	}
 
 	if err := query.Find(&swipeRecords).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to retrieve paginated swipe records by user ID", err)
+		logger.Logger.ErrorContext(ctx, "Failed to retrieve paginated swipe records by user ID:", err)
 		return nil, err
 	}
 
@@ -180,7 +185,7 @@ func (s *swipeRecordService) PaginatedSwipeRecordsByUser(ctx context.Context, us
 func (s *swipeRecordService) GetSwipeRecordsByIDs(ctx context.Context, ids []int64) ([]*model.SwipeRecord, error) {
 	var swipeRecords []*repository.SwipeRecord
 	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&swipeRecords).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to retrieve swipe records by IDs", err)
+		logger.Logger.ErrorContext(ctx, "Failed to retrieve swipe records by IDs:", err)
 		return nil, err
 	}
 

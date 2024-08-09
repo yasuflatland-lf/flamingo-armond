@@ -1,8 +1,6 @@
 package main
 
 import (
-	"log"
-	"os"
 	"testing"
 
 	"github.com/99designs/gqlgen/plugin/modelgen"
@@ -17,13 +15,12 @@ func TestLoadGraphQLConfig(t *testing.T) {
 }
 
 func TestGenerateGraphQLCode(t *testing.T) {
-	logger := log.New(os.Stdout, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 	cfg, err := loadGraphQLConfig()
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 
-	err = generateGraphQLCode(cfg, logger)
+	err = generateGraphQLCode(cfg)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}

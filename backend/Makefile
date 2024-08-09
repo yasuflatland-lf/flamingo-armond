@@ -39,7 +39,8 @@ fmt: ## Format code
 test: ## Run tests
 	printf "${GREEN}Run all tests\n\n${WHITE}"; \
 	go clean -cache -testcache -i -r; \
- 	go test -race -run=./... -bench=./... ./...; \
+	go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest; \
+ 	go test -race -json -v -coverprofile=coverage.txt ./... 2>&1 | tee /tmp/gotest.log | gotestfmt; \
 	printf "${GREEN}Done\n"; \
 
 .PHONY: init

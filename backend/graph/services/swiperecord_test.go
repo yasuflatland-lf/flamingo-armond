@@ -5,6 +5,7 @@ import (
 	"backend/graph/services"
 	"backend/testutils"
 	"context"
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
@@ -14,11 +15,9 @@ import (
 
 type SwipeRecordTestSuite struct {
 	suite.Suite
-	db        *gorm.DB
-	sv        services.SwipeRecordService
-	userID    int64
-	cardGroup *model.CardGroup
-	cleanup   func()
+	db      *gorm.DB
+	sv      services.SwipeRecordService
+	cleanup func()
 }
 
 func (suite *SwipeRecordTestSuite) SetupSuite() {
@@ -43,17 +42,34 @@ func (suite *SwipeRecordTestSuite) SetupSuite() {
 	suite.db = pg.GetDB()
 	suite.sv = services.New(suite.db)
 
-	// Create a user and card group
+}
+
+func (suite *SwipeRecordTestSuite) createTestUserAndRole(ctx context.Context) (int64, error) {
 	userService := suite.sv.(services.UserService)
-	cardGroupService := suite.sv.(services.CardGroupService)
 	roleService := suite.sv.(services.RoleService)
 
-	createdGroup, err := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
-	if err != nil {
-		suite.T().Fatalf("Failed to create user and card group: %+v", err)
+	// Create a role
+	newRole := model.NewRole{
+		Name: "Test Role",
 	}
-	suite.userID = createdGroup.Users.Nodes[0].ID
-	suite.cardGroup = createdGroup
+	createdRole, err := roleService.CreateRole(ctx, newRole)
+	if err != nil {
+		return 0, fmt.Errorf("Failed to create Role: %w", err)
+	}
+
+	// Create a user
+	newUser := model.NewUser{
+		Name:    "Test User",
+		Created: time.Now(),
+		Updated: time.Now(),
+		RoleIds: []int64{createdRole.ID}, // Assign the new role to the user
+	}
+	createdUser, err := userService.CreateUser(ctx, newUser)
+	if err != nil {
+		return 0, fmt.Errorf("Failed to create User: %w", err)
+	}
+
+	return createdUser.ID, nil
 }
 
 func (suite *SwipeRecordTestSuite) TearDownSuite() {
@@ -73,8 +89,14 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 	t.Helper()
 
 	suite.Run("Normal_CreateSwipeRecord", func() {
+		// Use the helper function to create the user and role
+		userID, err := suite.createTestUserAndRole(ctx)
+		if err != nil {
+			suite.T().Fatal(err)
+		}
+
 		newSwipeRecord := model.NewSwipeRecord{
-			UserID:    suite.userID,
+			UserID:    userID,
 			Direction: "left",
 			Created:   time.Now(),
 			Updated:   time.Now(),
@@ -87,6 +109,7 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 	})
 
 	suite.Run("Error_CreateSwipeRecord", func() {
+
 		newSwipeRecord := model.NewSwipeRecord{
 			UserID:    0, // Invalid UserID
 			Direction: "",
@@ -99,8 +122,14 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 	})
 
 	suite.Run("Normal_GetSwipeRecordByID", func() {
+		// Use the helper function to create the user and role
+		userID, err := suite.createTestUserAndRole(ctx)
+		if err != nil {
+			suite.T().Fatal(err)
+		}
+
 		newSwipeRecord := model.NewSwipeRecord{
-			UserID:    suite.userID,
+			UserID:    userID,
 			Direction: "left",
 			Created:   time.Now(),
 			Updated:   time.Now(),
@@ -121,8 +150,14 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 	})
 
 	suite.Run("Normal_UpdateSwipeRecord", func() {
+		// Use the helper function to create the user and role
+		userID, err := suite.createTestUserAndRole(ctx)
+		if err != nil {
+			suite.T().Fatal(err)
+		}
+
 		newSwipeRecord := model.NewSwipeRecord{
-			UserID:    suite.userID,
+			UserID:    userID,
 			Direction: "left",
 			Created:   time.Now(),
 			Updated:   time.Now(),
@@ -130,7 +165,7 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 		createdSwipeRecord, _ := swipeRecordService.CreateSwipeRecord(ctx, newSwipeRecord)
 
 		updateSwipeRecord := model.NewSwipeRecord{
-			UserID:    suite.userID,
+			UserID:    userID,
 			Direction: "right",
 		}
 
@@ -141,8 +176,14 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 	})
 
 	suite.Run("Error_UpdateSwipeRecord", func() {
+		// Use the helper function to create the user and role
+		userID, err := suite.createTestUserAndRole(ctx)
+		if err != nil {
+			suite.T().Fatal(err)
+		}
+
 		updateSwipeRecord := model.NewSwipeRecord{
-			UserID:    suite.userID,
+			UserID:    userID,
 			Direction: "right",
 		}
 
@@ -153,8 +194,14 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 	})
 
 	suite.Run("Normal_DeleteSwipeRecord", func() {
+		// Use the helper function to create the user and role
+		userID, err := suite.createTestUserAndRole(ctx)
+		if err != nil {
+			suite.T().Fatal(err)
+		}
+
 		newSwipeRecord := model.NewSwipeRecord{
-			UserID:    suite.userID,
+			UserID:    userID,
 			Direction: "left",
 			Created:   time.Now(),
 			Updated:   time.Now(),
@@ -175,14 +222,20 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 	})
 
 	suite.Run("Normal_ListSwipeRecords", func() {
+		// Use the helper function to create the user and role
+		userID, err := suite.createTestUserAndRole(ctx)
+		if err != nil {
+			suite.T().Fatal(err)
+		}
+
 		newSwipeRecord1 := model.NewSwipeRecord{
-			UserID:    suite.userID,
+			UserID:    userID,
 			Direction: "left",
 			Created:   time.Now(),
 			Updated:   time.Now(),
 		}
 		newSwipeRecord2 := model.NewSwipeRecord{
-			UserID:    suite.userID,
+			UserID:    userID,
 			Direction: "right",
 			Created:   time.Now(),
 			Updated:   time.Now(),
@@ -197,14 +250,20 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 	})
 
 	suite.Run("Normal_ListSwipeRecordsByUser", func() {
+		// Use the helper function to create the user and role
+		userID, err := suite.createTestUserAndRole(ctx)
+		if err != nil {
+			suite.T().Fatal(err)
+		}
+
 		newSwipeRecord1 := model.NewSwipeRecord{
-			UserID:    suite.userID,
+			UserID:    userID,
 			Direction: "left",
 			Created:   time.Now(),
 			Updated:   time.Now(),
 		}
 		newSwipeRecord2 := model.NewSwipeRecord{
-			UserID:    suite.userID,
+			UserID:    userID,
 			Direction: "right",
 			Created:   time.Now(),
 			Updated:   time.Now(),
@@ -212,7 +271,7 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 		swipeRecordService.CreateSwipeRecord(ctx, newSwipeRecord1)
 		swipeRecordService.CreateSwipeRecord(ctx, newSwipeRecord2)
 
-		swipeRecords, err := swipeRecordService.SwipeRecordsByUser(ctx, suite.userID)
+		swipeRecords, err := swipeRecordService.SwipeRecordsByUser(ctx, userID)
 
 		assert.NoError(t, err)
 		assert.Len(t, swipeRecords, 2)

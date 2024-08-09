@@ -62,6 +62,7 @@ func (suite *UserTestSuite) TestUserService() {
 	t.Helper()
 
 	suite.Run("Normal_CreateUser", func() {
+
 		// Create a role
 		newRole := model.NewRole{
 			Name: "Test Role",

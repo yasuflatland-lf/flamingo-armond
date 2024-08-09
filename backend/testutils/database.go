@@ -91,10 +91,11 @@ func RunServersTest(t *testing.T, db *gorm.DB, fn func(*testing.T)) {
 	}
 
 	// Delete records from tables
-	tx.Where("1 = 1").Delete(&repo.Role{})
-	tx.Where("1 = 1").Delete(&repo.User{})
+	tx.Where("1 = 1").Delete(&repo.SwipeRecord{})
 	tx.Where("1 = 1").Delete(&repo.Card{})
 	tx.Where("1 = 1").Delete(&repo.Cardgroup{})
+	tx.Where("1 = 1").Delete(&repo.User{})
+	tx.Where("1 = 1").Delete(&repo.Role{})
 
 	// Call the provided test function
 	if fn != nil {

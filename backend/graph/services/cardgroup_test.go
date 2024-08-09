@@ -63,7 +63,9 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 
 	suite.Run("Normal_CreateCardGroup", func() {
 
-		createdGroup, err := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+		input := model.NewCardGroup{Name: "Test Group"}
+		createdGroup, err := cardGroupService.CreateCardGroup(context.Background(), input)
+
 		assert.NoError(t, err)
 		assert.Equal(t, "Test Group", createdGroup.Name)
 	})
@@ -219,12 +221,21 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 
 	suite.Run("Normal_RemoveUserFromCardGroup", func() {
 
+		// Create a role
+		newRole := model.NewRole{
+			Name: "Test Role",
+		}
+		createdRole, err := roleService.CreateRole(ctx, newRole)
+		if err != nil {
+			suite.T().Fatalf("Failed at CreateRole: %+v", err)
+		}
+
 		// Create a user
 		newUser := model.NewUser{
 			Name:    "Test User",
 			Created: time.Now(),
 			Updated: time.Now(),
-			RoleIds: []int64{}, // Add any required roles here
+			RoleIds: []int64{createdRole.ID}, // Add any required roles here
 		}
 		createdUser, err := userService.CreateUser(ctx, newUser)
 		assert.NoError(t, err)
