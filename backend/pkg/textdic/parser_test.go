@@ -60,7 +60,8 @@ There is no leeway to provide services free of charge for the sake of others. �
 			l := newLexer(tc.input)
 
 			// Parse the input using the parser instance
-			parsedNodes := ParseAndGetNodes(l)
+			parser := NewParser(l)
+			parsedNodes := parser.GetNodes()
 
 			if len(parsedNodes) != len(tc.expected) {
 				t.Errorf("expected %d nodes, but got %d", len(tc.expected), len(parsedNodes))
@@ -74,4 +75,33 @@ There is no leeway to provide services free of charge for the sake of others. �
 		}
 	})
 
+	// New test case to check for errors
+	t.Run("TestErrors", func(t *testing.T) {
+		t.Parallel()
+
+		// Test input that will cause a parsing error
+		var input = `
+trot out 自慢げに話題に持ち出す
+#エラーになる
+`
+
+		// Create a new lexer with the input
+		l := newLexer(input)
+		yyDebug = 1
+		yyErrorVerbose = true
+
+		// Parse the input using the parser instance
+		NewParser(l)
+		errors := l.GetErrors()
+
+		if len(errors) == 0 {
+			t.Errorf("expected errors, but got none")
+		}
+
+		for _, err := range errors {
+			if err.Error() == "" {
+				t.Errorf("expected error message, but got empty string")
+			}
+		}
+	})
 }

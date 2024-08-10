@@ -1,10 +1,6 @@
 %{
 package textdic
 
-import (
-	"fmt"
-)
-
 // Define Node and Nodes types
 type Node struct {
 	Word       string
@@ -12,12 +8,6 @@ type Node struct {
 }
 
 type Nodes []Node
-
-func ParseAndGetNodes(yylex yyLexer) []Node {
-	yyparser := &yyParserImpl{}
-	yyparser.Parse(yylex)
-	return yyparser.getNodes()
-}
 
 %}
 
@@ -52,14 +42,21 @@ entry
 
 %%
 
-func yyError(s string) {
-	fmt.Println("Error:", s)
+type Parser interface {
+	Parse(yyLexer) int
+	GetNodes() []Node
+}
+
+func NewParser(yylex yyLexer) Parser {
+	yyparser := &yyParserImpl{}
+	yyparser.Parse(yylex)
+	return yyparser
 }
 
 func (yyrcvr *yyParserImpl) setNodes(nodes []Node) {
 	yyrcvr.lval.nodes = nodes
 }
 
-func (yyrcvr *yyParserImpl) getNodes() []Node {
+func (yyrcvr *yyParserImpl) GetNodes() []Node {
 	return yyrcvr.lval.nodes
 }

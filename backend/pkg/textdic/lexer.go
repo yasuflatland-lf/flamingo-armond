@@ -1,19 +1,20 @@
 package textdic
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
-
-	"golang.org/x/xerrors"
 )
 
 type lexer struct {
-	input *strings.Reader
+	input  *strings.Reader
+	lineNo int
+	errors []error
 }
 
 func newLexer(input string) *lexer {
-	return &lexer{input: strings.NewReader(input)}
+	return &lexer{input: strings.NewReader(input), lineNo: 0}
 }
 
 func (l *lexer) Peek() rune {
@@ -48,6 +49,7 @@ func (l *lexer) Lex(lval *yySymType) int {
 		}
 
 		if l.isNewLine(r) {
+			l.lineNo++
 			return NEWLINE
 		}
 
@@ -99,5 +101,10 @@ func (l *lexer) skipWhiteSpace() (rune, error) {
 }
 
 func (l *lexer) Error(e string) {
-	xerrors.Errorf("error: %+v\n", e)
+	err := fmt.Errorf("line : %d : %+v", l.lineNo, e)
+	l.errors = append(l.errors, err)
+}
+
+func (l *lexer) GetErrors() []error {
+	return l.errors
 }

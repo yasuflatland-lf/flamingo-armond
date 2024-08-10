@@ -22,7 +22,9 @@ func (tds *textDictionaryService) Process(ctx context.Context, dic string) ([]No
 	l := newLexer(dic)
 
 	// Parse the input using the new parser
-	parsedNodes := ParseAndGetNodes(l)
+	yyErrorVerbose = true
+	parser := NewParser(l)
+	parsedNodes := parser.GetNodes()
 
 	if len(parsedNodes) == 0 {
 		err := fmt.Errorf("no nodes were parsed")
