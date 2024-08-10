@@ -1,5 +1,5 @@
 %{
-package notion
+package textdic
 
 import (
 	"fmt"
@@ -12,6 +12,23 @@ type Node struct {
 }
 
 type Nodes []Node
+
+// Modify yyParserImpl to hold a reference to the current Parser
+type yyParserImpl struct {
+	lval  yySymType
+	stack [yyInitialStackSize]yySymType
+	char  int
+	parser *Parser  // Add parser field
+}
+
+// Modify yyNewParser to accept a Parser instance
+func yyNewParser(parser *Parser) yyParser {
+	return &yyParserImpl{parser: parser}
+}
+
+func yyParse(yylex yyLexer, parser *Parser) int {
+	return yyNewParser(parser).Parse(yylex)
+}
 
 %}
 
@@ -31,7 +48,7 @@ type Nodes []Node
 
 %%
 start
-	: entries EOF { $$ = $1; currentParser.setNodes($1); }
+	: entries EOF { $$ = $1; yyrcvr.parser.setNodes($1); }
 	;
 
 entries
@@ -69,5 +86,3 @@ func (p *Parser) getNodes() Nodes {
 func (p *Parser) setNodes(nodes Nodes) {
 	p.parsedNodes = nodes
 }
-
-var currentParser *Parser
