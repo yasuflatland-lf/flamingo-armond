@@ -1,6 +1,7 @@
 package textdic
 
 import (
+	"sync"
 	"testing"
 )
 
@@ -126,6 +127,47 @@ There is no leeway to provide services free of charge for the sake of others. ไป
 					t.Errorf("expected parsed nodes but got none")
 				}
 			})
+		}
+	})
+
+	// Run concurrent tests
+	t.Run("TestParserService_ConcurrentAccess", func(t *testing.T) {
+		var wg sync.WaitGroup
+		numRoutines := 10 // Number of concurrent goroutines
+
+		for _, tc := range testCases {
+			wg.Add(numRoutines)
+			for i := 0; i < numRoutines; i++ {
+				go func(tc struct {
+					name     string
+					input    string
+					expected []Node
+				}) {
+					defer wg.Done()
+
+					// Create a new parser service
+					service := NewParserService()
+
+					// Process the dictionary input
+					parsedNodes, err := service.ProcessDictionary(tc.input)
+					if err != nil {
+						t.Errorf("unexpected error: %v", err)
+						return
+					}
+
+					// Compare the result with the expected output
+					if len(parsedNodes) != len(tc.expected) {
+						t.Errorf("expected %d nodes, but got %d", len(tc.expected), len(parsedNodes))
+					}
+
+					for i, node := range parsedNodes {
+						if node.Word != tc.expected[i].Word || node.Definition != tc.expected[i].Definition {
+							t.Errorf("expected node %d to be %+v, but got %+v", i, tc.expected[i], node)
+						}
+					}
+				}(tc)
+			}
+			wg.Wait() // Wait for all goroutines to finish
 		}
 	})
 }

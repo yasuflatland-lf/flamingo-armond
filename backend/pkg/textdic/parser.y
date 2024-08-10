@@ -3,6 +3,7 @@ package textdic
 
 import (
 	"fmt"
+	"sync"
 )
 
 // Define Node and Nodes types
@@ -67,8 +68,9 @@ func yyError(s string) {
 	fmt.Println("Error:", s)
 }
 
-// Parser struct to encapsulate parsedNodes
+// Parser struct to encapsulate parsedNodes with a mutex for thread safety
 type Parser struct {
+	mu          sync.Mutex
 	parsedNodes Nodes
 }
 
@@ -77,12 +79,16 @@ func NewParser() *Parser {
 	return &Parser{}
 }
 
-// getNodes returns the parsed nodes
+// getNodes returns the parsed nodes with a mutex lock
 func (p *Parser) getNodes() Nodes {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	return p.parsedNodes
 }
 
-// setNodes sets the parsed nodes
+// setNodes sets the parsed nodes with a mutex lock
 func (p *Parser) setNodes(nodes Nodes) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.parsedNodes = nodes
 }
