@@ -1,6 +1,7 @@
 package textdic
 
 import (
+	"golang.org/x/net/context"
 	"sync"
 	"testing"
 )
@@ -61,10 +62,11 @@ There is no leeway to provide services free of charge for the sake of others. ä»
 				t.Parallel() // Mark the test to run in parallel
 
 				// Create a new parser service
-				service := NewParserService()
+				service := NewTextDictionaryService()
+				ctx := context.Background()
 
 				// Process the dictionary input
-				parsedNodes, err := service.ProcessDictionary(tc.input)
+				parsedNodes, err := service.Process(ctx, tc.input)
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
@@ -110,12 +112,13 @@ There is no leeway to provide services free of charge for the sake of others. ä»
 			tc := tc // capture range variable to avoid issues in parallel tests
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel() // Mark the test to run in parallel
+				ctx := context.Background()
 
 				// Create a new parser service
-				service := NewParserService()
+				service := NewTextDictionaryService()
 
 				// Process the dictionary input
-				parsedNodes, err := service.ProcessDictionary(tc.input)
+				parsedNodes, err := service.Process(ctx, tc.input)
 
 				if tc.wantErr {
 					if err == nil {
@@ -146,10 +149,11 @@ There is no leeway to provide services free of charge for the sake of others. ä»
 					defer wg.Done()
 
 					// Create a new parser service
-					service := NewParserService()
+					service := NewTextDictionaryService()
+					ctx := context.Background()
 
 					// Process the dictionary input
-					parsedNodes, err := service.ProcessDictionary(tc.input)
+					parsedNodes, err := service.Process(ctx, tc.input)
 					if err != nil {
 						t.Errorf("unexpected error: %v", err)
 						return
@@ -170,4 +174,45 @@ There is no leeway to provide services free of charge for the sake of others. ä»
 			wg.Wait() // Wait for all goroutines to finish
 		}
 	})
+
+	t.Run("Test_decodeBase64", func(t *testing.T) {
+		service := NewTextDictionaryService()
+
+		// Define test cases
+		testCases := []struct {
+			name     string
+			input    string
+			wantErr  bool
+			expected string
+		}{
+			{"Valid Base64", "SGVsbG8gd29ybGQ=", false, "Hello world"},
+			{"Empty String", "", false, ""},
+			{"Invalid Base64", "Hello, World!", true, ""},
+			{"Invalid Base64 Hello World", "SGVsbG8aaagd29ybGQ", true, ""},
+			{"Base64 with Newlines", "SGVsbG8gd29ybGQ=\n", false, "Hello world"},
+			{"Base64 with Multiple Newlines", "SGVsbG8g\nd29y\nbGQ=", false, "Hello world"},
+		}
+
+		for _, tc := range testCases {
+			tc := tc
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel() // Mark the test to run in parallel
+
+				result, err := service.decodeBase64(tc.input)
+				if tc.wantErr {
+					if err == nil {
+						t.Errorf("expected error but got none")
+					}
+				} else {
+					if err != nil {
+						t.Errorf("unexpected error: %v", err)
+					}
+					if result != tc.expected {
+						t.Errorf("expected %s, but got %s", tc.expected, result)
+					}
+				}
+			})
+		}
+	})
+
 }
