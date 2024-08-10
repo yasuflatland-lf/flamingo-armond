@@ -3,7 +3,6 @@ package textdic
 
 import (
 	"fmt"
-	"sync"
 )
 
 // Define Node and Nodes types
@@ -14,21 +13,10 @@ type Node struct {
 
 type Nodes []Node
 
-// Modify yyParserImpl to hold a reference to the current Parser
-type yyParserImpl struct {
-	lval  yySymType
-	stack [yyInitialStackSize]yySymType
-	char  int
-	parser *Parser  // Add parser field
-}
-
-// Modify yyNewParser to accept a Parser instance
-func yyNewParser(parser *Parser) yyParser {
-	return &yyParserImpl{parser: parser}
-}
-
-func yyParse(yylex yyLexer, parser *Parser) int {
-	return yyNewParser(parser).Parse(yylex)
+func ParseAndGetNodes(yylex yyLexer) []Node {
+	yyparser := &yyParserImpl{}
+	yyparser.Parse(yylex)
+	return yyparser.getNodes()
 }
 
 %}
@@ -49,7 +37,7 @@ func yyParse(yylex yyLexer, parser *Parser) int {
 
 %%
 start
-	: entries EOF { $$ = $1; yyrcvr.parser.setNodes($1); }
+	: entries EOF { $$ = $1; yyrcvr.setNodes($1); }
 	;
 
 entries
@@ -68,27 +56,10 @@ func yyError(s string) {
 	fmt.Println("Error:", s)
 }
 
-// Parser struct to encapsulate parsedNodes with a mutex for thread safety
-type Parser struct {
-	mu          sync.Mutex
-	parsedNodes Nodes
+func (yyrcvr *yyParserImpl) setNodes(nodes []Node) {
+	yyrcvr.lval.nodes = nodes
 }
 
-// NewParser initializes and returns a new Parser instance
-func NewParser() *Parser {
-	return &Parser{}
-}
-
-// getNodes returns the parsed nodes with a mutex lock
-func (p *Parser) getNodes() Nodes {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.parsedNodes
-}
-
-// setNodes sets the parsed nodes with a mutex lock
-func (p *Parser) setNodes(nodes Nodes) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.parsedNodes = nodes
+func (yyrcvr *yyParserImpl) getNodes() []Node {
+	return yyrcvr.lval.nodes
 }

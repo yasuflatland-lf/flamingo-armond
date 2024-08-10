@@ -9,7 +9,6 @@ import __yyfmt__ "fmt"
 
 import (
 	"fmt"
-	"sync"
 )
 
 // Define Node and Nodes types
@@ -20,24 +19,13 @@ type Node struct {
 
 type Nodes []Node
 
-// Modify yyParserImpl to hold a reference to the current Parser
-type yyParserImpl struct {
-	lval   yySymType
-	stack  [yyInitialStackSize]yySymType
-	char   int
-	parser *Parser // Add parser field
+func ParseAndGetNodes(yylex yyLexer) []Node {
+	yyparser := &yyParserImpl{}
+	yyparser.Parse(yylex)
+	return yyparser.getNodes()
 }
 
-// Modify yyNewParser to accept a Parser instance
-func yyNewParser(parser *Parser) yyParser {
-	return &yyParserImpl{parser: parser}
-}
-
-func yyParse(yylex yyLexer, parser *Parser) int {
-	return yyNewParser(parser).Parse(yylex)
-}
-
-//line ./pkg/textdic/parser.y:36
+//line ./pkg/textdic/parser.y:24
 type yySymType struct {
 	yys   int
 	str   string
@@ -66,35 +54,18 @@ const yyEofCode = 1
 const yyErrCode = 2
 const yyInitialStackSize = 16
 
-//line ./pkg/textdic/parser.y:65
+//line ./pkg/textdic/parser.y:53
 
 func yyError(s string) {
 	fmt.Println("Error:", s)
 }
 
-// Parser struct to encapsulate parsedNodes with a mutex for thread safety
-type Parser struct {
-	mu          sync.Mutex
-	parsedNodes Nodes
+func (yyrcvr *yyParserImpl) setNodes(nodes []Node) {
+	yyrcvr.lval.nodes = nodes
 }
 
-// NewParser initializes and returns a new Parser instance
-func NewParser() *Parser {
-	return &Parser{}
-}
-
-// getNodes returns the parsed nodes with a mutex lock
-func (p *Parser) getNodes() Nodes {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.parsedNodes
-}
-
-// setNodes sets the parsed nodes with a mutex lock
-func (p *Parser) setNodes(nodes Nodes) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.parsedNodes = nodes
+func (yyrcvr *yyParserImpl) getNodes() []Node {
+	return yyrcvr.lval.nodes
 }
 
 //line yacctab:1
@@ -174,8 +145,18 @@ type yyParser interface {
 	Lookahead() int
 }
 
+type yyParserImpl struct {
+	lval  yySymType
+	stack [yyInitialStackSize]yySymType
+	char  int
+}
+
 func (p *yyParserImpl) Lookahead() int {
 	return p.char
+}
+
+func yyNewParser() yyParser {
+	return &yyParserImpl{}
 }
 
 const yyFlag = -1000
@@ -295,6 +276,10 @@ out:
 		__yyfmt__.Printf("lex %s(%d)\n", yyTokname(token), uint(char))
 	}
 	return char, token
+}
+
+func yyParse(yylex yyLexer) int {
+	return yyNewParser().Parse(yylex)
 }
 
 func (yyrcvr *yyParserImpl) Parse(yylex yyLexer) int {
@@ -474,14 +459,14 @@ yydefault:
 
 	case 1:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line ./pkg/textdic/parser.y:52
+//line ./pkg/textdic/parser.y:40
 		{
 			yyVAL.nodes = yyDollar[1].nodes
-			yyrcvr.parser.setNodes(yyDollar[1].nodes)
+			yyrcvr.setNodes(yyDollar[1].nodes)
 		}
 	case 2:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line ./pkg/textdic/parser.y:56
+//line ./pkg/textdic/parser.y:44
 		{
 			if yyDollar[2].node.Word != "" {
 				yyVAL.nodes = append(yyDollar[1].nodes, yyDollar[2].node)
@@ -491,7 +476,7 @@ yydefault:
 		}
 	case 3:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line ./pkg/textdic/parser.y:57
+//line ./pkg/textdic/parser.y:45
 		{
 			if yyDollar[1].node.Word != "" {
 				yyVAL.nodes = []Node{yyDollar[1].node}
@@ -501,13 +486,13 @@ yydefault:
 		}
 	case 4:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line ./pkg/textdic/parser.y:61
+//line ./pkg/textdic/parser.y:49
 		{
 			yyVAL.node = Node{Word: yyDollar[1].str, Definition: yyDollar[2].str}
 		}
 	case 5:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line ./pkg/textdic/parser.y:62
+//line ./pkg/textdic/parser.y:50
 		{
 			yyVAL.node = Node{}
 		}

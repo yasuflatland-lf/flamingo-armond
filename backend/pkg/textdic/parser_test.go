@@ -51,17 +51,13 @@ There is no leeway to provide services free of charge for the sake of others. ไป
 	}
 
 	for _, tc := range testCases {
-		// Create a new parser
-		parser := NewParser()
 
 		// Create a new lexer with the input
 		l := newLexer(tc.input)
 
 		// Parse the input using the parser instance
-		yyParse(l, parser)
+		parsedNodes := ParseAndGetNodes(l)
 
-		// Compare the result with the expected output
-		parsedNodes := parser.getNodes()
 		if len(parsedNodes) != len(tc.expected) {
 			t.Errorf("expected %d nodes, but got %d", len(tc.expected), len(parsedNodes))
 		}
