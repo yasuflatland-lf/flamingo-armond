@@ -27,7 +27,7 @@ type Nodes []Node
 
 %%
 start
-	: entries EOF { $$ = $1; yyrcvr.setNodes($1); }
+	: entries { $$ = $1; yyrcvr.setNodes($1); }
 	;
 
 entries
@@ -37,7 +37,7 @@ entries
 
 entry
 	: WORD DEFINITION NEWLINE { $$ = Node{Word: $1, Definition: $2} }
-	| NEWLINE { $$ = Node{} } // 空行を無視する
+	| NEWLINE { $$ = Node{} } // Ignore empty line
 	;
 
 %%

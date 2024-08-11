@@ -17,7 +17,6 @@ require (
 	github.com/testcontainers/testcontainers-go v0.31.0
 	github.com/vektah/gqlparser/v2 v2.5.16
 	golang.org/x/net v0.26.0
-	golang.org/x/xerrors v0.0.0-20220609144429-65e65417b02f
 	gorm.io/driver/postgres v1.5.9
 	gorm.io/gorm v1.25.10
 )

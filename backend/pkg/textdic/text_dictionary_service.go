@@ -1,10 +1,8 @@
 package textdic
 
 import (
-	"backend/pkg/logger"
 	"encoding/base64"
 	"fmt"
-	"golang.org/x/net/context"
 )
 
 // textDictionaryService struct definition
@@ -16,7 +14,7 @@ func NewTextDictionaryService() *textDictionaryService {
 }
 
 // Process processes a given dictionary string and returns the parsed Nodes or an error
-func (tds *textDictionaryService) Process(ctx context.Context, dic string) ([]Node, error) {
+func (tds *textDictionaryService) Process(dic string) ([]Node, []error) {
 
 	// Use the new parser to parse the input
 	l := newLexer(dic)
@@ -26,17 +24,19 @@ func (tds *textDictionaryService) Process(ctx context.Context, dic string) ([]No
 	parser := NewParser(l)
 	parsedNodes := parser.GetNodes()
 
+	if len(l.GetErrors()) != 0 {
+		return nil, l.GetErrors()
+	}
 	if len(parsedNodes) == 0 {
 		err := fmt.Errorf("no nodes were parsed")
-		logger.Logger.ErrorContext(ctx, err.Error())
-		return nil, err
+		return nil, []error{err}
 	}
 
 	return parsedNodes, nil
 }
 
-// decodeBase64 decodes a Base64 encoded string
-func (tds *textDictionaryService) decodeBase64(s string) (string, error) {
+// DecodeBase64 decodes a Base64 encoded string
+func (tds *textDictionaryService) DecodeBase64(s string) (string, error) {
 
 	decoded, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {

@@ -74,19 +74,18 @@ var yyExca = [...]int8{
 
 const yyPrivate = 57344
 
-const yyLast = 11
+const yyLast = 8
 
 var yyAct = [...]int8{
-	4, 9, 5, 6, 4, 3, 5, 8, 7, 1,
-	2,
+	4, 8, 5, 7, 3, 1, 2, 6,
 }
 
 var yyPact = [...]int16{
-	0, -1000, -4, -1000, 2, -1000, -1000, -1000, -5, -1000,
+	-4, -1000, -4, -1000, -2, -1000, -1000, -5, -1000,
 }
 
 var yyPgo = [...]int8{
-	0, 5, 10, 9,
+	0, 4, 6, 5,
 }
 
 var yyR1 = [...]int8{
@@ -94,15 +93,15 @@ var yyR1 = [...]int8{
 }
 
 var yyR2 = [...]int8{
-	0, 2, 2, 1, 3, 1,
+	0, 1, 2, 1, 3, 1,
 }
 
 var yyChk = [...]int16{
-	-1000, -3, -2, -1, 4, 6, 7, -1, 5, 6,
+	-1000, -3, -2, -1, 4, 6, -1, 5, 6,
 }
 
 var yyDef = [...]int8{
-	0, -2, 0, 3, 0, 5, 1, 2, 0, 4,
+	0, -2, 1, 3, 0, 5, 2, 0, 4,
 }
 
 var yyTok1 = [...]int8{
@@ -455,7 +454,7 @@ yydefault:
 	switch yynt {
 
 	case 1:
-		yyDollar = yyS[yypt-2 : yypt+1]
+		yyDollar = yyS[yypt-1 : yypt+1]
 //line ./pkg/textdic/parser.y:30
 		{
 			yyVAL.nodes = yyDollar[1].nodes

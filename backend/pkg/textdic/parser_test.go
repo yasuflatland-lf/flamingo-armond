@@ -1,6 +1,7 @@
 package textdic
 
 import (
+	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
@@ -16,6 +17,8 @@ trot out 自慢げに話題に持ち出す
 jarring 気に障る
 
 rube 田舎者
+
+  
 
 out of touch 情報に疎い、
 
@@ -83,20 +86,24 @@ There is no leeway to provide services free of charge for the sake of others. �
 		var input = `
 trot out 自慢げに話題に持ち出す
 #エラーになる
+!もう一つエラー
 `
-
 		// Create a new lexer with the input
 		l := newLexer(input)
-		yyDebug = 1
+		yyDebug = 5
 		yyErrorVerbose = true
 
 		// Parse the input using the parser instance
-		NewParser(l)
+		parser := NewParser(l)
 		errors := l.GetErrors()
 
 		if len(errors) == 0 {
 			t.Errorf("expected errors, but got none")
 		}
+
+		// It should get one correct data in the node
+		nodes := parser.GetNodes()
+		assert.Equal(t, 1, len(nodes))
 
 		for _, err := range errors {
 			if err.Error() == "" {

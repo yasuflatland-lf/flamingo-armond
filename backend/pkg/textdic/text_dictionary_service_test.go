@@ -1,12 +1,11 @@
 package textdic
 
 import (
-	"golang.org/x/net/context"
 	"sync"
 	"testing"
 )
 
-func TestParserServiceAll(t *testing.T) {
+func TestParserService(t *testing.T) {
 	// Test input
 	var input = `
 trot out 自慢げに話題に持ち出す
@@ -63,10 +62,11 @@ There is no leeway to provide services free of charge for the sake of others. �
 
 				// Create a new parser service
 				service := NewTextDictionaryService()
-				ctx := context.Background()
 
+				yyDebug = 5
+				yyErrorVerbose = true
 				// Process the dictionary input
-				parsedNodes, err := service.Process(ctx, tc.input)
+				parsedNodes, err := service.Process(tc.input)
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
@@ -112,13 +112,12 @@ There is no leeway to provide services free of charge for the sake of others. �
 			tc := tc // capture range variable to avoid issues in parallel tests
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel() // Mark the test to run in parallel
-				ctx := context.Background()
 
 				// Create a new parser service
 				service := NewTextDictionaryService()
 
 				// Process the dictionary input
-				parsedNodes, err := service.Process(ctx, tc.input)
+				parsedNodes, err := service.Process(tc.input)
 
 				if tc.wantErr {
 					if err == nil {
@@ -150,10 +149,9 @@ There is no leeway to provide services free of charge for the sake of others. �
 
 					// Create a new parser service
 					service := NewTextDictionaryService()
-					ctx := context.Background()
 
 					// Process the dictionary input
-					parsedNodes, err := service.Process(ctx, tc.input)
+					parsedNodes, err := service.Process(tc.input)
 					if err != nil {
 						t.Errorf("unexpected error: %v", err)
 						return
@@ -198,7 +196,7 @@ There is no leeway to provide services free of charge for the sake of others. �
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel() // Mark the test to run in parallel
 
-				result, err := service.decodeBase64(tc.input)
+				result, err := service.DecodeBase64(tc.input)
 				if tc.wantErr {
 					if err == nil {
 						t.Errorf("expected error but got none")
@@ -214,5 +212,4 @@ There is no leeway to provide services free of charge for the sake of others. �
 			})
 		}
 	})
-
 }

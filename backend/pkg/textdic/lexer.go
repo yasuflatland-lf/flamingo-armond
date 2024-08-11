@@ -14,7 +14,7 @@ type lexer struct {
 }
 
 func newLexer(input string) *lexer {
-	return &lexer{input: strings.NewReader(input), lineNo: 0}
+	return &lexer{input: strings.NewReader(input), lineNo: 1}
 }
 
 func (l *lexer) Peek() rune {
@@ -42,23 +42,23 @@ func (l *lexer) isJapanese(r rune) bool {
 }
 
 func (l *lexer) Lex(lval *yySymType) int {
-	for {
-		r, err := l.skipWhiteSpace()
-		if err != nil {
-			return EOF
-		}
-
-		if l.isNewLine(r) {
-			l.lineNo++
-			return NEWLINE
-		}
-
-		if l.isEnglishAndWhitespace(r) {
-			return l.lexWord(lval)
-		} else if l.isJapanese(r) {
-			return l.lexDefinition(lval)
-		}
+	r, err := l.skipWhiteSpace()
+	if err != nil {
+		// Done with parsing
+		return 0
 	}
+
+	if l.isNewLine(r) {
+		l.lineNo++
+		return NEWLINE
+	}
+	if l.isEnglishAndWhitespace(r) {
+		return l.lexWord(lval)
+	}
+	if l.isJapanese(r) {
+		return l.lexDefinition(lval)
+	}
+	return EOF
 }
 
 func (l *lexer) lexWord(lval *yySymType) int {
