@@ -19,8 +19,8 @@ type userService struct {
 func convertToGormUser(input model.NewUser) *db.User {
 	return &db.User{
 		Name:    input.Name,
-		Created: time.Now(),
-		Updated: time.Now(),
+		Created: time.Now().UTC(),
+		Updated: time.Now().UTC(),
 	}
 }
 
@@ -77,7 +77,7 @@ func (s *userService) UpdateUser(ctx context.Context, id int64, input model.NewU
 		return nil, err
 	}
 	user.Name = input.Name
-	user.Updated = time.Now()
+	user.Updated = time.Now().UTC()
 	if err := s.db.WithContext(ctx).Save(&user).Error; err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to update user", err)
 		return nil, err

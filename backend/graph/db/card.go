@@ -49,7 +49,7 @@ func (c *Card) validateAtCreate(card *Card) error {
 // AfterUpdate Updating data in same transaction
 func (c *Card) AfterUpdate(tx *gorm.DB) (err error) {
 
-	tx.Model(&Card{}).Where("id = ?", c.ID).Update("updated", time.Now())
+	tx.Model(&Card{}).Where("id = ?", c.ID).Update("updated", time.Now().UTC())
 
 	return nil
 }

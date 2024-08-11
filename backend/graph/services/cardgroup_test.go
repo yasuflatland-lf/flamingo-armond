@@ -81,8 +81,8 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 		// Create a user
 		newUser := model.NewUser{
 			Name:    "Test User",
-			Created: time.Now(),
-			Updated: time.Now(),
+			Created: time.Now().UTC(),
+			Updated: time.Now().UTC(),
 			RoleIds: []int64{createdRole.ID}, // Assign the new role to the user
 		}
 		createdUser, err := userService.CreateUser(ctx, newUser)
@@ -90,8 +90,8 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 		// Create a card group
 		input := model.NewCardGroup{
 			Name:    "",
-			Created: time.Now(),
-			Updated: time.Now(),
+			Created: time.Now().UTC(),
+			Updated: time.Now().UTC(),
 			UserIds: []int64{createdUser.ID},
 		}
 
@@ -184,8 +184,8 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 		// Create a user
 		newUser := model.NewUser{
 			Name:    "Test User",
-			Created: time.Now(),
-			Updated: time.Now(),
+			Created: time.Now().UTC(),
+			Updated: time.Now().UTC(),
 			RoleIds: []int64{}, // Add any required roles here
 		}
 		createdUser, err := userService.CreateUser(ctx, newUser)
@@ -195,8 +195,8 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 		// Create a card group
 		newCardGroup := model.NewCardGroup{
 			Name:    "Test Group",
-			Created: time.Now(),
-			Updated: time.Now(),
+			Created: time.Now().UTC(),
+			Updated: time.Now().UTC(),
 		}
 		createdCardGroup, err := cardGroupService.CreateCardGroup(ctx, newCardGroup)
 		assert.NoError(t, err)
@@ -233,8 +233,8 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 		// Create a user
 		newUser := model.NewUser{
 			Name:    "Test User",
-			Created: time.Now(),
-			Updated: time.Now(),
+			Created: time.Now().UTC(),
+			Updated: time.Now().UTC(),
 			RoleIds: []int64{createdRole.ID}, // Add any required roles here
 		}
 		createdUser, err := userService.CreateUser(ctx, newUser)
@@ -244,8 +244,8 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 		// Create a card group
 		input := model.NewCardGroup{
 			Name:    "Test Group",
-			Created: time.Now(),
-			Updated: time.Now(),
+			Created: time.Now().UTC(),
+			Updated: time.Now().UTC(),
 			UserIds: []int64{createdUser.ID},
 		}
 		createdGroup, err := cardGroupService.CreateCardGroup(ctx, input)

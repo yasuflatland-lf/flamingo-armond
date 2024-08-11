@@ -45,6 +45,6 @@ func (cg *Cardgroup) validateAtCreate(cardgroup *Cardgroup) error {
 
 // Updating data in the same transaction
 func (cg *Cardgroup) AfterUpdate(tx *gorm.DB) (err error) {
-	tx.Model(&Cardgroup{}).Where("id = ?", cg.ID).Update("updated", time.Now())
+	tx.Model(&Cardgroup{}).Where("id = ?", cg.ID).Update("updated", time.Now().UTC())
 	return nil
 }

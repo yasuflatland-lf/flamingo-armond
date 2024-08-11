@@ -43,6 +43,6 @@ func (r *Role) validateAtCreate(role *Role) error {
 
 // Updating data in same transaction
 func (r *Role) AfterUpdate(tx *gorm.DB) (err error) {
-	tx.Model(&Role{}).Where("id = ?", r.ID).Update("updated", time.Now())
+	tx.Model(&Role{}).Where("id = ?", r.ID).Update("updated", time.Now().UTC())
 	return nil
 }

@@ -131,8 +131,8 @@ func CreateUserAndCardGroup(
 	// Create a user
 	newUser := model.NewUser{
 		Name:    "Test User",
-		Created: time.Now(),
-		Updated: time.Now(),
+		Created: time.Now().UTC(),
+		Updated: time.Now().UTC(),
 		RoleIds: []int64{createdRole.ID}, // Assign the new role to the user
 	}
 	createdUser, err := userService.CreateUser(ctx, newUser)
@@ -143,8 +143,8 @@ func CreateUserAndCardGroup(
 	// Create a card group
 	input := model.NewCardGroup{
 		Name:    "Test Group",
-		Created: time.Now(),
-		Updated: time.Now(),
+		Created: time.Now().UTC(),
+		Updated: time.Now().UTC(),
 		UserIds: []int64{createdUser.ID},
 	}
 

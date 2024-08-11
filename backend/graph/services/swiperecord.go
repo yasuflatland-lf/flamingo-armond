@@ -73,7 +73,7 @@ func (s *swipeRecordService) UpdateSwipeRecord(ctx context.Context, id int64, in
 		return nil, err
 	}
 	swipeRecord.Direction = input.Direction
-	swipeRecord.Updated = time.Now()
+	swipeRecord.Updated = time.Now().UTC()
 
 	if err := s.db.WithContext(ctx).Save(&swipeRecord).Error; err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to update swipe record:", err)

@@ -19,8 +19,8 @@ type cardGroupService struct {
 func convertToGormCardGroup(input model.NewCardGroup) *repository.Cardgroup {
 	return &repository.Cardgroup{
 		Name:    input.Name,
-		Created: time.Now(),
-		Updated: time.Now(),
+		Created: time.Now().UTC(),
+		Updated: time.Now().UTC(),
 	}
 }
 
@@ -72,7 +72,7 @@ func (s *cardGroupService) UpdateCardGroup(ctx context.Context, id int64, input 
 		return nil, err
 	}
 	cardGroup.Name = input.Name
-	cardGroup.Updated = time.Now()
+	cardGroup.Updated = time.Now().UTC()
 	if err := s.db.WithContext(ctx).Save(&cardGroup).Error; err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to update cardgroup", err)
 		return nil, err

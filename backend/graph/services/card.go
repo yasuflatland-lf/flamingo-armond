@@ -4,6 +4,7 @@ import (
 	repository "backend/graph/db"
 	"backend/graph/model"
 	"backend/pkg/logger"
+	"backend/pkg/utils"
 	"context"
 	"errors"
 	"fmt"
@@ -115,7 +116,7 @@ func (s *cardService) UpdateCard(ctx context.Context, id int64, input model.NewC
 		}
 		return card.IntervalDays
 	}()
-	card.Updated = time.Now()
+	card.Updated = time.Now().UTC()
 
 	if err := s.db.WithContext(ctx).Save(&card).Error; err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to save card", err)
@@ -139,32 +140,6 @@ func (s *cardService) DeleteCard(ctx context.Context, id int64) (*bool, error) {
 	}
 
 	return &success, nil
-}
-
-func (s *cardService) Cards(ctx context.Context) ([]*model.Card, error) {
-	var cards []repository.Card
-	if err := s.db.WithContext(ctx).Find(&cards).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to retrieve cards", err)
-		return nil, err
-	}
-	var gqlCards []*model.Card
-	for _, card := range cards {
-		gqlCards = append(gqlCards, convertToCard(card))
-	}
-	return gqlCards, nil
-}
-
-func (s *cardService) CardsByCardGroup(ctx context.Context, cardGroupID int64) ([]*model.Card, error) {
-	var cards []repository.Card
-	if err := s.db.WithContext(ctx).Where("cardgroup_id = ?", cardGroupID).Find(&cards).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to retrieve cards by card group ID", err)
-		return nil, err
-	}
-	var gqlCards []*model.Card
-	for _, card := range cards {
-		gqlCards = append(gqlCards, convertToCard(card))
-	}
-	return gqlCards, nil
 }
 
 func (s *cardService) PaginatedCardsByCardGroup(ctx context.Context, cardGroupID int64, first *int, after *int64, last *int, before *int64) (*model.CardConnection, error) {
@@ -231,4 +206,90 @@ func (s *cardService) GetCardsByIDs(ctx context.Context, ids []int64) ([]*model.
 	}
 
 	return gqlCards, nil
+}
+
+func (s *cardService) FetchAllCardsByCardGroup(ctx context.Context, cardGroupID int64, first *int) ([]*model.Card, error) {
+	var allCards []*model.Card
+	var after *int64
+
+	for {
+		// Fetch the next batch of cards
+		connection, err := s.PaginatedCardsByCardGroup(ctx, cardGroupID, first, after, nil, nil)
+		if err != nil {
+			logger.Logger.ErrorContext(ctx, "Failed to fetch paginated cards", err)
+			return nil, err
+		}
+
+		// Append the fetched cards to the result list
+		allCards = append(allCards, connection.Nodes...)
+
+		// Check if there are more pages
+		if !connection.PageInfo.HasNextPage {
+			break
+		}
+
+		// Set the cursor for the next batch
+		after = connection.PageInfo.EndCursor
+	}
+
+	return allCards, nil
+}
+
+func (s *cardService) AddNewCards(ctx context.Context, targetCards []model.Card, cardGroupID int64) error {
+	// Use FetchAllCardsByCardGroup to retrieve all cards
+	existingCards, err := s.FetchAllCardsByCardGroup(ctx, cardGroupID, nil)
+	if err != nil {
+		return err
+	}
+
+	// Create a hashmap to manage existing cards by Front value
+	existingCardsMap := make(map[string]*model.Card)
+	for _, card := range existingCards {
+		existingCardsMap[card.Front] = card
+	}
+
+	// Process to add or update cards
+	for _, targetCard := range targetCards {
+		existingCard, exists := existingCardsMap[targetCard.Front]
+		if !exists {
+			// If Front doesn't match, add as a new card
+			newCard := model.NewCard{
+				Front:        targetCard.Front,
+				Back:         targetCard.Back,
+				ReviewDate:   targetCard.ReviewDate,
+				IntervalDays: &targetCard.IntervalDays,
+				CardgroupID:  targetCard.CardGroupID,
+				Created:      time.Now().UTC(),
+				Updated:      time.Now().UTC(),
+			}
+			if _, err := s.CreateCard(ctx, newCard); err != nil {
+				logger.Logger.ErrorContext(ctx, "Failed to add card:", slog.String("error", err.Error()))
+				return err
+			}
+			continue
+		}
+
+		// If Front matches, check the similarity of the Back value
+		if utils.Similarity(existingCard.Back, targetCard.Back) >= 1.0 {
+			// Skip if similarity is 1.0
+			continue
+		}
+
+		// Update the card if the Back similarity is not 1.0
+		newCard := model.NewCard{
+			Front:        targetCard.Front,
+			Back:         targetCard.Back,
+			ReviewDate:   targetCard.ReviewDate,
+			IntervalDays: &targetCard.IntervalDays,
+			CardgroupID:  targetCard.CardGroupID,
+			Created:      time.Now().UTC(),
+			Updated:      time.Now().UTC(),
+		}
+		if _, err := s.UpdateCard(ctx, existingCard.ID, newCard); err != nil {
+			logger.Logger.ErrorContext(ctx, "Failed to update card:", slog.String("error", err.Error()))
+			return err
+		}
+	}
+
+	return nil
 }

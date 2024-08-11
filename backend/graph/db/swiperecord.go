@@ -50,6 +50,6 @@ func (s *SwipeRecord) validateAtCreate(swipeRecord *SwipeRecord) error {
 
 // AfterUpdate hook to update the timestamp in the same transaction
 func (s *SwipeRecord) AfterUpdate(tx *gorm.DB) (err error) {
-	tx.Model(&SwipeRecord{}).Where("id = ?", s.ID).Update("updated", time.Now())
+	tx.Model(&SwipeRecord{}).Where("id = ?", s.ID).Update("updated", time.Now().UTC())
 	return nil
 }

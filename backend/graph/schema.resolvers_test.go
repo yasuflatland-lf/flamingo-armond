@@ -159,7 +159,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("Card Query", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 			cardGroup := repository.Cardgroup{
 				Name:    "Card Query Test CardGroup",
 				Created: now,
@@ -212,7 +212,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("CardGroup Query", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 			cardGroup := repository.Cardgroup{
 				Name:    "Test CardGroup",
 				Created: now,
@@ -249,7 +249,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("User Query", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 
 			// Create or get an existing role
 			var role repository.Role
@@ -312,7 +312,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("Role Query", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 			var role repository.Role
 			if err := db.Where("name = ?", "Role Query Test Role").First(&role).Error; err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -358,7 +358,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("Cards Query", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 			cardGroup := repository.Cardgroup{
 				Name:    "Test CardGroup",
 				Created: now,
@@ -416,7 +416,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("UserRole Query", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 
 			// Create or get an existing role
 			var role repository.Role
@@ -477,7 +477,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("CardGroupsByUser Query", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 
 			// Create or get an existing role
 			var role repository.Role
@@ -554,7 +554,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("UsersByRole Query", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 
 			// Create or get an existing role
 			var role repository.Role
@@ -622,7 +622,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("CreateCard Mutation", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 			cardGroup := repository.Cardgroup{
 				Name:    "Test CardGroup",
 				Created: now,
@@ -675,7 +675,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("UpdateCard Mutation", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 			cardGroup := repository.Cardgroup{
 				Name:    "Test CardGroup",
 				Created: now,
@@ -732,7 +732,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("DeleteCard Mutation", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 			cardGroup := repository.Cardgroup{
 				Name:    "Test CardGroup",
 				Created: now,
@@ -772,7 +772,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("CreateCardGroup Mutation", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 			input := model.NewCardGroup{
 				Name:    "New Card Group",
 				CardIds: nil,
@@ -810,7 +810,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("UpdateCardGroup Mutation", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 
 			// Create an existing card group
 			cardGroup := repository.Cardgroup{
@@ -898,7 +898,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("DeleteCardGroup Mutation", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 			cardGroup := repository.Cardgroup{
 				Name:    "Test Group",
 				Created: now,
@@ -927,7 +927,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("CreateUser Mutation", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 
 			// Create or get an existing role
 			var role repository.Role
@@ -982,7 +982,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("UpdateUser Mutation", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 
 			// Create or get an existing role
 			var role repository.Role
@@ -1055,7 +1055,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("DeleteUser Mutation", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 			user := repository.User{
 				Name:    "Test User",
 				Created: now,
@@ -1084,7 +1084,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("CreateRole Mutation", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 			input := model.NewRole{
 				Name:    "New Role",
 				Created: now,
@@ -1120,7 +1120,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("UpdateRole Mutation", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 			role := repository.Role{
 				Name:    "Old Role",
 				Created: now,
@@ -1164,7 +1164,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("DeleteRole Mutation", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 
 			// Create or get a role
 			var role repository.Role
@@ -1205,7 +1205,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("AddUserToCardGroup Mutation", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 
 			// Create or get an existing role
 			var role repository.Role
@@ -1277,7 +1277,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("RemoveUserFromCardGroup Mutation", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 
 			// Create or get an existing role
 			var role repository.Role
@@ -1350,7 +1350,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("AssignRoleToUser Mutation", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 
 			// Create or get an existing role
 			var role repository.Role
@@ -1415,7 +1415,7 @@ func TestGraphQLQueries(t *testing.T) {
 		t.Run("RemoveRoleFromUser Mutation", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 
 			// Create or get an existing role
 			var role repository.Role
@@ -1524,7 +1524,7 @@ func TestGraphQLErrors(t *testing.T) {
 		t.Run("CreateCard with Missing Fields", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 			cardGroup := model.CardGroup{
 				Name:    "Test CardGroup",
 				Created: now,
@@ -1578,7 +1578,7 @@ func TestGraphQLErrors(t *testing.T) {
 			t.Parallel()
 
 			invalidID := "invalid-id"
-			now := time.Now()
+			now := time.Now().UTC()
 			input := model.NewCard{
 				Front:        "Updated Front",
 				Back:         "Updated Back",
@@ -1647,7 +1647,7 @@ func TestGraphQLErrors(t *testing.T) {
 		t.Run("CreateCardGroup with Missing Name", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 			// Missing `name` field
 			input := map[string]interface{}{
 				"user_ids": []int64{1, 2},
@@ -1689,7 +1689,7 @@ func TestGraphQLErrors(t *testing.T) {
 			t.Parallel()
 
 			invalidID := "invalid-id"
-			now := time.Now()
+			now := time.Now().UTC()
 			input := model.NewCardGroup{
 				Name:    "Updated Group",
 				UserIds: []int64{1, 2},
@@ -1759,7 +1759,7 @@ func TestGraphQLErrors(t *testing.T) {
 		t.Run("CreateUser with Missing Name", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 			// Missing `name` field
 			input := map[string]interface{}{
 				"role_ids": []int64{1, 2},
@@ -1801,7 +1801,7 @@ func TestGraphQLErrors(t *testing.T) {
 			t.Parallel()
 
 			invalidID := "invalid-id"
-			now := time.Now()
+			now := time.Now().UTC()
 			input := model.NewUser{
 				Name:    "Updated User",
 				RoleIds: []int64{1, 2},
@@ -1871,7 +1871,7 @@ func TestGraphQLErrors(t *testing.T) {
 		t.Run("CreateRole with Missing Name", func(t *testing.T) {
 			t.Parallel()
 
-			now := time.Now()
+			now := time.Now().UTC()
 			// Missing `name` field
 			input := map[string]interface{}{
 				"created": now,
@@ -1912,7 +1912,7 @@ func TestGraphQLErrors(t *testing.T) {
 			t.Parallel()
 
 			invalidID := "invalid-id"
-			now := time.Now()
+			now := time.Now().UTC()
 			input := model.NewRole{
 				Name:    "Updated Role",
 				Created: now,

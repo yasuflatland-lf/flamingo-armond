@@ -60,8 +60,8 @@ func (suite *SwipeRecordTestSuite) createTestUserAndRole(ctx context.Context) (i
 	// Create a user
 	newUser := model.NewUser{
 		Name:    "Test User",
-		Created: time.Now(),
-		Updated: time.Now(),
+		Created: time.Now().UTC(),
+		Updated: time.Now().UTC(),
 		RoleIds: []int64{createdRole.ID}, // Assign the new role to the user
 	}
 	createdUser, err := userService.CreateUser(ctx, newUser)
@@ -98,8 +98,8 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 		newSwipeRecord := model.NewSwipeRecord{
 			UserID:    userID,
 			Direction: "left",
-			Created:   time.Now(),
-			Updated:   time.Now(),
+			Created:   time.Now().UTC(),
+			Updated:   time.Now().UTC(),
 		}
 
 		createdSwipeRecord, err := swipeRecordService.CreateSwipeRecord(ctx, newSwipeRecord)
@@ -131,8 +131,8 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 		newSwipeRecord := model.NewSwipeRecord{
 			UserID:    userID,
 			Direction: "left",
-			Created:   time.Now(),
-			Updated:   time.Now(),
+			Created:   time.Now().UTC(),
+			Updated:   time.Now().UTC(),
 		}
 		createdSwipeRecord, _ := swipeRecordService.CreateSwipeRecord(ctx, newSwipeRecord)
 
@@ -159,8 +159,8 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 		newSwipeRecord := model.NewSwipeRecord{
 			UserID:    userID,
 			Direction: "left",
-			Created:   time.Now(),
-			Updated:   time.Now(),
+			Created:   time.Now().UTC(),
+			Updated:   time.Now().UTC(),
 		}
 		createdSwipeRecord, _ := swipeRecordService.CreateSwipeRecord(ctx, newSwipeRecord)
 
@@ -203,8 +203,8 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 		newSwipeRecord := model.NewSwipeRecord{
 			UserID:    userID,
 			Direction: "left",
-			Created:   time.Now(),
-			Updated:   time.Now(),
+			Created:   time.Now().UTC(),
+			Updated:   time.Now().UTC(),
 		}
 		createdSwipeRecord, _ := swipeRecordService.CreateSwipeRecord(ctx, newSwipeRecord)
 
@@ -231,14 +231,14 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 		newSwipeRecord1 := model.NewSwipeRecord{
 			UserID:    userID,
 			Direction: "left",
-			Created:   time.Now(),
-			Updated:   time.Now(),
+			Created:   time.Now().UTC(),
+			Updated:   time.Now().UTC(),
 		}
 		newSwipeRecord2 := model.NewSwipeRecord{
 			UserID:    userID,
 			Direction: "right",
-			Created:   time.Now(),
-			Updated:   time.Now(),
+			Created:   time.Now().UTC(),
+			Updated:   time.Now().UTC(),
 		}
 		swipeRecordService.CreateSwipeRecord(ctx, newSwipeRecord1)
 		swipeRecordService.CreateSwipeRecord(ctx, newSwipeRecord2)
@@ -259,14 +259,14 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 		newSwipeRecord1 := model.NewSwipeRecord{
 			UserID:    userID,
 			Direction: "left",
-			Created:   time.Now(),
-			Updated:   time.Now(),
+			Created:   time.Now().UTC(),
+			Updated:   time.Now().UTC(),
 		}
 		newSwipeRecord2 := model.NewSwipeRecord{
 			UserID:    userID,
 			Direction: "right",
-			Created:   time.Now(),
-			Updated:   time.Now(),
+			Created:   time.Now().UTC(),
+			Updated:   time.Now().UTC(),
 		}
 		swipeRecordService.CreateSwipeRecord(ctx, newSwipeRecord1)
 		swipeRecordService.CreateSwipeRecord(ctx, newSwipeRecord2)

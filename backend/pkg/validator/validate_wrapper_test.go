@@ -40,7 +40,7 @@ func TestValidation(t *testing.T) {
 
 func TestDateTimeValidation(t *testing.T) {
 	validateWrapper := validator.NewValidateWrapper()
-	invalidTime, _ := time.Parse(time.Now().Format(time.DateTime), "0000-00-00")
+	invalidTime, _ := time.Parse(time.Now().UTC().Format(time.DateTime), "0000-00-00")
 	tests := []struct {
 		name  string
 		value time.Time
@@ -48,7 +48,7 @@ func TestDateTimeValidation(t *testing.T) {
 		valid bool
 	}{
 		// Valid cases
-		{"Valid DateTime", time.Now(), "fl_datetime", true},
+		{"Valid DateTime", time.Now().UTC(), "fl_datetime", true},
 
 		// Invalid cases
 		{"Invalid DateTime", invalidTime, "fl_datetime", false},
@@ -79,8 +79,8 @@ func TestModelValidation(t *testing.T) {
 			&db.User{
 				ID:      1,
 				Name:    "ValidName",
-				Created: time.Now(),
-				Updated: time.Now(),
+				Created: time.Now().UTC(),
+				Updated: time.Now().UTC(),
 			},
 			true,
 		},
@@ -90,10 +90,10 @@ func TestModelValidation(t *testing.T) {
 				ID:           1,
 				Front:        "Front Text",
 				Back:         "Back Text",
-				ReviewDate:   time.Now(),
+				ReviewDate:   time.Now().UTC(),
 				IntervalDays: 1,
-				Created:      time.Now(),
-				Updated:      time.Now(),
+				Created:      time.Now().UTC(),
+				Updated:      time.Now().UTC(),
 				CardGroupID:  1,
 			},
 			true,
@@ -103,8 +103,8 @@ func TestModelValidation(t *testing.T) {
 			&db.Cardgroup{
 				ID:      1,
 				Name:    "Group Name",
-				Created: time.Now(),
-				Updated: time.Now(),
+				Created: time.Now().UTC(),
+				Updated: time.Now().UTC(),
 			},
 			true,
 		},
@@ -113,8 +113,8 @@ func TestModelValidation(t *testing.T) {
 			&db.Role{
 				ID:      1,
 				Name:    "Role Name",
-				Created: time.Now(),
-				Updated: time.Now(),
+				Created: time.Now().UTC(),
+				Updated: time.Now().UTC(),
 			},
 			true,
 		},
@@ -125,8 +125,8 @@ func TestModelValidation(t *testing.T) {
 			&db.User{
 				ID:      1,
 				Name:    "Invalid Name!",
-				Created: time.Now(),
-				Updated: time.Now(),
+				Created: time.Now().UTC(),
+				Updated: time.Now().UTC(),
 			},
 			false,
 		},
@@ -138,8 +138,8 @@ func TestModelValidation(t *testing.T) {
 				Back:         "Back Text",
 				ReviewDate:   time.Time{},
 				IntervalDays: 1,
-				Created:      time.Now(),
-				Updated:      time.Now(),
+				Created:      time.Now().UTC(),
+				Updated:      time.Now().UTC(),
 				CardGroupID:  1,
 			},
 			false,
@@ -149,8 +149,8 @@ func TestModelValidation(t *testing.T) {
 			&db.Cardgroup{
 				ID:      1,
 				Name:    "",
-				Created: time.Now(),
-				Updated: time.Now(),
+				Created: time.Now().UTC(),
+				Updated: time.Now().UTC(),
 			},
 			false,
 		},
@@ -159,8 +159,8 @@ func TestModelValidation(t *testing.T) {
 			&db.Role{
 				ID:      1,
 				Name:    "Invalid Role Name!",
-				Created: time.Now(),
-				Updated: time.Now(),
+				Created: time.Now().UTC(),
+				Updated: time.Now().UTC(),
 			},
 			false,
 		},

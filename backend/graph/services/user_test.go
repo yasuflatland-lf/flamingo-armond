@@ -73,8 +73,8 @@ func (suite *UserTestSuite) TestUserService() {
 
 		input := model.NewUser{
 			Name:    "Test User",
-			Created: time.Now(),
-			Updated: time.Now(),
+			Created: time.Now().UTC(),
+			Updated: time.Now().UTC(),
 			RoleIds: []int64{createdRole.ID},
 		}
 
@@ -95,8 +95,8 @@ func (suite *UserTestSuite) TestUserService() {
 
 		input := model.NewUser{
 			Name:    "", // Invalid input
-			Created: time.Now(),
-			Updated: time.Now(),
+			Created: time.Now().UTC(),
+			Updated: time.Now().UTC(),
 			RoleIds: []int64{createdRole.ID},
 		}
 
@@ -117,8 +117,8 @@ func (suite *UserTestSuite) TestUserService() {
 
 		input := model.NewUser{
 			Name:    "Test User",
-			Created: time.Now(),
-			Updated: time.Now(),
+			Created: time.Now().UTC(),
+			Updated: time.Now().UTC(),
 			RoleIds: []int64{createdRole.ID},
 		}
 		createdUser, _ := userService.CreateUser(ctx, input)
@@ -146,8 +146,8 @@ func (suite *UserTestSuite) TestUserService() {
 
 		input := model.NewUser{
 			Name:    "Test User",
-			Created: time.Now(),
-			Updated: time.Now(),
+			Created: time.Now().UTC(),
+			Updated: time.Now().UTC(),
 			RoleIds: []int64{createdRole.ID},
 		}
 		createdUser, _ := userService.CreateUser(ctx, input)
@@ -180,8 +180,8 @@ func (suite *UserTestSuite) TestUserService() {
 
 		input := model.NewUser{
 			Name:    "Test User",
-			Created: time.Now(),
-			Updated: time.Now(),
+			Created: time.Now().UTC(),
+			Updated: time.Now().UTC(),
 			RoleIds: []int64{createdRole.ID},
 		}
 		createdUser, _ := userService.CreateUser(ctx, input)

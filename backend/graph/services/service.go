@@ -20,10 +20,10 @@ type CardService interface {
 	CreateCard(ctx context.Context, input model.NewCard) (*model.Card, error)
 	UpdateCard(ctx context.Context, id int64, input model.NewCard) (*model.Card, error)
 	DeleteCard(ctx context.Context, id int64) (*bool, error)
-	Cards(ctx context.Context) ([]*model.Card, error)
-	CardsByCardGroup(ctx context.Context, cardGroupID int64) ([]*model.Card, error)
 	PaginatedCardsByCardGroup(ctx context.Context, cardGroupID int64, first *int, after *int64, last *int, before *int64) (*model.CardConnection, error)
 	GetCardsByIDs(ctx context.Context, ids []int64) ([]*model.Card, error)
+	FetchAllCardsByCardGroup(ctx context.Context, cardGroupID int64, first *int) ([]*model.Card, error)
+	AddNewCards(ctx context.Context, targetCards []model.Card, cardGroupID int64) error
 }
 
 type CardGroupService interface {

@@ -5,6 +5,7 @@ import (
 	"backend/graph/services"
 	"backend/testutils"
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -65,39 +66,13 @@ func (suite *CardTestSuite) TestCardService() {
 	t := suite.T()
 	t.Helper()
 
-	suite.Run("Normal_ListCards", func() {
-		// Arrange
-		createdGroup, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
-		input1 := model.NewCard{
-			Front:       "Test Front 1",
-			Back:        "Test Back 1",
-			ReviewDate:  time.Now(),
-			CardgroupID: createdGroup.ID,
-		}
-		input2 := model.NewCard{
-			Front:       "Test Front 2",
-			Back:        "Test Back 2",
-			ReviewDate:  time.Now(),
-			CardgroupID: createdGroup.ID,
-		}
-		cardService.CreateCard(ctx, input1)
-		cardService.CreateCard(ctx, input2)
-
-		// Act
-		cards, err := cardService.CardsByCardGroup(ctx, createdGroup.ID)
-
-		// Assert
-		assert.NoError(suite.T(), err)
-		assert.Len(suite.T(), cards, 2)
-	})
-
 	suite.Run("Normal_CreateCard", func() {
 		// Arrange
 		createdGroup, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
 		input := model.NewCard{
 			Front:       "Test Front",
 			Back:        "Test Back",
-			ReviewDate:  time.Now(),
+			ReviewDate:  time.Now().UTC(),
 			CardgroupID: createdGroup.ID,
 		}
 
@@ -115,7 +90,7 @@ func (suite *CardTestSuite) TestCardService() {
 		input := model.NewCard{
 			Front:       "Test Front",
 			Back:        "Test Back",
-			ReviewDate:  time.Now(),
+			ReviewDate:  time.Now().UTC(),
 			CardgroupID: -1, // Invalid ID
 		}
 
@@ -134,7 +109,7 @@ func (suite *CardTestSuite) TestCardService() {
 		input := model.NewCard{
 			Front:       "Test Front",
 			Back:        "Test Back",
-			ReviewDate:  time.Now(),
+			ReviewDate:  time.Now().UTC(),
 			CardgroupID: createdGroup.ID,
 		}
 		createdCard, _ := cardService.CreateCard(ctx, input)
@@ -163,7 +138,7 @@ func (suite *CardTestSuite) TestCardService() {
 		input := model.NewCard{
 			Front:       "Test Front",
 			Back:        "Test Back",
-			ReviewDate:  time.Now(),
+			ReviewDate:  time.Now().UTC(),
 			CardgroupID: createdGroup.ID,
 		}
 		createdCard, _ := cardService.CreateCard(ctx, input)
@@ -171,7 +146,7 @@ func (suite *CardTestSuite) TestCardService() {
 		updateInput := model.NewCard{
 			Front:       "Updated Front",
 			Back:        "Updated Back",
-			ReviewDate:  time.Now(),
+			ReviewDate:  time.Now().UTC(),
 			CardgroupID: createdGroup.ID,
 		}
 
@@ -189,7 +164,7 @@ func (suite *CardTestSuite) TestCardService() {
 		updateInput := model.NewCard{
 			Front:      "Updated Front",
 			Back:       "Updated Back",
-			ReviewDate: time.Now(),
+			ReviewDate: time.Now().UTC(),
 		}
 
 		// Act
@@ -207,7 +182,7 @@ func (suite *CardTestSuite) TestCardService() {
 		input := model.NewCard{
 			Front:       "Test Front",
 			Back:        "Test Back",
-			ReviewDate:  time.Now(),
+			ReviewDate:  time.Now().UTC(),
 			CardgroupID: createdGroup.ID,
 		}
 		createdCard, _ := cardService.CreateCard(ctx, input)
@@ -229,34 +204,227 @@ func (suite *CardTestSuite) TestCardService() {
 		assert.False(suite.T(), *deleted)
 	})
 
-	suite.Run("Normal_ListCardsByCardGroup", func() {
+	suite.Run("Normal_FetchAllCardsByCardGroup", func() {
+		// Arrange
+		createdGroup, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+
+		// Create 200 dummy cards
+		for i := 0; i < 200; i++ {
+			input := model.NewCard{
+				Front:       "Front " + strconv.Itoa(i),
+				Back:        "Back " + strconv.Itoa(i),
+				ReviewDate:  time.Now().UTC(),
+				CardgroupID: createdGroup.ID,
+			}
+			_, err := cardService.CreateCard(ctx, input)
+			assert.NoError(t, err)
+		}
+
+		// Act
+		var first = 8
+		allCards, err := cardService.FetchAllCardsByCardGroup(ctx, createdGroup.ID, &first)
+
+		// Assert
+		assert.NoError(t, err)
+		assert.Len(t, allCards, 200) // Ensure all 200 cards are retrieved
+	})
+
+	suite.Run("Normal_AddNewCards_Matching5Of8", func() {
 		// Arrange
 		cardGroup := model.NewCardGroup{Name: "Test Group"}
 		createdGroup, _ := cardGroupService.CreateCardGroup(ctx, cardGroup)
-		input := model.NewCard{
-			Front:       "Test Front",
-			Back:        "Test Back",
-			ReviewDate:  time.Now(),
-			CardgroupID: createdGroup.ID,
+
+		// Create existing 5 cards
+		existingCards := []model.Card{}
+		for i := 0; i < 5; i++ {
+			input := model.NewCard{
+				Front:       "Front " + strconv.Itoa(i),
+				Back:        "Back " + strconv.Itoa(i),
+				ReviewDate:  time.Now().UTC(),
+				CardgroupID: createdGroup.ID,
+			}
+			card, err := cardService.CreateCard(ctx, input)
+			assert.NoError(t, err)
+			existingCards = append(existingCards, *card)
 		}
-		cardService.CreateCard(ctx, input)
+
+		// Create 8 target cards (5 matching existing, 3 new)
+		targetCards := []model.Card{}
+		for i := 0; i < 8; i++ {
+			targetCard := model.Card{
+				Front:       "Front " + strconv.Itoa(i),
+				Back:        "Back " + strconv.Itoa(i),
+				ReviewDate:  time.Now().UTC(),
+				CardGroupID: createdGroup.ID,
+			}
+			targetCards = append(targetCards, targetCard)
+		}
 
 		// Act
-		cards, err := cardService.CardsByCardGroup(ctx, createdGroup.ID)
+		err := cardService.AddNewCards(ctx, targetCards, createdGroup.ID)
 
 		// Assert
-		assert.NoError(suite.T(), err)
-		assert.Len(suite.T(), cards, 1)
+		assert.NoError(t, err)
+		allCards, err := cardService.FetchAllCardsByCardGroup(ctx, createdGroup.ID, nil)
+		assert.NoError(t, err)
+		assert.Len(t, allCards, 8) // Ensure all 8 cards are present, 3 added
 	})
 
-	suite.Run("Error_InvalidCardGroupID_List", func() {
+	suite.Run("Normal_AddNewCards_Matching3Of7", func() {
+		// Arrange
+		cardGroup := model.NewCardGroup{Name: "Test Group"}
+		createdGroup, _ := cardGroupService.CreateCardGroup(ctx, cardGroup)
+
+		// Create existing 5 cards
+		existingCards := []model.Card{}
+		for i := 0; i < 5; i++ {
+			input := model.NewCard{
+				Front:       "Front " + strconv.Itoa(i),
+				Back:        "Back " + strconv.Itoa(i),
+				ReviewDate:  time.Now().UTC(),
+				CardgroupID: createdGroup.ID,
+			}
+			card, err := cardService.CreateCard(ctx, input)
+			assert.NoError(t, err)
+			existingCards = append(existingCards, *card)
+		}
+
+		// Create 7 target cards (3 matching existing, 4 new)
+		targetCards := []model.Card{}
+		for i := 2; i < 9; i++ {
+			targetCard := model.Card{
+				Front:       "Front " + strconv.Itoa(i),
+				Back:        "Back " + strconv.Itoa(i),
+				ReviewDate:  time.Now().UTC(),
+				CardGroupID: createdGroup.ID,
+			}
+			targetCards = append(targetCards, targetCard)
+		}
+
 		// Act
-		cards, err := cardService.CardsByCardGroup(ctx, -1) // Invalid ID
+		err := cardService.AddNewCards(ctx, targetCards, createdGroup.ID)
 
 		// Assert
-		assert.NoError(suite.T(), err)
-		assert.Len(suite.T(), cards, 0)
+		assert.NoError(t, err)
+		allCards, err := cardService.FetchAllCardsByCardGroup(ctx, createdGroup.ID, nil)
+		assert.NoError(t, err)
+		assert.Len(t, allCards, 9) // 4 new cards added to the 5 existing ones
 	})
+
+	suite.Run("Normal_AddNewCards_NoTargetCards", func() {
+		// Arrange
+		cardGroup := model.NewCardGroup{Name: "Test Group"}
+		createdGroup, _ := cardGroupService.CreateCardGroup(ctx, cardGroup)
+
+		// Create existing 5 cards
+		existingCards := []model.Card{}
+		for i := 0; i < 5; i++ {
+			input := model.NewCard{
+				Front:       "Front " + strconv.Itoa(i),
+				Back:        "Back " + strconv.Itoa(i),
+				ReviewDate:  time.Now().UTC(),
+				CardgroupID: createdGroup.ID,
+			}
+			card, err := cardService.CreateCard(ctx, input)
+			assert.NoError(t, err)
+			existingCards = append(existingCards, *card)
+		}
+
+		// No target cards
+		targetCards := []model.Card{}
+
+		// Act
+		err := cardService.AddNewCards(ctx, targetCards, createdGroup.ID)
+
+		// Assert
+		assert.NoError(t, err)
+		allCards, err := cardService.FetchAllCardsByCardGroup(ctx, createdGroup.ID, nil)
+		assert.NoError(t, err)
+		assert.Len(t, allCards, 5) // No new cards added
+	})
+
+	suite.Run("Normal_AddNewCards_EmptyExistingWithTargetCards", func() {
+		// Arrange
+		cardGroup := model.NewCardGroup{Name: "Test Group"}
+		createdGroup, _ := cardGroupService.CreateCardGroup(ctx, cardGroup)
+
+		// Create 5 target cards
+		targetCards := []model.Card{}
+		for i := 0; i < 5; i++ {
+			targetCard := model.Card{
+				Front:       "Front " + strconv.Itoa(i),
+				Back:        "Back " + strconv.Itoa(i),
+				ReviewDate:  time.Now().UTC(),
+				CardGroupID: createdGroup.ID,
+			}
+			targetCards = append(targetCards, targetCard)
+		}
+
+		// Act
+		err := cardService.AddNewCards(ctx, targetCards, createdGroup.ID)
+
+		// Assert
+		assert.NoError(t, err)
+		allCards, err := cardService.FetchAllCardsByCardGroup(ctx, createdGroup.ID, nil)
+		assert.NoError(t, err)
+		assert.Len(t, allCards, 5) // All 5 target cards added
+	})
+
+	suite.Run("Normal_AddNewCards_BothEmpty", func() {
+		// Arrange
+		cardGroup := model.NewCardGroup{Name: "Test Group"}
+		createdGroup, _ := cardGroupService.CreateCardGroup(ctx, cardGroup)
+
+		// No target cards
+		targetCards := []model.Card{}
+
+		// Act
+		err := cardService.AddNewCards(ctx, targetCards, createdGroup.ID)
+
+		// Assert
+		assert.NoError(t, err)
+		allCards, err := cardService.FetchAllCardsByCardGroup(ctx, createdGroup.ID, nil)
+		assert.NoError(t, err)
+		assert.Len(t, allCards, 0) // No cards present
+	})
+
+	suite.Run("Normal_AddNewCards_UpdateOnBackDifference", func() {
+		// Arrange
+		cardGroup := model.NewCardGroup{Name: "Test Group"}
+		createdGroup, _ := cardGroupService.CreateCardGroup(ctx, cardGroup)
+
+		// Create an existing card with specific Front and Back
+		intervalDays := 1 // Set an appropriate default value
+		input := model.NewCard{
+			Front:        "Test Front",
+			Back:         "Test Back",
+			ReviewDate:   time.Now().UTC(),
+			IntervalDays: &intervalDays, // Set IntervalDays here
+			CardgroupID:  createdGroup.ID,
+		}
+		createdCard, err := cardService.CreateCard(ctx, input)
+		assert.NoError(t, err)
+
+		// Create a target card with the same Front but slightly different Back
+		targetCard := model.Card{
+			Front:        "Test Front",
+			Back:         "Test BackX", // 1 character difference
+			ReviewDate:   time.Now().UTC(),
+			IntervalDays: intervalDays, // Similarly set IntervalDays
+			CardGroupID:  createdGroup.ID,
+		}
+
+		// Act
+		err = cardService.AddNewCards(ctx, []model.Card{targetCard}, createdGroup.ID)
+
+		// Assert
+		assert.NoError(t, err)
+		updatedCard, err := cardService.GetCardByID(ctx, createdCard.ID)
+		assert.NoError(t, err)
+		assert.Equal(t, "Test BackX", updatedCard.Back) // Ensure the Back was updated
+		assert.Equal(t, createdCard.ID, updatedCard.ID) // Ensure the same card ID is retained
+	})
+
 }
 
 func TestCardTestSuite(t *testing.T) {
