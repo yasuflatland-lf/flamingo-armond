@@ -8,7 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
+	"github.com/m-mizutani/goerr"
 	"strings"
 	"time"
 
@@ -18,6 +18,21 @@ import (
 type cardService struct {
 	db           *gorm.DB
 	defaultLimit int
+}
+
+type CardService interface {
+	GetCardByID(ctx context.Context, id int64) (*model.Card, error)
+	CreateCard(ctx context.Context, input model.NewCard) (*model.Card, error)
+	UpdateCard(ctx context.Context, id int64, input model.NewCard) (*model.Card, error)
+	DeleteCard(ctx context.Context, id int64) (*bool, error)
+	PaginatedCardsByCardGroup(ctx context.Context, cardGroupID int64, first *int, after *int64, last *int, before *int64) (*model.CardConnection, error)
+	GetCardsByIDs(ctx context.Context, ids []int64) ([]*model.Card, error)
+	FetchAllCardsByCardGroup(ctx context.Context, cardGroupID int64, first *int) ([]*model.Card, error)
+	AddNewCards(ctx context.Context, targetCards []model.Card, cardGroupID int64) ([]*model.Card, error)
+}
+
+func NewCardService(db *gorm.DB, defaultLimit int) CardService {
+	return &cardService{db: db, defaultLimit: defaultLimit}
 }
 
 func convertToGormCard(input model.NewCard) *repository.Card {
@@ -44,6 +59,7 @@ func convertToCard(card repository.Card) *model.Card {
 		Back:         card.Back,
 		ReviewDate:   card.ReviewDate,
 		IntervalDays: card.IntervalDays,
+		CardGroupID:  card.CardGroupID,
 		Created:      card.Created,
 		Updated:      card.Updated,
 	}
@@ -76,9 +92,7 @@ func (s *cardService) GetCardByID(ctx context.Context, id int64) (*model.Card, e
 	var card repository.Card
 	if err := s.db.WithContext(ctx).First(&card, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			err := fmt.Errorf("card not found")
-			logger.Logger.ErrorContext(ctx, "Card not found:", slog.String("id", fmt.Sprintf("%d", id)))
-			return nil, err
+			return nil, goerr.Wrap(err, fmt.Errorf("card not found : %d", id))
 		}
 		logger.Logger.ErrorContext(ctx, "Failed to get card by ID", err)
 		return nil, err
@@ -91,12 +105,9 @@ func (s *cardService) CreateCard(ctx context.Context, input model.NewCard) (*mod
 	result := s.db.WithContext(ctx).Create(gormCard)
 	if result.Error != nil {
 		if strings.Contains(result.Error.Error(), "foreign key constraint") {
-			err := fmt.Errorf("invalid card group ID")
-			logger.Logger.ErrorContext(ctx, "Failed to create card: invalid card group ID", err)
-			return nil, err
+			return nil, goerr.Wrap(fmt.Errorf("invalid card group ID"))
 		}
-		logger.Logger.ErrorContext(ctx, "Failed to create card", result.Error)
-		return nil, result.Error
+		return nil, goerr.Wrap(result.Error, fmt.Errorf("failed to create card"))
 	}
 	return convertToCard(*gormCard), nil
 }
@@ -104,9 +115,9 @@ func (s *cardService) CreateCard(ctx context.Context, input model.NewCard) (*mod
 func (s *cardService) UpdateCard(ctx context.Context, id int64, input model.NewCard) (*model.Card, error) {
 	var card repository.Card
 	if err := s.db.WithContext(ctx).First(&card, id).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Card does not exist", slog.String("id", fmt.Sprintf("%d", id)))
-		return nil, err
+		return nil, goerr.Wrap(fmt.Errorf("card does not exist : %d", id))
 	}
+
 	card.Front = input.Front
 	card.Back = input.Back
 	card.ReviewDate = input.ReviewDate
@@ -119,8 +130,7 @@ func (s *cardService) UpdateCard(ctx context.Context, id int64, input model.NewC
 	card.Updated = time.Now().UTC()
 
 	if err := s.db.WithContext(ctx).Save(&card).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to save card", err)
-		return nil, err
+		return nil, goerr.Wrap(err, "Failed to save card")
 	}
 	return convertToCard(card), nil
 }
@@ -128,15 +138,12 @@ func (s *cardService) UpdateCard(ctx context.Context, id int64, input model.NewC
 func (s *cardService) DeleteCard(ctx context.Context, id int64) (*bool, error) {
 	result := s.db.WithContext(ctx).Delete(&repository.Card{}, id)
 	if result.Error != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to delete card", result.Error)
-		return nil, result.Error
+		return nil, goerr.Wrap(result.Error, "Failed to delete card")
 	}
 
 	success := result.RowsAffected > 0
 	if !success {
-		err := fmt.Errorf("record not found")
-		logger.Logger.ErrorContext(ctx, "Card not found for deletion", err)
-		return &success, err
+		return &success, goerr.Wrap(fmt.Errorf("record not found"))
 	}
 
 	return &success, nil
@@ -161,8 +168,7 @@ func (s *cardService) PaginatedCardsByCardGroup(ctx context.Context, cardGroupID
 	}
 
 	if err := query.Find(&cards).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to retrieve paginated cards by card group ID", err)
-		return nil, err
+		return nil, goerr.Wrap(fmt.Errorf("failed to retrieve paginated cards by card group ID"))
 	}
 
 	var hasNextPage, hasPrevPage bool
@@ -196,8 +202,7 @@ func (s *cardService) PaginatedCardsByCardGroup(ctx context.Context, cardGroupID
 func (s *cardService) GetCardsByIDs(ctx context.Context, ids []int64) ([]*model.Card, error) {
 	var cards []*repository.Card
 	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&cards).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to retrieve cards by IDs", err)
-		return nil, err
+		return nil, goerr.Wrap(fmt.Errorf("failed to retrieve cards by IDs"))
 	}
 
 	var gqlCards []*model.Card
@@ -216,8 +221,7 @@ func (s *cardService) FetchAllCardsByCardGroup(ctx context.Context, cardGroupID 
 		// Fetch the next batch of cards
 		connection, err := s.PaginatedCardsByCardGroup(ctx, cardGroupID, first, after, nil, nil)
 		if err != nil {
-			logger.Logger.ErrorContext(ctx, "Failed to fetch paginated cards", err)
-			return nil, err
+			return nil, goerr.Wrap(err, "Failed to fetch paginated cards")
 		}
 
 		// Append the fetched cards to the result list
@@ -239,7 +243,7 @@ func (s *cardService) AddNewCards(ctx context.Context, targetCards []model.Card,
 	// Use FetchAllCardsByCardGroup to retrieve all cards
 	existingCards, err := s.FetchAllCardsByCardGroup(ctx, cardGroupID, nil)
 	if err != nil {
-		return nil, err
+		return nil, goerr.Wrap(err)
 	}
 
 	// Create a hashmap to manage existing cards by Front value
@@ -267,8 +271,7 @@ func (s *cardService) AddNewCards(ctx context.Context, targetCards []model.Card,
 			}
 			createdCard, err := s.CreateCard(ctx, newCard)
 			if err != nil {
-				logger.Logger.ErrorContext(ctx, "Failed to add card:", slog.String("error", err.Error()))
-				return nil, err
+				return nil, goerr.Wrap(err, "Failed to add card")
 			}
 			modifiedCards = append(modifiedCards, createdCard)
 			continue
@@ -292,8 +295,7 @@ func (s *cardService) AddNewCards(ctx context.Context, targetCards []model.Card,
 		}
 		updatedCard, err := s.UpdateCard(ctx, existingCard.ID, newCard)
 		if err != nil {
-			logger.Logger.ErrorContext(ctx, "Failed to update card:", slog.String("error", err.Error()))
-			return nil, err
+			return nil, goerr.Wrap(err, "Failed to update card")
 		}
 		modifiedCards = append(modifiedCards, updatedCard)
 	}

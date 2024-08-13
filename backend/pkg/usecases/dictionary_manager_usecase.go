@@ -6,6 +6,8 @@ import (
 	"backend/pkg/textdic"
 	"context"
 	"fmt"
+	"github.com/m-mizutani/goerr"
+	"time"
 )
 
 type dictionaryManagerUsecase struct {
@@ -26,22 +28,27 @@ func (dmu *dictionaryManagerUsecase) UpsertCards(ctx context.Context, encodedDic
 	// Decode the base64 encoded dictionary
 	decodedDictionary, err := dmu.textDictionaryService.DecodeBase64(encodedDictionary)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode base64 dictionary: %+v", err)
+		return nil, goerr.Wrap(err, "failed to decode base64 dictionary")
 	}
 
 	// Process the decoded dictionary to get nodes
 	nodes, errs := dmu.textDictionaryService.Process(decodedDictionary)
 	if len(errs) > 0 {
-		return nil, fmt.Errorf("failed to process dictionary: %+v", errs)
+		return nil, goerr.Wrap(fmt.Errorf("failed to process dictionary: %+v", errs))
 	}
 
 	// Convert nodes to []model.Card
 	var cards []model.Card
 	for _, node := range nodes {
 		card := model.Card{
-			Front: node.Word,
-			Back:  node.Definition,
-			// Additional fields like ReviewDate, IntervalDays, etc. can be set here as needed.
+			Front:        node.Word,
+			Back:         node.Definition,
+			ReviewDate:   time.Now().UTC(),
+			IntervalDays: 1,
+			Created:      time.Now().UTC(),
+			Updated:      time.Now().UTC(),
+			CardGroupID:  cardGroupID,
+			CardGroup:    nil, // Assuming this will be populated later or left nil
 		}
 		cards = append(cards, card)
 	}
@@ -49,7 +56,7 @@ func (dmu *dictionaryManagerUsecase) UpsertCards(ctx context.Context, encodedDic
 	// Use AddNewCards to add the generated cards to the card service
 	createdCards, err := dmu.cardService.AddNewCards(ctx, cards, cardGroupID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to add new cards: %w", err)
+		return nil, goerr.Wrap(err, "failed to add new cards")
 	}
 
 	return createdCards, nil

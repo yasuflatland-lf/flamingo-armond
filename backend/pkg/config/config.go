@@ -15,12 +15,13 @@ type Config struct {
 	GQLComplexity int `env:"GQL_COMPLEXITY,notEmpty" envDefault:"10"`
 
 	// PostgresSQL configuration
-	PGHost     string `env:"PG_HOST,notEmpty" envDefault:"localhost"`
-	PGUser     string `env:"PG_USER,notEmpty" envDefault:"testuser"`
-	PGPassword string `env:"PG_PASSWORD,notEmpty" envDefault:"testpassword"`
-	PGDBName   string `env:"PG_DBNAME,notEmpty" envDefault:"flamingodb"`
-	PGPort     string `env:"PG_PORT,notEmpty" envDefault:"5432"`
-	PGSSLMode  string `env:"PG_SSLMODE,notEmpty" envDefault:"allow"`
+	PGHost       string `env:"PG_HOST,notEmpty" envDefault:"localhost"`
+	PGUser       string `env:"PG_USER,notEmpty" envDefault:"testuser"`
+	PGPassword   string `env:"PG_PASSWORD,notEmpty" envDefault:"testpassword"`
+	PGDBName     string `env:"PG_DBNAME,notEmpty" envDefault:"flamingodb"`
+	PGPort       string `env:"PG_PORT,notEmpty" envDefault:"5432"`
+	PGSSLMode    string `env:"PG_SSLMODE,notEmpty" envDefault:"allow"`
+	PGQueryLimit int    `env:"PG_QUERY_LIMIT,notEmpty" envDefault:"20"`
 }
 
 // Cfg is the package-level variable that holds the parsed configuration

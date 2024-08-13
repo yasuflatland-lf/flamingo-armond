@@ -3,17 +3,32 @@ package services
 import (
 	repository "backend/graph/db"
 	"backend/graph/model"
-	"backend/pkg/logger"
 	"context"
 	"fmt"
 	"time"
 
+	"github.com/pkg/errors"
+
+	"github.com/m-mizutani/goerr"
 	"gorm.io/gorm"
 )
 
 type cardGroupService struct {
 	db           *gorm.DB
 	defaultLimit int
+}
+
+type CardGroupService interface {
+	GetCardGroupByID(ctx context.Context, id int64) (*model.CardGroup, error)
+	CreateCardGroup(ctx context.Context, input model.NewCardGroup) (*model.CardGroup, error)
+	CardGroups(ctx context.Context) ([]*model.CardGroup, error)
+	UpdateCardGroup(ctx context.Context, id int64, input model.NewCardGroup) (*model.CardGroup, error)
+	DeleteCardGroup(ctx context.Context, id int64) (*bool, error)
+	AddUserToCardGroup(ctx context.Context, userID int64, cardGroupID int64) (*model.CardGroup, error)
+	RemoveUserFromCardGroup(ctx context.Context, userID int64, cardGroupID int64) (*model.CardGroup, error)
+	GetCardGroupsByUser(ctx context.Context, userID int64) ([]*model.CardGroup, error)
+	PaginatedCardGroupsByUser(ctx context.Context, userID int64, first *int, after *int64, last *int, before *int64) (*model.CardGroupConnection, error)
+	GetCardGroupsByIDs(ctx context.Context, ids []int64) ([]*model.CardGroup, error)
 }
 
 func convertToGormCardGroup(input model.NewCardGroup) *repository.Cardgroup {
@@ -36,8 +51,10 @@ func convertToCardGroup(cardGroup repository.Cardgroup) *model.CardGroup {
 func (s *cardGroupService) GetCardGroupByID(ctx context.Context, id int64) (*model.CardGroup, error) {
 	var cardGroup repository.Cardgroup
 	if err := s.db.First(&cardGroup, id).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to get cardgroup by ID", err)
-		return nil, err
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, goerr.Wrap(err, fmt.Errorf("card group not found : %d", id))
+		}
+		return nil, goerr.Wrap(err, "failed to retrieve card group by ID")
 	}
 	return convertToCardGroup(cardGroup), nil
 }
@@ -46,8 +63,7 @@ func (s *cardGroupService) CreateCardGroup(ctx context.Context, input model.NewC
 	gormCardGroup := convertToGormCardGroup(input)
 	result := s.db.WithContext(ctx).Create(&gormCardGroup)
 	if result.Error != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to create cardgroup", result.Error)
-		return nil, result.Error
+		return nil, goerr.Wrap(result.Error, "failed to create card group")
 	}
 	return convertToCardGroup(*gormCardGroup), nil
 }
@@ -55,8 +71,7 @@ func (s *cardGroupService) CreateCardGroup(ctx context.Context, input model.NewC
 func (s *cardGroupService) CardGroups(ctx context.Context) ([]*model.CardGroup, error) {
 	var cardGroups []repository.Cardgroup
 	if err := s.db.WithContext(ctx).Find(&cardGroups).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to retrieve cardgroups", err)
-		return nil, err
+		return nil, goerr.Wrap(err, "failed to retrieve card groups")
 	}
 	var gqlCardGroups []*model.CardGroup
 	for _, cardGroup := range cardGroups {
@@ -68,14 +83,12 @@ func (s *cardGroupService) CardGroups(ctx context.Context) ([]*model.CardGroup, 
 func (s *cardGroupService) UpdateCardGroup(ctx context.Context, id int64, input model.NewCardGroup) (*model.CardGroup, error) {
 	var cardGroup repository.Cardgroup
 	if err := s.db.WithContext(ctx).First(&cardGroup, id).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to find cardgroup for update", err)
-		return nil, err
+		return nil, goerr.Wrap(err, fmt.Errorf("card group not found for update : %d", id))
 	}
 	cardGroup.Name = input.Name
 	cardGroup.Updated = time.Now().UTC()
 	if err := s.db.WithContext(ctx).Save(&cardGroup).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to update cardgroup", err)
-		return nil, err
+		return nil, goerr.Wrap(err, "failed to update card group")
 	}
 	return convertToCardGroup(cardGroup), nil
 }
@@ -84,13 +97,10 @@ func (s *cardGroupService) DeleteCardGroup(ctx context.Context, id int64) (*bool
 	success := false
 	result := s.db.WithContext(ctx).Delete(&repository.Cardgroup{}, id)
 	if result.Error != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to delete cardgroup", result.Error)
-		return &success, result.Error
+		return &success, goerr.Wrap(result.Error, "failed to delete card group")
 	}
 	if result.RowsAffected == 0 {
-		err := fmt.Errorf("record not found")
-		logger.Logger.ErrorContext(ctx, "Cardgroup not found for deletion", err)
-		return &success, err
+		return &success, goerr.Wrap(fmt.Errorf("no card group found for deletion"))
 	}
 	success = true
 	return &success, nil
@@ -100,16 +110,13 @@ func (s *cardGroupService) AddUserToCardGroup(ctx context.Context, userID int64,
 	var user repository.User
 	var cardGroup repository.Cardgroup
 	if err := s.db.WithContext(ctx).First(&user, userID).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to find user for adding to cardgroup", err)
-		return nil, err
+		return nil, goerr.Wrap(err, fmt.Errorf("user not found : %d", userID))
 	}
 	if err := s.db.WithContext(ctx).First(&cardGroup, cardGroupID).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to find cardgroup for adding user", err)
-		return nil, err
+		return nil, goerr.Wrap(err, fmt.Errorf("card group not found : %d", cardGroupID))
 	}
 	if err := s.db.Model(&cardGroup).Association("Users").Append(&user); err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to add user to cardgroup", err)
-		return nil, err
+		return nil, goerr.Wrap(err, "failed to add user to card group")
 	}
 	return convertToCardGroup(cardGroup), nil
 }
@@ -118,16 +125,13 @@ func (s *cardGroupService) RemoveUserFromCardGroup(ctx context.Context, userID i
 	var user repository.User
 	var cardGroup repository.Cardgroup
 	if err := s.db.WithContext(ctx).First(&user, userID).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to find user for removing from cardgroup", err)
-		return nil, err
+		return nil, goerr.Wrap(err, fmt.Errorf("user not found : %d", userID))
 	}
 	if err := s.db.WithContext(ctx).First(&cardGroup, cardGroupID).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to find cardgroup for removing user", err)
-		return nil, err
+		return nil, goerr.Wrap(err, fmt.Errorf("card group not found : %d", cardGroupID))
 	}
 	if err := s.db.Model(&cardGroup).Association("Users").Delete(&user); err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to remove user from cardgroup", err)
-		return nil, err
+		return nil, goerr.Wrap(err, "failed to remove user from card group")
 	}
 	return convertToCardGroup(cardGroup), nil
 }
@@ -135,8 +139,7 @@ func (s *cardGroupService) RemoveUserFromCardGroup(ctx context.Context, userID i
 func (s *cardGroupService) GetCardGroupsByUser(ctx context.Context, userID int64) ([]*model.CardGroup, error) {
 	var user repository.User
 	if err := s.db.WithContext(ctx).Preload("CardGroups").First(&user, userID).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to get cardgroups by user ID", err)
-		return nil, err
+		return nil, goerr.Wrap(err, fmt.Errorf("failed to get card groups by user ID : %d", userID))
 	}
 	var gqlCardGroups []*model.CardGroup
 	for _, group := range user.CardGroups {
@@ -149,7 +152,6 @@ func (s *cardGroupService) PaginatedCardGroupsByUser(ctx context.Context, userID
 	var user repository.User
 	var cardGroups []repository.Cardgroup
 
-	// Fetch the user and preload the cardgroups with pagination conditions
 	query := s.db.WithContext(ctx).Model(&user).Where("id = ?", userID).Preload("CardGroups", func(db *gorm.DB) *gorm.DB {
 		if after != nil {
 			db = db.Where("cardgroups.id > ?", *after)
@@ -168,8 +170,7 @@ func (s *cardGroupService) PaginatedCardGroupsByUser(ctx context.Context, userID
 	})
 
 	if err := query.Find(&user).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to get paginated cardgroups by user", err)
-		return nil, fmt.Errorf("error fetching paginated cardgroups by user: %+v", err)
+		return nil, goerr.Wrap(err, "failed to get paginated card groups by user")
 	}
 
 	cardGroups = user.CardGroups
@@ -206,8 +207,7 @@ func (s *cardGroupService) PaginatedCardGroupsByUser(ctx context.Context, userID
 func (s *cardGroupService) GetCardGroupsByIDs(ctx context.Context, ids []int64) ([]*model.CardGroup, error) {
 	var cardGroups []*repository.Cardgroup
 	if err := s.db.WithContext(ctx).Where("id IN ?", ids).Find(&cardGroups).Error; err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to retrieve cardgroups by IDs", err)
-		return nil, err
+		return nil, goerr.Wrap(err, "failed to retrieve card groups by IDs")
 	}
 
 	var gqlCardGroups []*model.CardGroup

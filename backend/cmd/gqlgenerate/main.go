@@ -6,6 +6,7 @@ import (
 	"github.com/99designs/gqlgen/api"
 	"github.com/99designs/gqlgen/codegen/config"
 	"github.com/99designs/gqlgen/plugin/modelgen"
+	"github.com/m-mizutani/goerr"
 	"github.com/vektah/gqlparser/v2/ast"
 )
 
@@ -28,7 +29,7 @@ func main() {
 func loadGraphQLConfig() (*config.Config, error) {
 	cfg, err := config.LoadConfigFromDefaultLocations()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load config: %w", err)
+		return nil, goerr.Wrap(err, "failed to load config")
 	}
 	return cfg, nil
 }
@@ -43,7 +44,7 @@ func generateGraphQLCode(cfg *config.Config) error {
 	// Generate the code using the API
 	err := api.Generate(cfg, api.ReplacePlugin(&p))
 	if err != nil {
-		return fmt.Errorf("code generation failed: %w", err)
+		return goerr.Wrap(err, "code generation failed")
 	}
 	logger.Logger.Info("GraphQL code generation successful")
 	return nil

@@ -4,7 +4,7 @@ import (
 	"backend/graph/model"
 	"backend/graph/services"
 	"context"
-	"fmt"
+	"github.com/m-mizutani/goerr"
 	"gorm.io/gorm"
 	"log"
 	"testing"
@@ -34,19 +34,19 @@ func SetupTestDB(ctx context.Context, user, password, dbName string) (repository
 		Started:          true,
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to start postgres container: %w", err)
+		return nil, nil, goerr.Wrap(err, "failed to start postgres container")
 	}
 
 	host, err := pgContainer.Host(ctx)
 	if err != nil {
 		pgContainer.Terminate(ctx)
-		return nil, nil, fmt.Errorf("failed to get container host: %w", err)
+		return nil, nil, goerr.Wrap(err, "failed to get container host")
 	}
 
 	port, err := pgContainer.MappedPort(ctx, "5432")
 	if err != nil {
 		pgContainer.Terminate(ctx)
-		return nil, nil, fmt.Errorf("failed to get container port: %w", err)
+		return nil, nil, goerr.Wrap(err, "failed to get container port")
 	}
 
 	config := repository.DBConfig{
@@ -61,7 +61,7 @@ func SetupTestDB(ctx context.Context, user, password, dbName string) (repository
 	pg := repository.NewPostgres(config)
 	if err = pg.Open(); err != nil {
 		pgContainer.Terminate(ctx)
-		return nil, nil, fmt.Errorf("failed to open database: %w", err)
+		return nil, nil, goerr.Wrap(err, "failed to open database")
 	}
 
 	cleanup := func(migrationFilePath string) {

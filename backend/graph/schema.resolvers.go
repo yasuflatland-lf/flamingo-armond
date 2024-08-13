@@ -6,6 +6,9 @@ package graph
 
 import (
 	"backend/graph/model"
+	"backend/graph/services"
+	"backend/pkg/textdic"
+	"backend/pkg/usecases"
 	"context"
 	"fmt"
 
@@ -271,7 +274,40 @@ func (r *mutationResolver) DeleteSwipeRecord(ctx context.Context, id int64) (*bo
 
 // UpsertDictionary is the resolver for the upsertDictionary field.
 func (r *mutationResolver) UpsertDictionary(ctx context.Context, input model.UpsertDictionary) (*model.CardConnection, error) {
-	panic(fmt.Errorf("not implemented: UpsertDictionary - upsertDictionary"))
+
+	dictionaryManagerUsecase := usecases.NewDictionaryManagerUsecase(
+		r.Srv.(services.CardService),
+		textdic.NewTextDictionaryService(),
+	)
+
+	createdCards, err := dictionaryManagerUsecase.UpsertCards(ctx, input.Dictionary, input.CardgroupID)
+	if err != nil {
+		return nil, goerr.Wrap(err, "failed to upsert cards")
+	}
+
+	cardConnection := &model.CardConnection{
+		Edges:    make([]*model.CardEdge, len(createdCards)),
+		Nodes:    make([]*model.Card, len(createdCards)),
+		PageInfo: &model.PageInfo{},
+	}
+
+	for i, card := range createdCards {
+		edge := &model.CardEdge{
+			Node:   card,
+			Cursor: card.ID,
+		}
+		cardConnection.Edges[i] = edge
+		cardConnection.Nodes[i] = card
+	}
+
+	if len(createdCards) > 0 {
+		cardConnection.PageInfo.StartCursor = &createdCards[0].ID
+		cardConnection.PageInfo.EndCursor = &createdCards[len(createdCards)-1].ID
+		cardConnection.PageInfo.HasPreviousPage = false // Assuming no pagination for this case
+		cardConnection.PageInfo.HasNextPage = false     // Assuming no pagination for this case
+	}
+
+	return cardConnection, nil
 }
 
 // Card is the resolver for the card field.

@@ -5,6 +5,7 @@ import (
 	repository "backend/graph/db"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/99designs/gqlgen/graphql/handler/extension"
@@ -2121,5 +2122,68 @@ func TestGraphQLErrors(t *testing.T) {
 
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
+
+		t.Run("Upsert Dictionaly Smoke", func(t *testing.T) {
+			t.Helper()
+			t.Parallel()
+
+			userService := services.NewUserService(db, 20)
+			cardGroupService := services.NewCardGroupService(db, 20)
+			roleService := services.NewRoleService(db, 20)
+
+			ctx := context.Background()
+			createdGroup, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+
+			input := model.UpsertDictionary{
+				Dictionary: base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf(`
+New Front 1 裏面１
+New Front 2 裏面２
+`))),
+				CardgroupID: createdGroup.ID,
+			}
+
+			// Serialize the input to JSON
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($input: UpsertDictionary!) {
+	upsertDictionary(input: $input) {
+		nodes {
+			id
+			front
+			back
+			interval_days
+			cardGroupID
+		}
+	}
+}`,
+				"variables": map[string]interface{}{
+					"input": input,
+				},
+			})
+
+			// Expected response structure
+			expected := `{
+	"data": {
+		"upsertDictionary": {
+			"nodes": [{
+				"id": "1",
+				"front": "New Front 1",
+				"back": "裏面１",
+				"interval_days": 1,
+				"cardGroupID": 1
+			}, {
+				"id": "2",
+				"front": "New Front 2",
+				"back": "裏面２",
+				"interval_days": 1,
+				"cardGroupID": 1
+			}]
+		}
+	}
+}`
+
+			// Perform the GraphQL query and check the results
+			testGraphQLQuery(t, e, jsonInput, expected, "data.upsertDictionary.nodes.id")
+		})
+
 	})
 }
