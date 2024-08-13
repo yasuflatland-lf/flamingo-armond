@@ -1,24 +1,32 @@
+// Package middlewares provides middleware functionalities for Echo framework,
+// including database context injection and transaction management for GraphQL requests.
 package middlewares
 
 import (
 	"backend/pkg/logger"
 	"bytes"
 	"encoding/json"
-	"github.com/labstack/echo/v4"
-	"golang.org/x/net/context"
-	"gorm.io/gorm"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/labstack/echo/v4"
+	"golang.org/x/net/context"
+	"gorm.io/gorm"
 )
 
+// DbContext and TxContext are keys for storing and retrieving the database
+// and transaction context from the Echo context, respectively.
 var DbContext = "db"
 var TxContext = "tx"
 
+// GraphQLRequest represents a typical GraphQL request containing a query.
 type GraphQLRequest struct {
 	Query string `json:"query"`
 }
 
+// DatabaseCtxMiddleware returns an Echo middleware function that injects
+// a GORM DB instance into the Echo context, which can be accessed using the DbContext key.
 func DatabaseCtxMiddleware(db *gorm.DB) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -28,6 +36,10 @@ func DatabaseCtxMiddleware(db *gorm.DB) echo.MiddlewareFunc {
 	}
 }
 
+// TransactionMiddleware returns an Echo middleware function that wraps GraphQL
+// mutation requests in a database transaction. If a mutation query is detected,
+// a new transaction is started and committed upon successful completion of the request,
+// or rolled back in case of an error.
 func TransactionMiddleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -93,7 +105,8 @@ func TransactionMiddleware() echo.MiddlewareFunc {
 	}
 }
 
-// GetDBFromContext retrieves the GORM DB transaction from the context
+// GetDBFromContext retrieves the GORM DB transaction from the context. If a transaction
+// exists, it returns the transaction, otherwise it returns the main DB connection.
 func GetDBFromContext(ctx context.Context) *gorm.DB {
 	tx, _ := ctx.Value(TxContext).(*gorm.DB)
 	if tx != nil {

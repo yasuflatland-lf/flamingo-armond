@@ -155,6 +155,10 @@ input NewSwipeRecord {
   updated: Time!
 }
 
+input UpsertDictionary {
+  cardgroup_id: ID!,
+  dictionary: String! @validation(format: "required")
+}
 
 type Query {
   card(id: ID!): Card
@@ -189,4 +193,5 @@ type Mutation {
   createSwipeRecord(input: NewSwipeRecord!): SwipeRecord
   updateSwipeRecord(id: ID!, input: NewSwipeRecord!): SwipeRecord
   deleteSwipeRecord(id: ID!): Boolean
+  upsertDictionary(input: UpsertDictionary!): CardConnection
 }

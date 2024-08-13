@@ -117,6 +117,7 @@ type ComplexityRoot struct {
 		UpdateRole              func(childComplexity int, id int64, input model.NewRole) int
 		UpdateSwipeRecord       func(childComplexity int, id int64, input model.NewSwipeRecord) int
 		UpdateUser              func(childComplexity int, id int64, input model.NewUser) int
+		UpsertDictionary        func(childComplexity int, input model.UpsertDictionary) int
 	}
 
 	PageInfo struct {
@@ -228,6 +229,7 @@ type MutationResolver interface {
 	CreateSwipeRecord(ctx context.Context, input model.NewSwipeRecord) (*model.SwipeRecord, error)
 	UpdateSwipeRecord(ctx context.Context, id int64, input model.NewSwipeRecord) (*model.SwipeRecord, error)
 	DeleteSwipeRecord(ctx context.Context, id int64) (*bool, error)
+	UpsertDictionary(ctx context.Context, input model.UpsertDictionary) (*model.CardConnection, error)
 }
 type QueryResolver interface {
 	Card(ctx context.Context, id int64) (*model.Card, error)
@@ -695,6 +697,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Mutation.UpdateUser(childComplexity, args["id"].(int64), args["input"].(model.NewUser)), true
 
+	case "Mutation.upsertDictionary":
+		if e.complexity.Mutation.UpsertDictionary == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_upsertDictionary_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.UpsertDictionary(childComplexity, args["input"].(model.UpsertDictionary)), true
+
 	case "PageInfo.endCursor":
 		if e.complexity.PageInfo.EndCursor == nil {
 			break
@@ -1109,6 +1123,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputNewRole,
 		ec.unmarshalInputNewSwipeRecord,
 		ec.unmarshalInputNewUser,
+		ec.unmarshalInputUpsertDictionary,
 	)
 	first := true
 
@@ -1672,6 +1687,21 @@ func (ec *executionContext) field_Mutation_updateUser_args(ctx context.Context, 
 		}
 	}
 	args["input"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_upsertDictionary_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 model.UpsertDictionary
+	if tmp, ok := rawArgs["input"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("input"))
+		arg0, err = ec.unmarshalNUpsertDictionary2backendᚋgraphᚋmodelᚐUpsertDictionary(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["input"] = arg0
 	return args, nil
 }
 
@@ -4662,6 +4692,68 @@ func (ec *executionContext) fieldContext_Mutation_deleteSwipeRecord(ctx context.
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_deleteSwipeRecord_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_upsertDictionary(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_upsertDictionary(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().UpsertDictionary(rctx, fc.Args["input"].(model.UpsertDictionary))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*model.CardConnection)
+	fc.Result = res
+	return ec.marshalOCardConnection2ᚖbackendᚋgraphᚋmodelᚐCardConnection(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_upsertDictionary(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "edges":
+				return ec.fieldContext_CardConnection_edges(ctx, field)
+			case "nodes":
+				return ec.fieldContext_CardConnection_nodes(ctx, field)
+			case "pageInfo":
+				return ec.fieldContext_CardConnection_pageInfo(ctx, field)
+			case "totalCount":
+				return ec.fieldContext_CardConnection_totalCount(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type CardConnection", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_upsertDictionary_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -9314,6 +9406,40 @@ func (ec *executionContext) unmarshalInputNewUser(ctx context.Context, obj inter
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputUpsertDictionary(ctx context.Context, obj interface{}) (model.UpsertDictionary, error) {
+	var it model.UpsertDictionary
+	asMap := map[string]interface{}{}
+	for k, v := range obj.(map[string]interface{}) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"cardgroup_id", "dictionary"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "cardgroup_id":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("cardgroup_id"))
+			data, err := ec.unmarshalNID2int64(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.CardgroupID = data
+		case "dictionary":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("dictionary"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Dictionary = data
+		}
+	}
+
+	return it, nil
+}
+
 // endregion **************************** input.gotpl *****************************
 
 // region    ************************** interface.gotpl ***************************
@@ -9836,6 +9962,10 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "deleteSwipeRecord":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_deleteSwipeRecord(ctx, field)
+			})
+		case "upsertDictionary":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_upsertDictionary(ctx, field)
 			})
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
@@ -11251,6 +11381,11 @@ func (ec *executionContext) marshalNTime2timeᚐTime(ctx context.Context, sel as
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) unmarshalNUpsertDictionary2backendᚋgraphᚋmodelᚐUpsertDictionary(ctx context.Context, v interface{}) (model.UpsertDictionary, error) {
+	res, err := ec.unmarshalInputUpsertDictionary(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) marshalNUser2ᚖbackendᚋgraphᚋmodelᚐUser(ctx context.Context, sel ast.SelectionSet, v *model.User) graphql.Marshaler {

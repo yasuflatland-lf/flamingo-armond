@@ -235,11 +235,11 @@ func (s *cardService) FetchAllCardsByCardGroup(ctx context.Context, cardGroupID 
 	return allCards, nil
 }
 
-func (s *cardService) AddNewCards(ctx context.Context, targetCards []model.Card, cardGroupID int64) error {
+func (s *cardService) AddNewCards(ctx context.Context, targetCards []model.Card, cardGroupID int64) ([]*model.Card, error) {
 	// Use FetchAllCardsByCardGroup to retrieve all cards
 	existingCards, err := s.FetchAllCardsByCardGroup(ctx, cardGroupID, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Create a hashmap to manage existing cards by Front value
@@ -247,6 +247,9 @@ func (s *cardService) AddNewCards(ctx context.Context, targetCards []model.Card,
 	for _, card := range existingCards {
 		existingCardsMap[card.Front] = card
 	}
+
+	// Slice to hold the modified or newly created cards
+	var modifiedCards []*model.Card
 
 	// Process to add or update cards
 	for _, targetCard := range targetCards {
@@ -262,10 +265,12 @@ func (s *cardService) AddNewCards(ctx context.Context, targetCards []model.Card,
 				Created:      time.Now().UTC(),
 				Updated:      time.Now().UTC(),
 			}
-			if _, err := s.CreateCard(ctx, newCard); err != nil {
+			createdCard, err := s.CreateCard(ctx, newCard)
+			if err != nil {
 				logger.Logger.ErrorContext(ctx, "Failed to add card:", slog.String("error", err.Error()))
-				return err
+				return nil, err
 			}
+			modifiedCards = append(modifiedCards, createdCard)
 			continue
 		}
 
@@ -285,11 +290,13 @@ func (s *cardService) AddNewCards(ctx context.Context, targetCards []model.Card,
 			Created:      time.Now().UTC(),
 			Updated:      time.Now().UTC(),
 		}
-		if _, err := s.UpdateCard(ctx, existingCard.ID, newCard); err != nil {
+		updatedCard, err := s.UpdateCard(ctx, existingCard.ID, newCard)
+		if err != nil {
 			logger.Logger.ErrorContext(ctx, "Failed to update card:", slog.String("error", err.Error()))
-			return err
+			return nil, err
 		}
+		modifiedCards = append(modifiedCards, updatedCard)
 	}
 
-	return nil
+	return modifiedCards, nil
 }

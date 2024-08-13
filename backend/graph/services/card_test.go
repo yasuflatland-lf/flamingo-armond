@@ -261,7 +261,7 @@ func (suite *CardTestSuite) TestCardService() {
 		}
 
 		// Act
-		err := cardService.AddNewCards(ctx, targetCards, createdGroup.ID)
+		_, err := cardService.AddNewCards(ctx, targetCards, createdGroup.ID)
 
 		// Assert
 		assert.NoError(t, err)
@@ -302,7 +302,7 @@ func (suite *CardTestSuite) TestCardService() {
 		}
 
 		// Act
-		err := cardService.AddNewCards(ctx, targetCards, createdGroup.ID)
+		_, err := cardService.AddNewCards(ctx, targetCards, createdGroup.ID)
 
 		// Assert
 		assert.NoError(t, err)
@@ -334,7 +334,7 @@ func (suite *CardTestSuite) TestCardService() {
 		targetCards := []model.Card{}
 
 		// Act
-		err := cardService.AddNewCards(ctx, targetCards, createdGroup.ID)
+		_, err := cardService.AddNewCards(ctx, targetCards, createdGroup.ID)
 
 		// Assert
 		assert.NoError(t, err)
@@ -361,7 +361,7 @@ func (suite *CardTestSuite) TestCardService() {
 		}
 
 		// Act
-		err := cardService.AddNewCards(ctx, targetCards, createdGroup.ID)
+		_, err := cardService.AddNewCards(ctx, targetCards, createdGroup.ID)
 
 		// Assert
 		assert.NoError(t, err)
@@ -379,7 +379,7 @@ func (suite *CardTestSuite) TestCardService() {
 		targetCards := []model.Card{}
 
 		// Act
-		err := cardService.AddNewCards(ctx, targetCards, createdGroup.ID)
+		_, err := cardService.AddNewCards(ctx, targetCards, createdGroup.ID)
 
 		// Assert
 		assert.NoError(t, err)
@@ -415,7 +415,7 @@ func (suite *CardTestSuite) TestCardService() {
 		}
 
 		// Act
-		err = cardService.AddNewCards(ctx, []model.Card{targetCard}, createdGroup.ID)
+		_, err = cardService.AddNewCards(ctx, []model.Card{targetCard}, createdGroup.ID)
 
 		// Assert
 		assert.NoError(t, err)

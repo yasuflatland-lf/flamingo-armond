@@ -8,14 +8,19 @@ import (
 // textDictionaryService struct definition
 type textDictionaryService struct{}
 
+// TextDictionaryService defines the methods for processing text dictionaries.
+type TextDictionaryService interface {
+	Process(dic string) ([]Node, []error)
+	DecodeBase64(s string) (string, error)
+}
+
 // NewTextDictionaryService creates and returns a new instance of textDictionaryService
-func NewTextDictionaryService() *textDictionaryService {
+func NewTextDictionaryService() TextDictionaryService {
 	return &textDictionaryService{}
 }
 
 // Process processes a given dictionary string and returns the parsed Nodes or an error
 func (tds *textDictionaryService) Process(dic string) ([]Node, []error) {
-
 	// Use the new parser to parse the input
 	l := newLexer(dic)
 
@@ -37,7 +42,6 @@ func (tds *textDictionaryService) Process(dic string) ([]Node, []error) {
 
 // DecodeBase64 decodes a Base64 encoded string
 func (tds *textDictionaryService) DecodeBase64(s string) (string, error) {
-
 	decoded, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
 		return "", err

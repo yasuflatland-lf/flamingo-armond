@@ -142,6 +142,11 @@ type SwipeRecordEdge struct {
 	Node   *SwipeRecord `json:"node" validate:"-"`
 }
 
+type UpsertDictionary struct {
+	CardgroupID int64  `json:"cardgroup_id"`
+	Dictionary  string `json:"dictionary" validate:"required"`
+}
+
 type User struct {
 	ID         int64                `json:"id"`
 	Name       string               `json:"name" validate:"required,fl_name,min=1"`
