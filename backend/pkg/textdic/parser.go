@@ -26,7 +26,6 @@ type yySymType struct {
 const WORD = 57346
 const DEFINITION = 57347
 const NEWLINE = 57348
-const EOF = 57349
 
 var yyToknames = [...]string{
 	"$end",
@@ -35,7 +34,6 @@ var yyToknames = [...]string{
 	"WORD",
 	"DEFINITION",
 	"NEWLINE",
-	"EOF",
 }
 
 var yyStatenames = [...]string{}
@@ -74,18 +72,18 @@ var yyExca = [...]int8{
 
 const yyPrivate = 57344
 
-const yyLast = 8
+const yyLast = 7
 
 var yyAct = [...]int8{
-	4, 8, 5, 7, 3, 1, 2, 6,
+	4, 3, 5, 7, 6, 1, 2,
 }
 
 var yyPact = [...]int16{
-	-4, -1000, -4, -1000, -2, -1000, -1000, -5, -1000,
+	-4, -1000, -4, -1000, -2, -1000, -1000, -1000,
 }
 
 var yyPgo = [...]int8{
-	0, 4, 6, 5,
+	0, 1, 6, 5,
 }
 
 var yyR1 = [...]int8{
@@ -93,15 +91,15 @@ var yyR1 = [...]int8{
 }
 
 var yyR2 = [...]int8{
-	0, 1, 2, 1, 3, 1,
+	0, 1, 2, 1, 2, 1,
 }
 
 var yyChk = [...]int16{
-	-1000, -3, -2, -1, 4, 6, -1, 5, 6,
+	-1000, -3, -2, -1, 4, 6, -1, 5,
 }
 
 var yyDef = [...]int8{
-	0, -2, 1, 3, 0, 5, 2, 0, 4,
+	0, -2, 1, 3, 0, 5, 2, 4,
 }
 
 var yyTok1 = [...]int8{
@@ -109,7 +107,7 @@ var yyTok1 = [...]int8{
 }
 
 var yyTok2 = [...]int8{
-	2, 3, 4, 5, 6, 7,
+	2, 3, 4, 5, 6,
 }
 
 var yyTok3 = [...]int8{
@@ -481,7 +479,7 @@ yydefault:
 			}
 		}
 	case 4:
-		yyDollar = yyS[yypt-3 : yypt+1]
+		yyDollar = yyS[yypt-2 : yypt+1]
 //line ./pkg/textdic/parser.y:39
 		{
 			yyVAL.node = Node{Word: yyDollar[1].str, Definition: yyDollar[2].str}

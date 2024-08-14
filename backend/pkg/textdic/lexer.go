@@ -2,6 +2,7 @@ package textdic
 
 import (
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 	"unicode"
@@ -43,7 +44,7 @@ func (l *lexer) isJapanese(r rune) bool {
 
 func (l *lexer) Lex(lval *yySymType) int {
 	r, err := l.skipWhiteSpace()
-	if err != nil {
+	if err == io.EOF {
 		// Done with parsing
 		return 0
 	}
@@ -58,7 +59,7 @@ func (l *lexer) Lex(lval *yySymType) int {
 	if l.isJapanese(r) {
 		return l.lexDefinition(lval)
 	}
-	return EOF
+	return 0
 }
 
 func (l *lexer) lexWord(lval *yySymType) int {

@@ -28,6 +28,8 @@ leeway 〔自分の好きなように行動・思考できる〕自由（裁量�
 There is no leeway to provide services free of charge for the sake of others. 他人のために無償でサービスをする余裕はない。
 
 `
+	var inputEOF = `leeway 〔自分の好きなように行動・思考できる〕自由（裁量）度◆不可〔時間・金などの〕余裕、ゆとり
+There is no leeway to provide services free of charge for the sake of others. 他人のために無償でサービスをする余裕はない。`
 
 	// Define the test cases
 	var testCases = []struct {
@@ -47,6 +49,14 @@ There is no leeway to provide services free of charge for the sake of others. �
 				{Word: "trot up", Definition: "自慢げに歩かせて見せる、出して見せる、披露(ひろう)する、持ち出す、口にする"},
 				{Word: "wriggle out of", Definition: "～からうまく［何とか］切り抜ける"},
 				{Word: "get under someone's skin", Definition: "「（人）の気［癇］に障る、（人）をひどく怒らせる、（人）をイライラ"},
+				{Word: "leeway", Definition: "〔自分の好きなように行動・思考できる〕自由（裁量）度◆不可〔時間・金などの〕余裕、ゆとり"},
+				{Word: "There is no leeway to provide services free of charge for the sake of others.", Definition: "他人のために無償でサービスをする余裕はない。"},
+			},
+		},
+		{
+			name:  "Valid input EOF",
+			input: inputEOF,
+			expected: []Node{
 				{Word: "leeway", Definition: "〔自分の好きなように行動・思考できる〕自由（裁量）度◆不可〔時間・金などの〕余裕、ゆとり"},
 				{Word: "There is no leeway to provide services free of charge for the sake of others.", Definition: "他人のために無償でサービスをする余裕はない。"},
 			},

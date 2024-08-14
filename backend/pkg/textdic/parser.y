@@ -17,7 +17,7 @@ type Nodes []Node
 	nodes Nodes
 }
 
-%token<str> WORD DEFINITION NEWLINE EOF
+%token<str> WORD DEFINITION NEWLINE
 %type<node> entry
 %type<nodes> entries
 %type<nodes> start
@@ -36,7 +36,7 @@ entries
 	;
 
 entry
-	: WORD DEFINITION NEWLINE { $$ = Node{Word: $1, Definition: $2} }
+	: WORD DEFINITION { $$ = Node{Word: $1, Definition: $2} }
 	| NEWLINE { $$ = Node{} } // Ignore empty line
 	;
 
