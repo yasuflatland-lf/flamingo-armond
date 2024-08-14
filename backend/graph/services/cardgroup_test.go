@@ -1,11 +1,13 @@
 package services_test
 
 import (
+	"backend/graph/db"
 	"backend/graph/model"
 	"backend/graph/services"
 	"backend/testutils"
 	"context"
 	"github.com/labstack/gommon/log"
+	"github.com/m-mizutani/goerr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
@@ -271,6 +273,32 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 
 		assert.Error(t, err)
 		assert.Nil(t, group)
+	})
+
+	suite.Run("Normal_CardGroupUserState", func() {
+		userService := services.NewUserService(suite.db, 20)
+		cardGroupService := services.NewCardGroupService(suite.db, 20)
+		roleService := services.NewRoleService(suite.db, 20)
+
+		ctx := context.Background()
+		cardGroup, user, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+
+		// Perform the UpdateCardGroupUserState operation
+		newState := 3
+		err := cardGroupService.UpdateCardGroupUserState(context.Background(), cardGroup.ID, user.ID, newState)
+		if err != nil {
+			t.Errorf("UpdateCardGroupUserState() error = %+v", goerr.Wrap(err))
+		}
+
+		// Verify the update
+		var cardGroupUser db.CardgroupUser
+		if err := suite.db.Where("cardgroup_id = ? AND user_id = ?", cardGroup.ID, user.ID).First(&cardGroupUser).Error; err != nil {
+			t.Fatalf("failed to retrieve updated record: %+v", goerr.Wrap(err))
+		}
+
+		if cardGroupUser.State != newState {
+			t.Errorf("expected state to be %d, got %d", newState, cardGroupUser.State)
+		}
 	})
 }
 

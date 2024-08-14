@@ -40,7 +40,7 @@ func (u *User) validateAtCreate(user *User) error {
 	return nil
 }
 
-// Updating data in same transaction
+// AfterUpdate Updating data in same transaction
 func (u *User) AfterUpdate(tx *gorm.DB) (err error) {
 	tx.Model(&User{}).Where("id = ?", u.ID).Update("updated", time.Now().UTC())
 	return nil

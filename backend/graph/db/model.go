@@ -36,6 +36,13 @@ type Cardgroup struct {
 	Users   []User    `gorm:"many2many:cardgroup_users" validate:"-"`
 }
 
+type CardgroupUser struct {
+	CardGroupID int64     `gorm:"column:cardgroup_id;primaryKey" validate:"-"`
+	UserID      int64     `gorm:"column:user_id;primaryKey" validate:"number"`
+	State       int       `gorm:"column:state" validate:"number"`
+	Updated     time.Time `gorm:"column:updated;autoUpdateTime"`
+}
+
 type Role struct {
 	ID      int64     `gorm:"column:id;primaryKey" validate:"number"`
 	Name    string    `gorm:"column:name;not null" validate:"required,fl_name,min=1"`

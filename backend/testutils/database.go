@@ -61,7 +61,7 @@ func SetupTestDB(ctx context.Context, user, password, dbName string) (repository
 	pg := repository.NewPostgres(config)
 	if err = pg.Open(); err != nil {
 		pgContainer.Terminate(ctx)
-		return nil, nil, goerr.Wrap(err, "failed to open database")
+		return nil, nil, goerr.Wrap(err, "failed to open database: %w", err)
 	}
 
 	cleanup := func(migrationFilePath string) {
@@ -117,7 +117,7 @@ func CreateUserAndCardGroup(
 	ctx context.Context,
 	userService services.UserService,
 	cardGroupService services.CardGroupService,
-	roleService services.RoleService) (*model.CardGroup, error) {
+	roleService services.RoleService) (*model.CardGroup, *model.User, error) {
 
 	// Create a role
 	newRole := model.NewRole{
@@ -125,7 +125,7 @@ func CreateUserAndCardGroup(
 	}
 	createdRole, err := roleService.CreateRole(ctx, newRole)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Create a user
@@ -137,7 +137,7 @@ func CreateUserAndCardGroup(
 	}
 	createdUser, err := userService.CreateUser(ctx, newUser)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Create a card group
@@ -148,5 +148,15 @@ func CreateUserAndCardGroup(
 		UserIds: []int64{createdUser.ID},
 	}
 
-	return cardGroupService.CreateCardGroup(ctx, input)
+	createdCardGroup, err := cardGroupService.CreateCardGroup(ctx, input)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	_, err = cardGroupService.AddUserToCardGroup(ctx, createdCardGroup.ID, createdUser.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return createdCardGroup, createdUser, nil
 }
