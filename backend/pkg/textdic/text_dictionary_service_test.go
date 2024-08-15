@@ -31,6 +31,9 @@ There is no leeway to provide services free of charge for the sake of others. �
 	var inputEOF = `leeway 〔自分の好きなように行動・思考できる〕自由（裁量）度◆不可〔時間・金などの〕余裕、ゆとり
 There is no leeway to provide services free of charge for the sake of others. 他人のために無償でサービスをする余裕はない。`
 
+	var inputMix = `get on with ～に急がせる、Get on with it. : 急げ。／さっさとやれ。
+Hold me accountable for 自分の行動の結果を受け入れ、罰を受け、または自分が引き起こした損害を修復することを意味します。`
+
 	// Define the test cases
 	var testCases = []struct {
 		name     string
@@ -59,6 +62,14 @@ There is no leeway to provide services free of charge for the sake of others. �
 			expected: []Node{
 				{Word: "leeway", Definition: "〔自分の好きなように行動・思考できる〕自由（裁量）度◆不可〔時間・金などの〕余裕、ゆとり"},
 				{Word: "There is no leeway to provide services free of charge for the sake of others.", Definition: "他人のために無償でサービスをする余裕はない。"},
+			},
+		},
+		{
+			name:  "Valid input MIX",
+			input: inputMix,
+			expected: []Node{
+				{Word: "get on with", Definition: "～に急がせる、Get on with it. : 急げ。／さっさとやれ。"},
+				{Word: "Hold me accountable for", Definition: "自分の行動の結果を受け入れ、罰を受け、または自分が引き起こした損害を修復することを意味します。"},
 			},
 		},
 	}

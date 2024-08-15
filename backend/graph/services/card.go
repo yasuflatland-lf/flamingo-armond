@@ -29,6 +29,7 @@ type CardService interface {
 	GetCardsByIDs(ctx context.Context, ids []int64) ([]*model.Card, error)
 	FetchAllCardsByCardGroup(ctx context.Context, cardGroupID int64, first *int) ([]*model.Card, error)
 	AddNewCards(ctx context.Context, targetCards []model.Card, cardGroupID int64) ([]*model.Card, error)
+	GetCardsByUserAndCardGroup(ctx context.Context, cardGroupID int64, order string, limit int) ([]repository.Card, error)
 }
 
 func NewCardService(db *gorm.DB, defaultLimit int) CardService {
@@ -301,4 +302,22 @@ func (s *cardService) AddNewCards(ctx context.Context, targetCards []model.Card,
 	}
 
 	return modifiedCards, nil
+}
+
+func (s *cardService) GetCardsByUserAndCardGroup(
+	ctx context.Context, cardGroupID int64, order string, limit int) ([]repository.Card, error) {
+	var cards []repository.Card
+
+	// Query to find the latest cards with matching user_id and cardgroup_id
+	err := s.db.WithContext(ctx).
+		Where("cardgroup_id = ?", cardGroupID).
+		Order(fmt.Sprintf("updated %s", order)).
+		Limit(limit).
+		Find(&cards).Error
+
+	if err != nil {
+		return nil, goerr.Wrap(err, "Failed to get latest cards by user and card group")
+	}
+
+	return cards, nil
 }

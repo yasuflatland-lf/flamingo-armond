@@ -3,6 +3,7 @@ package services_test
 import (
 	"backend/graph/model"
 	"backend/graph/services"
+	repo "backend/pkg/repository"
 	"backend/testutils"
 	"context"
 	"strconv"
@@ -206,8 +207,11 @@ func (suite *CardTestSuite) TestCardService() {
 
 	suite.Run("Normal_FetchAllCardsByCardGroup", func() {
 		// Arrange
-		createdGroup, _, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+		createdGroup, createdUser, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
 
+		if createdUser != nil {
+
+		}
 		// Create 200 dummy cards
 		for i := 0; i < 200; i++ {
 			input := model.NewCard{
@@ -423,6 +427,45 @@ func (suite *CardTestSuite) TestCardService() {
 		assert.NoError(t, err)
 		assert.Equal(t, "Test BackX", updatedCard.Back) // Ensure the Back was updated
 		assert.Equal(t, createdCard.ID, updatedCard.ID) // Ensure the same card ID is retained
+	})
+
+	suite.Run("Normal_GetCardsByUserAndCardGroup", func() {
+		// Create a user and a card group
+		createdGroup, _, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+
+		// Create some cards
+		for i := 0; i < 5; i++ {
+			input := model.NewCard{
+				Front:       "Front " + strconv.Itoa(i),
+				Back:        "Back " + strconv.Itoa(i),
+				ReviewDate:  time.Now().UTC(),
+				CardgroupID: createdGroup.ID,
+			}
+			_, err := cardService.CreateCard(ctx, input)
+			assert.NoError(suite.T(), err)
+		}
+
+		// Act
+		cards, err := cardService.GetCardsByUserAndCardGroup(ctx, createdGroup.ID, repo.DESC, 3)
+
+		// Assert
+		assert.NoError(suite.T(), err)
+		assert.Len(suite.T(), cards, 3)
+		for i := 0; i < 3; i++ {
+			assert.Equal(suite.T(), "Front "+strconv.Itoa(4-i), cards[i].Front)
+		}
+	})
+
+	suite.Run("Error_GetCardsByUserAndCardGroup_NoCards", func() {
+		// Arrange
+		createdGroup, _, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+
+		// Act
+		cards, err := cardService.GetCardsByUserAndCardGroup(ctx, createdGroup.ID, "desc", 3)
+
+		// Assert
+		assert.NoError(suite.T(), err)
+		assert.Empty(suite.T(), cards)
 	})
 
 }

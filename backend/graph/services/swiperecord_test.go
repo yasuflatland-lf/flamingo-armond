@@ -283,6 +283,47 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 		assert.Error(t, err)
 		assert.Nil(t, swipeRecords)
 	})
+
+	suite.Run("Normal_GetSwipeRecordsByUserAndOrder", func() {
+		// Use the helper function to create the user and role
+		userID, err := suite.createTestUserAndRole(ctx)
+		if err != nil {
+			suite.T().Fatal(err)
+		}
+
+		// Create multiple swipe records for the user
+		newSwipeRecord1 := model.NewSwipeRecord{
+			UserID:    userID,
+			Direction: "left",
+			Created:   time.Now().UTC(),
+			Updated:   time.Now().UTC(),
+		}
+		swipeRecordService.CreateSwipeRecord(ctx, newSwipeRecord1)
+
+		newSwipeRecord2 := model.NewSwipeRecord{
+			UserID:    userID,
+			Direction: "right",
+			Created:   time.Now().UTC(),
+			Updated:   time.Now().UTC(),
+		}
+		swipeRecordService.CreateSwipeRecord(ctx, newSwipeRecord2)
+
+		// Fetch swipe records by user and order
+		swipeRecords, err := swipeRecordService.GetSwipeRecordsByUserAndOrder(ctx, userID, "desc", 2)
+
+		assert.NoError(t, err)
+		assert.Len(t, swipeRecords, 2)
+		assert.Equal(t, "right", swipeRecords[0].Direction) // Assuming the latest update was "right"
+	})
+
+	suite.Run("Error_GetSwipeRecordsByUserAndOrder", func() {
+		// Attempt to fetch swipe records for an invalid user ID
+		swipeRecords, err := swipeRecordService.GetSwipeRecordsByUserAndOrder(ctx, -1, "desc", 2)
+
+		assert.NoError(t, err)
+		assert.Empty(t, swipeRecords)
+	})
+
 }
 
 func TestSwipeRecordTestSuite(t *testing.T) {

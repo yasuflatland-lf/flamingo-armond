@@ -119,30 +119,32 @@ func CreateUserAndCardGroup(
 	cardGroupService services.CardGroupService,
 	roleService services.RoleService) (*model.CardGroup, *model.User, error) {
 
+	randstr, err := CryptoRandString(8)
+
 	// Create a role
 	newRole := model.NewRole{
-		Name: "Test Role",
+		Name: "Test Role" + randstr,
 	}
 	createdRole, err := roleService.CreateRole(ctx, newRole)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, goerr.Wrap(err)
 	}
 
 	// Create a user
 	newUser := model.NewUser{
-		Name:    "Test User",
+		Name:    "Test User" + randstr,
 		Created: time.Now().UTC(),
 		Updated: time.Now().UTC(),
 		RoleIds: []int64{createdRole.ID}, // Assign the new role to the user
 	}
 	createdUser, err := userService.CreateUser(ctx, newUser)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, goerr.Wrap(err)
 	}
 
 	// Create a card group
 	input := model.NewCardGroup{
-		Name:    "Test Group",
+		Name:    "Test Group" + randstr,
 		Created: time.Now().UTC(),
 		Updated: time.Now().UTC(),
 		UserIds: []int64{createdUser.ID},
@@ -150,12 +152,12 @@ func CreateUserAndCardGroup(
 
 	createdCardGroup, err := cardGroupService.CreateCardGroup(ctx, input)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, goerr.Wrap(err)
 	}
 
-	_, err = cardGroupService.AddUserToCardGroup(ctx, createdCardGroup.ID, createdUser.ID)
+	_, err = cardGroupService.AddUserToCardGroup(ctx, createdUser.ID, createdCardGroup.ID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, goerr.Wrap(err)
 	}
 
 	return createdCardGroup, createdUser, nil

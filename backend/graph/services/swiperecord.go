@@ -18,6 +18,12 @@ type swipeRecordService struct {
 	defaultLimit int
 }
 
+const (
+	KNOWN    = "known"
+	DONTKNOW = "dontknow"
+	MAYBE    = "maybe"
+)
+
 type SwipeRecordService interface {
 	GetSwipeRecordByID(ctx context.Context, id int64) (*model.SwipeRecord, error)
 	CreateSwipeRecord(ctx context.Context, input model.NewSwipeRecord) (*model.SwipeRecord, error)
@@ -27,6 +33,7 @@ type SwipeRecordService interface {
 	SwipeRecordsByUser(ctx context.Context, userID int64) ([]*model.SwipeRecord, error)
 	PaginatedSwipeRecordsByUser(ctx context.Context, userID int64, first *int, after *int64, last *int, before *int64) (*model.SwipeRecordConnection, error)
 	GetSwipeRecordsByIDs(ctx context.Context, ids []int64) ([]*model.SwipeRecord, error)
+	GetSwipeRecordsByUserAndOrder(ctx context.Context, userID int64, order string, limit int) ([]repository.SwipeRecord, error)
 }
 
 func NewSwipeRecordService(db *gorm.DB, defaultLimit int) SwipeRecordService {
@@ -194,4 +201,19 @@ func (s *swipeRecordService) GetSwipeRecordsByIDs(ctx context.Context, ids []int
 	}
 
 	return gqlSwipeRecords, nil
+}
+
+func (s *swipeRecordService) GetSwipeRecordsByUserAndOrder(ctx context.Context, userID int64, order string, limit int) ([]repository.SwipeRecord, error) {
+
+	orderClause := fmt.Sprintf("updated %s", order)
+
+	var swipeRecords []repository.SwipeRecord
+
+	query := s.db.WithContext(ctx).Where("user_id = ?", userID).Limit(limit).Order(orderClause)
+
+	if err := query.Find(&swipeRecords).Error; err != nil {
+		return nil, goerr.Wrap(err, fmt.Sprintf("User id: %d", userID))
+	}
+
+	return swipeRecords, nil
 }

@@ -276,11 +276,6 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 	})
 
 	suite.Run("Normal_CardGroupUserState", func() {
-		userService := services.NewUserService(suite.db, 20)
-		cardGroupService := services.NewCardGroupService(suite.db, 20)
-		roleService := services.NewRoleService(suite.db, 20)
-
-		ctx := context.Background()
 		cardGroup, user, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
 
 		// Perform the UpdateCardGroupUserState operation
