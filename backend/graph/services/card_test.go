@@ -207,11 +207,8 @@ func (suite *CardTestSuite) TestCardService() {
 
 	suite.Run("Normal_FetchAllCardsByCardGroup", func() {
 		// Arrange
-		createdGroup, createdUser, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+		createdGroup, _, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
 
-		if createdUser != nil {
-
-		}
 		// Create 200 dummy cards
 		for i := 0; i < 200; i++ {
 			input := model.NewCard{
