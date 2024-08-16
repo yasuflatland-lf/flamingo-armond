@@ -2123,7 +2123,7 @@ func TestGraphQLErrors(t *testing.T) {
 			testGraphQLQuery(t, e, jsonInput, expected)
 		})
 
-		t.Run("Upsert Dictionaly Smoke", func(t *testing.T) {
+		t.Run("Upsert Dictionary Smoke", func(t *testing.T) {
 			t.Helper()
 			t.Parallel()
 
@@ -2132,7 +2132,7 @@ func TestGraphQLErrors(t *testing.T) {
 			roleService := services.NewRoleService(db, 20)
 
 			ctx := context.Background()
-			createdGroup, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+			createdGroup, _, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
 
 			input := model.UpsertDictionary{
 				Dictionary: base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf(`
@@ -2161,25 +2161,25 @@ New Front 2 裏面２
 			})
 
 			// Expected response structure
-			expected := `{
-	"data": {
-		"upsertDictionary": {
-			"nodes": [{
-				"id": "1",
-				"front": "New Front 1",
-				"back": "裏面１",
-				"interval_days": 1,
-				"cardGroupID": 1
-			}, {
-				"id": "2",
-				"front": "New Front 2",
-				"back": "裏面２",
-				"interval_days": 1,
-				"cardGroupID": 1
-			}]
-		}
-	}
-}`
+			expected := fmt.Sprintf(`{
+    "data": {
+        "upsertDictionary": {
+            "nodes": [{
+                "id": "1",
+                "front": "New Front 1",
+                "back": "裏面１",
+                "interval_days": 1,
+                "cardGroupID": %d
+            }, {
+                "id": "2",
+                "front": "New Front 2",
+                "back": "裏面２",
+                "interval_days": 1,
+                "cardGroupID": %d
+            }]
+        }
+    }
+}`, createdGroup.ID, createdGroup.ID)
 
 			// Perform the GraphQL query and check the results
 			testGraphQLQuery(t, e, jsonInput, expected, "data.upsertDictionary.nodes.id")

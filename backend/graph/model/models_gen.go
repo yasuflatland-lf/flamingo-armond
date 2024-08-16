@@ -125,6 +125,7 @@ type RoleEdge struct {
 type SwipeRecord struct {
 	ID        int64     `json:"id"`
 	UserID    int64     `json:"userId"`
+	CardID    int64     `json:"cardId"`
 	Direction string    `json:"direction" validate:"required"`
 	Created   time.Time `json:"created"`
 	Updated   time.Time `json:"updated"`

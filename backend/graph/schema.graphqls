@@ -100,6 +100,7 @@ type CardGroupConnection {
 type SwipeRecord {
   id: ID!
   userId: ID!
+  cardId: ID!
   direction: String! @validation(format: "required")
   created: Time!
   updated: Time!

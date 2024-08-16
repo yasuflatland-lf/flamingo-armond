@@ -79,13 +79,16 @@ CREATE TABLE IF NOT EXISTS swipe_records
 (
     id   BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
+    card_id BIGINT NOT NULL,
     direction TEXT NOT NULL,
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    FOREIGN KEY (card_id) REFERENCES cards (id) ON DELETE CASCADE
 );
 CREATE INDEX idx_swipe_records_id ON swipe_records(id);
 CREATE INDEX idx_swipe_records_user_id ON swipe_records(user_id);
+CREATE INDEX idx_swipe_records_card_id ON swipe_records(card_id);
 
 -- +goose statementbegin
 -- When the updated column is not changed, assign NULL
