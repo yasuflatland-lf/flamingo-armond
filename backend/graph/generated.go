@@ -161,12 +161,13 @@ type ComplexityRoot struct {
 	}
 
 	SwipeRecord struct {
-		CardID    func(childComplexity int) int
-		Created   func(childComplexity int) int
-		Direction func(childComplexity int) int
-		ID        func(childComplexity int) int
-		Updated   func(childComplexity int) int
-		UserID    func(childComplexity int) int
+		CardGroupID func(childComplexity int) int
+		CardID      func(childComplexity int) int
+		Created     func(childComplexity int) int
+		Direction   func(childComplexity int) int
+		ID          func(childComplexity int) int
+		Updated     func(childComplexity int) int
+		UserID      func(childComplexity int) int
 	}
 
 	SwipeRecordConnection struct {
@@ -939,6 +940,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.RoleEdge.Node(childComplexity), true
+
+	case "SwipeRecord.cardGroupID":
+		if e.complexity.SwipeRecord.CardGroupID == nil {
+			break
+		}
+
+		return e.complexity.SwipeRecord.CardGroupID(childComplexity), true
 
 	case "SwipeRecord.cardId":
 		if e.complexity.SwipeRecord.CardID == nil {
@@ -4568,6 +4576,8 @@ func (ec *executionContext) fieldContext_Mutation_createSwipeRecord(ctx context.
 				return ec.fieldContext_SwipeRecord_userId(ctx, field)
 			case "cardId":
 				return ec.fieldContext_SwipeRecord_cardId(ctx, field)
+			case "cardGroupID":
+				return ec.fieldContext_SwipeRecord_cardGroupID(ctx, field)
 			case "direction":
 				return ec.fieldContext_SwipeRecord_direction(ctx, field)
 			case "created":
@@ -4634,6 +4644,8 @@ func (ec *executionContext) fieldContext_Mutation_updateSwipeRecord(ctx context.
 				return ec.fieldContext_SwipeRecord_userId(ctx, field)
 			case "cardId":
 				return ec.fieldContext_SwipeRecord_cardId(ctx, field)
+			case "cardGroupID":
+				return ec.fieldContext_SwipeRecord_cardGroupID(ctx, field)
 			case "direction":
 				return ec.fieldContext_SwipeRecord_direction(ctx, field)
 			case "created":
@@ -5252,6 +5264,8 @@ func (ec *executionContext) fieldContext_Query_swipeRecord(ctx context.Context, 
 				return ec.fieldContext_SwipeRecord_userId(ctx, field)
 			case "cardId":
 				return ec.fieldContext_SwipeRecord_cardId(ctx, field)
+			case "cardGroupID":
+				return ec.fieldContext_SwipeRecord_cardGroupID(ctx, field)
 			case "direction":
 				return ec.fieldContext_SwipeRecord_direction(ctx, field)
 			case "created":
@@ -6388,6 +6402,50 @@ func (ec *executionContext) fieldContext_SwipeRecord_cardId(_ context.Context, f
 	return fc, nil
 }
 
+func (ec *executionContext) _SwipeRecord_cardGroupID(ctx context.Context, field graphql.CollectedField, obj *model.SwipeRecord) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SwipeRecord_cardGroupID(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.CardGroupID, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int64)
+	fc.Result = res
+	return ec.marshalNID2int64(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SwipeRecord_cardGroupID(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SwipeRecord",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _SwipeRecord_direction(ctx context.Context, field graphql.CollectedField, obj *model.SwipeRecord) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_SwipeRecord_direction(ctx, field)
 	if err != nil {
@@ -6609,6 +6667,8 @@ func (ec *executionContext) fieldContext_SwipeRecordConnection_nodes(_ context.C
 				return ec.fieldContext_SwipeRecord_userId(ctx, field)
 			case "cardId":
 				return ec.fieldContext_SwipeRecord_cardId(ctx, field)
+			case "cardGroupID":
+				return ec.fieldContext_SwipeRecord_cardGroupID(ctx, field)
 			case "direction":
 				return ec.fieldContext_SwipeRecord_direction(ctx, field)
 			case "created":
@@ -6809,6 +6869,8 @@ func (ec *executionContext) fieldContext_SwipeRecordEdge_node(_ context.Context,
 				return ec.fieldContext_SwipeRecord_userId(ctx, field)
 			case "cardId":
 				return ec.fieldContext_SwipeRecord_cardId(ctx, field)
+			case "cardGroupID":
+				return ec.fieldContext_SwipeRecord_cardGroupID(ctx, field)
 			case "direction":
 				return ec.fieldContext_SwipeRecord_direction(ctx, field)
 			case "created":
@@ -9379,7 +9441,7 @@ func (ec *executionContext) unmarshalInputNewSwipeRecord(ctx context.Context, ob
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"userId", "direction", "created", "updated"}
+	fieldsInOrder := [...]string{"userId", "cardId", "cardGroupID", "direction", "created", "updated"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -9393,6 +9455,20 @@ func (ec *executionContext) unmarshalInputNewSwipeRecord(ctx context.Context, ob
 				return it, err
 			}
 			it.UserID = data
+		case "cardId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("cardId"))
+			data, err := ec.unmarshalNID2int64(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.CardID = data
+		case "cardGroupID":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("cardGroupID"))
+			data, err := ec.unmarshalNID2int64(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.CardGroupID = data
 		case "direction":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("direction"))
 			data, err := ec.unmarshalNString2string(ctx, v)
@@ -10545,6 +10621,11 @@ func (ec *executionContext) _SwipeRecord(ctx context.Context, sel ast.SelectionS
 			}
 		case "cardId":
 			out.Values[i] = ec._SwipeRecord_cardId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "cardGroupID":
+			out.Values[i] = ec._SwipeRecord_cardGroupID(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}

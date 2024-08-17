@@ -101,6 +101,7 @@ type SwipeRecord {
   id: ID!
   userId: ID!
   cardId: ID!
+  cardGroupID: ID!
   direction: String! @validation(format: "required")
   created: Time!
   updated: Time!
@@ -151,6 +152,8 @@ input NewRole {
 
 input NewSwipeRecord {
   userId: ID! @validation(format: "required")
+  cardId: ID! @validation(format: "required")
+  cardGroupID: ID! @validation(format: "required")
   direction: String! @validation(format: "required")
   created: Time!
   updated: Time!

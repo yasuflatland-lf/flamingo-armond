@@ -2,13 +2,12 @@ package swipe_manager
 
 import (
 	repository "backend/graph/db"
-	"github.com/m-mizutani/goerr"
 	"golang.org/x/net/context"
 )
 
 type SwipeStrategy interface {
-	ChangeState(ctx context.Context, swipeRecords []repository.SwipeRecord) error
-	IsApplicable(records []repository.SwipeRecord) bool
+	ChangeState(ctx context.Context, latestSwipeRecord repository.SwipeRecord) error
+	IsApplicable(ctx context.Context, latestSwipeRecord repository.SwipeRecord) bool
 }
 
 type strategyExecutor struct {
@@ -16,7 +15,7 @@ type strategyExecutor struct {
 }
 
 type StrategyExecutor interface {
-	ExecuteStrategy(ctx context.Context, swipeRecords []repository.SwipeRecord) ([]repository.Card, error)
+	ExecuteStrategy(ctx context.Context, latestSwipeRecord repository.SwipeRecord) ([]repository.Card, error)
 }
 
 func NewStrategyExecutor(strategy SwipeStrategy) StrategyExecutor {
@@ -25,10 +24,6 @@ func NewStrategyExecutor(strategy SwipeStrategy) StrategyExecutor {
 	}
 }
 
-func (sc *strategyExecutor) ExecuteStrategy(ctx context.Context, swipeRecords []repository.SwipeRecord) ([]repository.Card, error) {
-	err := sc.strategy.ChangeState(ctx, swipeRecords)
-	if err != nil {
-		return nil, goerr.Wrap(err)
-	}
+func (sc *strategyExecutor) ExecuteStrategy(ctx context.Context, latestSwipeRecord repository.SwipeRecord) ([]repository.Card, error) {
 	return nil, nil
 }

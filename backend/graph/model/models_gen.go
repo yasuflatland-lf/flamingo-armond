@@ -79,10 +79,12 @@ type NewRole struct {
 }
 
 type NewSwipeRecord struct {
-	UserID    int64     `json:"userId" validate:"required"`
-	Direction string    `json:"direction" validate:"required"`
-	Created   time.Time `json:"created"`
-	Updated   time.Time `json:"updated"`
+	UserID      int64     `json:"userId" validate:"required"`
+	CardID      int64     `json:"cardId" validate:"required"`
+	CardGroupID int64     `json:"cardGroupID" validate:"required"`
+	Direction   string    `json:"direction" validate:"required"`
+	Created     time.Time `json:"created"`
+	Updated     time.Time `json:"updated"`
 }
 
 type NewUser struct {
@@ -123,12 +125,13 @@ type RoleEdge struct {
 }
 
 type SwipeRecord struct {
-	ID        int64     `json:"id"`
-	UserID    int64     `json:"userId"`
-	CardID    int64     `json:"cardId"`
-	Direction string    `json:"direction" validate:"required"`
-	Created   time.Time `json:"created"`
-	Updated   time.Time `json:"updated"`
+	ID          int64     `json:"id"`
+	UserID      int64     `json:"userId"`
+	CardID      int64     `json:"cardId"`
+	CardGroupID int64     `json:"cardGroupID"`
+	Direction   string    `json:"direction" validate:"required"`
+	Created     time.Time `json:"created"`
+	Updated     time.Time `json:"updated"`
 }
 
 type SwipeRecordConnection struct {

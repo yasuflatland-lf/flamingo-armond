@@ -29,8 +29,8 @@ CREATE TABLE IF NOT EXISTS cards
     interval_days INT       NOT NULL DEFAULT 1,
     created       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    cardgroup_id  INTEGER   NOT NULL,
-    FOREIGN KEY (cardgroup_id) REFERENCES cardgroups (id)
+    cardgroup_id  BIGINT   NOT NULL,
+    FOREIGN KEY (cardgroup_id) REFERENCES cardgroups (id) ON DELETE CASCADE
 );
 CREATE INDEX idx_cards_id ON cards(id);
 CREATE INDEX idx_cards_front ON cards(front);
@@ -80,11 +80,13 @@ CREATE TABLE IF NOT EXISTS swipe_records
     id   BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
     card_id BIGINT NOT NULL,
+    cardgroup_id  BIGINT   NOT NULL,
     direction TEXT NOT NULL,
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
-    FOREIGN KEY (card_id) REFERENCES cards (id) ON DELETE CASCADE
+    FOREIGN KEY (card_id) REFERENCES cards (id) ON DELETE CASCADE,
+    FOREIGN KEY (cardgroup_id) REFERENCES cardgroups (id) ON DELETE CASCADE
 );
 CREATE INDEX idx_swipe_records_id ON swipe_records(id);
 CREATE INDEX idx_swipe_records_user_id ON swipe_records(user_id);
@@ -174,8 +176,8 @@ DROP FUNCTION IF EXISTS trg_update_timestamp_current();
 
 DROP TABLE IF EXISTS user_roles;
 DROP TABLE IF EXISTS roles;
+DROP TABLE IF EXISTS swipe_records;
 DROP TABLE IF EXISTS cardgroup_users;
 DROP TABLE IF EXISTS cards;
 DROP TABLE IF EXISTS cardgroups;
-DROP TABLE IF EXISTS swipe_records;
 DROP TABLE IF EXISTS users;

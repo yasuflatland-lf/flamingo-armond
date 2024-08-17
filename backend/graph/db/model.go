@@ -52,10 +52,11 @@ type Role struct {
 }
 
 type SwipeRecord struct {
-	ID        int64     `gorm:"column:id;primaryKey" validate:"number"`
-	UserID    int64     `gorm:"column:user_id" validate:"number"`
-	CardID    int64     `gorm:"column:card_id" validate:"number"`
-	Direction string    `gorm:"column:direction;not null" validate:"required"`
-	Created   time.Time `gorm:"column:created;autoCreateTime"`
-	Updated   time.Time `gorm:"column:updated;autoCreateTime"`
+	ID          int64     `gorm:"column:id;primaryKey" validate:"number"`
+	UserID      int64     `gorm:"column:user_id" validate:"number"`
+	CardID      int64     `gorm:"column:card_id" validate:"number"`
+	CardGroupID int64     `gorm:"column:cardgroup_id" validate:"number"`
+	Direction   string    `gorm:"column:direction;not null" validate:"required"`
+	Created     time.Time `gorm:"column:created;autoCreateTime"`
+	Updated     time.Time `gorm:"column:updated;autoCreateTime"`
 }
