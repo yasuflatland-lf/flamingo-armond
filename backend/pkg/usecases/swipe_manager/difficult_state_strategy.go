@@ -1,7 +1,7 @@
 package swipe_manager
 
 import (
-	repository "backend/graph/db"
+	"backend/graph/model"
 	"golang.org/x/net/context"
 )
 
@@ -19,11 +19,12 @@ func NewDifficultStateStrategy(swipeManagerUsecase SwipeManagerUsecase) Difficul
 	}
 }
 
-func (d *difficultStateStrategy) ChangeState(ctx context.Context, latestSwipeRecord repository.SwipeRecord) error {
-	return d.swipeManagerUsecase.ChangeState(ctx, latestSwipeRecord.CardGroupID, latestSwipeRecord.UserID, DIFFICULT)
+func (d *difficultStateStrategy) ChangeState(ctx context.Context, newSwipeRecord model.NewSwipeRecord) error {
+	return d.swipeManagerUsecase.ChangeState(ctx, newSwipeRecord.CardGroupID, newSwipeRecord.UserID, DIFFICULT)
+	return nil, nil
 }
 
-func (d *difficultStateStrategy) IsApplicable(ctx context.Context, latestSwipeRecord repository.SwipeRecord) bool {
+func (d *difficultStateStrategy) IsApplicable(ctx context.Context, newSwipeRecord model.NewSwipeRecord) bool {
 	//// If the last 5 records indicate other than "known", configure difficult
 	//unknownCount := 0
 	//for i := 0; i < 5 && i < len(swipeRecords); i++ {

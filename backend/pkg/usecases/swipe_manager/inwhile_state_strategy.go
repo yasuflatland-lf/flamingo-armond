@@ -1,8 +1,9 @@
 package swipe_manager
 
 import (
-	repository "backend/graph/db"
+	"backend/graph/model"
 	"golang.org/x/net/context"
+	"time"
 )
 
 type inWhileStateStrategy struct {
@@ -19,13 +20,13 @@ func NewInWhileStateStrategy(swipeManagerUsecase SwipeManagerUsecase) InWhileSta
 	}
 }
 
-func (d *inWhileStateStrategy) ChangeState(ctx context.Context, latestSwipeRecord repository.SwipeRecord) error {
-	return d.swipeManagerUsecase.ChangeState(ctx, latestSwipeRecord.CardGroupID, latestSwipeRecord.UserID, INWHILE)
+func (d *inWhileStateStrategy) Run(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error) {
+	d.swipeManagerUsecase.ChangeState(ctx, newSwipeRecord.CardGroupID, newSwipeRecord.UserID, INWHILE)
+	return nil, nil
 }
 
-func (d *inWhileStateStrategy) IsApplicable(ctx context.Context, latestSwipeRecord repository.SwipeRecord) bool {
-	//// Check if none of the conditions match and time since last swipe is significant
-	//// Implement the specific logic for Def1
-	//return time.Since(swipeRecords[0].Updated) > 24*time.Hour
-	return true
+func (d *inWhileStateStrategy) IsApplicable(ctx context.Context, newSwipeRecord model.NewSwipeRecord) bool {
+	// Check if none of the conditions match and time since last swipe is significant
+	// Implement the specific logic for Def1
+	return time.Since(newSwipeRecord.Updated) > 24*time.Hour
 }

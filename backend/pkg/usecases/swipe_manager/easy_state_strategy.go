@@ -1,7 +1,7 @@
 package swipe_manager
 
 import (
-	repository "backend/graph/db"
+	"backend/graph/model"
 	"golang.org/x/net/context"
 )
 
@@ -19,12 +19,14 @@ func NewEasyStateStrategy(swipeManagerUsecase SwipeManagerUsecase) EasyStateStra
 	}
 }
 
-func (e *easyStateStrategy) ChangeState(ctx context.Context, latestSwipeRecord repository.SwipeRecord) error {
+func (e *easyStateStrategy) Run(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error) {
 	// Assuming userID and EASY are available in this context
-	return e.swipeManagerUsecase.ChangeState(ctx, latestSwipeRecord.CardGroupID, latestSwipeRecord.UserID, EASY)
+	e.swipeManagerUsecase.ChangeState(ctx, newSwipeRecord.CardGroupID, newSwipeRecord.UserID, EASY)
+
+	return nil, nil
 }
 
-func (e *easyStateStrategy) IsApplicable(ctx context.Context, latestSwipeRecord repository.SwipeRecord) bool {
+func (e *easyStateStrategy) IsApplicable(ctx context.Context, newSwipeRecord model.NewSwipeRecord) bool {
 	//// Check if the last 5 records indicate "known"
 	//knownCount := 0
 	//for i := 0; i < 5 && i < len(swipeRecords); i++ {

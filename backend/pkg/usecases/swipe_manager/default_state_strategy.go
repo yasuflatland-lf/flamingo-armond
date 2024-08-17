@@ -1,7 +1,7 @@
 package swipe_manager
 
 import (
-	repository "backend/graph/db"
+	"backend/graph/model"
 	"golang.org/x/net/context"
 )
 
@@ -13,18 +13,20 @@ type DefaultStateStrategy interface {
 	SwipeStrategy
 }
 
-// NewDefaultStateStrategy creates a new instance of Def2StateStrategy.
 func NewDefaultStateStrategy(swipeManagerUsecase SwipeManagerUsecase) DefaultStateStrategy {
 	return &defaultStateStrategy{
 		swipeManagerUsecase: swipeManagerUsecase,
 	}
 }
 
-func (d *defaultStateStrategy) ChangeState(ctx context.Context, latestSwipeRecord repository.SwipeRecord) error {
+func (d *defaultStateStrategy) Run(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error) {
 	// Assuming userID is somehow available in the context or swipeRecords
-	return d.swipeManagerUsecase.ChangeState(ctx, latestSwipeRecord.CardGroupID, latestSwipeRecord.UserID, DEFAULT)
+	d.swipeManagerUsecase.ChangeState(ctx, newSwipeRecord.CardGroupID, newSwipeRecord.UserID, DEFAULT)
+
+	return nil, nil
 }
 
-func (d *defaultStateStrategy) IsApplicable(ctx context.Context, latestSwipeRecord repository.SwipeRecord) bool {
+func (d *defaultStateStrategy) IsApplicable(ctx context.Context, newSwipeRecord model.NewSwipeRecord) bool {
+	// Default Strategy must be hit no matter what
 	return true
 }

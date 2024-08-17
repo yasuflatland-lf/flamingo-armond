@@ -162,3 +162,43 @@ func CreateUserAndCardGroup(
 
 	return createdCardGroup, createdUser, nil
 }
+
+func CreateUserCardAndCardGroup(
+	ctx context.Context,
+	userService services.UserService,
+	cardGroupService services.CardGroupService,
+	roleService services.RoleService,
+	cardService services.CardService,
+) (*model.Card, *model.CardGroup, *model.User, error) {
+
+	// Step 1: Create User and Card Group using the existing function
+	cardGroup, user, err := CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+	if err != nil {
+		return nil, nil, nil, goerr.Wrap(err, "failed to create user and card group")
+	}
+
+	// Step 2: Create a Card
+	randstr, err := CryptoRandString(8)
+	if err != nil {
+		return nil, nil, nil, goerr.Wrap(err, "failed to generate random string")
+	}
+
+	intervalDays := 1
+
+	newCard := model.NewCard{
+		Front:        "Front of Card " + randstr,
+		Back:         "Back of Card " + randstr,
+		ReviewDate:   time.Now().UTC(),
+		IntervalDays: &intervalDays, // Set pointer directly
+		CardgroupID:  cardGroup.ID,
+		Created:      time.Now().UTC(),
+		Updated:      time.Now().UTC(),
+	}
+
+	createdCard, err := cardService.CreateCard(ctx, newCard)
+	if err != nil {
+		return nil, nil, nil, goerr.Wrap(err, "failed to create card")
+	}
+
+	return createdCard, cardGroup, user, nil
+}

@@ -465,6 +465,69 @@ func (suite *CardTestSuite) TestCardService() {
 		assert.Empty(suite.T(), cards)
 	})
 
+	suite.Run("Normal_GetRandomCardsFromRecentUpdates", func() {
+		// Arrange
+		createdGroup, _, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+
+		// Create 50 dummy cards
+		for i := 0; i < 50; i++ {
+			input := model.NewCard{
+				Front:       "Front " + strconv.Itoa(i),
+				Back:        "Back " + strconv.Itoa(i),
+				ReviewDate:  time.Now().UTC(),
+				CardgroupID: createdGroup.ID,
+			}
+			_, err := cardService.CreateCard(ctx, input)
+			assert.NoError(t, err)
+		}
+
+		// Act
+		limit := 10
+		randomCards1, err := cardService.GetRandomCardsFromRecentUpdates(ctx, createdGroup.ID, limit)
+		assert.NoError(t, err)
+		assert.Len(t, randomCards1, limit) // Ensure that 10 cards are returned
+
+		randomCards2, err := cardService.GetRandomCardsFromRecentUpdates(ctx, createdGroup.ID, limit)
+		assert.NoError(t, err)
+		assert.Len(t, randomCards2, limit) // Ensure that 10 cards are returned
+
+		// Assert
+		sameOrder := true
+		for i := range randomCards1 {
+			if randomCards1[i].ID != randomCards2[i].ID {
+				sameOrder = false
+				break
+			}
+		}
+
+		// Ensure the order is different (i.e., shuffled)
+		assert.False(t, sameOrder, "The order of cards should be different between the two calls")
+	})
+
+	suite.Run("Normal_GetRandomCardsFromRecentUpdates_LessThanLimit", func() {
+		// Arrange
+		createdGroup, _, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+
+		// Create 5 dummy cards
+		for i := 0; i < 5; i++ {
+			input := model.NewCard{
+				Front:       "Front " + strconv.Itoa(i),
+				Back:        "Back " + strconv.Itoa(i),
+				ReviewDate:  time.Now().UTC(),
+				CardgroupID: createdGroup.ID,
+			}
+			_, err := cardService.CreateCard(ctx, input)
+			assert.NoError(t, err)
+		}
+
+		// Act
+		limit := 10
+		randomCards, err := cardService.GetRandomCardsFromRecentUpdates(ctx, createdGroup.ID, limit)
+
+		// Assert
+		assert.NoError(t, err)
+		assert.Len(t, randomCards, 5) // Ensure that only the available 5 cards are returned
+	})
 }
 
 func TestCardTestSuite(t *testing.T) {

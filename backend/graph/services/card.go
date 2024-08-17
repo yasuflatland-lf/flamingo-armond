@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/m-mizutani/goerr"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -30,13 +31,14 @@ type CardService interface {
 	FetchAllCardsByCardGroup(ctx context.Context, cardGroupID int64, first *int) ([]*model.Card, error)
 	AddNewCards(ctx context.Context, targetCards []model.Card, cardGroupID int64) ([]*model.Card, error)
 	GetCardsByUserAndCardGroup(ctx context.Context, cardGroupID int64, order string, limit int) ([]repository.Card, error)
+	GetRandomCardsFromRecentUpdates(ctx context.Context, cardGroupID int64, limit int) ([]model.Card, error)
 }
 
 func NewCardService(db *gorm.DB, defaultLimit int) CardService {
 	return &cardService{db: db, defaultLimit: defaultLimit}
 }
 
-func convertToGormCard(input model.NewCard) *repository.Card {
+func ConvertToGormCard(input model.NewCard) *repository.Card {
 	return &repository.Card{
 		Front:      input.Front,
 		Back:       input.Back,
@@ -53,7 +55,7 @@ func convertToGormCard(input model.NewCard) *repository.Card {
 	}
 }
 
-func convertToCard(card repository.Card) *model.Card {
+func ConvertToCard(card repository.Card) *model.Card {
 	return &model.Card{
 		ID:           card.ID,
 		Front:        card.Front,
@@ -66,11 +68,20 @@ func convertToCard(card repository.Card) *model.Card {
 	}
 }
 
+func ConvertToCards(cards []repository.Card) []model.Card {
+	var result []model.Card
+	for _, card := range cards {
+		convertedCard := ConvertToCard(card)
+		result = append(result, *convertedCard)
+	}
+	return result
+}
+
 func convertCardConnection(cards []repository.Card, hasPrevPage, hasNextPage bool) *model.CardConnection {
 	var result model.CardConnection
 
 	for _, dbc := range cards {
-		card := convertToCard(dbc)
+		card := ConvertToCard(dbc)
 
 		// Use the ID directly as it is already of type int64
 		result.Edges = append(result.Edges, &model.CardEdge{Cursor: card.ID, Node: card})
@@ -98,11 +109,11 @@ func (s *cardService) GetCardByID(ctx context.Context, id int64) (*model.Card, e
 		logger.Logger.ErrorContext(ctx, "Failed to get card by ID", err)
 		return nil, err
 	}
-	return convertToCard(card), nil
+	return ConvertToCard(card), nil
 }
 
 func (s *cardService) CreateCard(ctx context.Context, input model.NewCard) (*model.Card, error) {
-	gormCard := convertToGormCard(input)
+	gormCard := ConvertToGormCard(input)
 	result := s.db.WithContext(ctx).Create(gormCard)
 	if result.Error != nil {
 		if strings.Contains(result.Error.Error(), "foreign key constraint") {
@@ -110,7 +121,7 @@ func (s *cardService) CreateCard(ctx context.Context, input model.NewCard) (*mod
 		}
 		return nil, goerr.Wrap(result.Error, fmt.Errorf("failed to create card"))
 	}
-	return convertToCard(*gormCard), nil
+	return ConvertToCard(*gormCard), nil
 }
 
 func (s *cardService) UpdateCard(ctx context.Context, id int64, input model.NewCard) (*model.Card, error) {
@@ -133,7 +144,7 @@ func (s *cardService) UpdateCard(ctx context.Context, id int64, input model.NewC
 	if err := s.db.WithContext(ctx).Save(&card).Error; err != nil {
 		return nil, goerr.Wrap(err, "Failed to save card")
 	}
-	return convertToCard(card), nil
+	return ConvertToCard(card), nil
 }
 
 func (s *cardService) DeleteCard(ctx context.Context, id int64) (*bool, error) {
@@ -208,7 +219,7 @@ func (s *cardService) GetCardsByIDs(ctx context.Context, ids []int64) ([]*model.
 
 	var gqlCards []*model.Card
 	for _, card := range cards {
-		gqlCards = append(gqlCards, convertToCard(*card))
+		gqlCards = append(gqlCards, ConvertToCard(*card))
 	}
 
 	return gqlCards, nil
@@ -320,4 +331,28 @@ func (s *cardService) GetCardsByUserAndCardGroup(
 	}
 
 	return cards, nil
+}
+
+func (s *cardService) GetRandomCardsFromRecentUpdates(ctx context.Context, cardGroupID int64, limit int) ([]model.Card, error) {
+	var cards []repository.Card
+
+	err := s.db.WithContext(ctx).
+		Where("cardgroup_id = ?", cardGroupID).
+		Order("updated desc").
+		Limit(100).
+		Find(&cards).Error
+	if err != nil {
+		return nil, goerr.Wrap(err, "Failed to retrieve recent cards")
+	}
+
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng.Shuffle(len(cards), func(i, j int) { cards[i], cards[j] = cards[j], cards[i] })
+
+	if len(cards) <= limit {
+		return ConvertToCards(cards), nil
+	}
+
+	randomCards := cards[:limit]
+
+	return ConvertToCards(randomCards), nil
 }

@@ -1,7 +1,7 @@
 package swipe_manager
 
 import (
-	repository "backend/graph/db"
+	"backend/graph/model"
 	"golang.org/x/net/context"
 )
 
@@ -21,12 +21,14 @@ func NewGoodStateStrategy(swipeManagerUsecase SwipeManagerUsecase) GoodStateStra
 	}
 }
 
-// ChangeState changes the state of the given swipe records to GOOD
-func (g *goodStateStrategy) ChangeState(ctx context.Context, latestSwipeRecord repository.SwipeRecord) error {
-	return g.swipeManagerUsecase.ChangeState(ctx, latestSwipeRecord.CardGroupID, latestSwipeRecord.UserID, GOOD)
+// Run ChangeState changes the state of the given swipe records to GOOD
+func (g *goodStateStrategy) Run(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error) {
+	g.swipeManagerUsecase.ChangeState(ctx, newSwipeRecord.CardGroupID, newSwipeRecord.UserID, GOOD)
+
+	return nil, nil
 }
 
-func (g *goodStateStrategy) IsApplicable(ctx context.Context, latestSwipeRecord repository.SwipeRecord) bool {
+func (g *goodStateStrategy) IsApplicable(ctx context.Context, newSwipeRecord model.NewSwipeRecord) bool {
 	//// Check if 5 out of the last 10 records are "known"
 	//knownCount := 0
 	//for i := 0; i < 10 && i < len(swipeRecords); i++ {

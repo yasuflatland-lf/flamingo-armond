@@ -40,22 +40,26 @@ func NewSwipeRecordService(db *gorm.DB, defaultLimit int) SwipeRecordService {
 	return &swipeRecordService{db: db, defaultLimit: defaultLimit}
 }
 
-func convertToGormSwipeRecord(input model.NewSwipeRecord) *repository.SwipeRecord {
+func ConvertToGormSwipeRecord(input model.NewSwipeRecord) *repository.SwipeRecord {
 	return &repository.SwipeRecord{
-		UserID:    input.UserID,
-		Direction: input.Direction,
-		Created:   input.Created,
-		Updated:   input.Updated,
+		UserID:      input.UserID,
+		CardID:      input.CardID,
+		CardGroupID: input.CardGroupID,
+		Direction:   input.Direction,
+		Created:     input.Created,
+		Updated:     input.Updated,
 	}
 }
 
-func convertToSwipeRecord(swipeRecord repository.SwipeRecord) *model.SwipeRecord {
+func ConvertToSwipeRecord(swipeRecord repository.SwipeRecord) *model.SwipeRecord {
 	return &model.SwipeRecord{
-		ID:        swipeRecord.ID,
-		UserID:    swipeRecord.UserID,
-		Direction: swipeRecord.Direction,
-		Created:   swipeRecord.Created,
-		Updated:   swipeRecord.Updated,
+		ID:          swipeRecord.ID,
+		UserID:      swipeRecord.UserID,
+		CardID:      swipeRecord.CardID,
+		CardGroupID: swipeRecord.CardGroupID,
+		Direction:   swipeRecord.Direction,
+		Created:     swipeRecord.Created,
+		Updated:     swipeRecord.Updated,
 	}
 }
 
@@ -67,11 +71,11 @@ func (s *swipeRecordService) GetSwipeRecordByID(ctx context.Context, id int64) (
 		}
 		return nil, goerr.Wrap(err, "failed to get swipe record by ID")
 	}
-	return convertToSwipeRecord(swipeRecord), nil
+	return ConvertToSwipeRecord(swipeRecord), nil
 }
 
 func (s *swipeRecordService) CreateSwipeRecord(ctx context.Context, input model.NewSwipeRecord) (*model.SwipeRecord, error) {
-	gormSwipeRecord := convertToGormSwipeRecord(input)
+	gormSwipeRecord := ConvertToGormSwipeRecord(input)
 	result := s.db.WithContext(ctx).Create(gormSwipeRecord)
 	if result.Error != nil {
 		if strings.Contains(result.Error.Error(), "foreign key constraint") {
@@ -79,7 +83,7 @@ func (s *swipeRecordService) CreateSwipeRecord(ctx context.Context, input model.
 		}
 		return nil, goerr.Wrap(result.Error, "failed to create swipe record")
 	}
-	return convertToSwipeRecord(*gormSwipeRecord), nil
+	return ConvertToSwipeRecord(*gormSwipeRecord), nil
 }
 
 func (s *swipeRecordService) UpdateSwipeRecord(ctx context.Context, id int64, input model.NewSwipeRecord) (*model.SwipeRecord, error) {
@@ -93,7 +97,7 @@ func (s *swipeRecordService) UpdateSwipeRecord(ctx context.Context, id int64, in
 	if err := s.db.WithContext(ctx).Save(&swipeRecord).Error; err != nil {
 		return nil, goerr.Wrap(err, "failed to update swipe record")
 	}
-	return convertToSwipeRecord(swipeRecord), nil
+	return ConvertToSwipeRecord(swipeRecord), nil
 }
 
 func (s *swipeRecordService) DeleteSwipeRecord(ctx context.Context, id int64) (*bool, error) {
@@ -117,7 +121,7 @@ func (s *swipeRecordService) SwipeRecords(ctx context.Context) ([]*model.SwipeRe
 	}
 	var gqlSwipeRecords []*model.SwipeRecord
 	for _, swipeRecord := range swipeRecords {
-		gqlSwipeRecords = append(gqlSwipeRecords, convertToSwipeRecord(swipeRecord))
+		gqlSwipeRecords = append(gqlSwipeRecords, ConvertToSwipeRecord(swipeRecord))
 	}
 	return gqlSwipeRecords, nil
 }
@@ -133,7 +137,7 @@ func (s *swipeRecordService) SwipeRecordsByUser(ctx context.Context, userID int6
 	}
 	var gqlSwipeRecords []*model.SwipeRecord
 	for _, swipeRecord := range swipeRecords {
-		gqlSwipeRecords = append(gqlSwipeRecords, convertToSwipeRecord(swipeRecord))
+		gqlSwipeRecords = append(gqlSwipeRecords, ConvertToSwipeRecord(swipeRecord))
 	}
 	return gqlSwipeRecords, nil
 }
@@ -163,7 +167,7 @@ func (s *swipeRecordService) PaginatedSwipeRecordsByUser(ctx context.Context, us
 	var edges []*model.SwipeRecordEdge
 	var nodes []*model.SwipeRecord
 	for _, swipeRecord := range swipeRecords {
-		node := convertToSwipeRecord(swipeRecord)
+		node := ConvertToSwipeRecord(swipeRecord)
 		edges = append(edges, &model.SwipeRecordEdge{
 			Cursor: swipeRecord.ID,
 			Node:   node,
@@ -197,7 +201,7 @@ func (s *swipeRecordService) GetSwipeRecordsByIDs(ctx context.Context, ids []int
 
 	var gqlSwipeRecords []*model.SwipeRecord
 	for _, swipeRecord := range swipeRecords {
-		gqlSwipeRecords = append(gqlSwipeRecords, convertToSwipeRecord(*swipeRecord))
+		gqlSwipeRecords = append(gqlSwipeRecords, ConvertToSwipeRecord(*swipeRecord))
 	}
 
 	return gqlSwipeRecords, nil

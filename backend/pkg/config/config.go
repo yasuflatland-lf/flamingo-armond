@@ -22,6 +22,9 @@ type Config struct {
 	PGPort       string `env:"PG_PORT,notEmpty" envDefault:"5432"`
 	PGSSLMode    string `env:"PG_SSLMODE,notEmpty" envDefault:"allow"`
 	PGQueryLimit int    `env:"PG_QUERY_LIMIT,notEmpty" envDefault:"20"`
+
+	// Application configuration
+	FLBatchAmount int `env:"FL_BATCH_AMOUNT,notEmpty" envDefault:"10"`
 }
 
 // Cfg is the package-level variable that holds the parsed configuration
