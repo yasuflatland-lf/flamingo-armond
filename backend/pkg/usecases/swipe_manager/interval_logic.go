@@ -34,9 +34,15 @@ func (il *intervalLogic) UpdateInterval(card *repository.Card, swipe *repository
 	card.ReviewDate = time.Now().AddDate(0, 0, card.IntervalDays)
 }
 
-// increaseInterval advances the current interval to the next step.
 func (il *intervalLogic) increaseInterval(card *repository.Card) {
 	currentIndex := il.findIntervalIndex(card.IntervalDays)
+
+	// Check if the current interval is out of the expected range and reset if necessary
+	if currentIndex == 0 && card.IntervalDays != il.intervals[0] {
+		card.IntervalDays = il.intervals[0]
+		return
+	}
+
 	if currentIndex < len(il.intervals)-1 {
 		card.IntervalDays = il.intervals[currentIndex+1]
 	} else {
