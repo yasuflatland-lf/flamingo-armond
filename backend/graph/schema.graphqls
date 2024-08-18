@@ -102,7 +102,7 @@ type SwipeRecord {
   userId: ID!
   cardId: ID!
   cardGroupID: ID!
-  direction: String! @validation(format: "required")
+  mode: Int! @validation(format: "gte=0")
   created: Time!
   updated: Time!
 }
@@ -154,7 +154,7 @@ input NewSwipeRecord {
   userId: ID! @validation(format: "required")
   cardId: ID! @validation(format: "required")
   cardGroupID: ID! @validation(format: "required")
-  direction: String! @validation(format: "required")
+  mode: Int! @validation(format: "gte=0")
   created: Time!
   updated: Time!
 }

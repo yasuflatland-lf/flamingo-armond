@@ -18,12 +18,6 @@ type swipeRecordService struct {
 	defaultLimit int
 }
 
-const (
-	KNOWN    = "known"
-	DONTKNOW = "dontknow"
-	MAYBE    = "maybe"
-)
-
 type SwipeRecordService interface {
 	GetSwipeRecordByID(ctx context.Context, id int64) (*model.SwipeRecord, error)
 	CreateSwipeRecord(ctx context.Context, input model.NewSwipeRecord) (*model.SwipeRecord, error)
@@ -45,7 +39,7 @@ func ConvertToGormSwipeRecord(input model.NewSwipeRecord) *repository.SwipeRecor
 		UserID:      input.UserID,
 		CardID:      input.CardID,
 		CardGroupID: input.CardGroupID,
-		Direction:   input.Direction,
+		Mode:        input.Mode,
 		Created:     input.Created,
 		Updated:     input.Updated,
 	}
@@ -57,7 +51,7 @@ func ConvertToSwipeRecord(swipeRecord repository.SwipeRecord) *model.SwipeRecord
 		UserID:      swipeRecord.UserID,
 		CardID:      swipeRecord.CardID,
 		CardGroupID: swipeRecord.CardGroupID,
-		Direction:   swipeRecord.Direction,
+		Mode:        swipeRecord.Mode,
 		Created:     swipeRecord.Created,
 		Updated:     swipeRecord.Updated,
 	}
@@ -91,7 +85,7 @@ func (s *swipeRecordService) UpdateSwipeRecord(ctx context.Context, id int64, in
 	if err := s.db.WithContext(ctx).First(&swipeRecord, id).Error; err != nil {
 		return nil, goerr.Wrap(fmt.Errorf("swipe record does not exist: id=%d", id), err)
 	}
-	swipeRecord.Direction = input.Direction
+	swipeRecord.Mode = input.Mode
 	swipeRecord.Updated = time.Now().UTC()
 
 	if err := s.db.WithContext(ctx).Save(&swipeRecord).Error; err != nil {

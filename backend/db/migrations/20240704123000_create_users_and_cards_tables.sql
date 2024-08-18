@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS swipe_records
     user_id BIGINT NOT NULL,
     card_id BIGINT NOT NULL,
     cardgroup_id  BIGINT   NOT NULL,
-    direction TEXT NOT NULL,
+    mode INT   DEFAULT 1,
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS swipe_records
 CREATE INDEX idx_swipe_records_id ON swipe_records(id);
 CREATE INDEX idx_swipe_records_user_id ON swipe_records(user_id);
 CREATE INDEX idx_swipe_records_card_id ON swipe_records(card_id);
+CREATE INDEX idx_swipe_records_cardgroup_id ON swipe_records(cardgroup_id);
 
 -- +goose statementbegin
 -- When the updated column is not changed, assign NULL
@@ -174,9 +175,9 @@ DROP FUNCTION IF EXISTS trg_update_timestamp_none();
 DROP FUNCTION IF EXISTS trg_update_timestamp_same();
 DROP FUNCTION IF EXISTS trg_update_timestamp_current();
 
+DROP TABLE IF EXISTS swipe_records;
 DROP TABLE IF EXISTS user_roles;
 DROP TABLE IF EXISTS roles;
-DROP TABLE IF EXISTS swipe_records;
 DROP TABLE IF EXISTS cardgroup_users;
 DROP TABLE IF EXISTS cards;
 DROP TABLE IF EXISTS cardgroups;

@@ -2,7 +2,6 @@ package swipe_manager
 
 import (
 	repository "backend/graph/db"
-	"backend/graph/services"
 	"time"
 )
 
@@ -25,7 +24,7 @@ func NewIntervalLogic() IntervalLogic {
 
 // UpdateInterval updates the card's interval based on the provided swipe record.
 func (il *intervalLogic) UpdateInterval(card *repository.Card, swipe *repository.SwipeRecord) {
-	if swipe.Direction == services.KNOWN {
+	if swipe.Mode == GOOD || swipe.Mode == EASY {
 		il.increaseInterval(card)
 	} else {
 		il.resetInterval(card)

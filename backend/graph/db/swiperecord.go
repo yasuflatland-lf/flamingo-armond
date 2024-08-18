@@ -6,7 +6,6 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/m-mizutani/goerr"
 	"gorm.io/gorm"
-	"time"
 )
 
 // BeforeCreate hook to validate the SwipeRecord fields
@@ -40,16 +39,15 @@ func (s *SwipeRecord) validateAtCreate(swipeRecord *SwipeRecord) error {
 		return goerr.Wrap(err, fmt.Sprintf("Field validation for 'user_id' failed %+v", err))
 	}
 
-	err = v.Validator().Var(swipeRecord.Direction, "required,oneof=left right up down") // Assuming 'Direction' has specific allowed values
+	err = v.Validator().Var(swipeRecord.CardID, "required")
 	if err != nil {
-		return goerr.Wrap(err, fmt.Sprintf("Field validation for 'direction' failed %+v", err))
+		return goerr.Wrap(err, fmt.Sprintf("Field validation for 'card_id' failed %+v", err))
 	}
 
-	return nil
-}
+	err = v.Validator().Var(swipeRecord.CardGroupID, "required")
+	if err != nil {
+		return goerr.Wrap(err, fmt.Sprintf("Field validation for 'cardgroup_id' failed %+v", err))
+	}
 
-// AfterUpdate hook to update the timestamp in the same transaction
-func (s *SwipeRecord) AfterUpdate(tx *gorm.DB) (err error) {
-	tx.Model(&SwipeRecord{}).Where("id = ?", s.ID).Update("updated", time.Now().UTC())
 	return nil
 }

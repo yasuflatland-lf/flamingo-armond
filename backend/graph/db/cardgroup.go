@@ -6,7 +6,6 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/m-mizutani/goerr"
 	"gorm.io/gorm"
-	"time"
 )
 
 // BeforeCreate hook to validate the Cardgroup before creating
@@ -40,11 +39,5 @@ func (cg *Cardgroup) validateAtCreate(cardgroup *Cardgroup) error {
 			return goerr.Wrap(err, fmt.Sprintf("Field validation for '%s' failed on the '%s' tag", err.Field(), err.Tag()))
 		}
 	}
-	return nil
-}
-
-// Updating data in the same transaction
-func (cg *Cardgroup) AfterUpdate(tx *gorm.DB) (err error) {
-	tx.Model(&Cardgroup{}).Where("id = ?", cg.ID).Update("updated", time.Now().UTC())
 	return nil
 }

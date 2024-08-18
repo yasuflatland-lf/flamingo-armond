@@ -3,6 +3,7 @@ package services_test
 import (
 	"backend/graph/model"
 	"backend/graph/services"
+	"backend/pkg/usecases/swipe_manager"
 	"backend/testutils"
 	"context"
 	"github.com/stretchr/testify/assert"
@@ -73,7 +74,7 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 			UserID:      createdUser.ID,
 			CardID:      createdCard.ID,
 			CardGroupID: createdCardGroup.ID,
-			Direction:   "left",
+			Mode:        swipe_manager.EASY,
 			Created:     time.Now().UTC(),
 			Updated:     time.Now().UTC(),
 		}
@@ -81,14 +82,14 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 		createdSwipeRecord, err := swipeRecordService.CreateSwipeRecord(ctx, newSwipeRecord)
 
 		assert.NoError(t, err)
-		assert.Equal(t, "left", createdSwipeRecord.Direction)
+		assert.Equal(t, swipe_manager.EASY, createdSwipeRecord.Mode)
 	})
 
 	suite.Run("Error_CreateSwipeRecord", func() {
 
 		newSwipeRecord := model.NewSwipeRecord{
-			UserID:    0, // Invalid UserID
-			Direction: "",
+			UserID: 0, // Invalid UserID
+			Mode:   swipe_manager.DEFAULT,
 		}
 
 		createdSwipeRecord, err := swipeRecordService.CreateSwipeRecord(ctx, newSwipeRecord)
@@ -108,7 +109,7 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 			UserID:      createdUser.ID,
 			CardID:      createdCard.ID,
 			CardGroupID: createdCardGroup.ID,
-			Direction:   "left",
+			Mode:        swipe_manager.DEFAULT,
 			Created:     time.Now().UTC(),
 			Updated:     time.Now().UTC(),
 		}
@@ -138,21 +139,25 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 			UserID:      createdUser.ID,
 			CardID:      createdCard.ID,
 			CardGroupID: createdCardGroup.ID,
-			Direction:   "left",
+			Mode:        swipe_manager.EASY,
 			Created:     time.Now().UTC(),
 			Updated:     time.Now().UTC(),
 		}
 		createdSwipeRecord, _ := swipeRecordService.CreateSwipeRecord(ctx, newSwipeRecord)
 
 		updateSwipeRecord := model.NewSwipeRecord{
-			UserID:    createdUser.ID,
-			Direction: "right",
+			UserID:      createdUser.ID,
+			CardID:      createdCard.ID,
+			CardGroupID: createdCardGroup.ID,
+			Mode:        swipe_manager.DIFFICULT,
+			Created:     time.Now().UTC(),
+			Updated:     time.Now().UTC(),
 		}
 
 		updatedSwipeRecord, err := swipeRecordService.UpdateSwipeRecord(ctx, createdSwipeRecord.ID, updateSwipeRecord)
 
 		assert.NoError(t, err)
-		assert.Equal(t, "right", updatedSwipeRecord.Direction)
+		assert.Equal(t, swipe_manager.DIFFICULT, updatedSwipeRecord.Mode)
 	})
 
 	suite.Run("Error_UpdateSwipeRecord", func() {
@@ -163,8 +168,8 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 		}
 
 		updateSwipeRecord := model.NewSwipeRecord{
-			UserID:    createdUser.ID,
-			Direction: "right",
+			UserID: createdUser.ID,
+			Mode:   swipe_manager.DIFFICULT,
 		}
 
 		updatedSwipeRecord, err := swipeRecordService.UpdateSwipeRecord(ctx, -1, updateSwipeRecord) // Invalid ID
@@ -184,7 +189,7 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 			UserID:      createdUser.ID,
 			CardID:      createdCard.ID,
 			CardGroupID: createdCardGroup.ID,
-			Direction:   "left",
+			Mode:        swipe_manager.DIFFICULT,
 			Created:     time.Now().UTC(),
 			Updated:     time.Now().UTC(),
 		}
@@ -214,7 +219,7 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 			UserID:      createdUser.ID,
 			CardID:      createdCard.ID,
 			CardGroupID: createdCardGroup.ID,
-			Direction:   "left",
+			Mode:        swipe_manager.DIFFICULT,
 			Created:     time.Now().UTC(),
 			Updated:     time.Now().UTC(),
 		}
@@ -222,7 +227,7 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 			UserID:      createdUser.ID,
 			CardID:      createdCard.ID,
 			CardGroupID: createdCardGroup.ID,
-			Direction:   "right",
+			Mode:        swipe_manager.INWHILE,
 			Created:     time.Now().UTC(),
 			Updated:     time.Now().UTC(),
 		}
@@ -246,7 +251,7 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 			UserID:      createdUser.ID,
 			CardID:      createdCard.ID,
 			CardGroupID: createdCardGroup.ID,
-			Direction:   "left",
+			Mode:        swipe_manager.DIFFICULT,
 			Created:     time.Now().UTC(),
 			Updated:     time.Now().UTC(),
 		}
@@ -254,7 +259,7 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 			UserID:      createdUser.ID,
 			CardID:      createdCard.ID,
 			CardGroupID: createdCardGroup.ID,
-			Direction:   "right",
+			Mode:        swipe_manager.EASY,
 			Created:     time.Now().UTC(),
 			Updated:     time.Now().UTC(),
 		}
@@ -285,7 +290,7 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 			UserID:      createdUser.ID,
 			CardID:      createdCard.ID,
 			CardGroupID: createdCardGroup.ID,
-			Direction:   "left",
+			Mode:        swipe_manager.DIFFICULT,
 			Created:     time.Now().UTC(),
 			Updated:     time.Now().UTC(),
 		}
@@ -295,7 +300,7 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 			UserID:      createdUser.ID,
 			CardID:      createdCard.ID,
 			CardGroupID: createdCardGroup.ID,
-			Direction:   "right",
+			Mode:        swipe_manager.INWHILE,
 			Created:     time.Now().UTC(),
 			Updated:     time.Now().UTC(),
 		}
@@ -306,7 +311,7 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 
 		assert.NoError(t, err)
 		assert.Len(t, swipeRecords, 2)
-		assert.Equal(t, "right", swipeRecords[0].Direction) // Assuming the latest update was "right"
+		assert.Equal(t, swipe_manager.INWHILE, swipeRecords[0].Mode) // Assuming the latest update was "right"
 	})
 
 	suite.Run("Error_GetSwipeRecordsByUserAndOrder", func() {

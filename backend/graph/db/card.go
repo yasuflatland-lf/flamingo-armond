@@ -6,7 +6,6 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/m-mizutani/goerr"
 	"gorm.io/gorm"
-	"time"
 )
 
 // BeforeCreate hook to validate the front and back fields
@@ -42,14 +41,6 @@ func (c *Card) validateAtCreate(card *Card) error {
 	if err != nil {
 		return goerr.Wrap(err, fmt.Sprintf("Field validation for 'back' failed %+v", err))
 	}
-
-	return nil
-}
-
-// AfterUpdate Updating data in same transaction
-func (c *Card) AfterUpdate(tx *gorm.DB) (err error) {
-
-	tx.Model(&Card{}).Where("id = ?", c.ID).Update("updated", time.Now().UTC())
 
 	return nil
 }

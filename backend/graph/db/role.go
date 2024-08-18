@@ -6,7 +6,6 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/m-mizutani/goerr"
 	"gorm.io/gorm"
-	"time"
 )
 
 // BeforeCreate hook to validate the Role before creating
@@ -38,11 +37,5 @@ func (r *Role) validateAtCreate(role *Role) error {
 			return goerr.Wrap(err, fmt.Errorf("Field validation for '%s' failed on the '%s' tag", err.Field(), err.Tag()))
 		}
 	}
-	return nil
-}
-
-// Updating data in same transaction
-func (r *Role) AfterUpdate(tx *gorm.DB) (err error) {
-	tx.Model(&Role{}).Where("id = ?", r.ID).Update("updated", time.Now().UTC())
 	return nil
 }

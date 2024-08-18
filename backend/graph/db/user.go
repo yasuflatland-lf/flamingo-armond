@@ -6,7 +6,6 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/m-mizutani/goerr"
 	"gorm.io/gorm"
-	"time"
 )
 
 func (u *User) BeforeCreate(tx *gorm.DB) (err error) {
@@ -37,11 +36,5 @@ func (u *User) validateAtCreate(user *User) error {
 			return goerr.Wrap(err, fmt.Sprintf("Field validation for '%s' failed on the '%s' tag", err.Field(), err.Tag()))
 		}
 	}
-	return nil
-}
-
-// AfterUpdate Updating data in same transaction
-func (u *User) AfterUpdate(tx *gorm.DB) (err error) {
-	tx.Model(&User{}).Where("id = ?", u.ID).Update("updated", time.Now().UTC())
 	return nil
 }

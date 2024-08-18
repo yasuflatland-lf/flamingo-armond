@@ -82,7 +82,7 @@ type NewSwipeRecord struct {
 	UserID      int64     `json:"userId" validate:"required"`
 	CardID      int64     `json:"cardId" validate:"required"`
 	CardGroupID int64     `json:"cardGroupID" validate:"required"`
-	Direction   string    `json:"direction" validate:"required"`
+	Mode        int       `json:"mode" validate:"gte=0"`
 	Created     time.Time `json:"created"`
 	Updated     time.Time `json:"updated"`
 }
@@ -129,7 +129,7 @@ type SwipeRecord struct {
 	UserID      int64     `json:"userId"`
 	CardID      int64     `json:"cardId"`
 	CardGroupID int64     `json:"cardGroupID"`
-	Direction   string    `json:"direction" validate:"required"`
+	Mode        int       `json:"mode" validate:"gte=0"`
 	Created     time.Time `json:"created"`
 	Updated     time.Time `json:"updated"`
 }

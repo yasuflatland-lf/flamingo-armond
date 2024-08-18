@@ -56,7 +56,7 @@ type SwipeRecord struct {
 	UserID      int64     `gorm:"column:user_id" validate:"number"`
 	CardID      int64     `gorm:"column:card_id" validate:"number"`
 	CardGroupID int64     `gorm:"column:cardgroup_id" validate:"number"`
-	Direction   string    `gorm:"column:direction;not null" validate:"required"`
+	Mode        int       `gorm:"column:mode;default:1;not null" validate:"gte=0"`
 	Created     time.Time `gorm:"column:created;autoCreateTime"`
 	Updated     time.Time `gorm:"column:updated;autoCreateTime"`
 }

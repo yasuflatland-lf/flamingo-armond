@@ -19,8 +19,8 @@ func NewDifficultStateStrategy(swipeManagerUsecase SwipeManagerUsecase) Difficul
 	}
 }
 
-func (d *difficultStateStrategy) ChangeState(ctx context.Context, newSwipeRecord model.NewSwipeRecord) error {
-	return d.swipeManagerUsecase.ChangeState(ctx, newSwipeRecord.CardGroupID, newSwipeRecord.UserID, DIFFICULT)
+func (d *difficultStateStrategy) Run(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error) {
+	d.swipeManagerUsecase.ChangeState(ctx, newSwipeRecord.CardGroupID, newSwipeRecord.UserID, DIFFICULT)
 	return nil, nil
 }
 
