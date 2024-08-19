@@ -20,35 +20,34 @@ const (
 )
 
 type swipeManagerUsecase struct {
-	swipeService     services.SwipeRecordService
-	cardGroupService services.CardGroupService
-	cardService      services.CardService
+	services services.Services
 }
 
 type SwipeManagerUsecase interface {
 	HandleSwipe(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error)
 	ChangeState(ctx context.Context, cardGroupID int64, userID int64, newState int) error
+	Srv() services.Services
 }
 
 func NewSwipeManagerUsecase(
-	swipeService services.SwipeRecordService,
-	cardGroupService services.CardGroupService,
-	cardService services.CardService) SwipeManagerUsecase {
+	services services.Services) SwipeManagerUsecase {
 	return &swipeManagerUsecase{
-		swipeService:     swipeService,
-		cardGroupService: cardGroupService,
-		cardService:      cardService,
+		services: services,
 	}
+}
+
+func (s *swipeManagerUsecase) Srv() services.Services {
+	return s.services
 }
 
 // HandleSwipe Main function to execute state machine
 func (s *swipeManagerUsecase) HandleSwipe(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error) {
-	latestSwipeRecord, err := s.swipeService.CreateSwipeRecord(ctx, newSwipeRecord)
+	latestSwipeRecord, err := s.Srv().CreateSwipeRecord(ctx, newSwipeRecord)
 	if err != nil {
 		return nil, goerr.Wrap(err)
 	}
 
-	latestSwipeRecords, err := s.swipeService.GetSwipeRecordsByUserAndOrder(ctx, latestSwipeRecord.UserID, repository.DESC, config.Cfg.FLBatchAmount)
+	latestSwipeRecords, err := s.Srv().GetSwipeRecordsByUserAndOrder(ctx, latestSwipeRecord.UserID, repository.DESC, config.Cfg.FLBatchDefaultAmount)
 	if err != nil {
 		return nil, goerr.Wrap(err)
 	}
@@ -62,7 +61,7 @@ func (s *swipeManagerUsecase) HandleSwipe(ctx context.Context, newSwipeRecord mo
 
 func (s *swipeManagerUsecase) handleNotExist(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error) {
 	// Retrieve cards by user and card group with the specified order and limit
-	cards, err := s.cardService.GetCardsByUserAndCardGroup(ctx, newSwipeRecord.CardGroupID, repository.DESC, config.Cfg.FLBatchAmount)
+	cards, err := s.Srv().GetCardsByUserAndCardGroup(ctx, newSwipeRecord.CardGroupID, repository.DESC, config.Cfg.FLBatchDefaultAmount)
 	if err != nil {
 		return nil, goerr.Wrap(err)
 	}
@@ -105,7 +104,7 @@ func (s *swipeManagerUsecase) ExecuteStrategy(ctx context.Context, newSwipeRecor
 
 func (s *swipeManagerUsecase) ChangeState(ctx context.Context, cardGroupID int64, userID int64, newState int) error {
 
-	err := s.cardGroupService.UpdateCardGroupUserState(ctx, cardGroupID, userID, newState)
+	err := s.Srv().UpdateCardGroupUserState(ctx, cardGroupID, userID, newState)
 	if err != nil {
 		return goerr.Wrap(err, "failed to update card group user state")
 	}

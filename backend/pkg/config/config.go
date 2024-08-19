@@ -1,8 +1,8 @@
 package config
 
 import (
+	"backend/pkg/logger"
 	"github.com/caarlos0/env/v11"
-	"log/slog"
 )
 
 // Config structure holds all the configuration values
@@ -21,10 +21,10 @@ type Config struct {
 	PGDBName     string `env:"PG_DBNAME,notEmpty" envDefault:"flamingodb"`
 	PGPort       string `env:"PG_PORT,notEmpty" envDefault:"5432"`
 	PGSSLMode    string `env:"PG_SSLMODE,notEmpty" envDefault:"allow"`
-	PGQueryLimit int    `env:"PG_QUERY_LIMIT,notEmpty" envDefault:"20"`
+	PGQueryLimit int    `env:"PG_QUERY_LIMIT,notEmpty" envDefault:"100"`
 
 	// Application configuration
-	FLBatchAmount int `env:"FL_BATCH_AMOUNT,notEmpty" envDefault:"10"`
+	FLBatchDefaultAmount int `env:"FL_BATCH_DEFAULT_AMOUNT,notEmpty" envDefault:"10"`
 }
 
 // Cfg is the package-level variable that holds the parsed configuration
@@ -33,6 +33,11 @@ var Cfg Config
 // init function initializes the package-level variable Cfg by parsing environment variables
 func init() {
 	if err := env.Parse(&Cfg); err != nil {
-		slog.Error("Failed to parse environment variables: %+v", err)
+		logger.Logger.Error("Failed to parse environment variables: %+v", err)
+	}
+
+	if Cfg.PGQueryLimit <= Cfg.FLBatchDefaultAmount {
+		logger.Logger.Error("FLBatchDefaultAmount<%d> must be smaller than PGQueryLimit<%d>",
+			Cfg.FLBatchDefaultAmount, Cfg.PGQueryLimit)
 	}
 }

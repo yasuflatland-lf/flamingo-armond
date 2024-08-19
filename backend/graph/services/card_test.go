@@ -478,18 +478,18 @@ func (suite *CardTestSuite) TestCardService() {
 				CardgroupID: createdGroup.ID,
 			}
 			_, err := cardService.CreateCard(ctx, input)
-			assert.NoError(t, err)
+			assert.NoError(suite.T(), err)
 		}
 
 		// Act
 		limit := 10
-		randomCards1, err := cardService.GetRandomCardsFromRecentUpdates(ctx, createdGroup.ID, limit)
-		assert.NoError(t, err)
-		assert.Len(t, randomCards1, limit) // Ensure that 10 cards are returned
+		randomCards1, err := cardService.GetRandomCardsFromRecentUpdates(ctx, createdGroup.ID, limit, repo.DESC, repo.ASC)
+		assert.NoError(suite.T(), err)
+		assert.Len(suite.T(), randomCards1, limit) // Ensure that 10 cards are returned
 
-		randomCards2, err := cardService.GetRandomCardsFromRecentUpdates(ctx, createdGroup.ID, limit)
-		assert.NoError(t, err)
-		assert.Len(t, randomCards2, limit) // Ensure that 10 cards are returned
+		randomCards2, err := cardService.GetRandomCardsFromRecentUpdates(ctx, createdGroup.ID, limit, repo.DESC, repo.ASC)
+		assert.NoError(suite.T(), err)
+		assert.Len(suite.T(), randomCards2, limit) // Ensure that 10 cards are returned
 
 		// Assert
 		sameOrder := true
@@ -501,7 +501,7 @@ func (suite *CardTestSuite) TestCardService() {
 		}
 
 		// Ensure the order is different (i.e., shuffled)
-		assert.False(t, sameOrder, "The order of cards should be different between the two calls")
+		assert.False(suite.T(), sameOrder, "The order of cards should be different between the two calls")
 	})
 
 	suite.Run("Normal_GetRandomCardsFromRecentUpdates_LessThanLimit", func() {
@@ -517,16 +517,41 @@ func (suite *CardTestSuite) TestCardService() {
 				CardgroupID: createdGroup.ID,
 			}
 			_, err := cardService.CreateCard(ctx, input)
-			assert.NoError(t, err)
+			assert.NoError(suite.T(), err)
 		}
 
 		// Act
 		limit := 10
-		randomCards, err := cardService.GetRandomCardsFromRecentUpdates(ctx, createdGroup.ID, limit)
+		randomCards, err := cardService.GetRandomCardsFromRecentUpdates(ctx, createdGroup.ID, limit, repo.DESC, repo.ASC)
 
 		// Assert
-		assert.NoError(t, err)
-		assert.Len(t, randomCards, 5) // Ensure that only the available 5 cards are returned
+		assert.NoError(suite.T(), err)
+		assert.Len(suite.T(), randomCards, 5) // Ensure that only the available 5 cards are returned
+	})
+
+	suite.Run("Normal_GetRandomCardsFromRecentUpdates_InvalidSortOrders", func() {
+		// Arrange
+		createdGroup, _, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+
+		// Create 20 dummy cards
+		for i := 0; i < 20; i++ {
+			input := model.NewCard{
+				Front:       "Front " + strconv.Itoa(i),
+				Back:        "Back " + strconv.Itoa(i),
+				ReviewDate:  time.Now().UTC(),
+				CardgroupID: createdGroup.ID,
+			}
+			_, err := cardService.CreateCard(ctx, input)
+			assert.NoError(suite.T(), err)
+		}
+
+		// Act
+		limit := 10
+		randomCards, err := cardService.GetRandomCardsFromRecentUpdates(ctx, createdGroup.ID, limit, "invalid_order", "invalid_order")
+
+		// Assert
+		assert.NoError(suite.T(), err)
+		assert.Len(suite.T(), randomCards, limit) // Ensure that 10 cards are returned
 	})
 }
 

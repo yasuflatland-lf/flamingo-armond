@@ -4,6 +4,7 @@ import (
 	repository "backend/graph/db"
 	"backend/graph/model"
 	"backend/pkg/logger"
+	repo "backend/pkg/repository"
 	"backend/pkg/utils"
 	"context"
 	"errors"
@@ -31,7 +32,7 @@ type CardService interface {
 	FetchAllCardsByCardGroup(ctx context.Context, cardGroupID int64, first *int) ([]*model.Card, error)
 	AddNewCards(ctx context.Context, targetCards []model.Card, cardGroupID int64) ([]*model.Card, error)
 	GetCardsByUserAndCardGroup(ctx context.Context, cardGroupID int64, order string, limit int) ([]repository.Card, error)
-	GetRandomCardsFromRecentUpdates(ctx context.Context, cardGroupID int64, limit int) ([]model.Card, error)
+	GetRandomCardsFromRecentUpdates(ctx context.Context, cardGroupID int64, limit int, updatedSortOrder string, intervalDaysSortOrder string) ([]model.Card, error)
 }
 
 func NewCardService(db *gorm.DB, defaultLimit int) CardService {
@@ -333,18 +334,30 @@ func (s *cardService) GetCardsByUserAndCardGroup(
 	return cards, nil
 }
 
-func (s *cardService) GetRandomCardsFromRecentUpdates(ctx context.Context, cardGroupID int64, limit int) ([]model.Card, error) {
+func (s *cardService) GetRandomCardsFromRecentUpdates(ctx context.Context, cardGroupID int64, limit int, updatedSortOrder string, intervalDaysSortOrder string) ([]model.Card, error) {
 	var cards []repository.Card
 
+	// Validate sortOrder for updated and intervalDays
+	if updatedSortOrder != repo.ASC && updatedSortOrder != repo.DESC {
+		updatedSortOrder = repo.DESC
+	}
+	if intervalDaysSortOrder != repo.ASC && intervalDaysSortOrder != repo.DESC {
+		intervalDaysSortOrder = repo.ASC
+	}
+
+	// Query to fetch recent cards by cardGroupID and order them independently by updated and interval_days
 	err := s.db.WithContext(ctx).
 		Where("cardgroup_id = ?", cardGroupID).
-		Order("updated desc").
-		Limit(100).
+		Order(fmt.Sprintf("updated %s", updatedSortOrder)).
+		Order(fmt.Sprintf("interval_days %s", intervalDaysSortOrder)).
+		Limit(limit).
 		Find(&cards).Error
+
 	if err != nil {
 		return nil, goerr.Wrap(err, "Failed to retrieve recent cards")
 	}
 
+	// Shuffle the cards if necessary
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	rng.Shuffle(len(cards), func(i, j int) { cards[i], cards[j] = cards[j], cards[i] })
 
