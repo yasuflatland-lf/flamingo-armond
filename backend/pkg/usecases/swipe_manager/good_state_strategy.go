@@ -1,7 +1,10 @@
 package swipe_manager
 
 import (
+	repository "backend/graph/db"
 	"backend/graph/model"
+	"backend/graph/services"
+	"backend/pkg/logger"
 	"golang.org/x/net/context"
 )
 
@@ -23,19 +26,21 @@ func NewGoodStateStrategy(swipeManagerUsecase SwipeManagerUsecase) GoodStateStra
 
 // Run ChangeState changes the state of the given swipe records to GOOD
 func (g *goodStateStrategy) Run(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error) {
-	g.swipeManagerUsecase.ChangeState(ctx, newSwipeRecord.CardGroupID, newSwipeRecord.UserID, GOOD)
-
 	return nil, nil
 }
 
-func (g *goodStateStrategy) IsApplicable(ctx context.Context, newSwipeRecord model.NewSwipeRecord) bool {
-	//// Check if 5 out of the last 10 records are "known"
-	//knownCount := 0
-	//for i := 0; i < 10 && i < len(swipeRecords); i++ {
-	//	if swipeRecords[i].Direction == services.KNOWN {
-	//		knownCount++
-	//	}
-	//}
-	//return knownCount >= 5
-	return true
+func (g *goodStateStrategy) IsApplicable(ctx context.Context, newSwipeRecord model.NewSwipeRecord, latestSwipeRecords []*repository.SwipeRecord) bool {
+	// Check if 5 out of the last 10 records are "known"
+	knownCount := 0
+	for i := 0; i < 10 && i < len(latestSwipeRecords); i++ {
+		if latestSwipeRecords[i].Mode == services.KNOWN {
+			knownCount++
+		}
+	}
+
+	mode := knownCount >= 5
+	if mode {
+		logger.Logger.Debug("Good mode")
+	}
+	return mode
 }

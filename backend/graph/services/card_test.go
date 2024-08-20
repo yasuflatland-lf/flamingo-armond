@@ -1,11 +1,13 @@
 package services_test
 
 import (
+	repository "backend/graph/db"
 	"backend/graph/model"
 	"backend/graph/services"
 	repo "backend/pkg/repository"
 	"backend/testutils"
 	"context"
+	"math/rand"
 	"strconv"
 	"testing"
 	"time"
@@ -553,6 +555,58 @@ func (suite *CardTestSuite) TestCardService() {
 		assert.NoError(suite.T(), err)
 		assert.Len(suite.T(), randomCards, limit) // Ensure that 10 cards are returned
 	})
+
+	suite.Run("Normal_GetCardsForReview", func() {
+		// Arrange
+		createdGroup, _, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+
+		now := time.Now().UTC()
+		r := rand.New(rand.NewSource(time.Now().UnixNano())) // New random number generator
+
+		// Create 100 cards with random updated times and interval days
+		for i := 0; i < 100; i++ {
+			intervalDays := r.Intn(50) + 1 // Random IntervalDays between 1 and 50
+			input := model.NewCard{
+				Front:        "Front " + strconv.Itoa(i),
+				Back:         "Back " + strconv.Itoa(i),
+				ReviewDate:   now.AddDate(0, 0, -i), // Spread the review dates
+				IntervalDays: &intervalDays,
+				CardgroupID:  createdGroup.ID,
+			}
+			card, err := cardService.CreateCard(ctx, input)
+			assert.NoError(t, err)
+
+			// Ensure the Front field is always populated
+			assert.NotEmpty(t, card.Front, "Card Front field should not be empty")
+
+			// Adjust the updated date to simulate a delay
+			card.Updated = now.AddDate(0, 0, -i*2)
+			err = suite.db.Save(&repository.Card{
+				ID:           card.ID,
+				Front:        card.Front, // Ensure Front is populated
+				Back:         card.Back,  // Ensure Back is populated
+				ReviewDate:   card.ReviewDate,
+				CardGroupID:  createdGroup.ID,
+				Updated:      card.Updated,
+				IntervalDays: *input.IntervalDays,
+			}).Error
+			assert.NoError(t, err)
+		}
+
+		// Act
+		cards, err := cardService.GetCardsByDefaultLogic(ctx, createdGroup.ID, 10)
+
+		// Assert
+		assert.NoError(t, err)
+		assert.Len(t, cards, 10) // Ensure that only 10 cards are returned
+		// Ensure that cards are ordered by their next review date (Updated + IntervalDays)
+		for i := 1; i < len(cards); i++ {
+			previousReviewTime := cards[i-1].Updated.Add(time.Hour * 24 * time.Duration(cards[i-1].IntervalDays))
+			currentReviewTime := cards[i].Updated.Add(time.Hour * 24 * time.Duration(cards[i].IntervalDays))
+			assert.True(t, previousReviewTime.Before(currentReviewTime) || previousReviewTime.Equal(currentReviewTime))
+		}
+	})
+
 }
 
 func TestCardTestSuite(t *testing.T) {

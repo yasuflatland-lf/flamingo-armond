@@ -1,9 +1,10 @@
 package services_test
 
 import (
-	"backend/graph/db"
+	repository "backend/graph/db"
 	"backend/graph/model"
 	"backend/graph/services"
+	repo "backend/pkg/repository"
 	"backend/testutils"
 	"context"
 	"github.com/labstack/gommon/log"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	"gorm.io/gorm"
+	"math/rand"
 	"testing"
 	"time"
 )
@@ -286,7 +288,7 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 		}
 
 		// Verify the update
-		var cardGroupUser db.CardgroupUser
+		var cardGroupUser repository.CardgroupUser
 		if err := suite.db.Where("cardgroup_id = ? AND user_id = ?", cardGroup.ID, user.ID).First(&cardGroupUser).Error; err != nil {
 			t.Fatalf("failed to retrieve updated record: %+v", goerr.Wrap(err))
 		}
@@ -294,6 +296,70 @@ func (suite *CardGroupTestSuite) TestCardGroupService() {
 		if cardGroupUser.State != newState {
 			t.Errorf("expected state to be %d, got %d", newState, cardGroupUser.State)
 		}
+	})
+
+	suite.Run("Normal_GetLatestCardgroupUsers", func() {
+		// Create an array to store the user and card group pairs
+		userAndCardGroups := make([]struct {
+			CardGroup model.CardGroup
+			User      model.User
+		}, 3)
+
+		// Create three user and card group pairs
+		for i := 0; i < len(userAndCardGroups); i++ {
+			cardGroup, user, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+			userAndCardGroups[i] = struct {
+				CardGroup model.CardGroup
+				User      model.User
+			}{
+				CardGroup: *cardGroup,
+				User:      *user,
+			}
+		}
+
+		// Create a new random source and generator
+		rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+		// Initialize the i counter
+		i := 0
+
+		// Now you can use the created user and card groups in your tests
+		// Create multiple CardgroupUser records with different updated times
+		for _, pair := range userAndCardGroups {
+			i++ // Increment the counter for each iteration
+
+			cardGroupUser := repository.CardgroupUser{
+				CardGroupID: userAndCardGroups[0].CardGroup.ID,
+				UserID:      pair.User.ID,
+				State:       rng.Intn(5), // Generates a random number between 0 and 5
+				Updated:     time.Now().UTC().Add(time.Duration(i) * time.Minute),
+			}
+			suite.db.Create(&cardGroupUser)
+		}
+
+		// Retrieve the latest CardgroupUser records with a specified limit
+		limit := 3
+		results, err := cardGroupService.GetLatestCardgroupUsers(ctx, userAndCardGroups[0].CardGroup.ID, limit, repo.DESC)
+
+		// Validate the test results
+		assert.NoError(t, err)
+		assert.NotNil(t, results)
+		assert.Len(t, results, limit)
+
+		// Verify the order of updated times is correct (descending)
+		for i := 0; i < len(results)-1; i++ {
+			assert.True(t, results[i].Updated.After(results[i+1].Updated))
+		}
+	})
+
+	suite.Run("Error_GetLatestCardgroupUsers_InvalidCardGroupID", func() {
+		// Attempt to retrieve records using an invalid CardGroupID
+		limit := 3
+		results, err := cardGroupService.GetLatestCardgroupUsers(ctx, -1, limit, repo.DESC)
+
+		// Check for the expected error
+		assert.NoError(t, err)
+		assert.Empty(t, results)
 	})
 }
 

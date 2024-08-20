@@ -13,6 +13,13 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	UNDEFINED = 0
+	KNOWN     = 1
+	DONTKNOW  = 2
+	MAYBE     = 3
+)
+
 type swipeRecordService struct {
 	db           *gorm.DB
 	defaultLimit int
@@ -27,7 +34,7 @@ type SwipeRecordService interface {
 	SwipeRecordsByUser(ctx context.Context, userID int64) ([]*model.SwipeRecord, error)
 	PaginatedSwipeRecordsByUser(ctx context.Context, userID int64, first *int, after *int64, last *int, before *int64) (*model.SwipeRecordConnection, error)
 	GetSwipeRecordsByIDs(ctx context.Context, ids []int64) ([]*model.SwipeRecord, error)
-	GetSwipeRecordsByUserAndOrder(ctx context.Context, userID int64, order string, limit int) ([]repository.SwipeRecord, error)
+	GetSwipeRecordsByUserAndOrder(ctx context.Context, userID int64, order string, limit int) ([]*repository.SwipeRecord, error)
 }
 
 func NewSwipeRecordService(db *gorm.DB, defaultLimit int) SwipeRecordService {
@@ -109,13 +116,13 @@ func (s *swipeRecordService) DeleteSwipeRecord(ctx context.Context, id int64) (*
 }
 
 func (s *swipeRecordService) SwipeRecords(ctx context.Context) ([]*model.SwipeRecord, error) {
-	var swipeRecords []repository.SwipeRecord
+	var swipeRecords []*repository.SwipeRecord
 	if err := s.db.WithContext(ctx).Find(&swipeRecords).Error; err != nil {
 		return nil, goerr.Wrap(err, "failed to retrieve swipe records")
 	}
 	var gqlSwipeRecords []*model.SwipeRecord
 	for _, swipeRecord := range swipeRecords {
-		gqlSwipeRecords = append(gqlSwipeRecords, ConvertToSwipeRecord(swipeRecord))
+		gqlSwipeRecords = append(gqlSwipeRecords, ConvertToSwipeRecord(*swipeRecord))
 	}
 	return gqlSwipeRecords, nil
 }
@@ -125,19 +132,19 @@ func (s *swipeRecordService) SwipeRecordsByUser(ctx context.Context, userID int6
 		return nil, goerr.Wrap(fmt.Errorf("user ID must be larger than 0. It's %d", userID))
 	}
 
-	var swipeRecords []repository.SwipeRecord
+	var swipeRecords []*repository.SwipeRecord
 	if err := s.db.WithContext(ctx).Where("user_id = ?", userID).Find(&swipeRecords).Error; err != nil {
 		return nil, goerr.Wrap(err, fmt.Sprintf("failed to retrieve swipe records by user ID: %d", userID))
 	}
 	var gqlSwipeRecords []*model.SwipeRecord
 	for _, swipeRecord := range swipeRecords {
-		gqlSwipeRecords = append(gqlSwipeRecords, ConvertToSwipeRecord(swipeRecord))
+		gqlSwipeRecords = append(gqlSwipeRecords, ConvertToSwipeRecord(*swipeRecord))
 	}
 	return gqlSwipeRecords, nil
 }
 
 func (s *swipeRecordService) PaginatedSwipeRecordsByUser(ctx context.Context, userID int64, first *int, after *int64, last *int, before *int64) (*model.SwipeRecordConnection, error) {
-	var swipeRecords []repository.SwipeRecord
+	var swipeRecords []*repository.SwipeRecord
 	query := s.db.WithContext(ctx).Where("user_id = ?", userID)
 
 	if after != nil {
@@ -161,7 +168,7 @@ func (s *swipeRecordService) PaginatedSwipeRecordsByUser(ctx context.Context, us
 	var edges []*model.SwipeRecordEdge
 	var nodes []*model.SwipeRecord
 	for _, swipeRecord := range swipeRecords {
-		node := ConvertToSwipeRecord(swipeRecord)
+		node := ConvertToSwipeRecord(*swipeRecord)
 		edges = append(edges, &model.SwipeRecordEdge{
 			Cursor: swipeRecord.ID,
 			Node:   node,
@@ -201,11 +208,11 @@ func (s *swipeRecordService) GetSwipeRecordsByIDs(ctx context.Context, ids []int
 	return gqlSwipeRecords, nil
 }
 
-func (s *swipeRecordService) GetSwipeRecordsByUserAndOrder(ctx context.Context, userID int64, order string, limit int) ([]repository.SwipeRecord, error) {
+func (s *swipeRecordService) GetSwipeRecordsByUserAndOrder(ctx context.Context, userID int64, order string, limit int) ([]*repository.SwipeRecord, error) {
 
 	orderClause := fmt.Sprintf("updated %s", order)
 
-	var swipeRecords []repository.SwipeRecord
+	var swipeRecords []*repository.SwipeRecord
 
 	query := s.db.WithContext(ctx).Where("user_id = ?", userID).Limit(limit).Order(orderClause)
 

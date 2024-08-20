@@ -33,6 +33,7 @@ type CardService interface {
 	AddNewCards(ctx context.Context, targetCards []model.Card, cardGroupID int64) ([]*model.Card, error)
 	GetCardsByUserAndCardGroup(ctx context.Context, cardGroupID int64, order string, limit int) ([]repository.Card, error)
 	GetRandomCardsFromRecentUpdates(ctx context.Context, cardGroupID int64, limit int, updatedSortOrder string, intervalDaysSortOrder string) ([]model.Card, error)
+	GetCardsByDefaultLogic(ctx context.Context, cardGroupID int64, limit int) ([]repository.Card, error)
 }
 
 func NewCardService(db *gorm.DB, defaultLimit int) CardService {
@@ -368,4 +369,21 @@ func (s *cardService) GetRandomCardsFromRecentUpdates(ctx context.Context, cardG
 	randomCards := cards[:limit]
 
 	return ConvertToCards(randomCards), nil
+}
+
+func (s *cardService) GetCardsByDefaultLogic(ctx context.Context, cardGroupID int64, limit int) ([]repository.Card, error) {
+	var cards []repository.Card
+
+	err := s.db.WithContext(ctx).
+		Where("cardgroup_id = ?", cardGroupID).
+		Where("updated + interval '1 day' * interval_days <= now()").
+		Order("updated + interval '1 day' * interval_days ASC").
+		Limit(limit).
+		Find(&cards).Error
+
+	if err != nil {
+		return nil, goerr.Wrap(err, "Failed to retrieve cards for review")
+	}
+
+	return cards, nil
 }

@@ -2,6 +2,8 @@ package services
 
 import (
 	"backend/pkg/config"
+	"github.com/m-mizutani/goerr"
+	"golang.org/x/net/context"
 	"gorm.io/gorm"
 )
 
@@ -12,6 +14,7 @@ type Services interface {
 	UserService
 	RoleService
 	SwipeRecordService
+	BeginTx(ctx context.Context) (*gorm.DB, error)
 }
 
 type services struct {
@@ -20,6 +23,7 @@ type services struct {
 	*userService
 	*roleService
 	*swipeRecordService
+	db *gorm.DB
 }
 
 func New(db *gorm.DB) Services {
@@ -29,5 +33,14 @@ func New(db *gorm.DB) Services {
 		userService:        &userService{db: db, defaultLimit: config.Cfg.PGQueryLimit},
 		roleService:        &roleService{db: db, defaultLimit: config.Cfg.PGQueryLimit},
 		swipeRecordService: &swipeRecordService{db: db, defaultLimit: config.Cfg.PGQueryLimit},
+		db:                 db,
 	}
+}
+
+func (s *services) BeginTx(ctx context.Context) (*gorm.DB, error) {
+	tx := s.db.WithContext(ctx).Begin()
+	if tx.Error != nil {
+		return nil, goerr.Wrap(tx.Error)
+	}
+	return tx, nil
 }

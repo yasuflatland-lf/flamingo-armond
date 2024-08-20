@@ -2,6 +2,7 @@ package config
 
 import (
 	"backend/pkg/logger"
+	"fmt"
 	"github.com/caarlos0/env/v11"
 )
 
@@ -37,7 +38,9 @@ func init() {
 	}
 
 	if Cfg.PGQueryLimit <= Cfg.FLBatchDefaultAmount {
-		logger.Logger.Error("FLBatchDefaultAmount<%d> must be smaller than PGQueryLimit<%d>",
-			Cfg.FLBatchDefaultAmount, Cfg.PGQueryLimit)
+		logger.Logger.Error(fmt.
+			Sprintf("FLBatchDefaultAmount<%d> must be smaller than"+
+				" PGQueryLimit<%d>",
+				Cfg.FLBatchDefaultAmount, Cfg.PGQueryLimit))
 	}
 }

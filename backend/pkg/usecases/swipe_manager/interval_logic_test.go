@@ -53,7 +53,7 @@ func TestUpdateInterval(t *testing.T) {
 
 	t.Run("Normal Value with Direction Known", func(t *testing.T) {
 		t.Parallel()
-		swipe := &repository.SwipeRecord{Direction: services.KNOWN}
+		swipe := &repository.SwipeRecord{Mode: services.KNOWN}
 		il.UpdateInterval(card, swipe)
 		expectedDate := time.Now().AddDate(0, 0, 3) // because interval should increase to 3
 		if !card.ReviewDate.Truncate(time.Second).Equal(expectedDate.Truncate(time.Second)) {
@@ -63,7 +63,7 @@ func TestUpdateInterval(t *testing.T) {
 
 	t.Run("Reset Interval with Unknown Direction", func(t *testing.T) {
 		t.Parallel()
-		swipe := &repository.SwipeRecord{Direction: services.DONTKNOW}
+		swipe := &repository.SwipeRecord{Mode: services.DONTKNOW}
 		il.UpdateInterval(card, swipe)
 		expectedDate := time.Now().AddDate(0, 0, 1) // reset to 1 day
 		if !card.ReviewDate.Truncate(time.Second).Equal(expectedDate.Truncate(time.Second)) {
@@ -74,7 +74,7 @@ func TestUpdateInterval(t *testing.T) {
 	t.Run("Edge Case with Maxed Out Interval", func(t *testing.T) {
 		t.Parallel()
 		card.IntervalDays = 30
-		swipe := &repository.SwipeRecord{Direction: services.KNOWN}
+		swipe := &repository.SwipeRecord{Mode: services.KNOWN}
 		il.UpdateInterval(card, swipe)
 		expectedDate := time.Now().AddDate(0, 0, 30)
 		if !card.ReviewDate.Truncate(time.Second).Equal(expectedDate.Truncate(time.Second)) {

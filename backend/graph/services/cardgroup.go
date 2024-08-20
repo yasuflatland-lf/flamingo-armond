@@ -3,6 +3,7 @@ package services
 import (
 	repository "backend/graph/db"
 	"backend/graph/model"
+	repo "backend/pkg/repository"
 	"context"
 	"fmt"
 	"time"
@@ -30,6 +31,7 @@ type CardGroupService interface {
 	PaginatedCardGroupsByUser(ctx context.Context, userID int64, first *int, after *int64, last *int, before *int64) (*model.CardGroupConnection, error)
 	GetCardGroupsByIDs(ctx context.Context, ids []int64) ([]*model.CardGroup, error)
 	UpdateCardGroupUserState(ctx context.Context, cardGroupID int64, userID int64, newState int) error
+	GetLatestCardgroupUsers(ctx context.Context, cardGroupID int64, limit int, sortOrder string) ([]*repository.CardgroupUser, error)
 }
 
 // NewCardGroupService creates a new CardGroupService instance.
@@ -37,8 +39,8 @@ func NewCardGroupService(db *gorm.DB, defaultLimit int) CardGroupService {
 	return &cardGroupService{db: db, defaultLimit: defaultLimit}
 }
 
-// convertToGormCardGroup converts a NewCardGroup input to a GORM-compatible Cardgroup model.
-func convertToGormCardGroup(input model.NewCardGroup) *repository.Cardgroup {
+// ConvertToGormCardGroup converts a NewCardGroup input to a GORM-compatible Cardgroup model.
+func ConvertToGormCardGroup(input model.NewCardGroup) *repository.Cardgroup {
 	return &repository.Cardgroup{
 		Name:    input.Name,
 		Created: time.Now().UTC(),
@@ -46,8 +48,8 @@ func convertToGormCardGroup(input model.NewCardGroup) *repository.Cardgroup {
 	}
 }
 
-// convertToCardGroup converts a Cardgroup repository model to a GraphQL-compatible CardGroup model.
-func convertToCardGroup(cardGroup repository.Cardgroup) *model.CardGroup {
+// ConvertToCardGroup converts a Cardgroup repository model to a GraphQL-compatible CardGroup model.
+func ConvertToCardGroup(cardGroup repository.Cardgroup) *model.CardGroup {
 	return &model.CardGroup{
 		ID:      cardGroup.ID,
 		Name:    cardGroup.Name,
@@ -65,17 +67,17 @@ func (s *cardGroupService) GetCardGroupByID(ctx context.Context, id int64) (*mod
 		}
 		return nil, goerr.Wrap(err, "failed to retrieve card group by ID")
 	}
-	return convertToCardGroup(cardGroup), nil
+	return ConvertToCardGroup(cardGroup), nil
 }
 
 // CreateCardGroup creates a new card group in the database.
 func (s *cardGroupService) CreateCardGroup(ctx context.Context, input model.NewCardGroup) (*model.CardGroup, error) {
-	gormCardGroup := convertToGormCardGroup(input)
+	gormCardGroup := ConvertToGormCardGroup(input)
 	result := s.db.WithContext(ctx).Create(&gormCardGroup)
 	if result.Error != nil {
 		return nil, goerr.Wrap(result.Error, "failed to create card group")
 	}
-	return convertToCardGroup(*gormCardGroup), nil
+	return ConvertToCardGroup(*gormCardGroup), nil
 }
 
 // CardGroups retrieves all card groups from the database.
@@ -86,7 +88,7 @@ func (s *cardGroupService) CardGroups(ctx context.Context) ([]*model.CardGroup, 
 	}
 	var gqlCardGroups []*model.CardGroup
 	for _, cardGroup := range cardGroups {
-		gqlCardGroups = append(gqlCardGroups, convertToCardGroup(cardGroup))
+		gqlCardGroups = append(gqlCardGroups, ConvertToCardGroup(cardGroup))
 	}
 	return gqlCardGroups, nil
 }
@@ -102,7 +104,7 @@ func (s *cardGroupService) UpdateCardGroup(ctx context.Context, id int64, input 
 	if err := s.db.WithContext(ctx).Save(&cardGroup).Error; err != nil {
 		return nil, goerr.Wrap(err, "failed to update card group")
 	}
-	return convertToCardGroup(cardGroup), nil
+	return ConvertToCardGroup(cardGroup), nil
 }
 
 // DeleteCardGroup deletes a card group from the database by its ID.
@@ -132,7 +134,7 @@ func (s *cardGroupService) AddUserToCardGroup(ctx context.Context, userID int64,
 	if err := s.db.Model(&cardGroup).Association("Users").Append(&user); err != nil {
 		return nil, goerr.Wrap(err, "failed to add user to card group")
 	}
-	return convertToCardGroup(cardGroup), nil
+	return ConvertToCardGroup(cardGroup), nil
 }
 
 // RemoveUserFromCardGroup removes a user from a card group in the database.
@@ -148,7 +150,7 @@ func (s *cardGroupService) RemoveUserFromCardGroup(ctx context.Context, userID i
 	if err := s.db.Model(&cardGroup).Association("Users").Delete(&user); err != nil {
 		return nil, goerr.Wrap(err, "failed to remove user from card group")
 	}
-	return convertToCardGroup(cardGroup), nil
+	return ConvertToCardGroup(cardGroup), nil
 }
 
 // GetCardGroupsByUser retrieves all card groups associated with a specific user from the database.
@@ -159,7 +161,7 @@ func (s *cardGroupService) GetCardGroupsByUser(ctx context.Context, userID int64
 	}
 	var gqlCardGroups []*model.CardGroup
 	for _, group := range user.CardGroups {
-		gqlCardGroups = append(gqlCardGroups, convertToCardGroup(group))
+		gqlCardGroups = append(gqlCardGroups, ConvertToCardGroup(group))
 	}
 	return gqlCardGroups, nil
 }
@@ -195,7 +197,7 @@ func (s *cardGroupService) PaginatedCardGroupsByUser(ctx context.Context, userID
 	var edges []*model.CardGroupEdge
 	var nodes []*model.CardGroup
 	for _, cardGroup := range cardGroups {
-		node := convertToCardGroup(cardGroup)
+		node := ConvertToCardGroup(cardGroup)
 		edges = append(edges, &model.CardGroupEdge{
 			Cursor: cardGroup.ID,
 			Node:   node,
@@ -230,7 +232,7 @@ func (s *cardGroupService) GetCardGroupsByIDs(ctx context.Context, ids []int64) 
 
 	var gqlCardGroups []*model.CardGroup
 	for _, cardGroup := range cardGroups {
-		gqlCardGroups = append(gqlCardGroups, convertToCardGroup(*cardGroup))
+		gqlCardGroups = append(gqlCardGroups, ConvertToCardGroup(*cardGroup))
 	}
 
 	return gqlCardGroups, nil
@@ -260,4 +262,24 @@ func (s *cardGroupService) UpdateCardGroupUserState(ctx context.Context, cardGro
 	}
 
 	return nil
+}
+
+func (s *cardGroupService) GetLatestCardgroupUsers(ctx context.Context, cardGroupID int64, limit int, sortOrder string) ([]*repository.CardgroupUser, error) {
+	var cardgroupUsers []*repository.CardgroupUser
+
+	// Default to "DESC" if the provided sortOrder is empty or invalid
+	if sortOrder != repo.ASC && sortOrder != repo.DESC {
+		sortOrder = repo.DESC
+	}
+
+	// Query the CardgroupUser records by CardGroupID with the specified limit and order
+	if err := s.db.WithContext(ctx).
+		Where("cardgroup_id = ?", cardGroupID).
+		Order("updated " + sortOrder).
+		Limit(limit).
+		Find(&cardgroupUsers).Error; err != nil {
+		return nil, goerr.Wrap(err, "failed to retrieve CardgroupUsers")
+	}
+
+	return cardgroupUsers, nil
 }

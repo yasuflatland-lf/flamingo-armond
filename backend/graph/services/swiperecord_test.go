@@ -3,6 +3,7 @@ package services_test
 import (
 	"backend/graph/model"
 	"backend/graph/services"
+	repo "backend/pkg/repository"
 	"backend/pkg/usecases/swipe_manager"
 	"backend/testutils"
 	"context"
@@ -307,16 +308,30 @@ func (suite *SwipeRecordTestSuite) TestSwipeRecordService() {
 		swipeRecordService.CreateSwipeRecord(ctx, newSwipeRecord2)
 
 		// Fetch swipe records by user and order
-		swipeRecords, err := swipeRecordService.GetSwipeRecordsByUserAndOrder(ctx, createdUser.ID, "desc", 2)
+		swipeRecords, err := swipeRecordService.GetSwipeRecordsByUserAndOrder(ctx, createdUser.ID, repo.DESC, 2)
 
 		assert.NoError(t, err)
 		assert.Len(t, swipeRecords, 2)
 		assert.Equal(t, swipe_manager.INWHILE, swipeRecords[0].Mode) // Assuming the latest update was "right"
 	})
 
+	suite.Run("Error_GetSwipeRecordsByUserAndOrder_NoData", func() {
+		// Use the helper function to create the user and role
+		_, _, createdUser, err := testutils.CreateUserCardAndCardGroup(ctx, userService, cardGroupService, roleService, cardService)
+		if err != nil {
+			suite.T().Fatal(err)
+		}
+
+		// Fetch swipe records by user and order
+		swipeRecords, err := swipeRecordService.GetSwipeRecordsByUserAndOrder(ctx, createdUser.ID, repo.DESC, 1)
+
+		assert.NoError(t, err)
+		assert.Len(t, swipeRecords, 0)
+	})
+
 	suite.Run("Error_GetSwipeRecordsByUserAndOrder", func() {
 		// Attempt to fetch swipe records for an invalid user ID
-		swipeRecords, err := swipeRecordService.GetSwipeRecordsByUserAndOrder(ctx, -1, "desc", 2)
+		swipeRecords, err := swipeRecordService.GetSwipeRecordsByUserAndOrder(ctx, -1, repo.DESC, 2)
 
 		assert.NoError(t, err)
 		assert.Empty(t, swipeRecords)

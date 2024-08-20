@@ -2,6 +2,7 @@ package swipe_manager
 
 import (
 	repository "backend/graph/db"
+	"backend/graph/services"
 	"time"
 )
 
@@ -22,15 +23,34 @@ func NewIntervalLogic() IntervalLogic {
 	}
 }
 
-// UpdateInterval updates the card's interval based on the provided swipe record.
 func (il *intervalLogic) UpdateInterval(card *repository.Card, swipe *repository.SwipeRecord) {
-	if swipe.Mode == GOOD || swipe.Mode == EASY {
+	switch swipe.Mode {
+	case services.KNOWN:
 		il.increaseInterval(card)
-	} else {
+		break
+	case services.MAYBE:
+		// Do nothing, stay same Interval Days
+		break
+	case services.DONTKNOW:
+		// If you don't know the word, decrease the interval
+		il.decreaseInterval(card)
+	default:
 		il.resetInterval(card)
 	}
 	// Calculate and set the next review date
 	card.ReviewDate = time.Now().AddDate(0, 0, card.IntervalDays)
+}
+
+// decreaseInterval decreases the interval to the previous step.
+func (il *intervalLogic) decreaseInterval(card *repository.Card) {
+	currentIndex := il.findIntervalIndex(card.IntervalDays)
+
+	// Check if the current interval is out of the expected range and reset if necessary
+	if currentIndex == 0 {
+		card.IntervalDays = il.intervals[0] // Already at the minimum interval
+	} else {
+		card.IntervalDays = il.intervals[currentIndex-1] // Move to the previous interval
+	}
 }
 
 func (il *intervalLogic) increaseInterval(card *repository.Card) {

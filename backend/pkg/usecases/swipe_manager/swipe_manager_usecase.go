@@ -1,12 +1,14 @@
 package swipe_manager
 
 import (
+	repository "backend/graph/db"
 	"backend/graph/model"
 	"backend/graph/services"
 	"backend/pkg/config"
-	"backend/pkg/repository"
+	"log/slog"
+
+	repo "backend/pkg/repository"
 	"context"
-	"fmt"
 	"github.com/m-mizutani/goerr"
 )
 
@@ -25,8 +27,8 @@ type swipeManagerUsecase struct {
 
 type SwipeManagerUsecase interface {
 	HandleSwipe(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error)
-	ChangeState(ctx context.Context, cardGroupID int64, userID int64, newState int) error
 	Srv() services.Services
+	DetermineCardAmount(cards []model.Card, amountOfKnownWords int) (int, error)
 }
 
 func NewSwipeManagerUsecase(
@@ -42,49 +44,77 @@ func (s *swipeManagerUsecase) Srv() services.Services {
 
 // HandleSwipe Main function to execute state machine
 func (s *swipeManagerUsecase) HandleSwipe(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error) {
-	latestSwipeRecord, err := s.Srv().CreateSwipeRecord(ctx, newSwipeRecord)
+
+	// Fetch latest swipe records
+	latestSwipeRecords, err := s.Srv().GetSwipeRecordsByUserAndOrder(ctx, newSwipeRecord.UserID, repo.DESC, config.Cfg.FLBatchDefaultAmount)
 	if err != nil {
 		return nil, goerr.Wrap(err)
 	}
 
-	latestSwipeRecords, err := s.Srv().GetSwipeRecordsByUserAndOrder(ctx, latestSwipeRecord.UserID, repository.DESC, config.Cfg.FLBatchDefaultAmount)
+	// Start a transaction
+	tx, err := s.Srv().BeginTx(ctx)
 	if err != nil {
+		tx.Rollback()
+		return nil, goerr.Wrap(err, "failed to begin transaction")
+	}
+
+	// Get matched strategy
+	strategy, mode, err := s.getStrategy(ctx, newSwipeRecord,
+		latestSwipeRecords)
+	if err != nil {
+		tx.Rollback()
 		return nil, goerr.Wrap(err)
 	}
 
-	if len(latestSwipeRecords) <= 1 {
-		return s.handleNotExist(ctx, newSwipeRecord)
+	// Exec Strategy
+	cards, err := s.ExecuteStrategy(ctx, newSwipeRecord, strategy)
+	if err != nil {
+		tx.Rollback()
+		return nil, goerr.Wrap(err, slog.Int("Failed to execute strategy Mode:", mode))
 	}
 
-	return s.handleExist(ctx, newSwipeRecord)
+	// Update the mode of cardgroup_user
+	err = s.Srv().UpdateCardGroupUserState(ctx, newSwipeRecord.CardGroupID, newSwipeRecord.UserID, mode)
+	if err != nil {
+		tx.Rollback()
+		return nil, goerr.Wrap(err, "failed to update card group user state")
+	}
+
+	// Create a new swipe record
+	_, err = s.Srv().CreateSwipeRecord(ctx, newSwipeRecord)
+	if err != nil {
+		tx.Rollback()
+		return nil, goerr.Wrap(err, "failed to update swipe record")
+	}
+
+	// Commit the transaction
+	tx.Commit()
+
+	return cards, nil
 }
 
-func (s *swipeManagerUsecase) handleNotExist(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error) {
-	// Retrieve cards by user and card group with the specified order and limit
-	cards, err := s.Srv().GetCardsByUserAndCardGroup(ctx, newSwipeRecord.CardGroupID, repository.DESC, config.Cfg.FLBatchDefaultAmount)
-	if err != nil {
-		return nil, goerr.Wrap(err)
+// Match Strategy
+func (s *swipeManagerUsecase) getStrategy(
+	ctx context.Context,
+	newSwipeRecord model.NewSwipeRecord,
+	latestSwipeRecords []*repository.SwipeRecord) (SwipeStrategy, int, error) {
+	strategies := []struct {
+		strategy SwipeStrategy
+		mode     int
+	}{
+		{NewDifficultStateStrategy(s), DIFFICULT},
+		{NewGoodStateStrategy(s), GOOD},
+		{NewEasyStateStrategy(s), EASY},
+		{NewInWhileStateStrategy(s), INWHILE},
+		{NewDefaultStateStrategy(s), DEFAULT}, // Default strategy, placed last
 	}
 
-	return services.ConvertToCards(cards), nil
-}
-
-func (s *swipeManagerUsecase) handleExist(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error) {
-	strategies := []SwipeStrategy{
-		NewDifficultStateStrategy(s),
-		NewGoodStateStrategy(s),
-		NewEasyStateStrategy(s),
-		NewInWhileStateStrategy(s),
-		NewDefaultStateStrategy(s), // Default strategy, placed last
-	}
-
-	for _, strategy := range strategies {
-		if strategy.IsApplicable(ctx, newSwipeRecord) {
-			return s.ExecuteStrategy(ctx, newSwipeRecord, strategy)
+	for _, item := range strategies {
+		if item.strategy.IsApplicable(ctx, newSwipeRecord, latestSwipeRecords) {
+			return item.strategy, item.mode, nil
 		}
 	}
-
-	return nil, goerr.Wrap(fmt.Errorf("fatal error : Strategy selection")) // This should theoretically never be reached
+	return nil, services.UNDEFINED, goerr.New("Strategy unmatched")
 }
 
 func (s *swipeManagerUsecase) ExecuteStrategy(ctx context.Context, newSwipeRecord model.NewSwipeRecord, strategy SwipeStrategy) ([]model.Card, error) {
@@ -95,19 +125,21 @@ func (s *swipeManagerUsecase) ExecuteStrategy(ctx context.Context, newSwipeRecor
 		return nil, goerr.Wrap(err)
 	}
 
-	// Swipe
-	// users_card
-	// update card
-	// return next batch cards
 	return cards, nil
 }
 
-func (s *swipeManagerUsecase) ChangeState(ctx context.Context, cardGroupID int64, userID int64, newState int) error {
-
-	err := s.Srv().UpdateCardGroupUserState(ctx, cardGroupID, userID, newState)
-	if err != nil {
-		return goerr.Wrap(err, "failed to update card group user state")
+func (s *swipeManagerUsecase) DetermineCardAmount(cards []model.Card, amountOfKnownWords int) (int, error) {
+	cardAmount := amountOfKnownWords
+	if len(cards) <= amountOfKnownWords {
+		cardAmount = len(cards) - 1
+		if cardAmount < 0 {
+			cardAmount = 0
+		}
 	}
 
-	return nil
+	if cardAmount == 0 {
+		return 0, goerr.New("no cards available to return")
+	}
+
+	return cardAmount, nil
 }
