@@ -23,6 +23,27 @@ const (
 	INWHILE   = 4
 )
 
+// Define a type for the constants
+type Difficulty int
+
+// Implement the String method for the Difficulty type
+func (d Difficulty) String() string {
+	switch d {
+	case DEFAULT:
+		return "DEFAULT"
+	case DIFFICULT:
+		return "DIFFICULT"
+	case GOOD:
+		return "GOOD"
+	case EASY:
+		return "EASY"
+	case INWHILE:
+		return "INWHILE"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 type swipeManagerUsecase struct {
 	services services.Services
 }

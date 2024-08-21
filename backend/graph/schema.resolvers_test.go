@@ -2187,5 +2187,59 @@ New Front 2 裏面２
 			testGraphQLQuery(t, e, jsonInput, expected, "data.upsertDictionary.nodes.id")
 		})
 
+		t.Run("Upsert Dictionary with Invalid Format", func(t *testing.T) {
+			t.Helper()
+			t.Parallel()
+
+			// Generate dummy data
+			userService := services.NewUserService(db, 20)
+			cardGroupService := services.NewCardGroupService(db, 20)
+			roleService := services.NewRoleService(db, 20)
+
+			ctx := context.Background()
+			createdGroup, _, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+
+			// Create invalid dictionary data
+			invalidDictionary := base64.StdEncoding.EncodeToString([]byte(`Invalid Dictionary Data Without Correct Format`))
+
+			input := model.UpsertDictionary{
+				Dictionary:  invalidDictionary,
+				CardgroupID: createdGroup.ID,
+			}
+
+			// Create the GraphQL query
+			jsonInput, _ := json.Marshal(map[string]interface{}{
+				"query": `mutation ($input: UpsertDictionary!) {
+	upsertDictionary(input: $input) {
+		nodes {
+			id
+			front
+			back
+			interval_days
+			cardGroupID
+		}
+	}
+}`,
+				"variables": map[string]interface{}{
+					"input": input,
+				},
+			})
+
+			// Updated expected error response
+			expected := `{
+		"errors": [
+			{
+				"message": "failed to upsert cards: : failed to process dictionary: [line : 1 : syntax error: unexpected $end, expecting DEFINITION]",
+				"path": ["upsertDictionary"]
+			}
+		],
+		"data": {
+			"upsertDictionary": null
+		}
+	}`
+
+			// Execute the GraphQL query and verify the result
+			testGraphQLQuery(t, e, jsonInput, expected)
+		})
 	})
 }
