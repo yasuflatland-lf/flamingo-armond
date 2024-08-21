@@ -335,7 +335,7 @@ func (suite *SwipeManagerTestSuite) TestUpdateRecords() {
 		createdGroup, _, _ := testutils.CreateUserAndCardGroup(ctx, suite.userService, suite.cardGroupService, suite.roleService)
 
 		// Create 15 dummy cards with the same cardgroup_id and store them in a slice
-		var cards []model.Card
+		var cards []*model.Card
 		for i := 0; i < 15; i++ {
 			input := model.NewCard{
 				Front:       "Front " + strconv.Itoa(i),
@@ -347,7 +347,7 @@ func (suite *SwipeManagerTestSuite) TestUpdateRecords() {
 			assert.NoError(suite.T(), err)
 
 			// Convert the created card to model.Card and append to the slice
-			cards = append(cards, *card)
+			cards = append(cards, card)
 		}
 
 		amountOfKnownWords := 5
@@ -362,7 +362,7 @@ func (suite *SwipeManagerTestSuite) TestUpdateRecords() {
 
 	suite.Run("Error_NoCardsAvailable", func() {
 		// Arrange
-		var cards []model.Card
+		var cards []*model.Card
 		amountOfKnownWords := 5
 
 		// Act

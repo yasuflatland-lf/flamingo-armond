@@ -28,7 +28,8 @@ func NewInWhileStateStrategy(swipeManagerUsecase SwipeManagerUsecase) InWhileSta
 	}
 }
 
-func (d *inWhileStateStrategy) Run(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error) {
+func (d *inWhileStateStrategy) Run(ctx context.Context,
+	newSwipeRecord model.NewSwipeRecord) ([]*model.Card, error) {
 	// Fetch random known words, sorting by the most recent updates
 	cards, err := d.swipeManagerUsecase.Srv().GetRandomCardsFromRecentUpdates(ctx, newSwipeRecord.CardGroupID, config.Cfg.PGQueryLimit, repo.DESC, repo.DESC)
 	if err != nil {

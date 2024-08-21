@@ -304,7 +304,7 @@ func (r *mutationResolver) UpsertDictionary(ctx context.Context, input model.Ups
 
 // HandleSwipe is the resolver for the handleSwipe field.
 func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.NewSwipeRecord) ([]*model.Card, error) {
-	panic(fmt.Errorf("not implemented: HandleSwipe - handleSwipe"))
+	return r.U.HandleSwipe(ctx, input)
 }
 
 // Card is the resolver for the card field.

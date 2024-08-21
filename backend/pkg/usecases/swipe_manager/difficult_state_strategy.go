@@ -6,7 +6,10 @@ import (
 	"backend/graph/services"
 	"backend/pkg/config"
 	"backend/pkg/logger"
+	repo "backend/pkg/repository"
+	"github.com/m-mizutani/goerr"
 	"golang.org/x/net/context"
+	"time"
 )
 
 type difficultStateStrategy struct {
@@ -25,9 +28,20 @@ func NewDifficultStateStrategy(swipeManagerUsecase SwipeManagerUsecase) Difficul
 	}
 }
 
-func (d *difficultStateStrategy) Run(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error) {
+func (d *difficultStateStrategy) Run(ctx context.Context,
+	newSwipeRecord model.NewSwipeRecord) ([]*model.Card, error) {
+	// Past 1 week
+	fromDate := time.Now().AddDate(0, 0, -7)
 
-	return nil, nil
+	// Fetch random recent created card within a week.
+	cards, err := d.swipeManagerUsecase.Srv().GetRandomRecentCards(
+		ctx, fromDate, d.amountOfSwipes, repo.DESC)
+
+	if err != nil {
+		return nil, goerr.Wrap(err)
+	}
+
+	return cards, nil
 }
 
 func (d *difficultStateStrategy) IsApplicable(ctx context.Context, newSwipeRecord model.NewSwipeRecord, latestSwipeRecords []*repository.SwipeRecord) bool {

@@ -7,6 +7,7 @@ import (
 )
 
 type SwipeStrategy interface {
-	Run(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error)
+	Run(ctx context.Context, newSwipeRecord model.NewSwipeRecord) (
+		[]*model.Card, error)
 	IsApplicable(ctx context.Context, newSwipeRecord model.NewSwipeRecord, latestSwipeRecords []*repository.SwipeRecord) bool
 }

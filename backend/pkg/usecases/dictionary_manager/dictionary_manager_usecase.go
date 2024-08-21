@@ -1,4 +1,4 @@
-package usecases
+package dictionary_manager
 
 import (
 	"backend/graph/model"
@@ -41,7 +41,6 @@ func (dmu *dictionaryManagerUsecase) UpsertCards(ctx context.Context, encodedDic
 		return nil, goerr.Wrap(fmt.Errorf("failed to process dictionary: %+v", errs))
 	}
 
-	// Convert nodes to []model.Card
 	var cards []model.Card
 	for _, node := range nodes {
 		card := model.Card{

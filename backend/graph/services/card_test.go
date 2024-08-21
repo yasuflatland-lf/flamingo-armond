@@ -607,6 +607,156 @@ func (suite *CardTestSuite) TestCardService() {
 		}
 	})
 
+	suite.Run("Normal_ShuffleCards", func() {
+		// Arrange
+		createdGroup, _, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+
+		// Create 10 dummy cards and associate them with the created card group
+		limit := 10
+		cards := []repository.Card{}
+		for i := 0; i < limit; i++ {
+			card := repository.Card{
+				Front:        "Front " + strconv.Itoa(i),
+				Back:         "Back " + strconv.Itoa(i),
+				ReviewDate:   time.Now().UTC(),
+				IntervalDays: 1,
+				Created:      time.Now().UTC(),
+				Updated:      time.Now().UTC(),
+				CardGroupID:  createdGroup.ID,
+				CardGroup: repository.Cardgroup{
+					ID: createdGroup.ID,
+				},
+			}
+			cards = append(cards, card)
+		}
+
+		// Act
+		shuffledCards := cardService.ShuffleCards(cards, limit)
+
+		// Assert
+		assert.Len(suite.T(), shuffledCards, len(cards))
+		assert.NotEqual(suite.T(), cards, shuffledCards, "Shuffled cards should not be in the same order as the original")
+
+		// Check if all original cards are still present after shuffle
+		cardMap := make(map[int64]*model.Card)
+		for _, card := range shuffledCards {
+			cardMap[card.ID] = card
+		}
+		for _, card := range cards {
+			_, exists := cardMap[card.ID]
+			assert.True(suite.T(), exists, "All original cards should be present after shuffle")
+		}
+	})
+
+	suite.Run("Normal_ShuffleCards_Randomness", func() {
+		// Arrange
+		createdGroup, _, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+
+		// Create 10 dummy cards and associate them with the created card group
+		limit := 10
+		cards := []repository.Card{}
+		for i := 0; i < limit; i++ {
+			card := repository.Card{
+				Front:        "Front " + strconv.Itoa(i),
+				Back:         "Back " + strconv.Itoa(i),
+				ReviewDate:   time.Now().UTC(),
+				IntervalDays: 1,
+				Created:      time.Now().UTC(),
+				Updated:      time.Now().UTC(),
+				CardGroupID:  createdGroup.ID,
+				CardGroup: repository.Cardgroup{
+					ID: createdGroup.ID,
+				},
+			}
+			cards = append(cards, card)
+		}
+
+		// Shuffle twice
+		shuffledCards1 := cardService.ShuffleCards(cards, limit)
+		shuffledCards2 := cardService.ShuffleCards(cards, limit)
+
+		// Assert that the order is different in at least one shuffle
+		assert.NotEqual(suite.T(), shuffledCards1, shuffledCards2, "Different shuffles should result in different orders")
+	})
+
+	suite.Run("Normal_GetRecentCards", func() {
+		// Arrange
+		cardService := suite.sv.(services.CardService)
+		userService := suite.sv.(services.UserService)
+		cardGroupService := suite.sv.(services.CardGroupService)
+		roleService := suite.sv.(services.RoleService)
+		ctx := context.Background()
+
+		// Create a user and card group using testutils
+		createdGroup, _, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+
+		// Add some cards with different creation times
+		for i := 0; i < 10; i++ {
+			input := model.NewCard{
+				Front:       "Recent Front " + strconv.Itoa(i),
+				Back:        "Recent Back " + strconv.Itoa(i),
+				ReviewDate:  time.Now().UTC().Add(-time.Duration(i) * time.Hour),
+				CardgroupID: createdGroup.ID,
+			}
+			_, err := cardService.CreateCard(ctx, input)
+			assert.NoError(suite.T(), err)
+		}
+
+		// Define the date from which to fetch recent cards
+		fromDate := time.Now().UTC().Add(-5 * time.Hour) // fetch cards created in the last 5 hours
+		limit := 5
+
+		// Act
+		recentCards, err := cardService.GetRandomRecentCards(ctx, fromDate, limit,
+			repo.DESC)
+
+		// Assert
+		assert.NoError(suite.T(), err)
+		assert.Len(suite.T(), recentCards, limit)
+		for _, card := range recentCards {
+			assert.True(suite.T(), card.Created.After(fromDate), "Card should be created after the fromDate")
+		}
+	})
+
+	suite.Run("Normal_GetRecentCards_LimitExceeds", func() {
+		// Arrange
+		cardService := suite.sv.(services.CardService)
+		userService := suite.sv.(services.UserService)
+		cardGroupService := suite.sv.(services.CardGroupService)
+		roleService := suite.sv.(services.RoleService)
+		ctx := context.Background()
+
+		// Reuse the same method to create a user and card group
+		createdGroup, _, _ := testutils.CreateUserAndCardGroup(ctx, userService, cardGroupService, roleService)
+
+		// Add some cards with different creation times
+		for i := 0; i < 10; i++ {
+			input := model.NewCard{
+				Front:       "Recent Front " + strconv.Itoa(i),
+				Back:        "Recent Back " + strconv.Itoa(i),
+				ReviewDate:  time.Now().UTC().Add(-time.Duration(i) * time.Hour),
+				CardgroupID: createdGroup.ID,
+			}
+			_, err := cardService.CreateCard(ctx, input)
+			assert.NoError(suite.T(), err)
+		}
+
+		// Define the date from which to fetch recent cards
+		fromDate := time.Now().UTC().Add(-24 * time.Hour)
+		limit := 15 // Exceeds the number of available cards
+
+		// Act
+		recentCards, err := cardService.GetRandomRecentCards(ctx, fromDate, limit,
+			repo.DESC)
+
+		// Assert
+		assert.NoError(suite.T(), err)
+		assert.True(suite.T(), len(recentCards) <= limit, "Number of cards should not exceed the limit")
+		for _, card := range recentCards {
+			assert.True(suite.T(), card.Created.After(fromDate), "Card should be created after the fromDate")
+		}
+	})
+
 }
 
 func TestCardTestSuite(t *testing.T) {

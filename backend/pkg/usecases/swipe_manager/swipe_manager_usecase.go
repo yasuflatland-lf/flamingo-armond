@@ -49,9 +49,11 @@ type swipeManagerUsecase struct {
 }
 
 type SwipeManagerUsecase interface {
-	HandleSwipe(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error)
+	HandleSwipe(ctx context.Context, newSwipeRecord model.NewSwipeRecord) (
+		[]*model.Card, error)
 	Srv() services.Services
-	DetermineCardAmount(cards []model.Card, amountOfKnownWords int) (int, error)
+	DetermineCardAmount(cards []*model.Card, amountOfKnownWords int) (int,
+		error)
 }
 
 func NewSwipeManagerUsecase(
@@ -66,7 +68,8 @@ func (s *swipeManagerUsecase) Srv() services.Services {
 }
 
 // HandleSwipe Main function to execute state machine
-func (s *swipeManagerUsecase) HandleSwipe(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error) {
+func (s *swipeManagerUsecase) HandleSwipe(ctx context.Context,
+	newSwipeRecord model.NewSwipeRecord) ([]*model.Card, error) {
 
 	// Fetch latest swipe records
 	latestSwipeRecords, err := s.Srv().GetSwipeRecordsByUserAndOrder(ctx, newSwipeRecord.UserID, repo.DESC, config.Cfg.FLBatchDefaultAmount)
@@ -191,7 +194,8 @@ func (s *swipeManagerUsecase) getStrategy(
 }
 
 func (s *swipeManagerUsecase) ExecuteStrategy(ctx context.Context,
-	newSwipeRecord model.NewSwipeRecord, strategy SwipeStrategy) ([]model.Card, error) {
+	newSwipeRecord model.NewSwipeRecord, strategy SwipeStrategy) (
+	[]*model.Card, error) {
 	// Change State
 	cards, err := strategy.Run(ctx, newSwipeRecord)
 
@@ -202,7 +206,9 @@ func (s *swipeManagerUsecase) ExecuteStrategy(ctx context.Context,
 	return cards, nil
 }
 
-func (s *swipeManagerUsecase) DetermineCardAmount(cards []model.Card, amountOfKnownWords int) (int, error) {
+func (s *swipeManagerUsecase) DetermineCardAmount(
+	cards []*model.Card,
+	amountOfKnownWords int) (int, error) {
 	cardAmount := amountOfKnownWords
 	if len(cards) <= amountOfKnownWords {
 		cardAmount = len(cards) - 1

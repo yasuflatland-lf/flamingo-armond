@@ -31,9 +31,14 @@ type CardService interface {
 	GetCardsByIDs(ctx context.Context, ids []int64) ([]*model.Card, error)
 	FetchAllCardsByCardGroup(ctx context.Context, cardGroupID int64, first *int) ([]*model.Card, error)
 	AddNewCards(ctx context.Context, targetCards []model.Card, cardGroupID int64) ([]*model.Card, error)
-	GetCardsByUserAndCardGroup(ctx context.Context, cardGroupID int64, order string, limit int) ([]repository.Card, error)
-	GetRandomCardsFromRecentUpdates(ctx context.Context, cardGroupID int64, limit int, updatedSortOrder string, intervalDaysSortOrder string) ([]model.Card, error)
-	GetCardsByDefaultLogic(ctx context.Context, cardGroupID int64, limit int) ([]repository.Card, error)
+	GetCardsByUserAndCardGroup(ctx context.Context, cardGroupID int64,
+		order string, limit int) ([]*repository.Card, error)
+	ShuffleCards(cards []repository.Card, limit int) []*model.Card
+	GetRandomCardsFromRecentUpdates(ctx context.Context, cardGroupID int64,
+		limit int, updatedSortOrder string, intervalDaysSortOrder string) ([]*model.Card, error)
+	GetCardsByDefaultLogic(ctx context.Context, cardGroupID int64,
+		limit int) ([]*repository.Card, error)
+	GetRandomRecentCards(ctx context.Context, fromDate time.Time, limit int, sortOrder string) ([]*model.Card, error)
 }
 
 func NewCardService(db *gorm.DB, defaultLimit int) CardService {
@@ -70,11 +75,11 @@ func ConvertToCard(card repository.Card) *model.Card {
 	}
 }
 
-func ConvertToCards(cards []repository.Card) []model.Card {
-	var result []model.Card
+func ConvertToCards(cards []repository.Card) []*model.Card {
+	var result []*model.Card
 	for _, card := range cards {
 		convertedCard := ConvertToCard(card)
-		result = append(result, *convertedCard)
+		result = append(result, convertedCard)
 	}
 	return result
 }
@@ -318,8 +323,9 @@ func (s *cardService) AddNewCards(ctx context.Context, targetCards []model.Card,
 }
 
 func (s *cardService) GetCardsByUserAndCardGroup(
-	ctx context.Context, cardGroupID int64, order string, limit int) ([]repository.Card, error) {
-	var cards []repository.Card
+	ctx context.Context, cardGroupID int64, order string,
+	limit int) ([]*repository.Card, error) {
+	var cards []*repository.Card
 
 	// Query to find the latest cards with matching user_id and cardgroup_id
 	err := s.db.WithContext(ctx).
@@ -335,7 +341,22 @@ func (s *cardService) GetCardsByUserAndCardGroup(
 	return cards, nil
 }
 
-func (s *cardService) GetRandomCardsFromRecentUpdates(ctx context.Context, cardGroupID int64, limit int, updatedSortOrder string, intervalDaysSortOrder string) ([]model.Card, error) {
+// Shuffle cards
+func (s *cardService) ShuffleCards(cards []repository.Card,
+	limit int) []*model.Card {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	rng.Shuffle(len(cards), func(i, j int) { cards[i], cards[j] = cards[j], cards[i] })
+
+	if len(cards) <= limit {
+		return ConvertToCards(cards)
+	}
+
+	selectedCards := cards[:limit]
+	return ConvertToCards(selectedCards)
+}
+
+func (s *cardService) GetRandomCardsFromRecentUpdates(ctx context.Context,
+	cardGroupID int64, limit int, updatedSortOrder string, intervalDaysSortOrder string) ([]*model.Card, error) {
 	var cards []repository.Card
 
 	// Validate sortOrder for updated and intervalDays
@@ -358,21 +379,13 @@ func (s *cardService) GetRandomCardsFromRecentUpdates(ctx context.Context, cardG
 		return nil, goerr.Wrap(err, "Failed to retrieve recent cards")
 	}
 
-	// Shuffle the cards if necessary
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	rng.Shuffle(len(cards), func(i, j int) { cards[i], cards[j] = cards[j], cards[i] })
-
-	if len(cards) <= limit {
-		return ConvertToCards(cards), nil
-	}
-
-	randomCards := cards[:limit]
-
-	return ConvertToCards(randomCards), nil
+	// Shuffle the cards
+	return s.ShuffleCards(cards, limit), nil
 }
 
-func (s *cardService) GetCardsByDefaultLogic(ctx context.Context, cardGroupID int64, limit int) ([]repository.Card, error) {
-	var cards []repository.Card
+func (s *cardService) GetCardsByDefaultLogic(ctx context.Context,
+	cardGroupID int64, limit int) ([]*repository.Card, error) {
+	var cards []*repository.Card
 
 	err := s.db.WithContext(ctx).
 		Where("cardgroup_id = ?", cardGroupID).
@@ -386,4 +399,28 @@ func (s *cardService) GetCardsByDefaultLogic(ctx context.Context, cardGroupID in
 	}
 
 	return cards, nil
+}
+
+func (s *cardService) GetRandomRecentCards(
+	ctx context.Context, fromDate time.Time, limit int, sortOrder string) ([]*model.Card, error) {
+	var cards []repository.Card
+
+	// Validate sortOrder, default to "desc" if not valid
+	if sortOrder != repo.ASC && sortOrder != repo.DESC {
+		sortOrder = repo.DESC
+	}
+
+	// Create the query with the fromDate filter, ordering by created, and limit
+	err := s.db.WithContext(ctx).
+		Where("created >= ?", fromDate).
+		Order(fmt.Sprintf("created %s", sortOrder)).
+		Limit(limit).
+		Find(&cards).Error
+
+	if err != nil {
+		return nil, goerr.Wrap(err, "Failed to retrieve recent cards")
+	}
+
+	// Shuffle the cards
+	return s.ShuffleCards(cards, limit), nil
 }

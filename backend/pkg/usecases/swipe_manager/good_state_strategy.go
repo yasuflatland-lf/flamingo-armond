@@ -28,7 +28,8 @@ func NewGoodStateStrategy(swipeManagerUsecase SwipeManagerUsecase) GoodStateStra
 }
 
 // Run ChangeState changes the state of the given swipe records to GOOD
-func (g *goodStateStrategy) Run(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error) {
+func (g *goodStateStrategy) Run(ctx context.Context,
+	newSwipeRecord model.NewSwipeRecord) ([]*model.Card, error) {
 	return nil, nil
 }
 

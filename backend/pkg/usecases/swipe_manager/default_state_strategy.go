@@ -6,6 +6,7 @@ import (
 	"backend/pkg/config"
 	"backend/pkg/logger"
 	repo "backend/pkg/repository"
+
 	"github.com/m-mizutani/goerr"
 	"golang.org/x/net/context"
 )
@@ -27,7 +28,8 @@ func NewDefaultStateStrategy(
 	}
 }
 
-func (d *defaultStateStrategy) Run(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error) {
+func (d *defaultStateStrategy) Run(ctx context.Context,
+	newSwipeRecord model.NewSwipeRecord) ([]*model.Card, error) {
 
 	// Fetch random recent added words
 	cards, err := d.swipeManagerUsecase.Srv().GetRandomCardsFromRecentUpdates(ctx, newSwipeRecord.CardGroupID, config.Cfg.PGQueryLimit, repo.DESC, repo.ASC)

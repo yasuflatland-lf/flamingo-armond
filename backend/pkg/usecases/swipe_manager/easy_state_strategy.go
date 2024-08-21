@@ -27,7 +27,8 @@ func NewEasyStateStrategy(swipeManagerUsecase SwipeManagerUsecase) EasyStateStra
 	}
 }
 
-func (e *easyStateStrategy) Run(ctx context.Context, newSwipeRecord model.NewSwipeRecord) ([]model.Card, error) {
+func (e *easyStateStrategy) Run(ctx context.Context,
+	newSwipeRecord model.NewSwipeRecord) ([]*model.Card, error) {
 
 	// Fetch random unknown words
 	cards, err := e.swipeManagerUsecase.Srv().GetRandomCardsFromRecentUpdates(ctx, newSwipeRecord.CardGroupID, config.Cfg.PGQueryLimit, repo.ASC, repo.ASC)
