@@ -1,19 +1,19 @@
 package swipe_manager
 
 import (
-	repository "backend/graph/db"
-	"backend/graph/services"
+	"sync"
 	"time"
 )
 
 // IntervalLogic interface
 type IntervalLogic interface {
-	UpdateInterval(card *repository.Card, swipe *repository.SwipeRecord)
+	UpdateInterval(IntervalDays int, reviewDate time.Time, Mode int) (int, time.Time)
 }
 
 // intervalLogic struct
 type intervalLogic struct {
 	intervals []int
+	mu        sync.RWMutex
 }
 
 // NewIntervalLogic returns a new instance of intervalLogic.
@@ -23,59 +23,56 @@ func NewIntervalLogic() IntervalLogic {
 	}
 }
 
-func (il *intervalLogic) UpdateInterval(card *repository.Card, swipe *repository.SwipeRecord) {
-	switch swipe.Mode {
-	case services.KNOWN:
-		il.increaseInterval(card)
-		break
-	case services.MAYBE:
-		// Do nothing, stay same Interval Days
-		break
-	case services.DONTKNOW:
-		// If you don't know the word, decrease the interval
-		il.decreaseInterval(card)
+func (il *intervalLogic) UpdateInterval(IntervalDays int, reviewDate time.Time, Mode int) (int, time.Time) {
+	il.mu.RLock()
+	defer il.mu.RUnlock()
+
+	switch Mode {
+	case GOOD:
+		fallthrough
+	case EASY:
+		IntervalDays = il.increaseInterval(IntervalDays)
 	default:
-		il.resetInterval(card)
+		IntervalDays = il.resetInterval()
 	}
-	// Calculate and set the next review date
-	card.ReviewDate = time.Now().AddDate(0, 0, card.IntervalDays)
+
+	reviewDate = time.Now().AddDate(0, 0, IntervalDays)
+	return IntervalDays, reviewDate
 }
 
-// decreaseInterval decreases the interval to the previous step.
-func (il *intervalLogic) decreaseInterval(card *repository.Card) {
-	currentIndex := il.findIntervalIndex(card.IntervalDays)
+func (il *intervalLogic) decreaseInterval(IntervalDays int) int {
+	currentIndex := il.findIntervalIndex(IntervalDays)
 
-	// Check if the current interval is out of the expected range and reset if necessary
+	il.mu.Lock()
+	defer il.mu.Unlock()
+
 	if currentIndex == 0 {
-		card.IntervalDays = il.intervals[0] // Already at the minimum interval
-	} else {
-		card.IntervalDays = il.intervals[currentIndex-1] // Move to the previous interval
+		return il.intervals[0] // Already at the minimum interval
 	}
+	return il.intervals[currentIndex-1] // Move to the previous interval
 }
 
-func (il *intervalLogic) increaseInterval(card *repository.Card) {
-	currentIndex := il.findIntervalIndex(card.IntervalDays)
+func (il *intervalLogic) increaseInterval(IntervalDays int) int {
+	currentIndex := il.findIntervalIndex(IntervalDays)
 
-	// Check if the current interval is out of the expected range and reset if necessary
-	if currentIndex == 0 && card.IntervalDays != il.intervals[0] {
-		card.IntervalDays = il.intervals[0]
-		return
+	if currentIndex == 0 && IntervalDays != il.intervals[0] {
+		return il.intervals[0]
 	}
 
 	if currentIndex < len(il.intervals)-1 {
-		card.IntervalDays = il.intervals[currentIndex+1]
-	} else {
-		card.IntervalDays = il.intervals[len(il.intervals)-1] // If the maximum interval is reached
+		return il.intervals[currentIndex+1]
 	}
+	return il.intervals[len(il.intervals)-1] // If the maximum interval is reached
 }
 
-// resetInterval resets the interval to the first step.
-func (il *intervalLogic) resetInterval(card *repository.Card) {
-	card.IntervalDays = il.intervals[0]
+func (il *intervalLogic) resetInterval() int {
+	return il.intervals[0]
 }
 
-// findIntervalIndex finds the index of the current interval in the intervals list.
 func (il *intervalLogic) findIntervalIndex(days int) int {
+	il.mu.RLock()
+	defer il.mu.RUnlock()
+
 	for i, interval := range il.intervals {
 		if interval == days {
 			return i

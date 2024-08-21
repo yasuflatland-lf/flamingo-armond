@@ -31,7 +31,7 @@ func NewUserService(db *gorm.DB, defaultLimit int) UserService {
 	return &userService{db: db, defaultLimit: defaultLimit}
 }
 
-func convertToGormUser(input model.NewUser) *db.User {
+func ConvertToGormUserFromNew(input model.NewUser) *db.User {
 	return &db.User{
 		Name:    input.Name,
 		Created: time.Now().UTC(),
@@ -39,7 +39,7 @@ func convertToGormUser(input model.NewUser) *db.User {
 	}
 }
 
-func convertToUser(user db.User) *model.User {
+func ConvertToUser(user db.User) *model.User {
 	return &model.User{
 		ID:      user.ID,
 		Name:    user.Name,
@@ -55,7 +55,7 @@ func (s *userService) GetUsersByRole(ctx context.Context, roleID int64) ([]*mode
 	}
 	var gqlUsers []*model.User
 	for _, user := range role.Users {
-		gqlUsers = append(gqlUsers, convertToUser(user))
+		gqlUsers = append(gqlUsers, ConvertToUser(user))
 	}
 	return gqlUsers, nil
 }
@@ -65,11 +65,11 @@ func (s *userService) GetUserByID(ctx context.Context, id int64) (*model.User, e
 	if err := s.db.First(&user, id).Error; err != nil {
 		return nil, goerr.Wrap(err, fmt.Sprintf("failed to get user by ID: %d", id))
 	}
-	return convertToUser(user), nil
+	return ConvertToUser(user), nil
 }
 
 func (s *userService) CreateUser(ctx context.Context, input model.NewUser) (*model.User, error) {
-	gormUser := convertToGormUser(input)
+	gormUser := ConvertToGormUserFromNew(input)
 	result := s.db.WithContext(ctx).Create(gormUser)
 	if result.Error != nil {
 		if strings.Contains(result.Error.Error(), "unique constraint") {
@@ -77,7 +77,7 @@ func (s *userService) CreateUser(ctx context.Context, input model.NewUser) (*mod
 		}
 		return nil, goerr.Wrap(result.Error, "failed to create user")
 	}
-	return convertToUser(*gormUser), nil
+	return ConvertToUser(*gormUser), nil
 }
 
 func (s *userService) UpdateUser(ctx context.Context, id int64, input model.NewUser) (*model.User, error) {
@@ -90,7 +90,7 @@ func (s *userService) UpdateUser(ctx context.Context, id int64, input model.NewU
 	if err := s.db.WithContext(ctx).Save(&user).Error; err != nil {
 		return nil, goerr.Wrap(err, "failed to update user")
 	}
-	return convertToUser(user), nil
+	return ConvertToUser(user), nil
 }
 
 func (s *userService) DeleteUser(ctx context.Context, id int64) (*bool, error) {
@@ -109,7 +109,7 @@ func (s *userService) Users(ctx context.Context) ([]*model.User, error) {
 	}
 	var gqlUsers []*model.User
 	for _, user := range users {
-		gqlUsers = append(gqlUsers, convertToUser(user))
+		gqlUsers = append(gqlUsers, ConvertToUser(user))
 	}
 	return gqlUsers, nil
 }
@@ -162,7 +162,7 @@ func (s *userService) PaginatedUsersByRole(ctx context.Context, roleID int64, fi
 	var edges []*model.UserEdge
 	var nodes []*model.User
 	for _, user := range paginatedUsers {
-		node := convertToUser(user)
+		node := ConvertToUser(user)
 		edges = append(edges, &model.UserEdge{
 			Cursor: user.ID,
 			Node:   node,
@@ -195,7 +195,7 @@ func (s *userService) GetUsersByIDs(ctx context.Context, ids []int64) ([]*model.
 	}
 	var gqlUsers []*model.User
 	for _, user := range users {
-		gqlUsers = append(gqlUsers, convertToUser(user))
+		gqlUsers = append(gqlUsers, ConvertToUser(user))
 	}
 	return gqlUsers, nil
 }

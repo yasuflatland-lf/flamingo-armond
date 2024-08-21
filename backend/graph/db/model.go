@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-// Skip fields for relations
+// User Skip fields for relations
 // https://qiita.com/kiki-ki/items/5f8ec3e198f2d4b19e42
 type User struct {
 	ID         int64       `gorm:"column:id;primaryKey" validate:"number"`

@@ -6,9 +6,11 @@ import (
 	"backend/graph/services"
 	"backend/pkg/config"
 	"log/slog"
+	"time"
 
 	repo "backend/pkg/repository"
 	"context"
+
 	"github.com/m-mizutani/goerr"
 )
 
@@ -74,23 +76,67 @@ func (s *swipeManagerUsecase) HandleSwipe(ctx context.Context, newSwipeRecord mo
 	}
 
 	// Update the mode of cardgroup_user
-	err = s.Srv().UpdateCardGroupUserState(ctx, newSwipeRecord.CardGroupID, newSwipeRecord.UserID, mode)
+	err = s.updateRecords(ctx, newSwipeRecord, mode)
 	if err != nil {
 		tx.Rollback()
-		return nil, goerr.Wrap(err, "failed to update card group user state")
-	}
-
-	// Create a new swipe record
-	_, err = s.Srv().CreateSwipeRecord(ctx, newSwipeRecord)
-	if err != nil {
-		tx.Rollback()
-		return nil, goerr.Wrap(err, "failed to update swipe record")
+		return nil, goerr.Wrap(err, "failed to update records")
 	}
 
 	// Commit the transaction
 	tx.Commit()
 
 	return cards, nil
+}
+
+// Update records
+func (s *swipeManagerUsecase) updateRecords(
+	ctx context.Context,
+	newSwipeRecord model.NewSwipeRecord,
+	mode int) error {
+
+	// Fetch the Card by ID
+	card, err := s.Srv().GetCardByID(ctx, newSwipeRecord.CardID)
+	if err != nil {
+		return goerr.Wrap(err, "failed to fetch card by ID")
+	}
+
+	// Update the interval days using the logic
+	intervalLogic := NewIntervalLogic()
+	updatedIntervalDays, updatedreviewDate := intervalLogic.UpdateInterval(
+		card.IntervalDays,
+		card.ReviewDate,
+		mode)
+
+	// Prepare the updated card data
+	updatedCard := model.NewCard{
+		Front:        card.Front,
+		Back:         card.Back,
+		ReviewDate:   updatedreviewDate,
+		IntervalDays: &updatedIntervalDays,
+		CardgroupID:  card.CardGroupID,
+		Created:      card.Created,
+		Updated:      time.Now().UTC(),
+	}
+
+	// Update the Card using UpdateCard service
+	_, err = s.Srv().UpdateCard(ctx, card.ID, updatedCard)
+	if err != nil {
+		return goerr.Wrap(err, "failed to update card")
+	}
+
+	// Update the mode of cardgroup_user
+	err = s.Srv().UpdateCardGroupUserState(ctx, newSwipeRecord.CardGroupID, newSwipeRecord.UserID, mode)
+	if err != nil {
+		return goerr.Wrap(err, "failed to update card group user state")
+	}
+
+	// Create a new swipe record
+	_, err = s.Srv().CreateSwipeRecord(ctx, newSwipeRecord)
+	if err != nil {
+		return goerr.Wrap(err, "failed to update swipe record")
+	}
+
+	return nil
 }
 
 // Match Strategy

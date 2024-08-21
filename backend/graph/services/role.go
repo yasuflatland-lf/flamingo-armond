@@ -33,18 +33,18 @@ func NewRoleService(db *gorm.DB, defaultLimit int) RoleService {
 	return &roleService{db: db, defaultLimit: defaultLimit}
 }
 
-func convertToRole(role repository.Role) *model.Role {
+func ConvertToGormRoleFromNew(input model.NewRole) repository.Role {
+	return repository.Role{
+		Name: input.Name,
+	}
+}
+
+func ConvertToRole(role repository.Role) *model.Role {
 	return &model.Role{
 		ID:      role.ID,
 		Name:    role.Name,
 		Created: role.Created,
 		Updated: role.Updated,
-	}
-}
-
-func convertToGormRole(input model.NewRole) repository.Role {
-	return repository.Role{
-		Name: input.Name,
 	}
 }
 
@@ -58,7 +58,7 @@ func (s *roleService) GetRoleByUserID(ctx context.Context, userID int64) (*model
 		return nil, goerr.Wrap(err, "no roles found for user")
 	}
 	role := user.Roles[0] // Assuming a user has only one role
-	return convertToRole(role), nil
+	return ConvertToRole(role), nil
 }
 
 func (s *roleService) GetRoleByID(ctx context.Context, id int64) (*model.Role, error) {
@@ -69,16 +69,16 @@ func (s *roleService) GetRoleByID(ctx context.Context, id int64) (*model.Role, e
 		}
 		return nil, goerr.Wrap(err, "failed to get role by ID")
 	}
-	return convertToRole(role), nil
+	return ConvertToRole(role), nil
 }
 
 func (s *roleService) CreateRole(ctx context.Context, input model.NewRole) (*model.Role, error) {
-	gormRole := convertToGormRole(input)
+	gormRole := ConvertToGormRoleFromNew(input)
 	result := s.db.WithContext(ctx).Create(&gormRole)
 	if result.Error != nil {
 		return nil, goerr.Wrap(result.Error, "failed to create role")
 	}
-	return convertToRole(gormRole), nil
+	return ConvertToRole(gormRole), nil
 }
 
 func (s *roleService) UpdateRole(ctx context.Context, id int64, input model.NewRole) (*model.Role, error) {
@@ -90,7 +90,7 @@ func (s *roleService) UpdateRole(ctx context.Context, id int64, input model.NewR
 	if err := s.db.WithContext(ctx).Save(&role).Error; err != nil {
 		return nil, goerr.Wrap(err, "failed to update role")
 	}
-	return convertToRole(role), nil
+	return ConvertToRole(role), nil
 }
 
 func (s *roleService) DeleteRole(ctx context.Context, id int64) (*bool, error) {
@@ -160,7 +160,7 @@ func (s *roleService) Roles(ctx context.Context) ([]*model.Role, error) {
 	}
 	var gqlRoles []*model.Role
 	for _, role := range roles {
-		gqlRoles = append(gqlRoles, convertToRole(role))
+		gqlRoles = append(gqlRoles, ConvertToRole(role))
 	}
 	return gqlRoles, nil
 }
@@ -191,7 +191,7 @@ func (s *roleService) PaginatedRolesByUser(ctx context.Context, userID int64, fi
 	var edges []*model.RoleEdge
 	var nodes []*model.Role
 	for _, role := range roles {
-		node := convertToRole(role)
+		node := ConvertToRole(role)
 		edges = append(edges, &model.RoleEdge{
 			Cursor: role.ID,
 			Node:   node,
@@ -225,7 +225,7 @@ func (s *roleService) GetRolesByIDs(ctx context.Context, ids []int64) ([]*model.
 
 	var gqlRoles []*model.Role
 	for _, role := range roles {
-		gqlRoles = append(gqlRoles, convertToRole(*role))
+		gqlRoles = append(gqlRoles, ConvertToRole(*role))
 	}
 
 	return gqlRoles, nil

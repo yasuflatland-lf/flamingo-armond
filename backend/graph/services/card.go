@@ -40,7 +40,7 @@ func NewCardService(db *gorm.DB, defaultLimit int) CardService {
 	return &cardService{db: db, defaultLimit: defaultLimit}
 }
 
-func ConvertToGormCard(input model.NewCard) *repository.Card {
+func ConvertToGormCardFromNew(input model.NewCard) *repository.Card {
 	return &repository.Card{
 		Front:      input.Front,
 		Back:       input.Back,
@@ -115,7 +115,7 @@ func (s *cardService) GetCardByID(ctx context.Context, id int64) (*model.Card, e
 }
 
 func (s *cardService) CreateCard(ctx context.Context, input model.NewCard) (*model.Card, error) {
-	gormCard := ConvertToGormCard(input)
+	gormCard := ConvertToGormCardFromNew(input)
 	result := s.db.WithContext(ctx).Create(gormCard)
 	if result.Error != nil {
 		if strings.Contains(result.Error.Error(), "foreign key constraint") {

@@ -16,7 +16,7 @@ import (
 const (
 	UNDEFINED = 0
 	KNOWN     = 1
-	DONTKNOW  = 2
+	UNKNOWN   = 2
 	MAYBE     = 3
 )
 
@@ -41,7 +41,18 @@ func NewSwipeRecordService(db *gorm.DB, defaultLimit int) SwipeRecordService {
 	return &swipeRecordService{db: db, defaultLimit: defaultLimit}
 }
 
-func ConvertToGormSwipeRecord(input model.NewSwipeRecord) *repository.SwipeRecord {
+func ConvertToGormSwipeRecordFromNew(input model.NewSwipeRecord) *repository.SwipeRecord {
+	return &repository.SwipeRecord{
+		UserID:      input.UserID,
+		CardID:      input.CardID,
+		CardGroupID: input.CardGroupID,
+		Mode:        input.Mode,
+		Created:     input.Created,
+		Updated:     input.Updated,
+	}
+}
+
+func ConvertToGormSwipeRecord(input model.SwipeRecord) *repository.SwipeRecord {
 	return &repository.SwipeRecord{
 		UserID:      input.UserID,
 		CardID:      input.CardID,
@@ -76,7 +87,7 @@ func (s *swipeRecordService) GetSwipeRecordByID(ctx context.Context, id int64) (
 }
 
 func (s *swipeRecordService) CreateSwipeRecord(ctx context.Context, input model.NewSwipeRecord) (*model.SwipeRecord, error) {
-	gormSwipeRecord := ConvertToGormSwipeRecord(input)
+	gormSwipeRecord := ConvertToGormSwipeRecordFromNew(input)
 	result := s.db.WithContext(ctx).Create(gormSwipeRecord)
 	if result.Error != nil {
 		if strings.Contains(result.Error.Error(), "foreign key constraint") {

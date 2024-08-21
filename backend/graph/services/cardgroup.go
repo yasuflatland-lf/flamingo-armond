@@ -32,6 +32,7 @@ type CardGroupService interface {
 	GetCardGroupsByIDs(ctx context.Context, ids []int64) ([]*model.CardGroup, error)
 	UpdateCardGroupUserState(ctx context.Context, cardGroupID int64, userID int64, newState int) error
 	GetLatestCardgroupUsers(ctx context.Context, cardGroupID int64, limit int, sortOrder string) ([]*repository.CardgroupUser, error)
+	GetCardgroupUser(ctx context.Context, cardGroupID int64, userID int64) (*repository.CardgroupUser, error)
 }
 
 // NewCardGroupService creates a new CardGroupService instance.
@@ -39,8 +40,8 @@ func NewCardGroupService(db *gorm.DB, defaultLimit int) CardGroupService {
 	return &cardGroupService{db: db, defaultLimit: defaultLimit}
 }
 
-// ConvertToGormCardGroup converts a NewCardGroup input to a GORM-compatible Cardgroup model.
-func ConvertToGormCardGroup(input model.NewCardGroup) *repository.Cardgroup {
+// ConvertToGormCardGroupFromNew converts a NewCardGroup input to a GORM-compatible Cardgroup model.
+func ConvertToGormCardGroupFromNew(input model.NewCardGroup) *repository.Cardgroup {
 	return &repository.Cardgroup{
 		Name:    input.Name,
 		Created: time.Now().UTC(),
@@ -72,7 +73,7 @@ func (s *cardGroupService) GetCardGroupByID(ctx context.Context, id int64) (*mod
 
 // CreateCardGroup creates a new card group in the database.
 func (s *cardGroupService) CreateCardGroup(ctx context.Context, input model.NewCardGroup) (*model.CardGroup, error) {
-	gormCardGroup := ConvertToGormCardGroup(input)
+	gormCardGroup := ConvertToGormCardGroupFromNew(input)
 	result := s.db.WithContext(ctx).Create(&gormCardGroup)
 	if result.Error != nil {
 		return nil, goerr.Wrap(result.Error, "failed to create card group")
@@ -282,4 +283,17 @@ func (s *cardGroupService) GetLatestCardgroupUsers(ctx context.Context, cardGrou
 	}
 
 	return cardgroupUsers, nil
+}
+
+func (s *cardGroupService) GetCardgroupUser(ctx context.Context, cardGroupID int64, userID int64) (*repository.CardgroupUser, error) {
+	var cardgroupUser repository.CardgroupUser
+	if err := s.db.WithContext(ctx).
+		Where("cardgroup_id = ? AND user_id = ?", cardGroupID, userID).
+		First(&cardgroupUser).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, goerr.Wrap(err, fmt.Errorf("cardgroup user not found for cardGroupID: %d, userID: %d", cardGroupID, userID))
+		}
+		return nil, goerr.Wrap(err, "failed to retrieve cardgroup user")
+	}
+	return &cardgroupUser, nil
 }

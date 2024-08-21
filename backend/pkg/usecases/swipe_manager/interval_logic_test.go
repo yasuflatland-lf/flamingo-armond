@@ -1,8 +1,6 @@
 package swipe_manager
 
 import (
-	repository "backend/graph/db"
-	"backend/graph/services"
 	"testing"
 	"time"
 )
@@ -12,73 +10,89 @@ func TestIncreaseInterval(t *testing.T) {
 
 	t.Run("Normal Range Value 1 to 3", func(t *testing.T) {
 		t.Parallel()
-		card := &repository.Card{IntervalDays: 1}
-		il.increaseInterval(card)
-		if card.IntervalDays != 3 {
-			t.Errorf("Expected IntervalDays to be 3, got %d", card.IntervalDays)
+		intervalDays := 1
+		intervalDays = il.increaseInterval(intervalDays)
+		if intervalDays != 3 {
+			t.Errorf("Expected IntervalDays to be 3, got %d", intervalDays)
 		}
 	})
 
 	t.Run("Normal Range Value 3 to 7", func(t *testing.T) {
 		t.Parallel()
-		card := &repository.Card{IntervalDays: 3}
-		il.increaseInterval(card)
-		if card.IntervalDays != 7 {
-			t.Errorf("Expected IntervalDays to be 7, got %d", card.IntervalDays)
+		intervalDays := 3
+		intervalDays = il.increaseInterval(intervalDays)
+		if intervalDays != 7 {
+			t.Errorf("Expected IntervalDays to be 7, got %d", intervalDays)
 		}
 	})
 
 	t.Run("Edge Case: Max Interval", func(t *testing.T) {
 		t.Parallel()
-		card := &repository.Card{IntervalDays: 30}
-		il.increaseInterval(card)
-		if card.IntervalDays != 30 {
-			t.Errorf("Expected IntervalDays to remain 30, got %d", card.IntervalDays)
+		intervalDays := 30
+		intervalDays = il.increaseInterval(intervalDays)
+		if intervalDays != 30 {
+			t.Errorf("Expected IntervalDays to remain 30, got %d", intervalDays)
 		}
 	})
 
 	t.Run("Abnormal Range Value", func(t *testing.T) {
 		t.Parallel()
-		card := &repository.Card{IntervalDays: 100}
-		il.increaseInterval(card)
-		if card.IntervalDays != 1 {
-			t.Errorf("Expected IntervalDays to reset to 1 for abnormal value, got %d", card.IntervalDays)
+		intervalDays := 100
+		intervalDays = il.increaseInterval(intervalDays)
+		if intervalDays != 1 {
+			t.Errorf("Expected IntervalDays to reset to 1 for abnormal value, got %d", intervalDays)
 		}
 	})
 }
 
 func TestUpdateInterval(t *testing.T) {
 	il := NewIntervalLogic().(*intervalLogic)
-	card := &repository.Card{IntervalDays: 1}
 
-	t.Run("Normal Value with Direction Known", func(t *testing.T) {
+	t.Run("Normal Value with GOOD Mode", func(t *testing.T) {
 		t.Parallel()
-		swipe := &repository.SwipeRecord{Mode: services.KNOWN}
-		il.UpdateInterval(card, swipe)
-		expectedDate := time.Now().AddDate(0, 0, 3) // because interval should increase to 3
-		if !card.ReviewDate.Truncate(time.Second).Equal(expectedDate.Truncate(time.Second)) {
-			t.Errorf("Expected ReviewDate to be %v, got %v", expectedDate, card.ReviewDate)
+		intervalDays := 1
+		reviewDate := time.Now()
+		mode := GOOD
+		updatedDays, _ := il.UpdateInterval(intervalDays, reviewDate, mode)
+		expectedDays := 3 // because interval should increase to 3
+		if updatedDays != expectedDays {
+			t.Errorf("Expected IntervalDays to be %d, got %d", expectedDays, updatedDays)
 		}
 	})
 
-	t.Run("Reset Interval with Unknown Direction", func(t *testing.T) {
+	t.Run("Normal Value with EASY Mode", func(t *testing.T) {
 		t.Parallel()
-		swipe := &repository.SwipeRecord{Mode: services.DONTKNOW}
-		il.UpdateInterval(card, swipe)
-		expectedDate := time.Now().AddDate(0, 0, 1) // reset to 1 day
-		if !card.ReviewDate.Truncate(time.Second).Equal(expectedDate.Truncate(time.Second)) {
-			t.Errorf("Expected ReviewDate to be %v, got %v", expectedDate, card.ReviewDate)
+		intervalDays := 3
+		reviewDate := time.Now()
+		mode := EASY
+		updatedDays, _ := il.UpdateInterval(intervalDays, reviewDate, mode)
+		expectedDays := 7 // because interval should increase to 7
+		if updatedDays != expectedDays {
+			t.Errorf("Expected IntervalDays to be %d, got %d", expectedDays, updatedDays)
+		}
+	})
+
+	t.Run("Reset Interval with DIFFICULT Mode", func(t *testing.T) {
+		t.Parallel()
+		intervalDays := 7
+		reviewDate := time.Now()
+		mode := DIFFICULT
+		updatedDays, _ := il.UpdateInterval(intervalDays, reviewDate, mode)
+		expectedDays := 1 // because interval should reset to 1
+		if updatedDays != expectedDays {
+			t.Errorf("Expected IntervalDays to be %d, got %d", expectedDays, updatedDays)
 		}
 	})
 
 	t.Run("Edge Case with Maxed Out Interval", func(t *testing.T) {
 		t.Parallel()
-		card.IntervalDays = 30
-		swipe := &repository.SwipeRecord{Mode: services.KNOWN}
-		il.UpdateInterval(card, swipe)
-		expectedDate := time.Now().AddDate(0, 0, 30)
-		if !card.ReviewDate.Truncate(time.Second).Equal(expectedDate.Truncate(time.Second)) {
-			t.Errorf("Expected ReviewDate to be %v, got %v", expectedDate, card.ReviewDate)
+		intervalDays := 30
+		reviewDate := time.Now()
+		mode := GOOD
+		updatedDays, _ := il.UpdateInterval(intervalDays, reviewDate, mode)
+		expectedDays := 30 // because it's already max
+		if updatedDays != expectedDays {
+			t.Errorf("Expected IntervalDays to remain %d, got %d", expectedDays, updatedDays)
 		}
 	})
 }
