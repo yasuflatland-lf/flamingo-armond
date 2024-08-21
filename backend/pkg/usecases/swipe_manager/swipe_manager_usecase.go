@@ -148,10 +148,10 @@ func (s *swipeManagerUsecase) getStrategy(
 		strategy SwipeStrategy
 		mode     int
 	}{
-		{NewDifficultStateStrategy(s), DIFFICULT},
-		{NewGoodStateStrategy(s), GOOD},
-		{NewEasyStateStrategy(s), EASY},
 		{NewInWhileStateStrategy(s), INWHILE},
+		{NewDifficultStateStrategy(s), DIFFICULT},
+		{NewEasyStateStrategy(s), EASY},
+		{NewGoodStateStrategy(s), GOOD},
 		{NewDefaultStateStrategy(s), DEFAULT}, // Default strategy, placed last
 	}
 

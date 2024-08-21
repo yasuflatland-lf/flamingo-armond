@@ -4,6 +4,7 @@ import (
 	repository "backend/graph/db"
 	"backend/graph/model"
 	"backend/graph/services"
+	"backend/pkg/config"
 	"backend/pkg/logger"
 	"golang.org/x/net/context"
 )
@@ -11,6 +12,7 @@ import (
 // GoodStateStrategy implements the SwipeManagerUsecase interface
 type goodStateStrategy struct {
 	swipeManagerUsecase SwipeManagerUsecase
+	amountOfSwipes      int
 }
 
 type GoodStateStrategy interface {
@@ -21,6 +23,7 @@ type GoodStateStrategy interface {
 func NewGoodStateStrategy(swipeManagerUsecase SwipeManagerUsecase) GoodStateStrategy {
 	return &goodStateStrategy{
 		swipeManagerUsecase: swipeManagerUsecase,
+		amountOfSwipes:      config.Cfg.FLBatchDefaultAmount,
 	}
 }
 
@@ -30,9 +33,14 @@ func (g *goodStateStrategy) Run(ctx context.Context, newSwipeRecord model.NewSwi
 }
 
 func (g *goodStateStrategy) IsApplicable(ctx context.Context, newSwipeRecord model.NewSwipeRecord, latestSwipeRecords []*repository.SwipeRecord) bool {
+	// It needs to be certain amount of data for this mode.
+	if len(latestSwipeRecords) < g.amountOfSwipes {
+		return false
+	}
+
 	// Check if 5 out of the last 10 records are "known"
 	knownCount := 0
-	for i := 0; i < 10 && i < len(latestSwipeRecords); i++ {
+	for i := 0; i < g.amountOfSwipes && i < len(latestSwipeRecords); i++ {
 		if latestSwipeRecords[i].Mode == services.KNOWN {
 			knownCount++
 		}

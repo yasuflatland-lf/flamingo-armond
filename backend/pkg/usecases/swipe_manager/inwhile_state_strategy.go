@@ -44,6 +44,11 @@ func (d *inWhileStateStrategy) Run(ctx context.Context, newSwipeRecord model.New
 }
 
 func (d *inWhileStateStrategy) IsApplicable(ctx context.Context, newSwipeRecord model.NewSwipeRecord, latestSwipeRecords []*repository.SwipeRecord) bool {
+	// It needs to be certain amount of data for this mode.
+	if len(latestSwipeRecords) < d.amountOfKnownWords {
+		return false
+	}
+
 	// Fetch latest swipe card
 	swipeRecords, err := d.swipeManagerUsecase.Srv().GetSwipeRecordsByUserAndOrder(
 		ctx, newSwipeRecord.UserID, repo.DESC, 1)

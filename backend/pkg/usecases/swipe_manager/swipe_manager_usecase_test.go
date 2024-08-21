@@ -8,6 +8,7 @@ import (
 	repo "backend/pkg/repository"
 	"backend/testutils"
 	"context"
+	"math/rand"
 	"strconv"
 	"testing"
 	"time"
@@ -169,6 +170,164 @@ func (suite *SwipeManagerTestSuite) TestUpdateRecords() {
 		assert.NoError(suite.T(), err)
 		assert.IsType(suite.T(), &difficultStateStrategy{}, strategy)
 		assert.Equal(suite.T(), DIFFICULT, mode)
+	})
+
+	suite.Run("Normal_DefaultStateStrategy", func() {
+		// Arrange
+		card, _, user, err := testutils.CreateUserCardAndCardGroup(ctx,
+			suite.userService, suite.cardGroupService, suite.roleService, suite.cardService)
+		assert.NoError(suite.T(), err)
+
+		// Generate SwipeRecords
+		savedSwipeRecord := model.NewSwipeRecord{
+			CardID:      card.ID,
+			CardGroupID: card.CardGroupID,
+			UserID:      user.ID,
+			Mode:        services.UNKNOWN,
+			Created:     time.Now().UTC(),
+			Updated:     time.Now().UTC(),
+		}
+
+		var swipeRecords []*repository.SwipeRecord
+
+		// Act
+		strategy, mode, err := usecase.getStrategy(ctx, savedSwipeRecord, swipeRecords)
+
+		// Assert
+		assert.NoError(suite.T(), err)
+		assert.IsType(suite.T(), &defaultStateStrategy{}, strategy)
+		assert.Equal(suite.T(), DEFAULT, mode)
+
+		// Additional assertions can be added here if necessary to validate the behavior of the strategy
+	})
+
+	suite.Run("Normal_GoodStateStrategy", func() {
+		// Arrange
+		card, _, user, err := testutils.CreateUserCardAndCardGroup(ctx,
+			suite.userService, suite.cardGroupService, suite.roleService, suite.cardService)
+		assert.NoError(suite.T(), err)
+
+		// Generate 10 SwipeRecords
+		savedSwipeRecord := model.NewSwipeRecord{}
+		var swipeRecords []*repository.SwipeRecord
+		knownCount := 0
+		rng := rand.New(rand.NewSource(time.Now().UnixNano())) // Create a new random number generator
+
+		for i := 0; i < config.Cfg.FLBatchDefaultAmount; i++ {
+			mode := services.UNKNOWN // Set default mode to UNKNOWN
+
+			// Randomly set 5 records to KNOWN
+			if knownCount <= 5 && rng.Intn(config.Cfg.
+				FLBatchDefaultAmount-knownCount) <= (5-knownCount) {
+				mode = services.KNOWN
+				knownCount++
+			}
+
+			newSwipeRecord := model.NewSwipeRecord{
+				CardID:      card.ID,
+				CardGroupID: card.CardGroupID,
+				UserID:      user.ID,
+				Mode:        mode,
+				Created:     time.Now().UTC(),
+				Updated:     time.Now().UTC(),
+			}
+			createdSwipeRecord, err := suite.swipeRecordService.CreateSwipeRecord(ctx,
+				newSwipeRecord)
+			assert.NoError(suite.T(), err)
+
+			savedSwipeRecord = newSwipeRecord
+			swipeRecords = append(swipeRecords, services.ConvertToGormSwipeRecord(*createdSwipeRecord))
+		}
+
+		// Act
+		if 5 <= knownCount {
+			strategy, mode, err := usecase.getStrategy(ctx, savedSwipeRecord, swipeRecords)
+
+			// Assert
+			assert.NoError(suite.T(), err)
+			assert.IsType(suite.T(), &goodStateStrategy{}, strategy)
+			assert.Equal(suite.T(), GOOD, mode)
+		}
+	})
+
+	suite.Run("Normal_EasyStateStrategy", func() {
+		// Arrange
+		card, _, user, err := testutils.CreateUserCardAndCardGroup(ctx,
+			suite.userService, suite.cardGroupService, suite.roleService, suite.cardService)
+		assert.NoError(suite.T(), err)
+
+		// Generate 10 SwipeRecords
+		savedSwipeRecord := model.NewSwipeRecord{}
+		var swipeRecords []*repository.SwipeRecord
+		for i := 0; i < config.Cfg.FLBatchDefaultAmount; i++ {
+			mode := services.MAYBE
+			if i < 5 {
+				mode = services.KNOWN // Set Mode to KNOWN for all records
+			}
+
+			newSwipeRecord := model.NewSwipeRecord{
+				CardID:      card.ID,
+				CardGroupID: card.CardGroupID,
+				UserID:      user.ID,
+				Mode:        mode,
+				Created:     time.Now().UTC(),
+				Updated:     time.Now().UTC(),
+			}
+			createdSwipeRecord, err := suite.swipeRecordService.CreateSwipeRecord(ctx,
+				newSwipeRecord)
+			assert.NoError(suite.T(), err)
+
+			savedSwipeRecord = newSwipeRecord
+			swipeRecords = append(swipeRecords, services.ConvertToGormSwipeRecord(*createdSwipeRecord))
+		}
+
+		// Act
+		strategy, mode, err := usecase.getStrategy(ctx, savedSwipeRecord, swipeRecords)
+
+		// Assert
+		assert.NoError(suite.T(), err)
+		assert.IsType(suite.T(), &easyStateStrategy{}, strategy)
+		assert.Equal(suite.T(), EASY, mode)
+	})
+
+	suite.Run("Normal_InWhileStateStrategy", func() {
+		// Arrange
+		card, _, user, err := testutils.CreateUserCardAndCardGroup(ctx,
+			suite.userService, suite.cardGroupService, suite.roleService, suite.cardService)
+		assert.NoError(suite.T(), err)
+
+		// Set date to two months ago
+		twoMonthsAgo := time.Now().AddDate(0, -2, 0).UTC()
+
+		// Generate sufficient SwipeRecords for the strategy to be applicable
+		savedSwipeRecord := model.NewSwipeRecord{}
+		var swipeRecords []*repository.SwipeRecord
+		for i := 0; i < config.Cfg.FLBatchDefaultAmount; i++ {
+			mode := services.KNOWN // Ensuring all records are KNOWN
+
+			newSwipeRecord := model.NewSwipeRecord{
+				CardID:      card.ID,
+				CardGroupID: card.CardGroupID,
+				UserID:      user.ID,
+				Mode:        mode,
+				Created:     twoMonthsAgo,
+				Updated:     twoMonthsAgo,
+			}
+			createdSwipeRecord, err := suite.swipeRecordService.CreateSwipeRecord(ctx,
+				newSwipeRecord)
+			assert.NoError(suite.T(), err)
+
+			savedSwipeRecord = newSwipeRecord
+			swipeRecords = append(swipeRecords, services.ConvertToGormSwipeRecord(*createdSwipeRecord))
+		}
+
+		// Act
+		strategy, mode, err := usecase.getStrategy(ctx, savedSwipeRecord, swipeRecords)
+
+		// Assert
+		assert.NoError(suite.T(), err)
+		assert.IsType(suite.T(), &inWhileStateStrategy{}, strategy)
+		assert.Equal(suite.T(), INWHILE, mode)
 	})
 
 	suite.Run("Normal_DetermineCardAmount", func() {

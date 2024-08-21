@@ -44,6 +44,11 @@ func (e *easyStateStrategy) Run(ctx context.Context, newSwipeRecord model.NewSwi
 }
 
 func (e *easyStateStrategy) IsApplicable(ctx context.Context, newSwipeRecord model.NewSwipeRecord, latestSwipeRecords []*repository.SwipeRecord) bool {
+	// It needs to be certain amount of data for this mode.
+	if len(latestSwipeRecords) < e.amaountOfUnKnownWords {
+		return false
+	}
+
 	// Check if the last 5 records indicate "easy"
 	knownCount := 0
 	for i := 0; i < 5 && i < len(latestSwipeRecords); i++ {
