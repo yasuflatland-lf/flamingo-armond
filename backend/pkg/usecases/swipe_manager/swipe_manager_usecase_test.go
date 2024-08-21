@@ -132,7 +132,7 @@ func (suite *SwipeManagerTestSuite) TestUpdateRecords() {
 		assert.NotEmpty(suite.T(), swipeRecords)
 	})
 
-	suite.Run("Normal_NewDifficultStateStrategy", func() {
+	suite.Run("Normal_DifficultStateStrategy", func() {
 		// Arrange
 		card, _, user, err := testutils.CreateUserCardAndCardGroup(ctx,
 			suite.userService, suite.cardGroupService, suite.roleService, suite.cardService)

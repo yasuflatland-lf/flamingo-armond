@@ -6,6 +6,8 @@ import (
 	"backend/graph/services"
 	"backend/pkg/config"
 	"backend/pkg/logger"
+	repo "backend/pkg/repository"
+	"github.com/m-mizutani/goerr"
 	"golang.org/x/net/context"
 )
 
@@ -30,7 +32,28 @@ func NewGoodStateStrategy(swipeManagerUsecase SwipeManagerUsecase) GoodStateStra
 // Run ChangeState changes the state of the given swipe records to GOOD
 func (g *goodStateStrategy) Run(ctx context.Context,
 	newSwipeRecord model.NewSwipeRecord) ([]*model.Card, error) {
-	return nil, nil
+
+	// Default algorithm, random words updated old, but the interval is closer
+	cards, err := g.swipeManagerUsecase.Srv().GetRandomCardsFromRecentUpdates(
+		ctx,
+		newSwipeRecord.CardGroupID,
+		config.Cfg.PGQueryLimit,
+		repo.ASC,
+		repo.ASC)
+
+	if err != nil {
+		return nil, goerr.Wrap(err)
+	}
+
+	cardAmount, err := g.swipeManagerUsecase.DetermineCardAmount(
+		cards,
+		g.amountOfSwipes)
+
+	if err != nil {
+		return nil, goerr.Wrap(err)
+	}
+
+	return cards[:cardAmount], nil
 }
 
 func (g *goodStateStrategy) IsApplicable(ctx context.Context, newSwipeRecord model.NewSwipeRecord, latestSwipeRecords []*repository.SwipeRecord) bool {

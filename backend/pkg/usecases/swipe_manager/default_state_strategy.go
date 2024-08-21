@@ -32,7 +32,13 @@ func (d *defaultStateStrategy) Run(ctx context.Context,
 	newSwipeRecord model.NewSwipeRecord) ([]*model.Card, error) {
 
 	// Fetch random recent added words
-	cards, err := d.swipeManagerUsecase.Srv().GetRandomCardsFromRecentUpdates(ctx, newSwipeRecord.CardGroupID, config.Cfg.PGQueryLimit, repo.DESC, repo.ASC)
+	cards, err := d.swipeManagerUsecase.Srv().GetRandomCardsFromRecentUpdates(
+		ctx,
+		newSwipeRecord.CardGroupID,
+		config.Cfg.PGQueryLimit,
+		repo.DESC,
+		repo.ASC)
+
 	if err != nil {
 		return nil, goerr.Wrap(err)
 	}

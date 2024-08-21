@@ -31,12 +31,21 @@ func (e *easyStateStrategy) Run(ctx context.Context,
 	newSwipeRecord model.NewSwipeRecord) ([]*model.Card, error) {
 
 	// Fetch random unknown words
-	cards, err := e.swipeManagerUsecase.Srv().GetRandomCardsFromRecentUpdates(ctx, newSwipeRecord.CardGroupID, config.Cfg.PGQueryLimit, repo.ASC, repo.ASC)
+	cards, err := e.swipeManagerUsecase.Srv().GetRandomCardsFromRecentUpdates(
+		ctx,
+		newSwipeRecord.CardGroupID,
+		config.Cfg.PGQueryLimit,
+		repo.ASC,
+		repo.ASC)
+
 	if err != nil {
 		return nil, goerr.Wrap(err)
 	}
 
-	cardAmount, err := e.swipeManagerUsecase.DetermineCardAmount(cards, e.amaountOfUnKnownWords)
+	cardAmount, err := e.swipeManagerUsecase.DetermineCardAmount(
+		cards,
+		e.amaountOfUnKnownWords)
+
 	if err != nil {
 		return nil, goerr.Wrap(err)
 	}

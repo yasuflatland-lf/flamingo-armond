@@ -38,7 +38,6 @@ type CardService interface {
 		limit int, updatedSortOrder string, intervalDaysSortOrder string) ([]*model.Card, error)
 	GetCardsByDefaultLogic(ctx context.Context, cardGroupID int64,
 		limit int) ([]*repository.Card, error)
-	GetRandomRecentCards(ctx context.Context, fromDate time.Time, limit int, sortOrder string) ([]*model.Card, error)
 }
 
 func NewCardService(db *gorm.DB, defaultLimit int) CardService {
@@ -341,7 +340,6 @@ func (s *cardService) GetCardsByUserAndCardGroup(
 	return cards, nil
 }
 
-// Shuffle cards
 func (s *cardService) ShuffleCards(cards []repository.Card,
 	limit int) []*model.Card {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -399,28 +397,4 @@ func (s *cardService) GetCardsByDefaultLogic(ctx context.Context,
 	}
 
 	return cards, nil
-}
-
-func (s *cardService) GetRandomRecentCards(
-	ctx context.Context, fromDate time.Time, limit int, sortOrder string) ([]*model.Card, error) {
-	var cards []repository.Card
-
-	// Validate sortOrder, default to "desc" if not valid
-	if sortOrder != repo.ASC && sortOrder != repo.DESC {
-		sortOrder = repo.DESC
-	}
-
-	// Create the query with the fromDate filter, ordering by created, and limit
-	err := s.db.WithContext(ctx).
-		Where("created >= ?", fromDate).
-		Order(fmt.Sprintf("created %s", sortOrder)).
-		Limit(limit).
-		Find(&cards).Error
-
-	if err != nil {
-		return nil, goerr.Wrap(err, "Failed to retrieve recent cards")
-	}
-
-	// Shuffle the cards
-	return s.ShuffleCards(cards, limit), nil
 }
