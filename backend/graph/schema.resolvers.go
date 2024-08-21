@@ -6,9 +6,6 @@ package graph
 
 import (
 	"backend/graph/model"
-	"backend/graph/services"
-	"backend/pkg/textdic"
-	"backend/pkg/usecases"
 	"context"
 	"fmt"
 
@@ -274,12 +271,8 @@ func (r *mutationResolver) DeleteSwipeRecord(ctx context.Context, id int64) (*bo
 
 // UpsertDictionary is the resolver for the upsertDictionary field.
 func (r *mutationResolver) UpsertDictionary(ctx context.Context, input model.UpsertDictionary) (*model.CardConnection, error) {
-	dictionaryManagerUsecase := usecases.NewDictionaryManagerUsecase(
-		r.Srv.(services.CardService),
-		textdic.NewTextDictionaryService(),
-	)
-
-	createdCards, err := dictionaryManagerUsecase.UpsertCards(ctx, input.Dictionary, input.CardgroupID)
+	createdCards, err := r.U.UpsertCards(ctx, input.Dictionary,
+		input.CardgroupID)
 	if err != nil {
 		return nil, goerr.Wrap(err, "failed to upsert cards")
 	}
@@ -307,6 +300,11 @@ func (r *mutationResolver) UpsertDictionary(ctx context.Context, input model.Ups
 	}
 
 	return cardConnection, nil
+}
+
+// HandleSwipe is the resolver for the handleSwipe field.
+func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.NewSwipeRecord) ([]*model.Card, error) {
+	panic(fmt.Errorf("not implemented: HandleSwipe - handleSwipe"))
 }
 
 // Card is the resolver for the card field.

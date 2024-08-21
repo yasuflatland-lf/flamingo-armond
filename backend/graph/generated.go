@@ -110,6 +110,7 @@ type ComplexityRoot struct {
 		DeleteRole              func(childComplexity int, id int64) int
 		DeleteSwipeRecord       func(childComplexity int, id int64) int
 		DeleteUser              func(childComplexity int, id int64) int
+		HandleSwipe             func(childComplexity int, input model.NewSwipeRecord) int
 		RemoveRoleFromUser      func(childComplexity int, userID int64, roleID int64) int
 		RemoveUserFromCardGroup func(childComplexity int, userID int64, cardGroupID int64) int
 		UpdateCard              func(childComplexity int, id int64, input model.NewCard) int
@@ -232,6 +233,7 @@ type MutationResolver interface {
 	UpdateSwipeRecord(ctx context.Context, id int64, input model.NewSwipeRecord) (*model.SwipeRecord, error)
 	DeleteSwipeRecord(ctx context.Context, id int64) (*bool, error)
 	UpsertDictionary(ctx context.Context, input model.UpsertDictionary) (*model.CardConnection, error)
+	HandleSwipe(ctx context.Context, input model.NewSwipeRecord) ([]*model.Card, error)
 }
 type QueryResolver interface {
 	Card(ctx context.Context, id int64) (*model.Card, error)
@@ -614,6 +616,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Mutation.DeleteUser(childComplexity, args["id"].(int64)), true
+
+	case "Mutation.handleSwipe":
+		if e.complexity.Mutation.HandleSwipe == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_handleSwipe_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.HandleSwipe(childComplexity, args["input"].(model.NewSwipeRecord)), true
 
 	case "Mutation.removeRoleFromUser":
 		if e.complexity.Mutation.RemoveRoleFromUser == nil {
@@ -1535,6 +1549,21 @@ func (ec *executionContext) field_Mutation_deleteUser_args(ctx context.Context, 
 		}
 	}
 	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_handleSwipe_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 model.NewSwipeRecord
+	if tmp, ok := rawArgs["input"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("input"))
+		arg0, err = ec.unmarshalNNewSwipeRecord2backendᚋgraphᚋmodelᚐNewSwipeRecord(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["input"] = arg0
 	return args, nil
 }
 
@@ -4778,6 +4807,81 @@ func (ec *executionContext) fieldContext_Mutation_upsertDictionary(ctx context.C
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_upsertDictionary_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_handleSwipe(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_handleSwipe(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().HandleSwipe(rctx, fc.Args["input"].(model.NewSwipeRecord))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.Card)
+	fc.Result = res
+	return ec.marshalNCard2ᚕᚖbackendᚋgraphᚋmodelᚐCardᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_handleSwipe(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Card_id(ctx, field)
+			case "front":
+				return ec.fieldContext_Card_front(ctx, field)
+			case "back":
+				return ec.fieldContext_Card_back(ctx, field)
+			case "review_date":
+				return ec.fieldContext_Card_review_date(ctx, field)
+			case "interval_days":
+				return ec.fieldContext_Card_interval_days(ctx, field)
+			case "created":
+				return ec.fieldContext_Card_created(ctx, field)
+			case "updated":
+				return ec.fieldContext_Card_updated(ctx, field)
+			case "cardGroupID":
+				return ec.fieldContext_Card_cardGroupID(ctx, field)
+			case "cardGroup":
+				return ec.fieldContext_Card_cardGroup(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Card", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_handleSwipe_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -10105,6 +10209,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_upsertDictionary(ctx, field)
 			})
+		case "handleSwipe":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_handleSwipe(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -11316,6 +11427,50 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) marshalNCard2ᚕᚖbackendᚋgraphᚋmodelᚐCardᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Card) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNCard2ᚖbackendᚋgraphᚋmodelᚐCard(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) marshalNCard2ᚖbackendᚋgraphᚋmodelᚐCard(ctx context.Context, sel ast.SelectionSet, v *model.Card) graphql.Marshaler {

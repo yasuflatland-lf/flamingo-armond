@@ -198,4 +198,5 @@ type Mutation {
   updateSwipeRecord(id: ID!, input: NewSwipeRecord!): SwipeRecord
   deleteSwipeRecord(id: ID!): Boolean
   upsertDictionary(input: UpsertDictionary!): CardConnection
+  handleSwipe(input: NewSwipeRecord!): [Card!]!
 }

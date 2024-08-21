@@ -23,7 +23,7 @@ const (
 	INWHILE   = 4
 )
 
-// Define a type for the constants
+// Difficulty Define a type for the constants
 type Difficulty int
 
 // Implement the String method for the Difficulty type
@@ -169,11 +169,17 @@ func (s *swipeManagerUsecase) getStrategy(
 		strategy SwipeStrategy
 		mode     int
 	}{
+		// **********************************************************
+		// Be careful to change the order of the strategy.
+		// It affects how the strategy works.
+		// Please do make sure the behavior by writing tests.
+		// **********************************************************
 		{NewInWhileStateStrategy(s), INWHILE},
 		{NewDifficultStateStrategy(s), DIFFICULT},
 		{NewEasyStateStrategy(s), EASY},
 		{NewGoodStateStrategy(s), GOOD},
-		{NewDefaultStateStrategy(s), DEFAULT}, // Default strategy, placed last
+		// Default strategy, must be placed last
+		{NewDefaultStateStrategy(s), DEFAULT},
 	}
 
 	for _, item := range strategies {
@@ -184,7 +190,8 @@ func (s *swipeManagerUsecase) getStrategy(
 	return nil, services.UNDEFINED, goerr.New("Strategy unmatched")
 }
 
-func (s *swipeManagerUsecase) ExecuteStrategy(ctx context.Context, newSwipeRecord model.NewSwipeRecord, strategy SwipeStrategy) ([]model.Card, error) {
+func (s *swipeManagerUsecase) ExecuteStrategy(ctx context.Context,
+	newSwipeRecord model.NewSwipeRecord, strategy SwipeStrategy) ([]model.Card, error) {
 	// Change State
 	cards, err := strategy.Run(ctx, newSwipeRecord)
 

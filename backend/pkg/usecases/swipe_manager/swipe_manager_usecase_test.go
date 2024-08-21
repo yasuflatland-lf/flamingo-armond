@@ -362,7 +362,7 @@ func (suite *SwipeManagerTestSuite) TestUpdateRecords() {
 
 	suite.Run("Error_NoCardsAvailable", func() {
 		// Arrange
-		cards := []model.Card{}
+		var cards []model.Card
 		amountOfKnownWords := 5
 
 		// Act

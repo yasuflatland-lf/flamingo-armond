@@ -1,9 +1,14 @@
 package config
 
 import (
-	"backend/pkg/logger"
 	"fmt"
 	"github.com/caarlos0/env/v11"
+	"log/slog"
+)
+
+const (
+	APP_MODE_DEV  = "dev"
+	APP_MODE_PROD = "production"
 )
 
 // Config structure holds all the configuration values
@@ -34,11 +39,11 @@ var Cfg Config
 // init function initializes the package-level variable Cfg by parsing environment variables
 func init() {
 	if err := env.Parse(&Cfg); err != nil {
-		logger.Logger.Error("Failed to parse environment variables: %+v", err)
+		slog.Error("Failed to parse environment variables: %+v", err)
 	}
 
 	if Cfg.PGQueryLimit <= Cfg.FLBatchDefaultAmount {
-		logger.Logger.Error(fmt.
+		slog.Error(fmt.
 			Sprintf("FLBatchDefaultAmount<%d> must be smaller than"+
 				" PGQueryLimit<%d>",
 				Cfg.FLBatchDefaultAmount, Cfg.PGQueryLimit))

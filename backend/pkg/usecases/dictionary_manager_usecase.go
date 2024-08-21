@@ -10,12 +10,16 @@ import (
 	"time"
 )
 
+type DictionaryManagerUsecase interface {
+	UpsertCards(ctx context.Context, encodedDictionary string, cardGroupID int64) ([]*model.Card, error)
+}
+
 type dictionaryManagerUsecase struct {
 	cardService           services.CardService          // Pointer to CardService
 	textDictionaryService textdic.TextDictionaryService // Pointer to textDictionaryService
 }
 
-func NewDictionaryManagerUsecase(cardService services.CardService, textDictionaryService textdic.TextDictionaryService) *dictionaryManagerUsecase {
+func NewDictionaryManagerUsecase(cardService services.CardService, textDictionaryService textdic.TextDictionaryService) DictionaryManagerUsecase {
 	return &dictionaryManagerUsecase{
 		cardService:           cardService,
 		textDictionaryService: textDictionaryService,

@@ -3,6 +3,7 @@ package graph_test
 import (
 	"backend/graph"
 	repository "backend/graph/db"
+	"backend/pkg/usecases"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -68,10 +69,12 @@ func NewRouter(db *gorm.DB) *echo.Echo {
 	e.Use(middlewares.TransactionMiddleware())
 
 	service := services.New(db)
+	usecase := usecases.New(service)
 	validateWrapper := validator.NewValidateWrapper()
 	resolver := &graph.Resolver{
 		DB:      db,
 		Srv:     service,
+		U:       usecase,
 		VW:      validateWrapper,
 		Loaders: graph.NewLoaders(service),
 	}

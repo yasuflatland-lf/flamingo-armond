@@ -6,6 +6,7 @@ import (
 	"backend/pkg/config"
 	"backend/pkg/middlewares"
 	"backend/pkg/repository"
+	"backend/pkg/usecases"
 	"backend/pkg/validator"
 	"github.com/99designs/gqlgen/graphql/handler/extension"
 	"log"
@@ -36,6 +37,9 @@ func NewRouter(db *gorm.DB) *echo.Echo {
 	// Create services
 	service := services.New(db)
 
+	// Create usecases
+	usecase := usecases.New(service)
+
 	// Validator
 	validateWrapper := validator.NewValidateWrapper()
 
@@ -43,6 +47,7 @@ func NewRouter(db *gorm.DB) *echo.Echo {
 	resolver := &graph.Resolver{
 		DB:      db,
 		Srv:     service,
+		U:       usecase,
 		VW:      validateWrapper,
 		Loaders: graph.NewLoaders(service),
 	}
