@@ -276,9 +276,11 @@ func TestGraphQLQueries(t *testing.T) {
 
 			// Create an existing user
 			user := repository.User{
-				Name:    "Users Query Test User",
-				Created: now,
-				Updated: now,
+				Name:     "Users Query Test User",
+				Email:    testutils.GetRandomEmail(8),
+				GoogleID: testutils.GenerateUUIDv7(),
+				Created:  now,
+				Updated:  now,
 			}
 			if err := db.Create(&user).Error; err != nil {
 				t.Fatalf("failed to create user: %v", err)
@@ -443,9 +445,11 @@ func TestGraphQLQueries(t *testing.T) {
 
 			// Create an existing user
 			user := repository.User{
-				Name:    "Test User",
-				Created: now,
-				Updated: now,
+				Name:     "Test User",
+				Email:    testutils.GetRandomEmail(8),
+				GoogleID: testutils.GenerateUUIDv7(),
+				Created:  now,
+				Updated:  now,
 			}
 			if err := db.Create(&user).Error; err != nil {
 				t.Fatalf("failed to create user: %v", err)
@@ -504,9 +508,11 @@ func TestGraphQLQueries(t *testing.T) {
 
 			// Create an existing user
 			user := repository.User{
-				Name:    "Test User",
-				Created: now,
-				Updated: now,
+				Name:     "Test User",
+				Email:    testutils.GetRandomEmail(8),
+				GoogleID: testutils.GenerateUUIDv7(),
+				Created:  now,
+				Updated:  now,
 			}
 			if err := db.Create(&user).Error; err != nil {
 				t.Fatalf("failed to create user: %v", err)
@@ -581,9 +587,11 @@ func TestGraphQLQueries(t *testing.T) {
 
 			// Create an existing user
 			user := repository.User{
-				Name:    "Test User",
-				Created: now,
-				Updated: now,
+				Name:     "Test User",
+				Email:    testutils.GetRandomEmail(8),
+				GoogleID: testutils.GenerateUUIDv7(),
+				Created:  now,
+				Updated:  now,
 			}
 			if err := db.Create(&user).Error; err != nil {
 				t.Fatalf("failed to create user: %v", err)
@@ -847,9 +855,11 @@ func TestGraphQLQueries(t *testing.T) {
 
 			// Create an existing user
 			user := repository.User{
-				Name:    "Users Query Test User",
-				Created: now,
-				Updated: now,
+				Name:     "Users Query Test User",
+				Email:    testutils.GetRandomEmail(8),
+				GoogleID: testutils.GenerateUUIDv7(),
+				Created:  now,
+				Updated:  now,
 			}
 			if err := db.Create(&user).Error; err != nil {
 				t.Fatalf("failed to create user: %v", err)
@@ -953,10 +963,12 @@ func TestGraphQLQueries(t *testing.T) {
 			}
 
 			input := model.NewUser{
-				Name:    "New User",
-				RoleIds: []int64{role.ID},
-				Created: now,
-				Updated: now,
+				Name:     "New User",
+				Email:    testutils.GetRandomEmail(8),
+				GoogleID: testutils.GenerateUUIDv7(),
+				RoleIds:  []int64{role.ID},
+				Created:  now,
+				Updated:  now,
 			}
 
 			jsonInput, _ := json.Marshal(map[string]interface{}{
@@ -1009,9 +1021,11 @@ func TestGraphQLQueries(t *testing.T) {
 
 			// Create an existing user
 			user := repository.User{
-				Name:    "Old User",
-				Created: now,
-				Updated: now,
+				Name:     "Old User",
+				Email:    testutils.GetRandomEmail(8),
+				GoogleID: testutils.GenerateUUIDv7(),
+				Created:  now,
+				Updated:  now,
 			}
 			if err := db.Create(&user).Error; err != nil {
 				t.Fatalf("failed to create user: %v", err)
@@ -1024,10 +1038,12 @@ func TestGraphQLQueries(t *testing.T) {
 
 			// Input data for updating
 			input := model.NewUser{
-				Name:    "Updated User",
-				RoleIds: []int64{role.ID},
-				Created: now,
-				Updated: now,
+				Name:     "Updated User",
+				Email:    testutils.GetRandomEmail(8),
+				GoogleID: testutils.GenerateUUIDv7(),
+				RoleIds:  []int64{role.ID},
+				Created:  now,
+				Updated:  now,
 			}
 
 			// GraphQL Mutation test for updating user
@@ -1063,9 +1079,11 @@ func TestGraphQLQueries(t *testing.T) {
 
 			now := time.Now().UTC()
 			user := repository.User{
-				Name:    "Test User",
-				Created: now,
-				Updated: now,
+				Name:     "Test User",
+				Email:    testutils.GetRandomEmail(8),
+				GoogleID: testutils.GenerateUUIDv7(),
+				Created:  now,
+				Updated:  now,
 			}
 			db.Create(&user)
 
@@ -1232,9 +1250,11 @@ func TestGraphQLQueries(t *testing.T) {
 
 			// Create an existing user
 			user := repository.User{
-				Name:    "Test User",
-				Created: now,
-				Updated: now,
+				Name:     "Test User",
+				Email:    testutils.GetRandomEmail(8),
+				GoogleID: testutils.GenerateUUIDv7(),
+				Created:  now,
+				Updated:  now,
 			}
 			if err := db.Create(&user).Error; err != nil {
 				t.Fatalf("failed to create user: %v", err)
@@ -1304,9 +1324,11 @@ func TestGraphQLQueries(t *testing.T) {
 
 			// Create an existing user
 			user := repository.User{
-				Name:    "Test User",
-				Created: now,
-				Updated: now,
+				Name:     "Test User",
+				Email:    testutils.GetRandomEmail(8),
+				GoogleID: testutils.GenerateUUIDv7(),
+				Created:  now,
+				Updated:  now,
 			}
 			if err := db.Create(&user).Error; err != nil {
 				t.Fatalf("failed to create user: %v", err)
@@ -1377,9 +1399,11 @@ func TestGraphQLQueries(t *testing.T) {
 
 			// Create an existing user
 			user := repository.User{
-				Name:    "Test User",
-				Created: now,
-				Updated: now,
+				Name:     "Test User",
+				Email:    testutils.GetRandomEmail(8),
+				GoogleID: testutils.GenerateUUIDv7(),
+				Created:  now,
+				Updated:  now,
 			}
 			if err := db.Create(&user).Error; err != nil {
 				t.Fatalf("failed to create user: %v", err)
@@ -1442,9 +1466,11 @@ func TestGraphQLQueries(t *testing.T) {
 
 			// Create an existing user
 			user := repository.User{
-				Name:    "Test User",
-				Created: now,
-				Updated: now,
+				Name:     "Test User",
+				Email:    testutils.GetRandomEmail(8),
+				GoogleID: testutils.GenerateUUIDv7(),
+				Created:  now,
+				Updated:  now,
 			}
 			if err := db.Create(&user).Error; err != nil {
 				t.Fatalf("failed to create user: %v", err)
@@ -1809,10 +1835,12 @@ func TestGraphQLErrors(t *testing.T) {
 			invalidID := "invalid-id"
 			now := time.Now().UTC()
 			input := model.NewUser{
-				Name:    "Updated User",
-				RoleIds: []int64{1, 2},
-				Created: now,
-				Updated: now,
+				Name:     "Updated User",
+				Email:    testutils.GetRandomEmail(8),
+				GoogleID: testutils.GenerateUUIDv7(),
+				RoleIds:  []int64{1, 2},
+				Created:  now,
+				Updated:  now,
 			}
 
 			jsonInput, _ := json.Marshal(map[string]interface{}{

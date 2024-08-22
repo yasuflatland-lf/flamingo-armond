@@ -30,7 +30,8 @@ type Config struct {
 	PGQueryLimit int    `env:"PG_QUERY_LIMIT,notEmpty" envDefault:"100"`
 
 	// Application configuration
-	FLBatchDefaultAmount int `env:"FL_BATCH_DEFAULT_AMOUNT,notEmpty" envDefault:"10"`
+	JWTSecret            string `env:"FL_JWT_SECRET,notEmpty" envDefault:"jwt_secret to be replaced."`
+	FLBatchDefaultAmount int    `env:"FL_BATCH_DEFAULT_AMOUNT,notEmpty" envDefault:"10"`
 }
 
 // Cfg is the package-level variable that holds the parsed configuration

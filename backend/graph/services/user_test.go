@@ -72,10 +72,12 @@ func (suite *UserTestSuite) TestUserService() {
 		assert.NotNil(t, createdRole)
 
 		input := model.NewUser{
-			Name:    "Test User",
-			Created: time.Now().UTC(),
-			Updated: time.Now().UTC(),
-			RoleIds: []int64{createdRole.ID},
+			Name:     "Test User",
+			Email:    testutils.GetRandomEmail(8),
+			GoogleID: testutils.GenerateUUIDv7(),
+			Created:  time.Now().UTC(),
+			Updated:  time.Now().UTC(),
+			RoleIds:  []int64{createdRole.ID},
 		}
 
 		createdUser, err := userService.CreateUser(ctx, input)
@@ -94,10 +96,12 @@ func (suite *UserTestSuite) TestUserService() {
 		assert.NotNil(t, createdRole)
 
 		input := model.NewUser{
-			Name:    "", // Invalid input
-			Created: time.Now().UTC(),
-			Updated: time.Now().UTC(),
-			RoleIds: []int64{createdRole.ID},
+			Name:     "", // Invalid input
+			Email:    testutils.GetRandomEmail(8),
+			GoogleID: testutils.GenerateUUIDv7(),
+			Created:  time.Now().UTC(),
+			Updated:  time.Now().UTC(),
+			RoleIds:  []int64{createdRole.ID},
 		}
 
 		createdUser, err := userService.CreateUser(ctx, input)
@@ -116,10 +120,12 @@ func (suite *UserTestSuite) TestUserService() {
 		assert.NotNil(t, createdRole)
 
 		input := model.NewUser{
-			Name:    "Test User",
-			Created: time.Now().UTC(),
-			Updated: time.Now().UTC(),
-			RoleIds: []int64{createdRole.ID},
+			Name:     "Test User",
+			Email:    testutils.GetRandomEmail(8),
+			GoogleID: testutils.GenerateUUIDv7(),
+			Created:  time.Now().UTC(),
+			Updated:  time.Now().UTC(),
+			RoleIds:  []int64{createdRole.ID},
 		}
 		createdUser, _ := userService.CreateUser(ctx, input)
 
@@ -145,10 +151,12 @@ func (suite *UserTestSuite) TestUserService() {
 		assert.NotNil(t, createdRole)
 
 		input := model.NewUser{
-			Name:    "Test User",
-			Created: time.Now().UTC(),
-			Updated: time.Now().UTC(),
-			RoleIds: []int64{createdRole.ID},
+			Name:     "Test User",
+			Email:    testutils.GetRandomEmail(8),
+			GoogleID: testutils.GenerateUUIDv7(),
+			Created:  time.Now().UTC(),
+			Updated:  time.Now().UTC(),
+			RoleIds:  []int64{createdRole.ID},
 		}
 		createdUser, _ := userService.CreateUser(ctx, input)
 
@@ -161,7 +169,9 @@ func (suite *UserTestSuite) TestUserService() {
 
 	suite.Run("Error_UpdateUser", func() {
 
-		updateInput := model.NewUser{Name: "Updated User"}
+		updateInput := model.NewUser{Name: "Updated User",
+			Email:    testutils.GetRandomEmail(8),
+			GoogleID: testutils.GenerateUUIDv7()}
 
 		updatedUser, err := userService.UpdateUser(ctx, -1, updateInput) // Invalid ID
 		assert.Error(t, err)
@@ -179,10 +189,12 @@ func (suite *UserTestSuite) TestUserService() {
 		assert.NotNil(t, createdRole)
 
 		input := model.NewUser{
-			Name:    "Test User",
-			Created: time.Now().UTC(),
-			Updated: time.Now().UTC(),
-			RoleIds: []int64{createdRole.ID},
+			Name:     "Test User",
+			Email:    testutils.GetRandomEmail(8),
+			GoogleID: testutils.GenerateUUIDv7(),
+			Created:  time.Now().UTC(),
+			Updated:  time.Now().UTC(),
+			RoleIds:  []int64{createdRole.ID},
 		}
 		createdUser, _ := userService.CreateUser(ctx, input)
 
@@ -208,8 +220,14 @@ func (suite *UserTestSuite) TestUserService() {
 		assert.NoError(t, err)
 		assert.NotNil(t, createdRole)
 
-		input1 := model.NewUser{Name: "Test User 1", RoleIds: []int64{createdRole.ID}}
-		input2 := model.NewUser{Name: "Test User 2", RoleIds: []int64{createdRole.ID}}
+		input1 := model.NewUser{Name: "Test User 1",
+			Email:    testutils.GetRandomEmail(8),
+			GoogleID: testutils.GenerateUUIDv7(),
+			RoleIds:  []int64{createdRole.ID}}
+		input2 := model.NewUser{Name: "Test User 2",
+			Email:    testutils.GetRandomEmail(8),
+			GoogleID: testutils.GenerateUUIDv7(),
+			RoleIds:  []int64{createdRole.ID}}
 		userService.CreateUser(ctx, input1)
 		userService.CreateUser(ctx, input2)
 

@@ -119,7 +119,7 @@ func CreateUserAndCardGroup(
 	cardGroupService services.CardGroupService,
 	roleService services.RoleService) (*model.CardGroup, *model.User, error) {
 
-	randstr, err := CryptoRandString(8)
+	randstr := CryptoRandString(8)
 
 	// Create a role
 	newRole := model.NewRole{
@@ -132,10 +132,12 @@ func CreateUserAndCardGroup(
 
 	// Create a user
 	newUser := model.NewUser{
-		Name:    "Test User" + randstr,
-		Created: time.Now().UTC(),
-		Updated: time.Now().UTC(),
-		RoleIds: []int64{createdRole.ID}, // Assign the new role to the user
+		Name:     "Test User" + randstr,
+		Email:    GetRandomEmail(8),
+		GoogleID: GenerateUUIDv7(),
+		Created:  time.Now().UTC(),
+		Updated:  time.Now().UTC(),
+		RoleIds:  []int64{createdRole.ID}, // Assign the new role to the user
 	}
 	createdUser, err := userService.CreateUser(ctx, newUser)
 	if err != nil {
@@ -178,7 +180,7 @@ func CreateUserCardAndCardGroup(
 	}
 
 	// Step 2: Create a Card
-	randstr, err := CryptoRandString(8)
+	randstr := CryptoRandString(8)
 	if err != nil {
 		return nil, nil, nil, goerr.Wrap(err, "failed to generate random string")
 	}

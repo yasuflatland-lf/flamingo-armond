@@ -3,6 +3,7 @@ package validator_test
 import (
 	"backend/graph/db"
 	"backend/pkg/validator"
+	"backend/testutils"
 	"testing"
 	"time"
 )
@@ -77,10 +78,12 @@ func TestModelValidation(t *testing.T) {
 		{
 			"Valid User",
 			&db.User{
-				ID:      1,
-				Name:    "ValidName",
-				Created: time.Now().UTC(),
-				Updated: time.Now().UTC(),
+				ID:       1,
+				Name:     "ValidName",
+				Email:    testutils.GetRandomEmail(8),
+				GoogleID: testutils.GenerateUUIDv7(),
+				Created:  time.Now().UTC(),
+				Updated:  time.Now().UTC(),
 			},
 			true,
 		},
@@ -123,10 +126,12 @@ func TestModelValidation(t *testing.T) {
 		{
 			"Invalid User Name",
 			&db.User{
-				ID:      1,
-				Name:    "Invalid Name!",
-				Created: time.Now().UTC(),
-				Updated: time.Now().UTC(),
+				ID:       1,
+				Name:     "Invalid Name!",
+				Email:    testutils.GetRandomEmail(8),
+				GoogleID: testutils.GenerateUUIDv7(),
+				Created:  time.Now().UTC(),
+				Updated:  time.Now().UTC(),
 			},
 			false,
 		},

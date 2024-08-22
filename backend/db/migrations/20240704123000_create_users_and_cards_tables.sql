@@ -5,11 +5,15 @@ CREATE TABLE IF NOT EXISTS users
 (
     id      BIGSERIAL PRIMARY KEY,
     name    TEXT      NOT NULL,
+    email   TEXT      UNIQUE NOT NULL,
+    google_id TEXT    UNIQUE,
     created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_users_id ON users(id);
 CREATE INDEX idx_users_name ON users(name);
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_google_id ON users(google_id);
 
 CREATE TABLE IF NOT EXISTS cardgroups
 (

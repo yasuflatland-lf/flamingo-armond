@@ -147,7 +147,12 @@ func (suite *RoleTestSuite) TestRoleService() {
 	suite.Run("Normal_AssignRoleToUser", func() {
 
 		// Create a user and role
-		newUser := model.NewUser{Name: "Test User", Created: time.Now().UTC(), Updated: time.Now().UTC()}
+		newUser := model.NewUser{
+			Name:     "Test User",
+			Email:    testutils.GetRandomEmail(8),
+			GoogleID: testutils.GenerateUUIDv7(),
+			Created:  time.Now().UTC(),
+			Updated:  time.Now().UTC()}
 		createdUser, _ := userService.CreateUser(ctx, newUser)
 
 		newRole := model.NewRole{Name: "Test Role"}
@@ -171,7 +176,10 @@ func (suite *RoleTestSuite) TestRoleService() {
 	suite.Run("Normal_RemoveRoleFromUser", func() {
 
 		// Create a user and role
-		newUser := model.NewUser{Name: "Test User", Created: time.Now().UTC(), Updated: time.Now().UTC()}
+		newUser := model.NewUser{Name: "Test User",
+			Email:    testutils.GetRandomEmail(8),
+			GoogleID: testutils.GenerateUUIDv7(),
+			Created:  time.Now().UTC(), Updated: time.Now().UTC()}
 		createdUser, _ := userService.CreateUser(ctx, newUser)
 
 		newRole := model.NewRole{Name: "Test Role"}

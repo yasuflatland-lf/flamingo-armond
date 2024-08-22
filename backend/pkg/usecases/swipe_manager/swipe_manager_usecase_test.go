@@ -211,7 +211,7 @@ func (suite *SwipeManagerTestSuite) TestUpdateRecords() {
 
 	suite.Run("Normal_GoodStateStrategy", func() {
 		// Arrange
-		card, _, user, err := testutils.CreateUserCardAndCardGroup(ctx,
+		card, cardGroup, user, err := testutils.CreateUserCardAndCardGroup(ctx,
 			suite.userService, suite.cardGroupService, suite.roleService, suite.cardService)
 		assert.NoError(suite.T(), err)
 
@@ -223,6 +223,15 @@ func (suite *SwipeManagerTestSuite) TestUpdateRecords() {
 
 		for i := 0; i < config.Cfg.FLBatchDefaultAmount; i++ {
 			mode := services.UNKNOWN // Set default mode to UNKNOWN
+
+			input := model.NewCard{
+				Front:       "Test Front" + strconv.Itoa(i),
+				Back:        "Test Back" + strconv.Itoa(i),
+				ReviewDate:  time.Now().UTC(),
+				CardgroupID: cardGroup.ID,
+			}
+
+			_, err := suite.cardService.CreateCard(ctx, input)
 
 			// Randomly set 5 records to KNOWN
 			if knownCount <= 5 && rng.Intn(config.Cfg.

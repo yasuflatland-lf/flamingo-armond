@@ -9,6 +9,8 @@ import (
 type User struct {
 	ID         int64       `gorm:"column:id;primaryKey" validate:"number"`
 	Name       string      `gorm:"column:name;not null" validate:"required,fl_name"`
+	Email      string      `gorm:"column:email;not null" validate:"required,email"`
+	GoogleID   string      `gorm:"column:google_id" validate:"-"`
 	Created    time.Time   `gorm:"column:created;autoCreateTime"`
 	Updated    time.Time   `gorm:"column:updated;autoCreateTime"`
 	CardGroups []Cardgroup `gorm:"many2many:cardgroup_users" validate:"-"`

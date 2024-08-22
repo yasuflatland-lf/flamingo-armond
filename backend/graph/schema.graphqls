@@ -1,202 +1,206 @@
 scalar Time
 
 directive @validation(
-  format: String
+    format: String
 ) on INPUT_FIELD_DEFINITION | ARGUMENT_DEFINITION | FIELD_DEFINITION
 
 type PageInfo {
-  endCursor: ID
-  hasNextPage: Boolean!
-  hasPreviousPage: Boolean!
-  startCursor: ID
+    endCursor: ID
+    hasNextPage: Boolean!
+    hasPreviousPage: Boolean!
+    startCursor: ID
 }
 
 type Card {
-  id: ID!
-  front: String! @validation(format: "required,min=1")
-  back: String! @validation(format: "required,min=1")
-  review_date: Time!
-  interval_days: Int! @validation(format: "gte=1")
-  created: Time!
-  updated: Time!
-  cardGroupID: ID!
-  cardGroup: CardGroup! @validation(format: "-")
+    id: ID!
+    front: String! @validation(format: "required,min=1")
+    back: String! @validation(format: "required,min=1")
+    review_date: Time!
+    interval_days: Int! @validation(format: "gte=1")
+    created: Time!
+    updated: Time!
+    cardGroupID: ID!
+    cardGroup: CardGroup! @validation(format: "-")
 }
 
 type CardGroup {
-  id: ID!
-  name: String! @validation(format: "required,fl_name,min=1")
-  created: Time!
-  updated: Time!
-  cards(first: Int, after: ID, last: Int, before: ID): CardConnection! @validation(format: "-")
-  users(first: Int, after: ID, last: Int, before: ID): UserConnection! @validation(format: "-")
+    id: ID!
+    name: String! @validation(format: "required,fl_name,min=1")
+    created: Time!
+    updated: Time!
+    cards(first: Int, after: ID, last: Int, before: ID): CardConnection! @validation(format: "-")
+    users(first: Int, after: ID, last: Int, before: ID): UserConnection! @validation(format: "-")
 }
 
 type CardEdge {
-  cursor: ID!
-  node: Card! @validation(format: "-")
+    cursor: ID!
+    node: Card! @validation(format: "-")
 }
 
 type CardConnection {
-  edges: [CardEdge] @validation(format: "-")
-  nodes: [Card] @validation(format: "-")
-  pageInfo: PageInfo!
-  totalCount: Int!
+    edges: [CardEdge] @validation(format: "-")
+    nodes: [Card] @validation(format: "-")
+    pageInfo: PageInfo!
+    totalCount: Int!
 }
 
 type UserEdge {
-  cursor: ID!
-  node: User! @validation(format: "-")
+    cursor: ID!
+    node: User! @validation(format: "-")
 }
 
 type UserConnection {
-  edges: [UserEdge] @validation(format: "-")
-  nodes: [User] @validation(format: "-")
-  pageInfo: PageInfo!
-  totalCount: Int!
+    edges: [UserEdge] @validation(format: "-")
+    nodes: [User] @validation(format: "-")
+    pageInfo: PageInfo!
+    totalCount: Int!
 }
 
 type Role {
-  id: ID!
-  name: String! @validation(format: "required,fl_name,min=1")
-  created: Time!
-  updated: Time!
-  users(first: Int, after: ID, last: Int, before: ID): UserConnection! @validation(format: "-")
+    id: ID!
+    name: String! @validation(format: "required,fl_name,min=1")
+    created: Time!
+    updated: Time!
+    users(first: Int, after: ID, last: Int, before: ID): UserConnection! @validation(format: "-")
 }
 
 type User {
-  id: ID!
-  name: String! @validation(format: "required,fl_name,min=1")
-  created: Time!
-  updated: Time!
-  cardGroups(first: Int, after: ID, last: Int, before: ID): CardGroupConnection! @validation(format: "-")
-  roles(first: Int, after: ID, last: Int, before: ID): RoleConnection! @validation(format: "-")
+    id: ID!
+    name: String! @validation(format: "required,fl_name,min=1")
+    email: String! @validation(format: "required,email")
+    google_id: String! @validation(format: "-")
+    created: Time!
+    updated: Time!
+    cardGroups(first: Int, after: ID, last: Int, before: ID): CardGroupConnection! @validation(format: "-")
+    roles(first: Int, after: ID, last: Int, before: ID): RoleConnection! @validation(format: "-")
 }
 
 type RoleEdge {
-  cursor: ID!
-  node: Role! @validation(format: "-")
+    cursor: ID!
+    node: Role! @validation(format: "-")
 }
 
 type RoleConnection {
-  edges: [RoleEdge] @validation(format: "-")
-  nodes: [Role] @validation(format: "-")
-  pageInfo: PageInfo!
-  totalCount: Int!
+    edges: [RoleEdge] @validation(format: "-")
+    nodes: [Role] @validation(format: "-")
+    pageInfo: PageInfo!
+    totalCount: Int!
 }
 
 type CardGroupEdge {
-  cursor: ID!
-  node: CardGroup! @validation(format: "-")
+    cursor: ID!
+    node: CardGroup! @validation(format: "-")
 }
 
 type CardGroupConnection {
-  edges: [CardGroupEdge] @validation(format: "-")
-  nodes: [CardGroup] @validation(format: "-")
-  pageInfo: PageInfo!
-  totalCount: Int!
+    edges: [CardGroupEdge] @validation(format: "-")
+    nodes: [CardGroup] @validation(format: "-")
+    pageInfo: PageInfo!
+    totalCount: Int!
 }
 
 type SwipeRecord {
-  id: ID!
-  userId: ID!
-  cardId: ID!
-  cardGroupID: ID!
-  mode: Int! @validation(format: "gte=0")
-  created: Time!
-  updated: Time!
+    id: ID!
+    userId: ID!
+    cardId: ID!
+    cardGroupID: ID!
+    mode: Int! @validation(format: "gte=0")
+    created: Time!
+    updated: Time!
 }
 
 type SwipeRecordEdge {
-  cursor: ID!
-  node: SwipeRecord! @validation(format: "-")
+    cursor: ID!
+    node: SwipeRecord! @validation(format: "-")
 }
 
 type SwipeRecordConnection {
-  edges: [SwipeRecordEdge] @validation(format: "-")
-  nodes: [SwipeRecord] @validation(format: "-")
-  pageInfo: PageInfo!
-  totalCount: Int!
+    edges: [SwipeRecordEdge] @validation(format: "-")
+    nodes: [SwipeRecord] @validation(format: "-")
+    pageInfo: PageInfo!
+    totalCount: Int!
 }
 
 input NewCard {
-  front: String! @validation(format: "required,min=1")
-  back: String! @validation(format: "required,min=1")
-  review_date: Time!
-  interval_days: Int = 1 @validation(format: "gte=1")
-  cardgroup_id: ID!,
-  created: Time!,
-  updated: Time!,
+    front: String! @validation(format: "required,min=1")
+    back: String! @validation(format: "required,min=1")
+    review_date: Time!
+    interval_days: Int = 1 @validation(format: "gte=1")
+    cardgroup_id: ID!,
+    created: Time!,
+    updated: Time!,
 }
 
 input NewCardGroup {
-  name: String! @validation(format: "required,min=1")
-  card_ids: [ID!]
-  user_ids: [ID!]!
-  created: Time!,
-  updated: Time!,
+    name: String! @validation(format: "required,min=1")
+    card_ids: [ID!]
+    user_ids: [ID!]!
+    created: Time!,
+    updated: Time!,
 }
 
 input NewUser {
-  name: String! @validation(format: "required,fl_name,min=1")
-  role_ids: [ID!]!
-  created: Time!,
-  updated: Time!,
+    name: String! @validation(format: "required,fl_name,min=1")
+    email: String! @validation(format: "required,email")
+    google_id: String! @validation(format: "-")
+    role_ids: [ID!]!
+    created: Time!,
+    updated: Time!,
 }
 
 input NewRole {
-  name: String! @validation(format: "required,fl_name,min=1")
-  created: Time!,
-  updated: Time!,
+    name: String! @validation(format: "required,fl_name,min=1")
+    created: Time!,
+    updated: Time!,
 }
 
 input NewSwipeRecord {
-  userId: ID! @validation(format: "required")
-  cardId: ID! @validation(format: "required")
-  cardGroupID: ID! @validation(format: "required")
-  mode: Int! @validation(format: "gte=0")
-  created: Time!
-  updated: Time!
+    userId: ID! @validation(format: "required")
+    cardId: ID! @validation(format: "required")
+    cardGroupID: ID! @validation(format: "required")
+    mode: Int! @validation(format: "gte=0")
+    created: Time!
+    updated: Time!
 }
 
 input UpsertDictionary {
-  cardgroup_id: ID!,
-  dictionary: String! @validation(format: "required")
+    cardgroup_id: ID!,
+    dictionary: String! @validation(format: "required")
 }
 
 type Query {
-  card(id: ID!): Card
-  cardGroup(id: ID!): CardGroup
-  role(id: ID!): Role
-  user(id: ID!): User
-  swipeRecord(id: ID!): SwipeRecord
-  cardsByCardGroup(cardGroupID: ID!, first: Int, after: ID, last: Int, before: ID): CardConnection
-  userRole(userID: ID!): Role
-  cardGroupsByUser(userID: ID!, first: Int, after: ID, last: Int, before: ID): CardGroupConnection
-  usersByRole(roleID: ID!, first: Int, after: ID, last: Int, before: ID): UserConnection
-  swipeRecords(userID: ID!,first: Int, after: ID, last: Int, before: ID): SwipeRecordConnection
+    card(id: ID!): Card
+    cardGroup(id: ID!): CardGroup
+    role(id: ID!): Role
+    user(id: ID!): User
+    swipeRecord(id: ID!): SwipeRecord
+    cardsByCardGroup(cardGroupID: ID!, first: Int, after: ID, last: Int, before: ID): CardConnection
+    userRole(userID: ID!): Role
+    cardGroupsByUser(userID: ID!, first: Int, after: ID, last: Int, before: ID): CardGroupConnection
+    usersByRole(roleID: ID!, first: Int, after: ID, last: Int, before: ID): UserConnection
+    swipeRecords(userID: ID!,first: Int, after: ID, last: Int, before: ID): SwipeRecordConnection
 }
 
 type Mutation {
-  createCard(input: NewCard!): Card
-  updateCard(id: ID!, input: NewCard!): Card
-  deleteCard(id: ID!): Boolean
-  createCardGroup(input: NewCardGroup!): CardGroup
-  updateCardGroup(id: ID!, input: NewCardGroup!): CardGroup
-  deleteCardGroup(id: ID!): Boolean
-  createUser(input: NewUser!): User
-  updateUser(id: ID!, input: NewUser!): User
-  deleteUser(id: ID!): Boolean
-  createRole(input: NewRole!): Role
-  updateRole(id: ID!, input: NewRole!): Role
-  deleteRole(id: ID!): Boolean
-  addUserToCardGroup(userID: ID!, cardGroupID: ID!): CardGroup
-  removeUserFromCardGroup(userID: ID!, cardGroupID: ID!): CardGroup
-  assignRoleToUser(userID: ID!, roleID: ID!): User
-  removeRoleFromUser(userID: ID!, roleID: ID!): User
-  createSwipeRecord(input: NewSwipeRecord!): SwipeRecord
-  updateSwipeRecord(id: ID!, input: NewSwipeRecord!): SwipeRecord
-  deleteSwipeRecord(id: ID!): Boolean
-  upsertDictionary(input: UpsertDictionary!): CardConnection
-  handleSwipe(input: NewSwipeRecord!): [Card!]!
+    createCard(input: NewCard!): Card
+    updateCard(id: ID!, input: NewCard!): Card
+    deleteCard(id: ID!): Boolean
+    createCardGroup(input: NewCardGroup!): CardGroup
+    updateCardGroup(id: ID!, input: NewCardGroup!): CardGroup
+    deleteCardGroup(id: ID!): Boolean
+    createUser(input: NewUser!): User
+    updateUser(id: ID!, input: NewUser!): User
+    deleteUser(id: ID!): Boolean
+    createRole(input: NewRole!): Role
+    updateRole(id: ID!, input: NewRole!): Role
+    deleteRole(id: ID!): Boolean
+    addUserToCardGroup(userID: ID!, cardGroupID: ID!): CardGroup
+    removeUserFromCardGroup(userID: ID!, cardGroupID: ID!): CardGroup
+    assignRoleToUser(userID: ID!, roleID: ID!): User
+    removeRoleFromUser(userID: ID!, roleID: ID!): User
+    createSwipeRecord(input: NewSwipeRecord!): SwipeRecord
+    updateSwipeRecord(id: ID!, input: NewSwipeRecord!): SwipeRecord
+    deleteSwipeRecord(id: ID!): Boolean
+    upsertDictionary(input: UpsertDictionary!): CardConnection
+    handleSwipe(input: NewSwipeRecord!): [Card!]!
 }

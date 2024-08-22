@@ -88,10 +88,12 @@ type NewSwipeRecord struct {
 }
 
 type NewUser struct {
-	Name    string    `json:"name" validate:"required,fl_name,min=1"`
-	RoleIds []int64   `json:"role_ids"`
-	Created time.Time `json:"created"`
-	Updated time.Time `json:"updated"`
+	Name     string    `json:"name" validate:"required,fl_name,min=1"`
+	Email    string    `json:"email" validate:"required,email"`
+	GoogleID string    `json:"google_id" validate:"-"`
+	RoleIds  []int64   `json:"role_ids"`
+	Created  time.Time `json:"created"`
+	Updated  time.Time `json:"updated"`
 }
 
 type PageInfo struct {
@@ -154,6 +156,8 @@ type UpsertDictionary struct {
 type User struct {
 	ID         int64                `json:"id"`
 	Name       string               `json:"name" validate:"required,fl_name,min=1"`
+	Email      string               `json:"email" validate:"required,email"`
+	GoogleID   string               `json:"google_id" validate:"-"`
 	Created    time.Time            `json:"created"`
 	Updated    time.Time            `json:"updated"`
 	CardGroups *CardGroupConnection `json:"cardGroups" validate:"-"`

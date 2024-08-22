@@ -33,18 +33,22 @@ func NewUserService(db *gorm.DB, defaultLimit int) UserService {
 
 func ConvertToGormUserFromNew(input model.NewUser) *db.User {
 	return &db.User{
-		Name:    input.Name,
-		Created: time.Now().UTC(),
-		Updated: time.Now().UTC(),
+		Name:     input.Name,
+		Email:    input.Email,
+		GoogleID: input.GoogleID,
+		Created:  time.Now().UTC(),
+		Updated:  time.Now().UTC(),
 	}
 }
 
 func ConvertToUser(user db.User) *model.User {
 	return &model.User{
-		ID:      user.ID,
-		Name:    user.Name,
-		Created: user.Created,
-		Updated: user.Updated,
+		ID:       user.ID,
+		Name:     user.Name,
+		Email:    user.Email,
+		GoogleID: user.GoogleID,
+		Created:  user.Created,
+		Updated:  user.Updated,
 	}
 }
 
