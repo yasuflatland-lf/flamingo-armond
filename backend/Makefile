@@ -35,11 +35,18 @@ fmt: ## Format code
 	go fmt ./...; \
 	printf "${GREEN} Code formatted.\n\n"; \
 
+.PHONY: test-ci
+test: ## Run tests for CI
+	printf "${GREEN}Run all tests\n\n${WHITE}"; \
+	go clean -cache -testcache -i -r; \
+ 	go test -cover -race -json -v ./... ; \
+	printf "${GREEN}Done\n"; \
+
 .PHONY: test
 test: ## Run tests
 	printf "${GREEN}Run all tests\n\n${WHITE}"; \
 	go clean -cache -testcache -i -r; \
- 	go test -cover -race -json -v ./... ; \
+ 	go test -race -v ./... ; \
 	printf "${GREEN}Done\n"; \
 
 # Directories to exclude from coverage (use | to separate multiple directories)

@@ -19,8 +19,7 @@ import (
 // SetupTestDB sets up a Postgres test container and returns the connection and a cleanup function.
 func SetupTestDB(ctx context.Context, user, password, dbName string) (repository.Repository, func(migrationFilePath string), error) {
 	req := testcontainers.ContainerRequest{
-		Image:        "postgres:16",
-		ExposedPorts: []string{"5432/tcp"},
+		Image: "postgres:16",
 		Env: map[string]string{
 			"POSTGRES_USER":     user,
 			"POSTGRES_PASSWORD": password,
