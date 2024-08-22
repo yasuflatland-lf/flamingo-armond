@@ -5,6 +5,7 @@ import (
 	"backend/graph/model"
 	"backend/graph/services"
 	"backend/pkg/config"
+	"backend/pkg/logger"
 	repo "backend/pkg/repository"
 	"backend/testutils"
 	"context"
@@ -170,6 +171,10 @@ func (suite *SwipeManagerTestSuite) TestUpdateRecords() {
 		assert.NoError(suite.T(), err)
 		assert.IsType(suite.T(), &difficultStateStrategy{}, strategy)
 		assert.Equal(suite.T(), DIFFICULT, mode)
+
+		// Make sure if cards are returned
+		cards, err := usecase.ExecuteStrategy(ctx, savedSwipeRecord, strategy)
+		assert.NotEmpty(suite.T(), cards)
 	})
 
 	suite.Run("Normal_DefaultStateStrategy", func() {
@@ -198,7 +203,10 @@ func (suite *SwipeManagerTestSuite) TestUpdateRecords() {
 		assert.IsType(suite.T(), &defaultStateStrategy{}, strategy)
 		assert.Equal(suite.T(), DEFAULT, mode)
 
-		// Additional assertions can be added here if necessary to validate the behavior of the strategy
+		// Make sure if cards are returned
+		cards, err := usecase.ExecuteStrategy(ctx, savedSwipeRecord, strategy)
+		assert.NotEmpty(suite.T(), cards)
+		assert.Equal(suite.T(), 1, len(cards))
 	})
 
 	suite.Run("Normal_GoodStateStrategy", func() {
@@ -247,12 +255,20 @@ func (suite *SwipeManagerTestSuite) TestUpdateRecords() {
 			assert.NoError(suite.T(), err)
 			assert.IsType(suite.T(), &goodStateStrategy{}, strategy)
 			assert.Equal(suite.T(), GOOD, mode)
+
+			// Make sure if cards are returned
+			cards, err := usecase.ExecuteStrategy(ctx, savedSwipeRecord, strategy)
+			assert.NotEmpty(suite.T(), cards)
+			assert.Equal(suite.T(), config.Cfg.FLBatchDefaultAmount, len(cards))
+		} else {
+			logger.Logger.Info("Skip test due to the random data does not hit" +
+				" the count.")
 		}
 	})
 
 	suite.Run("Normal_EasyStateStrategy", func() {
 		// Arrange
-		card, _, user, err := testutils.CreateUserCardAndCardGroup(ctx,
+		card, cardGroup, user, err := testutils.CreateUserCardAndCardGroup(ctx,
 			suite.userService, suite.cardGroupService, suite.roleService, suite.cardService)
 		assert.NoError(suite.T(), err)
 
@@ -265,8 +281,17 @@ func (suite *SwipeManagerTestSuite) TestUpdateRecords() {
 				mode = services.KNOWN // Set Mode to KNOWN for all records
 			}
 
+			input := model.NewCard{
+				Front:       "Front " + strconv.Itoa(i),
+				Back:        "Back " + strconv.Itoa(i),
+				ReviewDate:  time.Now().UTC(),
+				CardgroupID: cardGroup.ID,
+			}
+			createdCard, err := suite.cardService.CreateCard(ctx, input)
+			assert.NoError(suite.T(), err)
+
 			newSwipeRecord := model.NewSwipeRecord{
-				CardID:      card.ID,
+				CardID:      createdCard.ID,
 				CardGroupID: card.CardGroupID,
 				UserID:      user.ID,
 				Mode:        mode,
@@ -288,11 +313,16 @@ func (suite *SwipeManagerTestSuite) TestUpdateRecords() {
 		assert.NoError(suite.T(), err)
 		assert.IsType(suite.T(), &easyStateStrategy{}, strategy)
 		assert.Equal(suite.T(), EASY, mode)
+
+		// Make sure if cards are returned
+		cards, err := usecase.ExecuteStrategy(ctx, savedSwipeRecord, strategy)
+		assert.NotEmpty(suite.T(), cards)
+		assert.Equal(suite.T(), config.Cfg.FLBatchDefaultAmount, len(cards))
 	})
 
 	suite.Run("Normal_InWhileStateStrategy", func() {
 		// Arrange
-		card, _, user, err := testutils.CreateUserCardAndCardGroup(ctx,
+		_, cardGroup, user, err := testutils.CreateUserCardAndCardGroup(ctx,
 			suite.userService, suite.cardGroupService, suite.roleService, suite.cardService)
 		assert.NoError(suite.T(), err)
 
@@ -303,11 +333,20 @@ func (suite *SwipeManagerTestSuite) TestUpdateRecords() {
 		savedSwipeRecord := model.NewSwipeRecord{}
 		var swipeRecords []*repository.SwipeRecord
 		for i := 0; i < config.Cfg.FLBatchDefaultAmount; i++ {
+			input := model.NewCard{
+				Front:       "Front " + strconv.Itoa(i),
+				Back:        "Back " + strconv.Itoa(i),
+				ReviewDate:  time.Now().UTC(),
+				CardgroupID: cardGroup.ID,
+			}
+			createdCard, err := suite.cardService.CreateCard(ctx, input)
+			assert.NoError(suite.T(), err)
+
 			mode := services.KNOWN // Ensuring all records are KNOWN
 
 			newSwipeRecord := model.NewSwipeRecord{
-				CardID:      card.ID,
-				CardGroupID: card.CardGroupID,
+				CardID:      createdCard.ID,
+				CardGroupID: cardGroup.ID,
 				UserID:      user.ID,
 				Mode:        mode,
 				Created:     twoMonthsAgo,
@@ -328,6 +367,10 @@ func (suite *SwipeManagerTestSuite) TestUpdateRecords() {
 		assert.NoError(suite.T(), err)
 		assert.IsType(suite.T(), &inWhileStateStrategy{}, strategy)
 		assert.Equal(suite.T(), INWHILE, mode)
+
+		// Make sure if cards are returned
+		cards, err := usecase.ExecuteStrategy(ctx, savedSwipeRecord, strategy)
+		assert.Equal(suite.T(), config.Cfg.FLBatchDefaultAmount, len(cards))
 	})
 
 	suite.Run("Normal_DetermineCardAmount", func() {
@@ -369,7 +412,7 @@ func (suite *SwipeManagerTestSuite) TestUpdateRecords() {
 		cardAmount, err := usecase.DetermineCardAmount(cards, amountOfKnownWords)
 
 		// Assert
-		assert.Error(suite.T(), err)
+		assert.NoError(suite.T(), err)
 		assert.Equal(suite.T(), 0, cardAmount)
 	})
 }

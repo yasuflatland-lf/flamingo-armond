@@ -211,14 +211,10 @@ func (s *swipeManagerUsecase) DetermineCardAmount(
 	amountOfKnownWords int) (int, error) {
 	cardAmount := amountOfKnownWords
 	if len(cards) <= amountOfKnownWords {
-		cardAmount = len(cards) - 1
+		cardAmount = len(cards)
 		if cardAmount < 0 {
 			cardAmount = 0
 		}
-	}
-
-	if cardAmount == 0 {
-		return 0, goerr.New("no cards available to return")
 	}
 
 	return cardAmount, nil
