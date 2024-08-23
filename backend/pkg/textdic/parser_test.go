@@ -2,13 +2,17 @@ package textdic
 
 import (
 	"github.com/stretchr/testify/assert"
+	"sync"
 	"testing"
 )
 
+var mutext sync.RWMutex
+
 func TestParser(t *testing.T) {
+	t.Parallel()
+
 	// Run TestParserService
 	t.Run("TestSmoke", func(t *testing.T) {
-		t.Parallel()
 
 		// Test input
 		var input = `
@@ -58,7 +62,8 @@ There is no leeway to provide services free of charge for the sake of others. �
 		}
 
 		for _, tc := range testCases {
-
+			mutext.RLock()
+			defer mutext.RUnlock()
 			// Create a new lexer with the input
 			l := newLexer(tc.input)
 
@@ -81,7 +86,8 @@ There is no leeway to provide services free of charge for the sake of others. �
 	// New test case to check for errors
 	t.Run("TestErrors", func(t *testing.T) {
 		t.Parallel()
-
+		mutext.RLock()
+		defer mutext.RUnlock()
 		// Test input that will cause a parsing error
 		var input = `
 trot out 自慢げに話題に持ち出す
@@ -90,8 +96,10 @@ trot out 自慢げに話題に持ち出す
 `
 		// Create a new lexer with the input
 		l := newLexer(input)
-		yyDebug = 5
-		yyErrorVerbose = true
+
+		// For Debug
+		//yyDebug = 5
+		//yyErrorVerbose = true
 
 		// Parse the input using the parser instance
 		parser := NewParser(l)

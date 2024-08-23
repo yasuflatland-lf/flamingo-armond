@@ -37,7 +37,7 @@ import (
 )
 
 // NOTE : This test does not use testify.suite because
-// Testify suite does not allow to run tests parallel, which is considered inevitable for resolver tests.
+// Testify suite does not allow to run tests Parallel, which is considered inevitable for resolver tests.
 var e *echo.Echo
 var db *gorm.DB
 var migrationFilePath = "../db/migrations"

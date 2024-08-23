@@ -3,10 +3,13 @@ package textdic
 import (
 	"encoding/base64"
 	"fmt"
+	"sync"
 )
 
 // textDictionaryService struct definition
-type textDictionaryService struct{}
+type textDictionaryService struct {
+	mu sync.RWMutex
+}
 
 // TextDictionaryService defines the methods for processing text dictionaries.
 type TextDictionaryService interface {
@@ -21,11 +24,15 @@ func NewTextDictionaryService() TextDictionaryService {
 
 // Process processes a given dictionary string and returns the parsed Nodes or an error
 func (tds *textDictionaryService) Process(dic string) ([]Node, []error) {
+	tds.mu.RLock()
+	defer tds.mu.RUnlock()
+
 	// Use the new parser to parse the input
 	l := newLexer(dic)
 
 	// Parse the input using the new parser
-	yyErrorVerbose = true
+	//yyErrorVerbose = true
+
 	parser := NewParser(l)
 	parsedNodes := parser.GetNodes()
 

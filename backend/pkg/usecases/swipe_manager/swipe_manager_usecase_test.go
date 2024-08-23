@@ -9,7 +9,6 @@ import (
 	repo "backend/pkg/repository"
 	"backend/testutils"
 	"context"
-	"github.com/labstack/echo/v4"
 	"log"
 	"math/rand"
 	"strconv"
@@ -21,7 +20,6 @@ import (
 )
 
 var db *gorm.DB
-var e *echo.Echo
 var sv services.Services
 var userService services.UserService
 var cardGroupService services.CardGroupService

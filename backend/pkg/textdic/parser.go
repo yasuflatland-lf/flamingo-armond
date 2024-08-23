@@ -5,9 +5,11 @@ package textdic
 
 import __yyfmt__ "fmt"
 
-// Define Node and Nodes types
-//
 //line ./pkg/textdic/parser.y:2
+
+import "sync"
+
+// Define Node and Nodes types
 type Node struct {
 	Word       string
 	Definition string
@@ -15,9 +17,10 @@ type Node struct {
 
 type Nodes []Node
 
-//line ./pkg/textdic/parser.y:14
+//line ./pkg/textdic/parser.y:16
 type yySymType struct {
 	yys   int
+	mutex sync.RWMutex
 	str   string
 	node  Node
 	nodes Nodes
@@ -42,7 +45,7 @@ const yyEofCode = 1
 const yyErrCode = 2
 const yyInitialStackSize = 16
 
-//line ./pkg/textdic/parser.y:43
+//line ./pkg/textdic/parser.y:46
 
 type Parser interface {
 	Parse(yyLexer) int
@@ -51,15 +54,21 @@ type Parser interface {
 
 func NewParser(yylex yyLexer) Parser {
 	yyparser := &yyParserImpl{}
+	yyparser.lval.mutex.RLock()
+	defer yyparser.lval.mutex.RUnlock()
 	yyparser.Parse(yylex)
 	return yyparser
 }
 
 func (yyrcvr *yyParserImpl) setNodes(nodes []Node) {
+	yyrcvr.lval.mutex.RLock()
+	defer yyrcvr.lval.mutex.RUnlock()
 	yyrcvr.lval.nodes = nodes
 }
 
 func (yyrcvr *yyParserImpl) GetNodes() []Node {
+	yyrcvr.lval.mutex.RLock()
+	defer yyrcvr.lval.mutex.RUnlock()
 	return yyrcvr.lval.nodes
 }
 
@@ -453,14 +462,14 @@ yydefault:
 
 	case 1:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line ./pkg/textdic/parser.y:30
+//line ./pkg/textdic/parser.y:33
 		{
 			yyVAL.nodes = yyDollar[1].nodes
 			yyrcvr.setNodes(yyDollar[1].nodes)
 		}
 	case 2:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line ./pkg/textdic/parser.y:34
+//line ./pkg/textdic/parser.y:37
 		{
 			if yyDollar[2].node.Word != "" {
 				yyVAL.nodes = append(yyDollar[1].nodes, yyDollar[2].node)
@@ -470,7 +479,7 @@ yydefault:
 		}
 	case 3:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line ./pkg/textdic/parser.y:35
+//line ./pkg/textdic/parser.y:38
 		{
 			if yyDollar[1].node.Word != "" {
 				yyVAL.nodes = []Node{yyDollar[1].node}
@@ -480,13 +489,13 @@ yydefault:
 		}
 	case 4:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line ./pkg/textdic/parser.y:39
+//line ./pkg/textdic/parser.y:42
 		{
 			yyVAL.node = Node{Word: yyDollar[1].str, Definition: yyDollar[2].str}
 		}
 	case 5:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line ./pkg/textdic/parser.y:40
+//line ./pkg/textdic/parser.y:43
 		{
 			yyVAL.node = Node{}
 		}

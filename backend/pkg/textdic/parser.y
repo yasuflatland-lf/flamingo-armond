@@ -1,6 +1,8 @@
 %{
 package textdic
 
+import "sync"
+
 // Define Node and Nodes types
 type Node struct {
 	Word       string
@@ -12,6 +14,7 @@ type Nodes []Node
 %}
 
 %union {
+    mutex sync.RWMutex
 	str  string
 	node Node
 	nodes Nodes
@@ -49,14 +52,20 @@ type Parser interface {
 
 func NewParser(yylex yyLexer) Parser {
 	yyparser := &yyParserImpl{}
+    yyparser.lval.mutex.RLock()
+    defer yyparser.lval.mutex.RUnlock()
 	yyparser.Parse(yylex)
 	return yyparser
 }
 
 func (yyrcvr *yyParserImpl) setNodes(nodes []Node) {
+    yyrcvr.lval.mutex.RLock()
+    defer yyrcvr.lval.mutex.RUnlock()
 	yyrcvr.lval.nodes = nodes
 }
 
 func (yyrcvr *yyParserImpl) GetNodes() []Node {
+    yyrcvr.lval.mutex.RLock()
+    defer yyrcvr.lval.mutex.RUnlock()
 	return yyrcvr.lval.nodes
 }

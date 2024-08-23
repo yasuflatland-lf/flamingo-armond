@@ -5,7 +5,12 @@ import (
 	"testing"
 )
 
+var mu sync.RWMutex
+
 func TestParserService(t *testing.T) {
+	t.Helper()
+	t.Parallel()
+
 	// Test input
 	var input = `
 trot out 自慢げに話題に持ち出す
@@ -80,12 +85,16 @@ Hold me accountable for 自分の行動の結果を受け入れ、罰を受け�
 			tc := tc // capture range variable to avoid issues in parallel tests
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel() // Mark the test to run in parallel
+				mu.RLock()
+				defer mu.RUnlock()
 
 				// Create a new parser service
 				service := NewTextDictionaryService()
 
-				yyDebug = 5
-				yyErrorVerbose = true
+				// For Debug
+				//yyDebug = 5
+				//yyErrorVerbose = true
+
 				// Process the dictionary input
 				parsedNodes, err := service.Process(tc.input)
 				if err != nil {
@@ -108,6 +117,7 @@ Hold me accountable for 自分の行動の結果を受け入れ、罰を受け�
 
 	// Run TestParserService_ErrorCases
 	t.Run("TestParserService_ErrorCases", func(t *testing.T) {
+		t.Parallel() // Mark the test to run in parallel
 		// Define error test cases
 		errorTestCases := []struct {
 			name        string
@@ -133,6 +143,8 @@ Hold me accountable for 自分の行動の結果を受け入れ、罰を受け�
 			tc := tc // capture range variable to avoid issues in parallel tests
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel() // Mark the test to run in parallel
+				mu.RLock()
+				defer mu.RUnlock()
 
 				// Create a new parser service
 				service := NewTextDictionaryService()

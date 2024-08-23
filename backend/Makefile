@@ -36,7 +36,7 @@ fmt: ## Format code
 	printf "${GREEN} Code formatted.\n\n"; \
 
 .PHONY: test-ci
-test: ## Run tests for CI
+test-ci: ## Run tests for CI
 	printf "${GREEN}Run all tests\n\n${WHITE}"; \
 	go clean -cache -testcache -i -r; \
  	go test -cover -race -json -v ./... ; \
