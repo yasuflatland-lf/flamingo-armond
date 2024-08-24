@@ -9,13 +9,16 @@ import (
 const (
 	APP_MODE_DEV  = "dev"
 	APP_MODE_PROD = "production"
+	APP_MODE_TEST = "test"
 )
+
+var validEnvs = []string{APP_MODE_DEV, APP_MODE_PROD, APP_MODE_TEST}
 
 // Config structure holds all the configuration values
 type Config struct {
 	// System Settings
 	Port  int    `env:"PORT,notEmpty" envDefault:"1323"`
-	GoEnv string `env:"GO_ENV,notEmpty" envDefault:"dev"`
+	GoEnv string `env:"GO_ENV,notEmpty" envDefault:"test"`
 
 	// GraphQL related configurations
 	GQLComplexity int `env:"GQL_COMPLEXITY,notEmpty" envDefault:"10"`
@@ -43,10 +46,26 @@ func init() {
 		slog.Error("Failed to parse environment variables: %+v", err)
 	}
 
-	if Cfg.PGQueryLimit <= Cfg.FLBatchDefaultAmount {
-		slog.Error(fmt.
-			Sprintf("FLBatchDefaultAmount<%d> must be smaller than"+
-				" PGQueryLimit<%d>",
-				Cfg.FLBatchDefaultAmount, Cfg.PGQueryLimit))
+	if !isValidEnv(Cfg.GoEnv) {
+		slog.Error(fmt.Sprintf("Invalid GO_ENV value: %s. Must be one of %v", Cfg.GoEnv, validEnvs))
 	}
+
+	if Cfg.PGQueryLimit <= Cfg.FLBatchDefaultAmount {
+		slog.Error(fmt.Sprintf("FLBatchDefaultAmount<%d> must be smaller than PGQueryLimit<%d>",
+			Cfg.FLBatchDefaultAmount, Cfg.PGQueryLimit))
+	}
+}
+
+// isValidEnv checks if the provided env is valid
+func isValidEnv(env string) bool {
+	for _, v := range validEnvs {
+		if env == v {
+			return true
+		}
+	}
+	return false
+}
+
+func IsTest() bool {
+	return Cfg.GoEnv == APP_MODE_TEST
 }

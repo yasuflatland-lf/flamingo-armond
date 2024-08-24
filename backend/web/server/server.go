@@ -9,6 +9,7 @@ import (
 	"backend/pkg/usecases"
 	"backend/pkg/validator"
 	"github.com/99designs/gqlgen/graphql/handler/extension"
+	echojwt "github.com/labstack/echo-jwt/v4"
 	"log"
 	"net/http"
 	"strconv"
@@ -39,6 +40,21 @@ func NewRouter(db *gorm.DB) *echo.Echo {
 
 	// Create usecases
 	usecase := usecases.New(service)
+
+	// Configure Auth
+	if !config.IsTest() {
+		e.Use(echojwt.WithConfig(echojwt.Config{
+			SigningKey:  []byte(config.Cfg.JWTSecret),
+			TokenLookup: "cookie:jwt",
+		}))
+	} else {
+		e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+			return func(c echo.Context) error {
+				// Skip Auth in the Testing Environment
+				return next(c)
+			}
+		})
+	}
 
 	// Validator
 	validateWrapper := validator.NewValidateWrapper()

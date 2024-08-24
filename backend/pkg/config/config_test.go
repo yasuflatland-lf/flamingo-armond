@@ -27,7 +27,7 @@ func TestConfigDefaults(t *testing.T) {
 
 	// Verify default values
 	assert.Equal(t, 1323, config.Cfg.Port, "Default Port should be 1323")
-	assert.Equal(t, "dev", config.Cfg.GoEnv, "Default GoEnv should be 'dev'")
+	assert.Equal(t, "test", config.Cfg.GoEnv, "Default GoEnv should be 'dev'")
 	assert.Equal(t, 10, config.Cfg.GQLComplexity, "Default GQLComplexity should be 10")
 	assert.Equal(t, "localhost", config.Cfg.PGHost, "Default PGHost should be 'localhost'")
 	assert.Equal(t, "testuser", config.Cfg.PGUser, "Default PGUser should be 'testuser'")
