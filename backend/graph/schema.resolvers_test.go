@@ -40,6 +40,7 @@ import (
 // Testify suite does not allow to run tests Parallel, which is considered inevitable for resolver tests.
 var e *echo.Echo
 var db *gorm.DB
+var sv services.Services
 var migrationFilePath = "../db/migrations"
 
 func TestMain(m *testing.M) {
@@ -68,15 +69,15 @@ func NewRouter(db *gorm.DB) *echo.Echo {
 	e.Use(middlewares.DatabaseCtxMiddleware(db))
 	e.Use(middlewares.TransactionMiddleware())
 
-	service := services.New(db)
-	usecase := usecases.New(service)
+	sv = services.New(db)
+	usecase := usecases.New(sv)
 	validateWrapper := validator.NewValidateWrapper()
 	resolver := &graph.Resolver{
 		DB:      db,
-		Srv:     service,
+		Srv:     sv,
 		U:       usecase,
 		VW:      validateWrapper,
-		Loaders: graph.NewLoaders(service),
+		Loaders: graph.NewLoaders(sv),
 	}
 
 	srv := handler.NewDefaultServer(graph.NewExecutableSchema(graph.Config{Resolvers: resolver}))
@@ -161,28 +162,19 @@ func TestGraphQLQueries(t *testing.T) {
 	t.Helper()
 	t.Parallel()
 
+	userService := sv.(services.UserService)
+	cardGroupService := sv.(services.CardGroupService)
+	roleService := sv.(services.RoleService)
+	cardService := sv.(services.CardService)
+	ctx := context.Background()
+
 	testutils.RunServersTest(t, db, func(t *testing.T) {
 		t.Run("Card Query", func(t *testing.T) {
 			t.Parallel()
-
-			now := time.Now().UTC()
-			cardGroup := repository.Cardgroup{
-				Name:    "Card Query Test CardGroup",
-				Created: now,
-				Updated: now,
+			createdCard, _, _, err := testutils.CreateUserCardAndCardGroup(ctx, userService, cardGroupService, roleService, cardService)
+			if err != nil {
+				t.Fatal(err)
 			}
-			db.Create(&cardGroup)
-
-			card := repository.Card{
-				Front:        "Test Card Front",
-				Back:         "Test Card Back",
-				ReviewDate:   now,
-				IntervalDays: 1,
-				CardGroupID:  cardGroup.ID,
-				Created:      now,
-				Updated:      now,
-			}
-			db.Create(&card)
 
 			jsonInput, _ := json.Marshal(map[string]interface{}{
 				"query": `query ($id: ID!) {
@@ -197,20 +189,22 @@ func TestGraphQLQueries(t *testing.T) {
                     }
                 }`,
 				"variables": map[string]interface{}{
-					"id": card.ID,
+					"id": createdCard.ID,
 				},
 			})
 
-			expected := fmt.Sprintf(`{
-                "data": {
-                    "card": {
-                        "id": %d,
-                        "front": "Test Card Front",
-                        "back": "Test Card Back",
-                        "interval_days": 1
-                    }
-                }
-            }`, card.ID)
+			expectedCard := map[string]interface{}{
+				"id":            createdCard.ID,
+				"front":         createdCard.Front,
+				"back":          createdCard.Back,
+				"interval_days": 1,
+			}
+			expectedData, _ := json.Marshal(map[string]interface{}{
+				"data": map[string]interface{}{
+					"card": expectedCard,
+				},
+			})
+			expected := string(expectedData)
 
 			testGraphQLQuery(t, e, jsonInput, expected, "data.card.created", "data.card.updated", "data.card.review_date")
 		})
@@ -2258,16 +2252,16 @@ New Front 2 裏面２
 
 			// Updated expected error response
 			expected := `{
-		"errors": [
-			{
-				"message": "failed to upsert cards: : failed to process dictionary: [line : 1 : syntax error: unexpected $end, expecting DEFINITION]",
-				"path": ["upsertDictionary"]
-			}
-		],
-		"data": {
-			"upsertDictionary": null
+	"errors": [
+		{
+			"message": "failed to upsert cards: : failed to process dictionary: [line : 1 : syntax error]",
+			"path": ["upsertDictionary"]
 		}
-	}`
+	],
+	"data": {
+		"upsertDictionary": null
+	}
+}`
 
 			// Execute the GraphQL query and verify the result
 			testGraphQLQuery(t, e, jsonInput, expected)

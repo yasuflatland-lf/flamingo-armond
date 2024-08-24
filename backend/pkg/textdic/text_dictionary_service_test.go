@@ -7,7 +7,7 @@ import (
 
 var mu sync.RWMutex
 
-func TestParserService(t *testing.T) {
+func TestTextDictionaryService(t *testing.T) {
 	t.Helper()
 	t.Parallel()
 
@@ -80,7 +80,7 @@ Hold me accountable for 自分の行動の結果を受け入れ、罰を受け�
 	}
 
 	// Run TestParserService
-	t.Run("TestParserService", func(t *testing.T) {
+	t.Run("TestTextDictionaryService", func(t *testing.T) {
 		for _, tc := range testCases {
 			tc := tc // capture range variable to avoid issues in parallel tests
 			t.Run(tc.name, func(t *testing.T) {

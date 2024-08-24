@@ -1,39 +1,48 @@
 package testutils
 
 import (
+	repo "backend/graph/db"
 	"backend/graph/model"
 	"backend/graph/services"
+	"backend/pkg/config"
+	"backend/pkg/repository"
 	"context"
+	"fmt"
+	"github.com/docker/go-connections/nat"
+	_ "github.com/lib/pq" // Importing the PostgreSQL driver
 	"github.com/m-mizutani/goerr"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 	"gorm.io/gorm"
 	"log"
+	"net"
 	"testing"
 	"time"
-
-	repo "backend/graph/db"
-	"backend/pkg/repository"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 // SetupTestDB sets up a Postgres test container and returns the connection and a cleanup function.
 func SetupTestDB(ctx context.Context, user, password, dbName string) (repository.Repository, func(migrationFilePath string), error) {
-	req := testcontainers.ContainerRequest{
-		Image: "postgres:16",
-		Env: map[string]string{
-			"POSTGRES_USER":     user,
-			"POSTGRES_PASSWORD": password,
-			"POSTGRES_DB":       dbName,
-		},
-		WaitingFor: wait.ForListeningPort("5432/tcp").WithStartupTimeout(5 * time.Minute),
-	}
-
-	pgContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
+	pgContainer, err := postgres.Run(ctx,
+		"postgres:16",
+		postgres.WithDatabase(dbName),
+		postgres.WithUsername(config.Cfg.PGUser),
+		postgres.WithPassword(config.Cfg.PGPassword),
+		testcontainers.WithEnv(
+			map[string]string{
+				"POSTGRES_USER":     user,
+				"POSTGRES_PASSWORD": password,
+				"POSTGRES_DB":       dbName,
+			},
+		),
+		testcontainers.WithWaitStrategy(
+			wait.ForSQL("5432", "postgres", func(host string, port nat.Port) string {
+				return fmt.Sprintf("postgres://%s:%s@%s/postgres?sslmode=disable",
+					user, password, net.JoinHostPort(host, port.Port()))
+			}).WithQuery("select 1 from pg_stat_activity limit 1").WithPollInterval(1*time.Second).WithStartupTimeout(10*time.Second)),
+	)
 	if err != nil {
-		return nil, nil, goerr.Wrap(err, "failed to start postgres container")
+		return nil, nil, fmt.Errorf("failed to start postgres container: %w", err)
 	}
 
 	host, err := pgContainer.Host(ctx)
