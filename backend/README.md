@@ -81,7 +81,7 @@ Copy `.env.example` and create `.env`.
 | PG_PASSWORD    | Database Password                          |
 | PG_DBNAME      | Database Name                              |
 | PG_PORT        | Postgres Port                              |
-| PG_SSLMODE     | SSL Mode of Postgres                       
+| PG_SSLMODE     | SSL Mode of Postgres. Please see more details at [here](https://www.postgresql.jp/docs/9.4/libpq-ssl.html#LIBPQ-SSL-SSLMODE-STATEMENTS)                       
 
 # Test
 

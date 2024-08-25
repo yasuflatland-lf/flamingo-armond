@@ -2,12 +2,11 @@ package main
 
 import (
 	"backend/pkg/config"
+	"backend/pkg/utils"
 	"backend/testutils"
 	"backend/web/server"
 	"context"
 	"fmt"
-	"github.com/caarlos0/env/v11"
-	"github.com/joho/godotenv"
 	"github.com/m-mizutani/goerr"
 	"net/http"
 	"net/http/httptest"
@@ -19,34 +18,25 @@ import (
 	"log"
 )
 
-func init() {
-	// Load .env file
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found")
-	}
-
-	// Parse environment variables into the config.Cfg
-	if err := env.Parse(&config.Cfg); err != nil {
-		log.Fatalf("Failed to parse environment variables: %+v", err)
-	}
-}
-
 func setupTestDB(t *testing.T) (*httptest.Server, func()) {
 	t.Helper()
 
 	ctx := context.Background()
-	user := "test"
-	password := "test"
-	dbName := "test"
 
 	// Setup the test database
-	pg, cleanup, err := testutils.SetupTestDB(ctx, user, password, dbName)
+	pg, cleanup, err := testutils.SetupTestDB(ctx, config.Cfg.PGUser, config.Cfg.PGPassword, config.Cfg.PGDBName)
 	if err != nil {
 		t.Fatalf("Failed to set up test database: %+v", err)
 	}
 
+	// Get Full path to the migration DB file.
+	fullPath, err := utils.GetFullPath(migrationFilePath)
+	if err != nil {
+		log.Fatalf("Failed to get full path to the migration db file : %+v", err)
+	}
+
 	// Run migrations
-	if err := pg.RunGooseMigrationsUp(migrationFilePath); err != nil {
+	if err := pg.RunGooseMigrationsUp(fullPath); err != nil {
 		t.Fatalf("failed to run migrations: %+v", err)
 	}
 
@@ -100,6 +90,8 @@ func TestMainSmoke(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Test with Mock Database", func(t *testing.T) {
+		// Comment out this when you want to do a smoke test against production database.
+		//t.SkipNow()
 		ts, cleanup := setupTestDB(t)
 		defer cleanup()
 

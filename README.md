@@ -36,6 +36,9 @@ The `render.yaml` is where all configurations are gathered and assosiated with t
 ## Set up database on Superbase
 `Flamingo Armond` uses [Superbase](https://supabase.com/) for the [Database (Postgres)](https://supabase.com/database) and [Auth](https://supabase.com/auth). All configurations and environment valuables are configured on the dashboard. Grab configurations from `.env` file and apply them here, such as database name, user name, user password, SSL enablement, e.g.
 
+### Database Settings
+Database setting for user, password, go `Settings -> Configuration -> Database` on the `Superbase` console.
+
 ## Set up Auth on Superbase
 ### Set up OAuth API on Google Cloud
 Create `Client ID` and `Client Secret` on `Google`
