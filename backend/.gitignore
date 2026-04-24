@@ -1,0 +1,5 @@
+/main
+*.test
+*.out
+coverage.html
+.env
