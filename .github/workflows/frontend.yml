@@ -35,6 +35,10 @@ jobs:
       # CI does not reach the backend; the value is a placeholder that only
       # needs to satisfy `z.string().url()`.
       BACKEND_URL: http://localhost:1323
+      # Supabase client env vars — dummy values satisfy Zod validation at
+      # build/test time without a running Supabase instance.
+      NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ci-dummy-key-1234567890
     steps:
       - name: Checkout
         uses: actions/checkout@v6

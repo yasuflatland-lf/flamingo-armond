@@ -1,0 +1,80 @@
+# Supabase configuration for flamingo-armond
+# Reference: https://supabase.com/docs/guides/local-development/cli/config
+
+project_id = "flamingo-armond"
+account_id = ""
+
+[api]
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+dialect = "postgresql"
+seed_file_path = "./supabase/seed.sql"
+queued_tables_publisher_attempt_interval_millis = 100
+
+[realtime]
+enabled = true
+max_bytes_per_second = 1048576
+rateLimiters = []
+
+[studio]
+port = 54323
+enabled = true
+
+[inbucket]
+enabled = true
+port = 54324
+smtp_port = 54325
+pop3_port = 54326
+tls_enabled = false
+
+[auth]
+enabled = true
+port = 54321
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = [
+  "http://127.0.0.1:3000/auth/callback",
+  "http://localhost:3000/auth/callback",
+]
+jwt_expiry = 3600
+enable_signup = true
+enable_anonymous_sign_ins = false
+password_min_length = 6
+
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+redirect_uri = "http://127.0.0.1:54321/auth/v1/callback"
+skip_nonce_check = false
+
+[storage]
+file_size_limit = 52428800
+s3_host = "http://127.0.0.1:54321"
+s3_protocol = "http"
+s3_region = "local"
+s3_access_key = "625729a08b95bf1b7ff351a20b2a"
+s3_secret_key = "850181e4652dd023e1d3e3ba73d7ca668382c9245fe236bfa5fcf965f0f17266"
+s3_bucket = "stub"
+public_url = ""
+
+[functions]
+port = 54321
+docker_image = ""
+verify_jwt = true
+
+[analytics]
+enabled = false
+port = 54327
+vector_port = 54328
+api_domain = ""
+
+[logs]
+vector_enabled = true
+vector_port = 54329
+use_jemalloc = true

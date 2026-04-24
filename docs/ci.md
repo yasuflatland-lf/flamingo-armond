@@ -102,6 +102,16 @@ Per "pnpm workspace filter exits 0 for missing scripts" above, a missing `test` 
 
 The workflow uses the same `jdx/mise-action@v4` step that `backend.yml` uses, relying on the repo-root `.tool-versions` to pin Node (`nodejs 24`). `corepack enable` then activates the `packageManager` field from root `package.json` (`pnpm@9.15.0`), so the pnpm version is pinned by the repo — not by the CI runner's preinstalled toolchain. This keeps local and CI Node/pnpm versions in lockstep with a single source of truth.
 
-### `BACKEND_URL` is a build-time placeholder
+### Build-time env vars: server and client
 
-`frontend/src/env.ts` uses `@t3-oss/env-nextjs` to Zod-validate `BACKEND_URL` at **build** time, not just at runtime. `next build` therefore fails if `BACKEND_URL` is unset — a deliberate failure mode documented in `docs/frontend.md`. CI sets `BACKEND_URL=http://localhost:1323` at the job level purely to satisfy `z.string().url()`; no request is actually made during the build, so the value does not need to resolve. Do **not** remove this env: stripping it reintroduces the silent-fail shape the validation was designed to prevent.
+`frontend/src/env.ts` uses `@t3-oss/env-nextjs` to Zod-validate **all** declared vars at build time. `next build` fails if any required var is unset — a deliberate failure mode.
+
+CI sets dummy values at the job level for every required var:
+
+| Var | Why needed at build time |
+|---|---|
+| `BACKEND_URL` | Server var; validated by `@t3-oss/env-nextjs` at build. |
+| `NEXT_PUBLIC_SUPABASE_URL` | Client var; `@t3-oss/env-nextjs` validates and **bundles** client vars into the JS bundle at build time — missing = build failure. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Same as above. |
+
+No request is made during the build, so dummy values only need to satisfy the Zod schema (e.g. `z.string().url()` requires a URL-shaped string). Do **not** remove any of these: each missing env reintroduces a silent-fail shape the validation was designed to prevent. When a new required var is added to `src/env.ts`, add a corresponding dummy to the workflow's `env:` block.

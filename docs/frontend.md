@@ -26,8 +26,8 @@ pnpm --filter frontend typecheck               # tsc --noEmit
 | Name | Where validated | Default (example) | Purpose |
 |---|---|---|---|
 | `BACKEND_URL` | `frontend/src/env.ts` (server) | `http://localhost:1323` | Base URL for the `/api/graphql` rewrite in `next.config.ts`. |
-
-`NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` arrive in PR6.
+| `NEXT_PUBLIC_SUPABASE_URL` | `frontend/src/env.ts` (client) | `http://127.0.0.1:54321` | Supabase API base URL. Public — bundled into client. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `frontend/src/env.ts` (client) | `eyJ...` (from `supabase start`) | Supabase anonymous JWT. Public — RLS gates real access. |
 
 ## Backend rewrite contract
 
@@ -84,6 +84,41 @@ Files:
 
 Browser code calls `/api/graphql` (same-origin via the Next rewrite — avoids CORS/cookie issues). `ApolloClient` and `InMemoryCache` come from `@apollo/client-integration-nextjs` (SSR-streaming-safe variants) — see Gotcha below.
 
+## Auth (Supabase)
+
+PR6 introduces a 3-layer Supabase SSR client setup mirroring the official `@supabase/ssr` template. Each layer exists because cookie reading/writing differs between contexts:
+
+| Layer | File | Cookie source | Used by |
+|---|---|---|---|
+| Browser | `src/lib/supabase/client.ts` | `document.cookie` (handled by `createBrowserClient`) | Client components, `authLink` |
+| Server (RSC / route handler) | `src/lib/supabase/server.ts` | `next/headers` `cookies()` | Server components, route handlers, `auth/callback/route.ts` |
+| Middleware | `src/lib/supabase/middleware.ts` | `NextRequest.cookies` / `NextResponse.cookies` | `src/middleware.ts` (cookie rotation) |
+
+### authLink for browser GraphQL
+
+`src/lib/apollo/client.ts` composes `from([authLink, httpLink])`. `authLink` calls `supabase.auth.getSession()` on every request and attaches `Authorization: Bearer <jwt>` when a session exists. `getSession()` reads from local cookies — it is not an HTTP call, so per-request invocation is cheap. When the JWT is stale, the SDK refreshes internally.
+
+If no session exists the header is omitted (not set to an empty string). Backend treats missing `Authorization` as anonymous (PR7).
+
+### RSC token forwarding (deferred to PR9)
+
+`src/lib/apollo/server.ts` does NOT forward an auth token in PR6. Reason: PR6's only RSC query is `{ health }` (anonymous-safe). PR9 introduces `me`, at which point we extend `gqlFetch` to optionally pull the token from `createServerClient(cookies())`. A `TODO(PR9)` comment marks the intended hook point.
+
+### Middleware cookie rotation
+
+`src/middleware.ts` calls `updateSession(request)` from `lib/supabase/middleware.ts`. The implementation MUST call `supabase.auth.getUser()` once — without it Supabase does not refresh expiring tokens and the session silently drops. The `matcher` excludes `_next/static`, `_next/image`, `favicon.ico`, and common image extensions.
+
+The `matcher` must also explicitly exclude `/api/:path*` and `/auth/callback`. Without the `/api` exclusion, every Apollo browser POST to `/api/graphql` triggers a full Supabase token-refresh round-trip in middleware, adding latency per GraphQL call. Without the `/auth/callback` exclusion, middleware cookie writes race against the route handler's own `exchangeCodeForSession` and can corrupt the new session.
+
+### Gotchas
+
+- **`src/middleware.ts`, not `frontend/middleware.ts`**: Next.js with `src/` layout expects middleware under `src/`.
+- **Supabase cookie names**: `sb-<project_ref>-auth-token` (split across `sb-...-auth-token.0` / `.1` for large JWTs). Useful when DevTools-debugging a missing session.
+- **`@supabase/ssr` mocking in Vitest**: Real `createBrowserClient` crashes in node env. Use `vi.mock("@supabase/ssr", ...)` to stub `createBrowserClient` / `createServerClient` and return controllable `auth` objects.
+- **OAuth redirect: 127.0.0.1 vs localhost**: Google treats them as separate origins. Match what `supabase start` prints (`127.0.0.1`).
+- **`createSupabaseServerClient` `setAll` catch is scoped to Server Components.** The helper is also used by Route Handlers (e.g. `auth/callback/route.ts`) where cookie writes DO succeed. The `try/catch` in `setAll` silently swallows errors in both paths; a failure inside a Route Handler would be invisible. Do not repurpose `createSupabaseServerClient` in contexts where a write failure must surface (e.g. a middleware-like flow) without removing or re-throwing from that catch.
+- **Open redirect via `?next=`.** `WHATWG URL` accepts absolute URLs and protocol-relative paths even when given a base-URL argument; a bare `startsWith("/")` check is insufficient. The correct guard: `value.startsWith("/") && !value.startsWith("//") && !value.includes("\\")`. The backslash variant bypasses naive checks because http(s) special-scheme parsers normalize `\` → `/`.
+
 ## shadcn/ui
 
 `frontend/components.json` and `frontend/src/lib/utils.ts` (the `cn()` helper) are committed. No components are added yet. PR6 runs `pnpm dlx shadcn add button input label form` and extends `globals.css` with the theme tokens those components reference.
@@ -91,6 +126,8 @@ Browser code calls `/api/graphql` (same-origin via the Next rewrite — avoids C
 `shadcn init` is interactive and not suitable for CI or non-interactive environments. The fallback is to hand-write `components.json`, `lib/utils.ts`, and the `globals.css` base tokens following the shadcn JSON schema — exactly what PR3 did.
 
 ## Gotchas encountered
+
+**Next 16 deprecates `middleware.ts` in favour of `proxy.ts`.** The build emits a deprecation warning (not an error) when `src/middleware.ts` exists. PR6 intentionally stays on `middleware.ts` because `@supabase/ssr` templates and ecosystem docs still reference the old name. When the ecosystem catches up and Next removes the old name, rename `src/middleware.ts` → `src/proxy.ts` (and `src/lib/supabase/middleware.ts` → `src/lib/supabase/proxy.ts` for consistency).
 
 **Biome 2 — Tailwind 4 directive parsing**: Without `css.parser.tailwindDirectives: true` in `biome.json`, directives like `@theme`, `@custom-variant`, and `@import "tw-animate-css"` can trigger false-positive lint errors. Add the flag whenever Tailwind 4 CSS is in scope.
 
@@ -104,7 +141,7 @@ Browser code calls `/api/graphql` (same-origin via the Next rewrite — avoids C
 
 **RSC code must use `env.BACKEND_URL`, not `/api/graphql`.** The rewrite in `next.config.ts` only applies to browser-originating requests. Server components calling `/api/graphql` would hit a Next 404.
 
-**Vitest loads `src/env.ts` and crashes if `BACKEND_URL` is unset.** `vitest.config.ts` injects a placeholder via `test.env.BACKEND_URL = "http://localhost:1323"`. Keep that placeholder valid for `z.string().url()`.
+**Vitest loads `src/env.ts` and crashes if required env vars are unset.** `vitest.config.ts` injects placeholders via `test.env` — currently `BACKEND_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Any new required var added to `src/env.ts` (server or client) must get a corresponding `test.env` entry, otherwise Vitest crashes at module load time before any test runs. Keep values valid for their Zod schema (e.g. `z.string().url()` requires a real URL shape).
 
 **`server-only` has no standalone npm package** — it ships inside Next.js and the Next compiler resolves it. Vitest's node env cannot, so `vitest.config.ts` aliases `server-only` to an empty stub. Without the alias, importing `src/lib/apollo/server.ts` in any test fails to resolve.
 

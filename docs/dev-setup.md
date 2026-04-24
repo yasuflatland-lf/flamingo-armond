@@ -68,4 +68,34 @@ Do **not** install pnpm via `npm i -g pnpm` or `brew install pnpm`. Those paths 
 
 ## Supabase CLI
 
-TBD — `supabase start` 手順は Supabase 連携時に追記。
+ローカル開発は `supabase start` で完結する（本番 Supabase プロジェクト不要、PR9 で接続）。
+
+### 初回セットアップ
+
+1. Supabase CLI をインストール（`brew install supabase/tap/supabase` または `mise use supabase@latest`）。
+2. Google Cloud Console で OAuth 2.0 client ID を作成:
+   - Authorized redirect URIs に `http://127.0.0.1:54321/auth/v1/callback` を追加。
+   - Authorized JavaScript origins に `http://127.0.0.1:3000` を追加。
+3. リポジトリルートで `supabase start` を実行。初回のみ Docker イメージ取得で数分かかる。出力に anon key / service role key が表示される。
+4. `frontend/.env.local` に以下を追記（`supabase start` の出力から `anon key` をコピー）:
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=<supabase start の出力から anon key>
+   SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=<Google OAuth client ID>
+   SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=<Google OAuth secret>
+   ```
+5. Supabase Studio: http://127.0.0.1:54323
+
+### 日常運用
+
+| タスク | コマンド |
+|---|---|
+| Supabase 起動 | `supabase start` |
+| Supabase 停止 | `supabase stop` |
+| DB リセット | `supabase db reset` |
+| ステータス確認 | `supabase status` |
+
+### Gotchas
+
+- **`localhost` ではなく `127.0.0.1` を使う**: Google OAuth の redirect URI 検証は `localhost` と `127.0.0.1` を別ホスト扱いする。`supabase start` のデフォルト出力に合わせて `127.0.0.1:3000` でアクセス。
+- **シークレットは `.env.local` (gitignored)**: `supabase/config.toml` は `env()` プレースホルダで参照するだけで、実値はコミットしない。

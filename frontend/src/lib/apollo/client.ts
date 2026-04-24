@@ -1,14 +1,17 @@
 "use client";
 
-import { HttpLink } from "@apollo/client";
+import { from, HttpLink } from "@apollo/client";
 import { ApolloClient, InMemoryCache } from "@apollo/client-integration-nextjs";
+import { authLink } from "./auth-link";
+
+const httpLink = new HttpLink({
+  uri: "/api/graphql",
+  fetchOptions: { cache: "no-store" },
+});
 
 export function makeClient() {
   return new ApolloClient({
     cache: new InMemoryCache(),
-    link: new HttpLink({
-      uri: "/api/graphql",
-      fetchOptions: { cache: "no-store" },
-    }),
+    link: from([authLink, httpLink]),
   });
 }
