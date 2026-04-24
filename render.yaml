@@ -7,7 +7,7 @@ services:
     runtime: go
     repo: https://github.com/yasuflatland-lf/flamingo-armond
     rootDir: backend
-    autoDeploy: true
+    autoDeploy: false
     buildCommand: go mod download && go build -o main ./cmd/server
     startCommand: ./main
     healthCheckPath: /health
