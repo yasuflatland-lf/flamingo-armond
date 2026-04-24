@@ -86,4 +86,4 @@ CI regenerates these artifacts before every build — they are intentionally **g
 
 ### Resolver DI seam
 
-`newRouter(resolvers *resolver.Resolver) *echo.Echo` is the new wiring seam. `run(ctx, logger) error` remains the lifecycle seam — it constructs the `Resolver`, passes it to `newRouter`, and owns the `http.Server`. Future dependencies (auth, DB, loaders) add fields to `Resolver` and wire them in `run`.
+`newRouter(resolvers *resolver.Resolver) *echo.Echo` is the DI wiring seam. `run(ctx, logger) error` is the lifecycle seam — it constructs the `Resolver`, passes it to `newRouter`, and owns the `http.Server`. Future dependencies (auth, DB, loaders) add fields to `Resolver` and wire them in `run`.
