@@ -49,3 +49,15 @@ Until PR5 lands, do **not** run `pnpm --filter frontend codegen` — the script 
 ## shadcn/ui
 
 `frontend/components.json` and `frontend/src/lib/utils.ts` (the `cn()` helper) are committed. No components are added yet. PR6 runs `pnpm dlx shadcn add button input label form` and extends `globals.css` with the theme tokens those components reference.
+
+`shadcn init` is interactive and not suitable for CI or non-interactive environments. The fallback is to hand-write `components.json`, `lib/utils.ts`, and the `globals.css` base tokens following the shadcn JSON schema — exactly what PR3 did.
+
+## Gotchas encountered
+
+**Biome 2 — Tailwind 4 directive parsing**: Without `css.parser.tailwindDirectives: true` in `biome.json`, directives like `@theme`, `@custom-variant`, and `@import "tw-animate-css"` can trigger false-positive lint errors. Add the flag whenever Tailwind 4 CSS is in scope.
+
+**Biome 2 — glob pattern change from v1**: `files.ignore` is replaced by `files.includes` with `!` negation patterns. Prefer `"!.next"` over `"!.next/**"` — the latter can silently fail to exclude the directory in some Biome 2 versions.
+
+**Next.js `Metadata` type import**: `Metadata` (and `MetadataRoute`, `Viewport`, etc.) must be imported from `"next"`, not `"react"`. `ReactNode` stays in `"react"`. The two are easy to conflate when working in the App Router.
+
+**`@t3-oss/env-nextjs` peer on Zod**: `@t3-oss/env-nextjs@0.12.0` requires `zod@^3.24.0`. Zod 3.23.x emits a peer-dependency warning that can obscure real errors. Pin Zod to `>=3.24.0` when using this package.
