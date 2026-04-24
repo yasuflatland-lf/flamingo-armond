@@ -4,7 +4,7 @@
 
 - mise (`curl https://mise.run | sh`) — manages Go (backend/.tool-versions) and Node (./.tool-versions).
 - Corepack — bundled with Node. Activates the pnpm version pinned in root package.json. **Required**.
-- Supabase CLI — local Postgres / Auth emulation. Used from PR6 onward.
+- Supabase CLI — local Postgres / Auth emulation. Used once Supabase integration lands.
 
 ## First-time setup
 
@@ -18,7 +18,7 @@ mise install
 #    silently breaks version pinning.
 corepack enable
 
-# 3. Install workspace deps. The frontend workspace is empty until PR3 — that is fine.
+# 3. Install workspace deps. The frontend workspace is empty until frontend scaffolding lands — that is fine.
 pnpm install
 ```
 
@@ -37,17 +37,19 @@ which pnpm            # should NOT point to a global install (npm i -g / brew)
 | Task | Command |
 |---|---|
 | Run backend | `make dev-backend` or `cd backend && go run ./cmd/server` |
-| Run frontend | `make dev-frontend` (PR3+) |
-| Regenerate GraphQL code | `make codegen` (PR2 / PR5+) |
+| Run frontend | `make dev-frontend` (frontend scaffold pending) |
+| Regenerate GraphQL code | `make codegen` |
 | Run all tests | `make test` |
 
 ## Policy on generated files
 
-`backend/graph/generated/` (gqlgen output) and `frontend/src/generated/` (graphql-codegen output) are **committed**. CI verifies that running codegen produces no diff via `git diff --exit-code` (added in PR2 / PR5). Not gitignoring generated files is an intentional design choice.
+`backend/graph/generated/` and `backend/graph/model/models_gen.go` (gqlgen outputs) are **git-ignored**; CI regenerates them before vet/build. Only `backend/graph/resolver/*.resolvers.go` is committed — those files carry hand-written implementation. CI still runs `git diff --exit-code` against the resolver stubs to catch the case where a schema edit lands without its regenerated stubs.
+
+The frontend counterpart (`frontend/src/generated/`) will make its own commit-vs-ignore call when frontend codegen lands.
 
 ## `.tool-versions` hierarchy (mise)
 
-mise resolves `.tool-versions` files hierarchically: `backend/.tool-versions` (Go) and `./.tool-versions` (Node) are both honored without conflict. Backend CI sets `working_directory: backend` and sees only the Go version. When PR4 adds a frontend workflow that needs Node, that workflow must run from the repo root (`.`) — NOT `working_directory: frontend` — because the Node version is declared in the root `.tool-versions`.
+mise resolves `.tool-versions` files hierarchically: `backend/.tool-versions` (Go) and `./.tool-versions` (Node) are both honored without conflict. Backend CI sets `working_directory: backend` and sees only the Go version. When a frontend workflow that needs Node is added, that workflow must run from the repo root (`.`) — NOT `working_directory: frontend` — because the Node version is declared in the root `.tool-versions`.
 
 ## Why Corepack, not global pnpm
 
@@ -55,6 +57,6 @@ The `packageManager` field in root `package.json` is the single source of truth 
 
 Do **not** install pnpm via `npm i -g pnpm` or `brew install pnpm`. Those paths compete with the Corepack shim on PATH, and whichever wins is timing-dependent.
 
-## Supabase CLI (PR6+)
+## Supabase CLI
 
-TBD — PR6 で `supabase start` 手順を追記。
+TBD — `supabase start` 手順は Supabase 連携時に追記。

@@ -15,7 +15,7 @@ dev-frontend: ## frontend の Next.js dev server を起動（PR3 以降で実装
 	pnpm --filter frontend dev
 
 codegen: ## gqlgen + graphql-codegen を両方実行（PR2 / PR5 で実体化）
-	cd backend && go run github.com/99designs/gqlgen generate
+	cd backend && go tool gqlgen generate
 	pnpm --filter frontend codegen
 
 test: ## backend go test + frontend vitest

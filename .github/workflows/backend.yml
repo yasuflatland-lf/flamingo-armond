@@ -40,6 +40,11 @@ jobs:
       - name: Verify modules
         run: go mod verify
 
+      - name: Generate gqlgen artifacts
+        run: |
+          go tool gqlgen generate
+          git diff --exit-code -- graph/resolver/*.resolvers.go
+
       - name: Vet
         run: go vet ./...
 
