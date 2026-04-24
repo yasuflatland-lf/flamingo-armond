@@ -48,7 +48,7 @@ Both codegen outputs are **gitignored** — neither is committed:
 | Tool | Input | Output (gitignored) | Regeneration command |
 |---|---|---|---|
 | gqlgen | `schema/*.graphql`, `backend/gqlgen.yml`, `backend/go.mod` (`tool` directive) | `backend/graph/generated/`, `backend/graph/model/models_gen.go` | `cd backend && go tool gqlgen generate` |
-| graphql-codegen | `schema/*.graphql`, `frontend/codegen.ts`, `frontend/src/**/*.{ts,tsx}` | `frontend/src/generated/` | `pnpm --filter frontend codegen` (populated in PR5) |
+| graphql-codegen | `schema/*.graphql`, `frontend/codegen.ts`, `frontend/src/**/*.{ts,tsx}` | `frontend/src/generated/` | `pnpm --filter frontend codegen` |
 
 Determinism relies on pinned tool versions (in `go.mod` and `package.json`) plus the committed schema. CI runs the backend regeneration before `go vet` and `go test` (`.github/workflows/backend.yml`). The frontend CI counterpart will land in a later PR; until then, developers run `pnpm --filter frontend codegen` locally once PR5 populates the script. No `git diff --exit-code` step is needed because the outputs are not tracked.
 
