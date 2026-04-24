@@ -27,10 +27,10 @@ jobs:
         working-directory: backend
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up mise (Go from .tool-versions)
-        uses: jdx/mise-action@v2
+        uses: jdx/mise-action@v4
         with:
           working_directory: backend
 
@@ -46,8 +46,33 @@ jobs:
       - name: Build
         run: go build ./...
 
-      - name: Test
-        run: go test -v -race ./...
+      - name: Test with coverage
+        run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
+
+      - name: Generate HTML coverage
+        run: go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-coverage
+          path: |
+            backend/coverage.out
+            backend/coverage.html
+          retention-days: 14
+
+      - name: Upload coverage to Codecov
+        id: codecov
+        uses: codecov/codecov-action@v6
+        continue-on-error: true
+        with:
+          files: backend/coverage.out
+          flags: backend
+          fail_ci_if_error: true
+
+      - name: Warn on Codecov upload failure
+        if: steps.codecov.outcome == 'failure'
+        run: echo "::warning::Codecov upload failed — coverage trend may not be updated"
 
   deploy:
     name: Deploy to Render
