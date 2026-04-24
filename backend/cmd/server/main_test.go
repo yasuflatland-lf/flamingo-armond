@@ -142,6 +142,17 @@ func TestRunGracefulShutdown(t *testing.T) {
 	}
 }
 
+func TestRun_FailsWhenJWKSURLMissing(t *testing.T) {
+	t.Setenv("SUPABASE_JWKS_URL", "")
+	t.Setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
+	t.Setenv("SUPABASE_JWT_ISSUER", "http://issuer.test")
+
+	err := run(context.Background(), slog.New(slog.DiscardHandler))
+	if err == nil {
+		t.Fatal("expected run to fail when SUPABASE_JWKS_URL is empty")
+	}
+}
+
 func TestGraphQLHealth(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
