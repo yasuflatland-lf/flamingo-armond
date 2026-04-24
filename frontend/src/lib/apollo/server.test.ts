@@ -34,9 +34,7 @@ describe("gqlFetch", () => {
   });
 
   it("throws when data is missing", async () => {
-    vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({})),
-    );
+    vi.spyOn(global, "fetch").mockResolvedValue(new Response(JSON.stringify({})));
     await expect(gqlFetch(HealthQuery)).rejects.toThrow(/missing data/);
   });
 
