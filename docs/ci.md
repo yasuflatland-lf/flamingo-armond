@@ -4,10 +4,10 @@ Operational decisions around GitHub Actions and external services that are not o
 
 ## Workflow scope and concurrency
 
-`.github/workflows/backend.yml` is the only active workflow.
+Two independent workflows: `.github/workflows/backend.yml` and `.github/workflows/frontend.yml`.
 
-- **Triggers are `paths:`-scoped** to `backend/**`, the workflow file, and `render.yaml`. When adding a second service (e.g. `frontend/`), **add its own workflow** — do not broaden this one. Mixing scopes breaks CI granularity and responsibility.
-- **`concurrency: backend-${{ github.ref }}` with `cancel-in-progress: true`** — rapid pushes on the same ref supersede in-flight runs (important for feature-branch iteration).
+- **Triggers are `paths:`-scoped** per workflow — backend to `backend/**` + workflow file + `render.yaml`; frontend to `frontend/**` + `schema/**` + the root pnpm/workspace/tool-version manifests + the frontend workflow file. When adding a third service, **add its own workflow** — do not broaden an existing one. Mixing scopes breaks CI granularity and responsibility.
+- **`concurrency` groups are per-workflow** (`backend-${{ github.ref }}`, `frontend-${{ github.ref }}`) with `cancel-in-progress: true` — rapid pushes on the same ref supersede in-flight runs per service (important for feature-branch iteration). The two workflows do not cancel each other.
 
 ## Deploy gating
 
@@ -77,3 +77,25 @@ Two safe forms:
 - Repo-root-anchored: `git diff --exit-code -- :/backend/graph/resolver/*.resolvers.go` (the `:/` magic signature).
 
 Do **not** mix the two by keeping the full `backend/...` path when `working-directory` is already `backend/`.
+
+## Frontend workflow
+
+`.github/workflows/frontend.yml` mirrors the backend workflow's structure — per-service scope, major-tag pinning, per-ref concurrency — but has a different install/verify pipeline because the frontend is a pnpm workspace rooted at the repo root.
+
+### `pnpm install --frozen-lockfile` is the gate
+
+CI always runs `pnpm install --frozen-lockfile` (never plain `pnpm install`). With the `--frozen-lockfile` flag, pnpm refuses to mutate `pnpm-lock.yaml` and exits non-zero if the lockfile and the declared dependencies disagree. This is the only mechanism that catches "I edited `package.json` but forgot to re-run `pnpm install` locally" — without it, CI would silently regenerate the lockfile in-place and the drift would reach main.
+
+For the same reason, the frontend workflow's `paths:` filter includes `pnpm-lock.yaml`, `pnpm-workspace.yaml`, root `package.json`, and `.tool-versions` alongside `frontend/**` and `schema/**`. A change to any of those can invalidate the frozen-lockfile invariant, so the workflow must run on those edits even when no file under `frontend/` changed.
+
+### `--if-present` on the test step (revisit when Vitest lands)
+
+Per "pnpm workspace filter exits 0 for missing scripts" above, a missing `test` script in `frontend/package.json` would silently pass with plain `pnpm --filter frontend test`. The current workflow runs `pnpm --filter frontend --if-present test` specifically so the step becomes a documented no-op today and **automatically activates** once PR 5 adds the `test` script plus a Vitest config — no workflow edit needed at that point. When Vitest lands, do not drop the `--if-present` flag: it stays as a guard against future script renames.
+
+### Node/pnpm provisioning via mise + corepack
+
+The workflow uses the same `jdx/mise-action@v4` step that `backend.yml` uses, relying on the repo-root `.tool-versions` to pin Node (`nodejs 24`). `corepack enable` then activates the `packageManager` field from root `package.json` (`pnpm@9.15.0`), so the pnpm version is pinned by the repo — not by the CI runner's preinstalled toolchain. This keeps local and CI Node/pnpm versions in lockstep with a single source of truth.
+
+### `BACKEND_URL` is a build-time placeholder
+
+`frontend/src/env.ts` uses `@t3-oss/env-nextjs` to Zod-validate `BACKEND_URL` at **build** time, not just at runtime. `next build` therefore fails if `BACKEND_URL` is unset — a deliberate failure mode documented in `docs/frontend.md`. CI sets `BACKEND_URL=http://localhost:1323` at the job level purely to satisfy `z.string().url()`; no request is actually made during the build, so the value does not need to resolve. Do **not** remove this env: stripping it reintroduces the silent-fail shape the validation was designed to prevent.
