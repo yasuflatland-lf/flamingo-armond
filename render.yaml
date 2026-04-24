@@ -1,0 +1,13 @@
+version: "1"
+
+services:
+  - type: web
+    plan: free
+    name: flamingo-backend
+    runtime: go
+    repo: https://github.com/yasuflatland-lf/flamingo-armond
+    rootDir: backend
+    autoDeploy: true
+    buildCommand: go mod download && go build -o main ./cmd/server
+    startCommand: ./main
+    healthCheckPath: /health
