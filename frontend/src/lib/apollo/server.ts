@@ -1,4 +1,5 @@
 import "server-only";
+// TODO(PR9): forward auth token via createSupabaseServerClient(cookies()) when `me` query lands.
 import type { TypedDocumentNode } from "@apollo/client";
 import { print } from "graphql";
 import { env } from "@/env";
