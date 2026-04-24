@@ -66,6 +66,7 @@ jobs:
         uses: codecov/codecov-action@v6
         continue-on-error: true
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: backend/coverage.out
           flags: backend
           fail_ci_if_error: true
