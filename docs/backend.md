@@ -97,7 +97,7 @@ gqlgen deletes `graph/model/models_gen.go` at the start of every run before rege
 
 ### Resolver DI seam
 
-`newRouter(resolvers *resolver.Resolver) *echo.Echo` is the DI wiring seam. `run(ctx, logger) error` is the lifecycle seam — it constructs the `Resolver`, passes it to `newRouter`, and owns the `http.Server`. Future dependencies (auth, DB, loaders) add fields to `Resolver` and wire them in `run`.
+`newRouter(resolvers *resolver.Resolver, authMW echo.MiddlewareFunc) *echo.Echo` is the DI wiring seam. `run(ctx, logger) error` is the lifecycle seam — it constructs the `Resolver`, passes it to `newRouter`, and owns the `http.Server`. Middleware-shaped dependencies (auth, future per-request observability) are passed as `echo.MiddlewareFunc` parameters to `newRouter`, while data-access dependencies (DB, dataloaders) add fields to `Resolver` and wire them in `run`.
 
 ## Authentication
 
