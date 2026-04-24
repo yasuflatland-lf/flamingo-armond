@@ -4,12 +4,15 @@ go 1.26.2
 
 require (
 	github.com/99designs/gqlgen v0.17.66
+	github.com/MicahParks/keyfunc/v3 v3.8.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/labstack/echo/v5 v5.1.0
 	github.com/vektah/gqlparser/v2 v2.5.22
 	golang.org/x/sync v0.20.0
 )
 
 require (
+	github.com/MicahParks/jwkset v0.11.0 // indirect
 	github.com/agnivade/levenshtein v1.2.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.5 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
