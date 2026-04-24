@@ -46,7 +46,7 @@ Coverage goes to **both Codecov and a GHA artifact**:
 
 ## pnpm workspace filter exits 0 for missing scripts
 
-`pnpm --filter <workspace> <script>` emits nothing and exits 0 when the target package has no matching script — it is treated as a no-op, not an error (unlike `npm run`). CI steps that rely on this behavior to catch missing setup will silently pass. When adding the PR4 frontend workflow, use `--if-present` to make intent explicit, or add a stub script that `exit 1`s if the script must exist.
+`pnpm --filter <workspace> <script>` emits nothing and exits 0 when the target package has no matching script — it is treated as a no-op, not an error (unlike `npm run`). CI steps that rely on this behavior to catch missing setup will silently pass. When adding a frontend workflow, use `--if-present` to make intent explicit, or add a stub script that `exit 1`s if the script must exist.
 
 ## GitHub Actions versioning
 
@@ -62,3 +62,18 @@ When skipping majors (e.g. `upload-artifact@v4 → @v7`), verify the breaking ch
 - `codecov-action@v6` — switched internals to the Codecov CLI (auth flow changed).
 
 Pin to commit SHAs when you need stronger supply-chain guarantees, at the cost of maintenance burden. The project uses major tags for now.
+
+## Codegen must run before Vet and Build
+
+`backend/graph/generated/` and `backend/graph/model/models_gen.go` are git-ignored (see `docs/dev-setup.md`). On a fresh CI checkout these files do not exist, so `go vet ./...` — which type-checks the entire module — fails unless the runtime has been regenerated first. Hence the `test` job runs `go tool gqlgen generate` between `Verify modules` and `Vet`, not after. Any future codegen added to the pipeline must land in the same position relative to its consumers.
+
+## Git pathspec under `working-directory:` is cwd-relative
+
+The `test` job declares `defaults.run.working-directory: backend`, so every `run:` step starts with cwd in `backend/`. When a step invokes `git diff -- <pathspec>`, the pathspec is resolved relative to the shell cwd, **not** the repository root. Writing `git diff -- backend/graph/resolver/*.resolvers.go` would be interpreted as `backend/backend/graph/...`, which matches nothing; `git diff --exit-code` then returns 0 and the check silently passes regardless of actual drift.
+
+Two safe forms:
+
+- cwd-relative: `git diff --exit-code -- graph/resolver/*.resolvers.go` (current form).
+- Repo-root-anchored: `git diff --exit-code -- :/backend/graph/resolver/*.resolvers.go` (the `:/` magic signature).
+
+Do **not** mix the two by keeping the full `backend/...` path when `working-directory` is already `backend/`.
