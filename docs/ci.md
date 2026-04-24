@@ -67,6 +67,12 @@ Pin to commit SHAs when you need stronger supply-chain guarantees, at the cost o
 
 `backend/graph/generated/` and `backend/graph/model/models_gen.go` are git-ignored (see `docs/dev-setup.md`). On a fresh CI checkout these files do not exist, so `go vet ./...` — which type-checks the entire module — fails unless the runtime has been regenerated first. Hence the `test` job runs `go tool gqlgen generate` between `Verify modules` and `Vet`, not after. Any future codegen added to the pipeline must land in the same position relative to its consumers.
 
+## Frontend codegen step positioning
+
+`frontend/src/generated/` is gitignored (see `.gitignore`). On a fresh CI checkout the directory does not exist. The `@/generated` import used in `src/app/page.tsx` and `src/lib/apollo/server.test.ts` must resolve before `TypeScript typecheck`, `Build`, or `Vitest` run. Therefore the workflow places a dedicated `Codegen (graphql-codegen)` step immediately after `Install dependencies` and before `Biome check` / `TypeScript typecheck` / `Build` / `Vitest`.
+
+This mirrors the backend rule (§"Codegen must run before Vet and Build"). `pnpm codegen` takes under 5s on a warm pnpm store, so an independent step adds negligible overhead. A `prebuild` lifecycle hook also runs codegen locally (`pnpm --filter frontend build` triggers it automatically); the two mechanisms coexist because CI runs `TypeScript typecheck` before `Build`, and typecheck alone does not trigger `prebuild`. We deliberately do NOT rely on `git diff --exit-code` for validation — `src/generated/` is gitignored so the diff is always empty; the real signal is `pnpm codegen` exiting 0.
+
 ## Git pathspec under `working-directory:` is cwd-relative
 
 The `test` job declares `defaults.run.working-directory: backend`, so every `run:` step starts with cwd in `backend/`. When a step invokes `git diff -- <pathspec>`, the pathspec is resolved relative to the shell cwd, **not** the repository root. Writing `git diff -- backend/graph/resolver/*.resolvers.go` would be interpreted as `backend/backend/graph/...`, which matches nothing; `git diff --exit-code` then returns 0 and the check silently passes regardless of actual drift.

@@ -7,7 +7,7 @@
 - shadcn/ui (initialized; actual components land in PR6)
 - Biome 2 for lint + format (no ESLint, no Prettier — do not run `next lint`)
 - `@t3-oss/env-nextjs` + Zod for env validation
-- Apollo Client / graphql-codegen are deferred to PR5 — `frontend/codegen.ts` is intentionally empty.
+- Apollo Client via `@apollo/client-integration-nextjs`; GraphQL code generation via `@graphql-codegen/client-preset`. RSC renders use a thin `gqlFetch` helper; browser code uses `useQuery` through `ApolloNextAppProvider`.
 
 ## Dev quickstart
 
@@ -40,11 +40,49 @@ pnpm --filter frontend typecheck               # tsc --noEmit
 - Tokens map into the Tailwind namespace via an **`@theme inline`** block in `globals.css` (`inline` matters — without it Tailwind emits duplicate variables). `tw-animate-css` is pulled in with `@import "tw-animate-css"` (it is a CSS package, not a JS plugin).
 - When PR6 adds shadcn components, extend the `@theme` block with the additional `--color-*` tokens the components reference.
 
-## Codegen — generated files are NOT committed
+## Codegen
 
-`frontend/codegen.ts` is a 0-byte placeholder. PR5 populates it to consume `schema/*.graphql` and emit into `frontend/src/generated/`. **That output is gitignored** (see `docs/dev-setup.md` §"Policy on generated files"); each environment regenerates before `pnpm build`. The same policy applies to `backend/graph/generated/` and `backend/graph/model/models_gen.go` on the Go side.
+Run codegen with:
 
-Until PR5 lands, do **not** run `pnpm --filter frontend codegen` — the script is missing and pnpm exits 1 by design.
+```bash
+pnpm --filter frontend codegen   # frontend only
+make codegen                     # repo root — runs backend (gqlgen) + frontend (graphql-codegen)
+```
+
+- **Input**: `schema/*.graphql` — shared single source of truth for both sides.
+- **Output**: `frontend/src/generated/` (git-ignored). Generated files include `graphql.ts`, `gql.ts`, `fragment-masking.ts`, and `index.ts`.
+- **Document discovery**: the client-preset scans `frontend/src/**/*.{ts,tsx}` for `graphql()` tagged templates and includes only the operations actually used.
+- **Lifecycle**: a `prebuild` hook in `frontend/package.json` runs codegen automatically before `pnpm build`. In CI, a dedicated `Codegen (graphql-codegen)` step runs between `Install dependencies` and `Biome check`.
+- `src/generated/**` is NOT in `tsconfig.json`'s `exclude` — generated output participates in `tsc --noEmit`. If codegen produces broken types, typecheck fails fast rather than hiding behind the exclude.
+
+Usage pattern:
+
+```ts
+import { graphql } from "@/generated";
+const HealthQuery = graphql(`query Health { health }`);
+```
+
+The same generated-files policy applies to `backend/graph/generated/` and `backend/graph/model/models_gen.go` on the Go side.
+
+## Apollo wiring
+
+### RSC (`gqlFetch`)
+
+File: `frontend/src/lib/apollo/server.ts`.
+
+Exports `gqlFetch(doc, { variables?, revalidate? })` — a plain `fetch` POST to `${env.BACKEND_URL}/query`. It serializes the document via `print(doc)` from the `graphql` package and returns typed data.
+
+**Why not Apollo's RSC mode**: Next 16's `fetch` already handles dedup, revalidation, and caching. Adding Apollo's normalization layer on top would double-cache. `gqlFetch` stays thin.
+
+**Why `env.BACKEND_URL` directly (not `/api/graphql`)**: RSC runs server-side and does not pass through Next rewrites — see Gotchas below.
+
+### Browser (`ApolloNextAppProvider`)
+
+Files:
+- `frontend/src/lib/apollo/client.ts` — the `makeClient` factory.
+- `frontend/src/app/providers.tsx` — wraps the app in `ApolloNextAppProvider`.
+
+Browser code calls `/api/graphql` (same-origin via the Next rewrite — avoids CORS/cookie issues). `ApolloClient` and `InMemoryCache` come from `@apollo/client-integration-nextjs` (SSR-streaming-safe variants) — see Gotcha below.
 
 ## shadcn/ui
 
@@ -61,3 +99,21 @@ Until PR5 lands, do **not** run `pnpm --filter frontend codegen` — the script 
 **Next.js `Metadata` type import**: `Metadata` (and `MetadataRoute`, `Viewport`, etc.) must be imported from `"next"`, not `"react"`. `ReactNode` stays in `"react"`. The two are easy to conflate when working in the App Router.
 
 **`@t3-oss/env-nextjs` peer on Zod**: `@t3-oss/env-nextjs@0.12.0` requires `zod@^3.24.0`. Zod 3.23.x emits a peer-dependency warning that can obscure real errors. Pin Zod to `>=3.24.0` when using this package.
+
+**Apollo imports — use `@apollo/client-integration-nextjs` for `ApolloClient` and `InMemoryCache` in browser code.** Importing those two symbols from the base `@apollo/client` package produces a client that does not handle Next.js SSR streaming and breaks hydration.
+
+**RSC code must use `env.BACKEND_URL`, not `/api/graphql`.** The rewrite in `next.config.ts` only applies to browser-originating requests. Server components calling `/api/graphql` would hit a Next 404.
+
+**Vitest loads `src/env.ts` and crashes if `BACKEND_URL` is unset.** `vitest.config.ts` injects a placeholder via `test.env.BACKEND_URL = "http://localhost:1323"`. Keep that placeholder valid for `z.string().url()`.
+
+**`server-only` has no standalone npm package** — it ships inside Next.js and the Next compiler resolves it. Vitest's node env cannot, so `vitest.config.ts` aliases `server-only` to an empty stub. Without the alias, importing `src/lib/apollo/server.ts` in any test fails to resolve.
+
+**pnpm isolation can hide transitive deps from app code.** `@graphql-typed-document-node/core` is a transitive dep of `@graphql-codegen/client-preset`, but pnpm's strict isolation does not hoist it into `frontend/node_modules` where the generated `@/generated` re-exports need it. Promote such packages to a top-level `devDependency` when the generated-import chain depends on them.
+
+**Stale `tsconfig.tsbuildinfo` survives `rm -rf node_modules`.** After adding/removing typed packages, `tsc --noEmit` can report impossible errors like `'data' is of type 'unknown'` from cached incremental state. Delete `frontend/tsconfig.tsbuildinfo` (and `frontend/.next/`) when type errors look incompatible with the source.
+
+**Biome 2 — `lint` flags things `format` does not auto-fix.** The formatter accepts multi-line forms that the linter then rejects (e.g. `mockResolvedValue(new Response(...))` that lint wants on a single line). Always run `pnpm --filter frontend lint` (Biome `check`) before declaring done — `format` alone is not sufficient.
+
+**`gqlFetch` revalidate has three states, not two.** `revalidate?: number | false` (in `src/lib/apollo/server.ts`) deliberately preserves the difference between *omitted* (Next default heuristic), `0` (no cache), and `false` (cache forever). Collapsing to a `number` default would silently merge two of them — keep the union and only forward `next.revalidate` when the caller passes it explicitly.
+
+**Generated `graphql()` documents flow types into `gqlFetch` call sites.** `@graphql-codegen/client-preset` emits `TypedDocumentNode<TResult, TVars>`, and `gqlFetch<TResult, TVars>(doc, { variables?: TVars })` infers both from the document. Passing wrong-shaped `variables` to e.g. `HealthQuery` becomes a compile error — do not widen the signature to `Record<string, unknown>`.
