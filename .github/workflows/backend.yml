@@ -43,7 +43,7 @@ jobs:
       - name: Generate gqlgen artifacts
         run: |
           go tool gqlgen generate
-          git diff --exit-code -- backend/graph/resolver/*.resolvers.go
+          git diff --exit-code -- graph/resolver/*.resolvers.go
 
       - name: Vet
         run: go vet ./...
