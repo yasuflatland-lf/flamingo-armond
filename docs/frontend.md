@@ -105,3 +105,15 @@ Browser code calls `/api/graphql` (same-origin via the Next rewrite — avoids C
 **RSC code must use `env.BACKEND_URL`, not `/api/graphql`.** The rewrite in `next.config.ts` only applies to browser-originating requests. Server components calling `/api/graphql` would hit a Next 404.
 
 **Vitest loads `src/env.ts` and crashes if `BACKEND_URL` is unset.** `vitest.config.ts` injects a placeholder via `test.env.BACKEND_URL = "http://localhost:1323"`. Keep that placeholder valid for `z.string().url()`.
+
+**`server-only` has no standalone npm package** — it ships inside Next.js and the Next compiler resolves it. Vitest's node env cannot, so `vitest.config.ts` aliases `server-only` to an empty stub. Without the alias, importing `src/lib/apollo/server.ts` in any test fails to resolve.
+
+**pnpm isolation can hide transitive deps from app code.** `@graphql-typed-document-node/core` is a transitive dep of `@graphql-codegen/client-preset`, but pnpm's strict isolation does not hoist it into `frontend/node_modules` where the generated `@/generated` re-exports need it. Promote such packages to a top-level `devDependency` when the generated-import chain depends on them.
+
+**Stale `tsconfig.tsbuildinfo` survives `rm -rf node_modules`.** After adding/removing typed packages, `tsc --noEmit` can report impossible errors like `'data' is of type 'unknown'` from cached incremental state. Delete `frontend/tsconfig.tsbuildinfo` (and `frontend/.next/`) when type errors look incompatible with the source.
+
+**Biome 2 — `lint` flags things `format` does not auto-fix.** The formatter accepts multi-line forms that the linter then rejects (e.g. `mockResolvedValue(new Response(...))` that lint wants on a single line). Always run `pnpm --filter frontend lint` (Biome `check`) before declaring done — `format` alone is not sufficient.
+
+**`gqlFetch` revalidate has three states, not two.** `revalidate?: number | false` (in `src/lib/apollo/server.ts`) deliberately preserves the difference between *omitted* (Next default heuristic), `0` (no cache), and `false` (cache forever). Collapsing to a `number` default would silently merge two of them — keep the union and only forward `next.revalidate` when the caller passes it explicitly.
+
+**Generated `graphql()` documents flow types into `gqlFetch` call sites.** `@graphql-codegen/client-preset` emits `TypedDocumentNode<TResult, TVars>`, and `gqlFetch<TResult, TVars>(doc, { variables?: TVars })` infers both from the document. Passing wrong-shaped `variables` to e.g. `HealthQuery` becomes a compile error — do not widen the signature to `Record<string, unknown>`.
