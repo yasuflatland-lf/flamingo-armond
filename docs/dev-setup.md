@@ -95,6 +95,18 @@ Do **not** install pnpm via `npm i -g pnpm` or `brew install pnpm`. Those paths 
 | DB リセット | `supabase db reset` |
 | ステータス確認 | `supabase status` |
 
+### Backend JWT verification (local)
+
+To run backend JWT verification locally, run `supabase status` to confirm the JWKS URL (typically `http://127.0.0.1:54321/auth/v1/.well-known/jwks.json`) and copy it into `backend/.env.local`. The defaults in `backend/.env.example` should already match. The three required variables are:
+
+```
+SUPABASE_JWKS_URL=http://127.0.0.1:54321/auth/v1/.well-known/jwks.json
+SUPABASE_JWT_AUDIENCE=authenticated
+SUPABASE_JWT_ISSUER=http://127.0.0.1:54321/auth/v1
+```
+
+The backend fails to start if any of these is missing — check `supabase status` output if startup fails with a config error.
+
 ### Gotchas
 
 - **`localhost` ではなく `127.0.0.1` を使う**: Google OAuth の redirect URI 検証は `localhost` と `127.0.0.1` を別ホスト扱いする。`supabase start` のデフォルト出力に合わせて `127.0.0.1:3000` でアクセス。

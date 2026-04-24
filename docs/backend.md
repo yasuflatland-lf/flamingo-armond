@@ -44,8 +44,15 @@ These values target a public API on Render. Revisit if the threat model or deplo
 
 ## Environment variables
 
-- `PORT` — listen port. Default `1323`.
-- `SHUTDOWN_TIMEOUT` — Go duration (e.g. `10s`, `1m`). Default `25s`. Invalid or `<= 0` values log a warning and fall back to the default — **do not remove this guard**; it prevents env-var typos from being silently ignored in production.
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `PORT` | no | `1323` | Listen port |
+| `SHUTDOWN_TIMEOUT` | no | `25s` | Go duration for graceful shutdown. Invalid or `<= 0` values log a warning and fall back to the default. |
+| `SUPABASE_JWKS_URL` | yes | — | JWKS endpoint for JWT verification |
+| `SUPABASE_JWT_AUDIENCE` | yes | — | Expected `aud` claim in incoming JWTs |
+| `SUPABASE_JWT_ISSUER` | yes | — | Expected `iss` claim in incoming JWTs |
+
+`PORT` and `SHUTDOWN_TIMEOUT` are optional with safe defaults. The three `SUPABASE_*` variables are all required — the server refuses to start if any is missing (fail-fast via `ConfigFromEnv`).
 
 ## Testing patterns
 
@@ -91,6 +98,79 @@ gqlgen deletes `graph/model/models_gen.go` at the start of every run before rege
 ### Resolver DI seam
 
 `newRouter(resolvers *resolver.Resolver) *echo.Echo` is the DI wiring seam. `run(ctx, logger) error` is the lifecycle seam — it constructs the `Resolver`, passes it to `newRouter`, and owns the `http.Server`. Future dependencies (auth, DB, loaders) add fields to `Resolver` and wire them in `run`.
+
+## Authentication
+
+The backend uses an opt-in JWT verification model. Routes are divided into two groups:
+
+```
+GET  /            open (no auth)
+GET  /health      open (no auth)
+GET  /playground  open (no auth)
+POST /query       AuthMiddleware → gqlgen handler
+```
+
+When an `Authorization` header is **absent**, the request passes through as anonymous — no `auth.AuthUser` is attached to the context. This allows unauthenticated queries to proceed until individual resolvers start enforcing identity (PR9). When the header is **present and valid**, `auth.UserFrom(ctx)` returns the verified `*auth.AuthUser` (`Sub`, `Email`, `Role`). When the header is **present but invalid**, the middleware short-circuits with HTTP 401 and sets `WWW-Authenticate: Bearer realm="api"`.
+
+### Middleware layering
+
+`e.Group("/query", authMW)` registers `AuthMiddleware` only on the `/query` route group. Playground, health, and the root handler live outside the group and are never touched by auth logic.
+
+### Resolver usage
+
+```go
+func (r *queryResolver) Me(ctx context.Context) (*model.User, error) {
+    u := auth.UserFrom(ctx)
+    if u == nil {
+        // anonymous — return guest data or error depending on the resolver's policy
+        return nil, nil
+    }
+    // u.Sub, u.Email, u.Role are available here
+    _ = u.Sub
+    return nil, nil
+}
+```
+
+### 401 condition matrix
+
+| Condition | Result |
+|---|---|
+| `Authorization` header absent | Anonymous passthrough (no 401) |
+| Bearer token present, valid | 200 — `AuthUser` in context |
+| Expired JWT (`exp` in past, outside 30 s leeway) | 401 |
+| Tampered signature | 401 |
+| Wrong `kid` (not in JWKS) | 401 |
+| Missing or empty Bearer scheme | 401 |
+| `alg=HS256` (confusion attack) | 401 |
+| `alg=none` | 401 |
+| Missing `exp` claim | 401 |
+| Wrong `aud` | 401 |
+| Wrong `iss` | 401 |
+
+Accepted algorithms: ES256, RS256. A 30-second leeway is applied to `exp` to tolerate minor clock skew between services.
+
+### WWW-Authenticate policy
+
+All 401 responses carry `WWW-Authenticate: Bearer realm="api"`. The header deliberately omits `error` and `error_description` parameters (RFC 6750 §3.1) to minimize information disclosure — callers learn only that a valid Bearer token is required, not why verification failed.
+
+### JWKS lifecycle
+
+`NewJWKSKeyfunc` wraps `MicahParks/keyfunc/v3` with `NoErrorReturnFirstHTTPReq: false`. This means:
+
+- **Initial fetch is required** — if the JWKS endpoint is unreachable at startup, `ConfigFromEnv` / server startup fails immediately rather than silently caching nothing.
+- **Periodic refresh failures are non-fatal** — the keyfunc library keeps the last successfully fetched key set in memory and continues verifying tokens. A transient JWKS outage does not bring down the server.
+
+### Environment variables (auth)
+
+See also the general env-vars table above.
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `SUPABASE_JWKS_URL` | yes | — | JWKS endpoint URL (e.g. `https://<project>.supabase.co/auth/v1/.well-known/jwks.json`) |
+| `SUPABASE_JWT_AUDIENCE` | yes | — | Expected `aud` claim value |
+| `SUPABASE_JWT_ISSUER` | yes | — | Expected `iss` claim value |
+
+All three are required. `ConfigFromEnv()` returns an error and the server fails to start if any is missing or empty — silent misconfiguration is not allowed.
 
 ### Echo v5 + gqlgen error propagation
 
