@@ -1,0 +1,73 @@
+name: frontend CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'schema/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+      - '.tool-versions'
+      - '.github/workflows/frontend.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - 'schema/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+      - '.tool-versions'
+      - '.github/workflows/frontend.yml'
+
+concurrency:
+  group: frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-test-build:
+    name: Lint, typecheck, build
+    runs-on: ubuntu-24.04
+    env:
+      # Required by `frontend/src/env.ts` (@t3-oss/env-nextjs) at build time.
+      # CI does not reach the backend; the value is a placeholder that only
+      # needs to satisfy `z.string().url()`.
+      BACKEND_URL: http://localhost:1323
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up mise (Node from .tool-versions)
+        uses: jdx/mise-action@v4
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Resolve pnpm store path
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Biome check
+        run: pnpm --filter frontend lint
+
+      - name: TypeScript typecheck
+        run: pnpm --filter frontend typecheck
+
+      - name: Build
+        run: pnpm --filter frontend build
+
+      - name: Vitest
+        run: pnpm --filter frontend --if-present test
