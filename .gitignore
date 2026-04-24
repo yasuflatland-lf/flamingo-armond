@@ -75,3 +75,7 @@ backend/server
 /backend/graph/generated/
 /backend/graph/model/models_gen.go
 /frontend/src/generated/
+
+# Supabase CLI local state
+supabase/.branches/
+supabase/.temp/

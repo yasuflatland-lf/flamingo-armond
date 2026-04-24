@@ -15,6 +15,9 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
     env: {
       BACKEND_URL: "http://localhost:1323",
+      NEXT_PUBLIC_SUPABASE_URL: "http://localhost:54321",
+      NEXT_PUBLIC_SUPABASE_ANON_KEY:
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.vitest-dummy-key-1234567890",
     },
     coverage: {
       provider: "v8",
