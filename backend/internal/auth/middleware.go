@@ -14,12 +14,8 @@ import (
 
 const wwwAuthenticate = `Bearer realm="api"`
 
-// AuthMiddleware verifies a Supabase-issued JWT from the Authorization header.
-// No header → request proceeds as anonymous (ctx has no AuthUser).
-// Header present + verification succeeds → AuthUser attached to ctx.
-// Header present + verification fails → 401 with WWW-Authenticate: Bearer realm="api".
-// Returns an error at construction if cfg is missing required fields, since
-// jwt.WithAudience("")/WithIssuer("") would silently match tokens with empty claims.
+// AuthMiddleware returns an error at construction if cfg is missing required fields,
+// because jwt.WithAudience("")/WithIssuer("") would silently match tokens with empty claims.
 func AuthMiddleware(kf keyfunc.Keyfunc, cfg Config) (echo.MiddlewareFunc, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
