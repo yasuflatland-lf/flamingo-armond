@@ -26,8 +26,8 @@ pnpm --filter frontend typecheck               # tsc --noEmit
 | Name | Where validated | Default (example) | Purpose |
 |---|---|---|---|
 | `BACKEND_URL` | `frontend/src/env.ts` (server) | `http://localhost:1323` | Base URL for the `/api/graphql` rewrite in `next.config.ts`. |
-
-`NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` arrive in PR6.
+| `NEXT_PUBLIC_SUPABASE_URL` | `frontend/src/env.ts` (client) | `http://127.0.0.1:54321` | Supabase API base URL. Public — bundled into client. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `frontend/src/env.ts` (client) | `eyJ...` (from `supabase start`) | Supabase anonymous JWT. Public — RLS gates real access. |
 
 ## Backend rewrite contract
 
@@ -83,6 +83,37 @@ Files:
 - `frontend/src/app/providers.tsx` — wraps the app in `ApolloNextAppProvider`.
 
 Browser code calls `/api/graphql` (same-origin via the Next rewrite — avoids CORS/cookie issues). `ApolloClient` and `InMemoryCache` come from `@apollo/client-integration-nextjs` (SSR-streaming-safe variants) — see Gotcha below.
+
+## Auth (Supabase)
+
+PR6 introduces a 3-layer Supabase SSR client setup mirroring the official `@supabase/ssr` template. Each layer exists because cookie reading/writing differs between contexts:
+
+| Layer | File | Cookie source | Used by |
+|---|---|---|---|
+| Browser | `src/lib/supabase/client.ts` | `document.cookie` (handled by `createBrowserClient`) | Client components, `authLink` |
+| Server (RSC / route handler) | `src/lib/supabase/server.ts` | `next/headers` `cookies()` | Server components, route handlers, `auth/callback/route.ts` |
+| Middleware | `src/lib/supabase/middleware.ts` | `NextRequest.cookies` / `NextResponse.cookies` | `src/middleware.ts` (cookie rotation) |
+
+### authLink for browser GraphQL
+
+`src/lib/apollo/client.ts` composes `from([authLink, httpLink])`. `authLink` calls `supabase.auth.getSession()` on every request and attaches `Authorization: Bearer <jwt>` when a session exists. `getSession()` reads from local cookies — it is not an HTTP call, so per-request invocation is cheap. When the JWT is stale, the SDK refreshes internally.
+
+If no session exists the header is omitted (not set to an empty string). Backend treats missing `Authorization` as anonymous (PR7).
+
+### RSC token forwarding (deferred to PR9)
+
+`src/lib/apollo/server.ts` does NOT forward an auth token in PR6. Reason: PR6's only RSC query is `{ health }` (anonymous-safe). PR9 introduces `me`, at which point we extend `gqlFetch` to optionally pull the token from `createServerClient(cookies())`. A `TODO(PR9)` comment marks the intended hook point.
+
+### Middleware cookie rotation
+
+`src/middleware.ts` calls `updateSession(request)` from `lib/supabase/middleware.ts`. The implementation MUST call `supabase.auth.getUser()` once — without it Supabase does not refresh expiring tokens and the session silently drops. The `matcher` excludes `_next/static`, `_next/image`, `favicon.ico`, and common image extensions.
+
+### Gotchas
+
+- **`src/middleware.ts`, not `frontend/middleware.ts`**: Next.js with `src/` layout expects middleware under `src/`.
+- **Supabase cookie names**: `sb-<project_ref>-auth-token` (split across `sb-...-auth-token.0` / `.1` for large JWTs). Useful when DevTools-debugging a missing session.
+- **`@supabase/ssr` mocking in Vitest**: Real `createBrowserClient` crashes in node env. Use `vi.mock("@supabase/ssr", ...)` to stub `createBrowserClient` / `createServerClient` and return controllable `auth` objects.
+- **OAuth redirect: 127.0.0.1 vs localhost**: Google treats them as separate origins. Match what `supabase start` prints (`127.0.0.1`).
 
 ## shadcn/ui
 
