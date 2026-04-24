@@ -60,6 +60,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Codegen (graphql-codegen)
+        run: pnpm --filter frontend codegen
+
       - name: Biome check
         run: pnpm --filter frontend lint
 
