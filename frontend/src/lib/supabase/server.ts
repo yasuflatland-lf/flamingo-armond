@@ -15,7 +15,10 @@ export async function createSupabaseServerClient() {
             cookieStore.set(name, value, options);
           }
         } catch {
-          // Server Components cannot set cookies — handled by middleware refresh path.
+          // next/headers cookies() is read-only when called from Server Component renders
+          // (Next.js restriction). Middleware handles token refresh in its own mutable
+          // response context. Route Handlers should not throw here; if they do this
+          // catch hides a real failure — diagnose via the route's own error path.
         }
       },
     },
