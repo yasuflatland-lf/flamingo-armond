@@ -58,7 +58,7 @@ describe("gqlFetch", () => {
     expect(init.next?.revalidate).toBe(false);
   });
 
-  it("serializes variables into body", async () => {
+  it("defaults variables to empty object when caller omits them", async () => {
     const fetchSpy = vi
       .spyOn(global, "fetch")
       .mockResolvedValue(new Response(JSON.stringify({ data: { health: "ok" } })));
