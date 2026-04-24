@@ -9,7 +9,7 @@
 ## First-time setup
 
 ```bash
-# 1. Install Go 1.26.2 (from backend/.tool-versions) and Node 22.x (from ./.tool-versions).
+# 1. Install Go 1.26.2 (from backend/.tool-versions) and Node 24.x (from ./.tool-versions).
 mise install
 
 # 2. Enable Corepack so that the pnpm version in package.json is honored.
@@ -25,7 +25,7 @@ pnpm install
 Verify:
 
 ```bash
-node --version        # v22.x.y
+node --version        # v24.x.y
 pnpm --version        # 9.15.0  (resolved via Corepack from packageManager field)
 which pnpm            # should NOT point to a global install (npm i -g / brew)
 ```
@@ -43,9 +43,18 @@ which pnpm            # should NOT point to a global install (npm i -g / brew)
 
 ## Policy on generated files
 
-`backend/graph/generated/` and `backend/graph/model/models_gen.go` (gqlgen outputs) are **git-ignored**; CI regenerates them before vet/build. Only `backend/graph/resolver/*.resolvers.go` is committed — those files carry hand-written implementation. CI still runs `git diff --exit-code` against the resolver stubs to catch the case where a schema edit lands without its regenerated stubs.
+Both codegen outputs are **gitignored** — neither is committed:
 
-The frontend counterpart (`frontend/src/generated/`) will make its own commit-vs-ignore call when frontend codegen lands.
+| Tool | Input | Output (gitignored) | Regeneration command |
+|---|---|---|---|
+| gqlgen | `schema/*.graphql`, `backend/gqlgen.yml`, `backend/go.mod` (`tool` directive) | `backend/graph/generated/`, `backend/graph/model/models_gen.go` | `cd backend && go tool gqlgen generate` |
+| graphql-codegen | `schema/*.graphql`, `frontend/codegen.ts`, `frontend/src/**/*.{ts,tsx}` | `frontend/src/generated/` | `pnpm --filter frontend codegen` (populated in PR5) |
+
+Determinism relies on pinned tool versions (in `go.mod` and `package.json`) plus the committed schema. CI runs codegen before `go test` / `pnpm build`; no `git diff --exit-code` step is needed because the outputs are not tracked.
+
+Rationale: keeps PR diffs to hand-written code only and removes the merge-conflict churn that committing thousand-line generated files causes. Applied symmetrically to both stacks for consistency.
+
+> **Note**: `backend/graph/resolver/*.resolvers.go` are resolver stubs, not generated output. They are **committed** and CI verifies they are up-to-date via `git diff --exit-code -- graph/resolver/*.resolvers.go` in `backend.yml`. This is orthogonal to the "generated files are ignored" policy above.
 
 ## `.tool-versions` hierarchy (mise)
 

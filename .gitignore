@@ -142,6 +142,8 @@ vite.config.ts.timestamp-*
 /.claude/plans
 backend/server
 
-# gqlgen generated files (regenerated via `go tool gqlgen generate`)
-backend/graph/generated/
-backend/graph/model/models_gen.go
+# Generated code — regenerated locally and in CI. Both sides are ignored; see
+# docs/dev-setup.md §"Policy on generated files".
+/backend/graph/generated/
+/backend/graph/model/models_gen.go
+/frontend/src/generated/
