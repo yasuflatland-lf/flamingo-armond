@@ -18,7 +18,12 @@ const wwwAuthenticate = `Bearer realm="api"`
 // No header → request proceeds as anonymous (ctx has no AuthUser).
 // Header present + verification succeeds → AuthUser attached to ctx.
 // Header present + verification fails → 401 with WWW-Authenticate: Bearer realm="api".
-func AuthMiddleware(kf keyfunc.Keyfunc, cfg Config) echo.MiddlewareFunc {
+// Returns an error at construction if cfg is missing required fields, since
+// jwt.WithAudience("")/WithIssuer("") would silently match tokens with empty claims.
+func AuthMiddleware(kf keyfunc.Keyfunc, cfg Config) (echo.MiddlewareFunc, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 	parser := jwt.NewParser(
 		jwt.WithValidMethods([]string{"ES256", "RS256"}),
 		jwt.WithAudience(cfg.Audience),
@@ -53,7 +58,7 @@ func AuthMiddleware(kf keyfunc.Keyfunc, cfg Config) echo.MiddlewareFunc {
 			c.SetRequest(r.WithContext(withUser(r.Context(), u)))
 			return next(c)
 		}
-	}
+	}, nil
 }
 
 func extractBearer(header string) (string, error) {
@@ -69,7 +74,11 @@ func extractBearer(header string) (string, error) {
 }
 
 func reject(c *echo.Context, cause error) error {
-	slog.Warn("auth: token rejected", "err", cause, "path", c.Request().URL.Path)
+	slog.Warn("auth: token rejected",
+		"err", cause,
+		"path", c.Request().URL.Path,
+		"remote_addr", c.Request().RemoteAddr,
+	)
 	c.Response().Header().Set(echo.HeaderWWWAuthenticate, wwwAuthenticate)
 	return c.String(http.StatusUnauthorized, "invalid token")
 }

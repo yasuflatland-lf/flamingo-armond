@@ -87,7 +87,10 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
-	authMW := auth.AuthMiddleware(kf, cfg)
+	authMW, err := auth.AuthMiddleware(kf, cfg)
+	if err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
 
 	resolvers := &resolver.Resolver{}
 	e := newRouter(resolvers, authMW)

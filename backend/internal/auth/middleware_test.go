@@ -76,7 +76,10 @@ func (f *testFixture) newEcho(t *testing.T) *echo.Echo {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mw := AuthMiddleware(kf, Config{JWKSURL: f.jwksURL, Audience: f.audience, Issuer: f.issuer})
+	mw, err := AuthMiddleware(kf, Config{JWKSURL: f.jwksURL, Audience: f.audience, Issuer: f.issuer})
+	if err != nil {
+		t.Fatal(err)
+	}
 	e := echo.New()
 	q := e.Group("/query", mw)
 	q.POST("", func(c *echo.Context) error {
@@ -242,4 +245,19 @@ func TestMiddleware_WrongKid(t *testing.T) {
 	f := newFixture(t)
 	tok := f.signJWT(t, validClaims(f, "x"), jwt.SigningMethodES256, nil, "nonexistent-kid")
 	assert401(t, send(f.newEcho(t), "Bearer "+tok))
+}
+
+func TestAuthMiddleware_RejectsEmptyConfig(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	kf, err := NewJWKSKeyfunc(f.mwCtx, Config{
+		JWKSURL: f.jwksURL, Audience: f.audience, Issuer: f.issuer,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := AuthMiddleware(kf, Config{}); err == nil {
+		t.Fatal("expected error from empty Config")
+	}
 }
