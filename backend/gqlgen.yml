@@ -1,0 +1,34 @@
+# gqlgen config — invoked from backend/ via: go tool gqlgen generate
+#
+# Paths are relative to this file (backend/gqlgen.yml).
+
+schema:
+  - ../schema/*.graphql
+
+# Where the generated runtime code lands. Committed; CI verifies `git diff --exit-code`.
+exec:
+  filename: graph/generated/generated.go
+  package: generated
+
+# Where scalar / input / object struct types land. Committed.
+model:
+  filename: graph/model/models_gen.go
+  package: model
+
+# resolver stubs: one file per schema top-level type.
+# New resolvers are *added* to existing files on regenerate; existing bodies are never rewritten.
+resolver:
+  layout: follow-schema
+  dir: graph/resolver
+  package: resolver
+  filename_template: "{name}.resolvers.go"
+  omit_template_comment: false
+
+# Make gqlgen prefer our own model package when names collide.
+autobind:
+  - backend/graph/model
+
+# Deliberately omitted for PR2:
+#   directives:      # -> PR10 (@auth directive)
+#   models:          # -> PR8 (map scalar `Time` to time.Time etc.)
+#   federation:      # -> out of scope

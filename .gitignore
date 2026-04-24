@@ -141,3 +141,7 @@ vite.config.ts.timestamp-*
 # Claude Code
 /.claude/plans
 backend/server
+
+# gqlgen generated files (regenerated via `go tool gqlgen generate`)
+backend/graph/generated/
+backend/graph/model/models_gen.go
