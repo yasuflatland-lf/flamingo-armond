@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "./route";
 
 const mockExchangeCodeForSession = vi.hoisted(() => vi.fn());
@@ -15,7 +15,16 @@ function makeRequest(url: string) {
 }
 
 describe("GET /auth/callback", () => {
-  afterEach(() => vi.clearAllMocks());
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+    vi.clearAllMocks();
+  });
 
   it("exchanges valid code and redirects to /", async () => {
     mockExchangeCodeForSession.mockResolvedValueOnce({ error: null });
@@ -55,5 +64,31 @@ describe("GET /auth/callback", () => {
 
     expect([301, 302, 307, 308]).toContain(response.status);
     expect(response.headers.get("location")).toBe("http://localhost/profile");
+  });
+
+  it("falls back to / when next is an absolute URL", async () => {
+    mockExchangeCodeForSession.mockResolvedValueOnce({ error: null });
+
+    const response = await GET(
+      makeRequest("http://localhost/auth/callback?code=valid&next=https://evil.com"),
+    );
+
+    expect([301, 302, 307, 308]).toContain(response.status);
+    const location = response.headers.get("location") ?? "";
+    expect(location.startsWith("http://localhost")).toBe(true);
+    expect(new URL(location).pathname).toBe("/");
+  });
+
+  it("falls back to / when next is protocol-relative", async () => {
+    mockExchangeCodeForSession.mockResolvedValueOnce({ error: null });
+
+    const response = await GET(
+      makeRequest("http://localhost/auth/callback?code=valid&next=//evil.com"),
+    );
+
+    expect([301, 302, 307, 308]).toContain(response.status);
+    const location = response.headers.get("location") ?? "";
+    expect(location.startsWith("http://localhost")).toBe(true);
+    expect(new URL(location).pathname).toBe("/");
   });
 });
