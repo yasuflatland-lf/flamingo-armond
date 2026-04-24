@@ -1,0 +1,16 @@
+{
+  "name": "flamingo-armond",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Swiping flashcard app — Next.js × Echo(gqlgen) × Supabase monorepo.",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22.0.0 <23.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "codegen": "make codegen",
+    "dev:backend": "make dev-backend",
+    "dev:frontend": "make dev-frontend"
+  }
+}
