@@ -5,8 +5,9 @@ Next.js 16 (App Router) workspace for the flamingo-armond monorepo.
 ## Quickstart
 
 ```bash
-cp .env.example .env.local
-pnpm install                 # from repo root
+# from repo root
+cp frontend/.env.example frontend/.env.local
+pnpm install
 pnpm --filter frontend dev   # http://localhost:3000
 ```
 
