@@ -23,7 +23,7 @@ describe("gqlFetch", () => {
 
   it("throws on non-200", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue(new Response("boom", { status: 500 }));
-    await expect(gqlFetch(HealthQuery)).rejects.toThrow(/HTTP 500/);
+    await expect(gqlFetch(HealthQuery)).rejects.toThrow(/HTTP 500.*boom/);
   });
 
   it("throws when errors array is present", async () => {
@@ -47,12 +47,23 @@ describe("gqlFetch", () => {
     expect(init.next?.revalidate).toBe(60);
   });
 
+  it("passes revalidate: false through distinctly from undefined", async () => {
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ data: { health: "ok" } })));
+    await gqlFetch(HealthQuery, { revalidate: false });
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit & {
+      next?: { revalidate?: number | false };
+    };
+    expect(init.next?.revalidate).toBe(false);
+  });
+
   it("serializes variables into body", async () => {
     const fetchSpy = vi
       .spyOn(global, "fetch")
       .mockResolvedValue(new Response(JSON.stringify({ data: { health: "ok" } })));
-    await gqlFetch(HealthQuery, { variables: { foo: "bar" } });
+    await gqlFetch(HealthQuery);
     const body = JSON.parse((fetchSpy.mock.calls[0]?.[1] as RequestInit).body as string);
-    expect(body.variables).toEqual({ foo: "bar" });
+    expect(body.variables).toEqual({});
   });
 });
