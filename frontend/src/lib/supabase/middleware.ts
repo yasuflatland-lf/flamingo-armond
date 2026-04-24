@@ -28,7 +28,11 @@ export async function updateSession(request: NextRequest) {
 
   // CRITICAL: getUser() is what triggers token refresh — removing this call
   // silently breaks session renewal, leaving users with expired tokens.
-  await supabase.auth.getUser();
+  const { error } = await supabase.auth.getUser();
+  if (error) {
+    // Surface to edge-runtime stderr; failure here is anonymous-pass-through, not auth bug
+    console.error("[supabase/middleware] getUser() failed:", error.message);
+  }
 
   return supabaseResponse;
 }

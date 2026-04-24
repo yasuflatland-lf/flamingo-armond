@@ -6,7 +6,11 @@ export async function Header() {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser();
+  if (error) {
+    console.error("[header] getUser() failed:", error.message);
+  }
 
   return (
     <header className="flex items-center justify-between border-b px-6 py-3">
