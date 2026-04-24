@@ -5,7 +5,9 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const rawNext = url.searchParams.get("next") ?? "/";
-  const safeNext = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
+  const isSafeNext =
+    rawNext.startsWith("/") && !rawNext.startsWith("//") && !rawNext.includes("\\");
+  const safeNext = isSafeNext ? rawNext : "/";
 
   if (!code) {
     const loginUrl = new URL("/login", url.origin);

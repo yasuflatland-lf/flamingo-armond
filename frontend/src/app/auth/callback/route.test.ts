@@ -91,4 +91,14 @@ describe("GET /auth/callback", () => {
     expect(location.startsWith("http://localhost")).toBe(true);
     expect(new URL(location).pathname).toBe("/");
   });
+
+  it("falls back to / when next contains a backslash (URL-parser normalizes to /)", async () => {
+    mockExchangeCodeForSession.mockResolvedValueOnce({ error: null });
+    const response = await GET(
+      makeRequest("http://localhost/auth/callback?code=valid&next=/%5Cevil.com"),
+    );
+    // location header should NOT have host "evil.com"
+    const location = response.headers.get("location");
+    expect(location).toBe("http://localhost/");
+  });
 });
