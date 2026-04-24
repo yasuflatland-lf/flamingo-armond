@@ -27,8 +27,10 @@ Verify:
 ```bash
 node --version        # v22.x.y
 pnpm --version        # 9.15.0  (resolved via Corepack from packageManager field)
-which pnpm            # should point to a Corepack shim, not a global install
+which pnpm            # should NOT point to a global install (npm i -g / brew)
 ```
+
+`which pnpm` may return `~/.local/share/mise/shims/pnpm` on a mise-managed machine — that is a mise shim delegating to the Corepack-managed binary, not a global install, and is not drift. The resolved version (`pnpm --version`) is what matters.
 
 ## Day-to-day
 
@@ -42,6 +44,10 @@ which pnpm            # should point to a Corepack shim, not a global install
 ## Policy on generated files
 
 `backend/graph/generated/` (gqlgen output) and `frontend/src/generated/` (graphql-codegen output) are **committed**. CI verifies that running codegen produces no diff via `git diff --exit-code` (added in PR2 / PR5). Not gitignoring generated files is an intentional design choice.
+
+## `.tool-versions` hierarchy (mise)
+
+mise resolves `.tool-versions` files hierarchically: `backend/.tool-versions` (Go) and `./.tool-versions` (Node) are both honored without conflict. Backend CI sets `working_directory: backend` and sees only the Go version. When PR4 adds a frontend workflow that needs Node, that workflow must run from the repo root (`.`) — NOT `working_directory: frontend` — because the Node version is declared in the root `.tool-versions`.
 
 ## Why Corepack, not global pnpm
 

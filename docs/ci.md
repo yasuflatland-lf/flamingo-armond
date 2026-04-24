@@ -44,6 +44,10 @@ Coverage goes to **both Codecov and a GHA artifact**:
 
 `retention-days: 14` is tighter than the 90-day default to save storage; extend it if needed.
 
+## pnpm workspace filter exits 0 for missing scripts
+
+`pnpm --filter <workspace> <script>` emits nothing and exits 0 when the target package has no matching script — it is treated as a no-op, not an error (unlike `npm run`). CI steps that rely on this behavior to catch missing setup will silently pass. When adding the PR4 frontend workflow, use `--if-present` to make intent explicit, or add a stub script that `exit 1`s if the script must exist.
+
 ## GitHub Actions versioning
 
 Actions are pinned to **major tags (`@vN`)**, not SHAs:

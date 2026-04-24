@@ -4,7 +4,7 @@
 
 `frontend/` and `schema/` are **scaffolded but empty**:
 
-- `frontend/package.json` is `{}` — **no tooling is installed**. Do not propose `pnpm` / `npm` / `yarn` / `bun` / codegen commands without first reading `package.json`. Guessing will mislead.
+- `frontend/package.json` has `name`, `private`, and `version` set but **no dependencies or scripts**. Do not propose `pnpm` / `npm` / `yarn` / `bun` / codegen commands without first reading `package.json`. Guessing will mislead.
 - `frontend/codegen.ts` is an empty file.
 - `frontend/src/` contains only `.gitkeep`.
 - `schema/` contains only `.gitkeep`.
