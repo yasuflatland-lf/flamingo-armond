@@ -1,0 +1,7 @@
+# Source of truth for both backend (gqlgen) and frontend (graphql-codegen).
+# See docs/frontend.md for the codegen contract.
+
+type Query {
+  """Liveness probe for the GraphQL endpoint. Returns "ok"."""
+  health: String!
+}
