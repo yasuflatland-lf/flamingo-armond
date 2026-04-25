@@ -127,11 +127,13 @@ The `matcher` must also explicitly exclude `/api/:path*` and `/auth/callback`. W
 2. Calls `gqlFetch(MeQuery, { revalidate: 0 })` — `revalidate: 0` opts the response out of the Next cache to avoid serving stale PII.
 3. Passes the fetched values as `initial` props to the client component `ProfileForm`.
 
-`frontend/src/app/profile/profile-form.tsx` is a Client Component (`"use client"`). It uses `react-hook-form` with `zodResolver(updateProfileSchema)` for client-side validation and Apollo's `useMutation` to call `updateProfile`. On a successful mutation `router.refresh()` is called so Next re-evaluates the RSC with the new data.
+`frontend/src/app/profile/profile-form.tsx` is a Client Component (`"use client"`). It uses `react-hook-form` with `zodResolver(updateProfileSchema)` for client-side validation and Apollo's `useMutation` to call `updateProfile`. On a successful mutation `router.refresh()` is called — this re-evaluates the current RSC subtree and allows client mutations to invalidate server-rendered data without manual cache surgery. Combined with `revalidate: 0` on the server fetch, this gives a simple mutate-then-redisplay flow.
 
 ### Authorization forwarding in `gqlFetch`
 
 `frontend/src/lib/apollo/server.ts` reads the Supabase session via `createSupabaseServerClient().auth.getSession()` and forwards `Authorization: Bearer <access_token>` when present. Unauthenticated RSC calls omit the header and receive an `UNAUTHENTICATED` GraphQL error.
+
+`getSession()` reads from the cookie store and does **not** contact the Supabase auth server — it is safe to call per-request. The auth server is only consulted by `getUser()`. Both must destructure and propagate `error`. In `gqlFetch`, an auth-fetch error must **throw** (fail-closed) rather than silently skipping the `Authorization` header — a missing header would produce a silent `UNAUTHENTICATED` response that is indistinguishable from a legitimate anonymous call. The browser-side `authLink` is the only place where a missing session is intentionally fails-open (omits the header without throwing).
 
 ### Zod schema convention
 
@@ -152,7 +154,7 @@ The form currently uses `react-hook-form` + shadcn `Form` components (already in
 `frontend/src/app/profile/profile-form.test.tsx` is the reference for new form tests:
 
 - `@vitest-environment jsdom` directive at the top of the file.
-- `MockedProvider` from `@apollo/client/testing/react` stubs Apollo mutations.
+- `MockedProvider` from `@apollo/client/testing/react` stubs Apollo mutations. When testing error-rendering paths that rely on `useMutation`'s `error` field, pass `defaultOptions={{ mutate: { errorPolicy: "all" } }}` to `MockedProvider`; without it `result.errors` in the mock is not surfaced as `error` on the hook.
 - `vi.mock("next/navigation", ...)` stubs `useRouter`.
 - `@testing-library/react` + `userEvent` drive interaction.
 - `expect(element).toBeInTheDocument()` matchers come from `vitest.config.ts` loading `frontend/src/__test-setup__/jest-dom.ts`.
@@ -164,6 +166,10 @@ The form currently uses `react-hook-form` + shadcn `Form` components (already in
 `shadcn init` is interactive and not suitable for CI or non-interactive environments. The fallback is to hand-write `components.json`, `lib/utils.ts`, and the `globals.css` base tokens following the shadcn JSON schema — exactly what PR3 did.
 
 ## Gotchas encountered
+
+**`app/<route>/error.tsx` does not catch errors from `app/layout.tsx`.** Next.js error boundaries scoped to a route segment only catch errors thrown by that segment's RSCs and components. Errors thrown inside `app/layout.tsx` (e.g. the `Header`) escape to `app/global-error.tsx`, or to Next's default crash page if `global-error.tsx` is absent. Keep shared layout components defensive — render degraded states rather than throwing.
+
+**`useRef(false)` is the correct guard for one-shot effects in error boundaries.** When an error boundary needs to call `router.replace()` exactly once, use `const hasRedirected = useRef(false)` to gate the call inside `useEffect`. Using `useState` instead would re-trigger the effect on every re-render. `useRef` mutations do not schedule a re-render and therefore cannot form a feedback loop.
 
 **Next 16 deprecates `middleware.ts` in favour of `proxy.ts`.** The build emits a deprecation warning (not an error) when `src/middleware.ts` exists. PR6 intentionally stays on `middleware.ts` because `@supabase/ssr` templates and ecosystem docs still reference the old name. When the ecosystem catches up and Next removes the old name, rename `src/middleware.ts` → `src/proxy.ts` (and `src/lib/supabase/middleware.ts` → `src/lib/supabase/proxy.ts` for consistency).
 
@@ -177,7 +183,11 @@ The form currently uses `react-hook-form` + shadcn `Form` components (already in
 
 **Apollo imports — use `@apollo/client-integration-nextjs` for `ApolloClient` and `InMemoryCache` in browser code.** Importing those two symbols from the base `@apollo/client` package produces a client that does not handle Next.js SSR streaming and breaks hydration.
 
+**Apollo Client v4 error type split.** `CombinedGraphQLErrors` lives in `@apollo/client/errors`, **not** `@apollo/client`. Use `CombinedGraphQLErrors.is(error)` for type narrowing, then read `error.errors[0]?.message`. The v3 pattern `error.graphQLErrors` does not exist in v4.
+
 **RSC code must use `env.BACKEND_URL`, not `/api/graphql`.** The rewrite in `next.config.ts` only applies to browser-originating requests. Server components calling `/api/graphql` would hit a Next 404.
+
+**Vitest v3+ dropped `environmentMatchGlobs`.** Use `environment` in `vitest.config.ts` for the global default and add `// @vitest-environment <name>` at the top of individual test files that need a different environment (e.g. `jsdom`). The `environmentMatchGlobs` option is silently ignored in v3+ — tests that relied on it fall back to the global default without warning.
 
 **Vitest loads `src/env.ts` and crashes if required env vars are unset.** `vitest.config.ts` injects placeholders via `test.env` — currently `BACKEND_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Any new required var added to `src/env.ts` (server or client) must get a corresponding `test.env` entry, otherwise Vitest crashes at module load time before any test runs. Keep values valid for their Zod schema (e.g. `z.string().url()` requires a real URL shape).
 
