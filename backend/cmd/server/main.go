@@ -19,6 +19,8 @@ import (
 	"github.com/labstack/echo/v5/middleware"
 	"github.com/ravilushqa/otelgqlgen"
 	"github.com/rotisserie/eris"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
 	"backend/graph/generated"
@@ -69,8 +71,19 @@ func newRouter(resolvers *resolver.Resolver, authMW echo.MiddlewareFunc, repo re
 	})
 
 	gqlSrv := newGraphQLServer(resolvers)
+	// Wrap only the GraphQL POST handler with otelhttp so the HTTP layer
+	// extracts an incoming traceparent and creates the root HTTP span.
+	// /health and /playground are intentionally excluded to reduce noise.
+	otelGQLHandler := otelhttp.NewHandler(
+		gqlSrv,
+		"graphql.http",
+		otelhttp.WithPropagators(otel.GetTextMapPropagator()),
+		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+			return r.Method + " " + r.URL.Path
+		}),
+	)
 	q := e.Group("/query", authMW, loader.Middleware(repo))
-	q.POST("", echo.WrapHandler(gqlSrv))
+	q.POST("", echo.WrapHandler(otelGQLHandler))
 	e.GET("/playground", echo.WrapHandler(playground.Handler("GraphQL", "/query")))
 
 	return e

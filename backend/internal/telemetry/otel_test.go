@@ -11,6 +11,31 @@ import (
 	"backend/internal/telemetry"
 )
 
+func TestInit_SetsTextMapPropagator(t *testing.T) {
+	exp := tracetest.NewInMemoryExporter()
+	shutdown, err := telemetry.InitWithExporter(
+		context.Background(),
+		slog.New(slog.DiscardHandler),
+		exp,
+	)
+	if err != nil {
+		t.Fatalf("InitWithExporter: %v", err)
+	}
+	t.Cleanup(func() { _ = shutdown(context.Background()) })
+
+	fields := otel.GetTextMapPropagator().Fields()
+	fieldSet := make(map[string]bool, len(fields))
+	for _, f := range fields {
+		fieldSet[f] = true
+	}
+	if !fieldSet["traceparent"] {
+		t.Errorf("expected propagator Fields to contain 'traceparent', got %v", fields)
+	}
+	if !fieldSet["tracestate"] {
+		t.Errorf("expected propagator Fields to contain 'tracestate', got %v", fields)
+	}
+}
+
 func TestInit_NoopWhenEndpointEmpty(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
 	shutdown, err := telemetry.Init(context.Background(), slog.New(slog.DiscardHandler))

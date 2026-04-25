@@ -762,6 +762,88 @@ func sha256Hex(s string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// TestGraphQL_PropagatesTraceparent verifies that an incoming W3C traceparent
+// header is extracted by the otelhttp layer and that all emitted spans share
+// the trace ID supplied by the caller.
+func TestGraphQL_PropagatesTraceparent(t *testing.T) {
+	exp, flush := installInMemoryTracer(t)
+
+	// The /query group uses noopAuthMW so no real JWT is needed here.
+	ts := newTestServer(t)
+
+	const (
+		traceIDHex = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		spanIDHex  = "bbbbbbbbbbbbbbbb"
+		traceparent = "00-" + traceIDHex + "-" + spanIDHex + "-01"
+	)
+
+	body := bytes.NewBufferString(`{"query":"{ health }"}`)
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/query", body)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("traceparent", traceparent)
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /query: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(res.Body)
+		t.Fatalf("status = %d, body = %q", res.StatusCode, raw)
+	}
+
+	flush()
+
+	spans := exp.GetSpans()
+	if len(spans) == 0 {
+		t.Fatal("expected at least one span, got none")
+	}
+
+	wantTraceID, err := hex.DecodeString(traceIDHex)
+	if err != nil {
+		t.Fatalf("decode traceIDHex: %v", err)
+	}
+	var wantArr [16]byte
+	copy(wantArr[:], wantTraceID)
+
+	names := make([]string, 0, len(spans))
+	for _, s := range spans {
+		names = append(names, s.Name)
+		if s.SpanContext.TraceID() != wantArr {
+			t.Errorf("span %q: TraceID = %s, want %s",
+				s.Name, s.SpanContext.TraceID(), traceIDHex)
+		}
+	}
+	t.Logf("propagation test span names: %v", names)
+
+	// Verify that at least one HTTP-layer span exists (otelhttp wraps the handler).
+	var sawHTTP bool
+	for _, n := range names {
+		if strings.Contains(n, "/query") || strings.Contains(n, "POST") || strings.Contains(n, "graphql.http") {
+			sawHTTP = true
+			break
+		}
+	}
+	if !sawHTTP {
+		t.Errorf("expected an HTTP-layer span (POST /query or graphql.http), got: %v", names)
+	}
+
+	// Verify at least one gqlgen operation-level span exists.
+	var sawOperation bool
+	for _, n := range names {
+		if strings.Contains(n, "Health") || strings.Contains(n, "health") || strings.Contains(n, "Query") {
+			sawOperation = true
+			break
+		}
+	}
+	if !sawOperation {
+		t.Errorf("expected a gqlgen operation or resolver span, got: %v", names)
+	}
+}
+
 func TestLoader_Middleware_DoesNotBreakQuery(t *testing.T) {
 	f := newJWTFixture(t)
 	ts, _ := newGraphQLTestServer(t, f)
