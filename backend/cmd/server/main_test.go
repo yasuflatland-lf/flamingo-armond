@@ -772,8 +772,8 @@ func TestGraphQL_PropagatesTraceparent(t *testing.T) {
 	ts := newTestServer(t)
 
 	const (
-		traceIDHex = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-		spanIDHex  = "bbbbbbbbbbbbbbbb"
+		traceIDHex  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		spanIDHex   = "bbbbbbbbbbbbbbbb"
 		traceparent = "00-" + traceIDHex + "-" + spanIDHex + "-01"
 	)
 
@@ -819,7 +819,6 @@ func TestGraphQL_PropagatesTraceparent(t *testing.T) {
 	}
 	t.Logf("propagation test span names: %v", names)
 
-	// Verify that at least one HTTP-layer span exists (otelhttp wraps the handler).
 	var sawHTTP bool
 	for _, n := range names {
 		if strings.Contains(n, "/query") || strings.Contains(n, "POST") || strings.Contains(n, "graphql.http") {
@@ -831,7 +830,6 @@ func TestGraphQL_PropagatesTraceparent(t *testing.T) {
 		t.Errorf("expected an HTTP-layer span (POST /query or graphql.http), got: %v", names)
 	}
 
-	// Verify at least one gqlgen operation-level span exists.
 	var sawOperation bool
 	for _, n := range names {
 		if strings.Contains(n, "Health") || strings.Contains(n, "health") || strings.Contains(n, "Query") {
