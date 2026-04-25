@@ -224,6 +224,66 @@ See also the general env-vars table above.
 | `DB_MAX_CONN_LIFETIME` | no | `30m` | Maximum lifetime of a pooled connection |
 | `DB_MAX_CONN_IDLE_TIME` | no | `5m` | Maximum idle time before a connection is evicted |
 
+## GraphQL operations
+
+### `me` query and `updateProfile` mutation
+
+Both operations require an authenticated caller. When `auth.UserFrom(ctx)` returns `nil` (no valid JWT), the usecase layer returns a `*gqlerror.Error` with `extensions.code = "UNAUTHENTICATED"`. gqlgen translates this into the standard GraphQL error envelope:
+
+```json
+{ "errors": [{ "message": "authentication required", "extensions": { "code": "UNAUTHENTICATED" } }], "data": null }
+```
+
+`data` is `null` — not omitted — because the field is non-nullable in the schema.
+
+### Partial-update semantics for `bio`
+
+`UpdateProfileInput.Bio` is `*string` throughout the stack:
+
+- `nil` (field omitted in the JSON input) → "leave unchanged" — the repository skips the column in the `UPDATE`.
+- `""` (field present, empty string) → "explicit clear" — the repository writes an empty string.
+
+This three-state pointer distinction is preserved end-to-end: schema (`bio: String`) → gqlgen model (`Bio *string`) → `usecase.UpdateProfileInput.Bio *string` → `repository.ProfileUpdate.Bio *string`. Never collapse it to a plain `string` default.
+
+### Layering rule
+
+```
+resolver (schema.resolvers.go)
+  └─ usecase (internal/usecase/profile.go)
+       └─ repository (internal/repository/)
+```
+
+Resolvers are intentionally thin: extract `model.UpdateProfileInput`, map it to `usecase.UpdateProfileInput`, delegate, and return. Auth checks, validation, and `gqlerror.Error` construction live in the usecase layer. The `unauthenticated()` helper is a private function inside the usecase package; PR9 does not add a shared error helper — that is deferred to PR10.
+
+### DI pattern
+
+`backend/graph/resolver/resolver.go` holds:
+
+```go
+type Resolver struct {
+    Profile *usecase.ProfileUsecase
+}
+```
+
+`cmd/server/main.go::run()` wires it:
+
+```go
+repo := repository.NewProfileRepository(db.GORM)
+resolvers := &resolver.Resolver{Profile: usecase.NewProfileUsecase(repo)}
+```
+
+Adding a new feature: build a usecase, add a field to `Resolver`, wire it in `run()`.
+
+### Validation rules in `usecase.UpdateProfile`
+
+- `displayName` is `strings.TrimSpace`-ed, then its rune length is checked: must be 1–50 runes.
+- Out-of-bounds returns `extensions.code = "BAD_USER_INPUT"` with `"field": "displayName"`.
+- Length is measured in **runes** (`len([]rune(name))`), not bytes. A JS `max(50)` validator on the frontend counts UTF-16 code units; multi-byte characters can pass the JS check and still fail here. Surface backend `BAD_USER_INPUT` errors as form-level errors on the client.
+
+### Integration tests
+
+`backend/cmd/server/main_test.go` contains `TestGraphQL_Me_Anonymous`, `TestGraphQL_Me_Authenticated`, and `TestGraphQL_UpdateProfile_Authenticated`. These tests use the testcontainer Postgres, a local JWKS HTTP server (`jwtFixture`), and ECDSA-signed JWTs. Future GraphQL integration tests should reuse the same `jwtFixture` + `startServer` helpers rather than re-inventing the JWKS mock.
+
 ## Backend gotchas
 
 ### Echo v5 handler signature uses a pointer receiver

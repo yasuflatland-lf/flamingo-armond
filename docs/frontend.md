@@ -121,6 +121,46 @@ The `matcher` must also explicitly exclude `/api/:path*` and `/auth/callback`. W
 - **`createSupabaseServerClient` `setAll` catch is scoped to Server Components.** The helper is also used by Route Handlers (e.g. `auth/callback/route.ts`) where cookie writes DO succeed. The `try/catch` in `setAll` silently swallows errors in both paths; a failure inside a Route Handler would be invisible. Do not repurpose `createSupabaseServerClient` in contexts where a write failure must surface (e.g. a middleware-like flow) without removing or re-throwing from that catch.
 - **Open redirect via `?next=`.** `WHATWG URL` accepts absolute URLs and protocol-relative paths even when given a base-URL argument; a bare `startsWith("/")` check is insufficient. The correct guard: `value.startsWith("/") && !value.startsWith("//") && !value.includes("\\")`. The backslash variant bypasses naive checks because http(s) special-scheme parsers normalize `\` → `/`.
 
+## Profile page (`/profile`)
+
+### Page pattern (RSC + client form)
+
+`frontend/src/app/profile/page.tsx` is a React Server Component. It:
+
+1. Calls `createSupabaseServerClient().auth.getUser()` and redirects to `/login` when no session exists.
+2. Calls `gqlFetch(MeQuery, { revalidate: 0 })` — `revalidate: 0` opts the response out of the Next cache to avoid serving stale PII.
+3. Passes the fetched values as `initial` props to the client component `ProfileForm`.
+
+`frontend/src/app/profile/profile-form.tsx` is a Client Component (`"use client"`). It uses `react-hook-form` with `zodResolver(updateProfileSchema)` for client-side validation and Apollo's `useMutation` to call `updateProfile`. On a successful mutation `router.refresh()` is called so Next re-evaluates the RSC with the new data.
+
+### Authorization forwarding in `gqlFetch`
+
+`frontend/src/lib/apollo/server.ts` now resolves the PR5-era `TODO(PR9)`: `gqlFetch` reads the Supabase session via `createSupabaseServerClient().auth.getSession()` and, when a session exists, forwards `Authorization: Bearer <access_token>` to the backend. Unauthenticated RSC calls omit the header and receive an `UNAUTHENTICATED` GraphQL error.
+
+### Zod schema convention
+
+Validation schemas live in `frontend/src/schemas/*.ts` and mirror their corresponding GraphQL `Input` types. Example: `frontend/src/schemas/profile.ts` mirrors `UpdateProfileInput`.
+
+The mirror is intentionally asymmetric where JS and Go count string length differently. JS `z.string().max(50)` counts UTF-16 code units; Go counts runes. A 50-character string with multi-byte characters can pass the Zod check and still fail the backend's rune check. Always surface backend `BAD_USER_INPUT` errors (e.g. `extensions.field === "displayName"`) as form-level errors rather than discarding them.
+
+### Form library
+
+PR9 uses `react-hook-form` + shadcn `Form` components (already in deps). PR10 will replace this with TanStack Form. Keep `profile-form.tsx` focused on form behavior (validation, submission, field wiring) so the swap is local to that file.
+
+### Dependency pin: `@hookform/resolvers`
+
+`@hookform/resolvers` is held at `^3.10.0`. Version 5.x requires Zod v4 internals and is incompatible with Zod v3. When the project upgrades to Zod v4, this pin can be relaxed.
+
+### Test stack
+
+`frontend/src/app/profile/profile-form.test.tsx` is the reference for new form tests:
+
+- `@vitest-environment jsdom` directive at the top of the file.
+- `MockedProvider` from `@apollo/client/testing/react` stubs Apollo mutations.
+- `vi.mock("next/navigation", ...)` stubs `useRouter`.
+- `@testing-library/react` + `userEvent` drive interaction.
+- `expect(element).toBeInTheDocument()` matchers come from `vitest.config.ts` loading `frontend/src/__test-setup__/jest-dom.ts`.
+
 ## shadcn/ui
 
 `frontend/components.json` and `frontend/src/lib/utils.ts` (the `cn()` helper) are committed. No components are added yet. PR6 runs `pnpm dlx shadcn add button input label form` and extends `globals.css` with the theme tokens those components reference.
