@@ -12,8 +12,15 @@ const HealthQuery = graphql(`query Health { health }`);
 function mockSession(session: { access_token: string } | null) {
   vi.mocked(createSupabaseServerClient).mockResolvedValue(
     // biome-ignore lint/suspicious/noExplicitAny: partial mock of Supabase client type
-    { auth: { getSession: vi.fn().mockResolvedValue({ data: { session } }) } } as any,
+    { auth: { getSession: vi.fn().mockResolvedValue({ data: { session }, error: null }) } } as any,
   );
+}
+
+function mockSessionError(err: Error) {
+  vi.mocked(createSupabaseServerClient).mockResolvedValue({
+    auth: { getSession: vi.fn().mockResolvedValue({ data: { session: null }, error: err }) },
+    // biome-ignore lint/suspicious/noExplicitAny: partial mock of Supabase client type
+  } as any);
 }
 
 describe("gqlFetch", () => {
@@ -114,5 +121,12 @@ describe("gqlFetch", () => {
     );
 
     await expect(gqlFetch(HealthQuery)).rejects.toThrow("session error");
+  });
+
+  it("throws when getSession returns an error field", async () => {
+    const authErr = new Error("auth down");
+    mockSessionError(authErr);
+
+    await expect(gqlFetch(HealthQuery)).rejects.toThrow("auth down");
   });
 });

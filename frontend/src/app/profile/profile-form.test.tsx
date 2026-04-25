@@ -2,6 +2,7 @@
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { GraphQLError } from "graphql";
 import { describe, expect, it, vi } from "vitest";
 import { UpdateProfileDocument } from "@/generated/graphql";
 import { ProfileForm } from "./profile-form";
@@ -123,5 +124,39 @@ describe("<ProfileForm>", () => {
     await waitFor(() => {
       expect(mutationCalled).toHaveBeenCalledOnce();
     });
+  });
+
+  it("renders error message when mutation returns a GraphQL error", async () => {
+    const user = userEvent.setup();
+
+    const mocks = [
+      {
+        request: {
+          query: UpdateProfileDocument,
+          variables: { input: { displayName: "Alice", bio: null } },
+        },
+        result: {
+          errors: [
+            new GraphQLError("displayName must be 1-50 characters", {
+              extensions: { code: "BAD_USER_INPUT" },
+            }),
+          ],
+        },
+      },
+    ];
+
+    render(
+      <MockedProvider mocks={mocks} defaultOptions={{ mutate: { errorPolicy: "all" } }}>
+        <ProfileForm initial={{ displayName: "", bio: "" }} />
+      </MockedProvider>,
+    );
+
+    const displayNameInput = screen.getByLabelText(/display name/i);
+    await user.type(displayNameInput, "Alice");
+
+    const saveButton = screen.getByRole("button", { name: /save/i });
+    await user.click(saveButton);
+
+    expect(await screen.findByText("displayName must be 1-50 characters")).toBeInTheDocument();
   });
 });

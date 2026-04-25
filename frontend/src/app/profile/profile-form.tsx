@@ -1,5 +1,6 @@
 "use client";
 
+import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { useMutation } from "@apollo/client/react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
@@ -86,7 +87,13 @@ export function ProfileForm({ initial }: Props) {
             </FormItem>
           )}
         />
-        {error ? <p className="text-sm text-destructive">{error.message}</p> : null}
+        {error ? (
+          <p className="text-sm text-destructive">
+            {CombinedGraphQLErrors.is(error)
+              ? (error.errors[0]?.message ?? error.message)
+              : error.message}
+          </p>
+        ) : null}
         <Button type="submit" disabled={loading}>
           {loading ? "Saving..." : "Save"}
         </Button>

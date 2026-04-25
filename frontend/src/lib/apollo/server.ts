@@ -16,7 +16,9 @@ export async function gqlFetch<TResult, TVars>(
   const supabase = await createSupabaseServerClient();
   const {
     data: { session },
+    error: sessionErr,
   } = await supabase.auth.getSession();
+  if (sessionErr) throw sessionErr;
 
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (session?.access_token) {
