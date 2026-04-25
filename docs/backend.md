@@ -32,6 +32,8 @@ Production (Render) sends **SIGTERM and then SIGKILL after 30 seconds**. Therefo
 
 If `srv.Shutdown(ctx)` returns `context.DeadlineExceeded`, in-flight requests did not finish inside the timeout. This is treated as a **warning + normal exit (`return nil`)**, not an error — we don't want to trigger Render's crash-restart loop over graceful-shutdown timeouts.
 
+**DB pool close ordering is sensitive.** The pool must be closed only after `srv.Shutdown` returns, never before. Closing the pool while in-flight requests still hold connections produces `connection closed` errors that leak into client responses. The correct sequence inside the shutdown goroutine is: call `srv.Shutdown(sctx)` → stash the return value → call `db.Close()` unconditionally → evaluate the stashed error. This guarantees the pool outlives all active HTTP handlers.
+
 ## HTTP server security timeouts
 
 Running `http.Server` with no timeouts is a **Slowloris DoS surface** (gosec G112). The service sets:
@@ -51,8 +53,13 @@ These values target a public API on Render. Revisit if the threat model or deplo
 | `SUPABASE_JWKS_URL` | yes | — | JWKS endpoint for JWT verification |
 | `SUPABASE_JWT_AUDIENCE` | yes | — | Expected `aud` claim in incoming JWTs |
 | `SUPABASE_JWT_ISSUER` | yes | — | Expected `iss` claim in incoming JWTs |
+| `SUPABASE_DB_URL` | yes | — | Supabase Postgres DSN (`postgres://...?sslmode=require`) |
+| `DB_MAX_CONNS` | no | `10` | Maximum pool connections |
+| `DB_MIN_CONNS` | no | `0` | Minimum pool connections kept alive |
+| `DB_MAX_CONN_LIFETIME` | no | `30m` | Maximum lifetime of a pooled connection |
+| `DB_MAX_CONN_IDLE_TIME` | no | `5m` | Maximum idle time before a connection is evicted |
 
-`PORT` and `SHUTDOWN_TIMEOUT` are optional with safe defaults. The three `SUPABASE_*` variables are all required — the server refuses to start if any is missing (fail-fast via `ConfigFromEnv`).
+`PORT` and `SHUTDOWN_TIMEOUT` are optional with safe defaults. The three `SUPABASE_JWT_*` variables and `SUPABASE_DB_URL` are all required — the server refuses to start if any is missing (fail-fast via `ConfigFromEnv`).
 
 ## Testing patterns
 
@@ -62,6 +69,9 @@ These values target a public API on Render. Revisit if the threat model or deplo
 - **Do not send real signals to the test process** (e.g. `syscall.Kill(os.Getpid(), SIGTERM)`). Signals are delivered process-wide and race with `t.Parallel()` tests and the test runner itself. Reproduce the meaning of `signal.NotifyContext` by **cancelling a `context.WithCancel` directly**.
 - **Silence logs in tests** with `slog.New(slog.DiscardHandler)`.
 - **`t.Parallel()` is incompatible with `t.Setenv()`** — `t.Setenv` mutates process-global env state and the Go test framework will panic if a parallel test calls it. Tests that manipulate env vars must be sequential (no `t.Parallel()`).
+- **Packages that use `testcontainers-go` each define their own `TestMain`** — testcontainers containers cannot be shared across process boundaries, so container lifecycle must be scoped to the package. Current packages with `TestMain`: `cmd/server`, `internal/repository`, `internal/database`.
+- **`bootstrapAuthSchema` fixture is required before migration** — migrations include a trigger that references `auth.users`. In production Supabase provides this schema, but the Postgres test container does not. Tests must call `bootstrapAuthSchema` to create the `auth` schema and `auth.users` table before applying migrations.
+- **Always pass `tcpostgres.BasicWaitStrategies()`** when starting a Postgres container — this prevents race conditions caused by the container's init-time restart cycle. Omitting it can cause connections to fail intermittently before the server is ready.
 
 ## Logging
 
@@ -178,6 +188,41 @@ All three are required. `ConfigFromEnv()` returns an error and the server fails 
 ### Echo v5 + gqlgen error propagation
 
 `echo.WrapHandler` (v5) converts a `http.Handler` into an `echo.HandlerFunc` that always returns `nil`. gqlgen's `handler.Server` is an `http.Handler`: it writes GraphQL errors into the response body as `{"errors":[...]}` with HTTP 200, and only ever writes a 5xx for catastrophic transport failures. Because `WrapHandler` returns `nil`, Echo's central error pipeline never sees these, which is fine: the GraphQL error is already transported in-band. Do **not** wrap gqlgen with a custom adapter that translates non-2xx into `echo.NewHTTPError` — that would cause a double write on the already-committed `ResponseWriter`.
+
+## Database
+
+### Pool and interface design
+
+A single `pgxpool.Pool` is created at startup. `stdlib.OpenDBFromPool` converts it into a `*sql.DB`, which is then handed to GORM. The result is **one pool, two interfaces** — pgx native for low-level queries and GORM for the ORM layer — without double-consuming Render free tier's connection limit.
+
+### Migrations
+
+Migrations use `golang-migrate` with `*.up.sql` / `*.down.sql` files. Raw SQL lets you express triggers, foreign keys, and `SECURITY DEFINER` functions directly, none of which GORM's AutoMigrate can model. AutoMigrate is therefore not used.
+
+Migration files live under `backend/internal/database/migrations/`. Go's `//go:embed` directive does not allow `..` path components, so the migration directory must sit inside the package tree rather than at the repo root.
+
+When a migration fails mid-run, `schema_migrations.dirty=true` is set. Recovery requires an operator to run `migrate force <version>`. The `run()` function treats any migration error as fatal and returns immediately (fail-fast).
+
+### Startup order
+
+```
+database.Migrate(url)
+→ database.Open(ctx, cfg)
+→ repository.NewProfileRepository(db.GORM)
+→ server start
+```
+
+### Environment variables (database)
+
+See also the general env-vars table above.
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `SUPABASE_DB_URL` | yes | — | Supabase Postgres DSN (`postgres://...?sslmode=require`) |
+| `DB_MAX_CONNS` | no | `10` | Maximum pool connections |
+| `DB_MIN_CONNS` | no | `0` | Minimum pool connections kept alive |
+| `DB_MAX_CONN_LIFETIME` | no | `30m` | Maximum lifetime of a pooled connection |
+| `DB_MAX_CONN_IDLE_TIME` | no | `5m` | Maximum idle time before a connection is evicted |
 
 ## Backend gotchas
 
