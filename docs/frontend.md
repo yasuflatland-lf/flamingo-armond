@@ -315,3 +315,13 @@ The Apollo docs allow switching hash-only requests to GET with the query string.
 1. Compute `sha256Hex(print(doc))`.
 2. POST with `{ extensions: { persistedQuery: { version: 1, sha256Hash } } }`.
 3. If the response body contains an error with `extensions.code === "PERSISTED_QUERY_NOT_FOUND"`, retry the POST with `query: print(doc)` + the same `extensions`.
+
+### APQ implementation notes
+
+#### `@apollo/client-integration-nextjs` prepends two internal streaming links
+
+`@apollo/client-integration-nextjs` prepends two internal links (`ReadFromReadableStreamLink`, `TeeToReadableStreamLink`) to the user-supplied link chain before any user links execute. These support RSC streaming. As a result, the live chain assembled from `from([authLink, apqLink, httpLink])` has **five** segments, not three. Tests that assert `client.link.length === 3` or similar absolute counts will fail. Assert the **relative order** of the user-supplied links instead (e.g. verify that `authLink` appears before `apqLink` in the chain, not that the chain has exactly three nodes).
+
+#### `ApolloLink.from` builds a binary tree, not a flat list
+
+`ApolloLink.from([a, b, c])` produces a binary tree of `ApolloLink` "concat" glue nodes; `a`, `b`, `c` are the leaves. When traversing `link.left` / `link.right` to inspect the chain in tests, stop recursing when you reach a named subclass (`HttpLink`, `PersistedQueryLink`, `SetContextLink`). Descending into `HttpLink` reveals its own internal `ClientAwarenessLink` + `BaseHttpLink` pair and pollutes the segment list with internal implementation details.

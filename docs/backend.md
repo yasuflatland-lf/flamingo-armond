@@ -538,9 +538,40 @@ Tracer shutdown is last so that DB-layer spans emitted during request drain stil
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | no | *(empty)* | OTLP HTTP endpoint (e.g. `http://localhost:4318`). Empty = tracing disabled. |
-| `OTEL_TRACES_SAMPLER_ARG` | no | `1.0` | Float in `[0, 1]`. Invalid or out-of-range values silently fall back to `1.0`. |
+| `OTEL_TRACES_SAMPLER_ARG` | no | `1.0` | Float in `[0, 1]`. Parse errors and out-of-range values each emit a `slog.Warn` and fall back to `1.0`. |
 | `APP_ENV` | no | `development` | Used as `deployment.environment` resource attribute. Set to `production` on Render. |
 
 ## Automatic Persisted Queries
 
 `extension.AutomaticPersistedQuery{Cache: lru.New(100)}` is always registered on the gqlgen handler. There is no env gate — hash-less queries still work as normal POST bodies, so dev / playground flows are unaffected. The first request that contains `extensions.persistedQuery.sha256Hash` populates the LRU cache; subsequent hash-only requests from the same client short-circuit to the cached query text without sending the full document.
+
+### APQ / Observability implementation notes
+
+#### Library compatibility pins
+
+`github.com/ravilushqa/otelgqlgen` must be pinned to **v0.17.0** when using `github.com/99designs/gqlgen v0.17.66`. Upgrading to `otelgqlgen` v0.19.x transitively bumps gqlgen to v0.17.73, which changes the generated `ComplexityRoot` signature and breaks `backend/graph/generated/`. The v0.17.x line of `otelgqlgen` matches the gqlgen v0.17.66 generics era.
+
+The APQ LRU cache must be constructed as `lru.New[string](100)` (generic form). gqlgen v0.17.66 made the cache interface generic; the non-generic `lru.New(100)` form shown in older online docs no longer compiles against this version.
+
+#### `otelgqlgen` span naming (empirically verified against v0.17.0)
+
+- **Operation span**: bare operation name — `Me`, `UpdateProfile`, `Health`. Not `query Me` and not `graphql.execute`.
+- **Resolver / field spans**: `<ObjectType>/<fieldName>` — e.g. `Query/me`, `User/displayName`.
+
+Test assertions that match span names (e.g. `strings.HasPrefix(name, "User/")`) are anchored to `otelgqlgen@v0.17.0`. If `otelgqlgen` is upgraded, run the integration tests — a span-naming change will surface immediately as a failing assertion before it silently breaks production dashboards.
+
+#### `tracetest.InMemoryExporter` shutdown clears the buffer
+
+`exporter.Shutdown(ctx)` internally calls `Reset()`, which clears the recorded span buffer. The natural pattern `defer shutdown(); ...; spans := exp.GetSpans()` returns zero spans because the buffer was already cleared by the deferred shutdown. To read spans correctly: call `tp.ForceFlush(ctx)` to drain pending spans **before** calling `Shutdown`, or call `exp.GetSpans()` before `Shutdown` returns.
+
+#### `resource.New` partial-error handling
+
+`go.opentelemetry.io/otel/sdk/resource` returns `resource.ErrPartialResource` or `resource.ErrSchemaURLConflict` **alongside a usable `*Resource`** when one detector fails (e.g. a host-info detector blocked by container restrictions). Do not `return err` on these — use `errors.Is` to identify them, emit a `slog.Warn`, and pass the partial resource to `sdktrace.WithResource`. Aborting init on a partial-detector failure crashes the server in sandboxed environments where host introspection is restricted.
+
+#### OTLP exporter goroutine ownership
+
+`otlptracehttp.New` starts background goroutines and a persistent HTTP client. If `Init` creates the exporter but a later step (e.g. resource construction) errors before the SDK takes ownership, the exporter is orphaned and leaks. The fix is to call `exp.Shutdown(ctx)` in the failure path of `Init` so the background goroutines are always cleaned up.
+
+#### Sampler env-var validation
+
+`OTEL_TRACES_SAMPLER_ARG` parsing emits `slog.Warn` on two distinct conditions: a parse error (e.g. `0,1` with a comma instead of a decimal point) and an out-of-range value (outside `[0, 1]`). Both fall back to `1.0`. The two warnings are kept separate so operators can triage env config issues quickly — a comma typo produces a different message than a value of `1.5`.
