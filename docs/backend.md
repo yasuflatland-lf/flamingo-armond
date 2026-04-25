@@ -613,7 +613,7 @@ Today's call sites:
 ### Why `eris` over alternatives
 
 - **`fmt.Errorf("%w")`**: no stack trace, can only carry a string context.
-- **`pkg/errors`**: in maintenance mode upstream (no new features per its README, last release v0.9.1 in 2020); stack capture is opt-in per call via `WithStack` rather than automatic on every wrap.
+- **`pkg/errors`**: last tagged release v0.9.1 in January 2020 with no upstream activity since; lacks the structured JSON chain serialization that this codebase relies on for the `error_chain` log attribute.
 - **`cockroachdb/errors`**: heavier, drags in many transitive deps; revisit only when multi-service error portability or first-class Sentry SDK integration becomes a hard requirement.
 - **`joomcode/errorx`**: typed-error focus, less aligned with our wrap-and-log need.
 
