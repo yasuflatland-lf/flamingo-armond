@@ -1,8 +1,8 @@
 import "server-only";
-// TODO(PR9): forward auth token via createSupabaseServerClient() when `me` query lands.
 import type { TypedDocumentNode } from "@apollo/client";
 import { print } from "graphql";
 import { env } from "@/env";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type GqlFetchInit<TVars> = {
   variables?: TVars;
@@ -13,9 +13,17 @@ export async function gqlFetch<TResult, TVars>(
   doc: TypedDocumentNode<TResult, TVars>,
   init: GqlFetchInit<TVars> = {},
 ): Promise<TResult> {
+  const supabase = await createSupabaseServerClient();
+  const { data: { session } } = await supabase.auth.getSession();
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (session?.access_token) {
+    headers.authorization = `Bearer ${session.access_token}`;
+  }
+
   const res = await fetch(`${env.BACKEND_URL}/query`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ query: print(doc), variables: init.variables ?? {} }),
     // Pass `next` only when the caller explicitly sets revalidate. Omitting it
     // entirely lets Next.js apply its default; `0` opts out of caching; `false`
