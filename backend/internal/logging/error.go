@@ -1,9 +1,13 @@
 // Package logging centralizes structured error logging on top of slog.
 //
-// LogError is the single entry point used by the GraphQL boundary, the auth
-// middleware, and main() so that every "error event" emitted by the backend
-// carries the same shape: ERROR level, a human-readable msg, and the eris
-// error chain attached as the "error_chain" attribute.
+// LogError is the ERROR-level entry point used by the GraphQL boundary
+// (gqlerr.Internal) and main()'s terminal log so every error event the
+// backend emits at ERROR level carries the same shape: a human-readable
+// msg and the eris error chain attached as the "error_chain" attribute.
+//
+// Non-ERROR sites that need the same attribute (e.g. auth.reject's Warn
+// log for client-side rejections) attach eris.ToJSON(err, true) to the
+// "error_chain" key directly so log shape stays consistent.
 package logging
 
 import (

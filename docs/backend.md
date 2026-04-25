@@ -596,22 +596,24 @@ The only sentinel today is `repository.ErrNotFound`. New sentinels are allowed w
 
 ### Logging
 
-All error sites that produce a structured log entry must go through `internal/logging.LogError(ctx, logger, msg, err, attrs...)`. The helper:
+All error sites that produce a structured log entry must attach the eris chain as the `error_chain` attribute (output of `eris.ToJSON(err, true)`). ERROR-level sites use `internal/logging.LogError(ctx, logger, msg, err, attrs...)`, which:
 
-- attaches the eris chain as the `error_chain` attribute (output of `eris.ToJSON(err, true)`),
+- attaches `error_chain` automatically,
 - emits at `slog.LevelError`,
 - is a no-op when `err == nil`.
 
-The three call sites today are:
+Non-ERROR sites (e.g. `slog.Warn` for client-side faults) attach the same `error_chain` value manually so log shape stays consistent.
 
-1. `gqlerr.Internal(ctx, err)` — every internal-server error returned through GraphQL.
-2. `auth/middleware.go reject(c, cause)` — uses `slog.Warn` directly (Warn level) but attaches `error_chain` from the same `eris.ToJSON` output for log shape parity.
-3. `cmd/server/main.go main()` — terminal error before `os.Exit(1)`.
+Today's call sites:
+
+1. **`gqlerr.Internal(ctx, err)`** — every internal-server error returned through GraphQL (uses `LogError`, ERROR level).
+2. **`cmd/server/main.go main()`** — terminal error before `os.Exit(1)` (uses `LogError`, ERROR level).
+3. **`auth/middleware.go reject(c, cause)`** — token-rejection log; uses `slog.Warn` directly with `eris.ToJSON(cause, true)` for log-shape parity.
 
 ### Why `eris` over alternatives
 
 - **`fmt.Errorf("%w")`**: no stack trace, can only carry a string context.
-- **`pkg/errors`**: archived upstream, no maintained release.
+- **`pkg/errors`**: in maintenance mode upstream (no new features per its README, last release in 2020); does not integrate with the post-Go 1.13 `errors.Is`/`errors.As` introspection model.
 - **`cockroachdb/errors`**: heavier, drags in many transitive deps; revisit only when multi-service error portability or first-class Sentry SDK integration becomes a hard requirement.
 - **`joomcode/errorx`**: typed-error focus, less aligned with our wrap-and-log need.
 
@@ -623,10 +625,16 @@ For an error `eris.Wrap(eris.New("inner failure"), "outer context")`, `eris.ToJS
 {
   "root": {
     "message": "inner failure",
-    "stack": ["backend/internal/...:42", "..."]
+    "stack": [
+      "main.run:/path/server/main.go:42",
+      "..."
+    ]
   },
   "wrap": [
-    { "message": "outer context", "stack": ["backend/internal/...:51"] }
+    {
+      "message": "outer context",
+      "stack": "main.run:/path/server/main.go:51"
+    }
   ]
 }
 ```
