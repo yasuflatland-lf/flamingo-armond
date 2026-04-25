@@ -70,21 +70,33 @@ Do **not** install pnpm via `npm i -g pnpm` or `brew install pnpm`. Those paths 
 
 Local development is self-contained behind `supabase start` (no production Supabase project required; the production project is wired up separately).
 
+### Auth flow (read this first)
+
+Google sign-in is brokered by Supabase Auth. The browser hits Google → Google redirects to **Supabase's** `/auth/v1/callback` → Supabase exchanges the code and redirects to the Next.js app's `/auth/callback`. The redirect URI registered with Google is therefore the Supabase host, not the Next.js host:
+
+| Environment | Redirect URI to register on Google | JavaScript origin |
+|---|---|---|
+| Local | `http://127.0.0.1:54321/auth/v1/callback` | `http://127.0.0.1:3000` |
+| Production | `https://<project-ref>.supabase.co/auth/v1/callback` | Vercel domain |
+
+Whether to use **one** Google OAuth client with both URIs or **two separate clients** (one per environment) is a judgment call. This repo treats them as separate: local credentials live in `frontend/.env.local`, production credentials live in Terraform variables. The boundary keeps a leaked local secret from impacting production. See `docs/deployment.md` § 8 for the production client.
+
 ### First-time setup
 
 1. Install the Supabase CLI (`brew install supabase/tap/supabase` or `mise use supabase@latest`).
-2. Create an OAuth 2.0 client ID in Google Cloud Console:
-   - Add `http://127.0.0.1:54321/auth/v1/callback` to Authorized redirect URIs.
-   - Add `http://127.0.0.1:3000` to Authorized JavaScript origins.
+2. Create an OAuth 2.0 client ID in Google Cloud Console (Application type: **Web application**). Use `127.0.0.1`, not `localhost` — Google validates these as distinct origins:
+   - Add `http://127.0.0.1:54321/auth/v1/callback` to **Authorized redirect URIs**.
+   - Add `http://127.0.0.1:3000` to **Authorized JavaScript origins**.
 3. Run `supabase start` from the repository root. The first run pulls Docker images and takes a few minutes. The output prints the anon key and service role key.
-4. Append the following to `frontend/.env.local` (copy `anon key` from the `supabase start` output):
+4. Append the following to `frontend/.env.local` (copy `anon key` from the `supabase start` output). `supabase/config.toml` references the Google credentials via `env()` placeholders, so the secrets stay in `.env.local` (gitignored) and never enter the repo:
    ```
    NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
    NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from supabase start output>
    SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=<Google OAuth client ID>
    SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=<Google OAuth secret>
    ```
-5. Supabase Studio: http://127.0.0.1:54323
+5. Sign in via `http://127.0.0.1:3000/login` once the frontend is running (`make dev-frontend`). The `/profile` page exercises the full sign-in path end to end.
+6. Supabase Studio: http://127.0.0.1:54323
 
 ### Day-to-day
 
@@ -109,8 +121,10 @@ The backend fails to start if any of these is missing — check `supabase status
 
 ### Gotchas
 
-- **Use `127.0.0.1`, not `localhost`**: Google OAuth's redirect URI validation treats `localhost` and `127.0.0.1` as distinct hosts. Access the app via `127.0.0.1:3000` to match the default `supabase start` output.
-- **Secrets live in `.env.local` (gitignored)**: `supabase/config.toml` only references them through `env()` placeholders — never commit the actual values.
+- **`127.0.0.1` only, never `localhost`**: Google OAuth treats them as distinct hosts. Access the app via `127.0.0.1:3000` so the origin matches what was registered with Google and the `supabase start` output.
+- **Secrets stay in `.env.local`**: never paste them into `supabase/config.toml`. The toml only contains `env()` placeholders.
+
+For the production setup of the same Google sign-in path (Supabase project, Vercel, Render, Terraform-managed Supabase Auth settings), see `docs/deployment.md`.
 
 ## Git tooling
 

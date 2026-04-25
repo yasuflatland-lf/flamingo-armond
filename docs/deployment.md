@@ -51,6 +51,22 @@ so apply order is `initial` first, then `settings`.
 
 Each provider can be redeployed independently afterwards. Subsequent code pushes only require a redeploy on the affected provider; the cross-provider wiring above is a one-time exercise that Terraform records in state.
 
+### What Terraform handles vs. what you do by hand
+
+The IaC path (the default) draws a clear line between work that requires human consent flows and work the modules automate. **Do not** repeat the automated steps manually — Terraform overwrites them on the next apply.
+
+| Step | Owner |
+|---|---|
+| Create Google OAuth client + obtain client ID/secret | Human (consent flow, see § 8) |
+| Create Supabase project, Render service, Vercel project | Terraform `initial` stack |
+| Push Google client ID/secret to Supabase Auth | Terraform `initial` stack via `ops/terraform/modules/supabase/` |
+| Set Vercel env vars (`BACKEND_URL`, `NEXT_PUBLIC_SUPABASE_*`) | Terraform `vercel` module |
+| Set Supabase Auth Site URL + redirect allow list to the Vercel domain | Terraform `settings` stack |
+| Replace the placeholder Google redirect URI with the real Supabase callback | Human (see "Post-apply tasks") |
+| Trigger first Render / Vercel deploy | Human (see "Post-apply tasks") |
+
+If you are forced off the IaC path (provider outage, broken state), see § "Manual fallback (legacy procedure)" at the bottom of this doc — that section reproduces the automated steps as click-through instructions.
+
 ## Manual prerequisites
 
 A few things cannot be Terraformed because they require human consent flows or live in another platform's domain. Collect these once before running `terraform apply`.
@@ -116,7 +132,7 @@ Same idea on Vercel:
 
 ### 8. Google Cloud Console OAuth Client
 
-Supabase delegates Google sign-in to a Google OAuth client. It must be created on the Google Cloud side:
+Supabase delegates Google sign-in to a Google OAuth client. It must be created on the Google Cloud side. This client is **separate from the local-dev OAuth client** in `docs/dev-setup.md` § "Supabase CLI": local credentials live in `frontend/.env.local`, production credentials live in Terraform variables, so a leaked local secret never affects production. (Combining them into a single client with multiple redirect URIs is technically possible but loses that boundary.)
 
 1. Open `https://console.cloud.google.com/apis/credentials`. Pick or create a project (this is the Google Cloud project, distinct from the Supabase project).
 2. **Configure OAuth consent screen** if not yet done. Type **External**. Set product name and support email.
@@ -262,7 +278,12 @@ read time on the consumer.
 
 ## Manual fallback (legacy procedure)
 
-If Terraform is unusable for some reason (provider outage, severely broken state), the following manual procedure mirrors what the modules do. Use only as a last resort — it loses the IaC guarantees.
+> **STOP — skip this section unless Terraform is unusable.** The steps below
+> reproduce by hand what the `initial` and `settings` stacks already do for
+> you. Running them on top of the IaC path duplicates state and the next
+> `terraform apply` will revert any UI mutations. Use only as a last resort
+> (e.g. provider outage, severely broken state). The supported path is
+> § "Bring-up order" + § "Post-apply tasks" above.
 
 ### Step 1 — Supabase
 
