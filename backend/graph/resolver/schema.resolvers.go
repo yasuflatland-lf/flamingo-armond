@@ -7,13 +7,21 @@ package resolver
 import (
 	"backend/graph/generated"
 	"backend/graph/model"
+	"backend/internal/domain"
+	"backend/internal/usecase"
 	"context"
-	"fmt"
 )
 
 // UpdateProfile is the resolver for the updateProfile field.
 func (r *mutationResolver) UpdateProfile(ctx context.Context, input model.UpdateProfileInput) (*model.UpdateProfilePayload, error) {
-	panic(fmt.Errorf("not implemented: UpdateProfile - updateProfile"))
+	p, err := r.Profile.UpdateProfile(ctx, usecase.UpdateProfileInput{
+		DisplayName: input.DisplayName,
+		Bio:         input.Bio,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &model.UpdateProfilePayload{User: toUserModel(p)}, nil
 }
 
 // Health is the resolver for the health field.
@@ -23,7 +31,11 @@ func (r *queryResolver) Health(ctx context.Context) (string, error) {
 
 // Me is the resolver for the me field.
 func (r *queryResolver) Me(ctx context.Context) (*model.User, error) {
-	panic(fmt.Errorf("not implemented: Me - me"))
+	p, err := r.Profile.Me(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return toUserModel(p), nil
 }
 
 // Mutation returns generated.MutationResolver implementation.
@@ -34,3 +46,17 @@ func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
+
+// toUserModel converts a domain.Profile to the GraphQL model.User.
+// Placed outside gqlgen-managed regions so regeneration does not clobber it.
+func toUserModel(p *domain.Profile) *model.User {
+	if p == nil {
+		return nil
+	}
+	return &model.User{
+		ID:          p.ID,
+		DisplayName: p.DisplayName,
+		Bio:         p.Bio,
+		AvatarURL:   p.AvatarURL,
+	}
+}
