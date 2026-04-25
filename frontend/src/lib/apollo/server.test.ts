@@ -129,4 +129,18 @@ describe("gqlFetch", () => {
 
     await expect(gqlFetch(HealthQuery)).rejects.toThrow("auth down");
   });
+
+  it("injects a well-formed UUID v7 X-Request-ID header on every fetch", async () => {
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ data: { health: "ok" } })));
+
+    await gqlFetch(HealthQuery);
+
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit & { headers?: Record<string, string> };
+    const requestId = (init.headers as Record<string, string>)["X-Request-ID"];
+    expect(requestId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+  });
 });

@@ -15,6 +15,7 @@ import (
 	"github.com/rotisserie/eris"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
@@ -66,6 +67,10 @@ func InitWithExporter(ctx context.Context, logger *slog.Logger, exp sdktrace.Spa
 		sdktrace.WithSampler(sampler(logger)),
 	)
 	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
 	logger.Info("telemetry enabled", "sampler_arg", os.Getenv("OTEL_TRACES_SAMPLER_ARG"))
 	return func(ctx context.Context) error { return tp.Shutdown(ctx) }, nil
 }

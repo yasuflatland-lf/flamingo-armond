@@ -244,6 +244,52 @@ field to `""` so the next submit clears the column.
 
 `shadcn init` is interactive and not suitable for CI or non-interactive environments. The fallback is to hand-write `components.json`, `lib/utils.ts`, and the `globals.css` base tokens following the shadcn JSON schema — that is how this repo's shadcn baseline was bootstrapped.
 
+## Observability
+
+### Request ID propagation
+
+Every GraphQL request sent by the frontend attaches an `X-Request-ID` header
+containing a UUID v7 value. The backend echoes the header on the response and
+stamps `request_id` on every structured log line for that request. A single grep
+on `request_id` therefore spans the full frontend-to-backend call without
+requiring an OTel SDK. Full distributed tracing is tracked in
+[#22](https://github.com/yasuflatland-lf/flamingo-armond/issues/22).
+
+#### Generator (`frontend/src/lib/observability/request-id.ts`)
+
+A thin wrapper around the `uuidv7` npm package (~1.5 KB gzip). The package
+provides a correct monotonic counter within the same millisecond, which the
+previous inline implementation did not guarantee. Produces a standard UUID v7
+string:
+
+```
+xxxxxxxx-xxxx-7xxx-yxxx-xxxxxxxxxxxx
+```
+
+The 48 high bits encode the Unix timestamp in milliseconds, making IDs
+sortable and traceable to their creation time.
+
+#### Browser (Apollo link chain)
+
+`frontend/src/lib/apollo/request-id-link.ts` exports `requestIdLink`, an
+Apollo `setContext` link. It checks for an existing `X-Request-ID` header
+case-insensitively; if none is found it generates a fresh UUID v7 and attaches
+it. The link is prepended as the first link in `makeClient()`:
+
+```ts
+from([requestIdLink, authLink, makeApqLink(), httpLink])
+```
+
+Being first in the chain ensures the ID is present for every subsequent link
+and for the outbound HTTP request.
+
+#### RSC (`gqlFetch`)
+
+`frontend/src/lib/apollo/server.ts` assigns a fresh UUID v7 inside `gqlFetch`
+before the `fetch` call. `gqlFetch` is the RSC entrypoint and has no
+caller-supplied headers, so every call generates a fresh UUID v7 — chained
+correlation across server-to-server calls is out of scope at this tier.
+
 ## Gotchas encountered
 
 **`app/<route>/error.tsx` does not catch errors from `app/layout.tsx`.** Next.js error boundaries scoped to a route segment only catch errors thrown by that segment's RSCs and components. Errors thrown inside `app/layout.tsx` (e.g. the `Header`) escape to `app/global-error.tsx`, or to Next's default crash page if `global-error.tsx` is absent. Keep shared layout components defensive — render degraded states rather than throwing.
@@ -263,6 +309,8 @@ field to `""` so the next submit clears the column.
 **Apollo imports — use `@apollo/client-integration-nextjs` for `ApolloClient` and `InMemoryCache` in browser code.** Importing those two symbols from the base `@apollo/client` package produces a client that does not handle Next.js SSR streaming and breaks hydration.
 
 **Apollo Client v4 error type split.** `CombinedGraphQLErrors` lives in `@apollo/client/errors`, **not** `@apollo/client`. Use `CombinedGraphQLErrors.is(error)` for type narrowing, then read `error.errors[0]?.message`. The v3 pattern `error.graphQLErrors` does not exist in v4.
+
+**Apollo Client v4 link tests must go through `ApolloClient`, not `execute(link, op)`.** Apollo Client v4 ships with rxjs internally; the `Observable` type returned by `execute` is the rxjs `Observable`, not the legacy Apollo `Observable`. Constructing a standalone `Observable.of(result)` as a terminal mock no longer works. Instead, construct an `ApolloClient` with your link chain and the mock terminal link, then call `client.query()` or `client.mutate()`. The terminal mock link should use `new Observable(subscriber => { subscriber.next(mockResult); subscriber.complete(); })` (rxjs form).
 
 **RSC code must use `env.BACKEND_URL`, not `/api/graphql`.** The rewrite in `next.config.ts` only applies to browser-originating requests. Server components calling `/api/graphql` would hit a Next 404.
 

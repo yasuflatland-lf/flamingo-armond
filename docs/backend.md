@@ -499,6 +499,29 @@ if len(ids) == 0 {
 
 This matters most in DataLoader batch functions, where an empty key slice is a normal edge case.
 
+### slog context enrichment must precede the log call that announces the enrichment
+
+When a middleware sets a value in the context and then logs a message about
+that action, the `slog.*Context` call must come **after**
+`c.SetRequest(c.Request().WithContext(ctx))`. Logging before the context is
+stored means the very line that announces the event carries no `request_id` (or
+other context attribute) itself. The pattern in
+`backend/internal/middleware/request_id.go` — enriching the context first, then
+calling `slog.WarnContext(ctx, ...)` — is the correct template for any
+context-enriched slog handler.
+
+### `slog.Handler.WithGroup` nests subsequent attrs inside the group object
+
+Calling `handler.WithGroup("g")` on a `slog.JSONHandler` (or any handler that
+wraps one, such as `logging.ContextHandler`) causes **all** attrs added
+afterward — including those injected by `Handle` via `r.AddAttrs` — to appear
+under the `"g"` JSON key, not at the top level. In `logging.ContextHandler`,
+`request_id` is added via `r.AddAttrs` inside `Handle`, so after
+`WithGroup("grp")` the log line becomes `{"grp":{"request_id":"...","k":"v"}}`.
+Log queries and tests that expect top-level `request_id` will miss it.
+`backend/internal/logging/handler_test.go` (`TestContextHandler_WithAttrsAndWithGroupPreserveRequestID`)
+documents and asserts this shape.
+
 ## Observability
 
 The backend emits OpenTelemetry traces via `otelgqlgen` for every GraphQL operation, resolver, and scalar field. Spans are exported via OTLP HTTP (port 4318) to whatever collector `OTEL_EXPORTER_OTLP_ENDPOINT` points to.
@@ -541,6 +564,86 @@ Tracer shutdown is last so that DB-layer spans emitted during request drain stil
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | no | *(empty)* | OTLP HTTP endpoint (e.g. `http://localhost:4318`). Empty = tracing disabled. |
 | `OTEL_TRACES_SAMPLER_ARG` | no | `1.0` | Float in `[0, 1]`. Parse errors and out-of-range values each emit a `slog.Warn` and fall back to `1.0`. |
 | `APP_ENV` | no | `development` | Used as `deployment.environment` resource attribute. Set to `production` on Render. |
+
+## Request ID propagation
+
+Every HTTP request handled by the backend carries an `X-Request-ID` header. The
+header provides a cheap, grep-friendly correlation ID that flows from the
+frontend through the backend without requiring a full distributed-tracing stack.
+It complements, rather than replaces, the OTel span tree tracked in
+[#22](https://github.com/yasuflatland-lf/flamingo-armond/issues/22).
+
+### Header and length cap
+
+The middleware (`backend/internal/middleware/request_id.go`) reads
+`X-Request-ID` from the incoming request. An upstream value is accepted as-is
+when it is non-empty and at most **128 characters**. Values longer than that are
+dropped and replaced by a freshly generated ID. The cap prevents log injection
+and guards against accidentally forwarding an unbounded upstream payload into
+structured log fields.
+
+### ID generation
+
+When no valid upstream ID is present, the middleware generates one with
+`uuid.NewV7()` (timestamp-prefixed, lexicographically sortable). If `NewV7`
+fails (e.g. the random source is temporarily unavailable), the fallback is a
+nanosecond timestamp string (`fmt.Sprintf("fallback-%d", time.Now().UnixNano())`).
+
+**Do not replace the fallback with `uuid.NewString()`.** `uuid.NewString` calls
+`Must(uuid.NewRandom())` internally, which panics on the same `crypto/rand`
+failure that caused `NewV7` to fail — it is not a safe fallback.
+
+### Middleware position
+
+```go
+e.Use(middleware.RequestLogger())
+e.Use(middleware.Recover())
+e.Use(internalmw.RequestID())  // third — runs on every route
+```
+
+`RequestID` is registered immediately after `Recover` so that even error
+responses produced by panicking handlers carry the header. It applies globally —
+`/health`, `/playground`, and `/query` all receive it.
+
+The middleware sets `X-Request-ID` on the **response** before calling `next(c)`,
+so error paths also expose the header to callers.
+
+### slog integration
+
+`main()` wires the request-aware logger:
+
+```go
+logger := slog.New(
+    logging.NewContextHandler(
+        slog.NewJSONHandler(os.Stderr, nil),
+        internalmw.RequestIDFromContext,
+    ),
+)
+slog.SetDefault(logger)
+```
+
+`logging.NewContextHandler` wraps any `slog.Handler`. On every `Handle` call it
+reads the request ID from the record's context via the supplied `ContextLookup`
+function and appends it as `"request_id"` before delegating to the inner
+handler. The result: **every `slog.*Context` call** (`slog.InfoContext`,
+`slog.ErrorContext`, etc.) automatically includes `"request_id"` in the JSON
+log line. No resolver or usecase needs to pass it manually.
+
+`slog` calls made **without** a context (`slog.Info(...)`) do not carry a
+request ID — that is by design; they represent process-level events rather than
+per-request ones.
+
+### Decoupling via `ContextLookup`
+
+`logging` does not import `middleware`. The wiring above passes
+`internalmw.RequestIDFromContext` as a plain `func(context.Context) string` so
+the two packages remain independent of each other's import graph.
+
+### Helper
+
+```go
+id := internalmw.RequestIDFromContext(ctx) // returns "" when not present
+```
 
 ## Automatic Persisted Queries
 

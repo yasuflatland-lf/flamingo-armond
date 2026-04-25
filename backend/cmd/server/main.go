@@ -19,6 +19,8 @@ import (
 	"github.com/labstack/echo/v5/middleware"
 	"github.com/ravilushqa/otelgqlgen"
 	"github.com/rotisserie/eris"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
 	"backend/graph/generated"
@@ -27,6 +29,7 @@ import (
 	"backend/internal/database"
 	"backend/internal/loader"
 	"backend/internal/logging"
+	internalmw "backend/internal/middleware"
 	"backend/internal/repository"
 	"backend/internal/telemetry"
 	"backend/internal/usecase"
@@ -55,6 +58,7 @@ func newRouter(resolvers *resolver.Resolver, authMW echo.MiddlewareFunc, repo re
 	e := echo.New()
 	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
+	e.Use(internalmw.RequestID())
 
 	e.GET("/", func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{
@@ -69,8 +73,26 @@ func newRouter(resolvers *resolver.Resolver, authMW echo.MiddlewareFunc, repo re
 	})
 
 	gqlSrv := newGraphQLServer(resolvers)
+	// Wrap only the GraphQL POST handler with otelhttp so the HTTP layer
+	// extracts an incoming traceparent and creates the root HTTP span.
+	// /health and /playground are intentionally excluded to reduce noise.
+	//
+	// WithPropagators: otelhttp.newConfig captures otel.GetTextMapPropagator()
+	// eagerly at construction time (config.go:57 in otelhttp@v0.61.0). The
+	// default behavior (omitting WithPropagators) does the same eager capture.
+	// Therefore newRouter MUST be called after telemetry.Init so that the global
+	// propagator is already set when this handler is constructed; otherwise
+	// traceparent extraction silently falls back to the no-op propagator.
+	otelGQLHandler := otelhttp.NewHandler(
+		gqlSrv,
+		"graphql.http",
+		otelhttp.WithPropagators(otel.GetTextMapPropagator()),
+		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+			return r.Method + " " + r.URL.Path
+		}),
+	)
 	q := e.Group("/query", authMW, loader.Middleware(repo))
-	q.POST("", echo.WrapHandler(gqlSrv))
+	q.POST("", echo.WrapHandler(otelGQLHandler))
 	e.GET("/playground", echo.WrapHandler(playground.Handler("GraphQL", "/query")))
 
 	return e
@@ -96,6 +118,11 @@ func shutdownTimeout(logger *slog.Logger) time.Duration {
 }
 
 func run(ctx context.Context, logger *slog.Logger) error {
+	// telemetry.Init must run first: it registers the global TracerProvider and
+	// TextMapPropagator via otel.SetTextMapPropagator. newRouter (called below)
+	// constructs the otelhttp handler, which captures otel.GetTextMapPropagator()
+	// eagerly at construction time. Reversing this order would silently drop
+	// traceparent extraction for every incoming request.
 	tracerShutdown, err := telemetry.Init(ctx, logger)
 	if err != nil {
 		return eris.Wrap(err, "run: telemetry init")
@@ -130,6 +157,9 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	profileUC := usecase.NewProfileUsecase(profileRepo)
 
 	resolvers := &resolver.Resolver{Profile: profileUC}
+	// newRouter must be called after telemetry.Init: the otelhttp handler it
+	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
+	// telemetry.Init for the full ordering invariant.
 	e := newRouter(resolvers, authMW, profileRepo)
 	e.Logger = logger
 
@@ -184,7 +214,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 }
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	logger := slog.New(logging.NewContextHandler(slog.NewJSONHandler(os.Stderr, nil), internalmw.RequestIDFromContext))
 	slog.SetDefault(logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)

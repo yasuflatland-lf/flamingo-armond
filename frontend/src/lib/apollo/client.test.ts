@@ -1,5 +1,3 @@
-// Testing strategy: Option A-variant — buildAuthHeaders is extracted to auth-link.ts
-// and tested directly, avoiding the complexity of the Apollo Link Observable API.
 import type { ApolloLink } from "@apollo/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildAuthHeaders } from "./auth-link";
@@ -59,25 +57,29 @@ describe("buildAuthHeaders (authLink)", () => {
 });
 
 describe("makeClient link chain", () => {
-  it("chains authLink -> apqLink -> httpLink in order (3 segments)", () => {
+  it("chains requestIdLink -> authLink -> apqLink -> httpLink in order (4 segments)", () => {
     const c = makeClient();
     expect(c.link).toBeDefined();
-    // from([authLink, apqLink, httpLink]) wraps segments in plain ApolloLink
+    // from([requestIdLink, authLink, apqLink, httpLink]) wraps segments in plain ApolloLink
     // glue nodes. collectSegments stops at named sub-classes so we recover the
     // original user-supplied links plus any framework-injected wrappers.
     // @apollo/client-integration-nextjs prepends 2 streaming links, so the
     // full segment list is: [ReadFromReadableStreamLink, TeeToReadableStreamLink,
-    // SetContextLink(auth), PersistedQueryLink(apq), HttpLink(http)].
+    // SetContextLink(requestId), SetContextLink(auth), PersistedQueryLink(apq), HttpLink(http)].
     const links = collectSegments(c.link);
     const names = links.map((l) => l.constructor?.name ?? "");
-    // Core three user-supplied links must all be present.
+    // All four user-supplied link types must be present.
     expect(names).toContain("SetContextLink");
     expect(names).toContain("PersistedQueryLink");
     expect(names).toContain("HttpLink");
-    // Order: auth must come before apq, and apq must come before http.
-    const authIdx = names.indexOf("SetContextLink");
+    // Two SetContextLink instances must exist: requestIdLink and authLink.
+    const requestIdIdx = names.indexOf("SetContextLink");
+    const authIdx = names.lastIndexOf("SetContextLink");
+    expect(requestIdIdx).not.toBe(authIdx); // two distinct SetContextLink instances
     const apqIdx = names.indexOf("PersistedQueryLink");
     const httpIdx = names.indexOf("HttpLink");
+    // Order: requestId -> auth -> apq -> http.
+    expect(requestIdIdx).toBeLessThan(authIdx);
     expect(authIdx).toBeLessThan(apqIdx);
     expect(apqIdx).toBeLessThan(httpIdx);
   });

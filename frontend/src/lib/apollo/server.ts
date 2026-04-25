@@ -2,6 +2,7 @@ import "server-only";
 import type { TypedDocumentNode } from "@apollo/client";
 import { print } from "graphql";
 import { env } from "@/env";
+import { newRequestId, REQUEST_ID_HEADER } from "@/lib/observability/request-id";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type GqlFetchInit<TVars> = {
@@ -24,6 +25,8 @@ export async function gqlFetch<TResult, TVars>(
   if (session?.access_token) {
     headers.authorization = `Bearer ${session.access_token}`;
   }
+  // Always assign — gqlFetch is the RSC entrypoint and has no caller-supplied headers.
+  headers[REQUEST_ID_HEADER] = newRequestId();
 
   const res = await fetch(`${env.BACKEND_URL}/query`, {
     method: "POST",
