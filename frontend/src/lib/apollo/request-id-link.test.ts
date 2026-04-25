@@ -10,11 +10,8 @@ const query = gql`
 
 const UUID_V7_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-/**
- * Build a composed link and return an accessor for the context captured by the
- * terminal link. Apollo Client v4 requires an ApolloClient instance in the
- * execute context, so we spin up a minimal one using the composed link itself.
- */
+// Apollo Client v4 requires an ApolloClient instance in the execute context,
+// so we spin up a minimal one using the composed link itself.
 function captureContext(): {
   readonly ctx: { headers?: Record<string, string> };
   client: ApolloClient;

@@ -12,11 +12,8 @@ import (
 	mw "backend/internal/middleware"
 )
 
-// noopHandler is an Echo HandlerFunc that always returns nil (HTTP 200).
 func noopHandler(c *echo.Context) error { return nil }
 
-// applyMiddleware wraps handler with the RequestID middleware and executes the
-// resulting chain against req, returning the recorded response.
 func applyMiddleware(t *testing.T, req *http.Request) *httptest.ResponseRecorder {
 	t.Helper()
 	e := echo.New()
@@ -30,8 +27,6 @@ func applyMiddleware(t *testing.T, req *http.Request) *httptest.ResponseRecorder
 	return rec
 }
 
-// TestRequestID_EmptyHeader verifies that a request without X-Request-ID gets
-// a generated UUIDv7, which is stored in context and echoed in the response.
 func TestRequestID_EmptyHeader(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	e := echo.New()
@@ -60,8 +55,6 @@ func TestRequestID_EmptyHeader(t *testing.T) {
 	}
 }
 
-// TestRequestID_UpstreamHeaderRespected verifies that a valid upstream
-// X-Request-ID is kept as-is and not regenerated.
 func TestRequestID_UpstreamHeaderRespected(t *testing.T) {
 	const upstreamID = "upstream-id-abc123"
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -89,8 +82,6 @@ func TestRequestID_UpstreamHeaderRespected(t *testing.T) {
 	}
 }
 
-// TestRequestID_OverlongHeaderRegenerated verifies that an X-Request-ID value
-// exceeding 128 bytes is rejected and a fresh ID is generated instead.
 func TestRequestID_OverlongHeaderRegenerated(t *testing.T) {
 	overlong := strings.Repeat("x", 129)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -125,8 +116,6 @@ func TestRequestID_OverlongHeaderRegenerated(t *testing.T) {
 	}
 }
 
-// TestRequestIDFromContext_BareCtx verifies that RequestIDFromContext returns
-// an empty string when no ID has been stored in the context.
 func TestRequestIDFromContext_BareCtx(t *testing.T) {
 	got := mw.RequestIDFromContext(context.Background())
 	if got != "" {

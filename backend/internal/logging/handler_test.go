@@ -10,24 +10,17 @@ import (
 	"backend/internal/logging"
 )
 
-// fixedLookup returns a ContextLookup that always returns the given value,
-// simulating middleware.RequestIDFromContext for a context that carries an ID.
 func fixedLookup(id string) logging.ContextLookup {
 	return func(_ context.Context) string { return id }
 }
 
-// emptyLookup is a ContextLookup that always returns "", simulating a context
-// that has no request ID stored.
 func emptyLookup(_ context.Context) string { return "" }
 
-// newBufLogger builds a *slog.Logger backed by a ContextHandler wrapping a
-// JSON handler that writes to buf.
 func newBufLogger(buf *bytes.Buffer, lookup logging.ContextLookup) *slog.Logger {
 	inner := slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})
 	return slog.New(logging.NewContextHandler(inner, lookup))
 }
 
-// decodeJSON unmarshals the first JSON object in buf.
 func decodeJSON(t *testing.T, buf *bytes.Buffer) map[string]any {
 	t.Helper()
 	var m map[string]any
@@ -37,8 +30,6 @@ func decodeJSON(t *testing.T, buf *bytes.Buffer) map[string]any {
 	return m
 }
 
-// TestContextHandler_RequestIDPresentInContext verifies that when the lookup
-// returns a non-empty ID, the log record contains "request_id".
 func TestContextHandler_RequestIDPresentInContext(t *testing.T) {
 	const wantID = "test-request-id-001"
 	buf := &bytes.Buffer{}
@@ -56,8 +47,6 @@ func TestContextHandler_RequestIDPresentInContext(t *testing.T) {
 	}
 }
 
-// TestContextHandler_NoRequestIDInBareCtx verifies that when the lookup
-// returns an empty string, no "request_id" attribute is added to the record.
 func TestContextHandler_NoRequestIDInBareCtx(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := newBufLogger(buf, emptyLookup)
@@ -70,15 +59,12 @@ func TestContextHandler_NoRequestIDInBareCtx(t *testing.T) {
 	}
 }
 
-// TestContextHandler_WithAttrsAndWithGroupPreserveRequestID verifies that
-// loggers derived via WithAttrs and WithGroup still attach request_id.
 func TestContextHandler_WithAttrsAndWithGroupPreserveRequestID(t *testing.T) {
 	const wantID = "propagated-id-42"
 
 	t.Run("WithAttrs", func(t *testing.T) {
 		buf := &bytes.Buffer{}
 		logger := newBufLogger(buf, fixedLookup(wantID))
-		// Derive a child logger with an extra static attribute.
 		child := logger.With("component", "test")
 		child.InfoContext(context.Background(), "via with-attrs")
 

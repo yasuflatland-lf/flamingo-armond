@@ -1,5 +1,3 @@
-// Testing strategy: Option A-variant — buildAuthHeaders is extracted to auth-link.ts
-// and tested directly, avoiding the complexity of the Apollo Link Observable API.
 import type { ApolloLink } from "@apollo/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildAuthHeaders } from "./auth-link";
