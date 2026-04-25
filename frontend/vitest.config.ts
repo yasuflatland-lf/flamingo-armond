@@ -12,8 +12,6 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    // tsx tests (React components) run in jsdom; ts tests stay in node
-    environmentMatchGlobs: [["src/**/*.test.tsx", "jsdom"]],
     include: ["src/**/*.test.{ts,tsx}"],
     // Expose vitest globals (describe, it, afterEach, etc.) so that
     // @testing-library/react can hook into afterEach for automatic DOM cleanup.
