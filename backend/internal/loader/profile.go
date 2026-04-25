@@ -2,9 +2,9 @@ package loader
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/graph-gophers/dataloader/v7"
+	"github.com/rotisserie/eris"
 
 	"backend/internal/domain"
 	"backend/internal/repository"
@@ -28,7 +28,7 @@ func profileBatchFunc(repo repository.ProfileRepository) dataloader.BatchFunc[st
 				continue
 			}
 			out[i] = &dataloader.Result[*domain.Profile]{
-				Error: fmt.Errorf("profile %s: %w", k, repository.ErrNotFound),
+				Error: eris.Wrapf(repository.ErrNotFound, "profile %s", k),
 			}
 		}
 		return out
