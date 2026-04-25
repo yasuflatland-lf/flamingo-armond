@@ -110,11 +110,11 @@ gqlgen deletes `graph/model/models_gen.go` at the start of every run before rege
 
 ### Playground
 
-`GET /playground` exposes a browser UI for hand-crafted queries against `/query`. It is currently enabled in all environments. Introspection and this route should be env-gated before production use.
+`GET /playground` exposes a browser UI for hand-crafted queries against `/query`. The route is enabled in all environments; the playground UI loads regardless of `GRAPHQL_INTROSPECTION`, but introspection queries (`__schema` / `__type`) are blocked when the variable is set to `off`. See [Introspection gating](#introspection-gating).
 
 ### Resolver DI seam
 
-`newRouter(resolvers *resolver.Resolver, authMW echo.MiddlewareFunc) *echo.Echo` is the DI wiring seam. `run(ctx, logger) error` is the lifecycle seam — it constructs the `Resolver`, passes it to `newRouter`, and owns the `http.Server`. Middleware-shaped dependencies (auth, future per-request observability) are passed as `echo.MiddlewareFunc` parameters to `newRouter`, while data-access dependencies (DB, dataloaders) add fields to `Resolver` and wire them in `run`.
+`newRouter(resolvers *resolver.Resolver, authMW echo.MiddlewareFunc, repo repository.ProfileRepository) *echo.Echo` is the DI wiring seam. `run(ctx, logger) error` is the lifecycle seam — it constructs the `Resolver`, passes it to `newRouter`, and owns the `http.Server`. Middleware-shaped dependencies (auth, future per-request observability) are passed as `echo.MiddlewareFunc` parameters to `newRouter`; resources required by middleware factories (e.g. `loader.Middleware` needs a repository) are passed as additional `newRouter` arguments rather than hidden inside the middleware closure.
 
 ## Authentication
 
@@ -241,7 +241,7 @@ Use `*gqlerror.Error` (from `github.com/vektah/gqlparser/v2/gqlerror`) as the er
 Both operations require an authenticated caller. When `auth.UserFrom(ctx)` returns `nil` (no valid JWT), the usecase layer returns a `*gqlerror.Error` with `extensions.code = "UNAUTHENTICATED"`. gqlgen translates this into the standard GraphQL error envelope:
 
 ```json
-{ "errors": [{ "message": "authentication required", "extensions": { "code": "UNAUTHENTICATED" } }], "data": null }
+{ "errors": [{ "message": "unauthenticated", "extensions": { "code": "UNAUTHENTICATED" } }], "data": null }
 ```
 
 `data` is `null` — not omitted — because the field is non-nullable in the schema.
@@ -263,7 +263,7 @@ resolver (schema.resolvers.go)
        └─ repository (internal/repository/)
 ```
 
-Resolvers are intentionally thin: extract `model.UpdateProfileInput`, map it to `usecase.UpdateProfileInput`, delegate, and return. Auth checks, validation, and `gqlerror.Error` construction live in the usecase layer. A shared error helper is not yet introduced; if a second usecase needs `UNAUTHENTICATED` or similar, extract one then.
+Resolvers are intentionally thin: extract `model.UpdateProfileInput`, map it to `usecase.UpdateProfileInput`, delegate, and return. Auth checks, validation, and `gqlerror.Error` construction live in the usecase layer. Shared error helpers live in `backend/internal/gqlerr` — see [Error helpers](#error-helpers-backendinternalgqlerr).
 
 ### DI pattern
 
@@ -286,9 +286,9 @@ Adding a new feature: build a usecase, add a field to `Resolver`, wire it in `ru
 
 ### Validation rules in `usecase.UpdateProfile`
 
-- `displayName` is `strings.TrimSpace`-ed, then its rune length is checked: must be 1–50 runes.
-- Out-of-bounds returns `extensions.code = "BAD_USER_INPUT"` with `"field": "displayName"`.
-- Length is measured in **runes** (`len([]rune(name))`), not bytes. A JS `max(50)` validator on the frontend counts UTF-16 code units; multi-byte characters can pass the JS check and still fail here. Surface backend `BAD_USER_INPUT` errors as form-level errors on the client.
+- `displayName` is `strings.TrimSpace`-ed, then validated as 1–50 grapheme clusters via `rivo/uniseg`.
+- `bio` accepts up to 500 grapheme clusters (no trim; whitespace is preserved).
+- Out-of-bounds returns `gqlerr.BadUserInput("displayName", ...)` (extensions.code = "BAD_USER_INPUT", field = "displayName"). See [Validation (grapheme clusters)](#validation-grapheme-clusters) for the WHY.
 
 ### Integration tests
 
@@ -296,7 +296,7 @@ Adding a new feature: build a usecase, add a field to `Resolver`, wire it in `ru
 
 ## Backend hardening
 
-PR10 added five operational guardrails to the `/query` endpoint: DataLoader
+Five operational guardrails surround the `/query` endpoint: DataLoader
 (N+1 prevention), typed error helpers, query complexity limits, introspection
 gating, and grapheme-cluster validation. Each lives behind its own seam rather
 than as a cross-cutting concern bolted on to middleware.
@@ -322,10 +322,9 @@ cache never bleeds across authenticated users. Resolvers pull it out of `ctx`:
 profile, err := loader.For(ctx).Profile.Load(ctx, userID)()
 ```
 
-`loader.For` returns `nil` if the middleware was not installed — the blank
-identifier assignment in `For` makes this a no-panic nil pointer, but the
-caller will panic on the subsequent `.Load` call. Keep the middleware wired to
-every route that touches a loader.
+`loader.For` returns `nil` when the middleware was not installed; dereferencing
+the returned pointer (`.Profile.Load(...)`) will then panic. Keep the middleware
+wired to every route that touches a loader.
 
 **Library:** `github.com/graph-gophers/dataloader/v7` (generics edition).
 The batch function receives `[]string` keys and must return

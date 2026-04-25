@@ -127,7 +127,7 @@ The `matcher` must also explicitly exclude `/api/:path*` and `/auth/callback`. W
 2. Calls `gqlFetch(MeQuery, { revalidate: 0 })` — `revalidate: 0` opts the response out of the Next cache to avoid serving stale PII.
 3. Passes the fetched values as `initial` props to the client component `ProfileForm`.
 
-`frontend/src/app/profile/profile-form.tsx` is a Client Component (`"use client"`). It uses `@tanstack/react-form` with `@tanstack/zod-form-adapter` for client-side validation and Apollo's `useMutation` to call `updateProfile`. On a successful mutation `router.refresh()` is called — this re-evaluates the current RSC subtree and allows client mutations to invalidate server-rendered data without manual cache surgery. Combined with `revalidate: 0` on the server fetch, this gives a simple mutate-then-redisplay flow.
+`frontend/src/app/profile/profile-form.tsx` is a Client Component (`"use client"`). It uses `@tanstack/react-form` with field-level Zod validators (no adapter needed) for client-side validation and Apollo's `useMutation` to call `updateProfile`. On a successful mutation `router.refresh()` is called — this re-evaluates the current RSC subtree and allows client mutations to invalidate server-rendered data without manual cache surgery. Combined with `revalidate: 0` on the server fetch, this gives a simple mutate-then-redisplay flow.
 
 ### Authorization forwarding in `gqlFetch`
 
@@ -143,7 +143,8 @@ The mirror uses `Intl.Segmenter` (UAX #29) for `displayName` and `bio` length ch
 
 ### Form library
 
-We use `@tanstack/react-form` with `@tanstack/zod-form-adapter` for all forms.
+We use `@tanstack/react-form` for all forms. No adapter package is needed —
+validators are passed directly as per-field Zod schemas.
 shadcn's `form.tsx` wrapper was removed in PR10 — TanStack Form's render-prop
 API (`<form.Field>`) does not need it. Forms compose primitive shadcn
 components (`Label`, `Input`, `Textarea`) directly.
@@ -151,14 +152,19 @@ components (`Label`, `Input`, `Textarea`) directly.
 #### Pattern
 
 ```tsx
+// Per-field schemas (declared in @/schemas/profile)
+const displayNameSchema = updateProfileSchema.shape.displayName;
+const bioSchema = updateProfileSchema.shape.bio;
+
 const form = useForm({
-  defaultValues: { displayName: "", bio: "" },
-  validatorAdapter: zodValidator(),
-  validators: { onChange: updateProfileSchema },
+  defaultValues: { displayName: initial.displayName ?? "", bio: initial.bio ?? "" },
   onSubmit: async ({ value }) => { ... },
 });
 
-<form.Field name="displayName">
+<form.Field
+  name="displayName"
+  validators={{ onChange: displayNameSchema, onBlur: displayNameSchema }}
+>
   {(field) => (
     <>
       <Label htmlFor={field.name}>Display name</Label>
@@ -184,9 +190,13 @@ with the same UAX #29 standard, so FE and BE limits agree.
 
 Backend `BAD_USER_INPUT` errors carry `extensions.field` (see `backend/internal/gqlerr`).
 The form maps that field back to the corresponding `<form.Field>` so the user
-sees the error inline rather than as a banner. Apollo v4 wraps GraphQL errors
-in `CombinedGraphQLErrors`, so use `instanceof CombinedGraphQLErrors` to
-narrow the type. `INTERNAL` errors are surfaced as a form-level banner.
+sees the error inline rather than as a banner. Errors that do not carry a field
+(`INTERNAL`, `UNAUTHENTICATED`, network failures, and any other non-field
+GraphQL error) are surfaced as a form-level banner with appropriate user-facing
+copy. Apollo v4 wraps GraphQL errors in `CombinedGraphQLErrors`; use
+`CombinedGraphQLErrors.is(error)` to narrow the type, then read
+`error.errors[0]?.extensions?.code` to route between field errors and banner
+errors.
 
 #### Bio explicit clear UX
 
