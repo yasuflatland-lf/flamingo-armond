@@ -6,14 +6,14 @@ Operational decisions around GitHub Actions and external services that are not o
 
 Two independent workflows: `.github/workflows/backend.yml` and `.github/workflows/frontend.yml`.
 
-- **Triggers are `paths:`-scoped** per workflow — backend to `backend/**` + workflow file + `render.yaml`; frontend to `frontend/**` + `schema/**` + the root pnpm/workspace/tool-version manifests + the frontend workflow file. When adding a third service, **add its own workflow** — do not broaden an existing one. Mixing scopes breaks CI granularity and responsibility.
+- **Triggers are `paths:`-scoped** per workflow — backend to `backend/**` + workflow file + `ops/terraform/modules/render/**`; frontend to `frontend/**` + `schema/**` + the root pnpm/workspace/tool-version manifests + the frontend workflow file. When adding a third service, **add its own workflow** — do not broaden an existing one. Mixing scopes breaks CI granularity and responsibility.
 - **`concurrency` groups are per-workflow** (`backend-${{ github.ref }}`, `frontend-${{ github.ref }}`) with `cancel-in-progress: true` — rapid pushes on the same ref supersede in-flight runs per service (important for feature-branch iteration). The two workflows do not cancel each other.
 
 ## Deploy gating
 
 - The `deploy` job is `needs: test` and `if: github.event_name == 'push' && github.ref == 'refs/heads/main'` — doubly restricted.
 - If `RENDER_DEPLOY_HOOK_URL` is missing, the step **explicitly exits 1** rather than silently skipping. Missing secrets are misconfiguration and should fail loudly. **Do not replace this with a silent skip.**
-- `render.yaml` is the source of truth on the Render side: `rootDir: backend`, build `./cmd/server` to `main`, `autoDeploy: false` (deploys are push-triggered via the hook, not Render's auto-deploy), `healthCheckPath: /health`.
+- `ops/terraform/modules/render/main.tf` is the source of truth on the Render side: `root_directory = "backend"`, build `./cmd/server` to `main`, `auto_deploy = false` (deploys are push-triggered via the hook, not Render's auto-deploy), `health_check_path = "/health"`.
 
 ## Coverage requires `-covermode=atomic`
 
