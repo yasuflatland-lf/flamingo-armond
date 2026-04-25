@@ -701,6 +701,17 @@ func TestGraphQL_Me_EmitsSpans(t *testing.T) {
 	if !sawOperation {
 		t.Errorf("expected an operation span referencing 'Me', got names=%v", names)
 	}
+
+	sawField := false
+	for _, name := range names {
+		if strings.HasPrefix(name, "User/") {
+			sawField = true
+			break
+		}
+	}
+	if !sawField {
+		t.Errorf("expected at least one User/<field> field-level span, got: %v", names)
+	}
 }
 
 func TestGraphQL_APQ_HashOnly_Roundtrip(t *testing.T) {
