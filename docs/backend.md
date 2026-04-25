@@ -294,6 +294,151 @@ Adding a new feature: build a usecase, add a field to `Resolver`, wire it in `ru
 
 `backend/cmd/server/main_test.go` contains `TestGraphQL_Me_Anonymous`, `TestGraphQL_Me_Authenticated`, and `TestGraphQL_UpdateProfile_Authenticated`. These tests use the testcontainer Postgres, a local JWKS HTTP server (`jwtFixture`), and ECDSA-signed JWTs. Future GraphQL integration tests should reuse the same `jwtFixture` + `startServer` helpers rather than re-inventing the JWKS mock.
 
+## Backend hardening
+
+PR10 added five operational guardrails to the `/query` endpoint: DataLoader
+(N+1 prevention), typed error helpers, query complexity limits, introspection
+gating, and grapheme-cluster validation. Each lives behind its own seam rather
+than as a cross-cutting concern bolted on to middleware.
+
+### DataLoader (per-request)
+
+**Why:** Without batching, a list resolver that fetches N profiles issues N
+separate `SELECT` statements. DataLoader collapses those into a single
+`SELECT ... WHERE id = ANY($1)`.
+
+`backend/internal/loader/` exposes a per-request `Loaders` struct injected
+via `loader.Middleware(repo)`. The middleware is registered on the `/query`
+group alongside `authMW`:
+
+```go
+q := e.Group("/query", authMW, loader.Middleware(repo))
+```
+
+A fresh `Loaders` instance is created for every request so the per-request
+cache never bleeds across authenticated users. Resolvers pull it out of `ctx`:
+
+```go
+profile, err := loader.For(ctx).Profile.Load(ctx, userID)()
+```
+
+`loader.For` returns `nil` if the middleware was not installed — the blank
+identifier assignment in `For` makes this a no-panic nil pointer, but the
+caller will panic on the subsequent `.Load` call. Keep the middleware wired to
+every route that touches a loader.
+
+**Library:** `github.com/graph-gophers/dataloader/v7` (generics edition).
+The batch function receives `[]string` keys and must return
+`[]*dataloader.Result[*domain.T]` with the **same length and index order**
+as the input keys. dataloader/v7 enforces this 1:1 invariant at runtime.
+
+**Adding a new entity:**
+
+1. Add `FindByIDs(ctx context.Context, ids []string) (map[string]*domain.X, error)` to the repository interface.
+2. Create `backend/internal/loader/<entity>.go` with an `<entity>BatchFunc(repo)` that maps the result map back to the ordered output slice (see `profile.go` for the pattern).
+3. Add `<Entity> *dataloader.Loader[string, *domain.<Entity>]` to `Loaders`.
+4. Initialise it in `loader.New(repo)`.
+
+### Error helpers (`backend/internal/gqlerr`)
+
+**Why:** Raw `&gqlerror.Error{...}` literals scattered across resolvers and
+usecases make `extensions.code` values inconsistent and hard to grep. The
+`gqlerr` package centralises them behind three typed constructors.
+
+| Helper | `extensions.code` | Notes |
+|---|---|---|
+| `gqlerr.Unauthenticated()` | `"UNAUTHENTICATED"` | No `field`; caller is not authenticated |
+| `gqlerr.BadUserInput(field, message)` | `"BAD_USER_INPUT"` | `extensions.field` carries the form field name for FE error display |
+| `gqlerr.Internal(ctx, err)` | `"INTERNAL"` | Message fixed to `"internal server error"`; original `err` logged via `slog.ErrorContext` and never sent to the client |
+
+Usage in the usecase layer:
+
+```go
+if user == nil {
+    return nil, gqlerr.Unauthenticated()
+}
+if n > displayNameMax {
+    return nil, gqlerr.BadUserInput("displayName",
+        fmt.Sprintf("displayName must be at most %d characters", displayNameMax))
+}
+if err := repo.Update(ctx, id, patch); err != nil {
+    return nil, gqlerr.Internal(ctx, err)
+}
+```
+
+**Do not** write `&gqlerror.Error{Extensions: map[string]any{"code": "..."}}` in
+resolvers or usecases. The `Code` type in `gqlerr` is a string alias that
+makes ad-hoc code strings a compile error, and grep should always return zero
+raw `gqlerror.Error` literals outside the `gqlerr` package itself.
+
+`gqlerr.IsCode(err, gqlerr.CodeUnauthenticated)` is the canonical way to
+inspect codes in tests and middleware.
+
+### Complexity limit
+
+**Why:** An unbounded GraphQL query can fan out into thousands of resolver
+calls. A fixed limit caps the worst-case DB load without per-field tuning.
+
+The gqlgen `extension.FixedComplexityLimit(100)` extension is registered
+inside `newGraphQLServer`:
+
+```go
+srv.Use(extension.FixedComplexityLimit(100))
+```
+
+Each scalar field costs 1 point by default. When a query exceeds 100 points,
+gqlgen rejects it during validation and returns an HTTP 200 with an
+`errors[].message` that contains `"complexity"` — no resolver is invoked.
+
+To raise the limit for a feature that genuinely needs it, change the single
+constant argument. Values of 200 or 500 are reasonable stepping stones; avoid
+setting it above 1000 without profiling.
+
+### Introspection gating
+
+**Why:** Introspection exposes the full schema to anyone who can reach
+`/query`. Disabling it in production prevents schema enumeration by
+unauthenticated clients while keeping it on in dev for playground and
+codegen tooling.
+
+Control is via the `GRAPHQL_INTROSPECTION` environment variable:
+
+| Value | Effect |
+|---|---|
+| `off` | Introspection disabled; `__schema` queries return a validation error |
+| anything else (including unset) | Introspection enabled |
+
+The `GET /playground` route is unaffected — the playground UI loads regardless.
+Only the `__schema` and `__type` queries are blocked when introspection is off.
+
+`render.yaml` sets `GRAPHQL_INTROSPECTION=off` for the production service.
+Dev and CI leave the variable unset, so the playground remains fully
+functional.
+
+### Validation (grapheme clusters)
+
+**Why:** String length measured in bytes or UTF-16 code units does not match
+what users perceive as "characters". A 👨‍👩‍👧‍👦 ZWJ sequence is 11 bytes but one
+visible character. Backend and frontend must agree on the same counting rule to
+avoid inconsistent rejections.
+
+`backend/internal/usecase/profile.go` uses
+`github.com/rivo/uniseg` (UAX #29 compliant) via
+`uniseg.GraphemeClusterCount(s)`:
+
+| Field | Rule | Trim before check? |
+|---|---|---|
+| `displayName` | 1–50 grapheme clusters | Yes (`strings.TrimSpace`) |
+| `bio` | 0–500 grapheme clusters | No |
+
+`bio` accepts `nil` (field omitted → leave unchanged) and `*""` (field present
+but empty → explicit clear). See [Partial-update semantics for `bio`](#partial-update-semantics-for-bio).
+
+The frontend uses `Intl.Segmenter` with the same UAX #29 algorithm, so
+character counts agree between the JS form validator and the Go backend. When
+they diverge (edge cases in older browsers), the backend error is canonical and
+must be surfaced as a form-level `BAD_USER_INPUT` error on the client.
+
 ## Backend gotchas
 
 ### Echo v5 handler signature uses a pointer receiver
