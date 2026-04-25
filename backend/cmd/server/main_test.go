@@ -842,6 +842,27 @@ func TestGraphQL_PropagatesTraceparent(t *testing.T) {
 	if !sawOperation {
 		t.Errorf("expected a gqlgen operation or resolver span, got: %v", names)
 	}
+
+	// Verify the parent-child relationship: at least one server-side span must
+	// have its Parent pointing at the injected (remote) span. This catches the
+	// regression where otelhttp ignores the inbound traceparent and silently
+	// creates a new root span — the spans would all share a *new* trace ID
+	// instead of rooting back to the caller's spanIDHex.
+	var sawInjectedParent bool
+	for _, s := range spans {
+		if s.Parent.SpanID().String() == spanIDHex &&
+			s.Parent.TraceID().String() == traceIDHex {
+			sawInjectedParent = true
+			t.Logf("span %q correctly links to injected parent %s/%s",
+				s.Name, traceIDHex, spanIDHex)
+			break
+		}
+	}
+	if !sawInjectedParent {
+		t.Errorf("no span had Parent.SpanID=%q / Parent.TraceID=%q; "+
+			"otelhttp may not be extracting the inbound traceparent. spans: %v",
+			spanIDHex, traceIDHex, names)
+	}
 }
 
 func TestLoader_Middleware_DoesNotBreakQuery(t *testing.T) {
