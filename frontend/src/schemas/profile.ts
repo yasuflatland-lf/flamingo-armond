@@ -5,11 +5,7 @@ import { z } from "zod";
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 function graphemeCount(s: string): number {
-  let n = 0;
-  for (const _segment of segmenter.segment(s)) {
-    n += 1;
-  }
-  return n;
+  return Array.from(segmenter.segment(s)).length;
 }
 
 const displayName = z

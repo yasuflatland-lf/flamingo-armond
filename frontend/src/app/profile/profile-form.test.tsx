@@ -7,12 +7,11 @@ import { describe, expect, it, vi } from "vitest";
 import { UpdateProfileDocument } from "@/generated/graphql";
 import { ProfileForm } from "./profile-form";
 
-// Stub next/navigation so ProfileForm can render outside Next.js
+// Stub next/navigation so ProfileForm can render outside Next.js.
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
 
-// Helper to build a fully typed MockedResponse for UpdateProfile.
 function makeMutationMock(
   variables: { input: { displayName: string; bio?: string | null } },
   onCalled?: () => void,
@@ -85,7 +84,7 @@ describe("<ProfileForm>", () => {
     const longName = "a".repeat(51);
     const displayNameInput = screen.getByLabelText(/display name/i);
     await user.click(displayNameInput);
-    // paste is faster and avoids per-keystroke debounce issues
+    // paste avoids per-keystroke debounce flakiness
     await user.paste(longName);
     await user.tab();
 

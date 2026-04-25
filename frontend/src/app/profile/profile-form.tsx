@@ -24,13 +24,21 @@ const UpdateProfileMutation = graphql(`
   }
 `);
 
+function extensionString(
+  extensions: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = extensions?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
 // Returns a map of field name -> error message for BAD_USER_INPUT errors.
 function useBackendFieldErrors(err: unknown): Record<string, string> {
   if (!CombinedGraphQLErrors.is(err)) return {};
   const out: Record<string, string> = {};
   for (const ge of err.errors) {
-    const code = ge.extensions?.code as string | undefined;
-    const field = ge.extensions?.field as string | undefined;
+    const code = extensionString(ge.extensions, "code");
+    const field = extensionString(ge.extensions, "field");
     if (code === "BAD_USER_INPUT" && field) {
       out[field] = ge.message;
     }
@@ -42,26 +50,29 @@ function useBackendFieldErrors(err: unknown): Record<string, string> {
 // Priority: INTERNAL > UNAUTHENTICATED > first non-field GraphQL error > network error.
 function useBackendErrorBanner(err: unknown): string | undefined {
   if (!err) return undefined;
-  if (CombinedGraphQLErrors.is(err)) {
-    let firstNonField: string | undefined;
-    for (const ge of err.errors) {
-      const code = ge.extensions?.code as string | undefined;
-      const field = ge.extensions?.field as string | undefined;
-      if (code === "INTERNAL") return ge.message;
-      if (code === "UNAUTHENTICATED") return "Your session expired. Please sign in again.";
-      if (code === "BAD_USER_INPUT" && field) continue;
-      firstNonField ??= ge.message;
-    }
-    return firstNonField;
+  if (!CombinedGraphQLErrors.is(err)) {
+    return "Could not reach the server. Check your connection and try again.";
   }
-  return "Could not reach the server. Check your connection and try again.";
+  let firstNonField: string | undefined;
+  for (const ge of err.errors) {
+    const code = extensionString(ge.extensions, "code");
+    const field = extensionString(ge.extensions, "field");
+    if (code === "INTERNAL") return ge.message;
+    if (code === "UNAUTHENTICATED") return "Your session expired. Please sign in again.";
+    if (code === "BAD_USER_INPUT" && field) continue;
+    firstNonField ??= ge.message;
+  }
+  return firstNonField;
 }
 
-function FieldError({ zodErrors, backendError }: { zodErrors: unknown[]; backendError?: string }) {
-  const z = zodErrors.find(
-    (e): e is { message: string } => typeof (e as { message?: unknown })?.message === "string",
-  );
-  const msg = z?.message ?? backendError;
+function hasMessage(value: unknown): value is { message: string } {
+  return typeof (value as { message?: unknown })?.message === "string";
+}
+
+type FieldErrorProps = { zodErrors: unknown[]; backendError?: string };
+
+function FieldError({ zodErrors, backendError }: FieldErrorProps) {
+  const msg = zodErrors.find(hasMessage)?.message ?? backendError;
   if (!msg) return null;
   return <p className="text-sm text-destructive">{msg}</p>;
 }
@@ -86,8 +97,8 @@ export function ProfileForm({ initial }: Props) {
       bio: initial.bio as string | undefined,
     },
     onSubmit: async ({ value }) => {
-      // "" clears, undefined leaves unchanged. Both pass through verbatim.
-      // Catch network/unexpected errors so they surface via the error state, not as unhandled rejections.
+      // bio: "" clears, undefined leaves unchanged. Errors surface via the mutation's error state;
+      // the catch prevents unhandled rejections without swallowing diagnostics.
       await updateProfile({
         variables: {
           input: {
@@ -95,7 +106,9 @@ export function ProfileForm({ initial }: Props) {
             bio: value.bio,
           },
         },
-      }).catch(() => {});
+      }).catch((err) => {
+        console.error("[ProfileForm] mutation rejection", err);
+      });
     },
   });
 
