@@ -280,14 +280,14 @@ func TestUpdate_EmptyPatchReturnsCurrentRow(t *testing.T) {
 
 	repo := repository.NewProfileRepository(testDB.GORM)
 
-	// 1) 取得して baseline を記録
+	// 1) Fetch the row and record the baseline.
 	before, err := repo.FindByID(ctx, id)
 	if err != nil {
 		t.Fatalf("FindByID: %v", err)
 	}
 	beforeUpdated := before.UpdatedAt
 
-	// 2) 空 patch → DB を叩かないので updated_at は変わらない
+	// 2) Empty patch must not touch the DB, so updated_at stays the same.
 	after, err := repo.Update(ctx, id, repository.ProfileUpdate{})
 	if err != nil {
 		t.Fatalf("Update with empty patch: %v", err)

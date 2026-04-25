@@ -68,32 +68,32 @@ Do **not** install pnpm via `npm i -g pnpm` or `brew install pnpm`. Those paths 
 
 ## Supabase CLI
 
-ローカル開発は `supabase start` で完結する（本番 Supabase プロジェクト不要、PR9 で接続）。
+Local development is self-contained behind `supabase start` (no production Supabase project required; the production project is wired up separately).
 
-### 初回セットアップ
+### First-time setup
 
-1. Supabase CLI をインストール（`brew install supabase/tap/supabase` または `mise use supabase@latest`）。
-2. Google Cloud Console で OAuth 2.0 client ID を作成:
-   - Authorized redirect URIs に `http://127.0.0.1:54321/auth/v1/callback` を追加。
-   - Authorized JavaScript origins に `http://127.0.0.1:3000` を追加。
-3. リポジトリルートで `supabase start` を実行。初回のみ Docker イメージ取得で数分かかる。出力に anon key / service role key が表示される。
-4. `frontend/.env.local` に以下を追記（`supabase start` の出力から `anon key` をコピー）:
+1. Install the Supabase CLI (`brew install supabase/tap/supabase` or `mise use supabase@latest`).
+2. Create an OAuth 2.0 client ID in Google Cloud Console:
+   - Add `http://127.0.0.1:54321/auth/v1/callback` to Authorized redirect URIs.
+   - Add `http://127.0.0.1:3000` to Authorized JavaScript origins.
+3. Run `supabase start` from the repository root. The first run pulls Docker images and takes a few minutes. The output prints the anon key and service role key.
+4. Append the following to `frontend/.env.local` (copy `anon key` from the `supabase start` output):
    ```
    NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=<supabase start の出力から anon key>
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from supabase start output>
    SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=<Google OAuth client ID>
    SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=<Google OAuth secret>
    ```
 5. Supabase Studio: http://127.0.0.1:54323
 
-### 日常運用
+### Day-to-day
 
-| タスク | コマンド |
+| Task | Command |
 |---|---|
-| Supabase 起動 | `supabase start` |
-| Supabase 停止 | `supabase stop` |
-| DB リセット | `supabase db reset` |
-| ステータス確認 | `supabase status` |
+| Start Supabase | `supabase start` |
+| Stop Supabase | `supabase stop` |
+| Reset DB | `supabase db reset` |
+| Check status | `supabase status` |
 
 ### Backend JWT verification (local)
 
@@ -109,5 +109,5 @@ The backend fails to start if any of these is missing — check `supabase status
 
 ### Gotchas
 
-- **`localhost` ではなく `127.0.0.1` を使う**: Google OAuth の redirect URI 検証は `localhost` と `127.0.0.1` を別ホスト扱いする。`supabase start` のデフォルト出力に合わせて `127.0.0.1:3000` でアクセス。
-- **シークレットは `.env.local` (gitignored)**: `supabase/config.toml` は `env()` プレースホルダで参照するだけで、実値はコミットしない。
+- **Use `127.0.0.1`, not `localhost`**: Google OAuth's redirect URI validation treats `localhost` and `127.0.0.1` as distinct hosts. Access the app via `127.0.0.1:3000` to match the default `supabase start` output.
+- **Secrets live in `.env.local` (gitignored)**: `supabase/config.toml` only references them through `env()` placeholders — never commit the actual values.

@@ -13,10 +13,12 @@ import (
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/extension"
+	"github.com/99designs/gqlgen/graphql/handler/lru"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
+	"github.com/ravilushqa/otelgqlgen"
 	"golang.org/x/sync/errgroup"
 
 	"backend/graph/generated"
@@ -25,6 +27,7 @@ import (
 	"backend/internal/database"
 	"backend/internal/loader"
 	"backend/internal/repository"
+	"backend/internal/telemetry"
 	"backend/internal/usecase"
 )
 
@@ -40,6 +43,9 @@ func newGraphQLServer(r *resolver.Resolver) *handler.Server {
 	if os.Getenv("GRAPHQL_INTROSPECTION") != "off" {
 		srv.Use(extension.Introspection{})
 	}
+
+	srv.Use(otelgqlgen.Middleware())
+	srv.Use(extension.AutomaticPersistedQuery{Cache: lru.New[string](100)})
 
 	return srv
 }
@@ -89,6 +95,11 @@ func shutdownTimeout(logger *slog.Logger) time.Duration {
 }
 
 func run(ctx context.Context, logger *slog.Logger) error {
+	tracerShutdown, err := telemetry.Init(ctx, logger)
+	if err != nil {
+		return fmt.Errorf("run: telemetry init: %w", err)
+	}
+
 	cfg, err := auth.ConfigFromEnv()
 	if err != nil {
 		return err
@@ -155,6 +166,9 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		// pool is released even if Shutdown times out.
 		shutdownErr := srv.Shutdown(sctx)
 		db.Close()
+		if tracerErr := tracerShutdown(sctx); tracerErr != nil {
+			logger.Warn("tracer shutdown failed", "err", tracerErr)
+		}
 		if shutdownErr != nil {
 			if errors.Is(shutdownErr, context.DeadlineExceeded) {
 				logger.Warn("graceful shutdown timed out, forcing close", "timeout", timeout.String())

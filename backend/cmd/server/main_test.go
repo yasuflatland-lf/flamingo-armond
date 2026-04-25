@@ -6,7 +6,9 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -25,11 +27,14 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"backend/graph/resolver"
 	"backend/internal/auth"
 	"backend/internal/database"
 	"backend/internal/repository"
+	"backend/internal/telemetry"
 	"backend/internal/usecase"
 )
 
@@ -628,6 +633,133 @@ func TestIntrospection_DefaultOn(t *testing.T) {
 	if payload.Data["__schema"] == nil {
 		t.Fatalf("expected data.__schema to be non-nil; body=%q", raw)
 	}
+}
+
+// installInMemoryTracer wires a fresh in-memory exporter as the global
+// TracerProvider so individual tests can inspect emitted spans.
+// The returned flush function must be called before reading spans.
+func installInMemoryTracer(t *testing.T) (*tracetest.InMemoryExporter, func()) {
+	t.Helper()
+	exp := tracetest.NewInMemoryExporter()
+	shutdown, err := telemetry.InitWithExporter(
+		context.Background(),
+		slog.New(slog.DiscardHandler),
+		exp,
+	)
+	if err != nil {
+		t.Fatalf("InitWithExporter: %v", err)
+	}
+	t.Cleanup(func() { _ = shutdown(context.Background()) })
+
+	flush := func() {
+		tp, ok := otel.GetTracerProvider().(interface {
+			ForceFlush(context.Context) error
+		})
+		if ok {
+			_ = tp.ForceFlush(context.Background())
+		}
+	}
+	return exp, flush
+}
+
+func TestGraphQL_Me_EmitsSpans(t *testing.T) {
+	exp, flush := installInMemoryTracer(t)
+
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+
+	userID := insertAuthUser(t, context.Background())
+	tok := f.sign(t, userID)
+
+	resp := postGraphQL(t, ts.URL+"/query",
+		`{"query":"query Me { me { id displayName bio avatarUrl } }"}`, tok)
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+
+	flush()
+
+	spans := exp.GetSpans()
+	names := make([]string, 0, len(spans))
+	for _, s := range spans {
+		names = append(names, s.Name)
+	}
+	t.Logf("emitted span names: %v", names)
+	if len(spans) < 2 {
+		t.Fatalf("expected >=2 spans (operation + resolver), got %d: names=%v", len(spans), names)
+	}
+	// otelgqlgen v0.17 emits the operation span as the operation name (e.g. "Me").
+	// Accept either the bare operation name or the "query Me" form so the test
+	// survives a future library bump.
+	var sawOperation bool
+	for _, n := range names {
+		if n == "Me" || n == "query Me" || strings.Contains(n, "Me") {
+			sawOperation = true
+			break
+		}
+	}
+	if !sawOperation {
+		t.Errorf("expected an operation span referencing 'Me', got names=%v", names)
+	}
+
+	sawField := false
+	for _, name := range names {
+		if strings.HasPrefix(name, "User/") {
+			sawField = true
+			break
+		}
+	}
+	if !sawField {
+		t.Errorf("expected at least one User/<field> field-level span, got: %v", names)
+	}
+}
+
+func TestGraphQL_APQ_HashOnly_Roundtrip(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+
+	userID := insertAuthUser(t, context.Background())
+	tok := f.sign(t, userID)
+
+	const query = `query Me { me { id displayName } }`
+	hash := sha256Hex(query)
+
+	// 1st POST: full query + hash to populate the APQ cache.
+	firstBody := fmt.Sprintf(
+		`{"query":%q,"extensions":{"persistedQuery":{"version":1,"sha256Hash":%q}}}`,
+		query, hash,
+	)
+	resp1 := postGraphQL(t, ts.URL+"/query", firstBody, tok)
+	if errs, ok := resp1["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("1st request unexpected errors: %v", errs)
+	}
+	data1, _ := resp1["data"].(map[string]any)
+	if data1["me"] == nil {
+		t.Fatalf("1st request: expected data.me, resp=%v", resp1)
+	}
+
+	// 2nd POST: hash-only (no `query` field). Should resolve from APQ cache.
+	secondBody := fmt.Sprintf(
+		`{"extensions":{"persistedQuery":{"version":1,"sha256Hash":%q}}}`,
+		hash,
+	)
+	resp2 := postGraphQL(t, ts.URL+"/query", secondBody, tok)
+	if errs, ok := resp2["errors"].([]any); ok && len(errs) > 0 {
+		raw, _ := json.Marshal(errs)
+		if strings.Contains(string(raw), "PERSISTED_QUERY_NOT_FOUND") {
+			t.Fatalf("2nd request returned PERSISTED_QUERY_NOT_FOUND, APQ not working: %s", raw)
+		}
+		t.Fatalf("2nd request unexpected errors: %v", errs)
+	}
+	data2, _ := resp2["data"].(map[string]any)
+	if data2["me"] == nil {
+		t.Fatalf("2nd request: expected data.me, resp=%v", resp2)
+	}
+}
+
+func sha256Hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
 }
 
 func TestLoader_Middleware_DoesNotBreakQuery(t *testing.T) {
