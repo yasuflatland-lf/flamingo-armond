@@ -22,3 +22,9 @@ services:
         sync: false
       - key: GRAPHQL_INTROSPECTION
         value: off
+      - key: APP_ENV
+        value: production
+      - key: OTEL_EXPORTER_OTLP_ENDPOINT
+        sync: false
+      - key: OTEL_TRACES_SAMPLER_ARG
+        value: "0.1"
