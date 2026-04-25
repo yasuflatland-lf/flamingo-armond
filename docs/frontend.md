@@ -257,9 +257,10 @@ requiring an OTel SDK. Full distributed tracing is tracked in
 
 #### Generator (`frontend/src/lib/observability/request-id.ts`)
 
-A ~25-line inline implementation — no external npm dependencies. Uses the
-global `crypto.getRandomValues` API (available in all modern browsers and
-Node 18+). Produces a standard UUID v7 string:
+A thin wrapper around the `uuidv7` npm package (~1.5 KB gzip). The package
+provides a correct monotonic counter within the same millisecond, which the
+previous inline implementation did not guarantee. Produces a standard UUID v7
+string:
 
 ```
 xxxxxxxx-xxxx-7xxx-yxxx-xxxxxxxxxxxx
