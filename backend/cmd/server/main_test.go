@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,6 +27,10 @@ import (
 var testDBURL string
 
 func TestMain(m *testing.M) {
+	os.Exit(runTests(m))
+}
+
+func runTests(m *testing.M) int {
 	ctx := context.Background()
 	container, err := tcpostgres.Run(ctx,
 		"postgres:15-alpine",
@@ -38,25 +43,29 @@ func TestMain(m *testing.M) {
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tcpostgres run: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
-	defer testcontainers.CleanupContainer(nil, container)
+	defer func() {
+		if err := testcontainers.TerminateContainer(container); err != nil {
+			fmt.Fprintf(os.Stderr, "terminate container: %v\n", err)
+		}
+	}()
 
 	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "conn string: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	if err := bootstrapAuthSchema(ctx, dsn); err != nil {
 		fmt.Fprintf(os.Stderr, "bootstrap: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	if err := database.Migrate(dsn); err != nil {
 		fmt.Fprintf(os.Stderr, "migrate: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	testDBURL = dsn
-	os.Exit(m.Run())
+	return m.Run()
 }
 
 // bootstrapAuthSchema mimics the Supabase-managed auth.users table just enough
@@ -217,6 +226,9 @@ func TestRun_FailsWhenJWKSURLMissing(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected run to fail when SUPABASE_JWKS_URL is empty")
 	}
+	if !strings.Contains(err.Error(), "SUPABASE_JWKS_URL") && !strings.Contains(err.Error(), "JWKS") {
+		t.Fatalf("expected error to mention JWKS or SUPABASE_JWKS_URL, got: %v", err)
+	}
 }
 
 func TestRun_FailsWhenDBURLMissing(t *testing.T) {
@@ -233,7 +245,10 @@ func TestRun_FailsWhenDBURLMissing(t *testing.T) {
 
 	err := run(context.Background(), slog.New(slog.DiscardHandler))
 	if err == nil {
-		t.Fatal("expected run to fail when SUPABASE_DB_URL is empty")
+		t.Fatal("expected error when SUPABASE_DB_URL is empty, got nil")
+	}
+	if !strings.Contains(err.Error(), "SUPABASE_DB_URL") {
+		t.Fatalf("expected error to mention SUPABASE_DB_URL, got: %v", err)
 	}
 }
 

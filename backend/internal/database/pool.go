@@ -10,8 +10,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// DB bundles the underlying pgx connection pool with a GORM handle built on
-// top of it, so both layers share the same connections.
+// DB bundles a single pgxpool with a GORM handle that shares the same
+// underlying connections. The two fields must be obtained together via Open;
+// reassigning them after construction breaks the shared-pool invariant.
 type DB struct {
 	Pool *pgxpool.Pool
 	GORM *gorm.DB

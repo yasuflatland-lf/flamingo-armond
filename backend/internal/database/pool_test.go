@@ -16,6 +16,10 @@ import (
 var testDSN string
 
 func TestMain(m *testing.M) {
+	os.Exit(runTests(m))
+}
+
+func runTests(m *testing.M) int {
 	ctx := context.Background()
 	container, err := tcpostgres.Run(ctx,
 		"postgres:15-alpine",
@@ -28,21 +32,25 @@ func TestMain(m *testing.M) {
 	)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "testcontainer postgres run: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
-	defer testcontainers.CleanupContainer(nil, container)
+	defer func() {
+		if err := testcontainers.TerminateContainer(container); err != nil {
+			fmt.Fprintf(os.Stderr, "terminate container: %v\n", err)
+		}
+	}()
 
 	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "connection string: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	if err := bootstrapAuthSchema(ctx, dsn); err != nil {
 		fmt.Fprintf(os.Stderr, "bootstrap auth schema: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 	testDSN = dsn
-	os.Exit(m.Run())
+	return m.Run()
 }
 
 // bootstrapAuthSchema mimics the Supabase-managed auth.users table just enough
@@ -113,6 +121,16 @@ func TestMigrateIdempotent(t *testing.T) {
 	}
 	if err := database.Migrate(testDSN); err != nil {
 		t.Fatalf("second Migrate (expected no-op): %v", err)
+	}
+}
+
+func TestOpen_RespectsCanceledContext(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel before Open is called
+	_, err := database.Open(ctx, database.Config{URL: testDSN})
+	if err == nil {
+		t.Fatal("expected error when ctx is canceled before Open, got nil")
 	}
 }
 

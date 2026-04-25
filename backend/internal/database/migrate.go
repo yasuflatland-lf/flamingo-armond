@@ -4,6 +4,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -21,14 +22,22 @@ func Migrate(url string) error {
 	if err != nil {
 		return fmt.Errorf("database: open migrations FS: %w", err)
 	}
-	defer src.Close()
+	defer func() {
+		if err := src.Close(); err != nil {
+			slog.Warn("database: close migrations source", "err", err)
+		}
+	}()
 
 	migURL := convertSchemeForMigrate(url)
 	m, err := migrate.NewWithSourceInstance("iofs", src, migURL)
 	if err != nil {
 		return fmt.Errorf("database: init migrate: %w", err)
 	}
-	defer m.Close()
+	defer func() {
+		if srcErr, dbErr := m.Close(); srcErr != nil || dbErr != nil {
+			slog.Warn("database: close migrate runner", "src_err", srcErr, "db_err", dbErr)
+		}
+	}()
 
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("database: migrate up: %w", err)

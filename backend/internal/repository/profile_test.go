@@ -24,6 +24,10 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	os.Exit(runTests(m))
+}
+
+func runTests(m *testing.M) int {
 	ctx := context.Background()
 	container, err := tcpostgres.Run(ctx,
 		"postgres:15-alpine",
@@ -35,35 +39,39 @@ func TestMain(m *testing.M) {
 		tcpostgres.BasicWaitStrategies(),
 	)
 	if err != nil {
-		fail("testcontainer postgres run: %v", err)
+		fmt.Fprintf(os.Stderr, "run container: %v\n", err)
+		return 1
 	}
-	defer testcontainers.CleanupContainer(nil, container)
+	defer func() {
+		if err := testcontainers.TerminateContainer(container); err != nil {
+			fmt.Fprintf(os.Stderr, "terminate container: %v\n", err)
+		}
+	}()
 
 	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
-		fail("connection string: %v", err)
+		fmt.Fprintf(os.Stderr, "conn string: %v\n", err)
+		return 1
 	}
 	if err := bootstrapAuthSchema(ctx, dsn); err != nil {
-		fail("bootstrap auth schema: %v", err)
+		fmt.Fprintf(os.Stderr, "bootstrap auth schema: %v\n", err)
+		return 1
 	}
 	if err := database.Migrate(dsn); err != nil {
-		fail("migrate: %v", err)
+		fmt.Fprintf(os.Stderr, "migrate: %v\n", err)
+		return 1
 	}
 
 	db, err := database.Open(ctx, database.Config{URL: dsn, MaxConns: 4})
 	if err != nil {
-		fail("open db: %v", err)
+		fmt.Fprintf(os.Stderr, "open db: %v\n", err)
+		return 1
 	}
 	defer db.Close()
 
 	testDSN = dsn
 	testDB = db
-	os.Exit(m.Run())
-}
-
-func fail(format string, a ...any) {
-	fmt.Fprintf(os.Stderr, format+"\n", a...)
-	os.Exit(1)
+	return m.Run()
 }
 
 // bootstrapAuthSchema mimics the Supabase-managed auth.users table just enough
@@ -262,5 +270,32 @@ func TestProfile_OnDeleteCascade(t *testing.T) {
 
 	if _, err := repo.FindByID(ctx, id); !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("want ErrNotFound after cascade, got %v", err)
+	}
+}
+
+func TestUpdate_EmptyPatchReturnsCurrentRow(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	id := insertAuthUser(t, ctx)
+
+	repo := repository.NewProfileRepository(testDB.GORM)
+
+	// 1) 取得して baseline を記録
+	before, err := repo.FindByID(ctx, id)
+	if err != nil {
+		t.Fatalf("FindByID: %v", err)
+	}
+	beforeUpdated := before.UpdatedAt
+
+	// 2) 空 patch → DB を叩かないので updated_at は変わらない
+	after, err := repo.Update(ctx, id, repository.ProfileUpdate{})
+	if err != nil {
+		t.Fatalf("Update with empty patch: %v", err)
+	}
+	if !after.UpdatedAt.Equal(beforeUpdated) {
+		t.Errorf("empty patch should not bump updated_at; before=%v after=%v", beforeUpdated, after.UpdatedAt)
+	}
+	if after.ID != before.ID {
+		t.Errorf("ID mismatch")
 	}
 }
