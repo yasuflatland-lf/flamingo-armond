@@ -636,14 +636,14 @@ func TestIntrospection_DefaultOn(t *testing.T) {
 }
 
 // installInMemoryTracer wires a fresh in-memory exporter as the global
-// TracerProvider. Returns the exporter and a flush helper that callers must
-// invoke before inspecting spans.
+// TracerProvider so individual tests can inspect emitted spans.
+// The returned flush function must be called before reading spans.
 func installInMemoryTracer(t *testing.T) (*tracetest.InMemoryExporter, func()) {
 	t.Helper()
 	exp := tracetest.NewInMemoryExporter()
 	shutdown, err := telemetry.InitWithExporter(
 		context.Background(),
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		slog.New(slog.DiscardHandler),
 		exp,
 	)
 	if err != nil {

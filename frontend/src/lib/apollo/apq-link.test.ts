@@ -9,16 +9,10 @@ describe("makeApqLink", () => {
     expect(typeof link.request).toBe("function");
   });
 
-  it("attaches extensions.persistedQuery to outbound context", async () => {
+  it("attaches extensions.persistedQuery to outbound context", () => {
     // Minimal exercise: confirm the link is constructable and is a valid ApolloLink.
     // Detailed round-trip is covered by the backend APQ integration test.
-    const link = makeApqLink();
-    const doc = gql`
-      query Ping {
-        health
-      }
-    `;
-    expect(doc).toBeDefined();
-    expect(link).toBeDefined();
+    expect(makeApqLink()).toBeDefined();
+    expect(gql`query Ping { health }`).toBeDefined();
   });
 });

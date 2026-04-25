@@ -2,7 +2,6 @@ package telemetry_test
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"testing"
 
@@ -14,13 +13,9 @@ import (
 
 func TestInit_NoopWhenEndpointEmpty(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	shutdown, err := telemetry.Init(context.Background(), logger)
+	shutdown, err := telemetry.Init(context.Background(), slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatalf("Init returned error with empty endpoint: %v", err)
-	}
-	if shutdown == nil {
-		t.Fatal("Init returned nil shutdown func")
 	}
 	if err := shutdown(context.Background()); err != nil {
 		t.Fatalf("noop shutdown returned error: %v", err)
@@ -31,7 +26,7 @@ func TestInit_ExporterReceivesSpans(t *testing.T) {
 	exp := tracetest.NewInMemoryExporter()
 	shutdown, err := telemetry.InitWithExporter(
 		context.Background(),
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		slog.New(slog.DiscardHandler),
 		exp,
 	)
 	if err != nil {
@@ -78,7 +73,7 @@ func TestInit_SamplerRatioParsing(t *testing.T) {
 			exp := tracetest.NewInMemoryExporter()
 			shutdown, err := telemetry.InitWithExporter(
 				context.Background(),
-				slog.New(slog.NewTextHandler(io.Discard, nil)),
+				slog.New(slog.DiscardHandler),
 				exp,
 			)
 			if err != nil {
