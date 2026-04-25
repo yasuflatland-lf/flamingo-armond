@@ -1,6 +1,6 @@
 # Supabase only surfaces the database password at project creation time. We
 # generate it inside Terraform so the value is captured in state and can be
-# rotated by tainting just this resource.
+# rotated by replacing just this resource.
 resource "random_password" "db" {
   length  = 32
   special = true
@@ -20,20 +20,6 @@ resource "supabase_project" "this" {
     # remove this guard before any destroy.
     prevent_destroy = true
   }
-}
-
-# Auth + URL configuration. Kept as a separate resource so the dependency edge
-# from vercel -> supabase_settings does not create a cycle with supabase_project.
-resource "supabase_settings" "this" {
-  project_ref = supabase_project.this.id
-
-  auth = jsonencode({
-    site_url                  = var.site_url
-    uri_allow_list            = join(",", var.redirect_urls)
-    external_google_enabled   = true
-    external_google_client_id = var.google_oauth_client_id
-    external_google_secret    = var.google_oauth_client_secret
-  })
 }
 
 data "supabase_apikeys" "this" {

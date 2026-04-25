@@ -18,6 +18,13 @@ output "db_url" {
   description = "Session-mode pooler DSN for golang-migrate compatibility."
   value       = data.supabase_pooler.this.url["session"]
   sensitive   = true
+  precondition {
+    # Surface "pooler not yet associated" at the supabase module boundary
+    # rather than letting the downstream render module report a generic
+    # "supabase_db_url must be a postgres:// DSN" error.
+    condition     = can(regex("^postgres(ql)?://", data.supabase_pooler.this.url["session"]))
+    error_message = "supabase_pooler did not return a session-mode DSN. The pooler may not be associated with this project yet."
+  }
 }
 
 output "db_password" {
