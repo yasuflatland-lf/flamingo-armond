@@ -5,6 +5,7 @@
 
 [tools]
 terraform = "1.14.9"
+tflint    = "0.62.0"
 
 [env]
 TF_VAR_project_name    = "flamingo-armond"

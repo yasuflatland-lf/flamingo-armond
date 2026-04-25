@@ -104,9 +104,9 @@ For the same reason, the frontend workflow's `paths:` filter includes `pnpm-lock
 
 Per "pnpm workspace filter exits 0 for missing scripts" above, a missing `test` script in `frontend/package.json` would silently pass with plain `pnpm --filter frontend test`. The current workflow runs `pnpm --filter frontend --if-present test` specifically so the step becomes a documented no-op today and **automatically activates** once PR 5 adds the `test` script plus a Vitest config — no workflow edit needed at that point. When Vitest lands, do not drop the `--if-present` flag: it stays as a guard against future script renames.
 
-### Node/pnpm provisioning via mise + corepack
+### Node/pnpm provisioning via mise
 
-The workflow uses the same `jdx/mise-action@v4` step that `backend.yml` uses, relying on the repo-root `.tool-versions` to pin Node (`nodejs 24`). `corepack enable` then activates the `packageManager` field from root `package.json` (`pnpm@9.15.0`), so the pnpm version is pinned by the repo — not by the CI runner's preinstalled toolchain. This keeps local and CI Node/pnpm versions in lockstep with a single source of truth.
+The workflow uses the same `jdx/mise-action@v4` step that `backend.yml` uses, relying on the repo-root `.tool-versions` to pin both Node (`nodejs 24`) and pnpm (`pnpm 9.15.9`). mise installs both directly, so the pnpm version is pinned by the repo — not by the CI runner's preinstalled toolchain and not by Corepack. The `packageManager` field in root `package.json` is kept aligned for informational tooling but is not the install path. This keeps local and CI Node/pnpm versions in lockstep with a single source of truth.
 
 ### Build-time env vars: server and client
 

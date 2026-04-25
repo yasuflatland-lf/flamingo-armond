@@ -2,23 +2,16 @@
 
 ## Tools
 
-- mise (`curl https://mise.run | sh`) — manages Go (backend/.tool-versions) and Node (./.tool-versions).
-- Corepack — bundled with Node. Activates the pnpm version pinned in root package.json. **Required**.
-- Supabase CLI — local Postgres / Auth emulation. Used once Supabase integration lands.
+- mise (`curl https://mise.run | sh`) — manages Go (`backend/.tool-versions`), Node + pnpm + Supabase CLI (`./.tool-versions`), and Terraform + tflint (`ops/terraform/mise.toml`).
+- Supabase CLI — local Postgres / Auth emulation. Pinned via mise.
 
 ## First-time setup
 
 ```bash
-# 1. Install Go 1.26.2 (from backend/.tool-versions) and Node 24.x (from ./.tool-versions).
+# Install Go 1.26.2 (backend/.tool-versions), Node 24.x + pnpm 9.15.9 + Supabase CLI (./.tool-versions).
 mise install
 
-# 2. Enable Corepack so that the pnpm version in package.json is honored.
-#    If you previously installed pnpm globally (npm i -g pnpm / brew install pnpm),
-#    uninstall it first — a PATH-level global pnpm shadows the Corepack shim and
-#    silently breaks version pinning.
-corepack enable
-
-# 3. Install workspace deps. The frontend workspace is populated with a Next.js 16 App Router scaffold (see `docs/frontend.md`).
+# Install workspace deps. The frontend workspace is populated with a Next.js 16 App Router scaffold (see `docs/frontend.md`).
 pnpm install
 ```
 
@@ -26,11 +19,11 @@ Verify:
 
 ```bash
 node --version        # v24.x.y
-pnpm --version        # 9.15.0  (resolved via Corepack from packageManager field)
-which pnpm            # should NOT point to a global install (npm i -g / brew)
+pnpm --version        # 9.15.9  (resolved by mise from .tool-versions)
+which pnpm            # ~/.local/share/mise/shims/pnpm
 ```
 
-`which pnpm` may return `~/.local/share/mise/shims/pnpm` on a mise-managed machine — that is a mise shim delegating to the Corepack-managed binary, not a global install, and is not drift. The resolved version (`pnpm --version`) is what matters.
+`which pnpm` returning `~/.local/share/mise/shims/pnpm` is the expected mise shim. A `/usr/local/bin/pnpm` or `/opt/homebrew/bin/pnpm` path indicates a global install that will shadow the mise shim — uninstall it (`npm uninstall -g pnpm` / `brew uninstall pnpm`) before running `pnpm` again.
 
 ## Day-to-day
 
@@ -58,13 +51,23 @@ Rationale: keeps PR diffs to hand-written code only and removes the merge-confli
 
 ## `.tool-versions` hierarchy (mise)
 
-mise resolves `.tool-versions` files hierarchically: `backend/.tool-versions` (Go) and `./.tool-versions` (Node) are both honored without conflict. Backend CI sets `working_directory: backend` and sees only the Go version. When a frontend workflow that needs Node is added, that workflow must run from the repo root (`.`) — NOT `working_directory: frontend` — because the Node version is declared in the root `.tool-versions`.
+mise resolves tool config hierarchically. Three scopes coexist without conflict:
 
-## Why Corepack, not global pnpm
+| Scope | File | Tools |
+|---|---|---|
+| Backend | `backend/.tool-versions` | Go |
+| Repo root (frontend + dev) | `./.tool-versions` | Node, pnpm, Supabase CLI |
+| Ops (production IaC) | `ops/terraform/mise.toml` | Terraform, tflint |
 
-The `packageManager` field in root `package.json` is the single source of truth for the pnpm version. Corepack reads it and downloads the exact version on demand, so every contributor and every CI runner uses the same pnpm — no drift, no "works on my machine".
+Backend CI sets `working_directory: backend` and sees only Go. Frontend CI runs from the repo root — NOT `working_directory: frontend` — because Node and pnpm are declared in the root `.tool-versions`. Terraform CI sets `working_directory: ops/terraform` and picks up `mise.toml` (Terraform + tflint + the shared `TF_VAR_*` env block).
 
-Do **not** install pnpm via `npm i -g pnpm` or `brew install pnpm`. Those paths compete with the Corepack shim on PATH, and whichever wins is timing-dependent.
+`mise.toml` is used in `ops/terraform/` (instead of `.tool-versions`) so the same file can declare both `[tools]` and `[env]` for shared `TF_VAR_*` defaults. The two formats are equivalent for tool pinning.
+
+## Why mise-managed pnpm, not global pnpm or Corepack
+
+The `[tools]` entries in `.tool-versions` are the single source of truth for pnpm. mise downloads the exact pinned version on demand, so every contributor and every CI runner uses the same pnpm — no drift, no "works on my machine". The `packageManager` field in root `package.json` is kept aligned for tooling that reads it (e.g. pnpm self-checks) but is informational; the `.tool-versions` pin is what gets installed.
+
+Do **not** install pnpm via `npm i -g pnpm` or `brew install pnpm`. Those paths compete with the mise shim on PATH, and whichever wins is timing-dependent. Corepack is no longer used in this repo — `corepack enable` is unnecessary and can be skipped or disabled.
 
 ## Supabase CLI
 
@@ -83,7 +86,7 @@ Whether to use **one** Google OAuth client with both URIs or **two separate clie
 
 ### First-time setup
 
-1. Install the Supabase CLI (`brew install supabase/tap/supabase` or `mise use supabase@latest`).
+1. The Supabase CLI is already installed by `mise install` from the root `.tool-versions`. No separate step is needed.
 2. Create an OAuth 2.0 client ID in Google Cloud Console (Application type: **Web application**). Use `127.0.0.1`, not `localhost` — Google validates these as distinct origins:
    - Add `http://127.0.0.1:54321/auth/v1/callback` to **Authorized redirect URIs**.
    - Add `http://127.0.0.1:3000` to **Authorized JavaScript origins**.

@@ -10,36 +10,32 @@ A first-time contributor should be able to go from a fresh clone to a logged-in 
 
 | Tool | Why | How to install |
 |---|---|---|
-| **mise** | Pins Go and Node to the versions in `.tool-versions` files (no global drift) | `curl https://mise.run \| sh` |
-| **Corepack** | Activates the pnpm version pinned in `package.json`. **Required** — do not `npm i -g pnpm` or `brew install pnpm` (those shadow Corepack) | Bundled with Node; enabled in step 2 |
+| **mise** | Pins Go, Node, pnpm, and the Supabase CLI to the versions in `.tool-versions` files (no global drift) | `curl https://mise.run \| sh` |
 | **Docker** | Backs `supabase start` (Postgres + Auth running locally) | Docker Desktop / OrbStack / colima |
-| **Supabase CLI** | Drives the local stack | `brew install supabase/tap/supabase` or `mise use supabase@latest` |
-| **Terraform 1.14.9** | Production-only; skip for local dev | `cd ops/terraform && mise install` |
+| **Terraform + tflint** | Production-only; pinned in `ops/terraform/mise.toml`. Skip for local dev | `cd ops/terraform && mise install` |
 
-Versions resolved by `mise install`:
+Versions resolved by `mise install` at the repo root:
 
 - Go `1.26.2` — from `backend/.tool-versions`
-- Node `24.x` — from `./.tool-versions`
-- pnpm — from `packageManager` in `package.json` (Corepack downloads it on demand)
+- Node `24.x`, pnpm `9.15.9`, Supabase CLI — from `./.tool-versions`
+
+Do not install pnpm via `npm i -g pnpm` or `brew install pnpm` — a PATH-level binary shadows the mise shim and silently breaks version pinning. If you previously installed it that way, uninstall it first.
 
 Verify after installation:
 
 ```bash
 node --version    # v24.x.y
-pnpm --version    # version from packageManager field
-which pnpm        # NOT a global install path
+pnpm --version    # 9.15.9 (from .tool-versions via mise)
+which pnpm        # ~/.local/share/mise/shims/pnpm
 ```
 
-See `docs/dev-setup.md` § "Tools" for rationale (why Corepack, why mise hierarchy).
+See `docs/dev-setup.md` § "Tools" for rationale (why mise-managed pnpm, mise hierarchy).
 
 ### 2. Initial setup
 
 ```bash
-# Install pinned Go + Node toolchains (reads .tool-versions hierarchy)
+# Install pinned Go + Node + pnpm + Supabase CLI (reads .tool-versions hierarchy)
 mise install
-
-# Activate Corepack so pnpm matches package.json
-corepack enable
 
 # Install workspace dependencies (root + frontend)
 pnpm install
@@ -101,7 +97,7 @@ Tips:
 
 - **`make dev-backend` and `make dev-frontend` are foreground processes.** Run them in separate terminals (or under `tmux` / your editor's tasks panel). They do not background themselves.
 - **`make codegen` is required after editing `schema/*.graphql`.** Generated outputs are gitignored on purpose — see `docs/dev-setup.md` § "Policy on generated files". CI regenerates and verifies on every push.
-- **`make test` mirrors CI.** If `make test` passes locally and CI fails, suspect environment drift (Go / Node version, pnpm via global install vs. Corepack) before assuming a CI bug.
+- **`make test` mirrors CI.** If `make test` passes locally and CI fails, suspect environment drift (Go / Node / pnpm version, or a global pnpm shadowing the mise shim) before assuming a CI bug.
 - **The Makefile lives at the repo root.** Backend-only targets still `cd backend &&` internally so you can invoke `make` from anywhere in the tree.
 - **Direct invocation is fine.** `make dev-backend` is identical to `cd backend && go run ./cmd/server`. Use whichever you prefer; the Makefile is documentation, not a wrapper that adds behavior.
 
