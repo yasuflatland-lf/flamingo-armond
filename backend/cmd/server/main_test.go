@@ -105,7 +105,7 @@ func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newRouter(&resolver.Resolver{}, noopAuthMW))
+	ts := httptest.NewServer(newRouter(&resolver.Resolver{}, noopAuthMW, nil))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -372,7 +372,7 @@ func newGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Server, *datab
 
 	profileRepo := repository.NewProfileRepository(db.GORM)
 	profileUC := usecase.NewProfileUsecase(profileRepo)
-	e := newRouter(&resolver.Resolver{Profile: profileUC}, mw)
+	e := newRouter(&resolver.Resolver{Profile: profileUC}, mw, profileRepo)
 
 	ts := httptest.NewServer(e)
 	t.Cleanup(ts.Close)
@@ -518,5 +518,156 @@ func TestGraphQL_UpdateProfile_Authenticated(t *testing.T) {
 	}
 	if me["bio"] != "hi" {
 		t.Fatalf("expected persisted bio=hi, got %v", me["bio"])
+	}
+}
+
+// build101ComplexityQuery returns a GraphQL query body whose complexity exceeds
+// 100. Each alias of "me { id displayName bio avatarUrl }" costs 5 points
+// (1 for me + 4 scalar fields). 21 aliases = 105 points > limit of 100.
+func build101ComplexityQuery() string {
+	var sb strings.Builder
+	sb.WriteString(`{"query":"query {`)
+	for i := 1; i <= 21; i++ {
+		sb.WriteString(fmt.Sprintf(" a%d: me { id displayName bio avatarUrl }", i))
+	}
+	sb.WriteString(` }"}`)
+	return sb.String()
+}
+
+func TestComplexityLimit_Rejects(t *testing.T) {
+	ts := newTestServer(t)
+
+	body := build101ComplexityQuery()
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/query", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer res.Body.Close()
+	raw, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+
+	var payload struct {
+		Errors []struct {
+			Message    string         `json:"message"`
+			Extensions map[string]any `json:"extensions"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("decode body: %v (body=%q)", err, raw)
+	}
+	if len(payload.Errors) == 0 {
+		t.Fatalf("expected complexity errors, got none; body=%q", raw)
+	}
+	code, _ := payload.Errors[0].Extensions["code"].(string)
+	msg := payload.Errors[0].Message
+	if code != "COMPLEXITY_LIMIT_EXCEEDED" && !strings.Contains(strings.ToLower(msg), "complexity") {
+		t.Fatalf("expected complexity error, got code=%q message=%q", code, msg)
+	}
+}
+
+func TestIntrospection_GatedOff(t *testing.T) {
+	t.Setenv("GRAPHQL_INTROSPECTION", "off")
+
+	srv := newGraphQLServer(&resolver.Resolver{})
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+
+	body := `{"query":"{ __schema { queryType { name } } }"}`
+	req, err := http.NewRequest(http.MethodPost, ts.URL, strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer res.Body.Close()
+	raw, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+
+	var payload struct {
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("decode body: %v (body=%q)", err, raw)
+	}
+	if len(payload.Errors) == 0 {
+		t.Fatalf("expected introspection error, got none; body=%q", raw)
+	}
+	msg := strings.ToLower(payload.Errors[0].Message)
+	if !strings.Contains(msg, "introspection") {
+		t.Fatalf("expected introspection error message, got %q", payload.Errors[0].Message)
+	}
+}
+
+func TestIntrospection_DefaultOn(t *testing.T) {
+	t.Setenv("GRAPHQL_INTROSPECTION", "")
+
+	srv := newGraphQLServer(&resolver.Resolver{})
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+
+	body := `{"query":"{ __schema { queryType { name } } }"}`
+	req, err := http.NewRequest(http.MethodPost, ts.URL, strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer res.Body.Close()
+	raw, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+
+	var payload struct {
+		Data   map[string]any `json:"data"`
+		Errors []any          `json:"errors"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("decode body: %v (body=%q)", err, raw)
+	}
+	if len(payload.Errors) > 0 {
+		t.Fatalf("unexpected errors: %v; body=%q", payload.Errors, raw)
+	}
+	if payload.Data["__schema"] == nil {
+		t.Fatalf("expected data.__schema to be non-nil; body=%q", raw)
+	}
+}
+
+func TestLoader_Middleware_DoesNotBreakQuery(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+
+	userID := insertAuthUser(t, context.Background())
+	tok := f.sign(t, userID)
+
+	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ me { id } }"}`, tok)
+
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("unexpected errors (loader middleware may have broken request): %v", errs)
+	}
+	data, _ := resp["data"].(map[string]any)
+	me, _ := data["me"].(map[string]any)
+	if me == nil {
+		t.Fatalf("expected data.me, got nil; resp=%v", resp)
+	}
+	if me["id"] != userID {
+		t.Fatalf("expected me.id=%q, got %v", userID, me["id"])
 	}
 }

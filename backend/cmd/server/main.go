@@ -23,6 +23,7 @@ import (
 	"backend/graph/resolver"
 	"backend/internal/auth"
 	"backend/internal/database"
+	"backend/internal/loader"
 	"backend/internal/repository"
 	"backend/internal/usecase"
 )
@@ -33,11 +34,17 @@ func newGraphQLServer(r *resolver.Resolver) *handler.Server {
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.Options{})
 	srv.AddTransport(transport.POST{})
-	srv.Use(extension.Introspection{})
+
+	srv.Use(extension.FixedComplexityLimit(100))
+
+	if os.Getenv("GRAPHQL_INTROSPECTION") != "off" {
+		srv.Use(extension.Introspection{})
+	}
+
 	return srv
 }
 
-func newRouter(resolvers *resolver.Resolver, authMW echo.MiddlewareFunc) *echo.Echo {
+func newRouter(resolvers *resolver.Resolver, authMW echo.MiddlewareFunc, repo repository.ProfileRepository) *echo.Echo {
 	e := echo.New()
 	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
@@ -55,7 +62,7 @@ func newRouter(resolvers *resolver.Resolver, authMW echo.MiddlewareFunc) *echo.E
 	})
 
 	gqlSrv := newGraphQLServer(resolvers)
-	q := e.Group("/query", authMW)
+	q := e.Group("/query", authMW, loader.Middleware(repo))
 	q.POST("", echo.WrapHandler(gqlSrv))
 	e.GET("/playground", echo.WrapHandler(playground.Handler("GraphQL", "/query")))
 
@@ -111,7 +118,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	profileUC := usecase.NewProfileUsecase(profileRepo)
 
 	resolvers := &resolver.Resolver{Profile: profileUC}
-	e := newRouter(resolvers, authMW)
+	e := newRouter(resolvers, authMW, profileRepo)
 	e.Logger = logger
 
 	port := os.Getenv("PORT")
