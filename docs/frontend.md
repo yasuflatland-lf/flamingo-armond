@@ -4,7 +4,7 @@
 
 - Next.js 16 (App Router) + React 19.2 + TypeScript 5.9 (Node 24.x)
 - Tailwind 4 (CSS-first config via `@theme`, no `tailwind.config.ts`)
-- shadcn/ui (initialized; actual components land in PR6)
+- shadcn/ui (initialized; component set grows incrementally as features need them)
 - Biome 2 for lint + format (no ESLint, no Prettier — do not run `next lint`)
 - `@t3-oss/env-nextjs` + Zod for env validation
 - Apollo Client via `@apollo/client-integration-nextjs`; GraphQL code generation via `@graphql-codegen/client-preset`. RSC renders use a thin `gqlFetch` helper; browser code uses `useQuery` through `ApolloNextAppProvider`.
@@ -38,7 +38,7 @@ pnpm --filter frontend typecheck               # tsc --noEmit
 - Tokens and dark-mode variant live in `src/app/globals.css` via `@theme` and `@custom-variant dark (...)`. There is no `tailwind.config.ts`.
 - PostCSS plugin is `@tailwindcss/postcss` (the old `tailwindcss` plugin no longer exists in v4). `autoprefixer` is not needed — Tailwind 4 handles prefixing internally.
 - Tokens map into the Tailwind namespace via an **`@theme inline`** block in `globals.css` (`inline` matters — without it Tailwind emits duplicate variables). `tw-animate-css` is pulled in with `@import "tw-animate-css"` (it is a CSS package, not a JS plugin).
-- When PR6 adds shadcn components, extend the `@theme` block with the additional `--color-*` tokens the components reference.
+- When new shadcn components are added, extend the `@theme` block with the additional `--color-*` tokens the components reference.
 
 ## Codegen
 
@@ -86,7 +86,7 @@ Browser code calls `/api/graphql` (same-origin via the Next rewrite — avoids C
 
 ## Auth (Supabase)
 
-PR6 introduces a 3-layer Supabase SSR client setup mirroring the official `@supabase/ssr` template. Each layer exists because cookie reading/writing differs between contexts:
+The Supabase SSR client uses a 3-layer setup mirroring the official `@supabase/ssr` template. Each layer exists because cookie reading/writing differs between contexts:
 
 | Layer | File | Cookie source | Used by |
 |---|---|---|---|
@@ -98,7 +98,7 @@ PR6 introduces a 3-layer Supabase SSR client setup mirroring the official `@supa
 
 `src/lib/apollo/client.ts` composes `from([authLink, httpLink])`. `authLink` calls `supabase.auth.getSession()` on every request and attaches `Authorization: Bearer <jwt>` when a session exists. `getSession()` reads from local cookies — it is not an HTTP call, so per-request invocation is cheap. When the JWT is stale, the SDK refreshes internally.
 
-If no session exists the header is omitted (not set to an empty string). Backend treats missing `Authorization` as anonymous (PR7).
+If no session exists the header is omitted (not set to an empty string). Backend treats missing `Authorization` as anonymous.
 
 Backend JWT verification is enabled. Without a Supabase session, only unauthenticated queries (e.g., `health`) succeed against `/query` until resolvers begin enforcing authentication.
 
@@ -242,7 +242,7 @@ field to `""` so the next submit clears the column.
 
 `frontend/components.json` and `frontend/src/lib/utils.ts` (the `cn()` helper) are committed. The initial component set (`button`, `input`, `label`) was added with `pnpm dlx shadcn add` and extends `globals.css` with the required theme tokens. `form.tsx` was removed (TanStack Form's render-prop API does not need the shadcn wrapper); `textarea.tsx` was added for the `bio` field.
 
-`shadcn init` is interactive and not suitable for CI or non-interactive environments. The fallback is to hand-write `components.json`, `lib/utils.ts`, and the `globals.css` base tokens following the shadcn JSON schema — exactly what PR3 did.
+`shadcn init` is interactive and not suitable for CI or non-interactive environments. The fallback is to hand-write `components.json`, `lib/utils.ts`, and the `globals.css` base tokens following the shadcn JSON schema — that is how this repo's shadcn baseline was bootstrapped.
 
 ## Gotchas encountered
 
@@ -250,7 +250,7 @@ field to `""` so the next submit clears the column.
 
 **`useRef(false)` is the correct guard for one-shot effects in error boundaries.** When an error boundary needs to call `router.replace()` exactly once, use `const hasRedirected = useRef(false)` to gate the call inside `useEffect`. Using `useState` instead would re-trigger the effect on every re-render. `useRef` mutations do not schedule a re-render and therefore cannot form a feedback loop.
 
-**Next 16 deprecates `middleware.ts` in favour of `proxy.ts`.** The build emits a deprecation warning (not an error) when `src/middleware.ts` exists. PR6 intentionally stays on `middleware.ts` because `@supabase/ssr` templates and ecosystem docs still reference the old name. When the ecosystem catches up and Next removes the old name, rename `src/middleware.ts` → `src/proxy.ts` (and `src/lib/supabase/middleware.ts` → `src/lib/supabase/proxy.ts` for consistency).
+**Next 16 deprecates `middleware.ts` in favour of `proxy.ts`.** The build emits a deprecation warning (not an error) when `src/middleware.ts` exists. We intentionally stay on `middleware.ts` because `@supabase/ssr` templates and ecosystem docs still reference the old name. When the ecosystem catches up and Next removes the old name, rename `src/middleware.ts` → `src/proxy.ts` (and `src/lib/supabase/middleware.ts` → `src/lib/supabase/proxy.ts` for consistency).
 
 **Biome 2 — Tailwind 4 directive parsing**: Without `css.parser.tailwindDirectives: true` in `biome.json`, directives like `@theme`, `@custom-variant`, and `@import "tw-animate-css"` can trigger false-positive lint errors. Add the flag whenever Tailwind 4 CSS is in scope.
 
@@ -285,3 +285,33 @@ field to `""` so the next submit clears the column.
 **TanStack Form `onChange` validator runs synchronously on every keystroke — no built-in debounce.** For long inputs this can cause noticeable jank in tests that type character-by-character. Use `userEvent.paste("long string")` instead of `userEvent.type(...)` in tests to avoid triggering a validator call per character. In production components, add an `asyncDebounceMs` option to the field's async validator when you need network-backed validation.
 
 **TanStack Form field errors are Zod `ZodIssue` objects, not plain strings.** `field.state.meta.errors` is `ValidationError[]` where each entry may be a `ZodIssue`. A `<FieldError>` helper component that calls `issue.message` (or falls back to `String(error)`) keeps rendering consistent across sync and async error paths.
+
+## Automatic Persisted Queries
+
+The browser-side Apollo Client chain is:
+
+```ts
+from([authLink, makeApqLink(), httpLink])
+```
+
+Order matters:
+
+- `authLink` runs first so hash-only POST bodies still carry the Supabase `Authorization: Bearer` header.
+- `apqLink` runs second so it can rewrite the outbound body to use `extensions.persistedQuery.sha256Hash`.
+- `httpLink` is terminal.
+
+### Why `useGETForHashedQueries: false`
+
+The Apollo docs allow switching hash-only requests to GET with the query string. We deliberately keep POST because the Supabase access token travels in the `Authorization` header today; if we ever move to query-param auth, this default would leak the token into server access logs.
+
+### sha256 via native WebCrypto
+
+`frontend/src/lib/apollo/sha256.ts` wraps `crypto.subtle.digest('SHA-256', ...)` and is shared with the APQ link. We intentionally do **not** add the `crypto-hash` npm dependency — native WebCrypto is available in every modern browser and in Node 19+ (which covers Next.js RSC).
+
+### RSC `gqlFetch` does not use APQ
+
+`frontend/src/lib/apollo/server.ts` still `print(doc)`s the full document on every call. RSC requests are infrequent compared to the browser, and adding the APQ fallback loop (hash → on `PERSISTED_QUERY_NOT_FOUND` retry with the full document) would double the code surface of `gqlFetch`. If we later decide to enable APQ for RSC, the recipe is:
+
+1. Compute `sha256Hex(print(doc))`.
+2. POST with `{ extensions: { persistedQuery: { version: 1, sha256Hash } } }`.
+3. If the response body contains an error with `extensions.code === "PERSISTED_QUERY_NOT_FOUND"`, retry the POST with `query: print(doc)` + the same `extensions`.
