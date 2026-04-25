@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rotisserie/eris"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
 	"backend/internal/gqlerr"
@@ -107,5 +108,18 @@ func TestIsCode_EmptyCode(t *testing.T) {
 
 	if gqlerr.IsCode(gqlerr.Unauthenticated(), gqlerr.Code("")) {
 		t.Error("IsCode should return false for empty Code")
+	}
+}
+
+func TestInternal_EmitsErrorChain(t *testing.T) {
+	buf := &bytes.Buffer{}
+	prev := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	slog.SetDefault(slog.New(slog.NewJSONHandler(buf, nil)))
+
+	gqlerr.Internal(context.Background(), eris.New("boom"))
+
+	if !bytes.Contains(buf.Bytes(), []byte(`"error_chain":`)) {
+		t.Fatalf("expected error_chain attribute in log output, got %s", buf.String())
 	}
 }

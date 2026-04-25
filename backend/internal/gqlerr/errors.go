@@ -6,6 +6,8 @@ import (
 	"log/slog"
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
+
+	"backend/internal/logging"
 )
 
 type Code string
@@ -36,7 +38,7 @@ func BadUserInput(field, message string) *gqlerror.Error {
 }
 
 func Internal(ctx context.Context, err error) *gqlerror.Error {
-	slog.ErrorContext(ctx, "internal error", "error", err)
+	logging.LogError(ctx, slog.Default(), "internal error", err)
 	return &gqlerror.Error{
 		Message: "internal server error",
 		Extensions: map[string]any{
