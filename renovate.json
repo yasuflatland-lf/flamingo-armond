@@ -1,0 +1,66 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "timezone": "Asia/Tokyo",
+  "schedule": ["before 9am on monday"],
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
+  "rangeStrategy": "bump",
+  "platformAutomerge": true,
+  "prHourlyLimit": 4,
+  "prConcurrentLimit": 10,
+  "packageRules": [
+    {
+      "description": "Backend (Go modules)",
+      "matchManagers": ["gomod"],
+      "groupName": "backend dependencies",
+      "addLabels": ["backend", "dependencies"],
+      "semanticCommitScope": "backend"
+    },
+    {
+      "description": "Frontend (npm / pnpm)",
+      "matchManagers": ["npm"],
+      "groupName": "frontend dependencies",
+      "addLabels": ["frontend", "dependencies"],
+      "semanticCommitScope": "frontend"
+    },
+    {
+      "description": "GitHub Actions",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions",
+      "addLabels": ["ci", "dependencies"],
+      "semanticCommitScope": "ci"
+    },
+    {
+      "description": "Auto-merge minor and patch updates after CI passes",
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "lockFileMaintenance"],
+      "automerge": true
+    },
+    {
+      "description": "Major updates need manual review",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "addLabels": ["major-update"]
+    },
+    {
+      "description": "Pin Go toolchain bumps for manual review",
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["golang"],
+      "automerge": false
+    }
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 9am on monday"],
+    "automerge": true
+  },
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "minimumReleaseAge": null,
+    "automerge": false
+  }
+}
