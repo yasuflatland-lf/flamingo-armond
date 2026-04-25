@@ -300,15 +300,21 @@ func TestUpdate_EmptyPatchReturnsCurrentRow(t *testing.T) {
 	}
 }
 
+// insertNAuthUsers inserts n auth users and returns their ids.
+func insertNAuthUsers(t *testing.T, ctx context.Context, n int) []string {
+	t.Helper()
+	ids := make([]string, n)
+	for i := range ids {
+		ids[i] = insertAuthUser(t, ctx)
+	}
+	return ids
+}
+
 func TestFindByIDs_AllFound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	// Insert 4 users; query 3 of them.
-	ids := make([]string, 4)
-	for i := range ids {
-		ids[i] = insertAuthUser(t, ctx)
-	}
+	ids := insertNAuthUsers(t, ctx, 4)
 	query := ids[:3]
 
 	repo := repository.NewProfileRepository(testDB.GORM)
@@ -328,7 +334,6 @@ func TestFindByIDs_AllFound(t *testing.T) {
 			t.Fatalf("profile ID mismatch: got %q, want %q", p.ID, id)
 		}
 	}
-	// Fourth id must not appear.
 	if _, ok := got[ids[3]]; ok {
 		t.Fatalf("unexpected id %q present in result", ids[3])
 	}
@@ -338,11 +343,7 @@ func TestFindByIDs_PartialMissing(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	// Insert 3 users; query them plus one non-existent id.
-	ids := make([]string, 3)
-	for i := range ids {
-		ids[i] = insertAuthUser(t, ctx)
-	}
+	ids := insertNAuthUsers(t, ctx, 3)
 	missing := "00000000-0000-0000-0000-000000000001"
 	query := append(ids, missing)
 
@@ -381,7 +382,7 @@ func TestFindByIDs_EmptySlice(t *testing.T) {
 func TestFindByIDs_DBError(t *testing.T) {
 	t.Parallel()
 
-	// Cancel the context before calling FindByIDs to trigger a DB error.
+	// A pre-cancelled context forces the underlying driver to fail.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 

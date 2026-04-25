@@ -23,14 +23,13 @@ func profileBatchFunc(repo repository.ProfileRepository) dataloader.BatchFunc[st
 		}
 
 		for i, k := range keys {
-			p, ok := byID[k]
-			if !ok {
-				out[i] = &dataloader.Result[*domain.Profile]{
-					Error: fmt.Errorf("profile %s: %w", k, repository.ErrNotFound),
-				}
+			if p, ok := byID[k]; ok {
+				out[i] = &dataloader.Result[*domain.Profile]{Data: p}
 				continue
 			}
-			out[i] = &dataloader.Result[*domain.Profile]{Data: p}
+			out[i] = &dataloader.Result[*domain.Profile]{
+				Error: fmt.Errorf("profile %s: %w", k, repository.ErrNotFound),
+			}
 		}
 		return out
 	}

@@ -528,17 +528,16 @@ func build101ComplexityQuery() string {
 	var sb strings.Builder
 	sb.WriteString(`{"query":"query {`)
 	for i := 1; i <= 21; i++ {
-		sb.WriteString(fmt.Sprintf(" a%d: me { id displayName bio avatarUrl }", i))
+		fmt.Fprintf(&sb, " a%d: me { id displayName bio avatarUrl }", i)
 	}
 	sb.WriteString(` }"}`)
 	return sb.String()
 }
 
-func TestComplexityLimit_Rejects(t *testing.T) {
-	ts := newTestServer(t)
-
-	body := build101ComplexityQuery()
-	req, err := http.NewRequest(http.MethodPost, ts.URL+"/query", strings.NewReader(body))
+// postRaw POSTs body to url and returns the raw response bytes.
+func postRaw(t *testing.T, url, body string) []byte {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -552,6 +551,13 @@ func TestComplexityLimit_Rejects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read body: %v", err)
 	}
+	return raw
+}
+
+func TestComplexityLimit_Rejects(t *testing.T) {
+	ts := newTestServer(t)
+
+	raw := postRaw(t, ts.URL+"/query", build101ComplexityQuery())
 
 	var payload struct {
 		Errors []struct {
@@ -572,28 +578,20 @@ func TestComplexityLimit_Rejects(t *testing.T) {
 	}
 }
 
+func newIntrospectionTestServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	ts := httptest.NewServer(newGraphQLServer(&resolver.Resolver{}))
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+const introspectionQuery = `{"query":"{ __schema { queryType { name } } }"}`
+
 func TestIntrospection_GatedOff(t *testing.T) {
 	t.Setenv("GRAPHQL_INTROSPECTION", "off")
+	ts := newIntrospectionTestServer(t)
 
-	srv := newGraphQLServer(&resolver.Resolver{})
-	ts := httptest.NewServer(srv)
-	t.Cleanup(ts.Close)
-
-	body := `{"query":"{ __schema { queryType { name } } }"}`
-	req, err := http.NewRequest(http.MethodPost, ts.URL, strings.NewReader(body))
-	if err != nil {
-		t.Fatalf("new request: %v", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("do request: %v", err)
-	}
-	defer res.Body.Close()
-	raw, err := io.ReadAll(res.Body)
-	if err != nil {
-		t.Fatalf("read body: %v", err)
-	}
+	raw := postRaw(t, ts.URL, introspectionQuery)
 
 	var payload struct {
 		Errors []struct {
@@ -606,34 +604,16 @@ func TestIntrospection_GatedOff(t *testing.T) {
 	if len(payload.Errors) == 0 {
 		t.Fatalf("expected introspection error, got none; body=%q", raw)
 	}
-	msg := strings.ToLower(payload.Errors[0].Message)
-	if !strings.Contains(msg, "introspection") {
+	if !strings.Contains(strings.ToLower(payload.Errors[0].Message), "introspection") {
 		t.Fatalf("expected introspection error message, got %q", payload.Errors[0].Message)
 	}
 }
 
 func TestIntrospection_DefaultOn(t *testing.T) {
 	t.Setenv("GRAPHQL_INTROSPECTION", "")
+	ts := newIntrospectionTestServer(t)
 
-	srv := newGraphQLServer(&resolver.Resolver{})
-	ts := httptest.NewServer(srv)
-	t.Cleanup(ts.Close)
-
-	body := `{"query":"{ __schema { queryType { name } } }"}`
-	req, err := http.NewRequest(http.MethodPost, ts.URL, strings.NewReader(body))
-	if err != nil {
-		t.Fatalf("new request: %v", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("do request: %v", err)
-	}
-	defer res.Body.Close()
-	raw, err := io.ReadAll(res.Body)
-	if err != nil {
-		t.Fatalf("read body: %v", err)
-	}
+	raw := postRaw(t, ts.URL, introspectionQuery)
 
 	var payload struct {
 		Data   map[string]any `json:"data"`

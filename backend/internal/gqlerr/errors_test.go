@@ -13,6 +13,12 @@ import (
 	"backend/internal/gqlerr"
 )
 
+func extString(t *testing.T, e *gqlerror.Error, key string) string {
+	t.Helper()
+	v, _ := e.Extensions[key].(string)
+	return v
+}
+
 func TestUnauthenticated(t *testing.T) {
 	t.Parallel()
 
@@ -21,7 +27,7 @@ func TestUnauthenticated(t *testing.T) {
 	if got.Message != "unauthenticated" {
 		t.Errorf("Message = %q, want %q", got.Message, "unauthenticated")
 	}
-	if code, _ := got.Extensions["code"].(string); code != "UNAUTHENTICATED" {
+	if code := extString(t, got, "code"); code != "UNAUTHENTICATED" {
 		t.Errorf("Extensions[code] = %q, want %q", code, "UNAUTHENTICATED")
 	}
 }
@@ -34,10 +40,10 @@ func TestBadUserInput(t *testing.T) {
 	if got.Message != "too long" {
 		t.Errorf("Message = %q, want %q", got.Message, "too long")
 	}
-	if code, _ := got.Extensions["code"].(string); code != "BAD_USER_INPUT" {
+	if code := extString(t, got, "code"); code != "BAD_USER_INPUT" {
 		t.Errorf("Extensions[code] = %q, want %q", code, "BAD_USER_INPUT")
 	}
-	if field, _ := got.Extensions["field"].(string); field != "displayName" {
+	if field := extString(t, got, "field"); field != "displayName" {
 		t.Errorf("Extensions[field] = %q, want %q", field, "displayName")
 	}
 }
@@ -45,13 +51,12 @@ func TestBadUserInput(t *testing.T) {
 func TestInternal_message(t *testing.T) {
 	t.Parallel()
 
-	orig := errors.New("boom")
-	got := gqlerr.Internal(context.Background(), orig)
+	got := gqlerr.Internal(context.Background(), errors.New("boom"))
 
 	if got.Message != "internal server error" {
 		t.Errorf("Message = %q, want %q", got.Message, "internal server error")
 	}
-	if code, _ := got.Extensions["code"].(string); code != "INTERNAL" {
+	if code := extString(t, got, "code"); code != "INTERNAL" {
 		t.Errorf("Extensions[code] = %q, want %q", code, "INTERNAL")
 	}
 	if strings.Contains(got.Message, "boom") {
@@ -92,9 +97,7 @@ func TestIsCode_plainError(t *testing.T) {
 func TestIsCode_NilExtensions(t *testing.T) {
 	t.Parallel()
 
-	// *gqlerror.Error with no Extensions map must not panic and must return false.
-	err := &gqlerror.Error{Message: "x"}
-	if gqlerr.IsCode(err, gqlerr.CodeInternal) {
+	if gqlerr.IsCode(&gqlerror.Error{Message: "x"}, gqlerr.CodeInternal) {
 		t.Error("IsCode should return false when Extensions is nil")
 	}
 }
@@ -102,7 +105,6 @@ func TestIsCode_NilExtensions(t *testing.T) {
 func TestIsCode_EmptyCode(t *testing.T) {
 	t.Parallel()
 
-	// Zero-value Code must return false without panicking.
 	if gqlerr.IsCode(gqlerr.Unauthenticated(), gqlerr.Code("")) {
 		t.Error("IsCode should return false for empty Code")
 	}

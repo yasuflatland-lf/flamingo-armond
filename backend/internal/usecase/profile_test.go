@@ -14,7 +14,6 @@ import (
 	"backend/internal/repository"
 )
 
-// mockProfileRepository is a hand-written test double for ProfileRepository.
 type mockProfileRepository struct {
 	findResult    *domain.Profile
 	findErr       error
@@ -32,29 +31,32 @@ func (m *mockProfileRepository) Update(_ context.Context, _ string, patch reposi
 	return m.updateResult, m.updateErr
 }
 
-// authedCtx returns a context carrying an authenticated user with the given sub.
 func authedCtx(sub string) context.Context {
 	return auth.ContextWithUser(context.Background(), &auth.AuthUser{Sub: sub})
 }
 
-// anonCtx returns a context with no authenticated user.
 func anonCtx() context.Context {
 	return context.Background()
 }
 
-// ptr returns a pointer to s — convenience for test literals.
 func ptr(s string) *string { return &s }
 
-// assertGQLCode asserts that err is a *gqlerror.Error with the given extensions code.
-func assertGQLCode(t *testing.T, err error, code string) {
+// assertGQLErr asserts err is a *gqlerror.Error with the given extensions.code,
+// and (when field is non-empty) the given extensions.field.
+func assertGQLErr(t *testing.T, err error, code, field string) {
 	t.Helper()
 	var gqlErr *gqlerror.Error
 	if !errors.As(err, &gqlErr) {
 		t.Fatalf("expected *gqlerror.Error, got %T: %v", err, err)
 	}
-	got, _ := gqlErr.Extensions["code"].(string)
-	if got != code {
+	if got, _ := gqlErr.Extensions["code"].(string); got != code {
 		t.Fatalf("expected extensions.code=%q, got %q", code, got)
+	}
+	if field == "" {
+		return
+	}
+	if got, _ := gqlErr.Extensions["field"].(string); got != field {
+		t.Fatalf("expected extensions.field=%q, got %q", field, got)
 	}
 }
 
@@ -98,7 +100,6 @@ func TestProfileUsecase_Me(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			repo := &mockProfileRepository{findResult: tc.findResult, findErr: tc.findErr}
@@ -110,7 +111,7 @@ func TestProfileUsecase_Me(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				assertGQLCode(t, err, tc.wantErr)
+				assertGQLErr(t, err, tc.wantErr, "")
 				return
 			}
 			if err != nil {
@@ -271,7 +272,6 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			repo := &mockProfileRepository{updateResult: tc.repoResult, updateErr: tc.repoErr}
@@ -279,24 +279,14 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 
 			p, err := uc.UpdateProfile(tc.ctx, tc.input)
 
-			// Case: expect a specific gqlerror code
 			if tc.wantErrCode != "" {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				assertGQLCode(t, err, tc.wantErrCode)
-				if tc.wantErrField != "" {
-					var gqlErr *gqlerror.Error
-					errors.As(err, &gqlErr)
-					got, _ := gqlErr.Extensions["field"].(string)
-					if got != tc.wantErrField {
-						t.Fatalf("expected extensions.field=%q, got %q", tc.wantErrField, got)
-					}
-				}
+				assertGQLErr(t, err, tc.wantErrCode, tc.wantErrField)
 				return
 			}
 
-			// Case: success
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -313,11 +303,12 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 				}
 			}
 
-			if tc.checkBioIsNil {
+			switch {
+			case tc.checkBioIsNil:
 				if repo.capturedPatch.Bio != nil {
 					t.Fatalf("expected Bio==nil in patch, got %v", *repo.capturedPatch.Bio)
 				}
-			} else if tc.wantRepoBio != nil {
+			case tc.wantRepoBio != nil:
 				if repo.capturedPatch.Bio == nil {
 					t.Fatalf("expected Bio==%q in patch, got nil", *tc.wantRepoBio)
 				}

@@ -59,7 +59,7 @@ func (r *profileRepo) FindByID(ctx context.Context, id string) (*domain.Profile,
 }
 
 func (r *profileRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Profile, error) {
-	// Guard: GORM converts WHERE id IN () to an unfiltered scan when ids is empty.
+	// GORM turns WHERE id IN () into an unfiltered scan, so short-circuit empty input.
 	if len(ids) == 0 {
 		return map[string]*domain.Profile{}, nil
 	}

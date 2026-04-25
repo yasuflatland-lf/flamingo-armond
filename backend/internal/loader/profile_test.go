@@ -16,9 +16,8 @@ import (
 	"backend/internal/repository"
 )
 
-// countingRepo is a function-table test double for repository.ProfileRepository
-// that records how many times each method was called. Unused methods panic so a
-// test that triggers an unexpected call fails loudly instead of silently.
+// countingRepo is a function-table test double for repository.ProfileRepository.
+// Unconfigured methods panic so an unexpected call fails loudly.
 type countingRepo struct {
 	findByID  func(ctx context.Context, id string) (*domain.Profile, error)
 	findByIDs func(ctx context.Context, ids []string) (map[string]*domain.Profile, error)
@@ -46,24 +45,8 @@ func (r *countingRepo) Update(ctx context.Context, id string, patch repository.P
 	return r.update(ctx, id, patch)
 }
 
-func TestProfileLoader_BatchesNCallsIntoOne(t *testing.T) {
-	t.Parallel()
-
-	var batchCalls atomic.Int32
-	repo := &countingRepo{
-		findByIDs: func(ctx context.Context, ids []string) (map[string]*domain.Profile, error) {
-			batchCalls.Add(1)
-			out := make(map[string]*domain.Profile, len(ids))
-			for _, id := range ids {
-				out[id] = &domain.Profile{ID: id}
-			}
-			return out, nil
-		},
-	}
-	loaders := loader.New(repo)
-	ctx := context.Background()
-
-	ids := []string{"a", "b", "c", "d", "e"}
+// loadAll concurrently loads all ids through l and returns aligned results/errors.
+func loadAll(ctx context.Context, l *loader.Loaders, ids []string) ([]*domain.Profile, []error) {
 	results := make([]*domain.Profile, len(ids))
 	errs := make([]error, len(ids))
 
@@ -72,13 +55,30 @@ func TestProfileLoader_BatchesNCallsIntoOne(t *testing.T) {
 		wg.Add(1)
 		go func(i int, id string) {
 			defer wg.Done()
-			thunk := loaders.Profile.Load(ctx, id)
-			p, err := thunk()
-			results[i] = p
-			errs[i] = err
+			results[i], errs[i] = l.Profile.Load(ctx, id)()
 		}(i, id)
 	}
 	wg.Wait()
+	return results, errs
+}
+
+func TestProfileLoader_BatchesNCallsIntoOne(t *testing.T) {
+	t.Parallel()
+
+	var batchCalls atomic.Int32
+	repo := &countingRepo{
+		findByIDs: func(_ context.Context, ids []string) (map[string]*domain.Profile, error) {
+			batchCalls.Add(1)
+			out := make(map[string]*domain.Profile, len(ids))
+			for _, id := range ids {
+				out[id] = &domain.Profile{ID: id}
+			}
+			return out, nil
+		},
+	}
+
+	ids := []string{"a", "b", "c", "d", "e"}
+	results, errs := loadAll(context.Background(), loader.New(repo), ids)
 
 	for i, err := range errs {
 		if err != nil {
@@ -100,7 +100,7 @@ func TestProfileLoader_PartialNotFound(t *testing.T) {
 	t.Parallel()
 
 	repo := &countingRepo{
-		findByIDs: func(ctx context.Context, ids []string) (map[string]*domain.Profile, error) {
+		findByIDs: func(_ context.Context, ids []string) (map[string]*domain.Profile, error) {
 			out := map[string]*domain.Profile{}
 			for _, id := range ids {
 				if id == "missing" {
@@ -111,24 +111,9 @@ func TestProfileLoader_PartialNotFound(t *testing.T) {
 			return out, nil
 		},
 	}
-	loaders := loader.New(repo)
-	ctx := context.Background()
 
 	ids := []string{"present-1", "missing", "present-2"}
-	results := make([]*domain.Profile, len(ids))
-	errs := make([]error, len(ids))
-
-	var wg sync.WaitGroup
-	for i, id := range ids {
-		wg.Add(1)
-		go func(i int, id string) {
-			defer wg.Done()
-			p, err := loaders.Profile.Load(ctx, id)()
-			results[i] = p
-			errs[i] = err
-		}(i, id)
-	}
-	wg.Wait()
+	results, errs := loadAll(context.Background(), loader.New(repo), ids)
 
 	if errs[0] != nil {
 		t.Fatalf("present-1: unexpected error: %v", errs[0])
@@ -155,26 +140,13 @@ func TestProfileLoader_BatchFuncError(t *testing.T) {
 
 	wantErr := errors.New("boom")
 	repo := &countingRepo{
-		findByIDs: func(ctx context.Context, ids []string) (map[string]*domain.Profile, error) {
+		findByIDs: func(_ context.Context, _ []string) (map[string]*domain.Profile, error) {
 			return nil, wantErr
 		},
 	}
-	loaders := loader.New(repo)
-	ctx := context.Background()
 
 	ids := []string{"x", "y", "z"}
-	errs := make([]error, len(ids))
-
-	var wg sync.WaitGroup
-	for i, id := range ids {
-		wg.Add(1)
-		go func(i int, id string) {
-			defer wg.Done()
-			_, err := loaders.Profile.Load(ctx, id)()
-			errs[i] = err
-		}(i, id)
-	}
-	wg.Wait()
+	_, errs := loadAll(context.Background(), loader.New(repo), ids)
 
 	for i, err := range errs {
 		if !errors.Is(err, wantErr) {
@@ -187,23 +159,21 @@ func TestMiddleware_For_Roundtrip(t *testing.T) {
 	t.Parallel()
 
 	repo := &countingRepo{
-		findByIDs: func(ctx context.Context, ids []string) (map[string]*domain.Profile, error) {
+		findByIDs: func(_ context.Context, _ []string) (map[string]*domain.Profile, error) {
 			return map[string]*domain.Profile{}, nil
 		},
 	}
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
+	c := e.NewContext(req, httptest.NewRecorder())
 
 	var got *loader.Loaders
 	handler := func(c *echo.Context) error {
 		got = loader.For(c.Request().Context())
 		return nil
 	}
-	mw := loader.Middleware(repo)
-	if err := mw(handler)(c); err != nil {
+	if err := loader.Middleware(repo)(handler)(c); err != nil {
 		t.Fatalf("middleware: %v", err)
 	}
 	if got == nil {

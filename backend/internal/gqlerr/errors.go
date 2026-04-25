@@ -8,7 +8,6 @@ import (
 	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
-// Code is a GraphQL error code string.
 type Code string
 
 const (
@@ -46,13 +45,14 @@ func Internal(ctx context.Context, err error) *gqlerror.Error {
 	}
 }
 
-// IsCode reports whether err is a *gqlerror.Error with the given code.
+// IsCode reports whether err is a *gqlerror.Error whose extensions.code equals
+// code. An empty code never matches.
 func IsCode(err error, code Code) bool {
-	var gqe *gqlerror.Error
-	if !errors.As(err, &gqe) {
+	if code == "" {
 		return false
 	}
-	if code == "" {
+	var gqe *gqlerror.Error
+	if !errors.As(err, &gqe) {
 		return false
 	}
 	got, _ := gqe.Extensions["code"].(string)
