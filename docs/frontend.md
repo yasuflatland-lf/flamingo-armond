@@ -100,6 +100,8 @@ PR6 introduces a 3-layer Supabase SSR client setup mirroring the official `@supa
 
 If no session exists the header is omitted (not set to an empty string). Backend treats missing `Authorization` as anonymous (PR7).
 
+Backend JWT verification is enabled in PR7. Without a Supabase session, only unauthenticated queries (e.g., `health`) succeed against `/query` until resolvers begin enforcing authentication (PR9).
+
 ### RSC token forwarding (deferred to PR9)
 
 `src/lib/apollo/server.ts` does NOT forward an auth token in PR6. Reason: PR6's only RSC query is `{ health }` (anonymous-safe). PR9 introduces `me`, at which point we extend `gqlFetch` to optionally pull the token from `createServerClient(cookies())`. A `TODO(PR9)` comment marks the intended hook point.

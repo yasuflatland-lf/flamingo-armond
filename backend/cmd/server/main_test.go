@@ -12,12 +12,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/labstack/echo/v5"
+
 	"backend/graph/resolver"
 )
 
+func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c *echo.Context) error { return next(c) }
+}
+
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newRouter(&resolver.Resolver{}))
+	ts := httptest.NewServer(newRouter(&resolver.Resolver{}, noopAuthMW))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -100,6 +106,16 @@ func waitHealthy(t *testing.T, port string, timeout time.Duration) {
 }
 
 func TestRunGracefulShutdown(t *testing.T) {
+	tsJWKS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"keys": []}`))
+	}))
+	defer tsJWKS.Close()
+
+	t.Setenv("SUPABASE_JWKS_URL", tsJWKS.URL)
+	t.Setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
+	t.Setenv("SUPABASE_JWT_ISSUER", "http://issuer.test")
+
 	port := freePort(t)
 	t.Setenv("PORT", port)
 	t.Setenv("SHUTDOWN_TIMEOUT", "2s")
@@ -123,6 +139,17 @@ func TestRunGracefulShutdown(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("run did not return within timeout after context cancel")
+	}
+}
+
+func TestRun_FailsWhenJWKSURLMissing(t *testing.T) {
+	t.Setenv("SUPABASE_JWKS_URL", "")
+	t.Setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
+	t.Setenv("SUPABASE_JWT_ISSUER", "http://issuer.test")
+
+	err := run(context.Background(), slog.New(slog.DiscardHandler))
+	if err == nil {
+		t.Fatal("expected run to fail when SUPABASE_JWKS_URL is empty")
 	}
 }
 

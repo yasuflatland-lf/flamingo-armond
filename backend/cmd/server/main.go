@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -20,6 +21,7 @@ import (
 
 	"backend/graph/generated"
 	"backend/graph/resolver"
+	"backend/internal/auth"
 )
 
 const defaultShutdownTimeout = 25 * time.Second
@@ -32,7 +34,7 @@ func newGraphQLServer(r *resolver.Resolver) *handler.Server {
 	return srv
 }
 
-func newRouter(resolvers *resolver.Resolver) *echo.Echo {
+func newRouter(resolvers *resolver.Resolver, authMW echo.MiddlewareFunc) *echo.Echo {
 	e := echo.New()
 	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
@@ -50,7 +52,8 @@ func newRouter(resolvers *resolver.Resolver) *echo.Echo {
 	})
 
 	gqlSrv := newGraphQLServer(resolvers)
-	e.POST("/query", echo.WrapHandler(gqlSrv))
+	q := e.Group("/query", authMW)
+	q.POST("", echo.WrapHandler(gqlSrv))
 	e.GET("/playground", echo.WrapHandler(playground.Handler("GraphQL", "/query")))
 
 	return e
@@ -76,8 +79,21 @@ func shutdownTimeout(logger *slog.Logger) time.Duration {
 }
 
 func run(ctx context.Context, logger *slog.Logger) error {
+	cfg, err := auth.ConfigFromEnv()
+	if err != nil {
+		return err
+	}
+	kf, err := auth.NewJWKSKeyfunc(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+	authMW, err := auth.AuthMiddleware(kf, cfg)
+	if err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+
 	resolvers := &resolver.Resolver{}
-	e := newRouter(resolvers)
+	e := newRouter(resolvers, authMW)
 	e.Logger = logger
 
 	port := os.Getenv("PORT")
