@@ -9,7 +9,17 @@ export async function Header() {
     error,
   } = await supabase.auth.getUser();
   if (error) {
+    // Auth service hiccup: render a degraded header rather than misleading
+    // the user with either an email they aren't logged in as or a sign-in
+    // link they can't actually use right now.
     console.error("[header] getUser() failed:", error.message);
+    return (
+      <header className="flex items-center justify-between border-b px-6 py-3">
+        <Link href="/" className="font-semibold">
+          🦩 flamingo-armond
+        </Link>
+      </header>
+    );
   }
 
   return (

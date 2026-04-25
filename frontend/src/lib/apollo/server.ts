@@ -35,7 +35,9 @@ export async function gqlFetch<TResult, TVars>(
     next: init.revalidate === undefined ? undefined : { revalidate: init.revalidate },
   });
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
+    const body = await res
+      .text()
+      .catch((e) => `<unreadable body: ${e instanceof Error ? e.message : String(e)}>`);
     throw new Error(`GraphQL HTTP ${res.status} ${res.statusText}: ${body}`);
   }
   const json = (await res.json()) as { data?: TResult; errors?: unknown };
