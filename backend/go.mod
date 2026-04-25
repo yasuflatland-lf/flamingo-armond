@@ -13,6 +13,7 @@ require (
 	github.com/labstack/echo/v5 v5.1.0
 	github.com/ravilushqa/otelgqlgen v0.17.0
 	github.com/rivo/uniseg v0.4.7
+	github.com/rotisserie/eris v0.5.4
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
 	github.com/vektah/gqlparser/v2 v2.5.27
