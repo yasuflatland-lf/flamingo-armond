@@ -5,19 +5,22 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 
-	"github.com/vektah/gqlparser/v2/gqlerror"
+	"github.com/rivo/uniseg"
 
 	"backend/internal/auth"
 	"backend/internal/domain"
+	"backend/internal/gqlerr"
 	"backend/internal/repository"
 )
 
 const (
-	minDisplayName = 1
-	maxDisplayName = 50
+	displayNameMin = 1
+	displayNameMax = 50
+	bioMax         = 500
 )
 
 type ProfileRepository interface {
@@ -36,7 +39,7 @@ func NewProfileUsecase(repo ProfileRepository) *ProfileUsecase {
 func (u *ProfileUsecase) Me(ctx context.Context) (*domain.Profile, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
-		return nil, unauthenticated()
+		return nil, gqlerr.Unauthenticated()
 	}
 	p, err := u.repo.FindByID(ctx, user.Sub)
 	if err == nil {
@@ -59,15 +62,15 @@ type UpdateProfileInput struct {
 func (u *ProfileUsecase) UpdateProfile(ctx context.Context, in UpdateProfileInput) (*domain.Profile, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
-		return nil, unauthenticated()
+		return nil, gqlerr.Unauthenticated()
 	}
 
 	name := strings.TrimSpace(in.DisplayName)
-	if n := len([]rune(name)); n < minDisplayName || n > maxDisplayName {
-		return nil, &gqlerror.Error{
-			Message:    "displayName must be 1-50 characters",
-			Extensions: map[string]any{"code": "BAD_USER_INPUT", "field": "displayName"},
-		}
+	if err := validateDisplayName(name); err != nil {
+		return nil, err
+	}
+	if err := validateBio(in.Bio); err != nil {
+		return nil, err
 	}
 
 	return u.repo.Update(ctx, user.Sub, repository.ProfileUpdate{
@@ -76,9 +79,26 @@ func (u *ProfileUsecase) UpdateProfile(ctx context.Context, in UpdateProfileInpu
 	})
 }
 
-func unauthenticated() error {
-	return &gqlerror.Error{
-		Message:    "authentication required",
-		Extensions: map[string]any{"code": "UNAUTHENTICATED"},
+func validateDisplayName(v string) error {
+	n := uniseg.GraphemeClusterCount(v)
+	if n < displayNameMin {
+		return gqlerr.BadUserInput("displayName", "displayName is required")
 	}
+	if n > displayNameMax {
+		return gqlerr.BadUserInput("displayName",
+			fmt.Sprintf("displayName must be at most %d characters", displayNameMax))
+	}
+	return nil
+}
+
+func validateBio(v *string) error {
+	if v == nil {
+		return nil
+	}
+	n := uniseg.GraphemeClusterCount(*v)
+	if n > bioMax {
+		return gqlerr.BadUserInput("bio",
+			fmt.Sprintf("bio must be at most %d characters", bioMax))
+	}
+	return nil
 }

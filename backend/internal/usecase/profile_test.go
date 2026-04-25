@@ -127,6 +127,11 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 
 	returned := &domain.Profile{ID: "u1", DisplayName: ptr("Alice")}
 
+	// familyEmoji is a ZWJ sequence that counts as 1 grapheme cluster.
+	familyEmoji := "👨‍👩‍👧‍👦"
+	// familyEmoji3 is a 3-person ZWJ family that counts as 1 grapheme cluster.
+	familyEmoji3 := "👨‍👩‍👧"
+
 	cases := []struct {
 		name          string
 		ctx           context.Context
@@ -164,7 +169,7 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 			ctx:        authedCtx("u1"),
 			input:      UpdateProfileInput{DisplayName: strings.Repeat("🦩", 50)},
 			repoResult: returned,
-			// rune count == 50 → valid
+			// grapheme count == 50 → valid
 			wantRepoName: ptr(strings.Repeat("🦩", 50)),
 		},
 		{
@@ -204,6 +209,58 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 			input:       UpdateProfileInput{DisplayName: "Alice"},
 			repoErr:     fmt.Errorf("db exploded"),
 			wantErrCode: "", // not a gqlerror — plain error
+		},
+		// --- grapheme boundary tests ---
+		{
+			name:         "displayName_max_ok: 50 ASCII graphemes passes",
+			ctx:          authedCtx("u1"),
+			input:        UpdateProfileInput{DisplayName: strings.Repeat("a", 50)},
+			repoResult:   returned,
+			wantRepoName: ptr(strings.Repeat("a", 50)),
+		},
+		{
+			name:         "displayName_over_max: 51 ASCII graphemes returns BAD_USER_INPUT",
+			ctx:          authedCtx("u1"),
+			input:        UpdateProfileInput{DisplayName: strings.Repeat("a", 51)},
+			wantErrCode:  "BAD_USER_INPUT",
+			wantErrField: "displayName",
+		},
+		{
+			name:         "displayName_emoji_zwj_50: 50 ZWJ family graphemes passes",
+			ctx:          authedCtx("u1"),
+			input:        UpdateProfileInput{DisplayName: strings.Repeat(familyEmoji, 50)},
+			repoResult:   returned,
+			wantRepoName: ptr(strings.Repeat(familyEmoji, 50)),
+		},
+		{
+			name:         "displayName_emoji_zwj_51: 51 ZWJ family graphemes returns BAD_USER_INPUT",
+			ctx:          authedCtx("u1"),
+			input:        UpdateProfileInput{DisplayName: strings.Repeat(familyEmoji, 51)},
+			wantErrCode:  "BAD_USER_INPUT",
+			wantErrField: "displayName",
+		},
+		{
+			name:         "bio_max_500_ok: 500 ASCII graphemes bio passes",
+			ctx:          authedCtx("u1"),
+			input:        UpdateProfileInput{DisplayName: "valid", Bio: ptr(strings.Repeat("b", 500))},
+			repoResult:   returned,
+			wantRepoName: ptr("valid"),
+			wantRepoBio:  ptr(strings.Repeat("b", 500)),
+		},
+		{
+			name:         "bio_over_500: 501 ASCII graphemes bio returns BAD_USER_INPUT",
+			ctx:          authedCtx("u1"),
+			input:        UpdateProfileInput{DisplayName: "valid", Bio: ptr(strings.Repeat("b", 501))},
+			wantErrCode:  "BAD_USER_INPUT",
+			wantErrField: "bio",
+		},
+		{
+			name:         "bio_emoji_zwj_500: 500 ZWJ family graphemes bio passes",
+			ctx:          authedCtx("u1"),
+			input:        UpdateProfileInput{DisplayName: "valid", Bio: ptr(strings.Repeat(familyEmoji3, 500))},
+			repoResult:   returned,
+			wantRepoName: ptr("valid"),
+			wantRepoBio:  ptr(strings.Repeat(familyEmoji3, 500)),
 		},
 	}
 
