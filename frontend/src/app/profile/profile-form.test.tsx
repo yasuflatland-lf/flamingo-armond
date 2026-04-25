@@ -7,15 +7,13 @@ import { describe, expect, it, vi } from "vitest";
 import { UpdateProfileDocument } from "@/generated/graphql";
 import { ProfileForm } from "./profile-form";
 
-// Stub next/navigation so ProfileForm can render outside Next.js
+// Stub next/navigation so ProfileForm can render outside Next.js.
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
 
-// Helper to build a fully typed MockedResponse for UpdateProfile.
-// __typename fields are required so Apollo's InMemoryCache can normalise the result.
 function makeMutationMock(
-  variables: { input: { displayName: string; bio: string | null } },
+  variables: { input: { displayName: string; bio?: string | null } },
   onCalled?: () => void,
 ) {
   return {
@@ -33,7 +31,7 @@ function makeMutationMock(
               __typename: "User" as const,
               id: "user-1",
               displayName: variables.input.displayName,
-              bio: variables.input.bio,
+              bio: variables.input.bio ?? null,
               avatarUrl: null,
             },
           },
@@ -44,57 +42,96 @@ function makeMutationMock(
 }
 
 describe("<ProfileForm>", () => {
-  it("renders initial values from props", () => {
+  it("renders defaults", () => {
     render(
       <MockedProvider mocks={[]}>
-        <ProfileForm initial={{ displayName: "Alice", bio: "Hello world" }} />
+        <ProfileForm initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
     );
 
     expect(screen.getByDisplayValue("Alice")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Hello world")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("hi")).toBeInTheDocument();
   });
 
-  it("blocks submit when displayName is empty (form validation prevents mutation call)", async () => {
+  it("displayName empty triggers Zod error before submit", async () => {
     const user = userEvent.setup();
-    const mutationCalled = vi.fn();
-
-    const mocks = [makeMutationMock({ input: { displayName: "", bio: null } }, mutationCalled)];
 
     render(
-      <MockedProvider mocks={mocks}>
-        <ProfileForm initial={{ displayName: "", bio: "" }} />
-      </MockedProvider>,
-    );
-
-    await user.click(screen.getByRole("button", { name: /save/i }));
-
-    // Zod schema rejects empty displayName — mutation must not be called
-    await waitFor(() => {
-      expect(screen.getByText(/display name is required/i)).toBeInTheDocument();
-    });
-    expect(mutationCalled).not.toHaveBeenCalled();
-  });
-
-  it("submits with trimmed displayName", async () => {
-    const user = userEvent.setup();
-    const mutationCalled = vi.fn();
-
-    // The Zod schema trims displayName before it reaches the mutation,
-    // so "  Alice  " becomes "Alice" in the variables.
-    const mocks = [
-      makeMutationMock({ input: { displayName: "Alice", bio: null } }, mutationCalled),
-    ];
-
-    render(
-      <MockedProvider mocks={mocks}>
-        <ProfileForm initial={{ displayName: "", bio: "" }} />
+      <MockedProvider mocks={[]}>
+        <ProfileForm initial={{ displayName: "Alice", bio: "" }} />
       </MockedProvider>,
     );
 
     const displayNameInput = screen.getByLabelText(/display name/i);
     await user.clear(displayNameInput);
-    await user.type(displayNameInput, "  Alice  ");
+    await user.tab();
+
+    await waitFor(() => {
+      expect(screen.getByText(/display name is required/i)).toBeInTheDocument();
+    });
+  });
+
+  it("displayName 51 graphemes triggers Zod error", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MockedProvider mocks={[]}>
+        <ProfileForm initial={{ displayName: "", bio: "" }} />
+      </MockedProvider>,
+    );
+
+    // Use a 51-grapheme string (simple ASCII for stability in CI)
+    const longName = "a".repeat(51);
+    const displayNameInput = screen.getByLabelText(/display name/i);
+    await user.click(displayNameInput);
+    // paste avoids per-keystroke debounce flakiness
+    await user.paste(longName);
+    await user.tab();
+
+    await waitFor(() => {
+      expect(screen.getByText(/display name must be 50 characters or fewer/i)).toBeInTheDocument();
+    });
+  });
+
+  it("bio over 500 triggers Zod error", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MockedProvider mocks={[]}>
+        <ProfileForm initial={{ displayName: "Alice", bio: "" }} />
+      </MockedProvider>,
+    );
+
+    const longBio = "b".repeat(501);
+    const bioTextarea = screen.getByLabelText(/^bio$/i);
+    await user.click(bioTextarea);
+    await user.paste(longBio);
+    await user.tab();
+
+    await waitFor(() => {
+      expect(screen.getByText(/bio must be 500 characters or fewer/i)).toBeInTheDocument();
+    });
+  });
+
+  it("Clear bio button sets bio to empty and includes it in submit", async () => {
+    const user = userEvent.setup();
+    const mutationCalled = vi.fn();
+
+    // bio="" in mutation variables means explicit clear
+    const mocks = [makeMutationMock({ input: { displayName: "Alice", bio: "" } }, mutationCalled)];
+
+    render(
+      <MockedProvider mocks={mocks}>
+        <ProfileForm initial={{ displayName: "Alice", bio: "hi" }} />
+      </MockedProvider>,
+    );
+
+    // "Clear bio" button appears because bio is "hi" (non-empty)
+    const clearBtn = screen.getByRole("button", { name: /clear bio/i });
+    await user.click(clearBtn);
+
+    // After clearing, the Clear bio button should disappear
+    expect(screen.queryByRole("button", { name: /clear bio/i })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /save/i }));
 
@@ -103,19 +140,17 @@ describe("<ProfileForm>", () => {
     });
   });
 
-  it("bio empty string sends input.bio === null to the mutation", async () => {
+  it("submit posts UpdateProfile mutation with displayName and bio", async () => {
     const user = userEvent.setup();
     const mutationCalled = vi.fn();
 
-    // bio="" in initial props triggers "bio || undefined" → bio is undefined in form state.
-    // The form converts undefined bio to null when building mutation variables.
     const mocks = [
-      makeMutationMock({ input: { displayName: "Alice", bio: null } }, mutationCalled),
+      makeMutationMock({ input: { displayName: "Alice", bio: "hello" } }, mutationCalled),
     ];
 
     render(
       <MockedProvider mocks={mocks}>
-        <ProfileForm initial={{ displayName: "Alice", bio: "" }} />
+        <ProfileForm initial={{ displayName: "Alice", bio: "hello" }} />
       </MockedProvider>,
     );
 
@@ -126,19 +161,19 @@ describe("<ProfileForm>", () => {
     });
   });
 
-  it("renders error message when mutation returns a GraphQL error", async () => {
+  it("backend BAD_USER_INPUT is shown under the corresponding field", async () => {
     const user = userEvent.setup();
 
     const mocks = [
       {
         request: {
           query: UpdateProfileDocument,
-          variables: { input: { displayName: "Alice", bio: null } },
+          variables: { input: { displayName: "Alice", bio: "hi" } },
         },
         result: {
           errors: [
             new GraphQLError("displayName must be 1-50 characters", {
-              extensions: { code: "BAD_USER_INPUT" },
+              extensions: { code: "BAD_USER_INPUT", field: "displayName" },
             }),
           ],
         },
@@ -147,16 +182,150 @@ describe("<ProfileForm>", () => {
 
     render(
       <MockedProvider mocks={mocks} defaultOptions={{ mutate: { errorPolicy: "all" } }}>
-        <ProfileForm initial={{ displayName: "", bio: "" }} />
+        <ProfileForm initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
     );
 
-    const displayNameInput = screen.getByLabelText(/display name/i);
-    await user.type(displayNameInput, "Alice");
+    await user.click(screen.getByRole("button", { name: /save/i }));
 
-    const saveButton = screen.getByRole("button", { name: /save/i });
-    await user.click(saveButton);
+    const errorEl = await screen.findByText("displayName must be 1-50 characters");
+    expect(errorEl).toBeInTheDocument();
+    expect(errorEl.className).toMatch(/text-destructive/);
+  });
 
-    expect(await screen.findByText("displayName must be 1-50 characters")).toBeInTheDocument();
+  it("backend INTERNAL error is shown as a generic banner", async () => {
+    const user = userEvent.setup();
+
+    const mocks = [
+      {
+        request: {
+          query: UpdateProfileDocument,
+          variables: { input: { displayName: "Alice", bio: "hi" } },
+        },
+        result: {
+          errors: [
+            new GraphQLError("Something went wrong on the server", {
+              extensions: { code: "INTERNAL" },
+            }),
+          ],
+        },
+      },
+    ];
+
+    render(
+      <MockedProvider mocks={mocks} defaultOptions={{ mutate: { errorPolicy: "all" } }}>
+        <ProfileForm initial={{ displayName: "Alice", bio: "hi" }} />
+      </MockedProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Something went wrong on the server")).toBeInTheDocument();
+    });
+  });
+
+  it("backend UNAUTHENTICATED error is shown with sign-in prompt", async () => {
+    const user = userEvent.setup();
+
+    const mocks = [
+      {
+        request: {
+          query: UpdateProfileDocument,
+          variables: { input: { displayName: "Alice", bio: "hi" } },
+        },
+        result: {
+          errors: [
+            new GraphQLError("Unauthenticated", {
+              extensions: { code: "UNAUTHENTICATED" },
+            }),
+          ],
+        },
+      },
+    ];
+
+    render(
+      <MockedProvider mocks={mocks} defaultOptions={{ mutate: { errorPolicy: "all" } }}>
+        <ProfileForm initial={{ displayName: "Alice", bio: "hi" }} />
+      </MockedProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Your session expired. Please sign in again.")).toBeInTheDocument();
+    });
+  });
+
+  it("network error is shown as connectivity banner", async () => {
+    const user = userEvent.setup();
+
+    const mocks = [
+      {
+        request: {
+          query: UpdateProfileDocument,
+          variables: { input: { displayName: "Alice", bio: "hi" } },
+        },
+        error: new Error("network down"),
+      },
+    ];
+
+    render(
+      <MockedProvider mocks={mocks}>
+        <ProfileForm initial={{ displayName: "Alice", bio: "hi" }} />
+      </MockedProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Could not reach the server. Check your connection and try again."),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("bio untouched undefined sends mutation without bio variable", async () => {
+    const user = userEvent.setup();
+    const mutationCalled = vi.fn();
+
+    // bio is undefined (not sent) when defaultValues.bio is undefined and untouched
+    const mocks = [
+      {
+        request: {
+          query: UpdateProfileDocument,
+          variables: { input: { displayName: "Alice" } },
+        },
+        result: () => {
+          mutationCalled();
+          return {
+            data: {
+              updateProfile: {
+                __typename: "UpdateProfilePayload" as const,
+                user: {
+                  __typename: "User" as const,
+                  id: "user-1",
+                  displayName: "Alice",
+                  bio: null,
+                  avatarUrl: null,
+                },
+              },
+            },
+          };
+        },
+      },
+    ];
+
+    render(
+      <MockedProvider mocks={mocks}>
+        <ProfileForm initial={{ displayName: "Alice", bio: undefined as unknown as string }} />
+      </MockedProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(mutationCalled).toHaveBeenCalledOnce();
+    });
   });
 });

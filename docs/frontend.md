@@ -127,7 +127,7 @@ The `matcher` must also explicitly exclude `/api/:path*` and `/auth/callback`. W
 2. Calls `gqlFetch(MeQuery, { revalidate: 0 })` — `revalidate: 0` opts the response out of the Next cache to avoid serving stale PII.
 3. Passes the fetched values as `initial` props to the client component `ProfileForm`.
 
-`frontend/src/app/profile/profile-form.tsx` is a Client Component (`"use client"`). It uses `react-hook-form` with `zodResolver(updateProfileSchema)` for client-side validation and Apollo's `useMutation` to call `updateProfile`. On a successful mutation `router.refresh()` is called — this re-evaluates the current RSC subtree and allows client mutations to invalidate server-rendered data without manual cache surgery. Combined with `revalidate: 0` on the server fetch, this gives a simple mutate-then-redisplay flow.
+`frontend/src/app/profile/profile-form.tsx` is a Client Component (`"use client"`). It uses `@tanstack/react-form` with field-level Zod validators (no adapter needed) for client-side validation and Apollo's `useMutation` to call `updateProfile`. On a successful mutation `router.refresh()` is called — this re-evaluates the current RSC subtree and allows client mutations to invalidate server-rendered data without manual cache surgery. Combined with `revalidate: 0` on the server fetch, this gives a simple mutate-then-redisplay flow.
 
 ### Authorization forwarding in `gqlFetch`
 
@@ -139,15 +139,94 @@ The `matcher` must also explicitly exclude `/api/:path*` and `/auth/callback`. W
 
 Validation schemas live in `frontend/src/schemas/*.ts` and mirror their corresponding GraphQL `Input` types. Example: `frontend/src/schemas/profile.ts` mirrors `UpdateProfileInput`.
 
-The mirror is intentionally asymmetric where JS and Go count string length differently. JS `z.string().max(50)` counts UTF-16 code units; Go counts runes. A 50-character string with multi-byte characters can pass the Zod check and still fail the backend's rune check. Always surface backend `BAD_USER_INPUT` errors (e.g. `extensions.field === "displayName"`) as form-level errors rather than discarding them.
+The mirror uses `Intl.Segmenter` (UAX #29) for `displayName` and `bio` length checks so that emoji ZWJ sequences count as one character, matching the backend's `rivo/uniseg` with the same UAX #29 standard. Always surface backend `BAD_USER_INPUT` errors (e.g. `extensions.field === "displayName"`) as form-level errors rather than discarding them — see the Form library section for the mapping pattern.
 
 ### Form library
 
-The form currently uses `react-hook-form` + shadcn `Form` components (already in deps). Keep `profile-form.tsx` focused on form behavior (validation, submission, field wiring) so a future swap (e.g. TanStack Form) stays local to that file.
+We use `@tanstack/react-form` for all forms. No adapter package is needed —
+validators are passed directly as per-field Zod schemas.
+shadcn's `form.tsx` wrapper was removed — TanStack Form's render-prop
+API (`<form.Field>`) does not need it. Forms compose primitive shadcn
+components (`Label`, `Input`, `Textarea`) directly.
 
-### Dependency pin: `@hookform/resolvers`
+**`useForm` type inference:** `useForm` has 12 type parameters. Writing `useForm<MyType>(...)` to annotate the form values type does not work — TypeScript cannot infer the remaining 11. Always let the compiler infer from `defaultValues`:
 
-`@hookform/resolvers` is held at `^3.10.0`. Version 5.x requires Zod v4 internals and is incompatible with Zod v3. When the project upgrades to Zod v4, this pin can be relaxed.
+```tsx
+// correct — all types inferred from defaultValues
+const form = useForm({ defaultValues: { displayName: "", bio: "" }, ... });
+
+// wrong — single explicit type arg leaves 11 params unresolvable → type error
+const form = useForm<FormValues>({ ... });
+```
+
+**No `validatorAdapter`:** The `useForm` config object in TanStack Form v0.x does not accept a top-level `validatorAdapter` property. Pass Zod schemas directly to each field's `validators` option (see pattern below). The `@tanstack/zod-form-adapter` package is not needed.
+
+#### Pattern
+
+```tsx
+// Per-field schemas (declared in @/schemas/profile)
+const displayNameSchema = updateProfileSchema.shape.displayName;
+const bioSchema = updateProfileSchema.shape.bio;
+
+const form = useForm({
+  defaultValues: { displayName: initial.displayName ?? "", bio: initial.bio ?? "" },
+  onSubmit: async ({ value }) => { ... },
+});
+
+<form.Field
+  name="displayName"
+  validators={{ onChange: displayNameSchema, onBlur: displayNameSchema }}
+>
+  {(field) => (
+    <>
+      <Label htmlFor={field.name}>Display name</Label>
+      <Input
+        id={field.name}
+        value={field.state.value}
+        onBlur={field.handleBlur}
+        onChange={(e) => field.handleChange(e.target.value)}
+      />
+      <FieldError zodErrors={field.state.meta.errors} />
+    </>
+  )}
+</form.Field>
+```
+
+#### Grapheme cluster validation
+
+`displayName` and `bio` length checks use `Intl.Segmenter` (UAX #29) so that
+emoji ZWJ sequences count as one character. The backend uses `rivo/uniseg`
+with the same UAX #29 standard, so FE and BE limits agree.
+
+#### Surfacing backend errors in form fields
+
+Backend `BAD_USER_INPUT` errors carry `extensions.field` (see `backend/internal/gqlerr`).
+The form maps that field back to the corresponding `<form.Field>` so the user
+sees the error inline rather than as a banner. Errors that do not carry a field
+(`INTERNAL`, `UNAUTHENTICATED`, network failures, and any other non-field
+GraphQL error) are surfaced as a form-level banner with appropriate user-facing
+copy. Apollo v4 wraps GraphQL errors in `CombinedGraphQLErrors`; use
+`CombinedGraphQLErrors.is(error)` to narrow the type, then read
+`error.errors[0]?.extensions?.code` to route between field errors and banner
+errors.
+
+**Unhandled rejection from `useMutation`:** Apollo captures the GraphQL error in the `error` state variable automatically, but the promise returned by `mutate(...)` still rejects. Awaiting the promise without a catch causes an unhandled rejection in the browser console. Attach `.catch(console.error)` (or a real error handler) to prevent this while still relying on the `error` state for UI rendering:
+
+```ts
+await mutate({ variables }).catch(console.error);
+```
+
+Do not swallow the rejection silently with an empty `.catch(() => {})` — that hides unexpected errors (network failures, etc.).
+
+#### Bio explicit clear UX
+
+`bio` follows tri-state semantics:
+- `undefined` — no change
+- empty string `""` — explicit clear (sent to mutation, repository writes `bio = ''`)
+- non-empty — set
+
+A "Clear bio" button is shown when `bio` is non-empty; clicking it sets the
+field to `""` so the next submit clears the column.
 
 ### Test stack
 
@@ -161,7 +240,7 @@ The form currently uses `react-hook-form` + shadcn `Form` components (already in
 
 ## shadcn/ui
 
-`frontend/components.json` and `frontend/src/lib/utils.ts` (the `cn()` helper) are committed. No components are added yet. PR6 runs `pnpm dlx shadcn add button input label form` and extends `globals.css` with the theme tokens those components reference.
+`frontend/components.json` and `frontend/src/lib/utils.ts` (the `cn()` helper) are committed. The initial component set (`button`, `input`, `label`) was added with `pnpm dlx shadcn add` and extends `globals.css` with the required theme tokens. `form.tsx` was removed (TanStack Form's render-prop API does not need the shadcn wrapper); `textarea.tsx` was added for the `bio` field.
 
 `shadcn init` is interactive and not suitable for CI or non-interactive environments. The fallback is to hand-write `components.json`, `lib/utils.ts`, and the `globals.css` base tokens following the shadcn JSON schema — exactly what PR3 did.
 
@@ -202,3 +281,7 @@ The form currently uses `react-hook-form` + shadcn `Form` components (already in
 **`gqlFetch` revalidate has three states, not two.** `revalidate?: number | false` (in `src/lib/apollo/server.ts`) deliberately preserves the difference between *omitted* (Next default heuristic), `0` (no cache), and `false` (cache forever). Collapsing to a `number` default would silently merge two of them — keep the union and only forward `next.revalidate` when the caller passes it explicitly.
 
 **Generated `graphql()` documents flow types into `gqlFetch` call sites.** `@graphql-codegen/client-preset` emits `TypedDocumentNode<TResult, TVars>`, and `gqlFetch<TResult, TVars>(doc, { variables?: TVars })` infers both from the document. Passing wrong-shaped `variables` to e.g. `HealthQuery` becomes a compile error — do not widen the signature to `Record<string, unknown>`.
+
+**TanStack Form `onChange` validator runs synchronously on every keystroke — no built-in debounce.** For long inputs this can cause noticeable jank in tests that type character-by-character. Use `userEvent.paste("long string")` instead of `userEvent.type(...)` in tests to avoid triggering a validator call per character. In production components, add an `asyncDebounceMs` option to the field's async validator when you need network-backed validation.
+
+**TanStack Form field errors are Zod `ZodIssue` objects, not plain strings.** `field.state.meta.errors` is `ValidationError[]` where each entry may be a `ZodIssue`. A `<FieldError>` helper component that calls `issue.message` (or falls back to `String(error)`) keeps rendering consistent across sync and async error paths.

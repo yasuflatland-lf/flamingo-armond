@@ -65,4 +65,35 @@ describe("updateProfileSchema", () => {
       expect(result.error.issues[0].message).toBe("Bio must be 500 characters or fewer");
     }
   });
+
+  it("accepts emoji ZWJ family in displayName (50 graphemes)", () => {
+    const input = { displayName: "👨‍👩‍👧‍👦".repeat(50) };
+    const result = updateProfileSchema.safeParse(input);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects displayName when 51 emoji ZWJ graphemes", () => {
+    const input = { displayName: "👨‍👩‍👧‍👦".repeat(51) };
+    const result = updateProfileSchema.safeParse(input);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map((i) => i.message);
+      expect(messages).toContain("Display name must be 50 characters or fewer");
+    }
+  });
+
+  it("accepts bio with 500 emoji ZWJ graphemes", () => {
+    const input = { displayName: "Alice", bio: "👨‍👩‍👧".repeat(500) };
+    const result = updateProfileSchema.safeParse(input);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects bio with 501 plain chars", () => {
+    const input = { displayName: "Alice", bio: "a".repeat(501) };
+    const result = updateProfileSchema.safeParse(input);
+    expect(result.success).toBe(false);
+    if (!result.success && result.error.issues[0]) {
+      expect(result.error.issues[0].message).toBe("Bio must be 500 characters or fewer");
+    }
+  });
 });

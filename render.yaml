@@ -20,3 +20,5 @@ services:
         sync: false
       - key: SUPABASE_JWT_ISSUER
         sync: false
+      - key: GRAPHQL_INTROSPECTION
+        value: off

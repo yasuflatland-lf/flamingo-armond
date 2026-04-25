@@ -14,7 +14,6 @@ import (
 	"backend/internal/repository"
 )
 
-// mockProfileRepository is a hand-written test double for ProfileRepository.
 type mockProfileRepository struct {
 	findResult    *domain.Profile
 	findErr       error
@@ -32,29 +31,32 @@ func (m *mockProfileRepository) Update(_ context.Context, _ string, patch reposi
 	return m.updateResult, m.updateErr
 }
 
-// authedCtx returns a context carrying an authenticated user with the given sub.
 func authedCtx(sub string) context.Context {
 	return auth.ContextWithUser(context.Background(), &auth.AuthUser{Sub: sub})
 }
 
-// anonCtx returns a context with no authenticated user.
 func anonCtx() context.Context {
 	return context.Background()
 }
 
-// ptr returns a pointer to s — convenience for test literals.
 func ptr(s string) *string { return &s }
 
-// assertGQLCode asserts that err is a *gqlerror.Error with the given extensions code.
-func assertGQLCode(t *testing.T, err error, code string) {
+// assertGQLErr asserts err is a *gqlerror.Error with the given extensions.code,
+// and (when field is non-empty) the given extensions.field.
+func assertGQLErr(t *testing.T, err error, code, field string) {
 	t.Helper()
 	var gqlErr *gqlerror.Error
 	if !errors.As(err, &gqlErr) {
 		t.Fatalf("expected *gqlerror.Error, got %T: %v", err, err)
 	}
-	got, _ := gqlErr.Extensions["code"].(string)
-	if got != code {
+	if got, _ := gqlErr.Extensions["code"].(string); got != code {
 		t.Fatalf("expected extensions.code=%q, got %q", code, got)
+	}
+	if field == "" {
+		return
+	}
+	if got, _ := gqlErr.Extensions["field"].(string); got != field {
+		t.Fatalf("expected extensions.field=%q, got %q", field, got)
 	}
 }
 
@@ -89,10 +91,15 @@ func TestProfileUsecase_Me(t *testing.T) {
 			findErr: repository.ErrNotFound,
 			wantID:  "u1",
 		},
+		{
+			name:    "non-ErrNotFound DB error returns INTERNAL",
+			ctx:     authedCtx("u1"),
+			findErr: errors.New("db died"),
+			wantErr: "INTERNAL",
+		},
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			repo := &mockProfileRepository{findResult: tc.findResult, findErr: tc.findErr}
@@ -104,7 +111,7 @@ func TestProfileUsecase_Me(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				assertGQLCode(t, err, tc.wantErr)
+				assertGQLErr(t, err, tc.wantErr, "")
 				return
 			}
 			if err != nil {
@@ -126,6 +133,11 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 	t.Parallel()
 
 	returned := &domain.Profile{ID: "u1", DisplayName: ptr("Alice")}
+
+	// familyEmoji is a ZWJ sequence that counts as 1 grapheme cluster.
+	familyEmoji := "👨‍👩‍👧‍👦"
+	// familyEmoji3 is a 3-person ZWJ family that counts as 1 grapheme cluster.
+	familyEmoji3 := "👨‍👩‍👧"
 
 	cases := []struct {
 		name          string
@@ -164,7 +176,7 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 			ctx:        authedCtx("u1"),
 			input:      UpdateProfileInput{DisplayName: strings.Repeat("🦩", 50)},
 			repoResult: returned,
-			// rune count == 50 → valid
+			// grapheme count == 50 → valid
 			wantRepoName: ptr(strings.Repeat("🦩", 50)),
 		},
 		{
@@ -199,16 +211,67 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 			wantRepoName: ptr("Alice"),
 		},
 		{
-			name:        "repo error propagates as-is",
+			name:        "repo error wrapped as INTERNAL",
 			ctx:         authedCtx("u1"),
 			input:       UpdateProfileInput{DisplayName: "Alice"},
 			repoErr:     fmt.Errorf("db exploded"),
-			wantErrCode: "", // not a gqlerror — plain error
+			wantErrCode: "INTERNAL",
+		},
+		// --- grapheme boundary tests ---
+		{
+			name:         "displayName_max_ok: 50 ASCII graphemes passes",
+			ctx:          authedCtx("u1"),
+			input:        UpdateProfileInput{DisplayName: strings.Repeat("a", 50)},
+			repoResult:   returned,
+			wantRepoName: ptr(strings.Repeat("a", 50)),
+		},
+		{
+			name:         "displayName_over_max: 51 ASCII graphemes returns BAD_USER_INPUT",
+			ctx:          authedCtx("u1"),
+			input:        UpdateProfileInput{DisplayName: strings.Repeat("a", 51)},
+			wantErrCode:  "BAD_USER_INPUT",
+			wantErrField: "displayName",
+		},
+		{
+			name:         "displayName_emoji_zwj_50: 50 ZWJ family graphemes passes",
+			ctx:          authedCtx("u1"),
+			input:        UpdateProfileInput{DisplayName: strings.Repeat(familyEmoji, 50)},
+			repoResult:   returned,
+			wantRepoName: ptr(strings.Repeat(familyEmoji, 50)),
+		},
+		{
+			name:         "displayName_emoji_zwj_51: 51 ZWJ family graphemes returns BAD_USER_INPUT",
+			ctx:          authedCtx("u1"),
+			input:        UpdateProfileInput{DisplayName: strings.Repeat(familyEmoji, 51)},
+			wantErrCode:  "BAD_USER_INPUT",
+			wantErrField: "displayName",
+		},
+		{
+			name:         "bio_max_500_ok: 500 ASCII graphemes bio passes",
+			ctx:          authedCtx("u1"),
+			input:        UpdateProfileInput{DisplayName: "valid", Bio: ptr(strings.Repeat("b", 500))},
+			repoResult:   returned,
+			wantRepoName: ptr("valid"),
+			wantRepoBio:  ptr(strings.Repeat("b", 500)),
+		},
+		{
+			name:         "bio_over_500: 501 ASCII graphemes bio returns BAD_USER_INPUT",
+			ctx:          authedCtx("u1"),
+			input:        UpdateProfileInput{DisplayName: "valid", Bio: ptr(strings.Repeat("b", 501))},
+			wantErrCode:  "BAD_USER_INPUT",
+			wantErrField: "bio",
+		},
+		{
+			name:         "bio_emoji_zwj_500: 500 ZWJ family graphemes bio passes",
+			ctx:          authedCtx("u1"),
+			input:        UpdateProfileInput{DisplayName: "valid", Bio: ptr(strings.Repeat(familyEmoji3, 500))},
+			repoResult:   returned,
+			wantRepoName: ptr("valid"),
+			wantRepoBio:  ptr(strings.Repeat(familyEmoji3, 500)),
 		},
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			repo := &mockProfileRepository{updateResult: tc.repoResult, updateErr: tc.repoErr}
@@ -216,35 +279,14 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 
 			p, err := uc.UpdateProfile(tc.ctx, tc.input)
 
-			// Case: expect a specific gqlerror code
 			if tc.wantErrCode != "" {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				assertGQLCode(t, err, tc.wantErrCode)
-				if tc.wantErrField != "" {
-					var gqlErr *gqlerror.Error
-					errors.As(err, &gqlErr)
-					got, _ := gqlErr.Extensions["field"].(string)
-					if got != tc.wantErrField {
-						t.Fatalf("expected extensions.field=%q, got %q", tc.wantErrField, got)
-					}
-				}
+				assertGQLErr(t, err, tc.wantErrCode, tc.wantErrField)
 				return
 			}
 
-			// Case: repo error propagates (non-gqlerror)
-			if tc.repoErr != nil {
-				if err == nil {
-					t.Fatal("expected error from repo, got nil")
-				}
-				if !errors.Is(err, tc.repoErr) {
-					t.Fatalf("expected repo error %v, got %v", tc.repoErr, err)
-				}
-				return
-			}
-
-			// Case: success
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -261,11 +303,12 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 				}
 			}
 
-			if tc.checkBioIsNil {
+			switch {
+			case tc.checkBioIsNil:
 				if repo.capturedPatch.Bio != nil {
 					t.Fatalf("expected Bio==nil in patch, got %v", *repo.capturedPatch.Bio)
 				}
-			} else if tc.wantRepoBio != nil {
+			case tc.wantRepoBio != nil:
 				if repo.capturedPatch.Bio == nil {
 					t.Fatalf("expected Bio==%q in patch, got nil", *tc.wantRepoBio)
 				}
