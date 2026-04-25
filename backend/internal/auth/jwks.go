@@ -2,11 +2,10 @@ package auth
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"os"
 
 	"github.com/MicahParks/keyfunc/v3"
+	"github.com/rotisserie/eris"
 )
 
 // Config holds the required configuration for JWT verification.
@@ -19,13 +18,13 @@ type Config struct {
 // Validate returns a non-nil error if any required Config field is empty.
 func (c Config) Validate() error {
 	if c.JWKSURL == "" {
-		return errors.New("auth: SUPABASE_JWKS_URL is required")
+		return eris.New("auth: SUPABASE_JWKS_URL is required")
 	}
 	if c.Audience == "" {
-		return errors.New("auth: SUPABASE_JWT_AUDIENCE is required")
+		return eris.New("auth: SUPABASE_JWT_AUDIENCE is required")
 	}
 	if c.Issuer == "" {
-		return errors.New("auth: SUPABASE_JWT_ISSUER is required")
+		return eris.New("auth: SUPABASE_JWT_ISSUER is required")
 	}
 	return nil
 }
@@ -51,7 +50,7 @@ func NewJWKSKeyfunc(ctx context.Context, cfg Config) (keyfunc.Keyfunc, error) {
 		NoErrorReturnFirstHTTPReq: new(bool),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("auth: JWKS initial fetch failed: %w", err)
+		return nil, eris.Wrap(err, "auth: JWKS initial fetch failed")
 	}
 	return kf, nil
 }
