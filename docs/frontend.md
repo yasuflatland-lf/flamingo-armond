@@ -284,11 +284,10 @@ and for the outbound HTTP request.
 
 #### RSC (`gqlFetch`)
 
-`frontend/src/lib/apollo/server.ts` applies the same rule inside `gqlFetch`:
-if the caller's headers do not already contain `X-Request-ID`, a new UUID v7 is
-injected before the `fetch` call. Chained server-to-server calls that forward
-their own incoming header therefore preserve a single correlation ID across the
-full trace.
+`frontend/src/lib/apollo/server.ts` assigns a fresh UUID v7 inside `gqlFetch`
+before the `fetch` call. `gqlFetch` is the RSC entrypoint and has no
+caller-supplied headers, so every call generates a fresh UUID v7 — chained
+correlation across server-to-server calls is out of scope at this tier.
 
 ## Gotchas encountered
 

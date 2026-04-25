@@ -25,11 +25,8 @@ export async function gqlFetch<TResult, TVars>(
   if (session?.access_token) {
     headers.authorization = `Bearer ${session.access_token}`;
   }
-  // Inject a request correlation ID only when the caller has not already provided one,
-  // so chained server-to-server calls preserve the upstream value across the full trace.
-  if (!headers[REQUEST_ID_HEADER]) {
-    headers[REQUEST_ID_HEADER] = newRequestId();
-  }
+  // Always assign — gqlFetch is the RSC entrypoint and has no caller-supplied headers.
+  headers[REQUEST_ID_HEADER] = newRequestId();
 
   const res = await fetch(`${env.BACKEND_URL}/query`, {
     method: "POST",
