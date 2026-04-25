@@ -29,6 +29,7 @@ import (
 	"backend/internal/database"
 	"backend/internal/loader"
 	"backend/internal/logging"
+	internalmw "backend/internal/middleware"
 	"backend/internal/repository"
 	"backend/internal/telemetry"
 	"backend/internal/usecase"
@@ -57,6 +58,7 @@ func newRouter(resolvers *resolver.Resolver, authMW echo.MiddlewareFunc, repo re
 	e := echo.New()
 	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
+	e.Use(internalmw.RequestID())
 
 	e.GET("/", func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{
@@ -212,7 +214,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 }
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	logger := slog.New(logging.NewContextHandler(slog.NewJSONHandler(os.Stderr, nil), internalmw.RequestIDFromContext))
 	slog.SetDefault(logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
