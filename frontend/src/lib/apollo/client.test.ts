@@ -1,6 +1,6 @@
 // Testing strategy: Option A-variant — buildAuthHeaders is extracted to auth-link.ts
 // and tested directly, avoiding the complexity of the Apollo Link Observable API.
-import { ApolloLink } from "@apollo/client";
+import type { ApolloLink } from "@apollo/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildAuthHeaders } from "./auth-link";
 import { makeClient } from "./client";
@@ -11,10 +11,7 @@ import { makeClient } from "./client";
 // HttpLink or PersistedQueryLink) yields the original three segments in order.
 function collectSegments(link: ApolloLink): ApolloLink[] {
   if (link.constructor?.name === "ApolloLink" && link.left != null) {
-    return [
-      ...collectSegments(link.left),
-      ...collectSegments(link.right ?? link.left),
-    ];
+    return [...collectSegments(link.left), ...collectSegments(link.right ?? link.left)];
   }
   return [link];
 }
