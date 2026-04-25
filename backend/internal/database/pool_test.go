@@ -99,13 +99,11 @@ func TestCloseIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	// Second Close on a closed pool would panic if not guarded; our Close
-	// tolerates it only via the nil-Pool shortcut, so the actual expectation
-	// is: Close once, and a nil-receiver Close does not panic.
 	db.Close()
 
+	// Close on a nil receiver must not panic.
 	var nilDB *database.DB
-	nilDB.Close() // must not panic
+	nilDB.Close()
 }
 
 func TestOpenInvalidDSN(t *testing.T) {

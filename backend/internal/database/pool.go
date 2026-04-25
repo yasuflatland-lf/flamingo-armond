@@ -59,8 +59,9 @@ func Open(ctx context.Context, cfg Config) (*DB, error) {
 	return &DB{Pool: pool, GORM: gormDB}, nil
 }
 
-// Close releases pool resources. Safe to call on a nil receiver or an
-// already-closed DB.
+// Close releases pool resources. Tolerates a nil receiver and a nil pool, but
+// must be called at most once on a live DB — pgxpool.Close panics on a
+// double-close.
 func (d *DB) Close() {
 	if d == nil || d.Pool == nil {
 		return
