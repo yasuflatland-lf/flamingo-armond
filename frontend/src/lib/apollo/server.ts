@@ -2,6 +2,7 @@ import "server-only";
 import type { TypedDocumentNode } from "@apollo/client";
 import { print } from "graphql";
 import { env } from "@/env";
+import { newRequestId, REQUEST_ID_HEADER } from "@/lib/observability/request-id";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type GqlFetchInit<TVars> = {
@@ -23,6 +24,11 @@ export async function gqlFetch<TResult, TVars>(
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (session?.access_token) {
     headers.authorization = `Bearer ${session.access_token}`;
+  }
+  // Inject a request correlation ID only when the caller has not already provided one,
+  // so chained server-to-server calls preserve the upstream value across the full trace.
+  if (!headers[REQUEST_ID_HEADER]) {
+    headers[REQUEST_ID_HEADER] = newRequestId();
   }
 
   const res = await fetch(`${env.BACKEND_URL}/query`, {
