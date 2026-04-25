@@ -22,6 +22,8 @@ import (
 	"backend/graph/generated"
 	"backend/graph/resolver"
 	"backend/internal/auth"
+	"backend/internal/database"
+	"backend/internal/repository"
 )
 
 const defaultShutdownTimeout = 25 * time.Second
@@ -92,6 +94,21 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		return fmt.Errorf("run: %w", err)
 	}
 
+	dbCfg, err := database.ConfigFromEnv()
+	if err != nil {
+		return fmt.Errorf("run: db config: %w", err)
+	}
+	if err := database.Migrate(dbCfg.URL); err != nil {
+		return fmt.Errorf("run: migrate: %w", err)
+	}
+	db, err := database.Open(ctx, dbCfg)
+	if err != nil {
+		return fmt.Errorf("run: db open: %w", err)
+	}
+
+	profileRepo := repository.NewProfileRepository(db.GORM)
+	_ = profileRepo // wired into resolvers in PR9
+
 	resolvers := &resolver.Resolver{}
 	e := newRouter(resolvers, authMW)
 	e.Logger = logger
@@ -125,12 +142,17 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		logger.Info("shutdown signal received", "timeout", timeout.String())
 		sctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
-		if err := srv.Shutdown(sctx); err != nil {
-			if errors.Is(err, context.DeadlineExceeded) {
+		// Shutdown HTTP first so in-flight requests release DB conns before we
+		// close the pool. db.Close is called unconditionally afterwards so the
+		// pool is released even if Shutdown times out.
+		shutdownErr := srv.Shutdown(sctx)
+		db.Close()
+		if shutdownErr != nil {
+			if errors.Is(shutdownErr, context.DeadlineExceeded) {
 				logger.Warn("graceful shutdown timed out, forcing close", "timeout", timeout.String())
 				return nil
 			}
-			return err
+			return shutdownErr
 		}
 		return nil
 	})
