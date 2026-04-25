@@ -23,15 +23,6 @@ variable "supabase_region" {
   type = string
 }
 
-variable "google_oauth_client_id" {
-  type = string
-}
-
-variable "google_oauth_client_secret" {
-  type      = string
-  sensitive = true
-}
-
 # Render -----------------------------------------------------------------------
 variable "render_api_key" {
   type      = string
@@ -52,7 +43,7 @@ variable "render_plan" {
 }
 
 variable "otel_endpoint" {
-  description = "Optional OTLP HTTP collector URL."
+  description = "Optional OTLP HTTP collector URL. Empty disables tracing."
   type        = string
   default     = ""
 }
@@ -65,6 +56,12 @@ variable "vercel_api_token" {
 
 variable "vercel_team_id" {
   description = "Empty for personal account."
+  type        = string
+  default     = ""
+}
+
+variable "vercel_production_domain_override" {
+  description = "Optional override for the Vercel production hostname (team accounts / slug collisions). Empty = use default construction."
   type        = string
   default     = ""
 }

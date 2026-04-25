@@ -1,8 +1,8 @@
 # Terraform — flamingo-armond infrastructure
 
 Provisions the three production providers (Supabase, Render, Vercel) and wires
-them together. Replaces the manual bring-up that previously lived in the
-provider dashboards plus the legacy `render.yaml`.
+them together. Terraform is the single source of truth for the production
+infrastructure shape; provider dashboards are read-only follow-along surfaces.
 
 `docs/deployment.md` is the operator-facing entry point — read that first for
 the full bring-up flow, including manual prerequisites that cannot be
@@ -13,15 +13,29 @@ This README is the local reference for the Terraform code itself.
 
 ```
 ops/terraform/
-├── envs/prod/        # root module — call site that wires the three modules
+├── envs/prod/
+│   ├── initial/      # creates supabase project + render service + vercel project
+│   └── settings/     # supabase auth config (site_url, redirect URLs, OAuth)
 └── modules/
-    ├── supabase/     # supabase_project + supabase_settings + db_password
+    ├── supabase/     # supabase_project + db_password + JWKS/pooler outputs
     ├── render/       # render_web_service + env vars
     └── vercel/       # vercel_project + env vars
 ```
 
+The two stacks under `envs/prod/` are applied in order. The `settings` stack
+reads the `initial` stack's local state via `terraform_remote_state` to wire
+the Vercel hostname into Supabase Auth. Splitting them keeps the DB password
+state out of the resource that operators iterate on most often.
+
 Adding `envs/staging/` later is a directory copy with a separate
 `mise.local.toml` — no module changes required.
+
+> **WARNING — local state.** Both stacks use Terraform's local backend. State
+> files (`envs/prod/initial/terraform.tfstate`, `envs/prod/settings/terraform.tfstate`)
+> contain the DB password and other sensitive values in plaintext on whoever
+> ran `apply`. Do not run `terraform apply` from a second machine without
+> migrating to a remote backend first; a fresh local state will attempt to
+> recreate every resource. Remote backend selection is tracked separately.
 
 ## Initial setup
 
@@ -30,29 +44,44 @@ Adding `envs/staging/` later is a directory copy with a separate
 mise install
 mise trust
 
-# 2. Provide secrets.
+# 2. Provide secrets (single shared file, inherited by both stacks).
 cp ops/terraform/mise.local.example.toml ops/terraform/envs/prod/mise.local.toml
-$EDITOR ops/terraform/envs/prod/mise.local.toml   # fill in 8 values
+$EDITOR ops/terraform/envs/prod/mise.local.toml   # fill 7 secrets
 
-# 3. Apply.
-cd ops/terraform/envs/prod
+# 3. Apply initial — creates supabase project, render service, vercel project.
+cd ops/terraform/envs/prod/initial
+terraform init
+terraform plan
+terraform apply
+
+# 4. Apply settings — wires Vercel hostname into Supabase Auth + Google OAuth.
+cd ../settings
 terraform init
 terraform plan
 terraform apply
 ```
 
-`terraform apply` runs end-to-end (~15 min including provider provisioning).
-The DAG resolves to a single straight line: Supabase project -> Render -> Vercel
--> Supabase settings update.
+`terraform apply` for `initial` runs end-to-end (~15 min including provider
+provisioning). `settings` is a single resource and applies in seconds.
 
 ## Useful commands
 
+Run from the relevant stack directory.
+
 ```bash
+# Initial stack (envs/prod/initial)
 terraform output                                  # all non-sensitive outputs
 terraform output -raw supabase_db_password        # sensitive value
 terraform output -raw production_url              # frontend URL
+terraform output -raw render_service_id           # for the first manual deploy
 terraform plan -refresh-only                      # detect drift
-terraform taint random_password.db                # rotate DB password
+terraform apply -replace=module.supabase.random_password.db   # rotate DB password
+```
+
+```bash
+# Settings stack (envs/prod/settings)
+terraform output                                  # site_url + supabase_project_ref
+terraform apply                                   # re-apply auth config after dashboard drift
 ```
 
 ## Provider versions
@@ -75,7 +104,11 @@ These are intentionally not Terraformed:
 - Database schema migrations — `golang-migrate` runs at backend boot.
 - Supabase Storage policies / RLS — feature not yet used.
 - Custom domains — defaults (`*.vercel.app`, `*.onrender.com`) are sufficient.
-- CI integration — `terraform apply` runs locally only for now.
+  When a custom domain is added, set `TF_VAR_vercel_production_domain_override`
+  so the settings stack wires Auth Site URL to the canonical hostname.
+- CI integration — `terraform apply` runs locally only for now. CI does run
+  `terraform fmt -check` and `terraform validate` on every PR (see
+  `.github/workflows/terraform.yml`).
 - Auth users — created by Google OAuth at runtime.
 - Manual prerequisites — see `docs/deployment.md`.
 
@@ -83,14 +116,20 @@ These are intentionally not Terraformed:
 
 | Situation | Recovery |
 |---|---|
-| Apply fails midway | Re-run `terraform apply`. All three providers' resources are idempotent. |
+| `initial apply` fails midway | Re-run `terraform apply`. All three providers' resources are idempotent. |
+| `settings apply` fails | Re-run from `envs/prod/settings/`. The DAG only revisits `supabase_settings`. |
 | `mise.local.toml` lost | Rotate at each provider's dashboard, refill, re-apply. State is unaffected. |
 | State file lost / corrupted | `terraform import` each resource; refs come from the provider dashboards. |
-| Want to start over | `terraform destroy` (lifts the `prevent_destroy` guard manually first). DB data is unrecoverable. |
+| Want to start over | Manually remove `prevent_destroy` blocks first, then `terraform destroy` from `settings` and `initial` in that order. DB data is unrecoverable. |
 
-## Why split `supabase_project` and `supabase_settings`?
+## Why split `initial` and `settings`?
 
-The Vercel domain is needed for Supabase Auth's Site URL and redirect allow
-list. Keeping settings separate from the project lets Terraform's DAG resolve
-the loopback as a normal forward edge: `supabase_project -> vercel -> supabase_settings`.
-A single-resource design would create a cycle and require two-pass apply.
+Two reasons compound:
+
+1. **Loopback dependency.** Supabase Auth's Site URL needs the Vercel
+   hostname, but Vercel is created after Supabase. Keeping
+   `supabase_settings` in a downstream stack lets Terraform's DAG resolve the
+   loopback as a normal forward edge: `supabase_project -> vercel -> supabase_settings`.
+2. **Iteration cadence.** Auth changes (redirect URLs, OAuth providers, custom
+   domain) reapply often. The `initial` stack stays untouched for those
+   changes, keeping DB password state isolated.

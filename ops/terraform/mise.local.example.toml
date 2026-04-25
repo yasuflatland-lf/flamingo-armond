@@ -1,8 +1,12 @@
 # Template for envs/<name>/mise.local.toml. Copy into the target env directory,
 # then fill in values from the manual prerequisites listed in
-# docs/deployment.md § "Manual prerequisites for terraform apply".
+# docs/deployment.md § "Manual prerequisites".
 #
 #   cp ops/terraform/mise.local.example.toml ops/terraform/envs/prod/mise.local.toml
+#
+# This single file is shared by both stacks under envs/prod/ — mise's
+# hierarchical loading means `cd envs/prod/initial` or `envs/prod/settings`
+# both pick up the values here.
 #
 # The real file MUST stay gitignored (see ops/terraform/.gitignore).
 
@@ -26,8 +30,11 @@ TF_VAR_render_plan     = "free"
 TF_VAR_vercel_api_token = "REPLACE_ME"
 # Empty string when deploying to a personal account.
 TF_VAR_vercel_team_id   = ""
+# Optional override when Vercel assigns a suffixed slug (team accounts, slug
+# collisions). Leave empty for personal accounts on a unique project name.
+TF_VAR_vercel_production_domain_override = ""
 
-# --- Google OAuth -----------------------------------------------------------
+# --- Google OAuth (consumed by the settings stack) --------------------------
 # https://console.cloud.google.com/apis/credentials
 # Authorized redirect URI must include
 #   https://<supabase-project-ref>.supabase.co/auth/v1/callback
@@ -36,3 +43,9 @@ TF_VAR_vercel_team_id   = ""
 # Supabase project exists. See docs/deployment.md.
 TF_VAR_google_oauth_client_id     = "REPLACE_ME.apps.googleusercontent.com"
 TF_VAR_google_oauth_client_secret = "GOCSPX-REPLACE_ME"
+
+# --- Tracing (optional, consumed by the initial stack) ----------------------
+# Set to an OTLP HTTP collector endpoint (e.g. http://collector:4318) to
+# enable backend tracing. Empty (the default) keeps tracing disabled — the
+# backend uses a no-op exporter.
+# TF_VAR_otel_endpoint = ""
