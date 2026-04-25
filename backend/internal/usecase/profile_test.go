@@ -89,6 +89,12 @@ func TestProfileUsecase_Me(t *testing.T) {
 			findErr: repository.ErrNotFound,
 			wantID:  "u1",
 		},
+		{
+			name:    "non-ErrNotFound DB error returns INTERNAL",
+			ctx:     authedCtx("u1"),
+			findErr: errors.New("db died"),
+			wantErr: "INTERNAL",
+		},
 	}
 
 	for _, tc := range cases {
@@ -204,11 +210,11 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 			wantRepoName: ptr("Alice"),
 		},
 		{
-			name:        "repo error propagates as-is",
+			name:        "repo error wrapped as INTERNAL",
 			ctx:         authedCtx("u1"),
 			input:       UpdateProfileInput{DisplayName: "Alice"},
 			repoErr:     fmt.Errorf("db exploded"),
-			wantErrCode: "", // not a gqlerror — plain error
+			wantErrCode: "INTERNAL",
 		},
 		// --- grapheme boundary tests ---
 		{
@@ -286,17 +292,6 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 					if got != tc.wantErrField {
 						t.Fatalf("expected extensions.field=%q, got %q", tc.wantErrField, got)
 					}
-				}
-				return
-			}
-
-			// Case: repo error propagates (non-gqlerror)
-			if tc.repoErr != nil {
-				if err == nil {
-					t.Fatal("expected error from repo, got nil")
-				}
-				if !errors.Is(err, tc.repoErr) {
-					t.Fatalf("expected repo error %v, got %v", tc.repoErr, err)
 				}
 				return
 			}

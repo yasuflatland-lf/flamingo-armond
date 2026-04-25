@@ -35,6 +35,8 @@ func Middleware(repo repository.ProfileRepository) echo.MiddlewareFunc {
 	}
 }
 
+// For returns the per-request Loaders set by Middleware, or nil if Middleware
+// did not run on this request (in which case calling .Load on a loader will panic).
 func For(ctx context.Context) *Loaders {
 	l, _ := ctx.Value(contextKey{}).(*Loaders)
 	return l

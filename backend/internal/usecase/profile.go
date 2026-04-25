@@ -23,6 +23,9 @@ const (
 	bioMax         = 500
 )
 
+// ProfileRepository is the consumer-driven interface used by ProfileUsecase.
+// It intentionally omits FindByIDs (used only by the loader layer) so usecase
+// tests do not need to mock that method.
 type ProfileRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Profile, error)
 	Update(ctx context.Context, id string, patch repository.ProfileUpdate) (*domain.Profile, error)
@@ -51,7 +54,7 @@ func (u *ProfileUsecase) Me(ctx context.Context) (*domain.Profile, error) {
 			"hint", "expected handle_new_user trigger to provision row")
 		return &domain.Profile{ID: user.Sub}, nil
 	}
-	return nil, err
+	return nil, gqlerr.Internal(ctx, err)
 }
 
 type UpdateProfileInput struct {
@@ -73,10 +76,14 @@ func (u *ProfileUsecase) UpdateProfile(ctx context.Context, in UpdateProfileInpu
 		return nil, err
 	}
 
-	return u.repo.Update(ctx, user.Sub, repository.ProfileUpdate{
+	p, err := u.repo.Update(ctx, user.Sub, repository.ProfileUpdate{
 		DisplayName: &name,
 		Bio:         in.Bio,
 	})
+	if err != nil {
+		return nil, gqlerr.Internal(ctx, err)
+	}
+	return p, nil
 }
 
 func validateDisplayName(v string) error {

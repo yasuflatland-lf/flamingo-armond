@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vektah/gqlparser/v2/gqlerror"
+
 	"backend/internal/gqlerr"
 )
 
@@ -84,5 +86,24 @@ func TestIsCode_plainError(t *testing.T) {
 
 	if gqlerr.IsCode(errors.New("plain"), gqlerr.CodeUnauthenticated) {
 		t.Error("IsCode should return false for non-gqlerror")
+	}
+}
+
+func TestIsCode_NilExtensions(t *testing.T) {
+	t.Parallel()
+
+	// *gqlerror.Error with no Extensions map must not panic and must return false.
+	err := &gqlerror.Error{Message: "x"}
+	if gqlerr.IsCode(err, gqlerr.CodeInternal) {
+		t.Error("IsCode should return false when Extensions is nil")
+	}
+}
+
+func TestIsCode_EmptyCode(t *testing.T) {
+	t.Parallel()
+
+	// Zero-value Code must return false without panicking.
+	if gqlerr.IsCode(gqlerr.Unauthenticated(), gqlerr.Code("")) {
+		t.Error("IsCode should return false for empty Code")
 	}
 }

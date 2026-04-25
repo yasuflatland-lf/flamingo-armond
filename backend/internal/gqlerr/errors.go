@@ -52,6 +52,9 @@ func IsCode(err error, code Code) bool {
 	if !errors.As(err, &gqe) {
 		return false
 	}
+	if code == "" {
+		return false
+	}
 	got, _ := gqe.Extensions["code"].(string)
 	return got == string(code)
 }
