@@ -497,3 +497,50 @@ if len(ids) == 0 {
 ```
 
 This matters most in DataLoader batch functions, where an empty key slice is a normal edge case.
+
+## Observability
+
+The backend emits OpenTelemetry traces via `otelgqlgen` for every GraphQL operation, resolver, and scalar field. Spans are exported via OTLP HTTP (port 4318) to whatever collector `OTEL_EXPORTER_OTLP_ENDPOINT` points to.
+
+### What gets traced
+
+Per GraphQL request, the following spans are emitted (concrete names depend on the `otelgqlgen` version):
+
+- One operation-level span named after the GraphQL operation (`Me`, `UpdateProfile`, `Health`).
+- One resolver span per top-level resolver (`Query.me`, `Mutation.updateProfile`).
+- One child span per field resolver for non-trivial fields (`User.displayName`, `User.bio`, `User.avatarUrl`).
+- Span attributes include `graphql.operation.type`, `graphql.operation.name`, and `graphql.error.code` (when the operation errors).
+
+### Noop fallback
+
+If `OTEL_EXPORTER_OTLP_ENDPOINT` is empty or missing, the server installs a no-op TracerProvider and logs `telemetry disabled`. Startup is **not** blocked on collector availability — this is deliberate so dev / CI do not require a running Jaeger.
+
+### Sampler
+
+`ParentBased(TraceIDRatioBased(ratio))`. The `ratio` is read from `OTEL_TRACES_SAMPLER_ARG` (default `1.0`, i.e. sample everything). In production, set this to a low value (e.g. `0.1`) via Render env. `ParentBased` means that if a caller provides a sampling decision via `traceparent`, we respect it.
+
+### Trace context gap from the frontend
+
+The current backend does not forward `traceparent` from the Next.js frontend — each backend request is its own root trace. Frontend-side OTel + `traceparent` propagation is tracked in [#22](https://github.com/yasuflatland-lf/flamingo-armond/issues/22) and will introduce a parent span that backend spans nest under.
+
+### Shutdown ordering
+
+The graceful-shutdown goroutine shuts down in this order:
+
+1. `srv.Shutdown(sctx)` — drain in-flight HTTP requests.
+2. `db.Close()` — release the pgx pool.
+3. `tracerShutdown(sctx)` — flush pending spans to the exporter.
+
+Tracer shutdown is last so that DB-layer spans emitted during request drain still reach the exporter. Tracer shutdown errors log a warning but do not fail the process.
+
+### Environment variables (observability)
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | no | *(empty)* | OTLP HTTP endpoint (e.g. `http://localhost:4318`). Empty = tracing disabled. |
+| `OTEL_TRACES_SAMPLER_ARG` | no | `1.0` | Float in `[0, 1]`. Invalid or out-of-range values silently fall back to `1.0`. |
+| `APP_ENV` | no | `development` | Used as `deployment.environment` resource attribute. Set to `production` on Render. |
+
+## Automatic Persisted Queries
+
+`extension.AutomaticPersistedQuery{Cache: lru.New(100)}` is always registered on the gqlgen handler. There is no env gate — hash-less queries still work as normal POST bodies, so dev / playground flows are unaffected. The first request that contains `extensions.persistedQuery.sha256Hash` populates the LRU cache; subsequent hash-only requests from the same client short-circuit to the cached query text without sending the full document.
