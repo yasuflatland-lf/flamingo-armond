@@ -3,13 +3,13 @@ package database
 import (
 	"embed"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
+	"github.com/rotisserie/eris"
 )
 
 //go:embed all:migrations
@@ -20,7 +20,7 @@ var migrationsFS embed.FS
 func Migrate(url string) error {
 	src, err := iofs.New(migrationsFS, "migrations")
 	if err != nil {
-		return fmt.Errorf("database: open migrations FS: %w", err)
+		return eris.Wrap(err, "database: open migrations FS")
 	}
 	defer func() {
 		if err := src.Close(); err != nil {
@@ -31,7 +31,7 @@ func Migrate(url string) error {
 	migURL := convertSchemeForMigrate(url)
 	m, err := migrate.NewWithSourceInstance("iofs", src, migURL)
 	if err != nil {
-		return fmt.Errorf("database: init migrate: %w", err)
+		return eris.Wrap(err, "database: init migrate")
 	}
 	defer func() {
 		if srcErr, dbErr := m.Close(); srcErr != nil || dbErr != nil {
@@ -40,7 +40,7 @@ func Migrate(url string) error {
 	}()
 
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		return fmt.Errorf("database: migrate up: %w", err)
+		return eris.Wrap(err, "database: migrate up")
 	}
 	return nil
 }

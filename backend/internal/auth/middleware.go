@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -10,6 +9,7 @@ import (
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v5"
+	"github.com/rotisserie/eris"
 )
 
 const wwwAuthenticate = `Bearer realm="api"`
@@ -60,18 +60,18 @@ func AuthMiddleware(kf keyfunc.Keyfunc, cfg Config) (echo.MiddlewareFunc, error)
 func extractBearer(header string) (string, error) {
 	parts := strings.SplitN(header, " ", 2)
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-		return "", errors.New("auth: Authorization header must use Bearer scheme")
+		return "", eris.New("auth: Authorization header must use Bearer scheme")
 	}
 	token := strings.TrimSpace(parts[1])
 	if token == "" {
-		return "", errors.New("auth: empty bearer token")
+		return "", eris.New("auth: empty bearer token")
 	}
 	return token, nil
 }
 
 func reject(c *echo.Context, cause error) error {
 	slog.Warn("auth: token rejected",
-		"err", cause,
+		"error_chain", eris.ToJSON(cause, true),
 		"path", c.Request().URL.Path,
 		"remote_addr", c.Request().RemoteAddr,
 	)

@@ -2,7 +2,8 @@ package database
 
 import (
 	"context"
-	"fmt"
+
+	"github.com/rotisserie/eris"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -26,7 +27,7 @@ func Open(ctx context.Context, cfg Config) (*DB, error) {
 	}
 	pcfg, err := pgxpool.ParseConfig(cfg.URL)
 	if err != nil {
-		return nil, fmt.Errorf("database: parse DSN: %w", err)
+		return nil, eris.Wrap(err, "database: parse DSN")
 	}
 	if cfg.MaxConns > 0 {
 		pcfg.MaxConns = cfg.MaxConns
@@ -43,18 +44,18 @@ func Open(ctx context.Context, cfg Config) (*DB, error) {
 
 	pool, err := pgxpool.NewWithConfig(ctx, pcfg)
 	if err != nil {
-		return nil, fmt.Errorf("database: connect: %w", err)
+		return nil, eris.Wrap(err, "database: connect")
 	}
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("database: ping: %w", err)
+		return nil, eris.Wrap(err, "database: ping")
 	}
 
 	sqlDB := stdlib.OpenDBFromPool(pool)
 	gormDB, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}), &gorm.Config{})
 	if err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("database: gorm open: %w", err)
+		return nil, eris.Wrap(err, "database: gorm open")
 	}
 	return &DB{Pool: pool, GORM: gormDB}, nil
 }

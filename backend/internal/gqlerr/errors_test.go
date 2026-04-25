@@ -3,11 +3,13 @@ package gqlerr_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"strings"
 	"testing"
 
+	"github.com/rotisserie/eris"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
 	"backend/internal/gqlerr"
@@ -107,5 +109,36 @@ func TestIsCode_EmptyCode(t *testing.T) {
 
 	if gqlerr.IsCode(gqlerr.Unauthenticated(), gqlerr.Code("")) {
 		t.Error("IsCode should return false for empty Code")
+	}
+}
+
+func TestInternal_EmitsErrorChain(t *testing.T) {
+	buf := &bytes.Buffer{}
+	prev := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	slog.SetDefault(slog.New(slog.NewJSONHandler(buf, nil)))
+
+	gqlerr.Internal(context.Background(), eris.New("boom"))
+
+	var rec map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &rec); err != nil {
+		t.Fatalf("decode log record: %v (raw: %s)", err, buf.String())
+	}
+	if rec["level"] != "ERROR" {
+		t.Errorf("expected level=ERROR, got %v", rec["level"])
+	}
+	if rec["msg"] != "internal error" {
+		t.Errorf("expected msg='internal error', got %v", rec["msg"])
+	}
+	chain, ok := rec["error_chain"]
+	if !ok {
+		t.Fatalf("error_chain missing: %v", rec)
+	}
+	chainMap, ok := chain.(map[string]any)
+	if !ok {
+		t.Fatalf("expected error_chain to be a JSON object, got %T", chain)
+	}
+	if _, hasRoot := chainMap["root"]; !hasRoot {
+		t.Errorf("expected error_chain.root, got %v", chainMap)
 	}
 }

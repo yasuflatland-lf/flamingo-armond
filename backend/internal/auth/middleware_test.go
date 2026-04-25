@@ -1,12 +1,14 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -259,5 +261,43 @@ func TestAuthMiddleware_RejectsEmptyConfig(t *testing.T) {
 
 	if _, err := AuthMiddleware(kf, Config{}); err == nil {
 		t.Fatal("expected error from empty Config")
+	}
+}
+
+func TestRejectAttachesErrorChainAttribute(t *testing.T) {
+	// Not parallel: mutates the global slog default.
+	prev := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	buf := &bytes.Buffer{}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+
+	// Send a malformed Authorization header (non-Bearer scheme) so that
+	// extractBearer returns an eris error and reject() is called, which emits
+	// a structured WARN log containing the error_chain attribute.
+	f := newFixture(t)
+	rec := send(f.newEcho(t), "Token not-a-bearer-token")
+
+	// Confirm the request was rejected with 401 before inspecting logs.
+	assert401(t, rec)
+
+	var logRec map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &logRec); err != nil {
+		t.Fatalf("decode log record: %v (raw: %s)", err, buf.String())
+	}
+
+	if logRec["level"] != "WARN" {
+		t.Errorf("expected level=WARN, got %v", logRec["level"])
+	}
+	if logRec["msg"] != "auth: token rejected" {
+		t.Errorf("expected msg='auth: token rejected', got %v", logRec["msg"])
+	}
+
+	chain, ok := logRec["error_chain"]
+	if !ok {
+		t.Fatalf("error_chain attribute missing: %v", logRec)
+	}
+	if _, ok := chain.(map[string]any); !ok {
+		t.Fatalf("expected error_chain to be a JSON object, got %T", chain)
 	}
 }

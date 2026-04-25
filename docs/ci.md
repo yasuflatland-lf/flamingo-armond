@@ -73,6 +73,12 @@ Pin to commit SHAs when you need stronger supply-chain guarantees, at the cost o
 
 This mirrors the backend rule (§"Codegen must run before Vet and Build"). `pnpm codegen` takes under 5s on a warm pnpm store, so an independent step adds negligible overhead. A `prebuild` lifecycle hook also runs codegen locally (`pnpm --filter frontend build` triggers it automatically); the two mechanisms coexist because CI runs `TypeScript typecheck` before `Build`, and typecheck alone does not trigger `prebuild`. We deliberately do NOT rely on `git diff --exit-code` for validation — `src/generated/` is gitignored so the diff is always empty; the real signal is `pnpm codegen` exiting 0.
 
+## Shell command paths under `working-directory:` are cwd-relative
+
+This applies to any shell command in a step, not only `git` pathspecs. When a step runs a `grep` or similar command and the path argument was copied from a repo-root perspective (e.g. `backend/internal`), the shell resolves it relative to the step cwd, producing `backend/backend/internal` (nonexistent). `grep` then prints an error to stderr but exits 0 on an empty match — the `if grep ...` condition evaluates false without any visible failure. Always write paths relative to the declared `working-directory`.
+
+**Chained `grep` exit-code masking.** `if grep -X | grep -Y` only checks the exit code of the last `grep`. A missing-path error on the first `grep` is masked — the pipeline returns 0 and the lint step appears to pass. Prefer running each `grep` independently or use `pipefail` (`set -o pipefail`) when piping.
+
 ## Git pathspec under `working-directory:` is cwd-relative
 
 The `test` job declares `defaults.run.working-directory: backend`, so every `run:` step starts with cwd in `backend/`. When a step invokes `git diff -- <pathspec>`, the pathspec is resolved relative to the shell cwd, **not** the repository root. Writing `git diff -- backend/graph/resolver/*.resolvers.go` would be interpreted as `backend/backend/graph/...`, which matches nothing; `git diff --exit-code` then returns 0 and the check silently passes regardless of actual drift.

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -19,6 +18,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 	"github.com/ravilushqa/otelgqlgen"
+	"github.com/rotisserie/eris"
 	"golang.org/x/sync/errgroup"
 
 	"backend/graph/generated"
@@ -26,6 +26,7 @@ import (
 	"backend/internal/auth"
 	"backend/internal/database"
 	"backend/internal/loader"
+	"backend/internal/logging"
 	"backend/internal/repository"
 	"backend/internal/telemetry"
 	"backend/internal/usecase"
@@ -97,7 +98,7 @@ func shutdownTimeout(logger *slog.Logger) time.Duration {
 func run(ctx context.Context, logger *slog.Logger) error {
 	tracerShutdown, err := telemetry.Init(ctx, logger)
 	if err != nil {
-		return fmt.Errorf("run: telemetry init: %w", err)
+		return eris.Wrap(err, "run: telemetry init")
 	}
 
 	cfg, err := auth.ConfigFromEnv()
@@ -106,23 +107,23 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 	kf, err := auth.NewJWKSKeyfunc(ctx, cfg)
 	if err != nil {
-		return fmt.Errorf("run: %w", err)
+		return eris.Wrap(err, "run")
 	}
 	authMW, err := auth.AuthMiddleware(kf, cfg)
 	if err != nil {
-		return fmt.Errorf("run: %w", err)
+		return eris.Wrap(err, "run")
 	}
 
 	dbCfg, err := database.ConfigFromEnv()
 	if err != nil {
-		return fmt.Errorf("run: db config: %w", err)
+		return eris.Wrap(err, "run: db config")
 	}
 	if err := database.Migrate(dbCfg.URL); err != nil {
-		return fmt.Errorf("run: migrate: %w", err)
+		return eris.Wrap(err, "run: migrate")
 	}
 	db, err := database.Open(ctx, dbCfg)
 	if err != nil {
-		return fmt.Errorf("run: db open: %w", err)
+		return eris.Wrap(err, "run: db open")
 	}
 
 	profileRepo := repository.NewProfileRepository(db.GORM)
@@ -190,7 +191,7 @@ func main() {
 	defer stop()
 
 	if err := run(ctx, logger); err != nil {
-		logger.Error("server terminated", "err", err)
+		logging.LogError(ctx, logger, "server terminated", err)
 		os.Exit(1)
 	}
 }

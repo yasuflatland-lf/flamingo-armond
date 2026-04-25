@@ -8,11 +8,11 @@ package telemetry
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"os"
 	"strconv"
 
+	"github.com/rotisserie/eris"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -34,7 +34,7 @@ func Init(ctx context.Context, logger *slog.Logger) (ShutdownFunc, error) {
 	}
 	exp, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(endpoint))
 	if err != nil {
-		return nil, fmt.Errorf("telemetry: new exporter: %w", err)
+		return nil, eris.Wrap(err, "telemetry: new exporter")
 	}
 	shutdown, err := InitWithExporter(ctx, logger, exp)
 	if err != nil {
@@ -56,7 +56,7 @@ func InitWithExporter(ctx context.Context, logger *slog.Logger, exp sdktrace.Spa
 	)
 	if err != nil {
 		if !errors.Is(err, resource.ErrPartialResource) && !errors.Is(err, resource.ErrSchemaURLConflict) {
-			return nil, fmt.Errorf("telemetry: resource: %w", err)
+			return nil, eris.Wrap(err, "telemetry: resource")
 		}
 		logger.Warn("telemetry: partial resource detection", "err", err)
 	}

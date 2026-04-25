@@ -45,6 +45,13 @@ jobs:
           go tool gqlgen generate
           git diff --exit-code -- graph/resolver/*.resolvers.go
 
+      - name: Verify no fmt.Errorf("%w") remains
+        run: |
+          if grep -rnE 'fmt\.Errorf\([^)]*%w' internal cmd | grep -v _test.go; then
+            echo "::error::fmt.Errorf with %w found; use eris.Wrap instead (see docs/backend.md)" >&2
+            exit 1
+          fi
+
       - name: Vet
         run: go vet ./...
 

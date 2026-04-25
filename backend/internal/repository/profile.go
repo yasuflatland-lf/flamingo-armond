@@ -3,9 +3,9 @@ package repository
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
+	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 
 	"backend/internal/domain"
@@ -65,7 +65,7 @@ func (r *profileRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*
 	}
 	var rows []gormProfile
 	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
-		return nil, fmt.Errorf("repository: find profiles by ids: %w", err)
+		return nil, eris.Wrap(err, "repository: find profiles by ids")
 	}
 	out := make(map[string]*domain.Profile, len(rows))
 	for i := range rows {

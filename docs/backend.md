@@ -69,6 +69,7 @@ These values target a public API on Render. Revisit if the threat model or deplo
 - **Do not send real signals to the test process** (e.g. `syscall.Kill(os.Getpid(), SIGTERM)`). Signals are delivered process-wide and race with `t.Parallel()` tests and the test runner itself. Reproduce the meaning of `signal.NotifyContext` by **cancelling a `context.WithCancel` directly**.
 - **Silence logs in tests** with `slog.New(slog.DiscardHandler)`.
 - **`t.Parallel()` is incompatible with `t.Setenv()`** — `t.Setenv` mutates process-global env state and the Go test framework will panic if a parallel test calls it. Tests that manipulate env vars must be sequential (no `t.Parallel()`).
+- **`slog.SetDefault` regression tests must not use `t.Parallel()`** — Swapping the process-wide default logger is a global mutation. The pattern is: swap `slog.SetDefault` with a `slog.NewJSONHandler` backed by a `bytes.Buffer` inside `t.Cleanup` to restore the original, decode the buffer as `map[string]any`, and assert on field presence and shape. Do not assert on raw byte substrings — that is weaker than shape assertions. Because the test mutates a global, it must run sequentially.
 - **Packages that use `testcontainers-go` each define their own `TestMain`** — testcontainers containers cannot be shared across process boundaries, so container lifecycle must be scoped to the package. Current packages with `TestMain`: `cmd/server`, `internal/repository`, `internal/database`.
 - **`bootstrapAuthSchema` fixture is required before migration** — migrations include a trigger that references `auth.users`. In production Supabase provides this schema, but the Postgres test container does not. Tests must call `bootstrapAuthSchema` to create the `auth` schema and `auth.users` table before applying migrations.
 - **Assert trigger behavior, do not assume it** — the `handle_new_user` trigger must fire and create a profile row when a user is inserted into `auth.users`. Do not add a fallback INSERT that silently masks trigger regressions; use `t.Fatalf` if the expected row is absent.
@@ -575,3 +576,70 @@ Test assertions that match span names (e.g. `strings.HasPrefix(name, "User/")`) 
 #### Sampler env-var validation
 
 `OTEL_TRACES_SAMPLER_ARG` parsing emits `slog.Warn` on two distinct conditions: a parse error (e.g. `0,1` with a comma instead of a decimal point) and an out-of-range value (outside `[0, 1]`). Both fall back to `1.0`. The two warnings are kept separate so operators can triage env config issues quickly — a comma typo produces a different message than a value of `1.5`.
+
+## Error wrapping convention
+
+The backend uses [`github.com/rotisserie/eris`](https://github.com/rotisserie/eris) as the **only** error-wrapping library inside `backend/internal/` and `backend/cmd/`. The convention is:
+
+| Situation | Use |
+|---|---|
+| New error at the originating call site | `eris.New("layer: short message")` |
+| Wrapping an error at a layer boundary | `eris.Wrap(err, "layer: context")` |
+| Wrapping with format args | `eris.Wrapf(err, "layer: %s", id)` |
+| Validation error without an underlying cause | `eris.Errorf("layer: %s must be >= %d", field, min)` |
+| Sentinel that other code matches via `errors.Is` | `errors.New("...")` (do **not** use eris) |
+
+`fmt.Errorf("...: %w", err)` is **forbidden** in `backend/internal/` and `backend/cmd/`. CI fails the build if any such call sneaks back in (see `.github/workflows/backend.yml`).
+
+### Sentinels
+
+The only sentinel today is `repository.ErrNotFound`. New sentinels are allowed when (a) callers need to branch on identity, and (b) a string-equality match is fragile. Keep sentinels as plain `errors.New` so `errors.Is` works without going through eris's chain walk.
+
+### Logging
+
+All error sites that produce a structured log entry must attach the eris chain as the `error_chain` attribute (output of `eris.ToJSON(err, true)`). ERROR-level sites use `internal/logging.LogError(ctx, logger, msg, err, attrs...)`, which:
+
+- attaches `error_chain` automatically,
+- emits at `slog.LevelError`,
+- is a no-op when `err == nil`.
+
+Non-ERROR sites (e.g. `slog.Warn` for client-side faults) attach the same `error_chain` value manually so log shape stays consistent.
+
+Today's call sites:
+
+1. **`gqlerr.Internal(ctx, err)`** — every internal-server error returned through GraphQL (uses `LogError`, ERROR level).
+2. **`cmd/server/main.go main()`** — terminal error before `os.Exit(1)` (uses `LogError`, ERROR level).
+3. **`auth/middleware.go reject(c, cause)`** — token-rejection log; uses `slog.Warn` directly with `eris.ToJSON(cause, true)` for log-shape parity.
+
+### Why `eris` over alternatives
+
+- **`fmt.Errorf("%w")`**: no stack trace, can only carry a string context.
+- **`pkg/errors`**: last tagged release v0.9.1 in January 2020 with no upstream activity since; lacks the structured JSON chain serialization that this codebase relies on for the `error_chain` log attribute.
+- **`cockroachdb/errors`**: heavier, drags in many transitive deps; revisit only when multi-service error portability or first-class Sentry SDK integration becomes a hard requirement.
+- **`joomcode/errorx`**: typed-error focus, less aligned with our wrap-and-log need.
+
+### What `error_chain` looks like
+
+For an error `eris.Wrap(eris.New("inner failure"), "outer context")`, `eris.ToJSON(err, true)` produces (abbreviated):
+
+```json
+{
+  "root": {
+    "message": "inner failure",
+    "stack": [
+      "main.run:/path/server/main.go:42",
+      "..."
+    ]
+  },
+  "wrap": [
+    {
+      "message": "outer context",
+      "stack": "main.run:/path/server/main.go:51"
+    }
+  ]
+}
+```
+
+This is emitted as the `error_chain` field in the JSON log line, alongside `level=ERROR` and the human-readable `msg`. Render and any downstream collector (Datadog / Sentry / Cloud Logging) ingest this JSON without further parsing.
+
+**`root.stack` vs `wrap[].stack` shapes differ.** `root.stack` is a JSON array of `"Method:File:Line"` strings. Each entry in `wrap[]` has a `stack` field that is a **single** `"Method:File:Line"` string, not an array. Writing a log parser or assertion that treats both as arrays is a silent bug — only `root.stack` is iterable.

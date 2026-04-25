@@ -1,11 +1,11 @@
 package database
 
 import (
-	"errors"
-	"fmt"
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/rotisserie/eris"
 )
 
 // Config holds connection-pool configuration for the Supabase Postgres instance.
@@ -21,22 +21,22 @@ type Config struct {
 // field is invalid.
 func (c Config) Validate() error {
 	if c.URL == "" {
-		return errors.New("database: SUPABASE_DB_URL is required")
+		return eris.New("database: SUPABASE_DB_URL is required")
 	}
 	if c.MaxConns < 0 {
-		return fmt.Errorf("database: MaxConns must be >= 0, got %d", c.MaxConns)
+		return eris.Errorf("database: MaxConns must be >= 0, got %d", c.MaxConns)
 	}
 	if c.MinConns < 0 {
-		return fmt.Errorf("database: MinConns must be >= 0, got %d", c.MinConns)
+		return eris.Errorf("database: MinConns must be >= 0, got %d", c.MinConns)
 	}
 	if c.MaxConns > 0 && c.MinConns > c.MaxConns {
-		return fmt.Errorf("database: MinConns (%d) must not exceed MaxConns (%d)", c.MinConns, c.MaxConns)
+		return eris.Errorf("database: MinConns (%d) must not exceed MaxConns (%d)", c.MinConns, c.MaxConns)
 	}
 	if c.MaxConnLifetime < 0 {
-		return fmt.Errorf("database: MaxConnLifetime must be >= 0, got %s", c.MaxConnLifetime)
+		return eris.Errorf("database: MaxConnLifetime must be >= 0, got %s", c.MaxConnLifetime)
 	}
 	if c.MaxConnIdleTime < 0 {
-		return fmt.Errorf("database: MaxConnIdleTime must be >= 0, got %s", c.MaxConnIdleTime)
+		return eris.Errorf("database: MaxConnIdleTime must be >= 0, got %s", c.MaxConnIdleTime)
 	}
 	return nil
 }
@@ -81,10 +81,10 @@ func parseInt32Env(key string, out *int32, min int32) error {
 	}
 	n, err := strconv.ParseInt(v, 10, 32)
 	if err != nil {
-		return fmt.Errorf("database: invalid %s %q: %w", key, v, err)
+		return eris.Wrapf(err, "database: invalid %s %q", key, v)
 	}
 	if int32(n) < min {
-		return fmt.Errorf("database: %s must be >= %d, got %d", key, min, n)
+		return eris.Errorf("database: %s must be >= %d, got %d", key, min, n)
 	}
 	*out = int32(n)
 	return nil
@@ -99,10 +99,10 @@ func parseDurationEnv(key string, out *time.Duration) error {
 	}
 	d, err := time.ParseDuration(v)
 	if err != nil {
-		return fmt.Errorf("database: invalid %s %q: %w", key, v, err)
+		return eris.Wrapf(err, "database: invalid %s %q", key, v)
 	}
 	if d <= 0 {
-		return fmt.Errorf("database: %s must be > 0, got %s", key, v)
+		return eris.Errorf("database: %s must be > 0, got %s", key, v)
 	}
 	*out = d
 	return nil
