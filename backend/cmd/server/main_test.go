@@ -3,6 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,13 +19,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"backend/graph/resolver"
+	"backend/internal/auth"
 	"backend/internal/database"
+	"backend/internal/repository"
+	"backend/internal/usecase"
 )
 
 var testDBURL string
@@ -281,5 +290,237 @@ func TestGraphQLHealth(t *testing.T) {
 	}
 	if payload.Data.Health != "ok" {
 		t.Fatalf("data.health = %q, want %q", payload.Data.Health, "ok")
+	}
+}
+
+// jwtFixture bundles an ECDSA signing key plus a JWKS endpoint that exposes its
+// public key, so integration tests can mint Supabase-shaped JWTs that the real
+// auth.AuthMiddleware will accept.
+type jwtFixture struct {
+	priv     *ecdsa.PrivateKey
+	kid      string
+	jwksURL  string
+	audience string
+	issuer   string
+}
+
+func newJWTFixture(t *testing.T) *jwtFixture {
+	t.Helper()
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate ecdsa key: %v", err)
+	}
+	kid := "test-kid"
+	xB64 := base64.RawURLEncoding.EncodeToString(priv.PublicKey.X.Bytes())
+	yB64 := base64.RawURLEncoding.EncodeToString(priv.PublicKey.Y.Bytes())
+	jwks := map[string]any{"keys": []map[string]any{{
+		"kty": "EC", "crv": "P-256", "alg": "ES256",
+		"kid": kid, "x": xB64, "y": yB64, "use": "sig",
+	}}}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(jwks)
+	}))
+	t.Cleanup(ts.Close)
+	return &jwtFixture{
+		priv: priv, kid: kid, jwksURL: ts.URL,
+		audience: "authenticated", issuer: "http://issuer.test",
+	}
+}
+
+func (f *jwtFixture) sign(t *testing.T, sub string) string {
+	t.Helper()
+	claims := jwt.MapClaims{
+		"sub": sub,
+		"aud": f.audience,
+		"iss": f.issuer,
+		"exp": time.Now().Add(time.Hour).Unix(),
+		"iat": time.Now().Unix(),
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
+	tok.Header["kid"] = f.kid
+	signed, err := tok.SignedString(f.priv)
+	if err != nil {
+		t.Fatalf("sign jwt: %v", err)
+	}
+	return signed
+}
+
+// newGraphQLTestServer builds a real router (auth middleware + GraphQL) backed
+// by the testcontainer Postgres. It returns the running httptest.Server plus
+// the opened DB so callers can insert auth.users rows directly.
+func newGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Server, *database.DB) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	cfg := auth.Config{JWKSURL: f.jwksURL, Audience: f.audience, Issuer: f.issuer}
+	kf, err := auth.NewJWKSKeyfunc(ctx, cfg)
+	if err != nil {
+		t.Fatalf("jwks keyfunc: %v", err)
+	}
+	mw, err := auth.AuthMiddleware(kf, cfg)
+	if err != nil {
+		t.Fatalf("auth middleware: %v", err)
+	}
+
+	db, err := database.Open(ctx, database.Config{URL: testDBURL})
+	if err != nil {
+		t.Fatalf("db open: %v", err)
+	}
+	t.Cleanup(db.Close)
+
+	profileRepo := repository.NewProfileRepository(db.GORM)
+	profileUC := usecase.NewProfileUsecase(profileRepo)
+	e := newRouter(&resolver.Resolver{Profile: profileUC}, mw)
+
+	ts := httptest.NewServer(e)
+	t.Cleanup(ts.Close)
+	return ts, db
+}
+
+// insertAuthUser inserts a row into auth.users so the handle_new_user trigger
+// creates the matching public.profiles row. Returns the generated user id.
+func insertAuthUser(t *testing.T, ctx context.Context) string {
+	t.Helper()
+	pool, err := pgxpool.New(ctx, testDBURL)
+	if err != nil {
+		t.Fatalf("pgxpool new: %v", err)
+	}
+	defer pool.Close()
+
+	id := uuid.NewString()
+	email := "user-" + id[:8] + "@test"
+	if _, err := pool.Exec(ctx, `INSERT INTO auth.users(id, email) VALUES ($1, $2)`, id, email); err != nil {
+		t.Fatalf("insert auth.users: %v", err)
+	}
+
+	// Verify the trigger replicated the row into public.profiles. If it did not,
+	// fall back to inserting the profile directly so downstream tests have a row
+	// to update.
+	var count int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM public.profiles WHERE id = $1`, id).Scan(&count); err != nil {
+		t.Fatalf("count profiles: %v", err)
+	}
+	if count == 0 {
+		if _, err := pool.Exec(ctx, `INSERT INTO public.profiles(id) VALUES ($1)`, id); err != nil {
+			t.Fatalf("fallback insert profile: %v", err)
+		}
+	}
+	return id
+}
+
+// postGraphQL sends a GraphQL POST and decodes the envelope.
+func postGraphQL(t *testing.T, url, body, bearer string) map[string]any {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer res.Body.Close()
+	raw, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("decode body (status=%d): %v body=%q", res.StatusCode, err, raw)
+	}
+	return out
+}
+
+func TestGraphQL_Me_Anonymous(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+
+	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ me { id } }"}`, "")
+
+	errs, ok := resp["errors"].([]any)
+	if !ok || len(errs) == 0 {
+		t.Fatalf("expected errors, got %v", resp)
+	}
+	ext, _ := errs[0].(map[string]any)["extensions"].(map[string]any)
+	code, _ := ext["code"].(string)
+	if code != "UNAUTHENTICATED" {
+		t.Fatalf("expected UNAUTHENTICATED, got %q (resp=%v)", code, resp)
+	}
+}
+
+func TestGraphQL_Me_Authenticated(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+
+	userID := insertAuthUser(t, context.Background())
+	tok := f.sign(t, userID)
+
+	resp := postGraphQL(t, ts.URL+"/query",
+		`{"query":"{ me { id displayName bio avatarUrl } }"}`, tok)
+
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	data, _ := resp["data"].(map[string]any)
+	me, _ := data["me"].(map[string]any)
+	if me == nil {
+		t.Fatalf("expected data.me, got nil; resp=%v", resp)
+	}
+	if me["id"] != userID {
+		t.Fatalf("expected me.id=%q, got %v", userID, me["id"])
+	}
+}
+
+func TestGraphQL_UpdateProfile_Authenticated(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+
+	userID := insertAuthUser(t, context.Background())
+	tok := f.sign(t, userID)
+
+	mutation := `{"query":"mutation { updateProfile(input: { displayName: \"Alice\", bio: \"hi\" }) { user { id displayName bio } } }"}`
+	resp := postGraphQL(t, ts.URL+"/query", mutation, tok)
+
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("unexpected errors on mutation: %v", errs)
+	}
+	data, _ := resp["data"].(map[string]any)
+	upd, _ := data["updateProfile"].(map[string]any)
+	user, _ := upd["user"].(map[string]any)
+	if user == nil {
+		t.Fatalf("expected updateProfile.user, got nil; resp=%v", resp)
+	}
+	if user["id"] != userID {
+		t.Fatalf("expected user.id=%q, got %v", userID, user["id"])
+	}
+	if user["displayName"] != "Alice" {
+		t.Fatalf("expected displayName=Alice, got %v", user["displayName"])
+	}
+	if user["bio"] != "hi" {
+		t.Fatalf("expected bio=hi, got %v", user["bio"])
+	}
+
+	// Re-query me to verify persistence.
+	meResp := postGraphQL(t, ts.URL+"/query",
+		`{"query":"{ me { id displayName bio } }"}`, tok)
+	if errs, ok := meResp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("unexpected errors on me re-query: %v", errs)
+	}
+	meData, _ := meResp["data"].(map[string]any)
+	me, _ := meData["me"].(map[string]any)
+	if me == nil {
+		t.Fatalf("expected data.me on re-query, got nil; resp=%v", meResp)
+	}
+	if me["displayName"] != "Alice" {
+		t.Fatalf("expected persisted displayName=Alice, got %v", me["displayName"])
+	}
+	if me["bio"] != "hi" {
+		t.Fatalf("expected persisted bio=hi, got %v", me["bio"])
 	}
 }

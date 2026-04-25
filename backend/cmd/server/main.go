@@ -24,6 +24,7 @@ import (
 	"backend/internal/auth"
 	"backend/internal/database"
 	"backend/internal/repository"
+	"backend/internal/usecase"
 )
 
 const defaultShutdownTimeout = 25 * time.Second
@@ -107,9 +108,9 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 
 	profileRepo := repository.NewProfileRepository(db.GORM)
-	_ = profileRepo // wired into resolvers in PR9
+	profileUC := usecase.NewProfileUsecase(profileRepo)
 
-	resolvers := &resolver.Resolver{}
+	resolvers := &resolver.Resolver{Profile: profileUC}
 	e := newRouter(resolvers, authMW)
 	e.Logger = logger
 
