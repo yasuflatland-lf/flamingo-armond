@@ -6,15 +6,42 @@ package resolver
 
 import (
 	"backend/graph/generated"
+	"backend/graph/model"
+	"backend/internal/usecase"
 	"context"
 )
+
+// UpdateProfile is the resolver for the updateProfile field.
+func (r *mutationResolver) UpdateProfile(ctx context.Context, input model.UpdateProfileInput) (*model.UpdateProfilePayload, error) {
+	p, err := r.Profile.UpdateProfile(ctx, usecase.UpdateProfileInput{
+		DisplayName: input.DisplayName,
+		Bio:         input.Bio,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &model.UpdateProfilePayload{User: toUserModel(p)}, nil
+}
 
 // Health is the resolver for the health field.
 func (r *queryResolver) Health(ctx context.Context) (string, error) {
 	return "ok", nil
 }
 
+// Me is the resolver for the me field.
+func (r *queryResolver) Me(ctx context.Context) (*model.User, error) {
+	p, err := r.Profile.Me(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return toUserModel(p), nil
+}
+
+// Mutation returns generated.MutationResolver implementation.
+func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
+
 // Query returns generated.QueryResolver implementation.
 func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 
+type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }

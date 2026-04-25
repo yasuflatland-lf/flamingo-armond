@@ -12,7 +12,12 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.{ts,tsx}"],
+    // Expose vitest globals (describe, it, afterEach, etc.) so that
+    // @testing-library/react can hook into afterEach for automatic DOM cleanup.
+    globals: true,
+    // Extend expect with jest-dom matchers for jsdom-based component tests
+    setupFiles: ["src/__test-setup__/jest-dom.ts"],
     env: {
       BACKEND_URL: "http://localhost:1323",
       NEXT_PUBLIC_SUPABASE_URL: "http://localhost:54321",
@@ -23,7 +28,7 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "html"],
       include: ["src/lib/**/*.ts"],
-      exclude: ["src/generated/**", "src/**/*.test.ts"],
+      exclude: ["src/generated/**", "src/**/*.test.{ts,tsx}"],
     },
   },
 });
