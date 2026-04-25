@@ -17,7 +17,7 @@ A first-time contributor should be able to go from a fresh clone to a logged-in 
 Versions resolved by `mise install` at the repo root:
 
 - Go `1.26.2` — from `backend/.tool-versions`
-- Node `24.x`, pnpm `9.15.9`, Supabase CLI — from `./.tool-versions`
+- Node `24.x`, pnpm `10.33.2`, Supabase CLI — from `./.tool-versions`
 
 Do not install pnpm via `npm i -g pnpm` or `brew install pnpm` — a PATH-level binary shadows the mise shim and silently breaks version pinning. If you previously installed it that way, uninstall it first.
 
@@ -25,7 +25,7 @@ Verify after installation:
 
 ```bash
 node --version    # v24.x.y
-pnpm --version    # 9.15.9 (from .tool-versions via mise)
+pnpm --version    # 10.33.2 (from .tool-versions via mise)
 which pnpm        # ~/.local/share/mise/shims/pnpm
 ```
 

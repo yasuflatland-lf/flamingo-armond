@@ -106,7 +106,7 @@ Per "pnpm workspace filter exits 0 for missing scripts" above, a missing `test` 
 
 ### Node/pnpm provisioning via mise
 
-The workflow uses the same `jdx/mise-action@v4` step that `backend.yml` uses, relying on the repo-root `.tool-versions` to pin both Node (`nodejs 24`) and pnpm (`pnpm 9.15.9`). mise installs both directly, so the pnpm version is pinned by the repo — not by the CI runner's preinstalled toolchain and not by Corepack. The `packageManager` field in root `package.json` is kept aligned for informational tooling but is not the install path. This keeps local and CI Node/pnpm versions in lockstep with a single source of truth.
+The workflow uses the same `jdx/mise-action@v4` step that `backend.yml` uses, relying on the repo-root `.tool-versions` to pin both Node (`nodejs 24`) and pnpm (`pnpm 10.33.2`). mise installs both directly, so for local dev and GitHub Actions the pnpm version is pinned by the repo — not by the CI runner's preinstalled toolchain and not by Corepack. The `packageManager` field in root `package.json` is kept aligned for two reasons that are NOT informational: (1) Vercel does not run mise, so it reads `packageManager` to choose which pnpm version to install on its build image, and (2) pnpm 10 itself uses the field as a self-consistency check and refuses to run when the executing binary disagrees with the declared version. Together these keep local, CI, and Vercel pnpm versions in lockstep with a single source of truth.
 
 ### Build-time env vars: server and client
 
