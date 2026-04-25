@@ -3,6 +3,7 @@ package gqlerr_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"strings"
@@ -119,7 +120,25 @@ func TestInternal_EmitsErrorChain(t *testing.T) {
 
 	gqlerr.Internal(context.Background(), eris.New("boom"))
 
-	if !bytes.Contains(buf.Bytes(), []byte(`"error_chain":`)) {
-		t.Fatalf("expected error_chain attribute in log output, got %s", buf.String())
+	var rec map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &rec); err != nil {
+		t.Fatalf("decode log record: %v (raw: %s)", err, buf.String())
+	}
+	if rec["level"] != "ERROR" {
+		t.Errorf("expected level=ERROR, got %v", rec["level"])
+	}
+	if rec["msg"] != "internal error" {
+		t.Errorf("expected msg='internal error', got %v", rec["msg"])
+	}
+	chain, ok := rec["error_chain"]
+	if !ok {
+		t.Fatalf("error_chain missing: %v", rec)
+	}
+	chainMap, ok := chain.(map[string]any)
+	if !ok {
+		t.Fatalf("expected error_chain to be a JSON object, got %T", chain)
+	}
+	if _, hasRoot := chainMap["root"]; !hasRoot {
+		t.Errorf("expected error_chain.root, got %v", chainMap)
 	}
 }
