@@ -20,7 +20,12 @@ export async function Header() {
       <nav>
         {user ? (
           <div className="flex items-center gap-3 text-sm">
-            <span className="text-muted-foreground">{user.email}</span>
+            <Link
+              href="/profile"
+              className="text-muted-foreground underline-offset-4 hover:underline"
+            >
+              {user.email}
+            </Link>
             <LogoutButton />
           </div>
         ) : (
