@@ -499,6 +499,29 @@ if len(ids) == 0 {
 
 This matters most in DataLoader batch functions, where an empty key slice is a normal edge case.
 
+### slog context enrichment must precede the log call that announces the enrichment
+
+When a middleware sets a value in the context and then logs a message about
+that action, the `slog.*Context` call must come **after**
+`c.SetRequest(c.Request().WithContext(ctx))`. Logging before the context is
+stored means the very line that announces the event carries no `request_id` (or
+other context attribute) itself. The pattern in
+`backend/internal/middleware/request_id.go` — enriching the context first, then
+calling `slog.WarnContext(ctx, ...)` — is the correct template for any
+context-enriched slog handler.
+
+### `slog.Handler.WithGroup` nests subsequent attrs inside the group object
+
+Calling `handler.WithGroup("g")` on a `slog.JSONHandler` (or any handler that
+wraps one, such as `logging.ContextHandler`) causes **all** attrs added
+afterward — including those injected by `Handle` via `r.AddAttrs` — to appear
+under the `"g"` JSON key, not at the top level. In `logging.ContextHandler`,
+`request_id` is added via `r.AddAttrs` inside `Handle`, so after
+`WithGroup("grp")` the log line becomes `{"grp":{"request_id":"...","k":"v"}}`.
+Log queries and tests that expect top-level `request_id` will miss it.
+`backend/internal/logging/handler_test.go` (`TestContextHandler_WithAttrsAndWithGroupPreserveRequestID`)
+documents and asserts this shape.
+
 ## Observability
 
 The backend emits OpenTelemetry traces via `otelgqlgen` for every GraphQL operation, resolver, and scalar field. Spans are exported via OTLP HTTP (port 4318) to whatever collector `OTEL_EXPORTER_OTLP_ENDPOINT` points to.
@@ -563,8 +586,12 @@ structured log fields.
 
 When no valid upstream ID is present, the middleware generates one with
 `uuid.NewV7()` (timestamp-prefixed, lexicographically sortable). If `NewV7`
-fails (e.g. the random source is temporarily unavailable), it falls back to
-`uuid.NewString()` (UUID v4).
+fails (e.g. the random source is temporarily unavailable), the fallback is a
+nanosecond timestamp string (`fmt.Sprintf("fallback-%d", time.Now().UnixNano())`).
+
+**Do not replace the fallback with `uuid.NewString()`.** `uuid.NewString` calls
+`Must(uuid.NewRandom())` internally, which panics on the same `crypto/rand`
+failure that caused `NewV7` to fail — it is not a safe fallback.
 
 ### Middleware position
 

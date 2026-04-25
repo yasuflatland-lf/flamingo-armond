@@ -111,3 +111,19 @@ The backend fails to start if any of these is missing — check `supabase status
 
 - **Use `127.0.0.1`, not `localhost`**: Google OAuth's redirect URI validation treats `localhost` and `127.0.0.1` as distinct hosts. Access the app via `127.0.0.1:3000` to match the default `supabase start` output.
 - **Secrets live in `.env.local` (gitignored)**: `supabase/config.toml` only references them through `env()` placeholders — never commit the actual values.
+
+## Git tooling
+
+### Extracting a single file's hunk from a mixed-purpose commit
+
+When a commit touches multiple concerns (e.g. a backend fix and a frontend
+feature) and you need only one file's changes on a different branch, use:
+
+```bash
+git show <sha> -- path/to/file | git apply
+```
+
+`git show <sha> -- <path>` outputs the patch for that file only; piping it to
+`git apply` applies just that hunk without touching the rest of the commit.
+Useful when rewinding a feature branch but keeping an unrelated fix that landed
+in the same commit.

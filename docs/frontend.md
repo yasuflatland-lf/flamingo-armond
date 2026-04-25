@@ -310,6 +310,8 @@ correlation across server-to-server calls is out of scope at this tier.
 
 **Apollo Client v4 error type split.** `CombinedGraphQLErrors` lives in `@apollo/client/errors`, **not** `@apollo/client`. Use `CombinedGraphQLErrors.is(error)` for type narrowing, then read `error.errors[0]?.message`. The v3 pattern `error.graphQLErrors` does not exist in v4.
 
+**Apollo Client v4 link tests must go through `ApolloClient`, not `execute(link, op)`.** Apollo Client v4 ships with rxjs internally; the `Observable` type returned by `execute` is the rxjs `Observable`, not the legacy Apollo `Observable`. Constructing a standalone `Observable.of(result)` as a terminal mock no longer works. Instead, construct an `ApolloClient` with your link chain and the mock terminal link, then call `client.query()` or `client.mutate()`. The terminal mock link should use `new Observable(subscriber => { subscriber.next(mockResult); subscriber.complete(); })` (rxjs form).
+
 **RSC code must use `env.BACKEND_URL`, not `/api/graphql`.** The rewrite in `next.config.ts` only applies to browser-originating requests. Server components calling `/api/graphql` would hit a Next 404.
 
 **Vitest v3+ dropped `environmentMatchGlobs`.** Use `environment` in `vitest.config.ts` for the global default and add `// @vitest-environment <name>` at the top of individual test files that need a different environment (e.g. `jsdom`). The `environmentMatchGlobs` option is silently ignored in v3+ — tests that relied on it fall back to the global default without warning.
