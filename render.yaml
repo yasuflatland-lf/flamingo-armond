@@ -11,3 +11,12 @@ services:
     buildCommand: go mod download && go build -o main ./cmd/server
     startCommand: ./main
     healthCheckPath: /health
+    envVars:
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: SUPABASE_JWKS_URL
+        sync: false
+      - key: SUPABASE_JWT_AUDIENCE
+        sync: false
+      - key: SUPABASE_JWT_ISSUER
+        sync: false

@@ -4,18 +4,91 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
+	"github.com/testcontainers/testcontainers-go"
+	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"backend/graph/resolver"
+	"backend/internal/database"
 )
+
+var testDBURL string
+
+func TestMain(m *testing.M) {
+	os.Exit(runTests(m))
+}
+
+func runTests(m *testing.M) int {
+	ctx := context.Background()
+	container, err := tcpostgres.Run(ctx,
+		"postgres:15-alpine",
+		tcpostgres.WithDatabase("flamingo_test"),
+		tcpostgres.WithUsername("test"),
+		tcpostgres.WithPassword("test"),
+		// BasicWaitStrategies matches the pattern used by database/repository
+		// tests: the default wait is racy against postgres's init-time restart.
+		tcpostgres.BasicWaitStrategies(),
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "tcpostgres run: %v\n", err)
+		return 1
+	}
+	defer func() {
+		if err := testcontainers.TerminateContainer(container); err != nil {
+			fmt.Fprintf(os.Stderr, "terminate container: %v\n", err)
+		}
+	}()
+
+	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "conn string: %v\n", err)
+		return 1
+	}
+	if err := bootstrapAuthSchema(ctx, dsn); err != nil {
+		fmt.Fprintf(os.Stderr, "bootstrap: %v\n", err)
+		return 1
+	}
+	if err := database.Migrate(dsn); err != nil {
+		fmt.Fprintf(os.Stderr, "migrate: %v\n", err)
+		return 1
+	}
+	testDBURL = dsn
+	return m.Run()
+}
+
+// bootstrapAuthSchema mimics the Supabase-managed auth.users table just enough
+// for FK and trigger references in our migrations to resolve.
+func bootstrapAuthSchema(ctx context.Context, dsn string) error {
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return err
+	}
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	_, err = pool.Exec(ctx, `
+        CREATE SCHEMA IF NOT EXISTS auth;
+        CREATE TABLE IF NOT EXISTS auth.users (
+            id uuid PRIMARY KEY,
+            email text
+        );
+    `)
+	return err
+}
 
 func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c *echo.Context) error { return next(c) }
@@ -115,6 +188,7 @@ func TestRunGracefulShutdown(t *testing.T) {
 	t.Setenv("SUPABASE_JWKS_URL", tsJWKS.URL)
 	t.Setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
 	t.Setenv("SUPABASE_JWT_ISSUER", "http://issuer.test")
+	t.Setenv("SUPABASE_DB_URL", testDBURL)
 
 	port := freePort(t)
 	t.Setenv("PORT", port)
@@ -146,10 +220,35 @@ func TestRun_FailsWhenJWKSURLMissing(t *testing.T) {
 	t.Setenv("SUPABASE_JWKS_URL", "")
 	t.Setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
 	t.Setenv("SUPABASE_JWT_ISSUER", "http://issuer.test")
+	t.Setenv("SUPABASE_DB_URL", testDBURL)
 
 	err := run(context.Background(), slog.New(slog.DiscardHandler))
 	if err == nil {
 		t.Fatal("expected run to fail when SUPABASE_JWKS_URL is empty")
+	}
+	if !strings.Contains(err.Error(), "SUPABASE_JWKS_URL") && !strings.Contains(err.Error(), "JWKS") {
+		t.Fatalf("expected error to mention JWKS or SUPABASE_JWKS_URL, got: %v", err)
+	}
+}
+
+func TestRun_FailsWhenDBURLMissing(t *testing.T) {
+	tsJWKS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"keys": []}`))
+	}))
+	defer tsJWKS.Close()
+
+	t.Setenv("SUPABASE_JWKS_URL", tsJWKS.URL)
+	t.Setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
+	t.Setenv("SUPABASE_JWT_ISSUER", "http://issuer.test")
+	t.Setenv("SUPABASE_DB_URL", "")
+
+	err := run(context.Background(), slog.New(slog.DiscardHandler))
+	if err == nil {
+		t.Fatal("expected error when SUPABASE_DB_URL is empty, got nil")
+	}
+	if !strings.Contains(err.Error(), "SUPABASE_DB_URL") {
+		t.Fatalf("expected error to mention SUPABASE_DB_URL, got: %v", err)
 	}
 }
 
