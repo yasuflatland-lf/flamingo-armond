@@ -575,3 +575,60 @@ Test assertions that match span names (e.g. `strings.HasPrefix(name, "User/")`) 
 #### Sampler env-var validation
 
 `OTEL_TRACES_SAMPLER_ARG` parsing emits `slog.Warn` on two distinct conditions: a parse error (e.g. `0,1` with a comma instead of a decimal point) and an out-of-range value (outside `[0, 1]`). Both fall back to `1.0`. The two warnings are kept separate so operators can triage env config issues quickly — a comma typo produces a different message than a value of `1.5`.
+
+## Error wrapping convention
+
+The backend uses [`github.com/rotisserie/eris`](https://github.com/rotisserie/eris) as the **only** error-wrapping library inside `backend/internal/` and `backend/cmd/`. The convention is:
+
+| Situation | Use |
+|---|---|
+| New error at the originating call site | `eris.New("layer: short message")` |
+| Wrapping an error at a layer boundary | `eris.Wrap(err, "layer: context")` |
+| Wrapping with format args | `eris.Wrapf(err, "layer: %s", id)` |
+| Validation error without an underlying cause | `eris.Errorf("layer: %s must be >= %d", field, min)` |
+| Sentinel that other code matches via `errors.Is` | `errors.New("...")` (do **not** use eris) |
+
+`fmt.Errorf("...: %w", err)` is **forbidden** in `backend/internal/` and `backend/cmd/`. CI fails the build if any such call sneaks back in (see `.github/workflows/backend.yml`).
+
+### Sentinels
+
+The only sentinel today is `repository.ErrNotFound`. New sentinels are allowed when (a) callers need to branch on identity, and (b) a string-equality match is fragile. Keep sentinels as plain `errors.New` so `errors.Is` works without going through eris's chain walk.
+
+### Logging
+
+All error sites that produce a structured log entry must go through `internal/logging.LogError(ctx, logger, msg, err, attrs...)`. The helper:
+
+- attaches the eris chain as the `error_chain` attribute (output of `eris.ToJSON(err, true)`),
+- emits at `slog.LevelError`,
+- is a no-op when `err == nil`.
+
+The three call sites today are:
+
+1. `gqlerr.Internal(ctx, err)` — every internal-server error returned through GraphQL.
+2. `auth/middleware.go reject(c, cause)` — uses `slog.Warn` directly (Warn level) but attaches `error_chain` from the same `eris.ToJSON` output for log shape parity.
+3. `cmd/server/main.go main()` — terminal error before `os.Exit(1)`.
+
+### Why `eris` over alternatives
+
+- **`fmt.Errorf("%w")`**: no stack trace, can only carry a string context.
+- **`pkg/errors`**: archived upstream, no maintained release.
+- **`cockroachdb/errors`**: heavier, drags in many transitive deps; revisit only when multi-service error portability or first-class Sentry SDK integration becomes a hard requirement.
+- **`joomcode/errorx`**: typed-error focus, less aligned with our wrap-and-log need.
+
+### What `error_chain` looks like
+
+For an error `eris.Wrap(eris.New("inner failure"), "outer context")`, `eris.ToJSON(err, true)` produces (abbreviated):
+
+```json
+{
+  "root": {
+    "message": "inner failure",
+    "stack": ["backend/internal/...:42", "..."]
+  },
+  "wrap": [
+    { "message": "outer context", "stack": ["backend/internal/...:51"] }
+  ]
+}
+```
+
+This is emitted as the `error_chain` field in the JSON log line, alongside `level=ERROR` and the human-readable `msg`. Render and any downstream collector (Datadog / Sentry / Cloud Logging) ingest this JSON without further parsing.
