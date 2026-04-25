@@ -20,3 +20,10 @@ func UserFrom(ctx context.Context) *AuthUser {
 	u, _ := ctx.Value(contextKey{}).(*AuthUser)
 	return u
 }
+
+// ContextWithUser returns a copy of ctx carrying u. Intended for tests that
+// need to simulate an authenticated request without going through the full JWT
+// middleware stack.
+func ContextWithUser(ctx context.Context, u *AuthUser) context.Context {
+	return withUser(ctx, u)
+}
