@@ -47,8 +47,7 @@ func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 
-// toUserModel converts a domain.Profile to the GraphQL model.User.
-// Placed outside gqlgen-managed regions so regeneration does not clobber it.
+// toUserModel lives outside the gqlgen-managed region so regeneration does not clobber it.
 func toUserModel(p *domain.Profile) *model.User {
 	if p == nil {
 		return nil

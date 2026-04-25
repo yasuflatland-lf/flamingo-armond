@@ -1,8 +1,6 @@
 import { z } from "zod";
 
-// Mirrors UpdateProfileInput in schema/schema.graphql.
-// displayName: required, 1-50 characters after trim.
-// bio: optional. undefined = leave unchanged, "" = explicit clear.
+// Mirrors UpdateProfileInput in schema/schema.graphql; bio: undefined = unchanged, "" = explicit clear.
 export const updateProfileSchema = z.object({
   displayName: z
     .string()

@@ -29,9 +29,8 @@ export async function gqlFetch<TResult, TVars>(
     method: "POST",
     headers,
     body: JSON.stringify({ query: print(doc), variables: init.variables ?? {} }),
-    // Pass `next` only when the caller explicitly sets revalidate. Omitting it
-    // entirely lets Next.js apply its default; `0` opts out of caching; `false`
-    // caches indefinitely. These are three distinct states — don't collapse.
+    // Three distinct states for `next`: undefined keeps Next.js defaults,
+    // `{ revalidate: 0 }` opts out of caching, `{ revalidate: false }` caches indefinitely.
     next: init.revalidate === undefined ? undefined : { revalidate: init.revalidate },
   });
   if (!res.ok) {

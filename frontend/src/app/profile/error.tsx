@@ -14,15 +14,13 @@ export default function ProfileError({ error, reset }: ErrorPageProps) {
   const redirected = useRef(false);
 
   useEffect(() => {
-    // Always log so observability sees every error reaching this boundary,
-    // including the Next.js digest used to correlate with server logs.
     console.error("[/profile error boundary]", {
       message: error.message,
       digest: error.digest,
     });
 
-    // Substring detection: gqlFetch stringifies GraphQL errors via JSON,
-    // so a backend `extensions.code = "UNAUTHENTICATED"` ends up literal in
+    // Substring match: gqlFetch JSON-stringifies GraphQL errors, so the
+    // backend `extensions.code = "UNAUTHENTICATED"` appears literally in
     // the message. Network/HTTP failures fall through to the generic UI.
     if (!redirected.current && error.message.includes("UNAUTHENTICATED")) {
       redirected.current = true;

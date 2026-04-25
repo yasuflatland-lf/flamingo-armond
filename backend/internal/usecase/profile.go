@@ -15,8 +15,10 @@ import (
 	"backend/internal/repository"
 )
 
-const minDisplayName = 1
-const maxDisplayName = 50
+const (
+	minDisplayName = 1
+	maxDisplayName = 50
+)
 
 type ProfileRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Profile, error)
@@ -31,24 +33,22 @@ func NewProfileUsecase(repo ProfileRepository) *ProfileUsecase {
 	return &ProfileUsecase{repo: repo}
 }
 
-// Me returns the authenticated user's profile. Unauthenticated callers receive
-// a gqlerror with extensions.code = "UNAUTHENTICATED" so clients can branch on it.
 func (u *ProfileUsecase) Me(ctx context.Context) (*domain.Profile, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
 		return nil, unauthenticated()
 	}
 	p, err := u.repo.FindByID(ctx, user.Sub)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			slog.Warn("profile row missing for authenticated user; returning empty profile",
-				"user_id", user.Sub,
-				"hint", "expected handle_new_user trigger to provision row")
-			return &domain.Profile{ID: user.Sub}, nil
-		}
-		return nil, err
+	if err == nil {
+		return p, nil
 	}
-	return p, nil
+	if errors.Is(err, repository.ErrNotFound) {
+		slog.Warn("profile row missing for authenticated user; returning empty profile",
+			"user_id", user.Sub,
+			"hint", "expected handle_new_user trigger to provision row")
+		return &domain.Profile{ID: user.Sub}, nil
+	}
+	return nil, err
 }
 
 type UpdateProfileInput struct {
@@ -70,15 +70,10 @@ func (u *ProfileUsecase) UpdateProfile(ctx context.Context, in UpdateProfileInpu
 		}
 	}
 
-	patch := repository.ProfileUpdate{
+	return u.repo.Update(ctx, user.Sub, repository.ProfileUpdate{
 		DisplayName: &name,
 		Bio:         in.Bio,
-	}
-	p, err := u.repo.Update(ctx, user.Sub, patch)
-	if err != nil {
-		return nil, err
-	}
-	return p, nil
+	})
 }
 
 func unauthenticated() error {
