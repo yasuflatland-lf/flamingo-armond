@@ -7,6 +7,7 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -35,7 +36,14 @@ func Init(ctx context.Context, logger *slog.Logger) (ShutdownFunc, error) {
 	if err != nil {
 		return nil, fmt.Errorf("telemetry: new exporter: %w", err)
 	}
-	return InitWithExporter(ctx, logger, exp)
+	shutdown, err := InitWithExporter(ctx, logger, exp)
+	if err != nil {
+		if shutdownErr := exp.Shutdown(ctx); shutdownErr != nil {
+			logger.Warn("telemetry: exporter cleanup after init failure", "err", shutdownErr)
+		}
+		return nil, err
+	}
+	return shutdown, nil
 }
 
 func InitWithExporter(ctx context.Context, logger *slog.Logger, exp sdktrace.SpanExporter) (ShutdownFunc, error) {
@@ -47,12 +55,15 @@ func InitWithExporter(ctx context.Context, logger *slog.Logger, exp sdktrace.Spa
 		),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("telemetry: resource: %w", err)
+		if !errors.Is(err, resource.ErrPartialResource) && !errors.Is(err, resource.ErrSchemaURLConflict) {
+			return nil, fmt.Errorf("telemetry: resource: %w", err)
+		}
+		logger.Warn("telemetry: partial resource detection", "err", err)
 	}
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exp),
 		sdktrace.WithResource(res),
-		sdktrace.WithSampler(sampler()),
+		sdktrace.WithSampler(sampler(logger)),
 	)
 	otel.SetTracerProvider(tp)
 	logger.Info("telemetry enabled", "sampler_arg", os.Getenv("OTEL_TRACES_SAMPLER_ARG"))
@@ -68,10 +79,16 @@ func deploymentEnv() string {
 
 func serviceVersion() string { return "dev" }
 
-func sampler() sdktrace.Sampler {
+func sampler(logger *slog.Logger) sdktrace.Sampler {
 	ratio := 1.0
-	if v := os.Getenv("OTEL_TRACES_SAMPLER_ARG"); v != "" {
-		if parsed, err := strconv.ParseFloat(v, 64); err == nil && parsed >= 0 && parsed <= 1 {
+	v := os.Getenv("OTEL_TRACES_SAMPLER_ARG")
+	if v != "" {
+		switch parsed, err := strconv.ParseFloat(v, 64); {
+		case err != nil:
+			logger.Warn("OTEL_TRACES_SAMPLER_ARG is not a float; defaulting to 1.0", "value", v)
+		case parsed < 0 || parsed > 1:
+			logger.Warn("OTEL_TRACES_SAMPLER_ARG is out of [0,1]; defaulting to 1.0", "value", v)
+		default:
 			ratio = parsed
 		}
 	}
