@@ -299,3 +299,95 @@ func TestUpdate_EmptyPatchReturnsCurrentRow(t *testing.T) {
 		t.Errorf("ID mismatch")
 	}
 }
+
+func TestFindByIDs_AllFound(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	// Insert 4 users; query 3 of them.
+	ids := make([]string, 4)
+	for i := range ids {
+		ids[i] = insertAuthUser(t, ctx)
+	}
+	query := ids[:3]
+
+	repo := repository.NewProfileRepository(testDB.GORM)
+	got, err := repo.FindByIDs(ctx, query)
+	if err != nil {
+		t.Fatalf("FindByIDs: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("map size: got %d, want 3", len(got))
+	}
+	for _, id := range query {
+		p, ok := got[id]
+		if !ok {
+			t.Fatalf("missing id %q in result", id)
+		}
+		if p.ID != id {
+			t.Fatalf("profile ID mismatch: got %q, want %q", p.ID, id)
+		}
+	}
+	// Fourth id must not appear.
+	if _, ok := got[ids[3]]; ok {
+		t.Fatalf("unexpected id %q present in result", ids[3])
+	}
+}
+
+func TestFindByIDs_PartialMissing(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	// Insert 3 users; query them plus one non-existent id.
+	ids := make([]string, 3)
+	for i := range ids {
+		ids[i] = insertAuthUser(t, ctx)
+	}
+	missing := "00000000-0000-0000-0000-000000000001"
+	query := append(ids, missing)
+
+	repo := repository.NewProfileRepository(testDB.GORM)
+	got, err := repo.FindByIDs(ctx, query)
+	if err != nil {
+		t.Fatalf("FindByIDs: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("map size: got %d, want 3", len(got))
+	}
+	for _, id := range ids {
+		if _, ok := got[id]; !ok {
+			t.Fatalf("missing expected id %q in result", id)
+		}
+	}
+	if _, ok := got[missing]; ok {
+		t.Fatalf("missing id %q should not appear in result", missing)
+	}
+}
+
+func TestFindByIDs_EmptySlice(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	repo := repository.NewProfileRepository(testDB.GORM)
+	got, err := repo.FindByIDs(ctx, []string{})
+	if err != nil {
+		t.Fatalf("FindByIDs(empty): %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected empty map, got %d entries", len(got))
+	}
+}
+
+func TestFindByIDs_DBError(t *testing.T) {
+	t.Parallel()
+
+	// Cancel the context before calling FindByIDs to trigger a DB error.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	repo := repository.NewProfileRepository(testDB.GORM)
+	_, err := repo.FindByIDs(ctx, []string{"00000000-0000-0000-0000-000000000002"})
+	if err == nil {
+		t.Fatal("expected error for cancelled context, got nil")
+	}
+}

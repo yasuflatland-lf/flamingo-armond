@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -37,6 +38,7 @@ type ProfileUpdate struct {
 
 type ProfileRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Profile, error)
+	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Profile, error)
 	Update(ctx context.Context, id string, patch ProfileUpdate) (*domain.Profile, error)
 }
 
@@ -54,6 +56,23 @@ func (r *profileRepo) FindByID(ctx context.Context, id string) (*domain.Profile,
 		return nil, err
 	}
 	return toDomain(row), nil
+}
+
+func (r *profileRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Profile, error) {
+	// Guard: GORM converts WHERE id IN () to an unfiltered scan when ids is empty.
+	if len(ids) == 0 {
+		return map[string]*domain.Profile{}, nil
+	}
+	var rows []gormProfile
+	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("repository: find profiles by ids: %w", err)
+	}
+	out := make(map[string]*domain.Profile, len(rows))
+	for i := range rows {
+		p := toDomain(rows[i])
+		out[p.ID] = p
+	}
+	return out, nil
 }
 
 func (r *profileRepo) Update(ctx context.Context, id string, patch ProfileUpdate) (*domain.Profile, error) {
