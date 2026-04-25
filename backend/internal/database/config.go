@@ -43,7 +43,7 @@ func (c Config) Validate() error {
 
 // ConfigFromEnv reads SUPABASE_DB_URL and optional pool-tuning env vars.
 // An unset env var applies the default; an invalid value returns an error
-// immediately (fail-fast), matching the auth.Config pattern used in PR7.
+// immediately (fail-fast), matching the auth.Config fail-fast pattern.
 func ConfigFromEnv() (Config, error) {
 	cfg := Config{
 		URL:             os.Getenv("SUPABASE_DB_URL"),
