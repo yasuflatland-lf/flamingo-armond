@@ -225,4 +225,108 @@ describe("<ProfileForm>", () => {
       expect(screen.getByText("Something went wrong on the server")).toBeInTheDocument();
     });
   });
+
+  it("backend UNAUTHENTICATED error is shown with sign-in prompt", async () => {
+    const user = userEvent.setup();
+
+    const mocks = [
+      {
+        request: {
+          query: UpdateProfileDocument,
+          variables: { input: { displayName: "Alice", bio: "hi" } },
+        },
+        result: {
+          errors: [
+            new GraphQLError("Unauthenticated", {
+              extensions: { code: "UNAUTHENTICATED" },
+            }),
+          ],
+        },
+      },
+    ];
+
+    render(
+      <MockedProvider mocks={mocks} defaultOptions={{ mutate: { errorPolicy: "all" } }}>
+        <ProfileForm initial={{ displayName: "Alice", bio: "hi" }} />
+      </MockedProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Your session expired. Please sign in again.")).toBeInTheDocument();
+    });
+  });
+
+  it("network error is shown as connectivity banner", async () => {
+    const user = userEvent.setup();
+
+    const mocks = [
+      {
+        request: {
+          query: UpdateProfileDocument,
+          variables: { input: { displayName: "Alice", bio: "hi" } },
+        },
+        error: new Error("network down"),
+      },
+    ];
+
+    render(
+      <MockedProvider mocks={mocks}>
+        <ProfileForm initial={{ displayName: "Alice", bio: "hi" }} />
+      </MockedProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Could not reach the server. Check your connection and try again."),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("bio untouched undefined sends mutation without bio variable", async () => {
+    const user = userEvent.setup();
+    const mutationCalled = vi.fn();
+
+    // bio is undefined (not sent) when defaultValues.bio is undefined and untouched
+    const mocks = [
+      {
+        request: {
+          query: UpdateProfileDocument,
+          variables: { input: { displayName: "Alice" } },
+        },
+        result: () => {
+          mutationCalled();
+          return {
+            data: {
+              updateProfile: {
+                __typename: "UpdateProfilePayload" as const,
+                user: {
+                  __typename: "User" as const,
+                  id: "user-1",
+                  displayName: "Alice",
+                  bio: null,
+                  avatarUrl: null,
+                },
+              },
+            },
+          };
+        },
+      },
+    ];
+
+    render(
+      <MockedProvider mocks={mocks}>
+        <ProfileForm initial={{ displayName: "Alice", bio: undefined as unknown as string }} />
+      </MockedProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(mutationCalled).toHaveBeenCalledOnce();
+    });
+  });
 });

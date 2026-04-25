@@ -38,14 +38,23 @@ function useBackendFieldErrors(err: unknown): Record<string, string> {
   return out;
 }
 
-// Returns the first INTERNAL error message, or undefined.
-function useBackendInternalError(err: unknown): string | undefined {
-  if (!CombinedGraphQLErrors.is(err)) return undefined;
-  for (const ge of err.errors) {
-    const code = ge.extensions?.code as string | undefined;
-    if (code === "INTERNAL") return ge.message;
+// Returns a user-facing banner message for non-field errors.
+// Priority: INTERNAL > UNAUTHENTICATED > first non-field GraphQL error > network error.
+function useBackendErrorBanner(err: unknown): string | undefined {
+  if (!err) return undefined;
+  if (CombinedGraphQLErrors.is(err)) {
+    let firstNonField: string | undefined;
+    for (const ge of err.errors) {
+      const code = ge.extensions?.code as string | undefined;
+      const field = ge.extensions?.field as string | undefined;
+      if (code === "INTERNAL") return ge.message;
+      if (code === "UNAUTHENTICATED") return "Your session expired. Please sign in again.";
+      if (code === "BAD_USER_INPUT" && field) continue;
+      firstNonField ??= ge.message;
+    }
+    return firstNonField;
   }
-  return undefined;
+  return "Could not reach the server. Check your connection and try again.";
 }
 
 function FieldError({ zodErrors, backendError }: { zodErrors: unknown[]; backendError?: string }) {
@@ -66,7 +75,7 @@ export function ProfileForm({ initial }: Props) {
   });
 
   const fieldErrors = useBackendFieldErrors(error);
-  const internalError = useBackendInternalError(error);
+  const bannerError = useBackendErrorBanner(error);
 
   const displayNameSchema = updateProfileSchema.shape.displayName;
   const bioSchema = updateProfileSchema.shape.bio;
@@ -77,15 +86,16 @@ export function ProfileForm({ initial }: Props) {
       bio: initial.bio as string | undefined,
     },
     onSubmit: async ({ value }) => {
-      const bioInput = value.bio === "" ? "" : value.bio === undefined ? undefined : value.bio;
+      // "" clears, undefined leaves unchanged. Both pass through verbatim.
+      // Catch network/unexpected errors so they surface via the error state, not as unhandled rejections.
       await updateProfile({
         variables: {
           input: {
             displayName: value.displayName,
-            bio: bioInput,
+            bio: value.bio,
           },
         },
-      });
+      }).catch(() => {});
     },
   });
 
@@ -98,9 +108,9 @@ export function ProfileForm({ initial }: Props) {
       }}
       className="space-y-4"
     >
-      {internalError ? (
-        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-          {internalError}
+      {bannerError ? (
+        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
+          {bannerError}
         </div>
       ) : null}
 
