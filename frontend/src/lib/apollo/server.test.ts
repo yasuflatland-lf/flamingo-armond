@@ -10,11 +10,10 @@ vi.mock("@/lib/supabase/server", () => ({
 const HealthQuery = graphql(`query Health { health }`);
 
 function mockSession(session: { access_token: string } | null) {
-  vi.mocked(createSupabaseServerClient).mockResolvedValue({
-    auth: {
-      getSession: vi.fn().mockResolvedValue({ data: { session } }),
-    },
-  } as any);
+  vi.mocked(createSupabaseServerClient).mockResolvedValue(
+    // biome-ignore lint/suspicious/noExplicitAny: partial mock of Supabase client type
+    { auth: { getSession: vi.fn().mockResolvedValue({ data: { session } }) } } as any,
+  );
 }
 
 describe("gqlFetch", () => {
@@ -105,15 +104,14 @@ describe("gqlFetch", () => {
     await gqlFetch(HealthQuery);
 
     const init = fetchSpy.mock.calls[0]?.[1] as RequestInit & { headers?: Record<string, string> };
-    expect((init.headers as Record<string, string>)).not.toHaveProperty("authorization");
+    expect(init.headers as Record<string, string>).not.toHaveProperty("authorization");
   });
 
   it("propagates error when getSession throws", async () => {
-    vi.mocked(createSupabaseServerClient).mockResolvedValue({
-      auth: {
-        getSession: vi.fn().mockRejectedValue(new Error("session error")),
-      },
-    } as any);
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(
+      // biome-ignore lint/suspicious/noExplicitAny: partial mock of Supabase client type
+      { auth: { getSession: vi.fn().mockRejectedValue(new Error("session error")) } } as any,
+    );
 
     await expect(gqlFetch(HealthQuery)).rejects.toThrow("session error");
   });
