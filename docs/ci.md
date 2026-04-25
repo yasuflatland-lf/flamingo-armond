@@ -121,3 +121,31 @@ CI sets dummy values at the job level for every required var:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Same as above. |
 
 No request is made during the build, so dummy values only need to satisfy the Zod schema (e.g. `z.string().url()` requires a URL-shaped string). Do **not** remove any of these: each missing env reintroduces a silent-fail shape the validation was designed to prevent. When a new required var is added to `src/env.ts`, add a corresponding dummy to the workflow's `env:` block.
+
+## Terraform CI
+
+`.github/workflows/terraform.yml` validates HCL when a push to `main` or a PR touches `ops/terraform/**` or `.github/workflows/terraform.yml`. Both triggers are path-gated like the other workflows.
+
+### What is checked
+
+- **Format** (`fmt-check` job): `terraform fmt -check -recursive` across the entire `ops/terraform/` tree. Any unformatted file fails the job immediately.
+- **Init + validate** (`validate` job): For each stack under `ops/terraform/envs/prod/` and each reusable module under `ops/terraform/modules/*/`, the job runs `terraform init -backend=false` (provider/module resolution, no real backend configured) followed by `terraform validate` (type-checks all HCL expressions and references). A validate failure exits non-zero — `continue-on-error` is never used on these steps.
+
+### What is NOT checked
+
+- `terraform plan` and `terraform apply` — these require real credentials and a live backend. They are intentionally excluded from PR CI. Apply is a manual operator action.
+- Drift detection — not run in CI. Operators check drift before applying.
+- Security scanning (e.g. `tfsec`, `checkov`) — not yet wired in; add as a separate job if needed.
+- Module locking (`terraform providers lock`) — `.terraform.lock.hcl` files are not yet committed; `terraform init` downloads providers fresh on each CI run. Commit them with `terraform providers lock -platform=linux_amd64 -platform=darwin_arm64` per stack/module if pinning by hash becomes a hard requirement.
+
+### Fan-in job for matrix branch protection
+
+The `validate` job is a `strategy: matrix`, so each matrix leg becomes its own GitHub status check (`Validate ops/terraform/envs/prod/initial`, `Validate ops/terraform/modules/render`, …). If branch protection requires a specific leg by name, every other leg is unprotected — and adding a new path to the matrix silently leaves it outside the gate.
+
+`validate-all` is a trivial fan-in that depends on `[fmt-check, validate]`. Branch protection should require **`All Terraform validations passed`** (the `validate-all` job's display name), not the individual matrix legs. Adding a new path then automatically falls under the same gate. Apply the same pattern when introducing any new matrix workflow.
+
+### Settings stack and `data.terraform_remote_state`
+
+The `envs/prod/settings` stack reads the `initial` stack's outputs via `data.terraform_remote_state` with a local backend pointing at `../initial/terraform.tfstate`. That state file does not exist in CI, but `terraform validate` does **not** evaluate data sources — it only type-checks HCL expressions and references. The settings stack therefore validates cleanly without a state file, and the matrix job treats it the same as every other directory.
+
+If the remote state reference is later replaced with a Terraform Cloud / S3 backend, `terraform init -backend=false` continues to work because the flag tells Terraform to skip backend initialization entirely.

@@ -36,9 +36,26 @@
       "semanticCommitScope": "ci"
     },
     {
+      "description": "Terraform / IaC (providers, modules, toolchain)",
+      "matchManagers": ["terraform", "terraform-version"],
+      "groupName": "terraform dependencies",
+      "addLabels": ["infra", "dependencies"],
+      "semanticCommitScope": "ops"
+    },
+    {
       "description": "Auto-merge minor and patch updates after CI passes",
       "matchUpdateTypes": ["minor", "patch", "digest", "pin", "lockFileMaintenance"],
       "automerge": true
+    },
+    {
+      "description": "GitHub Actions require human review for any update. Actions execute in CI with secrets in scope, so a compromised maintainer publishing a malicious patch would otherwise auto-merge. CVE-flagged updates already bypass automerge via vulnerabilityAlerts; this rule extends that to all GHA updates regardless of severity flag.",
+      "matchManagers": ["github-actions"],
+      "automerge": false
+    },
+    {
+      "description": "Terraform updates require human review. IaC changes apply directly to production infrastructure (Vercel/Render/Supabase), so even minor provider bumps can cause drift or unexpected resource churn during the next plan/apply.",
+      "matchManagers": ["terraform", "terraform-version"],
+      "automerge": false
     },
     {
       "description": "Major updates need manual review",

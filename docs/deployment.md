@@ -6,9 +6,15 @@ The stack splits across three providers. Each owns a distinct concern, and the s
 
 | Provider | Owns | Configuration source of truth |
 |---|---|---|
-| Supabase | Postgres + Auth (JWT issuer, JWKS) | `ops/terraform/modules/supabase/`. `supabase/config.toml` is for **local** CLI only. |
+| Supabase | Postgres + Auth (JWT issuer, JWKS) | `ops/terraform/modules/supabase/` (project) + `ops/terraform/envs/prod/settings/main.tf` (auth). `supabase/config.toml` is for **local** CLI only. |
 | Render | Go / Echo backend (`backend/`) | `ops/terraform/modules/render/`. |
 | Vercel | Next.js frontend (`frontend/`) | `ops/terraform/modules/vercel/`. No `vercel.json` — Next.js 16 is zero-config here. |
+
+> **WARNING — local state.** The `initial` and `settings` stacks both use
+> Terraform's local backend. Their state files contain the DB password and
+> other sensitive values in plaintext. Do not run `terraform apply` from a
+> second machine without first migrating to a remote backend. Remote backend
+> selection is tracked as a follow-up.
 
 ## Topology
 
@@ -29,14 +35,19 @@ The backend trusts Supabase as the JWT issuer: it fetches the JWKS at boot from 
 
 ## Bring-up order
 
-A single `terraform apply` from `ops/terraform/envs/prod/` covers steps 1–4. The DAG resolves to a straight line because `supabase_project` and `supabase_settings` are split into separate resources:
+Two `terraform apply` invocations cover steps 1–4. The two stacks form a single straight line:
 
 ```
-supabase_project
-  ├─→ render_web_service        (consumes db_url, jwks, issuer, audience)
-  └─→ vercel_project            (consumes anon_key, project_url, render service_url)
-        └─→ supabase_settings   (consumes vercel.production_url for site_url and redirect allow list)
+initial stack:   supabase_project  ->  render_web_service  ->  vercel_project
+                                                              |
+settings stack:                                               +-> supabase_settings
+                                                                  (consumes vercel.production_url
+                                                                   for site_url and redirect allow list)
 ```
+
+The `settings` stack reads the `initial` stack's outputs via
+`data.terraform_remote_state` (local backend, `../initial/terraform.tfstate`),
+so apply order is `initial` first, then `settings`.
 
 Each provider can be redeployed independently afterwards. Subsequent code pushes only require a redeploy on the affected provider; the cross-provider wiring above is a one-time exercise that Terraform records in state.
 
@@ -116,26 +127,33 @@ Supabase delegates Google sign-in to a Google OAuth client. It must be created o
    https://placeholder.supabase.co/auth/v1/callback
    ```
 
-   The real Supabase project ref is unknown until the first `terraform apply`. After apply, replace the placeholder with the actual ref (see "Post-apply tasks" below).
+   The real Supabase project ref is unknown until the first `terraform apply`. After the `initial` stack apply, replace the placeholder with the actual ref (see "Post-apply tasks" below).
 5. **Create**. Copy **Client ID** to `TF_VAR_google_oauth_client_id` and **Client secret** to `TF_VAR_google_oauth_client_secret`.
 
 ## Initial bring-up
 
 ```bash
-# 1. Provide secrets.
+# 1. Provide secrets (single shared file inherited by both stacks).
 cp ops/terraform/mise.local.example.toml ops/terraform/envs/prod/mise.local.toml
-$EDITOR ops/terraform/envs/prod/mise.local.toml   # fill in 8 values
+$EDITOR ops/terraform/envs/prod/mise.local.toml   # fill 7 REPLACE_ME secrets
 
-# 2. Apply.
-cd ops/terraform/envs/prod
+# 2. Apply initial — creates supabase project, render service, vercel project.
+cd ops/terraform/envs/prod/initial
+terraform init
+terraform plan
+terraform apply
+
+# 3. Apply settings — wires the Vercel hostname into Supabase Auth.
+cd ../settings
 terraform init
 terraform plan
 terraform apply
 ```
 
-Apply takes roughly 10–15 minutes (Supabase project provisioning is the slow leg). On success, capture the outputs:
+The `initial` apply takes roughly 15 minutes (Supabase project provisioning is the slow leg). The `settings` apply completes in seconds because it touches a single resource. On success, capture the outputs:
 
 ```bash
+# From envs/prod/initial/
 terraform output                                  # production_url, backend_url, supabase_project_*
 terraform output -raw supabase_db_password        # generated value, store in your password manager
 ```
@@ -158,6 +176,7 @@ Three things finish off the bring-up after the first apply lands.
 Replace the placeholder redirect URI from prerequisite step 8 with the real one:
 
 ```bash
+cd ops/terraform/envs/prod/initial
 ref=$(terraform output -raw supabase_project_ref)
 echo "Set Authorized redirect URI to: https://${ref}.supabase.co/auth/v1/callback"
 ```
@@ -171,7 +190,12 @@ If you skip this, Google sign-in completes but redirects to the placeholder URL 
 `render_web_service` is created with `auto_deploy = false` so schema migrations stay tied to explicit deploys. The first deploy must be triggered manually:
 
 - Render dashboard → service → **Manual Deploy → Deploy latest commit**, or
-- `curl -X POST -H "Authorization: Bearer $RENDER_API_KEY" https://api.render.com/v1/services/$(terraform output -raw render_service_id)/deploys`.
+
+  ```bash
+  cd ops/terraform/envs/prod/initial
+  curl -X POST -H "Authorization: Bearer $RENDER_API_KEY" \
+    "https://api.render.com/v1/services/$(terraform output -raw render_service_id)/deploys"
+  ```
 
 `golang-migrate` runs the schema migrations during the first boot.
 
@@ -180,6 +204,8 @@ If you skip this, Google sign-in completes but redirects to the placeholder URL 
 The Vercel project resource creates the project but does not produce a deployment until a git push or a manual trigger. Push to `main`, or use the Vercel dashboard's **Deploy** button on the project page.
 
 ## Smoke tests after the initial setup
+
+Run from `ops/terraform/envs/prod/initial/` so the `terraform output` calls resolve:
 
 ```bash
 # Backend health
@@ -198,12 +224,41 @@ For an end-to-end check, sign in via Google on the Vercel domain and load `/prof
 
 ## Operational gotchas
 
-- **Bring-up order matters.** The Terraform DAG enforces it — Render and Vercel both depend on Supabase outputs, and Supabase Auth settings depend on Vercel. A one-shot `apply` is the right order; do not target individual modules unless recovering from a partial failure.
-- **DB password is generated by Terraform.** It lives in `terraform.tfstate` (gitignored) and is exposed via `terraform output -raw supabase_db_password`. To rotate, `terraform taint random_password.db` (inside the supabase module) and re-apply.
+- **Apply order matters.** `initial` always before `settings`. The `settings` stack reads the `initial` stack's local state file, so applying `settings` first errors with "no state file".
+- **DB password is generated by Terraform.** It lives in `envs/prod/initial/terraform.tfstate` (gitignored) and is exposed via `terraform output -raw supabase_db_password`. To rotate, run `terraform apply -replace=module.supabase.random_password.db` from the `initial` stack directory. The initial apply pushes the new DSN through to Render's env vars in the same run; the `settings` stack does not consume the DB URL and does not need to be re-applied.
 - **Migrations run on every Render boot.** A failing migration sets `schema_migrations.dirty=true` and requires manual `migrate force <version>` recovery (`docs/backend.md` § "Migrations"). Terraform does not manage schema.
 - **Use `127.0.0.1`, not `localhost`, for any local OAuth setup.** Google's redirect URI validation treats them as distinct origins. This applies to local development only; production uses real domains (`docs/dev-setup.md` § "Gotchas").
 - **Render free tier sleeps idle services.** The first request after idleness incurs a cold start. Health checks on `/health` keep the service warm only while traffic flows.
 - **State is the only IaC source of truth.** Manual mutations in any provider's dashboard get reverted on the next `terraform apply`. If a UI change is genuinely needed, mirror it in `ops/terraform/` first.
+- **Custom domains.** When adding a Vercel custom domain, set `TF_VAR_vercel_production_domain_override` so the `settings` stack wires Auth Site URL to the custom hostname instead of the default `*.vercel.app`.
+
+## Cross-stack reads via `data.terraform_remote_state`
+
+The `settings` stack reads the `initial` stack's outputs through
+`data.terraform_remote_state` with a local backend. The pattern has one
+non-obvious silent-failure mode worth understanding before editing it.
+
+`data.terraform_remote_state` performs **no schema or freshness check** — it
+deserializes whatever JSON sits in the state file and returns the keys it
+finds. If the `initial` apply was rolled back or interrupted, the file still
+exists and parses cleanly, but the outputs may be stale or empty. Without a
+guard, the `settings` apply would happily configure Supabase Auth with
+`site_url = ""` and exit 0, silently breaking Google sign-in.
+
+Two layers of defense:
+
+1. **Output `precondition` blocks** in `envs/prod/initial/outputs.tf` reject
+   empty / non-https values at the moment the producing stack writes the
+   output. A failed `initial` apply never leaves a broken value in state.
+2. **Resource `lifecycle.precondition` blocks** on `supabase_settings.this`
+   in `envs/prod/settings/main.tf` re-validate the values before the
+   consuming stack mutates Supabase. This catches the edge case of a
+   hand-edited or out-of-band-corrupted state file.
+
+Add the same two-layer guard to any future cross-stack output that drives a
+side-effecting resource. The `output -> precondition` shape is preferred over
+`local -> validate` because it fails at the producer's apply boundary, not at
+read time on the consumer.
 
 ## Manual fallback (legacy procedure)
 
