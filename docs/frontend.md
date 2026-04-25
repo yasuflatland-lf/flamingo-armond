@@ -100,11 +100,7 @@ PR6 introduces a 3-layer Supabase SSR client setup mirroring the official `@supa
 
 If no session exists the header is omitted (not set to an empty string). Backend treats missing `Authorization` as anonymous (PR7).
 
-Backend JWT verification is enabled in PR7. Without a Supabase session, only unauthenticated queries (e.g., `health`) succeed against `/query` until resolvers begin enforcing authentication (PR9).
-
-### RSC token forwarding (deferred to PR9)
-
-`src/lib/apollo/server.ts` does NOT forward an auth token in PR6. Reason: PR6's only RSC query is `{ health }` (anonymous-safe). PR9 introduces `me`, at which point we extend `gqlFetch` to optionally pull the token from `createServerClient(cookies())`. A `TODO(PR9)` comment marks the intended hook point.
+Backend JWT verification is enabled. Without a Supabase session, only unauthenticated queries (e.g., `health`) succeed against `/query` until resolvers begin enforcing authentication.
 
 ### Middleware cookie rotation
 
@@ -135,7 +131,7 @@ The `matcher` must also explicitly exclude `/api/:path*` and `/auth/callback`. W
 
 ### Authorization forwarding in `gqlFetch`
 
-`frontend/src/lib/apollo/server.ts` now resolves the PR5-era `TODO(PR9)`: `gqlFetch` reads the Supabase session via `createSupabaseServerClient().auth.getSession()` and, when a session exists, forwards `Authorization: Bearer <access_token>` to the backend. Unauthenticated RSC calls omit the header and receive an `UNAUTHENTICATED` GraphQL error.
+`frontend/src/lib/apollo/server.ts` reads the Supabase session via `createSupabaseServerClient().auth.getSession()` and forwards `Authorization: Bearer <access_token>` when present. Unauthenticated RSC calls omit the header and receive an `UNAUTHENTICATED` GraphQL error.
 
 ### Zod schema convention
 
@@ -145,7 +141,7 @@ The mirror is intentionally asymmetric where JS and Go count string length diffe
 
 ### Form library
 
-PR9 uses `react-hook-form` + shadcn `Form` components (already in deps). PR10 will replace this with TanStack Form. Keep `profile-form.tsx` focused on form behavior (validation, submission, field wiring) so the swap is local to that file.
+The form currently uses `react-hook-form` + shadcn `Form` components (already in deps). Keep `profile-form.tsx` focused on form behavior (validation, submission, field wiring) so a future swap (e.g. TanStack Form) stays local to that file.
 
 ### Dependency pin: `@hookform/resolvers`
 

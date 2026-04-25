@@ -121,7 +121,7 @@ GET  /playground  open (no auth)
 POST /query       AuthMiddleware → gqlgen handler
 ```
 
-When an `Authorization` header is **absent**, the request passes through as anonymous — no `auth.AuthUser` is attached to the context. This allows unauthenticated queries to proceed until individual resolvers start enforcing identity (PR9). When the header is **present and valid**, `auth.UserFrom(ctx)` returns the verified `*auth.AuthUser` (`Sub`, `Email`, `Role`). When the header is **present but invalid**, the middleware short-circuits with HTTP 401 and sets `WWW-Authenticate: Bearer realm="api"`.
+When an `Authorization` header is **absent**, the request passes through as anonymous — no `auth.AuthUser` is attached to the context. Resolvers themselves enforce identity per request via the usecase layer. When the header is **present and valid**, `auth.UserFrom(ctx)` returns the verified `*auth.AuthUser` (`Sub`, `Email`, `Role`). When the header is **present but invalid**, the middleware short-circuits with HTTP 401 and sets `WWW-Authenticate: Bearer realm="api"`.
 
 ### Middleware layering
 
@@ -253,7 +253,7 @@ resolver (schema.resolvers.go)
        └─ repository (internal/repository/)
 ```
 
-Resolvers are intentionally thin: extract `model.UpdateProfileInput`, map it to `usecase.UpdateProfileInput`, delegate, and return. Auth checks, validation, and `gqlerror.Error` construction live in the usecase layer. The `unauthenticated()` helper is a private function inside the usecase package; PR9 does not add a shared error helper — that is deferred to PR10.
+Resolvers are intentionally thin: extract `model.UpdateProfileInput`, map it to `usecase.UpdateProfileInput`, delegate, and return. Auth checks, validation, and `gqlerror.Error` construction live in the usecase layer. A shared error helper is not yet introduced; if a second usecase needs `UNAUTHENTICATED` or similar, extract one then.
 
 ### DI pattern
 
