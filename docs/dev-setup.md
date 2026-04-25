@@ -3,7 +3,7 @@
 ## Tools
 
 - mise (`curl https://mise.run | sh`) — manages Go (`backend/.tool-versions`), Node + pnpm + Supabase CLI (`./.tool-versions`), and Terraform + tflint (`ops/terraform/mise.toml`).
-- Supabase CLI — local Postgres / Auth emulation. Pinned via mise.
+- Supabase CLI — local Postgres / Auth emulation. Pinned to a specific version in `./.tool-versions` (do not switch back to `supabase latest`: the CLI breaks `supabase/config.toml` across major upgrades, so the version that everyone runs must be exact).
 
 ## First-time setup
 
@@ -90,14 +90,15 @@ Whether to use **one** Google OAuth client with both URIs or **two separate clie
 2. Create an OAuth 2.0 client ID in Google Cloud Console (Application type: **Web application**). Use `127.0.0.1`, not `localhost` — Google validates these as distinct origins:
    - Add `http://127.0.0.1:54321/auth/v1/callback` to **Authorized redirect URIs**.
    - Add `http://127.0.0.1:3000` to **Authorized JavaScript origins**.
-3. Run `supabase start` from the repository root. The first run pulls Docker images and takes a few minutes. The output prints the anon key and service role key.
-4. Append the following to `frontend/.env.local` (copy `anon key` from the `supabase start` output). `supabase/config.toml` references the Google credentials via `env()` placeholders, so the secrets stay in `.env.local` (gitignored) and never enter the repo:
+3. Run `supabase start` from the repository root. The first run pulls Docker images and takes a few minutes. The output prints an `Authentication Keys` block with two values: **`Publishable`** (formerly `anon key` — safe to bundle into the client; RLS gates real access) and **`Secret`** (formerly `service_role key` — server-only, bypasses RLS). Only the `Publishable` value is needed for local frontend dev; never copy `Secret` into a `NEXT_PUBLIC_*` var.
+4. Append the following to `frontend/.env.local` (copy the `Publishable` value from the `supabase start` output). `supabase/config.toml` references the Google credentials via `env()` placeholders, so the secrets stay in `.env.local` (gitignored) and never enter the repo:
    ```
    NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from supabase start output>
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=<Publishable key from supabase start output>
    SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=<Google OAuth client ID>
    SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=<Google OAuth secret>
    ```
+   The env var keeps the legacy `_ANON_KEY` name to match the Supabase JS SDK convention; the **value** is the Publishable key.
 5. Sign in via `http://127.0.0.1:3000/login` once the frontend is running (`make dev-frontend`). The `/profile` page exercises the full sign-in path end to end.
 6. Supabase Studio: http://127.0.0.1:54323
 
