@@ -7,7 +7,6 @@ package resolver
 import (
 	"backend/graph/generated"
 	"backend/graph/model"
-	"backend/internal/domain"
 	"backend/internal/usecase"
 	"context"
 )
@@ -46,16 +45,3 @@ func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
-
-// toUserModel lives outside the gqlgen-managed region so regeneration does not clobber it.
-func toUserModel(p *domain.Profile) *model.User {
-	if p == nil {
-		return nil
-	}
-	return &model.User{
-		ID:          p.ID,
-		DisplayName: p.DisplayName,
-		Bio:         p.Bio,
-		AvatarURL:   p.AvatarURL,
-	}
-}
