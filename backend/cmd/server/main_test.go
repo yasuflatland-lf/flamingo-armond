@@ -395,17 +395,13 @@ func insertAuthUser(t *testing.T, ctx context.Context) string {
 		t.Fatalf("insert auth.users: %v", err)
 	}
 
-	// Verify the trigger replicated the row into public.profiles. If it did not,
-	// fall back to inserting the profile directly so downstream tests have a row
-	// to update.
 	var count int
-	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM public.profiles WHERE id = $1`, id).Scan(&count); err != nil {
-		t.Fatalf("count profiles: %v", err)
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM public.profiles WHERE id = $1`, id).Scan(&count); err != nil {
+		t.Fatalf("verify profile row: %v", err)
 	}
 	if count == 0 {
-		if _, err := pool.Exec(ctx, `INSERT INTO public.profiles(id) VALUES ($1)`, id); err != nil {
-			t.Fatalf("fallback insert profile: %v", err)
-		}
+		t.Fatalf("handle_new_user trigger did not create profile for %s", id)
 	}
 	return id
 }

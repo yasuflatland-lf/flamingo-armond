@@ -5,6 +5,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
@@ -40,9 +41,9 @@ func (u *ProfileUsecase) Me(ctx context.Context) (*domain.Profile, error) {
 	p, err := u.repo.FindByID(ctx, user.Sub)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			// handle_new_user trigger should have created the row, but a brand-new
-			// session can race with replication. Return an empty-but-identified profile
-			// rather than a confusing NOT_FOUND error.
+			slog.Warn("profile row missing for authenticated user; returning empty profile",
+				"user_id", user.Sub,
+				"hint", "expected handle_new_user trigger to provision row")
 			return &domain.Profile{ID: user.Sub}, nil
 		}
 		return nil, err
