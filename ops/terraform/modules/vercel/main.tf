@@ -19,6 +19,9 @@ resource "vercel_project_environment_variable" "backend_url" {
   key        = "BACKEND_URL"
   value      = var.backend_url
   target     = ["production", "preview"]
+  # Internal service host. Not a credential, but treated as sensitive so it
+  # does not appear in plan output / CI logs.
+  sensitive = true
 }
 
 resource "vercel_project_environment_variable" "supabase_url" {
