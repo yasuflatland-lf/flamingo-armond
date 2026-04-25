@@ -244,6 +244,52 @@ field to `""` so the next submit clears the column.
 
 `shadcn init` is interactive and not suitable for CI or non-interactive environments. The fallback is to hand-write `components.json`, `lib/utils.ts`, and the `globals.css` base tokens following the shadcn JSON schema — that is how this repo's shadcn baseline was bootstrapped.
 
+## Observability
+
+### Request ID propagation
+
+Every GraphQL request sent by the frontend attaches an `X-Request-ID` header
+containing a UUID v7 value. The backend echoes the header on the response and
+stamps `request_id` on every structured log line for that request. A single grep
+on `request_id` therefore spans the full frontend-to-backend call without
+requiring an OTel SDK. Full distributed tracing is tracked in
+[#22](https://github.com/yasuflatland-lf/flamingo-armond/issues/22).
+
+#### Generator (`frontend/src/lib/observability/request-id.ts`)
+
+A ~25-line inline implementation — no external npm dependencies. Uses the
+global `crypto.getRandomValues` API (available in all modern browsers and
+Node 18+). Produces a standard UUID v7 string:
+
+```
+xxxxxxxx-xxxx-7xxx-yxxx-xxxxxxxxxxxx
+```
+
+The 48 high bits encode the Unix timestamp in milliseconds, making IDs
+sortable and traceable to their creation time.
+
+#### Browser (Apollo link chain)
+
+`frontend/src/lib/apollo/request-id-link.ts` exports `requestIdLink`, an
+Apollo `setContext` link. It checks for an existing `X-Request-ID` header
+case-insensitively; if none is found it generates a fresh UUID v7 and attaches
+it. The link is prepended as the first link in `makeClient()`:
+
+```ts
+from([requestIdLink, authLink, makeApqLink(), httpLink])
+```
+
+Being first in the chain ensures the ID is present for every subsequent link
+and for the outbound HTTP request.
+
+#### RSC (`gqlFetch`)
+
+`frontend/src/lib/apollo/server.ts` applies the same rule inside `gqlFetch`:
+if the caller's headers do not already contain `X-Request-ID`, a new UUID v7 is
+injected before the `fetch` call. Chained server-to-server calls that forward
+their own incoming header therefore preserve a single correlation ID across the
+full trace.
+
 ## Gotchas encountered
 
 **`app/<route>/error.tsx` does not catch errors from `app/layout.tsx`.** Next.js error boundaries scoped to a route segment only catch errors thrown by that segment's RSCs and components. Errors thrown inside `app/layout.tsx` (e.g. the `Header`) escape to `app/global-error.tsx`, or to Next's default crash page if `global-error.tsx` is absent. Keep shared layout components defensive — render degraded states rather than throwing.
