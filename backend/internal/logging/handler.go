@@ -11,8 +11,8 @@ import (
 type ContextLookup func(context.Context) string
 
 // ContextHandler is an slog.Handler that enriches every log record with
-// values extracted from the record's context via a set of ContextLookup
-// functions. In practice it is used to attach the current request_id to
+// values extracted from the record's context via a `ContextLookup` function.
+// In practice it is used to attach the current request_id to
 // every log line automatically.
 type ContextHandler struct {
 	inner  slog.Handler

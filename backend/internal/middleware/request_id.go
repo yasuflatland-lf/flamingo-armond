@@ -3,6 +3,9 @@ package middleware
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
@@ -30,11 +33,16 @@ func contextWithRequestID(ctx context.Context, id string) context.Context {
 }
 
 // generateRequestID creates a new UUIDv7 string. On the rare event that
-// uuid.NewV7 fails (e.g. rand source unavailable), it falls back to UUIDv4.
+// uuid.NewV7 fails (e.g. rand source unavailable), it falls back to a
+// timestamp-based ID that does not depend on rand, and logs the failure.
 func generateRequestID() string {
 	id, err := uuid.NewV7()
 	if err != nil {
-		return uuid.NewString()
+		// crypto/rand failure. Fall back to a timestamp-based ID that does
+		// not depend on rand, and surface the failure for operators.
+		slog.Error("request_id: uuid.NewV7 failed; using timestamp fallback",
+			"err", err)
+		return fmt.Sprintf("fallback-%d", time.Now().UnixNano())
 	}
 	return id.String()
 }
@@ -55,6 +63,11 @@ func RequestID() echo.MiddlewareFunc {
 				// Honour a well-formed upstream ID (e.g. cloud LB, gateway).
 				id = incoming
 			} else {
+				if incoming != "" {
+					slog.WarnContext(c.Request().Context(),
+						"request_id: rejected incoming X-Request-ID, regenerating",
+						"incoming_len", len(incoming))
+				}
 				id = generateRequestID()
 			}
 
