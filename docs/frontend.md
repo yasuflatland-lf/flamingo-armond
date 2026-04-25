@@ -145,9 +145,21 @@ The mirror uses `Intl.Segmenter` (UAX #29) for `displayName` and `bio` length ch
 
 We use `@tanstack/react-form` for all forms. No adapter package is needed —
 validators are passed directly as per-field Zod schemas.
-shadcn's `form.tsx` wrapper was removed in PR10 — TanStack Form's render-prop
+shadcn's `form.tsx` wrapper was removed — TanStack Form's render-prop
 API (`<form.Field>`) does not need it. Forms compose primitive shadcn
 components (`Label`, `Input`, `Textarea`) directly.
+
+**`useForm` type inference:** `useForm` has 12 type parameters. Writing `useForm<MyType>(...)` to annotate the form values type does not work — TypeScript cannot infer the remaining 11. Always let the compiler infer from `defaultValues`:
+
+```tsx
+// correct — all types inferred from defaultValues
+const form = useForm({ defaultValues: { displayName: "", bio: "" }, ... });
+
+// wrong — single explicit type arg leaves 11 params unresolvable → type error
+const form = useForm<FormValues>({ ... });
+```
+
+**No `validatorAdapter`:** The `useForm` config object in TanStack Form v0.x does not accept a top-level `validatorAdapter` property. Pass Zod schemas directly to each field's `validators` option (see pattern below). The `@tanstack/zod-form-adapter` package is not needed.
 
 #### Pattern
 
@@ -198,6 +210,14 @@ copy. Apollo v4 wraps GraphQL errors in `CombinedGraphQLErrors`; use
 `error.errors[0]?.extensions?.code` to route between field errors and banner
 errors.
 
+**Unhandled rejection from `useMutation`:** Apollo captures the GraphQL error in the `error` state variable automatically, but the promise returned by `mutate(...)` still rejects. Awaiting the promise without a catch causes an unhandled rejection in the browser console. Attach `.catch(console.error)` (or a real error handler) to prevent this while still relying on the `error` state for UI rendering:
+
+```ts
+await mutate({ variables }).catch(console.error);
+```
+
+Do not swallow the rejection silently with an empty `.catch(() => {})` — that hides unexpected errors (network failures, etc.).
+
 #### Bio explicit clear UX
 
 `bio` follows tri-state semantics:
@@ -220,7 +240,7 @@ field to `""` so the next submit clears the column.
 
 ## shadcn/ui
 
-`frontend/components.json` and `frontend/src/lib/utils.ts` (the `cn()` helper) are committed. No components are added yet. PR6 runs `pnpm dlx shadcn add button input label form` and extends `globals.css` with the theme tokens those components reference. In PR10, `form.tsx` was removed (TanStack Form's render-prop API does not need the shadcn wrapper) and `textarea.tsx` was added for the `bio` field.
+`frontend/components.json` and `frontend/src/lib/utils.ts` (the `cn()` helper) are committed. The initial component set (`button`, `input`, `label`) was added with `pnpm dlx shadcn add` and extends `globals.css` with the required theme tokens. `form.tsx` was removed (TanStack Form's render-prop API does not need the shadcn wrapper); `textarea.tsx` was added for the `bio` field.
 
 `shadcn init` is interactive and not suitable for CI or non-interactive environments. The fallback is to hand-write `components.json`, `lib/utils.ts`, and the `globals.css` base tokens following the shadcn JSON schema — exactly what PR3 did.
 

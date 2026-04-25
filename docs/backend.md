@@ -324,7 +324,10 @@ profile, err := loader.For(ctx).Profile.Load(ctx, userID)()
 
 `loader.For` returns `nil` when the middleware was not installed; dereferencing
 the returned pointer (`.Profile.Load(...)`) will then panic. Keep the middleware
-wired to every route that touches a loader.
+wired to every route that touches a loader. Once a resolver actually calls a
+loader in production, consider replacing `For` with a `MustFor` variant (panics
+with a clear message on nil) or a `(loaders, error)` two-value return so
+middleware misconfiguration is caught explicitly rather than as a nil-dereference.
 
 **Library:** `github.com/graph-gophers/dataloader/v7` (generics edition).
 The batch function receives `[]string` keys and must return
@@ -373,6 +376,10 @@ raw `gqlerror.Error` literals outside the `gqlerr` package itself.
 `gqlerr.IsCode(err, gqlerr.CodeUnauthenticated)` is the canonical way to
 inspect codes in tests and middleware.
 
+**Why `gqlerr.Internal` is mandatory for repo/DB errors:** gqlgen's default error presenter forwards any error whose message is not already masked directly into the GraphQL response body. Unwrapped repository or database errors therefore leak internal details (table names, SQL, driver messages) to clients. Always wrap with `gqlerr.Internal(ctx, err)` before returning from a resolver or usecase — the helper logs the original error via `slog.ErrorContext` and replaces the message with the fixed string `"internal server error"`.
+
+**Note:** `Code` is a string alias, not a true enum — `Code("ANYTHING")` is a valid expression. If ad-hoc code strings become a maintenance concern, introduce `enumcheck` (or a similar linter) to enforce that only declared constants are used.
+
 ### Complexity limit
 
 **Why:** An unbounded GraphQL query can fan out into thousands of resolver
@@ -392,6 +399,8 @@ gqlgen rejects it during validation and returns an HTTP 200 with an
 To raise the limit for a feature that genuinely needs it, change the single
 constant argument. Values of 200 or 500 are reasonable stepping stones; avoid
 setting it above 1000 without profiling.
+
+**Tip:** When a query is rejected, `extensions.code` is `"COMPLEXITY_LIMIT_EXCEEDED"` (the gqlparser standard value). Client code can branch on this code to show a specific "query too complex" message rather than a generic error.
 
 ### Introspection gating
 
@@ -413,6 +422,8 @@ Only the `__schema` and `__type` queries are blocked when introspection is off.
 `render.yaml` sets `GRAPHQL_INTROSPECTION=off` for the production service.
 Dev and CI leave the variable unset, so the playground remains fully
 functional.
+
+**Tip:** When introspection is disabled, the error message is exactly `"introspection disabled"` (lowercase, no trailing punctuation). Test assertions can match on this literal string.
 
 ### Validation (grapheme clusters)
 
@@ -454,6 +465,8 @@ func handler(c echo.Context) error { ... }
 
 Online samples, AI-generated code, and the official Echo v4 docs all use the interface form. Any paste from those sources requires this fix.
 
+The type is `*echo.Context` — a **pointer to a concrete struct**, not an interface. v5 removed the `echo.Context` interface entirely, so there is no interface to embed or assert against.
+
 ### `echo.NewHTTPError` discards manually-set response headers
 
 Echo's default `HTTPErrorHandler` serializes the error and writes a fresh response, discarding any headers set on the context before returning the error. Setting `c.Response().Header().Set("WWW-Authenticate", "...")` and then `return echo.NewHTTPError(401, "...")` will drop the header in the rendered response. The fix is to write the response directly and return `nil`:
@@ -472,3 +485,15 @@ Validating fields only inside `ConfigFromEnv` is bypassable — callers can cons
 ### JWT algorithm confusion: always whitelist valid algorithms
 
 Without `jwt.WithValidMethods([]string{"ES256", "RS256"})`, an attacker can re-sign a token with `HS256` using the JWKS public key as the HMAC secret, or use `alg=none` to bypass signature verification entirely. `golang-jwt/v5` does not reject these by default if the keyfunc returns a key. Always pass `WithValidMethods` with the exact set of algorithms your JWKS endpoint issues.
+
+### GORM `WHERE id IN ?` with an empty slice returns all rows
+
+Passing an empty `[]string{}` to a GORM query like `db.Where("id IN ?", ids).Find(&rows)` does **not** emit `WHERE id IN ()`. GORM silently drops the clause and performs an unfiltered full-table scan, returning every row. Guard every batch-fetch path with an early return:
+
+```go
+if len(ids) == 0 {
+    return nil, nil
+}
+```
+
+This matters most in DataLoader batch functions, where an empty key slice is a normal edge case.
