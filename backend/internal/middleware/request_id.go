@@ -59,26 +59,33 @@ func RequestID() echo.MiddlewareFunc {
 			incoming := c.Request().Header.Get(RequestIDHeader)
 
 			var id string
+			rejected := false
 			if incoming != "" && len(incoming) <= maxRequestIDLen {
 				// Honour a well-formed upstream ID (e.g. cloud LB, gateway).
 				id = incoming
 			} else {
 				if incoming != "" {
-					slog.WarnContext(c.Request().Context(),
-						"request_id: rejected incoming X-Request-ID, regenerating",
-						"incoming_len", len(incoming))
+					rejected = true
 				}
 				id = generateRequestID()
+			}
+
+			// Stash the ID in the request context first so all downstream code
+			// (resolvers, slog handler, etc.) can read it without touching HTTP.
+			ctx := contextWithRequestID(c.Request().Context(), id)
+			c.SetRequest(c.Request().WithContext(ctx))
+
+			// Warn after enriching the context so ContextHandler attaches the
+			// new request_id attribute to the warn record.
+			if rejected {
+				slog.WarnContext(ctx,
+					"request_id: rejected incoming X-Request-ID, regenerating",
+					"incoming_len", len(incoming))
 			}
 
 			// Set the response header before calling next so that even error
 			// responses produced by downstream handlers carry the request ID.
 			c.Response().Header().Set(RequestIDHeader, id)
-
-			// Stash the ID in the request context so all downstream code
-			// (resolvers, slog handler, etc.) can read it without touching HTTP.
-			ctx := contextWithRequestID(c.Request().Context(), id)
-			c.SetRequest(c.Request().WithContext(ctx))
 
 			return next(c)
 		}
