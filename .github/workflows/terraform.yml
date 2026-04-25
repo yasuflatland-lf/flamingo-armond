@@ -39,17 +39,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Env stacks only. Modules under ops/terraform/modules/** are
+        # validated transitively via the env stacks that consume them, so
+        # listing them here would duplicate coverage. The settings stack uses
+        # `data.terraform_remote_state` to read `../initial/terraform.tfstate`,
+        # but `terraform validate` does not evaluate data sources, so the
+        # missing state file in CI does not break validation.
         path:
-          # Env stacks. Settings stack uses `data.terraform_remote_state` to
-          # read `../initial/terraform.tfstate`, but `terraform validate` does
-          # not evaluate data sources, so the missing state file in CI does
-          # not break validation here.
           - ops/terraform/envs/prod/initial
           - ops/terraform/envs/prod/settings
-          # Reusable modules.
-          - ops/terraform/modules/render
-          - ops/terraform/modules/supabase
-          - ops/terraform/modules/vercel
 
     steps:
       - name: Checkout

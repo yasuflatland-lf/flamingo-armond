@@ -129,7 +129,7 @@ No request is made during the build, so dummy values only need to satisfy the Zo
 ### What is checked
 
 - **Format** (`fmt-check` job): `terraform fmt -check -recursive` across the entire `ops/terraform/` tree. Any unformatted file fails the job immediately.
-- **Init + validate** (`validate` job): For each stack under `ops/terraform/envs/prod/` and each reusable module under `ops/terraform/modules/*/`, the job runs `terraform init -backend=false` (provider/module resolution, no real backend configured) followed by `terraform validate` (type-checks all HCL expressions and references). A validate failure exits non-zero — `continue-on-error` is never used on these steps.
+- **Init + validate** (`validate` job): For each env stack under `ops/terraform/envs/prod/`, the job runs `terraform init -backend=false` (provider/module resolution, no real backend configured) followed by `terraform validate` (type-checks all HCL expressions and references). Reusable modules under `ops/terraform/modules/*/` are intentionally **not** listed in the matrix — every module is consumed by an env stack and is therefore validated transitively when that stack is initialized; listing them again would duplicate coverage and pay 5× the runner-setup cost. If a module is ever added without a consumer, add it to the matrix as a temporary entry until an env stack picks it up. A validate failure exits non-zero — `continue-on-error` is never used on these steps.
 
 ### What is NOT checked
 
@@ -140,7 +140,7 @@ No request is made during the build, so dummy values only need to satisfy the Zo
 
 ### Fan-in job for matrix branch protection
 
-The `validate` job is a `strategy: matrix`, so each matrix leg becomes its own GitHub status check (`Validate ops/terraform/envs/prod/initial`, `Validate ops/terraform/modules/render`, …). If branch protection requires a specific leg by name, every other leg is unprotected — and adding a new path to the matrix silently leaves it outside the gate.
+The `validate` job is a `strategy: matrix`, so each matrix leg becomes its own GitHub status check (`Validate ops/terraform/envs/prod/initial`, `Validate ops/terraform/envs/prod/settings`, …). If branch protection requires a specific leg by name, every other leg is unprotected — and adding a new path to the matrix silently leaves it outside the gate.
 
 `validate-all` is a trivial fan-in that depends on `[fmt-check, validate]`. Branch protection should require **`All Terraform validations passed`** (the `validate-all` job's display name), not the individual matrix legs. Adding a new path then automatically falls under the same gate. Apply the same pattern when introducing any new matrix workflow.
 
