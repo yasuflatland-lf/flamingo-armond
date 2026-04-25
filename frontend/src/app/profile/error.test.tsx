@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import ProfileError from "./error";
 
 const mockReplace = vi.fn();
@@ -11,6 +11,10 @@ vi.mock("next/navigation", () => ({
 }));
 
 describe("<ProfileError>", () => {
+  beforeEach(() => {
+    mockReplace.mockClear();
+  });
+
   it("calls router.replace('/login') when error contains UNAUTHENTICATED", () => {
     render(
       <ProfileError
@@ -48,5 +52,40 @@ describe("<ProfileError>", () => {
     await user.click(screen.getByRole("button", { name: /retry/i }));
 
     expect(reset).toHaveBeenCalledOnce();
+  });
+
+  it("logs error with digest to console.error", () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    render(
+      <ProfileError
+        error={Object.assign(new Error("Something broke"), { digest: "abc123" })}
+        reset={vi.fn()}
+      />,
+    );
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      "[/profile error boundary]",
+      expect.objectContaining({ digest: "abc123" }),
+    );
+
+    consoleSpy.mockRestore();
+  });
+
+  it("only calls router.replace once even when the effect re-runs", () => {
+    const error = Object.assign(new Error("GraphQL errors: UNAUTHENTICATED"), {
+      digest: undefined,
+    });
+
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const { rerender } = render(<ProfileError error={error} reset={vi.fn()} />);
+
+    // Re-render with the same error object to simulate an effect re-run.
+    rerender(<ProfileError error={error} reset={vi.fn()} />);
+
+    expect(mockReplace).toHaveBeenCalledOnce();
+
+    consoleSpy.mockRestore();
   });
 });

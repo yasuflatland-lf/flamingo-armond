@@ -19,7 +19,9 @@ export default async function ProfilePage() {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
+    error: authErr,
   } = await supabase.auth.getUser();
+  if (authErr) throw authErr;
   if (!user) redirect("/login");
 
   const data = await gqlFetch(MeQuery, { revalidate: 0 });
