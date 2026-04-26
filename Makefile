@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen test clean clean-frontend clean-backend doctor db-reset
+.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen test clean clean-frontend clean-backend doctor db-reset setup-prod setup-prod-preflight setup-prod-postapply
 
 # Most env / Supabase targets dispatch to the playbook below; tags select the subset.
 ANSIBLE := ansible-playbook -i playbooks/inventory.local playbooks/setup.yml
@@ -82,3 +82,15 @@ doctor: ## Show which processes hold dev ports 1323/3000 (does NOT kill; you dec
 	@lsof -nP -i :3000 || echo "  (none)"
 	@echo ""
 	@echo "If a stale dev server is listed above, kill it manually: kill <PID>"
+
+# --- Production bring-up (manual runbook + verification) -------------------
+ANSIBLE_PROD := ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml
+
+setup-prod: mise-install ## Guided production bring-up: prereq check + dashboard handoff + smoke
+	@$(ANSIBLE_PROD)
+
+setup-prod-preflight: ## Verify tokens and GitHub App installations only (no operator handoff)
+	@$(ANSIBLE_PROD) --tags preflight
+
+setup-prod-postapply: ## Trigger first Render deploy + smoke tests (re-runnable from .state.yml)
+	@$(ANSIBLE_PROD) --tags postapply
