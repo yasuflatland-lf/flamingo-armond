@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart sync-env install supabase-start check-google-oauth dev-backend dev-frontend codegen test
+.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev-backend dev-frontend codegen test
 
 # Most env / Supabase targets dispatch to the playbook below; tags select the subset.
 ANSIBLE := ansible-playbook -i playbooks/inventory.local playbooks/setup.yml
@@ -25,6 +25,9 @@ install: ## Install pnpm workspace dependencies (Ansible-managed for change dete
 
 supabase-start: ## Boot local Supabase (no-op if already running, via Ansible)
 	@$(ANSIBLE) --tags supabase
+
+supabase-stop: ## Stop local Supabase (preserves volumes; add --no-backup manually to wipe data)
+	supabase stop
 
 supabase-restart: ## Stop and re-boot local Supabase (use after editing .env Google credentials)
 	-supabase stop
