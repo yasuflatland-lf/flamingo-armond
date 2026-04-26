@@ -10,6 +10,18 @@ The stack splits across three providers, each owning a distinct concern:
 | Render | Go / Echo backend (`backend/`) |
 | Vercel | Next.js frontend (`frontend/`) |
 
+## Guided bring-up via `make setup-prod`
+
+A thin Ansible-driven layer wraps this manual runbook with prerequisite checks, value-derivation, GitHub Secret registration, deploy-trigger, and smoke tests. It does **not** replace the dashboard work below — operators still create the Supabase project, the Render web service, and the Vercel project by hand.
+
+```bash
+make setup-prod              # full guided run: preflight + 4 dashboard steps + smoke
+make setup-prod-preflight    # ~10s scanner: tokens + GitHub App installs only
+make setup-prod-postapply    # re-runnable: kick first Render deploy + smoke tests
+```
+
+The playbooks live under `playbooks/setup-prod/` and persist collected values (project refs, service IDs, URLs, anon key, DB DSN) into the gitignored `.setup-prod.state.yml` (mode 0600) for re-runs. The remainder of this document is the authoritative manual procedure; refer to it for what each phase is doing under the hood.
+
 ## Topology
 
 ```mermaid
