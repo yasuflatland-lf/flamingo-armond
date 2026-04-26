@@ -5,217 +5,225 @@
 # Writes: state file adds render_service_id, backend_url
 # Side-effect: gh secret set RENDER_DEPLOY_HOOK_URL (idempotent overwrite)
 #
-# Run via: make setup-prod-render
-- name: Phase 3 — Render web service setup
-  hosts: localhost
-  gather_facts: false
+# `state_file`, `repo`, and `confirm` come from the entry playbook
+# (defaults: <repo-root>/.setup-prod.state.yml, confirm: false).
+#
+# Run via tag: ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags render
 
-  vars:
-    repo_root: "{{ playbook_dir }}/../.."
-    state_file: "{{ repo_root }}/.setup-prod.state.yml"
-    repo: "yasuflatland-lf/flamingo-armond"
+- name: Phase 3 cannot run in unattended mode
+  ansible.builtin.fail:
+    msg: |
+      Phase 3 (render) requires interactive operator input from the Render dashboard
+      (service ID, URL, deploy hook URL). Cannot run with confirm=true.
 
-  tasks:
-    # --- Load state (Phase 2 must have written it) ---
-    - name: Load production state file
-      ansible.builtin.include_vars:
-        file: "{{ state_file }}"
+      Either run interactively (default), or pre-populate render_service_id and
+      backend_url in {{ state_file }} and skip Phase 3 entirely with --skip-tags render.
+  when: confirm | bool
 
-    - name: Assert required Phase 2 keys are present
-      ansible.builtin.fail:
-        msg: |
-          Required state keys from Phase 2 (supabase) are missing.
-          Run Phase 2 first:
-            make setup-prod-supabase
-          Missing key: {{ item }}
-      loop:
-        - supabase_project_ref
-        - supabase_url
-        - supabase_jwks_url
-        - supabase_jwt_issuer
-        - supabase_anon_key
-        - supabase_db_url
-      when: vars[item] is not defined or vars[item] | length == 0
+- name: Load state file (Phase 3 reads Phase 2 outputs)
+  # absent or unreadable on first run is OK; the assert below enforces required keys
+  ansible.builtin.include_vars:
+    file: "{{ state_file }}"
+  failed_when: false
 
-    # --- Display Render dashboard config table ---
-    - name: Display Render web service dashboard settings
-      ansible.builtin.debug:
-        msg: |
-          ============================================================
-          RENDER DASHBOARD — Create a new Web Service
-          Repository: {{ repo }}
-          ============================================================
+- name: Assert required Phase 2 keys are present
+  ansible.builtin.assert:
+    that:
+      - supabase_project_ref is defined and (supabase_project_ref | length) > 0
+      - supabase_url is defined and (supabase_url | length) > 0
+      - supabase_jwks_url is defined and (supabase_jwks_url | length) > 0
+      - supabase_jwt_issuer is defined and (supabase_jwt_issuer | length) > 0
+      - supabase_anon_key is defined and (supabase_anon_key | length) > 0
+      - supabase_db_url is defined and (supabase_db_url | length) > 0
+    fail_msg: |
+      Required state keys from Phase 2 (supabase) are missing or empty.
+      Run Phase 2 first:
+        ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags supabase
 
-          Setting            Value
-          -----------------  -----------------------------------------
-          Root directory     backend
-          Build command      go mod download && go build -o main ./cmd/server
-          Start command      ./main
-          Health check path  /health
-          Auto deploy        off (deploys are push-triggered via the
-                             deploy hook in backend.yml, not Render's
-                             auto-deploy; schema migrations run on boot
-                             so deploys are tied to explicit pushes)
+      If {{ state_file }} appears corrupt, restore the most recent backup:
+        cp {{ state_file }}~ {{ state_file }}
+      then re-run Phase 3.
 
-          ============================================================
-          Set the env vars shown in the next steps, then come back.
-          ============================================================
+      Required keys: supabase_project_ref, supabase_url, supabase_jwks_url,
+      supabase_jwt_issuer, supabase_anon_key, supabase_db_url.
+    success_msg: "Phase 2 state keys present."
 
-    # --- Display env vars one per line (non-sensitive) ---
-    - name: Display Render env var
-      ansible.builtin.debug:
-        msg: "{{ item.name }}={{ item.value }}"
-      loop:
-        - name: SUPABASE_JWKS_URL
-          value: "{{ supabase_jwks_url }}"
-        - name: SUPABASE_JWT_AUDIENCE
-          value: "authenticated"
-        - name: SUPABASE_JWT_ISSUER
-          value: "{{ supabase_jwt_issuer }}"
-        - name: APP_ENV
-          value: "production"
-        - name: GRAPHQL_INTROSPECTION
-          value: "off"
-        - name: OTEL_TRACES_SAMPLER_ARG
-          value: "0.1"
-        - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "(leave blank for no-op tracing, or paste your OTLP endpoint)"
-      loop_control:
-        label: "{{ item.name }}"
+# --- Display Render dashboard config table ---
+- name: Display Render web service dashboard settings
+  ansible.builtin.debug:
+    msg: |
+      ============================================================
+      RENDER DASHBOARD - Create a new Web Service
+      Repository: {{ repo }}
+      ============================================================
 
-    # --- Display SUPABASE_DB_URL separately with screen-share warning ---
-    - name: Display SUPABASE_DB_URL (sensitive — leave screen-share before reading)
-      ansible.builtin.debug:
-        msg: |
-          ------------------------------------------------------------
-          WARNING: The value below contains the DB password.
-          Turn off screen-share / recording before reading it.
-          ------------------------------------------------------------
-          SUPABASE_DB_URL={{ supabase_db_url }}
-          ------------------------------------------------------------
+      Setting            Value
+      -----------------  -----------------------------------------
+      Root directory     backend
+      Build command      go mod download && go build -o main ./cmd/server
+      Start command      ./main
+      Health check path  /health
+      Auto deploy        off (deploys are push-triggered via the
+                         deploy hook in backend.yml, not Render's
+                         auto-deploy; schema migrations run on boot
+                         so deploys are tied to explicit pushes)
 
-    # --- Wait for operator to create the Render service ---
-    - name: Wait for Render service creation
-      ansible.builtin.pause:
-        prompt: |
+      ============================================================
+      Set the env vars shown in the next steps, then come back.
+      ============================================================
 
-          Action required in the Render dashboard:
-            1. Click "New > Web Service" and connect {{ repo }}.
-            2. Apply all settings and env vars shown above.
-            3. Click "Create Web Service" and wait for the first deploy to finish.
-            4. Copy the service ID (srv-...) from Settings > General.
-            5. Copy the service URL (https://....onrender.com) from the top of the page.
-            6. Copy the deploy hook URL from Settings > Deploy Hook.
+# --- Display env vars one per line (non-sensitive) ---
+- name: Display Render env var
+  ansible.builtin.debug:
+    msg: "{{ item.name }}={{ item.value }}"
+  loop:
+    - name: SUPABASE_JWKS_URL
+      value: "{{ supabase_jwks_url }}"
+    - name: SUPABASE_JWT_AUDIENCE
+      value: "authenticated"
+    - name: SUPABASE_JWT_ISSUER
+      value: "{{ supabase_jwt_issuer }}"
+    - name: APP_ENV
+      value: "production"
+    - name: GRAPHQL_INTROSPECTION
+      value: "off"
+    - name: OTEL_TRACES_SAMPLER_ARG
+      value: "0.1"
+    - name: OTEL_EXPORTER_OTLP_ENDPOINT
+      value: "(leave blank for no-op tracing, or paste your OTLP endpoint)"
+  loop_control:
+    label: "{{ item.name }}"
 
-          Press Enter when the service is created and you have all three values ready.
+# --- Display SUPABASE_DB_URL separately with screen-share warning ---
+- name: Display SUPABASE_DB_URL (sensitive - leave screen-share before reading)
+  ansible.builtin.debug:
+    msg: |
+      ------------------------------------------------------------
+      WARNING: The value below contains the DB password.
+      Turn off screen-share / recording before reading it.
+      ------------------------------------------------------------
+      SUPABASE_DB_URL={{ supabase_db_url }}
+      ------------------------------------------------------------
 
-    # --- Collect render_service_id ---
-    - name: Prompt for Render service ID
-      ansible.builtin.pause:
-        prompt: "Render service ID (format: srv-<alphanumeric>)"
-      register: _render_service_id_input
+# --- Wait for operator to create the Render service ---
+- name: Wait for Render service creation
+  ansible.builtin.pause:
+    prompt: |
 
-    - name: Store render_service_id fact
-      ansible.builtin.set_fact:
-        render_service_id: "{{ _render_service_id_input.user_input | trim }}"
+      Action required in the Render dashboard:
+        1. Click "New > Web Service" and connect {{ repo }}.
+        2. Apply all settings and env vars shown above.
+        3. Click "Create Web Service". Because Auto deploy is set to off, no deploy
+           will run yet - Phase 6 (postapply) will trigger the first deploy via the
+           Render API. Steps 4-6 below do NOT require a completed deploy.
+        4. Copy the service ID (srv-...) from Settings > General.
+        5. Copy the service URL (https://....onrender.com) from the top of the page.
+        6. Copy the deploy hook URL from Settings > Deploy Hook.
 
-    - name: Validate render_service_id format
-      ansible.builtin.assert:
-        that:
-          - render_service_id is match('^srv-[a-z0-9]+$')
-        fail_msg: |
-          render_service_id '{{ render_service_id }}' does not match the expected
-          pattern srv-<alphanumeric>. Find it in Render: Settings > General.
+      Press Enter when the service is created and you have all three values ready.
 
-    # --- Collect backend_url ---
-    - name: Prompt for Render backend URL
-      ansible.builtin.pause:
-        prompt: "Render backend URL (https://...onrender.com, or custom domain starting with https://)"
-      register: _backend_url_input
+# --- Collect render_service_id ---
+- name: Prompt for Render service ID
+  ansible.builtin.pause:
+    prompt: "Render service ID (format: srv-<alphanumeric>)"
+  register: _render_service_id_input
 
-    - name: Store backend_url fact
-      ansible.builtin.set_fact:
-        backend_url: "{{ _backend_url_input.user_input | trim }}"
+- name: Store render_service_id fact
+  ansible.builtin.set_fact:
+    render_service_id: "{{ _render_service_id_input.user_input | trim }}"
 
-    - name: Validate backend_url format
-      ansible.builtin.assert:
-        that:
-          - backend_url is match('^https://.+$')
-        fail_msg: |
-          backend_url '{{ backend_url }}' must start with https://.
-          Custom domains are accepted; the URL does not have to end in .onrender.com.
+- name: Validate render_service_id format
+  ansible.builtin.assert:
+    that:
+      - render_service_id is match('^srv-[a-z0-9]+$')
+    fail_msg: |
+      render_service_id '{{ render_service_id }}' does not match the expected
+      pattern srv-<alphanumeric>. Find it in Render: Settings > General.
 
-    # --- Collect deploy hook URL (no_log) ---
-    - name: Prompt for Render deploy hook URL
-      ansible.builtin.pause:
-        prompt: "Render deploy hook URL (https://api.render.com/deploy/...)"
-      no_log: true
-      register: _deploy_hook_input
+# --- Collect backend_url ---
+- name: Prompt for Render backend URL
+  ansible.builtin.pause:
+    prompt: "Render backend URL (https://...onrender.com, or custom domain starting with https://)"
+  register: _backend_url_input
 
-    - name: Store deploy_hook_url fact
-      ansible.builtin.set_fact:
-        deploy_hook_url: "{{ _deploy_hook_input.user_input | trim }}"
-      no_log: true
+- name: Store backend_url fact
+  ansible.builtin.set_fact:
+    backend_url: "{{ _backend_url_input.user_input | trim }}"
 
-    - name: Validate deploy hook URL format
-      ansible.builtin.assert:
-        that:
-          - deploy_hook_url is match('^https://api\.render\.com/deploy/')
-        fail_msg: |
-          deploy_hook_url must start with https://api.render.com/deploy/.
-          Copy it from Render: Settings > Deploy Hook.
-      no_log: true
+- name: Validate backend_url format
+  ansible.builtin.assert:
+    that:
+      - backend_url is match('^https://.+$')
+    fail_msg: |
+      backend_url '{{ backend_url }}' must start with https://.
+      Custom domains are accepted; the URL does not have to end in .onrender.com.
 
-    # --- Register deploy hook as GitHub Actions secret ---
-    - name: Register RENDER_DEPLOY_HOOK_URL as GitHub Actions secret
-      ansible.builtin.command:
-        cmd: >-
-          gh secret set RENDER_DEPLOY_HOOK_URL
-          --body "{{ deploy_hook_url }}"
-          --repo {{ repo }}
-      register: _gh_secret_result
-      no_log: true
-      changed_when: _gh_secret_result.rc == 0
+# --- Collect deploy hook URL (no_log) ---
+- name: Prompt for Render deploy hook URL
+  ansible.builtin.pause:
+    prompt: "Render deploy hook URL (https://api.render.com/deploy/...)"
+  no_log: true
+  register: _deploy_hook_input
 
-    - name: Fail with remediation hint if gh secret set failed
-      ansible.builtin.fail:
-        msg: |
-          gh secret set RENDER_DEPLOY_HOOK_URL failed (rc={{ _gh_secret_result.rc }}).
-          Most likely cause: the gh CLI has lost its write scope.
+- name: Store deploy_hook_url fact
+  ansible.builtin.set_fact:
+    deploy_hook_url: "{{ _deploy_hook_input.user_input | trim }}"
+  no_log: true
 
-          To retry:
-            1. Re-authenticate:  gh auth login
-               (select GitHub.com, HTTPS, and grant the "repo" scope)
-            2. Verify scope:     gh auth status
-            3. Re-run this phase: make setup-prod-render
-      when: _gh_secret_result.rc != 0
+- name: Validate deploy hook URL format
+  ansible.builtin.assert:
+    that:
+      - deploy_hook_url is match('^https://api\.render\.com/deploy/')
+    fail_msg: |
+      deploy_hook_url must start with https://api.render.com/deploy/.
+      Copy it from Render: Settings > Deploy Hook.
+  no_log: true
 
-    - name: Confirm GitHub secret registered
-      ansible.builtin.debug:
-        msg: "RENDER_DEPLOY_HOOK_URL registered as a GitHub Actions secret in {{ repo }}."
+# --- Register deploy hook as GitHub Actions secret ---
+- name: Register RENDER_DEPLOY_HOOK_URL as a GitHub Actions secret
+  ansible.builtin.shell:
+    cmd: gh secret set RENDER_DEPLOY_HOOK_URL --repo {{ repo }}
+    stdin: "{{ deploy_hook_url }}"
+  register: _gh_secret_result
+  no_log: true
+  failed_when: false
+  changed_when: _gh_secret_result.rc == 0
 
-    # --- Persist render_service_id and backend_url into state file ---
-    - name: Merge new values into existing state
-      ansible.builtin.set_fact:
-        state_merged: >-
-          {{ (lookup('file', state_file, errors='ignore') | from_yaml | default({}, true))
-             | combine({
-                 'render_service_id': render_service_id,
-                 'backend_url': backend_url,
-               }) }}
+- name: Fail with remediation if gh secret set failed
+  ansible.builtin.fail:
+    msg: |
+      gh secret set failed (rc={{ _gh_secret_result.rc }}).
+      Likely cause: gh CLI lost the `repo` write scope. Re-run:
+        gh auth refresh -s repo
+      Then retry: ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags render
+  when: _gh_secret_result.rc != 0
 
-    - name: Persist state file
-      ansible.builtin.copy:
-        content: "{{ state_merged | to_nice_yaml(sort_keys=true) }}"
-        dest: "{{ state_file }}"
-        mode: '0600'
-        backup: yes
+- name: Confirm GitHub secret registered
+  ansible.builtin.debug:
+    msg: "RENDER_DEPLOY_HOOK_URL registered as a GitHub Actions secret in {{ repo }}."
 
-    - name: Phase 3 complete
-      ansible.builtin.debug:
-        msg: |
-          Phase 3 complete.
-            render_service_id : {{ render_service_id }}
-            backend_url       : {{ backend_url }}
-          State written to {{ state_file }}.
-          Next: make setup-prod-vercel
+# --- Persist render_service_id and backend_url into state file ---
+- name: Merge new values into existing state
+  ansible.builtin.set_fact:
+    state_merged: >-
+      {{ (lookup('file', state_file, errors='ignore') | from_yaml | default({}, true))
+         | combine({
+             'render_service_id': render_service_id,
+             'backend_url': backend_url,
+           }) }}
+
+- name: Persist state file
+  ansible.builtin.copy:
+    content: "{{ state_merged | to_nice_yaml(sort_keys=true) }}"
+    dest: "{{ state_file }}"
+    mode: '0600'
+    backup: yes
+
+- name: Phase 3 complete
+  ansible.builtin.debug:
+    msg: |
+      Phase 3 complete.
+        render_service_id : {{ render_service_id }}
+        backend_url       : {{ backend_url }}
+      State written to {{ state_file }}.
+      Next: ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags vercel
