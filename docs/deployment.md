@@ -75,7 +75,7 @@ The playbook only writes to three places outside the operator's machine: (1) `gh
 
 ### Render deploy polling: terminal failure states
 
-Phase 6 polls the Render deploy with `until: status == 'live'` plus `failed_when: status in [...]` over a five-state abort list: `build_failed`, `update_failed`, `canceled`, `deactivated`, `pre_deploy_failed`. Without all five in the abort list, a doomed deploy burns the full 15-minute retry budget before the playbook gives up. If you ever change the polling logic, keep this set complete — Render's API can return any of these as a final state, and only `live` is success.
+Phase 6 polls the Render deploy with `until:` over a single condition list: HTTP `[401, 403, 404]` (auth / wrong service id) plus the Render deploy state set `[live, build_failed, update_failed, canceled, deactivated, pre_deploy_failed]`. The `until` predicate (not `failed_when`) is what actually aborts the loop — `failed_when` only sets the final task status after retries exhaust, so terminal conditions must live inside `until` itself. Without all six failure states in the predicate, a doomed deploy burns the full 15-minute retry budget before the playbook gives up. If you ever change the polling logic, keep this set complete — Render's API can return any of the above as a final state, and only `live` is success.
 
 ### Failure recovery
 

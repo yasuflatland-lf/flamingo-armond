@@ -65,18 +65,43 @@
       and confirm `.env` (or your shell) exports a valid Render API key.
   when: (render_api_key | length) == 0
 
+# Wrapped in block/rescue because the inner task carries `no_log: true`
+# (the request URL embeds render_service_id and the Bearer header carries
+# the API key; both should not echo on -v). Without a rescue, a 4xx/5xx
+# or connection error would surface as Ansible's censored "the output has
+# been hidden" message with zero context. The rescue references registered
+# fields (`deploy_kick.status` etc.) which retain their data even under
+# `no_log` -- only display is suppressed for the originating task.
 - name: Trigger a Render deploy
-  ansible.builtin.uri:
-    url: "https://api.render.com/v1/services/{{ render_service_id }}/deploys"
-    method: POST
-    headers:
-      Authorization: "Bearer {{ render_api_key }}"
-      Accept: "application/json"
-    body_format: json
-    body: {}
-    status_code: [201]
-  register: deploy_kick
-  no_log: true
+  block:
+    - name: "POST /v1/services/{{ render_service_id }}/deploys"
+      ansible.builtin.uri:
+        url: "https://api.render.com/v1/services/{{ render_service_id }}/deploys"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ render_api_key }}"
+          Accept: "application/json"
+        body_format: json
+        body: {}
+        status_code: [201]
+      register: deploy_kick
+      no_log: true
+  rescue:
+    - name: Surface Render deploy-trigger failure with remediation
+      ansible.builtin.fail:
+        msg: |
+          Failed to POST a new Render deploy.
+
+            HTTP status : {{ deploy_kick.status | default('(connection error)') }}
+            Error       : {{ deploy_kick.msg | default('(none)') }}
+
+          Likely causes:
+            - 401 / 403 : RENDER_API_KEY is invalid or lacks access.
+                Rotate at: https://dashboard.render.com/u/settings#api-keys
+            - 404       : render_service_id ({{ render_service_id }}) is wrong.
+                Verify in Render dashboard -> service -> Settings -> General.
+            - 5xx       : Render outage; check https://status.render.com
+            - connection: DNS / network issue; verify reachability.
 
 - name: Capture the new deploy id
   ansible.builtin.set_fact:
@@ -93,33 +118,73 @@
   ansible.builtin.debug:
     msg: "Render deploy kicked: {{ deploy_id }}"
 
-# Poll up to 60 * 15s = 15 minutes. Terminal failure states abort early so we
-# do not burn the whole timeout on a build that is already lost. The deploy id
-# and status are not sensitive (the id is debug-printed above), so we leave
-# no_log off here -- the status value is what the operator most needs to see
-# during a 15-minute wait.
-- name: "Wait for Render deploy ({{ deploy_id }}) to reach live status"
-  ansible.builtin.uri:
-    url: "https://api.render.com/v1/services/{{ render_service_id }}/deploys/{{ deploy_id }}"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ render_api_key }}"
-      Accept: "application/json"
-    status_code: [200]
-  register: deploy_status
-  until: deploy_status.json.status == 'live'
-  retries: 60
-  delay: 15
-  failed_when: deploy_status.json.status in ['build_failed', 'update_failed', 'canceled', 'deactivated', 'pre_deploy_failed']
+# Poll up to 60 * 15s = 15 minutes. The deploy id and status are not
+# sensitive (the id is debug-printed above), so we leave no_log off here --
+# the status value is what the operator most needs to see during the wait.
+#
+# Fast-fail correctness: only the `until` predicate aborts an Ansible
+# `until` loop. `failed_when` only sets the final task status after retries
+# are exhausted, so terminal conditions (auth errors, terminal Render
+# states) MUST be folded into `until` itself; otherwise a bad token burns
+# the full 15-minute budget before the rescue fires. Verified empirically.
+#
+# Wrapped in block/rescue so the bespoke remediation runs in both the
+# terminal-condition path (until succeeds, assert below fails on non-live
+# final status) and the retry-exhausted path (Ansible itself fails the
+# until task).
+- name: Wait for Render deploy to reach live status
+  block:
+    - name: "Poll Render deploy {{ deploy_id }} until live or terminal"
+      ansible.builtin.uri:
+        url: "https://api.render.com/v1/services/{{ render_service_id }}/deploys/{{ deploy_id }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ render_api_key }}"
+          Accept: "application/json"
+        status_code: [200, 401, 403, 404]
+      register: deploy_status
+      # Abort the loop as soon as we hit any terminal HTTP status (auth /
+      # not-found) or any terminal Render deploy state (success or failure).
+      # The `(deploy_status.json | default({}))` coerce guards against a 200
+      # response with non-JSON body (would otherwise raise undefined-attr).
+      until: >-
+        (deploy_status.status | default(0)) in [401, 403, 404]
+        or ((deploy_status.json | default({})).status | default(''))
+           in ['live', 'build_failed', 'update_failed', 'canceled', 'deactivated', 'pre_deploy_failed']
+      retries: 60
+      delay: 15
 
-- name: Fail with last seen status if deploy never reached live
-  ansible.builtin.fail:
-    msg: |
-      Render deploy {{ deploy_id }} did not reach 'live' within 15 minutes.
-      Last seen status: {{ deploy_status.json.status | default('(unknown)') }}
-      Check the Render dashboard for build/runtime logs, then re-run
-      `make setup-prod-postapply` once the underlying issue is fixed.
-  when: deploy_status.json.status is defined and deploy_status.json.status != 'live'
+    # Surface the actual outcome. If the loop exited via a non-live state
+    # this assert fails and the rescue takes over with the bespoke message.
+    - name: Verify Render deploy reached live
+      ansible.builtin.assert:
+        that:
+          - (deploy_status.status | default(0)) == 200
+          - ((deploy_status.json | default({})).status | default('')) == 'live'
+        fail_msg: >-
+          Deploy did not reach live (HTTP {{ deploy_status.status | default('(connection error)') }}
+          / status {{ (deploy_status.json | default({})).status | default('(unknown)') }}).
+  rescue:
+    - name: Surface Render poll failure with actionable remediation
+      ansible.builtin.fail:
+        msg: |
+          Render deploy {{ deploy_id }} did not reach 'live'.
+
+            HTTP status   : {{ deploy_status.status | default('(connection error)') }}
+            Render status : {{ (deploy_status.json | default({})).status | default('(unknown)') }}
+
+          Likely causes:
+            - 401 / 403: RENDER_API_KEY is invalid or lacks access. Re-check
+              the Render dashboard -> Account -> API Keys and update .env.
+            - 404: render_service_id ({{ render_service_id }}) is wrong;
+              verify in Render dashboard -> service -> Settings -> General.
+            - Render status `build_failed` / `update_failed` / `pre_deploy_failed`:
+              build or pre-deploy script errored. Check Render dashboard logs.
+            - Polling exhausted (15 min) without reaching `live`: deploy is
+              stuck. Check Render dashboard for runtime errors.
+
+          Fix the underlying issue, then re-run:
+            make setup-prod-postapply
 
 - name: Smoke 1 - backend /health returns 200
   block:
@@ -170,6 +235,10 @@
 - name: Smoke 2 (assert) - GraphQL data.health == "ok"
   ansible.builtin.assert:
     that:
+      # `data is defined` guards against a 200 response carrying only `errors`
+      # (e.g. {"errors":[...]}); without the guard the next predicate would
+      # raise an undefined-attribute error rather than the intended fail_msg.
+      - gql.json.data is defined
       - gql.json.data.health == "ok"
     fail_msg: |
       GraphQL health check returned an unexpected payload:
