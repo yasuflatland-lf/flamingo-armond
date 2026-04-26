@@ -89,8 +89,10 @@ ANSIBLE_PROD := ansible-playbook -i playbooks/inventory.local playbooks/setup-pr
 setup-prod: mise-install ## Guided production bring-up: prereq check + dashboard handoff + smoke
 	@$(ANSIBLE_PROD)
 
-setup-prod-preflight: ## Verify tokens and GitHub App installations only (no operator handoff)
-	@$(ANSIBLE_PROD) --tags preflight
+# `confirm=true` skips the Google OAuth reminder pause so this stays a true
+# unattended scanner. Operators still see the reminder on a full `make setup-prod`.
+setup-prod-preflight: mise-install ## Verify tokens and GitHub App installations only (no operator handoff)
+	@$(ANSIBLE_PROD) --tags preflight -e confirm=true
 
-setup-prod-postapply: ## Trigger first Render deploy + smoke tests (re-runnable from .state.yml)
+setup-prod-postapply: mise-install ## Trigger first Render deploy + smoke tests (re-runnable from .state.yml)
 	@$(ANSIBLE_PROD) --tags postapply
