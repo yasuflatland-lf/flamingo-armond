@@ -12,7 +12,13 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body>
+      {/*
+        Browser extensions (ColorZilla, Grammarly, etc.) inject attributes onto
+        <body> before React hydrates, which causes a benign hydration mismatch.
+        suppressHydrationWarning is shallow (this element only) so real hydration
+        bugs in children still surface.
+      */}
+      <body suppressHydrationWarning>
         <Providers>
           <Header />
           {children}
