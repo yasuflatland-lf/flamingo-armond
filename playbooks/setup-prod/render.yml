@@ -193,8 +193,17 @@
   ansible.builtin.fail:
     msg: |
       gh secret set failed (rc={{ _gh_secret_result.rc }}).
-      Likely cause: gh CLI lost the `repo` write scope. Re-run:
-        gh auth refresh -s repo
+
+      gh diagnostic:
+        stderr: {{ _gh_secret_result.stderr | default('(none)') }}
+        stdout: {{ _gh_secret_result.stdout | default('(none)') }}
+
+      Common causes:
+        - gh CLI lost the `repo` write scope.  Re-run:
+            gh auth refresh -s repo
+        - GitHub API rate limit. Wait a minute and retry.
+        - `repo` var is wrong / repo not found. Verify {{ repo }} is correct.
+
       Then retry: ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags render
   when: _gh_secret_result.rc != 0
 
