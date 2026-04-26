@@ -9,7 +9,8 @@
 #   2. Pull RENDER_API_KEY from the environment.
 #   3. POST a deploy to Render and capture the deploy id.
 #   4. Poll the deploy until it reaches "live" (max 15 min, fast-fail on
-#      build_failed / update_failed / canceled).
+#      build_failed / update_failed / canceled / deactivated /
+#      pre_deploy_failed).
 #   5. Smoke test backend /health, GraphQL /query, and the production URL HEAD.
 #   6. Print the three URLs and remind the operator that the /profile E2E
 #      check is a manual step (Google sign-in required).
@@ -20,6 +21,8 @@
 - name: Load state file (postapply requires Phases 2-4 to have run)
   ansible.builtin.include_vars:
     file: "{{ state_file }}"
+  # absent or unreadable on first run is OK; the assert below enforces required keys
+  failed_when: false
 
 - name: Assert state has the keys postapply needs
   ansible.builtin.assert:
@@ -33,8 +36,10 @@
         backend_url:       {{ backend_url | default('(missing)') }}
         production_url:    {{ production_url | default('(missing)') }}
       Run the prerequisite phases first:
-        - render_service_id, backend_url -> `make setup-prod-render`  (Phase 3)
-        - production_url                  -> `make setup-prod-vercel` (Phase 4)
+        - render_service_id, backend_url -> ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags render   (Phase 3)
+        - production_url                  -> ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags vercel  (Phase 4)
+      If the state file appears corrupt, restore from the most recent backup
+      ({{ state_file }}~) before re-running.
     success_msg: "State file looks good for postapply."
 
 - name: Read RENDER_API_KEY from the environment
@@ -67,12 +72,22 @@
   ansible.builtin.set_fact:
     deploy_id: "{{ deploy_kick.json.id }}"
 
+- name: Validate captured deploy id
+  ansible.builtin.assert:
+    that:
+      - deploy_id is defined and (deploy_id | length) > 0
+      - deploy_id is match('^dep-[a-zA-Z0-9]+$')
+    fail_msg: "Render POST /deploys returned but no usable deploy id was captured (response shape may have changed)."
+
 - name: Show the deploy id (operator can cross-check Render dashboard)
   ansible.builtin.debug:
     msg: "Render deploy kicked: {{ deploy_id }}"
 
 # Poll up to 60 * 15s = 15 minutes. Terminal failure states abort early so we
-# do not burn the whole timeout on a build that is already lost.
+# do not burn the whole timeout on a build that is already lost. The deploy id
+# and status are not sensitive (the id is debug-printed above), so we leave
+# no_log off here -- the status value is what the operator most needs to see
+# during a 15-minute wait.
 - name: "Wait for Render deploy ({{ deploy_id }}) to reach live status"
   ansible.builtin.uri:
     url: "https://api.render.com/v1/services/{{ render_service_id }}/deploys/{{ deploy_id }}"
@@ -85,8 +100,16 @@
   until: deploy_status.json.status == 'live'
   retries: 60
   delay: 15
-  failed_when: deploy_status.json.status in ['build_failed', 'update_failed', 'canceled']
-  no_log: true
+  failed_when: deploy_status.json.status in ['build_failed', 'update_failed', 'canceled', 'deactivated', 'pre_deploy_failed']
+
+- name: Fail with last seen status if deploy never reached live
+  ansible.builtin.fail:
+    msg: |
+      Render deploy {{ deploy_id }} did not reach 'live' within 15 minutes.
+      Last seen status: {{ deploy_status.json.status | default('(unknown)') }}
+      Check the Render dashboard for build/runtime logs, then re-run
+      `make setup-prod-postapply` once the underlying issue is fixed.
+  when: deploy_status.json.status is defined and deploy_status.json.status != 'live'
 
 - name: Smoke 1 - backend /health returns 200
   ansible.builtin.uri:
@@ -116,28 +139,29 @@
 # Vercel cold starts can stretch a few seconds on first hit; absorb that with
 # a short retry loop. If we still fail, the most likely cause is an empty
 # `main` -- Vercel never produced a build because there is nothing to build.
+# We use block/rescue so connection errors (DNS / refused / TLS) surface with
+# a meaningful message instead of being masked by `failed_when: false`.
 - name: Smoke 3 - frontend HEAD returns 200 (with cold-start retry)
-  ansible.builtin.uri:
-    url: "{{ production_url }}"
-    method: HEAD
-    status_code: 200
-  register: frontend_head
-  until: frontend_head.status == 200
-  retries: 6
-  delay: 10
-  failed_when: false
-
-- name: Smoke 3 (assert) - frontend reachable
-  ansible.builtin.assert:
-    that:
-      - frontend_head.status == 200
-    fail_msg: |
-      Frontend HEAD {{ production_url }} did not return 200 after retries
-      (last status: {{ frontend_head.status | default('(none)') }}).
-      Most likely cause: `main` is empty, so Vercel has not produced a
-      production build yet. Push a commit to `main` and let the Vercel
-      app deploy, then re-run `make setup-prod-postapply`.
-    success_msg: "Frontend reachable: HEAD {{ production_url }} -> 200."
+  block:
+    - name: Smoke 3 - HEAD {{ production_url }}
+      ansible.builtin.uri:
+        url: "{{ production_url }}"
+        method: HEAD
+        status_code: 200
+      register: frontend_head
+      until: frontend_head.status == 200
+      retries: 6
+      delay: 10
+  rescue:
+    - name: Smoke 3 (fail) - frontend not reachable
+      ansible.builtin.fail:
+        msg: |
+          Frontend HEAD {{ production_url }} did not return 200 after retries.
+            last status: {{ frontend_head.status | default('connection error') }}
+            error:       {{ frontend_head.msg | default('') }}
+          Most likely cause: `main` is empty, so Vercel has not produced a
+          production build yet. Push a commit to `main` and let the Vercel
+          app deploy, then re-run `make setup-prod-postapply`.
 
 - name: Final summary - production endpoints
   ansible.builtin.debug:
