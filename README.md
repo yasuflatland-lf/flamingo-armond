@@ -33,20 +33,25 @@ See `docs/dev-setup.md` § "Tools" for rationale (why mise-managed pnpm, mise hi
 
 ### 2. Initial setup
 
+Once the prerequisites above are installed (and Docker is running), one command does everything reproducible:
+
 ```bash
-# Install pinned Go + Node + pnpm + Supabase CLI (reads .tool-versions hierarchy)
-mise install
-
-# Install workspace dependencies (root + frontend)
-pnpm install
-
-# Pull Docker images and start local Supabase (Postgres + Auth on 127.0.0.1:54321)
-supabase start
+make setup
+# → check-docker → mise install → pnpm install → supabase start → sync-env → check-google-oauth
 ```
 
-Then create a **Google OAuth client** for local dev and write `frontend/.env.local` and `backend/.env.local`. Both files are gitignored. The full procedure (Google Cloud Console steps, `127.0.0.1`-vs-`localhost` rule, exact env var names) lives in `docs/dev-setup.md` § "Supabase CLI" — start at the "Auth flow (read this first)" subsection.
+The final `check-google-oauth` step inspects the root `./.env` (created from `.env.example` on the first run) and prints either:
 
-> Local and production each use a **separate Google OAuth client**. Local credentials live in `frontend/.env.local`; production credentials live in Terraform variables. See `docs/dev-setup.md` and `docs/deployment.md` § 8.
+- a **green confirmation** if `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID` / `_SECRET` are real values, or
+- a **red warning** with exactly which two lines to edit and the next command to run (`make supabase-restart`).
+
+The **only manual step** is editing `./.env` to add the Google OAuth client credentials. Everything else (frontend `.env.local`, backend `.env.local`, mise tool installs, Supabase boot, key derivation) is handled by `make setup`.
+
+> **Single source of truth.** The root `./.env` is the only file you hand-edit; `frontend/.env.local` and `backend/.env.local` are auto-generated and bear a `# managed-by: sync-env` marker on line 1. Re-running `make setup` is safe — managed files are regenerated, user-owned files (marker removed) are skipped with a notice. Full layout in `docs/dev-setup.md` § "Env file layout (single source of truth)".
+
+The Google OAuth procedure (Cloud Console steps, `127.0.0.1`-vs-`localhost` rule, JavaScript origin & redirect URI) lives in `docs/dev-setup.md` § "Supabase CLI" — start at the "Auth flow (read this first)" subsection.
+
+> Local and production each use a **separate Google OAuth client**. Local credentials live in the root `./.env`; production credentials live in Terraform variables. See `docs/dev-setup.md` and `docs/deployment.md` section "Manual prerequisites" → Google OAuth client.
 
 ### 3. Run locally
 
@@ -79,7 +84,7 @@ The complete checklist — including which steps Terraform handles automatically
 
 ## Makefile reference
 
-The repo's Makefile is a thin convenience layer over `go`, `pnpm`, and `gqlgen` — every target is a one- or two-line shell recipe. Running `make` with no argument prints the same table:
+The repo's Makefile is a thin convenience layer over `go`, `pnpm`, `gqlgen`, and an Ansible playbook (`playbooks/setup.yml`) that owns env-file generation and Supabase lifecycle. Running `make` with no argument prints the same table:
 
 ```bash
 make                  # shows this help (DEFAULT_GOAL)
@@ -87,7 +92,11 @@ make                  # shows this help (DEFAULT_GOAL)
 
 | Target | What it does | Underlying command |
 |---|---|---|
-| `make install` | Install all workspace dependencies | `pnpm install` (root, hoists frontend) |
+| `make setup` | One-shot first-time setup (assumes prerequisites are installed) | `check-docker` → `mise install` → `ansible-playbook playbooks/setup.yml` |
+| `make sync-env` | Idempotent env sync: seed `./.env` from example, derive `frontend/.env.local` keys from `supabase status -o env`, seed `backend/.env.local` | `ansible-playbook ... --tags sync-env` |
+| `make check-google-oauth` | Verify root `./.env` has real Google OAuth credentials (warns if placeholder) | `ansible-playbook ... --tags google-check` |
+| `make supabase-restart` | Stop and re-boot Supabase so it picks up edits to `./.env` | `supabase stop && ansible-playbook ... --tags supabase` |
+| `make install` | Install all workspace dependencies | `ansible-playbook ... --tags pnpm` |
 | `make dev-backend` | Start the Go / Echo backend on port 1323 | `cd backend && go run ./cmd/server` |
 | `make dev-frontend` | Start the Next.js 16 dev server on port 3000 | `pnpm --filter frontend dev` |
 | `make codegen` | Regenerate GraphQL bindings on both sides from `schema/*.graphql` | `go tool gqlgen generate` (backend) + `pnpm --filter frontend codegen` |
