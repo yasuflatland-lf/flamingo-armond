@@ -20,6 +20,18 @@
   when: step == 'create'
   block:
 
+    - name: Phase 2 (Step 1) cannot run in unattended mode
+      ansible.builtin.fail:
+        msg: |
+          Phase 2 Step 1 (supabase create) requires interactive operator input from the
+          Supabase dashboard (project ref, publishable anon key, session pooler DSN).
+          Cannot run with confirm=true.
+
+          Either run interactively (default), or pre-populate supabase_project_ref,
+          supabase_anon_key, supabase_db_url (and the derived URLs) in {{ state_file }}
+          and skip Step 1 with --skip-tags supabase.
+      when: confirm | bool and step == 'create'
+
     # --- Load existing state so prompts can show current defaults. -------
     - name: Load state file if it exists (Step 1)
       ansible.builtin.include_vars:
@@ -187,6 +199,18 @@
 - name: "Step 4 - Supabase loopback"
   when: step == 'loopback'
   block:
+
+    - name: Phase 5 (Step 4 loopback) cannot run in unattended mode
+      ansible.builtin.fail:
+        msg: |
+          Phase 5 Step 4 (supabase loopback) requires the operator to update Site URL,
+          Redirect URLs, and Google OAuth redirect URI on external dashboards. These
+          cannot be applied programmatically. Cannot run with confirm=true.
+
+          Run interactively to see the values to paste into:
+            - Supabase Auth -> URL Configuration
+            - Google Cloud Console -> OAuth client redirect URIs
+      when: confirm | bool and step == 'loopback'
 
     # --- Load state. Phase 4 (vercel) must have written production_url. --
     - name: Load state file (Step 4)

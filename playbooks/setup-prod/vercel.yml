@@ -14,6 +14,19 @@
 # the HEAD probe in Phase 6 (postapply) absorbs the first deployment.
 
 # ---------------------------------------------------------------------------
+# Phase 4 cannot run in unattended mode.
+# ---------------------------------------------------------------------------
+- name: Phase 4 cannot run in unattended mode
+  ansible.builtin.fail:
+    msg: |
+      Phase 4 (vercel) requires interactive operator input from the Vercel dashboard
+      (project ID, production URL). Cannot run with confirm=true.
+
+      Either run interactively (default), or pre-populate vercel_project_id and
+      production_url in {{ state_file }} and skip Phase 4 entirely with --skip-tags vercel.
+  when: confirm | bool
+
+# ---------------------------------------------------------------------------
 # Load state and assert upstream phases have completed.
 # ---------------------------------------------------------------------------
 - name: Load state file (Phase 4)
