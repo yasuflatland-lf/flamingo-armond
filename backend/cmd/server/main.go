@@ -15,6 +15,7 @@ import (
 	"github.com/99designs/gqlgen/graphql/handler/lru"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/99designs/gqlgen/graphql/playground"
+	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 	"github.com/ravilushqa/otelgqlgen"
@@ -216,6 +217,11 @@ func run(ctx context.Context, logger *slog.Logger) error {
 func main() {
 	logger := slog.New(logging.NewContextHandler(slog.NewJSONHandler(os.Stderr, nil), internalmw.RequestIDFromContext))
 	slog.SetDefault(logger)
+
+	// Load .env.local for local dev. godotenv.Load does not override
+	// process-supplied env, so production (Render) keeps its platform-injected
+	// values. Missing file is expected outside local dev and is not an error.
+	_ = godotenv.Load(".env.local")
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()

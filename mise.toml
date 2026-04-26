@@ -1,8 +1,13 @@
 # Auto-exports env files into the shell:
-#   - `.env`               -> Google OAuth credentials so `supabase start`
-#                             resolves env() placeholders in supabase/config.toml.
-#   - `backend/.env.local` -> JWKS / JWT / DB config so `go run ./cmd/server`
-#                             sees the values written by `make sync-env`.
+#   - `.env` -> Google OAuth credentials so `supabase start` resolves env()
+#               placeholders in supabase/config.toml.
+#
+# `backend/.env.local` is intentionally NOT auto-exported: backend env keys
+# (PORT, SUPABASE_*, etc.) collide with names other tooling reads — Next.js
+# binds to $PORT by default — so we keep them scoped to the backend process.
+# `go run ./cmd/server` loads `backend/.env.local` itself via godotenv.
+# `frontend/.env.local` is loaded natively by Next.js from its own CWD.
+#
 # Tool pinning lives in `.tool-versions`; see that file for the canonical list.
 # Exception: dev runtime tooling (Rust + mprocs) lives here so it can ride
 # alongside [env]. mprocs is built from source via the cargo backend, which
@@ -13,4 +18,4 @@ rust = "latest"
 "cargo:mprocs" = "latest"
 
 [env]
-_.file = [".env", "backend/.env.local"]
+_.file = [".env"]
