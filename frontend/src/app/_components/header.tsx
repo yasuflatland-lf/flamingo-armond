@@ -8,9 +8,11 @@ export async function Header() {
     data: { user },
     error,
   } = await supabase.auth.getUser();
-  if (error) {
-    // Degrade gracefully on auth-service errors: showing email or a sign-in
-    // link could mislead the user about their actual session state.
+  // "AuthSessionMissingError" is the normal anonymous case — fall through to
+  // the "Sign in" branch below. Only a different auth-service error means we
+  // genuinely cannot tell the user's state, in which case we degrade by
+  // hiding both the email and the sign-in link to avoid misleading them.
+  if (error && error.name !== "AuthSessionMissingError") {
     console.error("[header] getUser() failed:", error.message);
     return (
       <header className="flex items-center justify-between border-b px-6 py-3">
