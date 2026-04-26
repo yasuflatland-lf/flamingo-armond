@@ -51,7 +51,7 @@ The playbook persists collected values across phases in a YAML file at the repo 
 |---|---|
 | Path | `<repo-root>/.setup-prod.state.yml` |
 | Permissions | `0600` (re-asserted on every write) |
-| Backup | `<file>.<timestamp>~` siblings created on every write (`copy: backup: yes`); each is also chmod-ed to `0600`. |
+| Backup | `<file>.<pid>.<timestamp>~` siblings created on every write (`copy: backup: yes`). Mode bits are preserved from the source (already `0600`). |
 | Vault | Not encrypted; gitignore + `0600` is the baseline |
 | Tier 1 secrets | `supabase_db_url` (DB password embedded). Do not share, copy across machines, or print on screen-share. |
 | Tier 2 publishable | `supabase_anon_key`. Safe to display on the operator's own screen. |

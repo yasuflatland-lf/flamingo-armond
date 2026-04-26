@@ -209,25 +209,15 @@
                }) }}
       no_log: true
 
+    # `backup: yes` uses shutil.copy2 which preserves source mode bits, so
+    # the backup is already created at 0600 (matching the live state file).
     - name: Persist state file (mode 0600 + backup)
       ansible.builtin.copy:
         content: "{{ state_merged | to_nice_yaml(sort_keys=true) }}"
         dest: "{{ state_file }}"
         mode: "0600"
         backup: yes
-      register: _state_persist
       no_log: true
-
-    # Ansible's `backup: yes` writes the backup file with default umask
-    # (typically 0644), so the prior DB password would briefly land at
-    # world-readable mode. Re-chmod the most recent backup to 0600.
-    - name: Lock down state-file backup mode
-      ansible.builtin.file:
-        path: "{{ _state_persist.backup_file }}"
-        mode: "0600"
-      when:
-        - _state_persist.backup_file is defined
-        - (_state_persist.backup_file | length) > 0
 
     # --- One-shot security warning, only on the very first state write. -
     - name: Show first-write security warning
