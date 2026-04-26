@@ -22,11 +22,12 @@
       "semanticCommitScope": "backend"
     },
     {
-      "description": "Frontend (npm / pnpm)",
+      "description": "Frontend (npm / pnpm). Override rangeStrategy to 'replace' so engines constraints (e.g. node >=24.0.0 <25.0.0) and caret ranges are only rewritten when the new version no longer satisfies them; the top-level 'bump' default would otherwise churn lower bounds on every patch.",
       "matchManagers": ["npm"],
       "groupName": "frontend dependencies",
       "addLabels": ["frontend", "dependencies"],
-      "semanticCommitScope": "frontend"
+      "semanticCommitScope": "frontend",
+      "rangeStrategy": "replace"
     },
     {
       "description": "GitHub Actions",
@@ -36,11 +37,30 @@
       "semanticCommitScope": "ci"
     },
     {
-      "description": "Terraform / IaC (providers, modules, toolchain)",
-      "matchManagers": ["terraform", "terraform-version"],
+      "description": "Terraform / IaC (providers, modules). The terraform-version manager (which reads .terraform-version) is intentionally omitted: this repo pins the Terraform CLI through mise (ops/terraform/mise.toml), not tfenv.",
+      "matchManagers": ["terraform"],
       "groupName": "terraform dependencies",
       "addLabels": ["infra", "dependencies"],
       "semanticCommitScope": "ops"
+    },
+    {
+      "description": "Toolchain pins managed by mise (.tool-versions, mise.toml). Covers Go, Node, pnpm, supabase CLI, python, ansible-core, rust, mprocs.",
+      "matchManagers": ["mise"],
+      "groupName": "toolchain (mise)",
+      "addLabels": ["toolchain", "dependencies"],
+      "semanticCommitScope": "deps"
+    },
+    {
+      "description": "Bundle the Go toolchain pin in mise (.tool-versions) with the 'go' directive in backend/go.mod into a single PR, so they cannot drift apart between CI (mise-action) and the module graph.",
+      "matchManagers": ["mise", "gomod"],
+      "matchPackageNames": ["go", "golang"],
+      "groupName": "go toolchain"
+    },
+    {
+      "description": "Bundle the pnpm pin in mise (.tool-versions) with the packageManager field in root package.json into a single PR. Vercel reads packageManager (no mise on Vercel), CI reads .tool-versions; both must move together.",
+      "matchManagers": ["mise", "npm"],
+      "matchPackageNames": ["pnpm"],
+      "groupName": "pnpm toolchain"
     },
     {
       "description": "Auto-merge minor and patch updates after CI passes",
@@ -54,7 +74,12 @@
     },
     {
       "description": "Terraform updates require human review. IaC changes apply directly to production infrastructure (Vercel/Render/Supabase), so even minor provider bumps can cause drift or unexpected resource churn during the next plan/apply.",
-      "matchManagers": ["terraform", "terraform-version"],
+      "matchManagers": ["terraform"],
+      "automerge": false
+    },
+    {
+      "description": "Toolchain (mise) bumps require human review. Runtime version changes (Go, Node, pnpm, supabase CLI) can shift build/test behavior even on patch releases and propagate into CI via .tool-versions, so a bad bump can break every workflow at once.",
+      "matchManagers": ["mise"],
       "automerge": false
     },
     {
@@ -76,8 +101,10 @@
     "automerge": true
   },
   "vulnerabilityAlerts": {
+    "enabled": true,
     "labels": ["security"],
     "minimumReleaseAge": null,
+    "prPriority": 10,
     "automerge": false
   }
 }
