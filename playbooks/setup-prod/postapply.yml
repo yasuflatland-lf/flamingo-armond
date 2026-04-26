@@ -1,0 +1,152 @@
+---
+# Phase 6: postapply -- fully automated final phase.
+#
+# Reads:  state file (render_service_id, backend_url, production_url).
+# Writes: nothing (state is read-only here).
+#
+# Flow:
+#   1. Load state and verify the three keys this phase depends on.
+#   2. Pull RENDER_API_KEY from the environment.
+#   3. POST a deploy to Render and capture the deploy id.
+#   4. Poll the deploy until it reaches "live" (max 15 min, fast-fail on
+#      build_failed / update_failed / canceled).
+#   5. Smoke test backend /health, GraphQL /query, and the production URL HEAD.
+#   6. Print the three URLs and remind the operator that the /profile E2E
+#      check is a manual step (Google sign-in required).
+#
+# Re-run safety: this phase has no state writes, so re-running is harmless --
+# every invocation simply triggers a fresh Render deploy.
+
+- name: Load state file (postapply requires Phases 2-4 to have run)
+  ansible.builtin.include_vars:
+    file: "{{ state_file }}"
+
+- name: Assert state has the keys postapply needs
+  ansible.builtin.assert:
+    that:
+      - render_service_id is defined and (render_service_id | length) > 0
+      - backend_url is defined and (backend_url | length) > 0
+      - production_url is defined and (production_url | length) > 0
+    fail_msg: |
+      State file is missing keys required by postapply:
+        render_service_id: {{ render_service_id | default('(missing)') }}
+        backend_url:       {{ backend_url | default('(missing)') }}
+        production_url:    {{ production_url | default('(missing)') }}
+      Run the prerequisite phases first:
+        - render_service_id, backend_url -> `make setup-prod-render`  (Phase 3)
+        - production_url                  -> `make setup-prod-vercel` (Phase 4)
+    success_msg: "State file looks good for postapply."
+
+- name: Read RENDER_API_KEY from the environment
+  ansible.builtin.set_fact:
+    render_api_key: "{{ lookup('env', 'RENDER_API_KEY') }}"
+  no_log: true
+
+- name: Fail fast if RENDER_API_KEY is empty
+  ansible.builtin.fail:
+    msg: |
+      RENDER_API_KEY is not set in the environment.
+      Preflight should have caught this -- run `make setup-prod-preflight`
+      and confirm `.env` (or your shell) exports a valid Render API key.
+  when: (render_api_key | length) == 0
+
+- name: Trigger a Render deploy
+  ansible.builtin.uri:
+    url: "https://api.render.com/v1/services/{{ render_service_id }}/deploys"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ render_api_key }}"
+      Accept: "application/json"
+    body_format: json
+    body: {}
+    status_code: [201]
+  register: deploy_kick
+  no_log: true
+
+- name: Capture the new deploy id
+  ansible.builtin.set_fact:
+    deploy_id: "{{ deploy_kick.json.id }}"
+
+- name: Show the deploy id (operator can cross-check Render dashboard)
+  ansible.builtin.debug:
+    msg: "Render deploy kicked: {{ deploy_id }}"
+
+# Poll up to 60 * 15s = 15 minutes. Terminal failure states abort early so we
+# do not burn the whole timeout on a build that is already lost.
+- name: "Wait for Render deploy ({{ deploy_id }}) to reach live status"
+  ansible.builtin.uri:
+    url: "https://api.render.com/v1/services/{{ render_service_id }}/deploys/{{ deploy_id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ render_api_key }}"
+      Accept: "application/json"
+    status_code: [200]
+  register: deploy_status
+  until: deploy_status.json.status == 'live'
+  retries: 60
+  delay: 15
+  failed_when: deploy_status.json.status in ['build_failed', 'update_failed', 'canceled']
+  no_log: true
+
+- name: Smoke 1 - backend /health returns 200
+  ansible.builtin.uri:
+    url: "{{ backend_url }}/health"
+    method: GET
+    status_code: 200
+
+- name: Smoke 2 - GraphQL /query reports health
+  ansible.builtin.uri:
+    url: "{{ backend_url }}/query"
+    method: POST
+    body_format: json
+    body:
+      query: "{ health }"
+    status_code: 200
+  register: gql
+
+- name: Smoke 2 (assert) - GraphQL data.health == "ok"
+  ansible.builtin.assert:
+    that:
+      - gql.json.data.health == "ok"
+    fail_msg: |
+      GraphQL health check returned an unexpected payload:
+        {{ gql.json | to_nice_json }}
+    success_msg: "GraphQL health check returned data.health == 'ok'."
+
+# Vercel cold starts can stretch a few seconds on first hit; absorb that with
+# a short retry loop. If we still fail, the most likely cause is an empty
+# `main` -- Vercel never produced a build because there is nothing to build.
+- name: Smoke 3 - frontend HEAD returns 200 (with cold-start retry)
+  ansible.builtin.uri:
+    url: "{{ production_url }}"
+    method: HEAD
+    status_code: 200
+  register: frontend_head
+  until: frontend_head.status == 200
+  retries: 6
+  delay: 10
+  failed_when: false
+
+- name: Smoke 3 (assert) - frontend reachable
+  ansible.builtin.assert:
+    that:
+      - frontend_head.status == 200
+    fail_msg: |
+      Frontend HEAD {{ production_url }} did not return 200 after retries
+      (last status: {{ frontend_head.status | default('(none)') }}).
+      Most likely cause: `main` is empty, so Vercel has not produced a
+      production build yet. Push a commit to `main` and let the Vercel
+      app deploy, then re-run `make setup-prod-postapply`.
+    success_msg: "Frontend reachable: HEAD {{ production_url }} -> 200."
+
+- name: Final summary - production endpoints
+  ansible.builtin.debug:
+    msg:
+      - "Production bring-up complete."
+      - "  Backend health:  {{ backend_url }}/health"
+      - "  Backend GraphQL: {{ backend_url }}/query"
+      - "  Frontend:        {{ production_url }}"
+      - ""
+      - "Manual follow-up: sign in with Google on the frontend and load /profile"
+      - "to exercise the full Vercel -> Render -> Supabase chain."
+      - "See docs/deployment.md section 'Smoke tests after the initial setup'."
