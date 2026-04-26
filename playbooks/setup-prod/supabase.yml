@@ -49,10 +49,13 @@
         name: existing_state
       when: _state_stat.stat.exists
 
-    - name: Initialize empty existing_state for first-run case
+    # Coerce to a mapping. Covers (a) first run -- file absent, var unset --
+    # and (b) file present but YAML is null/empty/whitespace -- include_vars
+    # leaves existing_state as None, on which `| length` and `.<key>` access
+    # both raise before any default filter applies.
+    - name: Ensure existing_state is a mapping
       ansible.builtin.set_fact:
-        existing_state: {}
-      when: not _state_stat.stat.exists
+        existing_state: "{{ existing_state if (existing_state is defined and existing_state is mapping) else {} }}"
 
     # First-write detector: true only when the state file did not yet exist
     # (or was empty). Used to gate the one-shot security warning at the
@@ -144,17 +147,22 @@
              else existing_state.supabase_db_url | default('') }}
       no_log: true
 
-    # Catch transaction-pooler / non-pooler mistakes early. golang-migrate
-    # uses advisory locks that need a real session, so we require the
-    # session pooler host (contains "pooler") plus sslmode=require.
+    # Catch non-pooler and transaction-pooler mistakes early. golang-migrate
+    # uses advisory locks that need a real session. Both pooler types share
+    # the `*.pooler.supabase.com` hostname; session pooler uses port 5432
+    # (which we require) and transaction pooler uses port 6543 (rejected).
+    # Direct connections lack the `pooler` substring entirely.
     - name: Validate supabase_db_url shape (session pooler + sslmode)
       ansible.builtin.assert:
         that:
           - "'?sslmode=require' in supabase_db_url"
           - "'pooler' in supabase_db_url"
+          - "':6543' not in supabase_db_url"
         fail_msg: >-
-          supabase_db_url must come from the Session pooler tab and include
-          ?sslmode=require. Re-copy from Connect -> Session pooler.
+          supabase_db_url must come from the Session pooler tab (port :5432)
+          and include ?sslmode=require. The transaction pooler (port :6543)
+          does not support golang-migrate's advisory locks. Re-copy from
+          Connect -> Session pooler.
       no_log: true
 
     # --- Light reachability probe. REST root may return 404 but proves

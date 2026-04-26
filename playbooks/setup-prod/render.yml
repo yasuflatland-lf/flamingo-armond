@@ -185,10 +185,15 @@
   no_log: true
 
 # --- Register deploy hook as GitHub Actions secret ---
+# `stdin_add_newline: false` is critical: the default true would store the
+# deploy-hook URL with a trailing `\n`, which makes the CI's
+# `curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"` fail with code=000 and break
+# every push-triggered deploy until the secret is manually re-set.
 - name: Register RENDER_DEPLOY_HOOK_URL as a GitHub Actions secret
   ansible.builtin.shell:
     cmd: gh secret set RENDER_DEPLOY_HOOK_URL --repo {{ repo }}
     stdin: "{{ deploy_hook_url }}"
+    stdin_add_newline: false
   register: _gh_secret_result
   no_log: true
   failed_when: false
