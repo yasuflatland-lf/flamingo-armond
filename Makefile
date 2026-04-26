@@ -1,12 +1,47 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help dev-backend dev-frontend codegen install test
+.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart sync-env install supabase-start check-google-oauth dev-backend dev-frontend codegen test
+
+# Most env / Supabase targets dispatch to the playbook below; tags select the subset.
+ANSIBLE := ansible-playbook -i playbooks/inventory.local playbooks/setup.yml
 
 help: ## Show this help
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-install: ## Install dependencies via pnpm at the repo root (includes the frontend workspace)
-	pnpm install
+setup: notice-prereqs check-docker mise-install ## One-shot initial setup: pnpm + supabase + sync env + google check (via Ansible)
+	@$(ANSIBLE)
+
+notice-prereqs: ## Up-front notice about manual prerequisites that run in parallel with setup
+	@echo ""
+	@echo "NOTE: Before this finishes you'll need a Google OAuth client for LOCAL dev."
+	@echo "      While Docker pulls images, you can create one in parallel:"
+	@echo "        -> docs/dev-setup.md section 'Supabase CLI' -> 'Auth flow (read this first)'"
+	@echo "      (Production uses a SEPARATE OAuth client managed via Terraform; see"
+	@echo "       docs/deployment.md section 'Manual prerequisites' -> Google OAuth client.)"
+	@echo ""
+
+install: ## Install pnpm workspace dependencies (Ansible-managed for change detection)
+	@$(ANSIBLE) --tags pnpm
+
+supabase-start: ## Boot local Supabase (no-op if already running, via Ansible)
+	@$(ANSIBLE) --tags supabase
+
+supabase-restart: ## Stop and re-boot local Supabase (use after editing .env Google credentials)
+	-supabase stop
+	@$(ANSIBLE) --tags supabase
+
+sync-env: ## Idempotently sync .env (root) + frontend/backend .env.local using marker-aware ownership
+	@$(ANSIBLE) --tags sync-env
+
+check-google-oauth: ## Verify Google OAuth credentials are set in root .env (warns if placeholder/missing)
+	@$(ANSIBLE) --tags google-check
+
+check-docker: ## Verify the Docker daemon is reachable (required by supabase start)
+	@docker info >/dev/null 2>&1 || { echo "ERROR: Docker daemon not reachable. Start Docker Desktop, then re-run."; exit 1; }
+
+mise-install: ## Install pinned tools via mise (auto-trusts mise.toml; provisions Python + ansible-core)
+	@mise trust mise.toml >/dev/null 2>&1 || true
+	@mise install
 
 dev-backend: ## Run the backend dev server on port 1323
 	cd backend && go run ./cmd/server
