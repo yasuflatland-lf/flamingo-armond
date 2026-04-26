@@ -61,45 +61,82 @@
     cmd: gh auth status
   register: gh_auth_result
   changed_when: false
+  # rc != 0 is expected when not logged in; the next task surfaces it cleanly
   failed_when: false
 
 - name: Fail if GitHub CLI is not authenticated
   ansible.builtin.fail:
     msg: |
       GitHub CLI is not authenticated (rc={{ gh_auth_result.rc }}).
-      Run the following and follow the prompts:
-        gh auth login
-      Then re-run this playbook.
+
+      gh diagnostic:
+      {{ gh_auth_result.stderr | default('(no stderr)') }}
+      {{ gh_auth_result.stdout | default('') }}
+
+      Authenticate with: gh auth login -s repo
   when: gh_auth_result.rc != 0
 
 # --- Token API reachability checks ---
 
 - name: Verify SUPABASE_ACCESS_TOKEN reaches Supabase API
-  ansible.builtin.uri:
-    url: https://api.supabase.com/v1/organizations
-    method: GET
-    headers:
-      Authorization: "Bearer {{ supabase_pat }}"
-    status_code: 200
-  no_log: true
+  block:
+    - name: GET https://api.supabase.com/v1/organizations
+      ansible.builtin.uri:
+        url: https://api.supabase.com/v1/organizations
+        method: GET
+        headers:
+          Authorization: "Bearer {{ supabase_pat }}"
+        status_code: 200
+      no_log: true
+  rescue:
+    - name: Surface Supabase token rejection
+      ansible.builtin.fail:
+        msg: |
+          Supabase API rejected SUPABASE_ACCESS_TOKEN (auth or reachability failed).
+
+          Rotate at: https://supabase.com/dashboard/account/tokens
+          Update SUPABASE_ACCESS_TOKEN in .env, then re-run:
+            make setup-prod-preflight
 
 - name: Verify RENDER_API_KEY reaches Render API
-  ansible.builtin.uri:
-    url: https://api.render.com/v1/owners
-    method: GET
-    headers:
-      Authorization: "Bearer {{ render_api_key }}"
-    status_code: 200
-  no_log: true
+  block:
+    - name: GET https://api.render.com/v1/owners
+      ansible.builtin.uri:
+        url: https://api.render.com/v1/owners
+        method: GET
+        headers:
+          Authorization: "Bearer {{ render_api_key }}"
+        status_code: 200
+      no_log: true
+  rescue:
+    - name: Surface Render token rejection
+      ansible.builtin.fail:
+        msg: |
+          Render API rejected RENDER_API_KEY (auth or reachability failed).
+
+          Rotate at: https://dashboard.render.com/u/settings#api-keys
+          Update RENDER_API_KEY in .env, then re-run:
+            make setup-prod-preflight
 
 - name: Verify VERCEL_API_TOKEN reaches Vercel API
-  ansible.builtin.uri:
-    url: https://api.vercel.com/v2/user
-    method: GET
-    headers:
-      Authorization: "Bearer {{ vercel_token }}"
-    status_code: 200
-  no_log: true
+  block:
+    - name: GET https://api.vercel.com/v2/user
+      ansible.builtin.uri:
+        url: https://api.vercel.com/v2/user
+        method: GET
+        headers:
+          Authorization: "Bearer {{ vercel_token }}"
+        status_code: 200
+      no_log: true
+  rescue:
+    - name: Surface Vercel token rejection
+      ansible.builtin.fail:
+        msg: |
+          Vercel API rejected VERCEL_API_TOKEN (auth or reachability failed).
+
+          Rotate at: https://vercel.com/account/tokens
+          Update VERCEL_API_TOKEN in .env, then re-run:
+            make setup-prod-preflight
 
 # --- GitHub App installation checks ---
 
