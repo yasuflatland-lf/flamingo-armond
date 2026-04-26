@@ -1,0 +1,65 @@
+---
+# Production bring-up playbook for flamingo-armond.
+#
+# Run the full sequence:
+#   ansible-playbook playbooks/setup-prod.yml
+#
+# Run a single phase by tag:
+#   ansible-playbook playbooks/setup-prod.yml --tags preflight
+#   ansible-playbook playbooks/setup-prod.yml --tags supabase
+#   ansible-playbook playbooks/setup-prod.yml --tags render
+#   ansible-playbook playbooks/setup-prod.yml --tags vercel
+#   ansible-playbook playbooks/setup-prod.yml --tags loopback
+#   ansible-playbook playbooks/setup-prod.yml --tags postapply
+#
+# Tag map:
+#   preflight  -> Phase 1  (pre-bring-up token/app scanner)
+#   supabase   -> Phase 2  (runbook Step 1: Supabase project create)
+#   render     -> Phase 3  (runbook Step 2: Render web service)
+#   vercel     -> Phase 4  (runbook Step 3: Vercel project import)
+#   loopback   -> Phase 5  (runbook Step 4: Supabase loopback env wiring)
+#   postapply  -> Phase 6  (post-bring-up deploy kick + smoke)
+#
+# supabase.yml is imported twice with different `step` vars so that
+# --tags supabase runs only Phase 2 and --tags loopback runs only Phase 5.
+# To run both: --tags supabase,loopback
+#
+# Set confirm=true in CI to skip interactive pause tasks.
+- name: Production bring-up for flamingo-armond
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    repo: yasuflatland-lf/flamingo-armond
+    state_file: "{{ playbook_dir }}/../.setup-prod.state.yml"
+    confirm: false
+
+  tasks:
+    - name: Phase 1 - preflight
+      ansible.builtin.import_tasks: setup-prod/preflight.yml
+      tags: [preflight]
+
+    - name: Phase 2 - Supabase project create (runbook Step 1)
+      ansible.builtin.import_tasks: setup-prod/supabase.yml
+      vars:
+        step: create
+      tags: [supabase]
+
+    - name: Phase 3 - Render web service (runbook Step 2)
+      ansible.builtin.import_tasks: setup-prod/render.yml
+      tags: [render]
+
+    - name: Phase 4 - Vercel project import (runbook Step 3)
+      ansible.builtin.import_tasks: setup-prod/vercel.yml
+      tags: [vercel]
+
+    - name: Phase 5 - Supabase loopback (runbook Step 4)
+      ansible.builtin.import_tasks: setup-prod/supabase.yml
+      vars:
+        step: loopback
+      tags: [loopback]
+
+    - name: Phase 6 - Render deploy kick + smoke
+      ansible.builtin.import_tasks: setup-prod/postapply.yml
+      tags: [postapply]

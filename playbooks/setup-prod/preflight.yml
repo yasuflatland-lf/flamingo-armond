@@ -1,0 +1,164 @@
+---
+# Phase 1 - preflight
+#
+# Verifies that all required API tokens are present and valid, and that the
+# Render and Vercel GitHub Apps are installed on the target repository.
+# Aims for ~10 second runtime so it can be run as a lightweight scanner at
+# any point before or during the bring-up sequence.
+#
+# Standalone usage:
+#   ansible-playbook playbooks/setup-prod.yml --tags preflight
+#
+# What is checked:
+#   - SUPABASE_ACCESS_TOKEN, RENDER_API_KEY, VERCEL_API_TOKEN env vars are set
+#   - `gh auth status` passes (GitHub CLI authenticated)
+#   - Each token reaches its API successfully (Supabase / Render / Vercel)
+#   - GitHub Apps `render` and `vercel` are installed on {{ repo }}
+#   - Operator reminder: Google OAuth client (Manual prereq section 3) cannot
+#     be API-verified; a skippable pause is shown instead
+#
+# What is NOT touched (no writes):
+#   - No secrets are written to disk
+#   - No remote resources are created or modified
+
+# --- Read tokens from environment ---
+
+- name: Read SUPABASE_ACCESS_TOKEN from environment
+  ansible.builtin.set_fact:
+    supabase_pat: "{{ lookup('env', 'SUPABASE_ACCESS_TOKEN') }}"
+
+- name: Read RENDER_API_KEY from environment
+  ansible.builtin.set_fact:
+    render_api_key: "{{ lookup('env', 'RENDER_API_KEY') }}"
+
+- name: Read VERCEL_API_TOKEN from environment
+  ansible.builtin.set_fact:
+    vercel_token: "{{ lookup('env', 'VERCEL_API_TOKEN') }}"
+
+# --- Assert tokens are non-empty ---
+
+- name: Assert required API tokens are present
+  ansible.builtin.assert:
+    that:
+      - supabase_pat | length > 0
+      - render_api_key | length > 0
+      - vercel_token | length > 0
+    fail_msg: |
+      One or more required API tokens are missing from the environment.
+      Add the following keys to your .env file (loaded via `mise` or `direnv`):
+
+        SUPABASE_ACCESS_TOKEN=<from https://supabase.com/dashboard/account/tokens>
+        RENDER_API_KEY=<from https://dashboard.render.com/u/<user>/account/api-keys>
+        VERCEL_API_TOKEN=<from https://vercel.com/account/tokens>
+
+      Then re-source the file:
+        source .env   # or restart your shell if using direnv / mise
+
+# --- GitHub CLI authentication ---
+
+- name: Check GitHub CLI authentication status
+  ansible.builtin.command:
+    cmd: gh auth status
+  register: gh_auth_result
+  changed_when: false
+  failed_when: false
+
+- name: Fail if GitHub CLI is not authenticated
+  ansible.builtin.fail:
+    msg: |
+      GitHub CLI is not authenticated (rc={{ gh_auth_result.rc }}).
+      Run the following and follow the prompts:
+        gh auth login
+      Then re-run this playbook.
+  when: gh_auth_result.rc != 0
+
+# --- Token API reachability checks ---
+
+- name: Verify SUPABASE_ACCESS_TOKEN reaches Supabase API
+  ansible.builtin.uri:
+    url: https://api.supabase.com/v1/organizations
+    method: GET
+    headers:
+      Authorization: "Bearer {{ supabase_pat }}"
+    status_code: 200
+  no_log: true
+
+- name: Verify RENDER_API_KEY reaches Render API
+  ansible.builtin.uri:
+    url: https://api.render.com/v1/owners
+    method: GET
+    headers:
+      Authorization: "Bearer {{ render_api_key }}"
+    status_code: 200
+  no_log: true
+
+- name: Verify VERCEL_API_TOKEN reaches Vercel API
+  ansible.builtin.uri:
+    url: https://api.vercel.com/v2/user
+    method: GET
+    headers:
+      Authorization: "Bearer {{ vercel_token }}"
+    status_code: 200
+  no_log: true
+
+# --- GitHub App installation checks ---
+
+- name: Fetch GitHub App installations for {{ repo }}
+  ansible.builtin.command:
+    cmd: gh api repos/{{ repo }}/installations
+  register: gh_installations_result
+  changed_when: false
+
+- name: Parse GitHub App installation slugs
+  ansible.builtin.set_fact:
+    installed_app_slugs: "{{ gh_installations_result.stdout | from_json | map(attribute='app_slug') | list }}"
+
+- name: Fail if Render GitHub App is not installed on {{ repo }}
+  ansible.builtin.fail:
+    msg: |
+      The Render GitHub App is not installed on {{ repo }}.
+      Install it at: https://github.com/apps/render
+      Grant access to the {{ repo }} repository, then re-run this playbook.
+  when: "'render' not in installed_app_slugs"
+
+- name: Fail if Vercel GitHub App is not installed on {{ repo }}
+  ansible.builtin.fail:
+    msg: |
+      The Vercel GitHub App is not installed on {{ repo }}.
+      Install it at: https://github.com/apps/vercel
+      Grant access to the {{ repo }} repository, then re-run this playbook.
+  when: "'vercel' not in installed_app_slugs"
+
+# --- Google OAuth client reminder (cannot be API-verified) ---
+
+- name: Remind operator to complete Google OAuth client setup (Manual prereq section 3)
+  ansible.builtin.pause:
+    prompt: |
+
+      MANUAL PREREQUISITE - Google OAuth client (Manual prereq section 3)
+      This step cannot be verified via API and must be completed in the browser.
+
+      Before continuing, confirm you have:
+        1. Created a Google Cloud project (or selected an existing one)
+        2. Enabled the Google+ API / People API
+        3. Created OAuth 2.0 credentials and noted the Client ID and Client Secret
+        4. Added the production callback URL to the authorized redirect URIs:
+             https://<your-supabase-project-ref>.supabase.co/auth/v1/callback
+
+      Press Enter to confirm you have completed the above steps (or Ctrl+C to abort).
+  when: not confirm
+
+# --- Summary ---
+
+- name: Preflight passed
+  ansible.builtin.debug:
+    msg:
+      - "Preflight passed. All checks completed successfully."
+      - ""
+      - "Verified:"
+      - "  - SUPABASE_ACCESS_TOKEN: present and accepted by api.supabase.com"
+      - "  - RENDER_API_KEY:        present and accepted by api.render.com"
+      - "  - VERCEL_API_TOKEN:      present and accepted by api.vercel.com"
+      - "  - GitHub CLI:            authenticated (gh auth status OK)"
+      - "  - GitHub App render:     installed on {{ repo }}"
+      - "  - GitHub App vercel:     installed on {{ repo }}"
