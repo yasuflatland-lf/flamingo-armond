@@ -122,20 +122,50 @@
   when: deploy_status.json.status is defined and deploy_status.json.status != 'live'
 
 - name: Smoke 1 - backend /health returns 200
-  ansible.builtin.uri:
-    url: "{{ backend_url }}/health"
-    method: GET
-    status_code: 200
+  block:
+    - name: "Smoke 1 - GET {{ backend_url }}/health"
+      ansible.builtin.uri:
+        url: "{{ backend_url }}/health"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: health_resp
+  rescue:
+    - name: Smoke 1 (fail) - /health did not return 200
+      ansible.builtin.fail:
+        msg: |
+          Backend /health did not return 200.
+            URL    : {{ backend_url }}/health
+            status : {{ health_resp.status | default('(connection error)') }}
+            body   : {{ health_resp.content | default(health_resp.msg | default('(none)')) }}
+          Likely causes:
+            - 503 / cold-start race: deploy reached `live` but boot is still
+              in progress. Wait ~30s and re-run `make setup-prod-postapply`.
+            - 5xx: check Render logs for application errors.
 
 - name: Smoke 2 - GraphQL /query reports health
-  ansible.builtin.uri:
-    url: "{{ backend_url }}/query"
-    method: POST
-    body_format: json
-    body:
-      query: "{ health }"
-    status_code: 200
-  register: gql
+  block:
+    - name: "Smoke 2 - POST {{ backend_url }}/query"
+      ansible.builtin.uri:
+        url: "{{ backend_url }}/query"
+        method: POST
+        body_format: json
+        body:
+          query: "{ health }"
+        status_code: 200
+        return_content: true
+      register: gql
+  rescue:
+    - name: Smoke 2 (fail) - /query did not return 200
+      ansible.builtin.fail:
+        msg: |
+          Backend GraphQL /query did not return 200.
+            URL    : {{ backend_url }}/query
+            status : {{ gql.status | default('(connection error)') }}
+            body   : {{ gql.content | default(gql.msg | default('(none)')) }}
+          Likely causes:
+            - 502 from Render edge during deploy cutover -- retry in ~30s.
+            - 5xx: check Render logs for application errors.
 
 - name: Smoke 2 (assert) - GraphQL data.health == "ok"
   ansible.builtin.assert:

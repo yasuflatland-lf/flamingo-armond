@@ -162,10 +162,26 @@
 # --- GitHub App installation checks ---
 
 - name: Fetch GitHub App installations for {{ repo }}
-  ansible.builtin.command:
-    cmd: gh api repos/{{ repo }}/installations
-  register: gh_installations_result
-  changed_when: false
+  block:
+    - name: Run gh api repos/{{ repo }}/installations
+      ansible.builtin.command:
+        cmd: gh api repos/{{ repo }}/installations
+      register: gh_installations_result
+      changed_when: false
+  rescue:
+    - name: Surface gh api failure with remediation
+      ansible.builtin.fail:
+        msg: |
+          Failed to query GitHub App installations on {{ repo }} via `gh api`.
+
+            rc     : {{ gh_installations_result.rc | default('(none)') }}
+            stderr : {{ gh_installations_result.stderr | default('(none)') }}
+            stdout : {{ gh_installations_result.stdout | default('(none)') }}
+
+          Common causes:
+            - 404: `repo` value '{{ repo }}' is wrong, or your gh login lacks access to it.
+            - 401: gh CLI lost the `repo` scope. Re-run: gh auth refresh -s repo
+            - rate limit: wait a minute and retry.
 
 - name: Parse GitHub App installation slugs
   ansible.builtin.set_fact:
