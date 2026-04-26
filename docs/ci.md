@@ -6,14 +6,14 @@ Operational decisions around GitHub Actions and external services that are not o
 
 Two independent workflows: `.github/workflows/backend.yml` and `.github/workflows/frontend.yml`.
 
-- **Triggers are `paths:`-scoped** per workflow — backend to `backend/**` + workflow file + `render.yaml`; frontend to `frontend/**` + `schema/**` + the root pnpm/workspace/tool-version manifests + the frontend workflow file. When adding a third service, **add its own workflow** — do not broaden an existing one. Mixing scopes breaks CI granularity and responsibility.
+- **Triggers are `paths:`-scoped** per workflow — backend to `backend/**` + workflow file + `ops/terraform/modules/render/**`; frontend to `frontend/**` + `schema/**` + the root pnpm/workspace/tool-version manifests + the frontend workflow file. When adding a third service, **add its own workflow** — do not broaden an existing one. Mixing scopes breaks CI granularity and responsibility.
 - **`concurrency` groups are per-workflow** (`backend-${{ github.ref }}`, `frontend-${{ github.ref }}`) with `cancel-in-progress: true` — rapid pushes on the same ref supersede in-flight runs per service (important for feature-branch iteration). The two workflows do not cancel each other.
 
 ## Deploy gating
 
 - The `deploy` job is `needs: test` and `if: github.event_name == 'push' && github.ref == 'refs/heads/main'` — doubly restricted.
 - If `RENDER_DEPLOY_HOOK_URL` is missing, the step **explicitly exits 1** rather than silently skipping. Missing secrets are misconfiguration and should fail loudly. **Do not replace this with a silent skip.**
-- `render.yaml` is the source of truth on the Render side: `rootDir: backend`, build `./cmd/server` to `main`, `autoDeploy: false` (deploys are push-triggered via the hook, not Render's auto-deploy), `healthCheckPath: /health`.
+- `ops/terraform/modules/render/main.tf` is the source of truth on the Render side: `root_directory = "backend"`, build `./cmd/server` to `main`, `auto_deploy = false` (deploys are push-triggered via the hook, not Render's auto-deploy), `health_check_path = "/health"`.
 
 ## Coverage requires `-covermode=atomic`
 
@@ -104,9 +104,9 @@ For the same reason, the frontend workflow's `paths:` filter includes `pnpm-lock
 
 Per "pnpm workspace filter exits 0 for missing scripts" above, a missing `test` script in `frontend/package.json` would silently pass with plain `pnpm --filter frontend test`. The current workflow runs `pnpm --filter frontend --if-present test` specifically so the step becomes a documented no-op today and **automatically activates** once PR 5 adds the `test` script plus a Vitest config — no workflow edit needed at that point. When Vitest lands, do not drop the `--if-present` flag: it stays as a guard against future script renames.
 
-### Node/pnpm provisioning via mise + corepack
+### Node/pnpm provisioning via mise
 
-The workflow uses the same `jdx/mise-action@v4` step that `backend.yml` uses, relying on the repo-root `.tool-versions` to pin Node (`nodejs 24`). `corepack enable` then activates the `packageManager` field from root `package.json` (`pnpm@9.15.0`), so the pnpm version is pinned by the repo — not by the CI runner's preinstalled toolchain. This keeps local and CI Node/pnpm versions in lockstep with a single source of truth.
+The workflow uses the same `jdx/mise-action@v4` step that `backend.yml` uses, relying on the repo-root `.tool-versions` to pin both Node (`nodejs 24`) and pnpm (`pnpm 10.33.2`). mise installs both directly, so for local dev and GitHub Actions the pnpm version is pinned by the repo — not by the CI runner's preinstalled toolchain and not by Corepack. The `packageManager` field in root `package.json` is kept aligned for two reasons that are NOT informational: (1) Vercel does not run mise, so it reads `packageManager` to choose which pnpm version to install on its build image, and (2) pnpm 10 itself uses the field as a self-consistency check and refuses to run when the executing binary disagrees with the declared version. Together these keep local, CI, and Vercel pnpm versions in lockstep with a single source of truth.
 
 ### Build-time env vars: server and client
 
@@ -121,3 +121,31 @@ CI sets dummy values at the job level for every required var:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Same as above. |
 
 No request is made during the build, so dummy values only need to satisfy the Zod schema (e.g. `z.string().url()` requires a URL-shaped string). Do **not** remove any of these: each missing env reintroduces a silent-fail shape the validation was designed to prevent. When a new required var is added to `src/env.ts`, add a corresponding dummy to the workflow's `env:` block.
+
+## Terraform CI
+
+`.github/workflows/terraform.yml` validates HCL when a push to `main` or a PR touches `ops/terraform/**` or `.github/workflows/terraform.yml`. Both triggers are path-gated like the other workflows.
+
+### What is checked
+
+- **Format** (`fmt-check` job): `terraform fmt -check -recursive` across the entire `ops/terraform/` tree. Any unformatted file fails the job immediately.
+- **Init + validate** (`validate` job): For each env stack under `ops/terraform/envs/prod/`, the job runs `terraform init -backend=false` (provider/module resolution, no real backend configured) followed by `terraform validate` (type-checks all HCL expressions and references). Reusable modules under `ops/terraform/modules/*/` are intentionally **not** listed in the matrix — every module is consumed by an env stack and is therefore validated transitively when that stack is initialized; listing them again would duplicate coverage and pay 5× the runner-setup cost. If a module is ever added without a consumer, add it to the matrix as a temporary entry until an env stack picks it up. A validate failure exits non-zero — `continue-on-error` is never used on these steps.
+
+### What is NOT checked
+
+- `terraform plan` and `terraform apply` — these require real credentials and a live backend. They are intentionally excluded from PR CI. Apply is a manual operator action.
+- Drift detection — not run in CI. Operators check drift before applying.
+- Security scanning (e.g. `tfsec`, `checkov`) — not yet wired in; add as a separate job if needed.
+- Module locking (`terraform providers lock`) — `.terraform.lock.hcl` files are not yet committed; `terraform init` downloads providers fresh on each CI run. Commit them with `terraform providers lock -platform=linux_amd64 -platform=darwin_arm64` per stack/module if pinning by hash becomes a hard requirement.
+
+### Fan-in job for matrix branch protection
+
+The `validate` job is a `strategy: matrix`, so each matrix leg becomes its own GitHub status check (`Validate ops/terraform/envs/prod/initial`, `Validate ops/terraform/envs/prod/settings`, …). If branch protection requires a specific leg by name, every other leg is unprotected — and adding a new path to the matrix silently leaves it outside the gate.
+
+`validate-all` is a trivial fan-in that depends on `[fmt-check, validate]`. Branch protection should require **`All Terraform validations passed`** (the `validate-all` job's display name), not the individual matrix legs. Adding a new path then automatically falls under the same gate. Apply the same pattern when introducing any new matrix workflow.
+
+### Settings stack and `data.terraform_remote_state`
+
+The `envs/prod/settings` stack reads the `initial` stack's outputs via `data.terraform_remote_state` with a local backend pointing at `../initial/terraform.tfstate`. That state file does not exist in CI, but `terraform validate` does **not** evaluate data sources — it only type-checks HCL expressions and references. The settings stack therefore validates cleanly without a state file, and the matrix job treats it the same as every other directory.
+
+If the remote state reference is later replaced with a Terraform Cloud / S3 backend, `terraform init -backend=false` continues to work because the flag tells Terraform to skip backend initialization entirely.

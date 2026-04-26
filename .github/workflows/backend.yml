@@ -6,13 +6,13 @@ on:
     paths:
       - 'backend/**'
       - '.github/workflows/backend.yml'
-      - 'render.yaml'
+      - 'ops/terraform/modules/render/**'
   pull_request:
     branches: [main]
     paths:
       - 'backend/**'
       - '.github/workflows/backend.yml'
-      - 'render.yaml'
+      - 'ops/terraform/modules/render/**'
 
 concurrency:
   group: backend-${{ github.ref }}

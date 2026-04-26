@@ -420,9 +420,7 @@ Control is via the `GRAPHQL_INTROSPECTION` environment variable:
 The `GET /playground` route is unaffected — the playground UI loads regardless.
 Only the `__schema` and `__type` queries are blocked when introspection is off.
 
-`render.yaml` sets `GRAPHQL_INTROSPECTION=off` for the production service.
-Dev and CI leave the variable unset, so the playground remains fully
-functional.
+`ops/terraform/modules/render/main.tf` sets `GRAPHQL_INTROSPECTION=off` for the production service. Dev and CI leave the variable unset, so the playground remains fully functional.
 
 **Tip:** When introspection is disabled, the error message is exactly `"introspection disabled"` (lowercase, no trailing punctuation). Test assertions can match on this literal string.
 

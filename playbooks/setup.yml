@@ -1,0 +1,249 @@
+---
+# Local-development setup playbook.
+#
+# Tags allow partial execution from the Makefile:
+#   ansible-playbook setup.yml --tags pnpm
+#   ansible-playbook setup.yml --tags supabase
+#   ansible-playbook setup.yml --tags sync-env
+#   ansible-playbook setup.yml --tags google-check
+- name: flamingo-armond local dev setup
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    repo_root: "{{ playbook_dir }}/.."
+    marker: "# managed-by: sync-env (delete this line to opt out of regeneration)"
+    placeholder_client_id: "YOUR_GOOGLE_CLIENT_ID_HERE"
+    placeholder_secret: "YOUR_GOOGLE_SECRET_HERE"
+
+    # Files seeded from a *.example template on first run.
+    # Each entry: { target: <path>, example: <path> }
+    seed_files:
+      - target: "{{ repo_root }}/.env"
+        example: "{{ repo_root }}/.env.example"
+      - target: "{{ repo_root }}/frontend/.env.local"
+        example: "{{ repo_root }}/frontend/.env.example"
+      - target: "{{ repo_root }}/backend/.env.local"
+        example: "{{ repo_root }}/backend/.env.example"
+
+    # Declarative mapping: pull <src> from `supabase status -o env` and write
+    # it as <tgt> into <file>. To wire a new derived var, add one row here.
+    env_mappings:
+      - src: API_URL
+        tgt: NEXT_PUBLIC_SUPABASE_URL
+        file: "{{ repo_root }}/frontend/.env.local"
+      - src: PUBLISHABLE_KEY
+        tgt: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        file: "{{ repo_root }}/frontend/.env.local"
+
+  tasks:
+    # --- pnpm install ---
+    - name: Install pnpm workspace dependencies
+      ansible.builtin.command:
+        cmd: pnpm install
+        chdir: "{{ repo_root }}"
+      register: pnpm_result
+      changed_when: "'Already up to date' not in (pnpm_result.stderr | default(''))"
+      tags: [pnpm, install]
+
+    # --- Supabase lifecycle ---
+    - name: Check whether Supabase is already running
+      ansible.builtin.command:
+        cmd: supabase status
+      register: supabase_status_check
+      changed_when: false
+      failed_when: false
+      tags: [supabase, sync-env, always]
+
+    - name: Track whether Supabase is up
+      ansible.builtin.set_fact:
+        supabase_up: "{{ supabase_status_check.rc == 0 }}"
+      tags: [supabase, sync-env, always]
+
+    - name: Boot local Supabase stack
+      ansible.builtin.command:
+        cmd: supabase start
+        chdir: "{{ repo_root }}"
+      when: not supabase_up
+      tags: [supabase]
+
+    - name: Mark Supabase up after successful boot
+      ansible.builtin.set_fact:
+        supabase_up: true
+      when: not supabase_up
+      tags: [supabase]
+
+    - name: Ensure Supabase is up before sync-env operations
+      ansible.builtin.fail:
+        msg: |
+          Supabase is not running. Start it first:
+            make supabase-start    # or `make setup` for full bring-up
+      when: not supabase_up
+      tags: [sync-env]
+
+    # --- Marker-aware ownership detection (one stat per managed file) ---
+    - name: Detect existing env files
+      ansible.builtin.stat:
+        path: "{{ item.target }}"
+      register: env_file_stat
+      loop: "{{ seed_files }}"
+      loop_control:
+        label: "{{ item.target | basename }}"
+      tags: [sync-env]
+
+    - name: Read first line of existing env files (for marker check)
+      ansible.builtin.slurp:
+        src: "{{ item.item.target }}"
+      register: env_file_head
+      loop: "{{ env_file_stat.results }}"
+      loop_control:
+        label: "{{ item.item.target | basename }}"
+      when: item.stat.exists
+      tags: [sync-env]
+
+    # Build a dict: target path -> "managed" | "user-owned" | "missing".
+    # rejectattr drops skipped slurp results (files that did not exist).
+    - name: Compute ownership for each env file
+      ansible.builtin.set_fact:
+        env_ownership: "{{ env_ownership | default({}) | combine({item.item.target: _verdict}) }}"
+      vars:
+        _matching: "{{ env_file_head.results | rejectattr('skipped', 'defined') | selectattr('item.item.target', 'equalto', item.item.target) | map(attribute='content') | map('b64decode') | list }}"
+        _first_line: "{{ (_matching | first | default('')).split('\n')[0] }}"
+        _verdict: "{{ 'missing' if not item.stat.exists else ('managed' if _first_line == marker else 'user-owned') }}"
+      loop: "{{ env_file_stat.results }}"
+      loop_control:
+        label: "{{ item.item.target | basename }}"
+      tags: [sync-env]
+
+    # --- Seed missing files from .example (prepend the marker line) ---
+    # mode 0600: .env holds OAuth secrets; the .env.local files match the same
+    # posture for safety even though they do not hold secrets today.
+    - name: Seed missing env files from .example template
+      ansible.builtin.copy:
+        dest: "{{ item.target }}"
+        content: "{{ marker }}\n{{ lookup('file', item.example) }}\n"
+        mode: "0600"
+      loop: "{{ seed_files }}"
+      loop_control:
+        label: "{{ item.target | basename }}"
+      when: env_ownership[item.target] == 'missing'
+      tags: [sync-env]
+
+    - name: Notify about user-owned env files
+      ansible.builtin.debug:
+        msg: "user-owned (no marker); skipping -- values may be stale: {{ item.target | relpath(repo_root) }}"
+      loop: "{{ seed_files }}"
+      loop_control:
+        label: "{{ item.target | basename }}"
+      when: env_ownership[item.target] == 'user-owned'
+      tags: [sync-env]
+
+    # --- Pull `supabase status -o env` and upsert derived keys ---
+    # Values arrive double-quoted (KEY="VALUE"); trim('"') strips quotes at use.
+    - name: Get supabase status as env-style key=value lines
+      ansible.builtin.command:
+        cmd: supabase status -o env
+      register: supabase_env
+      changed_when: false
+      failed_when: false
+      tags: [sync-env]
+
+    - name: Fail with context if `supabase status -o env` returned non-zero
+      ansible.builtin.fail:
+        msg: |
+          `supabase status -o env` failed (rc={{ supabase_env.rc }}).
+            stderr: {{ supabase_env.stderr | default('(empty)') }}
+          Try `make supabase-restart` to recover.
+      when: supabase_env.rc != 0
+      tags: [sync-env]
+
+    - name: Parse supabase status into a dict
+      ansible.builtin.set_fact:
+        supabase_kv: "{{ dict(supabase_env.stdout_lines | select('match', '^[A-Z0-9_]+=') | map('split', '=', 1)) }}"
+      tags: [sync-env]
+
+    - name: Upsert derived keys into managed env files
+      ansible.builtin.lineinfile:
+        path: "{{ item.file }}"
+        regexp: "^{{ item.tgt }}="
+        line: "{{ item.tgt }}={{ supabase_kv[item.src] | trim('\"') }}"
+        create: false
+        mode: "0600"
+      loop: "{{ env_mappings }}"
+      loop_control:
+        label: "{{ item.tgt }} -> {{ item.file | basename }}"
+      when:
+        - env_ownership[item.file] != 'user-owned'
+        - item.src in supabase_kv
+        - (supabase_kv[item.src] | trim('"')) | length > 0
+      tags: [sync-env]
+
+    - name: Fail if any mapping references a missing supabase status key
+      ansible.builtin.fail:
+        msg: |
+          Could not parse {{ item.src }} from `supabase status -o env`.
+          (Older Supabase CLI, or key falls outside the ^[A-Z0-9_]+= filter.)
+      loop: "{{ env_mappings }}"
+      loop_control:
+        label: "{{ item.src }}"
+      when:
+        - env_ownership[item.file] != 'user-owned'
+        - (item.src not in supabase_kv) or ((supabase_kv[item.src] | trim('"')) | length == 0)
+      tags: [sync-env]
+
+    # --- Google OAuth credentials check (root .env) ---
+    # stat-then-slurp: a missing .env produces stat.exists=false (clean path),
+    # and any slurp failure afterwards surfaces normally.
+    - name: Stat root .env for Google OAuth check
+      ansible.builtin.stat:
+        path: "{{ repo_root }}/.env"
+      register: root_env_stat
+      tags: [google-check]
+
+    - name: Read root .env for Google OAuth check
+      ansible.builtin.slurp:
+        src: "{{ repo_root }}/.env"
+      register: root_env_raw
+      when: root_env_stat.stat.exists
+      tags: [google-check]
+
+    - name: Parse root .env into a dict for credential inspection
+      ansible.builtin.set_fact:
+        root_env_kv: "{{ dict((root_env_raw.content | b64decode).split('\n') | reject('match', '^\\s*#') | reject('match', '^\\s*$') | select('match', '^[A-Z0-9_]+=') | map('split', '=', 1)) }}"
+      when: root_env_stat.stat.exists
+      tags: [google-check]
+
+    - name: Compute Google OAuth presence flag
+      ansible.builtin.set_fact:
+        google_configured: "{{ (_client_id | length > 0) and (_client_id != placeholder_client_id) and (_secret | length > 0) and (_secret != placeholder_secret) }}"
+      vars:
+        _client_id: "{{ (root_env_kv | default({})).get('SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID', '') | trim('\"') }}"
+        _secret: "{{ (root_env_kv | default({})).get('SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET', '') | trim('\"') }}"
+      tags: [google-check]
+
+    - name: Warn if Google OAuth credentials are not configured
+      ansible.builtin.debug:
+        msg:
+          - "WARNING: Google OAuth credentials are not configured yet."
+          - ""
+          - "  Edit ./.env and replace the placeholder values:"
+          - "    SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=<from Google Cloud Console>"
+          - "    SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=<from Google Cloud Console>"
+          - ""
+          - "  Then restart Supabase so it picks up the new env:"
+          - "    make supabase-restart"
+          - ""
+          - "  Step-by-step Cloud Console procedure (incl. the 127.0.0.1-vs-localhost rule):"
+          - '    -> docs/dev-setup.md section "Supabase CLI" -> "Auth flow (read this first)"'
+      when: not google_configured
+      tags: [google-check]
+
+    - name: Confirm setup complete when Google OAuth credentials are present
+      ansible.builtin.debug:
+        msg:
+          - "OK: Setup complete. Google OAuth credentials detected in ./.env."
+          - "  Start the dev servers:"
+          - "    make dev             # backend + frontend together (mprocs TUI)"
+          - "  Then sign in at http://127.0.0.1:3000/login."
+      when: google_configured
+      tags: [google-check]

@@ -1,0 +1,24 @@
+# Run with: make dev  (or `mprocs` if mprocs is on PATH).
+# Supabase is expected to be running already — it is a Docker daemon started by
+# `make setup` or `make supabase-start`. The `preflight` proc verifies this and
+# prints a clear remediation message when Supabase is down; backend will also
+# fail naturally on JWKS lookup, but the preflight panel surfaces the cause.
+
+procs:
+  preflight:
+    shell: |
+      if supabase status >/dev/null 2>&1; then
+        echo "OK: Supabase is reachable."
+      else
+        echo "ERROR: Supabase is not running."
+        echo "       Start it with: make supabase-start"
+        exit 1
+      fi
+    autorestart: false
+
+  backend:
+    shell: "go run ./cmd/server"
+    cwd: "./backend"
+
+  frontend:
+    shell: "pnpm --filter frontend dev"

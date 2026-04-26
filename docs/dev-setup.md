@@ -2,23 +2,16 @@
 
 ## Tools
 
-- mise (`curl https://mise.run | sh`) — manages Go (backend/.tool-versions) and Node (./.tool-versions).
-- Corepack — bundled with Node. Activates the pnpm version pinned in root package.json. **Required**.
-- Supabase CLI — local Postgres / Auth emulation. Used once Supabase integration lands.
+- mise (`curl https://mise.run | sh`) — manages Go (`backend/.tool-versions`), Node + pnpm + Supabase CLI (`./.tool-versions`), Terraform + tflint (`ops/terraform/mise.toml`), and dev runtime tooling (`./mise.toml`: Rust + mprocs).
+- Supabase CLI — local Postgres / Auth emulation. Pinned to a specific version in `./.tool-versions` (do not switch back to `supabase latest`: the CLI breaks `supabase/config.toml` across major upgrades, so the version that everyone runs must be exact).
 
 ## First-time setup
 
 ```bash
-# 1. Install Go 1.26.2 (from backend/.tool-versions) and Node 24.x (from ./.tool-versions).
+# Install Go 1.26.2 (backend/.tool-versions), Node 24.x + pnpm 10.33.2 + Supabase CLI (./.tool-versions).
 mise install
 
-# 2. Enable Corepack so that the pnpm version in package.json is honored.
-#    If you previously installed pnpm globally (npm i -g pnpm / brew install pnpm),
-#    uninstall it first — a PATH-level global pnpm shadows the Corepack shim and
-#    silently breaks version pinning.
-corepack enable
-
-# 3. Install workspace deps. The frontend workspace is populated with a Next.js 16 App Router scaffold (see `docs/frontend.md`).
+# Install workspace deps. The frontend workspace is populated with a Next.js 16 App Router scaffold (see `docs/frontend.md`).
 pnpm install
 ```
 
@@ -26,20 +19,23 @@ Verify:
 
 ```bash
 node --version        # v24.x.y
-pnpm --version        # 9.15.0  (resolved via Corepack from packageManager field)
-which pnpm            # should NOT point to a global install (npm i -g / brew)
+pnpm --version        # 10.33.2  (resolved by mise from .tool-versions)
+which pnpm            # ~/.local/share/mise/shims/pnpm
 ```
 
-`which pnpm` may return `~/.local/share/mise/shims/pnpm` on a mise-managed machine — that is a mise shim delegating to the Corepack-managed binary, not a global install, and is not drift. The resolved version (`pnpm --version`) is what matters.
+`which pnpm` returning `~/.local/share/mise/shims/pnpm` is the expected mise shim. A `/usr/local/bin/pnpm` or `/opt/homebrew/bin/pnpm` path indicates a global install that will shadow the mise shim — uninstall it (`npm uninstall -g pnpm` / `brew uninstall pnpm`) before running `pnpm` again.
 
 ## Day-to-day
 
 | Task | Command |
 |---|---|
-| Run backend | `make dev-backend` or `cd backend && go run ./cmd/server` |
-| Run frontend | `make dev-frontend` |
+| Run backend + frontend together | `make dev` |
+| Run backend (alone) | `make dev-backend` or `cd backend && go run ./cmd/server` |
+| Run frontend (alone) | `make dev-frontend` |
 | Regenerate GraphQL code | `make codegen` |
 | Run all tests | `make test` |
+
+`make dev` launches `preflight`, backend, and frontend together inside an `mprocs` TUI. The `preflight` panel (top of the proc list) reports whether Supabase is reachable; if all three panels go red, check `preflight` first for the cause. Arrow keys switch panels, `r` restarts one, `x` stops one. Supabase must already be running — `make dev` does not start it; run `make supabase-start` first (or `make setup` for full bring-up). If you prefer separate terminals, `make dev-backend` / `make dev-frontend` still work as before.
 
 ## Policy on generated files
 
@@ -58,33 +54,73 @@ Rationale: keeps PR diffs to hand-written code only and removes the merge-confli
 
 ## `.tool-versions` hierarchy (mise)
 
-mise resolves `.tool-versions` files hierarchically: `backend/.tool-versions` (Go) and `./.tool-versions` (Node) are both honored without conflict. Backend CI sets `working_directory: backend` and sees only the Go version. When a frontend workflow that needs Node is added, that workflow must run from the repo root (`.`) — NOT `working_directory: frontend` — because the Node version is declared in the root `.tool-versions`.
+mise resolves tool config hierarchically. Three scopes coexist without conflict:
 
-## Why Corepack, not global pnpm
+| Scope | File | Tools |
+|---|---|---|
+| Backend | `backend/.tool-versions` | Go |
+| Repo root (frontend + dev) | `./.tool-versions` | Node, pnpm, Supabase CLI, Python + Ansible |
+| Repo root (dev runtime) | `./mise.toml` | Rust + mprocs (paired with `[env]`) |
+| Ops (production IaC) | `ops/terraform/mise.toml` | Terraform, tflint |
 
-The `packageManager` field in root `package.json` is the single source of truth for the pnpm version. Corepack reads it and downloads the exact version on demand, so every contributor and every CI runner uses the same pnpm — no drift, no "works on my machine".
+Backend CI sets `working_directory: backend` and sees only Go. Frontend CI runs from the repo root — NOT `working_directory: frontend` — because Node and pnpm are declared in the root `.tool-versions`. Terraform CI sets `working_directory: ops/terraform` and picks up `mise.toml` (Terraform + tflint + the shared `TF_VAR_*` env block).
 
-Do **not** install pnpm via `npm i -g pnpm` or `brew install pnpm`. Those paths compete with the Corepack shim on PATH, and whichever wins is timing-dependent.
+`mise.toml` is used in `ops/terraform/` (instead of `.tool-versions`) so the same file can declare both `[tools]` and `[env]` for shared `TF_VAR_*` defaults. The two formats are equivalent for tool pinning.
+
+## Why mise-managed pnpm, not global pnpm or Corepack
+
+The `[tools]` entries in `.tool-versions` are the single source of truth for pnpm in local dev and GitHub Actions. mise downloads the exact pinned version on demand, so every contributor and every CI runner uses the same pnpm — no drift, no "works on my machine". The `packageManager` field in root `package.json` is kept aligned and is **load-bearing for Vercel and for pnpm itself**: Vercel does not run mise and reads this field to install the matching pnpm on its build image, and pnpm 10 uses it as a self-consistency check that refuses execution when the declared and running versions disagree. Treat the two pins as one unit — bump them together.
+
+Do **not** install pnpm via `npm i -g pnpm` or `brew install pnpm`. Those paths compete with the mise shim on PATH, and whichever wins is timing-dependent. Corepack is no longer used in this repo — `corepack enable` is unnecessary and can be skipped or disabled.
 
 ## Supabase CLI
 
 Local development is self-contained behind `supabase start` (no production Supabase project required; the production project is wired up separately).
 
+### Auth flow (read this first)
+
+Google sign-in is brokered by Supabase Auth. The browser hits Google → Google redirects to **Supabase's** `/auth/v1/callback` → Supabase exchanges the code and redirects to the Next.js app's `/auth/callback`. The redirect URI registered with Google is therefore the Supabase host, not the Next.js host:
+
+| Environment | Redirect URI to register on Google | JavaScript origin |
+|---|---|---|
+| Local | `http://127.0.0.1:54321/auth/v1/callback` | `http://127.0.0.1:3000` |
+| Production | `https://<project-ref>.supabase.co/auth/v1/callback` | Vercel domain |
+
+Whether to use **one** Google OAuth client with both URIs or **two separate clients** (one per environment) is a judgment call. This repo treats them as separate: local credentials live in the **root `.env`** (gitignored), production credentials live in Terraform variables. The boundary keeps a leaked local secret from impacting production. See `docs/deployment.md` section "Manual prerequisites" → Google OAuth client for the production client.
+
+### Env file layout (single source of truth)
+
+Three env files exist for local development; **only the root `.env` is hand-edited**. The rest are generated by `make sync-env` (which runs `playbooks/setup.yml --tags sync-env`) and bear a marker line at the top:
+
+```
+# managed-by: sync-env (delete this line to opt out of regeneration)
+```
+
+| File | Owner | What it holds |
+|---|---|---|
+| **`./.env`** | **You** (Google OAuth credentials) | `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID/SECRET`. Auto-exported into the shell by `mise.toml` so `supabase start` resolves the `env()` placeholders in `supabase/config.toml`. |
+| `frontend/.env.local` | `make sync-env` | `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` derived from `supabase status -o env`. Regenerated on every sync while the marker is present. Loaded natively by Next.js from its own CWD. |
+| `backend/.env.local` | `make sync-env` (seeded once) | JWKS / JWT audience / issuer / pool tuning. Seeded from `backend/.env.example`; not regenerated after that. Loaded by `cmd/server/main.go` itself via `godotenv` — **not** auto-exported into the shell, so backend env names (`PORT`, `SUPABASE_*`) cannot leak into sibling processes such as `next dev`. |
+
+Removing the marker line from a managed file marks it as user-owned; subsequent `make sync-env` runs will skip it and warn that it may be stale.
+
+Sync logic lives in `playbooks/setup.yml` as declarative Ansible tasks. To wire a new derived env var, add one row to the `env_mappings` list (`<src key in supabase status>:<target key>:<target file>`).
+
 ### First-time setup
 
-1. Install the Supabase CLI (`brew install supabase/tap/supabase` or `mise use supabase@latest`).
-2. Create an OAuth 2.0 client ID in Google Cloud Console:
-   - Add `http://127.0.0.1:54321/auth/v1/callback` to Authorized redirect URIs.
-   - Add `http://127.0.0.1:3000` to Authorized JavaScript origins.
-3. Run `supabase start` from the repository root. The first run pulls Docker images and takes a few minutes. The output prints the anon key and service role key.
-4. Append the following to `frontend/.env.local` (copy `anon key` from the `supabase start` output):
+1. The Supabase CLI is already installed by `mise install` from the root `.tool-versions`. No separate step is needed.
+2. Create an OAuth 2.0 client ID in Google Cloud Console (Application type: **Web application**). Use `127.0.0.1`, not `localhost` — Google validates these as distinct origins:
+   - Add `http://127.0.0.1:54321/auth/v1/callback` to **Authorized redirect URIs**.
+   - Add `http://127.0.0.1:3000` to **Authorized JavaScript origins**.
+3. Run `make setup` from the repository root. The first run pulls Docker images and takes a few minutes. Internally this calls `supabase start`, which prints an `Authentication Keys` block with **`Publishable`** (formerly `anon key` — safe to bundle into the client; RLS gates real access) and **`Secret`** (formerly `service_role key` — server-only, bypasses RLS). `make sync-env` then writes the Publishable value into `frontend/.env.local` automatically; you never have to copy it by hand.
+4. After setup finishes, edit **`./.env`** (created from `.env.example` if missing) and replace the placeholders with the Google OAuth client values from step 2:
    ```
-   NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from supabase start output>
    SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=<Google OAuth client ID>
    SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=<Google OAuth secret>
    ```
-5. Supabase Studio: http://127.0.0.1:54323
+   Then run `make supabase-restart` so the new credentials are picked up by the auth server. (Editing values in this file is the **only** manual env step.)
+5. Sign in via `http://127.0.0.1:3000/login` once the frontend is running (`make dev-frontend`). The `/profile` page exercises the full sign-in path end to end.
+6. Supabase Studio: http://127.0.0.1:54323
 
 ### Day-to-day
 
@@ -109,8 +145,10 @@ The backend fails to start if any of these is missing — check `supabase status
 
 ### Gotchas
 
-- **Use `127.0.0.1`, not `localhost`**: Google OAuth's redirect URI validation treats `localhost` and `127.0.0.1` as distinct hosts. Access the app via `127.0.0.1:3000` to match the default `supabase start` output.
-- **Secrets live in `.env.local` (gitignored)**: `supabase/config.toml` only references them through `env()` placeholders — never commit the actual values.
+- **`127.0.0.1` only, never `localhost`**: Google OAuth treats them as distinct hosts. Access the app via `127.0.0.1:3000` so the origin matches what was registered with Google and the `supabase start` output.
+- **Secrets stay in `.env.local`**: never paste them into `supabase/config.toml`. The toml only contains `env()` placeholders.
+
+For the production setup of the same Google sign-in path (Supabase project, Vercel, Render, Terraform-managed Supabase Auth settings), see `docs/deployment.md`.
 
 ## Git tooling
 
