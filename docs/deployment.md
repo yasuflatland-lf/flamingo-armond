@@ -16,7 +16,7 @@ A thin Ansible-driven layer wraps this manual runbook with prerequisite checks, 
 
 ```bash
 make setup-prod              # full guided run: preflight + 4 dashboard steps + smoke
-make setup-prod-preflight    # ~10s scanner: tokens + GitHub App installs only
+make setup-prod-preflight    # ~10s scanner: tokens + auth + manual-prereq reminders
 make setup-prod-postapply    # re-runnable: kick first Render deploy + smoke tests
 ```
 
@@ -82,7 +82,7 @@ Phase 6 polls the Render deploy with `until: status == 'live'` plus `failed_when
 | Failure | Surfaces in | Recovery |
 |---|---|---|
 | Token missing or expired | Phase 1 `assert:` or `uri:` 401 | Update `.env`, re-run `make setup-prod-preflight` |
-| GitHub App not installed | Phase 1 install probe | Install via printed URL, re-run preflight |
+| GitHub App not installed | Phase 3 (Render) or Phase 4 (Vercel) API failure | Install via https://github.com/apps/render or /apps/vercel, re-run the failing phase |
 | Wrong Supabase pooler tab (transaction vs session) | Phase 2 DSN `assert:` | Re-copy from **Connect → Session pooler** |
 | Render deploy hits a terminal failure state | Phase 6 polling abort | Fix the underlying issue (logs in Render dashboard), re-run `make setup-prod-postapply` |
 | Vercel HEAD never reaches 200 | Phase 6 retry exhaustion | Most likely cause: `main` is empty so Vercel produced no build. Push a commit, then re-run `make setup-prod-postapply` |

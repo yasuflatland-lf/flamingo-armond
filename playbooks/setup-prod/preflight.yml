@@ -1,21 +1,26 @@
 ---
 # Phase 1 - preflight
 #
-# Verifies that all required API tokens are present and valid, and that the
-# Render and Vercel GitHub Apps are installed on the target repository.
+# Verifies that all required API tokens are present and reach their target
+# APIs, and that the GitHub CLI is authenticated. Items that cannot be
+# verified with a Personal Access Token (GitHub App installations, Google
+# OAuth client) are surfaced as skippable operator confirmation pauses.
 # Aims for ~10 second runtime so it can be run as a lightweight scanner at
 # any point before or during the bring-up sequence.
 #
 # Standalone usage:
 #   ansible-playbook playbooks/setup-prod.yml --tags preflight
 #
-# What is checked:
+# What is checked (API):
 #   - SUPABASE_ACCESS_TOKEN, RENDER_API_KEY, VERCEL_API_TOKEN env vars are set
 #   - `gh auth status` passes (GitHub CLI authenticated)
 #   - Each token reaches its API successfully (Supabase / Render / Vercel)
-#   - GitHub Apps `render` and `vercel` are installed on {{ repo }}
-#   - Operator reminder: Google OAuth client (Manual prereq section 3) cannot
-#     be API-verified; a skippable pause is shown instead
+#
+# What is checked (operator confirmation, skippable with confirm=true):
+#   - Render and Vercel GitHub App installations on {{ repo }} (the GitHub
+#     endpoints needed to verify this require GitHub App JWT / App OAuth
+#     flow tokens, not a PAT, so a pause is shown instead)
+#   - Google OAuth client (Manual prereq section 3) — pause shown instead
 #
 # What is NOT touched (no writes):
 #   - No secrets are written to disk
@@ -159,49 +164,34 @@
           Update VERCEL_API_TOKEN in .env, then re-run:
             make setup-prod-preflight
 
-# --- GitHub App installation checks ---
+# --- GitHub App installation reminder (cannot be API-verified with a PAT) ---
+#
+# The GitHub endpoints that report App installation state on a repository
+# (`/repos/{owner}/{repo}/installation`, `/user/installations`, etc.) all
+# require GitHub App JWT or App OAuth flow tokens. They reject the Personal
+# Access Token used by `gh` CLI with 403/404. So this step uses an operator
+# confirmation pause, mirroring the Google OAuth pattern below. If the apps
+# are not actually installed, the Render/Vercel phases will fail downstream
+# with their own clear errors.
 
-- name: Fetch GitHub App installations for {{ repo }}
-  block:
-    - name: Run gh api repos/{{ repo }}/installations
-      ansible.builtin.command:
-        cmd: gh api repos/{{ repo }}/installations
-      register: gh_installations_result
-      changed_when: false
-  rescue:
-    - name: Surface gh api failure with remediation
-      ansible.builtin.fail:
-        msg: |
-          Failed to query GitHub App installations on {{ repo }} via `gh api`.
+- name: Remind operator to confirm Render and Vercel GitHub Apps are installed on {{ repo }}
+  ansible.builtin.pause:
+    prompt: |
 
-            rc     : {{ gh_installations_result.rc | default('(none)') }}
-            stderr : {{ gh_installations_result.stderr | default('(none)') }}
-            stdout : {{ gh_installations_result.stdout | default('(none)') }}
+      MANUAL PREREQUISITE - Render and Vercel GitHub App installations
+      Cannot be verified via API with a Personal Access Token (the relevant
+      GitHub endpoints require GitHub App JWT or App OAuth flow tokens).
 
-          Common causes:
-            - 404: `repo` value '{{ repo }}' is wrong, or your gh login lacks access to it.
-            - 401: gh CLI lost the `repo` scope. Re-run: gh auth refresh -s repo
-            - rate limit: wait a minute and retry.
+      Before continuing, confirm both apps are installed and granted access
+      to {{ repo }}:
+        - Render : https://github.com/apps/render
+        - Vercel : https://github.com/apps/vercel
 
-- name: Parse GitHub App installation slugs
-  ansible.builtin.set_fact:
-    installed_app_slugs: "{{ gh_installations_result.stdout | from_json | map(attribute='app_slug') | list }}"
+      You can review installations at:
+        https://github.com/settings/installations
 
-- name: Fail if Render GitHub App is not installed on {{ repo }}
-  ansible.builtin.fail:
-    msg: |
-      The Render GitHub App is not installed on {{ repo }}.
-      Install it at: https://github.com/apps/render
-      Grant access to the {{ repo }} repository, then re-run this playbook.
-  when: "'render' not in installed_app_slugs"
-
-- name: Fail if Vercel GitHub App is not installed on {{ repo }}
-  ansible.builtin.fail:
-    msg: |
-      The Vercel GitHub App is not installed on {{ repo }}.
-      Install it at: https://github.com/apps/vercel
-      Grant access to the {{ repo }} repository, then re-run this playbook.
-  when: "'vercel' not in installed_app_slugs"
+      Press Enter to confirm (or Ctrl+C to abort).
+  when: not confirm
 
 # --- Google OAuth client reminder (cannot be API-verified) ---
 
@@ -227,10 +217,12 @@
     msg:
       - "Preflight passed. All checks completed successfully."
       - ""
-      - "Verified:"
+      - "Verified via API:"
       - "  - SUPABASE_ACCESS_TOKEN: present and accepted by api.supabase.com"
       - "  - RENDER_API_KEY:        present and accepted by api.render.com"
       - "  - VERCEL_API_TOKEN:      present and accepted by api.vercel.com"
       - "  - GitHub CLI:            authenticated (gh auth status OK)"
-      - "  - GitHub App render:     installed on {{ repo }}"
-      - "  - GitHub App vercel:     installed on {{ repo }}"
+      - ""
+      - "Operator-confirmed (or skipped via confirm=true):"
+      - "  - Render and Vercel GitHub Apps installed on {{ repo }}"
+      - "  - Google OAuth client configured (Manual prereq section 3)"
