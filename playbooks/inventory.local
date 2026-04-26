@@ -1,0 +1,2 @@
+; Local-only inventory for the setup playbook.
+localhost ansible_connection=local
