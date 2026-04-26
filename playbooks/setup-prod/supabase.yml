@@ -34,19 +34,32 @@
       when: confirm | bool
 
     # --- Load existing state so prompts can show current defaults. -------
-    - name: Load state file if it exists (Step 1)
+    # Stat first so we can distinguish "first run" (file absent) from
+    # "corrupt YAML" (file present but unparseable). The latter would
+    # otherwise be masked by `failed_when: false` on include_vars and
+    # surface as a confusing "missing keys" assert later on.
+    - name: Stat state file (Step 1)
+      ansible.builtin.stat:
+        path: "{{ state_file }}"
+      register: _state_stat
+
+    - name: Load state file (Step 1)
       ansible.builtin.include_vars:
         file: "{{ state_file }}"
         name: existing_state
-      # absent or unreadable on first run is OK; the assert below enforces required keys
-      failed_when: false
+      when: _state_stat.stat.exists
+
+    - name: Initialize empty existing_state for first-run case
+      ansible.builtin.set_fact:
+        existing_state: {}
+      when: not _state_stat.stat.exists
 
     # First-write detector: true only when the state file did not yet exist
     # (or was empty). Used to gate the one-shot security warning at the
     # end of this block.
     - name: Compute whether this run will create the state file
       ansible.builtin.set_fact:
-        state_just_created: "{{ existing_state is not defined or (existing_state | length) == 0 }}"
+        state_just_created: "{{ not _state_stat.stat.exists or (existing_state | length) == 0 }}"
 
     - name: Show Step 1 dashboard procedure
       ansible.builtin.pause:
@@ -146,22 +159,46 @@
 
     # --- Light reachability probe. REST root may return 404 but proves
     # DNS + TLS + auth header are wired. 200 also acceptable.
+    # Wrapped so a wrong project ref / anon key surfaces a useful message
+    # instead of a censored Ansible default error.
     - name: Probe Supabase REST endpoint (proves DNS/TLS/auth)
-      ansible.builtin.uri:
-        url: "{{ supabase_url }}/rest/v1/"
-        method: GET
-        headers:
-          apikey: "{{ supabase_anon_key }}"
-          Authorization: "Bearer {{ supabase_anon_key }}"
-        status_code: [200, 404]
-        return_content: false
-      no_log: true
+      block:
+        - name: "GET {{ supabase_url }}/rest/v1/"
+          ansible.builtin.uri:
+            url: "{{ supabase_url }}/rest/v1/"
+            method: GET
+            headers:
+              apikey: "{{ supabase_anon_key }}"
+              Authorization: "Bearer {{ supabase_anon_key }}"
+            status_code: [200, 404]
+            return_content: false
+          register: _supabase_probe
+          no_log: true
+      rescue:
+        - name: Surface Supabase probe failure
+          ansible.builtin.fail:
+            msg: |
+              Supabase REST probe at {{ supabase_url }}/rest/v1/ failed.
+
+                HTTP status : {{ _supabase_probe.status | default('(connection error)') }}
+                Error       : {{ _supabase_probe.msg | default('(none)') }}
+
+              Likely causes:
+                - Wrong project ref. Re-check Supabase -> General -> Project ID.
+                - Wrong publishable (anon) key. Re-check Supabase -> API Keys -> Publishable.
+                - Project still provisioning (~5-15 min after create).
+                - Network / DNS issue.
+
+              Fix the prompted value(s), then re-run:
+                ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags supabase
 
     # --- Persist 6 keys to state file (merge with whatever else is there).
+    # Reuse _state_stat from Step 1 entry: at task start the file either
+    # existed (so re-reading is safe) or did not (so start from {}).
     - name: Merge new Supabase values into state
       ansible.builtin.set_fact:
         state_merged: >-
-          {{ (lookup('file', state_file, errors='ignore') | from_yaml | default({}, true))
+          {{ ((lookup('file', state_file) | from_yaml) if _state_stat.stat.exists else {})
              | combine({
                  'supabase_project_ref': supabase_project_ref,
                  'supabase_url': supabase_url,
@@ -178,7 +215,19 @@
         dest: "{{ state_file }}"
         mode: "0600"
         backup: yes
+      register: _state_persist
       no_log: true
+
+    # Ansible's `backup: yes` writes the backup file with default umask
+    # (typically 0644), so the prior DB password would briefly land at
+    # world-readable mode. Re-chmod the most recent backup to 0600.
+    - name: Lock down state-file backup mode
+      ansible.builtin.file:
+        path: "{{ _state_persist.backup_file }}"
+        mode: "0600"
+      when:
+        - _state_persist.backup_file is defined
+        - (_state_persist.backup_file | length) > 0
 
     # --- One-shot security warning, only on the very first state write. -
     - name: Show first-write security warning
@@ -214,25 +263,35 @@
       when: confirm | bool
 
     # --- Load state. Phase 4 (vercel) must have written production_url. --
+    # Step 4 is never a valid first-run, so missing file is itself a misuse.
+    # Stat first so a missing file vs. corrupt YAML produce distinct errors.
+    - name: Stat state file (Step 4)
+      ansible.builtin.stat:
+        path: "{{ state_file }}"
+      register: _state_stat
+
     - name: Load state file (Step 4)
       ansible.builtin.include_vars:
         file: "{{ state_file }}"
-      # absent or unreadable on first run is OK; the assert below enforces required keys
-      failed_when: false
+      when: _state_stat.stat.exists
 
     - name: Assert Phase 4 (vercel) has run
       ansible.builtin.assert:
         that:
+          - _state_stat.stat.exists
           - production_url is defined
           - supabase_project_ref is defined
         fail_msg: >-
-          Required state value `production_url` is missing.
+          Required state values for Step 4 (loopback) are missing. This step
+          needs both `production_url` (written by Phase 4 vercel) and
+          `supabase_project_ref` (written by Phase 2 supabase).
 
           Possible causes:
-          - Phase 4 (vercel) has not yet run.
-            Re-run with: ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags vercel
+          - Phase 2 and/or Phase 4 have not yet run.
+            Re-run with: ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags supabase,vercel
           - The state file is corrupt or was hand-edited.
-            Restore from backup: cp {{ state_file }}~ {{ state_file }}
+            Restore from the most recent backup:
+              cp "$(ls -1t {{ state_file }}.*~ 2>/dev/null | head -1)" {{ state_file }}
 
     - name: Show Step 4 loopback actions with real values
       ansible.builtin.pause:

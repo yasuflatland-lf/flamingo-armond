@@ -80,6 +80,11 @@ backend/server
 supabase/.branches/
 supabase/.temp/
 
-# Production bring-up state (single-operator local artifact, mode 0600)
+# Production bring-up state (single-operator local artifact, mode 0600).
+# Ansible's `copy: backup: yes` writes timestamped backups of the form
+# `.setup-prod.state.yml.<timestamp>~`, NOT plain `.setup-prod.state.yml~`.
+# The glob below catches both shapes so backups (which contain the DB
+# password) cannot be staged accidentally via `git add .`.
 .setup-prod.state.yml
+.setup-prod.state.yml.*~
 .setup-prod.state.yml~

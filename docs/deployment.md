@@ -51,14 +51,14 @@ The playbook persists collected values across phases in a YAML file at the repo 
 |---|---|
 | Path | `<repo-root>/.setup-prod.state.yml` |
 | Permissions | `0600` (re-asserted on every write) |
-| Backup | `<...>~` siblings created on every write (`copy: backup: yes`) |
+| Backup | `<file>.<timestamp>~` siblings created on every write (`copy: backup: yes`); each is also chmod-ed to `0600`. |
 | Vault | Not encrypted; gitignore + `0600` is the baseline |
 | Tier 1 secrets | `supabase_db_url` (DB password embedded). Do not share, copy across machines, or print on screen-share. |
 | Tier 2 publishable | `supabase_anon_key`. Safe to display on the operator's own screen. |
 | Tier 3 IDs / URLs | `supabase_project_ref`, `*_url`, `render_service_id`, `vercel_project_id`, `production_url`, `backend_url`. Public values, used as `--tags <phase>` re-run inputs. |
 | Out-of-state | API tokens (read from env each run) and the Render deploy-hook URL (consumed once via `gh secret set`, never persisted). |
 
-Every phase that needs prior values follows a three-step idiom: `include_vars: failed_when: false` (absent on first run is OK) → `assert:` to enforce the keys this phase actually needs → merge new values via `combine` and re-write with `mode: '0600'`. The `failed_when: false` on `include_vars` is deliberate — it covers the first-run case, and the next-task `assert` is what enforces required keys. If the file is corrupted or hand-edited, restore from the most recent backup: `cp .setup-prod.state.yml~ .setup-prod.state.yml`.
+Every phase that needs prior values follows a three-step idiom: `stat:` to detect first-run vs existing file → `include_vars` only when the file exists (so YAML parse errors fail loudly instead of being masked as "missing keys") → `assert:` to enforce the keys this phase actually needs → merge new values via `combine` and re-write with `mode: '0600'`. If the file is corrupted or hand-edited, restore from the most recent backup with `cp "$(ls -1t .setup-prod.state.yml.*~ 2>/dev/null | head -1)" .setup-prod.state.yml` from the repo root.
 
 ### Why most phases reject `confirm=true`
 
@@ -86,7 +86,7 @@ Phase 6 polls the Render deploy with `until: status == 'live'` plus `failed_when
 | Wrong Supabase pooler tab (transaction vs session) | Phase 2 DSN `assert:` | Re-copy from **Connect → Session pooler** |
 | Render deploy hits a terminal failure state | Phase 6 polling abort | Fix the underlying issue (logs in Render dashboard), re-run `make setup-prod-postapply` |
 | Vercel HEAD never reaches 200 | Phase 6 retry exhaustion | Most likely cause: `main` is empty so Vercel produced no build. Push a commit, then re-run `make setup-prod-postapply` |
-| State file corrupted | `include_vars` parse error | Restore from `.setup-prod.state.yml~` backup |
+| State file corrupted | `include_vars` parse error | Restore from the most recent `.setup-prod.state.yml.<timestamp>~` backup (e.g. `cp "$(ls -1t .setup-prod.state.yml.*~ \| head -1)" .setup-prod.state.yml`) |
 | Need to redo a single phase | — | `ansible-playbook playbooks/setup-prod.yml --tags <phase>` (state file carries forward) |
 
 ## Topology
@@ -131,7 +131,7 @@ Same idea on Vercel:
 
 ### 3. Google Cloud Console OAuth Client
 
-Supabase delegates Google sign-in to a Google OAuth client. It must be created on the Google Cloud side. This client is **separate from the local-dev OAuth client** in `docs/dev-setup.md` § "Supabase CLI": local credentials live in `frontend/.env.local`, production credentials live on the Google client itself, so a leaked local secret never affects production.
+Supabase delegates Google sign-in to a Google OAuth client. It must be created on the Google Cloud side. This client is **separate from the local-dev OAuth client** in `docs/dev-setup.md` § "Supabase CLI": local credentials live in the root `./.env` (the single hand-edited file; see `README.md` § env layout), production credentials live on the Google client itself, so a leaked local secret never affects production.
 
 1. Open `https://console.cloud.google.com/apis/credentials`. Pick or create a project (this is the Google Cloud project, distinct from the Supabase project).
 2. **Configure OAuth consent screen** if not yet done. Type **External**. Set product name and support email.
@@ -213,10 +213,10 @@ If you skip step 2, Google sign-in completes but redirects to the placeholder UR
 
 ### Trigger the first Render deploy
 
-Auto-deploy is off so schema migrations stay tied to explicit deploys. Trigger the first deploy manually:
+Auto-deploy is off so schema migrations stay tied to explicit deploys. There are two paths:
 
-- Render dashboard → service → **Manual Deploy → Deploy latest commit**, or
-- Push any commit to `main` (CI fires the deploy hook).
+- **`make setup-prod` users**: Phase 6 (postapply) already triggered the first deploy via the Render API and polled it to `live`. Skip this section.
+- **Manual operators (no `make setup-prod`)**: trigger the first deploy yourself via Render dashboard → service → **Manual Deploy → Deploy latest commit**, or push any commit to `main` (CI fires the deploy hook).
 
 `golang-migrate` runs the schema migrations during the first boot.
 

@@ -23,15 +23,22 @@
       production_url in {{ state_file }} and skip Phase 4 entirely with --skip-tags vercel.
   when: confirm | bool
 
+# Stat first so YAML parse errors fail loudly instead of being masked by
+# `failed_when: false` and surfacing as confusing "missing keys" later.
+- name: Stat state file (Phase 4)
+  ansible.builtin.stat:
+    path: "{{ state_file }}"
+  register: _state_stat
+
 - name: Load state file (Phase 4)
   ansible.builtin.include_vars:
     file: "{{ state_file }}"
-  # absent or unreadable on first run is OK; the assert below enforces required keys
-  failed_when: false
+  when: _state_stat.stat.exists
 
 - name: Assert Phase 2 (supabase) and Phase 3 (render) have run
   ansible.builtin.assert:
     that:
+      - _state_stat.stat.exists
       - backend_url is defined
       - supabase_url is defined
       - supabase_anon_key is defined
@@ -42,7 +49,8 @@
       - Phase 2 (supabase) and/or Phase 3 (render) have not yet run.
         Re-run with: ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags supabase,render
       - The state file is corrupt or was hand-edited.
-        Restore from backup: cp {{ state_file }}~ {{ state_file }}
+        Restore from the most recent backup:
+          cp "$(ls -1t {{ state_file }}.*~ 2>/dev/null | head -1)" {{ state_file }}
 
 # ---------------------------------------------------------------------------
 # Show env vars the operator must copy into the Vercel dashboard.
@@ -119,14 +127,18 @@
       production_url must begin with 'https://'. Got: '{{ production_url }}'.
       Enter the full URL shown in Vercel -> Settings -> Domains.
 
+# State file is known to exist at this point (assert above would have failed
+# otherwise), so re-reading via lookup is safe without errors='ignore'.
+# no_log on both tasks: the merged dict carries supabase_db_url (DB password).
 - name: Merge vercel values into state
   ansible.builtin.set_fact:
     state_merged: >-
-      {{ (lookup('file', state_file, errors='ignore') | from_yaml | default({}, true))
+      {{ (lookup('file', state_file) | from_yaml)
          | combine({
              'vercel_project_id': vercel_project_id,
              'production_url': production_url,
            }) }}
+  no_log: true
 
 - name: Persist state file (mode 0600 + backup)
   ansible.builtin.copy:
@@ -134,6 +146,18 @@
     dest: "{{ state_file }}"
     mode: "0600"
     backup: yes
+  register: _state_persist
+  no_log: true
+
+# Ansible's `backup: yes` inherits the operator's umask (typically 0644),
+# leaving the prior DB password world-readable on disk. Re-chmod to 0600.
+- name: Lock down state-file backup mode
+  ansible.builtin.file:
+    path: "{{ _state_persist.backup_file }}"
+    mode: "0600"
+  when:
+    - _state_persist.backup_file is defined
+    - (_state_persist.backup_file | length) > 0
 
 - name: Confirm Phase 4 complete
   ansible.builtin.debug:

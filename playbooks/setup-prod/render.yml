@@ -20,15 +20,23 @@
       backend_url in {{ state_file }} and skip Phase 3 entirely with --skip-tags render.
   when: confirm | bool
 
+# Stat first so YAML parse errors fail loudly instead of being masked by
+# `failed_when: false` on include_vars and surfacing as confusing
+# "missing keys" later in the assert.
+- name: Stat state file (Phase 3)
+  ansible.builtin.stat:
+    path: "{{ state_file }}"
+  register: _state_stat
+
 - name: Load state file (Phase 3 reads Phase 2 outputs)
-  # absent or unreadable on first run is OK; the assert below enforces required keys
   ansible.builtin.include_vars:
     file: "{{ state_file }}"
-  failed_when: false
+  when: _state_stat.stat.exists
 
 - name: Assert required Phase 2 keys are present
   ansible.builtin.assert:
     that:
+      - _state_stat.stat.exists
       - supabase_project_ref is defined and (supabase_project_ref | length) > 0
       - supabase_url is defined and (supabase_url | length) > 0
       - supabase_jwks_url is defined and (supabase_jwks_url | length) > 0
@@ -40,8 +48,8 @@
       Run Phase 2 first:
         ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags supabase
 
-      If {{ state_file }} appears corrupt, restore the most recent backup:
-        cp {{ state_file }}~ {{ state_file }}
+      If {{ state_file }} appears corrupt, restore from the most recent backup:
+        cp "$(ls -1t {{ state_file }}.*~ 2>/dev/null | head -1)" {{ state_file }}
       then re-run Phase 3.
 
       Required keys: supabase_project_ref, supabase_url, supabase_jwks_url,
@@ -209,14 +217,18 @@
     msg: "RENDER_DEPLOY_HOOK_URL registered as a GitHub Actions secret in {{ repo }}."
 
 # --- Persist render_service_id and backend_url into state file ---
+# State file is known to exist at this point (assert above would have failed
+# otherwise), so re-reading via lookup is safe without errors='ignore'.
+# no_log on both tasks: the merged dict carries supabase_db_url (DB password).
 - name: Merge new values into existing state
   ansible.builtin.set_fact:
     state_merged: >-
-      {{ (lookup('file', state_file, errors='ignore') | from_yaml | default({}, true))
+      {{ (lookup('file', state_file) | from_yaml)
          | combine({
              'render_service_id': render_service_id,
              'backend_url': backend_url,
            }) }}
+  no_log: true
 
 - name: Persist state file
   ansible.builtin.copy:
@@ -224,6 +236,18 @@
     dest: "{{ state_file }}"
     mode: '0600'
     backup: yes
+  register: _state_persist
+  no_log: true
+
+# Ansible's `backup: yes` inherits the operator's umask (typically 0644),
+# leaving the prior DB password world-readable on disk. Re-chmod to 0600.
+- name: Lock down state-file backup mode
+  ansible.builtin.file:
+    path: "{{ _state_persist.backup_file }}"
+    mode: '0600'
+  when:
+    - _state_persist.backup_file is defined
+    - (_state_persist.backup_file | length) > 0
 
 - name: Phase 3 complete
   ansible.builtin.debug:

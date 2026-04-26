@@ -18,28 +18,38 @@
 # Re-run safety: this phase has no state writes, so re-running is harmless --
 # every invocation simply triggers a fresh Render deploy.
 
-- name: Load state file (postapply requires Phases 2-4 to have run)
+# Postapply cannot run before Phases 3 + 4 have written state, so a
+# missing file is itself a misuse. Stat first so a missing file vs.
+# corrupt YAML produce distinct errors (the latter would otherwise be
+# masked by `failed_when: false`).
+- name: Stat state file (postapply requires Phases 2-4 to have run)
+  ansible.builtin.stat:
+    path: "{{ state_file }}"
+  register: _state_stat
+
+- name: Load state file (postapply)
   ansible.builtin.include_vars:
     file: "{{ state_file }}"
-  # absent or unreadable on first run is OK; the assert below enforces required keys
-  failed_when: false
+  when: _state_stat.stat.exists
 
 - name: Assert state has the keys postapply needs
   ansible.builtin.assert:
     that:
+      - _state_stat.stat.exists
       - render_service_id is defined and (render_service_id | length) > 0
       - backend_url is defined and (backend_url | length) > 0
       - production_url is defined and (production_url | length) > 0
     fail_msg: |
-      State file is missing keys required by postapply:
-        render_service_id: {{ render_service_id | default('(missing)') }}
-        backend_url:       {{ backend_url | default('(missing)') }}
-        production_url:    {{ production_url | default('(missing)') }}
+      State file is missing or incomplete:
+        state file exists : {{ _state_stat.stat.exists }}
+        render_service_id : {{ render_service_id | default('(missing)') }}
+        backend_url       : {{ backend_url | default('(missing)') }}
+        production_url    : {{ production_url | default('(missing)') }}
       Run the prerequisite phases first:
         - render_service_id, backend_url -> ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags render   (Phase 3)
         - production_url                  -> ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags vercel  (Phase 4)
-      If the state file appears corrupt, restore from the most recent backup
-      ({{ state_file }}~) before re-running.
+      If the state file appears corrupt, restore from the most recent backup:
+        cp "$(ls -1t {{ state_file }}.*~ 2>/dev/null | head -1)" {{ state_file }}
     success_msg: "State file looks good for postapply."
 
 - name: Read RENDER_API_KEY from the environment
