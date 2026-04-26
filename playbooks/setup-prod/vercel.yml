@@ -19,6 +19,7 @@
 - name: Load state file (Phase 4)
   ansible.builtin.include_vars:
     file: "{{ state_file }}"
+  # absent or unreadable on first run is OK; the assert below enforces required keys
   failed_when: false
 
 - name: Assert Phase 2 (supabase) and Phase 3 (render) have run
@@ -28,10 +29,13 @@
       - supabase_url is defined
       - supabase_anon_key is defined
     fail_msg: >-
-      Required state values are missing. Ensure Phase 2 (supabase create) and
-      Phase 3 (render) have completed before running Phase 4 (vercel).
-      Missing one or more of: backend_url, supabase_url, supabase_anon_key.
-      Check {{ state_file }}.
+      Required state values from earlier phases are missing.
+
+      Possible causes:
+      - Phase 2 (supabase) and/or Phase 3 (render) have not yet run.
+        Re-run with: ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags supabase,render
+      - The state file is corrupt or was hand-edited.
+        Restore from backup: cp {{ state_file }}~ {{ state_file }}
 
 # ---------------------------------------------------------------------------
 # Show env vars the operator must copy into the Vercel dashboard.

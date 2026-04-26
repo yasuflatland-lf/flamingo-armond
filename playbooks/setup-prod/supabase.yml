@@ -25,6 +25,7 @@
       ansible.builtin.include_vars:
         file: "{{ state_file }}"
         name: existing_state
+      # absent or unreadable on first run is OK; the assert below enforces required keys
       failed_when: false
 
     # First-write detector: true only when the state file did not yet exist
@@ -191,6 +192,7 @@
     - name: Load state file (Step 4)
       ansible.builtin.include_vars:
         file: "{{ state_file }}"
+      # absent or unreadable on first run is OK; the assert below enforces required keys
       failed_when: false
 
     - name: Assert Phase 4 (vercel) has run
@@ -199,9 +201,13 @@
           - production_url is defined
           - supabase_project_ref is defined
         fail_msg: >-
-          Required state values are missing. Run Phase 4 (vercel) before the
-          Supabase loopback - production_url and supabase_project_ref must
-          already be in {{ state_file }}.
+          Required state value `production_url` is missing.
+
+          Possible causes:
+          - Phase 4 (vercel) has not yet run.
+            Re-run with: ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags vercel
+          - The state file is corrupt or was hand-edited.
+            Restore from backup: cp {{ state_file }}~ {{ state_file }}
 
     - name: Show Step 4 loopback actions with real values
       ansible.builtin.pause:
