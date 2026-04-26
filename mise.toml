@@ -1,0 +1,6 @@
+# Auto-exports root `.env` into the shell so `supabase start` resolves the
+# env() placeholders in supabase/config.toml (Google OAuth credentials).
+# Tool pinning lives in `.tool-versions`; see that file for the canonical list.
+
+[env]
+_.file = ".env"
