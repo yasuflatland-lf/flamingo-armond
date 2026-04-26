@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen test
+.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen test clean clean-frontend clean-backend doctor
 
 # Most env / Supabase targets dispatch to the playbook below; tags select the subset.
 ANSIBLE := ansible-playbook -i playbooks/inventory.local playbooks/setup.yml
@@ -62,3 +62,20 @@ codegen: ## Run gqlgen (backend) and graphql-codegen (frontend)
 test: ## Run backend go test and frontend vitest
 	cd backend && go test -race -covermode=atomic ./...
 	pnpm --filter frontend test
+
+clean: clean-frontend clean-backend ## Remove build caches (safe; no process kill, no node_modules, no DB)
+
+clean-frontend: ## Remove frontend Next.js build cache (.next)
+	rm -rf frontend/.next
+
+clean-backend: ## Remove Go build and test caches (does not touch the module cache)
+	cd backend && go clean -testcache -cache
+
+doctor: ## Show which processes hold dev ports 1323/3000 (does NOT kill; you decide)
+	@echo "Processes holding :1323 (backend):"
+	@lsof -nP -i :1323 || echo "  (none)"
+	@echo ""
+	@echo "Processes holding :3000 (frontend):"
+	@lsof -nP -i :3000 || echo "  (none)"
+	@echo ""
+	@echo "If a stale dev server is listed above, kill it manually: kill <PID>"
