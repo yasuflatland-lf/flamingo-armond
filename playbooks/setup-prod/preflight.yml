@@ -21,8 +21,6 @@
 #   - No secrets are written to disk
 #   - No remote resources are created or modified
 
-# --- Read tokens from environment ---
-
 - name: Read SUPABASE_ACCESS_TOKEN from environment
   ansible.builtin.set_fact:
     supabase_pat: "{{ lookup('env', 'SUPABASE_ACCESS_TOKEN') }}"
@@ -34,8 +32,6 @@
 - name: Read VERCEL_API_TOKEN from environment
   ansible.builtin.set_fact:
     vercel_token: "{{ lookup('env', 'VERCEL_API_TOKEN') }}"
-
-# --- Assert tokens are non-empty ---
 
 - name: Assert required API tokens are present
   ansible.builtin.assert:
@@ -53,8 +49,6 @@
 
       Then re-source the file:
         source .env   # or restart your shell if using direnv / mise
-
-# --- GitHub CLI authentication ---
 
 - name: Check GitHub CLI authentication status
   ansible.builtin.command:
@@ -211,8 +205,6 @@
 
       Press Enter to confirm you have completed the above steps (or Ctrl+C to abort).
   when: not confirm
-
-# --- Summary ---
 
 - name: Preflight passed
   ansible.builtin.debug:

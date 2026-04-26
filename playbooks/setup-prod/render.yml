@@ -48,7 +48,6 @@
       supabase_jwt_issuer, supabase_anon_key, supabase_db_url.
     success_msg: "Phase 2 state keys present."
 
-# --- Display Render dashboard config table ---
 - name: Display Render web service dashboard settings
   ansible.builtin.debug:
     msg: |
@@ -94,7 +93,6 @@
   loop_control:
     label: "{{ item.name }}"
 
-# --- Display SUPABASE_DB_URL separately with screen-share warning ---
 - name: Display SUPABASE_DB_URL (sensitive - leave screen-share before reading)
   ansible.builtin.debug:
     msg: |
@@ -105,7 +103,6 @@
       SUPABASE_DB_URL={{ supabase_db_url }}
       ------------------------------------------------------------
 
-# --- Wait for operator to create the Render service ---
 - name: Wait for Render service creation
   ansible.builtin.pause:
     prompt: |

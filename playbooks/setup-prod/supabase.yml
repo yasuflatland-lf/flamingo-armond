@@ -30,7 +30,8 @@
           Either run interactively (default), or pre-populate supabase_project_ref,
           supabase_anon_key, supabase_db_url (and the derived URLs) in {{ state_file }}
           and skip Step 1 with --skip-tags supabase.
-      when: confirm | bool and step == 'create'
+      # Outer block already gates on step == 'create'; this only adds the confirm check.
+      when: confirm | bool
 
     # --- Load existing state so prompts can show current defaults. -------
     - name: Load state file if it exists (Step 1)
@@ -47,7 +48,6 @@
       ansible.builtin.set_fact:
         state_just_created: "{{ existing_state is not defined or (existing_state | length) == 0 }}"
 
-    # --- Operator handoff: show the dashboard procedure. ----------------
     - name: Show Step 1 dashboard procedure
       ansible.builtin.pause:
         prompt: |
@@ -210,7 +210,8 @@
           Run interactively to see the values to paste into:
             - Supabase Auth -> URL Configuration
             - Google Cloud Console -> OAuth client redirect URIs
-      when: confirm | bool and step == 'loopback'
+      # Outer block already gates on step == 'loopback'; this only adds the confirm check.
+      when: confirm | bool
 
     # --- Load state. Phase 4 (vercel) must have written production_url. --
     - name: Load state file (Step 4)

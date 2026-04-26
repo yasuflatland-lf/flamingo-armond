@@ -13,9 +13,6 @@
 # No deploy kick: Vercel deploys via push trigger when `main` is updated;
 # the HEAD probe in Phase 6 (postapply) absorbs the first deployment.
 
-# ---------------------------------------------------------------------------
-# Phase 4 cannot run in unattended mode.
-# ---------------------------------------------------------------------------
 - name: Phase 4 cannot run in unattended mode
   ansible.builtin.fail:
     msg: |
@@ -26,9 +23,6 @@
       production_url in {{ state_file }} and skip Phase 4 entirely with --skip-tags vercel.
   when: confirm | bool
 
-# ---------------------------------------------------------------------------
-# Load state and assert upstream phases have completed.
-# ---------------------------------------------------------------------------
 - name: Load state file (Phase 4)
   ansible.builtin.include_vars:
     file: "{{ state_file }}"
@@ -65,9 +59,6 @@
       - "  NEXT_PUBLIC_SUPABASE_URL     = {{ supabase_url }}"
       - "  NEXT_PUBLIC_SUPABASE_ANON_KEY= {{ supabase_anon_key }}"
 
-# ---------------------------------------------------------------------------
-# Operator handoff: walk through the Vercel import wizard.
-# ---------------------------------------------------------------------------
 - name: Show Vercel import wizard steps
   ansible.builtin.pause:
     prompt: |
@@ -89,9 +80,6 @@
       for the initial deploy to finish).
   when: not confirm
 
-# ---------------------------------------------------------------------------
-# Collect Vercel project ID.
-# ---------------------------------------------------------------------------
 - name: Prompt for Vercel project ID
   ansible.builtin.pause:
     prompt: "Vercel project ID (Settings -> General -> Project ID; starts with prj_)"
@@ -112,9 +100,6 @@
       characters. Got: '{{ vercel_project_id }}'.
       Copy the value from Vercel -> Settings -> General -> Project ID.
 
-# ---------------------------------------------------------------------------
-# Collect production URL.
-# ---------------------------------------------------------------------------
 - name: Prompt for Vercel production URL
   ansible.builtin.pause:
     prompt: "Vercel production URL (e.g. https://flamingo-armond.vercel.app or custom domain)"
@@ -134,9 +119,6 @@
       production_url must begin with 'https://'. Got: '{{ production_url }}'.
       Enter the full URL shown in Vercel -> Settings -> Domains.
 
-# ---------------------------------------------------------------------------
-# Persist two new keys into state (merge with existing 8 keys).
-# ---------------------------------------------------------------------------
 - name: Merge vercel values into state
   ansible.builtin.set_fact:
     state_merged: >-
