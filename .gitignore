@@ -79,3 +79,7 @@ backend/server
 # Supabase CLI local state
 supabase/.branches/
 supabase/.temp/
+
+# Production bring-up state (single-operator local artifact, mode 0600)
+.setup-prod.state.yml
+.setup-prod.state.yml~
