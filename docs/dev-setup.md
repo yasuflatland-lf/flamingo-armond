@@ -2,7 +2,7 @@
 
 ## Tools
 
-- mise (`curl https://mise.run | sh`) — manages Go (`backend/.tool-versions`), Node + pnpm + Supabase CLI (`./.tool-versions`), and Terraform + tflint (`ops/terraform/mise.toml`).
+- mise (`curl https://mise.run | sh`) — manages Go (`backend/.tool-versions`), Node + pnpm + Supabase CLI (`./.tool-versions`), Terraform + tflint (`ops/terraform/mise.toml`), and dev runtime tooling (`./mise.toml`: Rust + mprocs).
 - Supabase CLI — local Postgres / Auth emulation. Pinned to a specific version in `./.tool-versions` (do not switch back to `supabase latest`: the CLI breaks `supabase/config.toml` across major upgrades, so the version that everyone runs must be exact).
 
 ## First-time setup
@@ -29,10 +29,13 @@ which pnpm            # ~/.local/share/mise/shims/pnpm
 
 | Task | Command |
 |---|---|
-| Run backend | `make dev-backend` or `cd backend && go run ./cmd/server` |
-| Run frontend | `make dev-frontend` |
+| Run backend + frontend together | `make dev` |
+| Run backend (alone) | `make dev-backend` or `cd backend && go run ./cmd/server` |
+| Run frontend (alone) | `make dev-frontend` |
 | Regenerate GraphQL code | `make codegen` |
 | Run all tests | `make test` |
+
+`make dev` launches `preflight`, backend, and frontend together inside an `mprocs` TUI. The `preflight` panel (top of the proc list) reports whether Supabase is reachable; if all three panels go red, check `preflight` first for the cause. Arrow keys switch panels, `r` restarts one, `x` stops one. Supabase must already be running — `make dev` does not start it; run `make supabase-start` first (or `make setup` for full bring-up). If you prefer separate terminals, `make dev-backend` / `make dev-frontend` still work as before.
 
 ## Policy on generated files
 
@@ -56,7 +59,8 @@ mise resolves tool config hierarchically. Three scopes coexist without conflict:
 | Scope | File | Tools |
 |---|---|---|
 | Backend | `backend/.tool-versions` | Go |
-| Repo root (frontend + dev) | `./.tool-versions` | Node, pnpm, Supabase CLI |
+| Repo root (frontend + dev) | `./.tool-versions` | Node, pnpm, Supabase CLI, Python + Ansible |
+| Repo root (dev runtime) | `./mise.toml` | Rust + mprocs (paired with `[env]`) |
 | Ops (production IaC) | `ops/terraform/mise.toml` | Terraform, tflint |
 
 Backend CI sets `working_directory: backend` and sees only Go. Frontend CI runs from the repo root — NOT `working_directory: frontend` — because Node and pnpm are declared in the root `.tool-versions`. Terraform CI sets `working_directory: ops/terraform` and picks up `mise.toml` (Terraform + tflint + the shared `TF_VAR_*` env block).

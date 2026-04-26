@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev-backend dev-frontend codegen test
+.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen test
 
 # Most env / Supabase targets dispatch to the playbook below; tags select the subset.
 ANSIBLE := ansible-playbook -i playbooks/inventory.local playbooks/setup.yml
@@ -45,6 +45,9 @@ check-docker: ## Verify the Docker daemon is reachable (required by supabase sta
 mise-install: ## Install pinned tools via mise (auto-trusts mise.toml; provisions Python + ansible-core)
 	@mise trust mise.toml >/dev/null 2>&1 || true
 	@mise install
+
+dev: ## Run preflight + backend + frontend via mprocs (requires Supabase up)
+	@mprocs
 
 dev-backend: ## Run the backend dev server on port 1323
 	cd backend && go run ./cmd/server

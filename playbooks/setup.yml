@@ -223,28 +223,27 @@
 
     - name: Warn if Google OAuth credentials are not configured
       ansible.builtin.debug:
-        msg: |
-          WARNING: Google OAuth credentials are not configured yet.
-
-             Edit ./.env and replace the placeholder values:
-               SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=<from Google Cloud Console>
-               SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=<from Google Cloud Console>
-
-             Then restart Supabase so it picks up the new env:
-               make supabase-restart
-
-             Step-by-step Cloud Console procedure (incl. the 127.0.0.1-vs-localhost rule):
-               -> docs/dev-setup.md section "Supabase CLI" -> "Auth flow (read this first)"
+        msg:
+          - "WARNING: Google OAuth credentials are not configured yet."
+          - ""
+          - "  Edit ./.env and replace the placeholder values:"
+          - "    SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID=<from Google Cloud Console>"
+          - "    SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET=<from Google Cloud Console>"
+          - ""
+          - "  Then restart Supabase so it picks up the new env:"
+          - "    make supabase-restart"
+          - ""
+          - "  Step-by-step Cloud Console procedure (incl. the 127.0.0.1-vs-localhost rule):"
+          - '    -> docs/dev-setup.md section "Supabase CLI" -> "Auth flow (read this first)"'
       when: not google_configured
       tags: [google-check]
 
     - name: Confirm setup complete when Google OAuth credentials are present
       ansible.builtin.debug:
-        msg: |
-          OK: Setup complete. Google OAuth credentials detected in ./.env.
-             Start the dev servers in two terminals:
-               make dev-backend     # http://127.0.0.1:1323
-               make dev-frontend    # http://127.0.0.1:3000
-             Then sign in at http://127.0.0.1:3000/login.
+        msg:
+          - "OK: Setup complete. Google OAuth credentials detected in ./.env."
+          - "  Start the dev servers:"
+          - "    make dev             # backend + frontend together (mprocs TUI)"
+          - "  Then sign in at http://127.0.0.1:3000/login."
       when: google_configured
       tags: [google-check]
