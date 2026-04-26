@@ -37,13 +37,6 @@
       "semanticCommitScope": "ci"
     },
     {
-      "description": "Terraform / IaC (providers, modules). The terraform-version manager (which reads .terraform-version) is intentionally omitted: this repo pins the Terraform CLI through mise (ops/terraform/mise.toml), not tfenv.",
-      "matchManagers": ["terraform"],
-      "groupName": "terraform dependencies",
-      "addLabels": ["infra", "dependencies"],
-      "semanticCommitScope": "ops"
-    },
-    {
       "description": "Toolchain pins managed by mise (.tool-versions, mise.toml). Covers Go, Node, pnpm, supabase CLI, python, ansible-core, rust, mprocs.",
       "matchManagers": ["mise"],
       "groupName": "toolchain (mise)",
@@ -70,11 +63,6 @@
     {
       "description": "GitHub Actions require human review for any update. Actions execute in CI with secrets in scope, so a compromised maintainer publishing a malicious patch would otherwise auto-merge. CVE-flagged updates already bypass automerge via vulnerabilityAlerts; this rule extends that to all GHA updates regardless of severity flag.",
       "matchManagers": ["github-actions"],
-      "automerge": false
-    },
-    {
-      "description": "Terraform updates require human review. IaC changes apply directly to production infrastructure (Vercel/Render/Supabase), so even minor provider bumps can cause drift or unexpected resource churn during the next plan/apply.",
-      "matchManagers": ["terraform"],
       "automerge": false
     },
     {

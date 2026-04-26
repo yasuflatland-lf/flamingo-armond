@@ -16,8 +16,8 @@ notice-prereqs: ## Up-front notice about manual prerequisites that run in parall
 	@echo "NOTE: Before this finishes you'll need a Google OAuth client for LOCAL dev."
 	@echo "      While Docker pulls images, you can create one in parallel:"
 	@echo "        -> docs/dev-setup.md section 'Supabase CLI' -> 'Auth flow (read this first)'"
-	@echo "      (Production uses a SEPARATE OAuth client managed via Terraform; see"
-	@echo "       docs/deployment.md section 'Manual prerequisites' -> Google OAuth client.)"
+	@echo "      (Production uses a SEPARATE OAuth client; see docs/deployment.md"
+	@echo "       section 'Manual prerequisites' -> Google OAuth client.)"
 	@echo ""
 
 install: ## Install pnpm workspace dependencies (Ansible-managed for change detection)

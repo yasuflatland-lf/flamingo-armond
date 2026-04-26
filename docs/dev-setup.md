@@ -2,7 +2,7 @@
 
 ## Tools
 
-- mise (`curl https://mise.run | sh`) — manages Go (`backend/.tool-versions`), Node + pnpm + Supabase CLI (`./.tool-versions`), Terraform + tflint (`ops/terraform/mise.toml`), and dev runtime tooling (`./mise.toml`: Rust + mprocs).
+- mise (`curl https://mise.run | sh`) — manages Go (`backend/.tool-versions`), Node + pnpm + Supabase CLI (`./.tool-versions`), and dev runtime tooling (`./mise.toml`: Rust + mprocs).
 - Supabase CLI — local Postgres / Auth emulation. Pinned to a specific version in `./.tool-versions` (do not switch back to `supabase latest`: the CLI breaks `supabase/config.toml` across major upgrades, so the version that everyone runs must be exact).
 
 ## First-time setup
@@ -61,11 +61,8 @@ mise resolves tool config hierarchically. Three scopes coexist without conflict:
 | Backend | `backend/.tool-versions` | Go |
 | Repo root (frontend + dev) | `./.tool-versions` | Node, pnpm, Supabase CLI, Python + Ansible |
 | Repo root (dev runtime) | `./mise.toml` | Rust + mprocs (paired with `[env]`) |
-| Ops (production IaC) | `ops/terraform/mise.toml` | Terraform, tflint |
 
-Backend CI sets `working_directory: backend` and sees only Go. Frontend CI runs from the repo root — NOT `working_directory: frontend` — because Node and pnpm are declared in the root `.tool-versions`. Terraform CI sets `working_directory: ops/terraform` and picks up `mise.toml` (Terraform + tflint + the shared `TF_VAR_*` env block).
-
-`mise.toml` is used in `ops/terraform/` (instead of `.tool-versions`) so the same file can declare both `[tools]` and `[env]` for shared `TF_VAR_*` defaults. The two formats are equivalent for tool pinning.
+Backend CI sets `working_directory: backend` and sees only Go. Frontend CI runs from the repo root — NOT `working_directory: frontend` — because Node and pnpm are declared in the root `.tool-versions`.
 
 ## Why mise-managed pnpm, not global pnpm or Corepack
 
@@ -86,7 +83,7 @@ Google sign-in is brokered by Supabase Auth. The browser hits Google → Google 
 | Local | `http://127.0.0.1:54321/auth/v1/callback` | `http://127.0.0.1:3000` |
 | Production | `https://<project-ref>.supabase.co/auth/v1/callback` | Vercel domain |
 
-Whether to use **one** Google OAuth client with both URIs or **two separate clients** (one per environment) is a judgment call. This repo treats them as separate: local credentials live in the **root `.env`** (gitignored), production credentials live in Terraform variables. The boundary keeps a leaked local secret from impacting production. See `docs/deployment.md` section "Manual prerequisites" → Google OAuth client for the production client.
+Whether to use **one** Google OAuth client with both URIs or **two separate clients** (one per environment) is a judgment call. This repo treats them as separate: local credentials live in the **root `.env`** (gitignored), production credentials are configured directly in the production Supabase Auth settings. The boundary keeps a leaked local secret from impacting production. See `docs/deployment.md` section "Manual prerequisites" → Google OAuth client for the production client.
 
 ### Env file layout (single source of truth)
 
@@ -148,7 +145,7 @@ The backend fails to start if any of these is missing — check `supabase status
 - **`127.0.0.1` only, never `localhost`**: Google OAuth treats them as distinct hosts. Access the app via `127.0.0.1:3000` so the origin matches what was registered with Google and the `supabase start` output.
 - **Secrets stay in `.env.local`**: never paste them into `supabase/config.toml`. The toml only contains `env()` placeholders.
 
-For the production setup of the same Google sign-in path (Supabase project, Vercel, Render, Terraform-managed Supabase Auth settings), see `docs/deployment.md`.
+For the production setup of the same Google sign-in path (Supabase project, Vercel, Render, Supabase Auth settings), see `docs/deployment.md`.
 
 ## Git tooling
 
