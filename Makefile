@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen test clean clean-frontend clean-backend doctor
+.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen test clean clean-frontend clean-backend doctor db-reset
 
 # Most env / Supabase targets dispatch to the playbook below; tags select the subset.
 ANSIBLE := ansible-playbook -i playbooks/inventory.local playbooks/setup.yml
@@ -32,6 +32,9 @@ supabase-stop: ## Stop local Supabase (preserves volumes; add --no-backup manual
 supabase-restart: ## Stop and re-boot local Supabase (use after editing .env Google credentials)
 	-supabase stop
 	@$(ANSIBLE) --tags supabase
+
+db-reset: ## DESTRUCTIVE: drop and re-create local Supabase DB (re-runs migrations + seed)
+	supabase db reset
 
 sync-env: ## Idempotently sync .env (root) + frontend/backend .env.local using marker-aware ownership
 	@$(ANSIBLE) --tags sync-env
