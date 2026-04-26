@@ -12,7 +12,7 @@ The stack splits across three providers, each owning a distinct concern:
 
 ## Guided bring-up via `make setup-prod`
 
-A thin Ansible-driven layer wraps this manual runbook with prerequisite checks, value-derivation, GitHub Secret registration, deploy-trigger, and smoke tests. It does **not** replace the dashboard work below — operators still create the Supabase project, the Render web service, and the Vercel project by hand.
+A thin Ansible-driven layer wraps this manual runbook with prerequisite checks, value-derivation, GitHub Secret registration, deploy-trigger, and smoke tests. It does **not** replace the dashboard work below — operators still create the Supabase project, the Render web service, and the Vercel project by hand. The remainder of this document is the authoritative manual procedure; refer to it for what each phase is doing under the hood.
 
 ```bash
 make setup-prod              # full guided run: preflight + 4 dashboard steps + smoke
@@ -20,7 +20,74 @@ make setup-prod-preflight    # ~10s scanner: tokens + GitHub App installs only
 make setup-prod-postapply    # re-runnable: kick first Render deploy + smoke tests
 ```
 
-The playbooks live under `playbooks/setup-prod/` and persist collected values (project refs, service IDs, URLs, anon key, DB DSN) into the gitignored `.setup-prod.state.yml` (mode 0600) for re-runs. The remainder of this document is the authoritative manual procedure; refer to it for what each phase is doing under the hood.
+### Why guided, not fully automated
+
+The earlier Terraform implementation was deleted **as an intentional IaC-abandonment decision**, not as tech-debt cleanup — the bring-up runs once per environment per lifetime, so the ROI of full API automation is low and the maintenance cost of mirroring three providers' APIs in a stateful tool is high. The playbook re-introduces the layer where humans actually make mistakes (token expiry, missed GitHub App installs, copy-paste of derived URLs, forgetting to register the deploy-hook secret) without re-introducing IaC. Reach for `--tags <phase>` or hand-runs of the manual procedure when you need to deviate; the playbook is a convenience, not a contract.
+
+### Three Make targets, six phases
+
+The Makefile exposes only `setup-prod`, `setup-prod-preflight`, and `setup-prod-postapply` because the four dashboard phases (`supabase`, `render`, `vercel`, `loopback`) must run in order and giving each its own target invites order-of-operation mistakes. When intentional partial runs are needed, drive them via `--tags` directly:
+
+```bash
+ansible-playbook playbooks/setup-prod.yml --tags <phase>
+```
+
+| Tag | Phase | Runbook step |
+|---|---|---|
+| `preflight` | 1 | (pre-bring-up scanner) |
+| `supabase` | 2 | Step 1 — Supabase project create |
+| `render` | 3 | Step 2 — Render web service |
+| `vercel` | 4 | Step 3 — Vercel project import |
+| `loopback` | 5 | Step 4 — Supabase loopback |
+| `postapply` | 6 | Post-bring-up + smoke |
+
+`supabase.yml` is imported twice from the entry playbook with different `step` vars (`create` vs `loopback`), gated by `when: step == ...` blocks inside the file. This keeps the tag → step mapping 1:1 (`--tags supabase` runs only Step 1, `--tags loopback` only Step 4) while avoiding two near-duplicate task files.
+
+### State file (`.setup-prod.state.yml`)
+
+The playbook persists collected values across phases in a YAML file at the repo root. It is **gitignored**, written with mode `0600`, and treated as a single-operator local artifact:
+
+| Property | Value |
+|---|---|
+| Path | `<repo-root>/.setup-prod.state.yml` |
+| Permissions | `0600` (re-asserted on every write) |
+| Backup | `<...>~` siblings created on every write (`copy: backup: yes`) |
+| Vault | Not encrypted; gitignore + `0600` is the baseline |
+| Tier 1 secrets | `supabase_db_url` (DB password embedded). Do not share, copy across machines, or print on screen-share. |
+| Tier 2 publishable | `supabase_anon_key`. Safe to display on the operator's own screen. |
+| Tier 3 IDs / URLs | `supabase_project_ref`, `*_url`, `render_service_id`, `vercel_project_id`, `production_url`, `backend_url`. Public values, used as `--tags <phase>` re-run inputs. |
+| Out-of-state | API tokens (read from env each run) and the Render deploy-hook URL (consumed once via `gh secret set`, never persisted). |
+
+Every phase that needs prior values follows a three-step idiom: `include_vars: failed_when: false` (absent on first run is OK) → `assert:` to enforce the keys this phase actually needs → merge new values via `combine` and re-write with `mode: '0600'`. The `failed_when: false` on `include_vars` is deliberate — it covers the first-run case, and the next-task `assert` is what enforces required keys. If the file is corrupted or hand-edited, restore from the most recent backup: `cp .setup-prod.state.yml~ .setup-prod.state.yml`.
+
+### Why most phases reject `confirm=true`
+
+`confirm=true` is the unattended-mode flag (intended for CI / scripted re-runs). Phases 2, 3, 4, and 5 all `fail` immediately when `confirm=true` is set, because each requires the operator to paste back values from a dashboard the playbook cannot read (project ref / anon key / DSN / service ID / deploy-hook / project ID / production URL / OAuth redirect URI). Failing fast with a clear message beats hanging on a `pause:` prompt that no one will answer. Phases 1 (preflight) and 6 (postapply) are the only fully unattended phases: postapply re-runs are how operators recover from a transient Render or Vercel cold-start smoke failure.
+
+### Three external side effects
+
+The playbook only writes to three places outside the operator's machine: (1) `gh secret set RENDER_DEPLOY_HOOK_URL` on the GitHub repo (idempotent overwrite), (2) `POST /v1/services/<id>/deploys` against the Render API (each call enqueues a deploy, which is the operator's intent), and (3) the local state file. Re-running any phase is safe — none of the three writes accumulate state in a way that corrupts the next run.
+
+### Two security patterns worth knowing
+
+- **`gh secret set` via `shell:` with `stdin:`, not `--body "<URL>"`.** `--body` puts the secret on argv, where it leaks to `ps`, audit logs, and shell history. Ansible's `no_log: true` masks playbook output but does not affect argv, so piping the value through stdin is the only way to keep the deploy-hook URL out of process listings.
+- **Tier-1 values are never `debug:`-printed inline with non-secret values.** `SUPABASE_DB_URL` (which carries the DB password) is shown in its own task with a "leave screen-share before reading this" warning banner, so the operator can pause sharing for that one paste.
+
+### Render deploy polling: terminal failure states
+
+Phase 6 polls the Render deploy with `until: status == 'live'` plus `failed_when: status in [...]` over a five-state abort list: `build_failed`, `update_failed`, `canceled`, `deactivated`, `pre_deploy_failed`. Without all five in the abort list, a doomed deploy burns the full 15-minute retry budget before the playbook gives up. If you ever change the polling logic, keep this set complete — Render's API can return any of these as a final state, and only `live` is success.
+
+### Failure recovery
+
+| Failure | Surfaces in | Recovery |
+|---|---|---|
+| Token missing or expired | Phase 1 `assert:` or `uri:` 401 | Update `.env`, re-run `make setup-prod-preflight` |
+| GitHub App not installed | Phase 1 install probe | Install via printed URL, re-run preflight |
+| Wrong Supabase pooler tab (transaction vs session) | Phase 2 DSN `assert:` | Re-copy from **Connect → Session pooler** |
+| Render deploy hits a terminal failure state | Phase 6 polling abort | Fix the underlying issue (logs in Render dashboard), re-run `make setup-prod-postapply` |
+| Vercel HEAD never reaches 200 | Phase 6 retry exhaustion | Most likely cause: `main` is empty so Vercel produced no build. Push a commit, then re-run `make setup-prod-postapply` |
+| State file corrupted | `include_vars` parse error | Restore from `.setup-prod.state.yml~` backup |
+| Need to redo a single phase | — | `ansible-playbook playbooks/setup-prod.yml --tags <phase>` (state file carries forward) |
 
 ## Topology
 
@@ -123,7 +190,7 @@ Set the env vars listed below.
 | `OTEL_TRACES_SAMPLER_ARG` | `0.1` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint, or empty for no-op tracing. |
 
-After the service is created, copy the deploy hook URL from **Settings → Deploy Hook** and store it as the GitHub Actions secret `RENDER_DEPLOY_HOOK_URL` (used by `.github/workflows/backend.yml`).
+After the service is created, copy the deploy hook URL from **Settings → Deploy Hook** and store it as the GitHub Actions secret `RENDER_DEPLOY_HOOK_URL` (used by `.github/workflows/backend.yml`). When using `make setup-prod`, this registration is automated via `gh secret set` with the value piped through stdin — see the "Two security patterns" subsection above.
 
 ### Step 3 — Vercel
 
