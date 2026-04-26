@@ -1,0 +1,145 @@
+---
+# playbooks/setup-prod/vercel.yml
+#
+# Phase 4: import the repo into Vercel, configure env vars, and collect
+# the project ID + production URL into the state file.
+#
+# Reads:  state file  (backend_url, supabase_url, supabase_anon_key)
+# Writes: state file  (vercel_project_id, production_url)
+#
+# `state_file` and `confirm` come from the entry playbook
+# (defaults: <repo-root>/.setup-prod.state.yml, confirm: false).
+#
+# No deploy kick: Vercel deploys via push trigger when `main` is updated;
+# the HEAD probe in Phase 6 (postapply) absorbs the first deployment.
+
+# ---------------------------------------------------------------------------
+# Load state and assert upstream phases have completed.
+# ---------------------------------------------------------------------------
+- name: Load state file (Phase 4)
+  ansible.builtin.include_vars:
+    file: "{{ state_file }}"
+  failed_when: false
+
+- name: Assert Phase 2 (supabase) and Phase 3 (render) have run
+  ansible.builtin.assert:
+    that:
+      - backend_url is defined
+      - supabase_url is defined
+      - supabase_anon_key is defined
+    fail_msg: >-
+      Required state values are missing. Ensure Phase 2 (supabase create) and
+      Phase 3 (render) have completed before running Phase 4 (vercel).
+      Missing one or more of: backend_url, supabase_url, supabase_anon_key.
+      Check {{ state_file }}.
+
+# ---------------------------------------------------------------------------
+# Show env vars the operator must copy into the Vercel dashboard.
+# anon_key is publishable (client-side env var), so no_log is not used here.
+# ---------------------------------------------------------------------------
+- name: Show Vercel env vars to copy into the dashboard
+  ansible.builtin.debug:
+    msg:
+      - "Copy these three env vars into the Vercel project settings."
+      - "(Production + Preview scope for BACKEND_URL; All Environments for the"
+      - "Supabase vars — see docs/deployment.md Step 3 for the scope table.)"
+      - ""
+      - "  BACKEND_URL                  = {{ backend_url }}"
+      - "  NEXT_PUBLIC_SUPABASE_URL     = {{ supabase_url }}"
+      - "  NEXT_PUBLIC_SUPABASE_ANON_KEY= {{ supabase_anon_key }}"
+
+# ---------------------------------------------------------------------------
+# Operator handoff: walk through the Vercel import wizard.
+# ---------------------------------------------------------------------------
+- name: Show Vercel import wizard steps
+  ansible.builtin.pause:
+    prompt: |
+      Step 3 - Vercel project import
+      ------------------------------
+      1. Open https://vercel.com/new and import this repository.
+      2. Set Root Directory to: frontend
+      3. Set Framework Preset to: Next.js
+      4. Expand Environment Variables and add the three vars printed above.
+         Scopes per docs/deployment.md Step 3:
+           BACKEND_URL                   -> Production, Preview
+           NEXT_PUBLIC_SUPABASE_URL      -> All Environments
+           NEXT_PUBLIC_SUPABASE_ANON_KEY -> All Environments
+      5. Click Deploy. Vercel will run the first build automatically.
+         (The deploy is triggered by the push that follows; Phase 6 probes the
+         production URL to confirm readiness.)
+
+      Press Enter once the project has been created (you do not need to wait
+      for the initial deploy to finish).
+  when: not confirm
+
+# ---------------------------------------------------------------------------
+# Collect Vercel project ID.
+# ---------------------------------------------------------------------------
+- name: Prompt for Vercel project ID
+  ansible.builtin.pause:
+    prompt: "Vercel project ID (Settings -> General -> Project ID; starts with prj_)"
+    echo: true
+  register: vercel_project_id_prompt
+  when: not confirm
+
+- name: Resolve vercel_project_id
+  ansible.builtin.set_fact:
+    vercel_project_id: "{{ vercel_project_id_prompt.user_input | default('') | trim }}"
+
+- name: Validate vercel_project_id shape
+  ansible.builtin.assert:
+    that:
+      - vercel_project_id is match('^prj_[a-zA-Z0-9]+$')
+    fail_msg: >-
+      vercel_project_id must start with 'prj_' followed by alphanumeric
+      characters. Got: '{{ vercel_project_id }}'.
+      Copy the value from Vercel -> Settings -> General -> Project ID.
+
+# ---------------------------------------------------------------------------
+# Collect production URL.
+# ---------------------------------------------------------------------------
+- name: Prompt for Vercel production URL
+  ansible.builtin.pause:
+    prompt: "Vercel production URL (e.g. https://flamingo-armond.vercel.app or custom domain)"
+    echo: true
+  register: production_url_prompt
+  when: not confirm
+
+- name: Resolve production_url
+  ansible.builtin.set_fact:
+    production_url: "{{ production_url_prompt.user_input | default('') | trim }}"
+
+- name: Validate production_url shape
+  ansible.builtin.assert:
+    that:
+      - production_url is match('^https://.+')
+    fail_msg: >-
+      production_url must begin with 'https://'. Got: '{{ production_url }}'.
+      Enter the full URL shown in Vercel -> Settings -> Domains.
+
+# ---------------------------------------------------------------------------
+# Persist two new keys into state (merge with existing 8 keys).
+# ---------------------------------------------------------------------------
+- name: Merge vercel values into state
+  ansible.builtin.set_fact:
+    state_merged: >-
+      {{ (lookup('file', state_file, errors='ignore') | from_yaml | default({}, true))
+         | combine({
+             'vercel_project_id': vercel_project_id,
+             'production_url': production_url,
+           }) }}
+
+- name: Persist state file (mode 0600 + backup)
+  ansible.builtin.copy:
+    content: "{{ state_merged | to_nice_yaml(sort_keys=true) }}"
+    dest: "{{ state_file }}"
+    mode: "0600"
+    backup: yes
+
+- name: Confirm Phase 4 complete
+  ansible.builtin.debug:
+    msg:
+      - "Phase 4 complete. State written to {{ state_file }}."
+      - "  vercel_project_id = {{ vercel_project_id }}"
+      - "  production_url    = {{ production_url }}"
+      - "Next: run Phase 5 (supabase loopback) to update Site URL and OAuth redirect."
