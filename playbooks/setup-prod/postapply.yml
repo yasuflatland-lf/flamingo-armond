@@ -1,22 +1,27 @@
 ---
 # Phase 6: postapply -- fully automated final phase.
 #
-# Reads:  state file (render_service_id, backend_url, production_url).
+# Reads:  state file (render_service_id, backend_url, production_url,
+#                     vercel_project_id, vercel_repo_id).
 # Writes: nothing (state is read-only here).
 #
 # Flow:
-#   1. Load state and verify the three keys this phase depends on.
-#   2. Pull RENDER_API_KEY from the environment.
-#   3. POST a deploy to Render and capture the deploy id.
-#   4. Poll the deploy until it reaches "live" (max 15 min, fast-fail on
-#      build_failed / update_failed / canceled / deactivated /
+#   1. Load state and verify the keys this phase depends on.
+#   2. Pull RENDER_API_KEY and VERCEL_API_TOKEN from the environment.
+#   3. POST a deploy to Vercel (gitSource: main) so it rebuilds with the env
+#      vars Phase 4 registered. We don't poll Vercel: the build (~1-2 min) runs
+#      in parallel with the Render poll below, finishing well before the
+#      front-end HEAD probe.
+#   4. POST a deploy to Render and capture the deploy id.
+#   5. Poll the Render deploy until it reaches "live" (max 15 min, fast-fail
+#      on build_failed / update_failed / canceled / deactivated /
 #      pre_deploy_failed).
-#   5. Smoke test backend /health, GraphQL /query, and the production URL HEAD.
-#   6. Print the three URLs and remind the operator that the /profile E2E
+#   6. Smoke test backend /health, GraphQL /query, and the production URL HEAD.
+#   7. Print the three URLs and remind the operator that the /profile E2E
 #      check is a manual step (Google sign-in required).
 #
 # Re-run safety: this phase has no state writes, so re-running is harmless --
-# every invocation simply triggers a fresh Render deploy.
+# every invocation triggers a fresh Vercel + Render deploy.
 
 # Postapply cannot run before Phases 3 + 4 have written state, so a
 # missing file is itself a misuse. Stat first so a missing file vs.
@@ -39,15 +44,19 @@
       - render_service_id is defined and (render_service_id | length) > 0
       - backend_url is defined and (backend_url | length) > 0
       - production_url is defined and (production_url | length) > 0
+      - vercel_project_id is defined and (vercel_project_id | length) > 0
+      - vercel_repo_id is defined and (vercel_repo_id | string | length) > 0
     fail_msg: |
       State file is missing or incomplete:
         state file exists : {{ _state_stat.stat.exists }}
         render_service_id : {{ render_service_id | default('(missing)') }}
         backend_url       : {{ backend_url | default('(missing)') }}
         production_url    : {{ production_url | default('(missing)') }}
+        vercel_project_id : {{ vercel_project_id | default('(missing)') }}
+        vercel_repo_id    : {{ vercel_repo_id | default('(missing)') }}
       Run the prerequisite phases first:
-        - render_service_id, backend_url -> ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags render   (Phase 3)
-        - production_url                  -> ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags vercel  (Phase 4)
+        - render_service_id, backend_url               -> ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags render   (Phase 3)
+        - production_url, vercel_project_id, vercel_repo_id -> ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags vercel  (Phase 4)
       If the state file appears corrupt, restore from the most recent backup:
         cp "$(ls -1t {{ state_file }}.*~ 2>/dev/null | head -1)" {{ state_file }}
     success_msg: "State file looks good for postapply."
@@ -64,6 +73,71 @@
       Preflight should have caught this -- run `make setup-prod-preflight`
       and confirm `.env` (or your shell) exports a valid Render API key.
   when: (render_api_key | length) == 0
+
+- name: Read VERCEL_API_TOKEN from the environment
+  ansible.builtin.set_fact:
+    vercel_token: "{{ lookup('env', 'VERCEL_API_TOKEN') }}"
+  no_log: true
+
+- name: Fail fast if VERCEL_API_TOKEN is empty
+  ansible.builtin.fail:
+    msg: |
+      VERCEL_API_TOKEN is not set in the environment.
+      Preflight should have caught this -- run `make setup-prod-preflight`.
+  when: (vercel_token | length) == 0
+
+# ---------------------------------------------------------------------------
+# Trigger a Vercel production deploy so it rebuilds with the env vars Phase 4
+# registered. We POST and move on -- the Render poll loop below absorbs the
+# Vercel build wall-clock time, and the final HEAD probe verifies readiness.
+#
+# `gitSource` requires a numeric `repoId` (not the "owner/repo" string), which
+# Phase 4 captures from /v9/projects/{id}.link.repoId and persists to state.
+# ---------------------------------------------------------------------------
+- name: Trigger a Vercel production deploy (picks up Phase 4 env)
+  block:
+    - name: POST /v13/deployments (Vercel)
+      ansible.builtin.uri:
+        url: "https://api.vercel.com/v13/deployments"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ vercel_token }}"
+        body_format: json
+        body:
+          name: "flamingo-armond-frontend"
+          project: "{{ vercel_project_id }}"
+          target: production
+          gitSource:
+            type: github
+            ref: main
+            repoId: "{{ vercel_repo_id | int }}"
+        status_code: [200, 201]
+      register: vercel_deploy_kick
+      no_log: true
+  rescue:
+    - name: Surface Vercel deploy-trigger failure
+      ansible.builtin.fail:
+        msg: |
+          Failed to POST a new Vercel deploy.
+
+            HTTP status : {{ vercel_deploy_kick.status | default('(connection error)') }}
+            Server msg  : {{ vercel_deploy_kick.json.error.message | default(vercel_deploy_kick.msg | default('(none)')) }}
+
+          Likely causes:
+            - 401 / 403 : VERCEL_API_TOKEN is invalid or lacks deploy scope.
+                Rotate at: https://vercel.com/account/tokens
+            - 400       : repoId / project mismatch -- re-run Phase 4 to
+                refresh state, or push at least one commit to `main` so
+                Vercel has something to build.
+            - 5xx       : Vercel outage; check https://www.vercel-status.com
+
+- name: Capture Vercel deploy id
+  ansible.builtin.set_fact:
+    vercel_deploy_id: "{{ vercel_deploy_kick.json.id | default('') }}"
+
+- name: Show the Vercel deploy id (operator can cross-check the dashboard)
+  ansible.builtin.debug:
+    msg: "Vercel deploy kicked: {{ vercel_deploy_id }} (build runs in parallel with Render poll)"
 
 # Wrapped in block/rescue because the inner task carries `no_log: true`
 # (the request URL embeds render_service_id and the Bearer header carries
@@ -245,12 +319,13 @@
         {{ gql.json | to_nice_json }}
     success_msg: "GraphQL health check returned data.health == 'ok'."
 
-# Vercel cold starts can stretch a few seconds on first hit; absorb that with
-# a short retry loop. If we still fail, the most likely cause is an empty
-# `main` -- Vercel never produced a build because there is nothing to build.
-# We use block/rescue so connection errors (DNS / refused / TLS) surface with
-# a meaningful message instead of being masked by `failed_when: false`.
-- name: Smoke 3 - frontend HEAD returns 200 (with cold-start retry)
+# By the time we reach this probe, the Vercel deploy kick at the top of this
+# phase has had several minutes to build (typically 1-2 min, parallel with
+# the Render poll loop above). We allow up to 18 * 10s = 3 min here as a
+# margin in case the Vercel build is slower than the Render rollout.
+# block/rescue so connection errors (DNS / refused / TLS) surface with a
+# meaningful message instead of being masked by `failed_when: false`.
+- name: Smoke 3 - frontend HEAD returns 200 (absorbs Vercel build tail)
   block:
     - name: Smoke 3 - HEAD {{ production_url }}
       ansible.builtin.uri:
@@ -259,7 +334,7 @@
         status_code: 200
       register: frontend_head
       until: frontend_head.status == 200
-      retries: 6
+      retries: 18
       delay: 10
   rescue:
     - name: Smoke 3 (fail) - frontend not reachable
@@ -268,9 +343,15 @@
           Frontend HEAD {{ production_url }} did not return 200 after retries.
             last status: {{ frontend_head.status | default('connection error') }}
             error:       {{ frontend_head.msg | default('') }}
-          Most likely cause: `main` is empty, so Vercel has not produced a
-          production build yet. Push a commit to `main` and let the Vercel
-          app deploy, then re-run `make setup-prod-postapply`.
+          Likely causes:
+            - Vercel build still running or errored. Check
+              https://vercel.com/<org>/<project>/deployments for deploy
+              {{ vercel_deploy_id }} -- if it shows BUILDING, wait and re-run
+              `make setup-prod-postapply`. If ERROR, click into the build
+              log; the most common cause is a missing env var (Phase 4 should
+              have registered all three -- re-run --tags vercel if needed).
+            - `main` has no commits, so Vercel has nothing to build. Push a
+              commit and re-run `make setup-prod-postapply`.
 
 - name: Final summary - production endpoints
   ansible.builtin.debug:

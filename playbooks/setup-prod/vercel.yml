@@ -1,17 +1,22 @@
 ---
 # playbooks/setup-prod/vercel.yml
 #
-# Phase 4: import the repo into Vercel, configure env vars, and collect
-# the project ID + production URL into the state file.
+# Phase 4: import the repo into Vercel, register env vars via the API, and
+# collect the project ID + repoId + production URL into the state file.
 #
 # Reads:  state file  (backend_url, supabase_url, supabase_anon_key)
-# Writes: state file  (vercel_project_id, production_url)
+# Writes: state file  (vercel_project_id, vercel_repo_id, production_url)
 #
 # `state_file` and `confirm` come from the entry playbook
 # (defaults: <repo-root>/.setup-prod.state.yml, confirm: false).
 #
-# No deploy kick: Vercel deploys via push trigger when `main` is updated;
-# the HEAD probe in Phase 6 (postapply) absorbs the first deployment.
+# Env wiring is automated: after the operator imports the project from GitHub
+# (the import wizard cannot be driven via API), this phase POSTs the three
+# required env vars to /v10/projects/{id}/env?upsert=true. The repoId captured
+# here feeds Phase 6's deploy kick (POST /v13/deployments needs repoId, not the
+# "owner/repo" string). The first build at import time is expected to fail
+# because env is not yet present; Phase 6 triggers a fresh deploy that picks up
+# the values registered here.
 
 - name: Phase 4 cannot run in unattended mode
   ansible.builtin.fail:
@@ -53,19 +58,19 @@
           cp "$(ls -1t {{ state_file }}.*~ 2>/dev/null | head -1)" {{ state_file }}
 
 # ---------------------------------------------------------------------------
-# Show env vars the operator must copy into the Vercel dashboard.
+# Show env vars the operator can verify after the API registers them.
 # anon_key is publishable (client-side env var), so no_log is not used here.
 # ---------------------------------------------------------------------------
-- name: Show Vercel env vars to copy into the dashboard
+- name: Show env vars that will be registered via the Vercel API
   ansible.builtin.debug:
     msg:
-      - "Copy these three env vars into the Vercel project settings."
-      - "(Production + Preview scope for BACKEND_URL; All Environments for the"
-      - "Supabase vars — see docs/deployment.md Step 3 for the scope table.)"
+      - "These three env vars will be registered automatically via the Vercel API"
+      - "after you provide the project ID. SKIP the Environment Variables section"
+      - "in the import wizard — leave it empty."
       - ""
-      - "  BACKEND_URL                  = {{ backend_url }}"
-      - "  NEXT_PUBLIC_SUPABASE_URL     = {{ supabase_url }}"
-      - "  NEXT_PUBLIC_SUPABASE_ANON_KEY= {{ supabase_anon_key }}"
+      - "  BACKEND_URL                   = {{ backend_url }}            (Production, Preview)"
+      - "  NEXT_PUBLIC_SUPABASE_URL      = {{ supabase_url }}           (All Environments)"
+      - "  NEXT_PUBLIC_SUPABASE_ANON_KEY = {{ supabase_anon_key }}      (All Environments)"
 
 - name: Show Vercel import wizard steps
   ansible.builtin.pause:
@@ -75,17 +80,14 @@
       1. Open https://vercel.com/new and import this repository.
       2. Set Root Directory to: frontend
       3. Set Framework Preset to: Next.js
-      4. Expand Environment Variables and add the three vars printed above.
-         Scopes per docs/deployment.md Step 3:
-           BACKEND_URL                   -> Production, Preview
-           NEXT_PUBLIC_SUPABASE_URL      -> All Environments
-           NEXT_PUBLIC_SUPABASE_ANON_KEY -> All Environments
-      5. Click Deploy. Vercel will run the first build automatically.
-         (The deploy is triggered by the push that follows; Phase 6 probes the
-         production URL to confirm readiness.)
+      4. SKIP the Environment Variables section -- leave it empty.
+         The playbook registers the three required env vars via the Vercel
+         API as soon as you provide the project ID below.
+      5. Click Deploy. The first build will fail because env is not yet
+         registered -- this is EXPECTED. Phase 6 (postapply) triggers a
+         fresh deploy after env wiring completes.
 
-      Press Enter once the project has been created (you do not need to wait
-      for the initial deploy to finish).
+      Press Enter once the project has been created.
   when: not confirm
 
 - name: Prompt for Vercel project ID
@@ -107,6 +109,129 @@
       vercel_project_id must start with 'prj_' followed by alphanumeric
       characters. Got: '{{ vercel_project_id }}'.
       Copy the value from Vercel -> Settings -> General -> Project ID.
+
+# ---------------------------------------------------------------------------
+# Read VERCEL_API_TOKEN from the environment (Phase 1 already verified it
+# reaches api.vercel.com; this just rebinds the value for use here).
+# ---------------------------------------------------------------------------
+- name: Read VERCEL_API_TOKEN from the environment
+  ansible.builtin.set_fact:
+    vercel_token: "{{ lookup('env', 'VERCEL_API_TOKEN') }}"
+  no_log: true
+
+- name: Fail fast if VERCEL_API_TOKEN is empty
+  ansible.builtin.fail:
+    msg: |
+      VERCEL_API_TOKEN is not set in the environment.
+      Preflight should have caught this -- run `make setup-prod-preflight`.
+  when: (vercel_token | length) == 0
+
+# ---------------------------------------------------------------------------
+# Fetch the project to capture link.repoId. POST /v13/deployments in Phase 6
+# requires a numeric repoId (not the "owner/repo" string), so we collect it
+# now and persist to state.
+# ---------------------------------------------------------------------------
+- name: Fetch Vercel project details (need repoId for Phase 6 deploy kick)
+  block:
+    - name: "GET /v9/projects/{{ vercel_project_id }}"
+      ansible.builtin.uri:
+        url: "https://api.vercel.com/v9/projects/{{ vercel_project_id }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ vercel_token }}"
+        status_code: 200
+      register: vercel_project
+      no_log: true
+  rescue:
+    - name: Surface project lookup failure
+      ansible.builtin.fail:
+        msg: |
+          Failed to fetch Vercel project {{ vercel_project_id }}.
+
+            HTTP status : {{ vercel_project.status | default('(connection error)') }}
+            Server msg  : {{ vercel_project.json.error.message | default(vercel_project.msg | default('(none)')) }}
+
+          Likely causes:
+            - 401 / 403 : VERCEL_API_TOKEN lost access since preflight; rotate
+                          at https://vercel.com/account/tokens.
+            - 404       : project ID is wrong; confirm in Vercel dashboard
+                          -> Settings -> General -> Project ID.
+
+- name: Capture vercel_repo_id from project link
+  ansible.builtin.set_fact:
+    vercel_repo_id: "{{ vercel_project.json.link.repoId | default('') | string }}"
+
+- name: Validate vercel_repo_id is non-empty (project must be GitHub-linked)
+  ansible.builtin.assert:
+    that:
+      - vercel_repo_id | length > 0
+      - vercel_repo_id is match('^[0-9]+$')
+    fail_msg: >-
+      Vercel project {{ vercel_project_id }} has no GitHub repoId in `link`.
+      The import wizard must connect to GitHub (not "deploy from CLI").
+      Re-import the project via https://vercel.com/new and select the GitHub
+      source for {{ repo }}.
+
+# ---------------------------------------------------------------------------
+# Upsert env vars via /v10/projects/{id}/env?upsert=true. The upsert query
+# param removes the need for separate POST-then-PATCH on conflict.
+#
+# `type`:
+#   - BACKEND_URL is server-only -> "encrypted" (not exposed via dashboard
+#     after creation, decrypted only at build/runtime).
+#   - NEXT_PUBLIC_* are client-bundled -> "plain" (encrypted-type values are
+#     not allowed for vars Next.js inlines into the client bundle).
+# ---------------------------------------------------------------------------
+- name: Upsert env vars in the Vercel project
+  block:
+    - name: "POST /v10/projects/{{ vercel_project_id }}/env?upsert=true"
+      ansible.builtin.uri:
+        url: "https://api.vercel.com/v10/projects/{{ vercel_project_id }}/env?upsert=true"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ vercel_token }}"
+        body_format: json
+        body:
+          key: "{{ item.key }}"
+          value: "{{ item.value }}"
+          target: "{{ item.target }}"
+          type: "{{ item.type }}"
+        status_code: [200, 201]
+      register: vercel_env_upsert
+      loop:
+        - key: BACKEND_URL
+          value: "{{ backend_url }}"
+          target: [production, preview]
+          type: encrypted
+        - key: NEXT_PUBLIC_SUPABASE_URL
+          value: "{{ supabase_url }}"
+          target: [production, preview, development]
+          type: plain
+        - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+          value: "{{ supabase_anon_key }}"
+          target: [production, preview, development]
+          type: plain
+      loop_control:
+        label: "{{ item.key }}"
+      no_log: true
+  rescue:
+    - name: Surface env upsert failure
+      ansible.builtin.fail:
+        msg: |
+          Failed to register one or more env vars on Vercel project
+          {{ vercel_project_id }}.
+
+            HTTP status : {{ vercel_env_upsert.status | default('(connection error)') }}
+            Server msg  : {{ vercel_env_upsert.json.error.message | default(vercel_env_upsert.msg | default('(none)')) }}
+
+          Likely causes:
+            - 401 / 403 : VERCEL_API_TOKEN lost env-write scope.
+            - 400       : value rejected by Vercel (e.g. encrypted type used
+                          on a NEXT_PUBLIC_* var, or malformed URL).
+
+- name: Confirm env vars registered
+  ansible.builtin.debug:
+    msg: "Registered 3 env vars on Vercel project {{ vercel_project_id }} via API."
 
 - name: Prompt for Vercel production URL
   ansible.builtin.pause:
@@ -136,6 +261,7 @@
       {{ (lookup('file', state_file) | from_yaml)
          | combine({
              'vercel_project_id': vercel_project_id,
+             'vercel_repo_id': vercel_repo_id,
              'production_url': production_url,
            }) }}
   no_log: true
@@ -155,5 +281,8 @@
     msg:
       - "Phase 4 complete. State written to {{ state_file }}."
       - "  vercel_project_id = {{ vercel_project_id }}"
+      - "  vercel_repo_id    = {{ vercel_repo_id }}"
       - "  production_url    = {{ production_url }}"
+      - "Env vars registered via API: BACKEND_URL, NEXT_PUBLIC_SUPABASE_URL,"
+      - "NEXT_PUBLIC_SUPABASE_ANON_KEY."
       - "Next: run Phase 5 (supabase loopback) to update Site URL and OAuth redirect."

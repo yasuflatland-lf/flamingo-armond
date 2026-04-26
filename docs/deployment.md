@@ -85,7 +85,7 @@ Phase 6 polls the Render deploy with `until:` over a single condition list: HTTP
 | GitHub App not installed | Phase 3 (Render) or Phase 4 (Vercel) API failure | Install via https://github.com/apps/render or /apps/vercel, re-run the failing phase |
 | Wrong Supabase pooler tab (transaction vs session) | Phase 2 DSN `assert:` | Re-copy from **Connect → Session pooler** |
 | Render deploy hits a terminal failure state | Phase 6 polling abort | Fix the underlying issue (logs in Render dashboard), re-run `make setup-prod-postapply` |
-| Vercel HEAD never reaches 200 | Phase 6 retry exhaustion | Most likely cause: `main` is empty so Vercel produced no build. Push a commit, then re-run `make setup-prod-postapply` |
+| Vercel HEAD never reaches 200 | Phase 6 retry exhaustion | Open the Vercel deploy whose id Phase 6 printed (`Vercel deploy kicked: <id>`). If `BUILDING`, wait and re-run `make setup-prod-postapply`. If `ERROR`, inspect the build log — most often a missing env var (re-run `--tags vercel`). If `main` is empty, push a commit first |
 | State file corrupted | `include_vars` parse error | Restore from the most recent `.setup-prod.state.yml.<timestamp>~` backup (e.g. `cp "$(ls -1t .setup-prod.state.yml.*~ \| head -1)" .setup-prod.state.yml`) |
 | Need to redo a single phase | — | `ansible-playbook playbooks/setup-prod.yml --tags <phase>` (state file carries forward) |
 
@@ -194,13 +194,17 @@ After the service is created, copy the deploy hook URL from **Settings → Deplo
 
 ### Step 3 — Vercel
 
-Import the repo with **Root Directory: `frontend`**, framework **Next.js**. Add env vars:
+Import the repo with **Root Directory: `frontend`**, framework **Next.js**.
+
+Set these env vars (scopes given for the manual path; `make setup-prod` Phase 4 registers them via the Vercel API automatically — leave the wizard's Environment Variables section empty when running the automated path):
 
 | Variable | Scope | Value |
 |---|---|---|
 | `BACKEND_URL` | Production / Preview | Render service URL from Step 2. |
 | `NEXT_PUBLIC_SUPABASE_URL` | All | `https://<project-ref>.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | All | Publishable key from Step 1.3. |
+
+Under the automated path the first build (kicked off when the import wizard's **Deploy** button is clicked) **will fail** because env is not yet present — this is expected. Phase 6 (postapply) triggers a fresh deploy via `POST /v13/deployments` after Phase 4 has registered env, and the second build succeeds.
 
 ### Step 4 — Loop back to Supabase
 
@@ -222,7 +226,8 @@ Auto-deploy is off so schema migrations stay tied to explicit deploys. There are
 
 ### Trigger the first Vercel deploy
 
-Push to `main`, or use the Vercel dashboard's **Deploy** button on the project page.
+- **`make setup-prod` users**: Phase 6 (postapply) already triggered a fresh production deploy via the Vercel API after Phase 4 registered env, and the front-end HEAD probe verified it returns 200. Skip this section.
+- **Manual operators (no `make setup-prod`)**: push a commit to `main`, or click **Deploy** on the Vercel project page.
 
 ## Smoke tests after the initial setup
 
