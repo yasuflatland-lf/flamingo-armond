@@ -12,8 +12,8 @@
 #   correctly as long as each archive's teardown_at >= teardown_started_at.
 #
 # Reads (set by preflight / provider phases):
-#   archive_dir, state_file, teardown_started_at (sister B2 adds to preflight),
-#   mode
+#   archive_dir, state_file, teardown_started_at,
+#   teardown_mode
 #
 # Not reached on --tags <single-provider>: the entry playbook gates import on
 # the postapply tag.

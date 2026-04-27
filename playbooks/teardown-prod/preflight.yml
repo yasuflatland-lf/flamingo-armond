@@ -36,7 +36,7 @@
 
       confirm=true suppresses the interactive retype prompt in verify_identity.
       Pairing it with real production IDs would allow silent resource deletion.
-      Only use confirm=true with fixture IDs in the test suite (see section 7.7).
+      Only use confirm=true with fixture IDs in the test suite.
 
       Interactive teardown:
         ansible-playbook playbooks/teardown-prod.yml

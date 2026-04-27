@@ -261,7 +261,11 @@ For an end-to-end check, sign in via Google on the Vercel domain and load `/prof
 
 Running `make teardown-prod` deletes the Vercel project, the Render web service, and the Supabase project — in that reverse-dependency order (upstream first, downstream last). Each deletion is a hard DELETE against the provider's API; no snapshots are taken and no data is preserved automatically.
 
-There is no rollback. Once a resource is destroyed it is gone. The state file is moved to `.setup-prod-archive/` so the operator retains a record of what existed, but that record is informational only — the providers have already discarded the data.
+There is no rollback. Once a resource is destroyed it is gone. The state file is deleted after teardown completes. Its contents are captured
+in the first archive file written during the run (the `original_state` field),
+so the operator retains a record of what existed — but the
+`.setup-prod.state.yml` file itself is gone after a successful teardown.
+That record is informational only — the providers have already discarded the data.
 
 ### Three Make targets, five phases
 
@@ -300,10 +304,15 @@ After a successful retype, the playbook also verifies that the bearer token's te
 | `resource_id` | Provider-assigned ID |
 | `name` | Resource name at time of deletion |
 | `team` | Team or org that owned the resource |
-| `delete_status` | `deleted`, `already_gone`, or `error` |
+| `teardown_mode` | `strict` (state file present) or `advisory` (rescue mode) |
+| `phase` | `vercel`, `render`, or `supabase` |
+| `delete_status` | `deleted`, `already_gone`, or `failed` |
 | `http_status` | HTTP status code returned by the provider |
+| `owner_email` | Owner email from the resource (may be empty if API does not expose it) |
+| `created_at` | ISO8601 creation timestamp from the resource API |
+| `original_state` | Full contents of `.setup-prod.state.yml` (only on the FIRST archive of the run; `null` on later archives or in advisory mode) |
 
-The first archive file written in a run also embeds the full contents of `.setup-prod.state.yml` as it existed before teardown began. This snapshot is useful for incident response and audit.
+The first archive file written in a run also embeds the full contents of `.setup-prod.state.yml` as it existed before teardown began (the `original_state` field). This snapshot is useful for incident response and audit.
 
 ### Recovery
 
@@ -314,3 +323,5 @@ If teardown is interrupted (Ctrl-C, network glitch, or a 5xx that exhausts retri
 - **Re-run `make teardown-prod`** — resources already deleted produce `delete_status: already_gone` archive entries when the provider returns 404; the playbook treats 404 as a successful short-circuit and continues.
 - **Run a single phase** — use `--tags <phase>` to target the specific provider that failed without re-running earlier phases.
 - The state file is preserved through partial failures so the operator can inspect it and decide the next step before re-running.
+
+When a DELETE exhausts retries on 5xx, the phase writes a `delete_status: failed` archive entry, prints a clear failure message, and skips later phases via `meta: end_play`. The state file is preserved so you can decide the next step.
