@@ -1,0 +1,168 @@
+---
+# playbooks/teardown-prod/postapply.yml
+#
+# Phase 5 (postapply) - write teardown summary, delete state file, print hint.
+#
+# Archive-enumeration: mtime-based (not run_id-based).
+#   Finds files in archive_dir modified within the last 60 minutes matching
+#   *-teardown-{vercel,render,supabase}.yml. Avoids run_id propagation at the
+#   cost of a theoretical false-positive if two teardowns overlap within 60 min
+#   (pathological in production). Partial-run caveat: --tags vercel + --tags
+#   render + --tags postapply all within 60 min will enumerate all three phases
+#   correctly as long as each archive's teardown_at >= teardown_started_at.
+#
+# Reads (set by preflight / provider phases):
+#   archive_dir, state_file, teardown_started_at (sister B2 adds to preflight),
+#   mode
+#
+# Not reached on --tags <single-provider>: the entry playbook gates import on
+# the postapply tag.
+
+# ── 1. Compute completion timestamp ─────────────────────────────────────────
+- name: "postapply | compute teardown_completed_at"
+  ansible.builtin.set_fact:
+    _postapply_completed_at: "{{ now(utc=true).isoformat() | regex_replace('\\..*', '') ~ 'Z' }}"
+
+# ── 2. Ensure archive directory exists (idempotent) ──────────────────────────
+- name: "postapply | ensure archive directory exists"
+  ansible.builtin.file:
+    path: "{{ archive_dir }}"
+    state: directory
+    mode: "0700"
+
+# ── 3. Find per-phase archive files written during this run ──────────────────
+#
+# Strategy: find files modified in the last 60 minutes matching the
+# per-phase naming convention, then slurp each to compare teardown_at.
+
+- name: "postapply | find recently-modified provider archive files (mtime <= 60 min)"
+  ansible.builtin.find:
+    paths: "{{ archive_dir }}"
+    patterns:
+      - "*-teardown-vercel.yml"
+      - "*-teardown-render.yml"
+      - "*-teardown-supabase.yml"
+    age: "-60m"
+    age_stamp: mtime
+    recurse: false
+  register: _recent_files
+
+# Slurp all candidate files to read their teardown_at field.
+- name: "postapply | slurp each candidate archive file"
+  ansible.builtin.slurp:
+    src: "{{ item.path }}"
+  loop: "{{ _recent_files.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  register: _slurped_files
+
+# Initialize the accumulator before the loop.
+- name: "postapply | initialize filtered archive file list"
+  ansible.builtin.set_fact:
+    _run_archive_files: []
+
+# Each slurp result carries a base64 `content` field.  Decode + parse YAML to
+# read teardown_at, then compare lexicographically: both timestamps are ISO8601
+# UTC with no sub-seconds and a trailing Z, so string order == chronological.
+- name: "postapply | accumulate archive files whose teardown_at >= teardown_started_at"
+  ansible.builtin.set_fact:
+    _run_archive_files: >-
+      {{
+        _run_archive_files
+        + (
+            [item.item.path | basename]
+            if (
+              (item.content | b64decode | from_yaml).teardown_at
+              | default('')
+              >= (teardown_started_at | default(''))
+            )
+            else []
+          )
+      }}
+  loop: "{{ _slurped_files.results | selectattr('content', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.item.path | basename }}"
+
+# Build unique phase names from the filtered archive basenames.
+- name: "postapply | build phases_executed list from filtered archive files"
+  ansible.builtin.set_fact:
+    _phases_executed: >-
+      {{
+        _run_archive_files
+        | map('regex_replace', '^.*-teardown-(vercel|render|supabase).*$', '\\1')
+        | unique
+        | list
+      }}
+
+# ── 4. Sanity assert: at least one per-phase archive must exist ──────────────
+- name: "postapply | assert at least one provider archive file exists for this run"
+  ansible.builtin.assert:
+    that:
+      - (_run_archive_files | length) > 0
+    fail_msg: |
+      No provider archive files found in {{ archive_dir }} modified within
+      the last 60 minutes. Run the provider phases first, then --tags postapply
+      within 60 minutes of the last provider phase.
+    success_msg: "Found {{ _run_archive_files | length }} provider archive file(s) for this run."
+
+# ── 5. Build the summary dict ─────────────────────────────────────────────────
+- name: "postapply | build teardown summary dict"
+  ansible.builtin.set_fact:
+    _teardown_summary:
+      teardown_started_at: "{{ teardown_started_at | default('unknown') }}"
+      teardown_completed_at: "{{ _postapply_completed_at }}"
+      phases_executed: "{{ _phases_executed }}"
+      archive_files: "{{ _run_archive_files }}"
+      operator: "{{ lookup('env', 'USER') | default('unknown') }}"
+      teardown_mode: "{{ teardown_mode }}"
+
+# ── 6. Resolve summary filename (collision-safe) ──────────────────────────────
+- name: "postapply | set summary archive path"
+  ansible.builtin.set_fact:
+    _summary_path: "{{ archive_dir }}/{{ _postapply_completed_at }}-teardown-summary.yml"
+
+- name: "postapply | stat summary filename for collision check"
+  ansible.builtin.stat:
+    path: "{{ _summary_path }}"
+  register: _summary_stat
+
+- name: "postapply | resolve final summary filename (collision fallback)"
+  ansible.builtin.set_fact:
+    _summary_final_path: >-
+      {{
+        _summary_path
+        if not _summary_stat.stat.exists
+        else archive_dir ~ '/' ~ _postapply_completed_at ~ '-teardown-summary-' ~ (99 | random) ~ '.yml'
+      }}
+
+# ── 7. Write the summary file ─────────────────────────────────────────────────
+- name: "postapply | write teardown summary archive"
+  ansible.builtin.copy:
+    content: "{{ _teardown_summary | to_nice_yaml(indent=2) }}"
+    dest: "{{ _summary_final_path }}"
+    mode: "0600"
+    force: false
+
+- name: "postapply | confirm summary written"
+  ansible.builtin.debug:
+    msg: "Teardown summary written: {{ _summary_final_path }}"
+
+# ── 8. Delete the state file ──────────────────────────────────────────────────
+- name: "postapply | delete state file"
+  ansible.builtin.file:
+    path: "{{ state_file }}"
+    state: absent
+
+- name: "postapply | confirm state file deleted"
+  ansible.builtin.debug:
+    msg: "State file deleted: {{ state_file }}"
+
+# ── 9. Recovery hint ──────────────────────────────────────────────────────────
+- name: "postapply | print recovery hint"
+  ansible.builtin.debug:
+    msg:
+      - "Production teardown complete."
+      - "  Archive: {{ _summary_final_path }}"
+      - ""
+      - "To rebuild: make setup-prod"
+      - "  (this starts from zero — no recovery from the archive)"
