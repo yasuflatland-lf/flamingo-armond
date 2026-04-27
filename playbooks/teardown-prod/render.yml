@@ -136,40 +136,62 @@
         team_token_endpoint:
           url: "https://api.render.com/v1/owners/{{ _render_owner_id }}"
 
-    # ── 4d. DELETE the service ────────────────────────────────────────────────
+    # ── 4d. DELETE the service and archive (with rescue for failure) ─────────
 
-    - name: "render | DELETE service {{ render_service_id }}"
-      ansible.builtin.uri:
-        url: "https://api.render.com/v1/services/{{ render_service_id }}"
-        method: DELETE
-        headers:
-          Authorization: "Bearer {{ render_token }}"
-        status_code: [200, 204, 404]
-      register: _render_delete_resp
-      no_log: true
-      retries: 3
-      delay: 5
-      until: >-
-        _render_delete_resp.status in [200, 204]
-        or (_render_delete_resp.status >= 400 and _render_delete_resp.status < 500)
+    - name: "render | delete and archive (with rescue for failure)"
+      block:
+        # Retried up to 3 times; 5xx triggers retry, terminal 4xx fails fast.
+        - name: "render | DELETE service {{ render_service_id }}"
+          ansible.builtin.uri:
+            url: "https://api.render.com/v1/services/{{ render_service_id }}"
+            method: DELETE
+            headers:
+              Authorization: "Bearer {{ render_token }}"
+            status_code: [200, 204, 404]
+          register: _render_delete_resp
+          no_log: true
+          retries: 3
+          delay: 5
+          until: >-
+            (_render_delete_resp.status in [200, 204, 404])
+            or (_render_delete_resp.status >= 400 and _render_delete_resp.status < 500)
 
-    - name: "render | assert DELETE succeeded"
-      ansible.builtin.assert:
-        that:
-          - _render_delete_resp.status in [200, 204, 404]
-        fail_msg: >-
-          Render DELETE /v1/services/{{ render_service_id }} returned unexpected
-          status {{ _render_delete_resp.status }}. Check the Render dashboard and
-          rerun: ansible-playbook playbooks/teardown-prod.yml --tags render
+        - name: "render | assert DELETE succeeded"
+          ansible.builtin.assert:
+            that:
+              - _render_delete_resp.status in [200, 204, 404]
+            fail_msg: >-
+              Render DELETE /v1/services/{{ render_service_id }} returned unexpected
+              status {{ _render_delete_resp.status }}. Check the Render dashboard and
+              rerun: ansible-playbook playbooks/teardown-prod.yml --tags render
 
-    # ── 4e. Write archive ─────────────────────────────────────────────────────
+        # ── 4e. Write archive ───────────────────────────────────────────────
 
-    - name: "render | write archive"
-      ansible.builtin.include_tasks: _lib/write_archive.yml
-      vars:
-        phase: render
-        delete_response: "{{ _render_delete_resp }}"
-        identity: "{{ verified_identity }}"
+        - name: "render | write archive (success)"
+          ansible.builtin.include_tasks: _lib/write_archive.yml
+          vars:
+            phase: render
+            delete_response: "{{ _render_delete_resp }}"
+            identity: "{{ verified_identity }}"
+
+      rescue:
+        - name: "render | DELETE failed - emit visible diagnostic"
+          ansible.builtin.debug:
+            msg:
+              - "Render DELETE FAILED for service {{ render_service_id }}."
+              - "Last status: {{ _render_delete_resp.status | default('(no response)') }}"
+              - "Recording delete_status=failed in archive; later phases will be skipped."
+              - "Check https://dashboard.render.com and rerun --tags render."
+
+        - name: "render | write archive (failed)"
+          ansible.builtin.include_tasks: _lib/write_archive.yml
+          vars:
+            phase: render
+            delete_response: "{{ _render_delete_resp | default({}) }}"
+            identity: "{{ verified_identity }}"
+
+        - name: "render | abort play after failed delete (skip later phases)"
+          ansible.builtin.meta: end_play
 
 # ── Phase complete ────────────────────────────────────────────────────────────
 
