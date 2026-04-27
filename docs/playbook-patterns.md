@@ -24,7 +24,7 @@ Timestamps written in `YYYY-MM-DDTHH:MM:SSZ` format (fixed-width, sub-seconds tr
 
 ### Ansible's `uri` module requires a real HTTP server for integration tests
 
-The `uri` module uses Python's `urllib`/`urllib3` stack, not the `requests` library. Mocking libraries that patch `requests` (such as `responses`) have no effect on `uri` module HTTP calls issued from an `ansible-playbook` subprocess. The only reliable way to intercept those calls in integration tests is to bind a real local socket. The test harness under `playbooks/test/` uses `pytest-httpserver` (a `werkzeug`-based fixture) for exactly this reason. Unit-level tests that exercise pure Python or Jinja logic do not need the server — see `test_archive_shape.py`, `test_dep_map.py`, and `test_name_match.py` for examples of the purely in-process tier.
+The `uri` module uses Python's `urllib`/`urllib3` stack, not the `requests` library. Mocking libraries that patch `requests` (such as `responses`) have no effect on `uri` module HTTP calls issued from an `ansible-playbook` subprocess. The only reliable way to intercept those calls in integration tests is to bind a real local socket — `pytest-httpserver` (a `werkzeug`-based fixture) is the standard choice. Unit-level checks that exercise pure Python or Jinja logic can stay in-process and skip the server entirely.
 
 ### The `^test_` prefix makes test mode structurally unable to touch production
 
