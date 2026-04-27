@@ -88,3 +88,6 @@ supabase/.temp/
 .setup-prod.state.yml
 .setup-prod.state.yml.*~
 .setup-prod.state.yml~
+
+# Teardown event records from production bring-up.
+/.setup-prod-archive/
