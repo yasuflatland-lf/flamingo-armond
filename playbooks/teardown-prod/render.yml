@@ -71,8 +71,7 @@
 
     # ── 4a. Extract identity facts from the GET response ─────────────────────
     # The Render v1 GET /services/{id} response wraps the service object under
-    # a top-level "service" key. Fall back to the root level if the key is
-    # absent (matches the check_dep.yml pattern used throughout this codebase).
+    # a top-level "service" key; fall back to root level if absent.
 
     - name: "render | extract service name and ownerId from pre-GET"
       ansible.builtin.set_fact:
@@ -133,14 +132,11 @@
         identity_team: "{{ _render_owner_id }}"
         identity_owner_email: "{{ _render_owner_email }}"
         identity_created_at: "{{ _render_created_at }}"
-        team_token_endpoint:
-          url: "https://api.render.com/v1/owners/{{ _render_owner_id }}"
 
     # ── 4d. DELETE the service and archive (with rescue for failure) ─────────
 
     - name: "render | delete and archive (with rescue for failure)"
       block:
-        # Retried up to 3 times; 5xx triggers retry, terminal 4xx fails fast.
         - name: "render | DELETE service {{ render_service_id }}"
           ansible.builtin.uri:
             url: "https://api.render.com/v1/services/{{ render_service_id }}"
@@ -165,8 +161,6 @@
               status {{ _render_delete_resp.status }}. Check the Render dashboard and
               rerun: ansible-playbook playbooks/teardown-prod.yml --tags render
 
-        # ── 4e. Write archive ───────────────────────────────────────────────
-
         - name: "render | write archive (success)"
           ansible.builtin.include_tasks: _lib/write_archive.yml
           vars:
@@ -182,6 +176,7 @@
               - "Last status: {{ _render_delete_resp.status | default('(no response)') }}"
               - "Recording delete_status=failed in archive; later phases will be skipped."
               - "Check https://dashboard.render.com and rerun --tags render."
+              - "Inspect the failed archive entry: ls -lt {{ archive_dir }} | head -3"
 
         - name: "render | write archive (failed)"
           ansible.builtin.include_tasks: _lib/write_archive.yml

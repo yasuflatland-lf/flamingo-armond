@@ -119,7 +119,11 @@
 
     - name: "write_archive | re-raise archive failure after dumping identity"
       ansible.builtin.fail:
-        msg: "Archive write failed for phase={{ phase }} resource={{ _archive_resource_id }}. See identity dump above."
+        msg: >-
+          Archive write failed: phase={{ phase }}
+          resource={{ _archive_resource_id }}
+          target={{ _archive_dir_resolved }}/{{ _archive_final_filename }}
+          See identity dump above.
 
 # ── 6. Emit success line with the archive path ───────────────────────────────
 - name: "write_archive | report archive path"
