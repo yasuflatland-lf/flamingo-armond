@@ -325,3 +325,15 @@ If teardown is interrupted (Ctrl-C, network glitch, or a 5xx that exhausts retri
 - The state file is preserved through partial failures so the operator can inspect it and decide the next step before re-running.
 
 When a DELETE exhausts retries on 5xx, the phase writes a `delete_status: failed` archive entry, prints a clear failure message, and skips later phases via `meta: end_play`. The state file is preserved so you can decide the next step.
+
+### Per-provider scope check endpoints
+
+Each provider phase GETs a scope-verification endpoint before issuing the DELETE. The token's team or org id must match the resource's team or org id; a mismatch produces an `UNAUTHORIZED:<id>` sentinel that causes `verify_identity.yml` to abort with a clear message. The three endpoints and their relevant JSON paths are:
+
+| Provider | Scope-check endpoint | JSON path read | Match condition |
+|---|---|---|---|
+| Vercel | `GET https://api.vercel.com/v2/teams/{accountId}` | `.id` | must equal `identity_team` (`accountId` from project GET) |
+| Render | `GET https://api.render.com/v1/owners/{ownerId}` | HTTP 200 = owner reachable | 200 → `token_team_id = ownerId`; non-200 → UNAUTHORIZED sentinel |
+| Supabase | `GET https://api.supabase.com/v1/organizations` | list filtered by `.id == organization_id` | org id present in list → match; absent or non-200 → UNAUTHORIZED sentinel |
+
+Vercel's project GET returns `accountId` as the team id; the scope check GETs that team directly. Render's owner endpoint doubles as both an email-lookup and a scope check (200 means the token can reach the owner). Supabase has no per-org scope endpoint, so the playbook lists all organizations the token can see and checks for membership.
