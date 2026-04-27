@@ -254,3 +254,63 @@ For an end-to-end check, sign in via Google on the Vercel domain and load `/prof
 - **Use `127.0.0.1`, not `localhost`, for any local OAuth setup.** Google's redirect URI validation treats them as distinct origins. This applies to local development only; production uses real domains (`docs/dev-setup.md` § "Gotchas").
 - **Render free tier sleeps idle services.** The first request after idleness incurs a cold start. Health checks on `/health` keep the service warm only while traffic flows.
 - **Custom domains.** When adding a Vercel custom domain, also update the Supabase Auth Site URL and add the new origin to the Redirect URLs allow list.
+
+## Tearing down production via `make teardown-prod`
+
+### Why teardown is irreversible
+
+Running `make teardown-prod` deletes the Vercel project, the Render web service, and the Supabase project — in that reverse-dependency order (upstream first, downstream last). Each deletion is a hard DELETE against the provider's API; no snapshots are taken and no data is preserved automatically.
+
+There is no rollback. Once a resource is destroyed it is gone. The state file is moved to `.setup-prod-archive/` so the operator retains a record of what existed, but that record is informational only — the providers have already discarded the data.
+
+### Three Make targets, five phases
+
+```bash
+make teardown-prod              # full sequence: preflight + 3 provider deletes + postapply
+make teardown-prod-preflight    # token reachability + ID resolution only; no destructive work
+ansible-playbook playbooks/teardown-prod.yml --tags <phase>   # single phase
+```
+
+| Tag | Phase | What it does |
+|---|---|---|
+| `preflight` | 1 | Always runs; resolves mode (strict/advisory) + token reachability |
+| `vercel` | 2 | DELETEs the Vercel project (upstream first) |
+| `render` | 3 | DELETEs the Render web service |
+| `supabase` | 4 | DELETEs the Supabase project (last; downstream-most) |
+| `postapply` | 5 | Writes summary, deletes state file |
+
+### Mode flags
+
+- **`rescue=true`**: switches to advisory mode when `.setup-prod.state.yml` is missing (e.g. lost laptop or a different machine than the one used for bring-up). The operator must supply `vercel_project_id`, `render_service_id`, and `supabase_project_ref` via `-e` overrides on the `ansible-playbook` command line.
+- **`confirm=true`**: bypasses the operator name-retype prompt. **Rejected at preflight unless `testing=true` is also set** — this is the hard barrier preventing CI from accidentally running a real teardown.
+
+### The name-retype safety prompt
+
+Before each provider DELETE, the playbook fetches resource metadata from the provider API, prints a preview (id, name, team/owner, created_at), and prompts the operator to retype the resource name **exactly** (case-sensitive, no normalization). A mismatch aborts the phase with no DELETE issued.
+
+After a successful retype, the playbook also verifies that the bearer token's team/org id matches the resource's team/org id. A mismatch (token belongs to a different team than the resource) aborts the phase and prints both ids in the error message so the operator can identify the wrong token.
+
+### Archive directory
+
+`.setup-prod-archive/` (gitignored) accumulates one YAML file per destroyed resource plus one summary YAML per teardown run. Each archive entry includes:
+
+| Field | Notes |
+|---|---|
+| `teardown_at` | ISO-8601 timestamp |
+| `resource_id` | Provider-assigned ID |
+| `name` | Resource name at time of deletion |
+| `team` | Team or org that owned the resource |
+| `delete_status` | `deleted`, `already_gone`, or `error` |
+| `http_status` | HTTP status code returned by the provider |
+
+The first archive file written in a run also embeds the full contents of `.setup-prod.state.yml` as it existed before teardown began. This snapshot is useful for incident response and audit.
+
+### Recovery
+
+There is none. To rebuild after teardown, run `make setup-prod` from zero and follow the full bring-up procedure above.
+
+If teardown is interrupted (Ctrl-C, network glitch, or a 5xx that exhausts retries), inspect `.setup-prod-archive/` to see which resources were deleted, then choose a path forward:
+
+- **Re-run `make teardown-prod`** — resources already deleted produce `delete_status: already_gone` archive entries when the provider returns 404; the playbook treats 404 as a successful short-circuit and continues.
+- **Run a single phase** — use `--tags <phase>` to target the specific provider that failed without re-running earlier phases.
+- The state file is preserved through partial failures so the operator can inspect it and decide the next step before re-running.

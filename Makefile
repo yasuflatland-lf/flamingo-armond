@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen test clean clean-frontend clean-backend doctor db-reset setup-prod setup-prod-preflight setup-prod-postapply
+.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen test clean clean-frontend clean-backend doctor db-reset setup-prod setup-prod-preflight setup-prod-postapply teardown-prod teardown-prod-preflight
 
 # Most env / Supabase targets dispatch to the playbook below; tags select the subset.
 ANSIBLE := ansible-playbook -i playbooks/inventory.local playbooks/setup.yml
@@ -85,6 +85,7 @@ doctor: ## Show which processes hold dev ports 1323/3000 (does NOT kill; you dec
 
 # --- Production bring-up (manual runbook + verification) -------------------
 ANSIBLE_PROD := ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml
+ANSIBLE_TEARDOWN := ansible-playbook -i playbooks/inventory.local playbooks/teardown-prod.yml
 
 setup-prod: mise-install ## Guided production bring-up: prereq check + dashboard handoff + smoke
 	@$(ANSIBLE_PROD)
@@ -96,3 +97,9 @@ setup-prod-preflight: mise-install ## Verify tokens and GitHub App installations
 
 setup-prod-postapply: mise-install ## Trigger first Render deploy + smoke tests (re-runnable from .state.yml)
 	@$(ANSIBLE_PROD) --tags postapply
+
+teardown-prod: mise-install ## DESTRUCTIVE: tear down the production environment created by setup-prod
+	@$(ANSIBLE_TEARDOWN)
+
+teardown-prod-preflight: mise-install ## Verify tokens and resolve IDs only (no destructive work)
+	@$(ANSIBLE_TEARDOWN) --tags preflight
