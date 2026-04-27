@@ -1,0 +1,181 @@
+---
+# playbooks/teardown-prod/render.yml
+#
+# Phase 3 - Delete the Render web service.
+#
+# Prerequisites:
+#   - preflight.yml has run and set render_token, render_service_id.
+#   - Vercel phase has already completed (check_dep enforces this).
+#
+# Steps:
+#   1. check_dep (render) — fails if Vercel is still alive.
+#   2. Pre-GET the service (status 200 or 404).
+#   3. 404 path: mark already_gone, write archive, done.
+#   4. 200 path: build identity facts, GET owner for email + token scope,
+#      verify_identity, DELETE, write archive.
+#
+# Idempotent: a second run on a deleted service takes the 404 path and
+# writes an already_gone archive entry without calling DELETE again.
+
+# ── Step 1: dependency check ─────────────────────────────────────────────────
+
+- name: "render | check dependency: Vercel must be gone before Render"
+  ansible.builtin.include_tasks: _lib/check_dep.yml
+  vars:
+    phase: render
+
+# ── Step 2: pre-GET the Render service ───────────────────────────────────────
+
+- name: "render | GET service {{ render_service_id }} (pre-check)"
+  ansible.builtin.uri:
+    url: "https://api.render.com/v1/services/{{ render_service_id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ render_token }}"
+    status_code: [200, 404]
+  register: _render_pre_get
+  no_log: true
+
+# ── Step 3: 404 path — service already gone ───────────────────────────────────
+
+- name: "render | service already gone (404 path)"
+  when: _render_pre_get.status == 404
+  block:
+    - name: "render | set verified_identity to already_gone"
+      ansible.builtin.set_fact:
+        verified_identity:
+          name: ""
+          team: ""
+          owner_email: ""
+          created_at: ""
+          already_gone: true
+
+    - name: "render | note: service already gone"
+      ansible.builtin.debug:
+        msg: >-
+          Render service {{ render_service_id }} returned 404 — already gone.
+          Recording as already_gone.
+
+    - name: "render | write archive (already_gone)"
+      ansible.builtin.include_tasks: _lib/write_archive.yml
+      vars:
+        phase: render
+        delete_response: {}
+        identity: "{{ verified_identity }}"
+
+# ── Step 4: 200 path — service exists, verify and delete ─────────────────────
+
+- name: "render | service exists (200 path)"
+  when: _render_pre_get.status != 404
+  block:
+
+    # ── 4a. Extract identity facts from the GET response ─────────────────────
+    # The Render v1 GET /services/{id} response wraps the service object under
+    # a top-level "service" key. Fall back to the root level if the key is
+    # absent (matches the check_dep.yml pattern used throughout this codebase).
+
+    - name: "render | extract service name and ownerId from pre-GET"
+      ansible.builtin.set_fact:
+        _render_service_name: >-
+          {{
+            _render_pre_get.json.service.name
+            | default(_render_pre_get.json.name | default(''))
+          }}
+        _render_owner_id: >-
+          {{
+            _render_pre_get.json.service.ownerId
+            | default(_render_pre_get.json.ownerId | default(''))
+          }}
+        _render_created_at: >-
+          {{
+            _render_pre_get.json.service.createdAt
+            | default(_render_pre_get.json.createdAt | default(''))
+          }}
+
+    # ── 4b. GET owner to obtain email and verify token scope ─────────────────
+
+    - name: "render | GET /v1/owners/{{ _render_owner_id }} for email + token scope"
+      ansible.builtin.uri:
+        url: "https://api.render.com/v1/owners/{{ _render_owner_id }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ render_token }}"
+        status_code: [200, 401, 403, 404]
+      register: _render_owner
+      failed_when: false
+      no_log: true
+
+    - name: "render | set token_team_id and identity_owner_email from owner response"
+      ansible.builtin.set_fact:
+        token_team_id: >-
+          {{
+            _render_owner_id
+            if _render_owner.status == 200
+            else ('UNAUTHORIZED:' ~ _render_owner_id)
+          }}
+        _render_owner_email: >-
+          {{
+            _render_owner.json.email | default('')
+            if _render_owner.status == 200
+            else ''
+          }}
+
+    # ── 4c. verify_identity ───────────────────────────────────────────────────
+
+    - name: "render | verify identity before deletion"
+      ansible.builtin.include_tasks: _lib/verify_identity.yml
+      vars:
+        provider: render
+        resource_id: "{{ render_service_id }}"
+        api_url: "https://api.render.com/v1/services/{{ render_service_id }}"
+        token: "{{ render_token }}"
+        identity_name: "{{ _render_service_name }}"
+        identity_team: "{{ _render_owner_id }}"
+        identity_owner_email: "{{ _render_owner_email }}"
+        identity_created_at: "{{ _render_created_at }}"
+        team_token_endpoint:
+          url: "https://api.render.com/v1/owners/{{ _render_owner_id }}"
+
+    # ── 4d. DELETE the service ────────────────────────────────────────────────
+
+    - name: "render | DELETE service {{ render_service_id }}"
+      ansible.builtin.uri:
+        url: "https://api.render.com/v1/services/{{ render_service_id }}"
+        method: DELETE
+        headers:
+          Authorization: "Bearer {{ render_token }}"
+        status_code: [200, 204, 404]
+      register: _render_delete_resp
+      no_log: true
+      retries: 3
+      delay: 5
+      until: >-
+        _render_delete_resp.status in [200, 204]
+        or (_render_delete_resp.status >= 400 and _render_delete_resp.status < 500)
+
+    - name: "render | assert DELETE succeeded"
+      ansible.builtin.assert:
+        that:
+          - _render_delete_resp.status in [200, 204, 404]
+        fail_msg: >-
+          Render DELETE /v1/services/{{ render_service_id }} returned unexpected
+          status {{ _render_delete_resp.status }}. Check the Render dashboard and
+          rerun: ansible-playbook playbooks/teardown-prod.yml --tags render
+
+    # ── 4e. Write archive ─────────────────────────────────────────────────────
+
+    - name: "render | write archive"
+      ansible.builtin.include_tasks: _lib/write_archive.yml
+      vars:
+        phase: render
+        delete_response: "{{ _render_delete_resp }}"
+        identity: "{{ verified_identity }}"
+
+# ── Phase complete ────────────────────────────────────────────────────────────
+
+- name: "render | phase complete"
+  ansible.builtin.debug:
+    msg: >-
+      Phase 3 (render) complete.
+      Service {{ render_service_id }} status:
+      {{ 'already_gone' if verified_identity.already_gone else 'deleted (HTTP ' ~ (_render_delete_resp.status | default('?')) ~ ')' }}.

@@ -1,0 +1,146 @@
+---
+# playbooks/teardown-prod/vercel.yml
+#
+# Phase 1 (first to delete): tear down the Vercel project.
+# DELETE https://api.vercel.com/v9/projects/{vercel_project_id}
+#
+# Vercel has no upstream dependencies in this stack, so check_dep is a no-op.
+# The phase is idempotent: a 404 on the pre-GET writes an already_gone archive
+# entry and exits early without calling verify_identity. A second DELETE on a
+# project that was just deleted also returns 404, which is treated as success.
+
+# ── Step 1: reverse-dependency check (no-op for vercel) ─────────────────────
+- name: "vercel teardown | check upstream dependencies"
+  ansible.builtin.include_tasks: _lib/check_dep.yml
+  vars:
+    phase: vercel
+
+# ── Step 2: pre-GET to detect 404 and extract identity values ───────────────
+- name: "vercel teardown | GET project (preflight to detect 404 and extract identity)"
+  ansible.builtin.uri:
+    url: "https://api.vercel.com/v9/projects/{{ vercel_project_id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ vercel_token }}"
+    status_code: [200, 404]
+  register: _vercel_pre_get
+  no_log: true
+
+# ── Step 3: 404 short-circuit — write already_gone archive and stop ──────────
+- name: "vercel teardown | resource already gone — set fact and archive"
+  when: _vercel_pre_get.status == 404
+  block:
+    - name: "vercel teardown | 404: set verified_identity (already_gone)"
+      ansible.builtin.set_fact:
+        verified_identity:
+          name: ""
+          team: ""
+          owner_email: ""
+          created_at: ""
+          already_gone: true
+
+    - name: "vercel teardown | 404: note already gone"
+      ansible.builtin.debug:
+        msg: >-
+          Vercel project {{ vercel_project_id }} returned 404 — already gone.
+          Writing already_gone archive entry and skipping verify_identity.
+
+    - name: "vercel teardown | 404: write archive (already_gone)"
+      ansible.builtin.include_tasks: _lib/write_archive.yml
+      vars:
+        phase: vercel
+        delete_response: {}
+        identity: "{{ verified_identity }}"
+
+# ── Step 4: 200 path — resolve identity values from the pre-GET response ─────
+- name: "vercel teardown | extract identity_name from pre-GET"
+  ansible.builtin.set_fact:
+    identity_name: "{{ _vercel_pre_get.json.name | default('') }}"
+  no_log: false
+
+- name: "vercel teardown | extract identity_team (accountId) from pre-GET"
+  ansible.builtin.set_fact:
+    identity_team: "{{ _vercel_pre_get.json.accountId | default('') }}"
+
+# Vercel's /v9/projects/{id} response does not include an owner email field.
+# The owner email is left empty; verify_identity will display it as blank.
+# See spec note: "identity_owner_email: Vercel does not include ownerEmail
+# directly — pass empty string and document the gap."
+- name: "vercel teardown | set identity_owner_email (not available from Vercel projects API)"
+  ansible.builtin.set_fact:
+    identity_owner_email: ""
+
+- name: "vercel teardown | extract and convert identity_created_at from epoch ms"
+  ansible.builtin.set_fact:
+    identity_created_at: >-
+      {{
+        ((_vercel_pre_get.json.createdAt | default(0)) / 1000) | int
+        | strftime('%Y-%m-%dT%H:%M:%SZ')
+      }}
+
+# ── Step 5: GET /v2/teams/{accountId} to verify token team scope ─────────────
+- name: "vercel teardown | GET /v2/teams/{{ identity_team }} (token scope check)"
+  ansible.builtin.uri:
+    url: "https://api.vercel.com/v2/teams/{{ identity_team }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ vercel_token }}"
+    status_code: [200, 403, 404]
+  register: _vercel_team_resp
+  no_log: true
+  failed_when: false
+
+# If the GET returns 200 and the team id matches, token has access.
+# Any other response (403, 404, missing id) produces a deliberately-mismatched
+# value so verify_identity's team-scope assert fires and aborts the deletion.
+- name: "vercel teardown | resolve token_team_id (UNAUTHORIZED sentinel on failure)"
+  ansible.builtin.set_fact:
+    token_team_id: >-
+      {{
+        _vercel_team_resp.json.id
+        if (_vercel_team_resp.status == 200 and _vercel_team_resp.json.id is defined)
+        else ('UNAUTHORIZED:' + identity_team)
+      }}
+
+# ── Step 6: verify_identity — show preview, prompt name retype, check scope ──
+- name: "vercel teardown | verify identity before deletion"
+  ansible.builtin.include_tasks: _lib/verify_identity.yml
+  vars:
+    provider: vercel
+    resource_id: "{{ vercel_project_id }}"
+    api_url: "https://api.vercel.com/v9/projects/{{ vercel_project_id }}"
+    token: "{{ vercel_token }}"
+    identity_name: "{{ identity_name }}"
+    identity_team: "{{ identity_team }}"
+    identity_owner_email: "{{ identity_owner_email }}"
+    identity_created_at: "{{ identity_created_at }}"
+    team_token_endpoint:
+      url: "https://api.vercel.com/v2/teams/{{ identity_team }}"
+    token_team_id: "{{ token_team_id }}"
+
+# ── Step 7: DELETE the Vercel project ────────────────────────────────────────
+# Retried up to 3 times on 5xx per section 6.5; 4xx (except 503) are terminal.
+- name: "vercel teardown | DELETE /v9/projects/{{ vercel_project_id }}"
+  ansible.builtin.uri:
+    url: "https://api.vercel.com/v9/projects/{{ vercel_project_id }}"
+    method: DELETE
+    headers:
+      Authorization: "Bearer {{ vercel_token }}"
+    status_code: [200, 204, 404]
+  register: _vercel_delete_resp
+  no_log: true
+  retries: 3
+  delay: 5
+  until: >-
+    (_vercel_delete_resp.status in [200, 204])
+    or (_vercel_delete_resp.status >= 400
+        and _vercel_delete_resp.status < 500
+        and _vercel_delete_resp.status != 503)
+
+# ── Step 8: write archive ─────────────────────────────────────────────────────
+- name: "vercel teardown | write archive"
+  ansible.builtin.include_tasks: _lib/write_archive.yml
+  vars:
+    phase: vercel
+    delete_response: "{{ _vercel_delete_resp }}"
+    identity: "{{ verified_identity }}"
