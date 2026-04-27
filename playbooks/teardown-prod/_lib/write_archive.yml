@@ -56,7 +56,7 @@
       owner_email: "{{ identity.owner_email | default('') }}"
       created_at: "{{ identity.created_at | default('') }}"
       delete_status: "{{ _archive_delete_status }}"
-      http_status: "{{ delete_response.status | default(omit) }}"
+      http_status: "{{ delete_response.status | default(None) }}"
       original_state: >-
         {{
           original_state
@@ -83,17 +83,43 @@
         else _archive_ts ~ '-teardown-' ~ phase ~ '-' ~ (ansible_run_id | default(99 | random)) ~ '.yml'
       }}
 
-- name: "write_archive | write archive file (force: false prevents overwrite)"
-  ansible.builtin.copy:
-    content: "{{ _archive_dict | to_nice_yaml(indent=2) }}"
-    dest: "{{ _archive_dir_resolved }}/{{ _archive_final_filename }}"
-    mode: "0600"
-    force: false
+# ── 5. Write archive file with rescue to dump identity on failure ────────────
+- name: "write_archive | write archive file"
+  block:
+    - name: "write_archive | copy archive YAML"
+      ansible.builtin.copy:
+        content: "{{ _archive_dict | to_nice_yaml(indent=2) }}"
+        dest: "{{ _archive_dir_resolved }}/{{ _archive_final_filename }}"
+        mode: "0600"
+        force: false
 
-# ── 5. Mark first write done so subsequent calls omit original_state ─────────
-- name: "write_archive | mark first write done"
-  ansible.builtin.set_fact:
-    archive_first_write: false
+    - name: "write_archive | mark first write done"
+      ansible.builtin.set_fact:
+        archive_first_write: false
+
+  rescue:
+    - name: "write_archive | ARCHIVE WRITE FAILED — dump identity to operator"
+      ansible.builtin.debug:
+        msg:
+          - "ARCHIVE WRITE FAILED. The resource below was DELETED but the archive was NOT written."
+          - "Copy this output manually for incident records before continuing."
+          - ""
+          - "  phase        : {{ phase }}"
+          - "  resource_id  : {{ _archive_resource_id }}"
+          - "  name         : {{ identity.name | default('') }}"
+          - "  team         : {{ identity.team | default('') }}"
+          - "  owner_email  : {{ identity.owner_email | default('') }}"
+          - "  created_at   : {{ identity.created_at | default('') }}"
+          - "  delete_at    : {{ _archive_ts }}"
+          - "  http_status  : {{ delete_response.status | default('(no response)') }}"
+          - "  archive_path : {{ _archive_dir_resolved }}/{{ _archive_final_filename }}"
+          - ""
+          - "Likely cause: archive_dir not writable or full disk."
+          - "Fix the archive_dir issue, then run: ansible-playbook playbooks/teardown-prod.yml --tags postapply"
+
+    - name: "write_archive | re-raise archive failure after dumping identity"
+      ansible.builtin.fail:
+        msg: "Archive write failed for phase={{ phase }} resource={{ _archive_resource_id }}. See identity dump above."
 
 # ── 6. Emit success line with the archive path ───────────────────────────────
 - name: "write_archive | report archive path"

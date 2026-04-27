@@ -17,11 +17,12 @@
 #   identity_team        - pre-resolved team/org id on the resource
 #   identity_owner_email - pre-resolved owner email
 #   identity_created_at  - pre-resolved creation timestamp
-#   team_token_endpoint  - dict { url } — URL to GET the calling token's scope.
 #   token_team_id        - pre-resolved team id from the token scope endpoint.
 #                          Caller evaluates this before include_tasks, e.g.:
 #                            token_team_id: "{{ _scope_resp.json.user.defaultTeamId }}"
 #                          Must equal identity_team for the scope check to pass.
+#                          Set to "UNAUTHORIZED:<identity_team>" when the scope-check
+#                          GET returned a non-2xx status.
 #   confirm              - bool; when true the retype pause is skipped.
 #                          Preflight rejects confirm=true in production.
 #
@@ -132,10 +133,20 @@
         that:
           - token_team_id | string == verified_identity.team | string
         fail_msg: >-
-          Team scope mismatch — deletion aborted.
+          {% if (token_team_id | string) is match('^UNAUTHORIZED:') %}
+          Token scope verification failed - deletion aborted.
+            Provider       : {{ provider }}
+            Resource id    : {{ resource_id }}
+            Resource team  : "{{ verified_identity.team }}"
+          The bearer token could not verify its team membership; the scope-check
+          endpoint returned a non-2xx status. The token may lack required scope or
+          has been revoked. Check token scopes at the provider dashboard and re-run.
+          {% else %}
+          Team scope mismatch - deletion aborted.
             Token team id  : "{{ token_team_id }}"
             Resource team  : "{{ verified_identity.team }}"
             Provider       : {{ provider }}
             Resource id    : {{ resource_id }}
           The bearer token belongs to a different team than the resource.
           Use the token that owns this {{ provider }} resource and re-run.
+          {% endif %}
