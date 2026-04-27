@@ -1,0 +1,65 @@
+---
+# Production teardown playbook for flamingo-armond.
+#
+# Destroys the environment created by setup-prod across three providers.
+# Teardown order (reverse-dependency): Vercel -> Render -> Supabase.
+# Vercel references Render which references Supabase; referencing side first
+# avoids a window where a live deployment points at a deleted backend.
+#
+# Run the full sequence:
+#   ansible-playbook playbooks/teardown-prod.yml
+#
+# Run a single phase by tag (preflight always runs implicitly):
+#   ansible-playbook playbooks/teardown-prod.yml --tags vercel
+#   ansible-playbook playbooks/teardown-prod.yml --tags render
+#   ansible-playbook playbooks/teardown-prod.yml --tags supabase
+#   ansible-playbook playbooks/teardown-prod.yml --tags postapply
+#
+# Tag map:
+#   preflight  -> Phase 1  (always runs; token reachability + ID resolution)
+#   vercel     -> Phase 2  (delete Vercel project)
+#   render     -> Phase 3  (delete Render service)
+#   supabase   -> Phase 4  (delete Supabase project)
+#   postapply  -> Phase 5  (archive state file, summary)
+#
+# Mode flags:
+#   rescue=true   switches to advisory mode when the state file is absent;
+#                 requires operator to supply IDs via -e overrides.
+#   confirm=true  suppresses the interactive name-retype prompt (CI use only).
+#                 confirm=true is REJECTED at preflight unless testing=true is
+#                 also set; this prevents CI from running a real teardown.
+#
+# Recovery: if teardown is interrupted, re-run with --tags for the remaining
+# phases. To rebuild from zero after a successful teardown, run make setup-prod.
+- name: Production teardown for flamingo-armond
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    repo: yasuflatland-lf/flamingo-armond
+    state_file: "{{ playbook_dir }}/../.setup-prod.state.yml"
+    archive_dir: "{{ playbook_dir }}/../.setup-prod-archive"
+    rescue: false
+    confirm: false
+
+  tasks:
+    - name: Phase 1 - preflight
+      ansible.builtin.import_tasks: teardown-prod/preflight.yml
+      tags: [preflight, always]
+
+    - name: Phase 2 - Vercel project delete
+      ansible.builtin.import_tasks: teardown-prod/vercel.yml
+      tags: [vercel]
+
+    - name: Phase 3 - Render service delete
+      ansible.builtin.import_tasks: teardown-prod/render.yml
+      tags: [render]
+
+    - name: Phase 4 - Supabase project delete
+      ansible.builtin.import_tasks: teardown-prod/supabase.yml
+      tags: [supabase]
+
+    - name: Phase 5 - Finalize archive and summary
+      ansible.builtin.import_tasks: teardown-prod/postapply.yml
+      tags: [postapply]

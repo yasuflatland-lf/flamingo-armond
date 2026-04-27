@@ -1,0 +1,283 @@
+---
+# playbooks/teardown-prod/preflight.yml
+#
+# Phase 1 - teardown-prod preflight.
+# Resolves execution mode and provider IDs; verifies token reachability for
+# every provider in scope; caches tokens for downstream phases.
+#
+# Inputs (play vars, all defaulted in teardown-prod.yml):
+#   state_file   - path to .setup-prod.state.yml
+#   rescue       - bool; true switches to advisory mode when state file absent
+#   confirm      - bool; true suppresses the operator name-retype prompt
+#   testing      - bool; CI test sentinel; required when confirm=true
+#
+# Outputs (set_fact, consumed by provider phases and postapply):
+#   teardown_mode        - "strict" or "advisory"
+#   teardown_started_at  - ISO8601 UTC timestamp of teardown start (no sub-seconds, trailing Z)
+#   original_state       - loaded state dict (strict) or null (advisory)
+#   vercel_project_id    - resolved Vercel project ID
+#   render_service_id    - resolved Render service ID
+#   supabase_project_ref - resolved Supabase project ref
+#   vercel_token         - cached VERCEL_API_TOKEN      (no_log)
+#   render_token         - cached RENDER_API_KEY        (no_log)
+#   supabase_token       - cached SUPABASE_PERSONAL_ACCESS_TOKEN (no_log)
+#   _phases_in_scope     - list of provider phases selected by --tags
+#   archive_first_write  - initialized true for write_archive.yml first call
+
+# ── 0. Hard barrier: confirm=true requires testing=true ────────────────────────
+
+- name: "preflight | assert confirm=true is not used without testing=true"
+  ansible.builtin.assert:
+    that:
+      - not (confirm | bool) or (testing | default(false) | bool)
+    fail_msg: |
+      confirm=true bypasses the operator name-retype prompt and is therefore
+      production-forbidden unless the test sentinel testing=true is also set.
+
+      confirm=true suppresses the interactive retype prompt in verify_identity.
+      Pairing it with real production IDs would allow silent resource deletion.
+      Only use confirm=true with fixture IDs in the test suite (see section 7.7).
+
+      Interactive teardown:
+        ansible-playbook playbooks/teardown-prod.yml
+
+      Test-suite usage only:
+        ansible-playbook playbooks/teardown-prod.yml -e confirm=true -e testing=true -e vercel_project_id=test_...
+
+# ── 1. Record teardown start timestamp ────────────────────────────────────────
+
+- name: "preflight | record teardown start timestamp"
+  ansible.builtin.set_fact:
+    teardown_started_at: "{{ now(utc=true).isoformat() | regex_replace('\\..*', '') ~ 'Z' }}"
+
+# ── 2. State file detection and mode resolution ────────────────────────────────
+
+- name: "preflight | stat state file"
+  ansible.builtin.stat:
+    path: "{{ state_file }}"
+  register: _state_stat
+
+- name: "preflight | strict mode: load and cache state file"
+  when: _state_stat.stat.exists
+  block:
+    - name: "preflight | strict mode: include_vars from state file"
+      ansible.builtin.include_vars:
+        file: "{{ state_file }}"
+
+    - name: "preflight | strict mode: set teardown_mode=strict and original_state"
+      ansible.builtin.set_fact:
+        teardown_mode: strict
+        original_state: "{{ lookup('file', state_file) | from_yaml }}"
+
+- name: "preflight | advisory mode: set teardown_mode=advisory when rescue=true"
+  ansible.builtin.set_fact:
+    teardown_mode: advisory
+    original_state: null
+  when:
+    - not _state_stat.stat.exists
+    - rescue | default(false) | bool
+
+- name: "preflight | fail: state file absent and rescue=false"
+  ansible.builtin.fail:
+    msg: |
+      State file not found: {{ state_file }}
+
+      The state file is required for a normal teardown. It is written by
+      setup-prod and records the IDs of every provisioned resource.
+
+      If the state file was lost but you know the resource IDs, activate
+      rescue mode and supply each in-scope ID as a -e override:
+
+        ansible-playbook playbooks/teardown-prod.yml \
+          -e rescue=true \
+          -e vercel_project_id=<id> \
+          -e render_service_id=<id> \
+          -e supabase_project_ref=<ref>
+
+      Omit overrides for providers you are not targeting with --tags.
+  when:
+    - not _state_stat.stat.exists
+    - not (rescue | default(false) | bool)
+
+# ── 3. Determine phases in scope from ansible_run_tags ─────────────────────────
+#
+# ansible_run_tags is set by Ansible to the tags passed via --tags.
+# When no --tags flag is given it contains ["all"]. Intersecting with the
+# known provider list gives the in-scope set; "all" selects all three.
+
+- name: "preflight | compute _phases_in_scope"
+  ansible.builtin.set_fact:
+    _phases_in_scope: >-
+      {{
+        ['vercel', 'render', 'supabase']
+        | select('in', ansible_run_tags)
+        | list
+        if 'all' not in ansible_run_tags
+        else ['vercel', 'render', 'supabase']
+      }}
+
+- name: "preflight | report mode and phases in scope"
+  ansible.builtin.debug:
+    msg:
+      - "teardown_mode   : {{ teardown_mode }}"
+      - "phases in scope : {{ _phases_in_scope | join(', ') or '(none)' }}"
+      - "ansible_run_tags: {{ ansible_run_tags | join(', ') }}"
+
+# ── 4. Cache tokens from environment ──────────────────────────────────────────
+
+- name: "preflight | cache VERCEL_API_TOKEN"
+  ansible.builtin.set_fact:
+    vercel_token: "{{ lookup('env', 'VERCEL_API_TOKEN') }}"
+  no_log: true
+  when: "'vercel' in _phases_in_scope"
+
+- name: "preflight | cache RENDER_API_KEY"
+  ansible.builtin.set_fact:
+    render_token: "{{ lookup('env', 'RENDER_API_KEY') }}"
+  no_log: true
+  when: "'render' in _phases_in_scope"
+
+- name: "preflight | cache SUPABASE_PERSONAL_ACCESS_TOKEN"
+  ansible.builtin.set_fact:
+    supabase_token: "{{ lookup('env', 'SUPABASE_PERSONAL_ACCESS_TOKEN') }}"
+  no_log: true
+  when: "'supabase' in _phases_in_scope"
+
+# ── 5. Token reachability probes ───────────────────────────────────────────────
+
+- name: "preflight | verify VERCEL_API_TOKEN reaches Vercel API"
+  when: "'vercel' in _phases_in_scope"
+  block:
+    - name: "GET https://api.vercel.com/v2/user"
+      ansible.builtin.uri:
+        url: https://api.vercel.com/v2/user
+        method: GET
+        headers:
+          Authorization: "Bearer {{ vercel_token }}"
+        status_code: 200
+      register: _vercel_probe
+      no_log: true
+  rescue:
+    - name: "preflight | surface Vercel token failure"
+      ansible.builtin.fail:
+        msg: |
+          VERCEL_API_TOKEN did not reach the Vercel API (auth or network failure).
+
+            HTTP status : {{ _vercel_probe.status | default('(connection error)') }}
+            Server msg  : {{ _vercel_probe.json.error.message | default(_vercel_probe.json.message | default(_vercel_probe.msg | default('(none)'))) }}
+
+          Rotate the token at:  https://vercel.com/account/tokens
+          Re-export and rerun:  ansible-playbook playbooks/teardown-prod.yml
+
+- name: "preflight | verify RENDER_API_KEY reaches Render API"
+  when: "'render' in _phases_in_scope"
+  block:
+    - name: "GET https://api.render.com/v1/owners"
+      ansible.builtin.uri:
+        url: https://api.render.com/v1/owners
+        method: GET
+        headers:
+          Authorization: "Bearer {{ render_token }}"
+        status_code: 200
+      register: _render_probe
+      no_log: true
+  rescue:
+    - name: "preflight | surface Render token failure"
+      ansible.builtin.fail:
+        msg: |
+          RENDER_API_KEY did not reach the Render API (auth or network failure).
+
+            HTTP status : {{ _render_probe.status | default('(connection error)') }}
+            Server msg  : {{ _render_probe.json.message | default(_render_probe.msg | default('(none)')) }}
+
+          Rotate the token at:  https://dashboard.render.com/u/settings#api-keys
+          Re-export and rerun:  ansible-playbook playbooks/teardown-prod.yml
+
+- name: "preflight | verify SUPABASE_PERSONAL_ACCESS_TOKEN reaches Supabase API"
+  when: "'supabase' in _phases_in_scope"
+  block:
+    - name: "GET https://api.supabase.com/v1/organizations"
+      ansible.builtin.uri:
+        url: https://api.supabase.com/v1/organizations
+        method: GET
+        headers:
+          Authorization: "Bearer {{ supabase_token }}"
+        status_code: 200
+      register: _supabase_probe
+      no_log: true
+  rescue:
+    - name: "preflight | surface Supabase token failure"
+      ansible.builtin.fail:
+        msg: |
+          SUPABASE_PERSONAL_ACCESS_TOKEN did not reach the Supabase API (auth or network failure).
+
+            HTTP status : {{ _supabase_probe.status | default('(connection error)') }}
+            Server msg  : {{ _supabase_probe.json.message | default(_supabase_probe.json.error.message | default(_supabase_probe.msg | default('(none)'))) }}
+
+          Rotate the token at:  https://supabase.com/dashboard/account/tokens
+          Re-export and rerun:  ansible-playbook playbooks/teardown-prod.yml
+
+# ── 6. Assert IDs are present for each in-scope phase ─────────────────────────
+
+- name: "preflight | assert vercel_project_id is present"
+  ansible.builtin.assert:
+    that:
+      - vercel_project_id is defined
+      - (vercel_project_id | default('') | length) > 0
+    fail_msg: |
+      vercel_project_id is missing and vercel is in scope.
+
+      Strict mode: loaded from state file — the file may be corrupt or lack
+      this key. Advisory mode: supply with -e vercel_project_id=<id>.
+
+      Find the ID: https://vercel.com/dashboard -> project settings -> General -> Project ID
+  when: "'vercel' in _phases_in_scope"
+
+- name: "preflight | assert render_service_id is present"
+  ansible.builtin.assert:
+    that:
+      - render_service_id is defined
+      - (render_service_id | default('') | length) > 0
+    fail_msg: |
+      render_service_id is missing and render is in scope.
+
+      Strict mode: loaded from state file — the file may be corrupt or lack
+      this key. Advisory mode: supply with -e render_service_id=<id>.
+
+      Find the ID: https://dashboard.render.com -> service -> Settings -> Service ID
+  when: "'render' in _phases_in_scope"
+
+- name: "preflight | assert supabase_project_ref is present"
+  ansible.builtin.assert:
+    that:
+      - supabase_project_ref is defined
+      - (supabase_project_ref | default('') | length) > 0
+    fail_msg: |
+      supabase_project_ref is missing and supabase is in scope.
+
+      Strict mode: loaded from state file — the file may be corrupt or lack
+      this key. Advisory mode: supply with -e supabase_project_ref=<ref>.
+
+      Find the ref: https://supabase.com/dashboard -> project -> Settings -> General -> Reference ID
+  when: "'supabase' in _phases_in_scope"
+
+# ── 7. Initialize archive_first_write sentinel ─────────────────────────────────
+
+- name: "preflight | initialize archive_first_write"
+  ansible.builtin.set_fact:
+    archive_first_write: true
+
+# ── 8. Summary ─────────────────────────────────────────────────────────────────
+
+- name: "preflight | summary"
+  ansible.builtin.debug:
+    msg:
+      - "Preflight passed. No resources have been modified."
+      - ""
+      - "  teardown_mode        : {{ teardown_mode }}"
+      - "  phases in scope      : {{ _phases_in_scope | join(', ') or '(none)' }}"
+      - "  vercel_project_id    : {{ vercel_project_id    | default('(not in scope)') }}"
+      - "  render_service_id    : {{ render_service_id    | default('(not in scope)') }}"
+      - "  supabase_project_ref : {{ supabase_project_ref | default('(not in scope)') }}"
+      - ""
+      - "Tokens verified via read-only API probes (values not logged)."
