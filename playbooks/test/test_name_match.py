@@ -1,4 +1,4 @@
-"""Pure-logic tests for case-sensitive name matching (spec: destroy_env.md section 4.4)."""
+"""Pure-logic tests for case-sensitive name matching."""
 
 import unicodedata
 

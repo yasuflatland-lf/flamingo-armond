@@ -41,10 +41,6 @@
     testing: true
     expected_already_gone: false
 
-    # team_token_endpoint is only used in the header comments of verify_identity.yml;
-    # pass an empty dict so the variable is defined.
-    team_token_endpoint: {}
-
   tasks:
 
     - name: "test | include verify_identity lib"

@@ -12,11 +12,11 @@
 #   mirrors the final assert conditions from check_dep.yml so we validate the
 #   expected behavior without hitting real endpoints.
 #
-#   TODO (future PR): Parameterize check_dep.yml with vercel_api_base and
-#   render_api_base vars (defaulting to the real hostnames) so the uri tasks
-#   template in the base URL.  That allows Approach A: the pytest harness passes
-#   vercel_api_base=http://127.0.0.1:PORT and the test drives the full probe
-#   path including HTTP round-trips.
+#   Approach B limitation: check_dep.yml hard-codes the provider hostnames,
+#   so this test exercises only the assertion logic, not the HTTP probe.
+#   Full probe coverage would require parameterizing the base URLs (e.g. as
+#   vercel_api_base / render_api_base vars) so the test harness can bind a
+#   local httpserver. See the implementation roadmap if/when this matters.
 #
 # SCENARIOS (drive via -e from pytest harness or manually):
 #

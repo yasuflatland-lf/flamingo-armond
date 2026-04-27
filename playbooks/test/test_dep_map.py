@@ -1,4 +1,4 @@
-"""Pure-logic tests for the reverse-dependency map (spec: destroy_env.md section 4.5)."""
+"""Pure-logic tests for the reverse-dependency map."""
 
 import pytest
 

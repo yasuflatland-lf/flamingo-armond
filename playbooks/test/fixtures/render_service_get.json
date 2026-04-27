@@ -1,8 +1,10 @@
 {
-  "id": "test_srv_renderfixture01",
-  "name": "test-flamingo-armond-backend",
-  "ownerId": "test_org_render",
-  "ownerEmail": "fixture@example.com",
-  "createdAt": "2025-01-15T10:00:00Z",
-  "type": "web_service"
+  "service": {
+    "id": "test_srv_renderfixture01",
+    "name": "test-flamingo-armond-backend",
+    "ownerId": "test_org_render",
+    "ownerEmail": "fixture@example.com",
+    "createdAt": "2025-01-15T10:00:00Z",
+    "type": "web_service"
+  }
 }

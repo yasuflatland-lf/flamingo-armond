@@ -1,4 +1,4 @@
-"""Pure-logic tests for archive dict construction and UTC ISO8601 formatting (spec: destroy_env.md sections 4.6 and 5.5)."""
+"""Pure-logic tests for archive dict construction and UTC ISO8601 formatting."""
 
 import datetime
 
@@ -10,7 +10,7 @@ import pytest
 
 VALID_PHASES = frozenset({"vercel", "render", "supabase"})
 
-# Fixed key set required in every archive record (section 4.6).
+# Fixed key set required in every archive record.
 ARCHIVE_KEYS = frozenset({
     "teardown_at", "teardown_mode", "phase", "resource_id",
     "name", "team", "owner_email", "created_at",
@@ -38,7 +38,7 @@ def build_archive(
     delete_response: dict | None = None,
     original_state: object = None,
 ) -> dict:
-    """Build the archive record dict matching the section 4.6 YAML schema.
+    """Build the archive record dict matching the documented archive YAML schema.
 
     delete_status rules:
     - identity['already_gone'] True  -> 'already_gone'; http_status=None (key present)
@@ -46,7 +46,7 @@ def build_archive(
     - anything else                  -> 'failed'
 
     original_state defaults to None; the key is ALWAYS included (never omitted)
-    so advisory-mode writes `original_state: null` per section 5.5.
+    so advisory-mode writes `original_state: null`.
 
     Raises ValueError for unknown phase.
     """
@@ -152,7 +152,7 @@ def test_archive_status_failed():
 
 
 def test_archive_original_state_only_first():
-    # Key must be present with value None when not supplied (section 5.5: null in advisory mode).
+    # Key must be present with value None when not supplied (mirrors advisory mode in production).
     record = build_archive(
         teardown_at=_DT, teardown_mode="advisory", phase="vercel",
         resource_id="prj_6X7W3M", identity=_SAMPLE_IDENTITY,

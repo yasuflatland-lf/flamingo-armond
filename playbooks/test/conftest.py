@@ -18,8 +18,10 @@ Dependencies
 Install:
   pip install --user pytest pytest-httpserver pyyaml
 
-Running these tests is OPTIONAL for this PR. They document expected behavior;
-CI wiring is out of scope and left to a follow-up.
+These tests are optional in current CI. They document expected behavior of
+the _lib/*.yml includes and can be run manually with:
+    pip install --user pytest pytest-httpserver pyyaml
+    pytest playbooks/test/
 """
 
 import json
