@@ -1,0 +1,93 @@
+---
+# playbooks/test/test_write_archive.yml
+#
+# Layer-3 unit-test playbook for teardown-prod/_lib/write_archive.yml.
+#
+# Invoke via the pytest harness (conftest.py run_playbook fixture):
+#   ansible-playbook -i inventory.local playbooks/test/test_write_archive.yml \
+#     -e phase=vercel \
+#     -e archive_dir=/tmp/pytest-xxx/archive \
+#     -e teardown_mode=strict \
+#     -e testing=true \
+#     [... additional vars per scenario ...]
+#
+# SCENARIOS (wire as pytest parametrize cases against test_write_archive.py):
+#
+#   1. delete_status: deleted
+#      delete_response={'status': 204}
+#      Archive contains delete_status=deleted, http_status=204.
+#
+#   2. delete_status: already_gone
+#      identity.already_gone=true, delete_response={}
+#      Archive contains delete_status=already_gone; http_status key absent/omitted.
+#
+#   3. delete_status: failed
+#      delete_response={'status': 503}
+#      Archive contains delete_status=failed, http_status=503.
+#
+#   4. archive_first_write=true
+#      original_state is a non-null dict passed in.
+#      Archive record contains the supplied original_state dict.
+#
+#   5. archive_first_write=false
+#      Archive record contains original_state: null.
+#
+#   6. Collision-safe naming
+#      Two calls in the same second produce two distinct filenames.
+#      Filename format: <UTC-ISO8601>-teardown-<phase>.yml; collision appends
+#      a random suffix before the extension.
+
+- name: "Layer-3 unit test: write_archive"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    # Caller must supply: phase, archive_dir, teardown_mode, identity,
+    # delete_response, original_state, archive_first_write.
+    # Safe defaults prevent interactive prompts in CI.
+    testing: true
+    archive_first_write: true
+    original_state: null
+    delete_response: {}
+    vercel_project_id: ""
+    render_service_id: ""
+    supabase_project_ref: ""
+
+  tasks:
+
+    - name: "test | include write_archive lib"
+      ansible.builtin.include_tasks:
+        file: ../teardown-prod/_lib/write_archive.yml
+      vars:
+        archive_dir: "{{ archive_dir }}"
+        phase: "{{ phase }}"
+        teardown_mode: "{{ teardown_mode }}"
+        identity: "{{ identity }}"
+        delete_response: "{{ delete_response }}"
+        original_state: "{{ original_state }}"
+        archive_first_write: "{{ archive_first_write | bool }}"
+        vercel_project_id: "{{ vercel_project_id }}"
+        render_service_id: "{{ render_service_id }}"
+        supabase_project_ref: "{{ supabase_project_ref }}"
+
+    - name: "test | find archive files written"
+      ansible.builtin.find:
+        paths: "{{ archive_dir }}"
+        patterns: "*.yml"
+      register: _test_found_files
+
+    - name: "test | slurp and debug each archive file"
+      ansible.builtin.slurp:
+        src: "{{ item.path }}"
+      register: _test_slurped
+      loop: "{{ _test_found_files.files | sort(attribute='path') }}"
+
+    - name: "test | debug archive file contents"
+      ansible.builtin.debug:
+        msg: >-
+          {{ item.source }}:
+          {{ item.content | b64decode }}
+      loop: "{{ _test_slurped.results }}"
+      loop_control:
+        label: "{{ item.source }}"

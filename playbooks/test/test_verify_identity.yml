@@ -1,0 +1,65 @@
+---
+# playbooks/test/test_verify_identity.yml
+#
+# Layer-3 unit-test playbook for teardown-prod/_lib/verify_identity.yml.
+#
+# This playbook must be invoked via ansible-playbook from the pytest harness
+# (conftest.py in this directory).  Installation and run instructions live in
+# conftest.py.  The harness drives pytest-localserver (or pytest-httpserver) to
+# stand up a lightweight HTTP server, passes its base URL as `api_url`, and
+# asserts on the playbook exit code and stdout.
+#
+# SCENARIOS (wire these up as separate pytest parametrize cases in conftest.py):
+#
+#   1. 200 happy path
+#      httpserver returns 200 with a JSON body.  Pass identity_* vars that
+#      match the response.  token_team_id == identity_team.
+#      expected_already_gone=false.  Playbook exits 0; final assert passes.
+#
+#   2. 404 already_gone
+#      httpserver returns 404.  expected_already_gone=true.
+#      Playbook exits 0; already_gone short-circuit fires; final assert passes.
+#
+#   3. 5xx (not exercised here)
+#      verify_identity.yml only accepts 200 or 404 via status_code guard.
+#      5xx causes an Ansible uri task failure; tested at the provider-phase
+#      level, not here.
+#
+#   4. team mismatch
+#      token_team_id deliberately differs from identity_team.  Playbook FAILS
+#      with non-zero exit.  Harness asserts returncode != 0 and that stderr (or
+#      stdout) contains "team scope mismatch".
+
+- name: "Layer-3 unit test: verify_identity"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    # Defaults keep the playbook non-interactive and safe for CI.
+    confirm: true
+    testing: true
+    expected_already_gone: false
+
+    # team_token_endpoint is only used in the header comments of verify_identity.yml;
+    # pass an empty dict so the variable is defined.
+    team_token_endpoint: {}
+
+  tasks:
+
+    - name: "test | include verify_identity lib"
+      ansible.builtin.include_tasks:
+        file: ../teardown-prod/_lib/verify_identity.yml
+
+    - name: "test | debug verified_identity output"
+      ansible.builtin.debug:
+        var: verified_identity
+
+    - name: "test | assert already_gone matches expectation"
+      ansible.builtin.assert:
+        that:
+          - verified_identity.already_gone == (expected_already_gone | bool)
+        fail_msg: >-
+          already_gone mismatch.
+            got      : {{ verified_identity.already_gone }}
+            expected : {{ expected_already_gone | bool }}

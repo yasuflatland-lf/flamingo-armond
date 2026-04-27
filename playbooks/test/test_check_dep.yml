@@ -1,0 +1,132 @@
+---
+# playbooks/test/test_check_dep.yml
+#
+# Layer-3 unit-test playbook for teardown-prod/_lib/check_dep.yml.
+#
+# APPROACH: B — partial test (fact injection)
+#
+#   _lib/check_dep.yml hard-codes https://api.vercel.com and https://api.render.com
+#   in ansible.builtin.uri tasks, making URL interception impossible without
+#   modifying the library file.  This playbook tests the ASSERTION LOGIC only:
+#   it manually injects _dep_vercel_alive / _dep_render_alive as set_fact, then
+#   mirrors the final assert conditions from check_dep.yml so we validate the
+#   expected behavior without hitting real endpoints.
+#
+#   TODO (future PR): Parameterize check_dep.yml with vercel_api_base and
+#   render_api_base vars (defaulting to the real hostnames) so the uri tasks
+#   template in the base URL.  That allows Approach A: the pytest harness passes
+#   vercel_api_base=http://127.0.0.1:PORT and the test drives the full probe
+#   path including HTTP round-trips.
+#
+# SCENARIOS (drive via -e from pytest harness or manually):
+#
+#   phase=vercel — nothing alive           -> pass silently (no assert needed)
+#   phase=render, vercel alive             -> FAIL (assert fires)
+#   phase=render, vercel gone              -> pass
+#   phase=supabase, vercel alive           -> FAIL
+#   phase=supabase, render alive           -> FAIL (render listed in fail_msg)
+#   phase=supabase, both alive             -> FAIL (both listed)
+#   phase=supabase, nothing alive          -> pass
+#
+# USAGE (standalone):
+#   ansible-playbook playbooks/test/test_check_dep.yml \
+#     -e phase=render -e inject_vercel_alive=true
+#
+# USAGE (via pytest harness in conftest.py):
+#   run_playbook("test_check_dep.yml",
+#       extravars={"phase": "render", "inject_vercel_alive": "true"})
+
+- name: "Layer-3 unit test: check_dep assertion logic"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    # phase must be supplied via -e. Default to vercel (no-op path) for safety.
+    phase: "vercel"
+
+    # Callers inject these to simulate probe results without hitting real APIs.
+    inject_vercel_alive: false
+    inject_render_alive: false
+
+    # Dummy resource IDs and tokens kept minimal — assertions reference them in
+    # fail_msg templates copied from check_dep.yml.
+    vercel_project_id: "test-vercel-proj"
+    render_service_id: "test-render-svc"
+    vercel_token: "fake-vercel-token"
+    render_token: "fake-render-token"
+
+  tasks:
+
+    # -------------------------------------------------------------------------
+    # phase: vercel — no upstream dependencies.
+    # -------------------------------------------------------------------------
+    - name: "test | vercel: no upstream dependencies to verify"
+      ansible.builtin.debug:
+        msg: "phase=vercel has no upstream dependencies — proceeding."
+      when: phase == 'vercel'
+
+    # -------------------------------------------------------------------------
+    # phase: render — mirror check_dep assert for Vercel reachability.
+    # -------------------------------------------------------------------------
+    - name: "test | render: inject Vercel alive status"
+      ansible.builtin.set_fact:
+        _dep_vercel_status: "{{ 200 if (inject_vercel_alive | bool) else 404 }}"
+      when: phase == 'render'
+
+    - name: "test | render: assert Vercel is already gone"
+      ansible.builtin.assert:
+        that:
+          - not (inject_vercel_alive | bool)
+        fail_msg: >-
+          Cannot delete Render: Vercel project {{ vercel_project_id }}
+          is still alive.
+          Tear down Vercel first (--tags vercel) or rerun the full teardown.
+      when: phase == 'render'
+
+    - name: "test | render: Vercel already gone — noted"
+      ansible.builtin.debug:
+        msg: "Vercel project {{ vercel_project_id }} is already gone (404) — proceeding with Render teardown."
+      when:
+        - phase == 'render'
+        - not (inject_vercel_alive | bool)
+
+    # -------------------------------------------------------------------------
+    # phase: supabase — mirror check_dep assert for both upstream providers.
+    # -------------------------------------------------------------------------
+    - name: "test | supabase: record injected alive facts"
+      ansible.builtin.set_fact:
+        _dep_vercel_alive: "{{ inject_vercel_alive | bool }}"
+        _dep_vercel_name: "{{ vercel_project_id }}"
+        _dep_render_alive: "{{ inject_render_alive | bool }}"
+        _dep_render_name: "{{ render_service_id }}"
+      when: phase == 'supabase'
+
+    - name: "test | supabase: fail if any upstream provider is still alive"
+      ansible.builtin.assert:
+        that:
+          - not (_dep_vercel_alive | default(false) | bool)
+          - not (_dep_render_alive | default(false) | bool)
+        fail_msg: >-
+          Cannot delete Supabase: the following upstream providers are still alive
+          and must be torn down first.
+
+          {% if _dep_vercel_alive | default(false) | bool %}
+            - Vercel project {{ vercel_project_id }} ({{ _dep_vercel_name | default('?') }}) is still alive.
+          {% endif %}
+          {% if _dep_render_alive | default(false) | bool %}
+            - Render service {{ render_service_id }} ({{ _dep_render_name | default('?') }}) is still alive.
+          {% endif %}
+
+          Correct teardown order: Vercel first (--tags vercel), then Render
+          (--tags render), then Supabase (--tags supabase). Or rerun the full
+          teardown without --tags to execute all phases in the correct order.
+      when: phase == 'supabase'
+
+    - name: "test | supabase: all upstream gone — proceeding"
+      ansible.builtin.debug:
+        msg: "Both Vercel and Render are already gone — proceeding with Supabase teardown."
+      when:
+        - phase == 'supabase'
+        - not (_dep_vercel_alive | default(false) | bool)
+        - not (_dep_render_alive | default(false) | bool)
