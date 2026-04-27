@@ -1,0 +1,141 @@
+---
+# playbooks/teardown-prod/_lib/verify_identity.yml
+#
+# Safety guard for resource deletion: fetches metadata, shows a preview,
+# prompts the operator to retype the resource name (case-sensitive), and
+# verifies the bearer token belongs to the same team as the resource.
+#
+# INPUT CONTRACT
+# ==============
+# Callers MUST set_fact these vars before calling include_tasks:
+#
+#   provider             - label for messages ("vercel", "render", "supabase")
+#   resource_id          - provider-specific resource ID to GET
+#   api_url              - full GET URL (caller builds; no URL templates here)
+#   token                - bearer token (no_log on all URI tasks)
+#   identity_name        - pre-resolved resource display name
+#   identity_team        - pre-resolved team/org id on the resource
+#   identity_owner_email - pre-resolved owner email
+#   identity_created_at  - pre-resolved creation timestamp
+#   team_token_endpoint  - dict { url } — URL to GET the calling token's scope.
+#   token_team_id        - pre-resolved team id from the token scope endpoint.
+#                          Caller evaluates this before include_tasks, e.g.:
+#                            token_team_id: "{{ _scope_resp.json.user.defaultTeamId }}"
+#                          Must equal identity_team for the scope check to pass.
+#   confirm              - bool; when true the retype pause is skipped.
+#                          Preflight rejects confirm=true in production.
+#
+# OUTPUT
+# ======
+#   verified_identity - dict { name, team, owner_email, created_at, already_gone }
+#                       already_gone=true when GET returned 404; other keys empty.
+#
+# 404 HANDLING
+# ============
+# A 404 sets verified_identity.already_gone=true and skips all remaining checks
+# via a block guarded by `when: _get_resp.status != 404`. The calling phase must
+# check verified_identity.already_gone before issuing the DELETE.
+
+# ── 0. Test sentinel ─────────────────────────────────────────────────────────
+- name: "verify_identity | sentinel: test mode requires test_-prefixed resource_id"
+  ansible.builtin.assert:
+    that:
+      - not (testing | default(false)) or resource_id is match('^test_.*')
+    fail_msg: "Test mode requires resource_id starting with 'test_'. Got: {{ resource_id }}"
+
+# ── 1. GET the resource ───────────────────────────────────────────────────────
+- name: "verify_identity | GET {{ provider }} resource {{ resource_id }}"
+  ansible.builtin.uri:
+    url: "{{ api_url }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ token }}"
+    status_code: [200, 404]
+  register: _get_resp
+  no_log: true
+
+# ── 2. 404 short-circuit ─────────────────────────────────────────────────────
+- name: "verify_identity | resource already gone (idempotent path)"
+  ansible.builtin.set_fact:
+    verified_identity:
+      name: ""
+      team: ""
+      owner_email: ""
+      created_at: ""
+      already_gone: true
+  when: _get_resp.status == 404
+
+- name: "verify_identity | note: already gone, skipping remaining checks"
+  ansible.builtin.debug:
+    msg: >-
+      {{ provider }} resource {{ resource_id }} returned 404 — already gone.
+      Recording as already_gone and skipping identity checks.
+  when: _get_resp.status == 404
+
+# ── 3-6. Steps that only run when the resource exists (status 200) ───────────
+- name: "verify_identity | identity checks (resource exists)"
+  when: _get_resp.status != 404
+  block:
+
+    # ── 3. Build verified_identity from pre-resolved caller values ────────────
+    - name: "verify_identity | build verified_identity dict"
+      ansible.builtin.set_fact:
+        verified_identity:
+          name: "{{ identity_name }}"
+          team: "{{ identity_team }}"
+          owner_email: "{{ identity_owner_email }}"
+          created_at: "{{ identity_created_at }}"
+          already_gone: false
+
+    # ── 4. Preview ────────────────────────────────────────────────────────────
+    - name: "verify_identity | preview resource about to be deleted"
+      ansible.builtin.debug:
+        msg:
+          - "About to delete {{ provider }} resource:"
+          - "  id:         {{ resource_id }}"
+          - "  name:       {{ verified_identity.name }}"
+          - "  team:       {{ verified_identity.team }}"
+          - "  owner:      {{ verified_identity.owner_email }}"
+          - "  created:    {{ verified_identity.created_at }}"
+
+    # ── 5. Operator name retype (skipped only when confirm=true) ─────────────
+    - name: "verify_identity | prompt operator to retype resource name"
+      ansible.builtin.pause:
+        prompt: |
+
+          DESTRUCTIVE OPERATION — {{ provider | upper }} resource deletion
+          Resource : {{ resource_id }}
+          Name     : {{ verified_identity.name }}
+          Team     : {{ verified_identity.team }}
+          Owner    : {{ verified_identity.owner_email }}
+
+          Retype the resource name exactly as shown above (case-sensitive)
+          Resource name to confirm
+        echo: true
+      register: _retype_prompt
+      when: not (confirm | bool)
+
+    - name: "verify_identity | assert operator retyped the name correctly"
+      ansible.builtin.assert:
+        that:
+          - _retype_prompt.user_input == verified_identity.name
+        fail_msg: >-
+          Name mismatch — deletion aborted.
+            Typed   : "{{ _retype_prompt.user_input }}"
+            Expected: "{{ verified_identity.name }}"
+          Retype the resource name exactly, including case, and re-run.
+      when: not (confirm | bool)
+
+    # ── 6. Team-scope verification ────────────────────────────────────────────
+    - name: "verify_identity | assert token team matches resource team"
+      ansible.builtin.assert:
+        that:
+          - token_team_id | string == verified_identity.team | string
+        fail_msg: >-
+          Team scope mismatch — deletion aborted.
+            Token team id  : "{{ token_team_id }}"
+            Resource team  : "{{ verified_identity.team }}"
+            Provider       : {{ provider }}
+            Resource id    : {{ resource_id }}
+          The bearer token belongs to a different team than the resource.
+          Use the token that owns this {{ provider }} resource and re-run.

@@ -1,0 +1,101 @@
+---
+# playbooks/teardown-prod/_lib/write_archive.yml
+#
+# Per-phase archive writer. Called via include_tasks from each provider phase
+# (vercel, render, supabase) after the DELETE call. Writes one timestamped
+# YAML file per invocation to archive_dir, preserving full audit history.
+# Files are never overwritten: a same-second collision appends a random suffix.
+
+# ── 1. Resolve the archive directory path once ──────────────────────────────
+- name: "write_archive | resolve archive directory path"
+  ansible.builtin.set_fact:
+    _archive_dir_resolved: "{{ archive_dir | default(playbook_dir + '/../.setup-prod-archive') }}"
+
+- name: "write_archive | ensure archive directory exists (mode 0700)"
+  ansible.builtin.file:
+    path: "{{ _archive_dir_resolved }}"
+    state: directory
+    mode: "0700"
+
+# ── 2. Build the UTC ISO8601 timestamp (no sub-second digits, trailing Z) ───
+- name: "write_archive | compute UTC timestamp"
+  ansible.builtin.set_fact:
+    _archive_ts: "{{ now(utc=true).isoformat() | regex_replace('\\..*', '') ~ 'Z' }}"
+
+# ── 3. Build the archive dict ────────────────────────────────────────────────
+- name: "write_archive | resolve resource_id for this phase"
+  ansible.builtin.set_fact:
+    _archive_resource_id: >-
+      {{
+        {'vercel':   vercel_project_id   | default(''),
+         'render':   render_service_id   | default(''),
+         'supabase': supabase_project_ref | default('')
+        }[phase] | default('')
+      }}
+
+- name: "write_archive | derive delete_status"
+  ansible.builtin.set_fact:
+    _archive_delete_status: >-
+      {%- if identity.already_gone | default(false) -%}
+        already_gone
+      {%- elif delete_response.status | default(0) in [200, 204] -%}
+        deleted
+      {%- else -%}
+        failed
+      {%- endif -%}
+
+- name: "write_archive | build archive dict"
+  ansible.builtin.set_fact:
+    _archive_dict:
+      teardown_at: "{{ _archive_ts }}"
+      teardown_mode: "{{ teardown_mode }}"
+      phase: "{{ phase }}"
+      resource_id: "{{ _archive_resource_id }}"
+      name: "{{ identity.name | default('') }}"
+      team: "{{ identity.team | default('') }}"
+      owner_email: "{{ identity.owner_email | default('') }}"
+      created_at: "{{ identity.created_at | default('') }}"
+      delete_status: "{{ _archive_delete_status }}"
+      http_status: "{{ delete_response.status | default(omit) }}"
+      original_state: >-
+        {{
+          original_state
+          if (archive_first_write | default(true))
+          else None
+        }}
+
+# ── 4. Collision-safe write ──────────────────────────────────────────────────
+- name: "write_archive | set primary archive filename"
+  ansible.builtin.set_fact:
+    _archive_filename: "{{ _archive_ts }}-teardown-{{ phase }}.yml"
+
+- name: "write_archive | stat primary filename for collision check"
+  ansible.builtin.stat:
+    path: "{{ _archive_dir_resolved }}/{{ _archive_filename }}"
+  register: _archive_stat
+
+- name: "write_archive | resolve final filename (collision fallback)"
+  ansible.builtin.set_fact:
+    _archive_final_filename: >-
+      {{
+        _archive_filename
+        if not _archive_stat.stat.exists
+        else _archive_ts ~ '-teardown-' ~ phase ~ '-' ~ (ansible_run_id | default(99 | random)) ~ '.yml'
+      }}
+
+- name: "write_archive | write archive file (force: false prevents overwrite)"
+  ansible.builtin.copy:
+    content: "{{ _archive_dict | to_nice_yaml(indent=2) }}"
+    dest: "{{ _archive_dir_resolved }}/{{ _archive_final_filename }}"
+    mode: "0600"
+    force: false
+
+# ── 5. Mark first write done so subsequent calls omit original_state ─────────
+- name: "write_archive | mark first write done"
+  ansible.builtin.set_fact:
+    archive_first_write: false
+
+# ── 6. Emit success line with the archive path ───────────────────────────────
+- name: "write_archive | report archive path"
+  ansible.builtin.debug:
+    msg: "Archive written: {{ _archive_dir_resolved }}/{{ _archive_final_filename }}"

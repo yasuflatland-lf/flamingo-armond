@@ -1,0 +1,171 @@
+---
+# playbooks/teardown-prod/_lib/check_dep.yml
+#
+# Reverse-dependency probe: ensures upstream providers are already gone before
+# tearing down a downstream provider. Vercel depends on nothing; Render is
+# blocked while Vercel is alive; Supabase is blocked while either Vercel or
+# Render is alive. Reachability is determined by a live GET rather than state
+# file membership so the probe works correctly in advisory mode.
+
+# ---------------------------------------------------------------------------
+# phase: vercel — no upstream, nothing to check.
+# ---------------------------------------------------------------------------
+- name: "check_dep | vercel: no upstream providers to verify"
+  ansible.builtin.debug:
+    msg: "phase=vercel has no upstream dependencies — proceeding."
+  when: phase == 'vercel'
+
+# ---------------------------------------------------------------------------
+# phase: render — blocked if Vercel project is still reachable.
+# ---------------------------------------------------------------------------
+- name: "check_dep | render: probe Vercel reachability"
+  when:
+    - phase == 'render'
+    - vercel_project_id is defined
+    - (vercel_project_id | default('') | length) > 0
+    - vercel_token is defined
+    - (vercel_token | default('') | length) > 0
+  block:
+    - name: "GET /v9/projects/{{ vercel_project_id }} (render dep-check)"
+      ansible.builtin.uri:
+        url: "https://api.vercel.com/v9/projects/{{ vercel_project_id }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ vercel_token }}"
+        status_code: [200, 404]
+        return_content: false
+      register: _dep_vercel
+      no_log: true
+
+    - name: "check_dep | render: fail if Vercel project is still alive"
+      ansible.builtin.assert:
+        that:
+          - _dep_vercel.status != 200
+        fail_msg: >-
+          Cannot delete Render: Vercel project {{ vercel_project_id }}
+          ({{ _dep_vercel.json.name | default('?') }}) is still alive.
+          Tear down Vercel first (--tags vercel) or rerun the full teardown.
+
+    - name: "check_dep | render: Vercel already gone — proceeding"
+      ansible.builtin.debug:
+        msg: "Vercel project {{ vercel_project_id }} is already gone (404) — proceeding with Render teardown."
+      when: _dep_vercel.status == 404
+
+- name: "check_dep | render: Vercel credentials absent — treating upstream as gone"
+  ansible.builtin.debug:
+    msg: >-
+      vercel_project_id or vercel_token is undefined/empty — treating Vercel
+      as already gone and proceeding with Render teardown.
+  when:
+    - phase == 'render'
+    - >-
+      (vercel_project_id is not defined)
+      or ((vercel_project_id | default('') | length) == 0)
+      or (vercel_token is not defined)
+      or ((vercel_token | default('') | length) == 0)
+
+# ---------------------------------------------------------------------------
+# phase: supabase — blocked if Vercel or Render is still reachable.
+# ---------------------------------------------------------------------------
+- name: "check_dep | supabase: probe Vercel reachability"
+  when:
+    - phase == 'supabase'
+    - vercel_project_id is defined
+    - (vercel_project_id | default('') | length) > 0
+    - vercel_token is defined
+    - (vercel_token | default('') | length) > 0
+  block:
+    - name: "GET /v9/projects/{{ vercel_project_id }} (supabase dep-check)"
+      ansible.builtin.uri:
+        url: "https://api.vercel.com/v9/projects/{{ vercel_project_id }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ vercel_token }}"
+        status_code: [200, 404]
+        return_content: false
+      register: _dep_vercel_sb
+      no_log: true
+
+    - name: "check_dep | supabase: record Vercel alive status"
+      ansible.builtin.set_fact:
+        _dep_vercel_alive: "{{ _dep_vercel_sb.status == 200 }}"
+        _dep_vercel_name: "{{ _dep_vercel_sb.json.name | default('?') }}"
+
+    - name: "check_dep | supabase: Vercel already gone — noted"
+      ansible.builtin.debug:
+        msg: "Vercel project {{ vercel_project_id }} is already gone (404)."
+      when: not _dep_vercel_alive
+
+- name: "check_dep | supabase: Vercel credentials absent — treating upstream as gone"
+  ansible.builtin.set_fact:
+    _dep_vercel_alive: false
+    _dep_vercel_name: "?"
+  when:
+    - phase == 'supabase'
+    - >-
+      (vercel_project_id is not defined)
+      or ((vercel_project_id | default('') | length) == 0)
+      or (vercel_token is not defined)
+      or ((vercel_token | default('') | length) == 0)
+
+- name: "check_dep | supabase: probe Render reachability"
+  when:
+    - phase == 'supabase'
+    - render_service_id is defined
+    - (render_service_id | default('') | length) > 0
+    - render_token is defined
+    - (render_token | default('') | length) > 0
+  block:
+    - name: "GET /v1/services/{{ render_service_id }} (supabase dep-check)"
+      ansible.builtin.uri:
+        url: "https://api.render.com/v1/services/{{ render_service_id }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ render_token }}"
+        status_code: [200, 404]
+        return_content: false
+      register: _dep_render_sb
+      no_log: true
+
+    - name: "check_dep | supabase: record Render alive status"
+      ansible.builtin.set_fact:
+        _dep_render_alive: "{{ _dep_render_sb.status == 200 }}"
+        _dep_render_name: "{{ _dep_render_sb.json.service.name | default(_dep_render_sb.json.name | default('?')) }}"
+
+    - name: "check_dep | supabase: Render already gone — noted"
+      ansible.builtin.debug:
+        msg: "Render service {{ render_service_id }} is already gone (404)."
+      when: not _dep_render_alive
+
+- name: "check_dep | supabase: Render credentials absent — treating upstream as gone"
+  ansible.builtin.set_fact:
+    _dep_render_alive: false
+    _dep_render_name: "?"
+  when:
+    - phase == 'supabase'
+    - >-
+      (render_service_id is not defined)
+      or ((render_service_id | default('') | length) == 0)
+      or (render_token is not defined)
+      or ((render_token | default('') | length) == 0)
+
+- name: "check_dep | supabase: fail if any upstream provider is still alive"
+  ansible.builtin.assert:
+    that:
+      - not (_dep_vercel_alive | default(false) | bool)
+      - not (_dep_render_alive | default(false) | bool)
+    fail_msg: >-
+      Cannot delete Supabase: the following upstream providers are still alive
+      and must be torn down first.
+
+      {% if _dep_vercel_alive | default(false) | bool %}
+        - Vercel project {{ vercel_project_id }} ({{ _dep_vercel_name | default('?') }}) is still alive.
+      {% endif %}
+      {% if _dep_render_alive | default(false) | bool %}
+        - Render service {{ render_service_id }} ({{ _dep_render_name | default('?') }}) is still alive.
+      {% endif %}
+
+      Correct teardown order: Vercel first (--tags vercel), then Render
+      (--tags render), then Supabase (--tags supabase). Or rerun the full
+      teardown without --tags to execute all phases in the correct order.
+  when: phase == 'supabase'
