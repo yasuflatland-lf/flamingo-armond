@@ -215,19 +215,37 @@
         label: "{{ item.key }}"
       no_log: true
   rescue:
+    # Surface per-item error details. `vercel_env_upsert` from a loop has the
+    # shape `{ results: [{ status, json, item, failed, ... }, ...] }`, so
+    # `vercel_env_upsert.status` is always undefined here. Iterating results
+    # and reading per-item `.json.error.message` is the only way to see what
+    # Vercel actually rejected. Vercel v10 may also return a bulk-style body
+    # `{ created: [], failed: [{ error: { code, message, envVarKey } }] }`,
+    # so we surface `json.failed[]` as well.
     - name: Surface env upsert failure
       ansible.builtin.fail:
         msg: |
           Failed to register one or more env vars on Vercel project
           {{ vercel_project_id }}.
 
-            HTTP status : {{ vercel_env_upsert.status | default('(connection error)') }}
-            Server msg  : {{ vercel_env_upsert.json.error.message | default(vercel_env_upsert.msg | default('(none)')) }}
+          Per-item results:
+          {% for r in vercel_env_upsert.results | default([]) %}
+          - key={{ r.item.key | default('(unknown)') }}
+              status      : {{ r.status | default('(no status)') }}
+              failed      : {{ r.failed | default(false) }}
+              error.code  : {{ r.json.error.code | default('(none)') }}
+              error.msg   : {{ r.json.error.message | default('(none)') }}
+              failed[]    : {{ r.json.failed | default([]) | to_json }}
+          {% endfor %}
 
           Likely causes:
             - 401 / 403 : VERCEL_API_TOKEN lost env-write scope.
-            - 400       : value rejected by Vercel (e.g. encrypted type used
-                          on a NEXT_PUBLIC_* var, or malformed URL).
+            - 400       : value rejected by Vercel (e.g. type/target conflict
+                          with an existing var, encrypted type used on a
+                          NEXT_PUBLIC_* var, or malformed URL).
+      # Per-item error.message contains diagnostic text only -- no secret
+      # values are interpolated, so explicit no_log: false is safe.
+      no_log: false
 
 - name: Confirm env vars registered
   ansible.builtin.debug:
