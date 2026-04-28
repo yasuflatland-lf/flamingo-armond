@@ -165,20 +165,31 @@
           Connect -> Session pooler.
       no_log: true
 
-    # --- Light reachability probe. REST root may return 404 but proves
-    # DNS + TLS + auth header are wired. 200 also acceptable.
+    # --- Light reachability probe. /auth/v1/settings returns 200 with the
+    # project's auth provider config when called with a valid publishable
+    # (anon) key, so it proves DNS + TLS + apikey wiring in one shot.
+    #
+    # /rest/v1/ root is not used here: Supabase restricts the PostgREST
+    # OpenAPI root to secret API keys (response 401 with body
+    # "Secret API key required"), which the publishable key collected
+    # above cannot reach. /auth/v1/settings stays open to publishable
+    # keys and is project-ref-portable (no table names baked in).
+    #
+    # Authorization header is intentionally omitted: publishable keys
+    # are not JWTs, so passing them as Bearer is only honored as a
+    # backward-compat carve-out and is fragile. apikey alone is enough.
+    #
     # Wrapped so a wrong project ref / anon key surfaces a useful message
     # instead of a censored Ansible default error.
-    - name: Probe Supabase REST endpoint (proves DNS/TLS/auth)
+    - name: Probe Supabase Auth endpoint (proves DNS/TLS/auth)
       block:
-        - name: "GET {{ supabase_url }}/rest/v1/"
+        - name: "GET {{ supabase_url }}/auth/v1/settings"
           ansible.builtin.uri:
-            url: "{{ supabase_url }}/rest/v1/"
+            url: "{{ supabase_url }}/auth/v1/settings"
             method: GET
             headers:
               apikey: "{{ supabase_anon_key }}"
-              Authorization: "Bearer {{ supabase_anon_key }}"
-            status_code: [200, 404]
+            status_code: [200]
             return_content: false
           register: _supabase_probe
           no_log: true
@@ -186,7 +197,7 @@
         - name: Surface Supabase probe failure
           ansible.builtin.fail:
             msg: |
-              Supabase REST probe at {{ supabase_url }}/rest/v1/ failed.
+              Supabase auth probe at {{ supabase_url }}/auth/v1/settings failed.
 
                 HTTP status : {{ _supabase_probe.status | default('(connection error)') }}
                 Error       : {{ _supabase_probe.msg | default('(none)') }}
