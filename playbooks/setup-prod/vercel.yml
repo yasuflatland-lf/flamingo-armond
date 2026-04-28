@@ -173,8 +173,12 @@
       source for {{ repo }}.
 
 # ---------------------------------------------------------------------------
-# Upsert env vars via /v10/projects/{id}/env?upsert=true. The upsert query
-# param removes the need for separate POST-then-PATCH on conflict.
+# Reconcile env vars by listing what already exists and routing each desired
+# key to PATCH (existing) or POST (new). The v10 `?upsert=true` query param
+# does not reliably update vars whose `target` set differs from the existing
+# record (returns ENV_CONFLICT 400 instead of upserting), which breaks
+# re-runs once the import wizard or a prior phase has populated the project.
+# GET-then-PATCH-or-POST sidesteps that and stays idempotent across re-runs.
 #
 # `type`:
 #   - BACKEND_URL is server-only -> "encrypted" (not exposed via dashboard
@@ -182,11 +186,114 @@
 #   - NEXT_PUBLIC_* are client-bundled -> "plain" (encrypted-type values are
 #     not allowed for vars Next.js inlines into the client bundle).
 # ---------------------------------------------------------------------------
-- name: Upsert env vars in the Vercel project
+- name: Define desired env vars
+  ansible.builtin.set_fact:
+    vercel_desired_env:
+      - key: BACKEND_URL
+        value: "{{ backend_url }}"
+        target: [production, preview]
+        type: encrypted
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        value: "{{ supabase_url }}"
+        target: [production, preview, development]
+        type: plain
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        value: "{{ supabase_anon_key }}"
+        target: [production, preview, development]
+        type: plain
+  no_log: true
+
+- name: List existing env vars on the Vercel project
   block:
-    - name: "POST /v10/projects/{{ vercel_project_id }}/env?upsert=true"
+    - name: "GET /v9/projects/{{ vercel_project_id }}/env"
       ansible.builtin.uri:
-        url: "https://api.vercel.com/v10/projects/{{ vercel_project_id }}/env?upsert=true"
+        url: "https://api.vercel.com/v9/projects/{{ vercel_project_id }}/env"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ vercel_token }}"
+        status_code: 200
+      register: vercel_env_list
+      no_log: true
+  rescue:
+    - name: Surface env list failure
+      ansible.builtin.fail:
+        msg: |
+          Failed to list env vars on Vercel project {{ vercel_project_id }}.
+
+            HTTP status : {{ vercel_env_list.status | default('(connection error)') }}
+            Server msg  : {{ vercel_env_list.json.error.message | default(vercel_env_list.msg | default('(none)')) }}
+
+          Likely causes:
+            - 401 / 403 : VERCEL_API_TOKEN lost env-read scope.
+            - 404       : project ID is wrong; confirm in Vercel dashboard
+                          -> Settings -> General -> Project ID.
+
+# Build a {key -> envId} lookup so the PATCH/POST tasks below can decide
+# per item. `default({})` in the downstream `in` checks keeps things sane
+# when the project has zero existing env vars (loop never runs, fact stays
+# unset).
+- name: Build {key -> id} map of existing env vars
+  ansible.builtin.set_fact:
+    vercel_existing_env_ids: "{{ vercel_existing_env_ids | default({}) | combine({item.key: item.id}) }}"
+  loop: "{{ vercel_env_list.json.envs | default([]) }}"
+  loop_control:
+    label: "{{ item.key }}"
+  no_log: true
+
+- name: Update existing env vars (PATCH)
+  block:
+    - name: "PATCH /v9/projects/{{ vercel_project_id }}/env/{id}"
+      ansible.builtin.uri:
+        url: "https://api.vercel.com/v9/projects/{{ vercel_project_id }}/env/{{ (vercel_existing_env_ids | default({}))[item.key] }}"
+        method: PATCH
+        headers:
+          Authorization: "Bearer {{ vercel_token }}"
+        body_format: json
+        body:
+          value: "{{ item.value }}"
+          target: "{{ item.target }}"
+          type: "{{ item.type }}"
+        status_code: 200
+      register: vercel_env_patch
+      loop: "{{ vercel_desired_env }}"
+      when: item.key in (vercel_existing_env_ids | default({}))
+      loop_control:
+        label: "{{ item.key }}"
+      no_log: true
+  rescue:
+    # `vercel_env_patch.results[*]` carries the per-item outcome. Items that
+    # were skipped by the `when` clause have `skipped: true` and no `status`,
+    # so we filter those out to keep the diagnostic readable.
+    - name: Surface env PATCH failure
+      ansible.builtin.fail:
+        msg: |
+          Failed to update existing env vars on Vercel project
+          {{ vercel_project_id }}.
+
+          Per-item results:
+          {% for r in vercel_env_patch.results | default([]) %}
+          {% if not (r.skipped | default(false)) %}
+          - key={{ r.item.key | default('(unknown)') }}
+              status      : {{ r.status | default('(no status)') }}
+              failed      : {{ r.failed | default(false) }}
+              error.code  : {{ r.json.error.code | default('(none)') }}
+              error.msg   : {{ r.json.error.message | default('(none)') }}
+          {% endif %}
+          {% endfor %}
+
+          Likely causes:
+            - 401 / 403 : VERCEL_API_TOKEN lost env-write scope.
+            - 400       : value rejected by Vercel (e.g. encrypted type used
+                          on a NEXT_PUBLIC_* var, or malformed URL).
+      # Per-item error.message contains diagnostic text only -- no secret
+      # values are interpolated, so explicit no_log: false is safe.
+      no_log: false
+
+- name: Create new env vars (POST)
+  block:
+    - name: "POST /v10/projects/{{ vercel_project_id }}/env"
+      ansible.builtin.uri:
+        url: "https://api.vercel.com/v10/projects/{{ vercel_project_id }}/env"
         method: POST
         headers:
           Authorization: "Bearer {{ vercel_token }}"
@@ -196,60 +303,45 @@
           value: "{{ item.value }}"
           target: "{{ item.target }}"
           type: "{{ item.type }}"
-        status_code: [200, 201]
-      register: vercel_env_upsert
-      loop:
-        - key: BACKEND_URL
-          value: "{{ backend_url }}"
-          target: [production, preview]
-          type: encrypted
-        - key: NEXT_PUBLIC_SUPABASE_URL
-          value: "{{ supabase_url }}"
-          target: [production, preview, development]
-          type: plain
-        - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
-          value: "{{ supabase_anon_key }}"
-          target: [production, preview, development]
-          type: plain
+        status_code: 201
+      register: vercel_env_post
+      loop: "{{ vercel_desired_env }}"
+      when: item.key not in (vercel_existing_env_ids | default({}))
       loop_control:
         label: "{{ item.key }}"
       no_log: true
   rescue:
-    # Surface per-item error details. `vercel_env_upsert` from a loop has the
-    # shape `{ results: [{ status, json, item, failed, ... }, ...] }`, so
-    # `vercel_env_upsert.status` is always undefined here. Iterating results
-    # and reading per-item `.json.error.message` is the only way to see what
-    # Vercel actually rejected. Vercel v10 may also return a bulk-style body
-    # `{ created: [], failed: [{ error: { code, message, envVarKey } }] }`,
-    # so we surface `json.failed[]` as well.
-    - name: Surface env upsert failure
+    # `vercel_env_post.results[*].json` may carry Vercel's bulk-style body
+    # `{ created: [], failed: [{ error: { code, message, envVarKey } }] }`
+    # for the POST endpoint, so we surface `json.failed[]` alongside the
+    # standard error fields.
+    - name: Surface env POST failure
       ansible.builtin.fail:
         msg: |
-          Failed to register one or more env vars on Vercel project
+          Failed to create new env vars on Vercel project
           {{ vercel_project_id }}.
 
           Per-item results:
-          {% for r in vercel_env_upsert.results | default([]) %}
+          {% for r in vercel_env_post.results | default([]) %}
+          {% if not (r.skipped | default(false)) %}
           - key={{ r.item.key | default('(unknown)') }}
               status      : {{ r.status | default('(no status)') }}
               failed      : {{ r.failed | default(false) }}
               error.code  : {{ r.json.error.code | default('(none)') }}
               error.msg   : {{ r.json.error.message | default('(none)') }}
               failed[]    : {{ r.json.failed | default([]) | to_json }}
+          {% endif %}
           {% endfor %}
 
           Likely causes:
             - 401 / 403 : VERCEL_API_TOKEN lost env-write scope.
-            - 400       : value rejected by Vercel (e.g. type/target conflict
-                          with an existing var, encrypted type used on a
-                          NEXT_PUBLIC_* var, or malformed URL).
-      # Per-item error.message contains diagnostic text only -- no secret
-      # values are interpolated, so explicit no_log: false is safe.
+            - 400       : value rejected by Vercel (e.g. encrypted type used
+                          on a NEXT_PUBLIC_* var, or malformed URL).
       no_log: false
 
-- name: Confirm env vars registered
+- name: Confirm env vars reconciled
   ansible.builtin.debug:
-    msg: "Registered 3 env vars on Vercel project {{ vercel_project_id }} via API."
+    msg: "Reconciled {{ vercel_desired_env | length }} env vars on Vercel project {{ vercel_project_id }} (PATCH existing, POST new)."
 
 - name: Prompt for Vercel production URL
   ansible.builtin.pause:
