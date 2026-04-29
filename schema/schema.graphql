@@ -147,3 +147,22 @@ extend type Mutation {
   """Delete a card. Non-owners receive UNAUTHENTICATED."""
   deleteCard(id: ID!): Boolean!
 }
+
+input HandleSwipeInput {
+  cardId: ID!
+  cardgroupId: ID!
+  """1=Again, 2=Hard, 4=Easy. The 3-step UI does not emit 3=Good."""
+  mode: Int!
+}
+
+type SwipeResponse {
+  """Next due cards, ordered by due ASC."""
+  nextCards: [Card!]!
+  """Reserved for the legacy adaptive UX. Always 0 until UserPerformanceService is ported."""
+  performanceMode: Int!
+}
+
+extend type Mutation {
+  """Apply one swipe rating, persist the SwipeRecord event, and return the next due cards."""
+  handleSwipe(input: HandleSwipeInput!): SwipeResponse!
+}

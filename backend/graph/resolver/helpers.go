@@ -3,6 +3,7 @@ package resolver
 import (
 	"backend/graph/model"
 	"backend/internal/domain"
+	"backend/internal/usecase"
 )
 
 // toUserModel lives in a separate file so `gqlgen generate` does not strip it
@@ -73,4 +74,14 @@ func toCardModels(cards []*domain.Card) []*model.Card {
 		out[i] = toCardModel(card)
 	}
 	return out
+}
+
+func toSwipeResponseModel(out *usecase.SwipeOutput) *model.SwipeResponse {
+	if out == nil {
+		return nil
+	}
+	return &model.SwipeResponse{
+		NextCards:       toCardModels(out.NextCards),
+		PerformanceMode: out.PerformanceMode,
+	}
 }
