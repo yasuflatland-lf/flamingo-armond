@@ -41,3 +41,51 @@ type Mutation {
   """
   updateProfile(input: UpdateProfileInput!): UpdateProfilePayload!
 }
+
+"""ISO-8601 / RFC-3339 timestamp serialized as a string."""
+scalar Time
+
+"""A user-owned named collection of flashcards. Owns no Card aggregate; cards live in a sibling aggregate."""
+type Cardgroup {
+  id: ID!
+  name: String!
+  ownerId: ID!
+  createdAt: Time!
+  updatedAt: Time!
+  """The owning user. Resolved via the per-request User DataLoader."""
+  owner: User!
+}
+
+input NewCardgroupInput {
+  """1-100 grapheme clusters (length measured after trimming surrounding whitespace)."""
+  name: String!
+}
+
+input UpdateCardgroupInput {
+  """null or omitted = leave unchanged."""
+  name: String
+}
+
+type CreateCardgroupPayload {
+  cardgroup: Cardgroup!
+}
+
+type UpdateCardgroupPayload {
+  cardgroup: Cardgroup!
+}
+
+extend type Query {
+  """All cardgroups owned by the authenticated caller. Ordered by updated_at desc."""
+  myCardgroups: [Cardgroup!]!
+  """Single cardgroup by ID. Returns UNAUTHENTICATED for non-owners (existence is not leaked)."""
+  cardgroup(id: ID!): Cardgroup
+}
+
+extend type Mutation {
+  """Create a cardgroup owned by the authenticated caller."""
+  createCardgroup(input: NewCardgroupInput!): CreateCardgroupPayload!
+  """Update a cardgroup. Non-owners receive UNAUTHENTICATED."""
+  updateCardgroup(id: ID!, input: UpdateCardgroupInput!): UpdateCardgroupPayload!
+  """Delete a cardgroup. Non-owners receive UNAUTHENTICATED."""
+  deleteCardgroup(id: ID!): Boolean!
+}
