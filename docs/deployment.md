@@ -167,30 +167,41 @@ Four steps across the three providers. Allow about 30 minutes total; Supabase pr
 
 ### Step 2 — Render
 
-Create a web service against `yasuflatland-lf/flamingo-armond`:
+The structural config of the backend service lives in `render.yaml` at the repo root (Render Blueprint). The dashboard syncs from it; you do not paste these values by hand.
 
-| Setting | Value |
+| Setting | Source |
 |---|---|
-| Root directory | `backend` |
-| Build command | `go mod download && go build -o main ./cmd/server` |
-| Start command | `./main` |
-| Health check path | `/health` |
-| Auto deploy | **off** — deploys are push-triggered via the deploy hook (see `.github/workflows/backend.yml`), not Render's auto-deploy. Schema migrations run on boot, so we tie deploys to explicit pushes. |
+| Root directory | `render.yaml` → `services[0].rootDir` (`backend`) |
+| Build command | `render.yaml` → `services[0].buildCommand` (`go mod download && go build -o main ./cmd/server`) |
+| Start command | `render.yaml` → `services[0].startCommand` (`./main`) |
+| Health check path | `render.yaml` → `services[0].healthCheckPath` (`/health`) |
+| Auto deploy | `render.yaml` → `services[0].autoDeployTrigger: "off"` — deploys are push-triggered via the deploy hook (see `.github/workflows/backend.yml`). Schema migrations run on boot, so we tie deploys to explicit pushes. |
 
-Set the env vars listed below.
+In the Render dashboard click **New → Blueprint** and point at `yasuflatland-lf/flamingo-armond` on `main`. Render reads `render.yaml` and creates `flamingo-backend` with the structural config above and the static env-var values below.
+
+Static env vars (managed by Blueprint sync — defined with `value:` in `render.yaml`):
 
 | Variable | Value |
 |---|---|
-| `SUPABASE_DB_URL` | Session-mode pooler DSN from Step 1.4. |
-| `SUPABASE_JWKS_URL` | `https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json` |
-| `SUPABASE_JWT_AUDIENCE` | `authenticated` |
-| `SUPABASE_JWT_ISSUER` | `https://<project-ref>.supabase.co/auth/v1` |
 | `APP_ENV` | `production` |
 | `GRAPHQL_INTROSPECTION` | `off` |
 | `OTEL_TRACES_SAMPLER_ARG` | `0.1` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint, or empty for no-op tracing. |
+| `SUPABASE_JWT_AUDIENCE` | `authenticated` |
+
+Dynamic env vars (declared with `sync: false` in `render.yaml`; Blueprint creates the placeholder, the value is filled in later):
+
+| Variable | Value | Set by |
+|---|---|---|
+| `SUPABASE_DB_URL` | Session-mode pooler DSN from Step 1.4. | Phase 6 (`postapply.yml`) via `PUT /v1/services/{id}/env-vars/{key}`. |
+| `SUPABASE_JWKS_URL` | `https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json` | Phase 6. |
+| `SUPABASE_JWT_ISSUER` | `https://<project-ref>.supabase.co/auth/v1` | Phase 6. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint, or empty for no-op tracing. | Operator (manual, persisted across Blueprint syncs because of `sync: false`). |
+
+When the Blueprint apply wizard prompts for the `sync: false` placeholders, leave them blank and click Save. Re-running `make setup-prod-postapply` reconciles the Supabase-derived three from the state file via the Render API, then triggers the first deploy.
 
 After the service is created, copy the deploy hook URL from **Settings → Deploy Hook** and store it as the GitHub Actions secret `RENDER_DEPLOY_HOOK_URL` (used by `.github/workflows/backend.yml`). When using `make setup-prod`, this registration is automated via `gh secret set` with the value piped through stdin — see the "Two security patterns" subsection above.
+
+When `render.yaml` itself changes (e.g. you bump `buildCommand`), reapply via **Blueprints → flamingo-armond → Manual Sync** in the dashboard, then re-run `make setup-prod-postapply` to deploy.
 
 ### Step 3 — Vercel
 

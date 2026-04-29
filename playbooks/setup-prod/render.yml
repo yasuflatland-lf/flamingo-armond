@@ -56,74 +56,55 @@
       supabase_jwt_issuer, supabase_anon_key, supabase_db_url.
     success_msg: "Phase 2 state keys present."
 
-- name: Display Render web service dashboard settings
+- name: Display Render Blueprint apply instructions
   ansible.builtin.debug:
     msg: |
       ============================================================
-      RENDER DASHBOARD - Create a new Web Service
+      RENDER DASHBOARD - Apply the Blueprint
       Repository: {{ repo }}
       ============================================================
 
-      Setting            Value
-      -----------------  -----------------------------------------
-      Root directory     backend
-      Build command      go mod download && go build -o main ./cmd/server
-      Start command      ./main
-      Health check path  /health
-      Auto deploy        off (deploys are push-triggered via the
-                         deploy hook in backend.yml, not Render's
-                         auto-deploy; schema migrations run on boot
-                         so deploys are tied to explicit pushes)
+      The structural config of the backend service (build/start
+      commands, root dir, health check path, region, plan,
+      auto-deploy policy, and the env-var SHAPE) lives in
+      `render.yaml` at the repo root. The dashboard only needs to
+      sync from it.
 
+      First-time setup:
+        1. New > Blueprint, point at {{ repo }} on branch `main`.
+        2. Render reads render.yaml and creates the service
+           `flamingo-backend` with all structural config.
+        3. The static env vars (APP_ENV, GRAPHQL_INTROSPECTION,
+           OTEL_TRACES_SAMPLER_ARG, SUPABASE_JWT_AUDIENCE) get their
+           values from the Blueprint automatically.
+        4. The dashboard prompts for the `sync: false` placeholders
+           (SUPABASE_DB_URL, SUPABASE_JWKS_URL, SUPABASE_JWT_ISSUER,
+           OTEL_EXPORTER_OTLP_ENDPOINT). Leave them BLANK and click
+           Save - Phase 6 (postapply) writes the Supabase-derived
+           values via the Render API.
+
+      Re-applying after render.yaml changes:
+        Blueprints -> flamingo-armond -> Manual Sync.
+
+      Auto-deploy stays off because schema migrations run on boot
+      and we tie deploys to explicit pushes via the deploy hook
+      registered in .github/workflows/backend.yml.
       ============================================================
-      Set the env vars shown in the next steps, then come back.
-      ============================================================
-
-# --- Display env vars one per line (non-sensitive) ---
-- name: Display Render env var
-  ansible.builtin.debug:
-    msg: "{{ item.name }}={{ item.value }}"
-  loop:
-    - name: SUPABASE_JWKS_URL
-      value: "{{ supabase_jwks_url }}"
-    - name: SUPABASE_JWT_AUDIENCE
-      value: "authenticated"
-    - name: SUPABASE_JWT_ISSUER
-      value: "{{ supabase_jwt_issuer }}"
-    - name: APP_ENV
-      value: "production"
-    - name: GRAPHQL_INTROSPECTION
-      value: "off"
-    - name: OTEL_TRACES_SAMPLER_ARG
-      value: "0.1"
-    - name: OTEL_EXPORTER_OTLP_ENDPOINT
-      value: "(leave blank for no-op tracing, or paste your OTLP endpoint)"
-  loop_control:
-    label: "{{ item.name }}"
-
-- name: Display SUPABASE_DB_URL (sensitive - leave screen-share before reading)
-  ansible.builtin.debug:
-    msg: |
-      ------------------------------------------------------------
-      WARNING: The value below contains the DB password.
-      Turn off screen-share / recording before reading it.
-      ------------------------------------------------------------
-      SUPABASE_DB_URL={{ supabase_db_url }}
-      ------------------------------------------------------------
 
 - name: Wait for Render service creation
   ansible.builtin.pause:
     prompt: |
 
       Action required in the Render dashboard:
-        1. Click "New > Web Service" and connect {{ repo }}.
-        2. Apply all settings and env vars shown above.
-        3. Click "Create Web Service". Because Auto deploy is set to off, no deploy
-           will run yet - Phase 6 (postapply) will trigger the first deploy via the
-           Render API. Steps 4-6 below do NOT require a completed deploy.
-        4. Copy the service ID (srv-...) from Settings > General.
-        5. Copy the service URL (https://....onrender.com) from the top of the page.
-        6. Copy the deploy hook URL from Settings > Deploy Hook.
+        1. Apply the Blueprint as described above. Because
+           `autoDeployTrigger: "off"` is set in render.yaml, no deploy
+           will run yet - Phase 6 (postapply) triggers the first deploy
+           via the Render API. The next steps below do NOT require a
+           completed deploy.
+        2. Copy the service ID (srv-...) from Settings > General.
+        3. Copy the service URL (https://....onrender.com) from the top
+           of the page.
+        4. Copy the deploy hook URL from Settings > Deploy Hook.
 
       Press Enter when the service is created and you have all three values ready.
 

@@ -1,0 +1,60 @@
+# Render Blueprint for flamingo-armond.
+#
+# This file is the source of truth for the structural config of the
+# production backend service: build/start commands, root dir, health check
+# path, region, plan, auto-deploy policy, and the SHAPE of the env-var set.
+#
+# What lives here vs. what the playbook writes via API:
+#   - Static env var VALUES (APP_ENV, GRAPHQL_INTROSPECTION,
+#     OTEL_TRACES_SAMPLER_ARG, SUPABASE_JWT_AUDIENCE) are declared with
+#     `value:` and are reconciled by Blueprint sync.
+#   - Dynamic env var VALUES (SUPABASE_DB_URL, SUPABASE_JWKS_URL,
+#     SUPABASE_JWT_ISSUER) are declared with `sync: false` so Blueprint
+#     only creates the placeholder; the actual value is upserted by
+#     `playbooks/setup-prod/postapply.yml` via
+#     `PUT /v1/services/{id}/env-vars/{key}` after Phase 2 has produced
+#     the Supabase-derived values.
+#   - OTEL_EXPORTER_OTLP_ENDPOINT is operator-discretionary, so it is
+#     declared `sync: false` and left for the operator to set manually
+#     in the dashboard (or leave blank for no-op tracing).
+#
+# Operator workflow on first apply / when this file changes:
+#   1. Push the change to `main`.
+#   2. Render dashboard -> Blueprints -> flamingo-armond -> Manual Sync.
+#   3. Re-run `make setup-prod-postapply` so the dynamic env vars and a
+#      fresh deploy are reconciled.
+#
+# `autoDeployTrigger: "off"` is the modern replacement for the deprecated
+# `autoDeploy: false`. Quoted because YAML 1.1 coerces bare `off` to a
+# boolean. Auto-deploy stays disabled because schema migrations run on
+# boot and we tie deploys to explicit pushes via the deploy hook
+# registered in `.github/workflows/backend.yml`.
+
+services:
+  - type: web
+    name: flamingo-backend
+    runtime: go
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: go mod download && go build -o main ./cmd/server
+    startCommand: ./main
+    healthCheckPath: /health
+    autoDeployTrigger: "off"
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: GRAPHQL_INTROSPECTION
+        value: "off"
+      - key: OTEL_TRACES_SAMPLER_ARG
+        value: "0.1"
+      - key: SUPABASE_JWT_AUDIENCE
+        value: authenticated
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: SUPABASE_JWKS_URL
+        sync: false
+      - key: SUPABASE_JWT_ISSUER
+        sync: false
+      - key: OTEL_EXPORTER_OTLP_ENDPOINT
+        sync: false

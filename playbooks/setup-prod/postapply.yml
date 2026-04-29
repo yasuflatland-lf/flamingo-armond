@@ -139,6 +139,66 @@
   ansible.builtin.debug:
     msg: "Vercel deploy kicked: {{ vercel_deploy_id }} (build runs in parallel with Render poll)"
 
+# ---------------------------------------------------------------------------
+# Reconcile the dynamic Render env vars from state before triggering deploy.
+#
+# Static env vars (APP_ENV, GRAPHQL_INTROSPECTION, OTEL_TRACES_SAMPLER_ARG,
+# SUPABASE_JWT_AUDIENCE) are declared with values in render.yaml and are
+# managed by Blueprint sync; we don't touch them here.
+#
+# Dynamic env vars are declared in render.yaml with `sync: false`, so the
+# Blueprint creates the placeholder key but never overwrites the value.
+# Per-key `PUT /v1/services/{id}/env-vars/{key}` upserts the value while
+# leaving any operator-added vars untouched (a bulk `PUT /env-vars` would
+# wipe them, so per-key is the safer choice for declarative ownership of
+# only the keys we own). The endpoint requires the key to exist; the
+# rescue calls out the Blueprint-sync prerequisite if 404 fires.
+# ---------------------------------------------------------------------------
+- name: Reconcile dynamic Render env vars from state
+  block:
+    - name: "PUT /v1/services/{{ render_service_id }}/env-vars/{{ item.key }}"
+      ansible.builtin.uri:
+        url: "https://api.render.com/v1/services/{{ render_service_id }}/env-vars/{{ item.key }}"
+        method: PUT
+        headers:
+          Authorization: "Bearer {{ render_api_key }}"
+          Accept: "application/json"
+        body_format: json
+        body:
+          value: "{{ item.value }}"
+        status_code: [200]
+      register: env_upsert
+      no_log: true
+      loop:
+        - key: SUPABASE_DB_URL
+          value: "{{ supabase_db_url }}"
+        - key: SUPABASE_JWKS_URL
+          value: "{{ supabase_jwks_url }}"
+        - key: SUPABASE_JWT_ISSUER
+          value: "{{ supabase_jwt_issuer }}"
+      loop_control:
+        label: "{{ item.key }}"
+  rescue:
+    - name: Surface Render env-var upsert failure with remediation
+      ansible.builtin.fail:
+        msg: |
+          Failed to upsert a Render env var via API.
+
+            HTTP status : {{ env_upsert.status | default('(connection error)') }}
+            Failed key  : {{ env_upsert.item.key | default('(unknown)') }}
+
+          Likely causes:
+            - 404 : the env var key does not exist on the service yet.
+              Apply (or re-sync) the Blueprint first so render.yaml
+              creates the placeholder:
+                Render dashboard -> Blueprints -> flamingo-armond -> Manual Sync.
+            - 401 / 403 : RENDER_API_KEY is invalid or lacks access.
+                Rotate at: https://dashboard.render.com/u/settings#api-keys
+            - 5xx : Render outage; check https://status.render.com
+
+          Fix the underlying issue, then re-run:
+            make setup-prod-postapply
+
 # Wrapped in block/rescue because the inner task carries `no_log: true`
 # (the request URL embeds render_service_id and the Bearer header carries
 # the API key; both should not echo on -v). Without a rescue, a 4xx/5xx
