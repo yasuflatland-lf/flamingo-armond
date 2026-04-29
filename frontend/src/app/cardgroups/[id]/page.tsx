@@ -7,9 +7,9 @@ import type {
   CardsByCardgroupQuery as CardsByCardgroupQueryType,
 } from "@/generated/graphql";
 import { gqlFetch } from "@/lib/apollo/server";
+import { redirectIfUnauthenticated } from "@/lib/apollo/server-redirect";
+import { formatMediumDate } from "@/lib/format";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-
-const DATE_FORMAT = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
 
 function truncateFront(front: string): string {
   if (front.length > 80) return `${front.slice(0, 79)}…`;
@@ -36,9 +36,7 @@ export default async function CardgroupDetailPage({ params }: { params: Promise<
       gqlFetch(CardsByCardgroupQuery, { variables: { cardgroupId: id }, revalidate: 0 }),
     ]);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("UNAUTHENTICATED")) redirect("/cardgroups");
-    throw err;
+    redirectIfUnauthenticated(err, "/cardgroups");
   }
 
   if (!cardgroupData?.cardgroup) redirect("/cardgroups");
@@ -46,12 +44,13 @@ export default async function CardgroupDetailPage({ params }: { params: Promise<
   const cardgroup = cardgroupData.cardgroup;
   const cards = cardsData?.cardsByCardgroup ?? [];
   const previewCards = cards.slice(0, 5);
-  const updatedAtDate = DATE_FORMAT.format(new Date(cardgroup.updatedAt as string));
 
   return (
     <main className="mx-auto max-w-2xl p-8">
       <h1 className="mb-2 text-2xl font-semibold">{cardgroup.name}</h1>
-      <p className="mb-6 text-sm text-muted-foreground">Updated {updatedAtDate}</p>
+      <p className="mb-6 text-sm text-muted-foreground">
+        Updated {formatMediumDate(cardgroup.updatedAt as string)}
+      </p>
 
       {cards.length === 0 ? (
         <div className="mb-8 rounded-lg border border-dashed border-border p-6 text-center">

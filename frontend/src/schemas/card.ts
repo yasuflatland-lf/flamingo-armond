@@ -1,13 +1,7 @@
 import { z } from "zod";
+import { graphemeCount } from "./grapheme";
 
 // Mirrors NewCardInput / UpdateCardInput in schema/schema.graphql.
-// UAX #29 grapheme cluster counting keeps FE and BE length rules in sync.
-const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-
-function graphemeCount(s: string): number {
-  return Array.from(segmenter.segment(s)).length;
-}
-
 const cardSideSchema = (fieldName: string) =>
   z
     .string()

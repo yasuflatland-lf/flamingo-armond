@@ -6,6 +6,7 @@ import type {
   CardsByCardgroupQuery as CardsByCardgroupQueryType,
 } from "@/generated/graphql";
 import { gqlFetch } from "@/lib/apollo/server";
+import { redirectIfUnauthenticated } from "@/lib/apollo/server-redirect";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { CardsClient } from "./cards-client";
 
@@ -29,9 +30,7 @@ export default async function CardsPage({ params }: { params: Promise<{ id: stri
       gqlFetch(CardsByCardgroupQuery, { variables: { cardgroupId: id }, revalidate: 0 }),
     ]);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("UNAUTHENTICATED")) redirect("/cardgroups");
-    throw err;
+    redirectIfUnauthenticated(err, "/cardgroups");
   }
 
   if (!cardgroupData?.cardgroup) redirect("/cardgroups");

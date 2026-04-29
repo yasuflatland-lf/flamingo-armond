@@ -7,24 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
-import { cn } from "@/lib/utils";
+import { FieldError } from "@/lib/forms/field-error";
 import { newCardgroupSchema, updateCardgroupSchema } from "@/schemas/cardgroup";
-
-// ---- local helpers ----
-
-function hasMessage(value: unknown): value is { message: string } {
-  return typeof (value as { message?: unknown })?.message === "string";
-}
-
-type FieldErrorProps = { zodErrors: unknown[]; backendError?: string };
-
-function FieldError({ zodErrors, backendError }: FieldErrorProps) {
-  const msg = zodErrors.find(hasMessage)?.message ?? backendError;
-  if (!msg) return null;
-  return <p className="text-sm text-destructive">{msg}</p>;
-}
-
-// ---- component types ----
 
 type Mode = "create" | "edit";
 
@@ -41,8 +25,6 @@ type CardgroupFormProps = {
   /** Extra controls rendered next to the submit button (e.g. Delete button on Edit page). */
   secondarySlot?: React.ReactNode;
 };
-
-// ---- component ----
 
 export function CardgroupForm({
   mode,
@@ -79,7 +61,7 @@ export function CardgroupForm({
         e.stopPropagation();
         void form.handleSubmit();
       }}
-      className={cn("space-y-4")}
+      className="space-y-4"
     >
       {bannerError ? (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">

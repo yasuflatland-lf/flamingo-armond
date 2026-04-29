@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { CardgroupListItem } from "@/components/cardgroups/cardgroup-list-item";
 import type { MyCardgroupsQuery as MyCardgroupsQueryType } from "@/generated/graphql";
 import { gqlFetch } from "@/lib/apollo/server";
+import { redirectIfUnauthenticated } from "@/lib/apollo/server-redirect";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { MyCardgroupsQuery } from "./queries";
 
@@ -19,9 +20,7 @@ export default async function CardgroupsPage() {
   try {
     data = await gqlFetch(MyCardgroupsQuery, { revalidate: 0 });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("UNAUTHENTICATED")) redirect("/login");
-    throw err;
+    redirectIfUnauthenticated(err, "/login");
   }
   const cardgroups = data.myCardgroups;
 

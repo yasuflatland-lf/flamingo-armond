@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { graphql } from "@/generated";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
+import { FieldError } from "@/lib/forms/field-error";
 import { updateProfileSchema } from "@/schemas/profile";
 
 const UpdateProfileMutation = graphql(`
@@ -24,18 +25,6 @@ const UpdateProfileMutation = graphql(`
     }
   }
 `);
-
-function hasMessage(value: unknown): value is { message: string } {
-  return typeof (value as { message?: unknown })?.message === "string";
-}
-
-type FieldErrorProps = { zodErrors: unknown[]; backendError?: string };
-
-function FieldError({ zodErrors, backendError }: FieldErrorProps) {
-  const msg = zodErrors.find(hasMessage)?.message ?? backendError;
-  if (!msg) return null;
-  return <p className="text-sm text-destructive">{msg}</p>;
-}
 
 type Props = { initial: { displayName: string; bio: string } };
 

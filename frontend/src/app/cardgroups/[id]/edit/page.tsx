@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { CardgroupQuery } from "@/app/cardgroups/queries";
 import { gqlFetch } from "@/lib/apollo/server";
+import { redirectIfUnauthenticated } from "@/lib/apollo/server-redirect";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { EditCardgroupClient } from "./edit-cardgroup-client";
 
@@ -23,9 +24,7 @@ export default async function EditCardgroupPage({ params }: Props) {
   try {
     data = await gqlFetch(CardgroupQuery, { variables: { id }, revalidate: 0 });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("UNAUTHENTICATED")) redirect("/cardgroups");
-    throw err;
+    redirectIfUnauthenticated(err, "/cardgroups");
   }
 
   const cg = data.cardgroup;

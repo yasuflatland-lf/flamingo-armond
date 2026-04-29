@@ -1,7 +1,5 @@
 "use client";
 
-// Shared inline form for both "add card" and "edit card" modes.
-// Create mode uses newCardSchema (front+back); edit mode uses updateCardSchema (front+back).
 // cardgroupId injection happens in the parent's submit callback, not inside this component.
 
 import { useForm } from "@tanstack/react-form";
@@ -10,20 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
-import { cn } from "@/lib/utils";
+import { FieldError } from "@/lib/forms/field-error";
 import { newCardSchema, updateCardSchema } from "@/schemas/card";
-
-function hasMessage(value: unknown): value is { message: string } {
-  return typeof (value as { message?: unknown })?.message === "string";
-}
-
-type FieldErrorProps = { zodErrors: unknown[]; backendError?: string };
-
-function FieldError({ zodErrors, backendError }: FieldErrorProps) {
-  const msg = zodErrors.find(hasMessage)?.message ?? backendError;
-  if (!msg) return null;
-  return <p className="text-sm text-destructive">{msg}</p>;
-}
 
 type Mode = "create" | "edit";
 
@@ -73,7 +59,7 @@ export function CardForm({
         e.stopPropagation();
         void form.handleSubmit();
       }}
-      className={cn("space-y-3")}
+      className="space-y-3"
     >
       {bannerError ? (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
