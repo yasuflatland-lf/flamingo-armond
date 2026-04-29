@@ -3,6 +3,7 @@ package loader_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -34,9 +35,11 @@ func TestCardgroupLoader_BatchesNCallsIntoOne(t *testing.T) {
 	t.Parallel()
 
 	var batchCalls atomic.Int32
+	var receivedKeys []string
 	cgRepo := &countingCardgroupRepo{
 		findByIDs: func(_ context.Context, ids []string) (map[string]*domain.Cardgroup, error) {
 			batchCalls.Add(1)
+			receivedKeys = ids
 			out := make(map[string]*domain.Cardgroup, len(ids))
 			for _, id := range ids {
 				out[id] = &domain.Cardgroup{ID: id, Name: "cg-" + id}
@@ -48,9 +51,7 @@ func TestCardgroupLoader_BatchesNCallsIntoOne(t *testing.T) {
 	// Build 100 distinct keys to maximise the chance the loader collapses them.
 	ids := make([]string, 100)
 	for i := range ids {
-		ids[i] = string(rune('a' + (i % 26)))
-		// Use a numeric suffix to keep keys unique.
-		ids[i] = ids[i] + string([]byte{byte('0' + i/26)})
+		ids[i] = fmt.Sprintf("cg-%03d", i)
 	}
 
 	emptyUser := &countingRepo{
@@ -74,6 +75,9 @@ func TestCardgroupLoader_BatchesNCallsIntoOne(t *testing.T) {
 	}
 	if got := batchCalls.Load(); got != 1 {
 		t.Fatalf("cardgroup BatchFunc should run exactly once, ran %d times", got)
+	}
+	if got := len(receivedKeys); got != 100 {
+		t.Fatalf("batch should receive 100 keys, got %d", got)
 	}
 }
 

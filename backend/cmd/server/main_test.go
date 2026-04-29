@@ -18,6 +18,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,6 +35,7 @@ import (
 	"backend/graph/resolver"
 	"backend/internal/auth"
 	"backend/internal/database"
+	"backend/internal/domain"
 	"backend/internal/repository"
 	"backend/internal/telemetry"
 	"backend/internal/usecase"
@@ -385,6 +388,69 @@ func newGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Server, *datab
 	ts := httptest.NewServer(e)
 	t.Cleanup(ts.Close)
 	return ts, db
+}
+
+// newGraphQLTestServerWithUserRepo builds the same chain as newGraphQLTestServer
+// but lets the caller swap the User repository (for instrumented test doubles).
+func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repository.UserRepository) (*httptest.Server, *database.DB) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	cfg := auth.Config{JWKSURL: f.jwksURL, Audience: f.audience, Issuer: f.issuer}
+	kf, err := auth.NewJWKSKeyfunc(ctx, cfg)
+	if err != nil {
+		t.Fatalf("jwks keyfunc: %v", err)
+	}
+	mw, err := auth.AuthMiddleware(kf, cfg)
+	if err != nil {
+		t.Fatalf("auth middleware: %v", err)
+	}
+
+	db, err := database.Open(ctx, database.Config{URL: testDBURL})
+	if err != nil {
+		t.Fatalf("db open: %v", err)
+	}
+	t.Cleanup(db.Close)
+
+	roleRepo := repository.NewRoleRepository(db.GORM)
+	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
+	userUC := usecase.NewUserUsecase(userRepo)
+	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)
+	e := newRouter(&resolver.Resolver{User: userUC, CardgroupUC: cardgroupUC}, mw, userRepo, roleRepo, cardgroupRepo)
+
+	ts := httptest.NewServer(e)
+	t.Cleanup(ts.Close)
+	return ts, db
+}
+
+// countingUserRepo wraps a real UserRepository and counts calls to each method.
+// It is used by TestGraphQL_Cardgroup_OwnerLoader_NoNPlus1 to assert that the
+// DataLoader batches all owner look-ups into a single FindByIDs call rather
+// than issuing one FindByID per cardgroup.
+type countingUserRepo struct {
+	inner        repository.UserRepository
+	findByID     atomic.Int32
+	findByIDs    atomic.Int32
+	mu           sync.Mutex
+	receivedKeys [][]string
+}
+
+func (c *countingUserRepo) FindByID(ctx context.Context, id string) (*domain.User, error) {
+	c.findByID.Add(1)
+	return c.inner.FindByID(ctx, id)
+}
+
+func (c *countingUserRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*domain.User, error) {
+	c.findByIDs.Add(1)
+	c.mu.Lock()
+	c.receivedKeys = append(c.receivedKeys, append([]string(nil), ids...))
+	c.mu.Unlock()
+	return c.inner.FindByIDs(ctx, ids)
+}
+
+func (c *countingUserRepo) Update(ctx context.Context, id string, patch repository.UserUpdate) (*domain.User, error) {
+	return c.inner.Update(ctx, id, patch)
 }
 
 // insertAuthUser inserts a row into auth.users so the handle_new_user trigger
@@ -1033,6 +1099,21 @@ func TestGraphQL_UpdateCardgroup_NonOwner_Unauthenticated(t *testing.T) {
 	if data["updateCardgroup"] != nil {
 		t.Fatalf("expected data.updateCardgroup to be nil, got %v", data["updateCardgroup"])
 	}
+
+	// Verify side-effect: the cardgroup name must be unchanged after the failed update.
+	cgBody := fmt.Sprintf(`{"query":"{ cardgroup(id: \"%s\") { id name } }"}`, cgID)
+	cgResp := postGraphQL(t, ts.URL+"/query", cgBody, tokA)
+	if errs, ok := cgResp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("re-fetch cardgroup errors: %v", errs)
+	}
+	cgData, _ := cgResp["data"].(map[string]any)
+	cg, _ := cgData["cardgroup"].(map[string]any)
+	if cg == nil {
+		t.Fatalf("expected cardgroup on re-fetch, got nil; resp=%v", cgResp)
+	}
+	if cg["name"] != "Owner's group" {
+		t.Fatalf("cardgroup name was mutated: got %q, want %q", cg["name"], "Owner's group")
+	}
 }
 
 func TestGraphQL_DeleteCardgroup_NonOwner_Unauthenticated(t *testing.T) {
@@ -1051,6 +1132,24 @@ func TestGraphQL_DeleteCardgroup_NonOwner_Unauthenticated(t *testing.T) {
 
 	if code := gqlErrCode(resp); code != "UNAUTHENTICATED" {
 		t.Fatalf("expected UNAUTHENTICATED, got %q; resp=%v", code, resp)
+	}
+
+	// Verify side-effect: the cardgroup must still exist in user A's list.
+	listResp := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroups { id } }"}`, tokA)
+	if errs, ok := listResp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("myCardgroups re-fetch errors: %v", errs)
+	}
+	list, _ := listResp["data"].(map[string]any)["myCardgroups"].([]any)
+	found := false
+	for _, item := range list {
+		cg, _ := item.(map[string]any)
+		if cg["id"] == cgID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("cardgroup %q was deleted by a non-owner; still expected in myCardgroups", cgID)
 	}
 }
 
@@ -1103,25 +1202,34 @@ func TestGraphQL_Cardgroup_OwnerLoaderResolves(t *testing.T) {
 }
 
 func TestGraphQL_Cardgroup_OwnerLoader_NoNPlus1(t *testing.T) {
-	exp, flush := installInMemoryTracer(t)
-
 	f := newJWTFixture(t)
-	ts, _ := newGraphQLTestServer(t, f)
 	ctx := context.Background()
 	sub := insertAuthUser(t, ctx)
 	tok := f.sign(t, sub)
 
-	for i := range 5 {
+	// Wrap the real repo in a counter so we can assert batching behaviour.
+	realDB, err := database.Open(ctx, database.Config{URL: testDBURL})
+	if err != nil {
+		t.Fatalf("db open for counter: %v", err)
+	}
+	t.Cleanup(realDB.Close)
+	counter := &countingUserRepo{inner: repository.NewUserRepository(realDB.GORM)}
+
+	ts, _ := newGraphQLTestServerWithUserRepo(t, f, counter)
+
+	const n = 100
+	for i := range n {
 		createTestCardgroup(t, ts.URL, tok, fmt.Sprintf("Batch Group %d", i+1))
 	}
 
-	resp := postGraphQL(t, ts.URL+"/query", `{"query":"query BatchOwner { myCardgroups { id owner { id displayName } } }"}`, tok)
+	resp := postGraphQL(t, ts.URL+"/query",
+		`{"query":"query BatchOwner { myCardgroups { id owner { id displayName } } }"}`, tok)
 	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
 		t.Fatalf("myCardgroups batch errors: %v", errs)
 	}
 	list, _ := resp["data"].(map[string]any)["myCardgroups"].([]any)
-	if len(list) != 5 {
-		t.Fatalf("expected 5 cardgroups, got %d", len(list))
+	if len(list) != n {
+		t.Fatalf("expected %d cardgroups, got %d", n, len(list))
 	}
 	for i, item := range list {
 		cg, _ := item.(map[string]any)
@@ -1134,16 +1242,17 @@ func TestGraphQL_Cardgroup_OwnerLoader_NoNPlus1(t *testing.T) {
 		}
 	}
 
-	flush()
-	spans := exp.GetSpans()
-	names := make([]string, 0, len(spans))
-	for _, s := range spans {
-		names = append(names, s.Name)
+	// Assert batching: the DataLoader must call FindByIDs exactly once (all 100
+	// cardgroups share the same owner ID, which the loader deduplicates), and
+	// must never fall back to the per-item FindByID path.
+	if got := counter.findByID.Load(); got != 0 {
+		t.Errorf("FindByID called %d times; want 0 (loader must not use per-item path)", got)
 	}
-	t.Logf("N+1 check: total spans=%d names=%v", len(spans), names)
-	// The DataLoader should batch all 5 owner lookups into a single load call.
-	// We verify correctness (owner.id == sub on every row above); strict batch
-	// counting via spans is a follow-up if the loader emits its own named span.
+	if got := counter.findByIDs.Load(); got != 1 {
+		t.Errorf("FindByIDs called %d times; want exactly 1 (single batched call)", got)
+	}
+	t.Logf("N+1 check: FindByID=%d FindByIDs=%d (keys per call: %v)",
+		counter.findByID.Load(), counter.findByIDs.Load(), counter.receivedKeys)
 }
 
 func TestGraphQL_CreateCardgroup_NameTooShort(t *testing.T) {
@@ -1190,5 +1299,36 @@ func TestGraphQL_CreateCardgroup_Anonymous_Unauthenticated(t *testing.T) {
 
 	if code := gqlErrCode(resp); code != "UNAUTHENTICATED" {
 		t.Fatalf("expected UNAUTHENTICATED, got %q; resp=%v", code, resp)
+	}
+}
+
+// TestGraphQL_Cardgroup_NotFound_ReturnsNullNoError verifies that querying a
+// non-existent cardgroup ID resolves to null data without a GraphQL error,
+// matching the resolver contract (usecase returns nil for ErrNotFound).
+func TestGraphQL_Cardgroup_NotFound_ReturnsNullNoError(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+	ctx := context.Background()
+	sub := insertAuthUser(t, ctx)
+	tok := f.sign(t, sub)
+
+	randomID := uuid.NewString()
+	body := fmt.Sprintf(`{"query":"{ cardgroup(id: \"%s\") { id name } }"}`, randomID)
+	resp := postGraphQL(t, ts.URL+"/query", body, tok)
+
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("expected no errors for missing cardgroup, got: %v", errs)
+	}
+	data, _ := resp["data"].(map[string]any)
+	if data == nil {
+		t.Fatalf("expected data object in response, got nil; resp=%v", resp)
+	}
+	// The resolver must return null (JSON null), not omit the field.
+	cgVal, exists := data["cardgroup"]
+	if !exists {
+		t.Fatalf("expected data.cardgroup key to be present (as null), resp=%v", resp)
+	}
+	if cgVal != nil {
+		t.Fatalf("expected data.cardgroup == null for non-existent ID, got %v", cgVal)
 	}
 }
