@@ -98,7 +98,7 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 			return err
 		}
 		if card.CardgroupID != in.CardgroupID {
-			return gqlerr.BadUserInput("cardId", "card does not belong to cardgroup")
+			return gqlerr.BadUserInput("cardId", "card not found")
 		}
 
 		now := time.Now().UTC()

@@ -1030,6 +1030,16 @@ func gqlErrField(resp map[string]any) string {
 	return field
 }
 
+// gqlErrMessage extracts errors[0].message from a postGraphQL response.
+func gqlErrMessage(resp map[string]any) string {
+	errs, ok := resp["errors"].([]any)
+	if !ok || len(errs) == 0 {
+		return ""
+	}
+	message, _ := errs[0].(map[string]any)["message"].(string)
+	return message
+}
+
 func TestGraphQL_CreateCardgroup_Then_MyCardgroups(t *testing.T) {
 	f := newJWTFixture(t)
 	ts, _ := newGraphQLTestServer(t, f)
@@ -1520,6 +1530,38 @@ func TestGraphQL_HandleSwipe_NonOwnerUnauthenticated(t *testing.T) {
 
 	if code := gqlErrCode(resp); code != "UNAUTHENTICATED" {
 		t.Fatalf("expected UNAUTHENTICATED, got %q; resp=%v", code, resp)
+	}
+}
+
+func TestGraphQL_HandleSwipe_CrossCardgroupMatchesMissingCardError(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+	ctx := context.Background()
+	sub := insertAuthUser(t, ctx)
+	tok := f.sign(t, sub)
+
+	ownedCgID := createTestCardgroup(t, ts.URL, tok, "Owned")
+	otherCgID := createTestCardgroup(t, ts.URL, tok, "Other")
+	otherCardID := createTestCard(t, ts.URL, tok, otherCgID, "other front", "other back")
+	missingCardID := uuid.NewString()
+
+	bodyForCard := func(cardID string) string {
+		return fmt.Sprintf(`{"query":"mutation { handleSwipe(input: {cardId: \"%s\", cardgroupId: \"%s\", mode: 4}) { performanceMode } }"}`, cardID, ownedCgID)
+	}
+	mismatchResp := postGraphQL(t, ts.URL+"/query", bodyForCard(otherCardID), tok)
+	missingResp := postGraphQL(t, ts.URL+"/query", bodyForCard(missingCardID), tok)
+
+	for name, resp := range map[string]map[string]any{"mismatch": mismatchResp, "missing": missingResp} {
+		if code := gqlErrCode(resp); code != "BAD_USER_INPUT" {
+			t.Fatalf("%s: expected BAD_USER_INPUT, got %q; resp=%v", name, code, resp)
+		}
+		if field := gqlErrField(resp); field != "cardId" {
+			t.Fatalf("%s: expected extensions.field=cardId, got %q; resp=%v", name, field, resp)
+		}
+	}
+	if gqlErrMessage(mismatchResp) != gqlErrMessage(missingResp) {
+		t.Fatalf("mismatched-cardgroup and missing-card errors differ: mismatch=%q missing=%q",
+			gqlErrMessage(mismatchResp), gqlErrMessage(missingResp))
 	}
 }
 
