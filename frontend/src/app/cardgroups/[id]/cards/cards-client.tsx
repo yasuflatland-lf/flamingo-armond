@@ -33,6 +33,7 @@ type Props = {
 export function CardsClient({ cardgroupId, initialCards }: Props) {
   const [cards, setCards] = useState<Card[]>(initialCards);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [createFormKey, setCreateFormKey] = useState(0);
 
   const [createCard, { loading: creating, error: createError }] = useMutation(CreateCardMutation, {
     update(cache, { data }) {
@@ -49,6 +50,7 @@ export function CardsClient({ cardgroupId, initialCards }: Props) {
         },
       });
       setCards((prev) => [...prev, data.createCard.card]);
+      setCreateFormKey((k) => k + 1);
     },
   });
 
@@ -79,8 +81,15 @@ export function CardsClient({ cardgroupId, initialCards }: Props) {
   }
 
   async function handleUpdate(id: string, values: { front: string; back: string }) {
-    await updateCard({ variables: { id, input: { front: values.front, back: values.back } } });
-    setEditingId(null);
+    const result = await updateCard({
+      variables: { id, input: { front: values.front, back: values.back } },
+    }).catch((err) => {
+      console.error("[CardsClient] update rejection", err);
+      return null;
+    });
+    if (result?.data?.updateCard?.card) {
+      setEditingId(null);
+    }
   }
 
   return (
@@ -96,9 +105,9 @@ export function CardsClient({ cardgroupId, initialCards }: Props) {
           Add a card
         </h2>
         <CardForm
+          key={createFormKey}
           mode="create"
           idPrefix="add-"
-          cardgroupId={cardgroupId}
           defaultValues={{ front: "", back: "" }}
           submit={handleCreate}
           submitLabel="Add"
@@ -159,7 +168,9 @@ export function CardsClient({ cardgroupId, initialCards }: Props) {
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
                           <AlertDialogAction
-                            onClick={() => deleteCard({ variables: { id: card.id } })}
+                            onClick={async () => {
+                              await deleteCard({ variables: { id: card.id } }).catch(console.error);
+                            }}
                           >
                             Delete
                           </AlertDialogAction>

@@ -13,7 +13,6 @@ function renderForm(props: Partial<Parameters<typeof CardForm>[0]> = {}) {
     <MockedProvider mocks={[]}>
       <CardForm
         mode={props.mode ?? "create"}
-        cardgroupId={props.cardgroupId ?? "cg-1"}
         defaultValues={props.defaultValues ?? { front: "", back: "" }}
         submit={props.submit ?? submit}
         submitLabel={props.submitLabel}

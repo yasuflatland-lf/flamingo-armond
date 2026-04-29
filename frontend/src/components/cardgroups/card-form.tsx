@@ -1,8 +1,8 @@
 "use client";
 
 // Shared inline form for both "add card" and "edit card" modes.
-// Create mode uses newCardSchema (front+back+cardgroupId); edit mode uses updateCardSchema (front+back).
-// cardgroupId is supplied as a prop and injected at submit time to keep the form fields consistent.
+// Create mode uses newCardSchema (front+back); edit mode uses updateCardSchema (front+back).
+// cardgroupId injection happens in the parent's submit callback, not inside this component.
 
 import { useForm } from "@tanstack/react-form";
 import { useMemo } from "react";
@@ -30,8 +30,6 @@ type Mode = "create" | "edit";
 export type CardFormProps = {
   mode: Mode;
   defaultValues: { front: string; back: string };
-  /** Required in create mode; ignored in edit mode (cardgroupId not part of update). */
-  cardgroupId?: string;
   /** Optional prefix for input element IDs; useful when multiple CardForms are on the page. */
   idPrefix?: string;
   submit: (values: { front: string; back: string }) => Promise<void>;

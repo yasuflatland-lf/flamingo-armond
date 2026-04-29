@@ -291,4 +291,108 @@ describe("<CardsClient>", () => {
       expect(screen.getByRole("button", { name: /saving/i })).toBeDisabled();
     });
   });
+
+  it("edit save failure keeps the row in edit mode and shows the inline error", async () => {
+    const user = userEvent.setup();
+
+    const mock = {
+      request: {
+        query: UpdateCardDocument,
+        variables: { id: "c-1", input: { front: "", back: "Hola" } },
+      },
+      result: {
+        errors: [
+          new GraphQLError("front is required", {
+            extensions: { code: "BAD_USER_INPUT", field: "front" },
+          }),
+        ],
+      },
+    };
+
+    renderClient([mock], [CARD_1], { errorPolicy: true });
+
+    // Open edit form for the card
+    const editBtn = screen.getByRole("button", { name: /edit/i });
+    await user.click(editBtn);
+
+    // [0] = add form, [1] = edit form
+    const editFrontInput = screen.getAllByLabelText(/front/i)[1] as HTMLElement;
+    await user.clear(editFrontInput);
+    // Leave front empty so the server returns BAD_USER_INPUT
+
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("front is required")).toBeInTheDocument();
+    });
+
+    // Edit form must still be open (inputs still visible)
+    expect(screen.getAllByLabelText(/front/i)).toHaveLength(2);
+    // No navigation — save button still present
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument();
+  });
+
+  it("delete failure surfaces the banner", async () => {
+    const user = userEvent.setup();
+
+    const mock = {
+      request: { query: DeleteCardDocument, variables: { id: "c-1" } },
+      result: {
+        errors: [new GraphQLError("Unauthenticated", { extensions: { code: "UNAUTHENTICATED" } })],
+      },
+    };
+
+    renderClient([mock], [CARD_1], { errorPolicy: true });
+
+    const deleteBtn = screen.getByRole("button", { name: /delete/i });
+    await user.click(deleteBtn);
+
+    const dialog = await screen.findByRole("alertdialog");
+    const confirmBtn = within(dialog).getByRole("button", { name: /delete/i });
+    await user.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("Your session expired. Please sign in again.")).toBeInTheDocument();
+    });
+  });
+
+  it("add-card form is reset after successful create", async () => {
+    const user = userEvent.setup();
+    const mock = makeCreateMock({ cardgroupId: CG_ID, front: "Cat", back: "Gato" });
+
+    const cacheMocks = [
+      {
+        request: {
+          query: CardsByCardgroupDocument,
+          variables: { cardgroupId: CG_ID },
+        },
+        result: { data: { cardsByCardgroup: [CARD_1, CARD_2] } },
+      },
+      mock,
+    ];
+
+    renderClient(cacheMocks);
+
+    // Fill the add form (idPrefix="add-")
+    const addFrontInput = screen.getAllByLabelText(/front/i)[0] as HTMLElement;
+    const addBackInput = screen.getAllByLabelText(/back/i)[0] as HTMLElement;
+
+    await user.click(addFrontInput);
+    await user.type(addFrontInput, "Cat");
+    await user.click(addBackInput);
+    await user.type(addBackInput, "Gato");
+
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
+
+    // New card row appears
+    await waitFor(() => {
+      expect(screen.getByText("Cat")).toBeInTheDocument();
+    });
+
+    // Add form inputs must be cleared (remounted via key)
+    const resetFrontInput = screen.getAllByLabelText(/front/i)[0] as HTMLInputElement;
+    const resetBackInput = screen.getAllByLabelText(/back/i)[0] as HTMLInputElement;
+    expect(resetFrontInput.value).toBe("");
+    expect(resetBackInput.value).toBe("");
+  });
 });
