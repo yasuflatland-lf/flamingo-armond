@@ -7,6 +7,7 @@ import (
 
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"backend/internal/domain"
 )
@@ -38,9 +39,12 @@ type CardUpdate struct {
 
 type CardRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Card, error)
+	FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error)
 	FindByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error)
+	FindDueCardsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
 	Create(ctx context.Context, card *domain.Card) error
+	UpdateFSRSStateTx(ctx context.Context, tx *gorm.DB, id string, state domain.FSRSState) error
 	Update(ctx context.Context, id string, patch CardUpdate) (*domain.Card, error)
 	Delete(ctx context.Context, id string) error
 }
@@ -50,8 +54,16 @@ type cardRepo struct{ db *gorm.DB }
 func NewCardRepository(db *gorm.DB) CardRepository { return &cardRepo{db: db} }
 
 func (r *cardRepo) FindByID(ctx context.Context, id string) (*domain.Card, error) {
+	return findCardByID(ctx, r.db, id)
+}
+
+func (r *cardRepo) FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error) {
+	return findCardByID(ctx, tx.Clauses(clause.Locking{Strength: "UPDATE"}), id)
+}
+
+func findCardByID(ctx context.Context, db *gorm.DB, id string) (*domain.Card, error) {
 	var row gormCard
-	err := r.db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
+	err := db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
@@ -92,9 +104,50 @@ func (r *cardRepo) FindByCardgroup(ctx context.Context, cardgroupID string) ([]*
 	return out, nil
 }
 
+func (r *cardRepo) FindDueCardsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
+	if limit <= 0 {
+		return []*domain.Card{}, nil
+	}
+	var rows []gormCard
+	if err := tx.WithContext(ctx).
+		Where("cardgroup_id = ? AND due <= ?", cardgroupID, now).
+		Order("due ASC, id ASC").
+		Limit(limit).
+		Find(&rows).Error; err != nil {
+		return nil, eris.Wrap(err, "repository: find due cards")
+	}
+	out := make([]*domain.Card, len(rows))
+	for i := range rows {
+		out[i] = cardToDomain(rows[i])
+	}
+	return out, nil
+}
+
 func (r *cardRepo) Create(ctx context.Context, card *domain.Card) error {
 	if err := r.db.WithContext(ctx).Create(cardToRow(card)).Error; err != nil {
 		return eris.Wrap(err, "repository: create card")
+	}
+	return nil
+}
+
+func (r *cardRepo) UpdateFSRSStateTx(ctx context.Context, tx *gorm.DB, id string, state domain.FSRSState) error {
+	updates := map[string]any{
+		"due":            state.Due,
+		"stability":      state.Stability,
+		"difficulty":     state.Difficulty,
+		"elapsed_days":   state.ElapsedDays,
+		"scheduled_days": state.ScheduledDays,
+		"reps":           state.Reps,
+		"lapses":         state.Lapses,
+		"state":          int(state.State),
+		"last_review":    state.LastReview,
+	}
+	res := tx.WithContext(ctx).Model(&gormCard{}).Where("id = ?", id).Updates(updates)
+	if res.Error != nil {
+		return eris.Wrap(res.Error, "repository: update card fsrs state")
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
 	}
 	return nil
 }

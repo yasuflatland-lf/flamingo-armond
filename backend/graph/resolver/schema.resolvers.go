@@ -112,6 +112,19 @@ func (r *mutationResolver) DeleteCard(ctx context.Context, id string) (bool, err
 	return true, nil
 }
 
+// HandleSwipe is the resolver for the handleSwipe field.
+func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.HandleSwipeInput) (*model.SwipeResponse, error) {
+	out, err := r.SwipeUC.HandleSwipe(ctx, usecase.HandleSwipeInput{
+		CardID:      input.CardID,
+		CardgroupID: input.CardgroupID,
+		Mode:        input.Mode,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return toSwipeResponseModel(out), nil
+}
+
 // Health is the resolver for the health field.
 func (r *queryResolver) Health(ctx context.Context) (string, error) {
 	return "ok", nil

@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 
 	"backend/internal/domain"
 	"backend/internal/repository"
@@ -113,6 +114,100 @@ func TestCardRepository_FindByIDs(t *testing.T) {
 	empty, err := repo.FindByIDs(ctx, nil)
 	require.NoError(t, err)
 	require.Empty(t, empty)
+}
+
+func TestCardRepository_TxFSRSMethods(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	dueCard := newCard(cg.ID, "due", "back")
+	dueCard.FSRS.Due = time.Now().UTC().Add(-time.Hour)
+	futureCard := newCard(cg.ID, "future", "back")
+	futureCard.FSRS.Due = time.Now().UTC().Add(time.Hour)
+	require.NoError(t, repo.Create(ctx, dueCard))
+	require.NoError(t, repo.Create(ctx, futureCard))
+
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		got, err := repo.FindByIDTx(ctx, tx, dueCard.ID)
+		require.NoError(t, err)
+		require.Equal(t, dueCard.ID, got.ID)
+
+		state := got.FSRS
+		state.Due = time.Now().UTC().Add(24 * time.Hour)
+		state.Reps = 1
+		require.NoError(t, repo.UpdateFSRSStateTx(ctx, tx, got.ID, state))
+
+		due, err := repo.FindDueCardsTx(ctx, tx, cg.ID, time.Now().UTC(), 10)
+		require.NoError(t, err)
+		for _, card := range due {
+			require.NotEqual(t, dueCard.ID, card.ID)
+			require.NotEqual(t, futureCard.ID, card.ID)
+		}
+		return nil
+	})
+	require.NoError(t, err)
+
+	updated, err := repo.FindByID(ctx, dueCard.ID)
+	require.NoError(t, err)
+	require.Equal(t, 1, updated.FSRS.Reps)
+	require.True(t, updated.FSRS.Due.After(time.Now().UTC()))
+}
+
+func TestCardRepository_FindByIDTx_LocksRowForUpdate(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	card := newCard(cg.ID, "front", "back")
+	require.NoError(t, repo.Create(ctx, card))
+
+	tx1 := testDB.GORM.WithContext(ctx).Begin()
+	require.NoError(t, tx1.Error)
+	defer tx1.Rollback()
+	_, err := repo.FindByIDTx(ctx, tx1, card.ID)
+	require.NoError(t, err)
+
+	tx2 := testDB.GORM.WithContext(ctx).Begin()
+	require.NoError(t, tx2.Error)
+	defer tx2.Rollback()
+	var id string
+	err = tx2.Raw("SELECT id FROM cards WHERE id = ? FOR UPDATE NOWAIT", card.ID).Scan(&id).Error
+	require.Error(t, err, "second transaction should fail to acquire a NOWAIT lock")
+}
+
+func TestCardRepository_FindDueCardsTx_OrderedAndScoped(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg1 := insertCardgroup(t, ctx, ownerID)
+	cg2 := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	now := time.Now().UTC()
+
+	later := newCard(cg1.ID, "later", "back")
+	later.FSRS.Due = now.Add(-time.Hour)
+	earlier := newCard(cg1.ID, "earlier", "back")
+	earlier.FSRS.Due = now.Add(-2 * time.Hour)
+	otherGroup := newCard(cg2.ID, "other", "back")
+	otherGroup.FSRS.Due = now.Add(-3 * time.Hour)
+	for _, card := range []*domain.Card{later, earlier, otherGroup} {
+		require.NoError(t, repo.Create(ctx, card))
+	}
+
+	var due []*domain.Card
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		due, err = repo.FindDueCardsTx(ctx, tx, cg1.ID, now, 10)
+		return err
+	})
+	require.NoError(t, err)
+	require.Len(t, due, 2)
+	require.Equal(t, earlier.ID, due[0].ID)
+	require.Equal(t, later.ID, due[1].ID)
 }
 
 func TestCardRepository_OnCardgroupDeleteCascade(t *testing.T) {

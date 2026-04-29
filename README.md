@@ -1,5 +1,9 @@
 # flamingo-armond
 
+[![backend CI](https://github.com/yasuflatland-lf/flamingo-armond/actions/workflows/backend.yml/badge.svg?branch=main)](https://github.com/yasuflatland-lf/flamingo-armond/actions/workflows/backend.yml)
+[![frontend CI](https://github.com/yasuflatland-lf/flamingo-armond/actions/workflows/frontend.yml/badge.svg?branch=main)](https://github.com/yasuflatland-lf/flamingo-armond/actions/workflows/frontend.yml)
+[![codecov](https://codecov.io/gh/yasuflatland-lf/flamingo-armond/branch/main/graph/badge.svg)](https://codecov.io/gh/yasuflatland-lf/flamingo-armond)
+
 🦩 Swiping Flashcard app — a Go (Echo) backend, a Next.js 16 frontend, and a shared GraphQL schema, with Supabase for Postgres + Auth.
 
 ## Quick Start

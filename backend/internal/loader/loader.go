@@ -13,27 +13,32 @@ import (
 type contextKey struct{}
 
 type Loaders struct {
-	User      *dataloader.Loader[string, *domain.User]
-	Role      *dataloader.Loader[string, *domain.Role]
-	Cardgroup *dataloader.Loader[string, *domain.Cardgroup]
-	Card      *dataloader.Loader[string, *domain.Card]
+	User        *dataloader.Loader[string, *domain.User]
+	Role        *dataloader.Loader[string, *domain.Role]
+	Cardgroup   *dataloader.Loader[string, *domain.Cardgroup]
+	Card        *dataloader.Loader[string, *domain.Card]
+	SwipeRecord *dataloader.Loader[string, *domain.SwipeRecord]
 }
 
-func New(userRepo repository.UserRepository, roleRepo repository.RoleRepository, cardgroupRepo repository.CardgroupRepository, cardRepo repository.CardRepository) *Loaders {
-	return &Loaders{
+func New(userRepo repository.UserRepository, roleRepo repository.RoleRepository, cardgroupRepo repository.CardgroupRepository, cardRepo repository.CardRepository, swipeRecordRepo ...repository.SwipeRecordRepository) *Loaders {
+	loaders := &Loaders{
 		User:      dataloader.NewBatchedLoader(userBatchFunc(userRepo)),
 		Role:      dataloader.NewBatchedLoader(roleBatchFunc(roleRepo)),
 		Cardgroup: dataloader.NewBatchedLoader(cardgroupBatchFunc(cardgroupRepo)),
 		Card:      dataloader.NewBatchedLoader(cardBatchFunc(cardRepo)),
 	}
+	if len(swipeRecordRepo) > 0 && swipeRecordRepo[0] != nil {
+		loaders.SwipeRecord = dataloader.NewBatchedLoader(swipeRecordBatchFunc(swipeRecordRepo[0]))
+	}
+	return loaders
 }
 
 // Middleware installs a fresh Loaders per request so batching and caching do
 // not bleed across requests.
-func Middleware(userRepo repository.UserRepository, roleRepo repository.RoleRepository, cardgroupRepo repository.CardgroupRepository, cardRepo repository.CardRepository) echo.MiddlewareFunc {
+func Middleware(userRepo repository.UserRepository, roleRepo repository.RoleRepository, cardgroupRepo repository.CardgroupRepository, cardRepo repository.CardRepository, swipeRecordRepo ...repository.SwipeRecordRepository) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
-			ctx := context.WithValue(c.Request().Context(), contextKey{}, New(userRepo, roleRepo, cardgroupRepo, cardRepo))
+			ctx := context.WithValue(c.Request().Context(), contextKey{}, New(userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo...))
 			c.SetRequest(c.Request().WithContext(ctx))
 			return next(c)
 		}

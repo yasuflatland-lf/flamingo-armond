@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 	"backend/graph/resolver"
 	"backend/internal/auth"
 	"backend/internal/database"
+	"backend/internal/domain/service"
 	"backend/internal/loader"
 	"backend/internal/logging"
 	internalmw "backend/internal/middleware"
@@ -62,6 +64,7 @@ func newRouter(
 	roleRepo repository.RoleRepository,
 	cardgroupRepo repository.CardgroupRepository,
 	cardRepo repository.CardRepository,
+	swipeRecordRepo ...repository.SwipeRecordRepository,
 ) *echo.Echo {
 	e := echo.New()
 	e.Use(middleware.RequestLogger())
@@ -99,11 +102,24 @@ func newRouter(
 			return r.Method + " " + r.URL.Path
 		}),
 	)
-	q := e.Group("/query", authMW, loader.Middleware(userRepo, roleRepo, cardgroupRepo, cardRepo))
+	q := e.Group("/query", authMW, loader.Middleware(userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo...))
 	q.POST("", echo.WrapHandler(otelGQLHandler))
 	e.GET("/playground", echo.WrapHandler(playground.Handler("GraphQL", "/query")))
 
 	return e
+}
+
+func swipeNextBatchSize(logger *slog.Logger) int {
+	v := os.Getenv("SWIPE_NEXT_BATCH_SIZE")
+	if v == "" {
+		return 10
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		logger.Warn("invalid SWIPE_NEXT_BATCH_SIZE, using default", "value", v, "default", 10)
+		return 10
+	}
+	return n
 }
 
 func shutdownTimeout(logger *slog.Logger) time.Duration {
@@ -165,22 +181,25 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	roleRepo := repository.NewRoleRepository(db.GORM)
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	cardRepo := repository.NewCardRepository(db.GORM)
+	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	// Constructed to surface compile-time wiring even though no resolver references it yet.
 	_ = repository.NewUserRoleRepository(db.GORM)
 
 	userUC := usecase.NewUserUsecase(userRepo)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)
 	cardUC := usecase.NewCardUsecase(cardRepo, cardgroupRepo)
+	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), swipeNextBatchSize(logger))
 
 	resolvers := &resolver.Resolver{
 		User:        userUC,
 		CardgroupUC: cardgroupUC,
 		CardUC:      cardUC,
+		SwipeUC:     swipeUC,
 	}
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
 	// telemetry.Init for the full ordering invariant.
-	e := newRouter(resolvers, authMW, userRepo, roleRepo, cardgroupRepo, cardRepo)
+	e := newRouter(resolvers, authMW, userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo)
 	e.Logger = logger
 
 	port := os.Getenv("PORT")

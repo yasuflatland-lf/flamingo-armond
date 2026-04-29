@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -31,11 +32,13 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"gorm.io/gorm"
 
 	"backend/graph/resolver"
 	"backend/internal/auth"
 	"backend/internal/database"
 	"backend/internal/domain"
+	"backend/internal/domain/service"
 	"backend/internal/repository"
 	"backend/internal/telemetry"
 	"backend/internal/usecase"
@@ -392,10 +395,12 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	roleRepo := repository.NewRoleRepository(db.GORM)
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	cardRepo := repository.NewCardRepository(db.GORM)
+	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	userUC := usecase.NewUserUsecase(userRepo)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)
 	cardUC := usecase.NewCardUsecase(cardRepo, cardgroupRepo)
-	e := newRouter(&resolver.Resolver{User: userUC, CardgroupUC: cardgroupUC, CardUC: cardUC}, mw, userRepo, roleRepo, cardgroupRepo, cardRepo)
+	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10)
+	e := newRouter(&resolver.Resolver{User: userUC, CardgroupUC: cardgroupUC, CardUC: cardUC, SwipeUC: swipeUC}, mw, userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo)
 
 	ts := httptest.NewServer(e)
 	t.Cleanup(ts.Close)
@@ -1025,6 +1030,16 @@ func gqlErrField(resp map[string]any) string {
 	return field
 }
 
+// gqlErrMessage extracts errors[0].message from a postGraphQL response.
+func gqlErrMessage(resp map[string]any) string {
+	errs, ok := resp["errors"].([]any)
+	if !ok || len(errs) == 0 {
+		return ""
+	}
+	message, _ := errs[0].(map[string]any)["message"].(string)
+	return message
+}
+
 func TestGraphQL_CreateCardgroup_Then_MyCardgroups(t *testing.T) {
 	f := newJWTFixture(t)
 	ts, _ := newGraphQLTestServer(t, f)
@@ -1412,5 +1427,194 @@ func TestGraphQL_Cardgroup_NotFound_ReturnsNullNoError(t *testing.T) {
 	}
 	if cgVal != nil {
 		t.Fatalf("expected data.cardgroup == null for non-existent ID, got %v", cgVal)
+	}
+}
+
+func TestGraphQL_HandleSwipe_HappyPath(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, db := newGraphQLTestServer(t, f)
+	ctx := context.Background()
+	sub := insertAuthUser(t, ctx)
+	tok := f.sign(t, sub)
+
+	cgID := createTestCardgroup(t, ts.URL, tok, "Swipe")
+	firstID := createTestCard(t, ts.URL, tok, cgID, "front 1", "back 1")
+	secondID := createTestCard(t, ts.URL, tok, cgID, "front 2", "back 2")
+
+	gqlQuery := fmt.Sprintf(`mutation {
+		handleSwipe(input: {cardId: %s, cardgroupId: %s, mode: 4}) {
+			performanceMode
+			nextCards { id }
+		}
+	}`, gqlStringLit(firstID), gqlStringLit(cgID))
+	body, err := json.Marshal(map[string]string{"query": gqlQuery})
+	if err != nil {
+		t.Fatalf("json.Marshal body: %v", err)
+	}
+	resp := postGraphQL(t, ts.URL+"/query", string(body), tok)
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("handleSwipe errors: %v", errs)
+	}
+	payload, _ := resp["data"].(map[string]any)["handleSwipe"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected handleSwipe payload; resp=%v", resp)
+	}
+	if payload["performanceMode"] != float64(0) {
+		t.Fatalf("performanceMode=%v, want 0", payload["performanceMode"])
+	}
+	nextCards, _ := payload["nextCards"].([]any)
+	for _, item := range nextCards {
+		card, _ := item.(map[string]any)
+		if card["id"] == firstID {
+			t.Fatalf("nextCards included swiped card %q: %v", firstID, nextCards)
+		}
+	}
+	if len(nextCards) > 0 {
+		card, _ := nextCards[0].(map[string]any)
+		if card["id"] != secondID {
+			t.Fatalf("expected due sibling card first, got %v", card)
+		}
+	}
+
+	var swipeCount int64
+	if err := db.GORM.WithContext(ctx).Table("swipe_records").Where("card_id = ?", firstID).Count(&swipeCount).Error; err != nil {
+		t.Fatalf("count swipe_records: %v", err)
+	}
+	if swipeCount != 1 {
+		t.Fatalf("swipe_records count=%d, want 1", swipeCount)
+	}
+	cardRepo := repository.NewCardRepository(db.GORM)
+	updated, err := cardRepo.FindByID(ctx, firstID)
+	if err != nil {
+		t.Fatalf("find swiped card: %v", err)
+	}
+	if updated.FSRS.Reps != 1 {
+		t.Fatalf("reps=%d, want 1", updated.FSRS.Reps)
+	}
+}
+
+func TestGraphQL_HandleSwipe_InvalidModes(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+	ctx := context.Background()
+	sub := insertAuthUser(t, ctx)
+	tok := f.sign(t, sub)
+	cgID := createTestCardgroup(t, ts.URL, tok, "Invalid Modes")
+	cardID := createTestCard(t, ts.URL, tok, cgID, "front", "back")
+
+	for _, mode := range []int{0, 3, 5} {
+		body := fmt.Sprintf(`{"query":"mutation { handleSwipe(input: {cardId: \"%s\", cardgroupId: \"%s\", mode: %d}) { performanceMode } }"}`, cardID, cgID, mode)
+		resp := postGraphQL(t, ts.URL+"/query", body, tok)
+		if code := gqlErrCode(resp); code != "BAD_USER_INPUT" {
+			t.Fatalf("mode=%d: expected BAD_USER_INPUT, got %q; resp=%v", mode, code, resp)
+		}
+		if field := gqlErrField(resp); field != "mode" {
+			t.Fatalf("mode=%d: expected extensions.field=mode, got %q; resp=%v", mode, field, resp)
+		}
+	}
+}
+
+func TestGraphQL_HandleSwipe_NonOwnerUnauthenticated(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+	ctx := context.Background()
+	subA := insertAuthUser(t, ctx)
+	tokA := f.sign(t, subA)
+	cgID := createTestCardgroup(t, ts.URL, tokA, "Owner")
+	cardID := createTestCard(t, ts.URL, tokA, cgID, "front", "back")
+
+	subB := insertAuthUser(t, ctx)
+	tokB := f.sign(t, subB)
+	body := fmt.Sprintf(`{"query":"mutation { handleSwipe(input: {cardId: \"%s\", cardgroupId: \"%s\", mode: 4}) { performanceMode } }"}`, cardID, cgID)
+	resp := postGraphQL(t, ts.URL+"/query", body, tokB)
+
+	if code := gqlErrCode(resp); code != "UNAUTHENTICATED" {
+		t.Fatalf("expected UNAUTHENTICATED, got %q; resp=%v", code, resp)
+	}
+}
+
+func TestGraphQL_HandleSwipe_CrossCardgroupMatchesMissingCardError(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+	ctx := context.Background()
+	sub := insertAuthUser(t, ctx)
+	tok := f.sign(t, sub)
+
+	ownedCgID := createTestCardgroup(t, ts.URL, tok, "Owned")
+	otherCgID := createTestCardgroup(t, ts.URL, tok, "Other")
+	otherCardID := createTestCard(t, ts.URL, tok, otherCgID, "other front", "other back")
+	missingCardID := uuid.NewString()
+
+	bodyForCard := func(cardID string) string {
+		return fmt.Sprintf(`{"query":"mutation { handleSwipe(input: {cardId: \"%s\", cardgroupId: \"%s\", mode: 4}) { performanceMode } }"}`, cardID, ownedCgID)
+	}
+	mismatchResp := postGraphQL(t, ts.URL+"/query", bodyForCard(otherCardID), tok)
+	missingResp := postGraphQL(t, ts.URL+"/query", bodyForCard(missingCardID), tok)
+
+	for name, resp := range map[string]map[string]any{"mismatch": mismatchResp, "missing": missingResp} {
+		if code := gqlErrCode(resp); code != "BAD_USER_INPUT" {
+			t.Fatalf("%s: expected BAD_USER_INPUT, got %q; resp=%v", name, code, resp)
+		}
+		if field := gqlErrField(resp); field != "cardId" {
+			t.Fatalf("%s: expected extensions.field=cardId, got %q; resp=%v", name, field, resp)
+		}
+	}
+	if gqlErrMessage(mismatchResp) != gqlErrMessage(missingResp) {
+		t.Fatalf("mismatched-cardgroup and missing-card errors differ: mismatch=%q missing=%q",
+			gqlErrMessage(mismatchResp), gqlErrMessage(missingResp))
+	}
+}
+
+type failingSwipeRepo struct{ err error }
+
+func (f failingSwipeRepo) CreateTx(context.Context, *gorm.DB, *domain.SwipeRecord) error {
+	return f.err
+}
+
+func TestHandleSwipe_RollsBackWhenSwipeRecordInsertFails(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, db := newGraphQLTestServer(t, f)
+	ctx := context.Background()
+	sub := insertAuthUser(t, ctx)
+	tok := f.sign(t, sub)
+	cgID := createTestCardgroup(t, ts.URL, tok, "Rollback")
+	cardID := createTestCard(t, ts.URL, tok, cgID, "front", "back")
+
+	cardRepo := repository.NewCardRepository(db.GORM)
+	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
+	before, err := cardRepo.FindByID(ctx, cardID)
+	if err != nil {
+		t.Fatalf("find before: %v", err)
+	}
+	uc := usecase.NewSwipeUsecase(
+		db.GORM,
+		cardRepo,
+		cardgroupRepo,
+		failingSwipeRepo{err: errors.New("forced swipe insert failure")},
+		service.NewFSRSScheduler(),
+		10,
+	)
+
+	_, err = uc.HandleSwipe(auth.ContextWithUser(ctx, &auth.AuthUser{Sub: sub}), usecase.HandleSwipeInput{
+		CardID:      cardID,
+		CardgroupID: cgID,
+		Mode:        4,
+	})
+	if err == nil {
+		t.Fatal("expected forced error, got nil")
+	}
+	after, err := cardRepo.FindByID(ctx, cardID)
+	if err != nil {
+		t.Fatalf("find after: %v", err)
+	}
+	if after.FSRS.Reps != before.FSRS.Reps || !after.FSRS.Due.Equal(before.FSRS.Due) {
+		t.Fatalf("FSRS state changed despite rollback: before=%+v after=%+v", before.FSRS, after.FSRS)
+	}
+	var swipeCount int64
+	if err := db.GORM.WithContext(ctx).Table("swipe_records").Where("card_id = ?", cardID).Count(&swipeCount).Error; err != nil {
+		t.Fatalf("count swipe_records: %v", err)
+	}
+	if swipeCount != 0 {
+		t.Fatalf("swipe_records count=%d, want 0", swipeCount)
 	}
 }

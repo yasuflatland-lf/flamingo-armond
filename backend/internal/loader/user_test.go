@@ -8,8 +8,10 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v5"
+	"gorm.io/gorm"
 
 	"backend/internal/domain"
 	"backend/internal/loader"
@@ -93,6 +95,9 @@ func emptyCardgroupRepo() *countingCardgroupRepo {
 func (r *countingCardRepo) FindByID(_ context.Context, _ string) (*domain.Card, error) {
 	panic("countingCardRepo.FindByID not configured")
 }
+func (r *countingCardRepo) FindByIDTx(_ context.Context, _ *gorm.DB, _ string) (*domain.Card, error) {
+	panic("countingCardRepo.FindByIDTx not configured")
+}
 func (r *countingCardRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error) {
 	if r.findByIDs == nil {
 		panic("countingCardRepo.FindByIDs not configured")
@@ -102,8 +107,14 @@ func (r *countingCardRepo) FindByIDs(ctx context.Context, ids []string) (map[str
 func (r *countingCardRepo) FindByCardgroup(_ context.Context, _ string) ([]*domain.Card, error) {
 	panic("countingCardRepo.FindByCardgroup not configured")
 }
+func (r *countingCardRepo) FindDueCardsTx(_ context.Context, _ *gorm.DB, _ string, _ time.Time, _ int) ([]*domain.Card, error) {
+	panic("countingCardRepo.FindDueCardsTx not configured")
+}
 func (r *countingCardRepo) Create(_ context.Context, _ *domain.Card) error {
 	panic("countingCardRepo.Create not configured")
+}
+func (r *countingCardRepo) UpdateFSRSStateTx(_ context.Context, _ *gorm.DB, _ string, _ domain.FSRSState) error {
+	panic("countingCardRepo.UpdateFSRSStateTx not configured")
 }
 func (r *countingCardRepo) Update(_ context.Context, _ string, _ repository.CardUpdate) (*domain.Card, error) {
 	panic("countingCardRepo.Update not configured")
