@@ -156,6 +156,29 @@ func TestCardRepository_TxFSRSMethods(t *testing.T) {
 	require.True(t, updated.FSRS.Due.After(time.Now().UTC()))
 }
 
+func TestCardRepository_FindByIDTx_LocksRowForUpdate(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	card := newCard(cg.ID, "front", "back")
+	require.NoError(t, repo.Create(ctx, card))
+
+	tx1 := testDB.GORM.WithContext(ctx).Begin()
+	require.NoError(t, tx1.Error)
+	defer tx1.Rollback()
+	_, err := repo.FindByIDTx(ctx, tx1, card.ID)
+	require.NoError(t, err)
+
+	tx2 := testDB.GORM.WithContext(ctx).Begin()
+	require.NoError(t, tx2.Error)
+	defer tx2.Rollback()
+	var id string
+	err = tx2.Raw("SELECT id FROM cards WHERE id = ? FOR UPDATE NOWAIT", card.ID).Scan(&id).Error
+	require.Error(t, err, "second transaction should fail to acquire a NOWAIT lock")
+}
+
 func TestCardRepository_FindDueCardsTx_OrderedAndScoped(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

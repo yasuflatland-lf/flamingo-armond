@@ -7,6 +7,7 @@ import (
 
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"backend/internal/domain"
 )
@@ -57,7 +58,7 @@ func (r *cardRepo) FindByID(ctx context.Context, id string) (*domain.Card, error
 }
 
 func (r *cardRepo) FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error) {
-	return findCardByID(ctx, tx, id)
+	return findCardByID(ctx, tx.Clauses(clause.Locking{Strength: "UPDATE"}), id)
 }
 
 func findCardByID(ctx context.Context, db *gorm.DB, id string) (*domain.Card, error) {
