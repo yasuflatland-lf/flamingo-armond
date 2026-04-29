@@ -174,17 +174,16 @@ func (u *CardgroupUsecase) Delete(ctx context.Context, id string) error {
 }
 
 // translateCardgroupNameErr maps domain sentinel errors from Cardgroup.Validate
-// to GraphQL-layer errors. Unexpected domain errors become INTERNAL.
+// to GraphQL-layer errors. Unexpected domain errors become INTERNAL. Callers
+// must guard against err == nil before invoking.
 func translateCardgroupNameErr(ctx context.Context, err error) error {
 	switch {
 	case errors.Is(err, domain.ErrCardgroupNameRequired):
 		return gqlerr.BadUserInput("name", "name is required")
 	case errors.Is(err, domain.ErrCardgroupNameTooLong):
 		return gqlerr.BadUserInput("name", fmt.Sprintf("name must be at most %d characters", domain.CardgroupNameMax))
-	case err != nil:
-		return gqlerr.Internal(ctx, err)
 	default:
-		return nil
+		return gqlerr.Internal(ctx, err)
 	}
 }
 

@@ -36,13 +36,10 @@ func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 	}
 }
 
-// toCardgroupModels maps a slice; nil entries are skipped to keep [Cardgroup!]! contracts intact.
 func toCardgroupModels(cgs []*domain.Cardgroup) []*model.Cardgroup {
-	out := make([]*model.Cardgroup, 0, len(cgs))
-	for _, cg := range cgs {
-		if m := toCardgroupModel(cg); m != nil {
-			out = append(out, m)
-		}
+	out := make([]*model.Cardgroup, len(cgs))
+	for i, cg := range cgs {
+		out[i] = toCardgroupModel(cg)
 	}
 	return out
 }

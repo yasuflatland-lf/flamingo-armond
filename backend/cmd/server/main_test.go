@@ -359,39 +359,12 @@ func (f *jwtFixture) sign(t *testing.T, sub string) string {
 // the opened DB so callers can insert auth.users rows directly.
 func newGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Server, *database.DB) {
 	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-
-	cfg := auth.Config{JWKSURL: f.jwksURL, Audience: f.audience, Issuer: f.issuer}
-	kf, err := auth.NewJWKSKeyfunc(ctx, cfg)
-	if err != nil {
-		t.Fatalf("jwks keyfunc: %v", err)
-	}
-	mw, err := auth.AuthMiddleware(kf, cfg)
-	if err != nil {
-		t.Fatalf("auth middleware: %v", err)
-	}
-
-	db, err := database.Open(ctx, database.Config{URL: testDBURL})
-	if err != nil {
-		t.Fatalf("db open: %v", err)
-	}
-	t.Cleanup(db.Close)
-
-	userRepo := repository.NewUserRepository(db.GORM)
-	roleRepo := repository.NewRoleRepository(db.GORM)
-	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
-	userUC := usecase.NewUserUsecase(userRepo)
-	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)
-	e := newRouter(&resolver.Resolver{User: userUC, CardgroupUC: cardgroupUC}, mw, userRepo, roleRepo, cardgroupRepo)
-
-	ts := httptest.NewServer(e)
-	t.Cleanup(ts.Close)
-	return ts, db
+	return newGraphQLTestServerWithUserRepo(t, f, nil)
 }
 
 // newGraphQLTestServerWithUserRepo builds the same chain as newGraphQLTestServer
 // but lets the caller swap the User repository (for instrumented test doubles).
+// A nil userRepo means "use the default GORM-backed repository".
 func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repository.UserRepository) (*httptest.Server, *database.DB) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -413,6 +386,9 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	}
 	t.Cleanup(db.Close)
 
+	if userRepo == nil {
+		userRepo = repository.NewUserRepository(db.GORM)
+	}
 	roleRepo := repository.NewRoleRepository(db.GORM)
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	userUC := usecase.NewUserUsecase(userRepo)

@@ -17,7 +17,7 @@ const CardgroupNameMax = 100
 // errors.Is to match them rather than comparing message strings.
 var (
 	ErrCardgroupNameRequired = eris.New("cardgroup: name is required")
-	ErrCardgroupNameTooLong  = eris.New("cardgroup: name exceeds 100 characters")
+	ErrCardgroupNameTooLong  = eris.Errorf("cardgroup: name exceeds %d characters", CardgroupNameMax)
 )
 
 // Cardgroup is an aggregate root: a named collection of cards owned by exactly
