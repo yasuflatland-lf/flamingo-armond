@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -79,14 +80,14 @@ function makeDeleteMock(id: string) {
 function renderClient(
   mocks: unknown[],
   initialCards = [CARD_1, CARD_2],
-  options: { errorPolicy?: boolean } = {},
+  options: { errorPolicy?: boolean; cache?: InMemoryCache } = {},
 ) {
   const defaultOptions = options.errorPolicy
     ? { mutate: { errorPolicy: "all" as const } }
     : undefined;
 
   render(
-    <MockedProvider mocks={mocks as never} defaultOptions={defaultOptions}>
+    <MockedProvider mocks={mocks as never} defaultOptions={defaultOptions} cache={options.cache}>
       <CardsClient cardgroupId={CG_ID} initialCards={initialCards} />
     </MockedProvider>,
   );
@@ -220,7 +221,15 @@ describe("<CardsClient>", () => {
     const user = userEvent.setup();
     const mock = makeDeleteMock("c-1");
 
-    renderClient([mock]);
+    // Seed a real InMemoryCache so the update callback's evict/gc is exercised.
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: CardsByCardgroupDocument,
+      variables: { cardgroupId: CG_ID },
+      data: { cardsByCardgroup: [CARD_1, CARD_2] },
+    });
+
+    renderClient([mock], [CARD_1, CARD_2], { cache });
 
     expect(screen.getByText("Hello")).toBeInTheDocument();
 
@@ -232,9 +241,18 @@ describe("<CardsClient>", () => {
     const confirmBtn = within(dialog).getByRole("button", { name: /delete/i });
     await user.click(confirmBtn);
 
+    // Row disappears from the DOM.
     await waitFor(() => {
       expect(screen.queryByText("Hello")).not.toBeInTheDocument();
     });
+
+    // Cache must no longer contain the deleted card.
+    const cached = cache.readQuery({
+      query: CardsByCardgroupDocument,
+      variables: { cardgroupId: CG_ID },
+    });
+    const ids = cached?.cardsByCardgroup.map((c) => c.id) ?? [];
+    expect(ids).not.toContain(CARD_1.id);
   });
 
   it("UNAUTHENTICATED on delete shows banner", async () => {
@@ -330,30 +348,6 @@ describe("<CardsClient>", () => {
     expect(screen.getAllByLabelText(/front/i)).toHaveLength(2);
     // No navigation — save button still present
     expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument();
-  });
-
-  it("delete failure surfaces the banner", async () => {
-    const user = userEvent.setup();
-
-    const mock = {
-      request: { query: DeleteCardDocument, variables: { id: "c-1" } },
-      result: {
-        errors: [new GraphQLError("Unauthenticated", { extensions: { code: "UNAUTHENTICATED" } })],
-      },
-    };
-
-    renderClient([mock], [CARD_1], { errorPolicy: true });
-
-    const deleteBtn = screen.getByRole("button", { name: /delete/i });
-    await user.click(deleteBtn);
-
-    const dialog = await screen.findByRole("alertdialog");
-    const confirmBtn = within(dialog).getByRole("button", { name: /delete/i });
-    await user.click(confirmBtn);
-
-    await waitFor(() => {
-      expect(screen.getByText("Your session expired. Please sign in again.")).toBeInTheDocument();
-    });
   });
 
   it("add-card form is reset after successful create", async () => {

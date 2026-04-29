@@ -63,7 +63,8 @@ export function CardsClient({ cardgroupId, initialCards }: Props) {
   });
 
   const [deleteCard, { error: deleteError }] = useMutation(DeleteCardMutation, {
-    update(cache, _result, { variables }) {
+    update(cache, { data }, { variables }) {
+      if (!data?.deleteCard) return;
       const id = variables?.id as string | undefined;
       if (!id) return;
       cache.evict({ id: cache.identify({ __typename: "Card", id }) });
@@ -77,6 +78,8 @@ export function CardsClient({ cardgroupId, initialCards }: Props) {
   async function handleCreate(values: { front: string; back: string }) {
     await createCard({
       variables: { input: { cardgroupId, front: values.front, back: values.back } },
+    }).catch((err) => {
+      console.error("[CardsClient] create rejection", err);
     });
   }
 
