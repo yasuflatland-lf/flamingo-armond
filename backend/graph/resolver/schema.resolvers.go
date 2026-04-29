@@ -7,9 +7,26 @@ package resolver
 import (
 	"backend/graph/generated"
 	"backend/graph/model"
+	"backend/internal/gqlerr"
+	"backend/internal/loader"
 	"backend/internal/usecase"
 	"context"
+
+	"github.com/rotisserie/eris"
 )
+
+// Owner is the resolver for the owner field.
+func (r *cardgroupResolver) Owner(ctx context.Context, obj *model.Cardgroup) (*model.User, error) {
+	loaders := loader.For(ctx)
+	if loaders == nil {
+		return nil, gqlerr.Internal(ctx, eris.New("loader: middleware not installed for /query"))
+	}
+	user, err := loaders.User.Load(ctx, obj.OwnerID)()
+	if err != nil {
+		return nil, gqlerr.Internal(ctx, err)
+	}
+	return toUserModel(user), nil
+}
 
 // UpdateProfile is the resolver for the updateProfile field.
 func (r *mutationResolver) UpdateProfile(ctx context.Context, input model.UpdateProfileInput) (*model.UpdateProfilePayload, error) {
@@ -21,6 +38,32 @@ func (r *mutationResolver) UpdateProfile(ctx context.Context, input model.Update
 		return nil, err
 	}
 	return &model.UpdateProfilePayload{User: toUserModel(user)}, nil
+}
+
+// CreateCardgroup is the resolver for the createCardgroup field.
+func (r *mutationResolver) CreateCardgroup(ctx context.Context, input model.NewCardgroupInput) (*model.CreateCardgroupPayload, error) {
+	cg, err := r.CardgroupUC.Create(ctx, usecase.CreateCardgroupInput{Name: input.Name})
+	if err != nil {
+		return nil, err
+	}
+	return &model.CreateCardgroupPayload{Cardgroup: toCardgroupModel(cg)}, nil
+}
+
+// UpdateCardgroup is the resolver for the updateCardgroup field.
+func (r *mutationResolver) UpdateCardgroup(ctx context.Context, id string, input model.UpdateCardgroupInput) (*model.UpdateCardgroupPayload, error) {
+	cg, err := r.CardgroupUC.Update(ctx, id, usecase.UpdateCardgroupInput{Name: input.Name})
+	if err != nil {
+		return nil, err
+	}
+	return &model.UpdateCardgroupPayload{Cardgroup: toCardgroupModel(cg)}, nil
+}
+
+// DeleteCardgroup is the resolver for the deleteCardgroup field.
+func (r *mutationResolver) DeleteCardgroup(ctx context.Context, id string) (bool, error) {
+	if err := r.CardgroupUC.Delete(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // Health is the resolver for the health field.
@@ -37,11 +80,33 @@ func (r *queryResolver) Me(ctx context.Context) (*model.User, error) {
 	return toUserModel(user), nil
 }
 
+// MyCardgroups is the resolver for the myCardgroups field.
+func (r *queryResolver) MyCardgroups(ctx context.Context) ([]*model.Cardgroup, error) {
+	cgs, err := r.CardgroupUC.MyCardgroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return toCardgroupModels(cgs), nil
+}
+
+// Cardgroup is the resolver for the cardgroup field.
+func (r *queryResolver) Cardgroup(ctx context.Context, id string) (*model.Cardgroup, error) {
+	cg, err := r.CardgroupUC.Cardgroup(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return toCardgroupModel(cg), nil
+}
+
+// Cardgroup returns generated.CardgroupResolver implementation.
+func (r *Resolver) Cardgroup() generated.CardgroupResolver { return &cardgroupResolver{r} }
+
 // Mutation returns generated.MutationResolver implementation.
 func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
 
 // Query returns generated.QueryResolver implementation.
 func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 
+type cardgroupResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }

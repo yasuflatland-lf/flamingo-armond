@@ -21,3 +21,12 @@ resolver:
 # Prefer our own model package when names collide.
 autobind:
   - backend/graph/model
+
+models:
+  Time:
+    model:
+      - github.com/99designs/gqlgen/graphql.Time
+  Cardgroup:
+    fields:
+      owner:
+        resolver: true

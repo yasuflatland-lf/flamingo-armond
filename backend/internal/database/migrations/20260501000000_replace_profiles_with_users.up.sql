@@ -1,3 +1,5 @@
+-- Rename public.profiles to public.users; update trigger names (set_profiles_updated_at → set_users_updated_at).
+
 DROP TRIGGER IF EXISTS trg_handle_new_user ON auth.users;
 DROP FUNCTION IF EXISTS public.handle_new_user();
 DROP TRIGGER IF EXISTS trg_profiles_set_updated_at ON public.profiles;

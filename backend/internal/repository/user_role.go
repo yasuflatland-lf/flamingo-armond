@@ -14,7 +14,11 @@ type gormUserRole struct {
 
 func (gormUserRole) TableName() string { return "user_roles" }
 
+// UserRoleRepository queries the many-to-many membership between users and roles.
 type UserRoleRepository interface {
+	// HasRole reports whether userID holds the named role.
+	// Returns (false, nil) when the user has no rows or the role name does not exist.
+	// Only DB errors return a non-nil error. Role lookup is by name (case-sensitive).
 	HasRole(ctx context.Context, userID, roleName string) (bool, error)
 }
 

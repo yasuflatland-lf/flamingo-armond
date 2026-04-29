@@ -1,3 +1,5 @@
+-- Introduce role-based access: roles table (reference data), user_roles M:N pivot with CASCADE deletes.
+
 CREATE TABLE IF NOT EXISTS public.roles (
     id   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name text NOT NULL UNIQUE
