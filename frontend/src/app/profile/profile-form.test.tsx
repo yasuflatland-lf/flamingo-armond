@@ -280,7 +280,7 @@ describe("<ProfileForm>", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Could not reach the server. Check your connection and try again."),
+        screen.getByText("Could not reach the server. Please try again."),
       ).toBeInTheDocument();
     });
   });
