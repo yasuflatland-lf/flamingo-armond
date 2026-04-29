@@ -245,7 +245,11 @@ Migrations use `golang-migrate` with `*.up.sql` / `*.down.sql` files. Raw SQL le
 
 Migration files live under `backend/internal/database/migrations/`. Go's `//go:embed` directive does not allow `..` path components, so the migration directory must sit inside the package tree rather than at the repo root.
 
+**Filename format: `yyyymmddhhmmss_<short_snake_case_description>.{up,down}.sql`** — the 14-digit timestamp prefix is the numeric version `golang-migrate` records in `public.schema_migrations` and uses to order files. New migrations therefore need a timestamp strictly greater than every existing file (UTC is fine; the values just need to sort correctly). The trailing description is for human readers and is not parsed — pick a short verb-led summary like `create_cards`, `enable_rls_deny_all`, or `initial_schema`. Up and down halves must share the same prefix and description so `golang-migrate` can pair them.
+
 When a migration fails mid-run, `schema_migrations.dirty=true` is set. Recovery requires an operator to run `migrate force <version>`. The `run()` function treats any migration error as fatal and returns immediately (fail-fast).
+
+**Renaming or renumbering migration files is not transparent to the DB.** `golang-migrate` records the numeric version of each applied migration in `public.schema_migrations`. Renaming a file (e.g. `0001_create_profiles.up.sql` → `20250101000000_create_profiles.up.sql`) rewrites the source tree but **not** the DB row, so the next boot fails with `no migration found for version <N>: read down for version <N> migrations: file does not exist` — migrate's source-state reconciliation expects the recorded version to exist on disk. When the rename is identifier-only (up/down SQL bodies are byte-identical, `git log -M` reports an `R100` rename), the safe recovery is `UPDATE public.schema_migrations SET version = <new_version>, dirty = false WHERE version = <old_version>` against the production DB; the runbook lives in `playbooks/setup-prod/recover-migration-version-rebase.sql`. Do **not** apply this shortcut when the rename also changed migration content — in that case, squash the changes and use `migrate force <version>` against a known-good source state so the new content actually runs.
 
 ### Startup order
 
@@ -346,6 +350,8 @@ Owner checks live in the usecase, not in Postgres RLS. The asymmetry for read vs
 
 - Non-owner `cardgroup(id:)` read → return `null` (the field is nullable by spec; ID enumeration on a nullable field is acceptable).
 - Non-owner write (`updateCardgroup`, `deleteCardgroup`) → return `UNAUTHENTICATED`.
+
+Although authorization itself is not delegated to Postgres, every table in the `public` schema still has Row Level Security **enabled with zero policies** (migration `20260430080000_initial_schema`). This blocks PostgREST callers using the `anon` or `authenticated` role from reading or writing any row directly — a Supabase project always exposes `public.*` as a REST API, and "no policy under RLS" means default-deny in PostgreSQL. The Go backend connects as the table-owner role, which bypasses RLS unless `FORCE ROW LEVEL SECURITY` is set, so application queries and migrations are unaffected. If a future flow needs Supabase JS to read a table directly, add a targeted policy alongside the access pattern; do not disable RLS to "make it work".
 
 ### Sentinel errors and domain validation
 

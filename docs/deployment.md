@@ -262,6 +262,7 @@ For an end-to-end check, sign in via Google on the Vercel domain and load `/prof
 ## Operational gotchas
 
 - **Migrations run on every Render boot.** A failing migration sets `schema_migrations.dirty=true` and requires manual `migrate force <version>` recovery (`docs/backend.md` § "Migrations").
+- **Renaming or renumbering migration files breaks the next boot.** `public.schema_migrations.version` keeps the old identifier, while the new source tree no longer contains it; startup dies with `no migration found for version <N>: read down for version <N> migrations: file does not exist`. Recovery for an identifier-only rename (R100 in `git log -M`) is a manual `UPDATE` on `schema_migrations` per `playbooks/setup-prod/recover-migration-version-rebase.sql`.
 - **Use `127.0.0.1`, not `localhost`, for any local OAuth setup.** Google's redirect URI validation treats them as distinct origins. This applies to local development only; production uses real domains (`docs/dev-setup.md` § "Gotchas").
 - **Render free tier sleeps idle services.** The first request after idleness incurs a cold start. Health checks on `/health` keep the service warm only while traffic flows.
 - **Custom domains.** When adding a Vercel custom domain, also update the Supabase Auth Site URL and add the new origin to the Redirect URLs allow list.
