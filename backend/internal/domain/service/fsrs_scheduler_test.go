@@ -26,7 +26,6 @@ func TestFSRSSchedulerApplyIsPure(t *testing.T) {
 func TestFSRSSchedulerApplyGoldenTransitions(t *testing.T) {
 	t.Parallel()
 
-	scheduler := NewFSRSScheduler()
 	reviewAt := time.Date(2026, 4, 26, 0, 0, 0, 0, time.UTC)
 	base := domain.FSRSState{
 		Due:           reviewAt.Add(-24 * time.Hour),
@@ -74,6 +73,7 @@ func TestFSRSSchedulerApplyGoldenTransitions(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+			scheduler := NewFSRSScheduler()
 			input := base
 			input.State = tc.state
 
