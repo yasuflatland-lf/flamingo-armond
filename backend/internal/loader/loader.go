@@ -13,21 +13,23 @@ import (
 type contextKey struct{}
 
 type Loaders struct {
-	Profile *dataloader.Loader[string, *domain.Profile]
+	User *dataloader.Loader[string, *domain.User]
+	Role *dataloader.Loader[string, *domain.Role]
 }
 
-func New(repo repository.ProfileRepository) *Loaders {
+func New(userRepo repository.UserRepository, roleRepo repository.RoleRepository) *Loaders {
 	return &Loaders{
-		Profile: dataloader.NewBatchedLoader(profileBatchFunc(repo)),
+		User: dataloader.NewBatchedLoader(userBatchFunc(userRepo)),
+		Role: dataloader.NewBatchedLoader(roleBatchFunc(roleRepo)),
 	}
 }
 
 // Middleware installs a fresh Loaders per request so batching and caching do
 // not bleed across requests.
-func Middleware(repo repository.ProfileRepository) echo.MiddlewareFunc {
+func Middleware(userRepo repository.UserRepository, roleRepo repository.RoleRepository) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
-			ctx := context.WithValue(c.Request().Context(), contextKey{}, New(repo))
+			ctx := context.WithValue(c.Request().Context(), contextKey{}, New(userRepo, roleRepo))
 			c.SetRequest(c.Request().WithContext(ctx))
 			return next(c)
 		}

@@ -14,19 +14,19 @@ import (
 	"backend/internal/repository"
 )
 
-type mockProfileRepository struct {
-	findResult    *domain.Profile
+type mockUserRepository struct {
+	findResult    *domain.User
 	findErr       error
-	updateResult  *domain.Profile
+	updateResult  *domain.User
 	updateErr     error
-	capturedPatch repository.ProfileUpdate
+	capturedPatch repository.UserUpdate
 }
 
-func (m *mockProfileRepository) FindByID(_ context.Context, _ string) (*domain.Profile, error) {
+func (m *mockUserRepository) FindByID(_ context.Context, _ string) (*domain.User, error) {
 	return m.findResult, m.findErr
 }
 
-func (m *mockProfileRepository) Update(_ context.Context, _ string, patch repository.ProfileUpdate) (*domain.Profile, error) {
+func (m *mockUserRepository) Update(_ context.Context, _ string, patch repository.UserUpdate) (*domain.User, error) {
 	m.capturedPatch = patch
 	return m.updateResult, m.updateErr
 }
@@ -62,14 +62,14 @@ func assertGQLErr(t *testing.T, err error, code, field string) {
 
 // --- Me tests ---
 
-func TestProfileUsecase_Me(t *testing.T) {
+func TestUserUsecase_Me(t *testing.T) {
 	t.Parallel()
 
 	alice := ptr("Alice")
 	cases := []struct {
 		name       string
 		ctx        context.Context
-		findResult *domain.Profile
+		findResult *domain.User
 		findErr    error
 		wantErr    string // gqlerror extensions.code, empty = no error
 		wantID     string
@@ -80,13 +80,13 @@ func TestProfileUsecase_Me(t *testing.T) {
 			wantErr: "UNAUTHENTICATED",
 		},
 		{
-			name:       "normal returns profile from repo",
+			name:       "normal returns user from repo",
 			ctx:        authedCtx("u1"),
-			findResult: &domain.Profile{ID: "u1", DisplayName: alice},
+			findResult: &domain.User{ID: "u1", DisplayName: alice},
 			wantID:     "u1",
 		},
 		{
-			name:    "ErrNotFound returns empty profile with no error",
+			name:    "ErrNotFound returns empty user with no error",
 			ctx:     authedCtx("u1"),
 			findErr: repository.ErrNotFound,
 			wantID:  "u1",
@@ -102,8 +102,8 @@ func TestProfileUsecase_Me(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			repo := &mockProfileRepository{findResult: tc.findResult, findErr: tc.findErr}
-			uc := NewProfileUsecase(repo)
+			repo := &mockUserRepository{findResult: tc.findResult, findErr: tc.findErr}
+			uc := NewUserUsecase(repo)
 
 			p, err := uc.Me(tc.ctx)
 
@@ -118,21 +118,21 @@ func TestProfileUsecase_Me(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if p == nil {
-				t.Fatal("expected profile, got nil")
+				t.Fatal("expected user, got nil")
 			}
 			if p.ID != tc.wantID {
-				t.Fatalf("expected profile.ID=%q, got %q", tc.wantID, p.ID)
+				t.Fatalf("expected user.ID=%q, got %q", tc.wantID, p.ID)
 			}
 		})
 	}
 }
 
-// --- UpdateProfile tests ---
+// --- UpdateUser tests ---
 
-func TestProfileUsecase_UpdateProfile(t *testing.T) {
+func TestUserUsecase_UpdateUser(t *testing.T) {
 	t.Parallel()
 
-	returned := &domain.Profile{ID: "u1", DisplayName: ptr("Alice")}
+	returned := &domain.User{ID: "u1", DisplayName: ptr("Alice")}
 
 	// familyEmoji is a ZWJ sequence that counts as 1 grapheme cluster.
 	familyEmoji := "👨‍👩‍👧‍👦"
@@ -142,8 +142,8 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 	cases := []struct {
 		name          string
 		ctx           context.Context
-		input         UpdateProfileInput
-		repoResult    *domain.Profile
+		input         UpdateUserInput
+		repoResult    *domain.User
 		repoErr       error
 		wantErrCode   string // non-empty = expect gqlerror with this code
 		wantErrField  string // non-empty = check extensions.field
@@ -154,27 +154,27 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 		{
 			name:        "unauthenticated returns UNAUTHENTICATED",
 			ctx:         anonCtx(),
-			input:       UpdateProfileInput{DisplayName: "Alice"},
+			input:       UpdateUserInput{DisplayName: "Alice"},
 			wantErrCode: "UNAUTHENTICATED",
 		},
 		{
 			name:         "empty displayName returns BAD_USER_INPUT",
 			ctx:          authedCtx("u1"),
-			input:        UpdateProfileInput{DisplayName: ""},
+			input:        UpdateUserInput{DisplayName: ""},
 			wantErrCode:  "BAD_USER_INPUT",
 			wantErrField: "displayName",
 		},
 		{
 			name:         "51-rune displayName returns BAD_USER_INPUT",
 			ctx:          authedCtx("u1"),
-			input:        UpdateProfileInput{DisplayName: strings.Repeat("a", 51)},
+			input:        UpdateUserInput{DisplayName: strings.Repeat("a", 51)},
 			wantErrCode:  "BAD_USER_INPUT",
 			wantErrField: "displayName",
 		},
 		{
 			name:       "50-rune displayName with emoji passes",
 			ctx:        authedCtx("u1"),
-			input:      UpdateProfileInput{DisplayName: strings.Repeat("🦩", 50)},
+			input:      UpdateUserInput{DisplayName: strings.Repeat("🦩", 50)},
 			repoResult: returned,
 			// grapheme count == 50 → valid
 			wantRepoName: ptr(strings.Repeat("🦩", 50)),
@@ -182,7 +182,7 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 		{
 			name:          "bio==nil passes through as nil to repo",
 			ctx:           authedCtx("u1"),
-			input:         UpdateProfileInput{DisplayName: "Alice", Bio: nil},
+			input:         UpdateUserInput{DisplayName: "Alice", Bio: nil},
 			repoResult:    returned,
 			wantRepoName:  ptr("Alice"),
 			checkBioIsNil: true,
@@ -190,7 +190,7 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 		{
 			name:         "bio==&\"\" explicit clear passes through",
 			ctx:          authedCtx("u1"),
-			input:        UpdateProfileInput{DisplayName: "Alice", Bio: ptr("")},
+			input:        UpdateUserInput{DisplayName: "Alice", Bio: ptr("")},
 			repoResult:   returned,
 			wantRepoName: ptr("Alice"),
 			wantRepoBio:  ptr(""),
@@ -198,7 +198,7 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 		{
 			name:         "bio==&\"hello\" passes through",
 			ctx:          authedCtx("u1"),
-			input:        UpdateProfileInput{DisplayName: "Alice", Bio: ptr("hello")},
+			input:        UpdateUserInput{DisplayName: "Alice", Bio: ptr("hello")},
 			repoResult:   returned,
 			wantRepoName: ptr("Alice"),
 			wantRepoBio:  ptr("hello"),
@@ -206,14 +206,14 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 		{
 			name:         "displayName with surrounding whitespace is trimmed before repo",
 			ctx:          authedCtx("u1"),
-			input:        UpdateProfileInput{DisplayName: "  Alice  "},
+			input:        UpdateUserInput{DisplayName: "  Alice  "},
 			repoResult:   returned,
 			wantRepoName: ptr("Alice"),
 		},
 		{
 			name:        "repo error wrapped as INTERNAL",
 			ctx:         authedCtx("u1"),
-			input:       UpdateProfileInput{DisplayName: "Alice"},
+			input:       UpdateUserInput{DisplayName: "Alice"},
 			repoErr:     fmt.Errorf("db exploded"),
 			wantErrCode: "INTERNAL",
 		},
@@ -221,35 +221,35 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 		{
 			name:         "displayName_max_ok: 50 ASCII graphemes passes",
 			ctx:          authedCtx("u1"),
-			input:        UpdateProfileInput{DisplayName: strings.Repeat("a", 50)},
+			input:        UpdateUserInput{DisplayName: strings.Repeat("a", 50)},
 			repoResult:   returned,
 			wantRepoName: ptr(strings.Repeat("a", 50)),
 		},
 		{
 			name:         "displayName_over_max: 51 ASCII graphemes returns BAD_USER_INPUT",
 			ctx:          authedCtx("u1"),
-			input:        UpdateProfileInput{DisplayName: strings.Repeat("a", 51)},
+			input:        UpdateUserInput{DisplayName: strings.Repeat("a", 51)},
 			wantErrCode:  "BAD_USER_INPUT",
 			wantErrField: "displayName",
 		},
 		{
 			name:         "displayName_emoji_zwj_50: 50 ZWJ family graphemes passes",
 			ctx:          authedCtx("u1"),
-			input:        UpdateProfileInput{DisplayName: strings.Repeat(familyEmoji, 50)},
+			input:        UpdateUserInput{DisplayName: strings.Repeat(familyEmoji, 50)},
 			repoResult:   returned,
 			wantRepoName: ptr(strings.Repeat(familyEmoji, 50)),
 		},
 		{
 			name:         "displayName_emoji_zwj_51: 51 ZWJ family graphemes returns BAD_USER_INPUT",
 			ctx:          authedCtx("u1"),
-			input:        UpdateProfileInput{DisplayName: strings.Repeat(familyEmoji, 51)},
+			input:        UpdateUserInput{DisplayName: strings.Repeat(familyEmoji, 51)},
 			wantErrCode:  "BAD_USER_INPUT",
 			wantErrField: "displayName",
 		},
 		{
 			name:         "bio_max_500_ok: 500 ASCII graphemes bio passes",
 			ctx:          authedCtx("u1"),
-			input:        UpdateProfileInput{DisplayName: "valid", Bio: ptr(strings.Repeat("b", 500))},
+			input:        UpdateUserInput{DisplayName: "valid", Bio: ptr(strings.Repeat("b", 500))},
 			repoResult:   returned,
 			wantRepoName: ptr("valid"),
 			wantRepoBio:  ptr(strings.Repeat("b", 500)),
@@ -257,14 +257,14 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 		{
 			name:         "bio_over_500: 501 ASCII graphemes bio returns BAD_USER_INPUT",
 			ctx:          authedCtx("u1"),
-			input:        UpdateProfileInput{DisplayName: "valid", Bio: ptr(strings.Repeat("b", 501))},
+			input:        UpdateUserInput{DisplayName: "valid", Bio: ptr(strings.Repeat("b", 501))},
 			wantErrCode:  "BAD_USER_INPUT",
 			wantErrField: "bio",
 		},
 		{
 			name:         "bio_emoji_zwj_500: 500 ZWJ family graphemes bio passes",
 			ctx:          authedCtx("u1"),
-			input:        UpdateProfileInput{DisplayName: "valid", Bio: ptr(strings.Repeat(familyEmoji3, 500))},
+			input:        UpdateUserInput{DisplayName: "valid", Bio: ptr(strings.Repeat(familyEmoji3, 500))},
 			repoResult:   returned,
 			wantRepoName: ptr("valid"),
 			wantRepoBio:  ptr(strings.Repeat(familyEmoji3, 500)),
@@ -274,10 +274,10 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			repo := &mockProfileRepository{updateResult: tc.repoResult, updateErr: tc.repoErr}
-			uc := NewProfileUsecase(repo)
+			repo := &mockUserRepository{updateResult: tc.repoResult, updateErr: tc.repoErr}
+			uc := NewUserUsecase(repo)
 
-			p, err := uc.UpdateProfile(tc.ctx, tc.input)
+			p, err := uc.UpdateUser(tc.ctx, tc.input)
 
 			if tc.wantErrCode != "" {
 				if err == nil {
@@ -291,7 +291,7 @@ func TestProfileUsecase_UpdateProfile(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if p == nil {
-				t.Fatal("expected profile, got nil")
+				t.Fatal("expected user, got nil")
 			}
 
 			if tc.wantRepoName != nil {

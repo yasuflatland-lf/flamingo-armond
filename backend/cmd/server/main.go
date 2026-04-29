@@ -55,7 +55,12 @@ func newGraphQLServer(r *resolver.Resolver) *handler.Server {
 	return srv
 }
 
-func newRouter(resolvers *resolver.Resolver, authMW echo.MiddlewareFunc, repo repository.ProfileRepository) *echo.Echo {
+func newRouter(
+	resolvers *resolver.Resolver,
+	authMW echo.MiddlewareFunc,
+	userRepo repository.UserRepository,
+	roleRepo repository.RoleRepository,
+) *echo.Echo {
 	e := echo.New()
 	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
@@ -92,7 +97,7 @@ func newRouter(resolvers *resolver.Resolver, authMW echo.MiddlewareFunc, repo re
 			return r.Method + " " + r.URL.Path
 		}),
 	)
-	q := e.Group("/query", authMW, loader.Middleware(repo))
+	q := e.Group("/query", authMW, loader.Middleware(userRepo, roleRepo))
 	q.POST("", echo.WrapHandler(otelGQLHandler))
 	e.GET("/playground", echo.WrapHandler(playground.Handler("GraphQL", "/query")))
 
@@ -154,14 +159,16 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		return eris.Wrap(err, "run: db open")
 	}
 
-	profileRepo := repository.NewProfileRepository(db.GORM)
-	profileUC := usecase.NewProfileUsecase(profileRepo)
+	userRepo := repository.NewUserRepository(db.GORM)
+	roleRepo := repository.NewRoleRepository(db.GORM)
+	_ = repository.NewUserRoleRepository(db.GORM)
+	userUC := usecase.NewUserUsecase(userRepo)
 
-	resolvers := &resolver.Resolver{Profile: profileUC}
+	resolvers := &resolver.Resolver{User: userUC}
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
 	// telemetry.Init for the full ordering invariant.
-	e := newRouter(resolvers, authMW, profileRepo)
+	e := newRouter(resolvers, authMW, userRepo, roleRepo)
 	e.Logger = logger
 
 	port := os.Getenv("PORT")

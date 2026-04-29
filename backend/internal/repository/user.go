@@ -11,9 +11,9 @@ import (
 	"backend/internal/domain"
 )
 
-// gormProfile is the row mapping for public.profiles. Package-private so
+// gormUser is the row mapping for public.users. Package-private so
 // callers cannot bypass the domain conversion.
-type gormProfile struct {
+type gormUser struct {
 	ID          string    `gorm:"column:id;primaryKey;type:uuid"`
 	DisplayName *string   `gorm:"column:display_name"`
 	Bio         *string   `gorm:"column:bio"`
@@ -22,60 +22,60 @@ type gormProfile struct {
 	UpdatedAt   time.Time `gorm:"column:updated_at"`
 }
 
-func (gormProfile) TableName() string { return "profiles" }
+func (gormUser) TableName() string { return "users" }
 
-// ErrNotFound is returned when a profile lookup or update targets a row that
-// does not exist.
-var ErrNotFound = errors.New("repository: profile not found")
+// ErrNotFound is returned when a lookup or update targets a row that does not
+// exist.
+var ErrNotFound = errors.New("repository: not found")
 
-// ProfileUpdate carries patch fields. nil means "leave untouched"; a non-nil
+// UserUpdate carries patch fields. nil means "leave untouched"; a non-nil
 // pointer to "" is a request to clear the column.
-type ProfileUpdate struct {
+type UserUpdate struct {
 	DisplayName *string
 	Bio         *string
 	AvatarURL   *string
 }
 
-type ProfileRepository interface {
-	FindByID(ctx context.Context, id string) (*domain.Profile, error)
-	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Profile, error)
-	Update(ctx context.Context, id string, patch ProfileUpdate) (*domain.Profile, error)
+type UserRepository interface {
+	FindByID(ctx context.Context, id string) (*domain.User, error)
+	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.User, error)
+	Update(ctx context.Context, id string, patch UserUpdate) (*domain.User, error)
 }
 
-type profileRepo struct{ db *gorm.DB }
+type userRepo struct{ db *gorm.DB }
 
-func NewProfileRepository(db *gorm.DB) ProfileRepository { return &profileRepo{db: db} }
+func NewUserRepository(db *gorm.DB) UserRepository { return &userRepo{db: db} }
 
-func (r *profileRepo) FindByID(ctx context.Context, id string) (*domain.Profile, error) {
-	var row gormProfile
+func (r *userRepo) FindByID(ctx context.Context, id string) (*domain.User, error) {
+	var row gormUser
 	err := r.db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}
-		return nil, err
+		return nil, eris.Wrap(err, "repository: find user by id")
 	}
-	return toDomain(row), nil
+	return userToDomain(row), nil
 }
 
-func (r *profileRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Profile, error) {
+func (r *userRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*domain.User, error) {
 	// GORM turns WHERE id IN () into an unfiltered scan, so short-circuit empty input.
 	if len(ids) == 0 {
-		return map[string]*domain.Profile{}, nil
+		return map[string]*domain.User{}, nil
 	}
-	var rows []gormProfile
+	var rows []gormUser
 	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: find profiles by ids")
+		return nil, eris.Wrap(err, "repository: find users by ids")
 	}
-	out := make(map[string]*domain.Profile, len(rows))
+	out := make(map[string]*domain.User, len(rows))
 	for i := range rows {
-		p := toDomain(rows[i])
-		out[p.ID] = p
+		u := userToDomain(rows[i])
+		out[u.ID] = u
 	}
 	return out, nil
 }
 
-func (r *profileRepo) Update(ctx context.Context, id string, patch ProfileUpdate) (*domain.Profile, error) {
+func (r *userRepo) Update(ctx context.Context, id string, patch UserUpdate) (*domain.User, error) {
 	updates := map[string]any{}
 	if patch.DisplayName != nil {
 		updates["display_name"] = *patch.DisplayName
@@ -91,9 +91,9 @@ func (r *profileRepo) Update(ctx context.Context, id string, patch ProfileUpdate
 		return r.FindByID(ctx, id)
 	}
 
-	res := r.db.WithContext(ctx).Model(&gormProfile{}).Where("id = ?", id).Updates(updates)
+	res := r.db.WithContext(ctx).Model(&gormUser{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
-		return nil, res.Error
+		return nil, eris.Wrap(res.Error, "repository: update user")
 	}
 	if res.RowsAffected == 0 {
 		return nil, ErrNotFound
@@ -102,8 +102,8 @@ func (r *profileRepo) Update(ctx context.Context, id string, patch ProfileUpdate
 	return r.FindByID(ctx, id)
 }
 
-func toDomain(g gormProfile) *domain.Profile {
-	return &domain.Profile{
+func userToDomain(g gormUser) *domain.User {
+	return &domain.User{
 		ID:          g.ID,
 		DisplayName: g.DisplayName,
 		Bio:         g.Bio,
