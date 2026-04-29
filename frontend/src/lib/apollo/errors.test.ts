@@ -124,4 +124,36 @@ describe("getBackendErrorBanner", () => {
     ]);
     expect(getBackendErrorBanner(err)).toBe("Unexpected server failure");
   });
+
+  it("INTERNAL takes priority over UNAUTHENTICATED when UNAUTHENTICATED appears first", () => {
+    const err = makeCombinedError([
+      { message: "Not authenticated", extensions: { code: "UNAUTHENTICATED" } },
+      { message: "Internal server error", extensions: { code: "INTERNAL" } },
+    ]);
+    expect(getBackendErrorBanner(err)).toBe("Internal server error");
+  });
+
+  it("returns INTERNAL banner and field map when BAD_USER_INPUT(field) and INTERNAL coexist", () => {
+    const err = makeCombinedError([
+      {
+        message: "Name is required",
+        extensions: { code: "BAD_USER_INPUT", field: "name" },
+      },
+      { message: "Internal server error", extensions: { code: "INTERNAL" } },
+    ]);
+    expect(getBackendErrorBanner(err)).toBe("Internal server error");
+    expect(getBackendFieldErrors(err)).toEqual({ name: "Name is required" });
+  });
+
+  it("returns UNAUTHENTICATED banner and field map when BAD_USER_INPUT(field) and UNAUTHENTICATED coexist", () => {
+    const err = makeCombinedError([
+      { message: "Not authenticated", extensions: { code: "UNAUTHENTICATED" } },
+      {
+        message: "Name is required",
+        extensions: { code: "BAD_USER_INPUT", field: "name" },
+      },
+    ]);
+    expect(getBackendErrorBanner(err)).toBe("Your session expired. Please sign in again.");
+    expect(getBackendFieldErrors(err)).toEqual({ name: "Name is required" });
+  });
 });

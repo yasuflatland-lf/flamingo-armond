@@ -43,14 +43,21 @@ export function getBackendFieldErrors(err: unknown): Record<string, string> {
 export function getBackendErrorBanner(err: unknown): string | undefined {
   if (!err) return undefined;
   if (!CombinedGraphQLErrors.is(err)) return NETWORK_ERROR;
-  let firstNonField: string | undefined;
+  let internalMsg: string | undefined;
+  let authMsg: string | undefined;
+  let firstNonFieldMsg: string | undefined;
   for (const ge of err.errors) {
     const code = extensionString(ge.extensions, "code");
     const field = extensionString(ge.extensions, "field");
-    if (code === "INTERNAL") return ge.message;
-    if (code === "UNAUTHENTICATED") return "Your session expired. Please sign in again.";
-    if (code === "BAD_USER_INPUT" && field) continue;
-    firstNonField ??= ge.message;
+    if (code === "INTERNAL") {
+      internalMsg ??= ge.message;
+    } else if (code === "UNAUTHENTICATED") {
+      authMsg ??= "Your session expired. Please sign in again.";
+    } else if (code === "BAD_USER_INPUT" && field) {
+      // field-level error — skip for banner
+    } else {
+      firstNonFieldMsg ??= ge.message;
+    }
   }
-  return firstNonField;
+  return internalMsg ?? authMsg ?? firstNonFieldMsg;
 }
