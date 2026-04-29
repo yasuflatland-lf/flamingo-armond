@@ -37,19 +37,20 @@ export function EditCardgroupClient({ cardgroup }: Props) {
   const activeError = deleteError ?? updateError;
 
   async function handleSave(values: { name: string }) {
-    await updateCardgroup({
+    const result = await updateCardgroup({
       variables: { id: cardgroup.id, input: { name: values.name } },
     }).catch((err) => {
       console.error("[EditCardgroupClient] update rejection", err);
+      return null;
     });
 
-    if (!updateError) {
+    if (result?.data?.updateCardgroup?.cardgroup) {
       router.push(`/cardgroups/${cardgroup.id}`);
     }
   }
 
   async function handleDelete() {
-    await deleteCardgroup({
+    const result = await deleteCardgroup({
       variables: { id: cardgroup.id },
       update(cache) {
         cache.evict({
@@ -59,9 +60,10 @@ export function EditCardgroupClient({ cardgroup }: Props) {
       },
     }).catch((err) => {
       console.error("[EditCardgroupClient] delete rejection", err);
+      return null;
     });
 
-    if (!deleteError) {
+    if (result?.data?.deleteCardgroup === true) {
       router.push("/cardgroups");
       router.refresh();
     }

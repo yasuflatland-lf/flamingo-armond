@@ -4,7 +4,7 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DeleteCardgroupDocument, UpdateCardgroupDocument } from "@/generated/graphql";
 import { EditCardgroupClient } from "./edit-cardgroup-client";
 
@@ -41,6 +41,11 @@ function renderClient(mocks: MockedResponse[] = [], errorPolicy?: "all" | "none"
 }
 
 describe("<EditCardgroupClient>", () => {
+  beforeEach(() => {
+    mockPush.mockClear();
+    mockRefresh.mockClear();
+  });
+
   it("edit success navigates to detail page", async () => {
     const user = userEvent.setup();
     const mocks = [
@@ -91,6 +96,7 @@ describe("<EditCardgroupClient>", () => {
     await waitFor(() => {
       expect(screen.getByText("name already exists")).toBeInTheDocument();
     });
+    expect(mockPush).not.toHaveBeenCalled();
   });
 
   it("delete dialog opens when Delete button is clicked", async () => {
@@ -198,5 +204,55 @@ describe("<EditCardgroupClient>", () => {
     await waitFor(() => {
       expect(screen.getByText("Your session expired. Please sign in again.")).toBeInTheDocument();
     });
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("update network rejection shows error banner and does not navigate", async () => {
+    const user = userEvent.setup();
+    const mocks: MockedResponse[] = [
+      {
+        request: {
+          query: UpdateCardgroupDocument,
+          variables: { id: "cg-1", input: { name: "Spanish Vocab" } },
+        },
+        error: new Error("Network error: failed to fetch"),
+      },
+    ];
+    renderClient(mocks);
+
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Could not reach the server. Please try again.")).toBeInTheDocument();
+    });
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("delete network rejection shows error banner and does not navigate", async () => {
+    const user = userEvent.setup();
+    const mocks: MockedResponse[] = [
+      {
+        request: { query: DeleteCardgroupDocument, variables: { id: "cg-1" } },
+        error: new Error("Network error: failed to fetch"),
+      },
+    ];
+    renderClient(mocks);
+
+    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    });
+
+    const dialogDeleteBtns = screen
+      .getAllByRole("button", { name: /^delete$/i })
+      .filter((el) => el.closest("[role='alertdialog']"));
+    const confirmBtn = dialogDeleteBtns[0];
+    if (!confirmBtn) throw new Error("Delete confirm button not found in dialog");
+    await user.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("Could not reach the server. Please try again.")).toBeInTheDocument();
+    });
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });
