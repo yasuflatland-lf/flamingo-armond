@@ -279,9 +279,7 @@ describe("<ProfileForm>", () => {
     await user.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Could not reach the server. Please try again."),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Could not reach the server. Please try again.")).toBeInTheDocument();
     });
   });
 
