@@ -17,7 +17,7 @@ export default async function EditCardgroupPage({ params }: Props) {
     error: authErr,
   } = await supabase.auth.getUser();
   if (authErr) throw authErr;
-  if (!user) redirect("/cardgroups");
+  if (!user) redirect("/login");
 
   let data: { cardgroup?: { id: string; name: string; updatedAt: unknown } | null };
   try {

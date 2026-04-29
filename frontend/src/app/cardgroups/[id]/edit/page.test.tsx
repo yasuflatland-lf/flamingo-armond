@@ -43,10 +43,10 @@ function makeParams(id: string) {
 }
 
 describe("EditCardgroupPage", () => {
-  it("redirects to /cardgroups when no user is authenticated", async () => {
+  it("redirects to /login when no user is authenticated", async () => {
     vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
 
-    await expect(EditCardgroupPage(makeParams("cg-1"))).rejects.toThrow("REDIRECT:/cardgroups");
+    await expect(EditCardgroupPage(makeParams("cg-1"))).rejects.toThrow("REDIRECT:/login");
   });
 
   it("redirects to /cardgroups when cardgroup is null", async () => {
