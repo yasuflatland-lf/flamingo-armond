@@ -50,6 +50,7 @@ These values target a public API on Render. Revisit if the threat model or deplo
 |---|---|---|---|
 | `PORT` | no | `1323` | Listen port |
 | `SHUTDOWN_TIMEOUT` | no | `25s` | Go duration for graceful shutdown. Invalid or `<= 0` values log a warning and fall back to the default. |
+| `SWIPE_NEXT_BATCH_SIZE` | no | `10` | Number of due cards returned by `handleSwipe` after applying one rating. Invalid or `<= 0` values log a warning and fall back to the default. |
 | `SUPABASE_JWKS_URL` | yes | — | JWKS endpoint for JWT verification |
 | `SUPABASE_JWT_AUDIENCE` | yes | — | Expected `aud` claim in incoming JWTs |
 | `SUPABASE_JWT_ISSUER` | yes | — | Expected `iss` claim in incoming JWTs |
@@ -59,7 +60,7 @@ These values target a public API on Render. Revisit if the threat model or deplo
 | `DB_MAX_CONN_LIFETIME` | no | `30m` | Maximum lifetime of a pooled connection |
 | `DB_MAX_CONN_IDLE_TIME` | no | `5m` | Maximum idle time before a connection is evicted |
 
-`PORT` and `SHUTDOWN_TIMEOUT` are optional with safe defaults. The three `SUPABASE_JWT_*` variables and `SUPABASE_DB_URL` are all required — the server refuses to start if any is missing (fail-fast via `ConfigFromEnv`).
+`PORT`, `SHUTDOWN_TIMEOUT`, and `SWIPE_NEXT_BATCH_SIZE` are optional with safe defaults. The three `SUPABASE_JWT_*` variables and `SUPABASE_DB_URL` are all required — the server refuses to start if any is missing (fail-fast via `ConfigFromEnv`).
 
 ## Testing patterns
 
@@ -374,11 +375,11 @@ separate `SELECT` statements. DataLoader collapses those into a single
 `SELECT ... WHERE id = ANY($1)`.
 
 `backend/internal/loader/` exposes a per-request `Loaders` struct injected
-via `loader.Middleware(userRepo, roleRepo, cardgroupRepo, cardRepo)`. The middleware is registered on the `/query`
+via `loader.Middleware(userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo)`. The middleware is registered on the `/query`
 group alongside `authMW`:
 
 ```go
-q := e.Group("/query", authMW, loader.Middleware(userRepo, roleRepo, cardgroupRepo, cardRepo))
+q := e.Group("/query", authMW, loader.Middleware(userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo))
 ```
 
 A fresh `Loaders` instance is created for every request so the per-request
@@ -411,6 +412,8 @@ as the input keys. dataloader/v7 enforces this 1:1 invariant at runtime.
 **Loader test contract:** A loader test must verify both (a) the batch function was called exactly once (dedup working) AND (b) it received the expected number of distinct keys. Without (b), key collisions or dedup bugs can go undetected.
 
 **Loader error wrapping:** Every resolver that calls `loaders.X.Load(ctx, key)()` must wrap the returned error via `gqlerr.Internal(ctx, err)` (or another typed gqlerr) before returning. Bare loader errors have no `extensions.code` and leak internal details.
+
+**Transactional usecases must not call DataLoader:** DataLoaders are request-scoped and use the normal repository DB handle, not the `*gorm.DB` transaction handle passed into `db.Transaction(...)`. A usecase that needs read-your-writes consistency must call transaction-aware repository methods such as `FindByIDTx`, `UpdateFSRSStateTx`, or `FindDueCardsTx` directly with the `tx` argument. Keep `loader.For(ctx)` out of `internal/usecase/*` files.
 
 ### Error helpers (`backend/internal/gqlerr`)
 
