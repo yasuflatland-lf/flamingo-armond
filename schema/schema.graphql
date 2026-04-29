@@ -89,3 +89,61 @@ extend type Mutation {
   """Delete a cardgroup. Non-owners receive UNAUTHENTICATED."""
   deleteCardgroup(id: ID!): Boolean!
 }
+
+"""A flashcard with read-only FSRS scheduling state."""
+type Card {
+  id: ID!
+  front: String!
+  back: String!
+  cardgroupId: ID!
+  """The parent cardgroup. Resolved via the per-request Cardgroup DataLoader."""
+  cardgroup: Cardgroup!
+  due: Time!
+  stability: Float!
+  difficulty: Float!
+  state: Int!
+  reps: Int!
+  lapses: Int!
+  lastReview: Time!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+input NewCardInput {
+  cardgroupId: ID!
+  """1-500 grapheme clusters (length measured after trimming surrounding whitespace)."""
+  front: String!
+  """1-500 grapheme clusters (length measured after trimming surrounding whitespace)."""
+  back: String!
+}
+
+input UpdateCardInput {
+  """null or omitted = leave unchanged."""
+  front: String
+  """null or omitted = leave unchanged."""
+  back: String
+}
+
+type CreateCardPayload {
+  card: Card!
+}
+
+type UpdateCardPayload {
+  card: Card!
+}
+
+extend type Query {
+  """Single card by ID. Returns UNAUTHENTICATED for non-owners (existence is not leaked)."""
+  card(id: ID!): Card
+  """All cards in a cardgroup owned by the authenticated caller."""
+  cardsByCardgroup(cardgroupId: ID!): [Card!]!
+}
+
+extend type Mutation {
+  """Create a card in a cardgroup owned by the authenticated caller."""
+  createCard(input: NewCardInput!): CreateCardPayload!
+  """Update a card. Non-owners receive UNAUTHENTICATED."""
+  updateCard(id: ID!, input: UpdateCardInput!): UpdateCardPayload!
+  """Delete a card. Non-owners receive UNAUTHENTICATED."""
+  deleteCard(id: ID!): Boolean!
+}

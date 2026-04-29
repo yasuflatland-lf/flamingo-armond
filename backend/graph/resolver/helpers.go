@@ -43,3 +43,34 @@ func toCardgroupModels(cgs []*domain.Cardgroup) []*model.Cardgroup {
 	}
 	return out
 }
+
+// toCardModel leaves Cardgroup nil; cardResolver.Cardgroup populates it lazily
+// via the per-request Cardgroup DataLoader.
+func toCardModel(card *domain.Card) *model.Card {
+	if card == nil {
+		return nil
+	}
+	return &model.Card{
+		ID:          card.ID,
+		Front:       card.Front,
+		Back:        card.Back,
+		CardgroupID: card.CardgroupID,
+		Due:         card.FSRS.Due,
+		Stability:   card.FSRS.Stability,
+		Difficulty:  card.FSRS.Difficulty,
+		State:       int(card.FSRS.State),
+		Reps:        card.FSRS.Reps,
+		Lapses:      card.FSRS.Lapses,
+		LastReview:  card.FSRS.LastReview,
+		CreatedAt:   card.CreatedAt,
+		UpdatedAt:   card.UpdatedAt,
+	}
+}
+
+func toCardModels(cards []*domain.Card) []*model.Card {
+	out := make([]*model.Card, len(cards))
+	for i, card := range cards {
+		out[i] = toCardModel(card)
+	}
+	return out
+}

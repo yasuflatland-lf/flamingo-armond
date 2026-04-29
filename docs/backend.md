@@ -321,9 +321,11 @@ type Resolver struct {
 userRepo      := repository.NewUserRepository(db.GORM)
 roleRepo      := repository.NewRoleRepository(db.GORM)
 cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
+cardRepo      := repository.NewCardRepository(db.GORM)
 resolvers := &resolver.Resolver{
     User:        usecase.NewUserUsecase(userRepo),
     CardgroupUC: usecase.NewCardgroupUsecase(cardgroupRepo),
+    CardUC:      usecase.NewCardUsecase(cardRepo, cardgroupRepo),
 }
 ```
 
@@ -331,7 +333,7 @@ Adding a new feature: build a usecase, add a field to `Resolver`, wire it in `ru
 
 ### Aggregate boundary policy
 
-Cross-aggregate references use IDs only — never embed a pointer to another aggregate's struct. For example, `domain.Cardgroup` holds `OwnerID string`, not `Owner *domain.User`. This prevents cyclic imports, keeps aggregates independently serialisable, and enforces the DDD consistency boundary. The actual `User` object is resolved lazily by the `Cardgroup.owner` resolver via the User DataLoader.
+Cross-aggregate references use IDs only — never embed a pointer to another aggregate's struct. For example, `domain.Cardgroup` holds `OwnerID string`, not `Owner *domain.User`, and `domain.Card` holds `CardgroupID string`, not `Cardgroup *domain.Cardgroup`. This prevents cyclic imports, keeps aggregates independently serialisable, and enforces the DDD consistency boundary. The actual object is resolved lazily by GraphQL field resolvers via the per-request DataLoader.
 
 ### Consumer-driven repository interfaces
 
@@ -372,11 +374,11 @@ separate `SELECT` statements. DataLoader collapses those into a single
 `SELECT ... WHERE id = ANY($1)`.
 
 `backend/internal/loader/` exposes a per-request `Loaders` struct injected
-via `loader.Middleware(userRepo, roleRepo)`. The middleware is registered on the `/query`
+via `loader.Middleware(userRepo, roleRepo, cardgroupRepo, cardRepo)`. The middleware is registered on the `/query`
 group alongside `authMW`:
 
 ```go
-q := e.Group("/query", authMW, loader.Middleware(userRepo, roleRepo))
+q := e.Group("/query", authMW, loader.Middleware(userRepo, roleRepo, cardgroupRepo, cardRepo))
 ```
 
 A fresh `Loaders` instance is created for every request so the per-request

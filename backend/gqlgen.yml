@@ -30,3 +30,7 @@ models:
     fields:
       owner:
         resolver: true
+  Card:
+    fields:
+      cardgroup:
+        resolver: true
