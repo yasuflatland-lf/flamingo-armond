@@ -60,6 +60,7 @@ func newRouter(
 	authMW echo.MiddlewareFunc,
 	userRepo repository.UserRepository,
 	roleRepo repository.RoleRepository,
+	cardgroupRepo repository.CardgroupRepository,
 ) *echo.Echo {
 	e := echo.New()
 	e.Use(middleware.RequestLogger())
@@ -97,7 +98,7 @@ func newRouter(
 			return r.Method + " " + r.URL.Path
 		}),
 	)
-	q := e.Group("/query", authMW, loader.Middleware(userRepo, roleRepo))
+	q := e.Group("/query", authMW, loader.Middleware(userRepo, roleRepo, cardgroupRepo))
 	q.POST("", echo.WrapHandler(otelGQLHandler))
 	e.GET("/playground", echo.WrapHandler(playground.Handler("GraphQL", "/query")))
 
@@ -161,15 +162,21 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	userRepo := repository.NewUserRepository(db.GORM)
 	roleRepo := repository.NewRoleRepository(db.GORM)
+	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	// Construct now to surface compile-time wiring; first consumer lands in a follow-up admin-gated resolver.
 	_ = repository.NewUserRoleRepository(db.GORM)
-	userUC := usecase.NewUserUsecase(userRepo)
 
-	resolvers := &resolver.Resolver{User: userUC}
+	userUC := usecase.NewUserUsecase(userRepo)
+	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)
+
+	resolvers := &resolver.Resolver{
+		User:        userUC,
+		CardgroupUC: cardgroupUC,
+	}
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
 	// telemetry.Init for the full ordering invariant.
-	e := newRouter(resolvers, authMW, userRepo, roleRepo)
+	e := newRouter(resolvers, authMW, userRepo, roleRepo, cardgroupRepo)
 	e.Logger = logger
 
 	port := os.Getenv("PORT")

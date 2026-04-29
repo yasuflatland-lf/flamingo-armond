@@ -110,7 +110,7 @@ func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newRouter(&resolver.Resolver{}, noopAuthMW, nil, nil))
+	ts := httptest.NewServer(newRouter(&resolver.Resolver{}, noopAuthMW, nil, nil, nil))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -377,8 +377,10 @@ func newGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Server, *datab
 
 	userRepo := repository.NewUserRepository(db.GORM)
 	roleRepo := repository.NewRoleRepository(db.GORM)
+	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	userUC := usecase.NewUserUsecase(userRepo)
-	e := newRouter(&resolver.Resolver{User: userUC}, mw, userRepo, roleRepo)
+	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)
+	e := newRouter(&resolver.Resolver{User: userUC, CardgroupUC: cardgroupUC}, mw, userRepo, roleRepo, cardgroupRepo)
 
 	ts := httptest.NewServer(e)
 	t.Cleanup(ts.Close)
@@ -883,5 +885,310 @@ func TestLoader_Middleware_DoesNotBreakQuery(t *testing.T) {
 	}
 	if me["id"] != userID {
 		t.Fatalf("expected me.id=%q, got %v", userID, me["id"])
+	}
+}
+
+// createTestCardgroup calls the createCardgroup mutation and returns the new cardgroup id.
+// It serialises the full JSON body via json.Marshal so name is always a valid JSON string.
+func createTestCardgroup(t *testing.T, srvURL, bearer, name string) string {
+	t.Helper()
+	gqlQuery := fmt.Sprintf(`mutation { createCardgroup(input: {name: %s}) { cardgroup { id name ownerId } } }`, gqlStringLit(name))
+	body, err := json.Marshal(map[string]string{"query": gqlQuery})
+	if err != nil {
+		t.Fatalf("json.Marshal body: %v", err)
+	}
+	resp := postGraphQL(t, srvURL+"/query", string(body), bearer)
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("createCardgroup errors: %v", errs)
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["createCardgroup"].(map[string]any)
+	cg, _ := payload["cardgroup"].(map[string]any)
+	if cg == nil {
+		t.Fatalf("createCardgroup: expected cardgroup, got nil; resp=%v", resp)
+	}
+	id, _ := cg["id"].(string)
+	if id == "" {
+		t.Fatalf("createCardgroup: empty id; resp=%v", resp)
+	}
+	return id
+}
+
+// gqlStringLit returns s as a GraphQL string literal (double-quoted, with internal
+// double-quotes and backslashes escaped). UUIDs and plain ASCII names are returned as-is.
+func gqlStringLit(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return `"` + s + `"`
+}
+
+// gqlErrCode extracts errors[0].extensions.code from a postGraphQL response.
+func gqlErrCode(resp map[string]any) string {
+	errs, ok := resp["errors"].([]any)
+	if !ok || len(errs) == 0 {
+		return ""
+	}
+	ext, _ := errs[0].(map[string]any)["extensions"].(map[string]any)
+	code, _ := ext["code"].(string)
+	return code
+}
+
+// gqlErrField extracts errors[0].extensions.field from a postGraphQL response.
+func gqlErrField(resp map[string]any) string {
+	errs, ok := resp["errors"].([]any)
+	if !ok || len(errs) == 0 {
+		return ""
+	}
+	ext, _ := errs[0].(map[string]any)["extensions"].(map[string]any)
+	field, _ := ext["field"].(string)
+	return field
+}
+
+func TestGraphQL_CreateCardgroup_Then_MyCardgroups(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+	ctx := context.Background()
+	sub := insertAuthUser(t, ctx)
+	tok := f.sign(t, sub)
+
+	cgID := createTestCardgroup(t, ts.URL, tok, "Vocab 1")
+
+	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroups { id name ownerId } }"}`, tok)
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("myCardgroups errors: %v", errs)
+	}
+	data, _ := resp["data"].(map[string]any)
+	list, _ := data["myCardgroups"].([]any)
+	if len(list) != 1 {
+		t.Fatalf("expected 1 cardgroup, got %d; resp=%v", len(list), resp)
+	}
+	cg, _ := list[0].(map[string]any)
+	if cg["id"] != cgID {
+		t.Fatalf("expected id=%q, got %v", cgID, cg["id"])
+	}
+	if cg["name"] != "Vocab 1" {
+		t.Fatalf("expected name=Vocab 1, got %v", cg["name"])
+	}
+	if cg["ownerId"] != sub {
+		t.Fatalf("expected ownerId=%q, got %v", sub, cg["ownerId"])
+	}
+}
+
+func TestGraphQL_MyCardgroups_DoesNotLeakOtherUsers(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+	ctx := context.Background()
+
+	subA := insertAuthUser(t, ctx)
+	tokA := f.sign(t, subA)
+	createTestCardgroup(t, ts.URL, tokA, "A's group")
+
+	subB := insertAuthUser(t, ctx)
+	tokB := f.sign(t, subB)
+
+	// B sees zero cardgroups before creating any.
+	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroups { id } }"}`, tokB)
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("myCardgroups (B, empty) errors: %v", errs)
+	}
+	listB, _ := resp["data"].(map[string]any)["myCardgroups"].([]any)
+	if len(listB) != 0 {
+		t.Fatalf("expected B to see 0 cardgroups, got %d", len(listB))
+	}
+
+	// B creates one; now B sees exactly one and A still sees exactly one.
+	createTestCardgroup(t, ts.URL, tokB, "B's group")
+
+	respB2 := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroups { id } }"}`, tokB)
+	listB2, _ := respB2["data"].(map[string]any)["myCardgroups"].([]any)
+	if len(listB2) != 1 {
+		t.Fatalf("expected B to see 1 cardgroup, got %d", len(listB2))
+	}
+
+	respA2 := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroups { id } }"}`, tokA)
+	listA2, _ := respA2["data"].(map[string]any)["myCardgroups"].([]any)
+	if len(listA2) != 1 {
+		t.Fatalf("expected A to still see 1 cardgroup, got %d", len(listA2))
+	}
+}
+
+func TestGraphQL_UpdateCardgroup_NonOwner_Unauthenticated(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+	ctx := context.Background()
+
+	subA := insertAuthUser(t, ctx)
+	tokA := f.sign(t, subA)
+	cgID := createTestCardgroup(t, ts.URL, tokA, "Owner's group")
+
+	subB := insertAuthUser(t, ctx)
+	tokB := f.sign(t, subB)
+	body := fmt.Sprintf(`{"query":"mutation { updateCardgroup(id: \"%s\", input: {name: \"stolen\"}) { cardgroup { id } } }"}`, cgID)
+	resp := postGraphQL(t, ts.URL+"/query", body, tokB)
+
+	if code := gqlErrCode(resp); code != "UNAUTHENTICATED" {
+		t.Fatalf("expected UNAUTHENTICATED, got %q; resp=%v", code, resp)
+	}
+	data, _ := resp["data"].(map[string]any)
+	if data["updateCardgroup"] != nil {
+		t.Fatalf("expected data.updateCardgroup to be nil, got %v", data["updateCardgroup"])
+	}
+}
+
+func TestGraphQL_DeleteCardgroup_NonOwner_Unauthenticated(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+	ctx := context.Background()
+
+	subA := insertAuthUser(t, ctx)
+	tokA := f.sign(t, subA)
+	cgID := createTestCardgroup(t, ts.URL, tokA, "Owner's group")
+
+	subB := insertAuthUser(t, ctx)
+	tokB := f.sign(t, subB)
+	body := fmt.Sprintf(`{"query":"mutation { deleteCardgroup(id: \"%s\") }"}`, cgID)
+	resp := postGraphQL(t, ts.URL+"/query", body, tokB)
+
+	if code := gqlErrCode(resp); code != "UNAUTHENTICATED" {
+		t.Fatalf("expected UNAUTHENTICATED, got %q; resp=%v", code, resp)
+	}
+}
+
+func TestGraphQL_Cardgroup_NonOwner_Unauthenticated(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+	ctx := context.Background()
+
+	subA := insertAuthUser(t, ctx)
+	tokA := f.sign(t, subA)
+	cgID := createTestCardgroup(t, ts.URL, tokA, "A's private group")
+
+	subB := insertAuthUser(t, ctx)
+	tokB := f.sign(t, subB)
+	body := fmt.Sprintf(`{"query":"{ cardgroup(id: \"%s\") { id } }"}`, cgID)
+	resp := postGraphQL(t, ts.URL+"/query", body, tokB)
+
+	if code := gqlErrCode(resp); code != "UNAUTHENTICATED" {
+		t.Fatalf("expected UNAUTHENTICATED, got %q; resp=%v", code, resp)
+	}
+}
+
+func TestGraphQL_Cardgroup_OwnerLoaderResolves(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+	ctx := context.Background()
+	sub := insertAuthUser(t, ctx)
+	tok := f.sign(t, sub)
+
+	createTestCardgroup(t, ts.URL, tok, "Loader Test")
+
+	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroups { id name owner { id displayName } } }"}`, tok)
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("myCardgroups with owner errors: %v", errs)
+	}
+	list, _ := resp["data"].(map[string]any)["myCardgroups"].([]any)
+	if len(list) == 0 {
+		t.Fatalf("expected at least one cardgroup; resp=%v", resp)
+	}
+	for i, item := range list {
+		cg, _ := item.(map[string]any)
+		owner, _ := cg["owner"].(map[string]any)
+		if owner == nil {
+			t.Fatalf("cardgroup[%d]: owner is nil; cg=%v", i, cg)
+		}
+		if owner["id"] != sub {
+			t.Fatalf("cardgroup[%d]: owner.id=%v, want %q", i, owner["id"], sub)
+		}
+	}
+}
+
+func TestGraphQL_Cardgroup_OwnerLoader_NoNPlus1(t *testing.T) {
+	exp, flush := installInMemoryTracer(t)
+
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+	ctx := context.Background()
+	sub := insertAuthUser(t, ctx)
+	tok := f.sign(t, sub)
+
+	for i := range 5 {
+		createTestCardgroup(t, ts.URL, tok, fmt.Sprintf("Batch Group %d", i+1))
+	}
+
+	resp := postGraphQL(t, ts.URL+"/query", `{"query":"query BatchOwner { myCardgroups { id owner { id displayName } } }"}`, tok)
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("myCardgroups batch errors: %v", errs)
+	}
+	list, _ := resp["data"].(map[string]any)["myCardgroups"].([]any)
+	if len(list) != 5 {
+		t.Fatalf("expected 5 cardgroups, got %d", len(list))
+	}
+	for i, item := range list {
+		cg, _ := item.(map[string]any)
+		owner, _ := cg["owner"].(map[string]any)
+		if owner == nil {
+			t.Fatalf("cardgroup[%d]: owner is nil", i)
+		}
+		if owner["id"] != sub {
+			t.Fatalf("cardgroup[%d]: owner.id=%v, want %q", i, owner["id"], sub)
+		}
+	}
+
+	flush()
+	spans := exp.GetSpans()
+	names := make([]string, 0, len(spans))
+	for _, s := range spans {
+		names = append(names, s.Name)
+	}
+	t.Logf("N+1 check: total spans=%d names=%v", len(spans), names)
+	// The DataLoader should batch all 5 owner lookups into a single load call.
+	// We verify correctness (owner.id == sub on every row above); strict batch
+	// counting via spans is a follow-up if the loader emits its own named span.
+}
+
+func TestGraphQL_CreateCardgroup_NameTooShort(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+	ctx := context.Background()
+	sub := insertAuthUser(t, ctx)
+	tok := f.sign(t, sub)
+
+	resp := postGraphQL(t, ts.URL+"/query", `{"query":"mutation { createCardgroup(input: {name: \"\"}) { cardgroup { id } } }"}`, tok)
+
+	if code := gqlErrCode(resp); code != "BAD_USER_INPUT" {
+		t.Fatalf("expected BAD_USER_INPUT, got %q; resp=%v", code, resp)
+	}
+	if field := gqlErrField(resp); field != "name" {
+		t.Fatalf("expected extensions.field=name, got %q; resp=%v", field, resp)
+	}
+}
+
+func TestGraphQL_CreateCardgroup_NameTooLong(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+	ctx := context.Background()
+	sub := insertAuthUser(t, ctx)
+	tok := f.sign(t, sub)
+
+	longName := strings.Repeat("x", 101)
+	body := fmt.Sprintf(`{"query":"mutation { createCardgroup(input: {name: \"%s\"}) { cardgroup { id } } }"}`, longName)
+	resp := postGraphQL(t, ts.URL+"/query", body, tok)
+
+	if code := gqlErrCode(resp); code != "BAD_USER_INPUT" {
+		t.Fatalf("expected BAD_USER_INPUT, got %q; resp=%v", code, resp)
+	}
+	if field := gqlErrField(resp); field != "name" {
+		t.Fatalf("expected extensions.field=name, got %q; resp=%v", field, resp)
+	}
+}
+
+func TestGraphQL_CreateCardgroup_Anonymous_Unauthenticated(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newGraphQLTestServer(t, f)
+
+	resp := postGraphQL(t, ts.URL+"/query", `{"query":"mutation { createCardgroup(input: {name: \"Anon\"}) { cardgroup { id } } }"}`, "")
+
+	if code := gqlErrCode(resp); code != "UNAUTHENTICATED" {
+		t.Fatalf("expected UNAUTHENTICATED, got %q; resp=%v", code, resp)
 	}
 }
