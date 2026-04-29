@@ -72,7 +72,7 @@ These values target a public API on Render. Revisit if the threat model or deplo
 - **`slog.SetDefault` regression tests must not use `t.Parallel()`** — Swapping the process-wide default logger is a global mutation. The pattern is: swap `slog.SetDefault` with a `slog.NewJSONHandler` backed by a `bytes.Buffer` inside `t.Cleanup` to restore the original, decode the buffer as `map[string]any`, and assert on field presence and shape. Do not assert on raw byte substrings — that is weaker than shape assertions. Because the test mutates a global, it must run sequentially.
 - **Packages that use `testcontainers-go` each define their own `TestMain`** — testcontainers containers cannot be shared across process boundaries, so container lifecycle must be scoped to the package. Current packages with `TestMain`: `cmd/server`, `internal/repository`, `internal/database`.
 - **`bootstrapAuthSchema` fixture is required before migration** — migrations include a trigger that references `auth.users`. In production Supabase provides this schema, but the Postgres test container does not. Tests must call `bootstrapAuthSchema` to create the `auth` schema and `auth.users` table before applying migrations.
-- **Assert trigger behavior, do not assume it** — the `handle_new_user` trigger must fire and create a profile row when a user is inserted into `auth.users`. Do not add a fallback INSERT that silently masks trigger regressions; use `t.Fatalf` if the expected row is absent.
+- **Assert trigger behavior, do not assume it** — the `handle_new_user` trigger must fire and create a `public.users` row when a user is inserted into `auth.users`. Do not add a fallback INSERT that silently masks trigger regressions; use `t.Fatalf` if the expected row is absent.
 - **Always pass `tcpostgres.BasicWaitStrategies()`** when starting a Postgres container — this prevents race conditions caused by the container's init-time restart cycle. Omitting it can cause connections to fail intermittently before the server is ready.
 
 ## Logging
@@ -115,7 +115,7 @@ gqlgen deletes `graph/model/models_gen.go` at the start of every run before rege
 
 ### Resolver DI seam
 
-`newRouter(resolvers *resolver.Resolver, authMW echo.MiddlewareFunc, repo repository.ProfileRepository) *echo.Echo` is the DI wiring seam. `run(ctx, logger) error` is the lifecycle seam — it constructs the `Resolver`, passes it to `newRouter`, and owns the `http.Server`. Middleware-shaped dependencies (auth, future per-request observability) are passed as `echo.MiddlewareFunc` parameters to `newRouter`; resources required by middleware factories (e.g. `loader.Middleware` needs a repository) are passed as additional `newRouter` arguments rather than hidden inside the middleware closure.
+`newRouter(resolvers *resolver.Resolver, authMW echo.MiddlewareFunc, userRepo repository.UserRepository, roleRepo repository.RoleRepository) *echo.Echo` is the DI wiring seam. `run(ctx, logger) error` is the lifecycle seam — it constructs the `Resolver`, passes it to `newRouter`, and owns the `http.Server`. Middleware-shaped dependencies (auth, future per-request observability) are passed as `echo.MiddlewareFunc` parameters to `newRouter`; resources required by middleware factories (e.g. `loader.Middleware` needs repositories) are passed as additional `newRouter` arguments rather than hidden inside the middleware closure.
 
 ## Authentication
 
@@ -215,7 +215,8 @@ When a migration fails mid-run, `schema_migrations.dirty=true` is set. Recovery 
 ```
 database.Migrate(url)
 → database.Open(ctx, cfg)
-→ repository.NewProfileRepository(db.GORM)
+→ repository.NewUserRepository(db.GORM)
+→ repository.NewRoleRepository(db.GORM)
 → server start
 ```
 
@@ -254,17 +255,17 @@ Both operations require an authenticated caller. When `auth.UserFrom(ctx)` retur
 - `nil` (field omitted in the JSON input) → "leave unchanged" — the repository skips the column in the `UPDATE`.
 - `""` (field present, empty string) → "explicit clear" — the repository writes an empty string.
 
-This three-state pointer distinction is preserved end-to-end: schema (`bio: String`) → gqlgen model (`Bio *string`) → `usecase.UpdateProfileInput.Bio *string` → `repository.ProfileUpdate.Bio *string`. Never collapse it to a plain `string` default.
+This three-state pointer distinction is preserved end-to-end: schema (`bio: String`) → gqlgen model (`Bio *string`) → `usecase.UpdateUserInput.Bio *string` → `repository.UserUpdate.Bio *string`. Never collapse it to a plain `string` default.
 
 ### Layering rule
 
 ```
 resolver (schema.resolvers.go)
-  └─ usecase (internal/usecase/profile.go)
+  └─ usecase (internal/usecase/user.go)
        └─ repository (internal/repository/)
 ```
 
-Resolvers are intentionally thin: extract `model.UpdateProfileInput`, map it to `usecase.UpdateProfileInput`, delegate, and return. Auth checks, validation, and `gqlerror.Error` construction live in the usecase layer. Shared error helpers live in `backend/internal/gqlerr` — see [Error helpers](#error-helpers-backendinternalgqlerr).
+Resolvers are intentionally thin: extract `model.UpdateProfileInput`, map it to `usecase.UpdateUserInput`, delegate, and return. Auth checks, validation, and `gqlerror.Error` construction live in the usecase layer. Shared error helpers live in `backend/internal/gqlerr` — see [Error helpers](#error-helpers-backendinternalgqlerr).
 
 ### DI pattern
 
@@ -272,20 +273,21 @@ Resolvers are intentionally thin: extract `model.UpdateProfileInput`, map it to 
 
 ```go
 type Resolver struct {
-    Profile *usecase.ProfileUsecase
+    User *usecase.UserUsecase
 }
 ```
 
 `cmd/server/main.go::run()` wires it:
 
 ```go
-repo := repository.NewProfileRepository(db.GORM)
-resolvers := &resolver.Resolver{Profile: usecase.NewProfileUsecase(repo)}
+userRepo := repository.NewUserRepository(db.GORM)
+roleRepo := repository.NewRoleRepository(db.GORM)
+resolvers := &resolver.Resolver{User: usecase.NewUserUsecase(userRepo)}
 ```
 
 Adding a new feature: build a usecase, add a field to `Resolver`, wire it in `run()`.
 
-### Validation rules in `usecase.UpdateProfile`
+### Validation rules in `usecase.UpdateUser`
 
 - `displayName` is `strings.TrimSpace`-ed, then validated as 1–50 grapheme clusters via `rivo/uniseg`.
 - `bio` accepts up to 500 grapheme clusters (no trim; whitespace is preserved).
@@ -304,27 +306,27 @@ than as a cross-cutting concern bolted on to middleware.
 
 ### DataLoader (per-request)
 
-**Why:** Without batching, a list resolver that fetches N profiles issues N
+**Why:** Without batching, a list resolver that fetches N users or roles issues N
 separate `SELECT` statements. DataLoader collapses those into a single
 `SELECT ... WHERE id = ANY($1)`.
 
 `backend/internal/loader/` exposes a per-request `Loaders` struct injected
-via `loader.Middleware(repo)`. The middleware is registered on the `/query`
+via `loader.Middleware(userRepo, roleRepo)`. The middleware is registered on the `/query`
 group alongside `authMW`:
 
 ```go
-q := e.Group("/query", authMW, loader.Middleware(repo))
+q := e.Group("/query", authMW, loader.Middleware(userRepo, roleRepo))
 ```
 
 A fresh `Loaders` instance is created for every request so the per-request
 cache never bleeds across authenticated users. Resolvers pull it out of `ctx`:
 
 ```go
-profile, err := loader.For(ctx).Profile.Load(ctx, userID)()
+user, err := loader.For(ctx).User.Load(ctx, userID)()
 ```
 
 `loader.For` returns `nil` when the middleware was not installed; dereferencing
-the returned pointer (`.Profile.Load(...)`) will then panic. Keep the middleware
+the returned pointer (`.User.Load(...)`) will then panic. Keep the middleware
 wired to every route that touches a loader. Once a resolver actually calls a
 loader in production, consider replacing `For` with a `MustFor` variant (panics
 with a clear message on nil) or a `(loaders, error)` two-value return so
@@ -338,9 +340,9 @@ as the input keys. dataloader/v7 enforces this 1:1 invariant at runtime.
 **Adding a new entity:**
 
 1. Add `FindByIDs(ctx context.Context, ids []string) (map[string]*domain.X, error)` to the repository interface.
-2. Create `backend/internal/loader/<entity>.go` with an `<entity>BatchFunc(repo)` that maps the result map back to the ordered output slice (see `profile.go` for the pattern).
+2. Create `backend/internal/loader/<entity>.go` with an `<entity>BatchFunc(repo)` that maps the result map back to the ordered output slice (see `user.go` for the pattern).
 3. Add `<Entity> *dataloader.Loader[string, *domain.<Entity>]` to `Loaders`.
-4. Initialise it in `loader.New(repo)`.
+4. Initialise it in `loader.New(...)` and pass its repository through `loader.Middleware(...)`.
 
 ### Error helpers (`backend/internal/gqlerr`)
 
@@ -431,7 +433,7 @@ what users perceive as "characters". A 👨‍👩‍👧‍👦 ZWJ sequence is
 visible character. Backend and frontend must agree on the same counting rule to
 avoid inconsistent rejections.
 
-`backend/internal/usecase/profile.go` uses
+`backend/internal/usecase/user.go` uses
 `github.com/rivo/uniseg` (UAX #29 compliant) via
 `uniseg.GraphemeClusterCount(s)`:
 
