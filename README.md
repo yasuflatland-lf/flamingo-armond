@@ -74,7 +74,7 @@ Production runs across three providers — Supabase (Postgres + Auth), Render (G
 3. Creating a Vercel project against `frontend/`, wiring its env vars.
 4. Looping the Vercel domain back into Supabase Auth (Site URL + redirect allow list) and replacing the Google OAuth redirect URI placeholder.
 
-The full checklist with prerequisites (Supabase PAT, Render / Vercel API tokens, Google OAuth client credentials), env var matrices, and post-bring-up smoke tests lives in `docs/deployment.md`.
+The full checklist with prerequisites (Supabase PAT, Render / Vercel API tokens, Google OAuth client credentials), env var matrices, and post-bring-up smoke tests lives in `docs/deployment.md`. For a guided run that wraps the manual procedure with prerequisite checks, value-derivation, GitHub Secret registration, and smoke tests, use `make setup-prod`.
 
 ## Makefile reference
 

@@ -1,0 +1,62 @@
+name: Required checks shim
+
+# Reports `Build & test` and `Lint, typecheck, build` as success when neither
+# backend.yml nor frontend.yml fires because their paths filters excluded the
+# PR. Without this shim, infra-only or docs-only PRs deadlock branch
+# protection's required status checks since no workflow run is ever produced
+# to report them.
+#
+# Inputs are restricted to `github.ref` and internal job outputs; no
+# user-controlled fields (issue/PR titles, commit messages, head_ref) are
+# interpolated, so no injection surface exists.
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: required-shim-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/backend.yml'
+            frontend:
+              - 'frontend/**'
+              - 'schema/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'package.json'
+              - '.tool-versions'
+              - '.github/workflows/frontend.yml'
+
+  build-test-shim:
+    name: Build & test
+    needs: changes
+    if: needs.changes.outputs.backend == 'false'
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "No backend changes in this PR; reporting required check 'Build & test' as success."
+
+  lint-typecheck-build-shim:
+    name: Lint, typecheck, build
+    needs: changes
+    if: needs.changes.outputs.frontend == 'false'
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "No frontend changes in this PR; reporting required check 'Lint, typecheck, build' as success."

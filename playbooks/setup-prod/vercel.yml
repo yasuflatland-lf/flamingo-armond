@@ -1,0 +1,398 @@
+---
+# playbooks/setup-prod/vercel.yml
+#
+# Phase 4: import the repo into Vercel, register env vars via the API, and
+# collect the project ID + repoId + production URL into the state file.
+#
+# Reads:  state file  (backend_url, supabase_url, supabase_anon_key)
+# Writes: state file  (vercel_project_id, vercel_repo_id, production_url)
+#
+# `state_file` and `confirm` come from the entry playbook
+# (defaults: <repo-root>/.setup-prod.state.yml, confirm: false).
+#
+# Env wiring is automated: after the operator imports the project from GitHub
+# (the import wizard cannot be driven via API), this phase POSTs the three
+# required env vars to /v10/projects/{id}/env?upsert=true. The repoId captured
+# here feeds Phase 6's deploy kick (POST /v13/deployments needs repoId, not the
+# "owner/repo" string). The first build at import time is expected to fail
+# because env is not yet present; Phase 6 triggers a fresh deploy that picks up
+# the values registered here.
+
+- name: Phase 4 cannot run in unattended mode
+  ansible.builtin.fail:
+    msg: |
+      Phase 4 (vercel) requires interactive operator input from the Vercel dashboard
+      (project ID, production URL). Cannot run with confirm=true.
+
+      Either run interactively (default), or pre-populate vercel_project_id and
+      production_url in {{ state_file }} and skip Phase 4 entirely with --skip-tags vercel.
+  when: confirm | bool
+
+# Stat first so YAML parse errors fail loudly instead of being masked by
+# `failed_when: false` and surfacing as confusing "missing keys" later.
+- name: Stat state file (Phase 4)
+  ansible.builtin.stat:
+    path: "{{ state_file }}"
+  register: _state_stat
+
+- name: Load state file (Phase 4)
+  ansible.builtin.include_vars:
+    file: "{{ state_file }}"
+  when: _state_stat.stat.exists
+
+- name: Assert Phase 2 (supabase) and Phase 3 (render) have run
+  ansible.builtin.assert:
+    that:
+      - _state_stat.stat.exists
+      - backend_url is defined
+      - supabase_url is defined
+      - supabase_anon_key is defined
+    fail_msg: >-
+      Required state values from earlier phases are missing.
+
+      Possible causes:
+      - Phase 2 (supabase) and/or Phase 3 (render) have not yet run.
+        Re-run with: ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags supabase,render
+      - The state file is corrupt or was hand-edited.
+        Restore from the most recent backup:
+          cp "$(ls -1t {{ state_file }}.*~ 2>/dev/null | head -1)" {{ state_file }}
+
+# ---------------------------------------------------------------------------
+# Show env vars the operator can verify after the API registers them.
+# anon_key is publishable (client-side env var), so no_log is not used here.
+# ---------------------------------------------------------------------------
+- name: Show env vars that will be registered via the Vercel API
+  ansible.builtin.debug:
+    msg:
+      - "These three env vars will be registered automatically via the Vercel API"
+      - "after you provide the project ID. SKIP the Environment Variables section"
+      - "in the import wizard — leave it empty."
+      - ""
+      - "  BACKEND_URL                   = {{ backend_url }}            (Production, Preview)"
+      - "  NEXT_PUBLIC_SUPABASE_URL      = {{ supabase_url }}           (All Environments)"
+      - "  NEXT_PUBLIC_SUPABASE_ANON_KEY = {{ supabase_anon_key }}      (All Environments)"
+
+- name: Show Vercel import wizard steps
+  ansible.builtin.pause:
+    prompt: |
+      Step 3 - Vercel project import
+      ------------------------------
+      1. Open https://vercel.com/new and import this repository.
+      2. Set Framework Preset to: Next.js
+      3. Set Root Directory to: frontend
+      4. SKIP the Environment Variables section -- leave it empty.
+         The playbook registers the three required env vars via the Vercel
+         API as soon as you provide the project ID below.
+      5. Click Deploy. The first build will fail because env is not yet
+         registered -- this is EXPECTED. Phase 6 (postapply) triggers a
+         fresh deploy after env wiring completes.
+
+      Press Enter once the project has been created.
+  when: not confirm
+
+- name: Prompt for Vercel project ID
+  ansible.builtin.pause:
+    prompt: "Vercel project ID (Settings -> General -> Project ID; starts with prj_)"
+    echo: true
+  register: vercel_project_id_prompt
+  when: not confirm
+
+- name: Resolve vercel_project_id
+  ansible.builtin.set_fact:
+    vercel_project_id: "{{ vercel_project_id_prompt.user_input | default('') | trim }}"
+
+- name: Validate vercel_project_id shape
+  ansible.builtin.assert:
+    that:
+      - vercel_project_id is match('^prj_[a-zA-Z0-9]+$')
+    fail_msg: >-
+      vercel_project_id must start with 'prj_' followed by alphanumeric
+      characters. Got: '{{ vercel_project_id }}'.
+      Copy the value from Vercel -> Settings -> General -> Project ID.
+
+# ---------------------------------------------------------------------------
+# Read VERCEL_API_TOKEN from the environment (Phase 1 already verified it
+# reaches api.vercel.com; this just rebinds the value for use here).
+# ---------------------------------------------------------------------------
+- name: Read VERCEL_API_TOKEN from the environment
+  ansible.builtin.set_fact:
+    vercel_token: "{{ lookup('env', 'VERCEL_API_TOKEN') }}"
+  no_log: true
+
+- name: Fail fast if VERCEL_API_TOKEN is empty
+  ansible.builtin.fail:
+    msg: |
+      VERCEL_API_TOKEN is not set in the environment.
+      Preflight should have caught this -- run `make setup-prod-preflight`.
+  when: (vercel_token | length) == 0
+
+# ---------------------------------------------------------------------------
+# Fetch the project to capture link.repoId. POST /v13/deployments in Phase 6
+# requires a numeric repoId (not the "owner/repo" string), so we collect it
+# now and persist to state.
+# ---------------------------------------------------------------------------
+- name: Fetch Vercel project details (need repoId for Phase 6 deploy kick)
+  block:
+    - name: "GET /v9/projects/{{ vercel_project_id }}"
+      ansible.builtin.uri:
+        url: "https://api.vercel.com/v9/projects/{{ vercel_project_id }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ vercel_token }}"
+        status_code: 200
+      register: vercel_project
+      no_log: true
+  rescue:
+    - name: Surface project lookup failure
+      ansible.builtin.fail:
+        msg: |
+          Failed to fetch Vercel project {{ vercel_project_id }}.
+
+            HTTP status : {{ vercel_project.status | default('(connection error)') }}
+            Server msg  : {{ vercel_project.json.error.message | default(vercel_project.msg | default('(none)')) }}
+
+          Likely causes:
+            - 401 / 403 : VERCEL_API_TOKEN lost access since preflight; rotate
+                          at https://vercel.com/account/tokens.
+            - 404       : project ID is wrong; confirm in Vercel dashboard
+                          -> Settings -> General -> Project ID.
+
+- name: Capture vercel_repo_id from project link
+  ansible.builtin.set_fact:
+    vercel_repo_id: "{{ vercel_project.json.link.repoId | default('') | string }}"
+
+- name: Validate vercel_repo_id is non-empty (project must be GitHub-linked)
+  ansible.builtin.assert:
+    that:
+      - vercel_repo_id | length > 0
+      - vercel_repo_id is match('^[0-9]+$')
+    fail_msg: >-
+      Vercel project {{ vercel_project_id }} has no GitHub repoId in `link`.
+      The import wizard must connect to GitHub (not "deploy from CLI").
+      Re-import the project via https://vercel.com/new and select the GitHub
+      source for {{ repo }}.
+
+# ---------------------------------------------------------------------------
+# Reconcile env vars by listing what already exists and routing each desired
+# key to PATCH (existing) or POST (new). The v10 `?upsert=true` query param
+# does not reliably update vars whose `target` set differs from the existing
+# record (returns ENV_CONFLICT 400 instead of upserting), which breaks
+# re-runs once the import wizard or a prior phase has populated the project.
+# GET-then-PATCH-or-POST sidesteps that and stays idempotent across re-runs.
+#
+# `type`:
+#   - BACKEND_URL is server-only -> "encrypted" (not exposed via dashboard
+#     after creation, decrypted only at build/runtime).
+#   - NEXT_PUBLIC_* are client-bundled -> "plain" (encrypted-type values are
+#     not allowed for vars Next.js inlines into the client bundle).
+# ---------------------------------------------------------------------------
+- name: Define desired env vars
+  ansible.builtin.set_fact:
+    vercel_desired_env:
+      - key: BACKEND_URL
+        value: "{{ backend_url }}"
+        target: [production, preview]
+        type: encrypted
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        value: "{{ supabase_url }}"
+        target: [production, preview, development]
+        type: plain
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        value: "{{ supabase_anon_key }}"
+        target: [production, preview, development]
+        type: plain
+  no_log: true
+
+- name: List existing env vars on the Vercel project
+  block:
+    - name: "GET /v9/projects/{{ vercel_project_id }}/env"
+      ansible.builtin.uri:
+        url: "https://api.vercel.com/v9/projects/{{ vercel_project_id }}/env"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ vercel_token }}"
+        status_code: 200
+      register: vercel_env_list
+      no_log: true
+  rescue:
+    - name: Surface env list failure
+      ansible.builtin.fail:
+        msg: |
+          Failed to list env vars on Vercel project {{ vercel_project_id }}.
+
+            HTTP status : {{ vercel_env_list.status | default('(connection error)') }}
+            Server msg  : {{ vercel_env_list.json.error.message | default(vercel_env_list.msg | default('(none)')) }}
+
+          Likely causes:
+            - 401 / 403 : VERCEL_API_TOKEN lost env-read scope.
+            - 404       : project ID is wrong; confirm in Vercel dashboard
+                          -> Settings -> General -> Project ID.
+
+# Build a {key -> envId} lookup so the PATCH/POST tasks below can decide
+# per item. `default({})` in the downstream `in` checks keeps things sane
+# when the project has zero existing env vars (loop never runs, fact stays
+# unset).
+- name: Build {key -> id} map of existing env vars
+  ansible.builtin.set_fact:
+    vercel_existing_env_ids: "{{ vercel_existing_env_ids | default({}) | combine({item.key: item.id}) }}"
+  loop: "{{ vercel_env_list.json.envs | default([]) }}"
+  loop_control:
+    label: "{{ item.key }}"
+  no_log: true
+
+- name: Update existing env vars (PATCH)
+  block:
+    - name: "PATCH /v9/projects/{{ vercel_project_id }}/env/{id}"
+      ansible.builtin.uri:
+        url: "https://api.vercel.com/v9/projects/{{ vercel_project_id }}/env/{{ (vercel_existing_env_ids | default({}))[item.key] }}"
+        method: PATCH
+        headers:
+          Authorization: "Bearer {{ vercel_token }}"
+        body_format: json
+        body:
+          value: "{{ item.value }}"
+          target: "{{ item.target }}"
+          type: "{{ item.type }}"
+        status_code: 200
+      register: vercel_env_patch
+      loop: "{{ vercel_desired_env }}"
+      when: item.key in (vercel_existing_env_ids | default({}))
+      loop_control:
+        label: "{{ item.key }}"
+      no_log: true
+  rescue:
+    # `vercel_env_patch.results[*]` carries the per-item outcome. Items that
+    # were skipped by the `when` clause have `skipped: true` and no `status`,
+    # so we filter those out to keep the diagnostic readable.
+    - name: Surface env PATCH failure
+      ansible.builtin.fail:
+        msg: |
+          Failed to update existing env vars on Vercel project
+          {{ vercel_project_id }}.
+
+          Per-item results:
+          {% for r in vercel_env_patch.results | default([]) %}
+          {% if not (r.skipped | default(false)) %}
+          - key={{ r.item.key | default('(unknown)') }}
+              status      : {{ r.status | default('(no status)') }}
+              failed      : {{ r.failed | default(false) }}
+              error.code  : {{ r.json.error.code | default('(none)') }}
+              error.msg   : {{ r.json.error.message | default('(none)') }}
+          {% endif %}
+          {% endfor %}
+
+          Likely causes:
+            - 401 / 403 : VERCEL_API_TOKEN lost env-write scope.
+            - 400       : value rejected by Vercel (e.g. encrypted type used
+                          on a NEXT_PUBLIC_* var, or malformed URL).
+      # Per-item error.message contains diagnostic text only -- no secret
+      # values are interpolated, so explicit no_log: false is safe.
+      no_log: false
+
+- name: Create new env vars (POST)
+  block:
+    - name: "POST /v10/projects/{{ vercel_project_id }}/env"
+      ansible.builtin.uri:
+        url: "https://api.vercel.com/v10/projects/{{ vercel_project_id }}/env"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ vercel_token }}"
+        body_format: json
+        body:
+          key: "{{ item.key }}"
+          value: "{{ item.value }}"
+          target: "{{ item.target }}"
+          type: "{{ item.type }}"
+        status_code: 201
+      register: vercel_env_post
+      loop: "{{ vercel_desired_env }}"
+      when: item.key not in (vercel_existing_env_ids | default({}))
+      loop_control:
+        label: "{{ item.key }}"
+      no_log: true
+  rescue:
+    # `vercel_env_post.results[*].json` may carry Vercel's bulk-style body
+    # `{ created: [], failed: [{ error: { code, message, envVarKey } }] }`
+    # for the POST endpoint, so we surface `json.failed[]` alongside the
+    # standard error fields.
+    - name: Surface env POST failure
+      ansible.builtin.fail:
+        msg: |
+          Failed to create new env vars on Vercel project
+          {{ vercel_project_id }}.
+
+          Per-item results:
+          {% for r in vercel_env_post.results | default([]) %}
+          {% if not (r.skipped | default(false)) %}
+          - key={{ r.item.key | default('(unknown)') }}
+              status      : {{ r.status | default('(no status)') }}
+              failed      : {{ r.failed | default(false) }}
+              error.code  : {{ r.json.error.code | default('(none)') }}
+              error.msg   : {{ r.json.error.message | default('(none)') }}
+              failed[]    : {{ r.json.failed | default([]) | to_json }}
+          {% endif %}
+          {% endfor %}
+
+          Likely causes:
+            - 401 / 403 : VERCEL_API_TOKEN lost env-write scope.
+            - 400       : value rejected by Vercel (e.g. encrypted type used
+                          on a NEXT_PUBLIC_* var, or malformed URL).
+      no_log: false
+
+- name: Confirm env vars reconciled
+  ansible.builtin.debug:
+    msg: "Reconciled {{ vercel_desired_env | length }} env vars on Vercel project {{ vercel_project_id }} (PATCH existing, POST new)."
+
+- name: Prompt for Vercel production URL
+  ansible.builtin.pause:
+    prompt: "Vercel production URL (e.g. https://flamingo-armond.vercel.app or custom domain)"
+    echo: true
+  register: production_url_prompt
+  when: not confirm
+
+- name: Resolve production_url
+  ansible.builtin.set_fact:
+    production_url: "{{ production_url_prompt.user_input | default('') | trim }}"
+
+- name: Validate production_url shape
+  ansible.builtin.assert:
+    that:
+      - production_url is match('^https://.+')
+    fail_msg: >-
+      production_url must begin with 'https://'. Got: '{{ production_url }}'.
+      Enter the full URL shown in Vercel -> Settings -> Domains.
+
+# State file is known to exist at this point (assert above would have failed
+# otherwise), so re-reading via lookup is safe without errors='ignore'.
+# no_log on both tasks: the merged dict carries supabase_db_url (DB password).
+- name: Merge vercel values into state
+  ansible.builtin.set_fact:
+    state_merged: >-
+      {{ (lookup('file', state_file) | from_yaml)
+         | combine({
+             'vercel_project_id': vercel_project_id,
+             'vercel_repo_id': vercel_repo_id,
+             'production_url': production_url,
+           }) }}
+  no_log: true
+
+# `backup: yes` uses shutil.copy2 which preserves source mode bits, so the
+# backup is already created at 0600 (matching the live state file).
+- name: Persist state file (mode 0600 + backup)
+  ansible.builtin.copy:
+    content: "{{ state_merged | to_nice_yaml(sort_keys=true) }}"
+    dest: "{{ state_file }}"
+    mode: "0600"
+    backup: yes
+  no_log: true
+
+- name: Confirm Phase 4 complete
+  ansible.builtin.debug:
+    msg:
+      - "Phase 4 complete. State written to {{ state_file }}."
+      - "  vercel_project_id = {{ vercel_project_id }}"
+      - "  vercel_repo_id    = {{ vercel_repo_id }}"
+      - "  production_url    = {{ production_url }}"
+      - "Env vars registered via API: BACKEND_URL, NEXT_PUBLIC_SUPABASE_URL,"
+      - "NEXT_PUBLIC_SUPABASE_ANON_KEY."
+      - "Next: run Phase 5 (supabase loopback) to update Site URL and OAuth redirect."

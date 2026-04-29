@@ -1,0 +1,228 @@
+---
+# Phase 1 - preflight
+#
+# Verifies that all required API tokens are present and reach their target
+# APIs, and that the GitHub CLI is authenticated. Items that cannot be
+# verified with a Personal Access Token (GitHub App installations, Google
+# OAuth client) are surfaced as skippable operator confirmation pauses.
+# Aims for ~10 second runtime so it can be run as a lightweight scanner at
+# any point before or during the bring-up sequence.
+#
+# Standalone usage:
+#   ansible-playbook playbooks/setup-prod.yml --tags preflight
+#
+# What is checked (API):
+#   - SUPABASE_ACCESS_TOKEN, RENDER_API_KEY, VERCEL_API_TOKEN env vars are set
+#   - `gh auth status` passes (GitHub CLI authenticated)
+#   - Each token reaches its API successfully (Supabase / Render / Vercel)
+#
+# What is checked (operator confirmation, skippable with confirm=true):
+#   - Render and Vercel GitHub App installations on {{ repo }} (the GitHub
+#     endpoints needed to verify this require GitHub App JWT / App OAuth
+#     flow tokens, not a PAT, so a pause is shown instead)
+#   - Google OAuth client (Manual prereq section 3) — pause shown instead
+#
+# What is NOT touched (no writes):
+#   - No secrets are written to disk
+#   - No remote resources are created or modified
+
+- name: Read SUPABASE_ACCESS_TOKEN from environment
+  ansible.builtin.set_fact:
+    supabase_pat: "{{ lookup('env', 'SUPABASE_ACCESS_TOKEN') }}"
+
+- name: Read RENDER_API_KEY from environment
+  ansible.builtin.set_fact:
+    render_api_key: "{{ lookup('env', 'RENDER_API_KEY') }}"
+
+- name: Read VERCEL_API_TOKEN from environment
+  ansible.builtin.set_fact:
+    vercel_token: "{{ lookup('env', 'VERCEL_API_TOKEN') }}"
+
+- name: Assert required API tokens are present
+  ansible.builtin.assert:
+    that:
+      - supabase_pat | length > 0
+      - render_api_key | length > 0
+      - vercel_token | length > 0
+    fail_msg: |
+      One or more required API tokens are missing from the environment.
+      Add the following keys to your .env file (loaded via `mise` or `direnv`):
+
+        SUPABASE_ACCESS_TOKEN=<from https://supabase.com/dashboard/account/tokens>
+        RENDER_API_KEY=<from https://dashboard.render.com/u/<user>/account/api-keys>
+        VERCEL_API_TOKEN=<from https://vercel.com/account/tokens>
+
+      Then re-source the file:
+        source .env   # or restart your shell if using direnv / mise
+
+- name: Check GitHub CLI authentication status
+  ansible.builtin.command:
+    cmd: gh auth status
+  register: gh_auth_result
+  changed_when: false
+  # rc != 0 is expected when not logged in; the next task surfaces it cleanly
+  failed_when: false
+
+- name: Fail if GitHub CLI is not authenticated
+  ansible.builtin.fail:
+    msg: |
+      GitHub CLI is not authenticated (rc={{ gh_auth_result.rc }}).
+
+      gh diagnostic:
+      {{ gh_auth_result.stderr | default('(no stderr)') }}
+      {{ gh_auth_result.stdout | default('') }}
+
+      Authenticate with: gh auth login -s repo
+  when: gh_auth_result.rc != 0
+
+# --- Token API reachability checks ---
+
+- name: Verify SUPABASE_ACCESS_TOKEN reaches Supabase API
+  block:
+    - name: GET https://api.supabase.com/v1/organizations
+      ansible.builtin.uri:
+        url: https://api.supabase.com/v1/organizations
+        method: GET
+        headers:
+          Authorization: "Bearer {{ supabase_pat }}"
+        status_code: 200
+      register: supabase_probe
+      no_log: true
+  rescue:
+    - name: Surface Supabase token rejection
+      ansible.builtin.fail:
+        msg: |
+          Supabase API rejected SUPABASE_ACCESS_TOKEN (auth or reachability failed).
+
+            HTTP status : {{ supabase_probe.status | default('(connection error)') }}
+            Server msg  : {{ supabase_probe.json.message | default(supabase_probe.json.error.message | default(supabase_probe.msg | default('(none)'))) }}
+
+          Common causes:
+            - 401 / 403  -> token expired or lacks org access; rotate at:
+                https://supabase.com/dashboard/account/tokens
+            - 5xx        -> Supabase outage; check https://status.supabase.com
+            - connection -> DNS or network issue; verify reachability
+
+          Update SUPABASE_ACCESS_TOKEN in .env, then re-run:
+            make setup-prod-preflight
+
+- name: Verify RENDER_API_KEY reaches Render API
+  block:
+    - name: GET https://api.render.com/v1/owners
+      ansible.builtin.uri:
+        url: https://api.render.com/v1/owners
+        method: GET
+        headers:
+          Authorization: "Bearer {{ render_api_key }}"
+        status_code: 200
+      register: render_probe
+      no_log: true
+  rescue:
+    - name: Surface Render token rejection
+      ansible.builtin.fail:
+        msg: |
+          Render API rejected RENDER_API_KEY (auth or reachability failed).
+
+            HTTP status : {{ render_probe.status | default('(connection error)') }}
+            Server msg  : {{ render_probe.json.message | default(render_probe.msg | default('(none)')) }}
+
+          Common causes:
+            - 401 / 403  -> token expired or lacks org access; rotate at:
+                https://dashboard.render.com/u/settings#api-keys
+            - 5xx        -> Render outage; check https://status.render.com
+            - connection -> DNS or network issue; verify reachability
+
+          Update RENDER_API_KEY in .env, then re-run:
+            make setup-prod-preflight
+
+- name: Verify VERCEL_API_TOKEN reaches Vercel API
+  block:
+    - name: GET https://api.vercel.com/v2/user
+      ansible.builtin.uri:
+        url: https://api.vercel.com/v2/user
+        method: GET
+        headers:
+          Authorization: "Bearer {{ vercel_token }}"
+        status_code: 200
+      register: vercel_probe
+      no_log: true
+  rescue:
+    - name: Surface Vercel token rejection
+      ansible.builtin.fail:
+        msg: |
+          Vercel API rejected VERCEL_API_TOKEN (auth or reachability failed).
+
+            HTTP status : {{ vercel_probe.status | default('(connection error)') }}
+            Server msg  : {{ vercel_probe.json.error.message | default(vercel_probe.json.message | default(vercel_probe.msg | default('(none)'))) }}
+
+          Common causes:
+            - 401 / 403  -> token expired or lacks org access; rotate at:
+                https://vercel.com/account/tokens
+            - 5xx        -> Vercel outage; check https://www.vercel-status.com
+            - connection -> DNS or network issue; verify reachability
+
+          Update VERCEL_API_TOKEN in .env, then re-run:
+            make setup-prod-preflight
+
+# --- GitHub App installation reminder (cannot be API-verified with a PAT) ---
+#
+# The GitHub endpoints that report App installation state on a repository
+# (`/repos/{owner}/{repo}/installation`, `/user/installations`, etc.) all
+# require GitHub App JWT or App OAuth flow tokens. They reject the Personal
+# Access Token used by `gh` CLI with 403/404. So this step uses an operator
+# confirmation pause, mirroring the Google OAuth pattern below. If the apps
+# are not actually installed, the Render/Vercel phases will fail downstream
+# with their own clear errors.
+
+- name: Remind operator to confirm Render and Vercel GitHub Apps are installed on {{ repo }}
+  ansible.builtin.pause:
+    prompt: |
+
+      MANUAL PREREQUISITE - Render and Vercel GitHub App installations
+      Cannot be verified via API with a Personal Access Token (the relevant
+      GitHub endpoints require GitHub App JWT or App OAuth flow tokens).
+
+      Before continuing, confirm both apps are installed and granted access
+      to {{ repo }}:
+        - Render : https://github.com/apps/render
+        - Vercel : https://github.com/apps/vercel
+
+      You can review installations at:
+        https://github.com/settings/installations
+
+      Press Enter to confirm (or Ctrl+C to abort).
+  when: not confirm
+
+# --- Google OAuth client reminder (cannot be API-verified) ---
+
+- name: Remind operator to complete Google OAuth client setup (Manual prereq section 3)
+  ansible.builtin.pause:
+    prompt: |
+
+      MANUAL PREREQUISITE - Google OAuth client (Manual prereq section 3)
+      This step cannot be verified via API and must be completed in the browser.
+
+      Before continuing, confirm you have:
+        1. Created a Google Cloud project (or selected an existing one)
+        2. Enabled the Google+ API / People API
+        3. Created OAuth 2.0 credentials and noted the Client ID and Client Secret
+        4. Added the production callback URL to the authorized redirect URIs:
+             https://<your-supabase-project-ref>.supabase.co/auth/v1/callback
+
+      Press Enter to confirm you have completed the above steps (or Ctrl+C to abort).
+  when: not confirm
+
+- name: Preflight passed
+  ansible.builtin.debug:
+    msg:
+      - "Preflight passed. All checks completed successfully."
+      - ""
+      - "Verified via API:"
+      - "  - SUPABASE_ACCESS_TOKEN: present and accepted by api.supabase.com"
+      - "  - RENDER_API_KEY:        present and accepted by api.render.com"
+      - "  - VERCEL_API_TOKEN:      present and accepted by api.vercel.com"
+      - "  - GitHub CLI:            authenticated (gh auth status OK)"
+      - ""
+      - "Operator-confirmed (or skipped via confirm=true):"
+      - "  - Render and Vercel GitHub Apps installed on {{ repo }}"
+      - "  - Google OAuth client configured (Manual prereq section 3)"

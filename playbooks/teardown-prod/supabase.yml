@@ -1,0 +1,176 @@
+---
+# playbooks/teardown-prod/supabase.yml
+#
+# Phase 4 (last to delete): tear down the Supabase project.
+# DELETE https://api.supabase.com/v1/projects/{supabase_project_ref}
+#
+# Supabase is blocked while either Vercel or Render is still alive (two
+# upstream dependencies). check_dep.yml enforces this before any API call.
+#
+# Token variable: supabase_token (set by preflight from SUPABASE_PERSONAL_ACCESS_TOKEN).
+#
+# FIELD GAP — owner email:
+#   GET /v1/projects/{ref} does NOT return an owner email field. The Supabase
+#   Management API has no per-org-owner endpoint that maps organization_id to an
+#   email address using a PAT. identity_owner_email is set to "" and the verify_identity
+#   preview will display it as blank. This is a known API limitation.
+#
+# PROPAGATION NOTE:
+#   The DELETE endpoint typically returns 200 immediately, but the project may
+#   remain visible in the Supabase dashboard for a brief period (usually < 60s)
+#   while the deletion propagates. The phase is idempotent: a 404 on the pre-GET
+#   writes an already_gone archive entry and exits without calling verify_identity.
+
+# ── Step 1: reverse-dependency check (Vercel + Render must both be gone) ────
+- name: "supabase teardown | check upstream dependencies"
+  ansible.builtin.include_tasks: _lib/check_dep.yml
+  vars:
+    phase: supabase
+
+# ── Step 2: pre-GET to detect 404 and extract identity values ───────────────
+- name: "supabase teardown | GET project (preflight to detect 404 and extract identity)"
+  ansible.builtin.uri:
+    url: "https://api.supabase.com/v1/projects/{{ supabase_project_ref }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ supabase_token }}"
+    status_code: [200, 404]
+  register: _supabase_pre_get
+  no_log: true
+
+# ── Step 3: 404 short-circuit — write already_gone archive and stop ──────────
+- name: "supabase teardown | resource already gone — set fact and archive"
+  when: _supabase_pre_get.status == 404
+  block:
+    - name: "supabase teardown | 404: set verified_identity (already_gone)"
+      ansible.builtin.set_fact:
+        verified_identity:
+          name: ""
+          team: ""
+          owner_email: ""
+          created_at: ""
+          already_gone: true
+
+    - name: "supabase teardown | 404: note already gone"
+      ansible.builtin.debug:
+        msg: >-
+          Supabase project {{ supabase_project_ref }} returned 404 — already gone.
+          Writing already_gone archive entry and skipping verify_identity.
+
+    - name: "supabase teardown | 404: write archive (already_gone)"
+      ansible.builtin.include_tasks: _lib/write_archive.yml
+      vars:
+        phase: supabase
+        delete_response: {}
+        identity: "{{ verified_identity }}"
+
+# ── Steps 4-8: 200 path — resource exists, verify identity and delete ────────
+- name: "supabase teardown | resource exists (200 path)"
+  when: _supabase_pre_get.status != 404
+  block:
+
+    # ── Step 4: resolve identity values from the pre-GET response ────────────
+    # Supabase GET /v1/projects/{ref} does not include an owner email field;
+    # identity_owner_email is intentionally left empty (known API gap).
+
+    - name: "supabase teardown | extract identity fields from pre-GET"
+      ansible.builtin.set_fact:
+        identity_name: "{{ _supabase_pre_get.json.name | default('') }}"
+        identity_team: "{{ _supabase_pre_get.json.organization_id | default('') }}"
+        identity_owner_email: ""
+        identity_created_at: "{{ _supabase_pre_get.json.created_at | default('') }}"
+
+    # ── Step 5: GET /v1/organizations to verify token team scope ─────────────
+    - name: "supabase teardown | GET /v1/organizations (token scope check)"
+      ansible.builtin.uri:
+        url: "https://api.supabase.com/v1/organizations"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ supabase_token }}"
+        status_code: [200, 403, 404]
+      register: _supabase_orgs
+      no_log: true
+      failed_when: false
+
+    # Non-200 or org not found produces UNAUTHORIZED sentinel so verify_identity aborts.
+    - name: "supabase teardown | resolve token_team_id (UNAUTHORIZED sentinel on failure)"
+      ansible.builtin.set_fact:
+        token_team_id: >-
+          {{
+            identity_team
+            if (
+              _supabase_orgs.status == 200
+              and _supabase_orgs.json is sequence
+              and (_supabase_orgs.json | selectattr('id', 'eq', identity_team) | list | length) > 0
+            )
+            else ('UNAUTHORIZED:' + identity_team)
+          }}
+
+    - name: "supabase teardown | verify identity before deletion"
+      ansible.builtin.include_tasks: _lib/verify_identity.yml
+      vars:
+        provider: supabase
+        resource_id: "{{ supabase_project_ref }}"
+        api_url: "https://api.supabase.com/v1/projects/{{ supabase_project_ref }}"
+        token: "{{ supabase_token }}"
+        identity_name: "{{ identity_name }}"
+        identity_team: "{{ identity_team }}"
+        identity_owner_email: "{{ identity_owner_email }}"
+        identity_created_at: "{{ identity_created_at }}"
+        token_team_id: "{{ token_team_id }}"
+
+    - name: "supabase teardown | delete and archive (with rescue for failure)"
+      block:
+        # Retried up to 3 times; 5xx triggers retry, terminal 4xx fails fast.
+        # The API returns 200 immediately; project removal may take up to ~60s to propagate.
+        - name: "supabase teardown | DELETE /v1/projects/{{ supabase_project_ref }}"
+          ansible.builtin.uri:
+            url: "https://api.supabase.com/v1/projects/{{ supabase_project_ref }}"
+            method: DELETE
+            headers:
+              Authorization: "Bearer {{ supabase_token }}"
+            status_code: [200, 204, 404]
+          register: _supabase_delete_resp
+          no_log: true
+          retries: 3
+          delay: 5
+          until: >-
+            (_supabase_delete_resp.status in [200, 204, 404])
+            or (_supabase_delete_resp.status >= 400 and _supabase_delete_resp.status < 500)
+
+        - name: "supabase teardown | assert DELETE returned a terminal status"
+          ansible.builtin.assert:
+            that:
+              - _supabase_delete_resp.status in [200, 204, 404]
+            fail_msg: >-
+              Supabase DELETE for project {{ supabase_project_ref }} returned unexpected
+              status {{ _supabase_delete_resp.status }}. The project may not have been
+              deleted. Check https://supabase.com/dashboard and rerun:
+                ansible-playbook playbooks/teardown-prod.yml --tags supabase
+
+        - name: "supabase teardown | write archive (success)"
+          ansible.builtin.include_tasks: _lib/write_archive.yml
+          vars:
+            phase: supabase
+            delete_response: "{{ _supabase_delete_resp }}"
+            identity: "{{ verified_identity }}"
+
+      rescue:
+        - name: "supabase teardown | DELETE failed - emit visible diagnostic"
+          ansible.builtin.debug:
+            msg:
+              - "Supabase DELETE FAILED for project {{ supabase_project_ref }}."
+              - "Last status: {{ _supabase_delete_resp.status | default('(no response)') }}"
+              - "Recording delete_status=failed in archive; later phases will be skipped."
+              - "Check https://supabase.com/dashboard and rerun --tags supabase."
+              - "Inspect the failed archive entry: ls -lt {{ archive_dir }} | head -3"
+
+        - name: "supabase teardown | write archive (failed)"
+          ansible.builtin.include_tasks: _lib/write_archive.yml
+          vars:
+            phase: supabase
+            delete_response: "{{ _supabase_delete_resp | default({}) }}"
+            identity: "{{ verified_identity }}"
+
+        - name: "supabase teardown | abort play after failed delete (skip later phases)"
+          ansible.builtin.meta: end_play

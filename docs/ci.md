@@ -13,6 +13,7 @@ Two independent workflows: `.github/workflows/backend.yml` and `.github/workflow
 
 - The `deploy` job is `needs: test` and `if: github.event_name == 'push' && github.ref == 'refs/heads/main'` — doubly restricted.
 - If `RENDER_DEPLOY_HOOK_URL` is missing, the step **explicitly exits 1** rather than silently skipping. Missing secrets are misconfiguration and should fail loudly. **Do not replace this with a silent skip.**
+- `RENDER_DEPLOY_HOOK_URL` is registered automatically by `make setup-prod` (Phase 3) via `gh secret set` — see `docs/deployment.md` § "Guided bring-up via `make setup-prod`" for the bring-up flow that wires this secret.
 - The Render service settings are configured manually in the Render dashboard: `root_directory = "backend"`, build `./cmd/server` to `main`, `auto_deploy = false` (deploys are push-triggered via the hook, not Render's auto-deploy), `health_check_path = "/health"`.
 
 ## Coverage requires `-covermode=atomic`
