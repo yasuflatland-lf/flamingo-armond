@@ -87,6 +87,61 @@
   when: (vercel_token | length) == 0
 
 # ---------------------------------------------------------------------------
+# Precheck: Blueprint Manual Sync has been run for the current render.yaml.
+#
+# render.yaml is the source of truth for static env-var values (APP_ENV,
+# GRAPHQL_INTROSPECTION, OTEL_TRACES_SAMPLER_ARG, SUPABASE_JWT_AUDIENCE);
+# their values flow onto the service via Blueprint Sync, not via this
+# playbook. On a service where Blueprint has never been synced (typical
+# first-time `make setup-prod`), all keys declared in render.yaml are
+# absent -- the dynamic per-key PUT below would then 404 with a cryptic
+# error, and even if the per-key PUT happened to succeed the server would
+# fail-fast at boot on `auth.Config.Validate()` because static keys are
+# still missing. Detect both conditions upfront with a single GET so the
+# operator sees the actionable "run Manual Sync" message before any side
+# effects (Vercel deploy below, Render env writes, deploy trigger) fire.
+# ---------------------------------------------------------------------------
+- name: Precheck - list current Render env vars
+  ansible.builtin.uri:
+    url: "https://api.render.com/v1/services/{{ render_service_id }}/env-vars?limit=50"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ render_api_key }}"
+      Accept: "application/json"
+    status_code: [200]
+  register: render_env_list
+  no_log: true
+
+- name: Compute missing render.yaml static env-vars
+  ansible.builtin.set_fact:
+    _present_render_keys: "{{ render_env_list.json | map(attribute='envVar') | map(attribute='key') | list }}"
+    _required_static_keys:
+      - APP_ENV
+      - GRAPHQL_INTROSPECTION
+      - OTEL_TRACES_SAMPLER_ARG
+      - SUPABASE_JWT_AUDIENCE
+
+- name: Assert render.yaml static env-vars are present on the service
+  ansible.builtin.assert:
+    that:
+      - (_required_static_keys | difference(_present_render_keys) | length) == 0
+    fail_msg: |
+      Static env vars declared in render.yaml are missing from Render
+      service {{ render_service_id }}:
+
+        missing : {{ _required_static_keys | difference(_present_render_keys) | join(', ') }}
+        present : {{ _required_static_keys | intersect(_present_render_keys) | join(', ') }}
+
+      This means the Blueprint has not been synced since render.yaml was
+      last changed. The Render Blueprint owns static env-var values; this
+      playbook only reconciles dynamic ones (sync: false placeholders).
+
+      Fix:
+        1. Render dashboard -> Blueprints -> flamingo-armond -> Manual Sync.
+        2. Re-run: make setup-prod-postapply
+    success_msg: "render.yaml static env-vars are present on the service."
+
+# ---------------------------------------------------------------------------
 # Trigger a Vercel production deploy so it rebuilds with the env vars Phase 4
 # registered. We POST and move on -- the Render poll loop below absorbs the
 # Vercel build wall-clock time, and the final HEAD probe verifies readiness.
