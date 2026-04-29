@@ -138,7 +138,7 @@ describe("<EditCardgroupClient>", () => {
     expect(deleteCalled).not.toHaveBeenCalled();
   });
 
-  it("confirm fires DeleteCardgroupMutation and navigates to /cardgroups", async () => {
+  it("confirm fires DeleteCardgroupMutation, closes dialog, and navigates to /cardgroups", async () => {
     const user = userEvent.setup();
     const deleteCalled = vi.fn();
     const mocks: MockedResponse[] = [
@@ -169,11 +169,15 @@ describe("<EditCardgroupClient>", () => {
     });
 
     await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+
+    await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith("/cardgroups");
     });
   });
 
-  it("delete UNAUTHENTICATED shows banner error", async () => {
+  it("delete UNAUTHENTICATED shows banner error and dialog stays open", async () => {
     const user = userEvent.setup();
     const mocks = [
       makeDeleteMock(
@@ -204,6 +208,7 @@ describe("<EditCardgroupClient>", () => {
     await waitFor(() => {
       expect(screen.getByText("Your session expired. Please sign in again.")).toBeInTheDocument();
     });
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     expect(mockPush).not.toHaveBeenCalled();
   });
 
@@ -228,7 +233,7 @@ describe("<EditCardgroupClient>", () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
-  it("delete network rejection shows error banner and does not navigate", async () => {
+  it("delete network rejection shows error banner, dialog stays open, and does not navigate", async () => {
     const user = userEvent.setup();
     const mocks: MockedResponse[] = [
       {
@@ -253,6 +258,7 @@ describe("<EditCardgroupClient>", () => {
     await waitFor(() => {
       expect(screen.getByText("Could not reach the server. Please try again.")).toBeInTheDocument();
     });
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     expect(mockPush).not.toHaveBeenCalled();
   });
 });

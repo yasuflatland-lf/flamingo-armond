@@ -64,6 +64,7 @@ export function EditCardgroupClient({ cardgroup }: Props) {
     });
 
     if (result?.data?.deleteCardgroup === true) {
+      setDialogOpen(false);
       router.push("/cardgroups");
       router.refresh();
     }
@@ -91,7 +92,6 @@ export function EditCardgroupClient({ cardgroup }: Props) {
             onClick={(e) => {
               e.preventDefault();
               void handleDelete();
-              setDialogOpen(false);
             }}
           >
             Delete
