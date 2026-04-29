@@ -79,4 +79,22 @@ describe("CardgroupsPage", () => {
     const mathLink = screen.getByRole("link", { name: /math formulas/i });
     expect(mathLink).toHaveAttribute("href", "/cardgroups/cg-2");
   });
+
+  it("redirects to /login when MyCardgroupsQuery returns UNAUTHENTICATED", async () => {
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(
+      makeSupabaseMock({ id: "user-1" }) as never,
+    );
+    vi.mocked(gqlFetch).mockRejectedValue(new Error("GraphQL errors: UNAUTHENTICATED"));
+
+    await expect(CardgroupsPage()).rejects.toThrow("REDIRECT:/login");
+  });
+
+  it("rethrows non-auth errors so the error boundary handles them", async () => {
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(
+      makeSupabaseMock({ id: "user-1" }) as never,
+    );
+    vi.mocked(gqlFetch).mockRejectedValue(new Error("Network unreachable"));
+
+    await expect(CardgroupsPage()).rejects.toThrow("Network unreachable");
+  });
 });
