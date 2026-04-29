@@ -37,7 +37,12 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: go mod download && go build -o main ./cmd/server
+    # `go tool gqlgen generate` runs because backend/graph/generated/ and
+    # graph/model/models_gen.go are gitignored (see root .gitignore §"Generated
+    # code"). CI regenerates them via the same command in
+    # .github/workflows/backend.yml; Render must mirror that step or the build
+    # fails with "package backend/graph/generated is not in std".
+    buildCommand: go mod download && go tool gqlgen generate && go build -o main ./cmd/server
     startCommand: ./main
     healthCheckPath: /health
     autoDeployTrigger: "off"

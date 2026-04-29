@@ -172,7 +172,7 @@ The structural config of the backend service lives in `render.yaml` at the repo 
 | Setting | Source |
 |---|---|
 | Root directory | `render.yaml` → `services[0].rootDir` (`backend`) |
-| Build command | `render.yaml` → `services[0].buildCommand` (`go mod download && go build -o main ./cmd/server`) |
+| Build command | `render.yaml` → `services[0].buildCommand` (`go mod download && go tool gqlgen generate && go build -o main ./cmd/server`). The codegen step is required because `backend/graph/generated/` and `graph/model/models_gen.go` are gitignored; CI regenerates them the same way (see `.github/workflows/backend.yml`). |
 | Start command | `render.yaml` → `services[0].startCommand` (`./main`) |
 | Health check path | `render.yaml` → `services[0].healthCheckPath` (`/health`) |
 | Auto deploy | `render.yaml` → `services[0].autoDeployTrigger: "off"` — deploys are push-triggered via the deploy hook (see `.github/workflows/backend.yml`). Schema migrations run on boot, so we tie deploys to explicit pushes. |
