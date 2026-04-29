@@ -84,6 +84,34 @@ Files:
 
 Browser code calls `/api/graphql` (same-origin via the Next rewrite — avoids CORS/cookie issues). `ApolloClient` and `InMemoryCache` come from `@apollo/client-integration-nextjs` (SSR-streaming-safe variants) — see Gotcha below.
 
+### Apollo cache mutation patterns
+
+**`update` callback fires on success only** (default `errorPolicy: "none"`). Guard the body with a presence check for forward-compatibility with `errorPolicy: "all"`:
+
+```ts
+update(cache, { data }) {
+  if (!data?.createCardgroup?.cardgroup) return;
+  // safe to write
+}
+```
+
+**Create — prepend into a list query** via `readQuery → writeQuery`:
+
+```ts
+const existing = cache.readQuery({ query: MyCardgroupsDocument });
+cache.writeQuery({
+  query: MyCardgroupsDocument,
+  data: { myCardgroups: [data.createCardgroup.cardgroup, ...(existing?.myCardgroups ?? [])] },
+});
+```
+
+**Delete — evict the entity then collect garbage**:
+
+```ts
+cache.evict({ id: cache.identify({ __typename: "Cardgroup", id: cardgroupId }) });
+cache.gc();
+```
+
 ## Auth (Supabase)
 
 The Supabase SSR client uses a 3-layer setup mirroring the official `@supabase/ssr` template. Each layer exists because cookie reading/writing differs between contexts:
@@ -134,6 +162,20 @@ The `matcher` must also explicitly exclude `/api/:path*` and `/auth/callback`. W
 `frontend/src/lib/apollo/server.ts` reads the Supabase session via `createSupabaseServerClient().auth.getSession()` and forwards `Authorization: Bearer <access_token>` when present. Unauthenticated RSC calls omit the header and receive an `UNAUTHENTICATED` GraphQL error.
 
 `getSession()` reads from the cookie store and does **not** contact the Supabase auth server — it is safe to call per-request. The auth server is only consulted by `getUser()`. Both must destructure and propagate `error`. In `gqlFetch`, an auth-fetch error must **throw** (fail-closed) rather than silently skipping the `Authorization` header — a missing header would produce a silent `UNAUTHENTICATED` response that is indistinguishable from a legitimate anonymous call. The browser-side `authLink` is the only place where a missing session is intentionally fails-open (omits the header without throwing).
+
+### RSC UNAUTHENTICATED redirect pattern
+
+`gqlFetch` throws when the backend returns GraphQL errors. RSC pages wrap the call in `try/catch` and use `redirectIfUnauthenticated(err, target)` from `@/lib/apollo/server-redirect`:
+
+```ts
+try {
+  data = await gqlFetch(MyQuery, { variables, revalidate: 0 });
+} catch (err) {
+  redirectIfUnauthenticated(err, "/login"); // never returns
+}
+```
+
+The helper string-matches `UNAUTHENTICATED` in the error message and calls `redirect(target)`; all other errors are rethrown to the nearest error boundary. Two redirect targets are in use: `/login` for session-expired or no-session cases (checked before `gqlFetch` via `supabase.auth.getUser()`), and `/cardgroups` for cross-user-access on inner pages. See [Backend error-code contract](#backend-error-code-contract) for why these two cases both surface as `UNAUTHENTICATED`.
 
 ### Zod schema convention
 
@@ -218,6 +260,19 @@ await mutate({ variables }).catch(console.error);
 
 Do not swallow the rejection silently with an empty `.catch(() => {})` — that hides unexpected errors (network failures, etc.).
 
+**Stale-closure trap with `useMutation` `error` state:** The `error` state from `useMutation` is updated on the next render. Reading it inside the same async handler right after `await mutate(...)` reads the previous closure's stale value. Gate navigation and dialog-close on the `FetchResult` returned by the `await` instead:
+
+```ts
+const result = await mutate({ variables }).catch(() => null);
+if (result?.data?.updateCardgroup?.cardgroup) {
+  router.push(`/cardgroups/${id}`);  // only on confirmed success
+}
+```
+
+**Dialog open-state tied to mutation result:** Close a destructive-confirm dialog only after verifying `result?.data?.deleteX === true`. Calling `setDialogOpen(false)` synchronously in the confirm `onClick` closes the dialog before the mutation completes, making it impossible to show in-dialog errors.
+
+**Form remount via React `key` to reset fields:** After a successful create-mutation, bump a numeric `key` state variable passed to the form component (`<CardForm key={createFormKey} ...>`). React unmounts and remounts the component, resetting all TanStack Form field state without manual `form.reset()` calls.
+
 #### Bio explicit clear UX
 
 `bio` follows tri-state semantics:
@@ -238,11 +293,40 @@ field to `""` so the next submit clears the column.
 - `@testing-library/react` + `userEvent` drive interaction.
 - `expect(element).toBeInTheDocument()` matchers come from `vitest.config.ts` loading `frontend/src/__test-setup__/jest-dom.ts`.
 
+**Real `InMemoryCache` for cache-write/evict tests:** Passing a real `InMemoryCache` to `<MockedProvider cache={cache}>` and pre-seeding it via `cache.writeQuery(...)` lets tests assert the actual cache state after a mutation (`cache.readQuery(...)`) rather than only observable side-effects. Use this to prove that `update` callbacks correctly prepend or evict entries.
+
+**Inverse navigation assertion in failure-path tests:** Use `expect(mockPush).not.toHaveBeenCalled()` in error-path tests to pin down "navigate-on-failure" regressions. Without this assertion, a handler that navigates unconditionally passes happy-path tests but silently breaks on errors.
+
 ## shadcn/ui
 
-`frontend/components.json` and `frontend/src/lib/utils.ts` (the `cn()` helper) are committed. The initial component set (`button`, `input`, `label`) was added with `pnpm dlx shadcn add` and extends `globals.css` with the required theme tokens. `form.tsx` was removed (TanStack Form's render-prop API does not need the shadcn wrapper); `textarea.tsx` was added for the `bio` field.
+`frontend/components.json` and `frontend/src/lib/utils.ts` (the `cn()` helper) are committed. The initial component set (`button`, `input`, `label`) was added with `pnpm dlx shadcn add` and extends `globals.css` with the required theme tokens. `form.tsx` was removed (TanStack Form's render-prop API does not need the shadcn wrapper); `textarea.tsx` was added for the `bio` field. `alert-dialog` and `dialog` primitives are now installed — use `AlertDialog` for destructive confirms (delete), `Dialog` for non-destructive overlays.
 
 `shadcn init` is interactive and not suitable for CI or non-interactive environments. The fallback is to hand-write `components.json`, `lib/utils.ts`, and the `globals.css` base tokens following the shadcn JSON schema — that is how this repo's shadcn baseline was bootstrapped.
+
+## Backend error-code contract
+
+The backend (`backend/internal/gqlerr`) returns three `extensions.code` values. The frontend handles them at two layers:
+
+| Code | Backend meaning | Frontend action |
+|---|---|---|
+| `BAD_USER_INPUT` | Validation failure; `extensions.field` names the form field | Show inline field error via `getBackendFieldErrors` |
+| `UNAUTHENTICATED` | No valid session, or cross-user-access on an ownership-protected resource | RSC: `redirectIfUnauthenticated`; client: banner via `getBackendErrorBanner` |
+| `INTERNAL` | Server-side error; original message is hidden | Banner via `getBackendErrorBanner` |
+
+`getBackendErrorBanner` scans all errors in priority order (INTERNAL > UNAUTHENTICATED > first non-field error) rather than relying on array position. The backend collapses `NOT_FOUND` into `UNAUTHENTICATED` for ownership-protected resources — the frontend does not need a separate "not found" UI branch on those routes.
+
+## Shared helper modules
+
+Import these instead of re-inlining the logic:
+
+| Import | Contract |
+|---|---|
+| `getBackendFieldErrors(err)` from `@/lib/apollo/errors` | Returns `{ fieldName: message }` for `BAD_USER_INPUT` errors with a `field` extension |
+| `getBackendErrorBanner(err)` from `@/lib/apollo/errors` | Returns a user-facing banner string for non-field errors; priority INTERNAL > UNAUTHENTICATED > first non-field |
+| `redirectIfUnauthenticated(err, target)` from `@/lib/apollo/server-redirect` | RSC only (`server-only`). Redirects to `target` on `UNAUTHENTICATED`; rethrows all other errors. Returns `never` |
+| `formatMediumDate(iso)` from `@/lib/format` | Formats an ISO date string as a locale-aware medium-length date (e.g. "Jun 15, 2024") |
+| `<FieldError zodErrors backendError />` from `@/lib/forms/field-error` | Renders the first Zod issue message or the fallback `backendError` string as a destructive `<p>` |
+| `graphemeCount(s)` from `@/schemas/grapheme` | Counts UAX #29 grapheme clusters via `Intl.Segmenter`; shared by all schema length validators |
 
 ## Observability
 
