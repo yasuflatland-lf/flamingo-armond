@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
+import { InMemoryCache } from "@apollo/client";
 import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { describe, expect, it, vi } from "vitest";
-import { CreateCardgroupDocument } from "@/generated/graphql";
+import { CreateCardgroupDocument, MyCardgroupsDocument } from "@/generated/graphql";
 import { NewCardgroupClient } from "./new-cardgroup-client";
 
 // Stub next/navigation so the client component can render outside Next.js.
@@ -52,10 +53,14 @@ function makeCreateMock(name: string, onCalled?: () => void) {
   };
 }
 
-function renderPage(mocks: MockedResponse[] = [], errorPolicy?: "all" | "none" | "ignore") {
+function renderPage(
+  mocks: MockedResponse[] = [],
+  errorPolicy?: "all" | "none" | "ignore",
+  cache?: InMemoryCache,
+) {
   const defaultOptions = errorPolicy ? { mutate: { errorPolicy } } : undefined;
   render(
-    <MockedProvider mocks={mocks} defaultOptions={defaultOptions}>
+    <MockedProvider mocks={mocks} defaultOptions={defaultOptions} cache={cache}>
       <NewCardgroupClient />
     </MockedProvider>,
   );
@@ -107,15 +112,33 @@ describe("<NewCardgroupPage> (client)", () => {
 
   it("on success writes the new cardgroup into the MyCardgroups cache", async () => {
     const user = userEvent.setup();
+    mockPush.mockClear();
 
-    renderPage([makeCreateMock("My New Group")]);
+    // Use a real InMemoryCache so the update(cache, { data }) block in
+    // new-cardgroup-client.tsx can perform a readQuery/writeQuery round-trip.
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: MyCardgroupsDocument,
+      data: { myCardgroups: [] },
+    });
+
+    renderPage([makeCreateMock("My New Group")], undefined, cache);
 
     await user.type(screen.getByRole("textbox"), "My New Group");
     await user.click(screen.getByRole("button", { name: /create/i }));
 
-    // Success navigation is the observable side-effect — cache write happens first.
+    // Wait for the mutation to complete (navigation is the observable signal).
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalled();
+      expect(mockPush).toHaveBeenCalledWith(`/cardgroups/${CREATED_CARDGROUP.id}`);
+    });
+
+    // The cache update callback must have prepended the new cardgroup.
+    const result = cache.readQuery({ query: MyCardgroupsDocument });
+    expect(result?.myCardgroups).toHaveLength(1);
+    expect(result?.myCardgroups[0]).toMatchObject({
+      id: CREATED_CARDGROUP.id,
+      name: CREATED_CARDGROUP.name,
+      updatedAt: CREATED_CARDGROUP.updatedAt,
     });
   });
 
