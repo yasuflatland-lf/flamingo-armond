@@ -1,3 +1,5 @@
+-- Reverse rename: public.users → public.profiles and restore profiles trigger.
+
 DROP TRIGGER IF EXISTS trg_handle_new_user ON auth.users;
 DROP FUNCTION IF EXISTS public.handle_new_user();
 DROP TRIGGER IF EXISTS trg_users_set_updated_at ON public.users;
