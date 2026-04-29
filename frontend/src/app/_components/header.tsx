@@ -32,6 +32,12 @@ export async function Header() {
         {user ? (
           <div className="flex items-center gap-3 text-sm">
             <Link
+              href="/cardgroups"
+              className="text-muted-foreground underline-offset-4 hover:underline"
+            >
+              Cardgroups
+            </Link>
+            <Link
               href="/profile"
               className="text-muted-foreground underline-offset-4 hover:underline"
             >
