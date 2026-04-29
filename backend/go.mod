@@ -12,6 +12,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v5 v5.1.0
+	github.com/open-spaced-repetition/go-fsrs/v3 v3.3.1
 	github.com/ravilushqa/otelgqlgen v0.17.0
 	github.com/rivo/uniseg v0.4.7
 	github.com/rotisserie/eris v0.5.4
