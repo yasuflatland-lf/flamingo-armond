@@ -33,7 +33,6 @@ func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 		OwnerID:   cg.OwnerID,
 		CreatedAt: cg.CreatedAt,
 		UpdatedAt: cg.UpdatedAt,
-		// Owner is populated by cardgroupResolver.Owner via the per-request DataLoader.
 	}
 }
 

@@ -163,7 +163,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	userRepo := repository.NewUserRepository(db.GORM)
 	roleRepo := repository.NewRoleRepository(db.GORM)
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
-	// Construct now to surface compile-time wiring; first consumer lands in a follow-up admin-gated resolver.
+	// Constructed to surface compile-time wiring even though no resolver references it yet.
 	_ = repository.NewUserRoleRepository(db.GORM)
 
 	userUC := usecase.NewUserUsecase(userRepo)

@@ -23,7 +23,7 @@ func (r *cardgroupResolver) Owner(ctx context.Context, obj *model.Cardgroup) (*m
 	}
 	user, err := loaders.User.Load(ctx, obj.OwnerID)()
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.Internal(ctx, err)
 	}
 	return toUserModel(user), nil
 }
