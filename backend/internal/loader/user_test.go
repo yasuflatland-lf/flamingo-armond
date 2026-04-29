@@ -51,6 +51,41 @@ func emptyRoleRepo() *countingRoleRepo {
 	}
 }
 
+// countingCardgroupRepo is a minimal test double for repository.CardgroupRepository.
+type countingCardgroupRepo struct {
+	findByIDs func(ctx context.Context, ids []string) (map[string]*domain.Cardgroup, error)
+}
+
+func (r *countingCardgroupRepo) FindByID(_ context.Context, _ string) (*domain.Cardgroup, error) {
+	panic("countingCardgroupRepo.FindByID not configured")
+}
+func (r *countingCardgroupRepo) FindByOwner(_ context.Context, _ string) ([]*domain.Cardgroup, error) {
+	panic("countingCardgroupRepo.FindByOwner not configured")
+}
+func (r *countingCardgroupRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Cardgroup, error) {
+	if r.findByIDs == nil {
+		panic("countingCardgroupRepo.FindByIDs not configured")
+	}
+	return r.findByIDs(ctx, ids)
+}
+func (r *countingCardgroupRepo) Create(_ context.Context, _ *domain.Cardgroup) error {
+	panic("countingCardgroupRepo.Create not configured")
+}
+func (r *countingCardgroupRepo) Update(_ context.Context, _ string, _ repository.CardgroupUpdate) (*domain.Cardgroup, error) {
+	panic("countingCardgroupRepo.Update not configured")
+}
+func (r *countingCardgroupRepo) Delete(_ context.Context, _ string) error {
+	panic("countingCardgroupRepo.Delete not configured")
+}
+
+func emptyCardgroupRepo() *countingCardgroupRepo {
+	return &countingCardgroupRepo{
+		findByIDs: func(_ context.Context, _ []string) (map[string]*domain.Cardgroup, error) {
+			return map[string]*domain.Cardgroup{}, nil
+		},
+	}
+}
+
 func (r *countingRepo) FindByID(ctx context.Context, id string) (*domain.User, error) {
 	if r.findByID == nil {
 		panic("countingRepo.FindByID not configured")
@@ -105,7 +140,7 @@ func TestUserLoader_BatchesNCallsIntoOne(t *testing.T) {
 	}
 
 	ids := []string{"a", "b", "c", "d", "e"}
-	results, errs := loadAll(context.Background(), loader.New(repo, emptyRoleRepo()), ids)
+	results, errs := loadAll(context.Background(), loader.New(repo, emptyRoleRepo(), emptyCardgroupRepo()), ids)
 
 	for i, err := range errs {
 		if err != nil {
@@ -140,7 +175,7 @@ func TestUserLoader_PartialNotFound(t *testing.T) {
 	}
 
 	ids := []string{"present-1", "missing", "present-2"}
-	results, errs := loadAll(context.Background(), loader.New(repo, emptyRoleRepo()), ids)
+	results, errs := loadAll(context.Background(), loader.New(repo, emptyRoleRepo(), emptyCardgroupRepo()), ids)
 
 	if errs[0] != nil {
 		t.Fatalf("present-1: unexpected error: %v", errs[0])
@@ -173,7 +208,7 @@ func TestUserLoader_BatchFuncError(t *testing.T) {
 	}
 
 	ids := []string{"x", "y", "z"}
-	_, errs := loadAll(context.Background(), loader.New(repo, emptyRoleRepo()), ids)
+	_, errs := loadAll(context.Background(), loader.New(repo, emptyRoleRepo(), emptyCardgroupRepo()), ids)
 
 	for i, err := range errs {
 		if !errors.Is(err, wantErr) {
@@ -202,7 +237,7 @@ func TestRoleLoader_BatchesNCallsIntoOne(t *testing.T) {
 		},
 	}
 
-	l := loader.New(userRepo, roleRepo)
+	l := loader.New(userRepo, roleRepo, emptyCardgroupRepo())
 	ids := []string{"r1", "r2", "r3"}
 	var wg sync.WaitGroup
 	for _, id := range ids {
@@ -245,7 +280,7 @@ func TestMiddleware_For_Roundtrip(t *testing.T) {
 		got = loader.For(c.Request().Context())
 		return nil
 	}
-	if err := loader.Middleware(repo, emptyRoleRepo())(handler)(c); err != nil {
+	if err := loader.Middleware(repo, emptyRoleRepo(), emptyCardgroupRepo())(handler)(c); err != nil {
 		t.Fatalf("middleware: %v", err)
 	}
 	if got == nil {
@@ -256,6 +291,9 @@ func TestMiddleware_For_Roundtrip(t *testing.T) {
 	}
 	if got.Role == nil {
 		t.Fatalf("Loaders.Role is nil")
+	}
+	if got.Cardgroup == nil {
+		t.Fatalf("Loaders.Cardgroup is nil")
 	}
 }
 

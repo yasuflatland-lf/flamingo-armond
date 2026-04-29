@@ -13,23 +13,25 @@ import (
 type contextKey struct{}
 
 type Loaders struct {
-	User *dataloader.Loader[string, *domain.User]
-	Role *dataloader.Loader[string, *domain.Role]
+	User      *dataloader.Loader[string, *domain.User]
+	Role      *dataloader.Loader[string, *domain.Role]
+	Cardgroup *dataloader.Loader[string, *domain.Cardgroup]
 }
 
-func New(userRepo repository.UserRepository, roleRepo repository.RoleRepository) *Loaders {
+func New(userRepo repository.UserRepository, roleRepo repository.RoleRepository, cardgroupRepo repository.CardgroupRepository) *Loaders {
 	return &Loaders{
-		User: dataloader.NewBatchedLoader(userBatchFunc(userRepo)),
-		Role: dataloader.NewBatchedLoader(roleBatchFunc(roleRepo)),
+		User:      dataloader.NewBatchedLoader(userBatchFunc(userRepo)),
+		Role:      dataloader.NewBatchedLoader(roleBatchFunc(roleRepo)),
+		Cardgroup: dataloader.NewBatchedLoader(cardgroupBatchFunc(cardgroupRepo)),
 	}
 }
 
 // Middleware installs a fresh Loaders per request so batching and caching do
 // not bleed across requests.
-func Middleware(userRepo repository.UserRepository, roleRepo repository.RoleRepository) echo.MiddlewareFunc {
+func Middleware(userRepo repository.UserRepository, roleRepo repository.RoleRepository, cardgroupRepo repository.CardgroupRepository) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
-			ctx := context.WithValue(c.Request().Context(), contextKey{}, New(userRepo, roleRepo))
+			ctx := context.WithValue(c.Request().Context(), contextKey{}, New(userRepo, roleRepo, cardgroupRepo))
 			c.SetRequest(c.Request().WithContext(ctx))
 			return next(c)
 		}
