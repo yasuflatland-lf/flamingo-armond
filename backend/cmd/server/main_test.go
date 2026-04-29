@@ -110,7 +110,7 @@ func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newRouter(&resolver.Resolver{}, noopAuthMW, nil))
+	ts := httptest.NewServer(newRouter(&resolver.Resolver{}, noopAuthMW, nil, nil))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -375,9 +375,10 @@ func newGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Server, *datab
 	}
 	t.Cleanup(db.Close)
 
-	profileRepo := repository.NewProfileRepository(db.GORM)
-	profileUC := usecase.NewProfileUsecase(profileRepo)
-	e := newRouter(&resolver.Resolver{Profile: profileUC}, mw, profileRepo)
+	userRepo := repository.NewUserRepository(db.GORM)
+	roleRepo := repository.NewRoleRepository(db.GORM)
+	userUC := usecase.NewUserUsecase(userRepo)
+	e := newRouter(&resolver.Resolver{User: userUC}, mw, userRepo, roleRepo)
 
 	ts := httptest.NewServer(e)
 	t.Cleanup(ts.Close)
@@ -385,7 +386,7 @@ func newGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Server, *datab
 }
 
 // insertAuthUser inserts a row into auth.users so the handle_new_user trigger
-// creates the matching public.profiles row. Returns the generated user id.
+// creates the matching public.users row. Returns the generated user id.
 func insertAuthUser(t *testing.T, ctx context.Context) string {
 	t.Helper()
 	pool, err := pgxpool.New(ctx, testDBURL)
@@ -402,11 +403,11 @@ func insertAuthUser(t *testing.T, ctx context.Context) string {
 
 	var count int
 	if err := pool.QueryRow(ctx,
-		`SELECT count(*) FROM public.profiles WHERE id = $1`, id).Scan(&count); err != nil {
-		t.Fatalf("verify profile row: %v", err)
+		`SELECT count(*) FROM public.users WHERE id = $1`, id).Scan(&count); err != nil {
+		t.Fatalf("verify user row: %v", err)
 	}
 	if count == 0 {
-		t.Fatalf("handle_new_user trigger did not create profile for %s", id)
+		t.Fatalf("handle_new_user trigger did not create user for %s", id)
 	}
 	return id
 }

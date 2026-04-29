@@ -13,14 +13,14 @@ import (
 
 // UpdateProfile is the resolver for the updateProfile field.
 func (r *mutationResolver) UpdateProfile(ctx context.Context, input model.UpdateProfileInput) (*model.UpdateProfilePayload, error) {
-	p, err := r.Profile.UpdateProfile(ctx, usecase.UpdateProfileInput{
+	user, err := r.User.UpdateUser(ctx, usecase.UpdateUserInput{
 		DisplayName: input.DisplayName,
 		Bio:         input.Bio,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &model.UpdateProfilePayload{User: toUserModel(p)}, nil
+	return &model.UpdateProfilePayload{User: toUserModel(user)}, nil
 }
 
 // Health is the resolver for the health field.
@@ -30,11 +30,11 @@ func (r *queryResolver) Health(ctx context.Context) (string, error) {
 
 // Me is the resolver for the me field.
 func (r *queryResolver) Me(ctx context.Context) (*model.User, error) {
-	p, err := r.Profile.Me(ctx)
+	user, err := r.User.Me(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return toUserModel(p), nil
+	return toUserModel(user), nil
 }
 
 // Mutation returns generated.MutationResolver implementation.

@@ -97,7 +97,7 @@ func bootstrapAuthSchema(ctx context.Context, dsn string) error {
 }
 
 // insertAuthUser inserts a fresh row in auth.users so the trigger creates a
-// profile. Returns the new user id (string uuid).
+// user. Returns the new user id (string uuid).
 func insertAuthUser(t *testing.T, ctx context.Context) string {
 	t.Helper()
 	id := uuid.NewString()
@@ -125,7 +125,7 @@ func TestFindByID_Success(t *testing.T) {
 	ctx := context.Background()
 	id := insertAuthUser(t, ctx)
 
-	repo := repository.NewProfileRepository(testDB.GORM)
+	repo := repository.NewUserRepository(testDB.GORM)
 	got, err := repo.FindByID(ctx, id)
 	if err != nil {
 		t.Fatalf("FindByID: %v", err)
@@ -147,10 +147,63 @@ func TestFindByID_Success(t *testing.T) {
 	}
 }
 
+func TestAuthUserTriggerCreatesPublicUser(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	id := insertAuthUser(t, ctx)
+
+	sqlDB := sqlDBHandle(t)
+	var count int
+	if err := sqlDB.QueryRowContext(ctx,
+		`SELECT count(*) FROM public.users WHERE id = $1`, id).Scan(&count); err != nil {
+		t.Fatalf("count public.users: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("handle_new_user created %d public.users rows, want 1", count)
+	}
+}
+
+func TestMigrationsExposeUsersRolesAndNoProfilesTable(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	sqlDB := sqlDBHandle(t)
+	rows, err := sqlDB.QueryContext(ctx, `
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+    `)
+	if err != nil {
+		t.Fatalf("query public tables: %v", err)
+	}
+	defer rows.Close()
+
+	got := map[string]bool{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			t.Fatalf("scan table name: %v", err)
+		}
+		got[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate table names: %v", err)
+	}
+
+	for _, name := range []string{"users", "roles", "user_roles", "schema_migrations"} {
+		if !got[name] {
+			t.Fatalf("expected public.%s table after migrations; got %v", name, got)
+		}
+	}
+	if got["profiles"] {
+		t.Fatalf("public.profiles should not exist after migrations; got %v", got)
+	}
+}
+
 func TestFindByID_NotFound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	repo := repository.NewProfileRepository(testDB.GORM)
+	repo := repository.NewUserRepository(testDB.GORM)
 	_, err := repo.FindByID(ctx, uuid.NewString())
 	if !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
@@ -161,7 +214,7 @@ func TestUpdate_Success_DisplayNameOnly(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	id := insertAuthUser(t, ctx)
-	repo := repository.NewProfileRepository(testDB.GORM)
+	repo := repository.NewUserRepository(testDB.GORM)
 
 	before, err := repo.FindByID(ctx, id)
 	if err != nil {
@@ -171,7 +224,7 @@ func TestUpdate_Success_DisplayNameOnly(t *testing.T) {
 	time.Sleep(5 * time.Millisecond)
 
 	name := "Alice"
-	got, err := repo.Update(ctx, id, repository.ProfileUpdate{DisplayName: &name})
+	got, err := repo.Update(ctx, id, repository.UserUpdate{DisplayName: &name})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -196,15 +249,15 @@ func TestUpdate_PartialBioOnly(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	id := insertAuthUser(t, ctx)
-	repo := repository.NewProfileRepository(testDB.GORM)
+	repo := repository.NewUserRepository(testDB.GORM)
 
 	name := "Bob"
-	if _, err := repo.Update(ctx, id, repository.ProfileUpdate{DisplayName: &name}); err != nil {
+	if _, err := repo.Update(ctx, id, repository.UserUpdate{DisplayName: &name}); err != nil {
 		t.Fatalf("seed Update: %v", err)
 	}
 
 	bio := "hello world"
-	got, err := repo.Update(ctx, id, repository.ProfileUpdate{Bio: &bio})
+	got, err := repo.Update(ctx, id, repository.UserUpdate{Bio: &bio})
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -219,9 +272,9 @@ func TestUpdate_PartialBioOnly(t *testing.T) {
 func TestUpdate_NotFound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	repo := repository.NewProfileRepository(testDB.GORM)
+	repo := repository.NewUserRepository(testDB.GORM)
 	name := "nobody"
-	_, err := repo.Update(ctx, uuid.NewString(), repository.ProfileUpdate{DisplayName: &name})
+	_, err := repo.Update(ctx, uuid.NewString(), repository.UserUpdate{DisplayName: &name})
 	if !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
@@ -231,15 +284,15 @@ func TestUpdate_EmptyStringClearsField(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	id := insertAuthUser(t, ctx)
-	repo := repository.NewProfileRepository(testDB.GORM)
+	repo := repository.NewUserRepository(testDB.GORM)
 
 	name := "x"
-	if _, err := repo.Update(ctx, id, repository.ProfileUpdate{DisplayName: &name}); err != nil {
+	if _, err := repo.Update(ctx, id, repository.UserUpdate{DisplayName: &name}); err != nil {
 		t.Fatalf("seed Update: %v", err)
 	}
 
 	empty := ""
-	got, err := repo.Update(ctx, id, repository.ProfileUpdate{DisplayName: &empty})
+	got, err := repo.Update(ctx, id, repository.UserUpdate{DisplayName: &empty})
 	if err != nil {
 		t.Fatalf("Update (clear): %v", err)
 	}
@@ -253,11 +306,11 @@ func TestUpdate_EmptyStringClearsField(t *testing.T) {
 	}
 }
 
-func TestProfile_OnDeleteCascade(t *testing.T) {
+func TestUser_OnDeleteCascade(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	id := insertAuthUser(t, ctx)
-	repo := repository.NewProfileRepository(testDB.GORM)
+	repo := repository.NewUserRepository(testDB.GORM)
 
 	if _, err := repo.FindByID(ctx, id); err != nil {
 		t.Fatalf("precondition FindByID: %v", err)
@@ -278,7 +331,7 @@ func TestUpdate_EmptyPatchReturnsCurrentRow(t *testing.T) {
 	ctx := context.Background()
 	id := insertAuthUser(t, ctx)
 
-	repo := repository.NewProfileRepository(testDB.GORM)
+	repo := repository.NewUserRepository(testDB.GORM)
 
 	// 1) Fetch the row and record the baseline.
 	before, err := repo.FindByID(ctx, id)
@@ -288,7 +341,7 @@ func TestUpdate_EmptyPatchReturnsCurrentRow(t *testing.T) {
 	beforeUpdated := before.UpdatedAt
 
 	// 2) Empty patch must not touch the DB, so updated_at stays the same.
-	after, err := repo.Update(ctx, id, repository.ProfileUpdate{})
+	after, err := repo.Update(ctx, id, repository.UserUpdate{})
 	if err != nil {
 		t.Fatalf("Update with empty patch: %v", err)
 	}
@@ -317,7 +370,7 @@ func TestFindByIDs_AllFound(t *testing.T) {
 	ids := insertNAuthUsers(t, ctx, 4)
 	query := ids[:3]
 
-	repo := repository.NewProfileRepository(testDB.GORM)
+	repo := repository.NewUserRepository(testDB.GORM)
 	got, err := repo.FindByIDs(ctx, query)
 	if err != nil {
 		t.Fatalf("FindByIDs: %v", err)
@@ -331,7 +384,7 @@ func TestFindByIDs_AllFound(t *testing.T) {
 			t.Fatalf("missing id %q in result", id)
 		}
 		if p.ID != id {
-			t.Fatalf("profile ID mismatch: got %q, want %q", p.ID, id)
+			t.Fatalf("user ID mismatch: got %q, want %q", p.ID, id)
 		}
 	}
 	if _, ok := got[ids[3]]; ok {
@@ -347,7 +400,7 @@ func TestFindByIDs_PartialMissing(t *testing.T) {
 	missing := "00000000-0000-0000-0000-000000000001"
 	query := append(ids, missing)
 
-	repo := repository.NewProfileRepository(testDB.GORM)
+	repo := repository.NewUserRepository(testDB.GORM)
 	got, err := repo.FindByIDs(ctx, query)
 	if err != nil {
 		t.Fatalf("FindByIDs: %v", err)
@@ -369,7 +422,7 @@ func TestFindByIDs_EmptySlice(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	repo := repository.NewProfileRepository(testDB.GORM)
+	repo := repository.NewUserRepository(testDB.GORM)
 	got, err := repo.FindByIDs(ctx, []string{})
 	if err != nil {
 		t.Fatalf("FindByIDs(empty): %v", err)
@@ -386,9 +439,91 @@ func TestFindByIDs_DBError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	repo := repository.NewProfileRepository(testDB.GORM)
+	repo := repository.NewUserRepository(testDB.GORM)
 	_, err := repo.FindByIDs(ctx, []string{"00000000-0000-0000-0000-000000000002"})
 	if err == nil {
 		t.Fatal("expected error for cancelled context, got nil")
+	}
+}
+
+func TestRoleRepository_FindByName_SeededAdmin(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	repo := repository.NewRoleRepository(testDB.GORM)
+	got, err := repo.FindByName(ctx, "admin")
+	if err != nil {
+		t.Fatalf("FindByName(admin): %v", err)
+	}
+	if got.ID == "" {
+		t.Fatal("admin role ID is empty")
+	}
+	if got.Name != "admin" {
+		t.Fatalf("role name = %q, want admin", got.Name)
+	}
+}
+
+func TestRoleRepository_FindByIDs(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	repo := repository.NewRoleRepository(testDB.GORM)
+	admin, err := repo.FindByName(ctx, "admin")
+	if err != nil {
+		t.Fatalf("FindByName(admin): %v", err)
+	}
+
+	got, err := repo.FindByIDs(ctx, []string{admin.ID})
+	if err != nil {
+		t.Fatalf("FindByIDs: %v", err)
+	}
+	if got[admin.ID] == nil || got[admin.ID].Name != "admin" {
+		t.Fatalf("FindByIDs missing admin role: %+v", got)
+	}
+}
+
+func TestRoleRepository_NotFound(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	repo := repository.NewRoleRepository(testDB.GORM)
+	_, err := repo.FindByName(ctx, "missing")
+	if !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
+
+func TestUserRoleRepository_HasRole(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	userID := insertAuthUser(t, ctx)
+
+	roleRepo := repository.NewRoleRepository(testDB.GORM)
+	admin, err := roleRepo.FindByName(ctx, "admin")
+	if err != nil {
+		t.Fatalf("FindByName(admin): %v", err)
+	}
+
+	userRoleRepo := repository.NewUserRoleRepository(testDB.GORM)
+	hasRole, err := userRoleRepo.HasRole(ctx, userID, "admin")
+	if err != nil {
+		t.Fatalf("HasRole before insert: %v", err)
+	}
+	if hasRole {
+		t.Fatal("new user should not have admin role")
+	}
+
+	sqlDB := sqlDBHandle(t)
+	if _, err := sqlDB.ExecContext(ctx,
+		`INSERT INTO public.user_roles (user_id, role_id) VALUES ($1, $2)`, userID, admin.ID); err != nil {
+		t.Fatalf("insert user_roles: %v", err)
+	}
+
+	hasRole, err = userRoleRepo.HasRole(ctx, userID, "admin")
+	if err != nil {
+		t.Fatalf("HasRole after insert: %v", err)
+	}
+	if !hasRole {
+		t.Fatal("expected user to have admin role")
 	}
 }

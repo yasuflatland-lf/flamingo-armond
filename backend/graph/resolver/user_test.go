@@ -19,20 +19,20 @@ import (
 	"backend/internal/usecase"
 )
 
-// mockProfileRepository satisfies usecase.ProfileRepository.
-type mockProfileRepository struct {
-	findResult    *domain.Profile
+// mockUserRepository satisfies usecase.UserRepository.
+type mockUserRepository struct {
+	findResult    *domain.User
 	findErr       error
-	updateResult  *domain.Profile
+	updateResult  *domain.User
 	updateErr     error
-	capturedPatch repository.ProfileUpdate
+	capturedPatch repository.UserUpdate
 }
 
-func (m *mockProfileRepository) FindByID(_ context.Context, _ string) (*domain.Profile, error) {
+func (m *mockUserRepository) FindByID(_ context.Context, _ string) (*domain.User, error) {
 	return m.findResult, m.findErr
 }
 
-func (m *mockProfileRepository) Update(_ context.Context, _ string, patch repository.ProfileUpdate) (*domain.Profile, error) {
+func (m *mockUserRepository) Update(_ context.Context, _ string, patch repository.UserUpdate) (*domain.User, error) {
 	m.capturedPatch = patch
 	return m.updateResult, m.updateErr
 }
@@ -42,9 +42,9 @@ func ptr(s string) *string { return &s }
 
 // newServer builds a gqlgen handler.Server backed by a resolver that uses the
 // given mock repository.
-func newServer(mock *mockProfileRepository) *handler.Server {
-	uc := usecase.NewProfileUsecase(mock)
-	r := &resolver.Resolver{Profile: uc}
+func newServer(mock *mockUserRepository) *handler.Server {
+	uc := usecase.NewUserUsecase(mock)
+	r := &resolver.Resolver{User: uc}
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -91,8 +91,8 @@ const meQuery = `{"query":"{ me { id displayName bio avatarUrl } }"}`
 func TestResolver_Me_Authenticated(t *testing.T) {
 	t.Parallel()
 	displayName := "Alice"
-	mock := &mockProfileRepository{
-		findResult: &domain.Profile{ID: "u1", DisplayName: &displayName},
+	mock := &mockUserRepository{
+		findResult: &domain.User{ID: "u1", DisplayName: &displayName},
 	}
 	srv := newServer(mock)
 	resp := gqlRequest(t, srv, authedCtx("u1"), meQuery)
@@ -117,7 +117,7 @@ func TestResolver_Me_Authenticated(t *testing.T) {
 // response.errors[0].extensions.code == "UNAUTHENTICATED".
 func TestResolver_Me_Anonymous(t *testing.T) {
 	t.Parallel()
-	mock := &mockProfileRepository{}
+	mock := &mockUserRepository{}
 	srv := newServer(mock)
 	resp := gqlRequest(t, srv, context.Background(), meQuery)
 
@@ -153,7 +153,7 @@ func updateProfileMutation(displayName string, bio *string) string {
 func TestResolver_UpdateProfile_BioVariants(t *testing.T) {
 	t.Parallel()
 
-	returned := &domain.Profile{ID: "u1", DisplayName: ptr("Alice")}
+	returned := &domain.User{ID: "u1", DisplayName: ptr("Alice")}
 
 	cases := []struct {
 		name          string
@@ -182,7 +182,7 @@ func TestResolver_UpdateProfile_BioVariants(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			mock := &mockProfileRepository{updateResult: returned}
+			mock := &mockUserRepository{updateResult: returned}
 			srv := newServer(mock)
 
 			body := updateProfileMutation("Alice", tc.bio)
