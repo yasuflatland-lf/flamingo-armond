@@ -1,14 +1,16 @@
 "use client";
 
-import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { useMutation } from "@apollo/client/react";
 import { useForm } from "@tanstack/react-form";
 import { useRouter } from "next/navigation";
+import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { graphql } from "@/generated";
+import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
+import { FieldError } from "@/lib/forms/field-error";
 import { updateProfileSchema } from "@/schemas/profile";
 
 const UpdateProfileMutation = graphql(`
@@ -24,59 +26,6 @@ const UpdateProfileMutation = graphql(`
   }
 `);
 
-function extensionString(
-  extensions: Record<string, unknown> | undefined,
-  key: string,
-): string | undefined {
-  const value = extensions?.[key];
-  return typeof value === "string" ? value : undefined;
-}
-
-// Returns a map of field name -> error message for BAD_USER_INPUT errors.
-function useBackendFieldErrors(err: unknown): Record<string, string> {
-  if (!CombinedGraphQLErrors.is(err)) return {};
-  const out: Record<string, string> = {};
-  for (const ge of err.errors) {
-    const code = extensionString(ge.extensions, "code");
-    const field = extensionString(ge.extensions, "field");
-    if (code === "BAD_USER_INPUT" && field) {
-      out[field] = ge.message;
-    }
-  }
-  return out;
-}
-
-// Returns a user-facing banner message for non-field errors.
-// Priority: INTERNAL > UNAUTHENTICATED > first non-field GraphQL error > network error.
-function useBackendErrorBanner(err: unknown): string | undefined {
-  if (!err) return undefined;
-  if (!CombinedGraphQLErrors.is(err)) {
-    return "Could not reach the server. Check your connection and try again.";
-  }
-  let firstNonField: string | undefined;
-  for (const ge of err.errors) {
-    const code = extensionString(ge.extensions, "code");
-    const field = extensionString(ge.extensions, "field");
-    if (code === "INTERNAL") return ge.message;
-    if (code === "UNAUTHENTICATED") return "Your session expired. Please sign in again.";
-    if (code === "BAD_USER_INPUT" && field) continue;
-    firstNonField ??= ge.message;
-  }
-  return firstNonField;
-}
-
-function hasMessage(value: unknown): value is { message: string } {
-  return typeof (value as { message?: unknown })?.message === "string";
-}
-
-type FieldErrorProps = { zodErrors: unknown[]; backendError?: string };
-
-function FieldError({ zodErrors, backendError }: FieldErrorProps) {
-  const msg = zodErrors.find(hasMessage)?.message ?? backendError;
-  if (!msg) return null;
-  return <p className="text-sm text-destructive">{msg}</p>;
-}
-
 type Props = { initial: { displayName: string; bio: string } };
 
 export function ProfileForm({ initial }: Props) {
@@ -85,8 +34,8 @@ export function ProfileForm({ initial }: Props) {
     onCompleted: () => router.refresh(),
   });
 
-  const fieldErrors = useBackendFieldErrors(error);
-  const bannerError = useBackendErrorBanner(error);
+  const fieldErrors = useMemo(() => getBackendFieldErrors(error), [error]);
+  const bannerError = useMemo(() => getBackendErrorBanner(error), [error]);
 
   const displayNameSchema = updateProfileSchema.shape.displayName;
   const bioSchema = updateProfileSchema.shape.bio;
