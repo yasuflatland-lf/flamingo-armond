@@ -115,8 +115,9 @@ func TestRatingFromSwipeMode(t *testing.T) {
 	}{
 		{mode: 1, want: RatingAgain},
 		{mode: 2, want: RatingHard},
-		{mode: 3, want: RatingEasy},
+		{mode: 4, want: RatingEasy},
 		{mode: 0, wantErr: true},
+		{mode: 3, wantErr: true},
 		{mode: 5, wantErr: true},
 	}
 	for _, tc := range cases {
