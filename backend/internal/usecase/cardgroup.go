@@ -6,22 +6,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/rivo/uniseg"
+	"github.com/rotisserie/eris"
 
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
 	"backend/internal/repository"
-)
-
-const (
-	cardgroupNameMin = 1
-	cardgroupNameMax = 100
 )
 
 // CardgroupRepository is the consumer-driven interface used by CardgroupUsecase.
@@ -86,23 +80,24 @@ func (u *CardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 		return nil, gqlerr.Unauthenticated()
 	}
 
-	name := strings.TrimSpace(in.Name)
-	if err := validateCardgroupName(name); err != nil {
-		return nil, err
+	trimmed := strings.TrimSpace(in.Name)
+	tmp := &domain.Cardgroup{Name: trimmed}
+	if err := tmp.Validate(); err != nil {
+		return nil, translateCardgroupNameErr(ctx, err)
+	}
+
+	id, err := uuidV7()
+	if err != nil {
+		return nil, gqlerr.Internal(ctx, err)
 	}
 
 	now := time.Now().UTC()
 	cg := &domain.Cardgroup{
-		ID:        uuidV7(),
+		ID:        id,
 		OwnerID:   user.Sub,
-		Name:      name,
+		Name:      trimmed,
 		CreatedAt: now,
 		UpdatedAt: now,
-	}
-
-	// Defensive invariant check; catches any drift between usecase and domain.
-	if err := cg.Validate(); err != nil {
-		return nil, gqlerr.Internal(ctx, err)
 	}
 
 	if err := u.repo.Create(ctx, cg); err != nil {
@@ -141,8 +136,9 @@ func (u *CardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardg
 	}
 
 	trimmed := strings.TrimSpace(*in.Name)
-	if err := validateCardgroupName(trimmed); err != nil {
-		return nil, err
+	tmp := &domain.Cardgroup{Name: trimmed}
+	if err := tmp.Validate(); err != nil {
+		return nil, translateCardgroupNameErr(ctx, err)
 	}
 
 	updated, err := u.repo.Update(ctx, id, repository.CardgroupUpdate{Name: &trimmed})
@@ -177,25 +173,28 @@ func (u *CardgroupUsecase) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// validateCardgroupName checks that trimmed satisfies the 1-100 grapheme-cluster rule.
-func validateCardgroupName(trimmed string) error {
-	n := uniseg.GraphemeClusterCount(trimmed)
-	if n < cardgroupNameMin {
+// translateCardgroupNameErr maps domain sentinel errors from Cardgroup.Validate
+// to GraphQL-layer errors. Unexpected domain errors become INTERNAL.
+func translateCardgroupNameErr(ctx context.Context, err error) error {
+	switch {
+	case errors.Is(err, domain.ErrCardgroupNameRequired):
 		return gqlerr.BadUserInput("name", "name is required")
+	case errors.Is(err, domain.ErrCardgroupNameTooLong):
+		return gqlerr.BadUserInput("name", fmt.Sprintf("name must be at most %d characters", domain.CardgroupNameMax))
+	case err != nil:
+		return gqlerr.Internal(ctx, err)
+	default:
+		return nil
 	}
-	if n > cardgroupNameMax {
-		return gqlerr.BadUserInput("name", fmt.Sprintf("name must be at most %d characters", cardgroupNameMax))
-	}
-	return nil
 }
 
-// uuidV7 returns a new UUID v7 string. Falls back to UUID v4 on error and logs
-// a warning so the caller is never blocked.
-func uuidV7() string {
+// uuidV7 returns a new UUID v7 string, or an error if the OS entropy source
+// fails. The caller maps the error to gqlerr.Internal; the silent v4 fallback
+// is removed because both v7 and v4 draw from the same entropy source.
+func uuidV7() (string, error) {
 	id, err := uuid.NewV7()
 	if err != nil {
-		slog.Warn("uuid.NewV7 failed; falling back to uuid v4", "error", err)
-		return uuid.NewString()
+		return "", eris.Wrap(err, "uuid: NewV7 failed")
 	}
-	return id.String()
+	return id.String(), nil
 }

@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -43,19 +44,22 @@ func TestCardgroup_Validate(t *testing.T) {
 	const zwjEmoji = "👨‍👩‍👧‍👦"
 
 	cases := []struct {
-		name    string
-		input   string
-		wantErr bool
+		name      string
+		input     string
+		wantErr   bool
+		sentinelErr error
 	}{
 		{
-			name:    "empty string",
-			input:   "",
-			wantErr: true,
+			name:        "empty string",
+			input:       "",
+			wantErr:     true,
+			sentinelErr: ErrCardgroupNameRequired,
 		},
 		{
-			name:    "whitespace only",
-			input:   "   ",
-			wantErr: true,
+			name:        "whitespace only",
+			input:       "   ",
+			wantErr:     true,
+			sentinelErr: ErrCardgroupNameRequired,
 		},
 		{
 			name:    "single latin char",
@@ -68,9 +72,10 @@ func TestCardgroup_Validate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "101 latin chars",
-			input:   strings.Repeat("a", 101),
-			wantErr: true,
+			name:        "101 latin chars",
+			input:       strings.Repeat("a", 101),
+			wantErr:     true,
+			sentinelErr: ErrCardgroupNameTooLong,
 		},
 		{
 			name:    "single ZWJ emoji (one grapheme cluster)",
@@ -83,9 +88,10 @@ func TestCardgroup_Validate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "101 ZWJ emojis",
-			input:   strings.Repeat(zwjEmoji, 101),
-			wantErr: true,
+			name:        "101 ZWJ emojis",
+			input:       strings.Repeat(zwjEmoji, 101),
+			wantErr:     true,
+			sentinelErr: ErrCardgroupNameTooLong,
 		},
 	}
 
@@ -98,6 +104,10 @@ func TestCardgroup_Validate(t *testing.T) {
 			err := cg.Validate()
 			if tc.wantErr {
 				require.Error(t, err, "expected an error for input %q", tc.input)
+				if tc.sentinelErr != nil {
+					require.True(t, errors.Is(err, tc.sentinelErr),
+						"expected errors.Is(err, %v), got %v", tc.sentinelErr, err)
+				}
 			} else {
 				require.NoError(t, err, "expected no error for input %q", tc.input)
 			}
