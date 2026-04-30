@@ -85,3 +85,34 @@ func toSwipeResponseModel(out *usecase.SwipeOutput) *model.SwipeResponse {
 		PerformanceMode: out.PerformanceMode,
 	}
 }
+
+// toCardConnectionModel converts a usecase.CardConnectionOutput into the
+// generated model.CardConnection. Cursors are bare card UUIDs (no base64).
+func toCardConnectionModel(out *usecase.CardConnectionOutput) *model.CardConnection {
+	if out == nil {
+		return &model.CardConnection{Edges: []*model.CardEdge{}, PageInfo: &model.PageInfo{}}
+	}
+	edges := make([]*model.CardEdge, len(out.Cards))
+	for i, c := range out.Cards {
+		edges[i] = &model.CardEdge{Cursor: c.ID, Node: toCardModel(c)}
+	}
+	var startCur, endCur *string
+	if out.StartCur != "" {
+		s := out.StartCur
+		startCur = &s
+	}
+	if out.EndCur != "" {
+		e := out.EndCur
+		endCur = &e
+	}
+	return &model.CardConnection{
+		Edges: edges,
+		PageInfo: &model.PageInfo{
+			HasNextPage:     out.HasNext,
+			HasPreviousPage: out.HasPrev,
+			StartCursor:     startCur,
+			EndCursor:       endCur,
+		},
+		TotalCount: int(out.TotalCount),
+	}
+}

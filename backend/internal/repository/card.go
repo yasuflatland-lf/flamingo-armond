@@ -12,6 +12,39 @@ import (
 	"backend/internal/domain"
 )
 
+// CardOrderBy is the allowlist of fields that paginated card queries may sort by.
+// Lexicographic tuple order is always (orderField, id) so cursors stay deterministic
+// even when the order field has duplicate values.
+type CardOrderBy string
+
+const (
+	CardOrderByID        CardOrderBy = "id"
+	CardOrderByCreatedAt CardOrderBy = "created_at"
+	CardOrderByUpdatedAt CardOrderBy = "updated_at"
+	CardOrderByDue       CardOrderBy = "due"
+)
+
+// SortOrder mirrors the GraphQL SortOrder enum.
+type SortOrder string
+
+const (
+	SortAsc  SortOrder = "ASC"
+	SortDesc SortOrder = "DESC"
+)
+
+// CardCursor is an opaque cursor for paginated card queries.
+// Only the fields relevant to the active OrderBy need to be populated.
+// ID is always populated and acts as the secondary key in the tuple comparison.
+type CardCursor struct {
+	ID        string
+	Due       *time.Time
+	CreatedAt *time.Time
+	UpdatedAt *time.Time
+}
+
+// pageCap is the upper bound for first/last in paginated queries.
+const pageCap = 100
+
 type gormCard struct {
 	ID            string    `gorm:"column:id;primaryKey;type:uuid"`
 	CardgroupID   string    `gorm:"column:cardgroup_id"`
@@ -42,6 +75,14 @@ type CardRepository interface {
 	FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error)
 	FindByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error)
+	FindPageByCardgroup(
+		ctx context.Context,
+		cardgroupID string,
+		after, before *CardCursor,
+		first, last int,
+		orderBy CardOrderBy,
+		dir SortOrder,
+	) (cards []*domain.Card, totalCount int64, err error)
 	FindDueCardsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
 	Create(ctx context.Context, card *domain.Card) error
 	UpdateFSRSStateTx(ctx context.Context, tx *gorm.DB, id string, state domain.FSRSState) error
@@ -102,6 +143,145 @@ func (r *cardRepo) FindByCardgroup(ctx context.Context, cardgroupID string) ([]*
 		out[i] = cardToDomain(rows[i])
 	}
 	return out, nil
+}
+
+// FindPageByCardgroup returns a window of cards for a cardgroup ordered by
+// (orderField, id) so cursors stay deterministic. Forward paging uses `after`
+// + `first`; backward paging uses `before` + `last`. totalCount reflects every
+// row in the cardgroup, not just the page.
+func (r *cardRepo) FindPageByCardgroup(
+	ctx context.Context,
+	cardgroupID string,
+	after, before *CardCursor,
+	first, last int,
+	orderBy CardOrderBy,
+	dir SortOrder,
+) ([]*domain.Card, int64, error) {
+	// Clamp page sizes to [0, pageCap].
+	if first < 0 {
+		first = 0
+	}
+	if first > pageCap {
+		first = pageCap
+	}
+	if last < 0 {
+		last = 0
+	}
+	if last > pageCap {
+		last = pageCap
+	}
+
+	// Short-circuit when caller asked for no rows.
+	if first == 0 && last == 0 {
+		return []*domain.Card{}, 0, nil
+	}
+
+	// totalCount: a separate COUNT(*) scoped to the cardgroup. Acceptable for
+	// <= 10k cards/group; revisit if the cap grows.
+	var total int64
+	if err := r.db.WithContext(ctx).
+		Model(&gormCard{}).
+		Where("cardgroup_id = ?", cardgroupID).
+		Count(&total).Error; err != nil {
+		return nil, 0, eris.Wrap(err, "repository: count cards by cardgroup")
+	}
+
+	// Decide effective direction & limit. Backward paging executes the query
+	// with the inverted direction and reverses the slice afterwards.
+	effectiveDir := dir
+	limit := first
+	cursor := after
+	reverse := false
+	if last > 0 {
+		effectiveDir = invertDir(dir)
+		limit = last
+		cursor = before
+		reverse = true
+	}
+
+	q := r.db.WithContext(ctx).
+		Model(&gormCard{}).
+		Where("cardgroup_id = ?", cardgroupID)
+
+	if cursor != nil {
+		clause, args := cursorWhere(orderBy, effectiveDir, cursor)
+		q = q.Where(clause, args...)
+	}
+
+	q = q.Order(orderClause(orderBy, effectiveDir)).Limit(limit)
+
+	var rows []gormCard
+	if err := q.Find(&rows).Error; err != nil {
+		return nil, 0, eris.Wrap(err, "repository: find page by cardgroup")
+	}
+
+	if reverse {
+		for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
+			rows[i], rows[j] = rows[j], rows[i]
+		}
+	}
+
+	out := make([]*domain.Card, len(rows))
+	for i := range rows {
+		out[i] = cardToDomain(rows[i])
+	}
+	return out, total, nil
+}
+
+// invertDir flips ASC <-> DESC.
+func invertDir(d SortOrder) SortOrder {
+	if d == SortDesc {
+		return SortAsc
+	}
+	return SortDesc
+}
+
+// orderClause renders the SQL ORDER BY tail. When orderBy is `id` only one
+// column appears; otherwise the secondary `id` keeps order deterministic.
+func orderClause(orderBy CardOrderBy, dir SortOrder) string {
+	d := string(dir)
+	if orderBy == CardOrderByID {
+		return "id " + d
+	}
+	return string(orderBy) + " " + d + ", id " + d
+}
+
+// cursorWhere builds the tuple-comparison WHERE for the supplied cursor and
+// direction. ASC yields `>`, DESC yields `<`.
+func cursorWhere(orderBy CardOrderBy, dir SortOrder, c *CardCursor) (string, []any) {
+	op := ">"
+	if dir == SortDesc {
+		op = "<"
+	}
+	if orderBy == CardOrderByID {
+		return "id " + op + " ?", []any{c.ID}
+	}
+	field := string(orderBy)
+	val := cursorFieldValue(orderBy, c)
+	// Tuple compare: (field, id) op (val, c.ID).
+	return "(" + field + " " + op + " ? OR (" + field + " = ? AND id " + op + " ?))",
+		[]any{val, val, c.ID}
+}
+
+// cursorFieldValue returns the cursor value for the active orderBy field.
+// Falls back to time.Time{} when the cursor has not populated the column —
+// the usecase layer is responsible for hydrating before calling.
+func cursorFieldValue(orderBy CardOrderBy, c *CardCursor) any {
+	switch orderBy {
+	case CardOrderByDue:
+		if c.Due != nil {
+			return *c.Due
+		}
+	case CardOrderByCreatedAt:
+		if c.CreatedAt != nil {
+			return *c.CreatedAt
+		}
+	case CardOrderByUpdatedAt:
+		if c.UpdatedAt != nil {
+			return *c.UpdatedAt
+		}
+	}
+	return time.Time{}
 }
 
 func (r *cardRepo) FindDueCardsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
