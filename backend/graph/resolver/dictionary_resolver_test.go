@@ -29,7 +29,7 @@ func (m *mockUserRoleRepository) HasRole(_ context.Context, _, _ string) (bool, 
 // newDictOnlySrv builds a server with only AuthSvc wired; only the
 // validateDictionary resolver is exercised here.
 func newDictOnlySrv(roleRepo repository.UserRoleRepository) *handler.Server {
-	r := &resolver.Resolver{AuthSvc: auth.NewService(roleRepo)}
+	r := resolver.NewResolver(nil, nil, nil, nil, auth.NewService(roleRepo))
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
