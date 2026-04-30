@@ -12,19 +12,15 @@ import (
 	"sync"
 )
 
-// Node is the internal AST element produced by the parser. It carries the
+// node is the internal AST element produced by the parser. It carries the
 // source line number so callers can map errors and warnings back to the
-// input. The exported wire type is ParsedWord (see service.go); Node stays
+// input. The exported wire type is ParsedWord (see service.go); node stays
 // internal to keep the goyacc grammar stable.
-type Node struct {
+type node struct {
 	Word       string
 	Definition string
 	Line       int
 }
-
-// Nodes is a slice of Node. Required as a yacc %type so the grammar can
-// reference it directly in semantic actions.
-type Nodes []Node
 
 // parseError is the internal structured error type produced by the lexer
 // and the goyacc-generated parser. It implements the StructuredError
@@ -40,13 +36,13 @@ func (e parseError) Error() string {
 	return fmt.Sprintf("%d:%s", e.Line, e.Message)
 }
 
-//line internal/textdic/grammar.y:42
+//line internal/textdic/grammar.y:38
 type yySymType struct {
 	yys   int
 	str   string
 	line  int
-	node  Node
-	nodes Nodes
+	node  node
+	nodes []node
 }
 
 const WORD = 57346
@@ -68,7 +64,7 @@ const yyEofCode = 1
 const yyErrCode = 2
 const yyInitialStackSize = 16
 
-//line internal/textdic/grammar.y:73
+//line internal/textdic/grammar.y:69
 
 // Thread-local storage for the currently executing parser. The
 // goyacc-generated parser uses package-level state, so concurrent calls
@@ -78,25 +74,27 @@ var (
 	currentParser   *parserWrapper
 )
 
-// Parser is the minimal interface exposed to the service layer.
-type Parser interface {
+// wrappedParser is the minimal interface exposed to the service layer. It
+// stays unexported because Process is the only public entrypoint; nothing
+// outside this package needs to drive the parser directly.
+type wrappedParser interface {
 	Parse(yyLexer) int
-	GetNodes() []Node
+	GetNodes() []node
 	GetErrors() []error
 }
 
 // parserWrapper bridges the goyacc-generated yyParserImpl with the
-// service-level Parser interface and aggregates lexer + parser errors.
+// service-level wrappedParser interface and aggregates lexer + parser errors.
 type parserWrapper struct {
 	lexer  yyLexer
-	nodes  []Node
+	nodes  []node
 	errors []error
 	mu     sync.RWMutex
 }
 
-// NewParser constructs a parser wrapper, runs Parse against the supplied
+// newParser constructs a parser wrapper, runs Parse against the supplied
 // lexer, and returns the wrapper so callers can collect nodes and errors.
-func NewParser(yylex yyLexer) Parser {
+func newParser(yylex yyLexer) wrappedParser {
 	p := &parserWrapper{lexer: yylex}
 	p.Parse(yylex)
 	return p
@@ -126,7 +124,7 @@ func (p *parserWrapper) Parse(yylex yyLexer) int {
 }
 
 // GetNodes returns the list of parsed nodes under read lock.
-func (p *parserWrapper) GetNodes() []Node {
+func (p *parserWrapper) GetNodes() []node {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.nodes
@@ -141,7 +139,7 @@ func (p *parserWrapper) GetErrors() []error {
 
 // setNodes is invoked from the start production to publish the final node
 // list onto the active parser wrapper.
-func (yyrcvr *yyParserImpl) setNodes(nodes []Node) {
+func (yyrcvr *yyParserImpl) setNodes(nodes []node) {
 	if currentParser != nil {
 		currentParser.mu.Lock()
 		defer currentParser.mu.Unlock()
@@ -150,8 +148,8 @@ func (yyrcvr *yyParserImpl) setNodes(nodes []Node) {
 }
 
 // GetNodes is exposed on yyParserImpl for parity with the service-level
-// Parser interface; primarily useful for diagnostics.
-func (yyrcvr *yyParserImpl) GetNodes() []Node {
+// wrappedParser interface; primarily useful for diagnostics.
+func (yyrcvr *yyParserImpl) GetNodes() []node {
 	if currentParser != nil {
 		currentParser.mu.RLock()
 		defer currentParser.mu.RUnlock()
@@ -573,14 +571,14 @@ yydefault:
 
 	case 1:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line internal/textdic/grammar.y:59
+//line internal/textdic/grammar.y:55
 		{
 			yyVAL.nodes = yyDollar[1].nodes
 			yyrcvr.setNodes(yyDollar[1].nodes)
 		}
 	case 2:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line internal/textdic/grammar.y:63
+//line internal/textdic/grammar.y:59
 		{
 			if yyDollar[2].node.Word != "" {
 				yyVAL.nodes = append(yyDollar[1].nodes, yyDollar[2].node)
@@ -590,30 +588,30 @@ yydefault:
 		}
 	case 3:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line internal/textdic/grammar.y:64
+//line internal/textdic/grammar.y:60
 		{
 			if yyDollar[1].node.Word != "" {
-				yyVAL.nodes = []Node{yyDollar[1].node}
+				yyVAL.nodes = []node{yyDollar[1].node}
 			} else {
-				yyVAL.nodes = Nodes{}
+				yyVAL.nodes = []node{}
 			}
 		}
 	case 4:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line internal/textdic/grammar.y:65
+//line internal/textdic/grammar.y:61
 		{
 		}
 	case 5:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line internal/textdic/grammar.y:69
+//line internal/textdic/grammar.y:65
 		{
-			yyVAL.node = Node{Word: yyDollar[1].str, Definition: yyDollar[2].str, Line: yyDollar[1].line}
+			yyVAL.node = node{Word: yyDollar[1].str, Definition: yyDollar[2].str, Line: yyDollar[1].line}
 		}
 	case 6:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line internal/textdic/grammar.y:70
+//line internal/textdic/grammar.y:66
 		{
-			yyVAL.node = Node{}
+			yyVAL.node = node{}
 		}
 	}
 	goto yystack /* stack new state and value */

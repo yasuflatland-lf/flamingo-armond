@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/debug"
-	"sync"
 )
 
 // maxPayloadBytes caps the parser at 1 MiB. Beyond this, Process returns
@@ -34,10 +33,6 @@ type ValidationError struct {
 	Message string
 }
 
-// processMu serialises Process invocations because the goyacc-generated
-// parser relies on package-global state (yyParserImpl, currentParser).
-var processMu sync.Mutex
-
 // Process parses a plain-text dictionary payload.
 //
 // Returns:
@@ -50,6 +45,10 @@ var processMu sync.Mutex
 // callers receive a single "empty payload" ValidationError on line 1.
 // Base64 decoding is the resolver layer's responsibility; Process only
 // understands plain text.
+//
+// Concurrency: serialization of the goyacc-generated parser's package-level
+// state is delegated to parserExecMutex inside parserWrapper.Parse, so this
+// function does not take any additional lock of its own.
 func Process(input string) (words []ParsedWord, errs []ValidationError, err error) {
 	// Recover from panics inside the goyacc-generated parser and surface
 	// them as err. Programmer errors (runtime.Error: nil deref, index out
@@ -72,12 +71,11 @@ func Process(input string) (words []ParsedWord, errs []ValidationError, err erro
 		return []ParsedWord{}, []ValidationError{{Line: 1, Message: "empty payload"}}, nil
 	}
 
-	// The goyacc-generated parser uses package-global state; serialise execution.
-	processMu.Lock()
-	defer processMu.Unlock()
-
+	// Serialization of the goyacc-generated parser's package-level state
+	// (currentParser, yyParserImpl) is handled by parserExecMutex inside
+	// parserWrapper.Parse; no additional lock is needed here.
 	l := newLexer(input)
-	p := NewParser(l)
+	p := newParser(l)
 
 	nodes := p.GetNodes()
 	rawErrs := p.GetErrors()
