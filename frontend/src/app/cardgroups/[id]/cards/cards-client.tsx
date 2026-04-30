@@ -1,7 +1,8 @@
 "use client";
 
-import { useMutation } from "@apollo/client/react";
-import { useMemo, useState } from "react";
+import type { Reference } from "@apollo/client";
+import { useMutation, useQuery } from "@apollo/client/react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CreateCardMutation,
   DeleteCardMutation,
@@ -20,56 +21,150 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { CardsByCardgroupDocument, type CardsByCardgroupQuery } from "@/generated/graphql";
+import {
+  CardsByCardgroupConnectionDocument,
+  type CardsByCardgroupConnectionQuery,
+} from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 
-type Card = CardsByCardgroupQuery["cardsByCardgroup"][number];
+const PAGE_SIZE = 20;
+
+type Connection = CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"];
+type Edge = Connection["edges"][number];
+type PageInfo = Connection["pageInfo"];
 
 type Props = {
   cardgroupId: string;
-  initialCards: Card[];
+  initialEdges: Edge[];
+  initialPageInfo: PageInfo;
+  initialTotalCount: number;
 };
 
-export function CardsClient({ cardgroupId, initialCards }: Props) {
-  const [cards, setCards] = useState<Card[]>(initialCards);
+export function CardsClient({
+  cardgroupId,
+  initialEdges,
+  initialPageInfo,
+  initialTotalCount,
+}: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [createFormKey, setCreateFormKey] = useState(0);
 
+  const { data, fetchMore, loading, networkStatus } = useQuery(CardsByCardgroupConnectionDocument, {
+    variables: { cardgroupId, first: PAGE_SIZE },
+    fetchPolicy: "cache-first",
+    notifyOnNetworkStatusChange: true,
+  });
+
+  const connection = data?.cardsByCardgroupConnection;
+  const edges = connection?.edges ?? initialEdges;
+  const pageInfo = connection?.pageInfo ?? initialPageInfo;
+  const totalCount = connection?.totalCount ?? initialTotalCount;
+
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const fetchingRef = useRef(false);
+
+  useEffect(() => {
+    if (!pageInfo.hasNextPage) return;
+    const node = sentinelRef.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (!entry?.isIntersecting) return;
+      if (fetchingRef.current) return;
+      if (!pageInfo.hasNextPage) return;
+
+      fetchingRef.current = true;
+      fetchMore({
+        variables: {
+          cardgroupId,
+          first: PAGE_SIZE,
+          after: pageInfo.endCursor,
+        },
+        updateQuery: (prev, { fetchMoreResult }) => {
+          if (!fetchMoreResult) return prev;
+          return {
+            cardsByCardgroupConnection: {
+              ...fetchMoreResult.cardsByCardgroupConnection,
+              edges: [
+                ...prev.cardsByCardgroupConnection.edges,
+                ...fetchMoreResult.cardsByCardgroupConnection.edges,
+              ],
+            },
+          };
+        },
+      })
+        .catch((err) => {
+          console.error("[CardsClient] fetchMore rejected", err);
+        })
+        .finally(() => {
+          fetchingRef.current = false;
+        });
+    });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [cardgroupId, fetchMore, pageInfo.endCursor, pageInfo.hasNextPage]);
+
   const [createCard, { loading: creating, error: createError }] = useMutation(CreateCardMutation, {
-    update(cache, { data }) {
-      if (!data?.createCard?.card) return;
+    update(cache, { data: createData }) {
+      if (!createData?.createCard?.card) return;
+      const newCard = createData.createCard.card;
       const existing = cache.readQuery({
-        query: CardsByCardgroupDocument,
-        variables: { cardgroupId },
+        query: CardsByCardgroupConnectionDocument,
+        variables: { cardgroupId, first: PAGE_SIZE },
       });
+      if (!existing) return;
       cache.writeQuery({
-        query: CardsByCardgroupDocument,
-        variables: { cardgroupId },
+        query: CardsByCardgroupConnectionDocument,
+        variables: { cardgroupId, first: PAGE_SIZE },
         data: {
-          cardsByCardgroup: [...(existing?.cardsByCardgroup ?? []), data.createCard.card],
+          cardsByCardgroupConnection: {
+            ...existing.cardsByCardgroupConnection,
+            edges: [
+              ...existing.cardsByCardgroupConnection.edges,
+              {
+                __typename: "CardEdge" as const,
+                cursor: newCard.id,
+                node: newCard,
+              },
+            ],
+            totalCount: existing.cardsByCardgroupConnection.totalCount + 1,
+          },
         },
       });
-      setCards((prev) => [...prev, data.createCard.card]);
       setCreateFormKey((k) => k + 1);
     },
   });
 
-  const [updateCard, { loading: updating, error: updateError }] = useMutation(UpdateCardMutation, {
-    update(_cache, { data }) {
-      if (!data?.updateCard?.card) return;
-      const updated = data.updateCard.card;
-      setCards((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-    },
-  });
+  // Update propagates automatically via Apollo cache normalization (Card has id).
+  const [updateCard, { loading: updating, error: updateError }] = useMutation(UpdateCardMutation);
 
   const [deleteCard, { error: deleteError }] = useMutation(DeleteCardMutation, {
-    update(cache, { data }, { variables }) {
-      if (!data?.deleteCard) return;
+    update(cache, { data: deleteData }, { variables }) {
+      if (!deleteData?.deleteCard) return;
       const id = variables?.id as string | undefined;
       if (!id) return;
+      cache.modify({
+        fields: {
+          cardsByCardgroupConnection(existing, { readField }) {
+            if (!existing || !Array.isArray(existing.edges)) return existing;
+            const filteredEdges = existing.edges.filter(
+              (edge: { node: Reference }) => readField("id", edge.node) !== id,
+            );
+            const removed = filteredEdges.length !== existing.edges.length;
+            return {
+              ...existing,
+              edges: filteredEdges,
+              totalCount: removed
+                ? Math.max(0, (existing.totalCount ?? 0) - 1)
+                : existing.totalCount,
+            };
+          },
+        },
+      });
       cache.evict({ id: cache.identify({ __typename: "Card", id }) });
       cache.gc();
-      setCards((prev) => prev.filter((c) => c.id !== id));
     },
   });
 
@@ -94,6 +189,9 @@ export function CardsClient({ cardgroupId, initialCards }: Props) {
       setEditingId(null);
     }
   }
+
+  // networkStatus 3 = fetchMore in flight (Apollo NetworkStatus.fetchMore).
+  const fetchingMore = networkStatus === 3 || (loading && edges.length > 0);
 
   return (
     <div className="space-y-6">
@@ -121,15 +219,16 @@ export function CardsClient({ cardgroupId, initialCards }: Props) {
 
       <section>
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
-          Cards ({cards.length})
+          Cards ({totalCount})
         </h2>
 
-        {cards.length === 0 ? (
+        {edges.length === 0 ? (
           <p className="text-sm text-muted-foreground">No cards yet. Add one above.</p>
         ) : (
           <ul className="space-y-3">
-            {cards.map((card) =>
-              editingId === card.id ? (
+            {edges.map((edge) => {
+              const card = edge.node;
+              return editingId === card.id ? (
                 <li key={card.id} className="rounded-md border border-border p-4">
                   <CardForm
                     mode="edit"
@@ -182,10 +281,15 @@ export function CardsClient({ cardgroupId, initialCards }: Props) {
                     </AlertDialog>
                   </div>
                 </li>
-              ),
-            )}
+              );
+            })}
           </ul>
         )}
+
+        <div ref={sentinelRef} aria-hidden="true" data-testid="cards-sentinel" />
+        {fetchingMore && pageInfo.hasNextPage ? (
+          <p className="mt-3 text-center text-xs text-muted-foreground">Loading more cards...</p>
+        ) : null}
       </section>
     </div>
   );

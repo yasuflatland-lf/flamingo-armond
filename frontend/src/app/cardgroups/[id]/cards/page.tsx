@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CardgroupQuery, CardsByCardgroupQuery } from "@/app/cardgroups/queries";
+import { CardgroupQuery } from "@/app/cardgroups/queries";
 import type {
   CardgroupQuery as CardgroupQueryType,
-  CardsByCardgroupQuery as CardsByCardgroupQueryType,
+  CardsByCardgroupConnectionQuery as CardsByCardgroupConnectionQueryType,
 } from "@/generated/graphql";
 import { gqlFetch } from "@/lib/apollo/server";
 import { redirectIfUnauthenticated } from "@/lib/apollo/server-redirect";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { CardsClient } from "./cards-client";
+import { CardsByCardgroupConnectionQuery } from "./queries";
 
 export default async function CardsPage({ params }: { params: Promise<{ id: string }> }) {
   const supabase = await createSupabaseServerClient();
@@ -22,12 +23,15 @@ export default async function CardsPage({ params }: { params: Promise<{ id: stri
   const { id } = await params;
 
   let cardgroupData: CardgroupQueryType | null = null;
-  let cardsData: CardsByCardgroupQueryType | null = null;
+  let connectionData: CardsByCardgroupConnectionQueryType | null = null;
 
   try {
-    [cardgroupData, cardsData] = await Promise.all([
+    [cardgroupData, connectionData] = await Promise.all([
       gqlFetch(CardgroupQuery, { variables: { id }, revalidate: 0 }),
-      gqlFetch(CardsByCardgroupQuery, { variables: { cardgroupId: id }, revalidate: 0 }),
+      gqlFetch(CardsByCardgroupConnectionQuery, {
+        variables: { cardgroupId: id, first: 20 },
+        revalidate: 0,
+      }),
     ]);
   } catch (err) {
     redirectIfUnauthenticated(err, "/cardgroups");
@@ -36,7 +40,14 @@ export default async function CardsPage({ params }: { params: Promise<{ id: stri
   if (!cardgroupData?.cardgroup) redirect("/cardgroups");
 
   const cardgroup = cardgroupData.cardgroup;
-  const cards = cardsData?.cardsByCardgroup ?? [];
+  const initialEdges = connectionData?.cardsByCardgroupConnection.edges ?? [];
+  const initialPageInfo = connectionData?.cardsByCardgroupConnection.pageInfo ?? {
+    hasNextPage: false,
+    hasPreviousPage: false,
+    startCursor: null,
+    endCursor: null,
+  };
+  const initialTotalCount = connectionData?.cardsByCardgroupConnection.totalCount ?? 0;
 
   return (
     <main className="mx-auto max-w-2xl p-8">
@@ -46,7 +57,12 @@ export default async function CardsPage({ params }: { params: Promise<{ id: stri
         </Link>
       </div>
       <h1 className="mb-6 text-2xl font-semibold">Cards in {cardgroup.name}</h1>
-      <CardsClient cardgroupId={id} initialCards={cards} />
+      <CardsClient
+        cardgroupId={id}
+        initialEdges={initialEdges}
+        initialPageInfo={initialPageInfo}
+        initialTotalCount={initialTotalCount}
+      />
     </main>
   );
 }
