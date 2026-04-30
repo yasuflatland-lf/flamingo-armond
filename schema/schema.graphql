@@ -235,8 +235,18 @@ input HandleSwipeInput {
 type SwipeResponse {
   """Next due cards, ordered by due ASC."""
   nextCards: [Card!]!
-  """Reserved for the legacy adaptive UX. Always 0 until UserPerformanceService is ported."""
+  """Performance mode for the swipe flow, expressed as an Int in the 0..4 range."""
   performanceMode: Int!
+  metrics: PerformanceMetrics!
+}
+
+type PerformanceMetrics {
+  successRate: Float!
+  avgDifficulty: Float!
+  retentionRate: Float!
+  studyStreak: Int!
+  lapseRate: Float!
+  reviewCount: Int!
 }
 
 extend type Mutation {

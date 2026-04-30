@@ -1495,6 +1495,7 @@ func TestGraphQL_HandleSwipe_HappyPath(t *testing.T) {
 	gqlQuery := fmt.Sprintf(`mutation {
 		handleSwipe(input: {cardId: %s, cardgroupId: %s, mode: 4}) {
 			performanceMode
+			metrics { reviewCount successRate }
 			nextCards { id }
 		}
 	}`, gqlStringLit(firstID), gqlStringLit(cgID))
@@ -1510,8 +1511,15 @@ func TestGraphQL_HandleSwipe_HappyPath(t *testing.T) {
 	if payload == nil {
 		t.Fatalf("expected handleSwipe payload; resp=%v", resp)
 	}
-	if payload["performanceMode"] != float64(0) {
-		t.Fatalf("performanceMode=%v, want 0", payload["performanceMode"])
+	if payload["performanceMode"] != float64(1) {
+		t.Fatalf("performanceMode=%v, want 1", payload["performanceMode"])
+	}
+	metrics, _ := payload["metrics"].(map[string]any)
+	if metrics["reviewCount"] != float64(1) {
+		t.Fatalf("metrics.reviewCount=%v, want 1", metrics["reviewCount"])
+	}
+	if metrics["successRate"] != float64(1) {
+		t.Fatalf("metrics.successRate=%v, want 1", metrics["successRate"])
 	}
 	nextCards, _ := payload["nextCards"].([]any)
 	for _, item := range nextCards {
@@ -1620,6 +1628,10 @@ type failingSwipeRepo struct{ err error }
 
 func (f failingSwipeRepo) CreateTx(context.Context, *gorm.DB, *domain.SwipeRecord) error {
 	return f.err
+}
+
+func (f failingSwipeRepo) ListRecentByUser(context.Context, string, int) ([]*domain.SwipeRecord, error) {
+	return nil, f.err
 }
 
 func TestHandleSwipe_RollsBackWhenSwipeRecordInsertFails(t *testing.T) {
