@@ -42,8 +42,10 @@ type CardCursor struct {
 	UpdatedAt *time.Time
 }
 
-// pageCap is the upper bound for first/last in paginated queries.
-const pageCap = 100
+// pageCap is the upper bound for first/last in paginated queries. Set to
+// usecase.maxPageSize+1 so the usecase's "+1 fetch" trick can detect another
+// page even when the caller asks for the documented max (100).
+const pageCap = 101
 
 type gormCard struct {
 	ID            string    `gorm:"column:id;primaryKey;type:uuid"`
@@ -171,19 +173,21 @@ func (r *cardRepo) FindPageByCardgroup(
 		last = pageCap
 	}
 
-	// Short-circuit when caller asked for no rows.
-	if first == 0 && last == 0 {
-		return []*domain.Card{}, 0, nil
-	}
-
-	// totalCount: a separate COUNT(*) scoped to the cardgroup. Acceptable for
-	// <= 10k cards/group; revisit if the cap grows.
+	// totalCount: a separate COUNT(*) scoped to the cardgroup. Computed before
+	// the no-rows short-circuit so callers passing first=0 still observe the
+	// real cardgroup size. Acceptable for <= 10k cards/group; revisit if the
+	// cap grows.
 	var total int64
 	if err := r.db.WithContext(ctx).
 		Model(&gormCard{}).
 		Where("cardgroup_id = ?", cardgroupID).
 		Count(&total).Error; err != nil {
 		return nil, 0, eris.Wrap(err, "repository: count cards by cardgroup")
+	}
+
+	// Short-circuit row fetch when caller asked for no rows.
+	if first == 0 && last == 0 {
+		return []*domain.Card{}, total, nil
 	}
 
 	// Decide effective direction & limit. Backward paging executes the query
@@ -204,7 +208,10 @@ func (r *cardRepo) FindPageByCardgroup(
 		Where("cardgroup_id = ?", cardgroupID)
 
 	if cursor != nil {
-		clause, args := cursorWhere(orderBy, effectiveDir, cursor)
+		clause, args, err := cursorWhere(orderBy, effectiveDir, cursor)
+		if err != nil {
+			return nil, 0, eris.Wrap(err, "repository: build cursor where")
+		}
 		q = q.Where(clause, args...)
 	}
 
@@ -247,41 +254,46 @@ func orderClause(orderBy CardOrderBy, dir SortOrder) string {
 }
 
 // cursorWhere builds the tuple-comparison WHERE for the supplied cursor and
-// direction. ASC yields `>`, DESC yields `<`.
-func cursorWhere(orderBy CardOrderBy, dir SortOrder, c *CardCursor) (string, []any) {
+// direction. ASC yields `>`, DESC yields `<`. Returns an error when the
+// cursor lacks the column required by the active orderBy.
+func cursorWhere(orderBy CardOrderBy, dir SortOrder, c *CardCursor) (string, []any, error) {
 	op := ">"
 	if dir == SortDesc {
 		op = "<"
 	}
 	if orderBy == CardOrderByID {
-		return "id " + op + " ?", []any{c.ID}
+		return "id " + op + " ?", []any{c.ID}, nil
 	}
 	field := string(orderBy)
-	val := cursorFieldValue(orderBy, c)
+	val, err := cursorFieldValue(orderBy, c)
+	if err != nil {
+		return "", nil, err
+	}
 	// Tuple compare: (field, id) op (val, c.ID).
 	return "(" + field + " " + op + " ? OR (" + field + " = ? AND id " + op + " ?))",
-		[]any{val, val, c.ID}
+		[]any{val, val, c.ID}, nil
 }
 
 // cursorFieldValue returns the cursor value for the active orderBy field.
-// Falls back to time.Time{} when the cursor has not populated the column —
-// the usecase layer is responsible for hydrating before calling.
-func cursorFieldValue(orderBy CardOrderBy, c *CardCursor) any {
+// Returns an error when the relevant column is unset — the usecase layer is
+// responsible for hydrating before calling, so an unset column indicates a
+// caller bug rather than a benign empty value.
+func cursorFieldValue(orderBy CardOrderBy, c *CardCursor) (any, error) {
 	switch orderBy {
 	case CardOrderByDue:
 		if c.Due != nil {
-			return *c.Due
+			return *c.Due, nil
 		}
 	case CardOrderByCreatedAt:
 		if c.CreatedAt != nil {
-			return *c.CreatedAt
+			return *c.CreatedAt, nil
 		}
 	case CardOrderByUpdatedAt:
 		if c.UpdatedAt != nil {
-			return *c.UpdatedAt
+			return *c.UpdatedAt, nil
 		}
 	}
-	return time.Time{}
+	return nil, eris.Errorf("cursor missing %s column", orderBy)
 }
 
 func (r *cardRepo) FindDueCardsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
