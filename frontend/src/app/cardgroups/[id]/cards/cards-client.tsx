@@ -1,7 +1,8 @@
 "use client";
 
-import { useMutation } from "@apollo/client/react";
-import { useMemo, useState } from "react";
+import { gql, NetworkStatus } from "@apollo/client";
+import { useMutation, useQuery } from "@apollo/client/react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CreateCardMutation,
   DeleteCardMutation,
@@ -20,60 +21,215 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { CardsByCardgroupDocument, type CardsByCardgroupQuery } from "@/generated/graphql";
+import {
+  CardsByCardgroupConnectionDocument,
+  type CardsByCardgroupConnectionQuery,
+} from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { CARDS_PAGE_SIZE } from "./queries";
 
-type Card = CardsByCardgroupQuery["cardsByCardgroup"][number];
+type Connection = CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"];
+type Edge = Connection["edges"][number];
+type PageInfo = Connection["pageInfo"];
 
 type Props = {
   cardgroupId: string;
-  initialCards: Card[];
+  initialEdges: Edge[];
+  initialPageInfo: PageInfo;
+  initialTotalCount: number;
 };
 
-export function CardsClient({ cardgroupId, initialCards }: Props) {
-  const [cards, setCards] = useState<Card[]>(initialCards);
+export function CardsClient({
+  cardgroupId,
+  initialEdges,
+  initialPageInfo,
+  initialTotalCount,
+}: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [createFormKey, setCreateFormKey] = useState(0);
+  const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
+
+  const {
+    data,
+    fetchMore,
+    loading,
+    networkStatus,
+    error: queryError,
+  } = useQuery(CardsByCardgroupConnectionDocument, {
+    variables: { cardgroupId, first: CARDS_PAGE_SIZE },
+    fetchPolicy: "cache-first",
+    notifyOnNetworkStatusChange: true,
+  });
+
+  const queryBannerError = getBackendErrorBanner(queryError);
+
+  const connection = data?.cardsByCardgroupConnection;
+  const edges = connection?.edges ?? initialEdges;
+  const pageInfo = connection?.pageInfo ?? initialPageInfo;
+  const totalCount = connection?.totalCount ?? initialTotalCount;
+
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const fetchingRef = useRef(false);
+
+  const requestNextPage = useCallback(() => {
+    if (fetchingRef.current) return;
+    if (!pageInfo.hasNextPage) return;
+
+    fetchingRef.current = true;
+    fetchMore({
+      variables: {
+        cardgroupId,
+        first: CARDS_PAGE_SIZE,
+        after: pageInfo.endCursor,
+      },
+      updateQuery: (prev, { fetchMoreResult }) => {
+        if (!fetchMoreResult) return prev;
+        return {
+          cardsByCardgroupConnection: {
+            ...fetchMoreResult.cardsByCardgroupConnection,
+            edges: [
+              ...prev.cardsByCardgroupConnection.edges,
+              ...fetchMoreResult.cardsByCardgroupConnection.edges,
+            ],
+          },
+        };
+      },
+    })
+      .then(() => {
+        // Clear any previous fetchMore error on success so the observer can resume.
+        setFetchMoreError(null);
+      })
+      .catch((err) => {
+        const banner = getBackendErrorBanner(err) ?? "Could not load more cards. Please try again.";
+        setFetchMoreError(banner);
+      })
+      .finally(() => {
+        fetchingRef.current = false;
+      });
+  }, [cardgroupId, fetchMore, pageInfo.endCursor, pageInfo.hasNextPage]);
+
+  useEffect(() => {
+    if (!pageInfo.hasNextPage) return;
+    // Stop the observer loop while a previous fetch failed; user must click Retry to resume.
+    if (fetchMoreError != null) return;
+    const node = sentinelRef.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (!entry?.isIntersecting) return;
+      if (fetchingRef.current) return;
+      if (!pageInfo.hasNextPage) return;
+      requestNextPage();
+    });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [pageInfo.hasNextPage, fetchMoreError, requestNextPage]);
 
   const [createCard, { loading: creating, error: createError }] = useMutation(CreateCardMutation, {
-    update(cache, { data }) {
-      if (!data?.createCard?.card) return;
+    update(cache, { data: createData }) {
+      if (!createData?.createCard?.card) return;
+      const newCard = createData.createCard.card;
+      // Write the new Card into the cache so any edge that references it resolves correctly.
+      cache.writeFragment({
+        id: cache.identify({ __typename: "Card", id: newCard.id }),
+        fragment: gql`
+          fragment NewCardFields on Card {
+            id
+            front
+            back
+            due
+            state
+            cardgroupId
+          }
+        `,
+        data: newCard,
+      });
+      // Use readQuery/writeQuery so cold caches (no existing connection entry) get
+      // a freshly-written connection — cache.modify silently no-ops when the field
+      // is missing, which would lose the new card on first load.
+      const variables = { cardgroupId, first: CARDS_PAGE_SIZE };
       const existing = cache.readQuery({
-        query: CardsByCardgroupDocument,
-        variables: { cardgroupId },
+        query: CardsByCardgroupConnectionDocument,
+        variables,
       });
+      const newEdge = {
+        __typename: "CardEdge" as const,
+        cursor: newCard.id,
+        node: newCard,
+      };
+      const next = existing
+        ? {
+            cardsByCardgroupConnection: {
+              ...existing.cardsByCardgroupConnection,
+              edges: [...existing.cardsByCardgroupConnection.edges, newEdge],
+              totalCount: existing.cardsByCardgroupConnection.totalCount + 1,
+            },
+          }
+        : {
+            cardsByCardgroupConnection: {
+              __typename: "CardConnection" as const,
+              edges: [newEdge],
+              pageInfo: {
+                __typename: "PageInfo" as const,
+                hasNextPage: false,
+                hasPreviousPage: false,
+                startCursor: newCard.id,
+                endCursor: newCard.id,
+              },
+              totalCount: 1,
+            },
+          };
       cache.writeQuery({
-        query: CardsByCardgroupDocument,
-        variables: { cardgroupId },
-        data: {
-          cardsByCardgroup: [...(existing?.cardsByCardgroup ?? []), data.createCard.card],
-        },
+        query: CardsByCardgroupConnectionDocument,
+        variables,
+        data: next,
       });
-      setCards((prev) => [...prev, data.createCard.card]);
       setCreateFormKey((k) => k + 1);
     },
   });
 
-  const [updateCard, { loading: updating, error: updateError }] = useMutation(UpdateCardMutation, {
-    update(_cache, { data }) {
-      if (!data?.updateCard?.card) return;
-      const updated = data.updateCard.card;
-      setCards((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-    },
-  });
+  // Update propagates automatically via Apollo cache normalization (Card has id).
+  const [updateCard, { loading: updating, error: updateError }] = useMutation(UpdateCardMutation);
 
   const [deleteCard, { error: deleteError }] = useMutation(DeleteCardMutation, {
-    update(cache, { data }, { variables }) {
-      if (!data?.deleteCard) return;
-      const id = variables?.id as string | undefined;
+    update(cache, { data: deleteData }, { variables: deleteVars }) {
+      if (!deleteData?.deleteCard) return;
+      const id = deleteVars?.id as string | undefined;
       if (!id) return;
+      // Use readQuery/writeQuery for cold-cache safety: when no connection has been
+      // cached for this cardgroup yet, there is nothing to remove and we leave the
+      // cache untouched. When the connection exists, drop any matching edge and
+      // decrement totalCount unconditionally (the deleted card may live on a page
+      // that was never fetched into edges).
+      const variables = { cardgroupId, first: CARDS_PAGE_SIZE };
+      const existing = cache.readQuery({
+        query: CardsByCardgroupConnectionDocument,
+        variables,
+      });
+      if (existing) {
+        const filteredEdges = existing.cardsByCardgroupConnection.edges.filter(
+          (edge) => edge.node.id !== id,
+        );
+        cache.writeQuery({
+          query: CardsByCardgroupConnectionDocument,
+          variables,
+          data: {
+            cardsByCardgroupConnection: {
+              ...existing.cardsByCardgroupConnection,
+              edges: filteredEdges,
+              totalCount: Math.max(0, existing.cardsByCardgroupConnection.totalCount - 1),
+            },
+          },
+        });
+      }
       cache.evict({ id: cache.identify({ __typename: "Card", id }) });
       cache.gc();
-      setCards((prev) => prev.filter((c) => c.id !== id));
     },
   });
 
-  const deleteBannerError = useMemo(() => getBackendErrorBanner(deleteError), [deleteError]);
+  const deleteBannerError = getBackendErrorBanner(deleteError);
 
   async function handleCreate(values: { front: string; back: string }) {
     await createCard({
@@ -95,8 +251,20 @@ export function CardsClient({ cardgroupId, initialCards }: Props) {
     }
   }
 
+  const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
+
   return (
     <div className="space-y-6">
+      {queryBannerError && (
+        <div
+          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+          role="alert"
+          data-testid="cards-query-error"
+        >
+          {queryBannerError}
+        </div>
+      )}
+
       {deleteBannerError && (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
           {deleteBannerError}
@@ -121,15 +289,16 @@ export function CardsClient({ cardgroupId, initialCards }: Props) {
 
       <section>
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
-          Cards ({cards.length})
+          Cards ({totalCount})
         </h2>
 
-        {cards.length === 0 ? (
+        {edges.length === 0 ? (
           <p className="text-sm text-muted-foreground">No cards yet. Add one above.</p>
         ) : (
           <ul className="space-y-3">
-            {cards.map((card) =>
-              editingId === card.id ? (
+            {edges.map((edge) => {
+              const card = edge.node;
+              return editingId === card.id ? (
                 <li key={card.id} className="rounded-md border border-border p-4">
                   <CardForm
                     mode="edit"
@@ -182,9 +351,34 @@ export function CardsClient({ cardgroupId, initialCards }: Props) {
                     </AlertDialog>
                   </div>
                 </li>
-              ),
-            )}
+              );
+            })}
           </ul>
+        )}
+
+        <div ref={sentinelRef} aria-hidden="true" data-testid="cards-sentinel" />
+        {fetchMoreError && (
+          <div
+            className="mt-3 flex flex-col items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+            role="alert"
+            data-testid="cards-fetch-more-error"
+          >
+            <span>{fetchMoreError}</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setFetchMoreError(null);
+                requestNextPage();
+              }}
+            >
+              Retry
+            </Button>
+          </div>
+        )}
+        {!fetchMoreError && fetchingMore && pageInfo.hasNextPage && (
+          <p className="mt-3 text-center text-xs text-muted-foreground">Loading more cards...</p>
         )}
       </section>
     </div>

@@ -20,14 +20,16 @@ vi.mock("@/lib/apollo/server", () => ({
 vi.mock("./cards-client", () => ({
   CardsClient: ({
     cardgroupId,
-    initialCards,
+    initialEdges,
   }: {
     cardgroupId: string;
-    initialCards: unknown[];
+    initialEdges: { node: { front: string } }[];
+    initialPageInfo: unknown;
+    initialTotalCount: number;
   }) => (
     <div data-testid="cards-client" data-cardgroup-id={cardgroupId}>
-      {(initialCards as { front: string }[]).map((c) => (
-        <span key={c.front}>{c.front}</span>
+      {initialEdges.map((e) => (
+        <span key={e.node.front}>{e.node.front}</span>
       ))}
     </div>
   ),
@@ -46,10 +48,59 @@ function makeSupabaseMock(user: { id: string } | null) {
 }
 
 const CARDGROUP = { id: "cg-1", name: "Vocab", updatedAt: "2024-06-15T10:00:00.000Z" };
-const CARDS = [
-  { id: "c-1", front: "Hello", back: "Hola", due: "2024-06-15", state: 0, cardgroupId: "cg-1" },
-  { id: "c-2", front: "World", back: "Mundo", due: "2024-06-15", state: 0, cardgroupId: "cg-1" },
+
+const EDGES = [
+  {
+    cursor: "c-1",
+    node: {
+      id: "c-1",
+      front: "Hello",
+      back: "Hola",
+      due: "2024-06-15",
+      state: 0,
+      cardgroupId: "cg-1",
+    },
+  },
+  {
+    cursor: "c-2",
+    node: {
+      id: "c-2",
+      front: "World",
+      back: "Mundo",
+      due: "2024-06-15",
+      state: 0,
+      cardgroupId: "cg-1",
+    },
+  },
 ];
+
+const PAGE_INFO = {
+  hasNextPage: false,
+  hasPreviousPage: false,
+  startCursor: "c-1",
+  endCursor: "c-2",
+};
+
+const CONNECTION = {
+  cardsByCardgroupConnection: {
+    edges: EDGES,
+    pageInfo: PAGE_INFO,
+    totalCount: EDGES.length,
+  },
+};
+
+const EMPTY_CONNECTION = {
+  cardsByCardgroupConnection: {
+    edges: [],
+    pageInfo: {
+      hasNextPage: false,
+      hasPreviousPage: false,
+      startCursor: null,
+      endCursor: null,
+    },
+    totalCount: 0,
+  },
+};
 
 describe("CardsPage (RSC)", () => {
   it("redirects to /login when unauthenticated", async () => {
@@ -64,7 +115,7 @@ describe("CardsPage (RSC)", () => {
     vi.mocked(createSupabaseServerClient).mockResolvedValue(
       makeSupabaseMock({ id: "user-1" }) as never,
     );
-    vi.mocked(gqlFetch).mockResolvedValue({ cardgroup: null, cardsByCardgroup: [] } as never);
+    vi.mocked(gqlFetch).mockResolvedValue({ cardgroup: null, ...EMPTY_CONNECTION } as never);
 
     await expect(CardsPage({ params: Promise.resolve({ id: "cg-99" }) })).rejects.toThrow(
       "REDIRECT:/cardgroups",
@@ -82,13 +133,13 @@ describe("CardsPage (RSC)", () => {
     );
   });
 
-  it("renders heading and passes cards to CardsClient", async () => {
+  it("renders heading and passes initialEdges to CardsClient", async () => {
     vi.mocked(createSupabaseServerClient).mockResolvedValue(
       makeSupabaseMock({ id: "user-1" }) as never,
     );
     vi.mocked(gqlFetch)
       .mockResolvedValueOnce({ cardgroup: CARDGROUP } as never)
-      .mockResolvedValueOnce({ cardsByCardgroup: CARDS } as never);
+      .mockResolvedValueOnce(CONNECTION as never);
 
     const jsx = await CardsPage({ params: Promise.resolve({ id: "cg-1" }) });
     render(jsx);
@@ -105,7 +156,7 @@ describe("CardsPage (RSC)", () => {
     );
     vi.mocked(gqlFetch)
       .mockResolvedValueOnce({ cardgroup: CARDGROUP } as never)
-      .mockResolvedValueOnce({ cardsByCardgroup: [] } as never);
+      .mockResolvedValueOnce(EMPTY_CONNECTION as never);
 
     const jsx = await CardsPage({ params: Promise.resolve({ id: "cg-1" }) });
     render(jsx);

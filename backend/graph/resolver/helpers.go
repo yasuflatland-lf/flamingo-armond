@@ -6,9 +6,9 @@ import (
 	"backend/internal/usecase"
 )
 
-// toUserModel lives in a separate file so `gqlgen generate` does not strip it
-// when regenerating schema.resolvers.go (gqlgen only preserves resolver methods,
-// not top-level helper functions, in the managed file).
+// Helpers live in a separate file so `gqlgen generate` does not strip them
+// when regenerating schema.resolvers.go (gqlgen only preserves resolver
+// methods, not top-level helper functions, in the managed file).
 func toUserModel(user *domain.User) *model.User {
 	if user == nil {
 		return nil
@@ -21,9 +21,8 @@ func toUserModel(user *domain.User) *model.User {
 	}
 }
 
-// toCardgroupModel converts a domain.Cardgroup to a model.Cardgroup.
-// Owner is intentionally left nil; cardgroupResolver.Owner populates it lazily
-// via the per-request User DataLoader.
+// toCardgroupModel leaves Owner nil; cardgroupResolver.Owner populates it
+// lazily via the per-request User DataLoader.
 func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 	if cg == nil {
 		return nil
@@ -76,6 +75,24 @@ func toCardModels(cards []*domain.Card) []*model.Card {
 	return out
 }
 
+// The gqlgen-generated and usecase enums share identical string values
+// ("ID", "CREATED_AT", …) so conversion is a direct cast.
+func toUsecaseCardOrderBy(o *model.CardOrderBy) *usecase.CardOrderBy {
+	if o == nil {
+		return nil
+	}
+	v := usecase.CardOrderBy(*o)
+	return &v
+}
+
+func toUsecaseSortOrder(d *model.SortOrder) *usecase.SortOrder {
+	if d == nil {
+		return nil
+	}
+	v := usecase.SortOrder(*d)
+	return &v
+}
+
 func toSwipeResponseModel(out *usecase.SwipeOutput) *model.SwipeResponse {
 	if out == nil {
 		return nil
@@ -84,4 +101,32 @@ func toSwipeResponseModel(out *usecase.SwipeOutput) *model.SwipeResponse {
 		NextCards:       toCardModels(out.NextCards),
 		PerformanceMode: out.PerformanceMode,
 	}
+}
+
+// toCardConnectionModel emits cursors as bare card UUIDs (no base64).
+func toCardConnectionModel(out *usecase.CardConnectionOutput) *model.CardConnection {
+	if out == nil {
+		return &model.CardConnection{Edges: []*model.CardEdge{}, PageInfo: &model.PageInfo{}}
+	}
+	edges := make([]*model.CardEdge, len(out.Cards))
+	for i, c := range out.Cards {
+		edges[i] = &model.CardEdge{Cursor: c.ID, Node: toCardModel(c)}
+	}
+	return &model.CardConnection{
+		Edges: edges,
+		PageInfo: &model.PageInfo{
+			HasNextPage:     out.HasNext,
+			HasPreviousPage: out.HasPrev,
+			StartCursor:     nilIfEmpty(out.StartCur),
+			EndCursor:       nilIfEmpty(out.EndCur),
+		},
+		TotalCount: int(out.TotalCount),
+	}
+}
+
+func nilIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
