@@ -443,4 +443,134 @@ describe("<CardsClient>", () => {
     expect(resetFrontInput.value).toBe("");
     expect(resetBackInput.value).toBe("");
   });
+
+  // G1: useQuery error surfaces a banner via the cards-query-error testid.
+  it("useQuery error renders banner with cards-query-error testid", async () => {
+    const queryErrorMock = {
+      request: {
+        query: CardsByCardgroupConnectionDocument,
+        variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+      },
+      result: {
+        errors: [new GraphQLError("boom", { extensions: { code: "INTERNAL" } })],
+      },
+    };
+
+    renderClient([queryErrorMock], [CARD_1, CARD_2]);
+
+    const banner = await screen.findByTestId("cards-query-error");
+    // INTERNAL errors surface with the original message via getBackendErrorBanner.
+    expect(banner).toHaveTextContent("boom");
+  });
+
+  // G4: cold cache create writes a fresh connection and the new card renders.
+  it("create on cold cache renders the new card", async () => {
+    const user = userEvent.setup();
+    const createMock = makeCreateMock({ cardgroupId: CG_ID, front: "Cat", back: "Gato" });
+
+    // Cold cache — no seeded cardsByCardgroupConnection entry.
+    const cache = new InMemoryCache();
+
+    renderClient([createMock], [], { cache });
+
+    const addFrontInput = screen.getByLabelText(/front/i) as HTMLElement;
+    const addBackInput = screen.getByLabelText(/back/i) as HTMLElement;
+
+    await user.type(addFrontInput, "Cat");
+    await user.type(addBackInput, "Gato");
+
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Cat")).toBeInTheDocument();
+    });
+
+    const cached = cache.readQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+    });
+    expect(cached?.cardsByCardgroupConnection.edges).toHaveLength(1);
+    expect(cached?.cardsByCardgroupConnection.edges[0]?.node.id).toBe(NEW_CARD.id);
+    expect(cached?.cardsByCardgroupConnection.totalCount).toBe(1);
+  });
+
+  // G5: delete decrements totalCount unconditionally — even when the filter is a
+  // no-op because the deleted card lives on a page that was never fetched into
+  // the cached edges. Strategy: open the delete dialog while the card is still
+  // visible, then mutate the cache to drop that card's edge before confirming —
+  // the dialog's onClick captured card.id in closure, so the mutation still
+  // fires for the original id, and the deleteCard.update callback now sees a
+  // cached connection that does NOT contain that id.
+  it("delete decrements totalCount even when card is not in cached edges", async () => {
+    const user = userEvent.setup();
+    const mock = makeDeleteMock("c-1");
+
+    // Seed cache with BOTH edges so CARD_1's Delete button renders.
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+      data: {
+        cardsByCardgroupConnection: {
+          __typename: "CardConnection" as const,
+          edges: [edge(CARD_1), edge(CARD_2)],
+          pageInfo: {
+            __typename: "PageInfo" as const,
+            hasNextPage: true,
+            hasPreviousPage: false,
+            startCursor: CARD_1.id,
+            endCursor: CARD_2.id,
+          },
+          totalCount: 5,
+        },
+      },
+    });
+
+    renderClient([mock], [CARD_1, CARD_2], { cache });
+
+    // Open the delete dialog for CARD_1 while it's still visible.
+    const firstDeleteBtn = screen.getAllByRole("button", { name: /delete/i })[0] as HTMLElement;
+    await user.click(firstDeleteBtn);
+
+    const dialog = await screen.findByRole("alertdialog");
+    const confirmBtn = within(dialog).getByRole("button", { name: /delete/i });
+
+    // Drop CARD_1 from the cached connection (keep totalCount=5) WITHOUT
+    // broadcasting so the component does not re-render and unmount the dialog.
+    // The deleteCard.update callback will then read an existing connection whose
+    // edges do not include CARD_1, exercising the no-op-filter path.
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+      data: {
+        cardsByCardgroupConnection: {
+          __typename: "CardConnection" as const,
+          edges: [edge(CARD_2)],
+          pageInfo: {
+            __typename: "PageInfo" as const,
+            hasNextPage: true,
+            hasPreviousPage: false,
+            startCursor: CARD_2.id,
+            endCursor: CARD_2.id,
+          },
+          totalCount: 5,
+        },
+      },
+      broadcast: false,
+    });
+
+    // Confirm the delete — the dialog's onClick closure still uses card.id="c-1".
+    await user.click(confirmBtn);
+
+    await waitFor(() => {
+      const cached = cache.readQuery({
+        query: CardsByCardgroupConnectionDocument,
+        variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+      });
+      // totalCount must drop from 5 to 4 even though the filter removed nothing.
+      // A gated-decrement regression (only decrement when filter actually
+      // removes an edge) would leave totalCount at 5 here.
+      expect(cached?.cardsByCardgroupConnection.totalCount).toBe(4);
+    });
+  });
 });
