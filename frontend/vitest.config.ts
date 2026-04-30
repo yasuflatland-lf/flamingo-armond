@@ -26,9 +26,14 @@ export default defineConfig({
     },
     coverage: {
       provider: "v8",
-      reporter: ["text", "html"],
-      include: ["src/lib/**/*.ts"],
-      exclude: ["src/generated/**", "src/**/*.test.{ts,tsx}"],
+      reporter: ["text", "html", "lcov"],
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: [
+        "src/generated/**",
+        "src/**/*.test.{ts,tsx}",
+        "src/__test-setup__/**",
+        "src/__mocks__/**",
+      ],
     },
   },
 });
