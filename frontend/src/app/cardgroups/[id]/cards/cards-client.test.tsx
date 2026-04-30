@@ -4,9 +4,9 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  CardsByCardgroupDocument,
+  CardsByCardgroupConnectionDocument,
   CreateCardDocument,
   DeleteCardDocument,
   UpdateCardDocument,
@@ -14,6 +14,7 @@ import {
 import { CardsClient } from "./cards-client";
 
 const CG_ID = "cg-1";
+const PAGE_SIZE = 20;
 
 const CARD_1 = {
   __typename: "Card" as const,
@@ -44,6 +45,53 @@ const NEW_CARD = {
   state: 0,
   cardgroupId: CG_ID,
 };
+
+function edge(card: typeof CARD_1) {
+  return {
+    __typename: "CardEdge" as const,
+    cursor: card.id,
+    node: card,
+  };
+}
+
+function connection(
+  cards: ReadonlyArray<typeof CARD_1>,
+  hasNext = false,
+): {
+  __typename: "CardConnection";
+  edges: ReturnType<typeof edge>[];
+  pageInfo: {
+    __typename: "PageInfo";
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+    startCursor: string | null;
+    endCursor: string | null;
+  };
+  totalCount: number;
+} {
+  return {
+    __typename: "CardConnection" as const,
+    edges: cards.map(edge),
+    pageInfo: {
+      __typename: "PageInfo" as const,
+      hasNextPage: hasNext,
+      hasPreviousPage: false,
+      startCursor: cards[0]?.id ?? null,
+      endCursor: cards[cards.length - 1]?.id ?? null,
+    },
+    totalCount: cards.length,
+  };
+}
+
+function defaultPageInfo(edges: ReturnType<typeof edge>[]) {
+  return {
+    __typename: "PageInfo" as const,
+    hasNextPage: false,
+    hasPreviousPage: false,
+    startCursor: edges[0]?.cursor ?? null,
+    endCursor: edges[edges.length - 1]?.cursor ?? null,
+  };
+}
 
 function makeCreateMock(
   input: { cardgroupId: string; front: string; back: string },
@@ -86,12 +134,34 @@ function renderClient(
     ? { mutate: { errorPolicy: "all" as const } }
     : undefined;
 
+  const initialEdges = initialCards.map(edge);
+
   render(
     <MockedProvider mocks={mocks as never} defaultOptions={defaultOptions} cache={options.cache}>
-      <CardsClient cardgroupId={CG_ID} initialCards={initialCards} />
+      <CardsClient
+        cardgroupId={CG_ID}
+        initialEdges={initialEdges}
+        initialPageInfo={defaultPageInfo(initialEdges)}
+        initialTotalCount={initialEdges.length}
+      />
     </MockedProvider>,
   );
 }
+
+// Stub IntersectionObserver since cards-client wires one up in a useEffect.
+beforeEach(() => {
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() {
+        return [];
+      }
+    },
+  );
+});
 
 describe("<CardsClient>", () => {
   it("renders existing cards", () => {
@@ -102,26 +172,21 @@ describe("<CardsClient>", () => {
 
   it("add success appends a new row", async () => {
     const user = userEvent.setup();
-    const mock = makeCreateMock({ cardgroupId: CG_ID, front: "Cat", back: "Gato" });
+    const createMock = makeCreateMock({ cardgroupId: CG_ID, front: "Cat", back: "Gato" });
 
-    // Pre-populate cache with existing cards so the update callback can read it.
-    const cacheMocks = [
-      {
-        request: {
-          query: CardsByCardgroupDocument,
-          variables: { cardgroupId: CG_ID },
-        },
-        result: { data: { cardsByCardgroup: [CARD_1, CARD_2] } },
-      },
-      mock,
-    ];
+    // Pre-populate cache with the connection so the create update callback can read/write it.
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+      data: { cardsByCardgroupConnection: connection([CARD_1, CARD_2]) },
+    });
 
-    renderClient(cacheMocks);
+    renderClient([createMock], [CARD_1, CARD_2], { cache });
 
     const addFrontInput = screen.getAllByLabelText(/front/i)[0] as HTMLElement;
     const addBackInput = screen.getAllByLabelText(/back/i)[0] as HTMLElement;
 
-    // The add form is first
     await user.click(addFrontInput);
     await user.type(addFrontInput, "Cat");
     await user.click(addBackInput);
@@ -169,16 +234,13 @@ describe("<CardsClient>", () => {
     const user = userEvent.setup();
     renderClient([]);
 
-    // Click Edit on first card row
     const firstEditBtn = screen.getAllByRole("button", { name: /edit/i })[0] as HTMLElement;
     await user.click(firstEditBtn);
 
-    // Edit form appears alongside the add form; edit input is the second Front input
     // [0] = add form (empty), [1] = edit form (prefilled)
     const editFrontInput = screen.getAllByLabelText(/front/i)[1] as HTMLElement;
     expect(editFrontInput).toHaveValue("Hello");
 
-    // Cancel reverts
     await user.click(screen.getByRole("button", { name: /cancel/i }));
 
     await waitFor(() => {
@@ -196,12 +258,19 @@ describe("<CardsClient>", () => {
       updatedCard,
     );
 
-    renderClient([mock]);
+    // Seed cache so cache normalization can update the edge node when mutation completes.
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+      data: { cardsByCardgroupConnection: connection([CARD_1, CARD_2]) },
+    });
+
+    renderClient([mock], [CARD_1, CARD_2], { cache });
 
     const firstEditBtn = screen.getAllByRole("button", { name: /edit/i })[0] as HTMLElement;
     await user.click(firstEditBtn);
 
-    // [0] = add form, [1] = edit form
     const editFrontInput = screen.getAllByLabelText(/front/i)[1] as HTMLElement;
     await user.clear(editFrontInput);
     await user.type(editFrontInput, "Hello updated");
@@ -221,12 +290,12 @@ describe("<CardsClient>", () => {
     const user = userEvent.setup();
     const mock = makeDeleteMock("c-1");
 
-    // Seed a real InMemoryCache so the update callback's evict/gc is exercised.
+    // Seed a real InMemoryCache so the update callback's modify/evict/gc is exercised.
     const cache = new InMemoryCache();
     cache.writeQuery({
-      query: CardsByCardgroupDocument,
-      variables: { cardgroupId: CG_ID },
-      data: { cardsByCardgroup: [CARD_1, CARD_2] },
+      query: CardsByCardgroupConnectionDocument,
+      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+      data: { cardsByCardgroupConnection: connection([CARD_1, CARD_2]) },
     });
 
     renderClient([mock], [CARD_1, CARD_2], { cache });
@@ -236,22 +305,19 @@ describe("<CardsClient>", () => {
     const firstDeleteBtn = screen.getAllByRole("button", { name: /delete/i })[0] as HTMLElement;
     await user.click(firstDeleteBtn);
 
-    // Confirm button inside the dialog
     const dialog = await screen.findByRole("alertdialog");
     const confirmBtn = within(dialog).getByRole("button", { name: /delete/i });
     await user.click(confirmBtn);
 
-    // Row disappears from the DOM.
     await waitFor(() => {
       expect(screen.queryByText("Hello")).not.toBeInTheDocument();
     });
 
-    // Cache must no longer contain the deleted card.
     const cached = cache.readQuery({
-      query: CardsByCardgroupDocument,
-      variables: { cardgroupId: CG_ID },
+      query: CardsByCardgroupConnectionDocument,
+      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
     });
-    const ids = cached?.cardsByCardgroup.map((c) => c.id) ?? [];
+    const ids = cached?.cardsByCardgroupConnection.edges.map((e) => e.node.id) ?? [];
     expect(ids).not.toContain(CARD_1.id);
   });
 
@@ -329,14 +395,11 @@ describe("<CardsClient>", () => {
 
     renderClient([mock], [CARD_1], { errorPolicy: true });
 
-    // Open edit form for the card
     const editBtn = screen.getByRole("button", { name: /edit/i });
     await user.click(editBtn);
 
-    // [0] = add form, [1] = edit form
     const editFrontInput = screen.getAllByLabelText(/front/i)[1] as HTMLElement;
     await user.clear(editFrontInput);
-    // Leave front empty so the server returns BAD_USER_INPUT
 
     await user.click(screen.getByRole("button", { name: /^save$/i }));
 
@@ -344,30 +407,23 @@ describe("<CardsClient>", () => {
       expect(screen.getByText("front is required")).toBeInTheDocument();
     });
 
-    // Edit form must still be open (inputs still visible)
     expect(screen.getAllByLabelText(/front/i)).toHaveLength(2);
-    // No navigation — save button still present
     expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument();
   });
 
   it("add-card form is reset after successful create", async () => {
     const user = userEvent.setup();
-    const mock = makeCreateMock({ cardgroupId: CG_ID, front: "Cat", back: "Gato" });
+    const createMock = makeCreateMock({ cardgroupId: CG_ID, front: "Cat", back: "Gato" });
 
-    const cacheMocks = [
-      {
-        request: {
-          query: CardsByCardgroupDocument,
-          variables: { cardgroupId: CG_ID },
-        },
-        result: { data: { cardsByCardgroup: [CARD_1, CARD_2] } },
-      },
-      mock,
-    ];
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+      data: { cardsByCardgroupConnection: connection([CARD_1, CARD_2]) },
+    });
 
-    renderClient(cacheMocks);
+    renderClient([createMock], [CARD_1, CARD_2], { cache });
 
-    // Fill the add form (idPrefix="add-")
     const addFrontInput = screen.getAllByLabelText(/front/i)[0] as HTMLElement;
     const addBackInput = screen.getAllByLabelText(/back/i)[0] as HTMLElement;
 
@@ -378,12 +434,10 @@ describe("<CardsClient>", () => {
 
     await user.click(screen.getByRole("button", { name: /^add$/i }));
 
-    // New card row appears
     await waitFor(() => {
       expect(screen.getByText("Cat")).toBeInTheDocument();
     });
 
-    // Add form inputs must be cleared (remounted via key)
     const resetFrontInput = screen.getAllByLabelText(/front/i)[0] as HTMLInputElement;
     const resetBackInput = screen.getAllByLabelText(/back/i)[0] as HTMLInputElement;
     expect(resetFrontInput.value).toBe("");
