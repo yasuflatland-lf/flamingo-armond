@@ -701,40 +701,34 @@ Validating fields only inside `ConfigFromEnv` is bypassable — callers can cons
 
 ## Observability
 
-The backend emits OpenTelemetry traces via `otelgqlgen` for every GraphQL operation, resolver, and scalar field. Spans are exported via OTLP HTTP (port 4318) to whatever collector `OTEL_EXPORTER_OTLP_ENDPOINT` points to.
+Tracing model, request-ID contract, and APQ wire format are documented in `docs/observability.md` (single source of truth across backend and frontend). Backend-only implementation notes follow.
 
-### What gets traced
+### Tracing impl
 
-Per GraphQL request, the following spans are emitted (concrete names depend on the `otelgqlgen` version):
+The backend uses `github.com/ravilushqa/otelgqlgen` to instrument every GraphQL operation, resolver, and scalar field. Spans are exported via `otlptracehttp` to the endpoint named by `OTEL_EXPORTER_OTLP_ENDPOINT`.
 
-- One operation-level span named after the GraphQL operation (`Me`, `UpdateProfile`, `Health`).
-- One resolver span per top-level resolver (`Query.me`, `Mutation.updateProfile`).
-- One child span per field resolver for non-trivial fields (`User.displayName`, `User.bio`, `User.avatarUrl`).
-- Span attributes include `graphql.operation.type`, `graphql.operation.name`, and `graphql.error.code` (when the operation errors).
+**Library compatibility pins.** `github.com/ravilushqa/otelgqlgen` must be pinned to **v0.17.0** when using `github.com/99designs/gqlgen v0.17.66`. Upgrading to `otelgqlgen` v0.19.x transitively bumps gqlgen to v0.17.73, which changes the generated `ComplexityRoot` signature and breaks `backend/graph/generated/`. The v0.17.x line of `otelgqlgen` matches the gqlgen v0.17.66 generics era.
 
-### Noop fallback
+The APQ LRU cache must be constructed as `lru.New[string](100)` (generic form). gqlgen v0.17.66 made the cache interface generic; the non-generic `lru.New(100)` form shown in older online docs no longer compiles against this version.
 
-If `OTEL_EXPORTER_OTLP_ENDPOINT` is empty or missing, the server installs a no-op TracerProvider and logs `telemetry disabled`. Startup is **not** blocked on collector availability — this is deliberate so dev / CI do not require a running Jaeger.
+**`otelgqlgen` span naming (empirically verified against v0.17.0).**
 
-### Sampler
+- **Operation span**: bare operation name — `Me`, `UpdateProfile`, `Health`. Not `query Me` and not `graphql.execute`.
+- **Resolver / field spans**: `<ObjectType>/<fieldName>` — e.g. `Query/me`, `User/displayName`.
 
-`ParentBased(TraceIDRatioBased(ratio))`. The `ratio` is read from `OTEL_TRACES_SAMPLER_ARG` (default `1.0`, i.e. sample everything). In production, set this to a low value (e.g. `0.1`) via Render env. `ParentBased` means that if a caller provides a sampling decision via `traceparent`, we respect it.
+Test assertions that match span names (e.g. `strings.HasPrefix(name, "User/")`) are anchored to `otelgqlgen@v0.17.0`. If `otelgqlgen` is upgraded, run the integration tests — a span-naming change will surface immediately as a failing assertion before it silently breaks production dashboards.
 
-### Trace context gap from the frontend
+**Noop fallback.** If `OTEL_EXPORTER_OTLP_ENDPOINT` is empty or missing, the server installs a no-op TracerProvider and logs `telemetry disabled`. Startup is **not** blocked on collector availability — this is deliberate so dev / CI do not require a running Jaeger.
 
-The current backend does not forward `traceparent` from the Next.js frontend — each backend request is its own root trace. Frontend-side OTel + `traceparent` propagation is tracked in [#22](https://github.com/yasuflatland-lf/flamingo-armond/issues/22) and will introduce a parent span that backend spans nest under.
+**Sampler env-var validation.** `OTEL_TRACES_SAMPLER_ARG` parsing emits `slog.Warn` on two distinct conditions: a parse error (e.g. `0,1` with a comma instead of a decimal point) and an out-of-range value (outside `[0, 1]`). Both fall back to `1.0`. The two warnings are kept separate so operators can triage env config issues quickly — a comma typo produces a different message than a value of `1.5`.
 
-### Shutdown ordering
+**OTLP exporter goroutine ownership.** `otlptracehttp.New` starts background goroutines and a persistent HTTP client. If `Init` creates the exporter but a later step (e.g. resource construction) errors before the SDK takes ownership, the exporter is orphaned and leaks. The fix is to call `exp.Shutdown(ctx)` in the failure path of `Init` so the background goroutines are always cleaned up.
 
-The graceful-shutdown goroutine shuts down in this order:
+**`resource.New` partial-error handling.** `go.opentelemetry.io/otel/sdk/resource` returns `resource.ErrPartialResource` or `resource.ErrSchemaURLConflict` **alongside a usable `*Resource`** when one detector fails (e.g. a host-info detector blocked by container restrictions). Do not `return err` on these — use `errors.Is` to identify them, emit a `slog.Warn`, and pass the partial resource to `sdktrace.WithResource`. Aborting init on a partial-detector failure crashes the server in sandboxed environments where host introspection is restricted.
 
-1. `srv.Shutdown(sctx)` — drain in-flight HTTP requests.
-2. `db.Close()` — release the pgx pool.
-3. `tracerShutdown(sctx)` — flush pending spans to the exporter.
+**`tracetest.InMemoryExporter` shutdown clears the buffer.** `exporter.Shutdown(ctx)` internally calls `Reset()`, which clears the recorded span buffer. The natural pattern `defer shutdown(); ...; spans := exp.GetSpans()` returns zero spans because the buffer was already cleared by the deferred shutdown. To read spans correctly: call `tp.ForceFlush(ctx)` to drain pending spans **before** calling `Shutdown`, or call `exp.GetSpans()` before `Shutdown` returns.
 
-Tracer shutdown is last so that DB-layer spans emitted during request drain still reach the exporter. Tracer shutdown errors log a warning but do not fail the process.
-
-### Environment variables (observability)
+**Environment variables.**
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
@@ -742,35 +736,15 @@ Tracer shutdown is last so that DB-layer spans emitted during request drain stil
 | `OTEL_TRACES_SAMPLER_ARG` | no | `1.0` | Float in `[0, 1]`. Parse errors and out-of-range values each emit a `slog.Warn` and fall back to `1.0`. |
 | `APP_ENV` | no | `development` | Used as `deployment.environment` resource attribute. Set to `production` on Render. |
 
-## Request ID propagation
+### Request ID middleware
 
-Every HTTP request handled by the backend carries an `X-Request-ID` header. The
-header provides a cheap, grep-friendly correlation ID that flows from the
-frontend through the backend without requiring a full distributed-tracing stack.
-It complements, rather than replaces, the OTel span tree tracked in
-[#22](https://github.com/yasuflatland-lf/flamingo-armond/issues/22).
+The middleware lives at `backend/internal/middleware/request_id.go` and reads `X-Request-ID` from the incoming request. Generation, length cap, and the contract with the frontend are documented in `docs/observability.md`.
 
-### Header and length cap
+**ID generation fallback.** When no valid upstream ID is present, the middleware generates one with `uuid.NewV7()`. If `NewV7` fails (e.g. the random source is temporarily unavailable), the fallback is a nanosecond timestamp string (`fmt.Sprintf("fallback-%d", time.Now().UnixNano())`).
 
-The middleware (`backend/internal/middleware/request_id.go`) reads
-`X-Request-ID` from the incoming request. An upstream value is accepted as-is
-when it is non-empty and at most **128 characters**. Values longer than that are
-dropped and replaced by a freshly generated ID. The cap prevents log injection
-and guards against accidentally forwarding an unbounded upstream payload into
-structured log fields.
+**Do not replace the fallback with `uuid.NewString()`.** `uuid.NewString` calls `Must(uuid.NewRandom())` internally, which panics on the same `crypto/rand` failure that caused `NewV7` to fail — it is not a safe fallback.
 
-### ID generation
-
-When no valid upstream ID is present, the middleware generates one with
-`uuid.NewV7()` (timestamp-prefixed, lexicographically sortable). If `NewV7`
-fails (e.g. the random source is temporarily unavailable), the fallback is a
-nanosecond timestamp string (`fmt.Sprintf("fallback-%d", time.Now().UnixNano())`).
-
-**Do not replace the fallback with `uuid.NewString()`.** `uuid.NewString` calls
-`Must(uuid.NewRandom())` internally, which panics on the same `crypto/rand`
-failure that caused `NewV7` to fail — it is not a safe fallback.
-
-### Middleware position
+**Middleware position.**
 
 ```go
 e.Use(middleware.RequestLogger())
@@ -778,16 +752,9 @@ e.Use(middleware.Recover())
 e.Use(internalmw.RequestID())  // third — runs on every route
 ```
 
-`RequestID` is registered immediately after `Recover` so that even error
-responses produced by panicking handlers carry the header. It applies globally —
-`/health`, `/playground`, and `/query` all receive it.
+`RequestID` is registered immediately after `Recover` so that even error responses produced by panicking handlers carry the header. It applies globally — `/health`, `/playground`, and `/query` all receive it. The middleware sets `X-Request-ID` on the **response** before calling `next(c)`, so error paths also expose the header to callers.
 
-The middleware sets `X-Request-ID` on the **response** before calling `next(c)`,
-so error paths also expose the header to callers.
-
-### slog integration
-
-`main()` wires the request-aware logger:
+**slog integration.** `main()` wires the request-aware logger:
 
 ```go
 logger := slog.New(
@@ -799,63 +766,23 @@ logger := slog.New(
 slog.SetDefault(logger)
 ```
 
-`logging.NewContextHandler` wraps any `slog.Handler`. On every `Handle` call it
-reads the request ID from the record's context via the supplied `ContextLookup`
-function and appends it as `"request_id"` before delegating to the inner
-handler. The result: **every `slog.*Context` call** (`slog.InfoContext`,
-`slog.ErrorContext`, etc.) automatically includes `"request_id"` in the JSON
-log line. No resolver or usecase needs to pass it manually.
+`logging.NewContextHandler` wraps any `slog.Handler`. On every `Handle` call it reads the request ID from the record's context via the supplied `ContextLookup` function and appends it as `"request_id"` before delegating to the inner handler.
 
-`slog` calls made **without** a context (`slog.Info(...)`) do not carry a
-request ID — that is by design; they represent process-level events rather than
-per-request ones.
+**Decoupling via `ContextLookup`.** `logging` does not import `middleware`. The wiring above passes `internalmw.RequestIDFromContext` as a plain `func(context.Context) string` so the two packages remain independent of each other's import graph.
 
-### Decoupling via `ContextLookup`
-
-`logging` does not import `middleware`. The wiring above passes
-`internalmw.RequestIDFromContext` as a plain `func(context.Context) string` so
-the two packages remain independent of each other's import graph.
-
-### Helper
+**Helper.**
 
 ```go
 id := internalmw.RequestIDFromContext(ctx) // returns "" when not present
 ```
 
-## Automatic Persisted Queries
+**Shutdown ordering.** The graceful-shutdown goroutine shuts down in this order:
 
-`extension.AutomaticPersistedQuery{Cache: lru.New(100)}` is always registered on the gqlgen handler. There is no env gate — hash-less queries still work as normal POST bodies, so dev / playground flows are unaffected. The first request that contains `extensions.persistedQuery.sha256Hash` populates the LRU cache; subsequent hash-only requests from the same client short-circuit to the cached query text without sending the full document.
+1. `srv.Shutdown(sctx)` — drain in-flight HTTP requests.
+2. `db.Close()` — release the pgx pool.
+3. `tracerShutdown(sctx)` — flush pending spans to the exporter.
 
-### APQ / Observability implementation notes
-
-#### Library compatibility pins
-
-`github.com/ravilushqa/otelgqlgen` must be pinned to **v0.17.0** when using `github.com/99designs/gqlgen v0.17.66`. Upgrading to `otelgqlgen` v0.19.x transitively bumps gqlgen to v0.17.73, which changes the generated `ComplexityRoot` signature and breaks `backend/graph/generated/`. The v0.17.x line of `otelgqlgen` matches the gqlgen v0.17.66 generics era.
-
-The APQ LRU cache must be constructed as `lru.New[string](100)` (generic form). gqlgen v0.17.66 made the cache interface generic; the non-generic `lru.New(100)` form shown in older online docs no longer compiles against this version.
-
-#### `otelgqlgen` span naming (empirically verified against v0.17.0)
-
-- **Operation span**: bare operation name — `Me`, `UpdateProfile`, `Health`. Not `query Me` and not `graphql.execute`.
-- **Resolver / field spans**: `<ObjectType>/<fieldName>` — e.g. `Query/me`, `User/displayName`.
-
-Test assertions that match span names (e.g. `strings.HasPrefix(name, "User/")`) are anchored to `otelgqlgen@v0.17.0`. If `otelgqlgen` is upgraded, run the integration tests — a span-naming change will surface immediately as a failing assertion before it silently breaks production dashboards.
-
-#### `tracetest.InMemoryExporter` shutdown clears the buffer
-
-`exporter.Shutdown(ctx)` internally calls `Reset()`, which clears the recorded span buffer. The natural pattern `defer shutdown(); ...; spans := exp.GetSpans()` returns zero spans because the buffer was already cleared by the deferred shutdown. To read spans correctly: call `tp.ForceFlush(ctx)` to drain pending spans **before** calling `Shutdown`, or call `exp.GetSpans()` before `Shutdown` returns.
-
-#### `resource.New` partial-error handling
-
-`go.opentelemetry.io/otel/sdk/resource` returns `resource.ErrPartialResource` or `resource.ErrSchemaURLConflict` **alongside a usable `*Resource`** when one detector fails (e.g. a host-info detector blocked by container restrictions). Do not `return err` on these — use `errors.Is` to identify them, emit a `slog.Warn`, and pass the partial resource to `sdktrace.WithResource`. Aborting init on a partial-detector failure crashes the server in sandboxed environments where host introspection is restricted.
-
-#### OTLP exporter goroutine ownership
-
-`otlptracehttp.New` starts background goroutines and a persistent HTTP client. If `Init` creates the exporter but a later step (e.g. resource construction) errors before the SDK takes ownership, the exporter is orphaned and leaks. The fix is to call `exp.Shutdown(ctx)` in the failure path of `Init` so the background goroutines are always cleaned up.
-
-#### Sampler env-var validation
-
-`OTEL_TRACES_SAMPLER_ARG` parsing emits `slog.Warn` on two distinct conditions: a parse error (e.g. `0,1` with a comma instead of a decimal point) and an out-of-range value (outside `[0, 1]`). Both fall back to `1.0`. The two warnings are kept separate so operators can triage env config issues quickly — a comma typo produces a different message than a value of `1.5`.
+Tracer shutdown is last so that DB-layer spans emitted during request drain still reach the exporter. Tracer shutdown errors log a warning but do not fail the process.
 
 ## Error wrapping convention
 

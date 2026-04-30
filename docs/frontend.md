@@ -344,49 +344,25 @@ Import these instead of re-inlining the logic:
 
 ## Observability
 
-### Request ID propagation
+Tracing model, request-ID contract, and APQ wire format are documented in `docs/observability.md` (single source of truth across backend and frontend). Frontend-only implementation notes follow.
 
-Every GraphQL request sent by the frontend attaches an `X-Request-ID` header
-containing a UUID v7 value. The backend echoes the header on the response and
-stamps `request_id` on every structured log line for that request. A single grep
-on `request_id` therefore spans the full frontend-to-backend call without
-requiring an OTel SDK. Full distributed tracing is tracked in
-[#22](https://github.com/yasuflatland-lf/flamingo-armond/issues/22).
+### Request ID generator and propagation
 
-#### Generator (`frontend/src/lib/observability/request-id.ts`)
-
-A thin wrapper around the `uuidv7` npm package (~1.5 KB gzip). The package
-provides a correct monotonic counter within the same millisecond, which the
-previous inline implementation did not guarantee. Produces a standard UUID v7
-string:
+**Generator (`frontend/src/lib/observability/request-id.ts`).** A thin wrapper around the `uuidv7` npm package (~1.5 KB gzip). The package provides a correct monotonic counter within the same millisecond, which the previous inline implementation did not guarantee. Produces a standard UUID v7 string:
 
 ```
 xxxxxxxx-xxxx-7xxx-yxxx-xxxxxxxxxxxx
 ```
 
-The 48 high bits encode the Unix timestamp in milliseconds, making IDs
-sortable and traceable to their creation time.
-
-#### Browser (Apollo link chain)
-
-`frontend/src/lib/apollo/request-id-link.ts` exports `requestIdLink`, an
-Apollo `setContext` link. It checks for an existing `X-Request-ID` header
-case-insensitively; if none is found it generates a fresh UUID v7 and attaches
-it. The link is prepended as the first link in `makeClient()`:
+**Browser (Apollo link chain).** `frontend/src/lib/apollo/request-id-link.ts` exports `requestIdLink`, an Apollo `setContext` link. It checks for an existing `X-Request-ID` header case-insensitively; if none is found it generates a fresh UUID v7 and attaches it. The link is prepended as the first link in `makeClient()`:
 
 ```ts
 from([requestIdLink, authLink, makeApqLink(), httpLink])
 ```
 
-Being first in the chain ensures the ID is present for every subsequent link
-and for the outbound HTTP request.
+Being first in the chain ensures the ID is present for every subsequent link and for the outbound HTTP request.
 
-#### RSC (`gqlFetch`)
-
-`frontend/src/lib/apollo/server.ts` assigns a fresh UUID v7 inside `gqlFetch`
-before the `fetch` call. `gqlFetch` is the RSC entrypoint and has no
-caller-supplied headers, so every call generates a fresh UUID v7 — chained
-correlation across server-to-server calls is out of scope at this tier.
+**RSC (`gqlFetch`).** `frontend/src/lib/apollo/server.ts` assigns a fresh UUID v7 inside `gqlFetch` before the `fetch` call. `gqlFetch` is the RSC entrypoint and has no caller-supplied headers, so every call generates a fresh UUID v7 — chained correlation across server-to-server calls is out of scope at this tier.
 
 ## Gotchas encountered
 
@@ -434,6 +410,8 @@ correlation across server-to-server calls is out of scope at this tier.
 
 ## Automatic Persisted Queries
 
+Wire format and POST-only rationale live in `docs/observability.md`. Frontend-only implementation notes follow.
+
 The browser-side Apollo Client chain is:
 
 ```ts
@@ -446,28 +424,16 @@ Order matters:
 - `apqLink` runs second so it can rewrite the outbound body to use `extensions.persistedQuery.sha256Hash`.
 - `httpLink` is terminal.
 
-### Why `useGETForHashedQueries: false`
-
-The Apollo docs allow switching hash-only requests to GET with the query string. We deliberately keep POST because the Supabase access token travels in the `Authorization` header today; if we ever move to query-param auth, this default would leak the token into server access logs.
-
 ### sha256 via native WebCrypto
 
 `frontend/src/lib/apollo/sha256.ts` wraps `crypto.subtle.digest('SHA-256', ...)` and is shared with the APQ link. We intentionally do **not** add the `crypto-hash` npm dependency — native WebCrypto is available in every modern browser and in Node 19+ (which covers Next.js RSC).
 
-### RSC `gqlFetch` does not use APQ
+### `useGETForHashedQueries: false`
 
-`frontend/src/lib/apollo/server.ts` still `print(doc)`s the full document on every call. RSC requests are infrequent compared to the browser, and adding the APQ fallback loop (hash → on `PERSISTED_QUERY_NOT_FOUND` retry with the full document) would double the code surface of `gqlFetch`. If we later decide to enable APQ for RSC, the recipe is:
+The Apollo docs allow switching hash-only requests to GET with the query string. We deliberately keep POST because the Supabase access token travels in the `Authorization` header today; if we ever move to query-param auth, this default would leak the token into server access logs. (See `docs/observability.md` for the full rationale.)
 
-1. Compute `sha256Hex(print(doc))`.
-2. POST with `{ extensions: { persistedQuery: { version: 1, sha256Hash } } }`.
-3. If the response body contains an error with `extensions.code === "PERSISTED_QUERY_NOT_FOUND"`, retry the POST with `query: print(doc)` + the same `extensions`.
+### Apollo link chain test gotchas
 
-### APQ implementation notes
+**`@apollo/client-integration-nextjs` prepends two internal streaming links.** `@apollo/client-integration-nextjs` prepends two internal links (`ReadFromReadableStreamLink`, `TeeToReadableStreamLink`) to the user-supplied link chain before any user links execute. These support RSC streaming. As a result, the live chain assembled from `from([authLink, apqLink, httpLink])` has **five** segments, not three. Tests that assert `client.link.length === 3` or similar absolute counts will fail. Assert the **relative order** of the user-supplied links instead (e.g. verify that `authLink` appears before `apqLink` in the chain, not that the chain has exactly three nodes).
 
-#### `@apollo/client-integration-nextjs` prepends two internal streaming links
-
-`@apollo/client-integration-nextjs` prepends two internal links (`ReadFromReadableStreamLink`, `TeeToReadableStreamLink`) to the user-supplied link chain before any user links execute. These support RSC streaming. As a result, the live chain assembled from `from([authLink, apqLink, httpLink])` has **five** segments, not three. Tests that assert `client.link.length === 3` or similar absolute counts will fail. Assert the **relative order** of the user-supplied links instead (e.g. verify that `authLink` appears before `apqLink` in the chain, not that the chain has exactly three nodes).
-
-#### `ApolloLink.from` builds a binary tree, not a flat list
-
-`ApolloLink.from([a, b, c])` produces a binary tree of `ApolloLink` "concat" glue nodes; `a`, `b`, `c` are the leaves. When traversing `link.left` / `link.right` to inspect the chain in tests, stop recursing when you reach a named subclass (`HttpLink`, `PersistedQueryLink`, `SetContextLink`). Descending into `HttpLink` reveals its own internal `ClientAwarenessLink` + `BaseHttpLink` pair and pollutes the segment list with internal implementation details.
+**`ApolloLink.from` builds a binary tree, not a flat list.** `ApolloLink.from([a, b, c])` produces a binary tree of `ApolloLink` "concat" glue nodes; `a`, `b`, `c` are the leaves. When traversing `link.left` / `link.right` to inspect the chain in tests, stop recursing when you reach a named subclass (`HttpLink`, `PersistedQueryLink`, `SetContextLink`). Descending into `HttpLink` reveals its own internal `ClientAwarenessLink` + `BaseHttpLink` pair and pollutes the segment list with internal implementation details.
