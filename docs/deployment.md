@@ -72,7 +72,7 @@ The playbook writes outside the operator's machine in five places: (1) `gh secre
 
 - **`gh secret set` via `shell:` with `stdin:`, not `--body "<URL>"`.** `--body` puts the secret on argv, where it leaks to `ps`, audit logs, and shell history. Ansible's `no_log: true` masks playbook output but does not affect argv, so piping the value through stdin is the only way to keep the deploy-hook URL out of process listings.
 - **Tier-1 values are never `debug:`-printed inline with non-secret values.** `SUPABASE_DB_URL` (which carries the DB password) is shown in its own task with a "leave screen-share before reading this" warning banner, so the operator can pause sharing for that one paste.
-- **CLI tools that auto-read tokens from env should be invoked without explicit token flags.** Passing a secret as `--token <value>` exposes it on argv, which is visible in `/proc/<pid>/cmdline` to other processes on the same runner and in `set -x` debug output — the same argv-leak failure mode as the `gh secret set --body` case above. The Vercel CLI auto-reads `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` from the environment; `.github/workflows/frontend.yml` exposes them only via the job-level `env:` block and never passes `--token <value>` to any `vercel` command.
+- **CLI tools that auto-read tokens from env should be invoked without explicit token flags.** Passing a secret as `--token <value>` exposes it on argv, which is visible in `/proc/<pid>/cmdline` to other processes on the same runner and in `set -x` debug output — the same argv-leak failure mode as the `gh secret set --body` case above. Prefer env-var injection (`env:` block in workflows, exported vars in shells) over CLI flags whenever the tool supports it.
 
 ### Render deploy polling: terminal failure states
 
@@ -242,66 +242,17 @@ Auto-deploy is off so schema migrations stay tied to explicit deploys. There are
 - **`make setup-prod` users**: Phase 6 (postapply) already triggered a fresh production deploy via the Vercel API after Phase 4 registered env, and the front-end HEAD probe verified it returns 200. Skip this section.
 - **Manual operators (no `make setup-prod`)**: push a commit to `main`, or click **Deploy** on the Vercel project page.
 
-### Vercel CI deploy
+### Vercel auto-deploy via Git integration
 
-Every push to `main` triggers a `deploy` job in `.github/workflows/frontend.yml`. The job runs after `lint-test-build` succeeds and executes the Vercel CLI three-step sequence:
-
-```
-vercel pull --yes --environment=production
-vercel build --prod
-vercel deploy --prebuilt --prod
-```
-
-`VERCEL_TOKEN` is exposed via a job-level `env:` block (not as a `--token` CLI flag); the Vercel CLI reads it automatically from the environment — do not add `--token` flags to these commands.
-
-#### Why CI deploy is now the authoritative path
-
-**This is a transitional configuration.** Until the Vercel Git integration is disabled (a follow-up task), two deploy paths fire on every push to `main`:
-
-1. **Vercel automatic Git integration** — Vercel detects the push to `main` and starts a build automatically via its built-in GitHub integration.
-2. **CI deploy job** (this section) — the `deploy` job in the frontend workflow runs the same CLI sequence after `lint-test-build` passes.
-
-CI deploy is the **authoritative path** going forward for three reasons:
-
-- It gates on `lint-test-build`: a broken build or failing lint cannot reach production.
-- The deploy logic lives in the workflow file, which is reviewable in a pull request alongside the code change.
-- Deploy reproducibility is version-controlled rather than stored in the Vercel dashboard configuration.
-
-The Vercel Git integration will be disabled in a follow-up once CI deploy is confirmed stable. Until that follow-up is merged, both paths may fire on the same push, which means two builds race to become the live deployment. This is benign — both builds come from the same commit, so they produce equivalent artifacts when the CI Node/pnpm versions match the Vercel project's settings (see § 'Build environment mismatch risk') — but the race wastes build minutes. The follow-up will eliminate the race by disabling the Git integration in the Vercel project settings.
-
-#### Required GitHub secrets
-
-The CI deploy job requires three secrets registered on the GitHub repository:
-
-| Secret | Purpose |
-|---|---|
-| `VERCEL_TOKEN` | Personal access token (or team token) that authenticates the Vercel CLI. |
-| `VERCEL_ORG_ID` | The Vercel team or personal account ID that owns the project. |
-| `VERCEL_PROJECT_ID` | The Vercel project ID for the frontend. |
-
-For the rotation policy and the full secrets table covering all workflows, see `docs/ci.md` § "Frontend deploy job".
-
-These three secrets are a **manual provisioning step** until the playbook is updated (see "Interaction with `make setup-prod`" below).
+Production deploys are managed by Vercel's native Git integration, configured during Step 3. Pushing to `main` triggers Vercel to build and deploy automatically — there is no `deploy` job in `.github/workflows/frontend.yml`, and no Vercel CLI authentication secrets are stored on the GitHub side. Vercel reports deploy status back to GitHub via Commit Status and `deployment_status` events, which appear alongside the Actions checks in the GitHub UI.
 
 #### Build environment mismatch risk
 
-`vercel build` runs Vercel's own build pipeline, not the repository's `pnpm build` script directly. Vercel selects a Node version according to the project's dashboard settings — if that version differs from the version pinned in `.tool-versions` at the repo root, the build may succeed locally but behave differently in CI or produce a subtly different artifact.
+Vercel runs its own build pipeline, distinct from the repository's `pnpm build` script. Vercel selects a Node version according to the project's dashboard settings — if that differs from the version pinned in `.tool-versions` at the repo root, the build may behave differently from local. Open the Vercel project's **Settings → General → Node.js Version** and set it to match `.tool-versions`. This is a one-time operator step that cannot be automated — Vercel project settings live in the dashboard and have no API surface exposed in the repository.
 
-To prevent mismatches: open the Vercel project's **Settings → General → Node.js Version** and set it to match the version in `.tool-versions`. This is a one-time operator step that cannot be automated — Vercel project settings live in the dashboard and have no API surface exposed in the repository.
+#### Disabling Git integration
 
-#### Interaction with `make setup-prod`
-
-`make setup-prod` Phase 4 (`--tags vercel`) provisions the application environment variables (`BACKEND_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`) into the Vercel project and stores them as GitHub Actions secrets. It does **not** provision the Vercel CLI authentication secrets (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`).
-
-This is an intentional gap: this section documents the CI deploy job and the secrets it needs, but does not modify the playbook. Adding the three secrets to `make setup-prod` is a follow-up task. Until that follow-up is merged, operators must provision `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` manually via `gh secret set` by piping the value through stdin after running `make setup-prod` (see § "Three security patterns worth knowing" for why `--body` is unsafe):
-
-```bash
-printf '%s' "<token>" | gh secret set VERCEL_TOKEN
-printf '%s' "<org-id>" | gh secret set VERCEL_ORG_ID
-printf '%s' "<project-id>" | gh secret set VERCEL_PROJECT_ID
-```
-
-The `VERCEL_PROJECT_ID` value is available in the Vercel dashboard under **Settings → General → Project ID** after the project is imported in Step 3.
+If the Git integration ever needs to be turned off (e.g. to switch back to a CLI-driven deploy path), open the Vercel project → **Settings → Git → Disconnect**. Without the integration, no production deploys fire on pushes to `main`; replace it with an Actions-based path before disconnecting.
 
 ## Smoke tests after the initial setup
 

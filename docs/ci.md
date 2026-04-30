@@ -8,7 +8,7 @@ Two independent workflows: `.github/workflows/backend.yml` and `.github/workflow
 
 - **Triggers are `paths:`-scoped** per workflow — backend to `backend/**` + workflow file; frontend to `frontend/**` + `schema/**` + the root pnpm/workspace/tool-version manifests + the frontend workflow file. When adding a third service, **add its own workflow** — do not broaden an existing one. Mixing scopes breaks CI granularity and responsibility.
 - **`concurrency` groups are per-workflow** (`backend-${{ github.ref }}`, `frontend-${{ github.ref }}`) with `cancel-in-progress: true` — rapid pushes on the same ref supersede in-flight runs per service (important for feature-branch iteration). The two workflows do not cancel each other.
-- **Deploy-job concurrency exception:** The `deploy` job in `frontend.yml` overrides the workflow-level cancellation policy with a job-scoped `concurrency:` group (`frontend-deploy-${{ github.ref }}`) that has `cancel-in-progress: false`. This ensures that once a `vercel deploy --prebuilt` begins, it cannot be cancelled mid-flight — Vercel may have already committed the deployment server-side, so cancelling the runner would leave an indeterminate state. Lint-test-build runs continue to cancel each other aggressively to save CI minutes on stale feature-branch commits. **General rule:** jobs whose effects are confined to the runner (lint, test, build artifacts in transit) are safe for `cancel-in-progress: true`; jobs that have already committed external state (deploys, releases, side-effecting API calls) must override with `cancel-in-progress: false` to avoid leaving external systems in an indeterminate state.
+- **General rule for `cancel-in-progress`:** jobs whose effects are confined to the runner (lint, test, build artifacts in transit) are safe for `cancel-in-progress: true`. Jobs that have already committed external state (deploys, releases, side-effecting API calls) must override with `cancel-in-progress: false` to avoid leaving external systems in an indeterminate state. The backend `deploy` job in `backend.yml` follows this rule; see § "Deploy gating".
 
 ## Deploy gating
 
@@ -66,7 +66,7 @@ When skipping majors (e.g. `upload-artifact@v4 → @v7`), verify the breaking ch
 
 Pin to commit SHAs when you need stronger supply-chain guarantees, at the cost of maintenance burden. The project uses major tags for now.
 
-**In-band npm tool installs follow the same policy.** When a CI step installs a global npm package (e.g. `npm install --global vercel@52`), pin to a major version (`@52`) for the same reason: security fixes auto-follow at minor/patch level, and a major bump requires an explicit, reviewable diff. The Vercel CLI install in `.github/workflows/frontend.yml` (line 126) is the canonical example. When adding any in-band `npm install` for a global tool, apply this principle by default.
+**In-band npm tool installs follow the same policy.** When a CI step installs a global npm package, pin to a major version (e.g. `npm install --global some-cli@<major>`) for the same reason: security fixes auto-follow at minor/patch level, and a major bump requires an explicit, reviewable diff. When adding any in-band `npm install` for a global tool, apply this principle by default.
 
 ## Codegen must run before Vet and Build
 
@@ -158,37 +158,15 @@ Two frontend-specific notes:
   frontend project status. See `docs/ci.md` § "Workflow scope and
   concurrency" for why path-scoping is the canonical pattern.
 
-### Frontend deploy job
+### Frontend deploy
 
-The `deploy` job in `frontend.yml` follows the same gating pattern as the backend: `needs: lint-test-build` ensures the full quality gate must pass before any deploy is attempted, and the job condition restricts execution to direct pushes to `main` — pull-request events and branch pushes are excluded. See § "Deploy gating" for the backend equivalent.
+Production deploys to Vercel are managed by Vercel's native Git integration: pushing to `main` triggers Vercel to build and deploy automatically, independently of GitHub Actions. The frontend workflow therefore runs only `lint-test-build` (lint, typecheck, build, test, coverage upload) — there is no `deploy` job in `.github/workflows/frontend.yml`, and no Vercel CLI authentication secrets are required on the GitHub side. Vercel reports deploy status back to GitHub via Commit Status / `deployment_status` events, which surface in the GitHub UI alongside the Actions checks.
 
-If any of `VERCEL_TOKEN`, `VERCEL_ORG_ID`, or `VERCEL_PROJECT_ID` is empty or unset, a guard step **explicitly exits 1** rather than silently no-oping. Failing loud on a missing secret beats a silent skip — misconfiguration must be visible. **Do not replace this with a silent skip.**
+#### Build environment mismatch risk
 
-#### Required GitHub secrets
+`vercel build` (run by Vercel, not by this workflow) is distinct from the repo's `pnpm build`. If the Node version configured in the Vercel project dashboard differs from the version pinned in `.tool-versions` at the repo root (managed by mise), validation can pass in CI while the Vercel-side build fails — or, worse, silently produces a different output. Verify that the Vercel project's Node version setting matches the version in `.tool-versions` under Project → Settings → General → Node.js Version.
 
-| Secret | Purpose |
-|---|---|
-| `VERCEL_TOKEN` | Authenticates the Vercel CLI. Use a project-scoped token when the Vercel org plan supports it (limits blast radius to a single project); otherwise use an account-scoped token with a **quarterly rotation reminder**. Must be non-empty — the guard step checks all three Vercel secrets and exits 1 if any is absent. |
-| `VERCEL_ORG_ID` | Identifies the Vercel organization. Exposed as a job-level env var; the Vercel CLI auto-reads it, so no explicit `--org` flag is needed. Must be non-empty — see `VERCEL_TOKEN` note above. |
-| `VERCEL_PROJECT_ID` | Identifies the target Vercel project. Exposed as a job-level env var; the Vercel CLI resolves the project without a `vercel link` step. Must be non-empty — see `VERCEL_TOKEN` note above. |
+#### Production env vars live only in the Vercel project
 
-Register all three in the repository's GitHub secrets before the workflow runs. `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` are visible in the Vercel dashboard under Project → Settings → General.
-
-#### pnpm install in the deploy job
-
-The `deploy` job runs `pnpm install --frozen-lockfile` before invoking `vercel build`, because `vercel build` executes `next build` locally on the runner and requires `node_modules` to be populated. The pnpm store cache uses the same key as `lint-test-build` (same OS, same `pnpm-lock.yaml` hash), so the deploy job benefits from the warm cache produced by the preceding job — divergent keys would only waste cache space. See § "`pnpm install --frozen-lockfile` is the gate" for the repo-wide invariant this satisfies.
-
-#### CLI deploy path vs. Vercel Git integration
-
-**This is a transitional configuration.** Both the CLI deploy path (via this workflow) and Vercel's native Git integration are currently active — Vercel's integration fires on every push independently of the workflow. The CLI deploy is the *authoritative* path going forward: it is controlled by the same gating (`needs: lint-test-build`, main-only) that governs the rest of the release pipeline, and its output is observable in the Actions log alongside all other CI steps. The Git integration will be disabled in a follow-up change; see `docs/deployment.md` § 'Why CI deploy is now the authoritative path' for the resolution plan.
-
-#### Build env mismatch risk
-
-`vercel build` runs Vercel's own build pipeline, which is distinct from the repo's `pnpm build`. If the Node version configured in the Vercel project dashboard differs from the version pinned in `.tool-versions` at the repo root (managed by mise), validation can pass in CI while the Vercel-side build fails — or, worse, silently produces a different output. Verify that the Vercel project's Node version setting matches the Node version in `.tool-versions` in the Vercel dashboard under Project → Settings → General → Node.js Version.
-
-#### Why the deploy job intentionally omits build-time env vars
-
-The `lint-test-build` job sets `BACKEND_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to dummy values so `next build` can validate the env schema without real credentials. The `deploy` job **deliberately does not set any of these**. Instead, `vercel pull --environment=production` retrieves the real production values from the Vercel project's environment configuration and writes them to `.vercel/.env.production.local`, which `vercel build` then consumes.
-
-**Trap**: if a maintainer copies the dummy-value `env:` block from `lint-test-build` into the `deploy` job, the production build will silently bake those dummy values (e.g. a `localhost` Supabase URL) into the client-side JavaScript bundle. The Vercel project's production environment configuration must be the only source of truth for these values — never duplicate them in the deploy job.
+`lint-test-build` sets `BACKEND_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to dummy values so `next build` can validate the env schema without real credentials. The Vercel project's own production environment configuration is the only source of truth for the real values — never copy production secrets into the workflow's `env:` block, since `NEXT_PUBLIC_*` vars are baked into the client-side JavaScript bundle at build time and a stray dummy would ship to users.
 
