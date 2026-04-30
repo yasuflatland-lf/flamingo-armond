@@ -153,11 +153,11 @@ Register all three in the repository's GitHub secrets before the workflow runs. 
 
 #### pnpm install in the deploy job
 
-The `deploy` job runs `pnpm install --frozen-lockfile` (with a pnpm store cache sharing the same cache key as `lint-test-build`) before invoking `vercel build`, because `vercel build` executes `next build` locally on the runner and requires `node_modules` to be populated. See § "`pnpm install --frozen-lockfile` is the gate" for the repo-wide invariant this satisfies.
+The `deploy` job runs `pnpm install --frozen-lockfile` (with a pnpm store cache that uses the same key as `lint-test-build`, so the deploy job benefits from the warm cache produced by the preceding job — both run on the same OS and the same `pnpm-lock.yaml` hash, so divergent keys would only waste cache space) before invoking `vercel build`, because `vercel build` executes `next build` locally on the runner and requires `node_modules` to be populated. See § "`pnpm install --frozen-lockfile` is the gate" for the repo-wide invariant this satisfies.
 
 #### CLI deploy path vs. Vercel Git integration
 
-Both the CLI deploy path (via this workflow) and Vercel's native Git integration are active today — Vercel's integration fires on every push independently of the workflow. The CLI deploy is the *authoritative* path going forward: it is controlled by the same gating (`needs: lint-test-build`, main-only) that governs the rest of the release pipeline, and its output is observable in the Actions log alongside all other CI steps. The Git integration will be disabled in a follow-up change; see `docs/deployment.md` for the resolution plan and the steps to disable it in the Vercel dashboard.
+**This is a transitional configuration.** Both the CLI deploy path (via this workflow) and Vercel's native Git integration are currently active — Vercel's integration fires on every push independently of the workflow. The CLI deploy is the *authoritative* path going forward: it is controlled by the same gating (`needs: lint-test-build`, main-only) that governs the rest of the release pipeline, and its output is observable in the Actions log alongside all other CI steps. The Git integration will be disabled in a follow-up change; see `docs/deployment.md` § 'Why CI deploy is now the authoritative path' for the resolution plan.
 
 #### Build env mismatch risk
 

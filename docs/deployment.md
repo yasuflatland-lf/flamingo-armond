@@ -266,7 +266,7 @@ CI deploy is the **authoritative path** going forward for three reasons:
 - The deploy logic lives in the workflow file, which is reviewable in a pull request alongside the code change.
 - Deploy reproducibility is version-controlled rather than stored in the Vercel dashboard configuration.
 
-The Vercel Git integration will be disabled in a follow-up once CI deploy is confirmed stable. Until that follow-up is merged, both paths may fire on the same push, which means two builds race to become the live deployment. This is benign — both builds come from the same commit, so whichever completes last serves the same artifact — but it wastes build minutes. The follow-up will eliminate the race by disabling the Git integration in the Vercel project settings.
+The Vercel Git integration will be disabled in a follow-up once CI deploy is confirmed stable. Until that follow-up is merged, both paths may fire on the same push, which means two builds race to become the live deployment. This is benign — both builds come from the same commit, so they produce equivalent artifacts when the CI Node/pnpm versions match the Vercel project's settings (see § 'Build environment mismatch risk') — but the race wastes build minutes. The follow-up will eliminate the race by disabling the Git integration in the Vercel project settings.
 
 #### Required GitHub secrets
 

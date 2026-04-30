@@ -80,6 +80,9 @@ jobs:
     name: Deploy to Vercel
     needs: lint-test-build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    concurrency:
+      group: frontend-deploy-${{ github.ref }}
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     env:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
