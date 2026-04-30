@@ -53,7 +53,7 @@ The playbook persists collected values across phases in a YAML file at the repo 
 | Permissions | `0600` (re-asserted on every write) |
 | Backup | `<file>.<pid>.<timestamp>~` siblings created on every write (`copy: backup: yes`). Mode bits are preserved from the source (already `0600`). |
 | Vault | Not encrypted; gitignore + `0600` is the baseline |
-| Tier 1 secrets | `supabase_db_url` (DB password embedded). Do not share, copy across machines, or print on screen-share. |
+| Tier 1 secrets | `supabase_db_url` (DB password embedded) and `ping_token` (bearer token for `/internal/ping`). Do not share, copy across machines, or print on screen-share. |
 | Tier 2 publishable | `supabase_anon_key`. Safe to display on the operator's own screen. |
 | Tier 3 IDs / URLs | `supabase_project_ref`, `*_url`, `render_service_id`, `vercel_project_id`, `production_url`, `backend_url`. Public values, used as `--tags <phase>` re-run inputs. |
 | Out-of-state | API tokens (read from env each run) and the Render deploy-hook URL (consumed once via `gh secret set`, never persisted). |
@@ -64,9 +64,9 @@ Every phase that needs prior values follows a three-step idiom: `stat:` to detec
 
 `confirm=true` is the unattended-mode flag (intended for CI / scripted re-runs). Phases 2, 3, 4, and 5 all `fail` immediately when `confirm=true` is set, because each requires the operator to paste back values from a dashboard the playbook cannot read (project ref / anon key / DSN / service ID / deploy-hook / project ID / production URL / OAuth redirect URI). Failing fast with a clear message beats hanging on a `pause:` prompt that no one will answer. Phases 1 (preflight) and 6 (postapply) are the only fully unattended phases: postapply re-runs are how operators recover from a transient Render or Vercel cold-start smoke failure.
 
-### Three external side effects
+### External side effects
 
-The playbook only writes to three places outside the operator's machine: (1) `gh secret set RENDER_DEPLOY_HOOK_URL` on the GitHub repo (idempotent overwrite), (2) `POST /v1/services/<id>/deploys` against the Render API (each call enqueues a deploy, which is the operator's intent), and (3) the local state file. Re-running any phase is safe — none of the three writes accumulate state in a way that corrupts the next run.
+The playbook writes outside the operator's machine in five places: (1) `gh secret set RENDER_DEPLOY_HOOK_URL` on the GitHub repo (Phase 3, idempotent overwrite), (2) `gh secret set PING_TOKEN`, `gh secret set RENDER_PING_URL`, and `gh secret set VERCEL_PING_URL` on the GitHub repo (Phase 6, idempotent overwrite), (3) `PUT /v1/services/<id>/env-vars/<key>` against the Render API for dynamic env vars including `PING_TOKEN` (Phase 6), (4) `POST /v1/services/<id>/deploys` against the Render API (each call enqueues a deploy, which is the operator's intent), and (5) the local state file. Re-running any phase is safe — none of the writes accumulate state in a way that corrupts the next run.
 
 ### Two security patterns worth knowing
 
@@ -288,15 +288,13 @@ The workflow file `.github/workflows/readiness-ping.yml` triggers on a 15-minute
 
 | Secret | Purpose |
 |---|---|
-| `VERCEL_PING_URL` | Frontend domain to warm; the workflow GETs this URL to prevent Vercel cold starts. |
-| `RENDER_PING_URL` | Backend URL with scheme; the workflow POSTs to `/internal/ping` at this URL (e.g. `https://flamingo-backend.render.com`). |
+| `VERCEL_PING_URL` | Frontend base URL to warm; the workflow GETs this URL to prevent Vercel cold starts. |
+| `RENDER_PING_URL` | Backend base URL with scheme (e.g. `https://flamingo-backend.onrender.com`). The workflow appends `/internal/ping` automatically — do **not** include the path in the secret value. |
 | `PING_TOKEN` | Bearer token for the POST request; must match the `PING_TOKEN` env var on the Render service. |
 
-On Render, set the environment variable:
+All three secrets and the Render `PING_TOKEN` env var are provisioned automatically by `make setup-prod`: `PING_TOKEN` is auto-generated in Phase 3 and pushed to Render via the API in Phase 6 alongside the other dynamic env vars; `PING_TOKEN`, `RENDER_PING_URL`, and `VERCEL_PING_URL` are then registered as GitHub Actions secrets via `gh secret set` in Phase 6. `make teardown-prod` deletes the Render service (and with it the `PING_TOKEN` env var) but does **not** delete the GitHub secrets — they remain in place and are overwritten on the next `make setup-prod`.
 
-| Variable | Value |
-|---|---|
-| `PING_TOKEN` | Must match the GitHub Actions secret value. |
+On Render, `PING_TOKEN` is declared with `sync: false` in `render.yaml` (Blueprint creates the placeholder; Phase 6 fills the value). No manual action is needed.
 
 ### Manual trigger
 

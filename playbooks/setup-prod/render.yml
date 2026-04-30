@@ -2,7 +2,7 @@
 # Phase 3: Render web service bring-up.
 #
 # Reads:  state file (supabase_* keys written by Phase 2)
-# Writes: state file adds render_service_id, backend_url
+# Writes: state file adds render_service_id, backend_url, ping_token
 # Side-effect: gh secret set RENDER_DEPLOY_HOOK_URL (idempotent overwrite)
 #
 # `state_file`, `repo`, and `confirm` come from the entry playbook
@@ -202,10 +202,23 @@
   ansible.builtin.debug:
     msg: "RENDER_DEPLOY_HOOK_URL registered as a GitHub Actions secret in {{ repo }}."
 
-# --- Persist render_service_id and backend_url into state file ---
+# --- Generate PING_TOKEN if not already in state ---
+# The token is auto-generated (no external source); generating it here, in
+# Phase 3, means it is available in the state file before Phase 6 needs to
+# push it to Render via the API. Idempotent: if the state file already
+# carries a non-empty ping_token (re-run of Phase 3), the existing value is
+# loaded by include_vars above and the generation task is skipped.
+- name: Generate PING_TOKEN if not already in state
+  ansible.builtin.set_fact:
+    ping_token: "{{ lookup('pipe', 'openssl rand -hex 32') }}"
+  when: ping_token is not defined or (ping_token | string | length) == 0
+  no_log: true
+
+# --- Persist render_service_id, backend_url, and ping_token into state file ---
 # State file is known to exist at this point (assert above would have failed
 # otherwise), so re-reading via lookup is safe without errors='ignore'.
-# no_log on both tasks: the merged dict carries supabase_db_url (DB password).
+# no_log on both tasks: the merged dict carries supabase_db_url (DB password)
+# and ping_token.
 - name: Merge new values into existing state
   ansible.builtin.set_fact:
     state_merged: >-
@@ -213,6 +226,7 @@
          | combine({
              'render_service_id': render_service_id,
              'backend_url': backend_url,
+             'ping_token': ping_token,
            }) }}
   no_log: true
 
@@ -232,5 +246,6 @@
       Phase 3 complete.
         render_service_id : {{ render_service_id }}
         backend_url       : {{ backend_url }}
+        ping_token        : (generated; stored in state file -- do not print)
       State written to {{ state_file }}.
       Next: ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags vercel
