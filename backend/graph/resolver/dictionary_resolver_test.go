@@ -106,6 +106,21 @@ func TestValidateDictionary_BadBase64(t *testing.T) {
 	}
 }
 
+// TestValidateDictionary_NonAdminBadBase64 verifies that the admin check
+// (FORBIDDEN) is performed before base64 validation (BAD_USER_INPUT).
+// A non-admin user should receive FORBIDDEN even when the payload is malformed.
+func TestValidateDictionary_NonAdminBadBase64(t *testing.T) {
+	t.Parallel()
+
+	srv := newDictOnlySrv(&mockUserRoleRepository{isAdmin: false})
+	resp := gqlRequest(t, srv, authedCtx("u1"), validateDictionaryQuery("!!!not-base64!!!"))
+
+	code := errCode(t, resp)
+	if code != string(gqlerr.CodeForbidden) {
+		t.Fatalf("expected %s, got %q", gqlerr.CodeForbidden, code)
+	}
+}
+
 // TestValidateDictionary_Unauthenticated verifies that an anonymous context
 // surfaces an UNAUTHENTICATED error.
 func TestValidateDictionary_Unauthenticated(t *testing.T) {
