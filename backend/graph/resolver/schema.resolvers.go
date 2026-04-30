@@ -183,8 +183,8 @@ func (r *queryResolver) CardsByCardgroupConnection(ctx context.Context, cardgrou
 		Last:           last,
 		After:          after,
 		Before:         before,
-		OrderBy:        (*string)(orderBy),
-		OrderDirection: (*string)(orderDirection),
+		OrderBy:        toUsecaseCardOrderBy(orderBy),
+		OrderDirection: toUsecaseSortOrder(orderDirection),
 	})
 	if err != nil {
 		return nil, err

@@ -53,14 +53,33 @@ type UpdateCardInput struct {
 	Back  *string
 }
 
+// CardOrderBy mirrors the schema CardOrderBy enum but stays in the usecase
+// layer so the repository remains independent of the GraphQL model package.
+type CardOrderBy string
+
+const (
+	CardOrderByID        CardOrderBy = "ID"
+	CardOrderByCreatedAt CardOrderBy = "CREATED_AT"
+	CardOrderByUpdatedAt CardOrderBy = "UPDATED_AT"
+	CardOrderByDue       CardOrderBy = "DUE"
+)
+
+// SortOrder mirrors the schema SortOrder enum.
+type SortOrder string
+
+const (
+	SortOrderAsc  SortOrder = "ASC"
+	SortOrderDesc SortOrder = "DESC"
+)
+
 // CardConnectionInput captures the GraphQL pagination arguments. Pointer
 // fields preserve "absent" semantics from the schema.
 type CardConnectionInput struct {
 	CardgroupID    string
 	First, Last    *int
 	After, Before  *string // raw GraphQL ID strings (cursor = card UUID)
-	OrderBy        *string // GraphQL CardOrderBy enum string
-	OrderDirection *string // GraphQL SortOrder enum string
+	OrderBy        *CardOrderBy
+	OrderDirection *SortOrder
 }
 
 // CardConnectionOutput is the usecase-level page result. The resolver wraps
@@ -281,19 +300,20 @@ func (u *CardUsecase) ListCardsByCardgroupConnection(
 	return out, nil
 }
 
-// resolveOrderBy maps GraphQL enum strings to the repository's allowlist.
-// Defaults to (ID, ASC) when both are nil.
-func resolveOrderBy(orderBy, dir *string) (repository.CardOrderBy, repository.SortOrder, error) {
+// resolveOrderBy maps the typed usecase enums to the repository allowlist.
+// Defaults to (ID, ASC) when both are nil. The default arm is defense in
+// depth — gqlgen UnmarshalGQL already rejects invalid enum strings upstream.
+func resolveOrderBy(orderBy *CardOrderBy, dir *SortOrder) (repository.CardOrderBy, repository.SortOrder, error) {
 	field := repository.CardOrderByID
 	if orderBy != nil {
 		switch *orderBy {
-		case "ID":
+		case CardOrderByID:
 			field = repository.CardOrderByID
-		case "CREATED_AT":
+		case CardOrderByCreatedAt:
 			field = repository.CardOrderByCreatedAt
-		case "UPDATED_AT":
+		case CardOrderByUpdatedAt:
 			field = repository.CardOrderByUpdatedAt
-		case "DUE":
+		case CardOrderByDue:
 			field = repository.CardOrderByDue
 		default:
 			return "", "", gqlerr.BadUserInput("orderBy", "invalid")
@@ -302,9 +322,9 @@ func resolveOrderBy(orderBy, dir *string) (repository.CardOrderBy, repository.So
 	d := repository.SortAsc
 	if dir != nil {
 		switch *dir {
-		case "ASC":
+		case SortOrderAsc:
 			d = repository.SortAsc
-		case "DESC":
+		case SortOrderDesc:
 			d = repository.SortDesc
 		default:
 			return "", "", gqlerr.BadUserInput("orderDirection", "invalid")

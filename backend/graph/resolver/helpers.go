@@ -76,6 +76,27 @@ func toCardModels(cards []*domain.Card) []*model.Card {
 	return out
 }
 
+// toUsecaseCardOrderBy translates the gqlgen-generated enum into the
+// usecase's typed enum. Values are identical strings ("ID", "CREATED_AT", …)
+// so the conversion is a direct cast.
+func toUsecaseCardOrderBy(o *model.CardOrderBy) *usecase.CardOrderBy {
+	if o == nil {
+		return nil
+	}
+	v := usecase.CardOrderBy(*o)
+	return &v
+}
+
+// toUsecaseSortOrder translates model.SortOrder into the usecase's typed
+// SortOrder.
+func toUsecaseSortOrder(d *model.SortOrder) *usecase.SortOrder {
+	if d == nil {
+		return nil
+	}
+	v := usecase.SortOrder(*d)
+	return &v
+}
+
 func toSwipeResponseModel(out *usecase.SwipeOutput) *model.SwipeResponse {
 	if out == nil {
 		return nil
