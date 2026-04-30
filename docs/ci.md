@@ -135,3 +135,27 @@ CI sets dummy values at the job level for every required var:
 
 No request is made during the build, so dummy values only need to satisfy the Zod schema (e.g. `z.string().url()` requires a URL-shaped string). Do **not** remove any of these: each missing env reintroduces a silent-fail shape the validation was designed to prevent. When a new required var is added to `src/env.ts`, add a corresponding dummy to the workflow's `env:` block.
 
+### Frontend deploy job
+
+The `deploy` job in `frontend.yml` is gated identically to the backend: `needs: lint-test-build` ensures the full quality gate must pass before any deploy is attempted, and `if: github.event_name == 'push' && github.ref == 'refs/heads/main'` restricts execution to direct pushes to main (pull-request events and branch pushes are excluded). See § "Deploy gating" for the backend equivalent.
+
+If `VERCEL_TOKEN` is empty or unset, the deploy step **explicitly exits 1** rather than silently no-oping. Failing loud on a missing secret beats a silent skip — misconfiguration must be visible. **Do not replace this with a silent skip.**
+
+#### Required GitHub secrets
+
+| Secret | Purpose |
+|---|---|
+| `VERCEL_TOKEN` | Authenticates the Vercel CLI. Use a project-scoped token when the Vercel org plan supports it (limits blast radius to a single project); otherwise use an account-scoped token with a **quarterly rotation reminder**. The token must be non-empty — an empty value causes the deploy step to exit 1. |
+| `VERCEL_ORG_ID` | Identifies the Vercel organization. Exposed as the `VERCEL_ORG_ID` environment variable; the Vercel CLI auto-reads this name, so no explicit `--org` flag is needed. |
+| `VERCEL_PROJECT_ID` | Identifies the target Vercel project. Exposed as the `VERCEL_PROJECT_ID` environment variable; the Vercel CLI resolves the project without a `vercel link` step. |
+
+Register all three in the repository's GitHub secrets before the workflow runs. `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` are visible in the Vercel dashboard under Project → Settings → General.
+
+#### CLI deploy path vs. Vercel Git integration
+
+Both the CLI deploy path (via this workflow) and Vercel's native Git integration are active today — Vercel's integration fires on every push independently of the workflow. The CLI deploy is the *authoritative* path going forward: it is controlled by the same gating (`needs: lint-test-build`, main-only) that governs the rest of the release pipeline, and its output is observable in the Actions log alongside all other CI steps. The Git integration will be disabled in a follow-up change; see `docs/deployment.md` for the resolution plan and the steps to disable it in the Vercel dashboard.
+
+#### Build env mismatch risk
+
+`vercel build` runs Vercel's own build pipeline, which is distinct from the repo's `pnpm build`. If the Node version configured in the Vercel project dashboard differs from the version pinned in `frontend/.tool-versions` (managed by mise), validation can pass in CI while the Vercel-side build fails — or, worse, silently produces a different output. Verify that the Vercel project's Node version setting matches `frontend/.tool-versions` in the Vercel dashboard under Project → Settings → General → Node.js Version.
+
