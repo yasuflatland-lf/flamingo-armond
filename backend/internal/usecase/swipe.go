@@ -15,7 +15,10 @@ import (
 	"backend/internal/repository"
 )
 
-const defaultSwipeNextBatchSize = 10
+const (
+	defaultSwipeNextBatchSize   = 10
+	swipePerformanceSampleLimit = 100
+)
 
 type CardRepoForSwipe interface {
 	FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
@@ -29,6 +32,7 @@ type CardgroupRepoForSwipe interface {
 
 type SwipeRecordRepoForSwipe interface {
 	CreateTx(ctx context.Context, tx *gorm.DB, sr *domain.SwipeRecord) error
+	ListRecentByUser(ctx context.Context, userID string, limit int) ([]*domain.SwipeRecord, error)
 }
 
 type SwipeUsecase struct {
@@ -36,7 +40,7 @@ type SwipeUsecase struct {
 	cardgroupRepo CardgroupRepoForSwipe
 	swipeRepo     SwipeRecordRepoForSwipe
 	scheduler     *service.FSRSScheduler
-	db            *gorm.DB
+	tx            txRunner
 	nextBatchSize int
 }
 
@@ -49,6 +53,7 @@ type HandleSwipeInput struct {
 type SwipeOutput struct {
 	NextCards       []*domain.Card
 	PerformanceMode int
+	Metrics         service.PerformanceMetrics
 }
 
 func NewSwipeUsecase(
@@ -65,14 +70,32 @@ func NewSwipeUsecase(
 	if nextBatchSize <= 0 {
 		nextBatchSize = defaultSwipeNextBatchSize
 	}
-	return &SwipeUsecase{
-		db:            db,
+	uc := &SwipeUsecase{
 		cardRepo:      cardRepo,
 		cardgroupRepo: cardgroupRepo,
 		swipeRepo:     swipeRepo,
 		scheduler:     scheduler,
 		nextBatchSize: nextBatchSize,
 	}
+	if db != nil {
+		uc.tx = func(ctx context.Context, fn func(tx *gorm.DB) error) error {
+			return db.WithContext(ctx).Transaction(fn)
+		}
+	}
+	return uc
+}
+
+func NewSwipeUsecaseWithTx(
+	cardRepo CardRepoForSwipe,
+	cardgroupRepo CardgroupRepoForSwipe,
+	swipeRepo SwipeRecordRepoForSwipe,
+	scheduler *service.FSRSScheduler,
+	nextBatchSize int,
+	tx txRunner,
+) *SwipeUsecase {
+	uc := NewSwipeUsecase(nil, cardRepo, cardgroupRepo, swipeRepo, scheduler, nextBatchSize)
+	uc.tx = tx
+	return uc
 }
 
 func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*SwipeOutput, error) {
@@ -89,7 +112,11 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 	}
 
 	var nextCards []*domain.Card
-	err = u.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	var now time.Time
+	if u.tx == nil {
+		return nil, gqlerr.Internal(ctx, errors.New("swipe usecase: transaction runner is not configured"))
+	}
+	err = u.tx(ctx, func(tx *gorm.DB) error {
 		card, err := u.cardRepo.FindByIDTx(ctx, tx, in.CardID)
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
@@ -101,7 +128,7 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 			return gqlerr.BadUserInput("cardId", "card not found")
 		}
 
-		now := time.Now().UTC()
+		now = time.Now().UTC()
 		newState := u.scheduler.Apply(card.FSRS, rating, now)
 		if err := u.cardRepo.UpdateFSRSStateTx(ctx, tx, card.ID, newState); err != nil {
 			return err
@@ -123,7 +150,16 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 		}
 		return nil, gqlerr.Internal(ctx, err)
 	}
-	return &SwipeOutput{NextCards: nextCards, PerformanceMode: 0}, nil
+	recentSwipes, err := u.swipeRepo.ListRecentByUser(ctx, user.Sub, swipePerformanceSampleLimit)
+	if err != nil {
+		return nil, gqlerr.Internal(ctx, err)
+	}
+	metrics := service.ComputeMetrics(swipeRecordsByValue(recentSwipes), now)
+	return &SwipeOutput{
+		NextCards:       nextCards,
+		PerformanceMode: service.ModeFromMetrics(metrics),
+		Metrics:         metrics,
+	}, nil
 }
 
 func (u *SwipeUsecase) authorizeCardgroup(ctx context.Context, cardgroupID, userID string) error {
@@ -138,4 +174,14 @@ func (u *SwipeUsecase) authorizeCardgroup(ctx context.Context, cardgroupID, user
 		return gqlerr.Unauthenticated()
 	}
 	return nil
+}
+
+func swipeRecordsByValue(swipes []*domain.SwipeRecord) []domain.SwipeRecord {
+	out := make([]domain.SwipeRecord, 0, len(swipes))
+	for _, swipe := range swipes {
+		if swipe != nil {
+			out = append(out, *swipe)
+		}
+	}
+	return out
 }

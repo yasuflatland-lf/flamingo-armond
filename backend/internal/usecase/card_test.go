@@ -37,6 +37,10 @@ type mockCardRepository struct {
 	findPageRows  []*domain.Card
 	findPageTotal int64
 	findPageErr   error
+	findDueRows   []*domain.Card
+	findDueErr    error
+	updateFSRSErr error
+	capturedFSRS  domain.FSRSState
 	// captured arguments from the most recent FindPageByCardgroup call.
 	capturedFindPage struct {
 		cardgroupID string
@@ -50,6 +54,9 @@ type mockCardRepository struct {
 }
 
 func (m *mockCardRepository) FindByID(_ context.Context, _ string) (*domain.Card, error) {
+	return m.findResult, m.findErr
+}
+func (m *mockCardRepository) FindByIDTx(_ context.Context, _ *gorm.DB, _ string) (*domain.Card, error) {
 	return m.findResult, m.findErr
 }
 func (m *mockCardRepository) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Card, error) {
@@ -72,9 +79,16 @@ func (m *mockCardRepository) Update(_ context.Context, _ string, patch repositor
 	m.capturedPatch = patch
 	return m.updateResult, m.updateErr
 }
+func (m *mockCardRepository) UpdateFSRSStateTx(_ context.Context, _ *gorm.DB, _ string, state domain.FSRSState) error {
+	m.capturedFSRS = state
+	return m.updateFSRSErr
+}
 func (m *mockCardRepository) Delete(_ context.Context, _ string) error {
 	m.deleteCalled = true
 	return m.deleteErr
+}
+func (m *mockCardRepository) FindDueCardsTx(_ context.Context, _ *gorm.DB, _ string, _ time.Time, _ int) ([]*domain.Card, error) {
+	return m.findDueRows, m.findDueErr
 }
 func (m *mockCardRepository) FindPageByCardgroup(
 	_ context.Context,
