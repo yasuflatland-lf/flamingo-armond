@@ -2,6 +2,7 @@ package ping
 
 import (
 	"crypto/subtle"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -19,8 +20,11 @@ type Handler struct {
 	token string
 }
 
-// New builds a Handler. Caller must ensure token is non-empty.
+// New builds a Handler. Panics if token is empty.
 func New(repo repository.PingRecordRepository, token string) *Handler {
+	if token == "" {
+		panic("ping.New: token must not be empty")
+	}
 	return &Handler{repo: repo, token: token}
 }
 
@@ -29,32 +33,38 @@ func New(repo repository.PingRecordRepository, token string) *Handler {
 //   - 401 + {"error":"unauthorized"} on missing/invalid bearer token (constant-time compare).
 //   - On count==0: Create → 200 {"action":"created","count":1}.
 //   - On count>0:  DeleteAll → 200 {"action":"deleted","count":<rowsAffected>}.
-//   - On any repo error: 500 + {"error":"<msg>"}.
+//   - On any repo error: 500 + {"error":"internal server error"}.
 func (h *Handler) Handle(c *echo.Context) error {
 	tokenBytes := []byte(h.token)
 	authHeader := c.Request().Header.Get("Authorization")
 	token := strings.TrimPrefix(authHeader, "Bearer ")
 	// Constant-time compare to prevent timing oracle attacks.
 	if subtle.ConstantTimeCompare([]byte(token), tokenBytes) != 1 {
+		slog.WarnContext(c.Request().Context(), "ping: unauthorized",
+			"remote_ip", c.RealIP(),
+		)
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 	}
 
 	ctx := c.Request().Context()
 	n, err := h.repo.Count(ctx)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		slog.ErrorContext(ctx, "ping: count failed", "err", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 	}
 
 	if n == 0 {
 		if err := h.repo.Create(ctx); err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			slog.ErrorContext(ctx, "ping: create failed", "err", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 		}
 		return c.JSON(http.StatusOK, map[string]any{"action": "created", "count": 1})
 	}
 
 	deleted, err := h.repo.DeleteAll(ctx)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		slog.ErrorContext(ctx, "ping: delete failed", "err", err)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 	}
 	return c.JSON(http.StatusOK, map[string]any{"action": "deleted", "count": deleted})
 }
@@ -77,6 +87,7 @@ func (h *Handler) RateLimiter() echo.MiddlewareFunc {
 			return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
 		},
 		DenyHandler: func(c *echo.Context, identifier string, err error) error {
+			slog.WarnContext(c.Request().Context(), "ping: rate limit exceeded", "ip", identifier)
 			return c.JSON(http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
 		},
 	})

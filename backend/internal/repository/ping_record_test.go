@@ -8,7 +8,6 @@ import (
 )
 
 func TestPingRecord_CreateOnEmpty(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	repo := repository.NewPingRecordRepository(testDB.GORM)
 
@@ -38,7 +37,6 @@ func TestPingRecord_CreateOnEmpty(t *testing.T) {
 }
 
 func TestPingRecord_DeleteAllOnPopulated(t *testing.T) {
-	t.Parallel()
 	ctx := context.Background()
 	repo := repository.NewPingRecordRepository(testDB.GORM)
 

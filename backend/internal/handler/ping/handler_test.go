@@ -55,6 +55,15 @@ func newTestContext(e *echo.Echo, token string) (*echo.Context, *httptest.Respon
 	return c, rec
 }
 
+func TestNew_PanicsOnEmptyToken(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic on empty token, got none")
+		}
+	}()
+	_ = New(&fakePingRepo{}, "")
+}
+
 func TestHandler_Create(t *testing.T) {
 	e := echo.New()
 	h := New(&fakePingRepo{rows: 0}, testToken)
@@ -156,8 +165,52 @@ func TestHandler_Count_RepoError(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
 	}
-	if !strings.Contains(rec.Body.String(), `"error"`) {
-		t.Errorf("body %q missing error field", rec.Body.String())
+	body := rec.Body.String()
+	if !strings.Contains(body, `"error":"internal server error"`) {
+		t.Errorf("body %q missing sanitized error message", body)
+	}
+	if strings.Contains(body, "boom") {
+		t.Errorf("body %q must not contain raw error string", body)
+	}
+}
+
+func TestHandler_Create_RepoError(t *testing.T) {
+	e := echo.New()
+	h := New(&fakePingRepo{rows: 0, createErr: errors.New("create boom")}, testToken)
+	c, rec := newTestContext(e, testToken)
+
+	if err := h.Handle(c); err != nil {
+		t.Fatalf("Handle returned error: %v", err)
+	}
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"error":"internal server error"`) {
+		t.Errorf("body %q missing sanitized error message", body)
+	}
+	if strings.Contains(body, "create boom") {
+		t.Errorf("body %q must not contain raw error string", body)
+	}
+}
+
+func TestHandler_DeleteAll_RepoError(t *testing.T) {
+	e := echo.New()
+	h := New(&fakePingRepo{rows: 1, deleteErr: errors.New("delete boom")}, testToken)
+	c, rec := newTestContext(e, testToken)
+
+	if err := h.Handle(c); err != nil {
+		t.Fatalf("Handle returned error: %v", err)
+	}
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"error":"internal server error"`) {
+		t.Errorf("body %q missing sanitized error message", body)
+	}
+	if strings.Contains(body, "delete boom") {
+		t.Errorf("body %q must not contain raw error string", body)
 	}
 }
 
@@ -169,6 +222,7 @@ func TestHandler_RateLimiter_429(t *testing.T) {
 	// Register route with rate limiter to get real middleware chain.
 	e.POST("/internal/ping", h.Handle, h.RateLimiter())
 
+	got200 := false
 	got429 := false
 	for i := 0; i < 10; i++ {
 		req := httptest.NewRequest(http.MethodPost, "/internal/ping", nil)
@@ -177,10 +231,16 @@ func TestHandler_RateLimiter_429(t *testing.T) {
 		req.Header.Set("X-Real-IP", "192.0.2.1")
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
+		if rec.Code == http.StatusOK {
+			got200 = true
+		}
 		if rec.Code == http.StatusTooManyRequests {
 			got429 = true
 			break
 		}
+	}
+	if !got200 {
+		t.Error("expected at least one 200 from initial requests, got none")
 	}
 	if !got429 {
 		t.Error("expected at least one 429 after 10 rapid requests, got none")
