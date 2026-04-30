@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -37,10 +38,10 @@ type CardgroupRepositoryForCard interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
 }
 
-// txRunner abstracts gorm.DB.Transaction so unit tests can stub out the
-// transaction boundary without standing up a real database. Wraps
-// db.WithContext(ctx).Transaction(fn) so callers pass ctx explicitly and tests
-// can stub the boundary without a real *gorm.DB.
+// txRunner is the function the usecase calls to run fn inside a database
+// transaction. NewCardUsecase binds it to db.WithContext(ctx).Transaction(fn);
+// NewCardUsecaseWithTx lets unit tests inject a stub that invokes fn with
+// a fake *gorm.DB.
 type txRunner func(ctx context.Context, fn func(tx *gorm.DB) error) error
 
 type CardUsecase struct {
@@ -520,6 +521,13 @@ func (u *CardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, erro
 	})
 	if err != nil {
 		return 0, gqlerr.Internal(ctx, err)
+	}
+	if deleted < int64(len(ids)) {
+		slog.Default().LogAttrs(ctx, slog.LevelInfo, "bulk delete: partial match",
+			slog.String("user_id", user.Sub),
+			slog.Int("requested", len(ids)),
+			slog.Int64("deleted", deleted),
+		)
 	}
 	return deleted, nil
 }

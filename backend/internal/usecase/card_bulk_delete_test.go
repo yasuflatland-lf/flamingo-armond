@@ -120,6 +120,34 @@ func TestCardUsecase_BulkDelete_SilentlySkipsForeign(t *testing.T) {
 	}
 }
 
+// TestCardUsecase_BulkDelete_PartialMatchSucceeds verifies that when the SQL
+// subselect filters out foreign-owned ids (deleted < len(ids)), BulkDelete still
+// succeeds and returns the actual deleted count. The partial-match log line emitted
+// by slog.Default() is observed via the logger; its behavioral effect is pinned
+// by this test and by the existing SilentlySkipsForeign test passing both before
+// and after the log statement was added.
+func TestCardUsecase_BulkDelete_PartialMatchSucceeds(t *testing.T) {
+	t.Parallel()
+	// Repository reports 2 deleted out of 5 requested — simulates the SQL
+	// subselect filtering out 3 foreign-owned cards.
+	cardRepo := &mockCardRepository{deleteByIDsResult: 2}
+	cgRepo := &mockCardgroupRepoForCard{}
+	tx, calls := fakeTxRunner()
+	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx}
+
+	ids := []string{"own1", "own2", "foreign1", "foreign2", "foreign3"}
+	n, err := uc.BulkDelete(authedCtx("u1"), ids)
+	if err != nil {
+		t.Fatalf("unexpected error on partial match: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("expected 2 deleted, got %d", n)
+	}
+	if *calls != 1 {
+		t.Fatalf("expected 1 tx invocation, got %d", *calls)
+	}
+}
+
 // TestCardUsecase_BulkDelete_RejectsTooManyIDs verifies that supplying more
 // than maxBulkDelete ids returns BAD_USER_INPUT on the "ids" field.
 func TestCardUsecase_BulkDelete_RejectsTooManyIDs(t *testing.T) {
