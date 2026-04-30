@@ -39,6 +39,16 @@ const SERVER_CARD = {
   cardgroupId: CG_ID,
 };
 
+const DEFAULT_METRICS = {
+  __typename: "PerformanceMetrics" as const,
+  successRate: 0.5,
+  avgDifficulty: 0.5,
+  retentionRate: 0.5,
+  studyStreak: 0,
+  lapseRate: 0,
+  reviewCount: 1,
+};
+
 function renderLearnClient(mocks: unknown[], initialCards = [CARD_1]) {
   render(
     <MockedProvider mocks={mocks as never}>
@@ -63,6 +73,7 @@ function makeSwipeMock(mode: 1 | 2 | 4, nextCards: (typeof CARD_1)[] = []) {
               __typename: "SwipeResponse" as const,
               nextCards,
               performanceMode: 0,
+              metrics: DEFAULT_METRICS,
             },
           },
         };

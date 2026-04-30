@@ -25,6 +25,14 @@ export const HandleSwipeMutation = graphql(`
         cardgroupId
       }
       performanceMode
+      metrics {
+        successRate
+        avgDifficulty
+        retentionRate
+        studyStreak
+        lapseRate
+        reviewCount
+      }
     }
   }
 `);

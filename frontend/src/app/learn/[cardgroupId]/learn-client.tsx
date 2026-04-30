@@ -15,6 +15,45 @@ import { getBackendErrorBanner } from "@/lib/apollo/errors";
 
 export type SwipeDirection = "left" | "right" | "down";
 type LearnCard = LearnCardsByCardgroupQuery["cardsByCardgroup"][number];
+type PerformanceMetrics = HandleSwipeMutationType["handleSwipe"]["metrics"];
+
+const MODE_CONFIG = {
+  0: {
+    label: "Difficult",
+    hint: "Take it slow, smaller batches fit this stretch.",
+    className: "border-rose-200 bg-rose-50 text-rose-700",
+  },
+  1: {
+    label: "Default",
+    hint: "Next batch is tuned from your current baseline.",
+    className: "border-slate-200 bg-slate-50 text-slate-700",
+  },
+  2: {
+    label: "Good",
+    hint: "Steady pace, keep the next batch balanced.",
+    className: "border-sky-200 bg-sky-50 text-sky-700",
+  },
+  3: {
+    label: "Easy",
+    hint: "Strong run, the next batch can move faster.",
+    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  },
+  4: {
+    label: "In While",
+    hint: "You are flying, expect a fuller next batch.",
+    className: "border-amber-200 bg-amber-50 text-amber-700",
+  },
+} as const;
+
+const DEFAULT_METRICS: PerformanceMetrics = {
+  __typename: "PerformanceMetrics",
+  successRate: 0.5,
+  avgDifficulty: 0.5,
+  retentionRate: 0.5,
+  studyStreak: 0,
+  lapseRate: 0,
+  reviewCount: 0,
+};
 
 function modeFromDirection(direction: SwipeDirection): 1 | 2 | 4 {
   switch (direction) {
@@ -31,6 +70,29 @@ function withTypename(card: LearnCard): LearnCard & { __typename: "Card" } {
   return { ...card, __typename: "Card" };
 }
 
+function modeConfig(mode: number) {
+  return MODE_CONFIG[mode as keyof typeof MODE_CONFIG] ?? MODE_CONFIG[1];
+}
+
+function ModeBadge({ mode, metrics }: { mode: number; metrics: PerformanceMetrics }) {
+  const config = modeConfig(mode);
+  const successRate = Math.round(metrics.successRate * 100);
+
+  return (
+    <div className="mx-auto mb-4 flex w-full max-w-xl flex-col gap-2 rounded-lg border border-border bg-background px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-2">
+        <span
+          className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${config.className}`}
+        >
+          Mode: {config.label}
+        </span>
+        <span className="text-muted-foreground">{successRate}% success</span>
+      </div>
+      <span className="text-muted-foreground">{config.hint}</span>
+    </div>
+  );
+}
+
 type Props = {
   cardgroupId: string;
   initialCards: LearnCard[];
@@ -42,14 +104,22 @@ export function LearnClient({ cardgroupId, initialCards }: Props) {
   const [swipeDirection, setSwipeDirection] = useState<SwipeDirection | null>(null);
   const [swipeProgress, setSwipeProgress] = useState(0);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [performance, setPerformance] = useState<{
+    mode: number;
+    metrics: PerformanceMetrics;
+  } | null>(null);
 
   const [handleSwipe, { error, loading }] = useMutation(HandleSwipeMutation);
   const backendError = useMemo(() => getBackendErrorBanner(error), [error]);
   const visibleError = localError ?? backendError;
 
   const reconcileQueue = useCallback((data: HandleSwipeMutationType | null | undefined) => {
-    if (data?.handleSwipe.nextCards) {
+    if (data?.handleSwipe) {
       setQueue(data.handleSwipe.nextCards);
+      setPerformance({
+        mode: data.handleSwipe.performanceMode,
+        metrics: data.handleSwipe.metrics,
+      });
     }
   }, []);
 
@@ -71,7 +141,8 @@ export function LearnClient({ cardgroupId, initialCards }: Props) {
           handleSwipe: {
             __typename: "SwipeResponse",
             nextCards: remaining,
-            performanceMode: 0,
+            performanceMode: performance?.mode ?? 1,
+            metrics: performance?.metrics ?? DEFAULT_METRICS,
           },
         },
       }).catch((err) => {
@@ -84,7 +155,7 @@ export function LearnClient({ cardgroupId, initialCards }: Props) {
 
       reconcileQueue(result?.data);
     },
-    [cardgroupId, handleSwipe, queue, reconcileQueue],
+    [cardgroupId, handleSwipe, performance, queue, reconcileQueue],
   );
 
   if (initialCards.length === 0) {
@@ -106,6 +177,8 @@ export function LearnClient({ cardgroupId, initialCards }: Props) {
   return (
     <section className="flex flex-1 flex-col">
       <SwipeStatusBar completed={completed} remaining={queue.length} saving={loading} />
+
+      {performance ? <ModeBadge mode={performance.mode} metrics={performance.metrics} /> : null}
 
       {visibleError ? (
         <div
