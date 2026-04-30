@@ -258,7 +258,7 @@ The structural consequence: **sensitive ALTER operations (RLS, GRANT, REVOKE) be
 
 #### Migration test quality bar
 
-Tests that invoke the migration runner must assert *post-conditions*, not just "migrate ran without error". The model is `TestMigrations_AllPublicTablesHaveRLSEnabled` in `internal/database/pool_test.go`: it queries `pg_class` after migration and asserts every expected table has `relrowsecurity = true`. Procedural success alone does not verify security posture.
+Tests that invoke the migration runner must assert *post-conditions*, not just "migrate ran without error". The model is `TestMigrations_AllPublicTablesHaveRLSEnabled` in `internal/database/pool_test.go`: it queries `pg_class` after migration and asserts every expected table has `relrowsecurity = true`. RLS policy behavior is covered by `internal/database/rls_test.go`, which connects as the Supabase-style `authenticated` role and sets local JWT claims before querying. Procedural success alone does not verify security posture.
 
 #### `schema_migrations` and RLS
 
@@ -293,7 +293,7 @@ $$;
 - `SECURITY DEFINER` — the function executes as its owner, so RLS-enabled callers can probe role membership without needing direct read on `roles` / `user_roles`.
 - `SET search_path = public` — neutralises the classic `SECURITY DEFINER` injection vector where an attacker creates a `pg_temp` shim function (e.g. their own `roles` table) that the function would otherwise resolve before the real one.
 - `REVOKE ALL FROM PUBLIC` then narrow `GRANT EXECUTE` — without revoking from `PUBLIC`, anonymous PostgREST callers (`anon` role) could invoke the helper as an oracle to enumerate role assignments. The grant is intentionally limited to the Supabase-managed `authenticated` role.
-- `DO $$ ... IF EXISTS pg_roles ... GRANT END $$` portability guard — the testcontainers Postgres used in `internal/database` integration tests does **not** have the Supabase-managed roles (`authenticated`, `anon`, `service_role`). Wrapping role-specific GRANTs in this conditional `DO` block keeps the migration applicable in both production (Supabase) and test (plain Postgres). The Go backend connects as the table owner and bypasses RLS, so the GRANT path is exercised only by direct PostgREST callers in production.
+- `DO $$ ... IF EXISTS pg_roles ... GRANT END $$` portability guard — plain PostgreSQL does not include Supabase-managed roles (`authenticated`, `anon`, `service_role`) by default. Wrapping role-specific GRANTs in this conditional `DO` block keeps the migration applicable outside Supabase. Testcontainers create a minimal `authenticated` role fixture so RLS behavior can be exercised directly. The Go backend connects as the table owner and bypasses RLS, so the GRANT path is used only by direct PostgREST / Edge callers in production.
 
 ### Startup order
 
@@ -396,7 +396,15 @@ Owner checks live in the usecase, not in Postgres RLS. The asymmetry for read vs
 - Non-owner `cardgroup(id:)` read → return `null` (the field is nullable by spec; ID enumeration on a nullable field is acceptable).
 - Non-owner write (`updateCardgroup`, `deleteCardgroup`) → return `UNAUTHENTICATED`.
 
-Although authorization itself is not delegated to Postgres, every application table in the `public` schema still has Row Level Security **enabled with zero policies**. This blocks PostgREST callers using the `anon` or `authenticated` role from reading or writing any row directly — a Supabase project always exposes `public.*` as a REST API, and "no policy under RLS" means default-deny in PostgreSQL. The Go backend connects as the table-owner role, which bypasses RLS unless `FORCE ROW LEVEL SECURITY` is set, so application queries and migrations are unaffected. The `schema_migrations` bookkeeping table is excluded from RLS — see [schema_migrations and RLS](#schema_migrations-and-rls) for the rationale. If a future flow needs Supabase JS to read a table directly, add a targeted policy alongside the access pattern; do not disable RLS to "make it work".
+Although authorization itself is not delegated to Postgres, every application table in the `public` schema has Row Level Security enabled. Core user data tables now have concrete policies for direct Supabase callers:
+
+- `users`: a caller can select or update only their own row; admins can select or update any row.
+- `cardgroups` and `cards`: owners have full row access through `cardgroups.owner_id`; admins bypass ownership.
+- `swipe_records`: callers can select their own review log; admins can read all logs. Inserts are limited to `user_id = auth.uid()` so admins cannot write swipes for another user.
+- `roles`: selectable by all callers; mutations are admin-only.
+- `user_roles`: callers can read their own assignments; admins can read and mutate all assignments.
+
+The Go backend connects as the table-owner role, which bypasses RLS unless `FORCE ROW LEVEL SECURITY` is set, so application queries and migrations are unaffected. `FORCE ROW LEVEL SECURITY` is intentionally not enabled. The `schema_migrations` bookkeeping table is excluded from RLS — see [schema_migrations and RLS](#schema_migrations-and-rls) for the rationale. If a future flow needs Supabase JS to read a new table directly, add a targeted policy alongside the access pattern; do not disable RLS to "make it work".
 
 ### Role-based authorization (`auth.Service`)
 
