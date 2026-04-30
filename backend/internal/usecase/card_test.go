@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -22,6 +23,20 @@ type mockCardRepository struct {
 	capturedPatch       repository.CardUpdate
 	deleteErr           error
 	deleteCalled        bool
+
+	findPageRows  []*domain.Card
+	findPageTotal int64
+	findPageErr   error
+	// captured arguments from the most recent FindPageByCardgroup call.
+	capturedFindPage struct {
+		cardgroupID string
+		after       *repository.CardCursor
+		before      *repository.CardCursor
+		first       int
+		last        int
+		orderBy     repository.CardOrderBy
+		dir         repository.SortOrder
+	}
 }
 
 func (m *mockCardRepository) FindByID(_ context.Context, _ string) (*domain.Card, error) {
@@ -41,6 +56,23 @@ func (m *mockCardRepository) Update(_ context.Context, _ string, patch repositor
 func (m *mockCardRepository) Delete(_ context.Context, _ string) error {
 	m.deleteCalled = true
 	return m.deleteErr
+}
+func (m *mockCardRepository) FindPageByCardgroup(
+	_ context.Context,
+	cardgroupID string,
+	after, before *repository.CardCursor,
+	first, last int,
+	orderBy repository.CardOrderBy,
+	dir repository.SortOrder,
+) ([]*domain.Card, int64, error) {
+	m.capturedFindPage.cardgroupID = cardgroupID
+	m.capturedFindPage.after = after
+	m.capturedFindPage.before = before
+	m.capturedFindPage.first = first
+	m.capturedFindPage.last = last
+	m.capturedFindPage.orderBy = orderBy
+	m.capturedFindPage.dir = dir
+	return m.findPageRows, m.findPageTotal, m.findPageErr
 }
 
 type mockCardgroupRepoForCard struct {
@@ -244,4 +276,101 @@ func TestCardUsecase_RepoErrorsBecomeInternal(t *testing.T) {
 	)
 	_, err := uc.Card(authedCtx("u1"), "card1")
 	assertGQLErr(t, err, "INTERNAL", "")
+}
+
+func TestCardUsecase_ListCardsByCardgroupConnection_Anonymous(t *testing.T) {
+	t.Parallel()
+	uc := NewCardUsecase(&mockCardRepository{}, &mockCardgroupRepoForCard{})
+	_, err := uc.ListCardsByCardgroupConnection(anonCtx(), CardConnectionInput{CardgroupID: "cg1"})
+	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+}
+
+func TestCardUsecase_ListCardsByCardgroupConnection_NonOwner(t *testing.T) {
+	t.Parallel()
+	uc := NewCardUsecase(
+		&mockCardRepository{},
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+	)
+	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u2"), CardConnectionInput{CardgroupID: "cg1"})
+	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+}
+
+func TestCardUsecase_ListCardsByCardgroupConnection_InvalidOrderBy(t *testing.T) {
+	t.Parallel()
+	uc := NewCardUsecase(
+		&mockCardRepository{},
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+	)
+	bad := "STABILITY"
+	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
+		CardgroupID: "cg1",
+		OrderBy:     &bad,
+	})
+	assertGQLErr(t, err, "BAD_USER_INPUT", "orderBy")
+}
+
+func TestCardUsecase_ListCardsByCardgroupConnection_BothFirstAndLast(t *testing.T) {
+	t.Parallel()
+	uc := NewCardUsecase(
+		&mockCardRepository{},
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+	)
+	first := 5
+	last := 5
+	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
+		CardgroupID: "cg1",
+		First:       &first,
+		Last:        &last,
+	})
+	assertGQLErr(t, err, "BAD_USER_INPUT", "first")
+}
+
+func TestCardUsecase_ListCardsByCardgroupConnection_DefaultsAndPaging(t *testing.T) {
+	t.Parallel()
+
+	// Mock returns first+1 (=21) rows, signalling another page exists.
+	rows := make([]*domain.Card, 21)
+	for i := range rows {
+		rows[i] = &domain.Card{ID: fmt.Sprintf("card-%02d", i), CardgroupID: "cg1"}
+	}
+	cardRepo := &mockCardRepository{findPageRows: rows, findPageTotal: 50}
+	uc := NewCardUsecase(
+		cardRepo,
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+	)
+
+	out, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
+		CardgroupID: "cg1",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(out.Cards) != 20 {
+		t.Fatalf("expected 20 cards after trim, got %d", len(out.Cards))
+	}
+	if !out.HasNext {
+		t.Fatal("expected HasNext=true")
+	}
+	if out.HasPrev {
+		t.Fatal("expected HasPrev=false on first page")
+	}
+	if out.TotalCount != 50 {
+		t.Fatalf("expected TotalCount=50, got %d", out.TotalCount)
+	}
+	if out.StartCur != "card-00" {
+		t.Fatalf("expected StartCur=card-00, got %q", out.StartCur)
+	}
+	if out.EndCur != "card-19" {
+		t.Fatalf("expected EndCur=card-19, got %q", out.EndCur)
+	}
+	// The repository must have been asked for first+1 = 21 rows.
+	if cardRepo.capturedFindPage.first != 21 {
+		t.Fatalf("expected repo.first=21, got %d", cardRepo.capturedFindPage.first)
+	}
+	if cardRepo.capturedFindPage.orderBy != repository.CardOrderByID {
+		t.Fatalf("expected default orderBy=id, got %q", cardRepo.capturedFindPage.orderBy)
+	}
+	if cardRepo.capturedFindPage.dir != repository.SortAsc {
+		t.Fatalf("expected default dir=ASC, got %q", cardRepo.capturedFindPage.dir)
+	}
 }
