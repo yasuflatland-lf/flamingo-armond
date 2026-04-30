@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/rotisserie/eris"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
 	"backend/internal/logging"
@@ -67,12 +66,7 @@ func NewForbidden(msg string) *gqlerror.Error {
 // IsAdmin / context to preserve the eris chain. The helper covers both
 // context.Canceled and context.DeadlineExceeded; callers decide which to use.
 func Cancelled(ctx context.Context, err error) *gqlerror.Error {
-	if err != nil {
-		// Match auth.reject's WARN shape: msg + error_chain attribute via eris.ToJSON.
-		slog.Default().LogAttrs(ctx, slog.LevelWarn, "request cancelled",
-			slog.Any("error_chain", eris.ToJSON(err, true)),
-		)
-	}
+	logging.LogWarn(ctx, slog.Default(), "request cancelled", err)
 	return &gqlerror.Error{
 		Message: "request cancelled",
 		Extensions: map[string]any{

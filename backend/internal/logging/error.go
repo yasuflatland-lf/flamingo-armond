@@ -1,13 +1,9 @@
 // Package logging centralizes structured error logging on top of slog.
 //
-// LogError is the ERROR-level entry point used by the GraphQL boundary
-// (gqlerr.Internal) and main()'s terminal log so every error event the
-// backend emits at ERROR level carries the same shape: a human-readable
-// msg and the eris error chain attached as the "error_chain" attribute.
-//
-// Non-ERROR sites that need the same attribute (e.g. auth.reject's Warn
-// log for client-side rejections) attach eris.ToJSON(err, true) to the
-// "error_chain" key directly so log shape stays consistent.
+// LogError (ERROR) and LogWarn (WARN) are the two entry points the backend
+// uses for events that carry an error chain. Both attach eris.ToJSON(err,
+// true) under the "error_chain" attribute so JSON aggregators can index the
+// chain without re-parsing free-form strings.
 package logging
 
 import (
@@ -24,6 +20,18 @@ import (
 // structured attribute named "error_chain" so JSON log aggregators can index
 // it without re-parsing free-form strings.
 func LogError(ctx context.Context, logger *slog.Logger, msg string, err error, attrs ...slog.Attr) {
+	logAt(ctx, logger, slog.LevelError, msg, err, attrs...)
+}
+
+// LogWarn records err at slog.LevelWarn using the provided logger. Same nil
+// and shape semantics as LogError; intended for client-attributable failures
+// (auth rejection, request cancellation) where the operator should not be
+// paged but the error chain is still useful for debugging.
+func LogWarn(ctx context.Context, logger *slog.Logger, msg string, err error, attrs ...slog.Attr) {
+	logAt(ctx, logger, slog.LevelWarn, msg, err, attrs...)
+}
+
+func logAt(ctx context.Context, logger *slog.Logger, level slog.Level, msg string, err error, attrs ...slog.Attr) {
 	if err == nil {
 		return
 	}
@@ -32,5 +40,5 @@ func LogError(ctx context.Context, logger *slog.Logger, msg string, err error, a
 	}
 	all := []slog.Attr{slog.Any("error_chain", eris.ToJSON(err, true))}
 	all = append(all, attrs...)
-	logger.LogAttrs(ctx, slog.LevelError, msg, all...)
+	logger.LogAttrs(ctx, level, msg, all...)
 }
