@@ -17,6 +17,8 @@ const maxPayloadBytes = 1 << 20
 
 // ParsedWord is the public, wire-friendly representation of a successful
 // parse. Line is the 1-indexed source line so the UI can highlight inputs.
+// Constructed only by Process within this package; external zero-value
+// construction is allowed by Go but produces a value the parser would never emit.
 type ParsedWord struct {
 	Front string
 	Back  string
@@ -25,6 +27,8 @@ type ParsedWord struct {
 
 // ValidationError is the public, line-scoped error type. Line == 0
 // indicates an error not tied to a specific line (e.g. payload-size).
+// Constructed only by Process within this package; external zero-value
+// construction is allowed by Go but produces a value the parser would never emit.
 type ValidationError struct {
 	Line    int
 	Message string
