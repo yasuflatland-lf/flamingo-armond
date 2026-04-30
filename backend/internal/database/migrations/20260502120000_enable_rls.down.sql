@@ -10,7 +10,6 @@
 
 BEGIN;
 
-ALTER TABLE public.schema_migrations DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ping_records      DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.swipe_records     DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cards             DISABLE ROW LEVEL SECURITY;
