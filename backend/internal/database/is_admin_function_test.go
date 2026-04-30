@@ -2,6 +2,7 @@ package database_test
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"testing"
 
@@ -9,6 +10,17 @@ import (
 
 	"backend/internal/database"
 )
+
+// sqlDBForTest unwraps the underlying *sql.DB from db.GORM, failing the test on
+// error.
+func sqlDBForTest(t *testing.T, db *database.DB) *sql.DB {
+	t.Helper()
+	sqlDB, err := db.GORM.DB()
+	if err != nil {
+		t.Fatalf("gorm.DB(): %v", err)
+	}
+	return sqlDB
+}
 
 // openMigratedDB migrates testDSN and returns an open *database.DB.
 // The caller is responsible for calling db.Close().
@@ -29,10 +41,7 @@ func openMigratedDB(t *testing.T) *database.DB {
 func insertAuthUserForAdmin(t *testing.T, ctx context.Context, db *database.DB) string {
 	t.Helper()
 	id := uuid.NewString()
-	sqlDB, err := db.GORM.DB()
-	if err != nil {
-		t.Fatalf("gorm.DB(): %v", err)
-	}
+	sqlDB := sqlDBForTest(t, db)
 	email := fmt.Sprintf("%s@test", id)
 	if _, err := sqlDB.ExecContext(ctx,
 		`INSERT INTO auth.users (id, email) VALUES ($1, $2)`, id, email); err != nil {
@@ -49,11 +58,7 @@ func TestIsAdminFunction_True(t *testing.T) {
 	defer db.Close()
 
 	userID := insertAuthUserForAdmin(t, ctx, db)
-
-	sqlDB, err := db.GORM.DB()
-	if err != nil {
-		t.Fatalf("gorm.DB(): %v", err)
-	}
+	sqlDB := sqlDBForTest(t, db)
 
 	// Look up the seeded admin role id.
 	var adminRoleID string
@@ -86,11 +91,7 @@ func TestIsAdminFunction_FalseWhenNoRole(t *testing.T) {
 	defer db.Close()
 
 	userID := insertAuthUserForAdmin(t, ctx, db)
-
-	sqlDB, err := db.GORM.DB()
-	if err != nil {
-		t.Fatalf("gorm.DB(): %v", err)
-	}
+	sqlDB := sqlDBForTest(t, db)
 
 	var got bool
 	if err := sqlDB.QueryRowContext(ctx,
@@ -109,10 +110,7 @@ func TestIsAdminFunction_FalseWhenUnknownUser(t *testing.T) {
 	db := openMigratedDB(t)
 	defer db.Close()
 
-	sqlDB, err := db.GORM.DB()
-	if err != nil {
-		t.Fatalf("gorm.DB(): %v", err)
-	}
+	sqlDB := sqlDBForTest(t, db)
 
 	const unknownUID = "00000000-0000-0000-0000-000000000000"
 	var got bool
