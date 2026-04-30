@@ -106,3 +106,9 @@ export const DeleteCardMutation = graphql(`
     deleteCard(id: $id)
   }
 `);
+
+export const DeleteCardsMutation = graphql(`
+  mutation DeleteCards($ids: [ID!]!) {
+    deleteCards(ids: $ids)
+  }
+`);

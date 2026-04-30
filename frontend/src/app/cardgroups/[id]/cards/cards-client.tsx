@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CreateCardMutation,
   DeleteCardMutation,
+  DeleteCardsMutation,
   UpdateCardMutation,
 } from "@/app/cardgroups/queries";
 import { CardForm } from "@/components/cardgroups/card-form";
@@ -48,6 +49,23 @@ export function CardsClient({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [createFormKey, setCreateFormKey] = useState(0);
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const toggleSelected = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
 
   const {
     data,
@@ -231,6 +249,62 @@ export function CardsClient({
 
   const deleteBannerError = getBackendErrorBanner(deleteError);
 
+  const [deleteCards, { error: bulkDeleteError, loading: bulkDeleting }] = useMutation(
+    DeleteCardsMutation,
+    {
+      update(cache, { data }, { variables }) {
+        const ids = variables?.ids as string[] | undefined;
+        if (!ids) return;
+        const deletedCount = data?.deleteCards ?? 0;
+
+        // Backend reports actual rows deleted; some ids may have been skipped (foreign-owned).
+        const variables2 = { cardgroupId, first: CARDS_PAGE_SIZE };
+        const existing = cache.readQuery({
+          query: CardsByCardgroupConnectionDocument,
+          variables: variables2,
+        });
+
+        if (existing && deletedCount > 0) {
+          const filteredEdges = existing.cardsByCardgroupConnection.edges.filter(
+            (edge) => !ids.includes(edge.node.id),
+          );
+          cache.writeQuery({
+            query: CardsByCardgroupConnectionDocument,
+            variables: variables2,
+            data: {
+              cardsByCardgroupConnection: {
+                ...existing.cardsByCardgroupConnection,
+                edges: filteredEdges,
+                totalCount: Math.max(
+                  0,
+                  existing.cardsByCardgroupConnection.totalCount - deletedCount,
+                ),
+              },
+            },
+          });
+        }
+
+        // Evict each id from the cache even when deletedCount is 0 (cache may be stale).
+        for (const id of ids) {
+          cache.evict({ id: cache.identify({ __typename: "Card", id }) });
+        }
+        cache.gc();
+      },
+    },
+  );
+
+  const bulkDeleteBannerError = getBackendErrorBanner(bulkDeleteError);
+
+  async function handleBulkDelete() {
+    const ids = Array.from(selectedIds);
+    try {
+      await deleteCards({ variables: { ids } });
+      clearSelection();
+    } catch (err) {
+      console.error("[CardsClient] bulk delete rejection", err);
+    }
+  }
+
   async function handleCreate(values: { front: string; back: string }) {
     await createCard({
       variables: { input: { cardgroupId, front: values.front, back: values.back } },
@@ -271,6 +345,16 @@ export function CardsClient({
         </div>
       )}
 
+      {bulkDeleteBannerError && (
+        <div
+          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+          role="alert"
+          data-testid="cards-bulk-delete-error"
+        >
+          {bulkDeleteBannerError}
+        </div>
+      )}
+
       <section>
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
           Add a card
@@ -291,6 +375,42 @@ export function CardsClient({
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
           Cards ({totalCount})
         </h2>
+
+        {selectedIds.size > 0 && (
+          <div
+            className="mb-3 flex items-center gap-3 rounded-md border border-border bg-muted/50 px-4 py-2"
+            data-testid="cards-bulk-action-bar"
+          >
+            <span className="flex-1 text-sm font-medium">{selectedIds.size} selected</span>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={bulkDeleting}
+                  data-testid="cards-bulk-delete-button"
+                >
+                  Delete selected
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete {selectedIds.size} cards?</AlertDialogTitle>
+                  <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction data-testid="cards-bulk-confirm" onClick={handleBulkDelete}>
+                    Delete {selectedIds.size}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+            <Button variant="outline" size="sm" onClick={clearSelection}>
+              Cancel
+            </Button>
+          </div>
+        )}
 
         {edges.length === 0 ? (
           <p className="text-sm text-muted-foreground">No cards yet. Add one above.</p>
@@ -316,6 +436,14 @@ export function CardsClient({
                   key={card.id}
                   className="flex items-start justify-between gap-4 rounded-md border border-border px-4 py-3"
                 >
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-primary"
+                    checked={selectedIds.has(card.id)}
+                    onChange={() => toggleSelected(card.id)}
+                    aria-label="Select card"
+                    data-testid={`card-select-${card.id}`}
+                  />
                   <div className="min-w-0 flex-1 space-y-1">
                     <p className="text-sm font-medium">{card.front}</p>
                     <p className="text-sm text-muted-foreground">{card.back}</p>
