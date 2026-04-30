@@ -60,7 +60,16 @@ jobs:
         run: go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
 
       - name: Generate HTML coverage
-        run: go tool cover -html=coverage.out -o coverage.html
+        # goyacc emits `//line yaccpar:1` / `//line yacctab:1` directives in
+        # internal/textdic/parser.go, so coverage.out references virtual paths
+        # `internal/textdic/yaccpar` / `yacctab` that have no on-disk file.
+        # `go tool cover -html` opens every path it sees and fails on those.
+        # Strip those rows for HTML rendering only; the original coverage.out
+        # is left intact for Codecov, which honours the line directives.
+        run: |
+          grep -vE '/(yaccpar|yacctab):' coverage.out > coverage.html.out
+          go tool cover -html=coverage.html.out -o coverage.html
+          rm coverage.html.out
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v7
