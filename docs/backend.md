@@ -436,6 +436,12 @@ The DB side of the same check is `public.is_admin(uid uuid) RETURNS boolean`, de
 - `bio` accepts up to 500 grapheme clusters (no trim; whitespace is preserved).
 - Out-of-bounds returns `gqlerr.BadUserInput("displayName", ...)` (extensions.code = "BAD_USER_INPUT", field = "displayName"). See [Validation (grapheme clusters)](#validation-grapheme-clusters) for the WHY.
 
+### Card bulk delete + FSRS override
+
+The `deleteCards(ids: [ID!]!) -> Int` mutation deletes cards owned by the authenticated caller and returns the count of rows actually deleted. The `BulkDelete` usecase enforces two-layer ownership checking: first, a batched `cardgroupRepo.FindByIDs` lookup gates the entire call (rejects if ANY id is foreign, preventing partial deletes and inconsistent UX); second, a SQL-side subselect in `DeleteByIDsTx` is defense in depth (covers concurrent role changes mid-transaction). The repository's `DeleteByIDsTx` short-circuits on an empty slice to avoid `WHERE id IN ()`, which triggers a full-table scan in Postgres.
+
+`NewCardInput` accepts optional all-or-nothing FSRS state overrides: nine fields (`due, stability, difficulty, elapsedDays, scheduledDays, reps, lapses, state, lastReview`) or none. Mixed input triggers `domain.ErrFSRSOverridePartial`; invalid state values trigger `domain.ErrFSRSOverrideStateInvalid`. This all-or-nothing semantics prevents mixed-state cards when importing a dictionary — a single bad value would otherwise corrupt the set. The `domain.NewFSRSStateFromInput` function centralizes the validation and sentinels; the usecase translates them to `gqlerr.BadUserInput` before returning.
+
 ### Integration tests
 
 `backend/cmd/server/main_test.go` contains `TestGraphQL_Me_Anonymous`, `TestGraphQL_Me_Authenticated`, and `TestGraphQL_UpdateProfile_Authenticated`. These tests use the testcontainer Postgres, a local JWKS HTTP server (`jwtFixture`), and ECDSA-signed JWTs. Future GraphQL integration tests should reuse the same `jwtFixture` + `startServer` helpers rather than re-inventing the JWKS mock.
