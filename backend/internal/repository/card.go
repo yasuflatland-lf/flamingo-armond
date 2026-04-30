@@ -387,8 +387,10 @@ func (r *cardRepo) DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID strin
 		return 0, nil
 	}
 	// Owner check at SQL: cards.cardgroup_id must reference a cardgroup the
-	// user owns. Subselect keeps it as one round-trip even though usecase
-	// performs a redundant explicit owner check first.
+	// user owns. The subselect is the SOLE ownership gate — the usecase does
+	// no read-side owner check, so foreign-owned ids in the list are silently
+	// filtered out here. Do not remove the cardgroup_id IN (...) clause
+	// without adding an equivalent guard upstream.
 	res := tx.WithContext(ctx).
 		Where("id IN ? AND cardgroup_id IN (?)", ids,
 			tx.Model(&gormCardgroup{}).Select("id").Where("owner_id = ?", ownerID),
