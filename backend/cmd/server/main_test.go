@@ -448,7 +448,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	userUC := usecase.NewUserUsecase(userRepo)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)
-	cardUC := usecase.NewCardUsecase(cardRepo, cardgroupRepo)
+	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	e := newRouter(&resolver.Resolver{User: userUC, CardgroupUC: cardgroupUC, CardUC: cardUC, SwipeUC: swipeUC}, mw, userRepo, roleRepo, cardgroupRepo, cardRepo, ping.New(pingRecordRepo, "test-token"), swipeRecordRepo)

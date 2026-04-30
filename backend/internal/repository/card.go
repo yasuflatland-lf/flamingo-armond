@@ -90,6 +90,15 @@ type CardRepository interface {
 	UpdateFSRSStateTx(ctx context.Context, tx *gorm.DB, id string, state domain.FSRSState) error
 	Update(ctx context.Context, id string, patch CardUpdate) (*domain.Card, error)
 	Delete(ctx context.Context, id string) error
+	// DeleteByIDsTx hard-deletes the cards whose ids are in the list AND whose
+	// cardgroup is owned by ownerID. Returns the number of rows actually deleted
+	// (cards owned by other users are silently skipped at SQL level so a single
+	// foreign id in the list does not abort the batch).
+	//
+	// Empty ids short-circuits to (0, nil) without touching the DB. With an empty
+	// slice GORM v2 omits the `WHERE id IN (?)` clause altogether, which would
+	// convert this `Delete` into an unbounded mass delete — far worse than a slow scan.
+	DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error)
 }
 
 type cardRepo struct{ db *gorm.DB }
@@ -371,6 +380,26 @@ func (r *cardRepo) Delete(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (r *cardRepo) DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	// Owner check at SQL: cards.cardgroup_id must reference a cardgroup the
+	// user owns. The subselect is the SOLE ownership gate — the usecase does
+	// no read-side owner check, so foreign-owned ids in the list are silently
+	// filtered out here. Do not remove the cardgroup_id IN (...) clause
+	// without adding an equivalent guard upstream.
+	res := tx.WithContext(ctx).
+		Where("id IN ? AND cardgroup_id IN (?)", ids,
+			tx.Model(&gormCardgroup{}).Select("id").Where("owner_id = ?", ownerID),
+		).
+		Delete(&gormCard{})
+	if res.Error != nil {
+		return 0, eris.Wrap(res.Error, "repository: bulk delete cards")
+	}
+	return res.RowsAffected, nil
 }
 
 func cardToRow(card *domain.Card) *gormCard {

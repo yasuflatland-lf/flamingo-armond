@@ -118,6 +118,14 @@ For Connection types (`*Connection` / `*Edge`), use `readQuery + writeQuery` (no
 
 The reference implementation is `frontend/src/app/cardgroups/[id]/cards/cards-client.tsx` (`useQuery` + `fetchMore` with an IntersectionObserver sentinel). See `docs/pagination.md` for IntersectionObserver in-flight guards, `fetchMoreError` handling, `NetworkStatus.fetchMore` conventions, and MockedProvider warn-spy patterns.
 
+### Bulk delete cache update pattern
+
+Selection state lives on the client component as a `Set<string>`. A checkbox row toggles membership; the bulk-action bar renders only when the set is non-empty. The `deleteCards(ids)` mutation returns the backend's count of rows deleted, not the input count — foreign-owned ids are silently skipped at the backend, making the response count the single source of truth for cache updates.
+
+Cache update pattern: read the Connection query via `cache.readQuery` → filter `edges` to remove the deleted ids → decrement `totalCount` by the backend's reported count (NOT `ids.length`) → `cache.writeQuery` to persist the modified Connection → `cache.evict` per id to clear normalized entries → `cache.gc()` to garbage-collect orphaned references. This mirrors the single-delete pattern; do not use `cache.modify` alone because cold caches no-op silently.
+
+Early-return guard: the `update` callback must begin with `if (data?.deleteCards == null) return;`. Although Apollo Client normally skips `update` on network-layer rejection, a synchronous error inside the callback body will still fire `cache.evict + cache.gc` on whatever was already processed, causing cards to visually vanish while still present server-side. The guard defends against this: if the server response is absent or null the callback exits before touching the cache, so a transient failure followed by a retry leaves the UI consistent.
+
 ## Auth (Supabase)
 
 The Supabase SSR client uses a 3-layer setup mirroring the official `@supabase/ssr` template. Each layer exists because cookie reading/writing differs between contexts:

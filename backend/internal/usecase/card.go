@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
 
 	"backend/internal/auth"
 	"backend/internal/domain"
@@ -15,6 +18,7 @@ import (
 
 type CardRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Card, error)
+	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error)
 	FindByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error)
 	FindPageByCardgroup(
 		ctx context.Context,
@@ -27,25 +31,53 @@ type CardRepository interface {
 	Create(ctx context.Context, card *domain.Card) error
 	Update(ctx context.Context, id string, patch repository.CardUpdate) (*domain.Card, error)
 	Delete(ctx context.Context, id string) error
+	DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error)
 }
 
 type CardgroupRepositoryForCard interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
 }
 
+// txRunner is the function the usecase calls to run fn inside a database
+// transaction. NewCardUsecase binds it to db.WithContext(ctx).Transaction(fn);
+// NewCardUsecaseWithTx lets unit tests inject a stub that invokes fn with
+// a fake *gorm.DB.
+type txRunner func(ctx context.Context, fn func(tx *gorm.DB) error) error
+
 type CardUsecase struct {
 	cardRepo      CardRepository
 	cardgroupRepo CardgroupRepositoryForCard
+	tx            txRunner
 }
 
-func NewCardUsecase(cardRepo CardRepository, cardgroupRepo CardgroupRepositoryForCard) *CardUsecase {
-	return &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo}
+func NewCardUsecase(db *gorm.DB, cardRepo CardRepository, cardgroupRepo CardgroupRepositoryForCard) *CardUsecase {
+	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo}
+	if db != nil {
+		uc.tx = func(ctx context.Context, fn func(tx *gorm.DB) error) error {
+			return db.WithContext(ctx).Transaction(fn)
+		}
+	}
+	return uc
+}
+
+// NewCardUsecaseWithTx constructs a CardUsecase with an explicit transaction
+// runner. Intended for unit tests that need to exercise BulkDelete without a
+// real database. Production code must use NewCardUsecase instead.
+func NewCardUsecaseWithTx(
+	cardRepo CardRepository,
+	cardgroupRepo CardgroupRepositoryForCard,
+	tx func(ctx context.Context, fn func(tx *gorm.DB) error) error,
+) *CardUsecase {
+	return &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo, tx: tx}
 }
 
 type CreateCardInput struct {
 	CardgroupID string
 	Front       string
 	Back        string
+	// FSRS, when non-nil, overrides the new-card FSRS state. All nine fields
+	// must be specified together (see domain.NewFSRSStateFromInput).
+	FSRS *domain.FSRSStateOverride
 }
 
 type UpdateCardInput struct {
@@ -96,6 +128,7 @@ type CardConnectionOutput struct {
 const (
 	defaultPageSize = 20
 	maxPageSize     = 100
+	maxBulkDelete   = 100
 )
 
 func (u *CardUsecase) Card(ctx context.Context, id string) (*domain.Card, error) {
@@ -147,12 +180,22 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (*domain.C
 	if err != nil {
 		return nil, gqlerr.Internal(ctx, err)
 	}
+
+	override := domain.FSRSStateOverride{}
+	if in.FSRS != nil {
+		override = *in.FSRS
+	}
+	fsrsState, err := domain.NewFSRSStateFromInput(override, now)
+	if err != nil {
+		return nil, translateFSRSErr(ctx, err)
+	}
+
 	card := &domain.Card{
 		ID:          id,
 		CardgroupID: in.CardgroupID,
 		Front:       front,
 		Back:        back,
-		FSRS:        domain.NewFSRSStateForNewCard(now),
+		FSRS:        fsrsState,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -430,4 +473,61 @@ func translateCardErr(ctx context.Context, err error) error {
 	default:
 		return gqlerr.Internal(ctx, err)
 	}
+}
+
+// translateFSRSErr maps domain-level FSRS override sentinels to GraphQL
+// BAD_USER_INPUT errors with the appropriate field hint. Unknown errors are
+// surfaced as INTERNAL after being scrubbed by gqlerr.Internal.
+func translateFSRSErr(ctx context.Context, err error) error {
+	switch {
+	case errors.Is(err, domain.ErrFSRSOverridePartial):
+		return gqlerr.BadUserInput("input.fsrs", "all FSRS override fields must be provided together (or none)")
+	case errors.Is(err, domain.ErrFSRSOverrideStateInvalid):
+		return gqlerr.BadUserInput("input.state", "state must be 0..3")
+	default:
+		return gqlerr.Internal(ctx, err)
+	}
+}
+
+// BulkDelete removes the cards in `ids` whose cardgroup is owned by the
+// authenticated caller. Ownership is enforced exclusively by the SQL subselect
+// in DeleteByIDsTx (one DELETE scoped to cardgroups owned by the caller);
+// foreign-owned ids are silently skipped at the SQL layer. Returns the number
+// of rows actually deleted. At most maxBulkDelete ids may be supplied per call;
+// exceeding the cap returns BAD_USER_INPUT.
+func (u *CardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, error) {
+	user := auth.UserFrom(ctx)
+	if user == nil {
+		return 0, gqlerr.Unauthenticated()
+	}
+	if len(ids) > maxBulkDelete {
+		return 0, gqlerr.BadUserInput("ids", fmt.Sprintf("at most %d ids per call", maxBulkDelete))
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	if u.tx == nil {
+		return 0, gqlerr.Internal(ctx, errors.New("usecase: tx runner not configured"))
+	}
+	var deleted int64
+	err := u.tx(ctx, func(tx *gorm.DB) error {
+		n, err := u.cardRepo.DeleteByIDsTx(ctx, tx, user.Sub, ids)
+		if err != nil {
+			return err
+		}
+		deleted = n
+		return nil
+	})
+	if err != nil {
+		return 0, gqlerr.Internal(ctx, err)
+	}
+	if deleted < int64(len(ids)) {
+		slog.Default().LogAttrs(ctx, slog.LevelInfo, "bulk delete: partial match",
+			slog.String("user_id", user.Sub),
+			slog.Int("requested", len(ids)),
+			slog.Int64("deleted", deleted),
+		)
+	}
+	return deleted, nil
 }

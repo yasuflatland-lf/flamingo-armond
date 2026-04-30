@@ -199,7 +199,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	userUC := usecase.NewUserUsecase(userRepo)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)
-	cardUC := usecase.NewCardUsecase(cardRepo, cardgroupRepo)
+	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), swipeNextBatchSize(logger))
 
 	resolvers := &resolver.Resolver{

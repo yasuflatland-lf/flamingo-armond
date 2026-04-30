@@ -130,3 +130,25 @@ func nilIfEmpty(s string) *string {
 	}
 	return &s
 }
+
+// toFSRSOverride collects the nine optional FSRS pointer fields from
+// model.NewCardInput into a domain.FSRSStateOverride. Returns nil when every
+// field is nil so the usecase can take the default-FSRS branch.
+func toFSRSOverride(in model.NewCardInput) *domain.FSRSStateOverride {
+	if in.Due == nil && in.Stability == nil && in.Difficulty == nil &&
+		in.ElapsedDays == nil && in.ScheduledDays == nil && in.Reps == nil &&
+		in.Lapses == nil && in.State == nil && in.LastReview == nil {
+		return nil
+	}
+	return &domain.FSRSStateOverride{
+		Due:           in.Due,
+		Stability:     in.Stability,
+		Difficulty:    in.Difficulty,
+		ElapsedDays:   in.ElapsedDays,
+		ScheduledDays: in.ScheduledDays,
+		Reps:          in.Reps,
+		Lapses:        in.Lapses,
+		State:         in.State,
+		LastReview:    in.LastReview,
+	}
+}
