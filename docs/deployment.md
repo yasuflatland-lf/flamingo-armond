@@ -68,10 +68,11 @@ Every phase that needs prior values follows a three-step idiom: `stat:` to detec
 
 The playbook writes outside the operator's machine in five places: (1) `gh secret set RENDER_DEPLOY_HOOK_URL` on the GitHub repo (Phase 3, idempotent overwrite), (2) `gh secret set PING_TOKEN`, `gh secret set RENDER_PING_URL`, and `gh secret set VERCEL_PING_URL` on the GitHub repo (Phase 6, idempotent overwrite), (3) `PUT /v1/services/<id>/env-vars/<key>` against the Render API for dynamic env vars including `PING_TOKEN` (Phase 6), (4) `POST /v1/services/<id>/deploys` against the Render API (each call enqueues a deploy, which is the operator's intent), and (5) the local state file. Re-running any phase is safe — none of the writes accumulate state in a way that corrupts the next run.
 
-### Two security patterns worth knowing
+### Three security patterns worth knowing
 
 - **`gh secret set` via `shell:` with `stdin:`, not `--body "<URL>"`.** `--body` puts the secret on argv, where it leaks to `ps`, audit logs, and shell history. Ansible's `no_log: true` masks playbook output but does not affect argv, so piping the value through stdin is the only way to keep the deploy-hook URL out of process listings.
 - **Tier-1 values are never `debug:`-printed inline with non-secret values.** `SUPABASE_DB_URL` (which carries the DB password) is shown in its own task with a "leave screen-share before reading this" warning banner, so the operator can pause sharing for that one paste.
+- **CLI tools that auto-read tokens from env should be invoked without explicit token flags.** Passing a secret as `--token <value>` exposes it on argv, which is visible in `/proc/<pid>/cmdline` to other processes on the same runner and in `set -x` debug output — the same argv-leak failure mode as the `gh secret set --body` case above. The Vercel CLI auto-reads `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` from the environment; `.github/workflows/frontend.yml` exposes them only via the job-level `env:` block and never passes `--token <value>` to any `vercel` command.
 
 ### Render deploy polling: terminal failure states
 
@@ -200,7 +201,7 @@ Dynamic env vars (declared with `sync: false` in `render.yaml`; Blueprint create
 
 When the Blueprint apply wizard prompts for the `sync: false` placeholders, leave them blank and click Save. Re-running `make setup-prod-postapply` reconciles the Supabase-derived three from the state file via the Render API, then triggers the first deploy.
 
-After the service is created, copy the deploy hook URL from **Settings → Deploy Hook** and store it as the GitHub Actions secret `RENDER_DEPLOY_HOOK_URL` (used by `.github/workflows/backend.yml`). When using `make setup-prod`, this registration is automated via `gh secret set` with the value piped through stdin — see the "Two security patterns" subsection above.
+After the service is created, copy the deploy hook URL from **Settings → Deploy Hook** and store it as the GitHub Actions secret `RENDER_DEPLOY_HOOK_URL` (used by `.github/workflows/backend.yml`). When using `make setup-prod`, this registration is automated via `gh secret set` with the value piped through stdin — see the "Three security patterns" subsection above.
 
 When `render.yaml` itself changes (e.g. you bump `buildCommand`), reapply via **Blueprints → flamingo-armond → Manual Sync** in the dashboard, then re-run `make setup-prod-postapply` to deploy.
 
@@ -292,7 +293,7 @@ To prevent mismatches: open the Vercel project's **Settings → General → Node
 
 `make setup-prod` Phase 4 (`--tags vercel`) provisions the application environment variables (`BACKEND_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`) into the Vercel project and stores them as GitHub Actions secrets. It does **not** provision the Vercel CLI authentication secrets (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`).
 
-This is an intentional gap: this section documents the CI deploy job and the secrets it needs, but does not modify the playbook. Adding the three secrets to `make setup-prod` is a follow-up task. Until that follow-up is merged, operators must provision `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` manually via `gh secret set` by piping the value through stdin after running `make setup-prod` (see § "Two security patterns worth knowing" for why `--body` is unsafe):
+This is an intentional gap: this section documents the CI deploy job and the secrets it needs, but does not modify the playbook. Adding the three secrets to `make setup-prod` is a follow-up task. Until that follow-up is merged, operators must provision `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` manually via `gh secret set` by piping the value through stdin after running `make setup-prod` (see § "Three security patterns worth knowing" for why `--body` is unsafe):
 
 ```bash
 printf '%s' "<token>" | gh secret set VERCEL_TOKEN

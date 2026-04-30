@@ -8,7 +8,7 @@ Two independent workflows: `.github/workflows/backend.yml` and `.github/workflow
 
 - **Triggers are `paths:`-scoped** per workflow — backend to `backend/**` + workflow file; frontend to `frontend/**` + `schema/**` + the root pnpm/workspace/tool-version manifests + the frontend workflow file. When adding a third service, **add its own workflow** — do not broaden an existing one. Mixing scopes breaks CI granularity and responsibility.
 - **`concurrency` groups are per-workflow** (`backend-${{ github.ref }}`, `frontend-${{ github.ref }}`) with `cancel-in-progress: true` — rapid pushes on the same ref supersede in-flight runs per service (important for feature-branch iteration). The two workflows do not cancel each other.
-- **Deploy-job concurrency exception:** The `deploy` job in `frontend.yml` overrides the workflow-level cancellation policy with a job-scoped `concurrency:` group (`frontend-deploy-${{ github.ref }}`) that has `cancel-in-progress: false`. This ensures that once a `vercel deploy --prebuilt` begins, it cannot be cancelled mid-flight — Vercel may have already committed the deployment server-side, so cancelling the runner would leave an indeterminate state. Lint-test-build runs continue to cancel each other aggressively to save CI minutes on stale feature-branch commits.
+- **Deploy-job concurrency exception:** The `deploy` job in `frontend.yml` overrides the workflow-level cancellation policy with a job-scoped `concurrency:` group (`frontend-deploy-${{ github.ref }}`) that has `cancel-in-progress: false`. This ensures that once a `vercel deploy --prebuilt` begins, it cannot be cancelled mid-flight — Vercel may have already committed the deployment server-side, so cancelling the runner would leave an indeterminate state. Lint-test-build runs continue to cancel each other aggressively to save CI minutes on stale feature-branch commits. **General rule:** jobs whose effects are confined to the runner (lint, test, build artifacts in transit) are safe for `cancel-in-progress: true`; jobs that have already committed external state (deploys, releases, side-effecting API calls) must override with `cancel-in-progress: false` to avoid leaving external systems in an indeterminate state.
 
 ## Deploy gating
 
@@ -64,6 +64,8 @@ When skipping majors (e.g. `upload-artifact@v4 → @v7`), verify the breaking ch
 - `codecov-action@v6` — switched internals to the Codecov CLI (auth flow changed).
 
 Pin to commit SHAs when you need stronger supply-chain guarantees, at the cost of maintenance burden. The project uses major tags for now.
+
+**In-band npm tool installs follow the same policy.** When a CI step installs a global npm package (e.g. `npm install --global vercel@52`), pin to a major version (`@52`) for the same reason: security fixes auto-follow at minor/patch level, and a major bump requires an explicit, reviewable diff. The Vercel CLI install in `.github/workflows/frontend.yml` (line 126) is the canonical example. When adding any in-band `npm install` for a global tool, apply this principle by default.
 
 ## Codegen must run before Vet and Build
 
