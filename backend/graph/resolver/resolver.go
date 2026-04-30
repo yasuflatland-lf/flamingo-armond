@@ -13,10 +13,9 @@ type Resolver struct {
 	AuthSvc     *auth.Service
 }
 
-// NewResolver wires every Resolver dependency at construction time. All
-// arguments are required; pass nil only in test code that explicitly
-// asserts the dependency is unused, and use a named test helper rather
-// than calling NewResolver with bare nils.
+// NewResolver wires every Resolver dependency at construction time. Tests
+// may pass nil for unused dependencies; do not pass nil from production
+// wiring.
 func NewResolver(
 	user *usecase.UserUsecase,
 	cardgroupUC *usecase.CardgroupUsecase,
