@@ -30,6 +30,10 @@ func (r *countingSwipeRecordRepo) FindByUserAndCardgroup(context.Context, string
 	panic("countingSwipeRecordRepo.FindByUserAndCardgroup not configured")
 }
 
+func (r *countingSwipeRecordRepo) ListRecentByUser(context.Context, string, int) ([]*domain.SwipeRecord, error) {
+	panic("countingSwipeRecordRepo.ListRecentByUser not configured")
+}
+
 func (r *countingSwipeRecordRepo) CreateTx(context.Context, *gorm.DB, *domain.SwipeRecord) error {
 	panic("countingSwipeRecordRepo.CreateTx not configured")
 }

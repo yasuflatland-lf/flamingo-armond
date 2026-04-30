@@ -100,6 +100,14 @@ func toSwipeResponseModel(out *usecase.SwipeOutput) *model.SwipeResponse {
 	return &model.SwipeResponse{
 		NextCards:       toCardModels(out.NextCards),
 		PerformanceMode: out.PerformanceMode,
+		Metrics: &model.PerformanceMetrics{
+			SuccessRate:   out.Metrics.SuccessRate,
+			AvgDifficulty: out.Metrics.AvgDifficulty,
+			RetentionRate: out.Metrics.RetentionRate,
+			StudyStreak:   out.Metrics.StudyStreak,
+			LapseRate:     out.Metrics.LapseRate,
+			ReviewCount:   out.Metrics.ReviewCount,
+		},
 	}
 }
 

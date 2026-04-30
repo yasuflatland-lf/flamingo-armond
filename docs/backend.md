@@ -452,6 +452,24 @@ When `DeleteByIDsTx` processes fewer ids than were requested (foreign-owned ids 
 
 `NewCardInput` accepts optional all-or-nothing FSRS state overrides: nine fields (`due, stability, difficulty, elapsedDays, scheduledDays, reps, lapses, state, lastReview`) or none. Mixed input triggers `domain.ErrFSRSOverridePartial`; invalid state values trigger `domain.ErrFSRSOverrideStateInvalid`. This all-or-nothing semantics prevents mixed-state cards when importing a dictionary — a single bad value would otherwise corrupt the set. The `domain.NewFSRSStateFromInput` function centralizes the validation and sentinels; the usecase translates them to `gqlerr.BadUserInput` before returning. The resolver uses a `toFSRSOverride` helper that returns `nil` when all nine fields are nil, delegating the "all-or-none" rule entirely to the domain factory. A `*StructWithRequiredFields` schema type would encode the constraint more precisely, but requires reshaping the resolver; defer until the type is touched again.
 
+### Adaptive learning performance mode
+
+`backend/internal/domain/service/user_performance.go` is a stateless calculator. `SwipeUsecase.HandleSwipe` records the swipe and commits the FSRS update first, then loads the latest 100 swipe records for the user through `SwipeRecordRepository.ListRecentByUser`. This post-commit read keeps transactional rollback behavior simple and lets the just-created swipe participate in the next response's metrics.
+
+The response exposes both `performanceMode` and `metrics`. `performanceMode` is an integer in the range `0..4`:
+
+| Mode | Label | Success-rate band before difficulty adjustment |
+|---|---|---|
+| `0` | Difficult | `< 0.60` |
+| `1` | Default | `0.60 <= rate < 0.75` |
+| `2` | Good | `0.75 <= rate < 0.85` |
+| `3` | Easy | `0.85 <= rate < 0.95` |
+| `4` | In While | `>= 0.95` |
+
+The legacy guard is preserved: fewer than 20 reviews always returns `ModeDefault`. Average difficulty then shifts the mode by one step: `>= 0.7` lowers it, `<= 0.3` raises it, and the final value is clamped to `0..4`. Current FSRS difficulty values are stored on the `1..10` scale, so the calculator normalizes them into `0..1` before applying those boundaries.
+
+`StudyStreak` uses the server's UTC `now` supplied by the usecase. It counts consecutive calendar days with at least one swipe, starting from today. This is intentionally not locale-aware; user-local streaks require a profile time-zone field and should be introduced as a separate feature.
+
 ### Integration tests
 
 `backend/cmd/server/main_test.go` contains `TestGraphQL_Me_Anonymous`, `TestGraphQL_Me_Authenticated`, and `TestGraphQL_UpdateProfile_Authenticated`. These tests use the testcontainer Postgres, a local JWKS HTTP server (`jwtFixture`), and ECDSA-signed JWTs. Future GraphQL integration tests should reuse the same `jwtFixture` + `startServer` helpers rather than re-inventing the JWKS mock.
