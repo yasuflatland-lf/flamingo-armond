@@ -126,8 +126,16 @@ Project-wide guidance for AI assistants lives in `CLAUDE.md`.
 | Doc | Topic |
 |---|---|
 | `docs/dev-setup.md` | Local toolchain, Supabase CLI, Google OAuth for local, codegen policy |
-| `docs/backend.md` | Backend architecture, JWT verification, migrations |
+| `docs/backend.md` | Backend runtime, HTTP server, env vars, testing, logging |
+| `docs/backend-graphql.md` | GraphQL endpoint, gqlgen, resolvers, error helpers, DataLoader |
+| `docs/backend-auth.md` | Authentication, JWT, JWKS, role authz |
+| `docs/backend-db.md` | Database, migrations, RLS, GORM patterns |
 | `docs/frontend.md` | Frontend architecture, backend rewrite contract, Profile page |
+| `docs/observability.md` | Tracing, request-ID, APQ — backend ↔ frontend contract |
 | `docs/ci.md` | CI workflows and what each one verifies |
 | `docs/deployment.md` | Production bring-up across Supabase + Render + Vercel |
+| `docs/playbook-patterns.md` | Ansible idioms and migration recovery |
 | `.claude/rules/language-policy.md` | English-only rule for committed text, no PR-order references |
+| `.claude/rules/pagination.md` | Relay Connection conventions (cards-by-cardgroup) |
+| `.claude/rules/error-wrapping.md` | eris convention, `fmt.Errorf("%w")` ban |
+| `.claude/rules/go-library-gotchas.md` | Echo v5, GORM, JWT, slog, crypto/subtle quirks |

@@ -24,12 +24,7 @@ go run ./cmd/server   # PORT defaults to 1323
 
 This file is **L1**: keep it ≤35 lines, top-level orientation only. Overflow goes into:
 
-- **L2 — `docs/`** — architecture & topic docs (source of truth for technical detail).
-  - `backend.md`, `backend-graphql.md`, `backend-auth.md`, `backend-db.md`, `frontend.md`, `observability.md`, `ci.md`, `dev-setup.md`, `deployment.md`, `playbook-patterns.md`.
-- **L3 — `.claude/rules/`** — cross-cutting rules and conventions.
-  - `language-policy.md` — English-only rule, no PR-order references, verification commands.
-  - `pagination.md` — Relay Connection conventions for cards-by-cardgroup query and Apollo cache patterns.
-  - `error-wrapping.md` — eris-only convention, `fmt.Errorf("%w")` ban (CI-enforced), `LogError` / `LogWarn` helpers.
-  - `go-library-gotchas.md` — Echo v5, GORM, `golang-jwt`, slog, and `crypto/subtle` library-quirk rules.
+- **L2 — `docs/`** — architecture & topic docs (source of truth for technical detail). Soft cap ~600 lines per file; if a top-level section exceeds that, split by topic.
+- **L3 — `.claude/rules/`** — cross-cutting rules and conventions (apply across multiple L2 docs, or to all of `backend/` / `frontend/`).
 
-Prefer updating an L2 or L3 doc over expanding this file. When L1 grows past 35 lines, move the newest section down a tier and leave a one-line pointer here.
+Prefer updating an L2 or L3 doc over expanding this file. See `docs/` and `.claude/rules/` for the current file lists; `README.md` § "Further reading" indexes them. When L1 grows past 35 lines, move the newest section down a tier and leave a one-line pointer here.
