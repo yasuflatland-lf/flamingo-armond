@@ -252,6 +252,35 @@ When a migration fails mid-run, `schema_migrations.dirty=true` is set. Recovery 
 
 **Renaming or renumbering migration files is not transparent to the DB.** `golang-migrate` records the numeric version of each applied migration in `public.schema_migrations`. Renaming a file (e.g. `0001_create_profiles.up.sql` → `20250101000000_create_profiles.up.sql`) rewrites the source tree but **not** the DB row, so the next boot fails with `no migration found for version <N>: read down for version <N> migrations: file does not exist` — migrate's source-state reconciliation expects the recorded version to exist on disk. When the rename is identifier-only (up/down SQL bodies are byte-identical, `git log -M` reports an `R100` rename), the safe recovery is `UPDATE public.schema_migrations SET version = <new_version>, dirty = false WHERE version = <old_version>` against the production DB; the runbook lives in `playbooks/setup-prod/recover-migration-version-rebase.sql`. Do **not** apply this shortcut when the rename also changed migration content — in that case, squash the changes and use `migrate force <version>` against a known-good source state so the new content actually runs.
 
+#### SECURITY DEFINER helper recipe
+
+`SECURITY DEFINER` SQL functions used by RLS policies (e.g. `public.is_admin(uid uuid)`) must replicate this exact shape — each attribute has a load-bearing reason:
+
+```sql
+CREATE OR REPLACE FUNCTION public.is_admin(uid uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$ ... $$;
+
+REVOKE ALL ON FUNCTION public.is_admin(uuid) FROM PUBLIC;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        GRANT EXECUTE ON FUNCTION public.is_admin(uuid) TO authenticated;
+    END IF;
+END
+$$;
+```
+
+- `STABLE`, **not** `IMMUTABLE` — the function reads tables, and marking a table-reading function `IMMUTABLE` corrupts the planner's plan cache (the planner assumes the result is constant for fixed inputs).
+- `SECURITY DEFINER` — the function executes as its owner, so RLS-enabled callers can probe role membership without needing direct read on `roles` / `user_roles`.
+- `SET search_path = public` — neutralises the classic `SECURITY DEFINER` injection vector where an attacker creates a `pg_temp` shim function (e.g. their own `roles` table) that the function would otherwise resolve before the real one.
+- `REVOKE ALL FROM PUBLIC` then narrow `GRANT EXECUTE` — without revoking from `PUBLIC`, anonymous PostgREST callers (`anon` role) could invoke the helper as an oracle to enumerate role assignments. The grant is intentionally limited to the Supabase-managed `authenticated` role.
+- `DO $$ ... IF EXISTS pg_roles ... GRANT END $$` portability guard — the testcontainers Postgres used in `internal/database` integration tests does **not** have the Supabase-managed roles (`authenticated`, `anon`, `service_role`). Wrapping role-specific GRANTs in this conditional `DO` block keeps the migration applicable in both production (Supabase) and test (plain Postgres). The Go backend connects as the table owner and bypasses RLS, so the GRANT path is exercised only by direct PostgREST callers in production.
+
 ### Startup order
 
 ```
@@ -355,6 +384,21 @@ Owner checks live in the usecase, not in Postgres RLS. The asymmetry for read vs
 
 Although authorization itself is not delegated to Postgres, every table in the `public` schema still has Row Level Security **enabled with zero policies** (migration `20260430080000_initial_schema`). This blocks PostgREST callers using the `anon` or `authenticated` role from reading or writing any row directly — a Supabase project always exposes `public.*` as a REST API, and "no policy under RLS" means default-deny in PostgreSQL. The Go backend connects as the table-owner role, which bypasses RLS unless `FORCE ROW LEVEL SECURITY` is set, so application queries and migrations are unaffected. If a future flow needs Supabase JS to read a table directly, add a targeted policy alongside the access pattern; do not disable RLS to "make it work".
 
+### Role-based authorization (`auth.Service`)
+
+The `auth` package exposes two distinct types with different lifetimes and data sources. They answer different questions and must not be conflated:
+
+| Type | Lifetime | Source | Question |
+|---|---|---|---|
+| `AuthUser` (`auth/user.go`) | Request-scoped | JWT claims (Supabase) | Who is the caller? |
+| `auth.Service` (`auth/role.go`) | Boot-scoped | DB-backed (`UserRoleRepository`) | What can the caller do? |
+
+The split is deliberate: the JWT does not carry roles in this project, so every role check goes through the DB. `auth.Service` is constructed once at boot in `run()` against the `UserRoleRepository` and injected into resolvers/usecases that need to gate on role membership.
+
+`auth.Service.IsAdmin(ctx, userID)` hardcodes the literal `"admin"` role name in the method body — callers cannot pass a role string. This prevents drift to bespoke role names; add a new dedicated method (e.g. `IsModerator`) when a second role is needed rather than parameterising `IsAdmin`.
+
+The DB side of the same check is `public.is_admin(uid uuid) RETURNS boolean`, defined in migration `20260502000000_add_rbac_helpers`. See [SECURITY DEFINER helper recipe](#security-definer-helper-recipe) for the function shape RLS policies and future RBAC helpers must replicate.
+
 ### Sentinel errors and domain validation
 
 `domain.Cardgroup.Validate()` returns typed sentinels (`ErrCardgroupNameRequired`, `ErrCardgroupNameTooLong`). The usecase translates them via a dedicated helper (`translateCardgroupNameErr`) to `gqlerr.BadUserInput`. The rule itself lives only in the domain; the usecase holds only the domain→GraphQL mapping. Apply this pattern to every new aggregate.
@@ -433,7 +477,10 @@ usecases make `extensions.code` values inconsistent and hard to grep. The
 |---|---|---|
 | `gqlerr.Unauthenticated()` | `"UNAUTHENTICATED"` | No `field`; caller is not authenticated |
 | `gqlerr.BadUserInput(field, message)` | `"BAD_USER_INPUT"` | `extensions.field` carries the form field name for FE error display |
+| `gqlerr.NewForbidden(msg)` | `"FORBIDDEN"` | Caller is authenticated but lacks the required role/permission. Caller supplies a generic message — do not include sensitive details (e.g. "user X is not admin") |
 | `gqlerr.Internal(ctx, err)` | `"INTERNAL"` | Message fixed to `"internal server error"`; original `err` logged via `slog.ErrorContext` and never sent to the client |
+
+**Logging convention.** `Internal(ctx, err)` is the only constructor that logs — internal errors are server bugs and must surface in the structured log stream. The 4xx constructors (`Unauthenticated`, `BadUserInput`, `NewForbidden`) deliberately do **not** log: they describe expected client-side faults, and emitting an ERROR/WARN line on every malformed request would drown the signal. Call sites that want 401/403/400 observability must log themselves before constructing the error (a `slog.WarnContext` with the relevant attrs is the canonical pattern; see `auth/middleware.go` `reject()`).
 
 Usage in the usecase layer:
 
