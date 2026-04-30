@@ -21,10 +21,8 @@ func NewService(userRoles repository.UserRoleRepository) *Service {
 	return &Service{userRoles: userRoles}
 }
 
-// IsAdmin reports whether userID holds the "admin" role. The role name is a
-// constant (see docs/backend.md "Authorization at the usecase layer"); we
-// deliberately avoid taking the role name as a parameter so usecases cannot
-// drift to bespoke role names.
+// IsAdmin reports whether userID holds the "admin" role. The role name is
+// hardcoded to keep usecases from drifting to bespoke names.
 func (s *Service) IsAdmin(ctx context.Context, userID string) (bool, error) {
 	ok, err := s.userRoles.HasRole(ctx, userID, "admin")
 	if err != nil {
