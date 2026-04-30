@@ -6,9 +6,9 @@ import (
 	"backend/internal/usecase"
 )
 
-// toUserModel lives in a separate file so `gqlgen generate` does not strip it
-// when regenerating schema.resolvers.go (gqlgen only preserves resolver methods,
-// not top-level helper functions, in the managed file).
+// Helpers live in a separate file so `gqlgen generate` does not strip them
+// when regenerating schema.resolvers.go (gqlgen only preserves resolver
+// methods, not top-level helper functions, in the managed file).
 func toUserModel(user *domain.User) *model.User {
 	if user == nil {
 		return nil
@@ -21,9 +21,8 @@ func toUserModel(user *domain.User) *model.User {
 	}
 }
 
-// toCardgroupModel converts a domain.Cardgroup to a model.Cardgroup.
-// Owner is intentionally left nil; cardgroupResolver.Owner populates it lazily
-// via the per-request User DataLoader.
+// toCardgroupModel leaves Owner nil; cardgroupResolver.Owner populates it
+// lazily via the per-request User DataLoader.
 func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 	if cg == nil {
 		return nil
@@ -76,9 +75,8 @@ func toCardModels(cards []*domain.Card) []*model.Card {
 	return out
 }
 
-// toUsecaseCardOrderBy translates the gqlgen-generated enum into the
-// usecase's typed enum. Values are identical strings ("ID", "CREATED_AT", …)
-// so the conversion is a direct cast.
+// The gqlgen-generated and usecase enums share identical string values
+// ("ID", "CREATED_AT", …) so conversion is a direct cast.
 func toUsecaseCardOrderBy(o *model.CardOrderBy) *usecase.CardOrderBy {
 	if o == nil {
 		return nil
@@ -87,8 +85,6 @@ func toUsecaseCardOrderBy(o *model.CardOrderBy) *usecase.CardOrderBy {
 	return &v
 }
 
-// toUsecaseSortOrder translates model.SortOrder into the usecase's typed
-// SortOrder.
 func toUsecaseSortOrder(d *model.SortOrder) *usecase.SortOrder {
 	if d == nil {
 		return nil
@@ -107,8 +103,7 @@ func toSwipeResponseModel(out *usecase.SwipeOutput) *model.SwipeResponse {
 	}
 }
 
-// toCardConnectionModel converts a usecase.CardConnectionOutput into the
-// generated model.CardConnection. Cursors are bare card UUIDs (no base64).
+// toCardConnectionModel emits cursors as bare card UUIDs (no base64).
 func toCardConnectionModel(out *usecase.CardConnectionOutput) *model.CardConnection {
 	if out == nil {
 		return &model.CardConnection{Edges: []*model.CardEdge{}, PageInfo: &model.PageInfo{}}
@@ -117,23 +112,21 @@ func toCardConnectionModel(out *usecase.CardConnectionOutput) *model.CardConnect
 	for i, c := range out.Cards {
 		edges[i] = &model.CardEdge{Cursor: c.ID, Node: toCardModel(c)}
 	}
-	var startCur, endCur *string
-	if out.StartCur != "" {
-		s := out.StartCur
-		startCur = &s
-	}
-	if out.EndCur != "" {
-		e := out.EndCur
-		endCur = &e
-	}
 	return &model.CardConnection{
 		Edges: edges,
 		PageInfo: &model.PageInfo{
 			HasNextPage:     out.HasNext,
 			HasPreviousPage: out.HasPrev,
-			StartCursor:     startCur,
-			EndCursor:       endCur,
+			StartCursor:     nilIfEmpty(out.StartCur),
+			EndCursor:       nilIfEmpty(out.EndCur),
 		},
 		TotalCount: int(out.TotalCount),
 	}
+}
+
+func nilIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

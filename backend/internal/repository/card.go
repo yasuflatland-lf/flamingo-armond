@@ -159,24 +159,13 @@ func (r *cardRepo) FindPageByCardgroup(
 	orderBy CardOrderBy,
 	dir SortOrder,
 ) ([]*domain.Card, int64, error) {
-	// Clamp page sizes to [0, pageCap].
-	if first < 0 {
-		first = 0
-	}
-	if first > pageCap {
-		first = pageCap
-	}
-	if last < 0 {
-		last = 0
-	}
-	if last > pageCap {
-		last = pageCap
-	}
+	first = clampPageSize(first)
+	last = clampPageSize(last)
 
-	// totalCount: a separate COUNT(*) scoped to the cardgroup. Computed before
-	// the no-rows short-circuit so callers passing first=0 still observe the
-	// real cardgroup size. Acceptable for <= 10k cards/group; revisit if the
-	// cap grows.
+	// totalCount comes from a separate COUNT(*) scoped to the cardgroup.
+	// Computed before the no-rows short-circuit so callers passing first=0
+	// still observe the real cardgroup size. Acceptable for <= 10k cards/
+	// group; revisit if the cap grows.
 	var total int64
 	if err := r.db.WithContext(ctx).
 		Model(&gormCard{}).
@@ -185,13 +174,12 @@ func (r *cardRepo) FindPageByCardgroup(
 		return nil, 0, eris.Wrap(err, "repository: count cards by cardgroup")
 	}
 
-	// Short-circuit row fetch when caller asked for no rows.
 	if first == 0 && last == 0 {
 		return []*domain.Card{}, total, nil
 	}
 
-	// Decide effective direction & limit. Backward paging executes the query
-	// with the inverted direction and reverses the slice afterwards.
+	// Backward paging executes the query with the inverted direction and
+	// reverses the slice afterwards.
 	effectiveDir := dir
 	limit := first
 	cursor := after
@@ -235,7 +223,16 @@ func (r *cardRepo) FindPageByCardgroup(
 	return out, total, nil
 }
 
-// invertDir flips ASC <-> DESC.
+func clampPageSize(n int) int {
+	if n < 0 {
+		return 0
+	}
+	if n > pageCap {
+		return pageCap
+	}
+	return n
+}
+
 func invertDir(d SortOrder) SortOrder {
 	if d == SortDesc {
 		return SortAsc
@@ -275,9 +272,8 @@ func cursorWhere(orderBy CardOrderBy, dir SortOrder, c *CardCursor) (string, []a
 }
 
 // cursorFieldValue returns the cursor value for the active orderBy field.
-// Returns an error when the relevant column is unset — the usecase layer is
-// responsible for hydrating before calling, so an unset column indicates a
-// caller bug rather than a benign empty value.
+// An unset column is a caller bug — the usecase layer hydrates the relevant
+// field before calling — so this returns an error rather than a zero value.
 func cursorFieldValue(orderBy CardOrderBy, c *CardCursor) (any, error) {
 	switch orderBy {
 	case CardOrderByDue:
