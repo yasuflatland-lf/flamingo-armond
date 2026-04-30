@@ -17,6 +17,7 @@ const (
 	CodeBadUserInput    Code = "BAD_USER_INPUT"
 	CodeInternal        Code = "INTERNAL"
 	CodeForbidden       Code = "FORBIDDEN"
+	CodeCancelled       Code = "CANCELLED"
 )
 
 func Unauthenticated() *gqlerror.Error {
@@ -56,6 +57,18 @@ func NewForbidden(msg string) *gqlerror.Error {
 		Message: msg,
 		Extensions: map[string]any{
 			"code": string(CodeForbidden),
+		},
+	}
+}
+
+// Cancelled returns a CANCELLED GraphQL error for client-driven cancellation.
+// Use when context.Canceled or context.DeadlineExceeded is detected; the
+// caller decides which of the two cases warrants this response.
+func Cancelled() *gqlerror.Error {
+	return &gqlerror.Error{
+		Message: "request cancelled",
+		Extensions: map[string]any{
+			"code": string(CodeCancelled),
 		},
 	}
 }

@@ -163,3 +163,19 @@ func TestIsCode_Forbidden(t *testing.T) {
 		t.Error("IsCode should return true for FORBIDDEN code")
 	}
 }
+
+func TestCancelled(t *testing.T) {
+	t.Parallel()
+
+	got := gqlerr.Cancelled()
+
+	if got.Message != "request cancelled" {
+		t.Errorf("Message = %q, want %q", got.Message, "request cancelled")
+	}
+	if code := extString(t, got, "code"); code != "CANCELLED" {
+		t.Errorf("Extensions[code] = %q, want %q", code, "CANCELLED")
+	}
+	if !gqlerr.IsCode(got, gqlerr.CodeCancelled) {
+		t.Error("IsCode should return true for CANCELLED code")
+	}
+}

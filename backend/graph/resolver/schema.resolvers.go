@@ -215,9 +215,9 @@ func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.Vali
 
 	isAdmin, err := r.AuthSvc.IsAdmin(ctx, caller.Sub)
 	if err != nil {
-		// Propagate client-driven cancellation as-is; map other failures to INTERNAL.
+		// Map client-driven cancellation to a typed CANCELLED error; map other failures to INTERNAL.
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, err
+			return nil, gqlerr.Cancelled()
 		}
 		return nil, gqlerr.Internal(ctx, err)
 	}
