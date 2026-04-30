@@ -1,13 +1,14 @@
 -- Add ping_records table for service readiness monitoring.
 --
--- Stores periodic ping heartbeat records with minimal data (just id, created_at,
--- updated_at). Table holds 0 or 1 row. Row Level Security is enabled with zero
--- policies so PostgREST callers default-deny; the backend connects as the
--- table-owner role and bypasses RLS.
+-- Stores periodic ping heartbeat records with minimal data (id, created_at,
+-- updated_at). Row Level Security for this table is enabled in migration
+-- 20260502120000_enable_rls, which covers all public tables in a single atomic
+-- transaction.
+--
+-- golang-migrate pgx/v5 does NOT auto-wrap migrations in a transaction; the
+-- explicit BEGIN/COMMIT below ensures all-or-nothing execution.
 
--- ---------------------------------------------------------------------------
--- ping_records
--- ---------------------------------------------------------------------------
+BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.ping_records (
     id         uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -15,8 +16,4 @@ CREATE TABLE IF NOT EXISTS public.ping_records (
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
--- ---------------------------------------------------------------------------
--- Row Level Security: enable with zero policies.
--- ---------------------------------------------------------------------------
-
-ALTER TABLE public.ping_records ENABLE ROW LEVEL SECURITY;
+COMMIT;

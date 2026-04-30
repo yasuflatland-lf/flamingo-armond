@@ -2,6 +2,12 @@
 -- STABLE: reads tables, must not be IMMUTABLE.
 -- SECURITY DEFINER: function executes as owner so RLS-enabled callers can probe.
 -- search_path locked to public to neutralise SECURITY DEFINER injection vector.
+--
+-- golang-migrate pgx/v5 does NOT auto-wrap migrations in a transaction; the
+-- explicit BEGIN/COMMIT below ensures all-or-nothing execution.
+
+BEGIN;
+
 CREATE OR REPLACE FUNCTION public.is_admin(uid uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -30,3 +36,5 @@ BEGIN
     END IF;
 END
 $$;
+
+COMMIT;

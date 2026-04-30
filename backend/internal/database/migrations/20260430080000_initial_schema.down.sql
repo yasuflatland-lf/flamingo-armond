@@ -1,14 +1,13 @@
 -- Reverse of 20260430080000_initial_schema.up.sql.
--- Disable RLS first, then drop tables / functions / triggers in reverse
--- dependency order so foreign keys do not block the teardown.
+-- Drops tables, functions, and triggers in reverse dependency order so foreign
+-- keys do not block the teardown. RLS is managed by the separate
+-- 20260502120000_enable_rls migration; no DISABLE ROW LEVEL SECURITY is needed
+-- here because DROP TABLE removes the table and its RLS state entirely.
+--
+-- golang-migrate pgx/v5 does NOT auto-wrap migrations in a transaction; the
+-- explicit BEGIN/COMMIT below ensures all-or-nothing execution.
 
-ALTER TABLE IF EXISTS public.schema_migrations DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.swipe_records     DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.cards             DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.cardgroups        DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.user_roles        DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.roles             DISABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.users             DISABLE ROW LEVEL SECURITY;
+BEGIN;
 
 DROP TABLE IF EXISTS public.swipe_records;
 
@@ -28,3 +27,5 @@ DROP FUNCTION IF EXISTS public.handle_new_user();
 DROP TRIGGER  IF EXISTS trg_users_set_updated_at ON public.users;
 DROP FUNCTION IF EXISTS public.set_users_updated_at();
 DROP TABLE    IF EXISTS public.users;
+
+COMMIT;
