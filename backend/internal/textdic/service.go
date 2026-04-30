@@ -6,13 +6,15 @@ package textdic
 
 import (
 	"fmt"
+	"runtime"
+	"runtime/debug"
 	"sync"
 )
 
-// maxPayloadBytes caps the input size accepted by Process. Aligned with
-// the Echo MaxRequestBodySize note in the project plan: a 1 MiB payload
-// already represents tens of thousands of dictionary entries, well beyond
-// what the swiping UI needs in a single submission.
+// maxPayloadBytes caps the parser at 1 MiB. Beyond this, Process returns
+// a payload-level ValidationError (Line == 0) without parsing. A 1 MiB
+// payload already represents tens of thousands of dictionary entries,
+// well beyond what a single swiping submission needs.
 const maxPayloadBytes = 1 << 20 // 1 MiB
 
 // ParsedWord is the public, wire-friendly representation of a successful
@@ -49,15 +51,21 @@ var processMu sync.Mutex
 // Base64 decoding is the resolver layer's responsibility; Process only
 // understands plain text.
 func Process(input string) (words []ParsedWord, errs []ValidationError, err error) {
-	// Recover from any panic inside the goyacc-generated parser; surface as err.
+	// Recover from panics inside the goyacc-generated parser and surface
+	// them as err. Programmer errors (runtime.Error: nil deref, index out
+	// of range, etc.) are re-panicked so tests and CI surface them rather
+	// than silently mapping them to user-input parse failures.
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("textdic: parser panic: %v", r)
+			if rt, ok := r.(runtime.Error); ok {
+				panic(rt)
+			}
+			err = fmt.Errorf("textdic: parser panic: %v\n%s", r, debug.Stack())
 		}
 	}()
 
 	if len(input) > maxPayloadBytes {
-		return nil, []ValidationError{{Line: 0, Message: fmt.Sprintf("payload exceeds %d bytes", maxPayloadBytes)}}, nil
+		return []ParsedWord{}, []ValidationError{{Line: 0, Message: fmt.Sprintf("payload exceeds %d bytes", maxPayloadBytes)}}, nil
 	}
 
 	if len(input) == 0 {

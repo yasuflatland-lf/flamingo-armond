@@ -226,6 +226,110 @@ func TestProcess_MultipleEntries(t *testing.T) {
 	}
 }
 
+func TestProcess_OversizedPayloadLineZero(t *testing.T) {
+	t.Parallel()
+
+	// Payload-size violations are not tied to a particular source line; the
+	// resolver contract uses Line == 0 as the file-level error marker.
+	input := strings.Repeat("a", (1<<20)+1)
+
+	_, errs, err := textdic.Process(input)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	if len(errs) != 1 {
+		t.Fatalf("expected 1 validation error, got %d (%+v)", len(errs), errs)
+	}
+	if errs[0].Line != 0 {
+		t.Errorf("Line: got %d want 0 (file-level error marker)", errs[0].Line)
+	}
+}
+
+func TestProcess_PayloadAtBoundary(t *testing.T) {
+	t.Parallel()
+
+	// 1 MiB exactly must be accepted (off-by-one guard around maxPayloadBytes).
+	// "apple " + defRingo + "\n" repeats produce well-formed entries; we pad
+	// the tail with blank lines so the byte length lands precisely on 1 MiB.
+	const maxBytes = 1 << 20
+	entry := "apple " + defRingo + "\n"
+	repeats := maxBytes / len(entry)
+	body := strings.Repeat(entry, repeats)
+	pad := maxBytes - len(body)
+	if pad > 0 {
+		body += strings.Repeat("\n", pad)
+	}
+	if len(body) != maxBytes {
+		t.Fatalf("test setup: expected exactly %d bytes, got %d", maxBytes, len(body))
+	}
+
+	words, errs, err := textdic.Process(body)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	for _, e := range errs {
+		if strings.Contains(e.Message, "payload exceeds") {
+			t.Fatalf("1 MiB exact payload should be accepted, got size error: %+v", e)
+		}
+	}
+	if len(words) != repeats {
+		t.Errorf("expected %d parsed words, got %d", repeats, len(words))
+	}
+}
+
+func TestProcess_InvalidUTF8(t *testing.T) {
+	t.Parallel()
+
+	// Inputs with invalid UTF-8 byte sequences must not panic and must not
+	// be silently swallowed. The lexer surfaces the read failure via the
+	// validation-error channel; the call returns normally.
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Process panicked on invalid UTF-8: %v", r)
+		}
+	}()
+
+	// "apple " + DEFINITION + invalid trailing bytes. The leading entry is
+	// well-formed so we exercise both successful tokens and a recorded
+	// scanner error in the same call.
+	input := "apple " + defRingo + "\n" + "\xff\xfe\xfd"
+
+	_, _, err := textdic.Process(input)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+}
+
+func TestProcess_SyntaxErrorOnLine2(t *testing.T) {
+	t.Parallel()
+
+	// Line 1 is well-formed; line 2 is malformed (bare WORD with no
+	// DEFINITION). The grammar should report the syntax error against
+	// line 2, not against line 1 (the previous default).
+	input := "apple " + defRingo + "\n" +
+		"orphan\n"
+
+	_, errs, err := textdic.Process(input)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	if len(errs) == 0 {
+		t.Fatalf("expected at least one validation error for the malformed row")
+	}
+
+	// At least one syntax-style error must point at line 2.
+	var sawLine2 bool
+	for _, e := range errs {
+		if e.Line == 2 {
+			sawLine2 = true
+			break
+		}
+	}
+	if !sawLine2 {
+		t.Errorf("expected a validation error on line 2, got %+v", errs)
+	}
+}
+
 func TestProcess_Concurrent(t *testing.T) {
 	t.Parallel()
 

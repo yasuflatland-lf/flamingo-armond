@@ -1,7 +1,7 @@
-%{
-// Package textdic parses plain-text dictionary payloads of the form
-// "<front-word> <back-definition>" pairs separated by newlines.
 // This grammar file is processed by goyacc to generate parser.go.
+// Package documentation lives in lexer.go so it does not get duplicated
+// into the generated parser.go alongside this header.
+%{
 package textdic
 
 import (
@@ -162,15 +162,24 @@ func (yyrcvr *yyParserImpl) GetNodes() []Node {
 	return nil
 }
 
-// Error is the goyacc error callback. yyParserImpl does not expose the
-// lexer directly, so we default to line 1 here; the lexer also records
-// its own structured errors which are merged in Parse.
+// Error is the goyacc error callback. The active parserWrapper holds a
+// reference to the lexer, so we recover the line at which the offending
+// token began (lex.tokenLine); this satisfies the schema contract that
+// error.line is the 1-based source line where the error was detected.
+// Lexer-level structured errors are still merged separately in Parse.
 func (yyrcvr *yyParserImpl) Error(s string) {
-	if currentParser != nil {
-		currentParser.mu.Lock()
-		defer currentParser.mu.Unlock()
-
-		lineNo := 1
-		currentParser.errors = append(currentParser.errors, parseError{Line: lineNo, Message: s})
+	if currentParser == nil {
+		return
 	}
+	currentParser.mu.Lock()
+	defer currentParser.mu.Unlock()
+
+	line := 1
+	if lex, ok := currentParser.lexer.(*lexer); ok {
+		line = lex.tokenLine
+		if line < 1 {
+			line = lex.lineNo
+		}
+	}
+	currentParser.errors = append(currentParser.errors, parseError{Line: line, Message: s})
 }
