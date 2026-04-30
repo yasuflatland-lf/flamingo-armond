@@ -155,31 +155,25 @@ func TestMigrations_AllPublicTablesHaveRLSEnabled(t *testing.T) {
 	}
 	defer rows.Close()
 
-	type tableRLS struct {
-		name string
-		rls  bool
-	}
-	var all []tableRLS
+	var total int
+	var offenders []string
 	for rows.Next() {
-		var tr tableRLS
-		if err := rows.Scan(&tr.name, &tr.rls); err != nil {
+		var name string
+		var rlsEnabled bool
+		if err := rows.Scan(&name, &rlsEnabled); err != nil {
 			t.Fatalf("scan row: %v", err)
 		}
-		all = append(all, tr)
+		total++
+		if !rlsEnabled {
+			offenders = append(offenders, name)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatalf("iterate rows: %v", err)
 	}
 
-	if len(all) == 0 {
+	if total == 0 {
 		t.Fatal("no public tables found after migration (query may be broken)")
-	}
-
-	var offenders []string
-	for _, tr := range all {
-		if !tr.rls {
-			offenders = append(offenders, tr.name)
-		}
 	}
 	if len(offenders) > 0 {
 		t.Fatalf("RLS not enabled on public tables: %s", strings.Join(offenders, ", "))
