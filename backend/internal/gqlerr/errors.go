@@ -16,6 +16,7 @@ const (
 	CodeUnauthenticated Code = "UNAUTHENTICATED"
 	CodeBadUserInput    Code = "BAD_USER_INPUT"
 	CodeInternal        Code = "INTERNAL"
+	CodeForbidden       Code = "FORBIDDEN"
 )
 
 func Unauthenticated() *gqlerror.Error {
@@ -43,6 +44,18 @@ func Internal(ctx context.Context, err error) *gqlerror.Error {
 		Message: "internal server error",
 		Extensions: map[string]any{
 			"code": string(CodeInternal),
+		},
+	}
+}
+
+// NewForbidden returns a FORBIDDEN GraphQL error. The caller supplies a
+// human-readable message; do not include sensitive details (e.g. "user X is
+// not admin") — keep the message generic.
+func NewForbidden(msg string) *gqlerror.Error {
+	return &gqlerror.Error{
+		Message: msg,
+		Extensions: map[string]any{
+			"code": string(CodeForbidden),
 		},
 	}
 }

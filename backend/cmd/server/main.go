@@ -192,8 +192,10 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	cardRepo := repository.NewCardRepository(db.GORM)
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
+	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
 	// Constructed to surface compile-time wiring even though no resolver references it yet.
-	_ = repository.NewUserRoleRepository(db.GORM)
+	// First consumer lands with the upcoming admin features.
+	_ = auth.NewService(userRoleRepo)
 
 	userUC := usecase.NewUserUsecase(userRepo)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)

@@ -142,3 +142,24 @@ func TestInternal_EmitsErrorChain(t *testing.T) {
 		t.Errorf("expected error_chain.root, got %v", chainMap)
 	}
 }
+
+func TestNewForbidden(t *testing.T) {
+	t.Parallel()
+
+	got := gqlerr.NewForbidden("access denied")
+
+	if got.Message != "access denied" {
+		t.Errorf("Message = %q, want %q", got.Message, "access denied")
+	}
+	if code := extString(t, got, "code"); code != "FORBIDDEN" {
+		t.Errorf("Extensions[code] = %q, want %q", code, "FORBIDDEN")
+	}
+}
+
+func TestIsCode_Forbidden(t *testing.T) {
+	t.Parallel()
+
+	if !gqlerr.IsCode(gqlerr.NewForbidden("x"), gqlerr.CodeForbidden) {
+		t.Error("IsCode should return true for FORBIDDEN code")
+	}
+}
