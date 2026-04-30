@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"gorm.io/gorm"
+
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
@@ -15,6 +17,7 @@ import (
 
 type CardRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Card, error)
+	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error)
 	FindByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error)
 	FindPageByCardgroup(
 		ctx context.Context,
@@ -27,25 +30,42 @@ type CardRepository interface {
 	Create(ctx context.Context, card *domain.Card) error
 	Update(ctx context.Context, id string, patch repository.CardUpdate) (*domain.Card, error)
 	Delete(ctx context.Context, id string) error
+	DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error)
 }
 
 type CardgroupRepositoryForCard interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
+	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Cardgroup, error)
 }
+
+// txRunner abstracts gorm.DB.Transaction so unit tests can stub out the
+// transaction boundary without standing up a real database. The signature
+// mirrors gorm.DB.Transaction(fn func(*gorm.DB) error) error.
+type txRunner func(ctx context.Context, fn func(tx *gorm.DB) error) error
 
 type CardUsecase struct {
 	cardRepo      CardRepository
 	cardgroupRepo CardgroupRepositoryForCard
+	tx            txRunner
 }
 
-func NewCardUsecase(cardRepo CardRepository, cardgroupRepo CardgroupRepositoryForCard) *CardUsecase {
-	return &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo}
+func NewCardUsecase(db *gorm.DB, cardRepo CardRepository, cardgroupRepo CardgroupRepositoryForCard) *CardUsecase {
+	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo}
+	if db != nil {
+		uc.tx = func(ctx context.Context, fn func(tx *gorm.DB) error) error {
+			return db.WithContext(ctx).Transaction(fn)
+		}
+	}
+	return uc
 }
 
 type CreateCardInput struct {
 	CardgroupID string
 	Front       string
 	Back        string
+	// FSRS, when non-nil, overrides the new-card FSRS state. All nine fields
+	// must be specified together (see domain.NewFSRSStateFromInput).
+	FSRS *domain.FSRSStateOverride
 }
 
 type UpdateCardInput struct {
@@ -147,12 +167,22 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (*domain.C
 	if err != nil {
 		return nil, gqlerr.Internal(ctx, err)
 	}
+
+	override := domain.FSRSStateOverride{}
+	if in.FSRS != nil {
+		override = *in.FSRS
+	}
+	fsrsState, err := domain.NewFSRSStateFromInput(override, now)
+	if err != nil {
+		return nil, translateFSRSErr(ctx, err)
+	}
+
 	card := &domain.Card{
 		ID:          id,
 		CardgroupID: in.CardgroupID,
 		Front:       front,
 		Back:        back,
-		FSRS:        domain.NewFSRSStateForNewCard(now),
+		FSRS:        fsrsState,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -430,4 +460,88 @@ func translateCardErr(ctx context.Context, err error) error {
 	default:
 		return gqlerr.Internal(ctx, err)
 	}
+}
+
+// translateFSRSErr maps domain-level FSRS override sentinels to GraphQL
+// BAD_USER_INPUT errors with the appropriate field hint. Unknown errors are
+// surfaced as INTERNAL after being scrubbed by gqlerr.Internal.
+func translateFSRSErr(ctx context.Context, err error) error {
+	switch {
+	case errors.Is(err, domain.ErrFSRSOverridePartial):
+		return gqlerr.BadUserInput("input.fsrs", "all FSRS override fields must be provided together (or none)")
+	case errors.Is(err, domain.ErrFSRSOverrideStateInvalid):
+		return gqlerr.BadUserInput("input.state", "state must be 0..3")
+	default:
+		return gqlerr.Internal(ctx, err)
+	}
+}
+
+// BulkDelete removes the cards in `ids` whose cardgroup is owned by the
+// authenticated caller. The owner check happens twice: a read-side batch
+// look-up rejects the whole call when ANY id resolves to a foreign cardgroup,
+// and a server-side subselect in DeleteByIDsTx redundantly enforces ownership
+// at SQL. Returns the number of rows actually deleted.
+func (u *CardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, error) {
+	user := auth.UserFrom(ctx)
+	if user == nil {
+		return 0, gqlerr.Unauthenticated()
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	// (1) Read-side batch owner check: pull every cardgroup_id for the
+	// requested cards, then look up those cardgroups. A single foreign
+	// cardgroup in the list rejects the entire call as UNAUTHENTICATED;
+	// existence of foreign cards is not leaked through "not found".
+	cards, err := u.cardRepo.FindByIDs(ctx, ids)
+	if err != nil {
+		return 0, gqlerr.Internal(ctx, err)
+	}
+	cardgroupIDs := uniqueCardgroupIDs(cards)
+	if len(cardgroupIDs) > 0 {
+		cgs, err := u.cardgroupRepo.FindByIDs(ctx, cardgroupIDs)
+		if err != nil {
+			return 0, gqlerr.Internal(ctx, err)
+		}
+		for _, cg := range cgs {
+			if cg.OwnerID != user.Sub {
+				return 0, gqlerr.Unauthenticated()
+			}
+		}
+	}
+
+	// (2) Single tx: delete with redundant SQL-side owner subselect.
+	if u.tx == nil {
+		return 0, gqlerr.Internal(ctx, errors.New("usecase: tx runner not configured"))
+	}
+	var deleted int64
+	err = u.tx(ctx, func(tx *gorm.DB) error {
+		n, err := u.cardRepo.DeleteByIDsTx(ctx, tx, user.Sub, ids)
+		if err != nil {
+			return err
+		}
+		deleted = n
+		return nil
+	})
+	if err != nil {
+		return 0, gqlerr.Internal(ctx, err)
+	}
+	return deleted, nil
+}
+
+// uniqueCardgroupIDs flattens the cardgroup_id of each card in the supplied
+// map into a deduplicated slice. Used by BulkDelete to do one ownership
+// look-up per distinct cardgroup rather than one per card.
+func uniqueCardgroupIDs(cards map[string]*domain.Card) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(cards))
+	for _, c := range cards {
+		if _, ok := seen[c.CardgroupID]; ok {
+			continue
+		}
+		seen[c.CardgroupID] = struct{}{}
+		out = append(out, c.CardgroupID)
+	}
+	return out
 }

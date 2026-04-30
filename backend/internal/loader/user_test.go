@@ -130,6 +130,9 @@ func (r *countingCardRepo) Update(_ context.Context, _ string, _ repository.Card
 func (r *countingCardRepo) Delete(_ context.Context, _ string) error {
 	panic("countingCardRepo.Delete not configured")
 }
+func (r *countingCardRepo) DeleteByIDsTx(_ context.Context, _ *gorm.DB, _ string, _ []string) (int64, error) {
+	panic("countingCardRepo.DeleteByIDsTx not configured")
+}
 
 func emptyCardRepo() *countingCardRepo {
 	return &countingCardRepo{
