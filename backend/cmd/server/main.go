@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -159,7 +158,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	pingToken := os.Getenv("PING_TOKEN")
 	if pingToken == "" {
-		return fmt.Errorf("run: PING_TOKEN env var is required")
+		return eris.New("run: PING_TOKEN env var is required")
 	}
 
 	cfg, err := auth.ConfigFromEnv()

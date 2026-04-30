@@ -276,6 +276,28 @@ func TestRun_FailsWhenDBURLMissing(t *testing.T) {
 	}
 }
 
+func TestRun_FailsWhenPINGTokenMissing(t *testing.T) {
+	tsJWKS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"keys": []}`))
+	}))
+	defer tsJWKS.Close()
+
+	t.Setenv("SUPABASE_JWKS_URL", tsJWKS.URL)
+	t.Setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
+	t.Setenv("SUPABASE_JWT_ISSUER", "http://issuer.test")
+	t.Setenv("SUPABASE_DB_URL", testDBURL)
+	t.Setenv("PING_TOKEN", "")
+
+	err := run(context.Background(), slog.New(slog.DiscardHandler))
+	if err == nil {
+		t.Fatal("expected error when PING_TOKEN is empty, got nil")
+	}
+	if !strings.Contains(err.Error(), "PING_TOKEN") {
+		t.Fatalf("expected error to mention PING_TOKEN, got: %v", err)
+	}
+}
+
 func TestGraphQLHealth(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
