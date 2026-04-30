@@ -267,6 +267,51 @@ For an end-to-end check, sign in via Google on the Vercel domain and load `/prof
 - **Render free tier sleeps idle services.** The first request after idleness incurs a cold start. Health checks on `/health` keep the service warm only while traffic flows.
 - **Custom domains.** When adding a Vercel custom domain, also update the Supabase Auth Site URL and add the new origin to the Redirect URLs allow list.
 
+## Keep-alive ping workflow
+
+The readiness-ping workflow keeps Render and Vercel warm and ensures Supabase detects continuous activity (required for free-tier retention). A scheduled cron job runs every 15 minutes to ping the backend, which issues a write to Supabase to trigger activity detection — reads alone do not prevent free-tier inactivity timeouts.
+
+### Endpoint
+
+```
+POST /internal/ping
+Authorization: Bearer $PING_TOKEN
+```
+
+Response: `{"action":"created"|"deleted","count":N}` (200 OK). The endpoint oscillates a single row in `public.ping_records`: creates it when absent, deletes it when present. Each call guarantees a write, keeping Supabase active.
+
+Authentication is bearer-token based. Rate limiting is 1 request per second per IP, with a burst allowance of 5. The server **requires** the `PING_TOKEN` env var at startup and refuses to boot if it is empty.
+
+### Workflow and secrets
+
+The workflow file `.github/workflows/readiness-ping.yml` triggers on a 15-minute schedule (defined within the file). Required GitHub Actions secrets:
+
+| Secret | Purpose |
+|---|---|
+| `VERCEL_PING_URL` | Frontend domain to warm; the workflow GETs this URL to prevent Vercel cold starts. |
+| `RENDER_PING_URL` | Backend URL with scheme; the workflow POSTs to `/internal/ping` at this URL (e.g. `https://flamingo-backend.render.com`). |
+| `PING_TOKEN` | Bearer token for the POST request; must match the `PING_TOKEN` env var on the Render service. |
+
+On Render, set the environment variable:
+
+| Variable | Value |
+|---|---|
+| `PING_TOKEN` | Must match the GitHub Actions secret value. |
+
+### Manual trigger
+
+```bash
+gh workflow run readiness-ping.yml
+```
+
+### Verification
+
+List successful workflow runs:
+
+```bash
+gh run list --workflow=readiness-ping.yml --status=success
+```
+
 ## Tearing down production via `make teardown-prod`
 
 ### Why teardown is irreversible
