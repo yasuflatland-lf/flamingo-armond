@@ -85,6 +85,7 @@ func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCardIn
 		CardgroupID: input.CardgroupID,
 		Front:       input.Front,
 		Back:        input.Back,
+		FSRS:        toFSRSOverride(input),
 	})
 	if err != nil {
 		return nil, err
@@ -110,6 +111,15 @@ func (r *mutationResolver) DeleteCard(ctx context.Context, id string) (bool, err
 		return false, err
 	}
 	return true, nil
+}
+
+// DeleteCards is the resolver for the deleteCards field.
+func (r *mutationResolver) DeleteCards(ctx context.Context, ids []string) (int, error) {
+	n, err := r.CardUC.BulkDelete(ctx, ids)
+	if err != nil {
+		return 0, err
+	}
+	return int(n), nil
 }
 
 // HandleSwipe is the resolver for the handleSwipe field.
