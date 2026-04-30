@@ -56,43 +56,27 @@ type FSRSStateOverride struct {
 //   - Mixed nil + non-nil   -> returns zero value and ErrFSRSOverridePartial.
 //   - State out of 0..3     -> returns zero value and ErrFSRSOverrideStateInvalid.
 func NewFSRSStateFromInput(in FSRSStateOverride, now time.Time) (FSRSState, error) {
-	nilCount := 0
-	if in.Due == nil {
-		nilCount++
-	}
-	if in.Stability == nil {
-		nilCount++
-	}
-	if in.Difficulty == nil {
-		nilCount++
-	}
-	if in.ElapsedDays == nil {
-		nilCount++
-	}
-	if in.ScheduledDays == nil {
-		nilCount++
-	}
-	if in.Reps == nil {
-		nilCount++
-	}
-	if in.Lapses == nil {
-		nilCount++
-	}
-	if in.State == nil {
-		nilCount++
-	}
-	if in.LastReview == nil {
-		nilCount++
+	nils := 0
+	for _, isNil := range [...]bool{
+		in.Due == nil,
+		in.Stability == nil,
+		in.Difficulty == nil,
+		in.ElapsedDays == nil,
+		in.ScheduledDays == nil,
+		in.Reps == nil,
+		in.Lapses == nil,
+		in.State == nil,
+		in.LastReview == nil,
+	} {
+		if isNil {
+			nils++
+		}
 	}
 
-	const total = 9
-
-	switch nilCount {
-	case total:
-		// All nil: return the default new-card state.
+	switch nils {
+	case 9:
 		return NewFSRSStateForNewCard(now), nil
 	case 0:
-		// All non-nil: validate State range then build the value object.
 		if *in.State < int(FSRSStateNew) || *in.State > int(FSRSStateRelearning) {
 			return FSRSState{}, ErrFSRSOverrideStateInvalid
 		}
@@ -108,7 +92,6 @@ func NewFSRSStateFromInput(in FSRSStateOverride, now time.Time) (FSRSState, erro
 			LastReview:    *in.LastReview,
 		}, nil
 	default:
-		// Partial override: reject.
 		return FSRSState{}, ErrFSRSOverridePartial
 	}
 }

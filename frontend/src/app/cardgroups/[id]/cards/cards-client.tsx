@@ -252,31 +252,31 @@ export function CardsClient({
   const [deleteCards, { error: bulkDeleteError, loading: bulkDeleting }] = useMutation(
     DeleteCardsMutation,
     {
-      update(cache, { data }, { variables }) {
-        const ids = variables?.ids as string[] | undefined;
+      update(cache, { data }, { variables: mutationVars }) {
+        const ids = mutationVars?.ids as string[] | undefined;
         if (!ids) return;
-        // Guard: only proceed when the backend returned a real response.
-        // If data is undefined (e.g. network failure) or deleteCards is null,
-        // return early — do NOT evict, do NOT writeQuery, do NOT gc.
-        // This mirrors the single-delete callback which returns early on
-        // !deleteData?.deleteCard.
+        // Guard: when data is undefined (network failure) or deleteCards is null,
+        // return early — do not evict, writeQuery, or gc. Mirrors the single-delete
+        // callback's early return on !deleteData?.deleteCard.
         if (data?.deleteCards == null) return;
         const deletedCount = data.deleteCards;
+        // Backend reports actual rows deleted; some ids may have been skipped (foreign-owned),
+        // so deletedCount === 0 means nothing to mutate locally either.
+        if (deletedCount === 0) return;
 
-        // Backend reports actual rows deleted; some ids may have been skipped (foreign-owned).
-        const variables2 = { cardgroupId, first: CARDS_PAGE_SIZE };
+        const queryVars = { cardgroupId, first: CARDS_PAGE_SIZE };
         const existing = cache.readQuery({
           query: CardsByCardgroupConnectionDocument,
-          variables: variables2,
+          variables: queryVars,
         });
 
-        if (existing && deletedCount > 0) {
+        if (existing) {
           const filteredEdges = existing.cardsByCardgroupConnection.edges.filter(
             (edge) => !ids.includes(edge.node.id),
           );
           cache.writeQuery({
             query: CardsByCardgroupConnectionDocument,
-            variables: variables2,
+            variables: queryVars,
             data: {
               cardsByCardgroupConnection: {
                 ...existing.cardsByCardgroupConnection,
@@ -290,15 +290,10 @@ export function CardsClient({
           });
         }
 
-        // Only evict normalized entries when the backend confirmed at least one
-        // row was actually deleted — there is no point evicting when deletedCount
-        // is 0 (the user's selection may contain ids that never existed locally).
-        if (deletedCount > 0) {
-          for (const id of ids) {
-            cache.evict({ id: cache.identify({ __typename: "Card", id }) });
-          }
-          cache.gc();
+        for (const id of ids) {
+          cache.evict({ id: cache.identify({ __typename: "Card", id }) });
         }
+        cache.gc();
       },
     },
   );
