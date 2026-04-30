@@ -284,9 +284,9 @@ These three secrets are a **manual provisioning step** until the playbook is upd
 
 #### Build environment mismatch risk
 
-`vercel build` runs Vercel's own build pipeline, not the repository's `pnpm build` script directly. Vercel selects a Node version according to the project's dashboard settings — if that version differs from the version pinned in `frontend/.tool-versions`, the build may succeed locally but behave differently in CI or produce a subtly different artifact.
+`vercel build` runs Vercel's own build pipeline, not the repository's `pnpm build` script directly. Vercel selects a Node version according to the project's dashboard settings — if that version differs from the version pinned in `.tool-versions` at the repo root, the build may succeed locally but behave differently in CI or produce a subtly different artifact.
 
-To prevent mismatches: open the Vercel project's **Settings → General → Node.js Version** and set it to match the version in `frontend/.tool-versions`. This is a one-time operator step that cannot be automated — Vercel project settings live in the dashboard and have no API surface exposed in the repository.
+To prevent mismatches: open the Vercel project's **Settings → General → Node.js Version** and set it to match the version in `.tool-versions`. This is a one-time operator step that cannot be automated — Vercel project settings live in the dashboard and have no API surface exposed in the repository.
 
 #### Interaction with `make setup-prod`
 

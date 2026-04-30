@@ -8,6 +8,7 @@ Two independent workflows: `.github/workflows/backend.yml` and `.github/workflow
 
 - **Triggers are `paths:`-scoped** per workflow — backend to `backend/**` + workflow file; frontend to `frontend/**` + `schema/**` + the root pnpm/workspace/tool-version manifests + the frontend workflow file. When adding a third service, **add its own workflow** — do not broaden an existing one. Mixing scopes breaks CI granularity and responsibility.
 - **`concurrency` groups are per-workflow** (`backend-${{ github.ref }}`, `frontend-${{ github.ref }}`) with `cancel-in-progress: true` — rapid pushes on the same ref supersede in-flight runs per service (important for feature-branch iteration). The two workflows do not cancel each other.
+- **Deploy-job concurrency exception:** The `deploy` job in `frontend.yml` overrides the workflow-level cancellation policy with a job-scoped `concurrency:` group (`frontend-deploy-${{ github.ref }}`) that has `cancel-in-progress: false`. This ensures that once a `vercel deploy --prebuilt` begins, it cannot be cancelled mid-flight — Vercel may have already committed the deployment server-side, so cancelling the runner would leave an indeterminate state. Lint-test-build runs continue to cancel each other aggressively to save CI minutes on stale feature-branch commits.
 
 ## Deploy gating
 
@@ -161,7 +162,7 @@ The `deploy` job runs `pnpm install --frozen-lockfile` (with a pnpm store cache 
 
 #### Build env mismatch risk
 
-`vercel build` runs Vercel's own build pipeline, which is distinct from the repo's `pnpm build`. If the Node version configured in the Vercel project dashboard differs from the version pinned in `frontend/.tool-versions` (managed by mise), validation can pass in CI while the Vercel-side build fails — or, worse, silently produces a different output. Verify that the Vercel project's Node version setting matches `frontend/.tool-versions` in the Vercel dashboard under Project → Settings → General → Node.js Version.
+`vercel build` runs Vercel's own build pipeline, which is distinct from the repo's `pnpm build`. If the Node version configured in the Vercel project dashboard differs from the version pinned in `.tool-versions` at the repo root (managed by mise), validation can pass in CI while the Vercel-side build fails — or, worse, silently produces a different output. Verify that the Vercel project's Node version setting matches the Node version in `.tool-versions` in the Vercel dashboard under Project → Settings → General → Node.js Version.
 
 #### Why the deploy job intentionally omits build-time env vars
 
