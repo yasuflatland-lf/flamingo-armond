@@ -30,5 +30,6 @@ This file is **L1**: keep it ≤35 lines, top-level orientation only. Overflow g
   - `language-policy.md` — English-only rule, no PR-order references, verification commands.
   - `pagination.md` — Relay Connection conventions for cards-by-cardgroup query and Apollo cache patterns.
   - `error-wrapping.md` — eris-only convention, `fmt.Errorf("%w")` ban (CI-enforced), `LogError` / `LogWarn` helpers.
+  - `go-library-gotchas.md` — Echo v5, GORM, `golang-jwt`, slog, and `crypto/subtle` library-quirk rules.
 
 Prefer updating an L2 or L3 doc over expanding this file. When L1 grows past 35 lines, move the newest section down a tier and leave a one-line pointer here.
