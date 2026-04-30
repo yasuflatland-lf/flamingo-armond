@@ -200,13 +200,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), swipeNextBatchSize(logger))
 
-	resolvers := &resolver.Resolver{
-		User:        userUC,
-		CardgroupUC: cardgroupUC,
-		CardUC:      cardUC,
-		SwipeUC:     swipeUC,
-		AuthSvc:     authSvc,
-	}
+	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc)
 	pingHandler := ping.New(pingRecordRepo, pingToken)
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above

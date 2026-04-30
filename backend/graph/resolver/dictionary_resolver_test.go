@@ -29,7 +29,7 @@ func (m *mockUserRoleRepository) HasRole(_ context.Context, _, _ string) (bool, 
 // newDictOnlySrv builds a server with only AuthSvc wired; only the
 // validateDictionary resolver is exercised here.
 func newDictOnlySrv(roleRepo repository.UserRoleRepository) *handler.Server {
-	r := &resolver.Resolver{AuthSvc: auth.NewService(roleRepo)}
+	r := resolver.NewResolver(nil, nil, nil, nil, auth.NewService(roleRepo))
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -159,5 +159,35 @@ func TestValidateDictionary_IsAdminError(t *testing.T) {
 	code := errCode(t, resp)
 	if code != string(gqlerr.CodeInternal) {
 		t.Fatalf("expected %s, got %q", gqlerr.CodeInternal, code)
+	}
+}
+
+// TestValidateDictionary_IsAdminCancelled verifies that a context.Canceled
+// error from IsAdmin surfaces a CANCELLED error rather than INTERNAL.
+func TestValidateDictionary_IsAdminCancelled(t *testing.T) {
+	t.Parallel()
+
+	srv := newDictOnlySrv(&mockUserRoleRepository{err: context.Canceled})
+	payload := base64.StdEncoding.EncodeToString([]byte("apple"))
+	resp := gqlRequest(t, srv, authedCtx("u1"), validateDictionaryQuery(payload))
+
+	code := errCode(t, resp)
+	if code != string(gqlerr.CodeCancelled) {
+		t.Fatalf("expected %s, got %q", gqlerr.CodeCancelled, code)
+	}
+}
+
+// TestValidateDictionary_IsAdminDeadlineExceeded verifies that a
+// context.DeadlineExceeded error from IsAdmin surfaces a CANCELLED error.
+func TestValidateDictionary_IsAdminDeadlineExceeded(t *testing.T) {
+	t.Parallel()
+
+	srv := newDictOnlySrv(&mockUserRoleRepository{err: context.DeadlineExceeded})
+	payload := base64.StdEncoding.EncodeToString([]byte("apple"))
+	resp := gqlRequest(t, srv, authedCtx("u1"), validateDictionaryQuery(payload))
+
+	code := errCode(t, resp)
+	if code != string(gqlerr.CodeCancelled) {
+		t.Fatalf("expected %s, got %q", gqlerr.CodeCancelled, code)
 	}
 }

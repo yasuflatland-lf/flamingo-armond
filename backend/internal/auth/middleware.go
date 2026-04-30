@@ -10,6 +10,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v5"
 	"github.com/rotisserie/eris"
+
+	"backend/internal/logging"
 )
 
 const wwwAuthenticate = `Bearer realm="api"`
@@ -70,10 +72,9 @@ func extractBearer(header string) (string, error) {
 }
 
 func reject(c *echo.Context, cause error) error {
-	slog.Warn("auth: token rejected",
-		"error_chain", eris.ToJSON(cause, true),
-		"path", c.Request().URL.Path,
-		"remote_addr", c.Request().RemoteAddr,
+	logging.LogWarn(c.Request().Context(), slog.Default(), "auth: token rejected", cause,
+		slog.String("path", c.Request().URL.Path),
+		slog.String("remote_addr", c.Request().RemoteAddr),
 	)
 	c.Response().Header().Set(echo.HeaderWWWAuthenticate, wwwAuthenticate)
 	return c.String(http.StatusUnauthorized, "invalid token")

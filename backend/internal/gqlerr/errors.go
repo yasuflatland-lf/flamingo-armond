@@ -17,6 +17,7 @@ const (
 	CodeBadUserInput    Code = "BAD_USER_INPUT"
 	CodeInternal        Code = "INTERNAL"
 	CodeForbidden       Code = "FORBIDDEN"
+	CodeCancelled       Code = "CANCELLED"
 )
 
 func Unauthenticated() *gqlerror.Error {
@@ -56,6 +57,20 @@ func NewForbidden(msg string) *gqlerror.Error {
 		Message: msg,
 		Extensions: map[string]any{
 			"code": string(CodeForbidden),
+		},
+	}
+}
+
+// Cancelled returns a typed CANCELLED gqlerror. When err is non-nil it is
+// logged at WARN with the underlying cause; pass the original error from
+// IsAdmin / context to preserve the eris chain. The helper covers both
+// context.Canceled and context.DeadlineExceeded; callers decide which to use.
+func Cancelled(ctx context.Context, err error) *gqlerror.Error {
+	logging.LogWarn(ctx, slog.Default(), "request cancelled", err)
+	return &gqlerror.Error{
+		Message: "request cancelled",
+		Extensions: map[string]any{
+			"code": string(CodeCancelled),
 		},
 	}
 }

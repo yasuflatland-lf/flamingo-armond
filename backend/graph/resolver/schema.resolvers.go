@@ -215,9 +215,9 @@ func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.Vali
 
 	isAdmin, err := r.AuthSvc.IsAdmin(ctx, caller.Sub)
 	if err != nil {
-		// Propagate client-driven cancellation as-is; map other failures to INTERNAL.
+		// Map client-driven cancellation to a typed CANCELLED error; map other failures to INTERNAL.
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, err
+			return nil, gqlerr.Cancelled(ctx, err)
 		}
 		return nil, gqlerr.Internal(ctx, err)
 	}
@@ -246,6 +246,7 @@ func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.Vali
 	for _, e := range errs {
 		validationErrs = append(validationErrs, &model.DictionaryValidationError{Line: e.Line, Message: e.Message})
 	}
+	// Product-type invariant: valid <=> no errors AND >=1 parsed word. See schema.graphql DictionaryValidationResult docstring.
 	return &model.DictionaryValidationResult{
 		Valid:       len(errs) == 0 && len(words) > 0,
 		ParsedWords: parsed,

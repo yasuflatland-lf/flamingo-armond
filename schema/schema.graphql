@@ -278,7 +278,11 @@ type DictionaryValidationError {
   message: String!
 }
 
-"""Result of a dictionary validation request."""
+"""
+Result of validating a dictionary payload. The resolver enforces the
+invariant valid = (len(errors) == 0 && len(parsedWords) > 0); conflicting
+states are representable but never emitted.
+"""
 type DictionaryValidationResult {
   """True iff the payload parsed without any errors and produced at least one word."""
   valid: Boolean!
