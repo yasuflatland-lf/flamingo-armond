@@ -39,6 +39,7 @@ import (
 	"backend/internal/database"
 	"backend/internal/domain"
 	"backend/internal/domain/service"
+	ping "backend/internal/handler/ping"
 	"backend/internal/repository"
 	"backend/internal/telemetry"
 	"backend/internal/usecase"
@@ -116,7 +117,7 @@ func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newRouter(&resolver.Resolver{}, noopAuthMW, nil, nil, nil, nil, nil, "test-token"))
+	ts := httptest.NewServer(newRouter(&resolver.Resolver{}, noopAuthMW, nil, nil, nil, nil, ping.New(nil, "test-token")))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -404,7 +405,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	cardUC := usecase.NewCardUsecase(cardRepo, cardgroupRepo)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
-	e := newRouter(&resolver.Resolver{User: userUC, CardgroupUC: cardgroupUC, CardUC: cardUC, SwipeUC: swipeUC}, mw, userRepo, roleRepo, cardgroupRepo, cardRepo, pingRecordRepo, "test-token", swipeRecordRepo)
+	e := newRouter(&resolver.Resolver{User: userUC, CardgroupUC: cardgroupUC, CardUC: cardUC, SwipeUC: swipeUC}, mw, userRepo, roleRepo, cardgroupRepo, cardRepo, ping.New(pingRecordRepo, "test-token"), swipeRecordRepo)
 
 	ts := httptest.NewServer(e)
 	t.Cleanup(ts.Close)

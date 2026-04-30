@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,7 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -27,13 +25,13 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
-	"golang.org/x/time/rate"
 
 	"backend/graph/generated"
 	"backend/graph/resolver"
 	"backend/internal/auth"
 	"backend/internal/database"
 	"backend/internal/domain/service"
+	ping "backend/internal/handler/ping"
 	"backend/internal/loader"
 	"backend/internal/logging"
 	internalmw "backend/internal/middleware"
@@ -68,8 +66,7 @@ func newRouter(
 	roleRepo repository.RoleRepository,
 	cardgroupRepo repository.CardgroupRepository,
 	cardRepo repository.CardRepository,
-	pingRepo repository.PingRecordRepository,
-	pingToken string,
+	pingHandler *ping.Handler,
 	swipeRecordRepo ...repository.SwipeRecordRepository,
 ) *echo.Echo {
 	e := echo.New()
@@ -89,55 +86,7 @@ func newRouter(
 		})
 	})
 
-	// Rate limiter: 1 req/s sustained, burst of 5, per client IP.
-	pingRateLimiter := middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
-		Store: middleware.NewRateLimiterMemoryStoreWithConfig(
-			middleware.RateLimiterMemoryStoreConfig{
-				Rate:      float64(rate.Limit(1)),
-				Burst:     5,
-				ExpiresIn: 3 * time.Minute,
-			},
-		),
-		IdentifierExtractor: func(c *echo.Context) (string, error) {
-			return c.RealIP(), nil
-		},
-		ErrorHandler: func(c *echo.Context, err error) error {
-			return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
-		},
-		DenyHandler: func(c *echo.Context, identifier string, err error) error {
-			return c.JSON(http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
-		},
-	})
-
-	pingTokenBytes := []byte(pingToken)
-
-	e.POST("/internal/ping", func(c *echo.Context) error {
-		authHeader := c.Request().Header.Get("Authorization")
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		// Constant-time compare to prevent timing oracle attacks.
-		if subtle.ConstantTimeCompare([]byte(token), pingTokenBytes) != 1 {
-			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-		}
-
-		ctx := c.Request().Context()
-		n, err := pingRepo.Count(ctx)
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		}
-
-		if n == 0 {
-			if err := pingRepo.Create(ctx); err != nil {
-				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			}
-			return c.JSON(http.StatusOK, map[string]any{"action": "created", "count": 1})
-		}
-
-		deleted, err := pingRepo.DeleteAll(ctx)
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		}
-		return c.JSON(http.StatusOK, map[string]any{"action": "deleted", "count": deleted})
-	}, pingRateLimiter)
+	e.POST("/internal/ping", pingHandler.Handle, pingHandler.RateLimiter())
 
 	gqlSrv := newGraphQLServer(resolvers)
 	// Wrap only the GraphQL POST handler with otelhttp so the HTTP layer
@@ -258,10 +207,11 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		CardUC:      cardUC,
 		SwipeUC:     swipeUC,
 	}
+	pingHandler := ping.New(pingRecordRepo, pingToken)
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
 	// telemetry.Init for the full ordering invariant.
-	e := newRouter(resolvers, authMW, userRepo, roleRepo, cardgroupRepo, cardRepo, pingRecordRepo, pingToken, swipeRecordRepo)
+	e := newRouter(resolvers, authMW, userRepo, roleRepo, cardgroupRepo, cardRepo, pingHandler, swipeRecordRepo)
 	e.Logger = logger
 
 	port := os.Getenv("PORT")
