@@ -12,31 +12,28 @@ import (
 	"sync"
 )
 
-// node is the internal AST element produced by the parser. It carries the
-// source line number so callers can map errors and warnings back to the
-// input. The exported wire type is ParsedWord (see service.go); node stays
-// internal to keep the goyacc grammar stable.
+// node is the internal AST element produced by the parser. The exported
+// wire type is ParsedWord (see service.go); node stays internal so the
+// goyacc grammar surface can change without breaking callers.
 type node struct {
 	Word       string
 	Definition string
 	Line       int
 }
 
-// parseError is the internal structured error type produced by the lexer
-// and the goyacc-generated parser. It implements the StructuredError
-// interface declared in errors.go.
+// parseError is the structured error produced by the lexer and the
+// goyacc-generated parser. Line is the 1-based source line at which the
+// error was detected.
 type parseError struct {
 	Line    int
 	Message string
 }
 
-// Error formats the parseError as "<line>:<message>" so it composes well
-// with the standard error interface and existing log infrastructure.
 func (e parseError) Error() string {
 	return fmt.Sprintf("%d:%s", e.Line, e.Message)
 }
 
-//line internal/textdic/grammar.y:38
+//line internal/textdic/grammar.y:35
 type yySymType struct {
 	yys   int
 	str   string
@@ -64,117 +61,65 @@ const yyEofCode = 1
 const yyErrCode = 2
 const yyInitialStackSize = 16
 
-//line internal/textdic/grammar.y:69
+//line internal/textdic/grammar.y:66
 
-// Thread-local storage for the currently executing parser. The
-// goyacc-generated parser uses package-level state, so concurrent calls
-// must be serialised at a higher level (see service.Process).
+// The goyacc-generated parser uses package-level state (yyParserImpl,
+// currentParser), so concurrent calls must be serialised. parserExecMutex
+// guards every Parse invocation; nothing else needs additional locking.
 var (
 	parserExecMutex sync.Mutex
 	currentParser   *parserWrapper
 )
 
-// wrappedParser is the minimal interface exposed to the service layer. It
-// stays unexported because Process is the only public entrypoint; nothing
-// outside this package needs to drive the parser directly.
-type wrappedParser interface {
-	Parse(yyLexer) int
-	GetNodes() []node
-	GetErrors() []error
-}
-
-// parserWrapper bridges the goyacc-generated yyParserImpl with the
-// service-level wrappedParser interface and aggregates lexer + parser errors.
+// parserWrapper bridges the goyacc-generated yyParserImpl with the service
+// layer and aggregates lexer + parser errors. Concurrent invocation is
+// already serialised by parserExecMutex, so no per-instance lock is needed.
 type parserWrapper struct {
 	lexer  yyLexer
 	nodes  []node
 	errors []error
-	mu     sync.RWMutex
 }
 
-// newParser constructs a parser wrapper, runs Parse against the supplied
-// lexer, and returns the wrapper so callers can collect nodes and errors.
-func newParser(yylex yyLexer) wrappedParser {
-	p := &parserWrapper{lexer: yylex}
-	p.Parse(yylex)
-	return p
-}
-
-// Parse drives the goyacc-generated parser. It serialises execution via
-// parserExecMutex because yyNewParser shares package-global state.
-func (p *parserWrapper) Parse(yylex yyLexer) int {
+// runParse runs the goyacc-generated parser against yylex and returns the
+// collected nodes plus any lexer/parser errors.
+func runParse(yylex yyLexer) ([]node, []error) {
 	parserExecMutex.Lock()
 	defer parserExecMutex.Unlock()
 
+	p := &parserWrapper{lexer: yylex}
 	currentParser = p
 	defer func() { currentParser = nil }()
 
 	yyErrorVerbose = true
-	parser := yyNewParser().(*yyParserImpl)
-	result := parser.Parse(yylex)
+	yyNewParser().(*yyParserImpl).Parse(yylex)
 
-	// Surface lexer-level errors alongside parser errors.
-	if lexerWithErrors, ok := yylex.(*lexer); ok {
-		p.mu.Lock()
-		p.errors = append(p.errors, lexerWithErrors.GetErrors()...)
-		p.mu.Unlock()
+	if lx, ok := yylex.(*lexer); ok {
+		p.errors = append(p.errors, lx.errors...)
 	}
-
-	return result
-}
-
-// GetNodes returns the list of parsed nodes under read lock.
-func (p *parserWrapper) GetNodes() []node {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.nodes
-}
-
-// GetErrors returns the aggregated parser + lexer errors under read lock.
-func (p *parserWrapper) GetErrors() []error {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.errors
+	return p.nodes, p.errors
 }
 
 // setNodes is invoked from the start production to publish the final node
 // list onto the active parser wrapper.
 func (yyrcvr *yyParserImpl) setNodes(nodes []node) {
 	if currentParser != nil {
-		currentParser.mu.Lock()
-		defer currentParser.mu.Unlock()
 		currentParser.nodes = nodes
 	}
 }
 
-// GetNodes is exposed on yyParserImpl for parity with the service-level
-// wrappedParser interface; primarily useful for diagnostics.
-func (yyrcvr *yyParserImpl) GetNodes() []node {
-	if currentParser != nil {
-		currentParser.mu.RLock()
-		defer currentParser.mu.RUnlock()
-		return currentParser.nodes
-	}
-	return nil
-}
-
-// Error is the goyacc error callback. The active parserWrapper holds a
-// reference to the lexer, so we recover the line at which the offending
-// token began (lex.tokenLine); this satisfies the schema contract that
-// error.line is the 1-based source line where the error was detected.
-// Lexer-level structured errors are still merged separately in Parse.
+// Error is the goyacc error callback. tokenLine reflects the line at which
+// the offending token began, so we attribute the error there rather than
+// to lineNo (which has already advanced past any line terminator the
+// parser was reacting to).
 func (yyrcvr *yyParserImpl) Error(s string) {
 	if currentParser == nil {
 		return
 	}
-	currentParser.mu.Lock()
-	defer currentParser.mu.Unlock()
-
 	line := 1
-	if lex, ok := currentParser.lexer.(*lexer); ok {
-		line = lex.tokenLine
+	if lx, ok := currentParser.lexer.(*lexer); ok {
+		line = lx.tokenLine
 		if line < 1 {
-			line = lex.lineNo
+			line = lx.lineNo
 		}
 	}
 	currentParser.errors = append(currentParser.errors, parseError{Line: line, Message: s})
@@ -571,14 +516,14 @@ yydefault:
 
 	case 1:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line internal/textdic/grammar.y:55
+//line internal/textdic/grammar.y:52
 		{
 			yyVAL.nodes = yyDollar[1].nodes
 			yyrcvr.setNodes(yyDollar[1].nodes)
 		}
 	case 2:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line internal/textdic/grammar.y:59
+//line internal/textdic/grammar.y:56
 		{
 			if yyDollar[2].node.Word != "" {
 				yyVAL.nodes = append(yyDollar[1].nodes, yyDollar[2].node)
@@ -588,7 +533,7 @@ yydefault:
 		}
 	case 3:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line internal/textdic/grammar.y:60
+//line internal/textdic/grammar.y:57
 		{
 			if yyDollar[1].node.Word != "" {
 				yyVAL.nodes = []node{yyDollar[1].node}
@@ -598,18 +543,18 @@ yydefault:
 		}
 	case 4:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line internal/textdic/grammar.y:61
+//line internal/textdic/grammar.y:58
 		{
 		}
 	case 5:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line internal/textdic/grammar.y:65
+//line internal/textdic/grammar.y:62
 		{
 			yyVAL.node = node{Word: yyDollar[1].str, Definition: yyDollar[2].str, Line: yyDollar[1].line}
 		}
 	case 6:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line internal/textdic/grammar.y:66
+//line internal/textdic/grammar.y:63
 		{
 			yyVAL.node = node{}
 		}

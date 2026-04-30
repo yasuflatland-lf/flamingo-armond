@@ -1,7 +1,7 @@
-// Package textdic service entrypoint: a single package-level Process
-// function that turns a plain-text dictionary payload into ParsedWord
-// records and structured ValidationErrors. Resolver layers are expected
-// to handle base64 decoding before calling Process.
+// Package textdic service entrypoint: a single Process function that
+// turns a plain-text dictionary payload into ParsedWord records and
+// structured ValidationErrors. The resolver layer is responsible for
+// base64 decoding before calling Process.
 package textdic
 
 import (
@@ -11,23 +11,20 @@ import (
 )
 
 // maxPayloadBytes caps the parser at 1 MiB. Beyond this, Process returns
-// a payload-level ValidationError (Line == 0) without parsing. A 1 MiB
-// payload already represents tens of thousands of dictionary entries,
-// well beyond what a single swiping submission needs.
-const maxPayloadBytes = 1 << 20 // 1 MiB
+// a payload-level ValidationError (Line == 0) without parsing. 1 MiB
+// already represents tens of thousands of entries.
+const maxPayloadBytes = 1 << 20
 
 // ParsedWord is the public, wire-friendly representation of a successful
-// parse. Front holds the headword, Back holds its definition, and Line
-// records the 1-indexed source line so the UI can highlight inputs.
+// parse. Line is the 1-indexed source line so the UI can highlight inputs.
 type ParsedWord struct {
 	Front string
 	Back  string
 	Line  int
 }
 
-// ValidationError is the public, line-scoped error type returned to
-// callers. Line == 0 indicates an error not tied to a specific line
-// (e.g. payload-size violations).
+// ValidationError is the public, line-scoped error type. Line == 0
+// indicates an error not tied to a specific line (e.g. payload-size).
 type ValidationError struct {
 	Line    int
 	Message string
@@ -38,22 +35,15 @@ type ValidationError struct {
 // Returns:
 //   - words: successfully parsed entries.
 //   - errs:  per-line structured validation errors.
-//   - err:   fatal parser failures (panics, unrecoverable internal state).
+//   - err:   fatal parser failures (recovered panics).
 //
-// The function never panics: any panic from the goyacc-generated parser
-// is recovered and reported via err. Empty input is not treated as fatal;
-// callers receive a single "empty payload" ValidationError on line 1.
-// Base64 decoding is the resolver layer's responsibility; Process only
-// understands plain text.
-//
-// Concurrency: serialization of the goyacc-generated parser's package-level
-// state is delegated to parserExecMutex inside parserWrapper.Parse, so this
-// function does not take any additional lock of its own.
+// Empty input is not fatal; callers receive a single "empty payload"
+// ValidationError on line 1. Concurrency is handled by parserExecMutex
+// inside runParse, so Process takes no additional lock.
 func Process(input string) (words []ParsedWord, errs []ValidationError, err error) {
-	// Recover from panics inside the goyacc-generated parser and surface
-	// them as err. Programmer errors (runtime.Error: nil deref, index out
-	// of range, etc.) are re-panicked so tests and CI surface them rather
-	// than silently mapping them to user-input parse failures.
+	// Recover panics from the goyacc-generated parser. Programmer errors
+	// (nil deref, index out of range) are re-panicked so tests and CI
+	// surface them rather than mapping them to user-input parse failures.
 	defer func() {
 		if r := recover(); r != nil {
 			if rt, ok := r.(runtime.Error); ok {
@@ -66,19 +56,11 @@ func Process(input string) (words []ParsedWord, errs []ValidationError, err erro
 	if len(input) > maxPayloadBytes {
 		return []ParsedWord{}, []ValidationError{{Line: 0, Message: fmt.Sprintf("payload exceeds %d bytes", maxPayloadBytes)}}, nil
 	}
-
 	if len(input) == 0 {
 		return []ParsedWord{}, []ValidationError{{Line: 1, Message: "empty payload"}}, nil
 	}
 
-	// Serialization of the goyacc-generated parser's package-level state
-	// (currentParser, yyParserImpl) is handled by parserExecMutex inside
-	// parserWrapper.Parse; no additional lock is needed here.
-	l := newLexer(input)
-	p := newParser(l)
-
-	nodes := p.GetNodes()
-	rawErrs := p.GetErrors()
+	nodes, rawErrs := runParse(newLexer(input))
 
 	words = make([]ParsedWord, 0, len(nodes))
 	for _, n := range nodes {
@@ -90,14 +72,11 @@ func Process(input string) (words []ParsedWord, errs []ValidationError, err erro
 
 	errs = make([]ValidationError, 0, len(rawErrs))
 	for _, e := range rawErrs {
-		var pe parseError
-		if asPe, ok := e.(parseError); ok {
-			pe = asPe
-		} else {
-			pe = parseError{Line: 0, Message: e.Error()}
+		if pe, ok := e.(parseError); ok {
+			errs = append(errs, ValidationError{Line: pe.Line, Message: pe.Message})
+			continue
 		}
-		errs = append(errs, ValidationError{Line: pe.Line, Message: pe.Message})
+		errs = append(errs, ValidationError{Line: 0, Message: e.Error()})
 	}
-
 	return words, errs, nil
 }

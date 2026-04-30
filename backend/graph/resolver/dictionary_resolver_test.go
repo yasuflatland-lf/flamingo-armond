@@ -26,16 +26,15 @@ func (m *mockUserRoleRepository) HasRole(_ context.Context, _, _ string) (bool, 
 	return m.isAdmin, m.err
 }
 
-// newDictOnlySrv builds a server with only AuthSvc wired; do not reuse for non-dictionary tests.
+// newDictOnlySrv builds a server with only AuthSvc wired; only the
+// validateDictionary resolver is exercised here.
 func newDictOnlySrv(roleRepo repository.UserRoleRepository) *handler.Server {
-	authSvc := auth.NewService(roleRepo)
-	r := &resolver.Resolver{AuthSvc: authSvc}
+	r := &resolver.Resolver{AuthSvc: auth.NewService(roleRepo)}
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
 }
 
-// validateDictionaryQuery returns a JSON-encoded GraphQL query for validateDictionary.
 func validateDictionaryQuery(payload string) string {
 	return `{"query":"{ validateDictionary(input: { payload: \"` + payload + `\" }) { valid parsedWords { front back line } errors { line message } } }"}`
 }
@@ -61,12 +60,8 @@ func TestValidateDictionary_AdminHappyPath(t *testing.T) {
 	t.Parallel()
 
 	srv := newDictOnlySrv(&mockUserRoleRepository{isAdmin: true})
-	// "apple<IDEOGRAPHIC SPACE><ri><n><go>" — written as UTF-8 escape sequences
-	// to comply with the no-CJK-literal policy.
-	// U+3000 IDEOGRAPHIC SPACE = \xe3\x80\x80
-	// U+308A ri = \xe3\x82\x8a
-	// U+3093 n  = \xe3\x82\x93
-	// U+3054 go = \xe3\x81\x94
+	// "apple" + U+3000 ideographic space + hiragana "ringo" (apple), built
+	// from UTF-8 byte literals so committed source stays ASCII-only.
 	raw := "apple\xe3\x80\x80\xe3\x82\x8a\xe3\x82\x93\xe3\x81\x94"
 	payload := base64.StdEncoding.EncodeToString([]byte(raw))
 	resp := gqlRequest(t, srv, authedCtx("u1"), validateDictionaryQuery(payload))

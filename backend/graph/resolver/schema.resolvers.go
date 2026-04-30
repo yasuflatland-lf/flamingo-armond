@@ -215,8 +215,9 @@ func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.Vali
 
 	isAdmin, err := r.AuthSvc.IsAdmin(ctx, caller.Sub)
 	if err != nil {
+		// Propagate client-driven cancellation as-is; map other failures to INTERNAL.
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, err // propagate raw — client-driven cancellation
+			return nil, err
 		}
 		return nil, gqlerr.Internal(ctx, err)
 	}
@@ -227,7 +228,6 @@ func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.Vali
 	if input.Payload == "" {
 		return nil, gqlerr.BadUserInput("payload", "payload must not be empty")
 	}
-
 	decoded, err := base64.StdEncoding.DecodeString(input.Payload)
 	if err != nil {
 		return nil, gqlerr.BadUserInput("payload", "payload must be standard base64-encoded text")
@@ -238,18 +238,19 @@ func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.Vali
 		return nil, gqlerr.Internal(ctx, perr)
 	}
 
-	out := &model.DictionaryValidationResult{
-		Valid:       len(errs) == 0 && len(words) > 0,
-		ParsedWords: make([]*model.ParsedWord, 0, len(words)),
-		Errors:      make([]*model.DictionaryValidationError, 0, len(errs)),
-	}
+	parsed := make([]*model.ParsedWord, 0, len(words))
 	for _, w := range words {
-		out.ParsedWords = append(out.ParsedWords, &model.ParsedWord{Front: w.Front, Back: w.Back, Line: w.Line})
+		parsed = append(parsed, &model.ParsedWord{Front: w.Front, Back: w.Back, Line: w.Line})
 	}
+	validationErrs := make([]*model.DictionaryValidationError, 0, len(errs))
 	for _, e := range errs {
-		out.Errors = append(out.Errors, &model.DictionaryValidationError{Line: e.Line, Message: e.Message})
+		validationErrs = append(validationErrs, &model.DictionaryValidationError{Line: e.Line, Message: e.Message})
 	}
-	return out, nil
+	return &model.DictionaryValidationResult{
+		Valid:       len(errs) == 0 && len(words) > 0,
+		ParsedWords: parsed,
+		Errors:      validationErrs,
+	}, nil
 }
 
 // Card returns generated.CardResolver implementation.

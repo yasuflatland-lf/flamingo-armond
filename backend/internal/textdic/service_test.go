@@ -1,6 +1,5 @@
 // Package textdic_test exercises the public Process entrypoint exposed
-// by service.go. Tests live in an external package to mirror the
-// convention established by internal/auth/role_test.go.
+// by service.go.
 package textdic_test
 
 import (
@@ -11,29 +10,20 @@ import (
 	"backend/internal/textdic"
 )
 
-// jp builds a Japanese-script string from raw rune code points. This keeps
-// committed source ASCII-only while still letting the lexer see real
-// Hiragana/Katakana/Han runes at runtime, satisfying the repository's
-// language policy verification grep.
+// jp builds a Japanese-script string from raw rune code points so committed
+// source stays ASCII-only (per the repository language policy) while the
+// lexer sees real Hiragana/Katakana/Han runes at runtime.
 func jp(runes ...rune) string { return string(runes) }
 
-// Common Japanese fragments used by multiple tests. Defined once and shared
-// so each test stays compact and the rune literals are auditable in one place.
-// Each constant is built from raw code points to keep the source ASCII-only
-// per the repository language policy.
+// Japanese fragments shared across tests. Built from raw code points so all
+// CJK literals stay auditable in one place.
 var (
-	// Hiragana ringo (the Japanese word for apple): U+308A U+3093 U+3054.
-	defRingo = jp(0x308A, 0x3093, 0x3054)
-	// Han ideograph for dog: U+72AC.
-	defDog = jp(0x72AC)
-	// Han ideograph for cat: U+732B.
-	defCat = jp(0x732B)
-	// Han ideograph for bird: U+9CE5.
-	defBird = jp(0x9CE5)
-	// Han ideograph for fish: U+9B5A.
-	defFish = jp(0x9B5A)
-	// Han ideograph for book: U+672C.
-	defBook = jp(0x672C)
+	defRingo = jp(0x308A, 0x3093, 0x3054) // hiragana "ringo" (apple)
+	defDog   = jp(0x72AC)                 // han "dog"
+	defCat   = jp(0x732B)                 // han "cat"
+	defBird  = jp(0x9CE5)                 // han "bird"
+	defFish  = jp(0x9B5A)                 // han "fish"
+	defBook  = jp(0x672C)                 // han "book"
 )
 
 func TestProcess_HappyPath(t *testing.T) {

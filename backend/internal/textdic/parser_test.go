@@ -1,7 +1,5 @@
 // Package textdic_test exercises the goyacc grammar (grammar.y) and the
 // hand-written lexer (lexer.go) end-to-end via the public Process API.
-// Direct grammar/lexer access is not required: each scenario is reachable
-// from Process and that is the surface the rest of the backend depends on.
 package textdic_test
 
 import (
@@ -11,27 +9,17 @@ import (
 	"backend/internal/textdic"
 )
 
-// jpRunes builds Japanese-script content from raw rune code points. The
-// repository's language policy forbids committing CJK literals, so tests
-// construct inputs at runtime instead.
-func jpRunes(runes ...rune) string { return string(runes) }
-
 func TestGrammar_ErrorRecoveryStaysInBounds(t *testing.T) {
 	t.Parallel()
 
 	// A bare WORD line ("orphan") is malformed (no DEFINITION). The grammar
 	// rule `entries : error NEWLINE` discards the offending entry and
-	// resumes parsing on the next line. The key invariant: lines AFTER the
-	// malformed row are still parsed normally and their line numbers stay
-	// correct.
-	dog := jpRunes(0x72AC)  // dog kanji
-	cat := jpRunes(0x732B)  // cat kanji
-	bird := jpRunes(0x9CE5) // bird kanji
-
-	input := "alpha " + dog + "\n" +
+	// resumes parsing on the next line; subsequent lines must still parse
+	// with correct line numbers.
+	input := "alpha " + defDog + "\n" +
 		"orphan\n" +
-		"beta " + cat + "\n" +
-		"gamma " + bird + "\n"
+		"beta " + defCat + "\n" +
+		"gamma " + defBird + "\n"
 
 	words, errs, err := textdic.Process(input)
 	if err != nil {
@@ -108,13 +96,9 @@ func TestLexer_LineNumberAfterCRLF(t *testing.T) {
 
 	// CRLF line endings must increment the line counter by exactly one per
 	// terminator (isNewLine treats "\r\n" as a single line break).
-	dog := jpRunes(0x72AC)
-	cat := jpRunes(0x732B)
-	bird := jpRunes(0x9CE5)
-
-	input := "alpha " + dog + "\r\n" +
-		"beta " + cat + "\r\n" +
-		"gamma " + bird + "\r\n"
+	input := "alpha " + defDog + "\r\n" +
+		"beta " + defCat + "\r\n" +
+		"gamma " + defBird + "\r\n"
 
 	words, errs, err := textdic.Process(input)
 	if err != nil {
