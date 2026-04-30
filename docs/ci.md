@@ -154,7 +154,7 @@ Register all three in the repository's GitHub secrets before the workflow runs. 
 
 #### pnpm install in the deploy job
 
-The `deploy` job runs `pnpm install --frozen-lockfile` (with a pnpm store cache that uses the same key as `lint-test-build`, so the deploy job benefits from the warm cache produced by the preceding job — both run on the same OS and the same `pnpm-lock.yaml` hash, so divergent keys would only waste cache space) before invoking `vercel build`, because `vercel build` executes `next build` locally on the runner and requires `node_modules` to be populated. See § "`pnpm install --frozen-lockfile` is the gate" for the repo-wide invariant this satisfies.
+The `deploy` job runs `pnpm install --frozen-lockfile` before invoking `vercel build`, because `vercel build` executes `next build` locally on the runner and requires `node_modules` to be populated. The pnpm store cache uses the same key as `lint-test-build` (same OS, same `pnpm-lock.yaml` hash), so the deploy job benefits from the warm cache produced by the preceding job — divergent keys would only waste cache space. See § "`pnpm install --frozen-lockfile` is the gate" for the repo-wide invariant this satisfies.
 
 #### CLI deploy path vs. Vercel Git integration
 
