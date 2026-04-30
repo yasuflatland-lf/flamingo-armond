@@ -1,6 +1,6 @@
 "use client";
 
-import { gql, type Reference } from "@apollo/client";
+import { gql } from "@apollo/client";
 import { useMutation, useQuery } from "@apollo/client/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -148,40 +148,45 @@ export function CardsClient({
         `,
         data: newCard,
       });
-      cache.modify({
-        fields: {
-          cardsByCardgroupConnection(existing, { storeFieldName, toReference }) {
-            // storeFieldName encodes args; only touch the connection for THIS cardgroupId.
-            if (!storeFieldName.includes(`"cardgroupId":"${cardgroupId}"`)) {
-              return existing;
-            }
-            const cardRef = toReference({ __typename: "Card", id: newCard.id });
-            const newEdge = {
-              __typename: "CardEdge" as const,
-              cursor: newCard.id,
-              node: cardRef ?? newCard,
-            };
-            if (existing == null) {
-              return {
-                __typename: "CardConnection",
-                edges: [newEdge],
-                pageInfo: {
-                  __typename: "PageInfo",
-                  hasNextPage: false,
-                  hasPreviousPage: false,
-                  startCursor: newCard.id,
-                  endCursor: newCard.id,
-                },
-                totalCount: 1,
-              };
-            }
-            return {
-              ...existing,
-              edges: [...existing.edges, newEdge],
-              totalCount: (existing.totalCount ?? 0) + 1,
-            };
-          },
-        },
+      // Use readQuery/writeQuery so cold caches (no existing connection entry) get
+      // a freshly-written connection — cache.modify silently no-ops when the field
+      // is missing, which would lose the new card on first load.
+      const variables = { cardgroupId, first: PAGE_SIZE };
+      const existing = cache.readQuery({
+        query: CardsByCardgroupConnectionDocument,
+        variables,
+      });
+      const newEdge = {
+        __typename: "CardEdge" as const,
+        cursor: newCard.id,
+        node: newCard,
+      };
+      const next = existing
+        ? {
+            cardsByCardgroupConnection: {
+              ...existing.cardsByCardgroupConnection,
+              edges: [...existing.cardsByCardgroupConnection.edges, newEdge],
+              totalCount: existing.cardsByCardgroupConnection.totalCount + 1,
+            },
+          }
+        : {
+            cardsByCardgroupConnection: {
+              __typename: "CardConnection" as const,
+              edges: [newEdge],
+              pageInfo: {
+                __typename: "PageInfo" as const,
+                hasNextPage: false,
+                hasPreviousPage: false,
+                startCursor: newCard.id,
+                endCursor: newCard.id,
+              },
+              totalCount: 1,
+            },
+          };
+      cache.writeQuery({
+        query: CardsByCardgroupConnectionDocument,
+        variables,
+        data: next,
       });
       setCreateFormKey((k) => k + 1);
     },
@@ -191,27 +196,36 @@ export function CardsClient({
   const [updateCard, { loading: updating, error: updateError }] = useMutation(UpdateCardMutation);
 
   const [deleteCard, { error: deleteError }] = useMutation(DeleteCardMutation, {
-    update(cache, { data: deleteData }, { variables }) {
+    update(cache, { data: deleteData }, { variables: deleteVars }) {
       if (!deleteData?.deleteCard) return;
-      const id = variables?.id as string | undefined;
+      const id = deleteVars?.id as string | undefined;
       if (!id) return;
-      cache.modify({
-        fields: {
-          cardsByCardgroupConnection(existing, { readField }) {
-            if (!existing || !Array.isArray(existing.edges)) return existing;
-            const filteredEdges = existing.edges.filter(
-              (edge: { node: Reference }) => readField("id", edge.node) !== id,
-            );
-            // Decrement totalCount on every successful delete, even if the edge was on
-            // a not-yet-fetched page (filteredEdges.length === existing.edges.length).
-            return {
-              ...existing,
-              edges: filteredEdges,
-              totalCount: Math.max(0, (existing.totalCount ?? 0) - 1),
-            };
-          },
-        },
+      // Use readQuery/writeQuery for cold-cache safety: when no connection has been
+      // cached for this cardgroup yet, there is nothing to remove and we leave the
+      // cache untouched. When the connection exists, drop any matching edge and
+      // decrement totalCount unconditionally (the deleted card may live on a page
+      // that was never fetched into edges).
+      const variables = { cardgroupId, first: PAGE_SIZE };
+      const existing = cache.readQuery({
+        query: CardsByCardgroupConnectionDocument,
+        variables,
       });
+      if (existing) {
+        const filteredEdges = existing.cardsByCardgroupConnection.edges.filter(
+          (edge) => edge.node.id !== id,
+        );
+        cache.writeQuery({
+          query: CardsByCardgroupConnectionDocument,
+          variables,
+          data: {
+            cardsByCardgroupConnection: {
+              ...existing.cardsByCardgroupConnection,
+              edges: filteredEdges,
+              totalCount: Math.max(0, existing.cardsByCardgroupConnection.totalCount - 1),
+            },
+          },
+        });
+      }
       cache.evict({ id: cache.identify({ __typename: "Card", id }) });
       cache.gc();
     },
