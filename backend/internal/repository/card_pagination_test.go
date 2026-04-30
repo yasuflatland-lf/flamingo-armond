@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -11,7 +12,7 @@ import (
 	"backend/internal/repository"
 )
 
-// insertCards creates n cards with deterministic Front values ("c0".."cn-1").
+// insertCards creates n cards with deterministic Front values ("front-0".."front-n-1").
 // CreatedAt is staggered so insertion order matches creation order. Due is set
 // to now+i*hour so DUE-ordered tests have a clear ASC sequence.
 func insertCards(t *testing.T, ctx context.Context, repo repository.CardRepository, cgID string, n int) []*domain.Card {
@@ -19,7 +20,7 @@ func insertCards(t *testing.T, ctx context.Context, repo repository.CardReposito
 	now := time.Now().UTC()
 	cards := make([]*domain.Card, n)
 	for i := 0; i < n; i++ {
-		c := newCard(cgID, "front", "back")
+		c := newCard(cgID, fmt.Sprintf("front-%d", i), "back")
 		// Stagger timestamps by 1 hour so ordering is unambiguous.
 		c.CreatedAt = now.Add(time.Duration(i) * time.Hour)
 		c.UpdatedAt = c.CreatedAt
@@ -245,7 +246,7 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue(t *tes
 	now := time.Now().UTC()
 	cards := make([]*domain.Card, 3)
 	for i := 0; i < 3; i++ {
-		c := newCard(cg.ID, "front", "back")
+		c := newCard(cg.ID, fmt.Sprintf("front-%d", i), "back")
 		c.CreatedAt = now
 		c.UpdatedAt = now
 		c.FSRS.Due = now
@@ -348,4 +349,3 @@ func sortByID(cards []*domain.Card) []*domain.Card {
 	}
 	return out
 }
-
