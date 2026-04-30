@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -24,6 +27,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
 
 	"backend/graph/generated"
 	"backend/graph/resolver"
@@ -64,6 +68,8 @@ func newRouter(
 	roleRepo repository.RoleRepository,
 	cardgroupRepo repository.CardgroupRepository,
 	cardRepo repository.CardRepository,
+	pingRepo repository.PingRecordRepository,
+	pingToken string,
 	swipeRecordRepo ...repository.SwipeRecordRepository,
 ) *echo.Echo {
 	e := echo.New()
@@ -82,6 +88,56 @@ func newRouter(
 			"status": "ok",
 		})
 	})
+
+	// Rate limiter: 1 req/s sustained, burst of 5, per client IP.
+	pingRateLimiter := middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
+		Store: middleware.NewRateLimiterMemoryStoreWithConfig(
+			middleware.RateLimiterMemoryStoreConfig{
+				Rate:      float64(rate.Limit(1)),
+				Burst:     5,
+				ExpiresIn: 3 * time.Minute,
+			},
+		),
+		IdentifierExtractor: func(c *echo.Context) (string, error) {
+			return c.RealIP(), nil
+		},
+		ErrorHandler: func(c *echo.Context, err error) error {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
+		},
+		DenyHandler: func(c *echo.Context, identifier string, err error) error {
+			return c.JSON(http.StatusTooManyRequests, map[string]string{"error": "rate limit exceeded"})
+		},
+	})
+
+	pingTokenBytes := []byte(pingToken)
+
+	e.POST("/internal/ping", func(c *echo.Context) error {
+		authHeader := c.Request().Header.Get("Authorization")
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		// Constant-time compare to prevent timing oracle attacks.
+		if subtle.ConstantTimeCompare([]byte(token), pingTokenBytes) != 1 {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		}
+
+		ctx := c.Request().Context()
+		n, err := pingRepo.Count(ctx)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+
+		if n == 0 {
+			if err := pingRepo.Create(ctx); err != nil {
+				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			}
+			return c.JSON(http.StatusOK, map[string]any{"action": "created", "count": 1})
+		}
+
+		deleted, err := pingRepo.DeleteAll(ctx)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusOK, map[string]any{"action": "deleted", "count": deleted})
+	}, pingRateLimiter)
 
 	gqlSrv := newGraphQLServer(resolvers)
 	// Wrap only the GraphQL POST handler with otelhttp so the HTTP layer
@@ -152,6 +208,11 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		return eris.Wrap(err, "run: telemetry init")
 	}
 
+	pingToken := os.Getenv("PING_TOKEN")
+	if pingToken == "" {
+		return fmt.Errorf("run: PING_TOKEN env var is required")
+	}
+
 	cfg, err := auth.ConfigFromEnv()
 	if err != nil {
 		return err
@@ -182,6 +243,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	cardRepo := repository.NewCardRepository(db.GORM)
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
+	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	// Constructed to surface compile-time wiring even though no resolver references it yet.
 	_ = repository.NewUserRoleRepository(db.GORM)
 
@@ -199,7 +261,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
 	// telemetry.Init for the full ordering invariant.
-	e := newRouter(resolvers, authMW, userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo)
+	e := newRouter(resolvers, authMW, userRepo, roleRepo, cardgroupRepo, cardRepo, pingRecordRepo, pingToken, swipeRecordRepo)
 	e.Logger = logger
 
 	port := os.Getenv("PORT")
