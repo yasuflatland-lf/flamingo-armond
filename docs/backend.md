@@ -89,6 +89,7 @@ These values target a public API on Render. Revisit if the threat model or deplo
 
 - `extend type Query { ... }` works without ceremony — gqlgen merges all `extend type Query` blocks automatically. Use it freely when adding fields to the root query type.
 - For mutations, declare `type Mutation { ... }` (not `extend`) for the **first** mutation definition in the schema. Subsequent additions use `extend type Mutation { ... }`.
+- **Paginated lists use Relay-style Connection types** (`*Connection` / `*Edge` / `PageInfo`), not bare `[T!]!`. See `docs/pagination.md` for the full design and migration contract.
 
 ### Regeneration
 
@@ -384,6 +385,10 @@ Adding a new feature: build a usecase, add a field to `Resolver`, wire it in `ru
 ### Aggregate boundary policy
 
 Cross-aggregate references use IDs only — never embed a pointer to another aggregate's struct. For example, `domain.Cardgroup` holds `OwnerID string`, not `Owner *domain.User`, and `domain.Card` holds `CardgroupID string`, not `Cardgroup *domain.Cardgroup`. This prevents cyclic imports, keeps aggregates independently serialisable, and enforces the DDD consistency boundary. The actual object is resolved lazily by GraphQL field resolvers via the per-request DataLoader.
+
+### Cursor pagination
+
+Relay-style Connection queries (e.g. `cardsByCardgroupConnection`) follow a fixed shape across schema, resolver, usecase, and repository. See `docs/pagination.md` for the full design (tuple comparison, `+1` fetch trick, `totalCount` trade-off, cross-aggregate validation, three-layer enum sync, and `cursorFieldValue` error handling).
 
 ### Consumer-driven repository interfaces
 
