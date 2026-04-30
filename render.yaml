@@ -9,11 +9,11 @@
 #     OTEL_TRACES_SAMPLER_ARG, SUPABASE_JWT_AUDIENCE) are declared with
 #     `value:` and are reconciled by Blueprint sync.
 #   - Dynamic env var VALUES (SUPABASE_DB_URL, SUPABASE_JWKS_URL,
-#     SUPABASE_JWT_ISSUER) are declared with `sync: false` so Blueprint
-#     only creates the placeholder; the actual value is upserted by
-#     `playbooks/setup-prod/postapply.yml` via
-#     `PUT /v1/services/{id}/env-vars/{key}` after Phase 2 has produced
-#     the Supabase-derived values.
+#     SUPABASE_JWT_ISSUER, PING_TOKEN) are declared with `sync: false` so
+#     Blueprint only creates the placeholder; the actual value is upserted
+#     by `playbooks/setup-prod/postapply.yml` via
+#     `PUT /v1/services/{id}/env-vars/{key}` after the relevant setup phases
+#     have produced the derived values.
 #   - OTEL_EXPORTER_OTLP_ENDPOINT is operator-discretionary, so it is
 #     declared `sync: false` and left for the operator to set manually
 #     in the dashboard (or leave blank for no-op tracing).
@@ -62,4 +62,6 @@ services:
       - key: SUPABASE_JWT_ISSUER
         sync: false
       - key: OTEL_EXPORTER_OTLP_ENDPOINT
+        sync: false
+      - key: PING_TOKEN
         sync: false

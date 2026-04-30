@@ -30,6 +30,19 @@ The `uri` module uses Python's `urllib`/`urllib3` stack, not the `requests` libr
 
 `verify_identity.yml` asserts `not (testing | default(false)) or resource_id is match('^test_.*')` before issuing any destructive call. When `testing=true`, any resource id that does not begin with `test_` fails the assertion and aborts the phase with a clear message. Production runs set `testing=false` (or omit it), so the prefix check never fires. The value of this pattern is that it cannot be bypassed by accident: a CI run that accidentally receives a real production resource id while `testing=true` is set will abort before the DELETE, not after.
 
+### Idempotent secret generation: guard before generating, not after
+
+When a phase auto-generates a secret (e.g. `openssl rand -hex 32` for `PING_TOKEN`), wrap the generation in a `when:` guard so that re-runs preserve an already-generated token rather than rotating it unexpectedly:
+
+```yaml
+- name: Generate PING_TOKEN if not present
+  set_fact:
+    ping_token: "{{ lookup('pipe', 'openssl rand -hex 32') }}"
+  when: ping_token is not defined or (ping_token | string | length) == 0
+```
+
+The guard checks both `is not defined` (first run, key absent from state file) and `length == 0` (key present but empty, e.g. from a corrupted state file). Without this guard, every `make setup-prod` re-run would rotate `PING_TOKEN`, requiring a simultaneous update of the GitHub secret, the Render env var, and any other consumer — defeating the purpose of automation.
+
 ## Cross-references
 
 The following operational expressions of the above patterns are documented in `docs/deployment.md`:

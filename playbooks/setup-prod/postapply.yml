@@ -46,6 +46,7 @@
       - production_url is defined and (production_url | length) > 0
       - vercel_project_id is defined and (vercel_project_id | length) > 0
       - vercel_repo_id is defined and (vercel_repo_id | string | length) > 0
+      - ping_token is defined and (ping_token | string | length) > 0
     fail_msg: |
       State file is missing or incomplete:
         state file exists : {{ _state_stat.stat.exists }}
@@ -54,8 +55,9 @@
         production_url    : {{ production_url | default('(missing)') }}
         vercel_project_id : {{ vercel_project_id | default('(missing)') }}
         vercel_repo_id    : {{ vercel_repo_id | default('(missing)') }}
+        ping_token        : {{ '(present)' if (ping_token is defined and (ping_token | string | length) > 0) else '(missing)' }}
       Run the prerequisite phases first:
-        - render_service_id, backend_url               -> ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags render   (Phase 3)
+        - render_service_id, backend_url, ping_token    -> ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags render   (Phase 3)
         - production_url, vercel_project_id, vercel_repo_id -> ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags vercel  (Phase 4)
       If the state file appears corrupt, restore from the most recent backup:
         cp "$(ls -1t {{ state_file }}.*~ 2>/dev/null | head -1)" {{ state_file }}
@@ -231,6 +233,8 @@
           value: "{{ supabase_jwks_url }}"
         - key: SUPABASE_JWT_ISSUER
           value: "{{ supabase_jwt_issuer }}"
+        - key: PING_TOKEN
+          value: "{{ ping_token }}"
       loop_control:
         label: "{{ item.key }}"
   rescue:
@@ -253,6 +257,121 @@
 
           Fix the underlying issue, then re-run:
             make setup-prod-postapply
+
+# ---------------------------------------------------------------------------
+# Register ping-related GitHub Actions secrets.
+#
+# Three secrets are pushed idempotently via `gh secret set`:
+#   PING_TOKEN       -- the bearer token for POST /internal/ping (auto-generated
+#                       in Phase 3 and persisted in the state file).
+#   RENDER_PING_URL  -- the Render backend base URL (backend_url from state).
+#                       The workflow appends /internal/ping itself, so this is
+#                       just the scheme + host (e.g. https://flamingo-backend.onrender.com).
+#   VERCEL_PING_URL  -- the Vercel production URL (production_url from state).
+#                       Guaranteed to have a scheme because Phase 4 asserts it
+#                       starts with https://.
+#
+# Mirror the RENDER_DEPLOY_HOOK_URL pattern from render.yml:
+#   - shell: + stdin: (never argv) to keep secret off ps / audit logs.
+#   - stdin_add_newline: false to prevent a trailing \n in the stored value.
+#   - failed_when: false + manual rc check so the rescue can surface context.
+#   - no_log: true on all tasks that handle secret values.
+# ---------------------------------------------------------------------------
+- name: Register PING_TOKEN as GitHub Actions secret
+  ansible.builtin.shell:
+    cmd: gh secret set PING_TOKEN --repo {{ repo }}
+    stdin: "{{ ping_token }}"
+    stdin_add_newline: false
+  register: _gh_ping_token_result
+  no_log: true
+  failed_when: false
+  changed_when: _gh_ping_token_result.rc == 0
+
+- name: Fail with remediation if PING_TOKEN secret set failed
+  ansible.builtin.fail:
+    msg: |
+      gh secret set PING_TOKEN failed (rc={{ _gh_ping_token_result.rc }}).
+
+      gh diagnostic:
+        stderr: {{ _gh_ping_token_result.stderr | default('(none)') }}
+        stdout: {{ _gh_ping_token_result.stdout | default('(none)') }}
+
+      Common causes:
+        - gh CLI lost the `repo` write scope. Re-run:
+            gh auth refresh -s repo
+        - GitHub API rate limit. Wait a minute and retry.
+        - `repo` var is wrong / repo not found. Verify {{ repo }} is correct.
+
+      Then retry: ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags postapply
+  when: _gh_ping_token_result.rc != 0
+
+- name: Confirm PING_TOKEN GitHub secret registered
+  ansible.builtin.debug:
+    msg: "PING_TOKEN registered as a GitHub Actions secret in {{ repo }}."
+
+- name: Register RENDER_PING_URL as GitHub Actions secret
+  ansible.builtin.shell:
+    cmd: gh secret set RENDER_PING_URL --repo {{ repo }}
+    stdin: "{{ backend_url }}"
+    stdin_add_newline: false
+  register: _gh_render_ping_url_result
+  no_log: true
+  failed_when: false
+  changed_when: _gh_render_ping_url_result.rc == 0
+
+- name: Fail with remediation if RENDER_PING_URL secret set failed
+  ansible.builtin.fail:
+    msg: |
+      gh secret set RENDER_PING_URL failed (rc={{ _gh_render_ping_url_result.rc }}).
+
+      gh diagnostic:
+        stderr: {{ _gh_render_ping_url_result.stderr | default('(none)') }}
+        stdout: {{ _gh_render_ping_url_result.stdout | default('(none)') }}
+
+      Common causes:
+        - gh CLI lost the `repo` write scope. Re-run:
+            gh auth refresh -s repo
+        - GitHub API rate limit. Wait a minute and retry.
+        - `repo` var is wrong / repo not found. Verify {{ repo }} is correct.
+
+      Then retry: ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags postapply
+  when: _gh_render_ping_url_result.rc != 0
+
+- name: Confirm RENDER_PING_URL GitHub secret registered
+  ansible.builtin.debug:
+    msg: "RENDER_PING_URL registered as a GitHub Actions secret in {{ repo }}."
+
+- name: Register VERCEL_PING_URL as GitHub Actions secret
+  ansible.builtin.shell:
+    cmd: gh secret set VERCEL_PING_URL --repo {{ repo }}
+    stdin: "{{ production_url }}"
+    stdin_add_newline: false
+  register: _gh_vercel_ping_url_result
+  no_log: true
+  failed_when: false
+  changed_when: _gh_vercel_ping_url_result.rc == 0
+
+- name: Fail with remediation if VERCEL_PING_URL secret set failed
+  ansible.builtin.fail:
+    msg: |
+      gh secret set VERCEL_PING_URL failed (rc={{ _gh_vercel_ping_url_result.rc }}).
+
+      gh diagnostic:
+        stderr: {{ _gh_vercel_ping_url_result.stderr | default('(none)') }}
+        stdout: {{ _gh_vercel_ping_url_result.stdout | default('(none)') }}
+
+      Common causes:
+        - gh CLI lost the `repo` write scope. Re-run:
+            gh auth refresh -s repo
+        - GitHub API rate limit. Wait a minute and retry.
+        - `repo` var is wrong / repo not found. Verify {{ repo }} is correct.
+
+      Then retry: ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags postapply
+  when: _gh_vercel_ping_url_result.rc != 0
+
+- name: Confirm VERCEL_PING_URL GitHub secret registered
+  ansible.builtin.debug:
+    msg: "VERCEL_PING_URL registered as a GitHub Actions secret in {{ repo }}."
 
 # Wrapped in block/rescue because the inner task carries `no_log: true`
 # (the request URL embeds render_service_id and the Bearer header carries

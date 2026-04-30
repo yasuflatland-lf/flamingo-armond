@@ -53,7 +53,7 @@ The playbook persists collected values across phases in a YAML file at the repo 
 | Permissions | `0600` (re-asserted on every write) |
 | Backup | `<file>.<pid>.<timestamp>~` siblings created on every write (`copy: backup: yes`). Mode bits are preserved from the source (already `0600`). |
 | Vault | Not encrypted; gitignore + `0600` is the baseline |
-| Tier 1 secrets | `supabase_db_url` (DB password embedded). Do not share, copy across machines, or print on screen-share. |
+| Tier 1 secrets | `supabase_db_url` (DB password embedded) and `ping_token` (bearer token for `/internal/ping`). Do not share, copy across machines, or print on screen-share. |
 | Tier 2 publishable | `supabase_anon_key`. Safe to display on the operator's own screen. |
 | Tier 3 IDs / URLs | `supabase_project_ref`, `*_url`, `render_service_id`, `vercel_project_id`, `production_url`, `backend_url`. Public values, used as `--tags <phase>` re-run inputs. |
 | Out-of-state | API tokens (read from env each run) and the Render deploy-hook URL (consumed once via `gh secret set`, never persisted). |
@@ -64,9 +64,9 @@ Every phase that needs prior values follows a three-step idiom: `stat:` to detec
 
 `confirm=true` is the unattended-mode flag (intended for CI / scripted re-runs). Phases 2, 3, 4, and 5 all `fail` immediately when `confirm=true` is set, because each requires the operator to paste back values from a dashboard the playbook cannot read (project ref / anon key / DSN / service ID / deploy-hook / project ID / production URL / OAuth redirect URI). Failing fast with a clear message beats hanging on a `pause:` prompt that no one will answer. Phases 1 (preflight) and 6 (postapply) are the only fully unattended phases: postapply re-runs are how operators recover from a transient Render or Vercel cold-start smoke failure.
 
-### Three external side effects
+### External side effects
 
-The playbook only writes to three places outside the operator's machine: (1) `gh secret set RENDER_DEPLOY_HOOK_URL` on the GitHub repo (idempotent overwrite), (2) `POST /v1/services/<id>/deploys` against the Render API (each call enqueues a deploy, which is the operator's intent), and (3) the local state file. Re-running any phase is safe — none of the three writes accumulate state in a way that corrupts the next run.
+The playbook writes outside the operator's machine in five places: (1) `gh secret set RENDER_DEPLOY_HOOK_URL` on the GitHub repo (Phase 3, idempotent overwrite), (2) `gh secret set PING_TOKEN`, `gh secret set RENDER_PING_URL`, and `gh secret set VERCEL_PING_URL` on the GitHub repo (Phase 6, idempotent overwrite), (3) `PUT /v1/services/<id>/env-vars/<key>` against the Render API for dynamic env vars including `PING_TOKEN` (Phase 6), (4) `POST /v1/services/<id>/deploys` against the Render API (each call enqueues a deploy, which is the operator's intent), and (5) the local state file. Re-running any phase is safe — none of the writes accumulate state in a way that corrupts the next run.
 
 ### Two security patterns worth knowing
 
@@ -195,6 +195,7 @@ Dynamic env vars (declared with `sync: false` in `render.yaml`; Blueprint create
 | `SUPABASE_DB_URL` | Session-mode pooler DSN from Step 1.4. | Phase 6 (`postapply.yml`) via `PUT /v1/services/{id}/env-vars/{key}`. |
 | `SUPABASE_JWKS_URL` | `https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json` | Phase 6. |
 | `SUPABASE_JWT_ISSUER` | `https://<project-ref>.supabase.co/auth/v1` | Phase 6. |
+| `PING_TOKEN` | Auto-generated 32-byte hex token consumed by the readiness-ping workflow (see [Keep-alive ping workflow](#keep-alive-ping-workflow)). | Phase 6 (`postapply.yml`). |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint, or empty for no-op tracing. | Operator (manual, persisted across Blueprint syncs because of `sync: false`). |
 
 When the Blueprint apply wizard prompts for the `sync: false` placeholders, leave them blank and click Save. Re-running `make setup-prod-postapply` reconciles the Supabase-derived three from the state file via the Render API, then triggers the first deploy.
@@ -266,6 +267,51 @@ For an end-to-end check, sign in via Google on the Vercel domain and load `/prof
 - **Use `127.0.0.1`, not `localhost`, for any local OAuth setup.** Google's redirect URI validation treats them as distinct origins. This applies to local development only; production uses real domains (`docs/dev-setup.md` § "Gotchas").
 - **Render free tier sleeps idle services.** The first request after idleness incurs a cold start. Health checks on `/health` keep the service warm only while traffic flows.
 - **Custom domains.** When adding a Vercel custom domain, also update the Supabase Auth Site URL and add the new origin to the Redirect URLs allow list.
+
+## Keep-alive ping workflow
+
+The readiness-ping workflow keeps Render and Vercel warm and ensures Supabase detects continuous activity (required for free-tier retention). A scheduled cron job runs every 15 minutes to ping the backend, which issues a write to Supabase to trigger activity detection — reads alone do not prevent free-tier inactivity timeouts.
+
+**Why writes, not reads:** Supabase's activity tracking counts only write operations (INSERT/UPDATE/DELETE) toward the free-tier "last active" timestamp. A read-only `SELECT` is invisible to this metric. The 0↔1 row oscillation design guarantees that every ping call performs either an INSERT or a DELETE, keeping the "last active" timestamp current without unbounded table growth.
+
+### Endpoint
+
+```
+POST /internal/ping
+Authorization: Bearer $PING_TOKEN
+```
+
+Response: `{"action":"created"|"deleted","count":N}` (200 OK). The endpoint oscillates a single row in `public.ping_records`: creates it when absent, deletes it when present. Each call guarantees a write, keeping Supabase active.
+
+Authentication is bearer-token based. Rate limiting is 1 request per second per IP, with a burst allowance of 5. The server **requires** the `PING_TOKEN` env var at startup and refuses to boot if it is empty.
+
+### Workflow and secrets
+
+The workflow file `.github/workflows/readiness-ping.yml` triggers on a 15-minute schedule (defined within the file). Required GitHub Actions secrets:
+
+| Secret | Purpose |
+|---|---|
+| `VERCEL_PING_URL` | Frontend base URL to warm; the workflow GETs this URL to prevent Vercel cold starts. |
+| `RENDER_PING_URL` | Backend base URL with scheme (e.g. `https://flamingo-backend.onrender.com`). The workflow appends `/internal/ping` automatically — do **not** include the path in the secret value. |
+| `PING_TOKEN` | Bearer token for the POST request; must match the `PING_TOKEN` env var on the Render service. |
+
+All three secrets and the Render `PING_TOKEN` env var are provisioned automatically by `make setup-prod`: `PING_TOKEN` is auto-generated in Phase 3 and pushed to Render via the API in Phase 6 alongside the other dynamic env vars; `PING_TOKEN`, `RENDER_PING_URL`, and `VERCEL_PING_URL` are then registered as GitHub Actions secrets via `gh secret set` in Phase 6. `make teardown-prod` deletes the Render service (and with it the `PING_TOKEN` env var) but does **not** delete the GitHub secrets — they remain in place and are overwritten on the next `make setup-prod`.
+
+On Render, `PING_TOKEN` is declared with `sync: false` in `render.yaml` (Blueprint creates the placeholder; Phase 6 fills the value). No manual action is needed.
+
+### Manual trigger
+
+```bash
+gh workflow run readiness-ping.yml
+```
+
+### Verification
+
+List successful workflow runs:
+
+```bash
+gh run list --workflow=readiness-ping.yml --status=success
+```
 
 ## Tearing down production via `make teardown-prod`
 

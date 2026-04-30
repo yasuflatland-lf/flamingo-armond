@@ -30,6 +30,7 @@ import (
 	"backend/internal/auth"
 	"backend/internal/database"
 	"backend/internal/domain/service"
+	"backend/internal/handler/ping"
 	"backend/internal/loader"
 	"backend/internal/logging"
 	internalmw "backend/internal/middleware"
@@ -64,6 +65,7 @@ func newRouter(
 	roleRepo repository.RoleRepository,
 	cardgroupRepo repository.CardgroupRepository,
 	cardRepo repository.CardRepository,
+	pingHandler *ping.Handler,
 	swipeRecordRepo ...repository.SwipeRecordRepository,
 ) *echo.Echo {
 	e := echo.New()
@@ -82,6 +84,8 @@ func newRouter(
 			"status": "ok",
 		})
 	})
+
+	e.POST("/internal/ping", pingHandler.Handle, pingHandler.RateLimiter())
 
 	gqlSrv := newGraphQLServer(resolvers)
 	// Wrap only the GraphQL POST handler with otelhttp so the HTTP layer
@@ -152,6 +156,11 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		return eris.Wrap(err, "run: telemetry init")
 	}
 
+	pingToken := os.Getenv("PING_TOKEN")
+	if pingToken == "" {
+		return eris.New("run: PING_TOKEN env var is required")
+	}
+
 	cfg, err := auth.ConfigFromEnv()
 	if err != nil {
 		return err
@@ -182,6 +191,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	cardRepo := repository.NewCardRepository(db.GORM)
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
+	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	// Constructed to surface compile-time wiring even though no resolver references it yet.
 	_ = repository.NewUserRoleRepository(db.GORM)
 
@@ -196,10 +206,11 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		CardUC:      cardUC,
 		SwipeUC:     swipeUC,
 	}
+	pingHandler := ping.New(pingRecordRepo, pingToken)
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
 	// telemetry.Init for the full ordering invariant.
-	e := newRouter(resolvers, authMW, userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo)
+	e := newRouter(resolvers, authMW, userRepo, roleRepo, cardgroupRepo, cardRepo, pingHandler, swipeRecordRepo)
 	e.Logger = logger
 
 	port := os.Getenv("PORT")

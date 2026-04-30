@@ -39,6 +39,7 @@ import (
 	"backend/internal/database"
 	"backend/internal/domain"
 	"backend/internal/domain/service"
+	"backend/internal/handler/ping"
 	"backend/internal/repository"
 	"backend/internal/telemetry"
 	"backend/internal/usecase"
@@ -116,7 +117,7 @@ func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newRouter(&resolver.Resolver{}, noopAuthMW, nil, nil, nil, nil))
+	ts := httptest.NewServer(newRouter(&resolver.Resolver{}, noopAuthMW, nil, nil, nil, nil, ping.New(nil, "test-token")))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -209,6 +210,7 @@ func TestRunGracefulShutdown(t *testing.T) {
 	t.Setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
 	t.Setenv("SUPABASE_JWT_ISSUER", "http://issuer.test")
 	t.Setenv("SUPABASE_DB_URL", testDBURL)
+	t.Setenv("PING_TOKEN", "test-token")
 
 	port := freePort(t)
 	t.Setenv("PORT", port)
@@ -241,6 +243,7 @@ func TestRun_FailsWhenJWKSURLMissing(t *testing.T) {
 	t.Setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
 	t.Setenv("SUPABASE_JWT_ISSUER", "http://issuer.test")
 	t.Setenv("SUPABASE_DB_URL", testDBURL)
+	t.Setenv("PING_TOKEN", "test-token")
 
 	err := run(context.Background(), slog.New(slog.DiscardHandler))
 	if err == nil {
@@ -262,6 +265,7 @@ func TestRun_FailsWhenDBURLMissing(t *testing.T) {
 	t.Setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
 	t.Setenv("SUPABASE_JWT_ISSUER", "http://issuer.test")
 	t.Setenv("SUPABASE_DB_URL", "")
+	t.Setenv("PING_TOKEN", "test-token")
 
 	err := run(context.Background(), slog.New(slog.DiscardHandler))
 	if err == nil {
@@ -269,6 +273,28 @@ func TestRun_FailsWhenDBURLMissing(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "SUPABASE_DB_URL") {
 		t.Fatalf("expected error to mention SUPABASE_DB_URL, got: %v", err)
+	}
+}
+
+func TestRun_FailsWhenPINGTokenMissing(t *testing.T) {
+	tsJWKS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"keys": []}`))
+	}))
+	defer tsJWKS.Close()
+
+	t.Setenv("SUPABASE_JWKS_URL", tsJWKS.URL)
+	t.Setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
+	t.Setenv("SUPABASE_JWT_ISSUER", "http://issuer.test")
+	t.Setenv("SUPABASE_DB_URL", testDBURL)
+	t.Setenv("PING_TOKEN", "")
+
+	err := run(context.Background(), slog.New(slog.DiscardHandler))
+	if err == nil {
+		t.Fatal("expected error when PING_TOKEN is empty, got nil")
+	}
+	if !strings.Contains(err.Error(), "PING_TOKEN") {
+		t.Fatalf("expected error to mention PING_TOKEN, got: %v", err)
 	}
 }
 
@@ -400,7 +426,8 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)
 	cardUC := usecase.NewCardUsecase(cardRepo, cardgroupRepo)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10)
-	e := newRouter(&resolver.Resolver{User: userUC, CardgroupUC: cardgroupUC, CardUC: cardUC, SwipeUC: swipeUC}, mw, userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo)
+	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
+	e := newRouter(&resolver.Resolver{User: userUC, CardgroupUC: cardgroupUC, CardUC: cardUC, SwipeUC: swipeUC}, mw, userRepo, roleRepo, cardgroupRepo, cardRepo, ping.New(pingRecordRepo, "test-token"), swipeRecordRepo)
 
 	ts := httptest.NewServer(e)
 	t.Cleanup(ts.Close)
