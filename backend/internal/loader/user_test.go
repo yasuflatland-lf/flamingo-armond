@@ -133,6 +133,9 @@ func (r *countingCardRepo) Delete(_ context.Context, _ string) error {
 func (r *countingCardRepo) DeleteByIDsTx(_ context.Context, _ *gorm.DB, _ string, _ []string) (int64, error) {
 	panic("countingCardRepo.DeleteByIDsTx not configured")
 }
+func (r *countingCardRepo) UpsertManyTx(_ context.Context, _ *gorm.DB, _ []*domain.Card) (repository.UpsertManyTxResult, error) {
+	panic("countingCardRepo.UpsertManyTx not configured")
+}
 
 func emptyCardRepo() *countingCardRepo {
 	return &countingCardRepo{

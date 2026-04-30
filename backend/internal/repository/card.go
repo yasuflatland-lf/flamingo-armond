@@ -3,8 +3,10 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -99,6 +101,11 @@ type CardRepository interface {
 	// slice GORM v2 omits the `WHERE id IN (?)` clause altogether, which would
 	// convert this `Delete` into an unbounded mass delete — far worse than a slow scan.
 	DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error)
+	// UpsertManyTx upserts cards by (cardgroup_id, front). Existing rows have
+	// their `back` and `updated_at` columns overwritten; new rows are inserted
+	// using the FSRS state values supplied on each domain.Card. Returns the
+	// per-row split between Inserted and Updated. Empty input is a no-op.
+	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (UpsertManyTxResult, error)
 }
 
 type cardRepo struct{ db *gorm.DB }
@@ -380,6 +387,104 @@ func (r *cardRepo) Delete(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// UpsertManyTxResult counts the outcome of an UpsertManyTx call.
+// Inserted+Updated equals len(input cards) for a successful call.
+type UpsertManyTxResult struct {
+	Inserted int64
+	Updated  int64
+}
+
+// UpsertManyTx upserts cards by (cardgroup_id, front). Existing rows have
+// `back` and `updated_at` overwritten; new rows are inserted with the supplied
+// FSRS state values. The conflict key requires the unique index
+// `uq_cards_cardgroup_front` (migration 20260503000000).
+//
+// Counts are derived per-row from the PostgreSQL system column `xmax`. A
+// freshly inserted row has `xmax = 0` in the same transaction; a row updated
+// via `ON CONFLICT DO UPDATE` has `xmax` set to the current transaction id.
+// The RETURNING clause exposes `xmax = 0 AS inserted` so the split can be
+// computed without a second query.
+//
+// The method is transaction-safe: it operates on the supplied tx only and
+// never reaches back to r.db. Empty input returns a zero-valued result and
+// no error.
+func (r *cardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (UpsertManyTxResult, error) {
+	if len(cards) == 0 {
+		return UpsertManyTxResult{}, nil
+	}
+
+	// Pre-fill any missing IDs so the RETURNING clause classifies every row
+	// the caller handed us. UUID v7 is the project-wide convention; v4
+	// fallback is rejected per .claude/rules/go-library-gotchas.md.
+	for _, c := range cards {
+		if strings.TrimSpace(c.ID) == "" {
+			id, err := uuid.NewV7()
+			if err != nil {
+				return UpsertManyTxResult{}, eris.Wrap(err, "repository: upsert many cards: uuid v7")
+			}
+			c.ID = id.String()
+		}
+	}
+
+	// Build a single multi-row INSERT. Each card contributes 15 placeholders
+	// matching the column list below.
+	const columns = `(id, cardgroup_id, front, back, due, stability, difficulty,
+                    elapsed_days, scheduled_days, reps, lapses, state, last_review,
+                    created_at, updated_at)`
+	const rowPH = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+
+	var sb strings.Builder
+	sb.WriteString("INSERT INTO cards ")
+	sb.WriteString(columns)
+	sb.WriteString(" VALUES ")
+	args := make([]any, 0, len(cards)*15)
+	for i, c := range cards {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		sb.WriteString(rowPH)
+		args = append(args,
+			c.ID,
+			c.CardgroupID,
+			c.Front,
+			c.Back,
+			c.FSRS.Due,
+			c.FSRS.Stability,
+			c.FSRS.Difficulty,
+			c.FSRS.ElapsedDays,
+			c.FSRS.ScheduledDays,
+			c.FSRS.Reps,
+			c.FSRS.Lapses,
+			int(c.FSRS.State),
+			c.FSRS.LastReview,
+			c.CreatedAt,
+			c.UpdatedAt,
+		)
+	}
+	sb.WriteString(`
+        ON CONFLICT (cardgroup_id, front)
+        DO UPDATE SET back = EXCLUDED.back, updated_at = now()
+        RETURNING (xmax = 0) AS inserted`)
+
+	type returnedRow struct {
+		Inserted bool `gorm:"column:inserted"`
+	}
+	var rows []returnedRow
+	if err := tx.WithContext(ctx).Raw(sb.String(), args...).Scan(&rows).Error; err != nil {
+		return UpsertManyTxResult{}, eris.Wrap(err, "repository: upsert many cards")
+	}
+
+	var res UpsertManyTxResult
+	for _, r := range rows {
+		if r.Inserted {
+			res.Inserted++
+		} else {
+			res.Updated++
+		}
+	}
+	return res, nil
 }
 
 func (r *cardRepo) DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error) {
