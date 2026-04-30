@@ -68,7 +68,7 @@ func NewForbidden(msg string) *gqlerror.Error {
 // context.Canceled and context.DeadlineExceeded; callers decide which to use.
 func Cancelled(ctx context.Context, err error) *gqlerror.Error {
 	if err != nil {
-		// Inline WARN log mirrors auth.reject's shape (see logging/error.go doc).
+		// Match auth.reject's WARN shape: msg + error_chain attribute via eris.ToJSON.
 		slog.Default().LogAttrs(ctx, slog.LevelWarn, "request cancelled",
 			slog.Any("error_chain", eris.ToJSON(err, true)),
 		)
