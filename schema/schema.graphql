@@ -278,7 +278,15 @@ type DictionaryValidationError {
   message: String!
 }
 
-"""Result of a dictionary validation request."""
+"""
+Result of validating a dictionary payload.
+
+Design note: this is a product type. The resolver enforces the invariant
+valid = (len(errors) == 0 && len(parsedWords) > 0); conflicting states are
+representable but never emitted. A union refactor (ValidParse | InvalidParse)
+was considered but deferred — it will be revisited alongside the admin
+import flow (issue #59) so the wire shape changes once.
+"""
 type DictionaryValidationResult {
   """True iff the payload parsed without any errors and produced at least one word."""
   valid: Boolean!

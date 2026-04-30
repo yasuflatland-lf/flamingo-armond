@@ -246,6 +246,7 @@ func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.Vali
 	for _, e := range errs {
 		validationErrs = append(validationErrs, &model.DictionaryValidationError{Line: e.Line, Message: e.Message})
 	}
+	// Product-type invariant: valid <=> no errors AND >=1 parsed word. See schema.graphql DictionaryValidationResult docstring.
 	return &model.DictionaryValidationResult{
 		Valid:       len(errs) == 0 && len(words) > 0,
 		ParsedWords: parsed,
