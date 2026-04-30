@@ -284,6 +284,59 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue(t *tes
 	require.Equal(t, sorted[2].ID, page2[0].ID)
 }
 
+// TestCardRepository_FindPageByCardgroup_PageCapAllowsMaxPlusOne verifies that
+// pageCap (101) accepts first=101 so the usecase's +1 trick can detect a next
+// page when the caller requests the documented maximum of 100.
+func TestCardRepository_FindPageByCardgroup_PageCapAllowsMaxPlusOne(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	// Insert 101 cards so both first=101 and first=100 queries have enough rows.
+	insertCards(t, ctx, repo, cg.ID, 101)
+
+	// first=101 must return all 101 rows because pageCap == 101.
+	cards101, total101, err := repo.FindPageByCardgroup(
+		ctx, cg.ID, nil, nil, 101, 0, repository.CardOrderByID, repository.SortAsc,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(101), total101)
+	require.Len(t, cards101, 101)
+
+	// first=100 must be limited to 100 rows, confirming the cap still applies.
+	cards100, total100, err := repo.FindPageByCardgroup(
+		ctx, cg.ID, nil, nil, 100, 0, repository.CardOrderByID, repository.SortAsc,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(101), total100)
+	require.Len(t, cards100, 100)
+}
+
+// TestCardRepository_FindPageByCardgroup_ZeroPageReturnsTotal verifies the C2
+// fix: first=0 && last=0 short-circuits the row fetch but still returns the
+// real totalCount from the separate COUNT(*) query.
+func TestCardRepository_FindPageByCardgroup_ZeroPageReturnsTotal(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	insertCards(t, ctx, repo, cg.ID, 5)
+
+	cards, total, err := repo.FindPageByCardgroup(
+		ctx, cg.ID, nil, nil, 0, 0, repository.CardOrderByID, repository.SortAsc,
+	)
+	require.NoError(t, err)
+	// No rows requested, but the slice must be non-nil and empty.
+	require.NotNil(t, cards)
+	require.Len(t, cards, 0)
+	// totalCount must reflect the actual number of cards in the group.
+	require.Equal(t, int64(5), total)
+}
+
 // sortByID returns a copy of cards sorted by ID ascending.
 func sortByID(cards []*domain.Card) []*domain.Card {
 	out := make([]*domain.Card, len(cards))
