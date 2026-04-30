@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -129,6 +130,53 @@ func TestOpen_RespectsCanceledContext(t *testing.T) {
 	_, err := database.Open(ctx, database.Config{URL: testDSN})
 	if err == nil {
 		t.Fatal("expected error when ctx is canceled before Open, got nil")
+	}
+}
+
+func TestMigrations_AllPublicTablesHaveRLSEnabled(t *testing.T) {
+	ctx := context.Background()
+	db := openMigratedDB(t)
+	defer db.Close()
+
+	sqlDB := sqlDBForTest(t, db)
+
+	// schema_migrations is golang-migrate's bookkeeping table; its RLS status is
+	// a separate policy decision and is intentionally excluded from this assertion.
+	rows, err := sqlDB.QueryContext(ctx, `
+		SELECT c.relname, c.relrowsecurity
+		FROM pg_class c
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE n.nspname = 'public'
+		  AND c.relkind = 'r'
+		  AND c.relname <> 'schema_migrations'
+	`)
+	if err != nil {
+		t.Fatalf("query pg_class for public tables: %v", err)
+	}
+	defer rows.Close()
+
+	var total int
+	var offenders []string
+	for rows.Next() {
+		var name string
+		var rlsEnabled bool
+		if err := rows.Scan(&name, &rlsEnabled); err != nil {
+			t.Fatalf("scan row: %v", err)
+		}
+		total++
+		if !rlsEnabled {
+			offenders = append(offenders, name)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate rows: %v", err)
+	}
+
+	if total == 0 {
+		t.Fatal("no public tables found after migration (query may be broken)")
+	}
+	if len(offenders) > 0 {
+		t.Fatalf("RLS not enabled on public tables: %s", strings.Join(offenders, ", "))
 	}
 }
 

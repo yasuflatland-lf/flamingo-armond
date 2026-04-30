@@ -3,12 +3,16 @@
 -- Creates every public table the Go backend touches, in dependency order:
 -- users → roles → user_roles → cardgroups → cards → swipe_records.
 -- public.users is 1:1 with auth.users, populated by the handle_new_user
--- trigger that fires on auth.users insert. After all tables are in place,
--- Row Level Security is enabled with zero policies on the public schema so
--- PostgREST callers (anon, authenticated) hit PostgreSQL's default-deny;
--- the backend connects as the table-owner role and bypasses RLS unless
--- FORCE ROW LEVEL SECURITY is set, so application queries and migrations
--- are unaffected. See docs/backend.md "Authorization at the usecase layer".
+-- trigger that fires on auth.users insert.
+--
+-- Row Level Security is enabled in a separate migration (20260502120000_enable_rls)
+-- so that a failure in the RLS step cannot leave DDL partially applied and the
+-- migration marked dirty in the same file.
+--
+-- golang-migrate pgx/v5 does NOT auto-wrap migrations in a transaction; the
+-- explicit BEGIN/COMMIT below ensures all-or-nothing execution.
+
+BEGIN;
 
 -- ---------------------------------------------------------------------------
 -- users (1:1 with auth.users)
@@ -181,18 +185,4 @@ CREATE INDEX IF NOT EXISTS idx_swipe_records_user_id       ON public.swipe_recor
 CREATE INDEX IF NOT EXISTS idx_swipe_records_card_id       ON public.swipe_records (card_id);
 CREATE INDEX IF NOT EXISTS idx_swipe_records_user_reviewed ON public.swipe_records (user_id, reviewed_at DESC);
 
--- ---------------------------------------------------------------------------
--- Row Level Security: enable with zero policies on every public table.
--- PostgREST callers default-deny; the table-owner role bypasses RLS so the
--- Go backend is unaffected. schema_migrations is created and owned by
--- golang-migrate via the same connection, so enabling RLS here does not
--- interfere with the migration runner's bookkeeping writes.
--- ---------------------------------------------------------------------------
-
-ALTER TABLE public.users             ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.roles             ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.user_roles        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.cardgroups        ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.cards             ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.swipe_records     ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY;
+COMMIT;

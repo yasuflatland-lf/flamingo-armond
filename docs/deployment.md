@@ -268,6 +268,16 @@ For an end-to-end check, sign in via Google on the Vercel domain and load `/prof
 - **Render free tier sleeps idle services.** The first request after idleness incurs a cold start. Health checks on `/health` keep the service warm only while traffic flows.
 - **Custom domains.** When adding a Vercel custom domain, also update the Supabase Auth Site URL and add the new origin to the Redirect URLs allow list.
 
+### Row Level Security (RLS) migration risks
+
+Enabling RLS on tables via `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` requires the connecting role to be the table owner. On Supabase, the standard `postgres` / `service_role` connection role is typically the owner of public tables; however, a role mismatch causes PostgreSQL to raise `ERROR: must be owner of table <name>` — the failure is loud. If the migration file is not wrapped in `BEGIN/COMMIT`, any DDL that executed before the failing `ALTER TABLE` is already committed, `schema_migrations.dirty=true` is set, and subsequent deploys are blocked until the dirty flag is manually cleared.
+
+To prevent role-confusion incidents and maintain a clear blast radius:
+
+- **RLS lives in its own migration file.** Mixing `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` with DDL (CREATE TABLE / ADD COLUMN) in a single migration couples two concerns and has caused dirty-state incidents in the past. Separate them: run DDL in one migration, then enable RLS in a new dated RLS-only migration file.
+- **When adding new public tables in future migrations, follow this pattern.** Create the table in one migration file, then enable RLS in a new dated RLS-only migration file. Do not edit already-applied migration files — golang-migrate records each version after first apply and will not re-execute modified content. The `schema_migrations` bookkeeping table must never have RLS enabled: the table owner bypasses RLS anyway, so RLS there adds no security value and would brick future migrations if ownership ever changed.
+- **Verify role ownership if RLS-enable steps fail.** If a migration applying `ALTER TABLE ... ENABLE` returns an error, inspect Supabase project settings and confirm the `SUPABASE_DB_URL` role is the table owner. A common cause is running migrations as a different role than the one that created the schema.
+
 ## Keep-alive ping workflow
 
 The readiness-ping workflow keeps Render and Vercel warm and ensures Supabase detects continuous activity (required for free-tier retention). A scheduled cron job runs every 15 minutes to ping the backend, which issues a write to Supabase to trigger activity detection — reads alone do not prevent free-tier inactivity timeouts.

@@ -248,7 +248,21 @@ Migration files live under `backend/internal/database/migrations/`. Go's `//go:e
 
 **Filename format: `yyyymmddhhmmss_<short_snake_case_description>.{up,down}.sql`** — the 14-digit timestamp prefix is the numeric version `golang-migrate` records in `public.schema_migrations` and uses to order files. New migrations therefore need a timestamp strictly greater than every existing file (UTC is fine; the values just need to sort correctly). The trailing description is for human readers and is not parsed — pick a short verb-led summary like `create_cards`, `enable_rls_deny_all`, or `initial_schema`. Up and down halves must share the same prefix and description so `golang-migrate` can pair them.
 
-When a migration fails mid-run, `schema_migrations.dirty=true` is set. Recovery requires an operator to run `migrate force <version>`. The `run()` function treats any migration error as fatal and returns immediately (fail-fast).
+When a migration fails mid-run, `schema_migrations.dirty=true` is set. Recovery requires an operator to run `migrate force <version>`. The `run()` function treats any migration error as fatal and returns immediately (fail-fast). See `docs/playbook-patterns.md` § "Recovering from a dirty migration" for the operator runbook.
+
+#### golang-migrate transaction behaviour
+
+**The `pgx/v5` driver does NOT auto-wrap each migration file in a transaction.** Every migration that requires atomicity must open its own `BEGIN; ... COMMIT;` block explicitly. A migration file that omits `BEGIN/COMMIT` and mixes DDL with privilege-sensitive statements (e.g. `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`) can partially succeed: the DDL commits, the later statement fails, and `schema_migrations.dirty=true` persists because golang-migrate commits that flag in its own separate transaction *before* it begins executing the migration SQL.
+
+The structural consequence: **sensitive ALTER operations (RLS, GRANT, REVOKE) belong in their own dated migration file**, separate from the DDL that creates the tables. A failure in one file leaves the other file's work untouched, limiting blast radius.
+
+#### Migration test quality bar
+
+Tests that invoke the migration runner must assert *post-conditions*, not just "migrate ran without error". The model is `TestMigrations_AllPublicTablesHaveRLSEnabled` in `internal/database/pool_test.go`: it queries `pg_class` after migration and asserts every expected table has `relrowsecurity = true`. Procedural success alone does not verify security posture.
+
+#### `schema_migrations` and RLS
+
+`public.schema_migrations` is golang-migrate's internal bookkeeping table. It is intentionally **excluded from the RLS-enable migration** for two reasons: (a) golang-migrate connects as the table owner, which in PostgreSQL bypasses RLS unless `FORCE ROW LEVEL SECURITY` is set, so enabling RLS on `schema_migrations` adds no security value; (b) if ownership ever changes and RLS without policies takes effect, golang-migrate would be blocked from updating the version record, bricking future deploys. Leave `schema_migrations` without RLS.
 
 **Renaming or renumbering migration files is not transparent to the DB.** `golang-migrate` records the numeric version of each applied migration in `public.schema_migrations`. Renaming a file (e.g. `0001_create_profiles.up.sql` → `20250101000000_create_profiles.up.sql`) rewrites the source tree but **not** the DB row, so the next boot fails with `no migration found for version <N>: read down for version <N> migrations: file does not exist` — migrate's source-state reconciliation expects the recorded version to exist on disk. When the rename is identifier-only (up/down SQL bodies are byte-identical, `git log -M` reports an `R100` rename), the safe recovery is `UPDATE public.schema_migrations SET version = <new_version>, dirty = false WHERE version = <old_version>` against the production DB; the runbook lives in `playbooks/setup-prod/recover-migration-version-rebase.sql`. Do **not** apply this shortcut when the rename also changed migration content — in that case, squash the changes and use `migrate force <version>` against a known-good source state so the new content actually runs.
 
@@ -382,7 +396,7 @@ Owner checks live in the usecase, not in Postgres RLS. The asymmetry for read vs
 - Non-owner `cardgroup(id:)` read → return `null` (the field is nullable by spec; ID enumeration on a nullable field is acceptable).
 - Non-owner write (`updateCardgroup`, `deleteCardgroup`) → return `UNAUTHENTICATED`.
 
-Although authorization itself is not delegated to Postgres, every table in the `public` schema still has Row Level Security **enabled with zero policies** (migration `20260430080000_initial_schema`). This blocks PostgREST callers using the `anon` or `authenticated` role from reading or writing any row directly — a Supabase project always exposes `public.*` as a REST API, and "no policy under RLS" means default-deny in PostgreSQL. The Go backend connects as the table-owner role, which bypasses RLS unless `FORCE ROW LEVEL SECURITY` is set, so application queries and migrations are unaffected. If a future flow needs Supabase JS to read a table directly, add a targeted policy alongside the access pattern; do not disable RLS to "make it work".
+Although authorization itself is not delegated to Postgres, every application table in the `public` schema still has Row Level Security **enabled with zero policies**. This blocks PostgREST callers using the `anon` or `authenticated` role from reading or writing any row directly — a Supabase project always exposes `public.*` as a REST API, and "no policy under RLS" means default-deny in PostgreSQL. The Go backend connects as the table-owner role, which bypasses RLS unless `FORCE ROW LEVEL SECURITY` is set, so application queries and migrations are unaffected. The `schema_migrations` bookkeeping table is excluded from RLS — see [schema_migrations and RLS](#schema_migrations-and-rls) for the rationale. If a future flow needs Supabase JS to read a table directly, add a targeted policy alongside the access pattern; do not disable RLS to "make it work".
 
 ### Role-based authorization (`auth.Service`)
 
