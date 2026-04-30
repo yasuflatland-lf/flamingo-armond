@@ -30,6 +30,13 @@ func New(repo repository.PingRecordRepository, token string) *Handler {
 	return &Handler{repo: repo, token: token}
 }
 
+// internalError logs the given message and returns a sanitized 500 response.
+// Using a helper de-duplicates the three identical error-response sites in Handle.
+func internalError(c *echo.Context, msg string, err error) error {
+	slog.ErrorContext(c.Request().Context(), msg, "err", err)
+	return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+}
+
 // Handle is the echo.HandlerFunc for POST /internal/ping.
 // Behavior:
 //   - 401 + {"error":"unauthorized"} on missing/invalid bearer token (constant-time compare).
@@ -51,22 +58,19 @@ func (h *Handler) Handle(c *echo.Context) error {
 	ctx := c.Request().Context()
 	n, err := h.repo.Count(ctx)
 	if err != nil {
-		slog.ErrorContext(ctx, "ping: count failed", "err", err)
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		return internalError(c, "ping: count failed", err)
 	}
 
 	if n == 0 {
 		if err := h.repo.Create(ctx); err != nil {
-			slog.ErrorContext(ctx, "ping: create failed", "err", err)
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return internalError(c, "ping: create failed", err)
 		}
 		return c.JSON(http.StatusOK, map[string]any{"action": "created", "count": 1})
 	}
 
 	deleted, err := h.repo.DeleteAll(ctx)
 	if err != nil {
-		slog.ErrorContext(ctx, "ping: delete failed", "err", err)
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+		return internalError(c, "ping: delete failed", err)
 	}
 	return c.JSON(http.StatusOK, map[string]any{"action": "deleted", "count": deleted})
 }

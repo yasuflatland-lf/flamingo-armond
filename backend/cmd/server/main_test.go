@@ -39,7 +39,7 @@ import (
 	"backend/internal/database"
 	"backend/internal/domain"
 	"backend/internal/domain/service"
-	ping "backend/internal/handler/ping"
+	"backend/internal/handler/ping"
 	"backend/internal/repository"
 	"backend/internal/telemetry"
 	"backend/internal/usecase"

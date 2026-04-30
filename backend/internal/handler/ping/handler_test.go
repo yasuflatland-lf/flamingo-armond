@@ -107,9 +107,7 @@ func TestHandler_Delete(t *testing.T) {
 func TestHandler_Unauthorized_NoHeader(t *testing.T) {
 	e := echo.New()
 	h := New(&fakePingRepo{}, testToken)
-	req := httptest.NewRequest(http.MethodPost, "/internal/ping", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
+	c, rec := newTestContext(e, "")
 
 	if err := h.Handle(c); err != nil {
 		t.Fatalf("Handle returned error: %v", err)
@@ -125,10 +123,7 @@ func TestHandler_Unauthorized_NoHeader(t *testing.T) {
 func TestHandler_Unauthorized_WrongToken(t *testing.T) {
 	e := echo.New()
 	h := New(&fakePingRepo{}, testToken)
-	req := httptest.NewRequest(http.MethodPost, "/internal/ping", nil)
-	req.Header.Set("Authorization", "Bearer wrong")
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
+	c, rec := newTestContext(e, "wrong")
 
 	if err := h.Handle(c); err != nil {
 		t.Fatalf("Handle returned error: %v", err)

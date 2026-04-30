@@ -30,7 +30,7 @@ import (
 	"backend/internal/auth"
 	"backend/internal/database"
 	"backend/internal/domain/service"
-	ping "backend/internal/handler/ping"
+	"backend/internal/handler/ping"
 	"backend/internal/loader"
 	"backend/internal/logging"
 	internalmw "backend/internal/middleware"
