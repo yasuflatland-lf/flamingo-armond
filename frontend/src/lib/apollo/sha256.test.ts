@@ -15,7 +15,7 @@ describe("sha256Hex", () => {
   });
 
   it("matches the known vector for a multi-byte UTF-8 string", async () => {
-    expect(await sha256Hex("日本語")).toBe(
+    expect(await sha256Hex("\u65e5\u672c\u8a9e")).toBe(
       "77710aedc74ecfa33685e33a6c7df5cc83004da1bdcef7fb280f5c2b2e97e0a5",
     );
   });
