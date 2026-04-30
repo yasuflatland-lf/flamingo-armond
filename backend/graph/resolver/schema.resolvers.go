@@ -7,10 +7,14 @@ package resolver
 import (
 	"backend/graph/generated"
 	"backend/graph/model"
+	"backend/internal/auth"
 	"backend/internal/gqlerr"
 	"backend/internal/loader"
+	"backend/internal/textdic"
 	"backend/internal/usecase"
 	"context"
+	"encoding/base64"
+	"errors"
 
 	"github.com/rotisserie/eris"
 )
@@ -200,6 +204,53 @@ func (r *queryResolver) CardsByCardgroupConnection(ctx context.Context, cardgrou
 		return nil, err
 	}
 	return toCardConnectionModel(out), nil
+}
+
+// ValidateDictionary is the resolver for the validateDictionary field.
+func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.ValidateDictionaryInput) (*model.DictionaryValidationResult, error) {
+	caller := auth.UserFrom(ctx)
+	if caller == nil || caller.Sub == "" {
+		return nil, gqlerr.Unauthenticated()
+	}
+
+	isAdmin, err := r.AuthSvc.IsAdmin(ctx, caller.Sub)
+	if err != nil {
+		// Propagate client-driven cancellation as-is; map other failures to INTERNAL.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		return nil, gqlerr.Internal(ctx, err)
+	}
+	if !isAdmin {
+		return nil, gqlerr.NewForbidden("forbidden")
+	}
+
+	if input.Payload == "" {
+		return nil, gqlerr.BadUserInput("payload", "payload must not be empty")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(input.Payload)
+	if err != nil {
+		return nil, gqlerr.BadUserInput("payload", "payload must be standard base64-encoded text")
+	}
+
+	words, errs, perr := textdic.Process(string(decoded))
+	if perr != nil {
+		return nil, gqlerr.Internal(ctx, perr)
+	}
+
+	parsed := make([]*model.ParsedWord, 0, len(words))
+	for _, w := range words {
+		parsed = append(parsed, &model.ParsedWord{Front: w.Front, Back: w.Back, Line: w.Line})
+	}
+	validationErrs := make([]*model.DictionaryValidationError, 0, len(errs))
+	for _, e := range errs {
+		validationErrs = append(validationErrs, &model.DictionaryValidationError{Line: e.Line, Message: e.Message})
+	}
+	return &model.DictionaryValidationResult{
+		Valid:       len(errs) == 0 && len(words) > 0,
+		ParsedWords: parsed,
+		Errors:      validationErrs,
+	}, nil
 }
 
 // Card returns generated.CardResolver implementation.

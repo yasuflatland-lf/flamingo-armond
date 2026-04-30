@@ -253,3 +253,45 @@ extend type Mutation {
   """Apply one swipe rating, persist the SwipeRecord event, and return the next due cards."""
   handleSwipe(input: HandleSwipeInput!): SwipeResponse!
 }
+
+"""Base64-encoded dictionary text payload submitted for validation."""
+input ValidateDictionaryInput {
+  """Base64-encoded text payload (standard alphabet, with padding). One front/back pair per line."""
+  payload: String!
+}
+
+"""Single parsed dictionary entry."""
+type ParsedWord {
+  """Front (term) text."""
+  front: String!
+  """Back (definition) text."""
+  back: String!
+  """1-based line number in the decoded payload where this entry was parsed."""
+  line: Int!
+}
+
+"""Per-line validation error produced while parsing a dictionary payload."""
+type DictionaryValidationError {
+  """1-based line number where the error was detected, or 0 when the error applies to the payload as a whole (e.g. oversized or empty payload)."""
+  line: Int!
+  """Human-readable, English error message."""
+  message: String!
+}
+
+"""Result of a dictionary validation request."""
+type DictionaryValidationResult {
+  """True iff the payload parsed without any errors and produced at least one word."""
+  valid: Boolean!
+  """Parsed words preserving source order."""
+  parsedWords: [ParsedWord!]!
+  """Structured per-line errors, empty when valid is true."""
+  errors: [DictionaryValidationError!]!
+}
+
+extend type Query {
+  """
+  Validate a base64-encoded dictionary payload without persisting any cards.
+  Admin role required; non-admin callers receive a FORBIDDEN error.
+  """
+  validateDictionary(input: ValidateDictionaryInput!): DictionaryValidationResult!
+}

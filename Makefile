@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen test clean clean-frontend clean-backend doctor db-reset setup-prod setup-prod-preflight setup-prod-postapply teardown-prod teardown-prod-preflight
+.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen codegen-yacc test clean clean-frontend clean-backend doctor db-reset setup-prod setup-prod-preflight setup-prod-postapply teardown-prod teardown-prod-preflight
 
 # Most env / Supabase targets dispatch to the playbook below; tags select the subset.
 ANSIBLE := ansible-playbook -i playbooks/inventory.local playbooks/setup.yml
@@ -61,6 +61,11 @@ dev-frontend: ## Run the frontend Next.js dev server
 codegen: ## Run gqlgen (backend) and graphql-codegen (frontend)
 	cd backend && go tool gqlgen generate
 	pnpm --filter frontend codegen
+
+.PHONY: codegen-yacc
+codegen-yacc: ## Regenerate the goyacc-driven dictionary parser
+	cd backend && go tool goyacc -o internal/textdic/parser.go -p yy internal/textdic/grammar.y
+	rm -f backend/y.output y.output
 
 test: ## Run backend go test and frontend vitest
 	cd backend && go test -race -covermode=atomic ./...
