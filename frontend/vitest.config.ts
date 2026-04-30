@@ -12,7 +12,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.{ts,tsx}"],
+    include: ["src/**/*.test.{ts,tsx}", "__tests__/**/*.test.{ts,tsx}"],
     // Expose vitest globals (describe, it, afterEach, etc.) so that
     // @testing-library/react can hook into afterEach for automatic DOM cleanup.
     globals: true,
