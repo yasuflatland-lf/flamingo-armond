@@ -132,11 +132,61 @@ type UpdateCardPayload {
   card: Card!
 }
 
+"""Sort order for paginated queries."""
+enum SortOrder {
+  ASC
+  DESC
+}
+
+"""Field to order Cards by in paginated queries."""
+enum CardOrderBy {
+  ID
+  CREATED_AT
+  UPDATED_AT
+  DUE
+}
+
+"""Relay PageInfo describing whether more pages exist on either side and the boundary cursors."""
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: ID
+  endCursor: ID
+}
+
+"""One element in a CardConnection."""
+type CardEdge {
+  """Opaque cursor for this position. Currently equal to node.id."""
+  cursor: ID!
+  node: Card!
+}
+
+"""Paginated list of Cards (Relay Connection)."""
+type CardConnection {
+  edges: [CardEdge!]!
+  pageInfo: PageInfo!
+  """Total count of cards in the cardgroup, regardless of page window."""
+  totalCount: Int!
+}
+
 extend type Query {
   """Single card by ID. Returns UNAUTHENTICATED for non-owners (existence is not leaked)."""
   card(id: ID!): Card
   """All cards in a cardgroup owned by the authenticated caller."""
-  cardsByCardgroup(cardgroupId: ID!): [Card!]!
+  cardsByCardgroup(cardgroupId: ID!): [Card!]! @deprecated(reason: "Use cardsByCardgroupConnection")
+  """
+  Paginated cards in a cardgroup. Forward pagination uses (first, after); backward uses (last, before).
+  Cursor is the card UUID. Default page size is 20; max is 100.
+  """
+  cardsByCardgroupConnection(
+    cardgroupId: ID!,
+    first: Int,
+    after: ID,
+    last: Int,
+    before: ID,
+    orderBy: CardOrderBy = ID,
+    orderDirection: SortOrder = ASC
+  ): CardConnection!
 }
 
 extend type Mutation {
