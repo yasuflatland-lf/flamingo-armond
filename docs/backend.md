@@ -474,6 +474,29 @@ The legacy guard is preserved: fewer than 20 reviews always returns `ModeDefault
 
 `backend/cmd/server/main_test.go` contains `TestGraphQL_Me_Anonymous`, `TestGraphQL_Me_Authenticated`, and `TestGraphQL_UpdateProfile_Authenticated`. These tests use the testcontainer Postgres, a local JWKS HTTP server (`jwtFixture`), and ECDSA-signed JWTs. Future GraphQL integration tests should reuse the same `jwtFixture` + `startServer` helpers rather than re-inventing the JWKS mock.
 
+### Dictionary parser (`textdic`)
+
+`backend/internal/textdic/` parses plain-text dictionary payloads (one front-word / Japanese-definition pair per line) into structured `ParsedWord` records and per-line `ValidationError` records. The `validateDictionary` query exposes the parser as a dry-run validator without persisting any cards. Public surface is intentionally narrow — `Process(input string) (words, errs, err)` plus the two record types — so the goyacc-driven internals can be replaced without churning callers.
+
+**Grammar and lexer.** `grammar.y` (input) → `parser.go` (committed goyacc output, never hand-edited). The hand-written `lexer.go` distinguishes ASCII front-word runs from Japanese-script definition runs, treats `\n` and `\r\n` as `NEWLINE` tokens, and recognises the fullwidth ideographic space `U+3000` (`const ideographicSpace rune = 0x3000`) alongside `unicode.IsSpace`. The U+3000 check is a single integer comparison — not `regexp.MustCompile` — because the predicate runs once per rune and a 1 MiB payload exercises it tens of millions of times.
+
+**Line-number tracking.** `%union { line int }` in `grammar.y` carries the source line through to grammar actions: the lexer sets `lval.line = l.lineNo` when emitting `WORD` / `DEFINITION`, and actions read `yyDollar[1].line`. To attribute parser-stage syntax errors to the right line, `lexer` also keeps a `tokenLine` field that records the line the most recently emitted token began on; `yyParserImpl.Error` reads it back via the active lexer (`currentParser.lexer.(*lexer).tokenLine`). Without `tokenLine`, errors raised after a `NEWLINE` would point at the line *after* the offending entry.
+
+**No silent failures in the lexer.** `Lex` and `lexRun` return `0` (EOF) on `io.EOF`, but for any other `ReadRune` error they call `l.Error("read: " + err.Error())` so the failure surfaces as a structured `ValidationError`. Invalid UTF-8 or transient I/O on the underlying `strings.Reader` therefore produces a visible parse error — never an empty-but-successful result. Apply this pattern to any new lexer added under `internal/`.
+
+**Resolver guard order (`validateDictionary`).** The query is admin-only, and the guards are ordered to deny information first:
+
+1. `auth.UserFrom(ctx)` — `nil` ⇒ `UNAUTHENTICATED`.
+2. `r.AuthSvc.IsAdmin(ctx, caller.Sub)` — error path forwards `context.Canceled` / `context.DeadlineExceeded` as-is and maps everything else to `gqlerr.Internal`. See [Context cancellation propagation](#context-cancellation-propagation).
+3. `!isAdmin` ⇒ `gqlerr.NewForbidden("forbidden")`.
+4. Empty payload ⇒ `BAD_USER_INPUT` on `payload`.
+5. `base64.StdEncoding.DecodeString` ⇒ `BAD_USER_INPUT` on `payload`.
+6. `textdic.Process` ⇒ `gqlerr.Internal` only on the recovered-panic return; per-line `ValidationError`s are returned in the response payload, not as GraphQL errors.
+
+The admin check sits **before** base64 validation deliberately: a non-admin caller must not be able to use the resolver as an oracle to probe whether a payload is well-formed. The fixture `TestValidateDictionary_NonAdminBadBase64` pins this ordering.
+
+**`Line == 0` semantics.** A `DictionaryValidationError` with `line: 0` is a payload-wide error (oversized payload, recovered panic) rather than a 1-based line number. The schema documents this explicitly on `DictionaryValidationError.line`; keep the schema description, the `service.go` doc comment, and any new producer of `Line: 0` aligned. Do not introduce a sentinel like `-1` in parallel.
+
 ## Backend hardening
 
 Five operational guardrails surround the `/query` endpoint: DataLoader
@@ -648,6 +671,43 @@ must be surfaced as a form-level `BAD_USER_INPUT` error on the client.
 ### Empty-patch optimization in repositories
 
 A repository `Update` that receives a no-op patch (all fields nil or unchanged) should return the current row without issuing an `UPDATE`. This avoids unnecessarily touching `updated_at` and helps idempotent clients. Guard by checking whether the patch struct carries any non-nil field before building the GORM `Updates` call.
+
+### `defer recover()` must re-panic `runtime.Error`
+
+A blanket `recover()` in a `defer` collapses two unrelated failure modes into one user-facing parse error: a real bug like a nil-deref or index-out-of-range (`runtime.Error`) and a legitimate "we asked the parser to give up on this input" panic raised by hand. The runtime.Error case is a server bug and must surface in tests, CI, and crash reports — not get rewritten as `ValidationError`. The textdic parser uses this guard:
+
+```go
+defer func() {
+    if r := recover(); r != nil {
+        if rt, ok := r.(runtime.Error); ok {
+            panic(rt)
+        }
+        err = fmt.Errorf("textdic: parser panic: %v\n%s", r, debug.Stack())
+    }
+}()
+```
+
+Apply the same shape to any new `recover` site that wraps third-party generated code (goyacc parsers, regex engines, text-processing libraries). The `debug.Stack()` capture is mandatory: by the time the recovered error is logged, the original goroutine stack is gone.
+
+### Context cancellation propagation
+
+When a resolver calls a downstream service (DB, JWKS, role lookup) and the caller's context is cancelled, the returned error wraps `context.Canceled` or `context.DeadlineExceeded`. **Forward those errors as-is** rather than wrapping them with `gqlerr.Internal` — wrapping them logs an ERROR line and emits an `INTERNAL` envelope for what is actually a client-driven cancellation (browser closed, navigation away, deadline hit). The pattern in `validateDictionary`:
+
+```go
+isAdmin, err := r.AuthSvc.IsAdmin(ctx, caller.Sub)
+if err != nil {
+    if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+        return nil, err
+    }
+    return nil, gqlerr.Internal(ctx, err)
+}
+```
+
+Applies to every resolver that performs a blocking external call. Without this guard, `slog.ErrorContext` and any downstream alerting (Sentry, dashboards) get polluted by client cancellations that are not server bugs.
+
+### Legacy ports: revisit boundaries before re-translating
+
+When porting an older module from a previous incarnation of the project, do not translate it line-for-line. Earlier abstractions almost always carry boundaries that were drawn for a system you no longer have — the textdic port temporarily kept ~200 lines of dead scaffolding (`StructuredError` interface, a token-translation table, a parser wrapper with its own mutex, a `wrappedParser` interface) until a code-simplifier sweep deleted them and the LoC dropped 32%. The cheaper path is to reread the call sites first, decide which boundaries the new code actually needs, and only port those. Surface area stripped out at port time is surface area no future reviewer has to argue about.
 
 ### Echo v5 handler signature uses a pointer receiver
 

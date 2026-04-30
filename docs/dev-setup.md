@@ -33,22 +33,26 @@ which pnpm            # ~/.local/share/mise/shims/pnpm
 | Run backend (alone) | `make dev-backend` or `cd backend && go run ./cmd/server` |
 | Run frontend (alone) | `make dev-frontend` |
 | Regenerate GraphQL code | `make codegen` |
+| Regenerate dictionary parser (goyacc) | `make codegen-yacc` |
 | Run all tests | `make test` |
 
 `make dev` launches `preflight`, backend, and frontend together inside an `mprocs` TUI. The `preflight` panel (top of the proc list) reports whether Supabase is reachable; if all three panels go red, check `preflight` first for the cause. Arrow keys switch panels, `r` restarts one, `x` stops one. Supabase must already be running — `make dev` does not start it; run `make supabase-start` first (or `make setup` for full bring-up). If you prefer separate terminals, `make dev-backend` / `make dev-frontend` still work as before.
 
 ## Policy on generated files
 
-Both codegen outputs are **gitignored** — neither is committed:
+The two GraphQL codegen outputs are **gitignored**; the goyacc parser output is **committed**. The split follows determinism, not symmetry:
 
-| Tool | Input | Output (gitignored) | Regeneration command |
-|---|---|---|---|
-| gqlgen | `schema/*.graphql`, `backend/gqlgen.yml`, `backend/go.mod` (`tool` directive) | `backend/graph/generated/`, `backend/graph/model/models_gen.go` | `cd backend && go tool gqlgen generate` |
-| graphql-codegen | `schema/*.graphql`, `frontend/codegen.ts`, `frontend/src/**/*.{ts,tsx}` | `frontend/src/generated/` | `pnpm --filter frontend codegen` |
+| Tool | Input | Output | Tracked? | Regeneration command |
+|---|---|---|---|---|
+| gqlgen | `schema/*.graphql`, `backend/gqlgen.yml`, `backend/go.mod` (`tool` directive) | `backend/graph/generated/`, `backend/graph/model/models_gen.go` | gitignored | `cd backend && go tool gqlgen generate` |
+| graphql-codegen | `schema/*.graphql`, `frontend/codegen.ts`, `frontend/src/**/*.{ts,tsx}` | `frontend/src/generated/` | gitignored | `pnpm --filter frontend codegen` |
+| goyacc | `backend/internal/textdic/grammar.y` | `backend/internal/textdic/parser.go` | **committed** | `make codegen-yacc` |
 
-Determinism relies on pinned tool versions (in `go.mod` and `package.json`) plus the committed schema. CI runs the backend regeneration before `go vet` and `go test` (`.github/workflows/backend.yml`). Frontend CI runs `pnpm --filter frontend codegen` before Biome check / typecheck / build (`.github/workflows/frontend.yml`), mirroring the backend contract. No `git diff --exit-code` step is needed because the outputs are not tracked.
+For gqlgen / graphql-codegen, determinism relies on pinned tool versions (in `go.mod` and `package.json`) plus the committed schema. CI runs the backend regeneration before `go vet` and `go test` (`.github/workflows/backend.yml`). Frontend CI runs `pnpm --filter frontend codegen` before Biome check / typecheck / build (`.github/workflows/frontend.yml`), mirroring the backend contract. No `git diff --exit-code` step is needed because the outputs are not tracked.
 
 Rationale: keeps PR diffs to hand-written code only and removes the merge-conflict churn that committing thousand-line generated files causes. Applied symmetrically to both stacks for consistency.
+
+`goyacc` (added via `go get -tool golang.org/x/tools/cmd/goyacc`, which appends to the `tool ( ... )` block in `go.mod`) is the exception: the generated `parser.go` is committed because the goyacc emitter is not byte-for-byte stable across Go and tool versions, and the test suite — not CI regeneration — is the contract that catches grammar drift. Edit `grammar.y` only; never hand-edit `parser.go`. After regenerating with `make codegen-yacc`, commit both files together.
 
 > **Note**: `backend/graph/resolver/*.resolvers.go` are resolver stubs, not generated output. They are **committed** and CI verifies they are up-to-date via `git diff --exit-code -- graph/resolver/*.resolvers.go` in `backend.yml`. This is orthogonal to the "generated files are ignored" policy above.
 
