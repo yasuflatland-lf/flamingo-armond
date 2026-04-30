@@ -14,6 +14,7 @@ import (
 	"backend/internal/usecase"
 	"context"
 	"encoding/base64"
+	"errors"
 
 	"github.com/rotisserie/eris"
 )
@@ -214,10 +215,17 @@ func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.Vali
 
 	isAdmin, err := r.AuthSvc.IsAdmin(ctx, caller.Sub)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err // propagate raw — client-driven cancellation
+		}
 		return nil, gqlerr.Internal(ctx, err)
 	}
 	if !isAdmin {
 		return nil, gqlerr.NewForbidden("forbidden")
+	}
+
+	if input.Payload == "" {
+		return nil, gqlerr.BadUserInput("payload", "payload must not be empty")
 	}
 
 	decoded, err := base64.StdEncoding.DecodeString(input.Payload)

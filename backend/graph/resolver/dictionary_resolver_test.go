@@ -3,6 +3,7 @@ package resolver_test
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"testing"
 
 	"github.com/99designs/gqlgen/graphql/handler"
@@ -121,34 +122,33 @@ func TestValidateDictionary_Unauthenticated(t *testing.T) {
 	}
 }
 
-// TestValidateDictionary_EmptyPayload verifies that an empty decoded payload
-// surfaces valid=false and at least one error containing "empty payload".
+// TestValidateDictionary_EmptyPayload verifies that an empty payload string
+// surfaces a BAD_USER_INPUT error before any decoding or processing occurs.
 func TestValidateDictionary_EmptyPayload(t *testing.T) {
 	t.Parallel()
 
 	srv := newDictSrv(&mockUserRoleRepository{isAdmin: true})
-	// base64-encoding of an empty string is the empty string itself.
-	payload := base64.StdEncoding.EncodeToString([]byte(""))
+	// Send the empty string directly as the payload value (not base64 of "").
+	resp := gqlRequest(t, srv, authedCtx("u1"), validateDictionaryQuery(""))
+
+	code := errCode(t, resp)
+	if code != string(gqlerr.CodeBadUserInput) {
+		t.Fatalf("expected %s, got %q", gqlerr.CodeBadUserInput, code)
+	}
+}
+
+// TestValidateDictionary_IsAdminError verifies that a database error returned
+// by IsAdmin surfaces an INTERNAL error rather than leaking implementation
+// details to the caller.
+func TestValidateDictionary_IsAdminError(t *testing.T) {
+	t.Parallel()
+
+	srv := newDictSrv(&mockUserRoleRepository{err: errors.New("db down")})
+	payload := base64.StdEncoding.EncodeToString([]byte("apple"))
 	resp := gqlRequest(t, srv, authedCtx("u1"), validateDictionaryQuery(payload))
 
-	if _, hasErrs := resp["errors"]; hasErrs {
-		t.Fatalf("unexpected GraphQL errors: %v", resp["errors"])
-	}
-	data, _ := resp["data"].(map[string]any)
-	result, _ := data["validateDictionary"].(map[string]any)
-	if result == nil {
-		t.Fatalf("expected data.validateDictionary, got nil; response: %v", resp)
-	}
-	if result["valid"] != false {
-		t.Fatalf("expected valid=false, got %v", result["valid"])
-	}
-	valErrs, _ := result["errors"].([]any)
-	if len(valErrs) < 1 {
-		t.Fatalf("expected at least 1 validation error, got %d", len(valErrs))
-	}
-	firstErr, _ := valErrs[0].(map[string]any)
-	msg, _ := firstErr["message"].(string)
-	if msg != "empty payload" {
-		t.Fatalf("expected error message %q, got %q", "empty payload", msg)
+	code := errCode(t, resp)
+	if code != string(gqlerr.CodeInternal) {
+		t.Fatalf("expected %s, got %q", gqlerr.CodeInternal, code)
 	}
 }
