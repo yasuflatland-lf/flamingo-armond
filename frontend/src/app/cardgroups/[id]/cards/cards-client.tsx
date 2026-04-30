@@ -26,8 +26,7 @@ import {
   type CardsByCardgroupConnectionQuery,
 } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
-
-const PAGE_SIZE = 20;
+import { CARDS_PAGE_SIZE } from "./queries";
 
 type Connection = CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"];
 type Edge = Connection["edges"][number];
@@ -57,7 +56,7 @@ export function CardsClient({
     networkStatus,
     error: queryError,
   } = useQuery(CardsByCardgroupConnectionDocument, {
-    variables: { cardgroupId, first: PAGE_SIZE },
+    variables: { cardgroupId, first: CARDS_PAGE_SIZE },
     fetchPolicy: "cache-first",
     notifyOnNetworkStatusChange: true,
   });
@@ -81,7 +80,7 @@ export function CardsClient({
     fetchMore({
       variables: {
         cardgroupId,
-        first: PAGE_SIZE,
+        first: CARDS_PAGE_SIZE,
         after: pageInfo.endCursor,
       },
       updateQuery: (prev, { fetchMoreResult }) => {
@@ -151,7 +150,7 @@ export function CardsClient({
       // Use readQuery/writeQuery so cold caches (no existing connection entry) get
       // a freshly-written connection — cache.modify silently no-ops when the field
       // is missing, which would lose the new card on first load.
-      const variables = { cardgroupId, first: PAGE_SIZE };
+      const variables = { cardgroupId, first: CARDS_PAGE_SIZE };
       const existing = cache.readQuery({
         query: CardsByCardgroupConnectionDocument,
         variables,
@@ -205,7 +204,7 @@ export function CardsClient({
       // cache untouched. When the connection exists, drop any matching edge and
       // decrement totalCount unconditionally (the deleted card may live on a page
       // that was never fetched into edges).
-      const variables = { cardgroupId, first: PAGE_SIZE };
+      const variables = { cardgroupId, first: CARDS_PAGE_SIZE };
       const existing = cache.readQuery({
         query: CardsByCardgroupConnectionDocument,
         variables,

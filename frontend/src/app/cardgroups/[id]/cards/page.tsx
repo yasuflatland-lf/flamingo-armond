@@ -9,7 +9,7 @@ import { gqlFetch } from "@/lib/apollo/server";
 import { redirectIfUnauthenticated } from "@/lib/apollo/server-redirect";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { CardsClient } from "./cards-client";
-import { CardsByCardgroupConnectionQuery } from "./queries";
+import { CARDS_PAGE_SIZE, CardsByCardgroupConnectionQuery } from "./queries";
 
 export default async function CardsPage({ params }: { params: Promise<{ id: string }> }) {
   const supabase = await createSupabaseServerClient();
@@ -29,7 +29,7 @@ export default async function CardsPage({ params }: { params: Promise<{ id: stri
     [cardgroupData, connectionData] = await Promise.all([
       gqlFetch(CardgroupQuery, { variables: { id }, revalidate: 0 }),
       gqlFetch(CardsByCardgroupConnectionQuery, {
-        variables: { cardgroupId: id, first: 20 },
+        variables: { cardgroupId: id, first: CARDS_PAGE_SIZE },
         revalidate: 0,
       }),
     ]);
