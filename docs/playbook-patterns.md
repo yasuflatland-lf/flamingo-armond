@@ -43,6 +43,70 @@ When a phase auto-generates a secret (e.g. `openssl rand -hex 32` for `PING_TOKE
 
 The guard checks both `is not defined` (first run, key absent from state file) and `length == 0` (key present but empty, e.g. from a corrupted state file). Without this guard, every `make setup-prod` re-run would rotate `PING_TOKEN`, requiring a simultaneous update of the GitHub secret, the Render env var, and any other consumer — defeating the purpose of automation.
 
+## Recovering from a dirty migration
+
+### Symptom
+
+The application fails to boot with a log line similar to:
+
+```
+Dirty database version 20260430080000. Fix and force version.
+```
+
+The Render deploy status stalls at `update_failed`, and re-running `make setup-prod-postapply` returns the same error on every subsequent attempt.
+
+### Why it happens
+
+`golang-migrate` sets `dirty = true` in `public.schema_migrations` before it begins applying a migration file. If the migration fails mid-way, the dirty flag remains set even if the underlying statements were wrapped in a transaction that rolled back. The pgx/v5 driver does not auto-wrap individual migration files in a transaction, so a single migration file that mixes DDL (`CREATE TABLE`) and privilege-sensitive `ALTER TABLE` statements (e.g. `ENABLE ROW LEVEL SECURITY`) can partially succeed — some statements commit, others fail — leaving the schema in an inconsistent state with `dirty = true`.
+
+Subsequent deploy attempts only report the dirty error; the original SQL error that caused the partial failure appears only in the first failing deploy's log.
+
+### Diagnose
+
+Connect to the database and run:
+
+```sql
+SELECT version, dirty FROM public.schema_migrations;
+```
+
+If `dirty = true`, locate the first failing deploy's log (in the Render dashboard or equivalent). Retries only show the dirty guard error; the root-cause SQL error is in the first log entry.
+
+### Recover: forward-fix (preferred)
+
+Apply the missing statements manually, then clear the dirty flag:
+
+1. Read the first failing deploy log to find the exact SQL error.
+2. Apply the missing DDL via the database SQL editor (e.g. the Supabase SQL editor or `psql`).
+3. Clear the dirty flag:
+
+   ```sql
+   UPDATE public.schema_migrations SET dirty = false WHERE version = <N>;
+   ```
+
+4. Re-run `make setup-prod-postapply`.
+
+### Recover: backward-fix (last resort)
+
+Use this only when the forward-fix is not safe (e.g. the partial migration left data in an inconsistent state that cannot be resolved without a rollback):
+
+1. Manually undo any partial schema changes.
+2. Roll the version pointer back and clear the dirty flag:
+
+   ```sql
+   UPDATE public.schema_migrations SET dirty = false, version = <previous>;
+   ```
+
+   WARNING: this is rare and risky. It tells golang-migrate that the previous migration was the last clean state, so the next deploy will attempt to re-apply the failed migration from scratch.
+
+3. Re-deploy.
+
+### Prevention
+
+Two structural changes reduce the blast radius of future migration failures:
+
+- RLS and other privilege-sensitive `ALTER TABLE` statements are split into their own migration file, isolated from the DDL that creates the tables. A failure in one file does not affect the other.
+- Each migration file is wrapped in an explicit `BEGIN; ... COMMIT;` block so that all statements in the file succeed or fail atomically.
+
 ## Cross-references
 
 The following operational expressions of the above patterns are documented in `docs/deployment.md`:
