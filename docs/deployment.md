@@ -272,6 +272,8 @@ For an end-to-end check, sign in via Google on the Vercel domain and load `/prof
 
 The readiness-ping workflow keeps Render and Vercel warm and ensures Supabase detects continuous activity (required for free-tier retention). A scheduled cron job runs every 15 minutes to ping the backend, which issues a write to Supabase to trigger activity detection — reads alone do not prevent free-tier inactivity timeouts.
 
+**Why writes, not reads:** Supabase's activity tracking counts only write operations (INSERT/UPDATE/DELETE) toward the free-tier "last active" timestamp. A read-only `SELECT` is invisible to this metric. The 0↔1 row oscillation design guarantees that every ping call performs either an INSERT or a DELETE, keeping the "last active" timestamp current without unbounded table growth.
+
 ### Endpoint
 
 ```

@@ -91,6 +91,18 @@ Two safe forms:
 
 Do **not** mix the two by keeping the full `backend/...` path when `working-directory` is already `backend/`.
 
+## `curl --retry` does not retry 5xx by default — add `--retry-all-errors`
+
+`curl --retry N` retries only on connection-level failures (timeouts, refused connections). It does **not** retry HTTP 5xx responses by default. A workflow step that uses `curl -fsS --retry 3` will appear to succeed (exit 0) even if the server returns 503 or 504 on every attempt, because `-f` causes curl to exit non-zero only on 4xx/5xx **after** exhausting all retries — and retries only fire when the failure is at the transport layer, not the HTTP layer.
+
+The fix is `--retry-all-errors`, which instructs curl to treat any failure, including HTTP error codes, as a retry trigger:
+
+```bash
+curl -fsS --retry 3 --retry-delay 5 --retry-all-errors --max-time 60 "$URL"
+```
+
+This is the canonical form used in `.github/workflows/readiness-ping.yml`. Apply it to any future workflow step that must detect transient 5xx responses rather than silently treating them as success.
+
 ## Frontend workflow
 
 `.github/workflows/frontend.yml` mirrors the backend workflow's structure — per-service scope, major-tag pinning, per-ref concurrency — but has a different install/verify pipeline because the frontend is a pnpm workspace rooted at the repo root.
@@ -103,7 +115,7 @@ For the same reason, the frontend workflow's `paths:` filter includes `pnpm-lock
 
 ### `--if-present` on the test step (revisit when Vitest lands)
 
-Per "pnpm workspace filter exits 0 for missing scripts" above, a missing `test` script in `frontend/package.json` would silently pass with plain `pnpm --filter frontend test`. The current workflow runs `pnpm --filter frontend --if-present test` specifically so the step becomes a documented no-op today and **automatically activates** once PR 5 adds the `test` script plus a Vitest config — no workflow edit needed at that point. When Vitest lands, do not drop the `--if-present` flag: it stays as a guard against future script renames.
+Per "pnpm workspace filter exits 0 for missing scripts" above, a missing `test` script in `frontend/package.json` would silently pass with plain `pnpm --filter frontend test`. The current workflow runs `pnpm --filter frontend --if-present test` specifically so the step becomes a documented no-op today and **automatically activates** once the `test` script plus a Vitest config are added — no workflow edit needed at that point. When Vitest lands, do not drop the `--if-present` flag: it stays as a guard against future script renames.
 
 ### Node/pnpm provisioning via mise
 

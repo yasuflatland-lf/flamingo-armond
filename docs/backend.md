@@ -59,8 +59,9 @@ These values target a public API on Render. Revisit if the threat model or deplo
 | `DB_MIN_CONNS` | no | `0` | Minimum pool connections kept alive |
 | `DB_MAX_CONN_LIFETIME` | no | `30m` | Maximum lifetime of a pooled connection |
 | `DB_MAX_CONN_IDLE_TIME` | no | `5m` | Maximum idle time before a connection is evicted |
+| `PING_TOKEN` | yes | — | Bearer token for `POST /internal/ping`. Server refuses to start if empty. |
 
-`PORT`, `SHUTDOWN_TIMEOUT`, and `SWIPE_NEXT_BATCH_SIZE` are optional with safe defaults. The three `SUPABASE_JWT_*` variables and `SUPABASE_DB_URL` are all required — the server refuses to start if any is missing (fail-fast via `ConfigFromEnv`).
+`PORT`, `SHUTDOWN_TIMEOUT`, and `SWIPE_NEXT_BATCH_SIZE` are optional with safe defaults. The three `SUPABASE_JWT_*` variables, `SUPABASE_DB_URL`, and `PING_TOKEN` are all required — the server refuses to start if any is missing (fail-fast via `ConfigFromEnv` or inline check in `run()`).
 
 ## Testing patterns
 
@@ -259,6 +260,7 @@ database.Migrate(url)
 → repository.NewUserRepository(db.GORM)
 → repository.NewRoleRepository(db.GORM)
 → repository.NewCardgroupRepository(db.GORM)
+→ repository.NewPingRecordRepository(db.GORM)
 → server start
 ```
 
@@ -585,6 +587,30 @@ if len(ids) == 0 {
 ```
 
 This matters most in DataLoader batch functions, where an empty key slice is a normal edge case.
+
+### GORM v1 string-typed primary key with DB-generated UUID requires `default:` tag
+
+GORM's `BeforeCreate` hook auto-generates a UUID when a primary key field is a `string` type and is zero-valued — but only when the field carries `gorm:"default:..."` in its tag. Without the tag, GORM leaves the field empty and the INSERT fails.
+
+Peer models (`gormUser`, `gormCard`) avoid this by supplying the UUID in the application layer before calling `Create`. `gormPingRecord` is different: `Create` inserts a row without any caller-supplied ID, so the DB must generate it via `gen_random_uuid()`. The tag `gorm:"default:gen_random_uuid()"` is therefore load-bearing even though `AutoMigrate` is not used and the column default is already defined in the migration SQL.
+
+### GORM rejects unconditional `Delete` — use `Where("1 = 1")` to opt out
+
+GORM v2+ refuses a `Delete` call that has no `WHERE` clause as a safety net against accidental full-table deletes. It returns an `ErrMissingWhereClause` error.
+
+The deliberate opt-out for legitimate full-table deletes is:
+
+```go
+result := db.Where("1 = 1").Delete(&gormPingRecord{})
+```
+
+This makes the intent explicit and satisfies GORM's guard without suppressing the error check.
+
+### `subtle.ConstantTimeCompare` leaks token length — pair with a rate limiter
+
+`crypto/subtle.ConstantTimeCompare` returns early (0) when the two byte slices differ in length, leaking length via timing. For equal-length inputs the comparison runs in constant time. The practical impact for bearer-token checking is small when the token length is public knowledge (e.g. a fixed 64-hex-char token), but the leak becomes meaningful for variable-length or secret-length tokens without an external mitigation.
+
+The `/internal/ping` handler pairs `ConstantTimeCompare` with a per-IP rate limiter (1 req/s, burst 5). The rate limiter makes the length-oracle non-exploitable in practice: an attacker cannot iterate quickly enough to extract useful information before being throttled. Any future endpoint that adopts bearer-token comparison **without** a rate limiter must also add one — or switch to a constant-time scheme that does not branch on length.
 
 ### slog context enrichment must precede the log call that announces the enrichment
 
