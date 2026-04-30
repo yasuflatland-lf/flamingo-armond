@@ -112,11 +112,11 @@ cache.evict({ id: cache.identify({ __typename: "Cardgroup", id: cardgroupId }) }
 cache.gc();
 ```
 
-For Connection types (`*Connection` / `*Edge`), use `readQuery + writeQuery` (not `cache.modify`) and align the variables shape between SSR seed and client. See `docs/pagination.md` for Connection create, delete, and update cache patterns.
+For Connection types (`*Connection` / `*Edge`), use `readQuery + writeQuery` (not `cache.modify`) and align the variables shape between SSR seed and client. See `.claude/rules/pagination.md` for Connection create, delete, and update cache patterns.
 
 ### Pagination patterns
 
-The reference implementation is `frontend/src/app/cardgroups/[id]/cards/cards-client.tsx` (`useQuery` + `fetchMore` with an IntersectionObserver sentinel). See `docs/pagination.md` for IntersectionObserver in-flight guards, `fetchMoreError` handling, `NetworkStatus.fetchMore` conventions, and MockedProvider warn-spy patterns.
+The reference implementation is `frontend/src/app/cardgroups/[id]/cards/cards-client.tsx` (`useQuery` + `fetchMore` with an IntersectionObserver sentinel). See `.claude/rules/pagination.md` for IntersectionObserver in-flight guards, `fetchMoreError` handling, `NetworkStatus.fetchMore` conventions, and MockedProvider warn-spy patterns.
 
 ### Bulk delete cache update pattern
 

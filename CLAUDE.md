@@ -25,8 +25,9 @@ go run ./cmd/server   # PORT defaults to 1323
 This file is **L1**: keep it ≤35 lines, top-level orientation only. Overflow goes into:
 
 - **L2 — `docs/`** — architecture & topic docs (source of truth for technical detail).
-  - `backend.md`, `frontend.md`, `ci.md`, `dev-setup.md`, `deployment.md`, `playbook-patterns.md`, `pagination.md`.
+  - `backend.md`, `frontend.md`, `ci.md`, `dev-setup.md`, `deployment.md`, `playbook-patterns.md`.
 - **L3 — `.claude/rules/`** — cross-cutting rules and conventions.
   - `language-policy.md` — English-only rule, no PR-order references, verification commands.
+  - `pagination.md` — Relay Connection conventions for cards-by-cardgroup query and Apollo cache patterns.
 
 Prefer updating an L2 or L3 doc over expanding this file. When L1 grows past 35 lines, move the newest section down a tier and leave a one-line pointer here.
