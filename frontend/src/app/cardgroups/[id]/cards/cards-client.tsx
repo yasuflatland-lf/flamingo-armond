@@ -255,7 +255,13 @@ export function CardsClient({
       update(cache, { data }, { variables }) {
         const ids = variables?.ids as string[] | undefined;
         if (!ids) return;
-        const deletedCount = data?.deleteCards ?? 0;
+        // Guard: only proceed when the backend returned a real response.
+        // If data is undefined (e.g. network failure) or deleteCards is null,
+        // return early — do NOT evict, do NOT writeQuery, do NOT gc.
+        // This mirrors the single-delete callback which returns early on
+        // !deleteData?.deleteCard.
+        if (data?.deleteCards == null) return;
+        const deletedCount = data.deleteCards;
 
         // Backend reports actual rows deleted; some ids may have been skipped (foreign-owned).
         const variables2 = { cardgroupId, first: CARDS_PAGE_SIZE };
@@ -284,11 +290,15 @@ export function CardsClient({
           });
         }
 
-        // Evict each id from the cache even when deletedCount is 0 (cache may be stale).
-        for (const id of ids) {
-          cache.evict({ id: cache.identify({ __typename: "Card", id }) });
+        // Only evict normalized entries when the backend confirmed at least one
+        // row was actually deleted — there is no point evicting when deletedCount
+        // is 0 (the user's selection may contain ids that never existed locally).
+        if (deletedCount > 0) {
+          for (const id of ids) {
+            cache.evict({ id: cache.identify({ __typename: "Card", id }) });
+          }
+          cache.gc();
         }
-        cache.gc();
       },
     },
   );

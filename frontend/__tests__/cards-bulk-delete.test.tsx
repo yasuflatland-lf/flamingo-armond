@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { InMemoryCache } from "@apollo/client";
+import { gql, InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -209,6 +209,137 @@ describe("CardsClient — bulk delete", () => {
 
     // Bulk action bar disappears; no mutation was fired.
     expect(screen.queryByTestId("cards-bulk-action-bar")).not.toBeInTheDocument();
+  });
+
+  // T7: backend returns deleteCards === 0 → no-op; cards and count are unchanged.
+  it("leaves cards and count unchanged when backend returns deleteCards 0", async () => {
+    const user = userEvent.setup();
+    const cards = [makeCard(1), makeCard(2), makeCard(3)];
+
+    const evictSpy = vi.fn();
+    const cache = new InMemoryCache();
+    cache.evict = evictSpy;
+    const connection = makeConnection(cards);
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+      data: { cardsByCardgroupConnection: connection },
+    });
+
+    const mocks = [
+      {
+        request: {
+          query: DeleteCardsDocument,
+          variables: { ids: ["c-1", "c-2"] },
+        },
+        result: { data: { deleteCards: 0 } },
+      },
+    ];
+
+    render(
+      <MockedProvider mocks={mocks as never} cache={cache}>
+        <CardsClient
+          cardgroupId={CG_ID}
+          initialEdges={connection.edges}
+          initialPageInfo={connection.pageInfo}
+          initialTotalCount={connection.totalCount}
+        />
+      </MockedProvider>,
+    );
+
+    // Select two cards and confirm deletion.
+    await user.click(screen.getByTestId("card-select-c-1"));
+    await user.click(screen.getByTestId("card-select-c-2"));
+    await user.click(screen.getByTestId("cards-bulk-delete-button"));
+    await screen.findByRole("alertdialog");
+    await user.click(screen.getByTestId("cards-bulk-confirm"));
+
+    // Action bar is cleared on success (clearSelection was called after mutation resolves).
+    await waitFor(() => {
+      expect(screen.queryByTestId("cards-bulk-action-bar")).not.toBeInTheDocument();
+    });
+
+    // All three cards are still present and count is unchanged.
+    expect(screen.getByText("Cards (3)")).toBeInTheDocument();
+    expect(screen.getByText("front-1")).toBeInTheDocument();
+    expect(screen.getByText("front-2")).toBeInTheDocument();
+    expect(screen.getByText("front-3")).toBeInTheDocument();
+
+    // No error banner.
+    expect(screen.queryByTestId("cards-bulk-delete-error")).not.toBeInTheDocument();
+
+    // cache.evict must NOT have been called — the bug fix ensures this.
+    expect(evictSpy).not.toHaveBeenCalled();
+  });
+
+  // T8: cold-cache (no connection entry) — writeQuery is skipped, eviction still fires.
+  it("skips writeQuery on cold cache and evicts the deleted card entry", async () => {
+    const user = userEvent.setup();
+    const cards = [makeCard(1), makeCard(2), makeCard(3)];
+
+    // Build a cache without seeding the connection query — only the SSR-seeded
+    // initialEdges/initialPageInfo props back the UI on first paint.
+    const cache = new InMemoryCache();
+    const connection = makeConnection(cards);
+
+    const mocks = [
+      {
+        request: {
+          query: DeleteCardsDocument,
+          variables: { ids: ["c-1"] },
+        },
+        result: { data: { deleteCards: 1 } },
+      },
+    ];
+
+    let caughtError: unknown = null;
+    render(
+      <MockedProvider mocks={mocks as never} cache={cache}>
+        <CardsClient
+          cardgroupId={CG_ID}
+          initialEdges={connection.edges}
+          initialPageInfo={connection.pageInfo}
+          initialTotalCount={connection.totalCount}
+        />
+      </MockedProvider>,
+    );
+
+    // Select one card and confirm.
+    await user.click(screen.getByTestId("card-select-c-1"));
+    await user.click(screen.getByTestId("cards-bulk-delete-button"));
+    await screen.findByRole("alertdialog");
+
+    try {
+      await user.click(screen.getByTestId("cards-bulk-confirm"));
+    } catch (err) {
+      caughtError = err;
+    }
+
+    // No exception thrown.
+    expect(caughtError).toBeNull();
+
+    // Wait for mutation to complete.
+    await waitFor(() => {
+      expect(screen.queryByTestId("cards-bulk-action-bar")).not.toBeInTheDocument();
+    });
+
+    // The connection was never seeded, so readQuery returns null — cache stays empty.
+    const result = cache.readQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+    });
+    expect(result).toBeNull();
+
+    // The normalized Card entry for c-1 was evicted (no data in cache for it).
+    const cardResult = cache.readFragment({
+      id: cache.identify({ __typename: "Card", id: "c-1" }),
+      fragment: gql`
+        fragment T8Card on Card {
+          id
+        }
+      `,
+    });
+    expect(cardResult).toBeNull();
   });
 
   // T6: backend error → banner appears; selection remains intact.
