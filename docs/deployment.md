@@ -195,6 +195,7 @@ Dynamic env vars (declared with `sync: false` in `render.yaml`; Blueprint create
 | `SUPABASE_DB_URL` | Session-mode pooler DSN from Step 1.4. | Phase 6 (`postapply.yml`) via `PUT /v1/services/{id}/env-vars/{key}`. |
 | `SUPABASE_JWKS_URL` | `https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json` | Phase 6. |
 | `SUPABASE_JWT_ISSUER` | `https://<project-ref>.supabase.co/auth/v1` | Phase 6. |
+| `PING_TOKEN` | Auto-generated 32-byte hex token consumed by the readiness-ping workflow (see [Keep-alive ping workflow](#keep-alive-ping-workflow)). | Phase 6 (`postapply.yml`). |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint, or empty for no-op tracing. | Operator (manual, persisted across Blueprint syncs because of `sync: false`). |
 
 When the Blueprint apply wizard prompts for the `sync: false` placeholders, leave them blank and click Save. Re-running `make setup-prod-postapply` reconciles the Supabase-derived three from the state file via the Render API, then triggers the first deploy.

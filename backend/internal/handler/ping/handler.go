@@ -20,7 +20,9 @@ type Handler struct {
 	token string
 }
 
-// New builds a Handler. Panics if token is empty.
+// New builds a Handler. The panic on empty token is a programmer-error guard
+// (defense in depth); production startup is gated earlier by the PING_TOKEN
+// fail-fast in run().
 func New(repo repository.PingRecordRepository, token string) *Handler {
 	if token == "" {
 		panic("ping.New: token must not be empty")
@@ -84,7 +86,8 @@ func (h *Handler) RateLimiter() echo.MiddlewareFunc {
 			return c.RealIP(), nil
 		},
 		ErrorHandler: func(c *echo.Context, err error) error {
-			return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
+			slog.WarnContext(c.Request().Context(), "ping: rate limiter extractor error", "err", err)
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden"})
 		},
 		DenyHandler: func(c *echo.Context, identifier string, err error) error {
 			slog.WarnContext(c.Request().Context(), "ping: rate limit exceeded", "ip", identifier)
