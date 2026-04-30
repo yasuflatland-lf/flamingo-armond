@@ -36,12 +36,19 @@ func newLexer(input string) *lexer {
 	return &lexer{input: strings.NewReader(input), lineNo: 1, tokenLine: 1}
 }
 
-// Peek returns the next rune without advancing the read position.
+// Peek returns the next rune without consuming any input. Restoration is
+// offset-based (Seek to the saved position), so Peek does not depend on
+// the underlying reader's UnreadRune semantics.
 func (l *lexer) Peek() rune {
-	r, _, err := l.input.ReadRune()
-	if err == nil {
-		l.input.UnreadRune()
+	offset, err := l.input.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return 0
 	}
+	r, _, readErr := l.input.ReadRune()
+	if readErr != nil {
+		return 0
+	}
+	l.input.Seek(offset, io.SeekStart) //nolint:errcheck
 	return r
 }
 
