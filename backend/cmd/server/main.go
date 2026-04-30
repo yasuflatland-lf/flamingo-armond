@@ -193,9 +193,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
-	// Constructed to surface compile-time wiring even though no resolver references it yet.
-	// First consumer lands with the upcoming admin features.
-	_ = auth.NewService(userRoleRepo)
+	authSvc := auth.NewService(userRoleRepo)
 
 	userUC := usecase.NewUserUsecase(userRepo)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)
@@ -207,6 +205,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		CardgroupUC: cardgroupUC,
 		CardUC:      cardUC,
 		SwipeUC:     swipeUC,
+		AuthSvc:     authSvc,
 	}
 	pingHandler := ping.New(pingRecordRepo, pingToken)
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
