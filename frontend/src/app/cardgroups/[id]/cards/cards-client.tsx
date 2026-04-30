@@ -1,8 +1,8 @@
 "use client";
 
-import { gql } from "@apollo/client";
+import { gql, NetworkStatus } from "@apollo/client";
 import { useMutation, useQuery } from "@apollo/client/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CreateCardMutation,
   DeleteCardMutation,
@@ -61,7 +61,7 @@ export function CardsClient({
     notifyOnNetworkStatusChange: true,
   });
 
-  const queryBannerError = useMemo(() => getBackendErrorBanner(queryError), [queryError]);
+  const queryBannerError = getBackendErrorBanner(queryError);
 
   const connection = data?.cardsByCardgroupConnection;
   const edges = connection?.edges ?? initialEdges;
@@ -71,7 +71,6 @@ export function CardsClient({
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const fetchingRef = useRef(false);
 
-  // Issue a single fetchMore call. Used by both the IntersectionObserver and the retry button.
   const requestNextPage = useCallback(() => {
     if (fetchingRef.current) return;
     if (!pageInfo.hasNextPage) return;
@@ -230,7 +229,7 @@ export function CardsClient({
     },
   });
 
-  const deleteBannerError = useMemo(() => getBackendErrorBanner(deleteError), [deleteError]);
+  const deleteBannerError = getBackendErrorBanner(deleteError);
 
   async function handleCreate(values: { front: string; back: string }) {
     await createCard({
@@ -252,8 +251,7 @@ export function CardsClient({
     }
   }
 
-  // networkStatus 3 = fetchMore in flight (Apollo NetworkStatus.fetchMore).
-  const fetchingMore = networkStatus === 3 || (loading && edges.length > 0);
+  const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
 
   return (
     <div className="space-y-6">
@@ -359,7 +357,7 @@ export function CardsClient({
         )}
 
         <div ref={sentinelRef} aria-hidden="true" data-testid="cards-sentinel" />
-        {fetchMoreError ? (
+        {fetchMoreError && (
           <div
             className="mt-3 flex flex-col items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
             role="alert"
@@ -378,9 +376,10 @@ export function CardsClient({
               Retry
             </Button>
           </div>
-        ) : fetchingMore && pageInfo.hasNextPage ? (
+        )}
+        {!fetchMoreError && fetchingMore && pageInfo.hasNextPage && (
           <p className="mt-3 text-center text-xs text-muted-foreground">Loading more cards...</p>
-        ) : null}
+        )}
       </section>
     </div>
   );
