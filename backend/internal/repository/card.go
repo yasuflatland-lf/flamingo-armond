@@ -95,8 +95,9 @@ type CardRepository interface {
 	// (cards owned by other users are silently skipped at SQL level so a single
 	// foreign id in the list does not abort the batch).
 	//
-	// Empty ids -> returns (0, nil) without touching the DB. This avoids GORM
-	// emitting `WHERE id IN ()` which produces a full-table scan on Postgres.
+	// Empty ids short-circuits to (0, nil) without touching the DB. With an empty
+	// slice GORM v2 omits the `WHERE id IN (?)` clause altogether, which would
+	// convert this `Delete` into an unbounded mass delete — far worse than a slow scan.
 	DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error)
 }
 
