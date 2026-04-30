@@ -26,9 +26,8 @@ func (m *mockUserRoleRepository) HasRole(_ context.Context, _, _ string) (bool, 
 	return m.isAdmin, m.err
 }
 
-// newDictSrv builds a gqlgen handler backed by a resolver wired with the
-// supplied UserRoleRepository mock.
-func newDictSrv(roleRepo repository.UserRoleRepository) *handler.Server {
+// newDictOnlySrv builds a server with only AuthSvc wired; do not reuse for non-dictionary tests.
+func newDictOnlySrv(roleRepo repository.UserRoleRepository) *handler.Server {
 	authSvc := auth.NewService(roleRepo)
 	r := &resolver.Resolver{AuthSvc: authSvc}
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
@@ -46,7 +45,7 @@ func validateDictionaryQuery(payload string) string {
 func TestValidateDictionary_NonAdmin(t *testing.T) {
 	t.Parallel()
 
-	srv := newDictSrv(&mockUserRoleRepository{isAdmin: false})
+	srv := newDictOnlySrv(&mockUserRoleRepository{isAdmin: false})
 	payload := base64.StdEncoding.EncodeToString([]byte("apple"))
 	resp := gqlRequest(t, srv, authedCtx("u1"), validateDictionaryQuery(payload))
 
@@ -61,7 +60,7 @@ func TestValidateDictionary_NonAdmin(t *testing.T) {
 func TestValidateDictionary_AdminHappyPath(t *testing.T) {
 	t.Parallel()
 
-	srv := newDictSrv(&mockUserRoleRepository{isAdmin: true})
+	srv := newDictOnlySrv(&mockUserRoleRepository{isAdmin: true})
 	// "apple<IDEOGRAPHIC SPACE><ri><n><go>" — written as UTF-8 escape sequences
 	// to comply with the no-CJK-literal policy.
 	// U+3000 IDEOGRAPHIC SPACE = \xe3\x80\x80
@@ -98,7 +97,7 @@ func TestValidateDictionary_AdminHappyPath(t *testing.T) {
 func TestValidateDictionary_BadBase64(t *testing.T) {
 	t.Parallel()
 
-	srv := newDictSrv(&mockUserRoleRepository{isAdmin: true})
+	srv := newDictOnlySrv(&mockUserRoleRepository{isAdmin: true})
 	resp := gqlRequest(t, srv, authedCtx("u1"), validateDictionaryQuery("!!!not-base64!!!"))
 
 	code := errCode(t, resp)
@@ -112,7 +111,7 @@ func TestValidateDictionary_BadBase64(t *testing.T) {
 func TestValidateDictionary_Unauthenticated(t *testing.T) {
 	t.Parallel()
 
-	srv := newDictSrv(&mockUserRoleRepository{isAdmin: false})
+	srv := newDictOnlySrv(&mockUserRoleRepository{isAdmin: false})
 	payload := base64.StdEncoding.EncodeToString([]byte("apple"))
 	resp := gqlRequest(t, srv, context.Background(), validateDictionaryQuery(payload))
 
@@ -127,7 +126,7 @@ func TestValidateDictionary_Unauthenticated(t *testing.T) {
 func TestValidateDictionary_EmptyPayload(t *testing.T) {
 	t.Parallel()
 
-	srv := newDictSrv(&mockUserRoleRepository{isAdmin: true})
+	srv := newDictOnlySrv(&mockUserRoleRepository{isAdmin: true})
 	// Send the empty string directly as the payload value (not base64 of "").
 	resp := gqlRequest(t, srv, authedCtx("u1"), validateDictionaryQuery(""))
 
@@ -143,7 +142,7 @@ func TestValidateDictionary_EmptyPayload(t *testing.T) {
 func TestValidateDictionary_IsAdminError(t *testing.T) {
 	t.Parallel()
 
-	srv := newDictSrv(&mockUserRoleRepository{err: errors.New("db down")})
+	srv := newDictOnlySrv(&mockUserRoleRepository{err: errors.New("db down")})
 	payload := base64.StdEncoding.EncodeToString([]byte("apple"))
 	resp := gqlRequest(t, srv, authedCtx("u1"), validateDictionaryQuery(payload))
 

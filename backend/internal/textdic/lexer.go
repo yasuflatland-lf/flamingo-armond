@@ -118,8 +118,8 @@ func (l *lexer) Lex(lval *yySymType) int {
 
 // lexWord reads a contiguous run of front-word runes. It stops at EOF, at
 // any Japanese rune (which begins the definition), or at a newline. The
-// trailing whitespace is trimmed before yielding the token. The current
-// line number is attached to lval so the grammar can stamp it on the Node.
+// trailing whitespace is trimmed before yielding the token.
+// Records the starting line so grammar actions populating Node.Line can pick it up via yyDollar[1].line.
 func (l *lexer) lexWord(lval *yySymType) int {
 	var wordBuilder strings.Builder
 	l.input.UnreadRune()
@@ -145,8 +145,10 @@ func (l *lexer) lexWord(lval *yySymType) int {
 }
 
 // lexDefinition reads runes until the next newline or EOF and returns a
-// DEFINITION token. The line number is recorded for safety, although the
-// grammar primarily reads the line off the preceding WORD.
+// DEFINITION token.
+// Records the starting line; currently unused by the grammar but preserved for future actions on
+// multi-line definitions. The trailing newline stays unread, so lineNo still reflects the line
+// the definition started on.
 func (l *lexer) lexDefinition(lval *yySymType) int {
 	var defBuilder strings.Builder
 	l.input.UnreadRune()
