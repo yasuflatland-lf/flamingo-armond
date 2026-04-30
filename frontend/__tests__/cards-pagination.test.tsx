@@ -193,4 +193,83 @@ describe("CardsClient pagination via IntersectionObserver", () => {
 
     expect(nextPageCalls).toBe(1);
   });
+
+  it("does not double-fire fetchMore while a previous request is in flight", async () => {
+    const firstBatch = Array.from({ length: 20 }, (_, i) => makeCard(i + 1));
+    const secondBatch = Array.from({ length: 20 }, (_, i) => makeCard(i + 21));
+
+    const initialEdges = firstBatch.map(makeEdge);
+    const initialPageInfo = {
+      __typename: "PageInfo" as const,
+      hasNextPage: true,
+      hasPreviousPage: false,
+      startCursor: "c-1",
+      endCursor: "c-20",
+    };
+    const initialTotalCount = 40;
+
+    // Use a finite delay so the request is briefly in-flight; the result function
+    // is called once-per-request, so we can assert it ran exactly once.
+    let nextPageCalls = 0;
+    const nextPageResult = vi.fn(() => {
+      nextPageCalls += 1;
+      return { data: { cardsByCardgroupConnection: makeConnection(secondBatch, false) } };
+    });
+
+    const mocks = [
+      {
+        request: {
+          query: CardsByCardgroupConnectionDocument,
+          variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+        },
+        result: {
+          data: { cardsByCardgroupConnection: makeConnection(firstBatch, true) },
+        },
+      },
+      {
+        request: {
+          query: CardsByCardgroupConnectionDocument,
+          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, after: "c-20" },
+        },
+        delay: 50,
+        result: nextPageResult,
+      },
+    ];
+
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+      data: { cardsByCardgroupConnection: makeConnection(firstBatch, true) },
+    });
+
+    render(
+      <MockedProvider mocks={mocks as never} cache={cache}>
+        <CardsClient
+          cardgroupId={CG_ID}
+          initialEdges={initialEdges}
+          initialPageInfo={initialPageInfo}
+          initialTotalCount={initialTotalCount}
+        />
+      </MockedProvider>,
+    );
+
+    expect(screen.getByText("front-20")).toBeInTheDocument();
+
+    // Synchronously fire the observer twice — the in-flight guard must
+    // suppress the second call so only one fetchMore actually goes out.
+    fireIntersect();
+    fireIntersect();
+
+    // Wait for the delayed mock to resolve and append the second batch.
+    await waitFor(() => {
+      expect(screen.getByText("front-40")).toBeInTheDocument();
+    });
+    expect(nextPageCalls).toBe(1);
+
+    // hasNextPage flipped to false — further intersects must not trigger a new request.
+    fireIntersect();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(nextPageCalls).toBe(1);
+  });
 });
