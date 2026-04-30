@@ -232,6 +232,58 @@ func TestCardRepository_FindPageByCardgroup_TotalCountIsScopedToCardgroup(t *tes
 	require.Equal(t, int64(5), total)
 }
 
+// TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue
+// verifies the secondary `id` key keeps order deterministic when multiple
+// cards share the same Due value — pages must not skip or duplicate.
+func TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	now := time.Now().UTC()
+	cards := make([]*domain.Card, 3)
+	for i := 0; i < 3; i++ {
+		c := newCard(cg.ID, "front", "back")
+		c.CreatedAt = now
+		c.UpdatedAt = now
+		c.FSRS.Due = now
+		require.NoError(t, repo.Create(ctx, c))
+		cards[i] = c
+	}
+	// Re-fetch so we observe DB-rounded timestamps.
+	for i, c := range cards {
+		got, err := repo.FindByID(ctx, c.ID)
+		require.NoError(t, err)
+		cards[i] = got
+	}
+
+	// (due, id) lexicographic sort — all dues equal so order is by ID.
+	sorted := sortByID(cards)
+	dueT := sorted[0].FSRS.Due
+
+	page1, total, err := repo.FindPageByCardgroup(
+		ctx, cg.ID, nil, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total)
+	require.Len(t, page1, 2)
+	require.Equal(t, sorted[0].ID, page1[0].ID)
+	require.Equal(t, sorted[1].ID, page1[1].ID)
+
+	cursor := &repository.CardCursor{
+		ID:  page1[1].ID,
+		Due: &dueT,
+	}
+	page2, _, err := repo.FindPageByCardgroup(
+		ctx, cg.ID, cursor, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc,
+	)
+	require.NoError(t, err)
+	require.Len(t, page2, 1, "third card should appear exactly once")
+	require.Equal(t, sorted[2].ID, page2[0].ID)
+}
+
 // sortByID returns a copy of cards sorted by ID ascending.
 func sortByID(cards []*domain.Card) []*domain.Card {
 	out := make([]*domain.Card, len(cards))

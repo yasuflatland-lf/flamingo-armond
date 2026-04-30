@@ -301,7 +301,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_InvalidOrderBy(t *testing.T)
 		&mockCardRepository{},
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
 	)
-	bad := "STABILITY"
+	bad := CardOrderBy("STABILITY")
 	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
 		CardgroupID: "cg1",
 		OrderBy:     &bad,
@@ -372,5 +372,182 @@ func TestCardUsecase_ListCardsByCardgroupConnection_DefaultsAndPaging(t *testing
 	}
 	if cardRepo.capturedFindPage.dir != repository.SortAsc {
 		t.Fatalf("expected default dir=ASC, got %q", cardRepo.capturedFindPage.dir)
+	}
+}
+
+func intPtr(v int) *int                     { return &v }
+func orderByPtr(v CardOrderBy) *CardOrderBy { return &v }
+
+// TestCardUsecase_ListCardsByCardgroupConnection_CursorCrossCardgroup makes
+// sure a cursor pointing at a card in a different cardgroup is rejected with
+// BAD_USER_INPUT instead of leaking through to the repo (which would happily
+// query rows from any cardgroup once the SQL is built).
+func TestCardUsecase_ListCardsByCardgroupConnection_CursorCrossCardgroup(t *testing.T) {
+	t.Parallel()
+
+	t.Run("after rejected", func(t *testing.T) {
+		t.Parallel()
+		cardRepo := &mockCardRepository{
+			findResult: &domain.Card{ID: "c-foreign", CardgroupID: "cg-other"},
+		}
+		uc := NewCardUsecase(
+			cardRepo,
+			&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		)
+		_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
+			CardgroupID: "cg1",
+			First:       intPtr(10),
+			After:       ptr("c-foreign"),
+			OrderBy:     orderByPtr(CardOrderByDue),
+		})
+		assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+	})
+
+	t.Run("before rejected", func(t *testing.T) {
+		t.Parallel()
+		cardRepo := &mockCardRepository{
+			findResult: &domain.Card{ID: "c-foreign", CardgroupID: "cg-other"},
+		}
+		uc := NewCardUsecase(
+			cardRepo,
+			&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		)
+		_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
+			CardgroupID: "cg1",
+			Last:        intPtr(10),
+			Before:      ptr("c-foreign"),
+			OrderBy:     orderByPtr(CardOrderByDue),
+		})
+		assertGQLErr(t, err, "BAD_USER_INPUT", "before")
+	})
+}
+
+// TestCardUsecase_ListCardsByCardgroupConnection_BackwardPaging exercises the
+// last/before flow: the +1 trick fires on the leading edge and HasNext is true
+// because `before != nil`.
+func TestCardUsecase_ListCardsByCardgroupConnection_BackwardPaging(t *testing.T) {
+	t.Parallel()
+
+	rows := []*domain.Card{
+		{ID: "c-A", CardgroupID: "cg1"},
+		{ID: "c-B", CardgroupID: "cg1"},
+		{ID: "c-C", CardgroupID: "cg1"},
+		{ID: "c-D", CardgroupID: "cg1"},
+	}
+	cardRepo := &mockCardRepository{findPageRows: rows, findPageTotal: 10}
+	uc := NewCardUsecase(
+		cardRepo,
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+	)
+
+	out, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
+		CardgroupID: "cg1",
+		Last:        intPtr(3),
+		Before:      ptr("c-X"),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(out.Cards) != 3 {
+		t.Fatalf("expected 3 cards after trim, got %d", len(out.Cards))
+	}
+	if out.Cards[0].ID != "c-B" || out.Cards[1].ID != "c-C" || out.Cards[2].ID != "c-D" {
+		t.Fatalf("expected [c-B, c-C, c-D], got %v",
+			[]string{out.Cards[0].ID, out.Cards[1].ID, out.Cards[2].ID})
+	}
+	if !out.HasPrev {
+		t.Fatal("expected HasPrev=true (len(rows) > last signals more rows precede)")
+	}
+	if !out.HasNext {
+		t.Fatal("expected HasNext=true because before!=nil")
+	}
+	if out.StartCur != "c-B" || out.EndCur != "c-D" {
+		t.Fatalf("expected StartCur=c-B EndCur=c-D, got %q/%q", out.StartCur, out.EndCur)
+	}
+	// Repo should have been asked for last+1 trailing rows.
+	if cardRepo.capturedFindPage.last != 4 {
+		t.Fatalf("expected repo.last=4 (last+1), got %d", cardRepo.capturedFindPage.last)
+	}
+}
+
+// TestCardUsecase_ListCardsByCardgroupConnection_ResolveCursorHydratesDueField
+// pins down that resolveCursor populates the field matching the active
+// orderBy on the *CardCursor passed to FindPageByCardgroup.
+func TestCardUsecase_ListCardsByCardgroupConnection_ResolveCursorHydratesDueField(t *testing.T) {
+	t.Parallel()
+
+	dueT := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	createdT := time.Date(2031, 5, 6, 7, 8, 9, 0, time.UTC)
+	updatedT := time.Date(2032, 7, 8, 9, 10, 11, 0, time.UTC)
+
+	cases := []struct {
+		name     string
+		orderBy  CardOrderBy
+		assertFn func(t *testing.T, c *repository.CardCursor)
+	}{
+		{
+			name:    "Due",
+			orderBy: CardOrderByDue,
+			assertFn: func(t *testing.T, c *repository.CardCursor) {
+				if c.Due == nil || !c.Due.Equal(dueT) {
+					t.Fatalf("expected Due=%v, got %v", dueT, c.Due)
+				}
+			},
+		},
+		{
+			name:    "CreatedAt",
+			orderBy: CardOrderByCreatedAt,
+			assertFn: func(t *testing.T, c *repository.CardCursor) {
+				if c.CreatedAt == nil || !c.CreatedAt.Equal(createdT) {
+					t.Fatalf("expected CreatedAt=%v, got %v", createdT, c.CreatedAt)
+				}
+			},
+		},
+		{
+			name:    "UpdatedAt",
+			orderBy: CardOrderByUpdatedAt,
+			assertFn: func(t *testing.T, c *repository.CardCursor) {
+				if c.UpdatedAt == nil || !c.UpdatedAt.Equal(updatedT) {
+					t.Fatalf("expected UpdatedAt=%v, got %v", updatedT, c.UpdatedAt)
+				}
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cardRepo := &mockCardRepository{
+				findResult: &domain.Card{
+					ID:          "c-1",
+					CardgroupID: "cg1",
+					FSRS:        domain.FSRSState{Due: dueT},
+					CreatedAt:   createdT,
+					UpdatedAt:   updatedT,
+				},
+			}
+			uc := NewCardUsecase(
+				cardRepo,
+				&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+			)
+			_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
+				CardgroupID: "cg1",
+				First:       intPtr(5),
+				After:       ptr("c-1"),
+				OrderBy:     orderByPtr(tc.orderBy),
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			got := cardRepo.capturedFindPage.after
+			if got == nil {
+				t.Fatal("expected after cursor to be passed to repo, got nil")
+			}
+			if got.ID != "c-1" {
+				t.Fatalf("expected cursor ID=c-1, got %q", got.ID)
+			}
+			tc.assertFn(t, got)
+		})
 	}
 }
