@@ -95,18 +95,12 @@ func (m *mockCardRepository) FindPageByCardgroup(
 }
 
 type mockCardgroupRepoForCard struct {
-	findResult      *domain.Cardgroup
-	findErr         error
-	findByIDsResult map[string]*domain.Cardgroup
-	findByIDsErr    error
+	findResult *domain.Cardgroup
+	findErr    error
 }
 
 func (m *mockCardgroupRepoForCard) FindByID(_ context.Context, _ string) (*domain.Cardgroup, error) {
 	return m.findResult, m.findErr
-}
-
-func (m *mockCardgroupRepoForCard) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Cardgroup, error) {
-	return m.findByIDsResult, m.findByIDsErr
 }
 
 func TestCardUsecase_Create(t *testing.T) {

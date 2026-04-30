@@ -2,12 +2,10 @@ package usecase
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"testing"
 
 	"gorm.io/gorm"
-
-	"backend/internal/domain"
 )
 
 // fakeTxRunner returns a txRunner that invokes fn with a nil *gorm.DB. The
@@ -67,20 +65,10 @@ func TestCardUsecase_BulkDelete_AnonymousWithEmptyIDs(t *testing.T) {
 
 func TestCardUsecase_BulkDelete_AllOwn(t *testing.T) {
 	t.Parallel()
-	cards := map[string]*domain.Card{
-		"c1": {ID: "c1", CardgroupID: "cg1"},
-		"c2": {ID: "c2", CardgroupID: "cg1"},
-		"c3": {ID: "c3", CardgroupID: "cg2"},
-	}
-	cgs := map[string]*domain.Cardgroup{
-		"cg1": {ID: "cg1", OwnerID: "u1"},
-		"cg2": {ID: "cg2", OwnerID: "u1"},
-	}
 	cardRepo := &mockCardRepository{
-		findByIDsResult:   cards,
 		deleteByIDsResult: 3,
 	}
-	cgRepo := &mockCardgroupRepoForCard{findByIDsResult: cgs}
+	cgRepo := &mockCardgroupRepoForCard{}
 	tx, calls := fakeTxRunner()
 	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx}
 
@@ -102,38 +90,52 @@ func TestCardUsecase_BulkDelete_AllOwn(t *testing.T) {
 	}
 }
 
-func TestCardUsecase_BulkDelete_MixOwnAndForeign(t *testing.T) {
+// TestCardUsecase_BulkDelete_SilentlySkipsForeign verifies that mixing own and
+// foreign ids does NOT cause the call to fail. The SQL subselect in
+// DeleteByIDsTx handles ownership filtering; the usecase passes all ids through
+// and returns the count of rows actually deleted (own ones only).
+func TestCardUsecase_BulkDelete_SilentlySkipsForeign(t *testing.T) {
 	t.Parallel()
-	cards := map[string]*domain.Card{
-		"c1":      {ID: "c1", CardgroupID: "cg1"},
-		"foreign": {ID: "foreign", CardgroupID: "cg-other"},
-	}
-	cgs := map[string]*domain.Cardgroup{
-		"cg1":      {ID: "cg1", OwnerID: "u1"},
-		"cg-other": {ID: "cg-other", OwnerID: "u-other"},
-	}
-	cardRepo := &mockCardRepository{findByIDsResult: cards}
-	cgRepo := &mockCardgroupRepoForCard{findByIDsResult: cgs}
+	// DeleteByIDsTx receives all ids but the SQL subselect filters to own cards
+	// only, returning 1 (the count of own cards deleted).
+	cardRepo := &mockCardRepository{deleteByIDsResult: 1}
+	cgRepo := &mockCardgroupRepoForCard{}
 	tx, calls := fakeTxRunner()
 	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx}
 
-	_, err := uc.BulkDelete(authedCtx("u1"), []string{"c1", "foreign"})
-	assertGQLErr(t, err, "UNAUTHENTICATED", "")
-	if *calls != 0 {
-		t.Fatalf("expected DeleteByIDsTx not to run when any id is foreign, got %d tx invocations", *calls)
+	n, err := uc.BulkDelete(authedCtx("u1"), []string{"c1", "foreign"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if cardRepo.deleteByIDsCalls != 0 {
-		t.Fatalf("expected 0 DeleteByIDsTx invocations, got %d", cardRepo.deleteByIDsCalls)
+	if n != 1 {
+		t.Fatalf("expected 1 deleted (own card only), got %d", n)
+	}
+	if *calls != 1 {
+		t.Fatalf("expected 1 tx invocation, got %d", *calls)
+	}
+	// Both ids must be forwarded to the repository so the SQL subselect can
+	// decide which ones to delete.
+	if len(cardRepo.capturedDeleteIDs) != 2 {
+		t.Fatalf("expected 2 ids forwarded to DeleteByIDsTx, got %d", len(cardRepo.capturedDeleteIDs))
 	}
 }
 
-func TestCardUsecase_BulkDelete_FindByIDsErrorBecomesInternal(t *testing.T) {
+// TestCardUsecase_BulkDelete_RejectsTooManyIDs verifies that supplying more
+// than maxBulkDelete ids returns BAD_USER_INPUT on the "ids" field.
+func TestCardUsecase_BulkDelete_RejectsTooManyIDs(t *testing.T) {
 	t.Parallel()
-	cardRepo := &mockCardRepository{findByIDsErr: errors.New("db died")}
+	ids := make([]string, maxBulkDelete+1)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("c%d", i)
+	}
+	cardRepo := &mockCardRepository{}
 	cgRepo := &mockCardgroupRepoForCard{}
-	tx, _ := fakeTxRunner()
+	tx, calls := fakeTxRunner()
 	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx}
 
-	_, err := uc.BulkDelete(authedCtx("u1"), []string{"c1"})
-	assertGQLErr(t, err, "INTERNAL", "")
+	_, err := uc.BulkDelete(authedCtx("u1"), ids)
+	assertGQLErr(t, err, "BAD_USER_INPUT", "ids")
+	if *calls != 0 {
+		t.Fatalf("expected 0 tx invocations, got %d", *calls)
+	}
 }

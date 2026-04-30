@@ -35,12 +35,12 @@ type CardRepository interface {
 
 type CardgroupRepositoryForCard interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
-	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Cardgroup, error)
 }
 
 // txRunner abstracts gorm.DB.Transaction so unit tests can stub out the
-// transaction boundary without standing up a real database. The signature
-// mirrors gorm.DB.Transaction(fn func(*gorm.DB) error) error.
+// transaction boundary without standing up a real database. Wraps
+// db.WithContext(ctx).Transaction(fn) so callers pass ctx explicitly and tests
+// can stub the boundary without a real *gorm.DB.
 type txRunner func(ctx context.Context, fn func(tx *gorm.DB) error) error
 
 type CardUsecase struct {
@@ -57,6 +57,17 @@ func NewCardUsecase(db *gorm.DB, cardRepo CardRepository, cardgroupRepo Cardgrou
 		}
 	}
 	return uc
+}
+
+// NewCardUsecaseWithTx constructs a CardUsecase with an explicit transaction
+// runner. Intended for unit tests that need to exercise BulkDelete without a
+// real database. Production code must use NewCardUsecase instead.
+func NewCardUsecaseWithTx(
+	cardRepo CardRepository,
+	cardgroupRepo CardgroupRepositoryForCard,
+	tx func(ctx context.Context, fn func(tx *gorm.DB) error) error,
+) *CardUsecase {
+	return &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo, tx: tx}
 }
 
 type CreateCardInput struct {
@@ -116,6 +127,7 @@ type CardConnectionOutput struct {
 const (
 	defaultPageSize = 20
 	maxPageSize     = 100
+	maxBulkDelete   = 100
 )
 
 func (u *CardUsecase) Card(ctx context.Context, id string) (*domain.Card, error) {
@@ -477,46 +489,28 @@ func translateFSRSErr(ctx context.Context, err error) error {
 }
 
 // BulkDelete removes the cards in `ids` whose cardgroup is owned by the
-// authenticated caller. The owner check happens twice: a read-side batch
-// look-up rejects the whole call when ANY id resolves to a foreign cardgroup,
-// and a server-side subselect in DeleteByIDsTx redundantly enforces ownership
-// at SQL. Returns the number of rows actually deleted.
+// authenticated caller. Ownership is enforced exclusively by the SQL subselect
+// in DeleteByIDsTx (one DELETE scoped to cardgroups owned by the caller);
+// foreign-owned ids are silently skipped at the SQL layer. Returns the number
+// of rows actually deleted. At most maxBulkDelete ids may be supplied per call;
+// exceeding the cap returns BAD_USER_INPUT.
 func (u *CardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
 		return 0, gqlerr.Unauthenticated()
 	}
+	if len(ids) > maxBulkDelete {
+		return 0, gqlerr.BadUserInput("ids", fmt.Sprintf("at most %d ids per call", maxBulkDelete))
+	}
 	if len(ids) == 0 {
 		return 0, nil
 	}
 
-	// (1) Read-side batch owner check: pull every cardgroup_id for the
-	// requested cards, then look up those cardgroups. A single foreign
-	// cardgroup in the list rejects the entire call as UNAUTHENTICATED;
-	// existence of foreign cards is not leaked through "not found".
-	cards, err := u.cardRepo.FindByIDs(ctx, ids)
-	if err != nil {
-		return 0, gqlerr.Internal(ctx, err)
-	}
-	cardgroupIDs := uniqueCardgroupIDs(cards)
-	if len(cardgroupIDs) > 0 {
-		cgs, err := u.cardgroupRepo.FindByIDs(ctx, cardgroupIDs)
-		if err != nil {
-			return 0, gqlerr.Internal(ctx, err)
-		}
-		for _, cg := range cgs {
-			if cg.OwnerID != user.Sub {
-				return 0, gqlerr.Unauthenticated()
-			}
-		}
-	}
-
-	// (2) Single tx: delete with redundant SQL-side owner subselect.
 	if u.tx == nil {
 		return 0, gqlerr.Internal(ctx, errors.New("usecase: tx runner not configured"))
 	}
 	var deleted int64
-	err = u.tx(ctx, func(tx *gorm.DB) error {
+	err := u.tx(ctx, func(tx *gorm.DB) error {
 		n, err := u.cardRepo.DeleteByIDsTx(ctx, tx, user.Sub, ids)
 		if err != nil {
 			return err
@@ -528,20 +522,4 @@ func (u *CardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, erro
 		return 0, gqlerr.Internal(ctx, err)
 	}
 	return deleted, nil
-}
-
-// uniqueCardgroupIDs flattens the cardgroup_id of each card in the supplied
-// map into a deduplicated slice. Used by BulkDelete to do one ownership
-// look-up per distinct cardgroup rather than one per card.
-func uniqueCardgroupIDs(cards map[string]*domain.Card) []string {
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(cards))
-	for _, c := range cards {
-		if _, ok := seen[c.CardgroupID]; ok {
-			continue
-		}
-		seen[c.CardgroupID] = struct{}{}
-		out = append(out, c.CardgroupID)
-	}
-	return out
 }
