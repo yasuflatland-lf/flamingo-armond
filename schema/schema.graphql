@@ -272,7 +272,7 @@ type ParsedWord {
 
 """Per-line validation error produced while parsing a dictionary payload."""
 type DictionaryValidationError {
-  """1-based line number where the error was detected."""
+  """1-based line number where the error was detected, or 0 when the error applies to the payload as a whole (e.g. oversized or empty payload)."""
   line: Int!
   """Human-readable, English error message."""
   message: String!
