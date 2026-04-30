@@ -57,7 +57,7 @@ The Render deploy status stalls at `update_failed`, and re-running `make setup-p
 
 ### Why it happens
 
-`golang-migrate` sets `dirty = true` in `public.schema_migrations` before it begins applying a migration file. If the migration fails mid-way, the dirty flag remains set even if the underlying statements were wrapped in a transaction that rolled back. The pgx/v5 driver does not auto-wrap individual migration files in a transaction, so a single migration file that mixes DDL (`CREATE TABLE`) and privilege-sensitive `ALTER TABLE` statements (e.g. `ENABLE ROW LEVEL SECURITY`) can partially succeed — some statements commit, others fail — leaving the schema in an inconsistent state with `dirty = true`.
+golang-migrate commits `dirty = true` in `public.schema_migrations` in a dedicated transaction BEFORE it executes the migration SQL. If the migration SQL then fails or rolls back, the dirty record is already committed and remains. The pgx/v5 driver does not auto-wrap migration files in a transaction, so any DDL that succeeded before the failure is also committed independently. A single migration file that mixes DDL (`CREATE TABLE`) and privilege-sensitive `ALTER TABLE` statements (e.g. `ENABLE ROW LEVEL SECURITY`) can therefore partially succeed — some statements commit, others fail — leaving the schema in an inconsistent state with `dirty = true`.
 
 Subsequent deploy attempts only report the dirty error; the original SQL error that caused the partial failure appears only in the first failing deploy's log.
 

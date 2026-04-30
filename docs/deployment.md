@@ -270,12 +270,12 @@ For an end-to-end check, sign in via Google on the Vercel domain and load `/prof
 
 ### Row Level Security (RLS) migration risks
 
-Enabling RLS on tables via `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` requires the connecting role to be the table owner. On Supabase, the standard `postgres` / `service_role` connection role is typically the owner of public tables; however, role mismatches silently leave RLS un-enabled rather than failing loudly, creating a security blind spot.
+Enabling RLS on tables via `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` requires the connecting role to be the table owner. On Supabase, the standard `postgres` / `service_role` connection role is typically the owner of public tables; however, a role mismatch causes PostgreSQL to raise `ERROR: must be owner of table <name>` — the failure is loud. If the migration file is not wrapped in `BEGIN/COMMIT`, any DDL that executed before the failing `ALTER TABLE` is already committed, `schema_migrations.dirty=true` is set, and subsequent deploys are blocked until the dirty flag is manually cleared.
 
 To prevent role-confusion incidents and maintain a clear blast radius:
 
-- **RLS lives in its own migration file.** Mixing `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` with DDL (CREATE TABLE / ADD COLUMN) in a single migration couples two concerns and caused a past dirty-state incident. Separate them: run DDL in one migration, then enable RLS in a follow-up RLS-only migration or extend the existing RLS migration.
-- **When adding new public tables in future migrations, follow this pattern.** Create the table in one migration file, then enable RLS in a dedicated RLS migration (either the existing one or a new RLS-only migration).
+- **RLS lives in its own migration file.** Mixing `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` with DDL (CREATE TABLE / ADD COLUMN) in a single migration couples two concerns and has caused dirty-state incidents in the past. Separate them: run DDL in one migration, then enable RLS in a new dated RLS-only migration file.
+- **When adding new public tables in future migrations, follow this pattern.** Create the table in one migration file, then enable RLS in a new dated RLS-only migration file. Do not edit already-applied migration files — golang-migrate records each version after first apply and will not re-execute modified content.
 - **Verify role ownership if RLS-enable steps fail.** If a migration applying `ALTER TABLE ... ENABLE` returns an error, inspect Supabase project settings and confirm the `SUPABASE_DB_URL` role is the table owner. A common cause is running migrations as a different role than the one that created the schema.
 
 ## Keep-alive ping workflow
