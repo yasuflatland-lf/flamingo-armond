@@ -43,6 +43,7 @@ Coverage goes to **both Codecov and a GHA artifact**:
 
 - Codecov — trend visualization, PR comments.
 - GHA artifact (`coverage.out` + `coverage.html`, 14-day retention) — backup for Codecov outages, and a human-readable HTML report via `go tool cover -html`.
+- The frontend coverage artifact (`frontend-coverage`, lcov + HTML) follows the same `retention-days: 14` rule.
 
 `retention-days: 14` is tighter than the 90-day default to save storage; extend it if needed.
 
@@ -137,6 +138,25 @@ CI sets dummy values at the job level for every required var:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Same as above. |
 
 No request is made during the build, so dummy values only need to satisfy the Zod schema (e.g. `z.string().url()` requires a URL-shaped string). Do **not** remove any of these: each missing env reintroduces a silent-fail shape the validation was designed to prevent. When a new required var is added to `src/env.ts`, add a corresponding dummy to the workflow's `env:` block.
+
+### Frontend Codecov upload
+
+The frontend coverage pipeline mirrors the backend's three-piece pattern
+(see § "Codecov upload must not be a silent failure") and is wired with
+`flags: frontend` so Codecov reports backend and frontend separately.
+
+Two frontend-specific notes:
+
+- `working-directory: frontend` is required on `codecov-action` because
+  Vitest writes lcov entries as `src/...`, relative to the frontend
+  workspace. Without the working-directory hint, the entries land in
+  Codecov without a `frontend/` prefix and silently fall outside the
+  `flags.frontend.paths` filter declared in `codecov.yml`.
+- `carryforward: true` per flag (in `codecov.yml`) is non-negotiable while
+  CI is path-scoped: a backend-only PR never uploads frontend coverage,
+  and Codecov would otherwise treat the missing upload as 0%, failing the
+  frontend project status. See `docs/ci.md` § "Workflow scope and
+  concurrency" for why path-scoping is the canonical pattern.
 
 ### Frontend deploy job
 

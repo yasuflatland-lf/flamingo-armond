@@ -1,0 +1,33 @@
+coverage:
+  status:
+    project:
+      backend:
+        target: 70%
+        threshold: 1%
+        flags: [backend]
+      frontend:
+        target: 70%
+        threshold: 1%
+        flags: [frontend]
+    patch:
+      backend:
+        target: 70%
+        flags: [backend]
+      frontend:
+        target: 70%
+        flags: [frontend]
+
+flags:
+  backend:
+    paths:
+      - backend/
+    carryforward: true
+  frontend:
+    paths:
+      - frontend/
+    carryforward: true
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: false
