@@ -133,16 +133,20 @@ func TestCardsUpsertIndex_DuplicatesBlockMigration(t *testing.T) {
 
 	// Step 4: clean up the duplicates, then re-apply so the DB ends in the
 	// migrated-up state for the rest of the suite. golang-migrate marks the
-	// failed version dirty; force the version back to the previous one
-	// before re-running.
+	// failed migration dirty and records its version number. Clearing the
+	// dirty flag alone leaves the version pointing at the failed migration,
+	// so the subsequent Steps(1) call finds no successor file and errors.
+	// Force the version back to the predecessor (20260502130000) first —
+	// that is the idiomatic golang-migrate recovery path.
 	for _, id := range []string{cardA, cardB} {
 		if _, err := sqlDB.ExecContext(ctx, `DELETE FROM public.cards WHERE id = $1`, id); err != nil {
 			t.Fatalf("cleanup card %s: %v", id, err)
 		}
 	}
-	if _, err := sqlDB.ExecContext(ctx,
-		`UPDATE public.schema_migrations SET dirty = false WHERE dirty = true`); err != nil {
-		t.Fatalf("reset dirty flag: %v", err)
+	// 20260502130000 is the timestamp of the last successfully applied
+	// migration before 20260503000000_add_cards_upsert_index.
+	if err := database.MigrateForceForTest(testDSN, 20260502130000); err != nil {
+		t.Fatalf("force version to predecessor: %v", err)
 	}
 	if err := database.MigrateStepsForTest(testDSN, 1); err != nil {
 		t.Fatalf("migrate up 1 step (restore): %v", err)
