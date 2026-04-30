@@ -167,7 +167,8 @@ func TestIsCode_Forbidden(t *testing.T) {
 func TestCancelled(t *testing.T) {
 	t.Parallel()
 
-	got := gqlerr.Cancelled()
+	// nil err path: must not log, must return the typed gqlerror shape.
+	got := gqlerr.Cancelled(context.Background(), nil)
 
 	if got.Message != "request cancelled" {
 		t.Errorf("Message = %q, want %q", got.Message, "request cancelled")
@@ -177,5 +178,14 @@ func TestCancelled(t *testing.T) {
 	}
 	if !gqlerr.IsCode(got, gqlerr.CodeCancelled) {
 		t.Error("IsCode should return true for CANCELLED code")
+	}
+
+	// Non-nil err path: returned shape must match regardless of logging.
+	gotWithErr := gqlerr.Cancelled(context.Background(), context.Canceled)
+	if gotWithErr.Message != "request cancelled" {
+		t.Errorf("Message = %q, want %q", gotWithErr.Message, "request cancelled")
+	}
+	if code := extString(t, gotWithErr, "code"); code != "CANCELLED" {
+		t.Errorf("Extensions[code] = %q, want %q", code, "CANCELLED")
 	}
 }

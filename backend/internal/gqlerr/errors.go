@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/rotisserie/eris"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
 	"backend/internal/logging"
@@ -61,10 +62,17 @@ func NewForbidden(msg string) *gqlerror.Error {
 	}
 }
 
-// Cancelled returns a CANCELLED GraphQL error for client-driven cancellation.
-// Use when context.Canceled or context.DeadlineExceeded is detected; the
-// caller decides which of the two cases warrants this response.
-func Cancelled() *gqlerror.Error {
+// Cancelled returns a typed CANCELLED gqlerror. When err is non-nil it is
+// logged at WARN with the underlying cause; pass the original error from
+// IsAdmin / context to preserve the eris chain. The helper covers both
+// context.Canceled and context.DeadlineExceeded; callers decide which to use.
+func Cancelled(ctx context.Context, err error) *gqlerror.Error {
+	if err != nil {
+		// Inline WARN log mirrors auth.reject's shape (see logging/error.go doc).
+		slog.Default().LogAttrs(ctx, slog.LevelWarn, "request cancelled",
+			slog.Any("error_chain", eris.ToJSON(err, true)),
+		)
+	}
 	return &gqlerror.Error{
 		Message: "request cancelled",
 		Extensions: map[string]any{

@@ -217,7 +217,7 @@ func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.Vali
 	if err != nil {
 		// Map client-driven cancellation to a typed CANCELLED error; map other failures to INTERNAL.
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, gqlerr.Cancelled()
+			return nil, gqlerr.Cancelled(ctx, err)
 		}
 		return nil, gqlerr.Internal(ctx, err)
 	}
