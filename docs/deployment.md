@@ -251,9 +251,11 @@ vercel build --prod
 vercel deploy --prebuilt --prod
 ```
 
+`VERCEL_TOKEN` is exposed via a job-level `env:` block (not as a `--token` CLI flag); the Vercel CLI reads it automatically from the environment — do not add `--token` flags to these commands.
+
 #### Why CI deploy is now the authoritative path
 
-The project temporarily keeps two deploy paths active:
+**This is a transitional configuration.** Until the Vercel Git integration is disabled (a follow-up task), two deploy paths fire on every push to `main`:
 
 1. **Vercel automatic Git integration** — Vercel detects the push to `main` and starts a build automatically via its built-in GitHub integration.
 2. **CI deploy job** (this section) — the `deploy` job in the frontend workflow runs the same CLI sequence after `lint-test-build` passes.
@@ -264,7 +266,7 @@ CI deploy is the **authoritative path** going forward for three reasons:
 - The deploy logic lives in the workflow file, which is reviewable in a pull request alongside the code change.
 - Deploy reproducibility is version-controlled rather than stored in the Vercel dashboard configuration.
 
-The Vercel Git integration will be disabled in a follow-up once CI deploy is confirmed stable. Until that follow-up is merged, both paths may fire on the same push, which means two builds race to become the live deployment. This is benign (the last-write wins and both builds are from the same commit) but wastes build minutes. The follow-up will eliminate the race by disabling the Git integration in the Vercel project settings.
+The Vercel Git integration will be disabled in a follow-up once CI deploy is confirmed stable. Until that follow-up is merged, both paths may fire on the same push, which means two builds race to become the live deployment. This is benign — both builds come from the same commit, so whichever completes last serves the same artifact — but it wastes build minutes. The follow-up will eliminate the race by disabling the Git integration in the Vercel project settings.
 
 #### Required GitHub secrets
 
@@ -288,7 +290,7 @@ To prevent mismatches: open the Vercel project's **Settings → General → Node
 
 #### Interaction with `make setup-prod`
 
-The existing bring-up playbook (`make setup-prod` Phase 4, `--tags vercel`) registers the three Vercel environment variables (`BACKEND_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`) as GitHub Actions secrets and imports the project. It does **not** provision `VERCEL_TOKEN`, `VERCEL_ORG_ID`, or `VERCEL_PROJECT_ID`.
+`make setup-prod` Phase 4 (`--tags vercel`) provisions the application environment variables (`BACKEND_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`) into the Vercel project and stores them as GitHub Actions secrets. It does **not** provision the Vercel CLI authentication secrets (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`).
 
 This is an intentional gap: this section documents the CI deploy job and the secrets it needs, but does not modify the playbook. Adding the three secrets to `make setup-prod` is a follow-up task. Until that follow-up is merged, operators must provision `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` manually via `gh secret set` by piping the value through stdin after running `make setup-prod` (see § "Two security patterns worth knowing" for why `--body` is unsafe):
 

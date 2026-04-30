@@ -137,19 +137,23 @@ No request is made during the build, so dummy values only need to satisfy the Zo
 
 ### Frontend deploy job
 
-The `deploy` job in `frontend.yml` is gated identically to the backend: `needs: lint-test-build` ensures the full quality gate must pass before any deploy is attempted, and `if: github.event_name == 'push' && github.ref == 'refs/heads/main'` restricts execution to direct pushes to main (pull-request events and branch pushes are excluded). See § "Deploy gating" for the backend equivalent.
+The `deploy` job in `frontend.yml` follows the same gating pattern as the backend: `needs: lint-test-build` ensures the full quality gate must pass before any deploy is attempted, and the job condition restricts execution to direct pushes to `main` — pull-request events and branch pushes are excluded. See § "Deploy gating" for the backend equivalent.
 
-If `VERCEL_TOKEN` is empty or unset, the deploy step **explicitly exits 1** rather than silently no-oping. Failing loud on a missing secret beats a silent skip — misconfiguration must be visible. **Do not replace this with a silent skip.**
+If any of `VERCEL_TOKEN`, `VERCEL_ORG_ID`, or `VERCEL_PROJECT_ID` is empty or unset, a guard step **explicitly exits 1** rather than silently no-oping. Failing loud on a missing secret beats a silent skip — misconfiguration must be visible. **Do not replace this with a silent skip.**
 
 #### Required GitHub secrets
 
 | Secret | Purpose |
 |---|---|
-| `VERCEL_TOKEN` | Authenticates the Vercel CLI. Use a project-scoped token when the Vercel org plan supports it (limits blast radius to a single project); otherwise use an account-scoped token with a **quarterly rotation reminder**. The token must be non-empty — an empty value causes the deploy step to exit 1. |
-| `VERCEL_ORG_ID` | Identifies the Vercel organization. Exposed as the `VERCEL_ORG_ID` environment variable; the Vercel CLI auto-reads this name, so no explicit `--org` flag is needed. |
-| `VERCEL_PROJECT_ID` | Identifies the target Vercel project. Exposed as the `VERCEL_PROJECT_ID` environment variable; the Vercel CLI resolves the project without a `vercel link` step. |
+| `VERCEL_TOKEN` | Authenticates the Vercel CLI. Use a project-scoped token when the Vercel org plan supports it (limits blast radius to a single project); otherwise use an account-scoped token with a **quarterly rotation reminder**. Must be non-empty — the guard step checks all three Vercel secrets and exits 1 if any is absent. |
+| `VERCEL_ORG_ID` | Identifies the Vercel organization. Exposed as a job-level env var; the Vercel CLI auto-reads it, so no explicit `--org` flag is needed. Must be non-empty — see `VERCEL_TOKEN` note above. |
+| `VERCEL_PROJECT_ID` | Identifies the target Vercel project. Exposed as a job-level env var; the Vercel CLI resolves the project without a `vercel link` step. Must be non-empty — see `VERCEL_TOKEN` note above. |
 
 Register all three in the repository's GitHub secrets before the workflow runs. `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` are visible in the Vercel dashboard under Project → Settings → General.
+
+#### pnpm install in the deploy job
+
+The `deploy` job runs `pnpm install --frozen-lockfile` (with a pnpm store cache sharing the same cache key as `lint-test-build`) before invoking `vercel build`, because `vercel build` executes `next build` locally on the runner and requires `node_modules` to be populated. See § "`pnpm install --frozen-lockfile` is the gate" for the repo-wide invariant this satisfies.
 
 #### CLI deploy path vs. Vercel Git integration
 
@@ -158,4 +162,10 @@ Both the CLI deploy path (via this workflow) and Vercel's native Git integration
 #### Build env mismatch risk
 
 `vercel build` runs Vercel's own build pipeline, which is distinct from the repo's `pnpm build`. If the Node version configured in the Vercel project dashboard differs from the version pinned in `frontend/.tool-versions` (managed by mise), validation can pass in CI while the Vercel-side build fails — or, worse, silently produces a different output. Verify that the Vercel project's Node version setting matches `frontend/.tool-versions` in the Vercel dashboard under Project → Settings → General → Node.js Version.
+
+#### Why the deploy job intentionally omits build-time env vars
+
+The `lint-test-build` job sets `BACKEND_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to dummy values so `next build` can validate the env schema without real credentials. The `deploy` job **deliberately does not set any of these**. Instead, `vercel pull --environment=production` retrieves the real production values from the Vercel project's environment configuration and writes them to `.vercel/.env.production.local`, which `vercel build` then consumes.
+
+**Trap**: if a maintainer copies the dummy-value `env:` block from `lint-test-build` into the `deploy` job, the production build will silently bake those dummy values (e.g. a `localhost` Supabase URL) into the client-side JavaScript bundle. The Vercel project's production environment configuration must be the only source of truth for these values — never duplicate them in the deploy job.
 
