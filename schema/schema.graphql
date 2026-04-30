@@ -109,12 +109,34 @@ type Card {
   updatedAt: Time!
 }
 
+"""
+Input for creating a new card.
+Optional FSRS overrides — pass either all nine or none. Mixing null + non-null is rejected with BAD_USER_INPUT.
+"""
 input NewCardInput {
   cardgroupId: ID!
   """1-500 grapheme clusters (length measured after trimming surrounding whitespace)."""
   front: String!
   """1-500 grapheme clusters (length measured after trimming surrounding whitespace)."""
   back: String!
+  """Optional FSRS override: scheduled due timestamp."""
+  due: Time
+  """Optional FSRS override: memory stability value."""
+  stability: Float
+  """Optional FSRS override: item difficulty value."""
+  difficulty: Float
+  """Optional FSRS override: days elapsed since last review."""
+  elapsedDays: Int
+  """Optional FSRS override: days scheduled until next review."""
+  scheduledDays: Int
+  """Optional FSRS override: total number of reviews."""
+  reps: Int
+  """Optional FSRS override: total number of lapses."""
+  lapses: Int
+  """Optional FSRS override: card state (0=New, 1=Learning, 2=Review, 3=Relearning)."""
+  state: Int
+  """Optional FSRS override: timestamp of the last review."""
+  lastReview: Time
 }
 
 input UpdateCardInput {
@@ -199,6 +221,8 @@ extend type Mutation {
   updateCard(id: ID!, input: UpdateCardInput!): UpdateCardPayload!
   """Delete a card. Non-owners receive UNAUTHENTICATED."""
   deleteCard(id: ID!): Boolean!
+  """Bulk-delete cards owned by the authenticated caller. Returns the number of rows deleted. Foreign-owned IDs in the list are silently skipped (count reflects only successful deletes)."""
+  deleteCards(ids: [ID!]!): Int!
 }
 
 input HandleSwipeInput {
