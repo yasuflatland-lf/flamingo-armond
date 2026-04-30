@@ -165,7 +165,10 @@ type CardEdge {
 type CardConnection {
   edges: [CardEdge!]!
   pageInfo: PageInfo!
-  """Total count of cards in the cardgroup, regardless of page window."""
+  """
+  Total cards in the cardgroup, regardless of page window.
+  Backed by a separate COUNT(*); intended for cardgroups up to ~10k cards.
+  """
   totalCount: Int!
 }
 
