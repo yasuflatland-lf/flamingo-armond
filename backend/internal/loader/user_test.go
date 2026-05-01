@@ -45,6 +45,29 @@ func (r *countingRoleRepo) FindByIDs(ctx context.Context, ids []string) (map[str
 	return r.findByIDs(ctx, ids)
 }
 
+// AssignToUser, RevokeFromUser, ListByUser satisfy the wider RoleRepository
+// interface. The cardgroup/card/user loader tests never assign or revoke
+// roles, so these panic to surface accidental coupling.
+func (r *countingRoleRepo) AssignToUser(_ context.Context, _, _ string) error {
+	panic("countingRoleRepo.AssignToUser not configured")
+}
+
+func (r *countingRoleRepo) RevokeFromUser(_ context.Context, _, _ string) error {
+	panic("countingRoleRepo.RevokeFromUser not configured")
+}
+
+func (r *countingRoleRepo) ListByUser(_ context.Context, _ string) ([]*domain.Role, error) {
+	panic("countingRoleRepo.ListByUser not configured")
+}
+
+func (r *countingRoleRepo) ListByUserIDs(_ context.Context, _ []string) (map[string][]*domain.Role, error) {
+	panic("countingRoleRepo.ListByUserIDs not configured")
+}
+
+func (r *countingRoleRepo) ListAll(_ context.Context) ([]*domain.Role, error) {
+	panic("countingRoleRepo.ListAll not configured")
+}
+
 func emptyRoleRepo() *countingRoleRepo {
 	return &countingRoleRepo{
 		findByIDs: func(_ context.Context, _ []string) (map[string]*domain.Role, error) {
@@ -164,6 +187,18 @@ func (r *countingRepo) Update(ctx context.Context, id string, patch repository.U
 		panic("countingRepo.Update not configured")
 	}
 	return r.update(ctx, id, patch)
+}
+
+// ListPage satisfies repository.UserRepository. The loader-layer tests never
+// hit cursor pagination, so this fixture panics if called — surfacing any
+// accidental coupling instead of silently returning a fabricated empty page.
+func (r *countingRepo) ListPage(
+	_ context.Context,
+	_, _ *string,
+	_, _ int,
+	_ *string,
+) ([]*domain.User, int64, error) {
+	panic("countingRepo.ListPage not configured")
 }
 
 // loadAll concurrently loads all ids through l and returns aligned results/errors.

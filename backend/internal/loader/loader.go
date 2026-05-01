@@ -13,19 +13,21 @@ import (
 type contextKey struct{}
 
 type Loaders struct {
-	User        *dataloader.Loader[string, *domain.User]
-	Role        *dataloader.Loader[string, *domain.Role]
-	Cardgroup   *dataloader.Loader[string, *domain.Cardgroup]
-	Card        *dataloader.Loader[string, *domain.Card]
-	SwipeRecord *dataloader.Loader[string, *domain.SwipeRecord]
+	User         *dataloader.Loader[string, *domain.User]
+	Role         *dataloader.Loader[string, *domain.Role]
+	RoleByUserID *RoleByUserIDLoader
+	Cardgroup    *dataloader.Loader[string, *domain.Cardgroup]
+	Card         *dataloader.Loader[string, *domain.Card]
+	SwipeRecord  *dataloader.Loader[string, *domain.SwipeRecord]
 }
 
 func New(userRepo repository.UserRepository, roleRepo repository.RoleRepository, cardgroupRepo repository.CardgroupRepository, cardRepo repository.CardRepository, swipeRecordRepo ...repository.SwipeRecordRepository) *Loaders {
 	loaders := &Loaders{
-		User:      dataloader.NewBatchedLoader(userBatchFunc(userRepo)),
-		Role:      dataloader.NewBatchedLoader(roleBatchFunc(roleRepo)),
-		Cardgroup: dataloader.NewBatchedLoader(cardgroupBatchFunc(cardgroupRepo)),
-		Card:      dataloader.NewBatchedLoader(cardBatchFunc(cardRepo)),
+		User:         dataloader.NewBatchedLoader(userBatchFunc(userRepo)),
+		Role:         dataloader.NewBatchedLoader(roleBatchFunc(roleRepo)),
+		RoleByUserID: dataloader.NewBatchedLoader(roleByUserIDBatchFunc(roleRepo)),
+		Cardgroup:    dataloader.NewBatchedLoader(cardgroupBatchFunc(cardgroupRepo)),
+		Card:         dataloader.NewBatchedLoader(cardBatchFunc(cardRepo)),
 	}
 	if len(swipeRecordRepo) > 0 && swipeRecordRepo[0] != nil {
 		loaders.SwipeRecord = dataloader.NewBatchedLoader(swipeRecordBatchFunc(swipeRecordRepo[0]))
@@ -50,4 +52,10 @@ func Middleware(userRepo repository.UserRepository, roleRepo repository.RoleRepo
 func For(ctx context.Context) *Loaders {
 	l, _ := ctx.Value(contextKey{}).(*Loaders)
 	return l
+}
+
+// WithContext stores loaders in ctx and returns the enriched context. Use
+// this in tests to inject a Loaders without going through the Echo middleware.
+func WithContext(ctx context.Context, l *Loaders) context.Context {
+	return context.WithValue(ctx, contextKey{}, l)
 }
