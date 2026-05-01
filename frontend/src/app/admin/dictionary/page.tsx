@@ -3,9 +3,10 @@
  *
  * Transitional admin gate: this page does NOT enforce admin on the frontend.
  * The `validateDictionary` query and `upsertDictionary` mutation both reject
- * non-admin callers server-side with FORBIDDEN. Once issue #60 (admin user
- * list + role assignment, which adds `User.roles` to the schema) lands, the
- * gate moves to a server-side check on the route segment layout.
+ * non-admin callers server-side with FORBIDDEN. Once issue #60 (admin layout
+ * + role CRUD, which adds `frontend/src/app/admin/layout.tsx` as the unified
+ * admin gate) lands, the gate moves to a server-side check on the route
+ * segment layout.
  */
 
 import { redirect } from "next/navigation";
