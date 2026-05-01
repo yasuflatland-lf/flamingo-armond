@@ -511,3 +511,19 @@ The Apollo docs allow switching hash-only requests to GET with the query string.
 **`@apollo/client-integration-nextjs` prepends two internal streaming links.** `@apollo/client-integration-nextjs` prepends two internal links (`ReadFromReadableStreamLink`, `TeeToReadableStreamLink`) to the user-supplied link chain before any user links execute. These support RSC streaming. As a result, the live chain assembled from `from([authLink, apqLink, httpLink])` has **five** segments, not three. Tests that assert `client.link.length === 3` or similar absolute counts will fail. Assert the **relative order** of the user-supplied links instead (e.g. verify that `authLink` appears before `apqLink` in the chain, not that the chain has exactly three nodes).
 
 **`ApolloLink.from` builds a binary tree, not a flat list.** `ApolloLink.from([a, b, c])` produces a binary tree of `ApolloLink` "concat" glue nodes; `a`, `b`, `c` are the leaves. When traversing `link.left` / `link.right` to inspect the chain in tests, stop recursing when you reach a named subclass (`HttpLink`, `PersistedQueryLink`, `SetContextLink`). Descending into `HttpLink` reveals its own internal `ClientAwarenessLink` + `BaseHttpLink` pair and pollutes the segment list with internal implementation details.
+
+## Testing convention: narrow vs broad page tests
+
+All tests live under `frontend/__tests__/` using Vitest + Testing Library. Two naming conventions split responsibility:
+
+**Narrow tests** (`<feature>-<flow>.test.tsx`) isolate a single user-facing flow introduced by a feature PR. Examples: `cards-pagination.test.tsx` (pagination + fetchMore only), `cards-bulk-delete.test.tsx` (selection and delete only), `admin-dictionary-import.test.tsx` (validate-then-import flow), `admin-users-roles.test.tsx` (assign/revoke roles only), `admin-roles-crud.test.tsx` (create/update/delete only), `admin-layout.test.tsx` (admin gate only). Each narrow test is shipped by the feature PR that introduced its flow, locking in expected behaviour.
+
+**Broad tests** (`<page>.test.tsx`) guard the page-level composition and integration points across PRs. Examples: `cardgroups-list.test.tsx`, `cardgroups-detail.test.tsx`, `cards-list.test.tsx`, `admin-users.test.tsx`, `admin-roles.test.tsx`, `admin-dictionary.test.tsx`. Each broad test covers SSR auth gate, initial render, empty state, and error boundaries — without duplicating the narrow test's flow-specific assertions.
+
+**Anti-pattern**: Do not name a flow-specific test with a page-level name. If a feature PR introduces a flow that is the only flow on its page, still name the test `<page>-<flow>.test.tsx` to reserve the `<page>.test.tsx` slot for the future broad test.
+
+**Shared utilities** live under `frontend/__tests__/utils/` and `frontend/__tests__/fixtures/`:
+
+- `mock-supabase.ts` — in-memory `getUser` mock for Supabase server client in RSC tests.
+- `mock-apollo-paginated.ts` — one-mock-per-fetchMore helper with inline documentation. Pairs with a `console.warn` spy that fails the test if it sees `"No more mocked responses for the query"`, catching double-fetch regressions.
+- `fixtures/users.ts` and `fixtures/cardgroups.ts` — shared test data.
