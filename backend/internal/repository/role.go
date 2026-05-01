@@ -131,7 +131,7 @@ func (r *roleRepo) FindByName(ctx context.Context, name string) (*domain.Role, e
 	err := r.db.WithContext(ctx).Where("name = ?", name).Take(&row).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
+			return nil, ErrRoleNotFound
 		}
 		return nil, eris.Wrap(err, "repository: find role by name")
 	}
@@ -227,8 +227,7 @@ func classifyUniqueError(err error) error {
 	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
 		return nil
 	}
-	if strings.Contains(pgErr.ConstraintName, "name") ||
-		strings.Contains(pgErr.ConstraintName, "roles") {
+	if strings.Contains(pgErr.ConstraintName, "name") {
 		return ErrRoleDuplicate
 	}
 	return nil

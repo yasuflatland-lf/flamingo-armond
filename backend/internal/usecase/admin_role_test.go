@@ -25,11 +25,6 @@ type mockAdminRoleRepoForCRUD struct {
 	findCalls  int
 	lastFindID string
 
-	// FindByName (kept on the interface for production parity, unused by tests)
-	findByNameResult *domain.Role
-	findByNameErr    error
-	findByNameCalls  int
-
 	// Create
 	createResult   *domain.Role
 	createErr      error
@@ -61,14 +56,6 @@ func (m *mockAdminRoleRepoForCRUD) FindByID(_ context.Context, id string) (*doma
 		return nil, m.findErr
 	}
 	return m.findResult, nil
-}
-
-func (m *mockAdminRoleRepoForCRUD) FindByName(_ context.Context, _ string) (*domain.Role, error) {
-	m.findByNameCalls++
-	if m.findByNameErr != nil {
-		return nil, m.findByNameErr
-	}
-	return m.findByNameResult, nil
 }
 
 func (m *mockAdminRoleRepoForCRUD) Create(_ context.Context, name string) (*domain.Role, error) {
@@ -387,6 +374,83 @@ func TestAdminRole_Create_ContextCanceled(t *testing.T) {
 
 	_, err := uc.Create(authedCtx("admin-1"), "moderator")
 	assertGQLErr(t, err, "CANCELLED", "")
+}
+
+// TestAdminRole_Create_NormalizesBeforeUniqueCheck exercises the normalisation
+// (lowercase + trim) step so that mixed-case input reaches the repository in
+// canonical form. The unique-check constraint then applies to the normalised
+// name, not the original user input.
+func TestAdminRole_Create_NormalizesBeforeUniqueCheck(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		input    string
+		wantRepo string
+	}{
+		{
+			name:     "mixed case",
+			input:    "Admin",
+			wantRepo: "admin",
+		},
+		{
+			name:     "uppercase",
+			input:    "ADMIN",
+			wantRepo: "admin",
+		},
+		{
+			name:     "trim whitespace",
+			input:    "  admin  ",
+			wantRepo: "admin",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			roles := &mockAdminRoleRepoForCRUD{
+				createResult: &domain.Role{ID: "r-new", Name: tc.wantRepo},
+			}
+			authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+			uc, _ := buildAdminRoleUC(roles, authChk)
+
+			got, err := uc.Create(authedCtx("admin-1"), tc.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got == nil || got.Name != tc.wantRepo {
+				t.Fatalf("got = %+v, want role with name=%s", got, tc.wantRepo)
+			}
+			if roles.lastCreateName != tc.wantRepo {
+				t.Fatalf("repo create arg = %q, want %q (normalised)", roles.lastCreateName, tc.wantRepo)
+			}
+			if roles.createCalls != 1 {
+				t.Fatalf("expected 1 repo create call, got %d", roles.createCalls)
+			}
+		})
+	}
+}
+
+// TestAdminRole_Create_DuplicateMatchesAfterNormalization ensures that when
+// a user supplies a mixed-case name (e.g. "Admin") and a normalised form
+// already exists in the system (e.g. a system role "admin"), the duplicate
+// check catches the collision and returns BAD_USER_INPUT(field=name).
+func TestAdminRole_Create_DuplicateMatchesAfterNormalization(t *testing.T) {
+	t.Parallel()
+
+	roles := &mockAdminRoleRepoForCRUD{createErr: repository.ErrRoleDuplicate}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _ := buildAdminRoleUC(roles, authChk)
+
+	_, err := uc.Create(authedCtx("admin-1"), "Admin")
+	assertGQLErr(t, err, "BAD_USER_INPUT", "name")
+	if roles.lastCreateName != "admin" {
+		t.Fatalf("repo create arg = %q, want %q (normalised before duplicate check)",
+			roles.lastCreateName, "admin")
+	}
+	if roles.createCalls != 1 {
+		t.Fatalf("expected 1 repo create call, got %d", roles.createCalls)
+	}
 }
 
 // ---------------------------------------------------------------------------

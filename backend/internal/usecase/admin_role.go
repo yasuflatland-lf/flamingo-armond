@@ -50,7 +50,6 @@ type AdminRoleUsecase interface {
 // for AdminRole to also implement assignment plumbing they never exercise.
 type adminRoleRepoForCRUD interface {
 	FindByID(ctx context.Context, id string) (*domain.Role, error)
-	FindByName(ctx context.Context, name string) (*domain.Role, error)
 	Create(ctx context.Context, name string) (*domain.Role, error)
 	Update(ctx context.Context, id, name string) (*domain.Role, error)
 	Delete(ctx context.Context, id string) error
