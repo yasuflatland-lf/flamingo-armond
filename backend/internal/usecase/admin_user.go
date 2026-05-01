@@ -321,21 +321,7 @@ func (u *adminUserUsecase) AssignRole(ctx context.Context, userID, roleID string
 		return nil, err
 	}
 	if err := u.roles.AssignToUser(ctx, userID, roleID); err != nil {
-		// Branch on the specific sentinels first; both also satisfy
-		// errors.Is(_, ErrNotFound), so order matters.
-		if errors.Is(err, repository.ErrUserNotFound) {
-			return nil, gqlerr.BadUserInput("userId", "user not found")
-		}
-		if errors.Is(err, repository.ErrRoleNotFound) {
-			return nil, gqlerr.BadUserInput("roleId", "role not found")
-		}
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, gqlerr.BadUserInput("userId", "user or role not found")
-		}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, gqlerr.Cancelled(ctx, err)
-		}
-		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "usecase: admin user assign role"))
+		return nil, mapRoleAssignmentError(ctx, err, "usecase: admin user assign role")
 	}
 	return u.refetchUser(ctx, userID, "usecase: admin user assign role: refetch")
 }
@@ -366,23 +352,29 @@ func (u *adminUserUsecase) RevokeRole(ctx context.Context, userID, roleID string
 	}
 
 	if err := u.roles.RevokeFromUser(ctx, userID, roleID); err != nil {
-		// Branch on the specific sentinels first; both also satisfy
-		// errors.Is(_, ErrNotFound), so order matters.
-		if errors.Is(err, repository.ErrUserNotFound) {
-			return nil, gqlerr.BadUserInput("userId", "user not found")
-		}
-		if errors.Is(err, repository.ErrRoleNotFound) {
-			return nil, gqlerr.BadUserInput("roleId", "role not found")
-		}
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, gqlerr.BadUserInput("userId", "user or role not found")
-		}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, gqlerr.Cancelled(ctx, err)
-		}
-		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "usecase: admin user revoke role"))
+		return nil, mapRoleAssignmentError(ctx, err, "usecase: admin user revoke role")
 	}
 	return u.refetchUser(ctx, userID, "usecase: admin user revoke role: refetch")
+}
+
+// mapRoleAssignmentError translates the sentinel set returned by
+// roleRepo.AssignToUser / RevokeFromUser into the typed gqlerr surface used by
+// AssignRole and RevokeRole. Specific sentinels are matched before the legacy
+// ErrNotFound fallback because both ErrUserNotFound and ErrRoleNotFound also
+// satisfy errors.Is(_, ErrNotFound).
+func mapRoleAssignmentError(ctx context.Context, err error, wrap string) error {
+	switch {
+	case errors.Is(err, repository.ErrUserNotFound):
+		return gqlerr.BadUserInput("userId", "user not found")
+	case errors.Is(err, repository.ErrRoleNotFound):
+		return gqlerr.BadUserInput("roleId", "role not found")
+	case errors.Is(err, repository.ErrNotFound):
+		return gqlerr.BadUserInput("userId", "user or role not found")
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return gqlerr.Cancelled(ctx, err)
+	default:
+		return gqlerr.Internal(ctx, eris.Wrap(err, wrap))
+	}
 }
 
 // ListRoles returns every role in the system ordered by name ASC. Admin-only.
@@ -409,13 +401,14 @@ func (u *adminUserUsecase) ListRoles(ctx context.Context) ([]*domain.Role, error
 func (u *adminUserUsecase) refetchUser(ctx context.Context, id, wrap string) (*domain.User, error) {
 	user, err := u.users.FindByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, gqlerr.Internal(ctx, eris.Wrap(err, wrap+": user disappeared"))
-		}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		switch {
+		case errors.Is(err, repository.ErrNotFound):
+			return nil, gqlerr.Internal(ctx, eris.Wrapf(err, "%s: user disappeared", wrap))
+		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 			return nil, gqlerr.Cancelled(ctx, err)
+		default:
+			return nil, gqlerr.Internal(ctx, eris.Wrap(err, wrap))
 		}
-		return nil, gqlerr.Internal(ctx, eris.Wrap(err, wrap))
 	}
 	return user, nil
 }

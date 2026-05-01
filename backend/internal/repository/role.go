@@ -131,6 +131,24 @@ func classifyFKError(err error) error {
 	return nil
 }
 
+// requireExists returns ErrUserNotFound / ErrRoleNotFound when no row matches
+// the given primary key. The wrap label feeds into the eris chain when the
+// underlying COUNT query itself fails. notFound is the sentinel returned for
+// the zero-count case.
+func (r *roleRepo) requireExists(ctx context.Context, table, id, wrap string, notFound error) error {
+	var count int64
+	if err := r.db.WithContext(ctx).
+		Table(table).
+		Where("id = ?", id).
+		Count(&count).Error; err != nil {
+		return eris.Wrap(err, wrap)
+	}
+	if count == 0 {
+		return notFound
+	}
+	return nil
+}
+
 // AssignToUser inserts a user_roles row. Idempotent via ON CONFLICT DO NOTHING.
 // Validates that both the user and role exist before inserting; returns
 // ErrUserNotFound when the user is missing and ErrRoleNotFound when the role
@@ -144,28 +162,11 @@ func classifyFKError(err error) error {
 // (23503) is classified by classifyFKError into the same sentinels, so the
 // caller still receives BAD_USER_INPUT rather than INTERNAL.
 func (r *roleRepo) AssignToUser(ctx context.Context, userID, roleID string) error {
-	// Validate user exists.
-	var userCount int64
-	if err := r.db.WithContext(ctx).
-		Table("users").
-		Where("id = ?", userID).
-		Count(&userCount).Error; err != nil {
-		return eris.Wrap(err, "repository: assign role: check user")
+	if err := r.requireExists(ctx, "users", userID, "repository: assign role: check user", ErrUserNotFound); err != nil {
+		return err
 	}
-	if userCount == 0 {
-		return ErrUserNotFound
-	}
-
-	// Validate role exists.
-	var roleCount int64
-	if err := r.db.WithContext(ctx).
-		Table("roles").
-		Where("id = ?", roleID).
-		Count(&roleCount).Error; err != nil {
-		return eris.Wrap(err, "repository: assign role: check role")
-	}
-	if roleCount == 0 {
-		return ErrRoleNotFound
+	if err := r.requireExists(ctx, "roles", roleID, "repository: assign role: check role", ErrRoleNotFound); err != nil {
+		return err
 	}
 
 	row := gormUserRole{UserID: userID, RoleID: roleID}
@@ -189,28 +190,11 @@ func (r *roleRepo) AssignToUser(ctx context.Context, userID, roleID string) erro
 // both exist but no assignment row is present, the operation is a silent
 // no-op (idempotent on the assignment link itself).
 func (r *roleRepo) RevokeFromUser(ctx context.Context, userID, roleID string) error {
-	// Validate user exists.
-	var userCount int64
-	if err := r.db.WithContext(ctx).
-		Table("users").
-		Where("id = ?", userID).
-		Count(&userCount).Error; err != nil {
-		return eris.Wrap(err, "repository: revoke role: check user")
+	if err := r.requireExists(ctx, "users", userID, "repository: revoke role: check user", ErrUserNotFound); err != nil {
+		return err
 	}
-	if userCount == 0 {
-		return ErrUserNotFound
-	}
-
-	// Validate role exists.
-	var roleCount int64
-	if err := r.db.WithContext(ctx).
-		Table("roles").
-		Where("id = ?", roleID).
-		Count(&roleCount).Error; err != nil {
-		return eris.Wrap(err, "repository: revoke role: check role")
-	}
-	if roleCount == 0 {
-		return ErrRoleNotFound
+	if err := r.requireExists(ctx, "roles", roleID, "repository: revoke role: check role", ErrRoleNotFound); err != nil {
+		return err
 	}
 
 	if err := r.db.WithContext(ctx).
