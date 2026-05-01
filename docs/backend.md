@@ -81,6 +81,10 @@ These values target a public API on Render. Revisit if the threat model or deplo
 
 Usecases that need an injectable `txRunner` for resolver-level wire tests (e.g., `NewCardUsecaseWithTx`) are exported solely to let `package resolver_test` inject a hand-rolled mock. The trade-off is intentional: `txRunner` is unexported, so callers outside the package cannot misuse the seam; the alternative — moving tests into `package resolver` — gives up the `_test`-package isolation convention. When adding similar usecases, prefer this pattern over exposing production internals to tests via the non-`_test` package.
 
+### Consumer-defined narrow interfaces over re-using the full repository / service interface
+
+When a usecase only needs one or two methods of `repository.CardRepository` or `auth.Service`, declare a local interface in the usecase file (e.g. `dictionaryUsecase`'s `AdminChecker` and `DictionaryCardRepository`) that lists *only* those methods. The production constructor accepts the wide concrete type (`*auth.Service`, `repository.CardRepository`) and the compiler checks structural conformance; tests pass a stub that implements just the narrow surface. This avoids the secondary problem of having to mock every method on the full interface in every test, and keeps the seam clear about which methods the usecase actually depends on.
+
 ### Resolver-level wire tests
 
 To catch wire-format regressions that usecase-layer unit tests miss (e.g., `Int` codec changes, `extensions.code` shape), build a `handler.NewServer` against a `Resolver` whose UC fields point at hand-rolled mocks. The harness pattern is in `backend/graph/resolver/user_test.go`; `backend/graph/resolver/card_resolvers_test.go` is the second example. These tests verify that gqlgen correctly hydrates a generated input model AND that the resolver maps domain sentinels to the expected GraphQL error shape.
@@ -112,6 +116,8 @@ if err != nil {
 ```
 
 Applies to every resolver that performs a blocking external call. Without this guard, `slog.ErrorContext` and any downstream alerting (Sentry, dashboards) get polluted by client cancellations that are not server bugs.
+
+The same rule extends to **usecases that wrap a `db.Transaction` or call an injected service** (e.g. `AdminChecker.IsAdmin`, `CardRepository.UpsertManyTx`). When a usecase is the layer that catches the error, route `context.Canceled` / `context.DeadlineExceeded` through `gqlerr.Cancelled` (WARN-level log) and everything else through `gqlerr.Internal` (ERROR-level log). `dictionaryUsecase.Upsert` shows both the auth-call site and the transaction-runner site applying this guard.
 
 ### Legacy ports: revisit boundaries before re-translating
 

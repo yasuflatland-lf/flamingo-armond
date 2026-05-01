@@ -139,6 +139,29 @@ func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.HandleSw
 	return toSwipeResponseModel(out), nil
 }
 
+// UpsertDictionary is the resolver for the upsertDictionary field.
+func (r *mutationResolver) UpsertDictionary(ctx context.Context, input model.UpsertDictionaryInput) (*model.UpsertDictionaryPayload, error) {
+	out, err := r.DictionaryUC.Upsert(ctx, usecase.UpsertDictionaryInput{
+		CardgroupID: input.CardgroupID,
+		Payload:     input.Payload,
+	})
+	if err != nil {
+		return nil, err
+	}
+	errs := make([]*model.DictionaryValidationError, 0, len(out.Errors))
+	for _, e := range out.Errors {
+		errs = append(errs, &model.DictionaryValidationError{
+			Line:    e.Line,
+			Message: e.Message,
+		})
+	}
+	return &model.UpsertDictionaryPayload{
+		Inserted: int(out.Inserted),
+		Updated:  int(out.Updated),
+		Errors:   errs,
+	}, nil
+}
+
 // Health is the resolver for the health field.
 func (r *queryResolver) Health(ctx context.Context) (string, error) {
 	return "ok", nil

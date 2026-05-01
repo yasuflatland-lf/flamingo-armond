@@ -14,6 +14,7 @@ import (
 	"backend/internal/auth"
 	"backend/internal/gqlerr"
 	"backend/internal/repository"
+	"backend/internal/usecase"
 )
 
 // mockUserRoleRepository satisfies repository.UserRoleRepository.
@@ -29,7 +30,7 @@ func (m *mockUserRoleRepository) HasRole(_ context.Context, _, _ string) (bool, 
 // newDictOnlySrv builds a server with only AuthSvc wired; only the
 // validateDictionary resolver is exercised here.
 func newDictOnlySrv(roleRepo repository.UserRoleRepository) *handler.Server {
-	r := resolver.NewResolver(nil, nil, nil, nil, auth.NewService(roleRepo))
+	r := resolver.NewResolver(nil, nil, nil, nil, auth.NewService(roleRepo), nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -189,5 +190,112 @@ func TestValidateDictionary_IsAdminDeadlineExceeded(t *testing.T) {
 	code := errCode(t, resp)
 	if code != string(gqlerr.CodeCancelled) {
 		t.Fatalf("expected %s, got %q", gqlerr.CodeCancelled, code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// mockDictionaryUsecase — in-package stub for upsertDictionary resolver tests.
+// ---------------------------------------------------------------------------
+
+// mockDictionaryUsecase satisfies usecase.DictionaryUsecase. The returnOut
+// field drives the happy-path result; the returnErr field, when non-nil, is
+// returned instead so the error-propagation path can be exercised.
+type mockDictionaryUsecase struct {
+	returnOut usecase.UpsertDictionaryOutput
+	returnErr error
+}
+
+func (m *mockDictionaryUsecase) Upsert(_ context.Context, _ usecase.UpsertDictionaryInput) (usecase.UpsertDictionaryOutput, error) {
+	if m.returnErr != nil {
+		return usecase.UpsertDictionaryOutput{}, m.returnErr
+	}
+	return m.returnOut, nil
+}
+
+// newUpsertDictSrv builds a server with the given DictionaryUsecase mock
+// wired. AuthSvc is not needed for the upsertDictionary resolver because the
+// usecase mock already encapsulates auth logic.
+func newUpsertDictSrv(dictUC usecase.DictionaryUsecase) *handler.Server {
+	r := resolver.NewResolver(nil, nil, nil, nil, nil, dictUC)
+	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
+	srv.AddTransport(transport.POST{})
+	return srv
+}
+
+// upsertDictionaryMutation returns a JSON-encoded GraphQL mutation body for
+// upsertDictionary. Both arguments are embedded literally so the caller must
+// escape them if needed; for test use the values are always safe ASCII/base64.
+func upsertDictionaryMutation(cardgroupID, payload string) string {
+	return `{"query":"mutation { upsertDictionary(input: { cardgroupId: \"` + cardgroupID + `\", payload: \"` + payload + `\" }) { inserted updated errors { line message } } }"}`
+}
+
+// TestUpsertDictionary_ResolverHappyPath drives the full GraphQL transport with
+// a mock DictionaryUsecase that returns a known UpsertDictionaryOutput. The
+// test asserts the GraphQL response payload's inserted, updated, and errors[0]
+// fields, which catches int64->int truncation regressions and nil-vs-empty
+// errors slice mismatches.
+func TestUpsertDictionary_ResolverHappyPath(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockDictionaryUsecase{
+		returnOut: usecase.UpsertDictionaryOutput{
+			Inserted: 7,
+			Updated:  3,
+			Errors: []usecase.DictionaryValidationError{
+				{Line: 5, Message: "duplicate"},
+			},
+		},
+	}
+	srv := newUpsertDictSrv(mock)
+	payload := base64.StdEncoding.EncodeToString([]byte("apple fruit"))
+	resp := gqlRequest(t, srv, authedCtx("u1"), upsertDictionaryMutation("cg-1", payload))
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected top-level errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	result, _ := data["upsertDictionary"].(map[string]any)
+	if result == nil {
+		t.Fatalf("expected data.upsertDictionary, got nil; response: %v", resp)
+	}
+
+	// JSON numbers decode as float64 in Go's encoding/json.
+	if got, _ := result["inserted"].(float64); int(got) != 7 {
+		t.Fatalf("expected inserted=7, got %v", result["inserted"])
+	}
+	if got, _ := result["updated"].(float64); int(got) != 3 {
+		t.Fatalf("expected updated=3, got %v", result["updated"])
+	}
+
+	errs, _ := result["errors"].([]any)
+	if len(errs) != 1 {
+		t.Fatalf("expected 1 error entry, got %d: %v", len(errs), errs)
+	}
+	firstErr, _ := errs[0].(map[string]any)
+	if line, _ := firstErr["line"].(float64); int(line) != 5 {
+		t.Fatalf("expected errors[0].line=5, got %v", firstErr["line"])
+	}
+	if msg, _ := firstErr["message"].(string); msg != "duplicate" {
+		t.Fatalf("expected errors[0].message=%q, got %q", "duplicate", msg)
+	}
+}
+
+// TestUpsertDictionary_ResolverPropagatesForbidden verifies that when the
+// DictionaryUsecase returns a FORBIDDEN gqlerror (e.g. non-admin caller), the
+// resolver propagates it unchanged and the GraphQL response carries
+// errors[0].extensions.code == "FORBIDDEN".
+func TestUpsertDictionary_ResolverPropagatesForbidden(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockDictionaryUsecase{
+		returnErr: gqlerr.NewForbidden("admin role required"),
+	}
+	srv := newUpsertDictSrv(mock)
+	payload := base64.StdEncoding.EncodeToString([]byte("apple fruit"))
+	resp := gqlRequest(t, srv, authedCtx("u1"), upsertDictionaryMutation("cg-1", payload))
+
+	code := errCode(t, resp)
+	if code != string(gqlerr.CodeForbidden) {
+		t.Fatalf("expected %s, got %q", gqlerr.CodeForbidden, code)
 	}
 }
