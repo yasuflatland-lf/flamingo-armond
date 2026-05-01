@@ -1,8 +1,9 @@
 "use client";
 
+import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { useLazyQuery, useMutation, useQuery } from "@apollo/client/react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import {
@@ -42,20 +43,9 @@ type ImportResult = {
  */
 function classifyError(err: unknown): string {
   if (!err) return "";
-  // Attempt FORBIDDEN detection first by inspecting the raw error message,
-  // then fall back to the generic banner helper for INTERNAL / network errors.
-  if (err instanceof Error && err.message.includes("FORBIDDEN")) {
-    return "Admin role required.";
-  }
-  // Check for GraphQL errors with FORBIDDEN extension code.
-  const anyErr = err as {
-    graphQLErrors?: Array<{ extensions?: { code?: string }; message: string }>;
-  };
-  if (Array.isArray(anyErr.graphQLErrors)) {
-    for (const ge of anyErr.graphQLErrors) {
-      if (ge.extensions?.code === "FORBIDDEN") {
-        return "Admin role required.";
-      }
+  if (CombinedGraphQLErrors.is(err)) {
+    for (const ge of err.errors) {
+      if (ge.extensions?.code === "FORBIDDEN") return "Admin role required.";
     }
   }
   return getBackendErrorBanner(err) ?? "An unexpected error occurred. Please try again.";
@@ -67,6 +57,18 @@ export function DictionaryImportClient() {
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [bannerError, setBannerError] = useState<string>("");
+
+  // Invalidate validation when the user edits the payload or switches cardgroup,
+  // so Import stays disabled until they re-Validate. Without this, a stale
+  // validate result lets users import a payload that no longer matches the
+  // validated structure. payloadText and cardgroupId are trigger-only deps:
+  // the callback always resets to null and does not read them.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional trigger-only deps
+  useEffect(() => {
+    setValidationResult(null);
+    setImportResult(null);
+    setBannerError("");
+  }, [payloadText, cardgroupId]);
 
   const {
     data: cardgroupsData,
@@ -113,6 +115,10 @@ export function DictionaryImportClient() {
       const result = await runUpsert({
         variables: { input: { cardgroupId, payload } },
       });
+      if (result.error) {
+        setBannerError(classifyError(result.error));
+        return;
+      }
       if (result.data?.upsertDictionary) {
         setImportResult(result.data.upsertDictionary);
       }
@@ -282,12 +288,21 @@ export function DictionaryImportClient() {
         {/* Import result */}
         {importResult && (
           <section>
-            <div className="rounded-md bg-green-50 p-3 text-sm text-green-800" role="status">
-              Import complete — {importResult.inserted} inserted, {importResult.updated} updated
-              {importResult.errors.length > 0 &&
-                `, ${importResult.errors.length} error${importResult.errors.length === 1 ? "" : "s"}`}
-              .
-            </div>
+            {importResult.inserted === 0 &&
+            importResult.updated === 0 &&
+            importResult.errors.length > 0 ? (
+              <div className="rounded-md bg-red-50 p-3 text-sm text-red-800" role="alert">
+                Import failed: no rows persisted, {importResult.errors.length} parse error
+                {importResult.errors.length === 1 ? "" : "s"}.
+              </div>
+            ) : (
+              <div className="rounded-md bg-green-50 p-3 text-sm text-green-800" role="status">
+                Import complete — {importResult.inserted} inserted, {importResult.updated} updated
+                {importResult.errors.length > 0 &&
+                  `, ${importResult.errors.length} error${importResult.errors.length === 1 ? "" : "s"}`}
+                .
+              </div>
+            )}
             {importResult.errors.length > 0 && (
               <ul className="mt-2 space-y-1">
                 {importResult.errors.map((err) => (
