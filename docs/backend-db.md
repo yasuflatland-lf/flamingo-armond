@@ -18,6 +18,8 @@ Migration files live under `backend/internal/database/migrations/`. Go's `//go:e
 
 When a migration fails mid-run, `schema_migrations.dirty=true` is set. Recovery requires an operator to run `migrate force <version>`. The `run()` function treats any migration error as fatal and returns immediately (fail-fast). See `docs/playbook-patterns.md` § "Recovering from a dirty migration" for the operator runbook.
 
+**`UPDATE schema_migrations SET dirty = false` alone is not enough.** A failed up migration leaves both `dirty = true` AND `version` pointing at the failed migration. Clearing only the dirty flag leaves the version pointing at the failed file, so the next `Steps(1)` call goes looking for migration `<failed+1>` and fails with `os.ErrNotExist`. The idiomatic recovery is `m.Force(<predecessor_version>)` — it rewrites both fields atomically and lets `Steps(1)` re-apply the original migration. The same gotcha applies to test code that simulates a dirty state via the migrate Go API; see `MigrateForceForTest` in `internal/database/export_test.go`.
+
 #### golang-migrate transaction behaviour
 
 **The `pgx/v5` driver does NOT auto-wrap each migration file in a transaction.** Every migration that requires atomicity must open its own `BEGIN; ... COMMIT;` block explicitly. A migration file that omits `BEGIN/COMMIT` and mixes DDL with privilege-sensitive statements (e.g. `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`) can partially succeed: the DDL commits, the later statement fails, and `schema_migrations.dirty=true` persists because golang-migrate commits that flag in its own separate transaction *before* it begins executing the migration SQL.
@@ -62,6 +64,12 @@ $$;
 - `SET search_path = public` — neutralises the classic `SECURITY DEFINER` injection vector where an attacker creates a `pg_temp` shim function (e.g. their own `roles` table) that the function would otherwise resolve before the real one.
 - `REVOKE ALL FROM PUBLIC` then narrow `GRANT EXECUTE` — without revoking from `PUBLIC`, anonymous PostgREST callers (`anon` role) could invoke the helper as an oracle to enumerate role assignments. The grant is intentionally limited to the Supabase-managed `authenticated` role.
 - `DO $$ ... IF EXISTS pg_roles ... GRANT END $$` portability guard — plain PostgreSQL does not include Supabase-managed roles (`authenticated`, `anon`, `service_role`) by default. Wrapping role-specific GRANTs in this conditional `DO` block keeps the migration applicable outside Supabase. Testcontainers create a minimal `authenticated` role fixture so RLS behavior can be exercised directly. The Go backend connects as the table owner and bypasses RLS, so the GRANT path is used only by direct PostgREST / Edge callers in production.
+
+### Postgres upsert: classifying inserted vs updated rows in one round-trip
+
+`INSERT ... ON CONFLICT (key) DO UPDATE ... RETURNING (xmax = 0) AS inserted` lets a single statement report which rows were inserted and which were updated. PostgreSQL marks freshly inserted rows with `xmax = 0` and ON-CONFLICT-updated rows with `xmax = current_xid`, so the boolean expression in `RETURNING` classifies each row inline — no second `SELECT`, no application-side bookkeeping. The `cards` upsert path uses this in `cardRepo.UpsertManyTx` to compute the `inserted` / `updated` split.
+
+The flip side is that the conflict key MUST be unique within the input batch. If two rows in the same `INSERT ... VALUES (...), (...)` collide on the conflict target, Postgres raises SQLSTATE `21000` ("ON CONFLICT DO UPDATE command cannot affect row a second time") and aborts the whole statement — Postgres deliberately does not silently merge intra-batch duplicates because either-row-wins is non-deterministic. The application layer must dedup by conflict key before issuing the SQL; the dictionary usecase keeps the *last* occurrence and reports earlier ones as soft errors.
 
 ### Startup order
 

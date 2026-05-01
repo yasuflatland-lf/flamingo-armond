@@ -287,6 +287,8 @@ if (result?.data?.updateCardgroup?.cardgroup) {
 
 **Form remount via React `key` to reset fields:** After a successful create-mutation, bump a numeric `key` state variable passed to the form component (`<CardForm key={createFormKey} ...>`). React unmounts and remounts the component, resetting all TanStack Form field state without manual `form.reset()` calls.
 
+**Validate-then-mutate flows must invalidate the validation result on input edit.** When a UI splits a server-side check (`validateDictionary`) from a destructive mutation (`upsertDictionary`) and gates the mutation button on the validation result, the validation state goes stale the instant the user edits any input feeding into it. Without explicit invalidation, the user can validate text A, edit to text B, and then submit B against a "valid" gate. The pattern is a `useEffect(() => setValidation(null), [<all input deps>])` whose callback only resets state — the deps array is trigger-only, which Biome flags as `lint/correctness/useExhaustiveDependencies`. Suppress with the inline `biome-ignore` comment as in `frontend/src/app/admin/dictionary/dictionary-client.tsx`.
+
 #### Bio explicit clear UX
 
 `bio` follows tri-state semantics:
@@ -310,6 +312,8 @@ field to `""` so the next submit clears the column.
 **Real `InMemoryCache` for cache-write/evict tests:** Passing a real `InMemoryCache` to `<MockedProvider cache={cache}>` and pre-seeding it via `cache.writeQuery(...)` lets tests assert the actual cache state after a mutation (`cache.readQuery(...)`) rather than only observable side-effects. Use this to prove that `update` callbacks correctly prepend or evict entries.
 
 **Inverse navigation assertion in failure-path tests:** Use `expect(mockPush).not.toHaveBeenCalled()` in error-path tests to pin down "navigate-on-failure" regressions. Without this assertion, a handler that navigates unconditionally passes happy-path tests but silently breaks on errors.
+
+**`__typename` in `MockedProvider` mocks must match the generated schema type name.** Apollo's normalization layer keys cache entries on `__typename` + identifying fields, and inline-included children are also keyed by their `__typename`. A made-up name (e.g. `"ValidationError"` instead of the schema's `DictionaryValidationError`) is silently degrading: the mock still resolves, but the cache stores a malformed entry and the next lookup misses. Copy the type name from `frontend/src/generated/graphql.ts` rather than guessing.
 
 ## shadcn/ui
 
