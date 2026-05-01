@@ -85,13 +85,6 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
           } >> "$GITHUB_ENV"
 
-      - name: Ensure canonical roles
-        run: |
-          supabase db query \
-            "insert into public.roles (name) values ('admin'), ('general') on conflict (name) do nothing;" \
-            --local \
-            --output table
-
       - name: Generate backend GraphQL
         working-directory: backend
         run: go tool gqlgen generate
@@ -104,6 +97,13 @@ jobs:
 
       - name: Wait for backend
         run: pnpm dlx wait-on --timeout 60000 http://localhost:1323/health
+
+      - name: Ensure canonical roles
+        run: |
+          supabase db query \
+            "insert into public.roles (name) values ('admin'), ('general') on conflict (name) do nothing;" \
+            --local \
+            --output table
 
       - name: Run Playwright
         run: pnpm --filter frontend test:e2e
