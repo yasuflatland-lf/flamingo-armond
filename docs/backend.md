@@ -97,6 +97,18 @@ To catch wire-format regressions that usecase-layer unit tests miss (e.g., `Int`
 
 Library-quirk rules (Echo v5 signatures, GORM empty-`IN` behaviour, JWT algorithm whitelist, slog grouping, `crypto/subtle` length leak, etc.) live in `.claude/rules/go-library-gotchas.md`. The judgment-call patterns specific to this codebase remain below.
 
+### Role repository sentinels
+
+`repository.RoleRepository` exposes the full CRUD surface (`Create`, `Update`, `Delete`, `FindByID`, `FindByName`, `FindByIDs`, `ListAll`) plus the user-role join helpers (`AssignToUser`, `RevokeFromUser`, `ListByUser`, `ListByUserIDs`). Three sentinels classify the failure modes:
+
+- `ErrUserNotFound` — joined with `ErrNotFound` (so legacy `errors.Is(_, ErrNotFound)` callers keep working).
+- `ErrRoleNotFound` — joined with `ErrNotFound` for the same reason.
+- `ErrRoleDuplicate` — **standalone**, not joined with `ErrNotFound`. A duplicate is a "found" condition; joining it would make a generic 404 mapper fire for a duplicate insert. See `.claude/rules/error-wrapping.md` § "Standalone sentinels".
+
+`Create` and `Update` normalise the name with `strings.ToLower(strings.TrimSpace(name))` before insertion, and route Postgres `23505` unique violations through `classifyUniqueError` to `ErrRoleDuplicate`. The classifier anchors on the constraint-name fragment `"name"` rather than `"roles"` to avoid mis-routing `user_roles_pkey` into the role-name sentinel — see `.claude/rules/error-wrapping.md` § "Postgres unique-violation classification".
+
+`Delete` uses `RowsAffected == 0` to detect "id did not exist" rather than a separate existence check, because the `WHERE id = ?` predicate eliminates the empty-`IN` hazard that requires the `1=1` opt-out.
+
 ### Empty-patch optimization in repositories
 
 A repository `Update` that receives a no-op patch (all fields nil or unchanged) should return the current row without issuing an `UPDATE`. This avoids unnecessarily touching `updated_at` and helps idempotent clients. Guard by checking whether the patch struct carries any non-nil field before building the GORM `Updates` call.

@@ -190,9 +190,29 @@ The `auth` package exposes two distinct types with different lifetimes and data 
 
 The split is deliberate: the JWT does not carry roles in this project, so every role check goes through the DB. `auth.Service` is constructed once at boot in `run()` against the `UserRoleRepository` and injected into resolvers/usecases that need to gate on role membership.
 
-`auth.Service.IsAdmin(ctx, userID)` hardcodes the literal `"admin"` role name in the method body — callers cannot pass a role string. This prevents drift to bespoke role names; add a new dedicated method (e.g. `IsModerator`) when a second role is needed rather than parameterising `IsAdmin`.
+`auth.Service.IsAdmin(ctx, userID)` hardcodes the literal `"admin"` role name in the method body — callers cannot pass a role string. This prevents drift to bespoke role names; add a new dedicated method (e.g. `IsModerator`) when a second role is needed rather than parameterising `IsAdmin`. The same `"admin"` literal is exposed to the role-CRUD usecase as `adminRoleName` (see `internal/usecase/admin_role.go`) so the system-role rename / delete guards stay in lockstep with the auth-side check; both move together when a second privileged role is introduced.
 
 The DB side of the same check is `public.is_admin(uid uuid) RETURNS boolean`, defined in migration `20260502000000_add_rbac_helpers`. See `docs/backend-db.md` § "SECURITY DEFINER helper recipe" for the function shape RLS policies and future RBAC helpers must replicate.
+
+### Admin usecase split: one auth gate, separate business surfaces
+
+`AdminUserUsecase` and `AdminRoleUsecase` share the same `requireAdmin` shape (UNAUTHENTICATED → CANCELLED → INTERNAL → FORBIDDEN classification) but hold no business state in common. They live as two structs in `internal/usecase/` and are wired into separate fields on `Resolver`. Two consequences:
+
+- **Query.roles routes through `AdminRoleUC.List`, not `AdminUserUC.ListRoles`.** A `ListRoles` method on the user usecase that ultimately delegates to the role repository duplicates the auth gate and creates a "two truths" problem when the gate evolves. After `AdminRoleUC` exists, the role-list field belongs there; the duplicate method on `AdminUserUC` must be removed in the same change rather than left as dead code.
+- **The narrow consumer interface lists only what the usecase calls.** `adminRoleRepoForCRUD` (in `admin_role.go`) lists `FindByID`, `Create`, `Update`, `Delete`, `ListAll` — five methods. It must not list `AssignToUser` / `RevokeFromUser` even though the concrete `RoleRepository` has them, because the AdminRole CRUD usecase never calls those methods. Adding them forces every test stub to implement assignment plumbing it never exercises and obscures which surface each usecase actually depends on. The pattern is the same one documented in `docs/backend.md` § "Consumer-defined narrow interfaces…", applied per-usecase rather than per-repository.
+
+### Re-map TOCTOU `ErrRoleNotFound` to `BAD_USER_INPUT(field=id)`
+
+`AdminRoleUsecase.Update` and `Delete` both do "FindByID → mutate". Between the two calls another admin can delete the row, and the second call returns `ErrRoleNotFound`. Without classification the usecase falls through to `gqlerr.Internal` and pages the operator for a routine race. The fix mirrors the FK-violation rule in `.claude/rules/error-wrapping.md`: a single helper (`mapAdminRoleError`) inspects the returned error, maps `ErrRoleNotFound` to `gqlerr.BadUserInput(field, "role not found")`, `ErrRoleDuplicate` to `BadUserInput("name", ...)`, `context.Canceled` / `DeadlineExceeded` to `gqlerr.Cancelled`, and only the genuine residual to `gqlerr.Internal`. The `notFoundField` argument lets the same helper serve `Create` (where the field is `name`), `Update`, and `Delete` (where the field is `id`) — do not hardcode a single field name.
+
+### System-role guard reads the persisted name, not the input
+
+`AdminRoleUsecase.Update` rejects renaming the system `"admin"` role. The check is `existing.Name == adminRoleName` against the row just loaded by `FindByID`, not against the post-normalisation new name. The reasoning is asymmetric:
+
+- "Renaming admin away" is what the guard must block — the persisted name is what tells you whether this row is admin.
+- "Renaming something else *to* admin" is also blocked, but by the unique-name guard at the repository layer (`ErrRoleDuplicate` on `name`) — admin always exists, so the new-name collision is automatic.
+
+Reading the input name instead would force the guard to also know that admin exists in the DB, duplicating the duplicate-detection logic. Read the persisted name; let the duplicate guard handle the inverse case.
 
 ### Sentinel errors and domain validation
 

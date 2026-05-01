@@ -191,6 +191,56 @@ try {
 
 The helper string-matches `UNAUTHENTICATED` in the error message and calls `redirect(target)`; all other errors are rethrown to the nearest error boundary. Two redirect targets are in use: `/login` for session-expired or no-session cases (checked before `gqlFetch` via `supabase.auth.getUser()`), and `/cardgroups` for cross-user-access on inner pages. See [Backend error-code contract](#backend-error-code-contract) for why these two cases both surface as `UNAUTHENTICATED`.
 
+### Unified admin layout: server-side gate + sidebar
+
+`frontend/src/app/admin/layout.tsx` is the single source of truth for admin access. The RSC layout runs three checks in order before rendering any child route, so a non-admin never sees a flash of admin content:
+
+1. `createSupabaseServerClient().auth.getUser()` — destructure both `data.user` and `error`. A non-null `error` is `throw`n; a null `user` calls `redirect("/")`.
+2. `gqlFetch(AdminLayoutMeQuery, { revalidate: 0 })` inside `try/catch` — the catch matches `UNAUTHENTICATED` **and** `FORBIDDEN` substrings on the error message and folds both into `redirect("/")`. Anything else is rethrown to the nearest error boundary.
+3. `meData.me?.roles.some((r) => r.name === "admin")` — false ⇒ `redirect("/")`.
+
+Both unauthenticated and non-admin paths redirect to `/` (not `/login`). Sending a logged-in non-admin to `/login` is awkward UX; the home page already routes anonymous visitors through a sign-in CTA.
+
+`redirect()` throws `NEXT_REDIRECT`. Calling it inside a `try/catch` block is fine — Next's error boundary identifies the special throw and acts on it after the catch runs, so `redirect()` may live inside the `catch` arm of step 2 (and does, in the current implementation).
+
+Per-page `getUser()` checks under `admin/dictionary/page.tsx` and `admin/users/page.tsx` are intentionally retained as **defence in depth**. The layout gate is the primary; the per-page check is the belt-and-braces guard against a future refactor that accidentally renders an admin page outside the layout.
+
+The string-match approach (`msg.includes("UNAUTHENTICATED")`) follows the existing `redirectIfUnauthenticated` shape rather than a structured-error type. Replacing it with a typed error envelope is a separate concern; do not introduce a one-off classifier inside the admin layout.
+
+### `usePathname()` returns `string | null` despite the typed return
+
+The `next/navigation` `usePathname()` type signature is `string`, but the hook returns `null` during pre-render and outside the App Router runtime. Components that branch on the path (e.g. an active-link sidebar) must guard with `pathname != null && (...)` before reading `.startsWith` or `.substring`, otherwise SSR crashes with a `Cannot read property of null` error that escapes the route's error boundary because layouts are hoisted above the boundary segment.
+
+### Active-link prefix matcher requires the trailing slash
+
+A sidebar that highlights the parent route on nested paths (`/admin/users/123/edit` → "Users" stays active) must compare with `pathname.startsWith(\`${item.href}/\`)`, **not** `pathname.startsWith(item.href)`. Without the trailing slash, `/admin/users-other` matches the `/admin/users` entry as a prefix and double-highlights or wrong-highlights the nav. The full predicate is `pathname === item.href || pathname.startsWith(\`${item.href}/\`)` — the equality arm covers the exact-match case (the trailing slash would otherwise miss it).
+
+### Fragment-less SSR query for pages that share a fragment with their client
+
+`useFragment(...)` from the generated `@apollo/client` runtime is a React Hook and cannot run inside a Server Component. When an RSC seeds the same data the client component reads through a fragment (e.g. `AdminRoleFields`), define a separate inline-fields query for the SSR seed (`AdminRolesPageQuery` in `app/admin/roles/page.tsx`) and pass the result as plain props. The client component still uses the fragment for cache reads and mutation responses; only the SSR boundary needs the un-masked shape.
+
+The seed result is typed as the masked union, so the page must `as unknown as RoleItem[]` before passing it down. The runtime value is already plain — the cast is purely a type-system bridge — so do not invent a runtime un-masking helper just to please the compiler.
+
+### Per-row / per-form field error state must not be shared
+
+`AdminRolesClient` has both an "edit existing row" form and an "add new role" form on the same page. A single `Record<string, string>` for `fieldErrors` cross-contaminates: a `BAD_USER_INPUT` returned by the edit mutation lights up the add row's input as red, and vice versa. Hold one `useState<Record<string, string>>` per form context (`addRowFieldErrors`, `editRowFieldErrors`) and reset both whenever the user starts a new operation. The same rule applies to any future page that mounts multiple field-level forms simultaneously (modal stack, inline-edit table, etc.).
+
+### Surface BAD_USER_INPUT field errors next to the input, not as a banner
+
+`getBackendErrorBanner` deliberately returns `null` for `BAD_USER_INPUT` errors that carry a `field` extension — the banner is reserved for INTERNAL / UNAUTHENTICATED / non-field errors. Pair `getBackendErrorBanner` with `getBackendFieldErrors` and route them to two different render slots:
+
+```tsx
+const { banner, fields } = {
+  banner: getBackendErrorBanner(err),
+  fields: getBackendFieldErrors(err),
+};
+if (Object.keys(fields).length > 0) setFieldErrors(fields);
+if (banner) setError(banner);
+if (!banner && Object.keys(fields).length === 0) setError(toMessage(err));  // fallback
+```
+
+The fallback to `toMessage(err)` ensures the user is never shown a silent failure. Render the field error directly under the offending input with `aria-invalid` + `aria-describedby` pointing at a `<p role="alert">` so screen readers announce the violation. See `frontend/src/app/admin/roles/AdminRolesClient.tsx` for the reference implementation.
+
 ### RSC FORBIDDEN redirect pattern
 
 Admin-only pages (e.g. `/admin/users`, `/admin/users/[id]`) must explicitly handle the `FORBIDDEN` code in their RSC `try/catch`. Unlike `UNAUTHENTICATED` (where `redirectIfUnauthenticated` covers it), an unhandled `FORBIDDEN` rethrows to the nearest error boundary and Next.js renders a 500 — wrong UX for "you are signed in but lack the role". RSC pages call `redirect("/")` (or `/admin` if the user might still belong somewhere) on `FORBIDDEN`:
