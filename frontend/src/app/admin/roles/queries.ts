@@ -1,9 +1,8 @@
 import { graphql } from "@/generated";
 
-// AdminRoleFieldsFragment and AdminRolesQuery already exist in users/queries.ts.
-// Re-export from there so roles/ code can import without going through users/.
-// Mutation documents are defined here because they are only used by the roles page.
-
+// AdminRoleFieldsFragment and AdminRolesQuery live in users/queries.ts; re-export
+// here so roles/ code does not import through users/. Mutation documents below
+// are only used by the roles page.
 export { AdminRoleFieldsFragment, AdminRolesQuery } from "@/app/admin/users/queries";
 
 export const AdminCreateRoleMutation = graphql(`

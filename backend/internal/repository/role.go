@@ -14,30 +14,19 @@ import (
 	"backend/internal/domain"
 )
 
-// ErrUserNotFound and ErrRoleNotFound are returned by AssignToUser to
-// distinguish which side of the (user, role) pair was missing. Both are
-// joined with ErrNotFound so callers that previously branched on the legacy
-// sentinel via errors.Is keep working; new callers can branch on the
-// specific cause to surface a more precise BAD_USER_INPUT field.
-//
-// ErrRoleDuplicate is returned by Create and Update when the requested role
-// name already exists. It is a standalone sentinel — not joined with
-// ErrNotFound — because a duplicate is a "found" condition, not a "missing"
-// one.
+// ErrUserNotFound and ErrRoleNotFound distinguish which side of a (user, role)
+// pair was missing. Both are joined with ErrNotFound so legacy callers that
+// match the general sentinel keep working; new callers can branch on the
+// specific cause to surface a more precise BAD_USER_INPUT field. ErrRoleDuplicate
+// is standalone — a duplicate is a "found" condition, not a "missing" one.
 //
 // Plain errors.New (not eris) so errors.Is walks identity directly.
 var (
 	errUserNotFoundBase = errors.New("repository: user not found")
 	errRoleNotFoundBase = errors.New("repository: role not found")
 
-	// ErrUserNotFound matches both itself and ErrNotFound.
-	ErrUserNotFound = errors.Join(errUserNotFoundBase, ErrNotFound)
-	// ErrRoleNotFound matches both itself and ErrNotFound.
-	ErrRoleNotFound = errors.Join(errRoleNotFoundBase, ErrNotFound)
-
-	// ErrRoleDuplicate is returned when a role with the same name already exists.
-	// It is a standalone sentinel: duplicate is a found-condition, not a
-	// not-found-condition, so it is not joined with ErrNotFound.
+	ErrUserNotFound  = errors.Join(errUserNotFoundBase, ErrNotFound)
+	ErrRoleNotFound  = errors.Join(errRoleNotFoundBase, ErrNotFound)
 	ErrRoleDuplicate = errors.New("repository: role already exists")
 )
 
@@ -154,13 +143,6 @@ func (r *roleRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*dom
 	return out, nil
 }
 
-// Create inserts a new role. The name is normalised (lower-cased, trimmed)
-// defensively even if the usecase already did so. Returns ErrRoleDuplicate when
-// a role with the same normalised name already exists.
-//
-// uuid.NewV7 errors are propagated: the failure mode is a system-level issue
-// (crypto/rand unavailable) — a silent fallback would produce a different UUID
-// on a still-broken source. See .claude/rules/go-library-gotchas.md.
 func (r *roleRepo) Create(ctx context.Context, name string) (*domain.Role, error) {
 	name = strings.ToLower(strings.TrimSpace(name))
 
@@ -179,9 +161,6 @@ func (r *roleRepo) Create(ctx context.Context, name string) (*domain.Role, error
 	return roleToDomain(row), nil
 }
 
-// Update replaces the name of the role identified by id. The name is normalised
-// before storing. Returns ErrRoleNotFound when the id does not match any row,
-// and ErrRoleDuplicate when the normalised new name collides with an existing role.
 func (r *roleRepo) Update(ctx context.Context, id, name string) (*domain.Role, error) {
 	name = strings.ToLower(strings.TrimSpace(name))
 
@@ -203,10 +182,6 @@ func (r *roleRepo) Update(ctx context.Context, id, name string) (*domain.Role, e
 	return roleToDomain(row), nil
 }
 
-// Delete removes the role with the given id. Because user_roles carries
-// ON DELETE CASCADE on roles.id, all user-role assignments for this role are
-// also removed atomically by the DB. Returns ErrRoleNotFound when no matching
-// row exists (RowsAffected == 0).
 func (r *roleRepo) Delete(ctx context.Context, id string) error {
 	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&gormRole{})
 	if result.Error != nil {
@@ -218,10 +193,9 @@ func (r *roleRepo) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// classifyUniqueError inspects a Postgres unique-violation (code 23505) and
-// maps it to ErrRoleDuplicate when the violated constraint is on the roles name
-// column. Returns nil when err is not a unique-violation so callers can use it
-// as a pre-filter before falling through to eris.Wrap.
+// classifyUniqueError maps a Postgres unique-violation (code 23505) on the
+// roles.name column to ErrRoleDuplicate. Returns nil for any other error so
+// callers can use it as a pre-filter before falling through to eris.Wrap.
 func classifyUniqueError(err error) error {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
@@ -327,8 +301,6 @@ func (r *roleRepo) RevokeFromUser(ctx context.Context, userID, roleID string) er
 	return nil
 }
 
-// ListByUser returns all roles assigned to userID, ordered by name ascending.
-// Returns an empty slice (never nil) when the user has no roles.
 func (r *roleRepo) ListByUser(ctx context.Context, userID string) ([]*domain.Role, error) {
 	var rows []gormRole
 	if err := r.db.WithContext(ctx).
@@ -346,8 +318,6 @@ func (r *roleRepo) ListByUser(ctx context.Context, userID string) ([]*domain.Rol
 	return out, nil
 }
 
-// ListByUserIDs returns the roles assigned to each user ID in a single query.
-// Returns an empty map (never nil) when userIDs is empty.
 func (r *roleRepo) ListByUserIDs(ctx context.Context, userIDs []string) (map[string][]*domain.Role, error) {
 	if len(userIDs) == 0 {
 		return map[string][]*domain.Role{}, nil
@@ -375,8 +345,6 @@ func (r *roleRepo) ListByUserIDs(ctx context.Context, userIDs []string) (map[str
 	return out, nil
 }
 
-// ListAll returns every role ordered by name ASC. Returns an empty slice
-// (never nil) when the roles table is empty.
 func (r *roleRepo) ListAll(ctx context.Context) ([]*domain.Role, error) {
 	var rows []gormRole
 	if err := r.db.WithContext(ctx).Order("name ASC").Find(&rows).Error; err != nil {

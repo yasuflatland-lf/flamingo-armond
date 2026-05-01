@@ -16,9 +16,8 @@ type Resolver struct {
 	AdminRoleUC  usecase.AdminRoleUsecase
 }
 
-// NewResolver wires every Resolver dependency at construction time. Tests
-// may pass nil for unused dependencies; do not pass nil from production
-// wiring.
+// NewResolver wires every Resolver dependency. Tests may pass nil for unused
+// dependencies; do not pass nil from production wiring.
 func NewResolver(
 	user *usecase.UserUsecase,
 	cardgroupUC *usecase.CardgroupUsecase,

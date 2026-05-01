@@ -16,25 +16,22 @@ import (
 	"backend/internal/repository"
 )
 
-// roleNameMin and roleNameMax bound the post-normalisation grapheme-cluster
-// length of a role name. They mirror the displayName bounds used elsewhere in
-// the package; the lower bound rejects whitespace-only input that collapses
-// to "" after TrimSpace, the upper bound matches the column constraint.
+// roleNameMin / roleNameMax bound the post-normalisation grapheme-cluster
+// length of a role name. The lower bound rejects whitespace-only input that
+// collapses to "" after TrimSpace; the upper bound matches the column constraint.
 const (
 	roleNameMin = 1
 	roleNameMax = 50
 )
 
 // roleNamePattern restricts the post-normalisation role name to lowercase
-// ASCII letters, digits, underscore, and hyphen. The set is deliberately
-// narrow so role names round-trip cleanly through URLs, log lines, and the
-// frontend without escaping. The regex anchors both ends so any extra
-// character (whitespace, punctuation, non-ASCII) rejects the whole input.
+// ASCII letters, digits, underscore, and hyphen. The set is deliberately narrow
+// so role names round-trip cleanly through URLs, log lines, and the frontend
+// without escaping.
 var roleNamePattern = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
-// AdminRoleUsecase is the admin-only role CRUD surface. The methods are kept
-// separate from AdminUserUsecase because the responsibilities differ — user
-// management and role management share an auth gate but no business state.
+// AdminRoleUsecase is the admin-only role CRUD surface. Kept separate from
+// AdminUserUsecase: the two share an auth gate but no business state.
 type AdminRoleUsecase interface {
 	List(ctx context.Context) ([]*domain.Role, error)
 	Get(ctx context.Context, id string) (*domain.Role, error)
@@ -44,10 +41,9 @@ type AdminRoleUsecase interface {
 }
 
 // adminRoleRepoForCRUD is the narrow repository surface consumed by the
-// AdminRole usecase. It is intentionally a separate interface from
-// adminRoleRepository (used by adminUserUsecase) — the two have no methods in
-// common in production callers, and conflating them would force test doubles
-// for AdminRole to also implement assignment plumbing they never exercise.
+// AdminRole usecase. Kept separate from adminRoleRepository (used by
+// adminUserUsecase) so test doubles for AdminRole are not forced to implement
+// assignment plumbing they never exercise.
 type adminRoleRepoForCRUD interface {
 	FindByID(ctx context.Context, id string) (*domain.Role, error)
 	Create(ctx context.Context, name string) (*domain.Role, error)
@@ -56,29 +52,26 @@ type adminRoleRepoForCRUD interface {
 	ListAll(ctx context.Context) ([]*domain.Role, error)
 }
 
-// adminRoleUsecase wires the role repository and the admin checker behind the
-// admin-only role-management API.
 type adminRoleUsecase struct {
 	roles adminRoleRepoForCRUD
 	auth  AdminChecker
 }
 
-// NewAdminRole constructs an AdminRoleUsecase from the production repository
-// and auth service. Tests should prefer NewAdminRoleWithDeps to inject narrow
-// stubs.
+// NewAdminRole is the production constructor. Tests should prefer
+// NewAdminRoleWithDeps to inject narrow stubs.
 func NewAdminRole(roles repository.RoleRepository, authSvc *auth.Service) AdminRoleUsecase {
 	return &adminRoleUsecase{roles: roles, auth: authSvc}
 }
 
-// NewAdminRoleWithDeps is the test-time constructor that accepts the narrow
-// interface types. Production code must use NewAdminRole.
+// NewAdminRoleWithDeps accepts narrow interface types for tests; production
+// code must use NewAdminRole.
 func NewAdminRoleWithDeps(roles adminRoleRepoForCRUD, authSvc AdminChecker) AdminRoleUsecase {
 	return &adminRoleUsecase{roles: roles, auth: authSvc}
 }
 
-// requireAdmin centralises the auth gate every method shares. It mirrors the
-// adminUserUsecase.requireAdmin shape so the two surfaces use the same
-// FORBIDDEN / UNAUTHENTICATED / CANCELLED / INTERNAL classification.
+// requireAdmin centralises the auth gate, mirroring adminUserUsecase.requireAdmin
+// so the two surfaces share the same FORBIDDEN / UNAUTHENTICATED / CANCELLED /
+// INTERNAL classification.
 func (u *adminRoleUsecase) requireAdmin(ctx context.Context) error {
 	caller := auth.UserFrom(ctx)
 	if caller == nil || caller.Sub == "" {
@@ -100,12 +93,9 @@ func (u *adminRoleUsecase) requireAdmin(ctx context.Context) error {
 	return nil
 }
 
-// validateRoleName trims, lowercases, and validates a user-supplied role
-// name. It returns the canonical form on success so the caller passes a
-// consistent value to the repository (defence-in-depth — the repository also
-// normalises). The grapheme-cluster check matches the displayName surface so
-// a multi-codepoint emoji counts as one character; the regex check is on the
-// post-normalisation byte form, which for ASCII-only names is equivalent.
+// validateRoleName trims, lowercases, and validates a user-supplied role name.
+// Returns the canonical form on success so the caller passes a consistent value
+// to the repository (defence-in-depth — the repository also normalises).
 func validateRoleName(name string) (string, error) {
 	normalized := strings.ToLower(strings.TrimSpace(name))
 	n := uniseg.GraphemeClusterCount(normalized)
@@ -178,12 +168,11 @@ func (u *adminRoleUsecase) Create(ctx context.Context, name string) (*domain.Rol
 
 // Update renames an existing role. The system "admin" role is renaming-locked:
 // renaming it would break the auth.Service.IsAdmin lookup that hardcodes the
-// literal "admin" string. The lookup runs before the repository update so the
-// FORBIDDEN response does not depend on the new name passing validation.
+// literal "admin" string.
 //
-// TOCTOU note: between FindByID and roles.Update another admin can delete the
-// role; the resulting ErrRoleNotFound from Update is mapped back to
-// BAD_USER_INPUT(field=id) rather than INTERNAL.
+// TOCTOU: between FindByID and roles.Update another admin can delete the row;
+// the resulting ErrRoleNotFound is mapped back to BAD_USER_INPUT(field=id)
+// rather than INTERNAL.
 func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (*domain.Role, error) {
 	if err := u.requireAdmin(ctx); err != nil {
 		return nil, err
@@ -210,12 +199,12 @@ func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (*domain
 
 // Delete removes a role by id. The system "admin" role is delete-locked: a
 // missing admin role would lock every operator out of the management API. The
-// guard is enforced by name (not by id) because admin-role provisioning is
+// guard matches by name (not by id) because admin-role provisioning is
 // idempotent against the name in the migrations.
 //
-// TOCTOU note: between FindByID and roles.Delete another admin can delete the
-// role; the resulting ErrRoleNotFound from Delete is mapped back to
-// BAD_USER_INPUT(field=id) rather than INTERNAL.
+// TOCTOU: between FindByID and roles.Delete another admin can delete the row;
+// the resulting ErrRoleNotFound is mapped back to BAD_USER_INPUT(field=id)
+// rather than INTERNAL.
 func (u *adminRoleUsecase) Delete(ctx context.Context, id string) error {
 	if err := u.requireAdmin(ctx); err != nil {
 		return err

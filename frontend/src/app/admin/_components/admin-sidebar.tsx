@@ -6,14 +6,9 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 /**
- * Sidebar nav for the unified admin layout. Active highlight is computed from
- * `usePathname()` so every navigation re-renders the correct item without
- * round-tripping the server. Labels are kept in English per
- * `.claude/rules/language-policy.md`.
- *
- * The matcher accepts both an exact path match and a nested-route prefix
- * (e.g., `/admin/users/123/edit` highlights "Users") so deep links keep the
- * correct item active.
+ * Sidebar nav for the admin layout. Active highlight is computed from
+ * `usePathname()` and matches both exact paths and nested-route prefixes, so
+ * deep links like `/admin/users/123/edit` keep the parent ("Users") active.
  */
 const NAV_ITEMS = [
   { href: "/admin/users", label: "Users", icon: Users },

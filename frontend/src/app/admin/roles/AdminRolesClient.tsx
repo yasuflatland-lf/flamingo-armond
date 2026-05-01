@@ -21,6 +21,18 @@ function toMessage(err: unknown): string {
 }
 
 /**
+ * Splits a thrown mutation error into an optional banner message and a
+ * field-keyed error map. Either may be empty; if both are, callers should
+ * fall back to toMessage(err) so the user is never shown a silent failure.
+ */
+function classifyMutationError(err: unknown) {
+  return {
+    banner: getBackendErrorBanner(err),
+    fields: getBackendFieldErrors(err),
+  };
+}
+
+/**
  * Client component for the /admin/roles page.
  * Supports listing, inline-edit, add, and delete of roles.
  * The "admin" system role has Edit/Delete disabled (server also enforces this via FORBIDDEN).
@@ -80,8 +92,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
         setDraft("");
       }
     } catch (err) {
-      const banner = getBackendErrorBanner(err);
-      const fields = getBackendFieldErrors(err);
+      const { banner, fields } = classifyMutationError(err);
       if (Object.keys(fields).length > 0) setEditRowFieldErrors(fields);
       if (banner) setError(banner);
       if (!banner && Object.keys(fields).length === 0) setError(toMessage(err));
@@ -104,8 +115,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
         setNewName("");
       }
     } catch (err) {
-      const banner = getBackendErrorBanner(err);
-      const fields = getBackendFieldErrors(err);
+      const { banner, fields } = classifyMutationError(err);
       if (Object.keys(fields).length > 0) setAddRowFieldErrors(fields);
       if (banner) setError(banner);
       if (!banner && Object.keys(fields).length === 0) setError(toMessage(err));

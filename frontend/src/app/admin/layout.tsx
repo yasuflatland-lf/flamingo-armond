@@ -16,15 +16,12 @@ import { AdminSidebar } from "./_components/admin-sidebar";
  *      UNAUTHENTICATED / FORBIDDEN, or when the returned roles do not include
  *      "admin".
  *
- * Both unauthenticated and non-admin paths redirect to `/` (the home page),
- * not `/login`. Sending a logged-in non-admin to `/login` is an awkward UX,
- * and the home page already routes anonymous visitors to a sign-in CTA. This
- * collapses the previously divergent destinations from the page-level gates
- * (`/login` in dictionary, `/` in users) onto one rule.
+ * Both unauthenticated and non-admin paths redirect to `/` (not `/login`):
+ * sending a logged-in non-admin to `/login` is awkward UX, and the home page
+ * already routes anonymous visitors to a sign-in CTA.
  *
  * Per-page `getUser()` checks under `admin/dictionary/page.tsx` and
- * `admin/users/page.tsx` are intentionally retained as defense in depth — the
- * follow-up cleanup of those guards is explicitly out of scope here.
+ * `admin/users/page.tsx` are intentionally retained as defense in depth.
  */
 const AdminLayoutMeQuery = graphql(`
   query AdminLayoutMe {
@@ -63,8 +60,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   const isAdmin = meData.me?.roles.some((r) => r.name === "admin") ?? false;
   if (!isAdmin) redirect("/");
 
-  // Step 3: Render the admin shell. The root layout already supplies a
-  // `<Header />`, so this layout only wraps the sidebar + content area.
+  // The root layout already supplies a <Header />; only the sidebar + content area belong here.
   return (
     <div className="flex min-h-[calc(100vh-3.5rem)]">
       <AdminSidebar />
