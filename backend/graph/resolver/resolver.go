@@ -6,12 +6,13 @@ import (
 )
 
 type Resolver struct {
-	User         *usecase.UserUsecase
+	UserUC       *usecase.UserUsecase
 	CardgroupUC  *usecase.CardgroupUsecase
 	CardUC       *usecase.CardUsecase
 	SwipeUC      *usecase.SwipeUsecase
 	AuthSvc      *auth.Service
 	DictionaryUC usecase.DictionaryUsecase
+	AdminUserUC  usecase.AdminUserUsecase
 }
 
 // NewResolver wires every Resolver dependency at construction time. Tests
@@ -24,13 +25,15 @@ func NewResolver(
 	swipeUC *usecase.SwipeUsecase,
 	authSvc *auth.Service,
 	dictionaryUC usecase.DictionaryUsecase,
+	adminUserUC usecase.AdminUserUsecase,
 ) *Resolver {
 	return &Resolver{
-		User:         user,
+		UserUC:       user,
 		CardgroupUC:  cardgroupUC,
 		CardUC:       cardUC,
 		SwipeUC:      swipeUC,
 		AuthSvc:      authSvc,
 		DictionaryUC: dictionaryUC,
+		AdminUserUC:  adminUserUC,
 	}
 }

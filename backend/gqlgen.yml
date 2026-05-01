@@ -34,3 +34,7 @@ models:
     fields:
       cardgroup:
         resolver: true
+  User:
+    fields:
+      roles:
+        resolver: true

@@ -45,6 +45,20 @@ Natural SQL "give me N rows before X" is awkward. The repository inverts the `OR
 
 A cursor pointing at a card in another cardgroup is treated as a malformed user-supplied parameter. Returning `UNAUTHENTICATED` would leak existence of cards in other cardgroups; `BAD_USER_INPUT` with `field = "after"` / `field = "before"` is the correct posture.
 
+### Reject mixed-direction argument combos at the usecase
+
+The repository trusts its inputs. Without explicit usecase-layer guards, malformed combinations silently re-interpret as a forward page-1 request and the client never learns why their cursor was ignored. Reject all five bad combos with `BAD_USER_INPUT` (with `extensions.field` naming the offending argument):
+
+| Combo | Why rejected |
+|---|---|
+| `after` + `before` | The two cursors disagree on direction. |
+| `first` + `before` | `first` implies forward, `before` implies backward. |
+| `last` + `after` | `last` implies backward, `after` implies forward. |
+| `before` alone (no `last`) | A backward cursor without a backward page size is ambiguous. |
+| `after` alone (no `first`) | A forward cursor without a forward page size is ambiguous. |
+
+A request with neither cursor and neither size is the legitimate "first page, server default" case and must still be accepted.
+
 ### Three layers of enums kept in sync
 
 - `model.CardOrderBy` — gqlgen-generated, schema strings.
@@ -88,6 +102,19 @@ Filter the edge out of the cached connection, decrement `totalCount` (clamped at
 ### Connection update (cache normalization)
 
 Rely on Apollo cache normalization (entities with `id` are normalized by default). No manual `update` callback is needed; mutations that touch a normalised entity propagate to every cached query that reads it.
+
+### Drop `optimisticResponse` for mutations that can fail with typed GraphQL errors
+
+`@apollo/client` v3.x rolls back optimistic writes on **network** errors but not consistently on typed GraphQL errors (`FORBIDDEN`, `BAD_USER_INPUT`, etc.). For a mutation that can plausibly return one of those — e.g. a role assignment that fails authorization, or a self-demotion blocked by a server-side guard — the optimistic write persists and the cache lies until the next mount. Two acceptable postures:
+
+1. **Drop optimistic** for mutations that can fail typed. The user pays a single round-trip of latency, but the cache stays truthful.
+2. **Manual rollback in the catch branch** — `cache.evict({ id: ... })` followed by `cache.gc()` to undo whatever the optimistic update wrote.
+
+Posture 1 is the default; reach for posture 2 only when the perceived latency cost is measurable. Never leave a typed-error-capable mutation with `optimisticResponse` and no rollback.
+
+### Pick one data-loading mode per component
+
+A component that accepts both an SSR-prop variant (`{ initial: T }`) and a query-id variant (`{ id: string; query }`) ends up with `useState(props.initial ?? "")` or similar — the state initializes once before the query resolves and stays at the empty default. The two modes are not interchangeable. Decide at the call site (RSC seed vs. client-driven fetch) and keep the component single-mode. If both modes are needed at different routes, write two thin wrappers around a shared presentational component instead of branching inside.
 
 ## Frontend pagination UX
 

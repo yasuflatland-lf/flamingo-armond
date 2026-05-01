@@ -72,6 +72,23 @@ GORM's `BeforeCreate` hook auto-generates a UUID when a primary key field is a `
 
 Peer models (`gormUser`, `gormCard`) avoid this by supplying the UUID in the application layer before calling `Create`. `gormPingRecord` is different: `Create` inserts a row without any caller-supplied ID, so the DB must generate it via `gen_random_uuid()`. The tag `gorm:"default:gen_random_uuid()"` is therefore load-bearing even though `AutoMigrate` is not used and the column default is already defined in the migration SQL.
 
+## GORM `LIKE` / `ILIKE` requires escaping `%`, `_`, `\` in user input
+
+A search box that runs `WHERE name ILIKE ? || '%'` with a user-supplied string becomes a pattern-injection surface: a user typing `100%` matches every row containing the literal string `100`, not just rows starting with `100%`. The three Postgres `LIKE` metacharacters are `%`, `_`, and `\` (the default escape). User-supplied search text must be escaped before being wrapped with `%...%`:
+
+```go
+func escapeLike(s string) string {
+    s = strings.ReplaceAll(s, `\`, `\\`)
+    s = strings.ReplaceAll(s, `%`, `\%`)
+    s = strings.ReplaceAll(s, `_`, `\_`)
+    return s
+}
+// ...
+db.Where("name ILIKE ?", "%"+escapeLike(query)+"%")
+```
+
+Order matters: escape `\` first, then `%` and `_`, otherwise the second pass re-escapes the backslash from the first pass. The same rule applies to `name ILIKE ? || '%'` (prefix match) and to any other `LIKE` predicate fed by user input.
+
 ## GORM rejects unconditional `Delete` — use `Where("1 = 1")` to opt out
 
 GORM v2+ refuses a `Delete` call that has no `WHERE` clause as a safety net against accidental full-table deletes. It returns an `ErrMissingWhereClause` error.

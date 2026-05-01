@@ -102,6 +102,17 @@ Both operations require an authenticated caller. When `auth.UserFrom(ctx)` retur
 
 This three-state pointer distinction is preserved end-to-end: schema (`bio: String`) → gqlgen model (`Bio *string`) → `usecase.UpdateUserInput.Bio *string` → `repository.UserUpdate.Bio *string`. Never collapse it to a plain `string` default.
 
+### Per-field "null vs. empty" semantics on partial-update inputs
+
+A single uniform statement on the input type ("null = unchanged, empty = clear") lies the moment the input mixes optional clearable fields with optional required-when-present fields. `AdminUpdateUserInput` is the canonical example:
+
+| Field | `nil` (omitted) | `""` (present, empty) |
+|---|---|---|
+| `bio` | leave unchanged | explicit clear |
+| `displayName` | leave unchanged | rejected as `BAD_USER_INPUT` (the field has a 1-char minimum) |
+
+The schema docstring on each `*string` field must state which of the two empty-string semantics applies. Clients reading a generic "null = unchanged, empty = clear" rule will write `displayName: ""` to mean "clear" and the mutation will fail at runtime with a confusing validation error. State the per-field contract on the field, not on the input type.
+
 ### Layering rule
 
 ```
@@ -298,7 +309,12 @@ as the input keys. dataloader/v7 enforces this 1:1 invariant at runtime.
 4. Initialise it in `loader.New(...)` and pass its repository through `loader.Middleware(...)`.
 5. Add the new repository parameter to `newGraphQLTestServer` (and any test-server variants) in `cmd/server/main_test.go`.
 
-**Loader test contract:** A loader test must verify both (a) the batch function was called exactly once (dedup working) AND (b) it received the expected number of distinct keys. Without (b), key collisions or dedup bugs can go undetected.
+**Loader test contract:** A loader test must verify both (a) the batch function was called exactly once (dedup working) AND (b) it received the expected number of distinct keys. Without (b), key collisions or dedup bugs can go undetected. The mock must also **record the actual batch keys it received** (not just a call counter); a loader test that asserts only "called once" cannot distinguish a correct batch of N from a bug that fans out N single-key calls when the underlying batcher coincidentally collapses them.
+
+**Key → slice loaders for one-to-many.** A user-to-roles relation has many roles per user, so the loader signature is `dataloader.Loader[string, []*domain.Role]` — the value type is a **slice**, not a pointer-to-entity. Two non-obvious rules follow:
+
+1. **Return `[]*domain.Role{}` (empty slice) — not `nil` — for a key with zero children.** A `nil` slice marshals to JSON `null`, while a non-nullable list field (`roles: [Role!]!`) requires `[]`. Returning `nil` produces a `null` payload that the gqlgen runtime then rejects as a non-nullable violation, surfaced as `INTERNAL` rather than the empty list the schema actually expects.
+2. **Drive the batch with one SQL JOIN, not N individual lookups.** The `FindByUserIDs` repository method runs `SELECT ... FROM user_roles JOIN roles ... WHERE user_id IN (?)` and groups results into `map[userID][]*Role` in Go. A naive batch function that loops `for _, id := range ids { repo.FindByUserID(id) }` defeats the entire point of DataLoader — it produces N round-trips per request despite the loader interface looking correct from the outside.
 
 **Loader error wrapping:** Every resolver that calls `loaders.X.Load(ctx, key)()` must wrap the returned error via `gqlerr.Internal(ctx, err)` (or another typed gqlerr) before returning. Bare loader errors have no `extensions.code` and leak internal details.
 
