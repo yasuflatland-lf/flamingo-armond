@@ -4,11 +4,19 @@ Operational decisions around GitHub Actions and external services that are not o
 
 ## Workflow scope and concurrency
 
-Two independent workflows: `.github/workflows/backend.yml` and `.github/workflows/frontend.yml`.
+Three independent workflows: `.github/workflows/backend.yml`, `.github/workflows/frontend.yml`, and `.github/workflows/e2e.yml`.
 
 - **Triggers are `paths:`-scoped** per workflow — backend to `backend/**` + workflow file; frontend to `frontend/**` + `schema/**` + the root pnpm/workspace/tool-version manifests + the frontend workflow file. When adding a third service, **add its own workflow** — do not broaden an existing one. Mixing scopes breaks CI granularity and responsibility.
 - **`concurrency` groups are per-workflow** (`backend-${{ github.ref }}`, `frontend-${{ github.ref }}`) with `cancel-in-progress: true` — rapid pushes on the same ref supersede in-flight runs per service (important for feature-branch iteration). The two workflows do not cancel each other.
 - **General rule for `cancel-in-progress`:** jobs whose effects are confined to the runner (lint, test, build artifacts in transit) are safe for `cancel-in-progress: true`. Jobs that have already committed external state (deploys, releases, side-effecting API calls) must override with `cancel-in-progress: false` to avoid leaving external systems in an indeterminate state. The backend `deploy` job in `backend.yml` follows this rule; see § "Deploy gating".
+
+## E2E workflow
+
+`.github/workflows/e2e.yml` runs Playwright against a local Supabase-backed stack. It triggers on frontend/schema/Supabase-config changes, pushes to `main`, and a nightly `0 4 * * *` UTC cron.
+
+The workflow uses split concurrency: pull-request runs use `cancel-in-progress: true`, while push and cron runs do not. E2E owns external runner state while it is active (Supabase containers, backend process, Playwright artifacts), so post-merge and scheduled runs are allowed to finish.
+
+The job exports Supabase local keys from `supabase status -o env`; no repository secret is required for the service-role key. On failure it uploads the Playwright report, raw test results, and backend log with 14-day retention.
 
 ## Deploy gating
 
@@ -169,4 +177,3 @@ Production deploys to Vercel are managed by Vercel's native Git integration: pus
 #### Production env vars live only in the Vercel project
 
 `lint-test-build` sets `BACKEND_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to dummy values so `next build` can validate the env schema without real credentials. The Vercel project's own production environment configuration is the only source of truth for the real values — never copy production secrets into the workflow's `env:` block, since `NEXT_PUBLIC_*` vars are baked into the client-side JavaScript bundle at build time and a stray dummy would ship to users.
-
