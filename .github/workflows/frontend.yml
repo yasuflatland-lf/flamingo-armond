@@ -85,13 +85,17 @@ jobs:
 
       - name: Upload coverage to Codecov
         id: codecov
+        # Run from the repo root (no `working-directory`) so the CLI's network
+        # discovery prepends `frontend/` to the `SF:src/...` entries emitted by
+        # vitest. With it set, uploaded paths stay `src/...` and the
+        # `flags.frontend.paths: frontend/` filter in codecov.yml drops every
+        # file, leaving the flag at 0% (badge renders as "unknown").
         uses: codecov/codecov-action@v6
         continue-on-error: true
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: frontend/coverage/lcov.info
           flags: frontend
-          working-directory: frontend
           fail_ci_if_error: true
 
       - name: Warn on Codecov upload failure
