@@ -369,9 +369,11 @@ extend type Query {
   roles: [Role!]!
 }
 
-"""Input for admin-edited user fields. null/omitted leaves the field unchanged; empty-string explicitly clears."""
+"""Input for admin-edited user fields."""
 input AdminUpdateUserInput {
+  """null/omitted = unchanged. Non-null = set; must be 1-50 grapheme clusters after trim. Empty string is rejected with BAD_USER_INPUT."""
   displayName: String
+  """null/omitted = unchanged. Empty string clears the field. Non-empty must be <= 500 grapheme clusters."""
   bio: String
 }
 
