@@ -6,9 +6,18 @@ import (
 
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"backend/internal/domain"
 )
+
+// gormUserRoleJoinRow is the projected shape of the join between user_roles
+// and roles used by ListByUserIDs.
+type gormUserRoleJoinRow struct {
+	UserID string `gorm:"column:user_id"`
+	ID     string `gorm:"column:id"`
+	Name   string `gorm:"column:name"`
+}
 
 type gormRole struct {
 	ID   string `gorm:"column:id;primaryKey;type:uuid"`
@@ -20,6 +29,32 @@ func (gormRole) TableName() string { return "roles" }
 type RoleRepository interface {
 	FindByName(ctx context.Context, name string) (*domain.Role, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Role, error)
+
+	// AssignToUser inserts a (user_id, role_id) row. Idempotent: if the row
+	// already exists, returns nil without error. Returns ErrNotFound if either
+	// the user or the role does not exist.
+	AssignToUser(ctx context.Context, userID, roleID string) error
+
+	// RevokeFromUser deletes the (user_id, role_id) row. Idempotent: if the row
+	// does not exist, returns nil without error.
+	RevokeFromUser(ctx context.Context, userID, roleID string) error
+
+	// ListByUser returns all roles assigned to the given user, ordered by
+	// role name ascending. Returns an empty slice (not nil, not an error) when
+	// the user has no roles.
+	ListByUser(ctx context.Context, userID string) ([]*domain.Role, error)
+
+	// ListByUserIDs returns the roles assigned to each user ID in a single
+	// query. The map key is the user ID; values are roles ordered by
+	// name ASC. Users with no roles are absent from the map (callers
+	// fill in an empty slice). An empty userIDs slice short-circuits to
+	// an empty map without issuing a query — see the GORM empty-IN gotcha
+	// in .claude/rules/go-library-gotchas.md.
+	ListByUserIDs(ctx context.Context, userIDs []string) (map[string][]*domain.Role, error)
+
+	// ListAll returns every role ordered by name ASC. Returns an empty
+	// slice (never nil) when no roles exist.
+	ListAll(ctx context.Context) ([]*domain.Role, error)
 }
 
 type roleRepo struct{ db *gorm.DB }
@@ -50,6 +85,116 @@ func (r *roleRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*dom
 	for i := range rows {
 		role := roleToDomain(rows[i])
 		out[role.ID] = role
+	}
+	return out, nil
+}
+
+// AssignToUser inserts a user_roles row. Idempotent via ON CONFLICT DO NOTHING.
+// Validates that both the user and role exist before inserting; returns
+// ErrNotFound if either is absent.
+func (r *roleRepo) AssignToUser(ctx context.Context, userID, roleID string) error {
+	// Validate user exists.
+	var userCount int64
+	if err := r.db.WithContext(ctx).
+		Table("users").
+		Where("id = ?", userID).
+		Count(&userCount).Error; err != nil {
+		return eris.Wrap(err, "repository: assign role: check user")
+	}
+	if userCount == 0 {
+		return ErrNotFound
+	}
+
+	// Validate role exists.
+	var roleCount int64
+	if err := r.db.WithContext(ctx).
+		Table("roles").
+		Where("id = ?", roleID).
+		Count(&roleCount).Error; err != nil {
+		return eris.Wrap(err, "repository: assign role: check role")
+	}
+	if roleCount == 0 {
+		return ErrNotFound
+	}
+
+	row := gormUserRole{UserID: userID, RoleID: roleID}
+	if err := r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{DoNothing: true}).
+		Create(&row).Error; err != nil {
+		return eris.Wrap(err, "repository: assign role to user")
+	}
+	return nil
+}
+
+// RevokeFromUser deletes the (user_id, role_id) row. Idempotent: no error when
+// the row does not exist.
+func (r *roleRepo) RevokeFromUser(ctx context.Context, userID, roleID string) error {
+	if err := r.db.WithContext(ctx).
+		Where("user_id = ? AND role_id = ?", userID, roleID).
+		Delete(&gormUserRole{}).Error; err != nil {
+		return eris.Wrap(err, "repository: revoke role from user")
+	}
+	return nil
+}
+
+// ListByUser returns all roles assigned to userID, ordered by name ascending.
+// Returns an empty slice (never nil) when the user has no roles.
+func (r *roleRepo) ListByUser(ctx context.Context, userID string) ([]*domain.Role, error) {
+	var rows []gormRole
+	if err := r.db.WithContext(ctx).
+		Table("roles").
+		Joins("JOIN user_roles ON user_roles.role_id = roles.id").
+		Where("user_roles.user_id = ?", userID).
+		Order("roles.name ASC").
+		Find(&rows).Error; err != nil {
+		return nil, eris.Wrap(err, "repository: list roles by user")
+	}
+	out := make([]*domain.Role, len(rows))
+	for i := range rows {
+		out[i] = roleToDomain(rows[i])
+	}
+	return out, nil
+}
+
+// ListByUserIDs returns the roles assigned to each user ID in a single query.
+// Returns an empty map (never nil) when userIDs is empty.
+func (r *roleRepo) ListByUserIDs(ctx context.Context, userIDs []string) (map[string][]*domain.Role, error) {
+	if len(userIDs) == 0 {
+		return map[string][]*domain.Role{}, nil
+	}
+
+	var rows []gormUserRoleJoinRow
+	err := r.db.WithContext(ctx).
+		Table("user_roles").
+		Select("user_roles.user_id AS user_id, roles.id AS id, roles.name AS name").
+		Joins("JOIN roles ON roles.id = user_roles.role_id").
+		Where("user_roles.user_id IN ?", userIDs).
+		Order("roles.name ASC").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, eris.Wrap(err, "repository: list roles by user ids")
+	}
+
+	out := make(map[string][]*domain.Role, len(rows))
+	for i := range rows {
+		out[rows[i].UserID] = append(out[rows[i].UserID], &domain.Role{
+			ID:   rows[i].ID,
+			Name: rows[i].Name,
+		})
+	}
+	return out, nil
+}
+
+// ListAll returns every role ordered by name ASC. Returns an empty slice
+// (never nil) when the roles table is empty.
+func (r *roleRepo) ListAll(ctx context.Context) ([]*domain.Role, error) {
+	var rows []gormRole
+	if err := r.db.WithContext(ctx).Order("name ASC").Find(&rows).Error; err != nil {
+		return nil, eris.Wrap(err, "role repo: list all")
+	}
+	out := make([]*domain.Role, len(rows))
+	for i := range rows {
+		out[i] = roleToDomain(rows[i])
 	}
 	return out, nil
 }
