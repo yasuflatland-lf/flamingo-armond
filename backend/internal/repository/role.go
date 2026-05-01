@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
@@ -19,6 +20,11 @@ import (
 // sentinel via errors.Is keep working; new callers can branch on the
 // specific cause to surface a more precise BAD_USER_INPUT field.
 //
+// ErrRoleDuplicate is returned by Create and Update when the requested role
+// name already exists. It is a standalone sentinel — not joined with
+// ErrNotFound — because a duplicate is a "found" condition, not a "missing"
+// one.
+//
 // Plain errors.New (not eris) so errors.Is walks identity directly.
 var (
 	errUserNotFoundBase = errors.New("repository: user not found")
@@ -28,6 +34,11 @@ var (
 	ErrUserNotFound = errors.Join(errUserNotFoundBase, ErrNotFound)
 	// ErrRoleNotFound matches both itself and ErrNotFound.
 	ErrRoleNotFound = errors.Join(errRoleNotFoundBase, ErrNotFound)
+
+	// ErrRoleDuplicate is returned when a role with the same name already exists.
+	// It is a standalone sentinel: duplicate is a found-condition, not a
+	// not-found-condition, so it is not joined with ErrNotFound.
+	ErrRoleDuplicate = errors.New("repository: role already exists")
 )
 
 // gormUserRoleJoinRow is the projected shape of the join between user_roles
@@ -46,8 +57,28 @@ type gormRole struct {
 func (gormRole) TableName() string { return "roles" }
 
 type RoleRepository interface {
+	// FindByID returns the role with the given id. Returns ErrRoleNotFound
+	// (which also satisfies ErrNotFound) when no matching row exists.
+	FindByID(ctx context.Context, id string) (*domain.Role, error)
+
 	FindByName(ctx context.Context, name string) (*domain.Role, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Role, error)
+
+	// Create inserts a new role with the given name. The name is normalised
+	// (lower-cased, trimmed) before insertion. Returns ErrRoleDuplicate when a
+	// role with the same normalised name already exists.
+	Create(ctx context.Context, name string) (*domain.Role, error)
+
+	// Update replaces the name of the role identified by id. The new name is
+	// normalised before being stored. Returns ErrRoleNotFound when the id does
+	// not exist, and ErrRoleDuplicate when the normalised new name collides with
+	// an existing role.
+	Update(ctx context.Context, id, name string) (*domain.Role, error)
+
+	// Delete removes the role with the given id. Because user_roles carries an
+	// ON DELETE CASCADE FK on roles.id, all user-role assignments for this role
+	// are also deleted. Returns ErrRoleNotFound when no matching row exists.
+	Delete(ctx context.Context, id string) error
 
 	// AssignToUser inserts a (user_id, role_id) row. Idempotent: if the row
 	// already exists, returns nil without error. Returns ErrUserNotFound when
@@ -83,6 +114,18 @@ type roleRepo struct{ db *gorm.DB }
 
 func NewRoleRepository(db *gorm.DB) RoleRepository { return &roleRepo{db: db} }
 
+func (r *roleRepo) FindByID(ctx context.Context, id string) (*domain.Role, error) {
+	var row gormRole
+	err := r.db.WithContext(ctx).Where("id = ?", id).Take(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrRoleNotFound
+		}
+		return nil, eris.Wrap(err, "repository: find role by id")
+	}
+	return roleToDomain(row), nil
+}
+
 func (r *roleRepo) FindByName(ctx context.Context, name string) (*domain.Role, error) {
 	var row gormRole
 	err := r.db.WithContext(ctx).Where("name = ?", name).Take(&row).Error
@@ -109,6 +152,86 @@ func (r *roleRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*dom
 		out[role.ID] = role
 	}
 	return out, nil
+}
+
+// Create inserts a new role. The name is normalised (lower-cased, trimmed)
+// defensively even if the usecase already did so. Returns ErrRoleDuplicate when
+// a role with the same normalised name already exists.
+//
+// uuid.NewV7 errors are propagated: the failure mode is a system-level issue
+// (crypto/rand unavailable) — a silent fallback would produce a different UUID
+// on a still-broken source. See .claude/rules/go-library-gotchas.md.
+func (r *roleRepo) Create(ctx context.Context, name string) (*domain.Role, error) {
+	name = strings.ToLower(strings.TrimSpace(name))
+
+	id, err := uuid.NewV7()
+	if err != nil {
+		return nil, eris.Wrap(err, "repository: role: create: uuid")
+	}
+
+	row := gormRole{ID: id.String(), Name: name}
+	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
+		if classified := classifyUniqueError(err); classified != nil {
+			return nil, classified
+		}
+		return nil, eris.Wrap(err, "repository: role: create")
+	}
+	return roleToDomain(row), nil
+}
+
+// Update replaces the name of the role identified by id. The name is normalised
+// before storing. Returns ErrRoleNotFound when the id does not match any row,
+// and ErrRoleDuplicate when the normalised new name collides with an existing role.
+func (r *roleRepo) Update(ctx context.Context, id, name string) (*domain.Role, error) {
+	name = strings.ToLower(strings.TrimSpace(name))
+
+	var row gormRole
+	if err := r.db.WithContext(ctx).Where("id = ?", id).Take(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrRoleNotFound
+		}
+		return nil, eris.Wrap(err, "repository: role: update: find")
+	}
+
+	row.Name = name
+	if err := r.db.WithContext(ctx).Save(&row).Error; err != nil {
+		if classified := classifyUniqueError(err); classified != nil {
+			return nil, classified
+		}
+		return nil, eris.Wrap(err, "repository: role: update")
+	}
+	return roleToDomain(row), nil
+}
+
+// Delete removes the role with the given id. Because user_roles carries
+// ON DELETE CASCADE on roles.id, all user-role assignments for this role are
+// also removed atomically by the DB. Returns ErrRoleNotFound when no matching
+// row exists (RowsAffected == 0).
+func (r *roleRepo) Delete(ctx context.Context, id string) error {
+	result := r.db.WithContext(ctx).Where("id = ?", id).Delete(&gormRole{})
+	if result.Error != nil {
+		return eris.Wrap(result.Error, "repository: role: delete")
+	}
+	if result.RowsAffected == 0 {
+		return ErrRoleNotFound
+	}
+	return nil
+}
+
+// classifyUniqueError inspects a Postgres unique-violation (code 23505) and
+// maps it to ErrRoleDuplicate when the violated constraint is on the roles name
+// column. Returns nil when err is not a unique-violation so callers can use it
+// as a pre-filter before falling through to eris.Wrap.
+func classifyUniqueError(err error) error {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+		return nil
+	}
+	if strings.Contains(pgErr.ConstraintName, "name") ||
+		strings.Contains(pgErr.ConstraintName, "roles") {
+		return ErrRoleDuplicate
+	}
+	return nil
 }
 
 // classifyFKError inspects a Postgres FK violation (code 23503) and maps it

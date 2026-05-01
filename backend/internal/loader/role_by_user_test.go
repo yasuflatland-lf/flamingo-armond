@@ -20,6 +20,10 @@ type roleBatchRepoStub struct {
 	listByUserIDs func(ctx context.Context, userIDs []string) (map[string][]*domain.Role, error)
 }
 
+func (s *roleBatchRepoStub) FindByID(_ context.Context, _ string) (*domain.Role, error) {
+	panic("roleBatchRepoStub.FindByID not configured")
+}
+
 func (s *roleBatchRepoStub) FindByName(_ context.Context, _ string) (*domain.Role, error) {
 	panic("roleBatchRepoStub.FindByName not configured")
 }
@@ -27,6 +31,18 @@ func (s *roleBatchRepoStub) FindByName(_ context.Context, _ string) (*domain.Rol
 func (s *roleBatchRepoStub) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Role, error) {
 	// Return empty so the singular Role loader stays a no-op when invoked.
 	return map[string]*domain.Role{}, nil
+}
+
+func (s *roleBatchRepoStub) Create(_ context.Context, _ string) (*domain.Role, error) {
+	panic("roleBatchRepoStub.Create not configured")
+}
+
+func (s *roleBatchRepoStub) Update(_ context.Context, _, _ string) (*domain.Role, error) {
+	panic("roleBatchRepoStub.Update not configured")
+}
+
+func (s *roleBatchRepoStub) Delete(_ context.Context, _ string) error {
+	panic("roleBatchRepoStub.Delete not configured")
 }
 
 // AssignToUser, RevokeFromUser, ListByUser satisfy the wider RoleRepository

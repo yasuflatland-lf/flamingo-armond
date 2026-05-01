@@ -31,6 +31,10 @@ type countingRoleRepo struct {
 	findByIDs  func(ctx context.Context, ids []string) (map[string]*domain.Role, error)
 }
 
+func (r *countingRoleRepo) FindByID(_ context.Context, _ string) (*domain.Role, error) {
+	panic("countingRoleRepo.FindByID not configured")
+}
+
 func (r *countingRoleRepo) FindByName(ctx context.Context, name string) (*domain.Role, error) {
 	if r.findByName == nil {
 		panic("countingRoleRepo.FindByName not configured")
@@ -43,6 +47,18 @@ func (r *countingRoleRepo) FindByIDs(ctx context.Context, ids []string) (map[str
 		panic("countingRoleRepo.FindByIDs not configured")
 	}
 	return r.findByIDs(ctx, ids)
+}
+
+func (r *countingRoleRepo) Create(_ context.Context, _ string) (*domain.Role, error) {
+	panic("countingRoleRepo.Create not configured")
+}
+
+func (r *countingRoleRepo) Update(_ context.Context, _, _ string) (*domain.Role, error) {
+	panic("countingRoleRepo.Update not configured")
+}
+
+func (r *countingRoleRepo) Delete(_ context.Context, _ string) error {
+	panic("countingRoleRepo.Delete not configured")
 }
 
 // AssignToUser, RevokeFromUser, ListByUser satisfy the wider RoleRepository
