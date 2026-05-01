@@ -367,6 +367,8 @@ extend type Query {
   adminUser(id: ID!): User
   """Admin-only. List all roles (used by admin role-assignment UI). Non-admin callers receive FORBIDDEN."""
   roles: [Role!]!
+  """Admin-only. Single role by ID. Non-admin callers receive FORBIDDEN."""
+  role(id: ID!): Role
 }
 
 """Input for admin-edited user fields."""
@@ -384,4 +386,10 @@ extend type Mutation {
   assignRole(userId: ID!, roleId: ID!): User!
   """Admin-only. Revoke a role from a user. Self-demotion of admin role is rejected with FORBIDDEN."""
   revokeRole(userId: ID!, roleId: ID!): User!
+  """Admin-only. Create a new role. Names are normalized to lowercase. Duplicates are rejected with BAD_USER_INPUT."""
+  createRole(name: String!): Role!
+  """Admin-only. Rename a role. The system role "admin" cannot be renamed (FORBIDDEN). Duplicates are rejected with BAD_USER_INPUT."""
+  updateRole(id: ID!, name: String!): Role!
+  """Admin-only. Delete a role. The system role "admin" cannot be deleted (FORBIDDEN). Returns true on success."""
+  deleteRole(id: ID!): Boolean!
 }
