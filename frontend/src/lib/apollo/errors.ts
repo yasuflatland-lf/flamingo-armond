@@ -7,6 +7,8 @@
  *  - getBackendErrorBanner:  Returns a user-facing banner string for non-field
  *    errors.  Priority: INTERNAL > UNAUTHENTICATED > first non-field GQL error.
  *    Network / non-CombinedGraphQLErrors → generic network message.
+ *  - classifyQueryError:  Classifies a query-level error into a typed result so
+ *    callers can branch on FORBIDDEN / UNAUTHENTICATED without retrying.
  */
 
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
@@ -60,4 +62,38 @@ export function getBackendErrorBanner(err: unknown): string | undefined {
     }
   }
   return internalMsg ?? authMsg ?? firstNonFieldMsg;
+}
+
+/**
+ * Typed result of classifying a query-level Apollo error.
+ *
+ * - `forbidden`:       FORBIDDEN code — user lacks the required role.
+ * - `unauthenticated`: UNAUTHENTICATED code — session expired.
+ * - `banner`:          Any other error; `message` carries the user-facing string.
+ */
+export type QueryErrorKind =
+  | { kind: "forbidden" }
+  | { kind: "unauthenticated" }
+  | { kind: "banner"; message: string };
+
+/**
+ * Classify a query-level Apollo error for callers that need to branch on
+ * FORBIDDEN (no retry, permission copy) or UNAUTHENTICATED (redirect/re-login)
+ * separately from generic errors that warrant a Retry banner.
+ *
+ * Returns `null` when `err` is falsy.
+ */
+export function classifyQueryError(err: unknown): QueryErrorKind | null {
+  if (!err) return null;
+  if (CombinedGraphQLErrors.is(err)) {
+    for (const ge of err.errors) {
+      const code = extensionString(ge.extensions, "code");
+      if (code === "FORBIDDEN") return { kind: "forbidden" };
+      if (code === "UNAUTHENTICATED") return { kind: "unauthenticated" };
+    }
+  }
+  return {
+    kind: "banner",
+    message: getBackendErrorBanner(err) ?? "An unexpected error occurred. Please try again.",
+  };
 }
