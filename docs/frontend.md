@@ -191,6 +191,26 @@ try {
 
 The helper string-matches `UNAUTHENTICATED` in the error message and calls `redirect(target)`; all other errors are rethrown to the nearest error boundary. Two redirect targets are in use: `/login` for session-expired or no-session cases (checked before `gqlFetch` via `supabase.auth.getUser()`), and `/cardgroups` for cross-user-access on inner pages. See [Backend error-code contract](#backend-error-code-contract) for why these two cases both surface as `UNAUTHENTICATED`.
 
+### RSC FORBIDDEN redirect pattern
+
+Admin-only pages (e.g. `/admin/users`, `/admin/users/[id]`) must explicitly handle the `FORBIDDEN` code in their RSC `try/catch`. Unlike `UNAUTHENTICATED` (where `redirectIfUnauthenticated` covers it), an unhandled `FORBIDDEN` rethrows to the nearest error boundary and Next.js renders a 500 — wrong UX for "you are signed in but lack the role". RSC pages call `redirect("/")` (or `/admin` if the user might still belong somewhere) on `FORBIDDEN`:
+
+```ts
+try {
+  data = await gqlFetch(AdminUsersQuery, { variables, revalidate: 0 });
+} catch (err) {
+  redirectIfUnauthenticated(err, "/login");
+  if (isForbidden(err)) redirect("/");
+  throw err;
+}
+```
+
+Pair the SSR redirect with a **client-side classifier** for mid-session role revocation: a user who lands on the page as admin and then has the role revoked while the page is open will see the next mutation fail with `FORBIDDEN`. A discriminated-union classifier (`classifyQueryError(err): { kind: "forbidden" | "unauthenticated" | "internal" | ... }`) lets the client component branch into a banner or a redirect without inlining string-matches at every call site.
+
+### Mutations that can return `FORBIDDEN` should not use `optimisticResponse`
+
+When a mutation can plausibly return `FORBIDDEN` or `BAD_USER_INPUT` (admin role assignment, self-demotion, etc.), drop `optimisticResponse` entirely. Apollo v3.x rolls back optimistic writes on network errors but not consistently on typed GraphQL errors, so the cache holds the optimistic write while the server has rejected the change. See `.claude/rules/pagination.md` § "Drop `optimisticResponse` for mutations that can fail with typed GraphQL errors" for the full rule.
+
 ### Zod schema convention
 
 Validation schemas live in `frontend/src/schemas/*.ts` and mirror their corresponding GraphQL `Input` types. Example: `frontend/src/schemas/profile.ts` mirrors `UpdateProfileInput`.

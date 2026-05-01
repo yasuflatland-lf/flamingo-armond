@@ -18,6 +18,30 @@ The backend uses [`github.com/rotisserie/eris`](https://github.com/rotisserie/er
 
 Sentinels used today: `repository.ErrNotFound`, and domain-level sentinels such as `domain.ErrCardgroupNameRequired` / `domain.ErrCardgroupNameTooLong`. New sentinels are allowed when (a) callers need to branch on identity, and (b) a string-equality match is fragile. Keep sentinels as plain `errors.New` so `errors.Is` works without going through eris's chain walk.
 
+### Layered sentinels via `errors.Join`
+
+When introducing a more specific sentinel alongside an existing general one (e.g. adding `ErrUserNotFound` while `ErrNotFound` is still in use across the repository), return `errors.Join(specific, general)` from the new call site. Callers that already match `errors.Is(err, ErrNotFound)` keep working; callers that want the finer split can branch on the specific sentinel first. This avoids a flag-day rename across every caller and lets the finer sentinel migrate in at its own pace. **Always check the more specific sentinel before the general one** — `errors.Is` returns true for both, so reversing the order silently routes user-not-found into a generic 404 path.
+
+### Postgres FK violation classification (`23503`)
+
+A "validate parent rows exist, then insert" pattern carries a TOCTOU race: between the SELECT and the INSERT, another transaction can delete the parent row, and the INSERT then fails with a Postgres foreign-key violation. Without classification, the usecase maps the raw GORM error to `gqlerr.Internal` and the operator gets a 5xx alarm for what is actually client-supplied stale input.
+
+Inspect the unwrapped driver error for `*pgconn.PgError` with `Code == "23503"` and read `ConstraintName` to decide which parent was missing — typical shape:
+
+```go
+var pgErr *pgconn.PgError
+if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+    switch {
+    case strings.Contains(pgErr.ConstraintName, "user_id"):
+        return errors.Join(ErrUserNotFound, ErrNotFound)
+    case strings.Contains(pgErr.ConstraintName, "role_id"):
+        return errors.Join(ErrRoleNotFound, ErrNotFound)
+    }
+}
+```
+
+The usecase then translates the specific sentinel to `gqlerr.BadUserInput` on the offending field. A race-deleted parent is a client-fixable input, not a server bug — keep it out of the ERROR log.
+
 ## Logging
 
 All error sites that produce a structured log entry must attach the eris chain as the `error_chain` attribute (output of `eris.ToJSON(err, true)`). The `internal/logging` package exposes two sibling helpers — `LogError(ctx, logger, msg, err, attrs...)` and `LogWarn(ctx, logger, msg, err, attrs...)` — so ERROR and WARN sites share one shape. Both:

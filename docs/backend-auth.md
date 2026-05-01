@@ -77,6 +77,45 @@ See also the general env-vars table above.
 
 All three are required. `ConfigFromEnv()` returns an error and the server fails to start if any is missing or empty — silent misconfiguration is not allowed.
 
+### Authorization gates: object-level vs. field-level
+
+A `@hasRole(ADMIN)`-style gate on a top-level query (e.g. `Query.users`) does **not** protect fields on the returned type that any other resolver might also expose. `User.roles` is reachable from `me`, `cardgroup.owner`, and any future resolver that returns a `User` — the admin-only gate on `Query.users` covers exactly one of those entry points.
+
+Field-level resolvers that expose privileged data must perform their own admin-or-self check inside the field resolver itself:
+
+```go
+func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Role, error) {
+    caller := auth.UserFrom(ctx)
+    if caller == nil {
+        return nil, gqlerr.Unauthenticated()
+    }
+    if caller.Sub != obj.ID {
+        isAdmin, err := r.AuthSvc.IsAdmin(ctx, caller.Sub)
+        if err != nil { /* propagate context.Canceled, else gqlerr.Internal */ }
+        if !isAdmin {
+            return nil, gqlerr.NewForbidden("forbidden")
+        }
+    }
+    // ...
+}
+```
+
+The "self or admin" check is the right granularity for fields where the owning user has a legitimate read interest in their own data; pure admin-only fields drop the `caller.Sub != obj.ID` branch.
+
+### Self-demotion guard
+
+A user who is allowed to assign and revoke roles can also revoke their own admin role and lock the system out of admin operations. The usecase layer must reject "the caller is removing the admin role from themselves" before the DB write:
+
+1. Compare `callerID == targetUserID`.
+2. Look up the role being revoked and check whether its name is `"admin"`.
+3. If both, return `gqlerr.NewForbidden("cannot remove your own admin role")`.
+
+This guard belongs in the usecase, not in the UI: the UI is one of N possible callers, and a CLI / API consumer / Apollo Studio request can hit the resolver directly. The role-name lookup is mandatory — comparing role IDs would couple the guard to seed data that varies between environments. The hardcoded `"admin"` matches `auth.Service.IsAdmin`'s same hardcoded literal; both move together when a second privileged role is introduced.
+
+### Multi-layer security test coverage
+
+Authorization rules implemented at the usecase level need tests at **both** the usecase layer and the resolver layer. Usecase tests confirm the rule (right sentinel returned, right error code mapped) but cannot catch wire-format regressions: an `extensions.code` typo, a resolver that swallows the usecase error and returns `nil`, or a gqlgen codec change that drops the `field` extension. Resolver-level wire tests built against `handler.NewServer` (see `docs/backend.md` § "Resolver-level wire tests") are the only layer that exercises the full request envelope. Apply this dual-layer rule to every guard whose failure mode is "user gains access they should not have" — privilege checks, owner checks, self-demotion, and role-mutation paths.
+
 ### Echo v5 + gqlgen error propagation
 
 `echo.WrapHandler` (v5) converts a `http.Handler` into an `echo.HandlerFunc` that always returns `nil`. gqlgen's `handler.Server` is an `http.Handler`: it writes GraphQL errors into the response body as `{"errors":[...]}` with HTTP 200, and only ever writes a 5xx for catastrophic transport failures. Because `WrapHandler` returns `nil`, Echo's central error pipeline never sees these, which is fine: the GraphQL error is already transported in-band. Do **not** wrap gqlgen with a custom adapter that translates non-2xx into `echo.NewHTTPError` — that would cause a double write on the already-committed `ResponseWriter`.
