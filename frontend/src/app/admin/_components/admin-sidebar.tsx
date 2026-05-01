@@ -29,8 +29,7 @@ export function AdminSidebar() {
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive =
-              pathname != null &&
-              (pathname === item.href || pathname.startsWith(`${item.href}/`));
+              pathname != null && (pathname === item.href || pathname.startsWith(`${item.href}/`));
             return (
               <li key={item.href}>
                 <Link
