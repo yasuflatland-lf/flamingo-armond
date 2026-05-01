@@ -4,10 +4,22 @@ import type {
   AdminUserQuery as AdminUserQueryType,
 } from "@/generated/graphql";
 import { gqlFetch } from "@/lib/apollo/server";
-import { redirectIfUnauthenticated } from "@/lib/apollo/server-redirect";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { AdminRolesQuery, AdminUserQuery } from "../../queries";
 import { AdminUserEditClient, type RoleOption, type UserForEdit } from "./AdminUserEditClient";
+
+/**
+ * Redirect if the error carries an UNAUTHENTICATED or FORBIDDEN GraphQL code.
+ * UNAUTHENTICATED → user must log in again.
+ * FORBIDDEN → user is authenticated but not admin; send to home.
+ * Any other error is rethrown to the error boundary.
+ */
+function redirectOnAuthError(err: unknown): never {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes("UNAUTHENTICATED")) redirect("/");
+  if (msg.includes("FORBIDDEN")) redirect("/");
+  throw err;
+}
 
 export default async function AdminUserEditPage({ params }: { params: Promise<{ id: string }> }) {
   const supabase = await createSupabaseServerClient();
@@ -29,7 +41,7 @@ export default async function AdminUserEditPage({ params }: { params: Promise<{ 
       gqlFetch(AdminRolesQuery, { revalidate: 0 }),
     ]);
   } catch (err) {
-    redirectIfUnauthenticated(err, "/");
+    redirectOnAuthError(err);
   }
 
   if (!userData?.adminUser) redirect("/admin/users");
