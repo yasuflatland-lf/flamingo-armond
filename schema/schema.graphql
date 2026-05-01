@@ -333,3 +333,53 @@ extend type Mutation {
   """
   upsertDictionary(input: UpsertDictionaryInput!): UpsertDictionaryPayload!
 }
+
+"""A named permission role. Names are stored lowercase (e.g., "admin", "general")."""
+type Role {
+  id: ID!
+  name: String!
+}
+
+extend type User {
+  """Roles assigned to this user. Resolved via the per-request RoleByUserID DataLoader."""
+  roles: [Role!]!
+}
+
+"""One element in a UserConnection."""
+type UserEdge {
+  """Opaque cursor for this position. Currently equal to node.id."""
+  cursor: ID!
+  node: User!
+}
+
+"""Paginated list of Users (Relay Connection)."""
+type UserConnection {
+  edges: [UserEdge!]!
+  pageInfo: PageInfo!
+  """Total users matching the filter, regardless of page window."""
+  totalCount: Int!
+}
+
+extend type Query {
+  """Admin-only. Paginated user list. Non-admin callers receive FORBIDDEN."""
+  users(first: Int, after: ID, last: Int, before: ID, search: String): UserConnection!
+  """Admin-only. Single user with roles populated. Non-admin callers receive FORBIDDEN."""
+  adminUser(id: ID!): User
+  """Admin-only. List all roles (used by admin role-assignment UI). Non-admin callers receive FORBIDDEN."""
+  roles: [Role!]!
+}
+
+"""Input for admin-edited user fields. null/omitted leaves the field unchanged; empty-string explicitly clears."""
+input AdminUpdateUserInput {
+  displayName: String
+  bio: String
+}
+
+extend type Mutation {
+  """Admin-only. Edit display_name / bio of any user."""
+  adminUpdateUser(id: ID!, input: AdminUpdateUserInput!): User!
+  """Admin-only. Assign a role to a user. Idempotent."""
+  assignRole(userId: ID!, roleId: ID!): User!
+  """Admin-only. Revoke a role from a user. Self-demotion of admin role is rejected with FORBIDDEN."""
+  revokeRole(userId: ID!, roleId: ID!): User!
+}
