@@ -856,20 +856,97 @@ Then loop:
 
 **Note on LoC accounting**: tests are not counted in the 800-line cap. This PR is allowed to be larger as long as it is purely tests + fixtures.
 
+**Progress (issue #61, branch `feature/improve_pr11`)**:
+
+Pre-dispatch decisions:
+- `register.test.tsx` SKIPPED — `/register` page does not exist in the new repo; `/login` is Google-OAuth-only via `LoginButton`. No registration flow to test.
+- Existing narrow `__tests__/admin-dictionary.test.tsx` (PR-07 / #59 validate→import flow) RENAMED to `admin-dictionary-import.test.tsx` so the broad page-level test takes the canonical `admin-dictionary.test.tsx` name per the narrow-vs-broad convention.
+- Final scope: 6 broad page tests + 2 mock utilities + 2 fixture files + 1 rename + 1 doc subsection.
+
+Cluster grouping (Wave 1 → 2/3 parallel → 4):
+
+| Cluster | File / scope                                                                 | Owner agent (model) | Status    | Notes |
+|---------|------------------------------------------------------------------------------|---------------------|-----------|-------|
+| W1-A    | `__tests__/utils/mock-supabase.ts` + `mock-apollo-paginated.ts` + vitest cfg | Opus 4.7 high       | completed | Both utils ship; vitest config unchanged (existing `**/*.test.{ts,tsx}` glob already excludes utility files) |
+| W1-B    | `__tests__/fixtures/users.ts` + `fixtures/cardgroups.ts`                     | Sonnet 4.6          | completed | Includes `cardsConnectionFixture` Connection helper consumed by W2-F |
+| W1-R    | `git mv admin-dictionary.test.tsx → admin-dictionary-import.test.tsx`        | Haiku 4.5           | completed | `7bb9883`; no other references to the old filename |
+| W2-D    | `__tests__/cardgroups-list.test.tsx`                                         | Sonnet 4.6          | completed | `38009c9`; 4 cases; agent surfaced potential `data` use-before-assign in `cardgroups/page.tsx:25` (informational) |
+| W2-E    | `__tests__/cardgroups-detail.test.tsx`                                       | Sonnet 4.6          | completed | `5bcccee`; 5 cases; no owner check exists in page so item 4 of brief omitted |
+| W2-F    | `__tests__/cards-list.test.tsx`                                              | Sonnet 4.6          | completed | `2873a3a`; 4 cases; renders FULL tree (RSC → real CardsClient → MockedProvider) — distinct from co-located stub test |
+| W3-G    | `__tests__/admin-users.test.tsx` (broad)                                     | Sonnet 4.6          | completed | `b1f2101`; 13 cases; covers BOTH `/admin/users` and `/admin/users/[id]` RSC gates; informational redirect-target inconsistency between the two surfaced |
+| W3-H    | `__tests__/admin-roles.test.tsx` (broad)                                     | Sonnet 4.6          | completed | `d420d1e`; 4 cases; mocks `useMutation` to no-op rather than wrapping in MockedProvider |
+| W3-I    | `__tests__/admin-dictionary.test.tsx` (broad)                                | Sonnet 4.6          | completed | `4f63dfd`; 7 cases; pivot — page has NO gqlFetch at RSC level, `myCardgroups` fetched via Apollo client-side |
+| W4-J    | `docs/frontend.md` Testing subsection                                        | Haiku 4.5           | completed | `db77dad`; 15 lines at L515-529 |
+| W4-V    | flake check + language-policy grep                                           | Haiku 4.5           | completed | 5×5 runs no flake; CJK + PR-N grep clean; tsc + biome + 305 tests pass after fix-up commits `14dc0f0` (TS+lint) and `23dc554` (biome format) |
+| Commit  | one Conventional Commit per cluster                                          | dedicated commit agent (Haiku) | completed | 16 commits on branch; no Co-Authored-By trailer; all single-line subjects |
+
+PR review loop (Step 2):
+
+| Iter | Findings (Critical/Important)                                                                                                               | Resolution                                                                                                                                                        | Commit |
+|------|---------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------|
+| 1    | C: broken JSDoc example in `installApolloMockLeakSpy`; "fails the test" overstatement in 3 places; `setMockSupabaseUserError` JSDoc inaccurate. I: leak helper never wired into broad tests; missing `authErr` rethrow tests on 3 broad pages; duplications with narrow / co-located tests; `admin-dictionary` "renders client" silent pass; `admin-roles` missing teardown. | Rewrote JSDoc to runnable destructuring example; rewrote "captures-then-assert" wording in helper + `docs/frontend.md`; doc-only fix on `setMockSupabaseUserError`; wired `installApolloMockLeakSpy` into `admin-users.test.tsx`; added 3 `setMockSupabaseUserError` rethrow cases; trimmed 3 duplications; strengthened "renders DictionaryImportClient"; added defensive `resetMockSupabase()` + console spy in `admin-roles`. | `0f57f0b docs+JSDoc accuracy` + `a7fa0f4 review feedback on broad tests` |
+| 2    | none — code-reviewer reports clean (APPROVE)                                                                                                | —                                                                                                                                                                 | — |
+
+**Step 3 (code-simplifier)**: extracted `seedAdminUsersConnection`, `mockDetailPageGql`, `mockCardsPageGql` helpers; replaced `waitFor` block with `findByTestId`; converted dynamic `import()` to top-level. Net −34 lines. Commit `a0d0ecd`.
+
+**Step 4 (full verification)**: Vitest 305/305 in 12.78s (exit 0); tsc exit 0; lint 127 files clean; backend `go test -race` 15 packages pass; `go vet` + `go build` clean; CJK + PR-N grep clean.
+
+**Step 5 (learnings) — promotions**:
+- `docs/frontend.md` (561 lines, < 600 cap): added § "RSC test rendering pattern" (await-page + Promise params + Supabase mock + `server-only` stub), § "Apollo Client v4 testing migration gotchas" (`addTypename` removed, `MockedResponse` import path, `useMutation` tuple shape), § "TypeScript strict array indexing in fixtures" (`!` vs `as const` tuple), § "The narrow / broad split is a contract" (flow-detail-in-broad anti-pattern + co-located × `__tests__/` coexistence rule), and a JSDoc-as-contract note appended to the existing "Shared utilities" subsection.
+- `.claude/rules/pagination.md`: renamed "Spy on `console.warn`" subsection to "Capture `console.warn` … then assert in teardown"; sharpened wording to capture-then-explicit-assert (matching the helper that now exists).
+
+Skipped (out of scope or already adequately covered): `vi.mock` hoisting (already in `mock-supabase.ts` JSDoc), pre-existing comment in renamed `admin-dictionary-import.test.tsx` (file content unchanged from PR-07).
+
+**Final commit list (16 commits on `feature/improve_pr11`)**:
+
+1. `7bb9883 test(frontend): rename narrow admin-dictionary test to admin-dictionary-import`
+2. `f4f093b test(frontend): add shared Supabase and Apollo paginated mocks for broad page tests`
+3. `21e78ad test(frontend): add shared user and cardgroup fixtures for broad page tests`
+4. `38009c9 test(frontend): add broad page test for cardgroups list`
+5. `5bcccee test(frontend): add broad page test for cardgroup detail`
+6. `2873a3a test(frontend): add broad page test for cards list`
+7. `b1f2101 test(frontend): add broad page test for admin users`
+8. `d420d1e test(frontend): add broad page test for admin roles`
+9. `4f63dfd test(frontend): add broad page test for admin dictionary`
+10. `db77dad docs(frontend): document narrow vs broad Vitest test convention`
+11. `14dc0f0 test(frontend): fix typecheck and lint issues in broad page tests`
+12. `23dc554 test(frontend): apply biome formatting to mock-apollo-paginated`
+13. `0f57f0b test(frontend): correct JSDoc and docs for shared test mocks`
+14. `a7fa0f4 test(frontend): address review feedback on broad page tests`
+15. `a0d0ecd test(frontend): simplify broad page tests with shared mock helpers`
+16. `ff49284 docs: capture broad-page test learnings on RSC tests Apollo v4 and convention`
+
+Pre-dispatch decisions revisited:
+- `register.test.tsx` SKIPPED — `/register` page never existed; `/login` is Google-OAuth-only.
+- Existing narrow `admin-dictionary.test.tsx` RENAMED to `admin-dictionary-import.test.tsx` so the broad page-level test could take the canonical name.
+
 ---
 
 ### PR-12 — Playwright E2E + workflow
 
+> **Revised 2026-05-01** against current `main` (post-PR-11 / #73). Issue #62 body now reflects the reconciliation. The summary below is kept short; the issue is the contract.
+>
+> Key reconciliation points:
+> - **Auth strategy = Supabase Admin API + cookie injection.** Production login UI exposes only Google OAuth; CI cannot drive a real Google round-trip. The E2E helper (`frontend/e2e/_auth.ts`) mints test users via service-role and injects the `sb-<project-ref>-auth-token` cookie. Zero production-code change.
+> - **PR-13 (#50) dependency removed.** The helper creates users + role rows on demand; `supabase/seed.sql` is no longer required for E2E.
+> - **Backend health probe is `/health`** (not `/healthz`).
+> - **`webServer` runs `next build && next start`** locally — `frontend.yml` does not surface a Vercel preview URL (Vercel's GitHub App handles preview deploys outside CI).
+> - **`PING_TOKEN` required at backend boot** — CI job supplies a dummy value.
+> - **Concurrency split (PR=cancel-in-progress: true, push=false)** — new pattern, documented in `docs/ci.md` because E2E carries external state (Supabase containers, ports, artifacts).
+> - **Service-role key never persisted** — `supabase start` generates it per-job inside the runner.
+
 **Goal**: Introduce Playwright with two end-to-end flows — admin import + learner swipe — and a dedicated CI workflow.
 
 **In scope**:
-- `frontend/playwright.config.ts` configured to run against a local dev server (`pnpm --filter frontend dev` via `webServer` block) using a Supabase test project (or local `supabase start` if available in CI).
+- `frontend/package.json`: add `@playwright/test` and a `test:e2e` script.
+- `frontend/playwright.config.ts` configured to run against `next build && next start` via Playwright `webServer`, defaulting to `http://localhost:3000`.
+- `frontend/e2e/_auth.ts`: Supabase Admin API user seeding, role assignment, password sign-in, and SSR auth-cookie injection. Service-role key stays test-only and server-side.
 - Tests:
   - `frontend/e2e/admin-import.spec.ts`: log in as seeded admin → go to `/admin/dictionary` → paste payload → validate → import → verify cards appear.
   - `frontend/e2e/learn-flow.spec.ts`: log in as seeded learner → go to `/learn/<cardgroupId>` → swipe Easy three times → verify next batch arrives and mode badge updates.
 - New workflow `.github/workflows/e2e.yml`:
-  - Trigger: `pull_request` paths (`frontend/**`, `schema/**`) + `push` to `main` + nightly cron.
-  - Job runs `supabase start` (or uses test Supabase) → seeds DB (`supabase db reset --seed`) → starts backend (`go run ./cmd/server` in background) → starts frontend → runs Playwright.
+  - Trigger: `pull_request` paths (`frontend/**`, `schema/**`, `supabase/config.toml`, `frontend/e2e/**`) + `push` to `main` + nightly cron.
+  - Job runs `supabase start` → captures local keys → starts backend (`go run ./cmd/server` in background) → runs Playwright.
   - Upload Playwright traces on failure.
 
 **Out of scope**:
@@ -879,27 +956,43 @@ Then loop:
 **Anchor files**:
 - `.github/workflows/frontend.yml` (sibling reference for env / mise / pnpm setup).
 - `frontend/package.json` (add `@playwright/test` dependency + `test:e2e` script here).
-- `supabase/seed.sql` (PR-13 — but PR-12 ships an inline temp seed in the workflow if it lands first).
+- `supabase/config.toml` (local Supabase config; no seed required for PR-12).
 - Old reference: `tmp/flamingo-armond-old/playwright-config.json` does not match Playwright's canonical config name; do not copy. Use the canonical `frontend/playwright.config.ts` per Playwright docs.
 
 **Dependencies**:
 - Depends on PR-09 (admin layout/nav must exist for the admin import flow to navigate).
 - Depends on PR-10 (Vercel deploy CI is unrelated, but consistent CI patterns help).
-- Light dependency on PR-13 (seed); see § "Risks" below for mitigation if PR-12 lands first.
+- PR-13 dependency removed by the test-only Supabase Admin API seeding helper.
 
 **DB impact**:
 - None (tests use a disposable DB via Supabase CLI).
 
 **Risks**:
 - `supabase start` in CI takes ~30 s; consider caching the Supabase Docker images.
-- Test isolation: each spec must reset DB or use unique test data. Prefer reset-per-spec via `supabase db reset` for simplicity.
-- If PR-13 has not landed yet, PR-12 ships an inline seed inside the workflow (a small temp `seed.sql` written by the workflow). Once PR-13 lands, switch to that file.
+- Test isolation: each spec must use unique deterministic test data and helper-level upserts.
+- The SSR cookie shape can drift with `@supabase/ssr`; derive the cookie through a real client session rather than hardcoding a hand-written value.
 
 **Verification**:
 - Both specs green locally with `pnpm --filter frontend test:e2e`.
 - New workflow green on PR.
 
 **Note on LoC accounting**: same as PR-11; tests not counted toward 800.
+
+**Implementation task order and progress (issue #62, branch `feature/improve_pr12`)**:
+
+Parallel grouping and dependencies:
+
+| Wave | Task | Dependency | Owner/model policy | Status | Notes |
+|------|------|------------|--------------------|--------|-------|
+| 0 | Read issue #62, current plan, current repo state, and old implementation Playwright references | none | Main orchestration: requested gpt-5.5 high; available main agent coordinating directly | completed | Issue contract confirmed; old repo has only JSON browser config and no Playwright specs |
+| 0 | Record this PR-12 task table and reconcile stale seed/dev-server notes in the master plan | issue scope fixed | Main orchestration | completed | This table is updated after each completed task |
+| 1 | Add Playwright package script/config and `frontend/e2e/_auth.ts` | Wave 0 | Main orchestration, with Supabase docs checked | completed | Added `@playwright/test`, `test:e2e`, canonical config, and helper with service-role seeding + SSR cookie injection |
+| 2A | Add `frontend/e2e/admin-import.spec.ts` | Wave 1 | Parallel-capable subtask; normal work would use gpt-5.4-mini medium | completed | Uses role/name locators for cardgroup select, payload textarea, Validate/Import, and cards-page verification |
+| 2B | Add `frontend/e2e/learn-flow.spec.ts` | Wave 1 | Parallel-capable subtask; normal work would use gpt-5.4-mini medium | completed | Seeds six due cards, clicks Easy three times, verifies progress, mode badge, and next active card |
+| 3 | Add `.github/workflows/e2e.yml` | Waves 1-2 | Main orchestration | completed | Uses Supabase CLI, backend `/health`, Playwright `webServer`, and failure artifacts |
+| 4A | Add `docs/e2e.md` and CI docs | Wave 3 | Parallel-capable simple docs; normal work would use gpt-5.4-mini low | completed | Documented service-role posture, local runbook, workflow triggers, concurrency, and artifacts |
+| 4B | Add frontend docs subsection | Wave 3 | Parallel-capable simple docs; normal work would use gpt-5.4-mini low | completed | Documented `pnpm --filter frontend test:e2e` and required local stack |
+| 5 | Run focused verification, language-policy checks, and record final status | Waves 1-4 | Main orchestration | completed | `pnpm --filter frontend lint`, `typecheck`, Playwright spec list, `actionlint`, `git diff --check`, targeted CJK grep, and full local E2E passed. Full E2E used Supabase local plus a temporary backend on port 1324 because port 1323 was already occupied. |
 
 ---
 
