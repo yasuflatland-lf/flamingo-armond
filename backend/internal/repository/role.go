@@ -11,6 +11,23 @@ import (
 	"backend/internal/domain"
 )
 
+// ErrUserNotFound and ErrRoleNotFound are returned by AssignToUser to
+// distinguish which side of the (user, role) pair was missing. Both are
+// joined with ErrNotFound so callers that previously branched on the legacy
+// sentinel via errors.Is keep working; new callers can branch on the
+// specific cause to surface a more precise BAD_USER_INPUT field.
+//
+// Plain errors.New (not eris) so errors.Is walks identity directly.
+var (
+	errUserNotFoundBase = errors.New("repository: user not found")
+	errRoleNotFoundBase = errors.New("repository: role not found")
+
+	// ErrUserNotFound matches both itself and ErrNotFound.
+	ErrUserNotFound = errors.Join(errUserNotFoundBase, ErrNotFound)
+	// ErrRoleNotFound matches both itself and ErrNotFound.
+	ErrRoleNotFound = errors.Join(errRoleNotFoundBase, ErrNotFound)
+)
+
 // gormUserRoleJoinRow is the projected shape of the join between user_roles
 // and roles used by ListByUserIDs.
 type gormUserRoleJoinRow struct {
@@ -31,8 +48,9 @@ type RoleRepository interface {
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Role, error)
 
 	// AssignToUser inserts a (user_id, role_id) row. Idempotent: if the row
-	// already exists, returns nil without error. Returns ErrNotFound if either
-	// the user or the role does not exist.
+	// already exists, returns nil without error. Returns ErrUserNotFound when
+	// the user is missing and ErrRoleNotFound when the role is missing; both
+	// also satisfy errors.Is(_, ErrNotFound) for backward-compatible matching.
 	AssignToUser(ctx context.Context, userID, roleID string) error
 
 	// RevokeFromUser deletes the (user_id, role_id) row. Idempotent: if the row
@@ -91,7 +109,11 @@ func (r *roleRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*dom
 
 // AssignToUser inserts a user_roles row. Idempotent via ON CONFLICT DO NOTHING.
 // Validates that both the user and role exist before inserting; returns
-// ErrNotFound if either is absent.
+// ErrUserNotFound when the user is missing and ErrRoleNotFound when the role
+// is missing. Both sentinels also satisfy errors.Is(_, ErrNotFound) so legacy
+// callers that only branch on ErrNotFound keep working — new callers should
+// match the specific sentinel first to surface the correct field in
+// BAD_USER_INPUT responses.
 func (r *roleRepo) AssignToUser(ctx context.Context, userID, roleID string) error {
 	// Validate user exists.
 	var userCount int64
@@ -102,7 +124,7 @@ func (r *roleRepo) AssignToUser(ctx context.Context, userID, roleID string) erro
 		return eris.Wrap(err, "repository: assign role: check user")
 	}
 	if userCount == 0 {
-		return ErrNotFound
+		return ErrUserNotFound
 	}
 
 	// Validate role exists.
@@ -114,7 +136,7 @@ func (r *roleRepo) AssignToUser(ctx context.Context, userID, roleID string) erro
 		return eris.Wrap(err, "repository: assign role: check role")
 	}
 	if roleCount == 0 {
-		return ErrNotFound
+		return ErrRoleNotFound
 	}
 
 	row := gormUserRole{UserID: userID, RoleID: roleID}

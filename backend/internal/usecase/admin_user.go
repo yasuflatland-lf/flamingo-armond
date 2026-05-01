@@ -154,6 +154,12 @@ func (u *adminUserUsecase) requireAdmin(ctx context.Context) (string, error) {
 // uses (first, after); backward uses (last, before). The two are mutually
 // exclusive. Default page size is adminUserMaxPageSize (100); the same
 // value is the absolute cap for either direction.
+//
+// Cursor-direction cross-validation: per the Relay spec, after pairs with
+// first (forward) and before pairs with last (backward). Mixing them or
+// supplying both cursors at once is rejected with BAD_USER_INPUT before the
+// repository is touched, so callers never get a silently re-interpreted
+// page boundary.
 func (u *adminUserUsecase) List(
 	ctx context.Context,
 	first, last *int,
@@ -161,6 +167,16 @@ func (u *adminUserUsecase) List(
 ) (*AdminUserConnection, error) {
 	if _, err := u.requireAdmin(ctx); err != nil {
 		return nil, err
+	}
+
+	if after != nil && before != nil {
+		return nil, gqlerr.BadUserInput("after", "after and before are mutually exclusive")
+	}
+	if first != nil && *first > 0 && before != nil {
+		return nil, gqlerr.BadUserInput("before", "before requires last, not first")
+	}
+	if last != nil && *last > 0 && after != nil {
+		return nil, gqlerr.BadUserInput("after", "after requires first, not last")
 	}
 
 	wantFirst, wantLast, err := resolveAdminPageSize(first, last)
@@ -284,11 +300,26 @@ func (u *adminUserUsecase) Update(ctx context.Context, id string, input AdminUpd
 
 // AssignRole grants roleID to userID. Idempotent at the repository layer:
 // calling twice with the same ids is a no-op the second time.
+//
+// Error mapping: distinguishes user-missing from role-missing via the
+// repository's ErrUserNotFound / ErrRoleNotFound sentinels so the
+// BAD_USER_INPUT response carries the correct field for the frontend
+// banner-by-field machinery. The generic ErrNotFound branch is kept as a
+// fallback for any future repository implementation that surfaces only the
+// legacy sentinel.
 func (u *adminUserUsecase) AssignRole(ctx context.Context, userID, roleID string) (*domain.User, error) {
 	if _, err := u.requireAdmin(ctx); err != nil {
 		return nil, err
 	}
 	if err := u.roles.AssignToUser(ctx, userID, roleID); err != nil {
+		// Branch on the specific sentinels first; both also satisfy
+		// errors.Is(_, ErrNotFound), so order matters.
+		if errors.Is(err, repository.ErrUserNotFound) {
+			return nil, gqlerr.BadUserInput("userId", "user not found")
+		}
+		if errors.Is(err, repository.ErrRoleNotFound) {
+			return nil, gqlerr.BadUserInput("roleId", "role not found")
+		}
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, gqlerr.BadUserInput("userId", "user or role not found")
 		}
@@ -352,12 +383,14 @@ func (u *adminUserUsecase) ListRoles(ctx context.Context) ([]*domain.Role, error
 // refetchUser loads the user after a mutation so callers see a fresh row
 // (e.g. with the trigger-refreshed updated_at). A missing row after a
 // successful mutation is unusual; surface it as INTERNAL with the supplied
-// context.
+// context. The original ErrNotFound is wrapped (not replaced) so the chain
+// stays intact for errors.Is checks downstream and so the eris error_chain
+// log entry preserves the originating sentinel.
 func (u *adminUserUsecase) refetchUser(ctx context.Context, id, wrap string) (*domain.User, error) {
 	user, err := u.users.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, gqlerr.Internal(ctx, eris.New(wrap+": user disappeared"))
+			return nil, gqlerr.Internal(ctx, eris.Wrap(err, wrap+": user disappeared"))
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, gqlerr.Cancelled(ctx, err)

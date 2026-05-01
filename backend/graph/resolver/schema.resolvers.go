@@ -351,7 +351,32 @@ func (r *queryResolver) Roles(ctx context.Context) ([]*model.Role, error) {
 }
 
 // Roles is the resolver for the roles field.
+//
+// Admin gate: only the user themselves (self-introspection via me { roles })
+// or an admin caller may read another user's role membership. Returning an
+// empty slice for unauthorised callers would still leak the existence of the
+// field, so we surface FORBIDDEN explicitly.
 func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Role, error) {
+	caller := auth.UserFrom(ctx)
+	if caller == nil || caller.Sub == "" {
+		return nil, gqlerr.Unauthenticated()
+	}
+	if caller.Sub != obj.ID {
+		if r.AuthSvc == nil {
+			return nil, gqlerr.Internal(ctx, eris.New("resolver: user roles: AuthSvc not configured"))
+		}
+		isAdmin, err := r.AuthSvc.IsAdmin(ctx, caller.Sub)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, gqlerr.Cancelled(ctx, err)
+			}
+			return nil, gqlerr.Internal(ctx, eris.Wrap(err, "resolver: user roles: check admin"))
+		}
+		if !isAdmin {
+			return nil, gqlerr.NewForbidden("admin only")
+		}
+	}
+
 	loaders := loader.For(ctx)
 	if loaders == nil {
 		return nil, gqlerr.Internal(ctx, eris.New("loader: middleware not installed for /query"))
