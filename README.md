@@ -46,17 +46,30 @@ Sign in via `http://127.0.0.1:3000/login` (Google) → land on `/profile`. Use *
 
 Production runs across Supabase (Postgres + Auth), Render (Go backend), and Vercel (Next.js frontend), provisioned manually through each provider's dashboard. Full checklist in `docs/deployment.md`; `make setup-prod` wraps it with prerequisite checks and smoke tests.
 
+## Setup For Production
+
+`make setup-prod` is a guided wrapper around the manual `docs/deployment.md` runbook: it validates Supabase / Render / Vercel / GitHub tokens, hands off to the provider dashboards, and runs smoke tests once each service is up. Prerequisites (PATs, Google OAuth client, GitHub App installations) and the env var matrix live in `docs/deployment.md`.
+
+```bash
+make setup-prod-preflight   # validate tokens & GitHub App installations only (unattended)
+make setup-prod             # full guided bring-up
+make setup-prod-postapply   # re-run first Render deploy + smoke tests from .state.yml
+```
+
+`make teardown-prod` is the destructive inverse — only use it on environments created by `setup-prod`.
+
 ## Makefile reference
 
 | Target | What it does |
 |---|---|
-| `make setup` | One-shot first-time setup |
+| `make setup` | One-shot first-time local setup |
 | `make sync-env` | Idempotent env sync from `supabase status -o env` |
 | `make supabase-restart` | Re-boot Supabase to pick up `./.env` edits |
 | `make dev-backend` | Start the Go / Echo backend on port 1323 |
 | `make dev-frontend` | Start the Next.js 16 dev server on port 3000 |
 | `make codegen` | Regenerate GraphQL bindings on both sides from `schema/*.graphql` |
 | `make test` | Run backend Go tests (race + coverage) and frontend Vitest suite |
+| `make setup-prod` | Guided production bring-up across Supabase + Render + Vercel (see § "Setup For Production") |
 
 `make dev-backend` / `make dev-frontend` are foreground processes — run them in separate terminals. `make codegen` is required after editing `schema/*.graphql` (generated outputs are gitignored). `make test` mirrors CI.
 
