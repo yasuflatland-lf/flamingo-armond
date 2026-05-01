@@ -7,6 +7,12 @@
 
 🦩 Swiping Flashcard app — a Go (Echo) backend, a Next.js 16 frontend, and a shared GraphQL schema, with Supabase for Postgres + Auth.
 
+## Architecture
+
+![Production architecture](docs/images/architecture.png)
+
+Diagram source: `docs/images/diagram.py` (rendered with the [diagrams](https://diagrams.mingrammer.com/) Python library + Graphviz). See `docs/images/README.md` for regeneration steps.
+
 ## Quick Start
 
 A first-time contributor should be able to go from a fresh clone to a logged-in local app in well under an hour by following the four phases below. Each phase has a single L2 doc as its source of truth — this section is the launchpad, not the manual.
