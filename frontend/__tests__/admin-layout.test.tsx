@@ -166,6 +166,28 @@ describe("AdminLayout (server component gate)", () => {
     expect(redirect).toHaveBeenCalledWith("/");
   });
 
+  test("redirects to / when meData.me is null", async () => {
+    mockSupabaseUser({ id: "u-1" });
+    vi.mocked(gqlFetch).mockResolvedValue({ me: null } as never);
+
+    await expect(AdminLayout({ children: <div>child</div> })).rejects.toThrow(
+      `${REDIRECT_PREFIX}/`,
+    );
+
+    expect(redirect).toHaveBeenCalledWith("/");
+  });
+
+  test("redirects to / when meData.me.roles is empty array", async () => {
+    mockSupabaseUser({ id: "u-1" });
+    vi.mocked(gqlFetch).mockResolvedValue({ me: { id: "u-1", roles: [] } } as never);
+
+    await expect(AdminLayout({ children: <div>child</div> })).rejects.toThrow(
+      `${REDIRECT_PREFIX}/`,
+    );
+
+    expect(redirect).toHaveBeenCalledWith("/");
+  });
+
   test("redirects to / when gqlFetch throws UNAUTHENTICATED", async () => {
     mockSupabaseUser({ id: "u-1" });
     mockMeQueryError('GraphQL errors: [{"message":"UNAUTHENTICATED: token expired"}]');
