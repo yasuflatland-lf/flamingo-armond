@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cardgroupFixture, cardsFixture } from "./fixtures/cardgroups";
 import {
   mockSupabaseServerClient,
   resetMockSupabase,
   setMockSupabaseUser,
 } from "./utils/mock-supabase";
-import { cardgroupFixture, cardsFixture } from "./fixtures/cardgroups";
 
 // ---------------------------------------------------------------------------
 // next/navigation — redirect throws so the RSC aborts like Next.js's runtime.
@@ -63,8 +63,8 @@ vi.mock("@/lib/apollo/server-redirect", () => ({
 
 // Pull mocked symbols AFTER vi.mock registration so vi.mocked resolves them.
 import { redirect } from "next/navigation";
-import { gqlFetch } from "@/lib/apollo/server";
 import CardgroupDetailPage from "@/app/cardgroups/[id]/page";
+import { gqlFetch } from "@/lib/apollo/server";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -132,7 +132,8 @@ describe("CardgroupDetailPage (broad page-level)", () => {
     expect(screen.getByRole("heading", { name: cardgroupFixture.name })).toBeInTheDocument();
 
     // Preview shows the first card's front text.
-    expect(screen.getByText(cardsFixture[0].front)).toBeInTheDocument();
+    // biome-ignore lint/style/noNonNullAssertion: cardsFixture is a literal 5-element array
+    expect(screen.getByText(cardsFixture[0]!.front)).toBeInTheDocument();
 
     // Three action CTAs are present with correct hrefs.
     const id = cardgroupFixture.id;
@@ -159,9 +160,9 @@ describe("CardgroupDetailPage (broad page-level)", () => {
       .mockResolvedValueOnce({ cardgroup: null } as never)
       .mockResolvedValueOnce(emptyCardsGqlResult as never);
 
-    await expect(
-      CardgroupDetailPage({ params: makeParams("nonexistent-id") }),
-    ).rejects.toThrow(`${REDIRECT_PREFIX}/cardgroups`);
+    await expect(CardgroupDetailPage({ params: makeParams("nonexistent-id") })).rejects.toThrow(
+      `${REDIRECT_PREFIX}/cardgroups`,
+    );
 
     expect(redirect).toHaveBeenCalledWith("/cardgroups");
   });
@@ -174,9 +175,9 @@ describe("CardgroupDetailPage (broad page-level)", () => {
       .mockResolvedValueOnce(null as never)
       .mockResolvedValueOnce(emptyCardsGqlResult as never);
 
-    await expect(
-      CardgroupDetailPage({ params: makeParams("missing") }),
-    ).rejects.toThrow(`${REDIRECT_PREFIX}/cardgroups`);
+    await expect(CardgroupDetailPage({ params: makeParams("missing") })).rejects.toThrow(
+      `${REDIRECT_PREFIX}/cardgroups`,
+    );
 
     expect(redirect).toHaveBeenCalledWith("/cardgroups");
   });
@@ -188,9 +189,9 @@ describe("CardgroupDetailPage (broad page-level)", () => {
   it("redirects to /login when no user is authenticated", async () => {
     setMockSupabaseUser(null);
 
-    await expect(
-      CardgroupDetailPage({ params: makeParams(cardgroupFixture.id) }),
-    ).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
+    await expect(CardgroupDetailPage({ params: makeParams(cardgroupFixture.id) })).rejects.toThrow(
+      `${REDIRECT_PREFIX}/login`,
+    );
 
     expect(redirect).toHaveBeenCalledWith("/login");
     // gqlFetch must not be called before authentication is confirmed.

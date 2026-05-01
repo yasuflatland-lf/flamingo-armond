@@ -104,8 +104,8 @@ vi.mock("@/lib/apollo/server", () => ({
 // ---------------------------------------------------------------------------
 
 import { redirect } from "next/navigation";
-import AdminUsersPage from "@/app/admin/users/page";
 import AdminUserEditPage from "@/app/admin/users/[id]/edit/page";
+import AdminUsersPage from "@/app/admin/users/page";
 import { gqlFetch } from "@/lib/apollo/server";
 
 // ---------------------------------------------------------------------------
@@ -389,9 +389,7 @@ describe("AdminUserEditPage (RSC)", () => {
   it("redirects to '/login' when no user is signed in", async () => {
     setMockSupabaseUser(null);
 
-    await expect(AdminUserEditPage({ params: PARAMS })).rejects.toThrow(
-      `${REDIRECT_PREFIX}/login`,
-    );
+    await expect(AdminUserEditPage({ params: PARAMS })).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
 
     expect(redirect).toHaveBeenCalledWith("/login");
   });
@@ -425,9 +423,7 @@ describe("AdminUserEditPage (RSC)", () => {
       new Error('GraphQL errors: [{"message":"UNAUTHENTICATED: session expired"}]'),
     );
 
-    await expect(AdminUserEditPage({ params: PARAMS })).rejects.toThrow(
-      `${REDIRECT_PREFIX}/`,
-    );
+    await expect(AdminUserEditPage({ params: PARAMS })).rejects.toThrow(`${REDIRECT_PREFIX}/`);
 
     expect(redirect).toHaveBeenCalledWith("/");
   });
@@ -438,9 +434,7 @@ describe("AdminUserEditPage (RSC)", () => {
       new Error('GraphQL errors: [{"message":"FORBIDDEN: admin only"}]'),
     );
 
-    await expect(AdminUserEditPage({ params: PARAMS })).rejects.toThrow(
-      `${REDIRECT_PREFIX}/`,
-    );
+    await expect(AdminUserEditPage({ params: PARAMS })).rejects.toThrow(`${REDIRECT_PREFIX}/`);
 
     expect(redirect).toHaveBeenCalledWith("/");
   });
@@ -471,11 +465,7 @@ describe("AdminUserEditPage (RSC)", () => {
 
     const tree = await AdminUserEditPage({ params: PARAMS });
 
-    render(
-      <MockedProvider mocks={[]} addTypename={false}>
-        {tree as React.ReactElement}
-      </MockedProvider>,
-    );
+    render(<MockedProvider mocks={[]}>{tree as React.ReactElement}</MockedProvider>);
 
     // The display name field must be pre-populated.
     const displayNameInput = screen.getByLabelText<HTMLInputElement>(/display name/i);

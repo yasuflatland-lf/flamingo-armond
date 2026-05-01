@@ -18,10 +18,7 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CardsByCardgroupConnectionDocument } from "@/generated/graphql";
-import {
-  cardsConnectionFixture,
-  cardsFixture,
-} from "./fixtures/cardgroups";
+import { cardsConnectionFixture, cardsFixture } from "./fixtures/cardgroups";
 import {
   mockSupabaseServerClient,
   resetMockSupabase,
@@ -71,8 +68,8 @@ vi.mock("@/lib/apollo/server", () => ({
 
 import { redirect } from "next/navigation";
 import CardsPage from "@/app/cardgroups/[id]/cards/page";
-import { gqlFetch } from "@/lib/apollo/server";
 import { CARDS_PAGE_SIZE } from "@/app/cardgroups/[id]/cards/queries";
+import { gqlFetch } from "@/lib/apollo/server";
 
 // ---------------------------------------------------------------------------
 // IntersectionObserver stub — prevents pagination useEffect errors; mirrors
@@ -204,9 +201,9 @@ describe("CardsPage — broad integration (RSC + CardsClient)", () => {
   it("redirects to /login when the user is not authenticated", async () => {
     setMockSupabaseUser(null);
 
-    await expect(
-      CardsPage({ params: Promise.resolve({ id: CG_ID }) }),
-    ).rejects.toThrow("REDIRECT:/login");
+    await expect(CardsPage({ params: Promise.resolve({ id: CG_ID }) })).rejects.toThrow(
+      "REDIRECT:/login",
+    );
 
     expect(redirect).toHaveBeenCalledWith("/login");
     // gqlFetch must NOT be called before the auth gate.
@@ -223,9 +220,9 @@ describe("CardsPage — broad integration (RSC + CardsClient)", () => {
       .mockResolvedValueOnce({ cardgroup: null } as never)
       .mockResolvedValueOnce(EMPTY_GQL_CONNECTION_RESPONSE as never);
 
-    await expect(
-      CardsPage({ params: Promise.resolve({ id: "nonexistent-cg" }) }),
-    ).rejects.toThrow("REDIRECT:/cardgroups");
+    await expect(CardsPage({ params: Promise.resolve({ id: "nonexistent-cg" }) })).rejects.toThrow(
+      "REDIRECT:/cardgroups",
+    );
 
     expect(redirect).toHaveBeenCalledWith("/cardgroups");
   });

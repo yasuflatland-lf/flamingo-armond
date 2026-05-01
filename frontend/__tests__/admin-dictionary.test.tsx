@@ -57,8 +57,8 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen } from "@testing-library/react";
 import { redirect } from "next/navigation";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import AdminDictionaryPage from "@/app/admin/dictionary/page";
 import { DictionaryImportClient } from "@/app/admin/dictionary/dictionary-client";
+import AdminDictionaryPage from "@/app/admin/dictionary/page";
 import { MyCardgroupsDocument } from "@/generated/graphql";
 import {
   mockSupabaseServerClient,
@@ -168,7 +168,7 @@ describe("AdminDictionaryPage (RSC auth gate)", () => {
 describe("DictionaryImportClient (page-level integration)", () => {
   it("pre-populates the cardgroup picker with names returned by the query", async () => {
     render(
-      <MockedProvider mocks={[CARDGROUPS_MOCK]} addTypename>
+      <MockedProvider mocks={[CARDGROUPS_MOCK]}>
         <DictionaryImportClient />
       </MockedProvider>,
     );
@@ -183,7 +183,7 @@ describe("DictionaryImportClient (page-level integration)", () => {
 
   it("shows only the default placeholder option when no cardgroups exist", async () => {
     render(
-      <MockedProvider mocks={[EMPTY_CARDGROUPS_MOCK]} addTypename>
+      <MockedProvider mocks={[EMPTY_CARDGROUPS_MOCK]}>
         <DictionaryImportClient />
       </MockedProvider>,
     );
@@ -199,7 +199,7 @@ describe("DictionaryImportClient (page-level integration)", () => {
 
   it("disables the Import button on initial mount before any validation", async () => {
     render(
-      <MockedProvider mocks={[CARDGROUPS_MOCK]} addTypename>
+      <MockedProvider mocks={[CARDGROUPS_MOCK]}>
         <DictionaryImportClient />
       </MockedProvider>,
     );
@@ -214,7 +214,7 @@ describe("DictionaryImportClient (page-level integration)", () => {
 
   it("disables the Validate button when the payload textarea is empty", async () => {
     render(
-      <MockedProvider mocks={[CARDGROUPS_MOCK]} addTypename>
+      <MockedProvider mocks={[CARDGROUPS_MOCK]}>
         <DictionaryImportClient />
       </MockedProvider>,
     );

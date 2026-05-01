@@ -49,15 +49,15 @@ vi.mock("next/link", () => ({
 // ---------------------------------------------------------------------------
 
 import { redirect } from "next/navigation";
-import { gqlFetch } from "@/lib/apollo/server";
 import CardgroupsPage from "@/app/cardgroups/page";
+import { gqlFetch } from "@/lib/apollo/server";
+import { makeCardgroup } from "./fixtures/cardgroups";
+import { adminUserFixture, generalUserFixture } from "./fixtures/users";
 import {
   mockSupabaseServerClient,
   resetMockSupabase,
   setMockSupabaseUser,
 } from "./utils/mock-supabase";
-import { makeCardgroup } from "./fixtures/cardgroups";
-import { adminUserFixture, generalUserFixture } from "./fixtures/users";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -124,9 +124,7 @@ describe("CardgroupsPage", () => {
     const tree = await CardgroupsPage();
     render(tree as React.ReactElement);
 
-    expect(
-      screen.getByText(/you haven't created any cardgroups yet/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/you haven't created any cardgroups yet/i)).toBeInTheDocument();
 
     expect(redirect).not.toHaveBeenCalled();
   });
