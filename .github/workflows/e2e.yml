@@ -3,6 +3,7 @@ name: E2E
 on:
   push:
     branches: [main]
+    # E2E exercises both frontend and backend; trigger on backend changes too.
     paths:
       - 'frontend/**'
       - 'schema/**'
@@ -10,10 +11,12 @@ on:
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - 'package.json'
+      - 'backend/**'
       - '.tool-versions'
       - '.github/workflows/e2e.yml'
   pull_request:
     branches: [main]
+    # E2E exercises both frontend and backend; trigger on backend changes too.
     paths:
       - 'frontend/**'
       - 'schema/**'
@@ -21,6 +24,7 @@ on:
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - 'package.json'
+      - 'backend/**'
       - '.tool-versions'
       - '.github/workflows/e2e.yml'
   schedule:
@@ -71,11 +75,17 @@ jobs:
         run: supabase start
 
       - name: Export Supabase local env
+        shell: bash
         run: |
+          set -euo pipefail
           supabase status -o env > /tmp/supabase.env
+          [ -s /tmp/supabase.env ] || { echo "supabase status produced no env"; exit 1; }
           set -a
           . /tmp/supabase.env
           set +a
+          : "${API_URL:?supabase status missing API_URL}"
+          : "${ANON_KEY:?supabase status missing ANON_KEY}"
+          : "${SERVICE_ROLE_KEY:?supabase status missing SERVICE_ROLE_KEY}"
           {
             echo "E2E_SUPABASE_URL=$API_URL"
             echo "E2E_SUPABASE_ANON_KEY=$ANON_KEY"
@@ -89,14 +99,32 @@ jobs:
         working-directory: backend
         run: go tool gqlgen generate
 
+      - name: Build backend
+        working-directory: backend
+        run: go build -o /tmp/flamingo-backend ./cmd/server
+
       - name: Start backend
         working-directory: backend
+        env:
+          PING_TOKEN: ci-dummy
+          SUPABASE_JWT_AUDIENCE: ${{ env.SUPABASE_JWT_AUDIENCE }}
+          SUPABASE_JWT_ISSUER: ${{ env.SUPABASE_JWT_ISSUER }}
+          SUPABASE_JWKS_URL: ${{ env.SUPABASE_JWKS_URL }}
         run: |
-          go run ./cmd/server > /tmp/flamingo-backend.log 2>&1 &
+          /tmp/flamingo-backend > /tmp/flamingo-backend.log 2>&1 &
           echo "$!" > /tmp/flamingo-backend.pid
 
       - name: Wait for backend
-        run: pnpm dlx wait-on --timeout 60000 http://localhost:1323/health
+        shell: bash
+        run: |
+          # wait-on timeout sized for binary already-built (just bind ~1-3s); a 60s
+          # ceiling absorbs runner contention without masking real startup failures.
+          if ! pnpm dlx wait-on --timeout 60000 http://localhost:1323/health; then
+            echo "::group::backend log (last 200 lines)"
+            tail -n 200 /tmp/flamingo-backend.log || true
+            echo "::endgroup::"
+            exit 1
+          fi
 
       - name: Ensure canonical roles
         run: |
