@@ -101,7 +101,7 @@ Three env files exist for local development; **only the root `.env` is hand-edit
 |---|---|---|
 | **`./.env`** | **You** (Google OAuth credentials) | `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID/SECRET`. Auto-exported into the shell by `mise.toml` so `supabase start` resolves the `env()` placeholders in `supabase/config.toml`. |
 | `frontend/.env.local` | `make sync-env` | `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` derived from `supabase status -o env`. Regenerated on every sync while the marker is present. Loaded natively by Next.js from its own CWD. |
-| `backend/.env.local` | `make sync-env` (seeded once) | JWKS / JWT audience / issuer / pool tuning. Seeded from `backend/.env.example`; not regenerated after that. Loaded by `cmd/server/main.go` itself via `godotenv` — **not** auto-exported into the shell, so backend env names (`PORT`, `SUPABASE_*`) cannot leak into sibling processes such as `next dev`. |
+| `backend/.env.local` | `make sync-env` (seeded once) | JWKS / JWT audience / issuer / pool tuning. Seeded from `backend/.env.example`; not regenerated after that **except** for `PING_TOKEN`, which `make sync-env` auto-generates (64 hex chars via `openssl rand -hex 32`) when empty or missing — subsequent runs are a no-op. Loaded by `cmd/server/main.go` itself via `godotenv` — **not** auto-exported into the shell, so backend env names (`PORT`, `SUPABASE_*`) cannot leak into sibling processes such as `next dev`. |
 
 Removing the marker line from a managed file marks it as user-owned; subsequent `make sync-env` runs will skip it and warn that it may be stale.
 

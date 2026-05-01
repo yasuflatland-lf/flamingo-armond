@@ -191,6 +191,46 @@
         - (item.src not in supabase_kv) or ((supabase_kv[item.src] | trim('"')) | length == 0)
       tags: [sync-env]
 
+    # --- Auto-generate PING_TOKEN if empty in backend/.env.local ---
+    # The /internal/ping bearer token has no upstream source (unlike the
+    # supabase-derived keys above). Generate a 64-hex-char value on first run
+    # and leave subsequent runs as a no-op. Skip user-owned files (no marker).
+    - name: Read backend/.env.local for PING_TOKEN inspection
+      ansible.builtin.slurp:
+        src: "{{ repo_root }}/backend/.env.local"
+      register: backend_env_raw
+      when: env_ownership[repo_root + '/backend/.env.local'] != 'user-owned'
+      tags: [sync-env]
+
+    - name: Compute current PING_TOKEN value
+      ansible.builtin.set_fact:
+        ping_token_current: "{{ ((backend_env_raw.content | b64decode).split('\n') | select('match', '^PING_TOKEN=') | map('regex_replace', '^PING_TOKEN=', '') | list | first | default('')) | trim('\"') }}"
+      when: env_ownership[repo_root + '/backend/.env.local'] != 'user-owned'
+      tags: [sync-env]
+
+    - name: Generate a fresh PING_TOKEN when missing or empty
+      ansible.builtin.command:
+        cmd: openssl rand -hex 32
+      register: ping_token_generated
+      changed_when: true
+      when:
+        - env_ownership[repo_root + '/backend/.env.local'] != 'user-owned'
+        - (ping_token_current | default('')) | length == 0
+      tags: [sync-env]
+
+    - name: Upsert generated PING_TOKEN into backend/.env.local
+      ansible.builtin.lineinfile:
+        path: "{{ repo_root }}/backend/.env.local"
+        regexp: "^PING_TOKEN="
+        line: "PING_TOKEN={{ ping_token_generated.stdout }}"
+        create: false
+        mode: "0600"
+      when:
+        - env_ownership[repo_root + '/backend/.env.local'] != 'user-owned'
+        - (ping_token_current | default('')) | length == 0
+        - ping_token_generated is succeeded
+      tags: [sync-env]
+
     # --- Google OAuth credentials check (root .env) ---
     # stat-then-slurp: a missing .env produces stat.exists=false (clean path),
     # and any slurp failure afterwards surfaces normally.
