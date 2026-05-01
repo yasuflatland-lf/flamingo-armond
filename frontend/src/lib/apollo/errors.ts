@@ -55,9 +55,8 @@ export function getBackendErrorBanner(err: unknown): string | undefined {
       internalMsg ??= ge.message;
     } else if (code === "UNAUTHENTICATED") {
       authMsg ??= "Your session expired. Please sign in again.";
-    } else if (code === "BAD_USER_INPUT" && field) {
-      // field-level error — skip for banner
-    } else {
+    } else if (code !== "BAD_USER_INPUT" || !field) {
+      // Skip field-level BAD_USER_INPUT; everything else is banner-worthy.
       firstNonFieldMsg ??= ge.message;
     }
   }

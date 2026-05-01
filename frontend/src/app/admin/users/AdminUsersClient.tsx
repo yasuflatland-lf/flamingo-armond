@@ -13,7 +13,6 @@ import { ADMIN_USERS_PAGE_SIZE, AdminRoleFieldsFragment, AdminUserFieldsFragment
 
 type Connection = AdminUsersQuery["users"];
 type Edge = Connection["edges"][number];
-type PageInfo = Connection["pageInfo"];
 
 function UserRow({ edge }: { edge: Edge }) {
   const user = useFragment(AdminUserFieldsFragment, edge.node);
@@ -115,12 +114,8 @@ export function AdminUsersClient() {
 
   const connection = data?.users;
   const edges: Edge[] = connection?.edges ?? [];
-  const pageInfo: PageInfo = connection?.pageInfo ?? {
-    hasNextPage: false,
-    hasPreviousPage: false,
-    startCursor: null,
-    endCursor: null,
-  };
+  const hasNextPage = connection?.pageInfo.hasNextPage ?? false;
+  const endCursor = connection?.pageInfo.endCursor ?? null;
   const totalCount = connection?.totalCount ?? 0;
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -128,13 +123,13 @@ export function AdminUsersClient() {
 
   const requestNextPage = useCallback(() => {
     if (fetchingRef.current) return;
-    if (!pageInfo.hasNextPage) return;
+    if (!hasNextPage) return;
 
     fetchingRef.current = true;
     fetchMore({
       variables: {
         first: ADMIN_USERS_PAGE_SIZE,
-        after: pageInfo.endCursor,
+        after: endCursor,
         search: searchQuery,
       },
       updateQuery: (prev, { fetchMoreResult }) => {
@@ -157,10 +152,10 @@ export function AdminUsersClient() {
       .finally(() => {
         fetchingRef.current = false;
       });
-  }, [fetchMore, pageInfo.endCursor, pageInfo.hasNextPage, searchQuery]);
+  }, [fetchMore, endCursor, hasNextPage, searchQuery]);
 
   useEffect(() => {
-    if (!pageInfo.hasNextPage) return;
+    if (!hasNextPage) return;
     // Halt the observer loop while a previous fetch failed; user must click Retry to resume.
     if (fetchMoreError != null) return;
     const node = sentinelRef.current;
@@ -170,13 +165,12 @@ export function AdminUsersClient() {
       const entry = entries[0];
       if (!entry?.isIntersecting) return;
       if (fetchingRef.current) return;
-      if (!pageInfo.hasNextPage) return;
       requestNextPage();
     });
 
     observer.observe(node);
     return () => observer.disconnect();
-  }, [pageInfo.hasNextPage, fetchMoreError, requestNextPage]);
+  }, [hasNextPage, fetchMoreError, requestNextPage]);
 
   const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
   const initialLoading = loading && edges.length === 0 && networkStatus !== NetworkStatus.fetchMore;
@@ -273,7 +267,7 @@ export function AdminUsersClient() {
       )}
 
       {/* Loading more indicator */}
-      {!fetchMoreError && fetchingMore && pageInfo.hasNextPage && (
+      {!fetchMoreError && fetchingMore && hasNextPage && (
         <p
           className="mt-3 text-center text-xs text-muted-foreground"
           data-testid="admin-users-loading-more"

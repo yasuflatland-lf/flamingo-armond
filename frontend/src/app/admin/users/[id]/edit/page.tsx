@@ -9,15 +9,13 @@ import { AdminRolesQuery, AdminUserQuery } from "../../queries";
 import { AdminUserEditClient, type RoleOption, type UserForEdit } from "./AdminUserEditClient";
 
 /**
- * Redirect if the error carries an UNAUTHENTICATED or FORBIDDEN GraphQL code.
- * UNAUTHENTICATED → user must log in again.
- * FORBIDDEN → user is authenticated but not admin; send to home.
- * Any other error is rethrown to the error boundary.
+ * Redirect to "/" when the error carries an UNAUTHENTICATED (session expired)
+ * or FORBIDDEN (not admin) GraphQL code. Any other error is rethrown to the
+ * error boundary.
  */
 function redirectOnAuthError(err: unknown): never {
   const msg = err instanceof Error ? err.message : String(err);
-  if (msg.includes("UNAUTHENTICATED")) redirect("/");
-  if (msg.includes("FORBIDDEN")) redirect("/");
+  if (msg.includes("UNAUTHENTICATED") || msg.includes("FORBIDDEN")) redirect("/");
   throw err;
 }
 

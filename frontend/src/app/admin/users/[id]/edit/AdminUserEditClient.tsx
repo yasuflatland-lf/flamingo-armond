@@ -66,9 +66,9 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
   const [saveError, setSaveError] = useState("");
   const [saveBanner, setSaveBanner] = useState("");
 
-  // Per-role error banners (keyed by role id).
+  // Per-role error banners (keyed by role id) and in-flight guard so consecutive
+  // clicks on the same role cannot double-fire.
   const [roleBanners, setRoleBanners] = useState<Record<string, string>>({});
-  // Per-role in-flight guard so consecutive clicks cannot double-fire.
   const [roleInflight, setRoleInflight] = useState<Record<string, boolean>>({});
   // Server-truth role ids — initialised from SSR props; updated on mutation success.
   const [userRoleIds, setUserRoleIds] = useState<Set<string>>(
@@ -78,6 +78,11 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
   const [runUpdate, { loading: saving }] = useMutation(AdminUpdateUserMutation);
   const [runAssign] = useMutation(AdminAssignRoleMutation);
   const [runRevoke] = useMutation(AdminRevokeRoleMutation);
+
+  function clearSaveStatus(): void {
+    setSaveError("");
+    setSaveBanner("");
+  }
 
   /** Client-side validation mirror of server-side constraints. Returns error or "". */
   function validate(): string {
@@ -95,8 +100,7 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
       setSaveError(validationError);
       return;
     }
-    setSaveError("");
-    setSaveBanner("");
+    clearSaveStatus();
 
     try {
       await runUpdate({
@@ -119,26 +123,16 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
     setRoleBanners((prev) => ({ ...prev, [roleId]: "" }));
 
     try {
-      if (currentlyAssigned) {
-        const result = await runRevoke({
-          variables: { userId: user.id, roleId },
-        });
-        // Update local role state from server-truth response.
-        // Fragment masking is compile-time only; at runtime the shape is the plain object.
-        const serverRoles = result.data?.revokeRole?.roles as AdminRoleFieldsFragment[] | undefined;
-        if (serverRoles) {
-          setUserRoleIds(new Set(serverRoles.map((r) => r.id)));
-        }
-      } else {
-        const result = await runAssign({
-          variables: { userId: user.id, roleId },
-        });
-        // Update local role state from server-truth response.
-        // Fragment masking is compile-time only; at runtime the shape is the plain object.
-        const serverRoles = result.data?.assignRole?.roles as AdminRoleFieldsFragment[] | undefined;
-        if (serverRoles) {
-          setUserRoleIds(new Set(serverRoles.map((r) => r.id)));
-        }
+      const variables = { userId: user.id, roleId };
+      // Update local role state from the server-truth response. Fragment masking
+      // is compile-time only; at runtime the shape is the plain object.
+      const serverRoles = (
+        currentlyAssigned
+          ? (await runRevoke({ variables })).data?.revokeRole?.roles
+          : (await runAssign({ variables })).data?.assignRole?.roles
+      ) as AdminRoleFieldsFragment[] | undefined;
+      if (serverRoles) {
+        setUserRoleIds(new Set(serverRoles.map((r) => r.id)));
       }
     } catch (err) {
       // On failure (including FORBIDDEN), surface the banner.
@@ -150,10 +144,6 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
     } finally {
       setRoleInflight((prev) => ({ ...prev, [roleId]: false }));
     }
-  }
-
-  if (!user) {
-    return <div role="alert">User not found.</div>;
   }
 
   return (
@@ -195,8 +185,7 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
             value={displayName}
             onChange={(e) => {
               setDisplayName(e.target.value);
-              setSaveError("");
-              setSaveBanner("");
+              clearSaveStatus();
             }}
             maxLength={DISPLAY_NAME_MAX}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -216,8 +205,7 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
             value={bio}
             onChange={(e) => {
               setBio(e.target.value);
-              setSaveError("");
-              setSaveBanner("");
+              clearSaveStatus();
             }}
             rows={4}
             maxLength={BIO_MAX}
