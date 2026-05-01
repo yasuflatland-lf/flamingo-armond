@@ -99,8 +99,13 @@ func TestRoleRepository_AssignToUser_UserNotFound(t *testing.T) {
 
 	missingUser := uuid.NewString()
 	err = repo.AssignToUser(ctx, missingUser, admin.ID)
+	if !errors.Is(err, repository.ErrUserNotFound) {
+		t.Fatalf("AssignToUser(missing user): want ErrUserNotFound, got %v", err)
+	}
+	// Backward-compat: legacy callers that match on ErrNotFound must still see
+	// the joined sentinel.
 	if !errors.Is(err, repository.ErrNotFound) {
-		t.Fatalf("AssignToUser(missing user): want ErrNotFound, got %v", err)
+		t.Fatalf("AssignToUser(missing user): want errors.Is(_, ErrNotFound) true, got %v", err)
 	}
 }
 
@@ -112,8 +117,30 @@ func TestRoleRepository_AssignToUser_RoleNotFound(t *testing.T) {
 
 	missingRole := uuid.NewString()
 	err := repo.AssignToUser(ctx, userID, missingRole)
+	if !errors.Is(err, repository.ErrRoleNotFound) {
+		t.Fatalf("AssignToUser(missing role): want ErrRoleNotFound, got %v", err)
+	}
 	if !errors.Is(err, repository.ErrNotFound) {
-		t.Fatalf("AssignToUser(missing role): want ErrNotFound, got %v", err)
+		t.Fatalf("AssignToUser(missing role): want errors.Is(_, ErrNotFound) true, got %v", err)
+	}
+}
+
+// TestRoleRepository_AssignToUser_RoleNotFoundDistinct asserts that the new
+// sentinels are distinct: a missing-role error must not match the
+// missing-user sentinel, and vice versa.
+func TestRoleRepository_AssignToUser_RoleNotFoundDistinct(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	userID := insertAuthUser(t, ctx)
+	repo := repository.NewRoleRepository(testDB.GORM)
+
+	missingRole := uuid.NewString()
+	err := repo.AssignToUser(ctx, userID, missingRole)
+	if !errors.Is(err, repository.ErrRoleNotFound) {
+		t.Fatalf("want ErrRoleNotFound, got %v", err)
+	}
+	if errors.Is(err, repository.ErrUserNotFound) {
+		t.Fatalf("missing-role error must not match ErrUserNotFound, got %v", err)
 	}
 }
 
@@ -272,5 +299,126 @@ func TestRoleRepository_ListAll_EmptySliceNotNil(t *testing.T) {
 	}
 	if roles == nil {
 		t.Fatal("ListAll returned nil; want non-nil slice (empty or populated)")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ListByUserIDs (C4)
+// ---------------------------------------------------------------------------
+
+// TestRoleRepository_ListByUserIDs_EmptySlice verifies the GORM empty-IN guard:
+// passing an empty userIDs slice must return an empty (non-nil) map and must
+// not issue any SQL query (the method short-circuits before touching the DB).
+func TestRoleRepository_ListByUserIDs_EmptySlice(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewRoleRepository(testDB.GORM)
+
+	result, err := repo.ListByUserIDs(ctx, []string{})
+	if err != nil {
+		t.Fatalf("ListByUserIDs(empty): unexpected error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("ListByUserIDs(empty): expected non-nil map, got nil")
+	}
+	if len(result) != 0 {
+		t.Fatalf("ListByUserIDs(empty): expected empty map, got %d entries", len(result))
+	}
+}
+
+// TestRoleRepository_ListByUserIDs_MultipleUsers_NameAsc creates three users
+// each with two roles assigned in varying insertion order, then verifies that
+// ListByUserIDs returns each user's roles sorted by name ASC.
+func TestRoleRepository_ListByUserIDs_MultipleUsers_NameAsc(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewRoleRepository(testDB.GORM)
+
+	userA := insertAuthUser(t, ctx)
+	userB := insertAuthUser(t, ctx)
+	userC := insertAuthUser(t, ctx)
+
+	// Ensure the three named roles exist (idempotent insert).
+	adminID := insertRole(t, ctx, "admin")
+	generalID := insertRole(t, ctx, "general")
+	reviewerID := insertRole(t, ctx, "reviewer")
+
+	// Assign in deliberate reverse-alphabetical order for each user.
+	for _, uid := range []string{userA, userB, userC} {
+		for _, rid := range []string{reviewerID, adminID} {
+			if err := repo.AssignToUser(ctx, uid, rid); err != nil {
+				t.Fatalf("AssignToUser(%s, %s): %v", uid, rid, err)
+			}
+		}
+	}
+	// userC also gets "general" to exercise a third distinct ordering.
+	if err := repo.AssignToUser(ctx, userC, generalID); err != nil {
+		t.Fatalf("AssignToUser(userC, general): %v", err)
+	}
+
+	result, err := repo.ListByUserIDs(ctx, []string{userA, userB, userC})
+	if err != nil {
+		t.Fatalf("ListByUserIDs: unexpected error: %v", err)
+	}
+
+	// userA: 2 roles — "admin", "reviewer" in name ASC.
+	rolesA := result[userA]
+	if len(rolesA) != 2 {
+		t.Fatalf("userA: expected 2 roles, got %d", len(rolesA))
+	}
+	if rolesA[0].Name != "admin" || rolesA[1].Name != "reviewer" {
+		t.Fatalf("userA roles not sorted ASC: %v", rolesA)
+	}
+
+	// userB: same 2 roles.
+	rolesB := result[userB]
+	if len(rolesB) != 2 {
+		t.Fatalf("userB: expected 2 roles, got %d", len(rolesB))
+	}
+	if rolesB[0].Name != "admin" || rolesB[1].Name != "reviewer" {
+		t.Fatalf("userB roles not sorted ASC: %v", rolesB)
+	}
+
+	// userC: 3 roles — "admin", "general", "reviewer" in name ASC.
+	rolesC := result[userC]
+	if len(rolesC) != 3 {
+		t.Fatalf("userC: expected 3 roles, got %d", len(rolesC))
+	}
+	if rolesC[0].Name != "admin" || rolesC[1].Name != "general" || rolesC[2].Name != "reviewer" {
+		t.Fatalf("userC roles not sorted ASC: %v", rolesC)
+	}
+}
+
+// TestRoleRepository_ListByUserIDs_UnknownUserAbsentFromMap verifies that
+// passing a mix of a known user and an unknown UUID returns only the known
+// user's entry in the map. The unknown UUID must not appear as a key and no
+// error is returned.
+func TestRoleRepository_ListByUserIDs_UnknownUserAbsentFromMap(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewRoleRepository(testDB.GORM)
+
+	knownUser := insertAuthUser(t, ctx)
+	unknownUser := uuid.NewString()
+
+	adminID := insertRole(t, ctx, "admin")
+	if err := repo.AssignToUser(ctx, knownUser, adminID); err != nil {
+		t.Fatalf("AssignToUser: %v", err)
+	}
+
+	result, err := repo.ListByUserIDs(ctx, []string{knownUser, unknownUser})
+	if err != nil {
+		t.Fatalf("ListByUserIDs: unexpected error: %v", err)
+	}
+
+	if _, present := result[unknownUser]; present {
+		t.Fatalf("unknown user %q must not appear in the result map", unknownUser)
+	}
+	rolesKnown := result[knownUser]
+	if len(rolesKnown) != 1 {
+		t.Fatalf("known user: expected 1 role, got %d", len(rolesKnown))
+	}
+	if rolesKnown[0].Name != "admin" {
+		t.Fatalf("known user role name = %q, want admin", rolesKnown[0].Name)
 	}
 }

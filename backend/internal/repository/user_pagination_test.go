@@ -288,6 +288,34 @@ func TestUserPagination_SearchEscapesPercentLiteral(t *testing.T) {
 	require.Equal(t, marker+"100%legit", *got[0].DisplayName)
 }
 
+// TestUserPagination_SearchEscapesUnderscoreLiteral verifies that `_` in the
+// search input is treated as a literal character, not as an ILIKE
+// single-character wildcard. Mirrors the percent-escape test so a future
+// refactor that drops `_` from the escape replacer is caught here.
+func TestUserPagination_SearchEscapesUnderscoreLiteral(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewUserRepository(testDB.GORM)
+
+	// Per-test marker has no LIKE meta-characters so the row prefix is
+	// matched verbatim; only the suffix (with/without underscore) differs.
+	marker := "uscesc" + onlyHex(uuid.NewString())
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	insertUserWithName(t, ctx, marker+"a_min", now)
+	insertUserWithName(t, ctx, marker+"admin", now.Add(time.Hour))
+
+	// Search "<marker>a_min": must match only "<marker>a_min". If `_` were
+	// treated as a single-character wildcard, "<marker>admin" would also
+	// match (the underscore covers any single character between "a" and "m").
+	q := marker + "a_min"
+	got, total, err := repo.ListPage(ctx, nil, nil, 10, 0, &q)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, got, 1)
+	require.NotNil(t, got[0].DisplayName)
+	require.Equal(t, marker+"a_min", *got[0].DisplayName)
+}
+
 // TestUserPagination_CursorNotFound verifies that a cursor pointing at a uuid
 // that does not exist in the users table surfaces ErrCursorNotFound — not a
 // silent empty page or a wrapped DB error.

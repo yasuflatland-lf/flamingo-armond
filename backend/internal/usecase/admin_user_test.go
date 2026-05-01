@@ -493,6 +493,58 @@ func TestAdminUser_List_FirstOverCap(t *testing.T) {
 	assertGQLErr(t, err, "BAD_USER_INPUT", "first")
 }
 
+// TestAdminUser_List_AfterAndBeforeMutuallyExclusive verifies that supplying
+// both cursor sides is rejected before the repository is reached.
+func TestAdminUser_List_AfterAndBeforeMutuallyExclusive(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, nil, authChk)
+
+	after := "u-a"
+	before := "u-b"
+	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, &after, &before, nil)
+	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+	if users.listCalls != 0 {
+		t.Fatalf("expected no repo call on cross-cursor rejection, got %d", users.listCalls)
+	}
+}
+
+// TestAdminUser_List_FirstWithBefore rejects pairing forward count with the
+// backward cursor — the page boundary would otherwise be ambiguous.
+func TestAdminUser_List_FirstWithBefore(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, nil, authChk)
+
+	before := "u-b"
+	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(5), nil, nil, &before, nil)
+	assertGQLErr(t, err, "BAD_USER_INPUT", "before")
+	if users.listCalls != 0 {
+		t.Fatalf("expected no repo call, got %d", users.listCalls)
+	}
+}
+
+// TestAdminUser_List_LastWithAfter rejects pairing backward count with the
+// forward cursor.
+func TestAdminUser_List_LastWithAfter(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, nil, authChk)
+
+	after := "u-a"
+	_, err := uc.List(adminCallerCtx("admin-1"), nil, intPtr(5), &after, nil, nil)
+	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+	if users.listCalls != 0 {
+		t.Fatalf("expected no repo call, got %d", users.listCalls)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Get
 // ---------------------------------------------------------------------------
@@ -657,6 +709,52 @@ func TestAdminUser_AssignRole_Idempotent(t *testing.T) {
 		t.Fatalf("repo assign args = (%q,%q), want (u-target, r-admin)",
 			roles.lastAssignUID, roles.lastAssignRID)
 	}
+}
+
+// TestAdminUser_AssignRole_UserNotFound_FieldUserId asserts that a missing
+// user surfaces a BAD_USER_INPUT keyed on userId — not on roleId. The
+// repository must emit ErrUserNotFound for this branch to trigger.
+func TestAdminUser_AssignRole_UserNotFound_FieldUserId(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	roles := &mockAdminRoleRepository{assignErr: repository.ErrUserNotFound}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, roles, authChk)
+
+	_, err := uc.AssignRole(adminCallerCtx("admin-1"), "missing-user", "r-admin")
+	assertGQLErr(t, err, "BAD_USER_INPUT", "userId")
+}
+
+// TestAdminUser_AssignRole_RoleNotFound_FieldRoleId asserts that a missing
+// role surfaces BAD_USER_INPUT keyed on roleId — the previous behaviour
+// blamed userId for both cases, which broke the frontend banner-by-field.
+func TestAdminUser_AssignRole_RoleNotFound_FieldRoleId(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	roles := &mockAdminRoleRepository{assignErr: repository.ErrRoleNotFound}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, roles, authChk)
+
+	_, err := uc.AssignRole(adminCallerCtx("admin-1"), "u-target", "missing-role")
+	assertGQLErr(t, err, "BAD_USER_INPUT", "roleId")
+}
+
+// TestAdminUser_AssignRole_LegacyErrNotFound_FieldUserId covers the fallback
+// branch: a repository that surfaces only the legacy ErrNotFound (e.g. a
+// stub that has not been migrated) keeps the existing userId field so older
+// callers do not regress to INTERNAL.
+func TestAdminUser_AssignRole_LegacyErrNotFound_FieldUserId(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	roles := &mockAdminRoleRepository{assignErr: repository.ErrNotFound}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, roles, authChk)
+
+	_, err := uc.AssignRole(adminCallerCtx("admin-1"), "u-target", "r-admin")
+	assertGQLErr(t, err, "BAD_USER_INPUT", "userId")
 }
 
 // ---------------------------------------------------------------------------
@@ -906,5 +1004,58 @@ func TestAdminUser_ListRoles_Cancelled(t *testing.T) {
 	uc, _, _ := buildAdminUC(nil, roles, authChk)
 
 	_, err := uc.ListRoles(adminCallerCtx("admin-1"))
+	assertGQLErr(t, err, "CANCELLED", "")
+}
+
+// ---------------------------------------------------------------------------
+// Update edge cases (I8)
+// ---------------------------------------------------------------------------
+
+// TestAdminUser_Update_NotFound verifies that when the user repository returns
+// ErrNotFound from Update, the usecase translates it to BAD_USER_INPUT with
+// field == "id". The caller supplied an unknown user ID.
+func TestAdminUser_Update_NotFound(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{updateErr: repository.ErrNotFound}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, nil, authChk)
+
+	_, err := uc.Update(adminCallerCtx("admin-1"), "missing-user", AdminUpdateUserInput{
+		DisplayName: ptr("Valid Name"),
+	})
+	assertGQLErr(t, err, "BAD_USER_INPUT", "id")
+}
+
+// TestAdminUser_Update_BioOverMax verifies that a bio of 501 grapheme clusters
+// is rejected with BAD_USER_INPUT keyed on "bio" before the repository is
+// reached.
+func TestAdminUser_Update_BioOverMax(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, nil, authChk)
+
+	overMax := strings.Repeat("b", bioMax+1)
+	_, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
+		Bio: ptr(overMax),
+	})
+	assertGQLErr(t, err, "BAD_USER_INPUT", "bio")
+	if users.updateCalls != 0 {
+		t.Fatalf("expected no repo update on validation failure, got %d", users.updateCalls)
+	}
+}
+
+// TestAdminUser_Get_Cancelled verifies that a cancelled context from the
+// repository FindByID call propagates as CANCELLED rather than INTERNAL.
+func TestAdminUser_Get_Cancelled(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{findErr: context.Canceled}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, nil, authChk)
+
+	_, err := uc.Get(adminCallerCtx("admin-1"), "u-target")
 	assertGQLErr(t, err, "CANCELLED", "")
 }
