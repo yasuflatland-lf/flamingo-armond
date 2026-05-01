@@ -11,10 +11,10 @@ import (
 	"backend/internal/repository"
 )
 
-// TestCardRepository_UpsertManyTx covers the four scenarios called out in the
-// PR-07 plan: pure inserts, mixed insert+update, empty input, and the
-// per-cardgroup uniqueness boundary. The unique index that backs the
-// ON CONFLICT clause is migration 20260503000000_add_cards_upsert_index.
+// TestCardRepository_UpsertManyTx covers the four scenarios for UpsertManyTx:
+// pure inserts, mixed insert+update, empty input, and the per-cardgroup
+// uniqueness boundary. The unique index that backs the ON CONFLICT clause is
+// migration 20260503000000_add_cards_upsert_index.
 func TestCardRepository_UpsertManyTx(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

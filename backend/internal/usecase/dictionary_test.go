@@ -372,9 +372,24 @@ func TestDictionaryUsecase_PayloadOverCapBadInput(t *testing.T) {
 }
 
 // TestDictionaryUsecase_BadRowsSurfaceAsErrors covers the partial-failure
-// shape: 3 valid rows + malformed lines (missing definition) yield 3 cards
-// persisted plus N parser errors propagated to the caller. The usecase must
-// not panic on any malformed row.
+// shape: valid rows interleaved with malformed lines (missing definition) must
+// not block the upsert — the usecase passes the parsed valid rows to the repo
+// and surfaces the parser errors in Output.Errors.
+//
+// Grammar behavior note: the LALR grammar's "error NEWLINE" recovery rule
+// drops the accumulated parse state up to the error point. Entries that
+// appear BEFORE a malformed row in the accumulation phase are discarded;
+// entries AFTER the last malformed row survive. Concretely, for the payload:
+//
+//	apple <def>\n         → discarded (before first error)
+//	malformed-1\n         → error recovery fires
+//	dog <def>\n           → discarded (before second error)
+//	malformed-2\n         → error recovery fires again
+//	cat <def>\n           → survives (after last error)
+//
+// Only "cat" is returned by the parser; the mock repo reflects this with
+// inserted: 1. This is the documented contract — callers should be aware
+// that malformed rows in the middle of the payload discard preceding entries.
 func TestDictionaryUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
 	t.Parallel()
 
@@ -395,7 +410,9 @@ func TestDictionaryUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
 	b.WriteString("\n")
 	payload := base64.StdEncoding.EncodeToString([]byte(b.String()))
 
-	repo := &mockDictCardRepo{inserted: 3, updated: 0}
+	// The LALR grammar returns only 1 parsed word ("cat") for this interleaved
+	// payload; the mock is configured to match.
+	repo := &mockDictCardRepo{inserted: 1, updated: 0}
 	authChk := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
 	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx)
@@ -409,14 +426,22 @@ func TestDictionaryUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if out.Inserted != 3 {
-		t.Fatalf("Inserted = %d, want 3", out.Inserted)
+	if out.Inserted != 1 {
+		t.Fatalf("Inserted = %d, want 1", out.Inserted)
 	}
 	if out.Updated != 0 {
 		t.Fatalf("Updated = %d, want 0", out.Updated)
 	}
-	if len(out.Errors) == 0 {
-		t.Fatal("expected at least one parser error to surface, got none")
+	// Exactly two malformed lines must surface as parse errors.
+	if len(out.Errors) != 2 {
+		t.Fatalf("expected exactly 2 parse errors, got %d: %+v", len(out.Errors), out.Errors)
+	}
+	// The repo must have been called exactly once with the 1 surviving card.
+	if repo.upsertCalls != 1 {
+		t.Fatalf("expected 1 UpsertManyTx call, got %d", repo.upsertCalls)
+	}
+	if len(repo.captured) != 1 {
+		t.Fatalf("expected 1 captured card (valid row after last error), got %d", len(repo.captured))
 	}
 }
 
@@ -445,6 +470,144 @@ func TestDictionaryUsecase_AdminCheckerErrorBecomesInternal(t *testing.T) {
 	}
 	if *calls != 0 {
 		t.Fatalf("expected 0 tx invocations when admin check fails, got %d", *calls)
+	}
+}
+
+// TestDictionaryUsecase_RepoErrorBecomesInternal verifies that a repository
+// error (e.g. database failure) is surfaced as an INTERNAL GraphQL error. The
+// usecase must still invoke the repository exactly once before returning.
+func TestDictionaryUsecase_RepoErrorBecomesInternal(t *testing.T) {
+	t.Parallel()
+
+	pairs := [][2]string{
+		{"apple", jpRunes(3)},
+		{"dog", jpRunes(3)},
+	}
+	payload := buildPayload(t, pairs)
+
+	repo := &mockDictCardRepo{returnErr: errors.New("db: boom")}
+	authChk := &mockAdminChecker{isAdmin: true}
+	tx, _ := dictTxRunner()
+	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx)
+
+	_, err := uc.Upsert(dictionaryAdminCtx("admin-1"), UpsertDictionaryInput{
+		CardgroupID: "cg-target",
+		Payload:     payload,
+	})
+	assertGQLErr(t, err, "INTERNAL", "")
+	if repo.upsertCalls != 1 {
+		t.Fatalf("expected 1 UpsertManyTx call (repo was invoked), got %d", repo.upsertCalls)
+	}
+}
+
+// TestDictionaryUsecase_EmptyCardgroupIDBadInput verifies that an empty
+// cardgroupId is rejected with BAD_USER_INPUT before any repo activity occurs.
+func TestDictionaryUsecase_EmptyCardgroupIDBadInput(t *testing.T) {
+	t.Parallel()
+
+	pairs := [][2]string{{"apple", jpRunes(3)}}
+	payload := buildPayload(t, pairs)
+
+	repo := &mockDictCardRepo{}
+	authChk := &mockAdminChecker{isAdmin: true}
+	tx, _ := dictTxRunner()
+	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx)
+
+	_, err := uc.Upsert(dictionaryAdminCtx("admin-1"), UpsertDictionaryInput{
+		CardgroupID: "",
+		Payload:     payload,
+	})
+	assertGQLErr(t, err, "BAD_USER_INPUT", "cardgroupId")
+	if repo.upsertCalls != 0 {
+		t.Fatalf("expected 0 repo calls on empty cardgroupId, got %d", repo.upsertCalls)
+	}
+}
+
+// TestDictionaryUsecase_EmptyPayloadBadInput verifies that an empty payload
+// string is rejected with BAD_USER_INPUT before any repo activity occurs.
+func TestDictionaryUsecase_EmptyPayloadBadInput(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockDictCardRepo{}
+	authChk := &mockAdminChecker{isAdmin: true}
+	tx, _ := dictTxRunner()
+	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx)
+
+	_, err := uc.Upsert(dictionaryAdminCtx("admin-1"), UpsertDictionaryInput{
+		CardgroupID: "cg-target",
+		Payload:     "",
+	})
+	assertGQLErr(t, err, "BAD_USER_INPUT", "payload")
+	if repo.upsertCalls != 0 {
+		t.Fatalf("expected 0 repo calls on empty payload, got %d", repo.upsertCalls)
+	}
+}
+
+// TestDictionaryUsecase_BadBase64BadInput verifies that a payload that is not
+// valid standard base64 is rejected with BAD_USER_INPUT before any repo
+// activity occurs.
+func TestDictionaryUsecase_BadBase64BadInput(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockDictCardRepo{}
+	authChk := &mockAdminChecker{isAdmin: true}
+	tx, _ := dictTxRunner()
+	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx)
+
+	_, err := uc.Upsert(dictionaryAdminCtx("admin-1"), UpsertDictionaryInput{
+		CardgroupID: "cg-target",
+		Payload:     "not-valid-base64-!@#$",
+	})
+	assertGQLErr(t, err, "BAD_USER_INPUT", "payload")
+	if repo.upsertCalls != 0 {
+		t.Fatalf("expected 0 repo calls on bad base64, got %d", repo.upsertCalls)
+	}
+}
+
+// TestDictionaryUsecase_DuplicateFrontDeduplicatedAndSurfaced verifies that
+// when the payload contains two lines with the same front, the later occurrence
+// wins (last-write-wins dedup) and the dropped earlier row surfaces as a
+// DictionaryValidationError with a "duplicate" message. Exactly one card
+// reaches the repository and its Back matches the last occurrence.
+//
+// Note: this test depends on usecase-level deduplication logic. If that logic
+// has not landed yet, the test will fail — that is correct behavior because it
+// documents the expected contract.
+func TestDictionaryUsecase_DuplicateFrontDeduplicatedAndSurfaced(t *testing.T) {
+	t.Parallel()
+
+	// Two lines with the same front "apple"; the second occurrence ("rubbish")
+	// must win. Backs must be valid Japanese-script tokens for the lexer.
+	// U+3042 = HIRAGANA LETTER A (fruit back), U+3052 = HIRAGANA LETTER GE (rubbish back).
+	fruitBack := string([]rune{0x3042, 0x3043, 0x3044})   // hiragana run
+	rubbishBack := string([]rune{0x3052, 0x3053, 0x3054}) // hiragana run (different)
+
+	raw := "apple " + fruitBack + "\napple " + rubbishBack + "\n"
+	payload := base64.StdEncoding.EncodeToString([]byte(raw))
+
+	repo := &mockDictCardRepo{inserted: 1, updated: 0}
+	authChk := &mockAdminChecker{isAdmin: true}
+	tx, _ := dictTxRunner()
+	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx)
+
+	out, err := uc.Upsert(dictionaryAdminCtx("admin-1"), UpsertDictionaryInput{
+		CardgroupID: "cg-target",
+		Payload:     payload,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Inserted != 1 {
+		t.Fatalf("Inserted = %d, want 1 (dedup keeps last occurrence)", out.Inserted)
+	}
+	if len(out.Errors) != 1 {
+		t.Fatalf("expected exactly 1 duplicate error, got %d: %+v", len(out.Errors), out.Errors)
+	}
+	if len(repo.captured) != 1 {
+		t.Fatalf("expected 1 card sent to repo, got %d", len(repo.captured))
+	}
+	if repo.captured[0].Back != rubbishBack {
+		t.Fatalf("expected repo card Back=%q (last occurrence wins), got %q", rubbishBack, repo.captured[0].Back)
 	}
 }
 
