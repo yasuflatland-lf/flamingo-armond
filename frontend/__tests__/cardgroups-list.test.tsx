@@ -14,8 +14,10 @@ vi.mock("@/lib/apollo/server", () => ({
   gqlFetch: vi.fn(),
 }));
 
-// redirectIfUnauthenticated is imported inside a `catch` block; mock the whole
-// module so redirect() from next/navigation is the same spy used below.
+// Mock server-redirect so tests can control whether the error is surfaced as a
+// redirect or as a plain rethrow. The real implementation calls redirect() only
+// for UNAUTHENTICATED errors; here the stub unconditionally rethrows, which is
+// sufficient for the cases in this file that reach the server-redirect path.
 vi.mock("@/lib/apollo/server-redirect", () => ({
   redirectIfUnauthenticated: vi.fn((err: unknown) => {
     throw err;
@@ -57,6 +59,7 @@ import {
   mockSupabaseServerClient,
   resetMockSupabase,
   setMockSupabaseUser,
+  setMockSupabaseUserError,
 } from "./utils/mock-supabase";
 
 // ---------------------------------------------------------------------------
@@ -147,6 +150,14 @@ describe("CardgroupsPage", () => {
     mockGqlFetchError(networkErr);
 
     await expect(CardgroupsPage()).rejects.toBe(networkErr);
+
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("rethrows when Supabase getUser() returns an error", async () => {
+    setMockSupabaseUserError(new Error("supabase boom"));
+
+    await expect(CardgroupsPage()).rejects.toThrow("supabase boom");
 
     expect(redirect).not.toHaveBeenCalled();
   });

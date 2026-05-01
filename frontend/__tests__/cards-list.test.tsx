@@ -23,6 +23,7 @@ import {
   mockSupabaseServerClient,
   resetMockSupabase,
   setMockSupabaseUser,
+  setMockSupabaseUserError,
 } from "./utils/mock-supabase";
 
 // ---------------------------------------------------------------------------
@@ -118,9 +119,7 @@ const EMPTY_GQL_CONNECTION_RESPONSE = {
  * phase.
  */
 async function renderPage(
-  connectionData: Parameters<typeof cardsConnectionFixture>[0] extends never
-    ? never
-    : { cardsByCardgroupConnection: ReturnType<typeof cardsConnectionFixture> },
+  connectionData: { cardsByCardgroupConnection: ReturnType<typeof cardsConnectionFixture> },
   cgId = CG_ID,
 ) {
   const cache = new InMemoryCache();
@@ -161,7 +160,8 @@ afterEach(() => {
 describe("CardsPage — broad integration (RSC + CardsClient)", () => {
   // I1: Logged-in user, populated list — full tree renders all SSR-seeded
   // card front texts. Distinct from cards-pagination.test.tsx (which renders
-  // CardsClient directly) and from page.test.tsx (which stubs CardsClient).
+  // CardsClient directly) and from src/app/cardgroups/[id]/cards/page.test.tsx
+  // (which stubs CardsClient).
   it("renders all SSR-seeded card front texts when the user is logged in", async () => {
     setMockSupabaseUser({ id: "user-admin-1" });
 
@@ -197,33 +197,17 @@ describe("CardsPage — broad integration (RSC + CardsClient)", () => {
     expect(screen.getByText("No cards yet. Add one above.")).toBeInTheDocument();
   });
 
-  // I3: Logged-out user — getUser() returns null → redirect("/login").
-  it("redirects to /login when the user is not authenticated", async () => {
-    setMockSupabaseUser(null);
+  // I3: Supabase auth transport error — page rethrows without redirecting.
+  // (redirect and cardgroup-not-found cases are owned by the co-located narrow
+  // test at src/app/cardgroups/[id]/cards/page.test.tsx.)
+  it("rethrows when Supabase getUser() returns an error", async () => {
+    setMockSupabaseUserError(new Error("supabase boom"));
 
     await expect(CardsPage({ params: Promise.resolve({ id: CG_ID }) })).rejects.toThrow(
-      "REDIRECT:/login",
+      "supabase boom",
     );
 
-    expect(redirect).toHaveBeenCalledWith("/login");
-    // gqlFetch must NOT be called before the auth gate.
+    expect(redirect).not.toHaveBeenCalled();
     expect(gqlFetch).not.toHaveBeenCalled();
-  });
-
-  // I4: Cardgroup not found — gqlFetch resolves with { cardgroup: null } →
-  // page calls redirect("/cardgroups"). Checks the "wrong owner / missing"
-  // branch in page.tsx (line: if (!cardgroupData?.cardgroup) redirect("/cardgroups")).
-  it("redirects to /cardgroups when the cardgroup is not found", async () => {
-    setMockSupabaseUser({ id: "user-admin-1" });
-
-    vi.mocked(gqlFetch)
-      .mockResolvedValueOnce({ cardgroup: null } as never)
-      .mockResolvedValueOnce(EMPTY_GQL_CONNECTION_RESPONSE as never);
-
-    await expect(CardsPage({ params: Promise.resolve({ id: "nonexistent-cg" }) })).rejects.toThrow(
-      "REDIRECT:/cardgroups",
-    );
-
-    expect(redirect).toHaveBeenCalledWith("/cardgroups");
   });
 });

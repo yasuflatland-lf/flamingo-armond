@@ -6,11 +6,11 @@ import {
   mockSupabaseServerClient,
   resetMockSupabase,
   setMockSupabaseUser,
+  setMockSupabaseUserError,
 } from "./utils/mock-supabase";
 
 // ---------------------------------------------------------------------------
 // next/navigation — redirect throws so the RSC aborts like Next.js's runtime.
-// notFound is also mocked in case the page ever switches to notFound().
 // ---------------------------------------------------------------------------
 
 const REDIRECT_PREFIX = "REDIRECT:";
@@ -18,9 +18,6 @@ const REDIRECT_PREFIX = "REDIRECT:";
 vi.mock("next/navigation", () => ({
   redirect: vi.fn((path: string) => {
     throw new Error(`${REDIRECT_PREFIX}${path}`);
-  }),
-  notFound: vi.fn(() => {
-    throw new Error("NOT_FOUND");
   }),
 }));
 
@@ -153,7 +150,8 @@ describe("CardgroupDetailPage (broad page-level)", () => {
 
   // -------------------------------------------------------------------------
   // Case 2a: Cardgroup not found — gqlFetch returns { cardgroup: null }
-  // The page calls redirect("/cardgroups") (page.tsx line 42).
+  // The page calls redirect("/cardgroups") via the
+  // `if (!cardgroupData?.cardgroup) redirect("/cardgroups")` guard.
   // -------------------------------------------------------------------------
   it("redirects to /cardgroups when the cardgroup query returns null", async () => {
     vi.mocked(gqlFetch)
@@ -184,7 +182,7 @@ describe("CardgroupDetailPage (broad page-level)", () => {
 
   // -------------------------------------------------------------------------
   // Case 3: Logged-out user — Supabase returns user: null
-  // The page calls redirect("/login") (page.tsx line 26).
+  // The page calls redirect("/login") at the auth gate.
   // -------------------------------------------------------------------------
   it("redirects to /login when no user is authenticated", async () => {
     setMockSupabaseUser(null);
@@ -199,10 +197,23 @@ describe("CardgroupDetailPage (broad page-level)", () => {
   });
 
   // -------------------------------------------------------------------------
-  // Case 4: No owner check exists in the page source (page.tsx lines 19-96).
+  // Case 4: No owner check exists in the page source.
   // The page does not inspect the owner and shows the detail to any
   // authenticated user who knows the id — no wrong-owner branch to cover.
   // -------------------------------------------------------------------------
+
+  // -------------------------------------------------------------------------
+  // Case 5: Supabase auth transport error — page rethrows without redirecting
+  // -------------------------------------------------------------------------
+  it("rethrows when Supabase getUser() returns an error", async () => {
+    setMockSupabaseUserError(new Error("supabase boom"));
+
+    await expect(CardgroupDetailPage({ params: makeParams(cardgroupFixture.id) })).rejects.toThrow(
+      "supabase boom",
+    );
+
+    expect(redirect).not.toHaveBeenCalled();
+  });
 
   // -------------------------------------------------------------------------
   // Bonus: empty-cards state renders the "Add card" CTA

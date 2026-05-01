@@ -155,8 +155,14 @@ describe("AdminDictionaryPage (RSC auth gate)", () => {
 
     const tree = await AdminDictionaryPage();
 
-    // The RSC returns a React element — confirm it is non-null and not a redirect.
-    expect(tree).not.toBeNull();
+    // Render the RSC output inside a provider so the client component mounts.
+    render(<MockedProvider mocks={[CARDGROUPS_MOCK]}>{tree as React.ReactElement}</MockedProvider>);
+
+    // The target-cardgroup picker is the primary affordance of DictionaryImportClient.
+    const select = await screen.findByRole("combobox", { name: /target cardgroup/i });
+    expect(select).toBeInTheDocument();
+
+    // No redirect should have fired for an authenticated user.
     expect(redirect).not.toHaveBeenCalled();
   });
 });
@@ -197,7 +203,8 @@ describe("DictionaryImportClient (page-level integration)", () => {
     expect(select.querySelectorAll("option")).toHaveLength(1);
   });
 
-  it("disables the Import button on initial mount before any validation", async () => {
+  it("disables the Import button when a cardgroup is selected but the payload textarea is empty", async () => {
+    const user = await import("@testing-library/user-event").then((m) => m.default.setup());
     render(
       <MockedProvider mocks={[CARDGROUPS_MOCK]}>
         <DictionaryImportClient />
@@ -205,11 +212,18 @@ describe("DictionaryImportClient (page-level integration)", () => {
     );
 
     // Wait for the cardgroups query to complete so the picker is stable.
-    await screen.findByRole("option", { name: "Vocab Set A" });
+    const select = await screen.findByRole("combobox", { name: /target cardgroup/i });
 
-    // Import button must be disabled: no validation has run, canImport is false.
+    // Select a cardgroup — payload textarea remains empty.
+    await user.selectOptions(select, "cg-100");
+
+    // Import button must still be disabled: no validation has run and no payload is present.
     const importBtn = screen.getByRole("button", { name: /^import$/i });
     expect(importBtn).toBeDisabled();
+
+    // Validate button must also be disabled: textarea is empty.
+    const validateBtn = screen.getByRole("button", { name: /^validate$/i });
+    expect(validateBtn).toBeDisabled();
   });
 
   it("disables the Validate button when the payload textarea is empty", async () => {

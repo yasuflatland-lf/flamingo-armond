@@ -36,6 +36,7 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AdminRolesPage from "@/app/admin/roles/page";
 import { gqlFetch } from "@/lib/apollo/server";
+import { resetMockSupabase } from "./utils/mock-supabase";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -67,11 +68,16 @@ const EDITOR_ROLE = makeRole("role-editor", "editor");
 // Lifecycle
 // ---------------------------------------------------------------------------
 
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
 beforeEach(() => {
+  resetMockSupabase();
   vi.clearAllMocks();
+  consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
+  consoleErrorSpy.mockRestore();
   vi.restoreAllMocks();
 });
 

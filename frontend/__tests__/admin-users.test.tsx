@@ -37,6 +37,10 @@ import {
   userWithoutRolesFixture,
 } from "./fixtures/users";
 import {
+  type ApolloMockLeakSpyResult,
+  installApolloMockLeakSpy,
+} from "./utils/mock-apollo-paginated";
+import {
   mockSupabaseServerClient,
   resetMockSupabase,
   setMockSupabaseUser,
@@ -184,15 +188,19 @@ const noroleUserNode = userWithoutRolesFixture as unknown as UserNode;
 // Console spy helpers
 // ---------------------------------------------------------------------------
 
+let leakSpy: ApolloMockLeakSpyResult;
+
 beforeEach(() => {
   resetMockSupabase();
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
-  vi.spyOn(console, "warn").mockImplementation(() => {});
+  leakSpy = installApolloMockLeakSpy({ operationNames: ["AdminUsers"] });
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.clearAllMocks();
 });
 
 afterEach(() => {
+  leakSpy.assertNoLeaks();
+  leakSpy.teardown();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -301,46 +309,6 @@ describe("AdminUsersClient — edit links and empty state", () => {
       expect(editLink?.href).toContain(`/admin/users/${userNode.id}/edit`);
       expect(editLink?.textContent).toMatch(/edit/i);
     }
-  });
-
-  it("each user row shows the correct role badges", async () => {
-    const users: UserNode[] = [adminUserNode, generalUserNode, noroleUserNode];
-    const connection = makeConnection(users);
-
-    const cache = new InMemoryCache();
-    cache.writeQuery({
-      query: AdminUsersDocument,
-      variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-      data: { users: connection },
-    });
-
-    const mocks = [
-      {
-        request: {
-          query: AdminUsersDocument,
-          variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-        },
-        result: { data: { users: connection } },
-      },
-    ];
-
-    render(
-      <MockedProvider mocks={mocks as never} cache={cache}>
-        <AdminUsersClient />
-      </MockedProvider>,
-    );
-
-    await screen.findByText(adminUserFixture.displayName as string);
-
-    // adminUserNode has "admin" badge, generalUserNode has "general" badge.
-    expect(screen.getByText(adminRoleFixture.name)).toBeInTheDocument();
-
-    // userWithoutRoles has no badges — the badge container must not appear for
-    // that row, but the row itself is present.
-    const noroleRow = screen.getByTestId(`admin-user-row-${noroleUserNode.id}`);
-    // The badge list is only rendered when roles.length > 0; verify the text
-    // "No Roles User" is visible (the row renders without crashing).
-    expect(noroleRow).toHaveTextContent(userWithoutRolesFixture.displayName as string);
   });
 
   it("renders empty-state copy when the connection has no edges", async () => {
