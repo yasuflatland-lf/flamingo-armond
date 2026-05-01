@@ -525,5 +525,5 @@ All tests live under `frontend/__tests__/` using Vitest + Testing Library. Two n
 **Shared utilities** live under `frontend/__tests__/utils/` and `frontend/__tests__/fixtures/`:
 
 - `mock-supabase.ts` — in-memory `getUser` mock for Supabase server client in RSC tests.
-- `mock-apollo-paginated.ts` — one-mock-per-fetchMore helper with inline documentation. Pairs with a `console.warn` spy that fails the test if it sees `"No more mocked responses for the query"`, catching double-fetch regressions.
+- `mock-apollo-paginated.ts` — one-mock-per-fetchMore helper with inline documentation. Provides `installApolloMockLeakSpy`, which captures `console.warn` calls matching `"No more mocked responses for the query"`; calling `assertNoLeaks()` in `afterEach` throws if any were recorded, catching double-fetch regressions.
 - `fixtures/users.ts` and `fixtures/cardgroups.ts` — shared test data.

@@ -62,8 +62,11 @@ export function setMockSupabaseUser(user: MockSupabaseUser | null): void {
 
 /**
  * Inject an auth transport error into the next `supabase.auth.getUser()`
- * call. The factory returns `{ data: { user: null }, error }` so callers
- * exercise the auth-error branch (e.g. layouts that re-throw on `error`).
+ * call. Only `state.error` is set; `state.user` is left unchanged. To get
+ * the typical `{ data: { user: null }, error }` shape, call
+ * `resetMockSupabase()` first (which the canonical `beforeEach` already does),
+ * then call this function. If a prior `setMockSupabaseUser(...)` call was made
+ * in the same test, the factory will return that user alongside the error.
  */
 export function setMockSupabaseUserError(err: Error): void {
   state.error = err;

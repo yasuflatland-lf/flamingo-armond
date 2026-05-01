@@ -10,15 +10,20 @@
  *
  * 2. When MockedProvider cannot match a request, it logs
  *    `"No more mocked responses for the query: <Op>"` via `console.warn`.
- *    `installApolloMockLeakSpy` weaponises that warning into a hard test
- *    failure — applying the "Spy on console.warn for MockedProvider leaks"
- *    rule from `.claude/rules/pagination.md`.
+ *    `installApolloMockLeakSpy` captures those warnings so the caller can
+ *    assert no leaks occurred — applying the "Spy on console.warn for
+ *    MockedProvider leaks" rule from `.claude/rules/pagination.md`. Failure
+ *    requires an explicit call to `assertNoLeaks()`; the spy alone does not
+ *    fail the test.
  *
  * Canonical usage:
  *
  * ```ts
- * const teardown = installApolloMockLeakSpy();
- * afterEach(() => teardown());
+ * const leak = installApolloMockLeakSpy();
+ * afterEach(() => {
+ *   leak.assertNoLeaks();
+ *   leak.teardown();
+ * });
  *
  * const mocks = buildPaginatedMocks({
  *   query: CardsByCardgroupConnectionDocument,
@@ -34,6 +39,8 @@
  * subsequent entry is one `fetchMore` page transition. Each entry's
  * `nextVariables` (when present) becomes the `request.variables` of the NEXT
  * mock entry — i.e. the variables Apollo issues on the next `fetchMore`.
+ * `buildPaginatedMocks` throws synchronously when a non-terminal page is
+ * missing `nextVariables`.
  */
 
 import type { DocumentNode, OperationVariables, TypedDocumentNode } from "@apollo/client";
@@ -147,16 +154,16 @@ export type ApolloMockLeakSpyResult = {
 };
 
 /**
- * Install a `console.warn` spy that fails the test when MockedProvider logs
- * `"No more mocked responses for the query: <op>"` — i.e. when a request
- * leaked past the in-flight guard or a fixture forgot to mock a fetchMore
- * page.
+ * Install a `console.warn` spy that records calls matching the leak needle
+ * `"No more mocked responses for the query"` — emitted by MockedProvider when
+ * a request leaked past the in-flight guard or a fixture forgot to mock a
+ * fetchMore page.
  *
- * Returns `{ teardown, assertNoLeaks, getLeakedCalls }`. Tests that want
- * automatic detection at the end of every case should call `assertNoLeaks()`
- * in `afterEach` before `teardown()`. Restoring the original `console.warn`
- * is the responsibility of the caller (via `teardown`), so the spy must be
- * paired with an `afterEach`.
+ * Returns `{ teardown, assertNoLeaks, getLeakedCalls }`. The spy alone does
+ * NOT fail the test; callers must invoke `assertNoLeaks()` (which throws if
+ * any matching warnings were captured) — typically in `afterEach` before
+ * `teardown()`. Restoring the original `console.warn` is the responsibility
+ * of the caller via `teardown`.
  */
 export function installApolloMockLeakSpy(
   options: ApolloMockLeakSpyOptions = {},
