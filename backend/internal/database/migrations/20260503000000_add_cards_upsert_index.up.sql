@@ -1,11 +1,11 @@
 -- Add a unique index on public.cards (cardgroup_id, front) to support
 -- the upsertDictionary pipeline's ON CONFLICT (cardgroup_id, front) clause.
 --
--- Pre-check: this migration aborts loudly if any (cardgroup_id, front)
--- duplicate already exists, listing the offending pairs via RAISE NOTICE
--- so operators can resolve the data before re-running. Without the
--- pre-check, CREATE UNIQUE INDEX would fail with a less helpful pg error
--- and leave golang-migrate in a dirty state.
+-- Pre-check: enumerate every offending (cardgroup_id, front) pair via RAISE NOTICE so
+-- operators can resolve them in a single pass. CREATE UNIQUE INDEX alone would only
+-- name one offending pair on first failure. Both this RAISE EXCEPTION and the index
+-- failure leave golang-migrate in a dirty state — recovery via Force(predecessor) is
+-- standard.
 --
 -- Column ordering (cardgroup_id, front) matches the upsert's WHERE
 -- prefix: cardgroup_id is the high-cardinality leading key, so the index
