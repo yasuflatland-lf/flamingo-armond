@@ -47,7 +47,7 @@ func (r *cardgroupResolver) Owner(ctx context.Context, obj *model.Cardgroup) (*m
 
 // UpdateProfile is the resolver for the updateProfile field.
 func (r *mutationResolver) UpdateProfile(ctx context.Context, input model.UpdateProfileInput) (*model.UpdateProfilePayload, error) {
-	user, err := r.User.UpdateUser(ctx, usecase.UpdateUserInput{
+	user, err := r.UserUC.UpdateUser(ctx, usecase.UpdateUserInput{
 		DisplayName: input.DisplayName,
 		Bio:         input.Bio,
 	})
@@ -162,6 +162,36 @@ func (r *mutationResolver) UpsertDictionary(ctx context.Context, input model.Ups
 	}, nil
 }
 
+// AdminUpdateUser is the resolver for the adminUpdateUser field.
+func (r *mutationResolver) AdminUpdateUser(ctx context.Context, id string, input model.AdminUpdateUserInput) (*model.User, error) {
+	user, err := r.AdminUserUC.Update(ctx, id, usecase.AdminUpdateUserInput{
+		DisplayName: input.DisplayName,
+		Bio:         input.Bio,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return toUserModel(user), nil
+}
+
+// AssignRole is the resolver for the assignRole field.
+func (r *mutationResolver) AssignRole(ctx context.Context, userID string, roleID string) (*model.User, error) {
+	user, err := r.AdminUserUC.AssignRole(ctx, userID, roleID)
+	if err != nil {
+		return nil, err
+	}
+	return toUserModel(user), nil
+}
+
+// RevokeRole is the resolver for the revokeRole field.
+func (r *mutationResolver) RevokeRole(ctx context.Context, userID string, roleID string) (*model.User, error) {
+	user, err := r.AdminUserUC.RevokeRole(ctx, userID, roleID)
+	if err != nil {
+		return nil, err
+	}
+	return toUserModel(user), nil
+}
+
 // Health is the resolver for the health field.
 func (r *queryResolver) Health(ctx context.Context) (string, error) {
 	return "ok", nil
@@ -169,7 +199,7 @@ func (r *queryResolver) Health(ctx context.Context) (string, error) {
 
 // Me is the resolver for the me field.
 func (r *queryResolver) Me(ctx context.Context) (*model.User, error) {
-	user, err := r.User.Me(ctx)
+	user, err := r.UserUC.Me(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -277,6 +307,65 @@ func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.Vali
 	}, nil
 }
 
+// Users is the resolver for the users field.
+func (r *queryResolver) Users(ctx context.Context, first *int, after *string, last *int, before *string, search *string) (*model.UserConnection, error) {
+	uc, err := r.AdminUserUC.List(ctx, first, last, after, before, search)
+	if err != nil {
+		return nil, err
+	}
+	edges := make([]*model.UserEdge, len(uc.Edges))
+	for i, e := range uc.Edges {
+		edges[i] = &model.UserEdge{Cursor: e.Cursor, Node: toUserModel(e.Node)}
+	}
+	return &model.UserConnection{
+		Edges: edges,
+		PageInfo: &model.PageInfo{
+			HasNextPage:     uc.PageInfo.HasNextPage,
+			HasPreviousPage: uc.PageInfo.HasPreviousPage,
+			StartCursor:     uc.PageInfo.StartCursor,
+			EndCursor:       uc.PageInfo.EndCursor,
+		},
+		TotalCount: int(uc.TotalCount),
+	}, nil
+}
+
+// AdminUser is the resolver for the adminUser field.
+func (r *queryResolver) AdminUser(ctx context.Context, id string) (*model.User, error) {
+	user, err := r.AdminUserUC.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, nil
+	}
+	return toUserModel(user), nil
+}
+
+// Roles is the resolver for the roles field.
+func (r *queryResolver) Roles(ctx context.Context) ([]*model.Role, error) {
+	roles, err := r.AdminUserUC.ListRoles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return toRoleModels(roles), nil
+}
+
+// Roles is the resolver for the roles field.
+func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Role, error) {
+	loaders := loader.For(ctx)
+	if loaders == nil {
+		return nil, gqlerr.Internal(ctx, eris.New("loader: middleware not installed for /query"))
+	}
+	roles, err := loaders.RoleByUserID.Load(ctx, obj.ID)()
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, gqlerr.Cancelled(ctx, err)
+		}
+		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "resolver: user roles"))
+	}
+	return toRoleModels(roles), nil
+}
+
 // Card returns generated.CardResolver implementation.
 func (r *Resolver) Card() generated.CardResolver { return &cardResolver{r} }
 
@@ -289,7 +378,11 @@ func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResol
 // Query returns generated.QueryResolver implementation.
 func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 
+// User returns generated.UserResolver implementation.
+func (r *Resolver) User() generated.UserResolver { return &userResolver{r} }
+
 type cardResolver struct{ *Resolver }
 type cardgroupResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
+type userResolver struct{ *Resolver }

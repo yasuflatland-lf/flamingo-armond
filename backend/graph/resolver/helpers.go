@@ -132,6 +132,21 @@ func toCardConnectionModel(out *usecase.CardConnectionOutput) *model.CardConnect
 	}
 }
 
+func toRoleModel(r *domain.Role) *model.Role {
+	if r == nil {
+		return nil
+	}
+	return &model.Role{ID: r.ID, Name: r.Name}
+}
+
+func toRoleModels(roles []*domain.Role) []*model.Role {
+	out := make([]*model.Role, len(roles))
+	for i, r := range roles {
+		out[i] = toRoleModel(r)
+	}
+	return out
+}
+
 func nilIfEmpty(s string) *string {
 	if s == "" {
 		return nil
