@@ -177,6 +177,11 @@ export async function loginAs(
   context: BrowserContext,
   credentials: { email: string; password: string },
 ) {
+  const normalized: { email: string; password: string } = {
+    ...credentials,
+    email: credentials.email.toLowerCase(),
+  };
+
   const cookiesToSet: AuthCookie[] = [];
   const userClient = createBrowserClient(supabaseUrl, anonKey, {
     isSingleton: false,
@@ -190,7 +195,7 @@ export async function loginAs(
     },
   });
 
-  const { data, error } = await userClient.auth.signInWithPassword(credentials);
+  const { data, error } = await userClient.auth.signInWithPassword(normalized);
   if (error) {
     if (error.status === 429) {
       throw new Error(
@@ -199,7 +204,7 @@ export async function loginAs(
     }
     throw error;
   }
-  if (!data.session) throw new Error(`No session returned for ${credentials.email}`);
+  if (!data.session) throw new Error(`No session returned for ${normalized.email}`);
 
   const { error: setSessionError } = await userClient.auth.setSession({
     access_token: data.session.access_token,
@@ -212,7 +217,7 @@ export async function loginAs(
     error: getSessionError,
   } = await userClient.auth.getSession();
   if (getSessionError) throw getSessionError;
-  if (!session) throw new Error(`Could not read session after login for ${credentials.email}`);
+  if (!session) throw new Error(`Could not read session after login for ${normalized.email}`);
 
   const authCookieName = `sb-${projectRef()}-auth-token`;
   const sessionCookies = cookiesToSet.filter(
