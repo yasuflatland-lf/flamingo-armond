@@ -3,14 +3,19 @@ import { InMemoryCache, NetworkStatus } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AdminUsersClient } from "@/app/admin/users/AdminUsersClient";
-import { AdminUsersDocument } from "@/generated/graphql";
 import { ADMIN_USERS_PAGE_SIZE } from "@/app/admin/users/queries";
+import { AdminUsersDocument } from "@/generated/graphql";
 
 // ---------------------------------------------------------------------------
 // Next.js stubs
 // ---------------------------------------------------------------------------
+
+vi.mock("next/navigation", () => ({
+  redirect: vi.fn(),
+}));
 
 vi.mock("next/link", () => ({
   default: ({
@@ -139,10 +144,7 @@ class FakeIntersectionObserver {
 function fireIntersect() {
   const cb = ioCallbacks[ioCallbacks.length - 1];
   if (!cb) return;
-  cb(
-    [{ isIntersecting: true } as IntersectionObserverEntry],
-    {} as IntersectionObserver,
-  );
+  cb([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
 }
 
 // ---------------------------------------------------------------------------
@@ -343,6 +345,19 @@ describe("AdminUsersClient", () => {
     });
 
     expect(nextPageCalls).toBe(1);
+
+    // If the ref-guard were replaced with useState, a second fetchMore would leak
+    // into MockedProvider and emit a "No more mocked responses" console.warn.
+    // Assert that no such warning fired for the AdminUsers query.
+    const adminUsersWarn = consoleWarnSpy.mock.calls.flatMap((args: unknown[]) =>
+      args.filter(
+        (a): a is string =>
+          typeof a === "string" &&
+          a.includes("No more mocked responses") &&
+          a.includes("AdminUsers"),
+      ),
+    );
+    expect(adminUsersWarn).toEqual([]);
   });
 
   // T4: fetchMoreError halts the IO loop; Retry clears the banner and re-issues.
@@ -488,9 +503,7 @@ describe("AdminUsersClient", () => {
 
     // No "No more mocked responses for the query AdminUsers" warning should have fired.
     const adminUsersLeakWarnings = consoleWarnSpy.mock.calls.filter((args: unknown[]) =>
-      args.some(
-        (arg: unknown) => typeof arg === "string" && arg.includes("AdminUsers"),
-      ),
+      args.some((arg: unknown) => typeof arg === "string" && arg.includes("AdminUsers")),
     );
     expect(adminUsersLeakWarnings).toEqual([]);
   });
@@ -560,5 +573,38 @@ describe("AdminUsersClient", () => {
     );
 
     expect(screen.getByText("User 21")).toBeInTheDocument();
+  });
+
+  // T7: FORBIDDEN query error — non-retry permission banner; no Retry button.
+  test("renders permission-denied banner without Retry when AdminUsers returns FORBIDDEN", async () => {
+    const mocks = [
+      {
+        request: {
+          query: AdminUsersDocument,
+          variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
+        },
+        result: {
+          errors: [
+            new GraphQLError("admin role required", {
+              extensions: { code: "FORBIDDEN" },
+            }),
+          ],
+        },
+      },
+    ];
+
+    render(
+      <MockedProvider mocks={mocks as never}>
+        <AdminUsersClient />
+      </MockedProvider>,
+    );
+
+    // The permission-denied banner must appear.
+    const banner = await screen.findByTestId("admin-users-query-error");
+    expect(banner).toBeInTheDocument();
+    expect(banner).toHaveTextContent("You do not have permission to view this page.");
+
+    // No Retry button — re-issuing the same query would fail again.
+    expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
   });
 });

@@ -4,10 +4,11 @@ import { NetworkStatus } from "@apollo/client";
 import { useQuery } from "@apollo/client/react";
 import Image from "next/image";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useFragment } from "@/generated/fragment-masking";
 import { AdminUsersDocument, type AdminUsersQuery } from "@/generated/graphql";
-import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { classifyQueryError, getBackendErrorBanner } from "@/lib/apollo/errors";
 import { ADMIN_USERS_PAGE_SIZE, AdminRoleFieldsFragment, AdminUserFieldsFragment } from "./queries";
 
 type Connection = AdminUsersQuery["users"];
@@ -101,7 +102,16 @@ export function AdminUsersClient() {
     notifyOnNetworkStatusChange: true,
   });
 
-  const queryBannerError = getBackendErrorBanner(queryError);
+  const queryErrorKind = classifyQueryError(queryError);
+
+  // UNAUTHENTICATED post-mount means the session expired while the page was open.
+  // The server-side gate in page.tsx already blocks the initial load, so this
+  // handles the mid-session case. Redirect to "/" where the app will re-auth.
+  if (queryErrorKind?.kind === "unauthenticated") {
+    redirect("/");
+  }
+
+  const queryBannerError = queryErrorKind?.kind === "banner" ? queryErrorKind.message : undefined;
 
   const connection = data?.users;
   const edges: Edge[] = connection?.edges ?? [];
@@ -190,7 +200,18 @@ export function AdminUsersClient() {
         />
       </div>
 
-      {/* Query error banner */}
+      {/* FORBIDDEN error banner — no Retry since re-issuing the query would fail again */}
+      {queryErrorKind?.kind === "forbidden" && (
+        <div
+          className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+          role="alert"
+          data-testid="admin-users-query-error"
+        >
+          You do not have permission to view this page.
+        </div>
+      )}
+
+      {/* Generic query error banner with Retry */}
       {queryBannerError && (
         <div
           className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
@@ -212,7 +233,7 @@ export function AdminUsersClient() {
       )}
 
       {/* Empty state */}
-      {!initialLoading && !queryBannerError && edges.length === 0 && (
+      {!initialLoading && !queryErrorKind && edges.length === 0 && (
         <p className="text-sm text-muted-foreground" data-testid="admin-users-empty">
           No users found.
         </p>
