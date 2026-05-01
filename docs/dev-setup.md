@@ -46,11 +46,25 @@ The two GraphQL codegen outputs are **gitignored**; the goyacc parser output is 
 |---|---|---|---|---|
 | gqlgen | `schema/*.graphql`, `backend/gqlgen.yml`, `backend/go.mod` (`tool` directive) | `backend/graph/generated/`, `backend/graph/model/models_gen.go` | gitignored | `cd backend && go tool gqlgen generate` |
 | graphql-codegen | `schema/*.graphql`, `frontend/codegen.ts`, `frontend/src/**/*.{ts,tsx}` | `frontend/src/generated/` | gitignored | `pnpm --filter frontend codegen` |
+| Next.js | (n/a — emitted by `next dev` / `next build`) | `frontend/next-env.d.ts` | gitignored | `pnpm --filter frontend dev` or `... build` |
 | goyacc | `backend/internal/textdic/grammar.y` | `backend/internal/textdic/parser.go` | **committed** | `make codegen-yacc` |
 
 For gqlgen / graphql-codegen, determinism relies on pinned tool versions (in `go.mod` and `package.json`) plus the committed schema. CI runs the backend regeneration before `go vet` and `go test` (`.github/workflows/backend.yml`). Frontend CI runs `pnpm --filter frontend codegen` before Biome check / typecheck / build (`.github/workflows/frontend.yml`), mirroring the backend contract. No `git diff --exit-code` step is needed because the outputs are not tracked.
 
 Rationale: keeps PR diffs to hand-written code only and removes the merge-conflict churn that committing thousand-line generated files causes. Applied symmetrically to both stacks for consistency.
+
+### `next-env.d.ts` is gitignored
+
+Next.js 16 rewrites the file's single `import` statement based on which command was just run:
+
+- After `next dev` (Turbopack default in Next 16): `import "./.next/dev/types/routes.d.ts";`
+- After `next build`: `import "./.next/types/routes.d.ts";`
+
+The toggle is intentional — it is the visible side-effect of the `experimental.isolatedDevBuild` feature (default `true` in Next.js 16) which keeps a running dev server's type cache from being clobbered by a concurrent `next build` (e.g. CI or AI agents validating the project alongside development). Upstream issues [vercel/next.js#85738](https://github.com/vercel/next.js/issues/85738) and [#86001](https://github.com/vercel/next.js/issues/86001) were both closed as working-as-intended, and the official [Next.js TypeScript docs](https://nextjs.org/docs/app/api-reference/config/typescript) now recommend adding `next-env.d.ts` to `.gitignore` (a reversal of the older "do not edit, do commit" guidance still embedded in the file's own comment).
+
+Frontend CI regenerates the file (and the matching `.next/types/routes.d.ts` it imports) via [`next typegen`](https://nextjs.org/docs/app/api-reference/cli/next) — introduced in Next.js 15.5, dedicated to type emission, and faster than running a full `next build` solely to refresh types. The step runs before Biome / typecheck / build in `.github/workflows/frontend.yml`, and a follow-up `git ls-files --error-unmatch` guard fails CI if anyone re-stages the file with `git add -f`.
+
+Do **not** reach for `experimental.isolatedDevBuild: false` to "fix" the toggle: it silences the churn but opts out of the dev/build isolation that Next.js 16 added on purpose, which matters in this monorepo (CI builds, dev server, and agents may run concurrently against the same checkout).
 
 `goyacc` (added via `go get -tool golang.org/x/tools/cmd/goyacc`, which appends to the `tool ( ... )` block in `go.mod`) is the exception: the generated `parser.go` is committed because the goyacc emitter is not byte-for-byte stable across Go and tool versions, and the test suite — not CI regeneration — is the contract that catches grammar drift. Edit `grammar.y` only; never hand-edit `parser.go`. After regenerating with `make codegen-yacc`, commit both files together.
 

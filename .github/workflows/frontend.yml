@@ -64,6 +64,23 @@ jobs:
       - name: Codegen (graphql-codegen)
         run: pnpm --filter frontend codegen
 
+      # `next-env.d.ts` and `.next/types/routes.d.ts` are gitignored
+      # (Next.js 16 toggles paths between dev/build — see
+      # docs/dev-setup.md §"Policy on generated files"). `next typegen`
+      # regenerates both faster than a full `next build` so the typecheck
+      # step below sees a valid type tree.
+      - name: Codegen (Next.js typegen)
+        run: pnpm --filter frontend exec next typegen
+
+      - name: Guard against re-tracking next-env.d.ts
+        run: |
+          if git ls-files --error-unmatch frontend/next-env.d.ts >/dev/null 2>&1; then
+            echo "::error::frontend/next-env.d.ts is tracked but must remain gitignored."
+            echo "Next.js 16 toggles its import path between 'next dev' and 'next build' — committing it produces a churn loop."
+            echo "Fix: git rm --cached frontend/next-env.d.ts (the file regenerates on every Next.js invocation)."
+            exit 1
+          fi
+
       - name: Biome check
         run: pnpm --filter frontend lint
 
