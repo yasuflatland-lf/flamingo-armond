@@ -37,6 +37,12 @@ GoTrue (the Supabase Auth server) stores emails in lowercase internally. Every c
 
 `auth.admin.listUsers` does not expose a standard `hasMore` / `nextPage` flag in supabase-js v2. The implicit end condition is `data.users.length < perPage`: when the server returns fewer users than the requested page size, there are no further pages. Use this check rather than comparing an opaque cursor, which is an internal implementation detail.
 
+### Seed helpers: insert, don't upsert, against tables without UNIQUE
+
+`frontend/e2e/_auth.ts` writes seed rows through the Supabase service-role client. `seedUser`, the role upsert, and the `user_roles` upsert all rely on UNIQUE columns that exist in the schema (`users.id` PK, `roles.name`, the `(user_id, role_id)` composite). `seedCardgroup` cannot follow the same template: `cardgroups` has no UNIQUE on `(owner_id, name)` (see `docs/backend-db.md` § "Postgres upsert: prerequisite UNIQUE / EXCLUSION constraint"), so `upsert(..., { onConflict: "owner_id,name" })` aborts every spec's `beforeAll` with `42P10` "no unique or exclusion constraint matching".
+
+Each seed call site already randomises the natural key (e.g. `runId = randomUUID().slice(0, 8)` baked into the cardgroup name and card fronts), so a plain `insert` is enough. A duplicate that surfaces in CI is then a real test bug — leaked fixture data from a previous run, or two specs colliding on a key that ought to be unique per run — not a missing upsert. Before adding `upsert(..., { onConflict: ... })` to a new helper, confirm the conflict target is backed by a UNIQUE in the migrations; if it is not, choose `insert` and trust the randomised key.
+
 ## Test design
 
 ### `test.describe.serial` for DB-dependent sequences
