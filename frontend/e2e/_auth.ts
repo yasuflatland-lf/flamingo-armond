@@ -119,9 +119,12 @@ async function createAuthUser(email: string, password: string, displayName: stri
 }
 
 export async function seedCardgroup({ ownerId, name }: SeedCardgroupInput) {
+  // cardgroups has no UNIQUE on (owner_id, name); upsert with that onConflict raises
+  // "no unique or exclusion constraint matching". Callers randomize name via runId,
+  // so a duplicate is a real test bug worth surfacing.
   const { data, error } = await adminClient
     .from("cardgroups")
-    .upsert({ owner_id: ownerId, name }, { onConflict: "owner_id,name" })
+    .insert({ owner_id: ownerId, name })
     .select("id, name")
     .single();
   if (error) throw new Error(`seedCardgroup(${ownerId}, ${name}): ${error.message}`);
