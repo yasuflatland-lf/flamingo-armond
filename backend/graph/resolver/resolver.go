@@ -13,6 +13,7 @@ type Resolver struct {
 	AuthSvc      *auth.Service
 	DictionaryUC usecase.DictionaryUsecase
 	AdminUserUC  usecase.AdminUserUsecase
+	AdminRoleUC  usecase.AdminRoleUsecase
 }
 
 // NewResolver wires every Resolver dependency at construction time. Tests
@@ -26,6 +27,7 @@ func NewResolver(
 	authSvc *auth.Service,
 	dictionaryUC usecase.DictionaryUsecase,
 	adminUserUC usecase.AdminUserUsecase,
+	adminRoleUC usecase.AdminRoleUsecase,
 ) *Resolver {
 	return &Resolver{
 		UserUC:       user,
@@ -35,5 +37,6 @@ func NewResolver(
 		AuthSvc:      authSvc,
 		DictionaryUC: dictionaryUC,
 		AdminUserUC:  adminUserUC,
+		AdminRoleUC:  adminRoleUC,
 	}
 }
