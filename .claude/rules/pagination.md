@@ -130,6 +130,6 @@ Without an error halt gate, the IO keeps firing on the same failed cursor and lo
 
 Always import the named `NetworkStatus` enum from `@apollo/client`. Magic numbers silently rot if Apollo renumbers (vanishingly rare, but the named import costs nothing).
 
-### Spy on `console.warn` for MockedProvider leaks
+### Capture `console.warn` for MockedProvider leaks, then assert in teardown
 
-The assertion `nextPageCalls === 1` is partially tautological — `MockedProvider` only consumes a mock once, so a leaked second `fetchMore` produces a `"No more mocked responses for the query"` warning rather than an extra invocation. Spy on `console.warn` and assert it does not see that string for the query of interest; restore the spy in `afterEach`. Without this, double-fetch regressions pass the call-count assertion silently.
+The assertion `nextPageCalls === 1` is partially tautological — `MockedProvider` matches per-entry, single-use, keyed on `(query, variables)`, so a leaked second `fetchMore` does not throw. It prints `"No more mocked responses for the query"` to `console.warn` and the `useQuery` hook resolves with `undefined` `data`; tests that depend on the second-page data thus silently pass on stale or missing data. The contract is **capture-then-explicit-assert**, not auto-fail-on-warn: `installApolloMockLeakSpy({ operationNames })` in `frontend/__tests__/utils/mock-apollo-paginated.ts` records every matching warning, and a `assertNoLeaks()` call in `afterEach` converts the captured set into a hard test failure. Restore the spy in the same `afterEach`. Without this, double-fetch regressions pass the call-count assertion silently.
