@@ -25,7 +25,7 @@
 
 import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminUsersClient } from "@/app/admin/users/AdminUsersClient";
 import { ADMIN_USERS_PAGE_SIZE } from "@/app/admin/users/queries";
@@ -184,6 +184,31 @@ const adminUserNode = adminUserFixture as unknown as UserNode;
 const generalUserNode = generalUserFixture as unknown as UserNode;
 const noroleUserNode = userWithoutRolesFixture as unknown as UserNode;
 
+const ADMIN_USERS_VARIABLES = { first: ADMIN_USERS_PAGE_SIZE, search: null };
+
+/**
+ * Build a `MockedProvider`-ready `{ cache, mocks }` pair pre-seeded with the
+ * given users connection. Both halves are needed because AdminUsersClient
+ * uses cache-first reads but MockedProvider must still match the request
+ * variables exactly when the cache misses.
+ */
+function seedAdminUsersConnection(users: UserNode[], hasNextPage = false) {
+  const connection = makeConnection(users, hasNextPage);
+  const cache = new InMemoryCache();
+  cache.writeQuery({
+    query: AdminUsersDocument,
+    variables: ADMIN_USERS_VARIABLES,
+    data: { users: connection },
+  });
+  const mocks = [
+    {
+      request: { query: AdminUsersDocument, variables: ADMIN_USERS_VARIABLES },
+      result: { data: { users: connection } },
+    },
+  ];
+  return { cache, mocks };
+}
+
 // ---------------------------------------------------------------------------
 // Console spy helpers
 // ---------------------------------------------------------------------------
@@ -230,23 +255,7 @@ describe("AdminUsersPage (RSC auth gate)", () => {
   it("renders AdminUsersClient (search box present) for an authenticated user", async () => {
     setMockSupabaseUser({ id: "u-1", email: "admin@test.test" });
 
-    const connection = makeConnection([], false);
-    const cache = new InMemoryCache();
-    cache.writeQuery({
-      query: AdminUsersDocument,
-      variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-      data: { users: connection },
-    });
-
-    const mocks = [
-      {
-        request: {
-          query: AdminUsersDocument,
-          variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-        },
-        result: { data: { users: connection } },
-      },
-    ];
+    const { cache, mocks } = seedAdminUsersConnection([]);
 
     // AdminUsersPage returns the RSC tree; render inside MockedProvider so the
     // client component's useQuery has a provider.
@@ -273,24 +282,7 @@ describe("AdminUsersPage (RSC auth gate)", () => {
 describe("AdminUsersClient — edit links and empty state", () => {
   it("each user row has an Edit link pointing to /admin/users/<id>/edit", async () => {
     const users: UserNode[] = [adminUserNode, generalUserNode, noroleUserNode];
-    const connection = makeConnection(users);
-
-    const cache = new InMemoryCache();
-    cache.writeQuery({
-      query: AdminUsersDocument,
-      variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-      data: { users: connection },
-    });
-
-    const mocks = [
-      {
-        request: {
-          query: AdminUsersDocument,
-          variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-        },
-        result: { data: { users: connection } },
-      },
-    ];
+    const { cache, mocks } = seedAdminUsersConnection(users);
 
     render(
       <MockedProvider mocks={mocks as never} cache={cache}>
@@ -312,24 +304,7 @@ describe("AdminUsersClient — edit links and empty state", () => {
   });
 
   it("renders empty-state copy when the connection has no edges", async () => {
-    const connection = makeConnection([], false);
-
-    const cache = new InMemoryCache();
-    cache.writeQuery({
-      query: AdminUsersDocument,
-      variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-      data: { users: connection },
-    });
-
-    const mocks = [
-      {
-        request: {
-          query: AdminUsersDocument,
-          variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-        },
-        result: { data: { users: connection } },
-      },
-    ];
+    const { cache, mocks } = seedAdminUsersConnection([]);
 
     render(
       <MockedProvider mocks={mocks as never} cache={cache}>
@@ -337,11 +312,8 @@ describe("AdminUsersClient — edit links and empty state", () => {
       </MockedProvider>,
     );
 
-    await waitFor(() => {
-      expect(screen.getByTestId("admin-users-empty")).toBeInTheDocument();
-    });
-
-    expect(screen.getByTestId("admin-users-empty")).toHaveTextContent("No users found.");
+    const empty = await screen.findByTestId("admin-users-empty");
+    expect(empty).toHaveTextContent("No users found.");
     // The user list must not appear.
     expect(screen.queryByTestId("admin-users-list")).not.toBeInTheDocument();
   });

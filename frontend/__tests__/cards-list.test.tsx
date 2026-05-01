@@ -97,17 +97,18 @@ const CARDGROUP_RESPONSE = {
   cardgroup: { id: CG_ID, name: CG_NAME, updatedAt: "2026-01-15T00:00:00Z" },
 };
 
-/** Build a minimal populated connection using the shared fixture cards. */
-function makeGqlConnectionResponse() {
-  const conn = cardsConnectionFixture(cardsFixture.slice(0, 3), false, 3);
-  return {
-    cardsByCardgroupConnection: conn,
-  };
-}
+const POPULATED_CONNECTION = cardsConnectionFixture(cardsFixture.slice(0, 3), false, 3);
+const EMPTY_CONNECTION = cardsConnectionFixture([], false, 0);
 
-const EMPTY_GQL_CONNECTION_RESPONSE = {
-  cardsByCardgroupConnection: cardsConnectionFixture([], false, 0),
-};
+/**
+ * Stub the two `gqlFetch` calls the page issues in `Promise.all`:
+ * [CardgroupQuery, CardsByCardgroupConnectionQuery].
+ */
+function mockCardsPageGql(connection: ReturnType<typeof cardsConnectionFixture>): void {
+  vi.mocked(gqlFetch)
+    .mockResolvedValueOnce(CARDGROUP_RESPONSE as never)
+    .mockResolvedValueOnce({ cardsByCardgroupConnection: connection } as never);
+}
 
 /**
  * Render the RSC page end-to-end: await the async page function, then mount
@@ -119,15 +120,14 @@ const EMPTY_GQL_CONNECTION_RESPONSE = {
  * phase.
  */
 async function renderPage(
-  connectionData: { cardsByCardgroupConnection: ReturnType<typeof cardsConnectionFixture> },
+  connection: ReturnType<typeof cardsConnectionFixture>,
   cgId = CG_ID,
-) {
+): Promise<void> {
   const cache = new InMemoryCache();
-  const conn = connectionData.cardsByCardgroupConnection;
   cache.writeQuery({
     query: CardsByCardgroupConnectionDocument,
     variables: { cardgroupId: cgId, first: CARDS_PAGE_SIZE },
-    data: { cardsByCardgroupConnection: conn },
+    data: { cardsByCardgroupConnection: connection },
   });
 
   const jsx = await CardsPage({ params: Promise.resolve({ id: cgId }) });
@@ -165,14 +165,8 @@ describe("CardsPage — broad integration (RSC + CardsClient)", () => {
   it("renders all SSR-seeded card front texts when the user is logged in", async () => {
     setMockSupabaseUser({ id: "user-admin-1" });
 
-    const connectionResponse = makeGqlConnectionResponse();
-
-    // gqlFetch is called twice in Promise.all: [CardgroupQuery, CardsByCardgroupConnectionQuery].
-    vi.mocked(gqlFetch)
-      .mockResolvedValueOnce(CARDGROUP_RESPONSE as never)
-      .mockResolvedValueOnce(connectionResponse as never);
-
-    await renderPage(connectionResponse);
+    mockCardsPageGql(POPULATED_CONNECTION);
+    await renderPage(POPULATED_CONNECTION);
 
     // Page heading rendered by the RSC layer.
     expect(screen.getByText(`Cards in ${CG_NAME}`)).toBeInTheDocument();
@@ -188,11 +182,8 @@ describe("CardsPage — broad integration (RSC + CardsClient)", () => {
   it("shows empty-state copy when gqlFetch returns an empty connection", async () => {
     setMockSupabaseUser({ id: "user-admin-1" });
 
-    vi.mocked(gqlFetch)
-      .mockResolvedValueOnce(CARDGROUP_RESPONSE as never)
-      .mockResolvedValueOnce(EMPTY_GQL_CONNECTION_RESPONSE as never);
-
-    await renderPage(EMPTY_GQL_CONNECTION_RESPONSE);
+    mockCardsPageGql(EMPTY_CONNECTION);
+    await renderPage(EMPTY_CONNECTION);
 
     expect(screen.getByText("No cards yet. Add one above.")).toBeInTheDocument();
   });

@@ -94,6 +94,16 @@ const cardsGqlResult = {
 
 const emptyCardsGqlResult = { cardsByCardgroup: [] };
 
+/**
+ * Stub the two `gqlFetch` calls the page issues in `Promise.all`:
+ * [CardgroupQuery, CardsByCardgroupQuery].
+ */
+function mockDetailPageGql(cardgroupResp: unknown, cardsResp: unknown): void {
+  vi.mocked(gqlFetch)
+    .mockResolvedValueOnce(cardgroupResp as never)
+    .mockResolvedValueOnce(cardsResp as never);
+}
+
 // ---------------------------------------------------------------------------
 // Setup / teardown
 // ---------------------------------------------------------------------------
@@ -118,9 +128,7 @@ describe("CardgroupDetailPage (broad page-level)", () => {
   // Case 1: Logged-in user with a valid cardgroup id
   // -------------------------------------------------------------------------
   it("renders the cardgroup name, preview cards, and three CTAs when authenticated", async () => {
-    vi.mocked(gqlFetch)
-      .mockResolvedValueOnce(cardgroupGqlResult as never)
-      .mockResolvedValueOnce(cardsGqlResult as never);
+    mockDetailPageGql(cardgroupGqlResult, cardsGqlResult);
 
     const jsx = await CardgroupDetailPage({ params: makeParams(cardgroupFixture.id) });
     render(jsx);
@@ -154,9 +162,7 @@ describe("CardgroupDetailPage (broad page-level)", () => {
   // `if (!cardgroupData?.cardgroup) redirect("/cardgroups")` guard.
   // -------------------------------------------------------------------------
   it("redirects to /cardgroups when the cardgroup query returns null", async () => {
-    vi.mocked(gqlFetch)
-      .mockResolvedValueOnce({ cardgroup: null } as never)
-      .mockResolvedValueOnce(emptyCardsGqlResult as never);
+    mockDetailPageGql({ cardgroup: null }, emptyCardsGqlResult);
 
     await expect(CardgroupDetailPage({ params: makeParams("nonexistent-id") })).rejects.toThrow(
       `${REDIRECT_PREFIX}/cardgroups`,
@@ -169,9 +175,7 @@ describe("CardgroupDetailPage (broad page-level)", () => {
   // Case 2b: Cardgroup not found — gqlFetch returns null data entirely
   // -------------------------------------------------------------------------
   it("redirects to /cardgroups when gqlFetch resolves with null (no cardgroup key)", async () => {
-    vi.mocked(gqlFetch)
-      .mockResolvedValueOnce(null as never)
-      .mockResolvedValueOnce(emptyCardsGqlResult as never);
+    mockDetailPageGql(null, emptyCardsGqlResult);
 
     await expect(CardgroupDetailPage({ params: makeParams("missing") })).rejects.toThrow(
       `${REDIRECT_PREFIX}/cardgroups`,
@@ -219,9 +223,7 @@ describe("CardgroupDetailPage (broad page-level)", () => {
   // Bonus: empty-cards state renders the "Add card" CTA
   // -------------------------------------------------------------------------
   it("renders the empty-cards state with an Add card link when no cards exist", async () => {
-    vi.mocked(gqlFetch)
-      .mockResolvedValueOnce(cardgroupGqlResult as never)
-      .mockResolvedValueOnce(emptyCardsGqlResult as never);
+    mockDetailPageGql(cardgroupGqlResult, emptyCardsGqlResult);
 
     const jsx = await CardgroupDetailPage({ params: makeParams(cardgroupFixture.id) });
     render(jsx);

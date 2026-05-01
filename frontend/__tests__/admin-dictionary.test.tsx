@@ -55,6 +55,7 @@ vi.mock("next/link", () => ({
 
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { redirect } from "next/navigation";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DictionaryImportClient } from "@/app/admin/dictionary/dictionary-client";
@@ -204,7 +205,7 @@ describe("DictionaryImportClient (page-level integration)", () => {
   });
 
   it("disables the Import button when a cardgroup is selected but the payload textarea is empty", async () => {
-    const user = await import("@testing-library/user-event").then((m) => m.default.setup());
+    const user = userEvent.setup();
     render(
       <MockedProvider mocks={[CARDGROUPS_MOCK]}>
         <DictionaryImportClient />
