@@ -176,6 +176,40 @@ describe("AdminRolesClient", () => {
     });
   });
 
+  it("shows a field-level error beneath the add input when createRole returns BAD_USER_INPUT with field=name", async () => {
+    const user = userEvent.setup();
+    const initial = [ADMIN_ROLE];
+
+    // BAD_USER_INPUT WITH a field extension — routed to field error, not banner.
+    const createMock = {
+      request: { query: AdminCreateRoleDocument, variables: { name: "admin" } },
+      result: () => ({
+        data: null,
+        errors: [
+          new GraphQLError("role name already exists", {
+            extensions: { code: "BAD_USER_INPUT", field: "name" },
+          }),
+        ],
+      }),
+    };
+
+    renderClient(initial, [createMock]);
+
+    await user.type(screen.getByLabelText(/new role name/i), "admin");
+    await user.click(screen.getByRole("button", { name: /add role/i }));
+
+    await waitFor(() => {
+      const fieldError = screen.getByTestId("admin-role-add-field-error");
+      expect(fieldError).toHaveTextContent(/role name already exists/i);
+    });
+
+    // The field-level error must not also appear in the top banner.
+    expect(screen.queryByTestId("admin-roles-error")).toBeNull();
+
+    // The add input must be marked invalid.
+    expect(screen.getByTestId("admin-role-new-name-input")).toHaveAttribute("aria-invalid", "true");
+  });
+
   it("shows an error banner for empty new role name (client-side guard)", async () => {
     const user = userEvent.setup();
     renderClient([ADMIN_ROLE], []);
@@ -283,6 +317,45 @@ describe("AdminRolesClient", () => {
       const alert = screen.getByRole("alert");
       expect(alert).toHaveTextContent(/role name already exists/i);
     });
+  });
+
+  it("shows a field-level error beneath the edit input when updateRole returns BAD_USER_INPUT with field=name", async () => {
+    const user = userEvent.setup();
+    const initial = [ADMIN_ROLE, MOD_ROLE];
+
+    const updateMock = {
+      request: {
+        query: AdminUpdateRoleDocument,
+        variables: { id: "r-mod", name: "admin" },
+      },
+      result: () => ({
+        data: null,
+        errors: [
+          new GraphQLError("role name already exists", {
+            extensions: { code: "BAD_USER_INPUT", field: "name" },
+          }),
+        ],
+      }),
+    };
+
+    renderClient(initial, [updateMock]);
+
+    await user.click(screen.getByRole("button", { name: /edit moderator/i }));
+    const editInput = screen.getByTestId("admin-role-edit-input");
+    await user.clear(editInput);
+    await user.type(editInput, "admin");
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      const fieldError = screen.getByTestId("admin-role-edit-field-error");
+      expect(fieldError).toHaveTextContent(/role name already exists/i);
+    });
+
+    // The field-level error must not also appear in the top banner.
+    expect(screen.queryByTestId("admin-roles-error")).toBeNull();
+
+    // The edit input must be marked invalid.
+    expect(screen.getByTestId("admin-role-edit-input")).toHaveAttribute("aria-invalid", "true");
   });
 
   // -------------------------------------------------------------------------
