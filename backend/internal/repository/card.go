@@ -476,6 +476,13 @@ func (r *cardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domai
 		return UpsertManyTxResult{}, eris.Wrap(err, "repository: upsert many cards")
 	}
 
+	if len(rows) != len(cards) {
+		return UpsertManyTxResult{}, eris.Errorf(
+			"repository: upsert many cards: returned %d rows, expected %d",
+			len(rows), len(cards),
+		)
+	}
+
 	var res UpsertManyTxResult
 	for _, r := range rows {
 		if r.Inserted {

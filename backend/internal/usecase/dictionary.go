@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -97,8 +98,10 @@ func NewDictionaryUsecaseWithTx(authSvc AdminChecker, cardRepo DictionaryCardRep
 // Upsert ingests a base64-encoded dictionary payload, parses it, and persists
 // the parsed cards into the target cardgroup. Authorization is admin-only:
 // administrators may target any cardgroup (no ownership check). Empty parser
-// output (e.g. an empty payload) returns a zero-valued result with the parser
-// error surfaced via Output.Errors.
+// output (e.g. a non-empty payload whose every line failed to parse — note
+// that an empty payload is rejected with BAD_USER_INPUT before reaching the
+// parser) returns a zero-valued result with the parser error surfaced via
+// Output.Errors.
 func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryInput) (UpsertDictionaryOutput, error) {
 	caller := auth.UserFrom(ctx)
 	if caller == nil || caller.Sub == "" {
@@ -110,6 +113,9 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 	}
 	isAdmin, err := u.auth.IsAdmin(ctx, caller.Sub)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return UpsertDictionaryOutput{}, gqlerr.Cancelled(ctx, err)
+		}
 		return UpsertDictionaryOutput{}, gqlerr.Internal(ctx, eris.Wrap(err, "usecase: dictionary upsert: check admin"))
 	}
 	if !isAdmin {
@@ -145,6 +151,28 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 		mappedErrs = append(mappedErrs, DictionaryValidationError{Line: e.Line, Message: e.Message})
 	}
 
+	// Deduplicate parsed words by front within this payload. Postgres error 21000
+	// ("ON CONFLICT DO UPDATE command cannot affect row a second time") fires when
+	// the same conflict key appears more than once in a single INSERT statement.
+	// Last occurrence wins; earlier occurrences are dropped and reported in Errors.
+	lastIndex := make(map[string]int, len(words))
+	for i, w := range words {
+		lastIndex[w.Front] = i
+	}
+	deduped := make([]textdic.ParsedWord, 0, len(words))
+	for i, w := range words {
+		if lastIndex[w.Front] != i {
+			// This occurrence is superseded by a later one — drop it and report.
+			mappedErrs = append(mappedErrs, DictionaryValidationError{
+				Line:    w.Line,
+				Message: "duplicate front in payload (later occurrence wins)",
+			})
+			continue
+		}
+		deduped = append(deduped, w)
+	}
+	words = deduped
+
 	// Empty (but well-formed) parse: nothing to persist; surface the parser's
 	// per-line diagnostics so the caller can act on them.
 	if len(words) == 0 {
@@ -178,6 +206,9 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 		result = r
 		return nil
 	}); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return UpsertDictionaryOutput{}, gqlerr.Cancelled(ctx, err)
+		}
 		return UpsertDictionaryOutput{}, gqlerr.Internal(ctx, err)
 	}
 
