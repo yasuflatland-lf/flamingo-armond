@@ -120,7 +120,7 @@ const UPSERT_ALL_ERRORS_MOCK = {
         __typename: "UpsertDictionaryPayload",
         inserted: 0,
         updated: 0,
-        errors: [{ __typename: "UpsertDictionaryError", line: 1, message: "fk violation" }],
+        errors: [{ __typename: "DictionaryValidationError", line: 1, message: "fk violation" }],
       },
     },
   },
