@@ -305,7 +305,7 @@ Input for upserting a parsed dictionary into a target cardgroup.
 `UpsertDictionaryInput` reuses the same base64 + tab/space-separated front/back format as `validateDictionary`.
 """
 input UpsertDictionaryInput {
-  """Target cardgroup ID. Admin can target any cardgroup; non-admin callers receive FORBIDDEN."""
+  """Target cardgroup ID. Must reference an existing cardgroup (FK constraint at upsert time). FORBIDDEN response is enforced at the mutation level for non-admin callers."""
   cardgroupId: ID!
   """Base64-encoded payload (standard alphabet, with padding). Same format as validateDictionary."""
   payload: String!
