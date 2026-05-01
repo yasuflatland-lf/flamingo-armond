@@ -1,0 +1,66 @@
+import { randomUUID } from "node:crypto";
+import { expect, test } from "@playwright/test";
+import { loginAs, seedCardgroup, seedCards, seedUser } from "./_auth";
+
+const runId = randomUUID().slice(0, 8);
+const learner = {
+  email: `learn-flow-${runId}@example.test`,
+  password: "e2e-password",
+};
+
+let cardgroup: Awaited<ReturnType<typeof seedCardgroup>>;
+
+test.beforeAll(async () => {
+  const user = await seedUser({
+    email: learner.email,
+    password: learner.password,
+    role: "general",
+    displayName: "E2E Learner",
+  });
+  cardgroup = await seedCardgroup({
+    ownerId: user.id,
+    name: `E2E learn ${runId}`,
+  });
+  await seedCards(
+    Array.from({ length: 12 }, (_, index) => ({
+      cardgroupId: cardgroup.id,
+      front: `learn-${runId}-${index + 1}`,
+      back: `answer-${index + 1}`,
+    })),
+  );
+});
+
+test.beforeEach(async ({ context }) => {
+  await loginAs(context, learner);
+});
+
+test("swipes easy cards and shows adaptive mode feedback", async ({ page }) => {
+  const response = await page.goto(`/learn/${cardgroup.id}`);
+  expect(response?.ok(), `goto returned status ${response?.status()}`).toBe(true);
+
+  await expect(page.getByText(cardgroup.name)).toBeVisible();
+  const activeCard = page.locator('[data-testid="swipe-card"][tabindex="0"]');
+  await expect(activeCard).toHaveAccessibleName(new RegExp(`^Flashcard: learn-${runId}-`));
+  await expect(page.getByText("0 completed / 12 remaining")).toBeVisible();
+
+  const seen: string[] = [];
+  for (let completed = 1; completed <= 3; completed += 1) {
+    const before = await activeCard.getAttribute("aria-label");
+    if (before) seen.push(before);
+    await activeCard.getByRole("button", { name: "Easy" }).click();
+    await expect(activeCard).not.toHaveAttribute("aria-label", before ?? "");
+    // remaining count is non-deterministic after server reconcile (capped at swipeNextBatchSize=10),
+    // so we only assert the completed count and that a remaining counter renders at all.
+    await expect(page.getByText(`${completed} completed`)).toBeVisible();
+    await expect(page.getByText(/\d+ remaining/)).toBeVisible();
+    await expect(page.getByText("Saving...")).toHaveCount(0);
+  }
+
+  const after = await activeCard.getAttribute("aria-label");
+  expect(seen).not.toContain(after);
+
+  const validModes = /Mode: (Difficult|Default|Good|Easy|In While)/;
+  await expect(page.getByText(validModes)).toBeVisible();
+  await expect(page.getByText("100% success")).toBeVisible();
+  await expect(activeCard).toHaveAccessibleName(new RegExp(`^Flashcard: learn-${runId}-`));
+});

@@ -50,7 +50,7 @@ These values target a public API on Render. Revisit if the threat model or deplo
 |---|---|---|---|
 | `PORT` | no | `1323` | Listen port |
 | `SHUTDOWN_TIMEOUT` | no | `25s` | Go duration for graceful shutdown. Invalid or `<= 0` values log a warning and fall back to the default. |
-| `SWIPE_NEXT_BATCH_SIZE` | no | `10` | Number of due cards returned by `handleSwipe` after applying one rating. Invalid or `<= 0` values log a warning and fall back to the default. |
+| `SWIPE_NEXT_BATCH_SIZE` | no | `10` | Number of due cards returned by `handleSwipe` after applying one rating. Invalid or `<= 0` values log a warning and fall back to the default. E2E tests that exercise "fetch next batch" behaviour must seed more than 10 cards, or override this env var to a smaller value, to ensure a second batch actually exists. |
 | `SUPABASE_JWKS_URL` | yes | — | JWKS endpoint for JWT verification |
 | `SUPABASE_JWT_AUDIENCE` | yes | — | Expected `aud` claim in incoming JWTs |
 | `SUPABASE_JWT_ISSUER` | yes | — | Expected `iss` claim in incoming JWTs |

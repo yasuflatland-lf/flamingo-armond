@@ -4,11 +4,54 @@ Operational decisions around GitHub Actions and external services that are not o
 
 ## Workflow scope and concurrency
 
-Two independent workflows: `.github/workflows/backend.yml` and `.github/workflows/frontend.yml`.
+Three independent workflows: `.github/workflows/backend.yml`, `.github/workflows/frontend.yml`, and `.github/workflows/e2e.yml`.
 
 - **Triggers are `paths:`-scoped** per workflow — backend to `backend/**` + workflow file; frontend to `frontend/**` + `schema/**` + the root pnpm/workspace/tool-version manifests + the frontend workflow file. When adding a third service, **add its own workflow** — do not broaden an existing one. Mixing scopes breaks CI granularity and responsibility.
-- **`concurrency` groups are per-workflow** (`backend-${{ github.ref }}`, `frontend-${{ github.ref }}`) with `cancel-in-progress: true` — rapid pushes on the same ref supersede in-flight runs per service (important for feature-branch iteration). The two workflows do not cancel each other.
+- **`concurrency` groups are per-workflow** (`backend-${{ github.ref }}`, `frontend-${{ github.ref }}`, `e2e-${{ github.ref }}`) with `cancel-in-progress: true` — rapid pushes on the same ref supersede in-flight runs per service (important for feature-branch iteration). The three workflows do not cancel each other, except that E2E uses a PR-only `cancel-in-progress` split; see § "E2E workflow".
 - **General rule for `cancel-in-progress`:** jobs whose effects are confined to the runner (lint, test, build artifacts in transit) are safe for `cancel-in-progress: true`. Jobs that have already committed external state (deploys, releases, side-effecting API calls) must override with `cancel-in-progress: false` to avoid leaving external systems in an indeterminate state. The backend `deploy` job in `backend.yml` follows this rule; see § "Deploy gating".
+
+## E2E workflow
+
+`.github/workflows/e2e.yml` runs Playwright against a local Supabase-backed stack. It triggers on frontend/schema/Supabase-config changes, **backend changes**, pushes to `main`, and a nightly `0 4 * * *` UTC cron.
+
+The workflow uses split concurrency: pull-request runs use `cancel-in-progress: true`, while push and cron runs do not. Post-merge and scheduled runs must produce a definitive pass/fail signal for `main` and the nightly cadence; cancellation by a later push would mask regressions on the integration boundary. PR runs do not have this constraint and prefer `cancel-in-progress: true` to free the queue for newer pushes.
+
+The job exports Supabase local keys from `supabase status -o env`; no repository secret is required for the service-role key. On failure it uploads the Playwright report, raw test results, and backend log with 14-day retention.
+
+### Include backend changes in E2E triggers
+
+The E2E workflow must trigger on backend file changes in addition to frontend and schema changes. A backend-only change (new endpoint, changed query shape, migration) can silently break the full integration while individual backend unit tests keep passing. Relying on the nightly cron to catch this introduces up to a 24-hour detection window. Add `backend/**` to the workflow's `paths:` filter so any backend push also queues an E2E run.
+
+### Backend migration step ordering
+
+When the Go backend applies migrations via `golang-migrate` on startup (or via an explicit migrate step), tables created in those migrations — for example a `roles` table — do not exist immediately after `supabase start`. Any CI step that seeds canonical rows into backend-managed tables (e.g. `INSERT INTO roles ...`) must be placed **after** the backend has started and migrations have completed, not immediately after `supabase start`. Use a health-check or wait-on step to confirm the backend is ready before running seed SQL.
+
+### Build the binary before starting the backend
+
+`go run ./cmd/server` recompiles from source on every invocation. On a cold CI cache this adds 30–60 seconds of compile time inside the background-start step, and the wait-on timer starts counting before compilation finishes. Build the binary in a separate step (`go build -o /tmp/server ./cmd/server`) and then start the pre-built binary in the background-start step. This makes compile time visible as its own step duration and keeps the wait-on timer honest.
+
+### Inline log tail on wait-on failure
+
+When a `wait-on` step times out, the root cause is almost always in the backend or Supabase logs. The `if: failure()` artifact upload at job end uploads the log file, but reviewers must navigate to the artifact tab to see it — it is not inline in the step output. Add a conditional log-tail step directly after the wait-on:
+
+```yaml
+- name: Dump backend log on wait failure
+  if: failure()
+  run: |
+    echo "::group::backend log (last 200 lines)"
+    tail -n 200 /tmp/flamingo-backend.log || true
+    echo "::endgroup::"
+```
+
+This makes the failure reason visible inline in the Actions UI without opening a separate artifact.
+
+### Shell safety: `set -euo pipefail` and non-empty env validation
+
+Multi-command `run:` blocks in `e2e.yml` must open with `set -euo pipefail` so an intermediate command failure does not silently continue to the next line. When exporting environment variables derived from `supabase status -o env` output, validate that the value is non-empty before writing to `$GITHUB_ENV` (e.g. `${EXTRACTED_VALUE:?variable is empty}`). An empty value written to `$GITHUB_ENV` propagates as a blank string to downstream steps, producing confusing failures far from the extraction site.
+
+### Job-level vs step-level env redundancy
+
+When an env var is declared at the `job:` level and a `step:` under the same job re-declares the identical var, the step-level declaration is noise — the step already inherits the job-level value. Remove step-level re-declarations that duplicate a job-level declaration without changing the value; they add a maintenance surface (two places to update on rename) without any benefit.
 
 ## Deploy gating
 
@@ -169,4 +212,3 @@ Production deploys to Vercel are managed by Vercel's native Git integration: pus
 #### Production env vars live only in the Vercel project
 
 `lint-test-build` sets `BACKEND_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to dummy values so `next build` can validate the env schema without real credentials. The Vercel project's own production environment configuration is the only source of truth for the real values — never copy production secrets into the workflow's `env:` block, since `NEXT_PUBLIC_*` vars are baked into the client-side JavaScript bundle at build time and a stray dummy would ship to users.
-

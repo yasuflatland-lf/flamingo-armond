@@ -16,7 +16,8 @@
     "prebuild": "pnpm codegen",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@apollo/client": "^4.1.9",
@@ -45,6 +46,7 @@
     "@graphql-codegen/cli": "^6.3.1",
     "@graphql-codegen/client-preset": "^5.3.0",
     "@graphql-typed-document-node/core": "^3.2.0",
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "4.2.4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

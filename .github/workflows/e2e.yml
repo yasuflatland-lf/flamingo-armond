@@ -1,0 +1,158 @@
+name: E2E
+
+on:
+  push:
+    branches: [main]
+    # E2E exercises both frontend and backend; trigger on backend changes too.
+    paths:
+      - 'frontend/**'
+      - 'schema/**'
+      - 'supabase/config.toml'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+      - 'backend/**'
+      - '.tool-versions'
+      - '.github/workflows/e2e.yml'
+  pull_request:
+    branches: [main]
+    # E2E exercises both frontend and backend; trigger on backend changes too.
+    paths:
+      - 'frontend/**'
+      - 'schema/**'
+      - 'supabase/config.toml'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+      - 'backend/**'
+      - '.tool-versions'
+      - '.github/workflows/e2e.yml'
+  schedule:
+    - cron: '0 4 * * *'
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  playwright:
+    name: Playwright
+    runs-on: ubuntu-24.04
+    env:
+      BACKEND_URL: http://localhost:1323
+      E2E_BASE_URL: http://localhost:3000
+      GRAPHQL_INTROSPECTION: on
+      PING_TOKEN: ci-dummy
+      SUPABASE_JWT_AUDIENCE: authenticated
+      SUPABASE_JWT_ISSUER: http://127.0.0.1:54321/auth/v1
+      SUPABASE_JWKS_URL: http://127.0.0.1:54321/auth/v1/.well-known/jwks.json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up mise
+        uses: jdx/mise-action@v4
+
+      - name: Resolve pnpm store path
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter frontend exec playwright install --with-deps chromium
+
+      - name: Start Supabase
+        run: supabase start
+
+      - name: Export Supabase local env
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase status -o env > /tmp/supabase.env
+          [ -s /tmp/supabase.env ] || { echo "supabase status produced no env"; exit 1; }
+          set -a
+          . /tmp/supabase.env
+          set +a
+          : "${API_URL:?supabase status missing API_URL}"
+          : "${ANON_KEY:?supabase status missing ANON_KEY}"
+          : "${SERVICE_ROLE_KEY:?supabase status missing SERVICE_ROLE_KEY}"
+          {
+            echo "E2E_SUPABASE_URL=$API_URL"
+            echo "E2E_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "E2E_SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "SUPABASE_DB_URL=$DB_URL"
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
+          } >> "$GITHUB_ENV"
+
+      - name: Generate backend GraphQL
+        working-directory: backend
+        run: go tool gqlgen generate
+
+      - name: Build backend
+        working-directory: backend
+        run: go build -o /tmp/flamingo-backend ./cmd/server
+
+      - name: Start backend
+        working-directory: backend
+        run: |
+          /tmp/flamingo-backend > /tmp/flamingo-backend.log 2>&1 &
+          echo "$!" > /tmp/flamingo-backend.pid
+
+      - name: Wait for backend
+        shell: bash
+        run: |
+          # wait-on timeout sized for binary already-built (just bind ~1-3s); a 60s
+          # ceiling absorbs runner contention without masking real startup failures.
+          # http-get:// forces a GET probe; the default http:// scheme sends HEAD,
+          # which /health is not registered for and would 405 in a loop until timeout.
+          if ! pnpm dlx wait-on --timeout 60000 http-get://localhost:1323/health; then
+            echo "::group::backend log (last 200 lines)"
+            tail -n 200 /tmp/flamingo-backend.log || true
+            echo "::endgroup::"
+            exit 1
+          fi
+
+      - name: Ensure canonical roles
+        run: |
+          supabase db query \
+            "insert into public.roles (name) values ('admin'), ('general') on conflict (name) do nothing;" \
+            --local \
+            --output table
+
+      - name: Run Playwright
+        run: pnpm --filter frontend test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 14
+
+      - name: Upload Playwright test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-test-results
+          path: frontend/test-results/
+          retention-days: 14
+
+      - name: Upload backend log
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-log
+          path: /tmp/flamingo-backend.log
+          retention-days: 14
