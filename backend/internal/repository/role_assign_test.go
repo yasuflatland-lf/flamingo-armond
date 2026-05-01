@@ -175,6 +175,9 @@ func TestRoleRepository_RevokeFromUser_HappyPath(t *testing.T) {
 	}
 }
 
+// TestRoleRepository_RevokeFromUser_Idempotent verifies that revoking a role
+// that was never assigned is a silent no-op when both the user and role exist.
+// This is the legitimate idempotency path: user + role exist, no assignment.
 func TestRoleRepository_RevokeFromUser_Idempotent(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -188,7 +191,69 @@ func TestRoleRepository_RevokeFromUser_Idempotent(t *testing.T) {
 
 	// Revoke a row that was never assigned — must not return an error.
 	if err := repo.RevokeFromUser(ctx, userID, admin.ID); err != nil {
-		t.Fatalf("RevokeFromUser on missing row: %v", err)
+		t.Fatalf("RevokeFromUser on missing assignment row: %v", err)
+	}
+}
+
+// TestRoleRepository_RevokeFromUser_AssignmentMissing is an explicit test for
+// the idempotent path: user and role both exist, but no (user_id, role_id)
+// assignment row is present. The operation must succeed without error.
+func TestRoleRepository_RevokeFromUser_AssignmentMissing(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	userID := insertAuthUser(t, ctx)
+	repo := repository.NewRoleRepository(testDB.GORM)
+
+	admin, err := repo.FindByName(ctx, "admin")
+	if err != nil {
+		t.Fatalf("FindByName(admin): %v", err)
+	}
+
+	// Ensure the assignment does not exist (user is freshly inserted, never assigned).
+	if err := repo.RevokeFromUser(ctx, userID, admin.ID); err != nil {
+		t.Fatalf("RevokeFromUser(user exists, role exists, no assignment): want nil, got %v", err)
+	}
+}
+
+// TestRoleRepository_RevokeFromUser_UserNotFound verifies that revoking a role
+// from a non-existent user returns ErrUserNotFound, not a silent no-op.
+func TestRoleRepository_RevokeFromUser_UserNotFound(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewRoleRepository(testDB.GORM)
+
+	admin, err := repo.FindByName(ctx, "admin")
+	if err != nil {
+		t.Fatalf("FindByName(admin): %v", err)
+	}
+
+	missingUser := uuid.NewString()
+	err = repo.RevokeFromUser(ctx, missingUser, admin.ID)
+	if !errors.Is(err, repository.ErrUserNotFound) {
+		t.Fatalf("RevokeFromUser(missing user): want ErrUserNotFound, got %v", err)
+	}
+	// Backward-compat: legacy callers that match on ErrNotFound must still see
+	// the joined sentinel.
+	if !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("RevokeFromUser(missing user): want errors.Is(_, ErrNotFound) true, got %v", err)
+	}
+}
+
+// TestRoleRepository_RevokeFromUser_RoleNotFound verifies that revoking a
+// non-existent role from a real user returns ErrRoleNotFound.
+func TestRoleRepository_RevokeFromUser_RoleNotFound(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	userID := insertAuthUser(t, ctx)
+	repo := repository.NewRoleRepository(testDB.GORM)
+
+	missingRole := uuid.NewString()
+	err := repo.RevokeFromUser(ctx, userID, missingRole)
+	if !errors.Is(err, repository.ErrRoleNotFound) {
+		t.Fatalf("RevokeFromUser(missing role): want ErrRoleNotFound, got %v", err)
+	}
+	if !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("RevokeFromUser(missing role): want errors.Is(_, ErrNotFound) true, got %v", err)
 	}
 }
 

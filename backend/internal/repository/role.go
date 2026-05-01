@@ -3,7 +3,9 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -53,8 +55,10 @@ type RoleRepository interface {
 	// also satisfy errors.Is(_, ErrNotFound) for backward-compatible matching.
 	AssignToUser(ctx context.Context, userID, roleID string) error
 
-	// RevokeFromUser deletes the (user_id, role_id) row. Idempotent: if the row
-	// does not exist, returns nil without error.
+	// RevokeFromUser deletes the (user_id, role_id) row. Validates that the
+	// user and role exist; returns ErrUserNotFound / ErrRoleNotFound when
+	// either is missing. When both exist but no assignment link is present,
+	// returns nil without error (idempotent on the assignment row).
 	RevokeFromUser(ctx context.Context, userID, roleID string) error
 
 	// ListByUser returns all roles assigned to the given user, ordered by
@@ -107,6 +111,26 @@ func (r *roleRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*dom
 	return out, nil
 }
 
+// classifyFKError inspects a Postgres FK violation (code 23503) and maps it
+// to ErrUserNotFound or ErrRoleNotFound based on which constraint was violated.
+// Returns nil when err is not a FK violation, so callers can use it as a
+// pre-filter before falling through to eris.Wrap. This helper exists so the
+// FK-classification logic can be unit-tested with a fabricated *pgconn.PgError
+// without needing a live DB race.
+func classifyFKError(err error) error {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23503" {
+		return nil
+	}
+	if strings.Contains(pgErr.ConstraintName, "user_id") {
+		return ErrUserNotFound
+	}
+	if strings.Contains(pgErr.ConstraintName, "role_id") {
+		return ErrRoleNotFound
+	}
+	return nil
+}
+
 // AssignToUser inserts a user_roles row. Idempotent via ON CONFLICT DO NOTHING.
 // Validates that both the user and role exist before inserting; returns
 // ErrUserNotFound when the user is missing and ErrRoleNotFound when the role
@@ -114,6 +138,11 @@ func (r *roleRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*dom
 // callers that only branch on ErrNotFound keep working — new callers should
 // match the specific sentinel first to surface the correct field in
 // BAD_USER_INPUT responses.
+//
+// FK race: if the user or role is deleted between the existence check and the
+// INSERT (concurrent admin operation), the resulting Postgres FK violation
+// (23503) is classified by classifyFKError into the same sentinels, so the
+// caller still receives BAD_USER_INPUT rather than INTERNAL.
 func (r *roleRepo) AssignToUser(ctx context.Context, userID, roleID string) error {
 	// Validate user exists.
 	var userCount int64
@@ -143,14 +172,47 @@ func (r *roleRepo) AssignToUser(ctx context.Context, userID, roleID string) erro
 	if err := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{DoNothing: true}).
 		Create(&row).Error; err != nil {
+		// A concurrent delete between the existence check and the INSERT can
+		// produce a FK violation. Classify it into the appropriate sentinel
+		// so the caller sees BAD_USER_INPUT rather than INTERNAL.
+		if classified := classifyFKError(err); classified != nil {
+			return classified
+		}
 		return eris.Wrap(err, "repository: assign role to user")
 	}
 	return nil
 }
 
-// RevokeFromUser deletes the (user_id, role_id) row. Idempotent: no error when
-// the row does not exist.
+// RevokeFromUser deletes the (user_id, role_id) row. Validates that the user
+// and role both exist before attempting the delete; returns ErrUserNotFound
+// when the user is missing and ErrRoleNotFound when the role is missing. When
+// both exist but no assignment row is present, the operation is a silent
+// no-op (idempotent on the assignment link itself).
 func (r *roleRepo) RevokeFromUser(ctx context.Context, userID, roleID string) error {
+	// Validate user exists.
+	var userCount int64
+	if err := r.db.WithContext(ctx).
+		Table("users").
+		Where("id = ?", userID).
+		Count(&userCount).Error; err != nil {
+		return eris.Wrap(err, "repository: revoke role: check user")
+	}
+	if userCount == 0 {
+		return ErrUserNotFound
+	}
+
+	// Validate role exists.
+	var roleCount int64
+	if err := r.db.WithContext(ctx).
+		Table("roles").
+		Where("id = ?", roleID).
+		Count(&roleCount).Error; err != nil {
+		return eris.Wrap(err, "repository: revoke role: check role")
+	}
+	if roleCount == 0 {
+		return ErrRoleNotFound
+	}
+
 	if err := r.db.WithContext(ctx).
 		Where("user_id = ? AND role_id = ?", userID, roleID).
 		Delete(&gormUserRole{}).Error; err != nil {

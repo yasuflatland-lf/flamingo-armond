@@ -545,6 +545,44 @@ func TestAdminUser_List_LastWithAfter(t *testing.T) {
 	}
 }
 
+// TestAdminUser_List_BeforeWithoutLast rejects supplying a before cursor with
+// no companion last value. Without last, the server cannot determine page size
+// or direction, so the request is ambiguous and must be rejected.
+func TestAdminUser_List_BeforeWithoutLast(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, nil, authChk)
+
+	before := "u-b"
+	// No first, no last — only before.
+	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, &before, nil)
+	assertGQLErr(t, err, "BAD_USER_INPUT", "before")
+	if users.listCalls != 0 {
+		t.Fatalf("expected no repo call on before-without-last, got %d", users.listCalls)
+	}
+}
+
+// TestAdminUser_List_AfterWithoutFirst rejects supplying an after cursor with
+// no companion first value. Without first, the server cannot determine page
+// size or direction, so the request must be rejected.
+func TestAdminUser_List_AfterWithoutFirst(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, nil, authChk)
+
+	after := "u-a"
+	// No first, no last — only after.
+	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, &after, nil, nil)
+	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+	if users.listCalls != 0 {
+		t.Fatalf("expected no repo call on after-without-first, got %d", users.listCalls)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Get
 // ---------------------------------------------------------------------------
@@ -843,6 +881,36 @@ func TestAdminUser_RevokeRole_SelfNonAdminAllowed(t *testing.T) {
 	if roles.revokeCalls != 1 {
 		t.Fatalf("expected 1 revoke call, got %d", roles.revokeCalls)
 	}
+}
+
+// TestAdminUser_RevokeRole_UserNotFound_FieldUserId asserts that a missing user
+// surfaces BAD_USER_INPUT keyed on userId — mirrors the AssignRole mapping for
+// the symmetric Revoke path.
+func TestAdminUser_RevokeRole_UserNotFound_FieldUserId(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	roles := &mockAdminRoleRepository{revokeErr: repository.ErrUserNotFound}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, roles, authChk)
+
+	_, err := uc.RevokeRole(adminCallerCtx("admin-1"), "missing-user", "r-some")
+	assertGQLErr(t, err, "BAD_USER_INPUT", "userId")
+}
+
+// TestAdminUser_RevokeRole_RoleNotFound_FieldRoleId asserts that a missing role
+// surfaces BAD_USER_INPUT keyed on roleId.
+func TestAdminUser_RevokeRole_RoleNotFound_FieldRoleId(t *testing.T) {
+	t.Parallel()
+
+	target := &domain.User{ID: "u-victim"}
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"u-victim": target}}
+	roles := &mockAdminRoleRepository{revokeErr: repository.ErrRoleNotFound}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, roles, authChk)
+
+	_, err := uc.RevokeRole(adminCallerCtx("admin-1"), "u-victim", "missing-role")
+	assertGQLErr(t, err, "BAD_USER_INPUT", "roleId")
 }
 
 // ---------------------------------------------------------------------------

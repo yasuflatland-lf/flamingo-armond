@@ -178,6 +178,15 @@ func (u *adminUserUsecase) List(
 	if last != nil && *last > 0 && after != nil {
 		return nil, gqlerr.BadUserInput("after", "after requires first, not last")
 	}
+	// A cursor without its companion count is ambiguous: the server cannot
+	// determine page size or direction. Reject early so the repository is
+	// never called with an uninterpretable combination.
+	if before != nil && (first == nil || *first <= 0) && (last == nil || *last <= 0) {
+		return nil, gqlerr.BadUserInput("before", "before requires last")
+	}
+	if after != nil && (first == nil || *first <= 0) && (last == nil || *last <= 0) {
+		return nil, gqlerr.BadUserInput("after", "after requires first")
+	}
 
 	wantFirst, wantLast, err := resolveAdminPageSize(first, last)
 	if err != nil {
@@ -357,6 +366,17 @@ func (u *adminUserUsecase) RevokeRole(ctx context.Context, userID, roleID string
 	}
 
 	if err := u.roles.RevokeFromUser(ctx, userID, roleID); err != nil {
+		// Branch on the specific sentinels first; both also satisfy
+		// errors.Is(_, ErrNotFound), so order matters.
+		if errors.Is(err, repository.ErrUserNotFound) {
+			return nil, gqlerr.BadUserInput("userId", "user not found")
+		}
+		if errors.Is(err, repository.ErrRoleNotFound) {
+			return nil, gqlerr.BadUserInput("roleId", "role not found")
+		}
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, gqlerr.BadUserInput("userId", "user or role not found")
+		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, gqlerr.Cancelled(ctx, err)
 		}
