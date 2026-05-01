@@ -114,7 +114,9 @@ jobs:
         run: |
           # wait-on timeout sized for binary already-built (just bind ~1-3s); a 60s
           # ceiling absorbs runner contention without masking real startup failures.
-          if ! pnpm dlx wait-on --timeout 60000 http://localhost:1323/health; then
+          # http-get:// forces a GET probe; the default http:// scheme sends HEAD,
+          # which /health is not registered for and would 405 in a loop until timeout.
+          if ! pnpm dlx wait-on --timeout 60000 http-get://localhost:1323/health; then
             echo "::group::backend log (last 200 lines)"
             tail -n 200 /tmp/flamingo-backend.log || true
             echo "::endgroup::"
