@@ -80,7 +80,7 @@ with Diagram(
 
     # Sign-in / session flow
     user >> Edge(label="HTTPS") >> web
-    user >> Edge(label="OAuth", style="dashed") >> google
+    web >> Edge(label="OAuth", style="dashed") >> google
     google >> Edge(label="redirect", style="dashed") >> sb_auth
     web >> Edge(label="getUser() / cookie rotation", style="dashed") >> sb_auth
 
