@@ -369,7 +369,7 @@ func (r *queryResolver) AdminUser(ctx context.Context, id string) (*model.User, 
 
 // Roles is the resolver for the roles field.
 func (r *queryResolver) Roles(ctx context.Context) ([]*model.Role, error) {
-	roles, err := r.AdminUserUC.ListRoles(ctx)
+	roles, err := r.AdminRoleUC.List(ctx)
 	if err != nil {
 		return nil, err
 	}

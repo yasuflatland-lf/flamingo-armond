@@ -215,3 +215,79 @@ func TestResolver_Role_NotFound_ReturnsNull(t *testing.T) {
 		t.Fatalf("expected data.role == null, got %v", data["role"])
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Query.roles tests
+// ---------------------------------------------------------------------------
+
+const rolesQuery = `{"query":"{ roles { id name } }"}`
+
+// TestResolver_Roles_HappyPath verifies that Query.roles returns the expected
+// role list when the AdminRoleUsecase.List succeeds.
+func TestResolver_Roles_HappyPath(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminRoleUsecase{
+		listResult: []*domain.Role{
+			{ID: "r-admin", Name: "admin"},
+			{ID: "r-general", Name: "general"},
+		},
+	}
+	srv := newAdminRoleSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("admin"), rolesQuery)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	roles, _ := data["roles"].([]any)
+	if len(roles) != 2 {
+		t.Fatalf("expected 2 roles, got %d; response: %v", len(roles), resp)
+	}
+	first, _ := roles[0].(map[string]any)
+	if first["id"] != "r-admin" || first["name"] != "admin" {
+		t.Fatalf("roles[0] = %v, want {id:r-admin name:admin}", first)
+	}
+	second, _ := roles[1].(map[string]any)
+	if second["id"] != "r-general" || second["name"] != "general" {
+		t.Fatalf("roles[1] = %v, want {id:r-general name:general}", second)
+	}
+}
+
+// TestResolver_Roles_Forbidden verifies that FORBIDDEN from the usecase
+// propagates unchanged to the caller.
+func TestResolver_Roles_Forbidden(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminRoleUsecase{
+		listErr: gqlerr.NewForbidden("admin only"),
+	}
+	srv := newAdminRoleSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("non-admin"), rolesQuery)
+
+	code := errCode(t, resp)
+	if code != string(gqlerr.CodeForbidden) {
+		t.Fatalf("expected FORBIDDEN, got %q", code)
+	}
+}
+
+// TestResolver_Roles_Empty verifies that Query.roles returns an empty slice
+// (not null) when the usecase returns zero roles.
+func TestResolver_Roles_Empty(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminRoleUsecase{
+		listResult: []*domain.Role{},
+	}
+	srv := newAdminRoleSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("admin"), rolesQuery)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	roles, _ := data["roles"].([]any)
+	if len(roles) != 0 {
+		t.Fatalf("expected 0 roles, got %d; response: %v", len(roles), resp)
+	}
+}
