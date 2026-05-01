@@ -36,13 +36,7 @@ pnpm --filter frontend test:e2e                # Playwright; requires Supabase +
 
 ## E2E tests
 
-Playwright specs live in `frontend/e2e/` and use `frontend/playwright.config.ts`. The config builds the app and serves it with `next start`; run Supabase and the Go backend before invoking:
-
-```bash
-pnpm --filter frontend test:e2e
-```
-
-The helper in `frontend/e2e/_auth.ts` creates local Supabase Auth users with the service-role key, signs in with password, and injects the Supabase SSR auth cookie. Keep the service-role key in `E2E_SUPABASE_SERVICE_ROLE_KEY` only; never expose it as a `NEXT_PUBLIC_*` value.
+Playwright specs live in `frontend/e2e/` and use `frontend/playwright.config.ts` (which builds the app and serves it via `next start`). Run `pnpm --filter frontend test:e2e` after starting Supabase and the Go backend. The service-role key must stay in `E2E_SUPABASE_SERVICE_ROLE_KEY` and never be exposed as `NEXT_PUBLIC_*`. See `docs/e2e.md` for the auth helper, local run setup, and CI flow.
 
 ## Tailwind 4 notes
 

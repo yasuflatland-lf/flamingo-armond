@@ -105,11 +105,6 @@ jobs:
 
       - name: Start backend
         working-directory: backend
-        env:
-          PING_TOKEN: ci-dummy
-          SUPABASE_JWT_AUDIENCE: ${{ env.SUPABASE_JWT_AUDIENCE }}
-          SUPABASE_JWT_ISSUER: ${{ env.SUPABASE_JWT_ISSUER }}
-          SUPABASE_JWKS_URL: ${{ env.SUPABASE_JWKS_URL }}
         run: |
           /tmp/flamingo-backend > /tmp/flamingo-backend.log 2>&1 &
           echo "$!" > /tmp/flamingo-backend.pid

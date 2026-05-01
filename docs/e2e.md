@@ -48,9 +48,9 @@ First run downloads Chromium via `pnpm --filter frontend exec playwright install
 
 ## CI
 
-`.github/workflows/e2e.yml` starts Supabase, exports the local keys into the job environment, starts the Go backend, and lets Playwright build/start the Next.js app via `frontend/playwright.config.ts`.
+`.github/workflows/e2e.yml` starts Supabase, exports the local keys into the job environment, starts the Go backend, and lets Playwright build/start the Next.js app via `frontend/playwright.config.ts`. See `docs/ci.md` § "E2E workflow" for the trigger, concurrency, and retention policy.
 
-Failure artifacts:
+Failure artifacts uploaded by the job:
 
 - `frontend/playwright-report/`
 - `frontend/test-results/`

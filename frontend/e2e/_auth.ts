@@ -56,13 +56,12 @@ function projectRef(): string {
 }
 
 async function findUserByEmail(email: string) {
+  const target = email.toLowerCase();
   let page = 1;
   for (;;) {
     const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage: 100 });
     if (error) throw error;
-    const user = data.users.find(
-      (candidate) => candidate.email?.toLowerCase() === email.toLowerCase(),
-    );
+    const user = data.users.find((candidate) => candidate.email?.toLowerCase() === target);
     if (user) return user;
     // supabase-js admin listUsers returns up to perPage rows; a short page means we are past the last user.
     if (data.users.length < 100) return null;
@@ -72,38 +71,23 @@ async function findUserByEmail(email: string) {
 
 export async function seedUser({ email, password, role, displayName }: SeedUserInput) {
   const normalizedEmail = email.toLowerCase();
+  const display = displayName ?? normalizedEmail;
   const existing = await findUserByEmail(normalizedEmail);
 
-  let user: { id: string } | null = existing ?? null;
-  if (!existing) {
-    const { data: createData, error: createError } = await adminClient.auth.admin.createUser({
-      email: normalizedEmail,
-      password,
-      email_confirm: true,
-      user_metadata: { display_name: displayName ?? normalizedEmail },
-    });
-    if (createError)
-      throw new Error(`Could not create user ${normalizedEmail}: ${createError.message}`);
-    if (!createData.user)
-      throw new Error(`Could not create user ${normalizedEmail}: supabase returned null user`);
-    user = createData.user;
-  }
-
-  if (!user) throw new Error(`Could not create user ${normalizedEmail}`);
+  const user = existing ?? (await createAuthUser(normalizedEmail, password, display));
 
   if (existing) {
     const { error } = await adminClient.auth.admin.updateUserById(user.id, {
       password,
       email_confirm: true,
-      user_metadata: { display_name: displayName ?? normalizedEmail },
+      user_metadata: { display_name: display },
     });
     if (error) throw error;
   }
 
-  const { error: userError } = await adminClient.from("users").upsert({
-    id: user.id,
-    display_name: displayName ?? normalizedEmail,
-  });
+  const { error: userError } = await adminClient
+    .from("users")
+    .upsert({ id: user.id, display_name: display });
   if (userError) throw userError;
 
   await ensureRole(role);
@@ -114,25 +98,27 @@ export async function seedUser({ email, password, role, displayName }: SeedUserI
     .single();
   if (roleError) throw roleError;
 
-  const { error: userRoleError } = await adminClient.from("user_roles").upsert({
-    user_id: user.id,
-    role_id: roleRow.id,
-  });
+  const { error: userRoleError } = await adminClient
+    .from("user_roles")
+    .upsert({ user_id: user.id, role_id: roleRow.id });
   if (userRoleError) throw userRoleError;
 
   return { id: user.id, email: normalizedEmail, password, role };
 }
 
-export async function seedCardgroup({ ownerId, name }: SeedCardgroupInput) {
-  const { data: existing, error: selectError } = await adminClient
-    .from("cardgroups")
-    .select("id, name")
-    .eq("owner_id", ownerId)
-    .eq("name", name)
-    .maybeSingle();
-  if (selectError) throw new Error(`seedCardgroup(${ownerId}, ${name}): ${selectError.message}`);
-  if (existing) return existing;
+async function createAuthUser(email: string, password: string, displayName: string) {
+  const { data, error } = await adminClient.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { display_name: displayName },
+  });
+  if (error) throw new Error(`Could not create user ${email}: ${error.message}`);
+  if (!data.user) throw new Error(`Could not create user ${email}: supabase returned null user`);
+  return data.user;
+}
 
+export async function seedCardgroup({ ownerId, name }: SeedCardgroupInput) {
   const { data, error } = await adminClient
     .from("cardgroups")
     .upsert({ owner_id: ownerId, name }, { onConflict: "owner_id,name" })
@@ -177,10 +163,8 @@ export async function loginAs(
   context: BrowserContext,
   credentials: { email: string; password: string },
 ) {
-  const normalized: { email: string; password: string } = {
-    ...credentials,
-    email: credentials.email.toLowerCase(),
-  };
+  const email = credentials.email.toLowerCase();
+  const password = credentials.password;
 
   const cookiesToSet: AuthCookie[] = [];
   const userClient = createBrowserClient(supabaseUrl, anonKey, {
@@ -190,12 +174,12 @@ export async function loginAs(
         return cookiesToSet;
       },
       setAll(cookies: AuthCookie[]) {
-        cookiesToSet.splice(0, cookiesToSet.length, ...(cookies as AuthCookie[]));
+        cookiesToSet.splice(0, cookiesToSet.length, ...cookies);
       },
     },
   });
 
-  const { data, error } = await userClient.auth.signInWithPassword(normalized);
+  const { data, error } = await userClient.auth.signInWithPassword({ email, password });
   if (error) {
     if (error.status === 429) {
       throw new Error(
@@ -204,7 +188,7 @@ export async function loginAs(
     }
     throw error;
   }
-  if (!data.session) throw new Error(`No session returned for ${normalized.email}`);
+  if (!data.session) throw new Error(`No session returned for ${email}`);
 
   const { error: setSessionError } = await userClient.auth.setSession({
     access_token: data.session.access_token,
@@ -217,16 +201,16 @@ export async function loginAs(
     error: getSessionError,
   } = await userClient.auth.getSession();
   if (getSessionError) throw getSessionError;
-  if (!session) throw new Error(`Could not read session after login for ${normalized.email}`);
+  if (!session) throw new Error(`Could not read session after login for ${email}`);
 
-  const authCookieName = `sb-${projectRef()}-auth-token`;
+  const ref = projectRef();
+  const authCookieName = `sb-${ref}-auth-token`;
   const sessionCookies = cookiesToSet.filter(
     (cookie) =>
       cookie.value &&
       (cookie.name === authCookieName || cookie.name.startsWith(`${authCookieName}.`)),
   );
   if (sessionCookies.length === 0) {
-    const ref = projectRef();
     const got = cookiesToSet.map((c) => c.name).join(", ") || "(none)";
     throw new Error(
       `Supabase SSR auth cookie was not produced. expected prefix=sb-${ref}-auth-token, got=[${got}]`,
