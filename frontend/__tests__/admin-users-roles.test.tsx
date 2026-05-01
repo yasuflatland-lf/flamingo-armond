@@ -4,70 +4,43 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { RoleOption, UserForEdit } from "@/app/admin/users/[id]/edit/AdminUserEditClient";
 import { AdminUserEditClient } from "@/app/admin/users/[id]/edit/AdminUserEditClient";
-import {
-  AdminAssignRoleDocument,
-  AdminRevokeRoleDocument,
-  AdminRolesDocument,
-  AdminUserDocument,
-} from "@/generated/graphql";
+import { AdminAssignRoleDocument, AdminRevokeRoleDocument } from "@/generated/graphql";
 
 // ---------------------------------------------------------------------------
 // Fixture IDs
 // ---------------------------------------------------------------------------
 
 const USER_ID = "user-1";
-const CALLER_ID = "caller-99";
 const SELF_ADMIN_USER_ID = "admin-self-1";
 
 const ROLE_GENERAL_ID = "role-general";
 const ROLE_ADMIN_ID = "role-admin";
 
 // ---------------------------------------------------------------------------
-// Shared mock fragments
+// Shared fixture data
 // ---------------------------------------------------------------------------
 
-const ALL_ROLES_MOCK = {
-  request: {
-    query: AdminRolesDocument,
-    variables: {},
-  },
-  result: {
-    data: {
-      roles: [
-        { __typename: "Role", id: ROLE_GENERAL_ID, name: "general" },
-        { __typename: "Role", id: ROLE_ADMIN_ID, name: "admin" },
-      ],
-    },
-  },
-};
+const ALL_ROLES: RoleOption[] = [
+  { id: ROLE_GENERAL_ID, name: "general" },
+  { id: ROLE_ADMIN_ID, name: "admin" },
+];
 
-function makeAdminUserMock(userId: string, roleNames: string[]) {
+function makeUser(userId: string, roleNames: string[]): UserForEdit {
   const roleMap: Record<string, string> = {
     general: ROLE_GENERAL_ID,
     admin: ROLE_ADMIN_ID,
   };
   return {
-    request: {
-      query: AdminUserDocument,
-      variables: { id: userId },
-    },
-    result: {
-      data: {
-        adminUser: {
-          __typename: "User",
-          id: userId,
-          displayName: `User ${userId}`,
-          bio: null,
-          avatarUrl: null,
-          roles: roleNames.map((n) => ({
-            __typename: "Role",
-            id: roleMap[n] ?? `role-${n}`,
-            name: n,
-          })),
-        },
-      },
-    },
+    id: userId,
+    displayName: `User ${userId}`,
+    bio: null,
+    avatarUrl: null,
+    roles: roleNames.map((n) => ({
+      id: roleMap[n] ?? `role-${n}`,
+      name: n,
+    })),
   };
 }
 
@@ -89,13 +62,13 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// Helper renderer
+// Helper renderer — SSR-props mode (no AdminUserQuery / AdminRolesQuery needed)
 // ---------------------------------------------------------------------------
 
-function renderEdit(mocks: object[], userId: string, callerId?: string) {
+function renderEdit(mocks: object[], user: UserForEdit, allRoles: RoleOption[] = ALL_ROLES) {
   render(
     <MockedProvider mocks={mocks as never}>
-      <AdminUserEditClient userId={userId} callerId={callerId} />
+      <AdminUserEditClient user={user} allRoles={allRoles} />
     </MockedProvider>,
   );
 }
@@ -107,14 +80,9 @@ function renderEdit(mocks: object[], userId: string, callerId?: string) {
 describe("AdminUserEditClient — role assign / revoke flow", () => {
   // T1: Initial render — user has ["general"] role
   it("renders general checkbox checked and admin checkbox unchecked for a user with only general role", async () => {
-    renderEdit(
-      [makeAdminUserMock(USER_ID, ["general"]), ALL_ROLES_MOCK],
-      USER_ID,
-      CALLER_ID,
-    );
+    renderEdit([], makeUser(USER_ID, ["general"]));
 
-    // Wait for async data to load
-    const generalCheckbox = await screen.findByRole("checkbox", { name: /general/i });
+    const generalCheckbox = screen.getByRole("checkbox", { name: /general/i });
     const adminCheckbox = screen.getByRole("checkbox", { name: /admin/i });
 
     expect(generalCheckbox).toBeChecked();
@@ -153,14 +121,9 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
       result: assignResult,
     };
 
-    renderEdit(
-      [makeAdminUserMock(USER_ID, ["general"]), ALL_ROLES_MOCK, assignMock],
-      USER_ID,
-      CALLER_ID,
-    );
+    renderEdit([assignMock], makeUser(USER_ID, ["general"]));
 
-    // Wait for initial render
-    const adminCheckbox = await screen.findByRole("checkbox", { name: /admin/i });
+    const adminCheckbox = screen.getByRole("checkbox", { name: /admin/i });
     expect(adminCheckbox).not.toBeChecked();
 
     // Click to assign admin role
@@ -169,7 +132,7 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
     // Mutation should have fired exactly once
     await waitFor(() => expect(assignCalls).toBe(1));
 
-    // After optimistic response / mutation resolution, admin checkbox is checked
+    // After mutation resolution, admin checkbox is checked (from server-truth response)
     await waitFor(() => {
       expect(screen.getByRole("checkbox", { name: /admin/i })).toBeChecked();
     });
@@ -190,9 +153,7 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
             displayName: `User ${USER_ID}`,
             bio: null,
             avatarUrl: null,
-            roles: [
-              { __typename: "Role", id: ROLE_ADMIN_ID, name: "admin" },
-            ],
+            roles: [{ __typename: "Role", id: ROLE_ADMIN_ID, name: "admin" }],
           },
         },
       };
@@ -206,14 +167,10 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
       result: revokeResult,
     };
 
-    renderEdit(
-      [makeAdminUserMock(USER_ID, ["general", "admin"]), ALL_ROLES_MOCK, revokeMock],
-      USER_ID,
-      CALLER_ID,
-    );
+    renderEdit([revokeMock], makeUser(USER_ID, ["general", "admin"]));
 
-    // Wait for initial render — both checkboxes should be checked
-    const generalCheckbox = await screen.findByRole("checkbox", { name: /general/i });
+    // Both checkboxes should be checked
+    const generalCheckbox = screen.getByRole("checkbox", { name: /general/i });
     expect(generalCheckbox).toBeChecked();
     expect(screen.getByRole("checkbox", { name: /admin/i })).toBeChecked();
 
@@ -223,13 +180,15 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
     // Mutation should have fired exactly once
     await waitFor(() => expect(revokeCalls).toBe(1));
 
-    // After optimistic response / mutation resolution, general checkbox is unchecked
+    // After mutation resolution, general checkbox is unchecked (server-truth response)
     await waitFor(() => {
       expect(screen.getByRole("checkbox", { name: /general/i })).not.toBeChecked();
     });
   });
 
-  // T4: Self-demotion guard — FORBIDDEN error keeps checkbox checked, shows banner
+  // T4: Self-demotion guard — FORBIDDEN error keeps checkbox checked (server truth),
+  //     shows banner. Because there is no optimistic response, the checkbox never flips;
+  //     its state after the error matches the server-truth initial state (checked).
   it("shows FORBIDDEN banner and keeps admin checkbox checked when revoking own admin role", async () => {
     const user = userEvent.setup({ delay: null });
 
@@ -247,18 +206,10 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
       },
     };
 
-    renderEdit(
-      [
-        makeAdminUserMock(SELF_ADMIN_USER_ID, ["admin"]),
-        ALL_ROLES_MOCK,
-        selfDemotionRevokeMock,
-      ],
-      SELF_ADMIN_USER_ID,
-      SELF_ADMIN_USER_ID, // callerId === userId → same user
-    );
+    renderEdit([selfDemotionRevokeMock], makeUser(SELF_ADMIN_USER_ID, ["admin"]));
 
-    // Wait for initial render — admin checkbox should be checked
-    const adminCheckbox = await screen.findByRole("checkbox", { name: /admin/i });
+    // Admin checkbox should be checked initially
+    const adminCheckbox = screen.getByRole("checkbox", { name: /admin/i });
     expect(adminCheckbox).toBeChecked();
 
     // Attempt to uncheck (revoke own admin role)
@@ -268,7 +219,7 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
     const banner = await screen.findByRole("alert");
     expect(banner).toHaveTextContent("cannot revoke own admin role");
 
-    // Checkbox must remain checked (optimistic write rolled back)
+    // Checkbox must still be checked — server truth was never changed (no optimistic write)
     await waitFor(() => {
       expect(screen.getByRole("checkbox", { name: /admin/i })).toBeChecked();
     });
@@ -276,7 +227,7 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
 
   // T5: MockedProvider leak — no "no more mocked responses" warning for admin mutations
   it("does not produce MockedProvider leak warnings for admin role mutations across all test interactions", async () => {
-    // This test fires one assign and one revoke and verifies no duplicate-request warnings.
+    // This test fires one assign and verifies no duplicate-request warnings.
     const user = userEvent.setup({ delay: null });
 
     const assignMock = {
@@ -301,14 +252,9 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
       },
     };
 
-    renderEdit(
-      [makeAdminUserMock(USER_ID, ["general"]), ALL_ROLES_MOCK, assignMock],
-      USER_ID,
-      CALLER_ID,
-    );
+    renderEdit([assignMock], makeUser(USER_ID, ["general"]));
 
-    // Wait for initial render and click assign once
-    const adminCheckbox = await screen.findByRole("checkbox", { name: /admin/i });
+    const adminCheckbox = screen.getByRole("checkbox", { name: /admin/i });
     await user.click(adminCheckbox);
 
     // Allow all async work to settle
@@ -317,13 +263,12 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
     });
 
     // Verify no "No more mocked responses" warnings were emitted for the admin mutations
-    const adminMutationLeakWarnings = consoleWarnSpy.mock.calls.filter(
-      (args: unknown[]) =>
-        args.some(
-          (arg: unknown) =>
-            typeof arg === "string" &&
-            (arg.includes("AdminAssignRole") || arg.includes("AdminRevokeRole")),
-        ),
+    const adminMutationLeakWarnings = consoleWarnSpy.mock.calls.filter((args: unknown[]) =>
+      args.some(
+        (arg: unknown) =>
+          typeof arg === "string" &&
+          (arg.includes("AdminAssignRole") || arg.includes("AdminRevokeRole")),
+      ),
     );
     expect(adminMutationLeakWarnings).toEqual([]);
   });

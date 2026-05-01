@@ -1,23 +1,16 @@
 "use client";
 
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
-import { useMutation, useQuery } from "@apollo/client/react";
+import { useMutation } from "@apollo/client/react";
 import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { useFragment } from "@/generated/fragment-masking";
-import type {
-  AdminRolesQuery as AdminRolesQueryType,
-  AdminUserQuery as AdminUserQueryType,
-} from "@/generated/graphql";
-import { AdminRoleFieldsFragmentDoc, AdminUserFieldsFragmentDoc } from "@/generated/graphql";
+import type { AdminRoleFieldsFragment } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import {
   AdminAssignRoleMutation,
   AdminRevokeRoleMutation,
-  AdminRolesQuery,
   AdminUpdateUserMutation,
-  AdminUserQuery,
 } from "../../queries";
 
 /** Plain serializable types matching the runtime JSON shape from gqlFetch. */
@@ -36,27 +29,14 @@ export type RoleOption = {
 
 /**
  * Props for AdminUserEditClient.
- *
- * Two usage modes:
- *  - SSR mode: pass `user` and `allRoles` from a server component (no client queries fired).
- *  - Client mode: pass `userId` and the component fetches its own data (used in tests).
+ * Data is always pre-fetched by the server component; no client-side queries.
  */
-type Props =
-  | {
-      /** Pre-fetched user from the server component. */
-      user: UserForEdit;
-      /** Pre-fetched roles list from the server component. */
-      allRoles: RoleOption[];
-      userId?: never;
-      callerId?: string;
-    }
-  | {
-      /** User ID; the component fetches AdminUserQuery and AdminRolesQuery itself. */
-      userId: string;
-      user?: never;
-      allRoles?: never;
-      callerId?: string;
-    };
+type Props = {
+  /** Pre-fetched user from the server component. */
+  user: UserForEdit;
+  /** Pre-fetched roles list from the server component. */
+  allRoles: RoleOption[];
+};
 
 /** Maximum grapheme clusters for displayName (mirrors usecase/user.go displayNameMax). */
 const DISPLAY_NAME_MAX = 50;
@@ -80,36 +60,9 @@ function classifyError(err: unknown): string {
   return getBackendErrorBanner(err) ?? "An unexpected error occurred. Please try again.";
 }
 
-export function AdminUserEditClient(props: Props) {
-  const isClientMode = "userId" in props && props.userId !== undefined;
-
-  // Client-side queries — only active in client mode (skip when SSR props provided).
-  const { data: queriedUserData, loading: userLoading } = useQuery(AdminUserQuery, {
-    variables: { id: isClientMode ? props.userId : "" },
-    skip: !isClientMode,
-  });
-  const { data: queriedRolesData, loading: rolesLoading } = useQuery(AdminRolesQuery, {
-    skip: !isClientMode,
-  });
-
-  // Resolve user data: prefer SSR prop, fall back to query result.
-  const rawUser = isClientMode
-    ? queriedUserData?.adminUser
-    : (props.user as unknown as NonNullable<AdminUserQueryType["adminUser"]>);
-  const userFields = useFragment(AdminUserFieldsFragmentDoc, rawUser);
-
-  const rawAllRoles = isClientMode
-    ? (queriedRolesData?.roles ?? [])
-    : ((props.allRoles ?? []) as unknown as AdminRolesQueryType["roles"]);
-  const allRoles = useFragment(AdminRoleFieldsFragmentDoc, rawAllRoles);
-
-  const rawUserRoles = rawUser?.roles ?? [];
-  const userRoles = useFragment(AdminRoleFieldsFragmentDoc, rawUserRoles);
-
-  const resolvedUserId = userFields?.id ?? (isClientMode ? props.userId : "");
-
-  const [displayName, setDisplayName] = useState(userFields?.displayName ?? "");
-  const [bio, setBio] = useState(userFields?.bio ?? "");
+export function AdminUserEditClient({ user, allRoles }: Props) {
+  const [displayName, setDisplayName] = useState(user.displayName ?? "");
+  const [bio, setBio] = useState(user.bio ?? "");
   const [saveError, setSaveError] = useState("");
   const [saveBanner, setSaveBanner] = useState("");
 
@@ -117,14 +70,14 @@ export function AdminUserEditClient(props: Props) {
   const [roleBanners, setRoleBanners] = useState<Record<string, string>>({});
   // Per-role in-flight guard so consecutive clicks cannot double-fire.
   const [roleInflight, setRoleInflight] = useState<Record<string, boolean>>({});
+  // Server-truth role ids — initialised from SSR props; updated on mutation success.
+  const [userRoleIds, setUserRoleIds] = useState<Set<string>>(
+    () => new Set(user.roles.map((r) => r.id)),
+  );
 
   const [runUpdate, { loading: saving }] = useMutation(AdminUpdateUserMutation);
   const [runAssign] = useMutation(AdminAssignRoleMutation);
   const [runRevoke] = useMutation(AdminRevokeRoleMutation);
-
-  // Derive assigned role ids. Apollo entity normalization propagates
-  // assign/revoke mutation results back into the cache automatically.
-  const userRoleIds = new Set(userRoles.map((r) => r.id));
 
   /** Client-side validation mirror of server-side constraints. Returns error or "". */
   function validate(): string {
@@ -148,7 +101,7 @@ export function AdminUserEditClient(props: Props) {
     try {
       await runUpdate({
         variables: {
-          id: resolvedUserId,
+          id: user.id,
           input: {
             displayName: displayName.trim(),
             bio: bio || null,
@@ -165,46 +118,31 @@ export function AdminUserEditClient(props: Props) {
     setRoleInflight((prev) => ({ ...prev, [roleId]: true }));
     setRoleBanners((prev) => ({ ...prev, [roleId]: "" }));
 
-    // Build the optimistic roles list so the checkbox flips immediately.
-    const optimisticRoles = currentlyAssigned
-      ? userRoles
-          .filter((r) => r.id !== roleId)
-          .map((r) => ({ __typename: "Role" as const, id: r.id, name: r.name }))
-      : [
-          ...userRoles.map((r) => ({
-            __typename: "Role" as const,
-            id: r.id,
-            name: r.name,
-          })),
-          {
-            __typename: "Role" as const,
-            id: roleId,
-            name: allRoles.find((r) => r.id === roleId)?.name ?? "",
-          },
-        ];
-
-    const optimisticUser = {
-      __typename: "User" as const,
-      id: resolvedUserId,
-      displayName: userFields?.displayName ?? null,
-      bio: userFields?.bio ?? null,
-      avatarUrl: userFields?.avatarUrl ?? null,
-      roles: optimisticRoles,
-    };
-
     try {
       if (currentlyAssigned) {
-        await runRevoke({
-          variables: { userId: resolvedUserId, roleId },
-          optimisticResponse: { revokeRole: optimisticUser },
+        const result = await runRevoke({
+          variables: { userId: user.id, roleId },
         });
+        // Update local role state from server-truth response.
+        // Fragment masking is compile-time only; at runtime the shape is the plain object.
+        const serverRoles = result.data?.revokeRole?.roles as AdminRoleFieldsFragment[] | undefined;
+        if (serverRoles) {
+          setUserRoleIds(new Set(serverRoles.map((r) => r.id)));
+        }
       } else {
-        await runAssign({
-          variables: { userId: resolvedUserId, roleId },
-          optimisticResponse: { assignRole: optimisticUser },
+        const result = await runAssign({
+          variables: { userId: user.id, roleId },
         });
+        // Update local role state from server-truth response.
+        // Fragment masking is compile-time only; at runtime the shape is the plain object.
+        const serverRoles = result.data?.assignRole?.roles as AdminRoleFieldsFragment[] | undefined;
+        if (serverRoles) {
+          setUserRoleIds(new Set(serverRoles.map((r) => r.id)));
+        }
       }
     } catch (err) {
+      // On failure (including FORBIDDEN), surface the banner.
+      // No optimistic writes were made, so local state already reflects server truth.
       setRoleBanners((prev) => ({
         ...prev,
         [roleId]: classifyError(err),
@@ -214,11 +152,7 @@ export function AdminUserEditClient(props: Props) {
     }
   }
 
-  if (isClientMode && (userLoading || rolesLoading)) {
-    return <div>Loading...</div>;
-  }
-
-  if (!userFields && !isClientMode) {
+  if (!user) {
     return <div role="alert">User not found.</div>;
   }
 
