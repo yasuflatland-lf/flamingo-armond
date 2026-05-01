@@ -511,3 +511,51 @@ The Apollo docs allow switching hash-only requests to GET with the query string.
 **`@apollo/client-integration-nextjs` prepends two internal streaming links.** `@apollo/client-integration-nextjs` prepends two internal links (`ReadFromReadableStreamLink`, `TeeToReadableStreamLink`) to the user-supplied link chain before any user links execute. These support RSC streaming. As a result, the live chain assembled from `from([authLink, apqLink, httpLink])` has **five** segments, not three. Tests that assert `client.link.length === 3` or similar absolute counts will fail. Assert the **relative order** of the user-supplied links instead (e.g. verify that `authLink` appears before `apqLink` in the chain, not that the chain has exactly three nodes).
 
 **`ApolloLink.from` builds a binary tree, not a flat list.** `ApolloLink.from([a, b, c])` produces a binary tree of `ApolloLink` "concat" glue nodes; `a`, `b`, `c` are the leaves. When traversing `link.left` / `link.right` to inspect the chain in tests, stop recursing when you reach a named subclass (`HttpLink`, `PersistedQueryLink`, `SetContextLink`). Descending into `HttpLink` reveals its own internal `ClientAwarenessLink` + `BaseHttpLink` pair and pollutes the segment list with internal implementation details.
+
+## Testing convention: narrow vs broad page tests
+
+All tests live under `frontend/__tests__/` using Vitest + Testing Library. Two naming conventions split responsibility:
+
+**Narrow tests** (`<feature>-<flow>.test.tsx`) isolate a single user-facing flow introduced by a feature PR. Examples: `cards-pagination.test.tsx` (pagination + fetchMore only), `cards-bulk-delete.test.tsx` (selection and delete only), `admin-dictionary-import.test.tsx` (validate-then-import flow), `admin-users-roles.test.tsx` (assign/revoke roles only), `admin-roles-crud.test.tsx` (create/update/delete only), `admin-layout.test.tsx` (admin gate only). Each narrow test is shipped by the feature PR that introduced its flow, locking in expected behaviour.
+
+**Broad tests** (`<page>.test.tsx`) guard the page-level composition and integration points across PRs. Examples: `cardgroups-list.test.tsx`, `cardgroups-detail.test.tsx`, `cards-list.test.tsx`, `admin-users.test.tsx`, `admin-roles.test.tsx`, `admin-dictionary.test.tsx`. Each broad test covers SSR auth gate, initial render, empty state, and error boundaries — without duplicating the narrow test's flow-specific assertions.
+
+**Anti-pattern**: Do not name a flow-specific test with a page-level name. If a feature PR introduces a flow that is the only flow on its page, still name the test `<page>-<flow>.test.tsx` to reserve the `<page>.test.tsx` slot for the future broad test.
+
+**Shared utilities** live under `frontend/__tests__/utils/` and `frontend/__tests__/fixtures/`:
+
+- `mock-supabase.ts` — in-memory `getUser` mock for Supabase server client in RSC tests.
+- `mock-apollo-paginated.ts` — one-mock-per-fetchMore helper with inline documentation. Provides `installApolloMockLeakSpy`, which captures `console.warn` calls matching `"No more mocked responses for the query"`; calling `assertNoLeaks()` in `afterEach` throws if any were recorded, catching double-fetch regressions.
+- `fixtures/users.ts` and `fixtures/cardgroups.ts` — shared test data.
+
+**JSDoc on shared utilities is part of the contract.** Reviewers should treat shared helpers under `__tests__/utils/` as if a new contributor will copy their usage examples verbatim — runnable copy-paste-ready snippets, not approximations. Document which fields each state-mutating knob touches (e.g. a `setError` that does not clear a previously-set user) so chained calls have predictable observed behaviour.
+
+### The narrow / broad split is a contract
+
+Putting a flow-detail assertion in a broad-named file (e.g. a role-checkbox toggle inside `admin-users.test.tsx`) silently locks in implementation detail and forces the broad test to break on every refactor of the narrow flow. The narrow / broad split is not a guideline — it is a contract: broad tests assert only page-level composition (SSR auth gate, initial render, empty state, error boundaries); flow-specific assertions belong in their narrow companion file.
+
+A page can host **both** a co-located `<page>.test.tsx` (next to the source under `src/app/...`) and a `__tests__/<page>.test.tsx` (broad scope) file. The co-located test focuses on the page's local refactor surface (e.g. stubbing the client component); the `__tests__/` file mounts the full tree end-to-end. Coverage between the two MUST be deconflicted manually — the author of any new broad test must read both before adding assertions, otherwise duplicate redirect / auth-gate cases accumulate across the two files.
+
+### RSC test rendering pattern
+
+Tests for Next.js 15+ async server components render by `await`ing the page function and passing its element tree to `render(...)`. The page params argument is `Promise<{...}>`, not a plain object:
+
+```ts
+render(await CardgroupDetailPage({ params: Promise.resolve({ id: "cg-1" }) }));
+```
+
+Pre-15 patterns that pass `{ params: { id } }` directly will not type-check or will misbehave at runtime.
+
+`createSupabaseServerClient` is server-only, so RSC tests must stub it. The repo has no MSW; the canonical pattern is a per-test `vi.mock("@/lib/supabase/server", ...)` factory backed by the shared `mockSupabaseServerClient()` helper, with per-case `setMockSupabaseUser(...)` calls in `beforeEach`. The `server-only` import is also stubbed at the Vitest config level (`vitest.config.ts`) so any module that pulls it in transitively does not crash the test runner.
+
+### Apollo Client v4 testing migration gotchas
+
+Test code copy-pasted from v3 examples will fail typecheck against v4:
+
+- **`addTypename` prop removed.** v4's `MockedProviderProps` no longer exposes `addTypename`; `__typename` handling is automatic. Drop the prop instead of carrying it forward as `addTypename={false}`.
+- **`MockedResponse` import path is `@apollo/client/testing`**, not `@apollo/client/testing/react`. The `/testing/react` subpath does not re-export `MockedResponse`.
+- **`useMutation` returns `[mutateFn, { loading, error, data, reset, ... }]`.** A stub like `[vi.fn(), { loading: false }]` works for a client that only reads `loading` but breaks invisibly when the client later reads any other field. Stubs of `useMutation` should mirror the full second-tuple shape — or use `MockedProvider` instead and skip the manual stub entirely.
+
+### TypeScript strict array indexing in fixtures
+
+With `noUncheckedIndexedAccess` on, `arr[i]` is typed as `T | undefined`, so `cardsFixture[0].front` does not type-check. Resolve at the access site with a non-null assertion plus a Biome-ignore comment justifying the literal-array safety (`cardsFixture[0]!.front`), or shape the fixture as a tuple via `as const` so the type system knows the length statically. The non-null-assertion route is preferred for variable-length fixtures.

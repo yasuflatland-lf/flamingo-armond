@@ -1,25 +1,76 @@
 // @vitest-environment jsdom
+/**
+ * Broad page-level tests for /admin/dictionary.
+ *
+ * Coverage in this file:
+ *   - RSC auth gate: logged-out → redirect /login
+ *   - RSC auth gate: Supabase transport error → rethrow
+ *   - Client mount with cardgroups: picker is pre-populated
+ *   - Client mount with no cardgroups: picker shows only the default option
+ *   - Initial form state (untouched): Import button is disabled before Validate runs
+ *
+ * NOT covered here (owned by admin-dictionary-import.test.tsx):
+ *   - validate → preview → import flow
+ *   - FORBIDDEN handling at the mutation level
+ *   - stale-validation invalidation after textarea edit
+ *
+ * NOT covered here (owned by admin-layout.test.tsx):
+ *   - Admin sidebar rendering and route highlighting
+ *   - AdminLayout admin-role gate
+ */
+
+// ---------------------------------------------------------------------------
+// Module mocks — hoisted by Vitest before imports
+// ---------------------------------------------------------------------------
+
+vi.mock("@/lib/supabase/server", () => ({
+  createSupabaseServerClient: () => Promise.resolve(mockSupabaseServerClient()),
+}));
+
+vi.mock("next/navigation", () => ({
+  redirect: vi.fn((path: string) => {
+    throw new Error(`REDIRECT:${path}`);
+  }),
+}));
+
+vi.mock("next/link", () => ({
+  default: ({
+    href,
+    children,
+    ...rest
+  }: {
+    href: string;
+    children: React.ReactNode;
+    [key: string]: unknown;
+  }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+
+// ---------------------------------------------------------------------------
+// Imports — after vi.mock declarations
+// ---------------------------------------------------------------------------
+
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { GraphQLError } from "graphql";
+import { redirect } from "next/navigation";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DictionaryImportClient } from "@/app/admin/dictionary/dictionary-client";
+import AdminDictionaryPage from "@/app/admin/dictionary/page";
+import { MyCardgroupsDocument } from "@/generated/graphql";
 import {
-  MyCardgroupsDocument,
-  UpsertDictionaryDocument,
-  ValidateDictionaryDocument,
-} from "@/generated/graphql";
+  mockSupabaseServerClient,
+  resetMockSupabase,
+  setMockSupabaseUser,
+  setMockSupabaseUserError,
+} from "./utils/mock-supabase";
 
-// Compute the expected base64 payload for "hello\tworld\nfoo\tbar"
-// encodePayload mirrors the inline helper in dictionary-client.tsx:
-//   btoa(unescape(encodeURIComponent(text)))
-function encodePayload(text: string): string {
-  return btoa(unescape(encodeURIComponent(text)));
-}
-
-const PAYLOAD_TEXT = "hello\tworld\nfoo\tbar";
-const ENCODED_PAYLOAD = encodePayload(PAYLOAD_TEXT);
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
 
 const CARDGROUPS_MOCK = {
   request: {
@@ -31,105 +82,43 @@ const CARDGROUPS_MOCK = {
       myCardgroups: [
         {
           __typename: "Cardgroup",
-          id: "cg-1",
-          name: "My Cards",
-          updatedAt: "2024-01-01T00:00:00Z",
+          id: "cg-100",
+          name: "Vocab Set A",
+          updatedAt: "2026-01-01T00:00:00Z",
+        },
+        {
+          __typename: "Cardgroup",
+          id: "cg-200",
+          name: "Grammar Notes",
+          updatedAt: "2026-01-02T00:00:00Z",
         },
       ],
     },
   },
 };
 
-const VALIDATE_SUCCESS_MOCK = {
+const EMPTY_CARDGROUPS_MOCK = {
   request: {
-    query: ValidateDictionaryDocument,
-    variables: { input: { payload: ENCODED_PAYLOAD } },
+    query: MyCardgroupsDocument,
+    variables: {},
   },
   result: {
     data: {
-      validateDictionary: {
-        __typename: "DictionaryValidationResult",
-        valid: true,
-        parsedWords: [
-          { __typename: "ParsedWord", front: "hello", back: "world", line: 1 },
-          { __typename: "ParsedWord", front: "foo", back: "bar", line: 2 },
-        ],
-        errors: [],
-      },
+      myCardgroups: [],
     },
   },
 };
 
-const VALIDATE_WITH_ERRORS_MOCK = {
-  request: {
-    query: ValidateDictionaryDocument,
-    variables: { input: { payload: ENCODED_PAYLOAD } },
-  },
-  result: {
-    data: {
-      validateDictionary: {
-        __typename: "DictionaryValidationResult",
-        valid: false,
-        parsedWords: [{ __typename: "ParsedWord", front: "good", back: "row", line: 1 }],
-        errors: [{ __typename: "DictionaryValidationError", line: 2, message: "missing back" }],
-      },
-    },
-  },
-};
-
-const UPSERT_SUCCESS_MOCK = {
-  request: {
-    query: UpsertDictionaryDocument,
-    variables: { input: { cardgroupId: "cg-1", payload: ENCODED_PAYLOAD } },
-  },
-  result: {
-    data: {
-      upsertDictionary: {
-        __typename: "UpsertDictionaryPayload",
-        inserted: 2,
-        updated: 0,
-        errors: [],
-      },
-    },
-  },
-};
-
-const UPSERT_FORBIDDEN_MOCK = {
-  request: {
-    query: UpsertDictionaryDocument,
-    variables: { input: { cardgroupId: "cg-1", payload: ENCODED_PAYLOAD } },
-  },
-  result: {
-    errors: [
-      // Use a realistic message; classifyError inspects extensions.code === "FORBIDDEN",
-      // not the message string. Apollo throws a CombinedGraphQLErrors so the catch block
-      // in handleImport receives it and classifyError correctly identifies the code.
-      new GraphQLError("admin role required", { extensions: { code: "FORBIDDEN" } }),
-    ],
-  },
-};
-
-const UPSERT_ALL_ERRORS_MOCK = {
-  request: {
-    query: UpsertDictionaryDocument,
-    variables: { input: { cardgroupId: "cg-1", payload: ENCODED_PAYLOAD } },
-  },
-  result: {
-    data: {
-      upsertDictionary: {
-        __typename: "UpsertDictionaryPayload",
-        inserted: 0,
-        updated: 0,
-        errors: [{ __typename: "DictionaryValidationError", line: 1, message: "fk violation" }],
-      },
-    },
-  },
-};
+// ---------------------------------------------------------------------------
+// Lifecycle
+// ---------------------------------------------------------------------------
 
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
+  resetMockSupabase();
+  vi.clearAllMocks();
   consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -137,177 +126,119 @@ beforeEach(() => {
 afterEach(() => {
   consoleErrorSpy.mockRestore();
   consoleWarnSpy.mockRestore();
+  vi.restoreAllMocks();
 });
 
-function renderComponent(mocks: object[]) {
-  render(
-    <MockedProvider mocks={mocks as never}>
-      <DictionaryImportClient />
-    </MockedProvider>,
-  );
-}
+// ---------------------------------------------------------------------------
+// RSC auth gate
+// ---------------------------------------------------------------------------
 
-describe("DictionaryImportClient — validate → import flow", () => {
-  // T1: Happy path: validate then import
-  it("validates input, shows preview, enables Import, then imports and shows result", async () => {
-    const user = userEvent.setup({ delay: null });
-    renderComponent([CARDGROUPS_MOCK, VALIDATE_SUCCESS_MOCK, UPSERT_SUCCESS_MOCK]);
+describe("AdminDictionaryPage (RSC auth gate)", () => {
+  it("redirects to /login when no user is signed in", async () => {
+    setMockSupabaseUser(null);
 
-    // Wait for cardgroup selector to populate.
+    await expect(AdminDictionaryPage()).rejects.toThrow("REDIRECT:/login");
+
+    expect(redirect).toHaveBeenCalledWith("/login");
+  });
+
+  it("rethrows a Supabase transport error without redirecting", async () => {
+    const transportErr = new Error("supabase network failure");
+    setMockSupabaseUserError(transportErr);
+
+    await expect(AdminDictionaryPage()).rejects.toBe(transportErr);
+
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("renders DictionaryImportClient when the user is authenticated", async () => {
+    setMockSupabaseUser({ id: "u-authenticated" });
+
+    const tree = await AdminDictionaryPage();
+
+    // Render the RSC output inside a provider so the client component mounts.
+    render(<MockedProvider mocks={[CARDGROUPS_MOCK]}>{tree as React.ReactElement}</MockedProvider>);
+
+    // The target-cardgroup picker is the primary affordance of DictionaryImportClient.
     const select = await screen.findByRole("combobox", { name: /target cardgroup/i });
-    await user.selectOptions(select, "cg-1");
+    expect(select).toBeInTheDocument();
 
-    // Type payload into textarea.
-    const textarea = screen.getByRole("textbox", { name: /dictionary payload/i });
-    await user.type(textarea, PAYLOAD_TEXT);
+    // No redirect should have fired for an authenticated user.
+    expect(redirect).not.toHaveBeenCalled();
+  });
+});
 
-    // Import button must be disabled before validation.
+// ---------------------------------------------------------------------------
+// Client mount: cardgroup picker
+// ---------------------------------------------------------------------------
+
+describe("DictionaryImportClient (page-level integration)", () => {
+  it("pre-populates the cardgroup picker with names returned by the query", async () => {
+    render(
+      <MockedProvider mocks={[CARDGROUPS_MOCK]}>
+        <DictionaryImportClient />
+      </MockedProvider>,
+    );
+
+    // Both cardgroup names must appear in the select options.
+    const option1 = await screen.findByRole("option", { name: "Vocab Set A" });
+    const option2 = screen.getByRole("option", { name: "Grammar Notes" });
+
+    expect(option1).toBeInTheDocument();
+    expect(option2).toBeInTheDocument();
+  });
+
+  it("shows only the default placeholder option when no cardgroups exist", async () => {
+    render(
+      <MockedProvider mocks={[EMPTY_CARDGROUPS_MOCK]}>
+        <DictionaryImportClient />
+      </MockedProvider>,
+    );
+
+    // The default "Select a cardgroup" option must appear.
+    const placeholder = await screen.findByRole("option", { name: /select a cardgroup/i });
+    expect(placeholder).toBeInTheDocument();
+
+    // No other options should exist beyond the placeholder.
+    const select = screen.getByRole("combobox", { name: /target cardgroup/i });
+    expect(select.querySelectorAll("option")).toHaveLength(1);
+  });
+
+  it("disables the Import button when a cardgroup is selected but the payload textarea is empty", async () => {
+    const user = userEvent.setup();
+    render(
+      <MockedProvider mocks={[CARDGROUPS_MOCK]}>
+        <DictionaryImportClient />
+      </MockedProvider>,
+    );
+
+    // Wait for the cardgroups query to complete so the picker is stable.
+    const select = await screen.findByRole("combobox", { name: /target cardgroup/i });
+
+    // Select a cardgroup — payload textarea remains empty.
+    await user.selectOptions(select, "cg-100");
+
+    // Import button must still be disabled: no validation has run and no payload is present.
     const importBtn = screen.getByRole("button", { name: /^import$/i });
     expect(importBtn).toBeDisabled();
 
-    // Click Validate.
-    await user.click(screen.getByRole("button", { name: /^validate$/i }));
-
-    // Preview table rows appear.
-    expect(await screen.findByText("hello")).toBeInTheDocument();
-    expect(screen.getByText("world")).toBeInTheDocument();
-    expect(screen.getByText("foo")).toBeInTheDocument();
-    expect(screen.getByText("bar")).toBeInTheDocument();
-
-    // Validation summary shows valid status.
-    expect(screen.getByRole("status")).toHaveTextContent("Valid");
-
-    // Import button is now enabled.
-    expect(importBtn).not.toBeDisabled();
-
-    // Click Import.
-    await user.click(importBtn);
-
-    // Success message appears.
-    const successStatus = await screen.findByRole("status", {
-      name: (_, el) => el.textContent?.includes("Import complete") ?? false,
-    });
-    expect(successStatus).toHaveTextContent("2 inserted");
-    expect(successStatus).toHaveTextContent("0 updated");
+    // Validate button must also be disabled: textarea is empty.
+    const validateBtn = screen.getByRole("button", { name: /^validate$/i });
+    expect(validateBtn).toBeDisabled();
   });
 
-  // T2: Validation surfaces errors; Import stays disabled when valid is false
-  it("shows parsed words and parse errors; Import remains disabled when valid is false", async () => {
-    const user = userEvent.setup({ delay: null });
-    renderComponent([CARDGROUPS_MOCK, VALIDATE_WITH_ERRORS_MOCK]);
+  it("disables the Validate button when the payload textarea is empty", async () => {
+    render(
+      <MockedProvider mocks={[CARDGROUPS_MOCK]}>
+        <DictionaryImportClient />
+      </MockedProvider>,
+    );
 
-    // Wait for cardgroup selector and select a cardgroup.
-    const select = await screen.findByRole("combobox", { name: /target cardgroup/i });
-    await user.selectOptions(select, "cg-1");
+    // Wait for stable render.
+    await screen.findByRole("option", { name: "Vocab Set A" });
 
-    // Type payload into textarea.
-    const textarea = screen.getByRole("textbox", { name: /dictionary payload/i });
-    await user.type(textarea, PAYLOAD_TEXT);
-
-    // Click Validate.
-    await user.click(screen.getByRole("button", { name: /^validate$/i }));
-
-    // The successfully-parsed word is shown in the preview table.
-    expect(await screen.findByText("good")).toBeInTheDocument();
-    expect(screen.getByText("row")).toBeInTheDocument();
-
-    // The parse error is rendered and visually distinguishable (shown in errors list).
-    expect(screen.getByText(/missing back/i)).toBeInTheDocument();
-    // The error list item includes the line number prefix.
-    expect(screen.getByText(/line 2/i)).toBeInTheDocument();
-
-    // Validation summary reflects invalid status.
-    expect(screen.getByRole("status")).toHaveTextContent("Invalid");
-
-    // Import button must remain disabled: valid is false so canImport is false.
-    const importBtn = screen.getByRole("button", { name: /^import$/i });
-    expect(importBtn).toBeDisabled();
-  });
-
-  // T3: Import returns FORBIDDEN → "Admin role required." banner
-  it("shows 'Admin role required.' when upsertDictionary returns FORBIDDEN (via extensions.code)", async () => {
-    const user = userEvent.setup({ delay: null });
-    renderComponent([CARDGROUPS_MOCK, VALIDATE_SUCCESS_MOCK, UPSERT_FORBIDDEN_MOCK]);
-
-    // Select cardgroup.
-    const select = await screen.findByRole("combobox", { name: /target cardgroup/i });
-    await user.selectOptions(select, "cg-1");
-
-    // Type payload.
-    const textarea = screen.getByRole("textbox", { name: /dictionary payload/i });
-    await user.type(textarea, PAYLOAD_TEXT);
-
-    // Validate first.
-    await user.click(screen.getByRole("button", { name: /^validate$/i }));
-    await screen.findByText("hello");
-
-    // Click Import.
-    const importBtn = screen.getByRole("button", { name: /^import$/i });
-    expect(importBtn).not.toBeDisabled();
-    await user.click(importBtn);
-
-    // FORBIDDEN banner appears.
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Admin role required.");
-  });
-
-  // T4: Editing the textarea after successful validation disables the Import button.
-  it("disables Import button when the user edits the textarea after validation", async () => {
-    const user = userEvent.setup({ delay: null });
-    // Provide two validate mocks: one for the initial typed payload (used in step 1)
-    // and the FORBIDDEN mock is unrelated — we only need cardgroups + validate here.
-    renderComponent([CARDGROUPS_MOCK, VALIDATE_SUCCESS_MOCK]);
-
-    // Wait for cardgroup selector and select a cardgroup.
-    const select = await screen.findByRole("combobox", { name: /target cardgroup/i });
-    await user.selectOptions(select, "cg-1");
-
-    // Type payload into textarea.
-    const textarea = screen.getByRole("textbox", { name: /dictionary payload/i });
-    await user.type(textarea, PAYLOAD_TEXT);
-
-    // Click Validate.
-    await user.click(screen.getByRole("button", { name: /^validate$/i }));
-
-    // Wait for validation result — Import button should be enabled.
-    await screen.findByText("hello");
-    const importBtn = screen.getByRole("button", { name: /^import$/i });
-    expect(importBtn).not.toBeDisabled();
-
-    // User edits the textarea — validation result should be invalidated.
-    await user.type(textarea, "x");
-
-    // Import button must be disabled again because the stale validation was cleared.
-    expect(importBtn).toBeDisabled();
-  });
-
-  // T5: Import with all errors (0 inserted, 0 updated) renders destructive banner.
-  it("shows destructive banner when import persists no rows and has parse errors", async () => {
-    const user = userEvent.setup({ delay: null });
-    renderComponent([CARDGROUPS_MOCK, VALIDATE_SUCCESS_MOCK, UPSERT_ALL_ERRORS_MOCK]);
-
-    // Select cardgroup.
-    const select = await screen.findByRole("combobox", { name: /target cardgroup/i });
-    await user.selectOptions(select, "cg-1");
-
-    // Type payload.
-    const textarea = screen.getByRole("textbox", { name: /dictionary payload/i });
-    await user.type(textarea, PAYLOAD_TEXT);
-
-    // Validate first.
-    await user.click(screen.getByRole("button", { name: /^validate$/i }));
-    await screen.findByText("hello");
-
-    // Click Import.
-    const importBtn = screen.getByRole("button", { name: /^import$/i });
-    expect(importBtn).not.toBeDisabled();
-    await user.click(importBtn);
-
-    // Destructive banner appears instead of the green success banner.
-    const failAlert = await screen.findByRole("alert");
-    expect(failAlert).toHaveTextContent("Import failed");
-    expect(failAlert).toHaveTextContent("no rows persisted");
-    // The individual parse error is still shown in the error list.
-    expect(await screen.findByText(/fk violation/i)).toBeInTheDocument();
+    // Validate button must be disabled when the textarea is empty.
+    const validateBtn = screen.getByRole("button", { name: /^validate$/i });
+    expect(validateBtn).toBeDisabled();
   });
 });
