@@ -162,7 +162,6 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 	deduped := make([]textdic.ParsedWord, 0, len(words))
 	for i, w := range words {
 		if lastIndex[w.Front] != i {
-			// This occurrence is superseded by a later one — drop it and report.
 			mappedErrs = append(mappedErrs, DictionaryValidationError{
 				Line:    w.Line,
 				Message: "duplicate front in payload (later occurrence wins)",

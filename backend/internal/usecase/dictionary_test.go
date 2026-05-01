@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
 	"gorm.io/gorm"
 
-	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
 )
@@ -44,26 +44,22 @@ type mockDictCardRepo struct {
 	updated  int64
 	// returnErr, when non-nil, is returned from UpsertManyTx unchanged.
 	returnErr error
-	// preExisting holds the (front -> back) of rows that should classify as
-	// updates. When set, the mock derives inserted/updated by inspecting the
-	// passed-in cards instead of using the static counts above. This lets
-	// tests assert that the updated card carries the new back text.
-	preExisting   map[string]string // front -> back at upsert time (post-update)
-	captured      []*domain.Card
-	upsertCalls   int
-	receivedTxNil bool
+	// preExisting holds the fronts of rows that should classify as updates.
+	// When set, the mock derives inserted/updated by inspecting the passed-in
+	// cards instead of using the static counts above. This lets tests assert
+	// that the updated card carries the new back text.
+	preExisting map[string]string
+	captured    []*domain.Card
+	upsertCalls int
 }
 
-func (m *mockDictCardRepo) UpsertManyTx(_ context.Context, tx *gorm.DB, cards []*domain.Card) (repository.UpsertManyTxResult, error) {
+func (m *mockDictCardRepo) UpsertManyTx(_ context.Context, _ *gorm.DB, cards []*domain.Card) (repository.UpsertManyTxResult, error) {
 	m.upsertCalls++
-	if tx == nil {
-		m.receivedTxNil = true
-	}
 	for _, c := range cards {
 		// Defensive deep copy so subsequent caller-side mutation cannot alter
 		// what the test inspects.
-		copy := *c
-		m.captured = append(m.captured, &copy)
+		clone := *c
+		m.captured = append(m.captured, &clone)
 	}
 	if m.returnErr != nil {
 		return repository.UpsertManyTxResult{}, m.returnErr
@@ -92,13 +88,6 @@ func dictTxRunner() (txRunner, *int) {
 		calls++
 		return fn(sentinel)
 	}, &calls
-}
-
-// dictionaryAdminCtx returns an authed context whose subject is treated as
-// admin by the supplied AdminChecker. The actual admin verdict comes from
-// the checker — this helper only marks the request as authenticated.
-func dictionaryAdminCtx(sub string) context.Context {
-	return auth.ContextWithUser(context.Background(), &auth.AuthUser{Sub: sub})
 }
 
 // ---------------------------------------------------------------------------
@@ -175,7 +164,7 @@ func TestDictionaryUsecase_AdminAllInserts(t *testing.T) {
 	tx, calls := dictTxRunner()
 	uc := NewDictionaryUsecaseWithTx(auth, repo, tx)
 
-	out, err := uc.Upsert(dictionaryAdminCtx("admin-1"), UpsertDictionaryInput{
+	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
@@ -246,7 +235,7 @@ func TestDictionaryUsecase_AdminMixedInsertsAndUpdates(t *testing.T) {
 	tx, _ := dictTxRunner()
 	uc := NewDictionaryUsecaseWithTx(auth, repo, tx)
 
-	out, err := uc.Upsert(dictionaryAdminCtx("admin-1"), UpsertDictionaryInput{
+	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
@@ -299,7 +288,7 @@ func TestDictionaryUsecase_NonAdminForbidden(t *testing.T) {
 	tx, calls := dictTxRunner()
 	uc := NewDictionaryUsecaseWithTx(auth, repo, tx)
 
-	_, err := uc.Upsert(dictionaryAdminCtx("user-1"), UpsertDictionaryInput{
+	_, err := uc.Upsert(authedCtx("user-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
@@ -358,7 +347,7 @@ func TestDictionaryUsecase_PayloadOverCapBadInput(t *testing.T) {
 	tx, calls := dictTxRunner()
 	uc := NewDictionaryUsecaseWithTx(auth, repo, tx)
 
-	_, err := uc.Upsert(dictionaryAdminCtx("admin-1"), UpsertDictionaryInput{
+	_, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
@@ -419,7 +408,7 @@ func TestDictionaryUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
 
 	// The only failure path here would be a panic; otherwise every assertion
 	// is on the returned struct.
-	out, err := uc.Upsert(dictionaryAdminCtx("admin-1"), UpsertDictionaryInput{
+	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
@@ -460,7 +449,7 @@ func TestDictionaryUsecase_AdminCheckerErrorBecomesInternal(t *testing.T) {
 	tx, calls := dictTxRunner()
 	uc := NewDictionaryUsecaseWithTx(auth, repo, tx)
 
-	_, err := uc.Upsert(dictionaryAdminCtx("admin-1"), UpsertDictionaryInput{
+	_, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
@@ -490,7 +479,7 @@ func TestDictionaryUsecase_RepoErrorBecomesInternal(t *testing.T) {
 	tx, _ := dictTxRunner()
 	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx)
 
-	_, err := uc.Upsert(dictionaryAdminCtx("admin-1"), UpsertDictionaryInput{
+	_, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
@@ -513,7 +502,7 @@ func TestDictionaryUsecase_EmptyCardgroupIDBadInput(t *testing.T) {
 	tx, _ := dictTxRunner()
 	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx)
 
-	_, err := uc.Upsert(dictionaryAdminCtx("admin-1"), UpsertDictionaryInput{
+	_, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "",
 		Payload:     payload,
 	})
@@ -533,7 +522,7 @@ func TestDictionaryUsecase_EmptyPayloadBadInput(t *testing.T) {
 	tx, _ := dictTxRunner()
 	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx)
 
-	_, err := uc.Upsert(dictionaryAdminCtx("admin-1"), UpsertDictionaryInput{
+	_, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
 		Payload:     "",
 	})
@@ -554,7 +543,7 @@ func TestDictionaryUsecase_BadBase64BadInput(t *testing.T) {
 	tx, _ := dictTxRunner()
 	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx)
 
-	_, err := uc.Upsert(dictionaryAdminCtx("admin-1"), UpsertDictionaryInput{
+	_, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
 		Payload:     "not-valid-base64-!@#$",
 	})
@@ -590,7 +579,7 @@ func TestDictionaryUsecase_DuplicateFrontDeduplicatedAndSurfaced(t *testing.T) {
 	tx, _ := dictTxRunner()
 	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx)
 
-	out, err := uc.Upsert(dictionaryAdminCtx("admin-1"), UpsertDictionaryInput{
+	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
@@ -614,26 +603,5 @@ func TestDictionaryUsecase_DuplicateFrontDeduplicatedAndSurfaced(t *testing.T) {
 // stringFront returns a deterministic front string of the form "<prefix>-<n>"
 // using only ASCII so the lexer treats it as a single WORD token.
 func stringFront(prefix string, n int) string {
-	return prefix + "-" + itoa(n)
-}
-
-// itoa is a small allocation-free integer formatter; we avoid strconv to keep
-// the test imports minimal and because the input range is bounded.
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var digits []byte
-	for n > 0 {
-		digits = append([]byte{byte('0' + n%10)}, digits...)
-		n /= 10
-	}
-	if neg {
-		digits = append([]byte{'-'}, digits...)
-	}
-	return string(digits)
+	return prefix + "-" + strconv.Itoa(n)
 }
