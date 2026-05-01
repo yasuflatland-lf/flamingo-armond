@@ -1,4 +1,4 @@
-# flamingo-armond
+# Flamingo Armond
 
 [![backend CI](https://github.com/yasuflatland-lf/flamingo-armond/actions/workflows/backend.yml/badge.svg?branch=main)](https://github.com/yasuflatland-lf/flamingo-armond/actions/workflows/backend.yml)
 [![frontend CI](https://github.com/yasuflatland-lf/flamingo-armond/actions/workflows/frontend.yml/badge.svg?branch=main)](https://github.com/yasuflatland-lf/flamingo-armond/actions/workflows/frontend.yml)
