@@ -171,9 +171,7 @@ export function installApolloMockLeakSpy(
 
   const matchesOperation = (args: unknown[]): boolean => {
     if (!operationNames || operationNames.length === 0) return true;
-    return args.some(
-      (a) => typeof a === "string" && operationNames.some((op) => a.includes(op)),
-    );
+    return args.some((a) => typeof a === "string" && operationNames.some((op) => a.includes(op)));
   };
 
   const isLeak = (args: unknown[]): boolean =>
