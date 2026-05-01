@@ -69,8 +69,6 @@ type AdminUserUsecase interface {
 	Update(ctx context.Context, id string, input AdminUpdateUserInput) (*domain.User, error)
 	AssignRole(ctx context.Context, userID, roleID string) (*domain.User, error)
 	RevokeRole(ctx context.Context, userID, roleID string) (*domain.User, error)
-	// ListRoles returns every existing role. Admin-only.
-	ListRoles(ctx context.Context) ([]*domain.Role, error)
 }
 
 // adminUserRepository is the subset of repository.UserRepository the
@@ -93,7 +91,6 @@ type adminRoleRepository interface {
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Role, error)
 	AssignToUser(ctx context.Context, userID, roleID string) error
 	RevokeFromUser(ctx context.Context, userID, roleID string) error
-	ListAll(ctx context.Context) ([]*domain.Role, error)
 }
 
 // adminUserUsecase wires the auth service, the user repository, and the role
@@ -375,21 +372,6 @@ func mapRoleAssignmentError(ctx context.Context, err error, wrap string) error {
 	default:
 		return gqlerr.Internal(ctx, eris.Wrap(err, wrap))
 	}
-}
-
-// ListRoles returns every role in the system ordered by name ASC. Admin-only.
-func (u *adminUserUsecase) ListRoles(ctx context.Context) ([]*domain.Role, error) {
-	if _, err := u.requireAdmin(ctx); err != nil {
-		return nil, err
-	}
-	roles, err := u.roles.ListAll(ctx)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, gqlerr.Cancelled(ctx, err)
-		}
-		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "usecase: admin list roles"))
-	}
-	return roles, nil
 }
 
 // refetchUser loads the user after a mutation so callers see a fresh row

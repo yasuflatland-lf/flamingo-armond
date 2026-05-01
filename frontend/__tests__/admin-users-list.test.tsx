@@ -47,7 +47,7 @@ vi.mock("next/image", () => ({
     height: number;
     [key: string]: unknown;
   }) => (
-    // eslint-disable-next-line @next/next/no-img-element
+    // biome-ignore lint/performance/noImgElement: deliberate next/image stub for tests
     <img src={src} alt={alt} width={width} height={height} {...rest} />
   ),
 }));
@@ -152,13 +152,12 @@ function fireIntersect() {
 // ---------------------------------------------------------------------------
 
 let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
-let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   ioCallbacks = [];
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-  consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {

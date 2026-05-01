@@ -22,18 +22,16 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockAdminUserUsecase struct {
-	listResult      *usecase.AdminUserConnection
-	listErr         error
-	getResult       *domain.User
-	getErr          error
-	updateResult    *domain.User
-	updateErr       error
-	assignResult    *domain.User
-	assignErr       error
-	revokeResult    *domain.User
-	revokeErr       error
-	listRolesResult []*domain.Role
-	listRolesErr    error
+	listResult   *usecase.AdminUserConnection
+	listErr      error
+	getResult    *domain.User
+	getErr       error
+	updateResult *domain.User
+	updateErr    error
+	assignResult *domain.User
+	assignErr    error
+	revokeResult *domain.User
+	revokeErr    error
 }
 
 func (m *mockAdminUserUsecase) List(_ context.Context, _, _ *int, _, _, _ *string) (*usecase.AdminUserConnection, error) {
@@ -50,9 +48,6 @@ func (m *mockAdminUserUsecase) AssignRole(_ context.Context, _, _ string) (*doma
 }
 func (m *mockAdminUserUsecase) RevokeRole(_ context.Context, _, _ string) (*domain.User, error) {
 	return m.revokeResult, m.revokeErr
-}
-func (m *mockAdminUserUsecase) ListRoles(_ context.Context) ([]*domain.Role, error) {
-	return m.listRolesResult, m.listRolesErr
 }
 
 // mockRoleByUserIDRepo satisfies the minimal interface needed to build the
@@ -82,7 +77,7 @@ func (m *mockRoleByUserIDRepo) ListByUserIDs(_ context.Context, ids []string) (m
 // AdminUserUsecase. Other usecase fields are nil — only admin-user resolvers
 // are exercised here.
 func newAdminUserSrv(adminUC usecase.AdminUserUsecase) *handler.Server {
-	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, adminUC)
+	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, adminUC, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -94,7 +89,7 @@ func newAdminUserSrv(adminUC usecase.AdminUserUsecase) *handler.Server {
 // the caller is reading another user's roles.
 func newAdminUserSrvWithAuth(adminUC usecase.AdminUserUsecase, isAdmin bool) *handler.Server {
 	roleRepo := &mockUserRoleRepository{isAdmin: isAdmin}
-	r := resolver.NewResolver(nil, nil, nil, nil, auth.NewService(roleRepo), nil, adminUC)
+	r := resolver.NewResolver(nil, nil, nil, nil, auth.NewService(roleRepo), nil, adminUC, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -353,61 +348,6 @@ func TestAdminUserResolver_Roles_ViaDataLoader(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Query.roles tests
-// ---------------------------------------------------------------------------
-
-const rolesQuery = `{"query":"{ roles { id name } }"}`
-
-// TestAdminUserResolver_Roles_HappyPath verifies that Query.roles returns the
-// expected role list when the usecase succeeds.
-func TestAdminUserResolver_Roles_HappyPath(t *testing.T) {
-	t.Parallel()
-
-	mock := &mockAdminUserUsecase{
-		listRolesResult: []*domain.Role{
-			{ID: "r-admin", Name: "admin"},
-			{ID: "r-general", Name: "general"},
-		},
-	}
-	srv := newAdminUserSrv(mock)
-	resp := gqlRequest(t, srv, authedCtx("admin"), rolesQuery)
-
-	if _, hasErrs := resp["errors"]; hasErrs {
-		t.Fatalf("unexpected errors: %v", resp["errors"])
-	}
-	data, _ := resp["data"].(map[string]any)
-	roles, _ := data["roles"].([]any)
-	if len(roles) != 2 {
-		t.Fatalf("expected 2 roles, got %d; response: %v", len(roles), resp)
-	}
-	first, _ := roles[0].(map[string]any)
-	if first["id"] != "r-admin" || first["name"] != "admin" {
-		t.Fatalf("roles[0] = %v, want {id:r-admin name:admin}", first)
-	}
-	second, _ := roles[1].(map[string]any)
-	if second["id"] != "r-general" || second["name"] != "general" {
-		t.Fatalf("roles[1] = %v, want {id:r-general name:general}", second)
-	}
-}
-
-// TestAdminUserResolver_Roles_Forbidden verifies that FORBIDDEN from the
-// usecase propagates unchanged.
-func TestAdminUserResolver_Roles_Forbidden(t *testing.T) {
-	t.Parallel()
-
-	mock := &mockAdminUserUsecase{
-		listRolesErr: gqlerr.NewForbidden("admin only"),
-	}
-	srv := newAdminUserSrv(mock)
-	resp := gqlRequest(t, srv, authedCtx("non-admin"), rolesQuery)
-
-	code := errCode(t, resp)
-	if code != string(gqlerr.CodeForbidden) {
-		t.Fatalf("expected FORBIDDEN, got %q", code)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // User.roles admin gate
 // ---------------------------------------------------------------------------
 
@@ -469,7 +409,7 @@ func TestAdminUserResolver_Roles_SelfIntrospection_Allowed(t *testing.T) {
 	// isAdmin=false models a non-admin caller; the self-introspection branch
 	// must skip the IsAdmin check entirely.
 	roleRepo := &mockUserRoleRepository{isAdmin: false}
-	r := resolver.NewResolver(uc, nil, nil, nil, auth.NewService(roleRepo), nil, &mockAdminUserUsecase{})
+	r := resolver.NewResolver(uc, nil, nil, nil, auth.NewService(roleRepo), nil, &mockAdminUserUsecase{}, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 

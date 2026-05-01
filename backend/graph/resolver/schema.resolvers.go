@@ -192,6 +192,32 @@ func (r *mutationResolver) RevokeRole(ctx context.Context, userID string, roleID
 	return toUserModel(user), nil
 }
 
+// CreateRole is the resolver for the createRole field.
+func (r *mutationResolver) CreateRole(ctx context.Context, name string) (*model.Role, error) {
+	role, err := r.AdminRoleUC.Create(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	return toRoleModel(role), nil
+}
+
+// UpdateRole is the resolver for the updateRole field.
+func (r *mutationResolver) UpdateRole(ctx context.Context, id string, name string) (*model.Role, error) {
+	role, err := r.AdminRoleUC.Update(ctx, id, name)
+	if err != nil {
+		return nil, err
+	}
+	return toRoleModel(role), nil
+}
+
+// DeleteRole is the resolver for the deleteRole field.
+func (r *mutationResolver) DeleteRole(ctx context.Context, id string) (bool, error) {
+	if err := r.AdminRoleUC.Delete(ctx, id); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // Health is the resolver for the health field.
 func (r *queryResolver) Health(ctx context.Context) (string, error) {
 	return "ok", nil
@@ -343,11 +369,20 @@ func (r *queryResolver) AdminUser(ctx context.Context, id string) (*model.User, 
 
 // Roles is the resolver for the roles field.
 func (r *queryResolver) Roles(ctx context.Context) ([]*model.Role, error) {
-	roles, err := r.AdminUserUC.ListRoles(ctx)
+	roles, err := r.AdminRoleUC.List(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return toRoleModels(roles), nil
+}
+
+// Role is the resolver for the role field.
+func (r *queryResolver) Role(ctx context.Context, id string) (*model.Role, error) {
+	role, err := r.AdminRoleUC.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return toRoleModel(role), nil
 }
 
 // Roles is the resolver for the roles field.

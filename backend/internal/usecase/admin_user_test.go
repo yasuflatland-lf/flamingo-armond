@@ -110,10 +110,6 @@ type mockAdminRoleRepository struct {
 	revokeCalls   int
 	lastRevokeUID string
 	lastRevokeRID string
-
-	// ListAll
-	allRoles   []*domain.Role
-	listAllErr error
 }
 
 func (m *mockAdminRoleRepository) FindByIDs(_ context.Context, ids []string) (map[string]*domain.Role, error) {
@@ -143,13 +139,6 @@ func (m *mockAdminRoleRepository) RevokeFromUser(_ context.Context, userID, role
 	m.lastRevokeUID = userID
 	m.lastRevokeRID = roleID
 	return m.revokeErr
-}
-
-func (m *mockAdminRoleRepository) ListAll(_ context.Context) ([]*domain.Role, error) {
-	if m.listAllErr != nil {
-		return nil, m.listAllErr
-	}
-	return m.allRoles, nil
 }
 
 // adminAuthChecker is a stand-alone admin checker for AdminUser tests. It
@@ -246,13 +235,6 @@ func TestAdminUser_NonAdminForbidden(t *testing.T) {
 			name: "RevokeRole",
 			call: func(uc AdminUserUsecase) error {
 				_, err := uc.RevokeRole(adminCallerCtx("u1"), "u2", "r1")
-				return err
-			},
-		},
-		{
-			name: "ListRoles",
-			call: func(uc AdminUserUsecase) error {
-				_, err := uc.ListRoles(adminCallerCtx("u1"))
 				return err
 			},
 		},
@@ -994,85 +976,6 @@ func TestAdminUser_IsAdminInternalError(t *testing.T) {
 
 	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil)
 	assertGQLErr(t, err, "INTERNAL", "")
-}
-
-// ---------------------------------------------------------------------------
-// ListRoles
-// ---------------------------------------------------------------------------
-
-// TestAdminUser_ListRoles_NonAdmin verifies that a non-admin caller receives
-// FORBIDDEN and the repository is never reached.
-func TestAdminUser_ListRoles_NonAdmin(t *testing.T) {
-	t.Parallel()
-
-	authChk := &adminAuthChecker{admins: map[string]bool{}} // no admins
-	roles := &mockAdminRoleRepository{}
-	uc, _, _ := buildAdminUC(nil, roles, authChk)
-
-	_, err := uc.ListRoles(adminCallerCtx("non-admin"))
-	assertGQLErr(t, err, "FORBIDDEN", "")
-}
-
-// TestAdminUser_ListRoles_Admin_Empty verifies that an admin caller receives
-// an empty (non-nil) slice when no roles exist.
-func TestAdminUser_ListRoles_Admin_Empty(t *testing.T) {
-	t.Parallel()
-
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	roles := &mockAdminRoleRepository{allRoles: []*domain.Role{}}
-	uc, _, _ := buildAdminUC(nil, roles, authChk)
-
-	got, err := uc.ListRoles(adminCallerCtx("admin-1"))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got == nil {
-		t.Fatal("expected non-nil empty slice, got nil")
-	}
-	if len(got) != 0 {
-		t.Fatalf("expected 0 roles, got %d", len(got))
-	}
-}
-
-// TestAdminUser_ListRoles_Admin_Multiple verifies that roles are passed through
-// from the repository in name ASC order (the repo owns ordering).
-func TestAdminUser_ListRoles_Admin_Multiple(t *testing.T) {
-	t.Parallel()
-
-	want := []*domain.Role{
-		{ID: "r-admin", Name: "admin"},
-		{ID: "r-general", Name: "general"},
-		{ID: "r-reviewer", Name: "reviewer"},
-	}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	roles := &mockAdminRoleRepository{allRoles: want}
-	uc, _, _ := buildAdminUC(nil, roles, authChk)
-
-	got, err := uc.ListRoles(adminCallerCtx("admin-1"))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(got) != len(want) {
-		t.Fatalf("len(roles) = %d, want %d", len(got), len(want))
-	}
-	for i, r := range got {
-		if r.ID != want[i].ID || r.Name != want[i].Name {
-			t.Errorf("roles[%d] = {%q,%q}, want {%q,%q}", i, r.ID, r.Name, want[i].ID, want[i].Name)
-		}
-	}
-}
-
-// TestAdminUser_ListRoles_Cancelled verifies that a cancelled context
-// propagates as CANCELLED rather than INTERNAL.
-func TestAdminUser_ListRoles_Cancelled(t *testing.T) {
-	t.Parallel()
-
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	roles := &mockAdminRoleRepository{listAllErr: context.Canceled}
-	uc, _, _ := buildAdminUC(nil, roles, authChk)
-
-	_, err := uc.ListRoles(adminCallerCtx("admin-1"))
-	assertGQLErr(t, err, "CANCELLED", "")
 }
 
 // ---------------------------------------------------------------------------

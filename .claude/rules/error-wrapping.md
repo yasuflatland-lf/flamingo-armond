@@ -42,6 +42,16 @@ if errors.As(err, &pgErr) && pgErr.Code == "23503" {
 
 The usecase then translates the specific sentinel to `gqlerr.BadUserInput` on the offending field. A race-deleted parent is a client-fixable input, not a server bug — keep it out of the ERROR log.
 
+### Postgres unique-violation classification (`23505`)
+
+The same shape applies when the DB rejects an `INSERT` or `UPDATE` for colliding with an existing row. Inspect `*pgconn.PgError` with `Code == "23505"` and read `ConstraintName`, then return a dedicated sentinel (e.g. `ErrRoleDuplicate`) the usecase can translate to `gqlerr.BadUserInput("name", "role name already exists")`. Without classification, the duplicate surfaces as `gqlerr.Internal` and the operator gets a 5xx alarm for a routine "name already taken" case.
+
+**Anchor `ConstraintName` matches on the narrowest unambiguous fragment.** `strings.Contains(pgErr.ConstraintName, "roles")` would also match `user_roles_pkey` and route a join-table primary-key collision into `ErrRoleDuplicate`, which is wrong. The roles table emits its unique constraint on the `name` column, so the precise check is `strings.Contains(pgErr.ConstraintName, "name")`. The same rule extends to any future unique sentinel: pick the column or constraint suffix that no other constraint in the schema can collide with.
+
+### Standalone sentinels: not every new sentinel joins `ErrNotFound`
+
+The layered-sentinel pattern (`errors.Join(specific, general)`) only works when the specific case is **semantically a refinement** of the general case. `ErrUserNotFound` and `ErrRoleNotFound` refine `ErrNotFound`, so joining is correct: a caller branching only on `ErrNotFound` still gets the right behaviour. But `ErrRoleDuplicate` is the inverse condition — the row was *found* and that is precisely the failure. Joining it with `ErrNotFound` would make `errors.Is(err, ErrNotFound)` true for a duplicate insert, which is a lie that any general-purpose 404 mapper would happily act on. Keep "found" sentinels (duplicate, conflict, already-exists) standalone; only "missing" sentinels get the `errors.Join` treatment.
+
 ## Logging
 
 All error sites that produce a structured log entry must attach the eris chain as the `error_chain` attribute (output of `eris.ToJSON(err, true)`). The `internal/logging` package exposes two sibling helpers — `LogError(ctx, logger, msg, err, attrs...)` and `LogWarn(ctx, logger, msg, err, attrs...)` — so ERROR and WARN sites share one shape. Both:

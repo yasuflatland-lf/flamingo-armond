@@ -1038,3 +1038,23 @@ Each new `<ts>` is `YYYYMMDDHHMMSS` UTC at the moment the PR opens. Filenames ar
 - **PR-12 in CI**: Supabase CLI Docker startup time may push CI past 5 minutes; if so, consider running E2E only on nightly + post-merge instead of every PR. Decide once we measure.
 - **PR-08 user search**: search uses `display_name ILIKE` — fine for hundreds of users; if user count grows, switch to `pg_trgm` index. Out of scope for now.
 - **`cardsByCardgroup` deprecation removal**: deprecated in PR-03. Removal condition: after PR-11 lands, run `rg "cardsByCardgroup" frontend/src` and confirm zero matches outside `queries.ts` deprecation notes; then open a follow-up PR to delete the field, the resolver, and the deprecated query document. Tracked as a single tiny PR (≤50 lines) in a future cleanup wave.
+
+---
+
+## PR-09 execution log (issue #60)
+
+- **Wave 0 — Exploration** ✅ (2026-05-01)
+  - Backend patterns mapped: domain/Role, repository/role.go (FindByName/FindByIDs/AssignToUser/RevokeFromUser/ListByUser/ListByUserIDs/ListAll), usecase/admin_user.go RBAC pattern (`requireAdmin` + `mapRoleAssignmentError`), gqlerr, schema.graphql Role/Query/Mutation admin section.
+  - Frontend patterns mapped: app/admin/{users,dictionary} structure, gqlFetch RSC pattern, MockedProvider test shape, codegen client preset with fragment masking, lack of existing Sidebar.
+  - Old AdminDrawer.tsx reviewed: lucide-react icons, Tailwind dark theme, isActive highlight, expand/collapse animation. Translate links/highlight; drop AuthContext + drawer-toggle complexity (use static sidebar).
+
+- **Wave 1A — Schema extension** ✅ (commit b69bdd1) — `Query.role(id)`, `Mutation.createRole/updateRole/deleteRole`. gqlgen regenerated.
+- **Wave 1B — Repository** ✅ (commit ebf31a3) — `RoleRepository.{Create, Update, Delete, FindByID}` + `ErrRoleDuplicate` sentinel + `classifyUniqueError` helper. CASCADE on `user_roles.role_id` confirmed (no `ErrRoleAssigned` needed).
+- **Wave 2C — Usecase** ✅ (commit 1b8d16c) — `AdminRoleUsecase` with `requireAdmin` gate, `validateRoleName` (lowercase + `^[a-z0-9_-]+$` + 1..50 graphemes), system-role guard by name, TOCTOU re-mapping (`ErrRoleNotFound` post-FindByID → `BAD_USER_INPUT(id)`).
+- **Wave 2D — Resolver** ✅ (commit 516cb41) — Resolver wiring + AdminRoleUC injected via `cmd/server/main.go`. `Query.roles` left on `AdminUserUC.ListRoles` to avoid breaking PR-08 resolver tests (deferred to follow-up).
+- **Wave 3E — Admin layout** ✅ (commit a8556c9) — Server-side gate (Supabase getUser → `me { roles }` GraphQL → admin role check) before client hydration. Static sidebar (lucide-react icons, English labels). Per-page `getUser()` guards retained as defense in depth (per issue Out-of-scope clause).
+- **Wave 3F — Roles page** ✅ (commit 030a2a4) — Server seed via `gqlFetch` with fragment-less query (avoids `useFragment` in RSC). Client component with local-state list, no `optimisticResponse`, system-role buttons disabled.
+- **Wave 3G — CRUD test** ✅ (in commit 030a2a4) — 12 tests covering display, create, edit/cancel, delete, error banner, MockedProvider leak guard.
+- **Wave 4V — Verification** ✅ — `go test -race ./...` (all PASS), `pnpm typecheck` clean, `pnpm test` 264/264 PASS, language-policy grep clean, `fmt.Errorf("%w")` grep clean.
+
+LoC tally (production only): backend ~395, frontend ~406. Total ~800 — at the upper edge of the 600–800 target.
