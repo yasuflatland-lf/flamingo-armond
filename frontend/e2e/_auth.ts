@@ -29,6 +29,7 @@ type AuthCookie = {
   options: CookieOptions;
 };
 
+// These three env vars are required at module load; missing any aborts test discovery, not the individual test. See docs/e2e.md "Local Run".
 const supabaseUrl = requireEnv("E2E_SUPABASE_URL");
 const anonKey = requireEnv("E2E_SUPABASE_ANON_KEY");
 const serviceRoleKey = requireEnv("E2E_SUPABASE_SERVICE_ROLE_KEY");
@@ -49,10 +50,8 @@ function requireEnv(name: string): string {
 }
 
 function projectRef(): string {
+  // Match @supabase/supabase-js cookie name: sb-${hostname.split(".")[0]}-auth-token. For 127.0.0.1 that's sb-127-..., for localhost it's sb-localhost-...
   const { hostname } = new URL(supabaseUrl);
-  if (hostname === "127.0.0.1" || hostname === "localhost") {
-    return "127";
-  }
   return hostname.split(".")[0] ?? hostname;
 }
 
@@ -61,40 +60,49 @@ async function findUserByEmail(email: string) {
   for (;;) {
     const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage: 100 });
     if (error) throw error;
-    const user = data.users.find((candidate) => candidate.email?.toLowerCase() === email);
+    const user = data.users.find(
+      (candidate) => candidate.email?.toLowerCase() === email.toLowerCase(),
+    );
     if (user) return user;
+    // supabase-js admin listUsers returns up to perPage rows; a short page means we are past the last user.
     if (data.users.length < 100) return null;
     page += 1;
   }
 }
 
 export async function seedUser({ email, password, role, displayName }: SeedUserInput) {
-  const existing = await findUserByEmail(email);
-  const user =
-    existing ??
-    (
-      await adminClient.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: { display_name: displayName ?? email },
-      })
-    ).data.user;
+  const normalizedEmail = email.toLowerCase();
+  const existing = await findUserByEmail(normalizedEmail);
 
-  if (!user) throw new Error(`Could not create user ${email}`);
+  let user: { id: string } | null = existing ?? null;
+  if (!existing) {
+    const { data: createData, error: createError } = await adminClient.auth.admin.createUser({
+      email: normalizedEmail,
+      password,
+      email_confirm: true,
+      user_metadata: { display_name: displayName ?? normalizedEmail },
+    });
+    if (createError)
+      throw new Error(`Could not create user ${normalizedEmail}: ${createError.message}`);
+    if (!createData.user)
+      throw new Error(`Could not create user ${normalizedEmail}: supabase returned null user`);
+    user = createData.user;
+  }
+
+  if (!user) throw new Error(`Could not create user ${normalizedEmail}`);
 
   if (existing) {
     const { error } = await adminClient.auth.admin.updateUserById(user.id, {
       password,
       email_confirm: true,
-      user_metadata: { display_name: displayName ?? email },
+      user_metadata: { display_name: displayName ?? normalizedEmail },
     });
     if (error) throw error;
   }
 
   const { error: userError } = await adminClient.from("users").upsert({
     id: user.id,
-    display_name: displayName ?? email,
+    display_name: displayName ?? normalizedEmail,
   });
   if (userError) throw userError;
 
@@ -112,7 +120,7 @@ export async function seedUser({ email, password, role, displayName }: SeedUserI
   });
   if (userRoleError) throw userRoleError;
 
-  return { id: user.id, email, password, role };
+  return { id: user.id, email: normalizedEmail, password, role };
 }
 
 export async function seedCardgroup({ ownerId, name }: SeedCardgroupInput) {
@@ -122,15 +130,15 @@ export async function seedCardgroup({ ownerId, name }: SeedCardgroupInput) {
     .eq("owner_id", ownerId)
     .eq("name", name)
     .maybeSingle();
-  if (selectError) throw selectError;
+  if (selectError) throw new Error(`seedCardgroup(${ownerId}, ${name}): ${selectError.message}`);
   if (existing) return existing;
 
   const { data, error } = await adminClient
     .from("cardgroups")
-    .insert({ owner_id: ownerId, name })
+    .upsert({ owner_id: ownerId, name }, { onConflict: "owner_id,name" })
     .select("id, name")
     .single();
-  if (error) throw error;
+  if (error) throw new Error(`seedCardgroup(${ownerId}, ${name}): ${error.message}`);
   return data;
 }
 
@@ -157,6 +165,11 @@ export async function seedCards(cards: SeedCardInput[]) {
     .upsert(rows, { onConflict: "cardgroup_id,front" })
     .select("id, front, back, cardgroup_id");
   if (error) throw error;
+  if (!data || data.length !== rows.length) {
+    throw new Error(
+      `seedCards: expected ${rows.length} rows for cardgroup=${cards[0]?.cardgroupId}, got ${data?.length ?? 0}`,
+    );
+  }
   return data;
 }
 
@@ -178,7 +191,14 @@ export async function loginAs(
   });
 
   const { data, error } = await userClient.auth.signInWithPassword(credentials);
-  if (error) throw error;
+  if (error) {
+    if (error.status === 429) {
+      throw new Error(
+        `Rate-limited; consider raising rate_limit_email_sent in supabase/config.toml or reusing sessions: ${error.message}`,
+      );
+    }
+    throw error;
+  }
   if (!data.session) throw new Error(`No session returned for ${credentials.email}`);
 
   const { error: setSessionError } = await userClient.auth.setSession({
@@ -200,7 +220,13 @@ export async function loginAs(
       cookie.value &&
       (cookie.name === authCookieName || cookie.name.startsWith(`${authCookieName}.`)),
   );
-  if (sessionCookies.length === 0) throw new Error("Supabase SSR auth cookie was not produced.");
+  if (sessionCookies.length === 0) {
+    const ref = projectRef();
+    const got = cookiesToSet.map((c) => c.name).join(", ") || "(none)";
+    throw new Error(
+      `Supabase SSR auth cookie was not produced. expected prefix=sb-${ref}-auth-token, got=[${got}]`,
+    );
+  }
 
   await context.addCookies(
     sessionCookies.map((cookie) => ({
