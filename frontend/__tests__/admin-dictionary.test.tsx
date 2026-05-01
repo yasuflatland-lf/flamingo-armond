@@ -101,12 +101,28 @@ const UPSERT_FORBIDDEN_MOCK = {
   },
   result: {
     errors: [
-      // Use uppercase "FORBIDDEN" in the message so classifyError's
-      // err.message.includes("FORBIDDEN") branch triggers correctly.
-      // The new CombinedGraphQLErrors type exposes .errors not .graphQLErrors,
-      // so the graphQLErrors branch in classifyError does not fire.
-      new GraphQLError("FORBIDDEN", { extensions: { code: "FORBIDDEN" } }),
+      // Use a realistic message; classifyError inspects extensions.code === "FORBIDDEN",
+      // not the message string. Apollo throws a CombinedGraphQLErrors so the catch block
+      // in handleImport receives it and classifyError correctly identifies the code.
+      new GraphQLError("admin role required", { extensions: { code: "FORBIDDEN" } }),
     ],
+  },
+};
+
+const UPSERT_ALL_ERRORS_MOCK = {
+  request: {
+    query: UpsertDictionaryDocument,
+    variables: { input: { cardgroupId: "cg-1", payload: ENCODED_PAYLOAD } },
+  },
+  result: {
+    data: {
+      upsertDictionary: {
+        __typename: "UpsertDictionaryPayload",
+        inserted: 0,
+        updated: 0,
+        errors: [{ __typename: "UpsertDictionaryError", line: 1, message: "fk violation" }],
+      },
+    },
   },
 };
 
@@ -209,7 +225,7 @@ describe("DictionaryImportClient — validate → import flow", () => {
   });
 
   // T3: Import returns FORBIDDEN → "Admin role required." banner
-  it("shows 'Admin role required.' when upsertDictionary returns FORBIDDEN", async () => {
+  it("shows 'Admin role required.' when upsertDictionary returns FORBIDDEN (via extensions.code)", async () => {
     const user = userEvent.setup({ delay: null });
     renderComponent([CARDGROUPS_MOCK, VALIDATE_SUCCESS_MOCK, UPSERT_FORBIDDEN_MOCK]);
 
@@ -233,5 +249,65 @@ describe("DictionaryImportClient — validate → import flow", () => {
     // FORBIDDEN banner appears.
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Admin role required.");
+  });
+
+  // T4: Editing the textarea after successful validation disables the Import button.
+  it("disables Import button when the user edits the textarea after validation", async () => {
+    const user = userEvent.setup({ delay: null });
+    // Provide two validate mocks: one for the initial typed payload (used in step 1)
+    // and the FORBIDDEN mock is unrelated — we only need cardgroups + validate here.
+    renderComponent([CARDGROUPS_MOCK, VALIDATE_SUCCESS_MOCK]);
+
+    // Wait for cardgroup selector and select a cardgroup.
+    const select = await screen.findByRole("combobox", { name: /target cardgroup/i });
+    await user.selectOptions(select, "cg-1");
+
+    // Type payload into textarea.
+    const textarea = screen.getByRole("textbox", { name: /dictionary payload/i });
+    await user.type(textarea, PAYLOAD_TEXT);
+
+    // Click Validate.
+    await user.click(screen.getByRole("button", { name: /^validate$/i }));
+
+    // Wait for validation result — Import button should be enabled.
+    await screen.findByText("hello");
+    const importBtn = screen.getByRole("button", { name: /^import$/i });
+    expect(importBtn).not.toBeDisabled();
+
+    // User edits the textarea — validation result should be invalidated.
+    await user.type(textarea, "x");
+
+    // Import button must be disabled again because the stale validation was cleared.
+    expect(importBtn).toBeDisabled();
+  });
+
+  // T5: Import with all errors (0 inserted, 0 updated) renders destructive banner.
+  it("shows destructive banner when import persists no rows and has parse errors", async () => {
+    const user = userEvent.setup({ delay: null });
+    renderComponent([CARDGROUPS_MOCK, VALIDATE_SUCCESS_MOCK, UPSERT_ALL_ERRORS_MOCK]);
+
+    // Select cardgroup.
+    const select = await screen.findByRole("combobox", { name: /target cardgroup/i });
+    await user.selectOptions(select, "cg-1");
+
+    // Type payload.
+    const textarea = screen.getByRole("textbox", { name: /dictionary payload/i });
+    await user.type(textarea, PAYLOAD_TEXT);
+
+    // Validate first.
+    await user.click(screen.getByRole("button", { name: /^validate$/i }));
+    await screen.findByText("hello");
+
+    // Click Import.
+    const importBtn = screen.getByRole("button", { name: /^import$/i });
+    expect(importBtn).not.toBeDisabled();
+    await user.click(importBtn);
+
+    // Destructive banner appears instead of the green success banner.
+    const failAlert = await screen.findByRole("alert");
+    expect(failAlert).toHaveTextContent("Import failed");
+    expect(failAlert).toHaveTextContent("no rows persisted");
+    // The individual parse error is still shown in the error list.
+    expect(await screen.findByText(/fk violation/i)).toBeInTheDocument();
   });
 });
