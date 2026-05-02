@@ -52,17 +52,26 @@ const myCardgroups = [
 function makeCreateMock(args: {
   front: string;
   back: string;
+  cardgroupId?: string;
   cardId?: string;
   onCalled?: () => void;
   errors?: GraphQLError[];
   networkError?: Error;
 }): MockedResponse {
-  const { front, back, cardId = "card-new-1", onCalled, errors, networkError } = args;
+  const {
+    front,
+    back,
+    cardgroupId = CG_ID,
+    cardId = "card-new-1",
+    onCalled,
+    errors,
+    networkError,
+  } = args;
   if (networkError) {
     return {
       request: {
         query: CreateCardDocument,
-        variables: { input: { cardgroupId: CG_ID, front, back } },
+        variables: { input: { cardgroupId, front, back } },
       },
       error: networkError,
     };
@@ -70,7 +79,7 @@ function makeCreateMock(args: {
   return {
     request: {
       query: CreateCardDocument,
-      variables: { input: { cardgroupId: CG_ID, front, back } },
+      variables: { input: { cardgroupId, front, back } },
     },
     result: () => {
       onCalled?.();
@@ -88,7 +97,7 @@ function makeCreateMock(args: {
               back,
               due: "2026-04-30T00:00:00Z",
               state: 0,
-              cardgroupId: CG_ID,
+              cardgroupId,
             },
           },
         },
@@ -255,7 +264,7 @@ describe("<CardsNewClient> — stay-on-page consecutive add", () => {
 
     const indicator = await screen.findByRole("status");
     expect(indicator).toHaveAttribute("aria-live", "polite");
-    expect(indicator).toHaveTextContent(`Card added to "${CG_NAME}"`);
+    expect(indicator).toHaveTextContent(/✓ Card added to "Spanish 101"/);
   });
 
   it("does NOT call router.push after a successful submit (regression guard)", async () => {
@@ -400,5 +409,35 @@ describe("<CardsNewClient> — stay-on-page consecutive add", () => {
     });
 
     expect(screen.queryByRole("link", { name: /done/i })).not.toBeInTheDocument();
+  });
+
+  it("uses URL cardgroup id (not initialCardgroupId) for setLastViewed and SuccessIndicator after picker switch", async () => {
+    // Simulate the router having already written cg-2 into the URL (e.g. the
+    // user picked "French 101" via the picker and the URL reflects that).
+    // initialCardgroupId is still cg-1 (server-resolved before the client switch).
+    mockSearchParamsValue = "cardgroup=cg-2";
+
+    const persistCalled = vi.fn();
+    renderClient({
+      initialCardgroupId: CG_ID,
+      mocks: [
+        makeCreateMock({ cardgroupId: "cg-2", front: "Bonjour", back: "Hello", cardId: "c-fr-1" }),
+        makePersistMock({ cardgroupId: "cg-2", onCalled: persistCalled }),
+      ],
+    });
+
+    // The component should show the French 101 chip because the URL wins.
+    expect(screen.getByText("French 101")).toBeInTheDocument();
+
+    await fillAndSubmit("Bonjour", "Hello");
+
+    // SetLastViewedCardgroup must be called with cg-2 (the URL-driven id).
+    await waitFor(() => {
+      expect(persistCalled).toHaveBeenCalledTimes(1);
+    });
+
+    // SuccessIndicator must display the name of cg-2, not cg-1.
+    const indicator = await screen.findByRole("status");
+    expect(indicator).toHaveTextContent(/✓ Card added to "French 101"/);
   });
 });

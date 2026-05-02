@@ -3,7 +3,7 @@
 import { useMutation } from "@apollo/client/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SetLastViewedCardgroupMutation } from "@/app/learn/queries";
 import { CreateCardMutation } from "@/app/cardgroups/queries";
 import { CardForm } from "@/components/cardgroups/card-form";
@@ -84,6 +84,15 @@ export default function CardsNewClient({
   const [successKey, setSuccessKey] = useState<number | null>(null);
   const [lastAddedName, setLastAddedName] = useState<string | null>(null);
 
+  // Stable callback identities so that CardForm's useEffect([form, onResetReady])
+  // and SuccessIndicator's useEffect([onTimeout]) do not re-fire on every parent
+  // re-render (e.g. after the fire-and-forget setLastViewed mutation settles).
+  const handleResetReady = useCallback((fn: () => void) => {
+    resetFormRef.current = fn;
+  }, []);
+
+  const handleSuccessTimeout = useCallback(() => setSuccessKey(null), []);
+
   async function handleCreate(values: { front: string; back: string }) {
     if (!currentId) return;
     try {
@@ -128,7 +137,7 @@ export default function CardsNewClient({
         <SuccessIndicator
           key={successKey}
           message={`✓ Card added to "${lastAddedName}"`}
-          onTimeout={() => setSuccessKey(null)}
+          onTimeout={handleSuccessTimeout}
         />
       )}
 
@@ -141,9 +150,7 @@ export default function CardsNewClient({
           submitLabel="Add card"
           submitting={creating}
           error={createError}
-          onResetReady={(fn) => {
-            resetFormRef.current = fn;
-          }}
+          onResetReady={handleResetReady}
         />
       ) : (
         <p className="text-sm text-muted-foreground">Select a cardgroup above to add a card.</p>
