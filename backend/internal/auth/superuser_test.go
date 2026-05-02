@@ -218,6 +218,7 @@ func TestSuperUserPromoter_M1_EmptyEmails(t *testing.T) {
 
 // M2: anonymous request (UserFrom == nil) — no DB calls.
 func TestSuperUserPromoter_M2_AnonymousRequest(t *testing.T) {
+	t.Parallel()
 	var isAdminCalls, assignCalls atomic.Int64
 	checker := stubAdminChecker{fn: func(_ context.Context, _ string) (bool, error) {
 		isAdminCalls.Add(1)
@@ -244,6 +245,7 @@ func TestSuperUserPromoter_M2_AnonymousRequest(t *testing.T) {
 
 // M3: email not in the configured set — no DB calls.
 func TestSuperUserPromoter_M3_EmailNotInSet(t *testing.T) {
+	t.Parallel()
 	var isAdminCalls, assignCalls atomic.Int64
 	checker := stubAdminChecker{fn: func(_ context.Context, _ string) (bool, error) {
 		isAdminCalls.Add(1)
@@ -269,8 +271,9 @@ func TestSuperUserPromoter_M3_EmailNotInSet(t *testing.T) {
 	}
 }
 
-// M4: email matches but EmailVerified=false — Q5=B security gate, no DB calls.
+// M4: email matches but EmailVerified=false — unverified emails are not promoted, no DB calls.
 func TestSuperUserPromoter_M4_EmailVerifiedFalse(t *testing.T) {
+	t.Parallel()
 	var isAdminCalls, assignCalls atomic.Int64
 	checker := stubAdminChecker{fn: func(_ context.Context, _ string) (bool, error) {
 		isAdminCalls.Add(1)
@@ -571,7 +574,7 @@ func TestSuperUserPromoter_M9_ConcurrentFirstLogin(t *testing.T) {
 // with an empty Sub field (u.Sub == "") is treated as anonymous and neither
 // IsAdmin nor AssignToUser is called, even when the email is in the set.
 func TestSuperUserPromoter_AuthUserWithEmptySub(t *testing.T) {
-	// Not parallel: captureDefaultLogger mutates global slog default.
+	t.Parallel()
 	var checkerCalls atomic.Int64
 	var assignerCalls atomic.Int64
 	promoter := NewSuperUserPromoter(

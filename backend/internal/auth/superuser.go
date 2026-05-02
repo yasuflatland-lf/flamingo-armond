@@ -33,8 +33,7 @@ type SuperUserPromoter struct {
 }
 
 // ParseSuperUserSet splits a comma-separated string of email addresses into a
-// canonicalised, deduplicated set. Returns an empty (non-nil) map when raw is
-// blank. Exported so main.go can call it outside the package.
+// canonicalised, deduplicated set. Returns an empty (non-nil) map when raw is blank.
 func ParseSuperUserSet(raw string) map[string]struct{} {
 	out := make(map[string]struct{})
 	if raw == "" {
@@ -50,18 +49,15 @@ func ParseSuperUserSet(raw string) map[string]struct{} {
 	return out
 }
 
-// canonicalEmail centralizes email normalization to prevent case/whitespace
-// mismatches when comparing AuthUser.Email against the configured set.
+// canonicalEmail normalizes an email address for comparison.
 func canonicalEmail(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
 
-// NewSuperUserPromoter constructs a promoter.
-// When emails is empty (len == 0), Middleware() returns a pass-through closure
-// with zero per-request cost. It is safe to pass nil for checker, assigner,
-// and an empty adminRoleID when emails is empty.
-// Panics at startup if emails is non-empty but checker, assigner, or adminRoleID
-// are missing — these are programmer errors caught at process initialization.
+// NewSuperUserPromoter constructs a promoter. When emails is empty, Middleware
+// returns a zero-cost pass-through; checker, assigner, and adminRoleID may be
+// nil/empty in that case. Panics if emails is non-empty but any dependency is
+// missing — catches misconfiguration at process startup, not per-request.
 func NewSuperUserPromoter(
 	emails map[string]struct{},
 	adminRoleID string,
