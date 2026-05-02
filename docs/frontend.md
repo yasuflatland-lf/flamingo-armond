@@ -469,6 +469,19 @@ await mutate({ variables }).catch(console.error);
 
 Do not swallow the rejection silently with an empty `.catch(() => {})` — that hides unexpected errors (network failures, etc.).
 
+**`void refetch()` swallows `useQuery` refetch rejections.** Unlike `useMutation` where the `error` state captures GraphQL errors, a `refetch()` call from `useQuery` also returns a promise that can reject on network failure. Writing `void refetch()` (or `onClick={() => void refetch()}`) drops that rejection silently — the error never reaches the operator log. Call `.catch` explicitly with a scoped warn:
+
+```ts
+refetch().catch((err) => {
+  console.warn("[scope] refetch failed", {
+    message: err instanceof Error ? err.message : String(err),
+    err,
+  });
+});
+```
+
+This is distinct from the `useMutation` unhandled-rejection rule: `useQuery`'s `error` state does update after a failed `refetch`, so the UI error branch still renders — but without the `.catch`, no log record exists for operator triage. Reference: `frontend/src/components/cardgroups/cardgroup-picker-sheet.tsx` Retry button.
+
 **Stale-closure trap with `useMutation` `error` state:** The `error` state from `useMutation` is updated on the next render. Reading it inside the same async handler right after `await mutate(...)` reads the previous closure's stale value. Gate navigation and dialog-close on the `FetchResult` returned by the `await` instead:
 
 ```ts
@@ -519,6 +532,17 @@ field to `""` so the next submit clears the column.
 **Inverse navigation assertion in failure-path tests:** Use `expect(mockPush).not.toHaveBeenCalled()` in error-path tests to pin down "navigate-on-failure" regressions. Without this assertion, a handler that navigates unconditionally passes happy-path tests but silently breaks on errors.
 
 **`__typename` in `MockedProvider` mocks must match the generated schema type name.** Apollo's normalization layer keys cache entries on `__typename` + identifying fields, and inline-included children are also keyed by their `__typename`. A made-up name (e.g. `"ValidationError"` instead of the schema's `DictionaryValidationError`) is silently degrading: the mock still resolves, but the cache stores a malformed entry and the next lookup misses. Copy the type name from `frontend/src/generated/graphql.ts` rather than guessing.
+
+**`vi.mock` factory props must be typed with `React.ComponentProps<typeof import(...)>`, not `Record<string, unknown>`.** A `vi.mock` factory that types the captured props as `Record<string, unknown>` defeats TypeScript entirely: a future rename of any prop in the real component passes type-check silently because `Record<string, unknown>` accepts any key. Use `React.ComponentProps<typeof import("@/path/to/component").default>` instead — the import path resolves at type-check time, so a renamed prop becomes a compile error in the test. Note: the factory function body itself must also use the same type, not just the capture variable. Reference: `frontend/src/app/cards/new/cards-new-client.test.tsx` (`PickerSheetProps` and the `vi.mock` factory for `cardgroup-picker-sheet`).
+
+**E2E locators using `.last()` are positional and fragile.** Playwright's `.last()` silently picks the wrong element when DOM order changes — a new component variant, a different render branch, or a reorder of sibling nodes is enough to flip which element `.last()` resolves to, and the test still passes green while asserting the wrong thing. Instead, scope to the container that is unique to the branch you want:
+
+```ts
+const footerScope = page.locator(".mt-6.border-t.pt-4");
+const footerLink = footerScope.getByRole("link", { name: /New cardgroup/ });
+```
+
+The container CSS class is stable (it comes from the layout, not from dynamic data), so the locator stays correct even when sibling branches add or remove elements. Reference: `frontend/e2e/cardgroups-flow.spec.ts`.
 
 ## shadcn/ui
 
@@ -578,6 +602,8 @@ Being first in the chain ensures the ID is present for every subsequent link and
 **`app/<route>/error.tsx` does not catch errors from `app/layout.tsx`.** Next.js error boundaries scoped to a route segment only catch errors thrown by that segment's RSCs and components. Errors thrown inside `app/layout.tsx` (e.g. the `Header`) escape to `app/global-error.tsx`, or to Next's default crash page if `global-error.tsx` is absent. Keep shared layout components defensive — render degraded states rather than throwing.
 
 **`useRef(false)` is the correct guard for one-shot effects in error boundaries.** When an error boundary needs to call `router.replace()` exactly once, use `const hasRedirected = useRef(false)` to gate the call inside `useEffect`. Using `useState` instead would re-trigger the effect on every re-render. `useRef` mutations do not schedule a re-render and therefore cannot form a feedback loop.
+
+**`router.refresh()` after `router.push()` refreshes the source route, not the destination.** `router.refresh()` re-renders the RSC subtree for whatever page is current at call time. Calling it immediately after `router.push("/other")` targets the *current* page before the navigation settles — the destination route does not receive the refresh. `router.refresh()` is only useful when staying on the same route (e.g. after a mutation that does not navigate). When navigating to a different route, skip `router.refresh()` entirely — the destination page is a fresh server render, so there is nothing stale to clear. Reference: `frontend/src/app/cardgroups/new/new-cardgroup-client.tsx` calls `router.refresh()` only in the no-`returnTo` branch that navigates to `/cardgroups/{id}` (a same-domain refresh of the newly-pushed page is idempotent), and skips it in the `returnTo` branch where the destination is a fully fresh render.
 
 **Next 16 deprecates `middleware.ts` in favour of `proxy.ts`.** The build emits a deprecation warning (not an error) when `src/middleware.ts` exists. We intentionally stay on `middleware.ts` because `@supabase/ssr` templates and ecosystem docs still reference the old name. When the ecosystem catches up and Next removes the old name, rename `src/middleware.ts` → `src/proxy.ts` (and `src/lib/supabase/middleware.ts` → `src/lib/supabase/proxy.ts` for consistency).
 
