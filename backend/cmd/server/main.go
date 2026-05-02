@@ -196,7 +196,9 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
 	authSvc := auth.NewService(userRoleRepo)
 
-	// super-user auto-promote bootstrap
+	// Bootstrap super-user auto-promotion. If SUPER_USER_EMAILS is set, construct
+	// a promoter that grants the admin role on first login from those addresses.
+	// Otherwise, construct a pass-through promoter (zero per-request cost).
 	superUserEmails := auth.ParseSuperUserSet(os.Getenv("SUPER_USER_EMAILS"))
 	var promoter *auth.SuperUserPromoter
 	if len(superUserEmails) > 0 {
