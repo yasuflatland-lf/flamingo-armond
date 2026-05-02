@@ -1,21 +1,20 @@
 import { NextResponse } from "next/server";
-import { graphql } from "@/generated";
 import { gqlFetch } from "@/lib/apollo/server";
+import { HealthzQuery } from "./queries";
 
-const HealthQuery = graphql(`
-  query Healthz {
-    health
-  }
-`);
+type HealthzResponse = { ok: true; backend: string } | { ok: false; error: string };
 
 export async function GET() {
   try {
-    const data = await gqlFetch(HealthQuery, { revalidate: 0 });
-    return NextResponse.json({ ok: true, backend: data.health });
+    const data = await gqlFetch(HealthzQuery, { revalidate: 0 });
+    const body: HealthzResponse = { ok: true, backend: data.health };
+    return NextResponse.json(body);
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : String(err) },
-      { status: 503 },
-    );
+    console.error("[healthz] backend health check failed:", err);
+    const body: HealthzResponse = {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+    return NextResponse.json(body, { status: 503 });
   }
 }
