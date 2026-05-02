@@ -197,6 +197,17 @@ When a primary CTA's destination is the page the user is already on, do not hide
 
 The chip truncates names to `max-w-[12ch] sm:max-w-[20ch]`; long names show as ellipsis-on-mobile and the full name appears in the picker. There is no tooltip — tapping the chip already reveals the full list.
 
+### Cardgroup creation flow — two entry points
+
+Cardgroup creation entry points are intentionally asymmetric because card and cardgroup creation frequencies are roughly 95:5. Two surfaces initiate cardgroup creation:
+
+1. **From `/cardgroups` list** (low-weight footer link): When the user owns ≥1 cardgroup, a thin "+ New cardgroup" link appears at the bottom of the list. Clicking it navigates to `/cardgroups/new` without a `returnTo` query, and the completion page is `/cardgroups/{newId}` — the new cardgroup's detail page.
+2. **From `/cards/new` picker** (always-visible inline link): The `CardgroupPickerSheet` always displays a "+ Create new cardgroup…" link at the bottom, even when cardgroups exist. Clicking it navigates to `/cardgroups/new?returnTo=/cards/new`, embedding the return destination into the query parameter. After creation, the page redirects to `/cards/new?cardgroup={newId}` with the new cardgroup pre-selected in the form, keeping the user in the card creation flow without a detour.
+
+**Open-redirect guard**: The `returnTo` query is sanitized server-side in `frontend/src/app/cardgroups/new/page.tsx` via the `sanitizeReturnTo` function. Only paths starting with `/` (and not `//` or `/\`) are accepted; everything else is rejected and defaults to `/cardgroups/{newId}`. The `/\` rejection blocks the browser-normalised backslash bypass — Chrome and Firefox rewrite `/\evil.com` to `//evil.com` and follow the protocol-relative URL off-domain.
+
+The asymmetry reflects the information hierarchy: the header "+ Card" button and mobile FAB remain the global, frequent path; cardgroup creation is a setup-level operation accessible only when creating a card (picker) or managing the cardgroup list (/cardgroups). This surfaces the card → cardgroup parent-child relationship in the interaction flow.
+
 ### Design tokens — brand palette usage rules
 
 `globals.css` defines five brand tokens (`--brand-primary`, `--brand-primary-foreground`, `--brand-tint`, `--brand-tint-border`, `--brand-tint-foreground`). The product palette is intentionally narrow:
