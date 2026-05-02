@@ -9,9 +9,10 @@ import { MyCardgroupsDocument } from "@/generated/graphql";
 
 interface NewCardgroupClientProps {
   showWelcome?: boolean;
+  returnTo?: string | null;
 }
 
-export function NewCardgroupClient({ showWelcome = false }: NewCardgroupClientProps) {
+export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgroupClientProps) {
   const router = useRouter();
 
   const [createCardgroup, { loading, error }] = useMutation(CreateCardgroupMutation, {
@@ -26,8 +27,14 @@ export function NewCardgroupClient({ showWelcome = false }: NewCardgroupClientPr
       });
     },
     onCompleted(data) {
-      if (!data?.createCardgroup?.cardgroup?.id) return;
-      router.push(`/cardgroups/${data.createCardgroup.cardgroup.id}`);
+      const created = data?.createCardgroup?.cardgroup;
+      if (!created?.id) return;
+      if (returnTo) {
+        const sep = returnTo.includes("?") ? "&" : "?";
+        router.push(`${returnTo}${sep}cardgroup=${created.id}`);
+      } else {
+        router.push(`/cardgroups/${created.id}`);
+      }
       router.refresh();
     },
   });
