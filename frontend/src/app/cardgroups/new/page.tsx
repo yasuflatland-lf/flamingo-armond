@@ -12,7 +12,10 @@ export default async function NewCardgroupPage({ searchParams }: NewCardgroupPag
     data: { user },
     error: authErr,
   } = await supabase.auth.getUser();
-  if (authErr) throw authErr;
+  if (authErr && authErr.name !== "AuthSessionMissingError") {
+    console.error("[cardgroups-new] getUser() failed:", authErr.name, authErr.message);
+    throw authErr;
+  }
   if (!user) redirect("/login");
 
   const { welcome } = await searchParams;

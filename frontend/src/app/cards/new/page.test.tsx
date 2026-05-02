@@ -177,7 +177,7 @@ describe("CardsNewPage — gqlFetch error branches", () => {
 
   test("UNAUTHENTICATED from gqlFetch → redirect /login", async () => {
     vi.mocked(gqlFetch).mockRejectedValueOnce(
-      new Error("GraphQL errors: UNAUTHENTICATED"),
+      new Error(`GraphQL errors: ${JSON.stringify([{ extensions: { code: "UNAUTHENTICATED" } }])}`),
     );
 
     await expect(

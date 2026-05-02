@@ -60,7 +60,9 @@ describe("LearnPage", () => {
     vi.mocked(createSupabaseServerClient).mockResolvedValue(
       makeSupabaseMock({ id: "user-1" }) as never,
     );
-    vi.mocked(gqlFetch).mockRejectedValue(new Error("GraphQL errors: UNAUTHENTICATED"));
+    vi.mocked(gqlFetch).mockRejectedValue(
+      new Error(`GraphQL errors: ${JSON.stringify([{ extensions: { code: "UNAUTHENTICATED" } }])}`),
+    );
 
     await expect(LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) })).rejects.toThrow(
       "REDIRECT:/cardgroups",

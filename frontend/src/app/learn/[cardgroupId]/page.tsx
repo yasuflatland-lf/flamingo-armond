@@ -7,8 +7,8 @@ import type {
   LearnCardsByCardgroupQuery as LearnCardsByCardgroupQueryType,
   MeWithLastViewedQuery as MeWithLastViewedQueryType,
 } from "@/generated/graphql";
+import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
-import { redirectIfUnauthenticated } from "@/lib/apollo/server-redirect";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { LearnCardsByCardgroupQuery } from "../queries";
 import { LearnClient } from "./learn-client";
@@ -38,7 +38,11 @@ export default async function LearnPage({ params }: { params: Promise<{ cardgrou
       gqlFetch(MeWithLastViewedQuery, { revalidate: 0 }),
     ]);
   } catch (err) {
-    redirectIfUnauthenticated(err, "/cardgroups");
+    if (isUnauthenticatedGraphQLError(err)) {
+      redirect("/cardgroups");
+    }
+    console.error("[learn] gqlFetch batch failed:", err);
+    throw err;
   }
 
   if (!cardgroupData?.cardgroup) redirect("/cardgroups");

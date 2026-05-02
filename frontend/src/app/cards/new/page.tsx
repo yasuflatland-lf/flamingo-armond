@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import type { CardsNewBootstrapQuery as CardsNewBootstrapQueryType } from "@/generated/graphql";
+import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
-import { redirectIfUnauthenticated } from "@/lib/apollo/server-redirect";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import CardsNewClient from "./cards-new-client";
 import { CardsNewBootstrapQuery } from "./queries";
@@ -25,11 +25,19 @@ export default async function CardsNewPage({ searchParams }: CardsNewPageProps) 
   if (!user) redirect("/login");
 
   // --- Bootstrap data ---
-  let bootstrapData: CardsNewBootstrapQueryType;
+  let bootstrapData: CardsNewBootstrapQueryType | null = null;
   try {
     bootstrapData = await gqlFetch(CardsNewBootstrapQuery, { revalidate: 0 });
   } catch (err) {
-    redirectIfUnauthenticated(err, "/login");
+    if (isUnauthenticatedGraphQLError(err)) {
+      redirect("/login");
+    }
+    console.error("[cards-new] gqlFetch failed:", err);
+    throw err;
+  }
+
+  if (!bootstrapData) {
+    throw new Error("[cards-new] unreachable: gqlFetch resolved without data");
   }
 
   const myCardgroups = bootstrapData.myCardgroups;

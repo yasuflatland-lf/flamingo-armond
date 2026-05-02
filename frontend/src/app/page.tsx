@@ -1,26 +1,11 @@
 import { redirect } from "next/navigation";
 import { MeWithLastViewedQuery } from "@/app/queries";
 import type { MeWithLastViewedQuery as MeWithLastViewedQueryType } from "@/generated/graphql";
+import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
-import { redirectIfUnauthenticated } from "@/lib/apollo/server-redirect";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-/**
- * Root redirect for the app.
- *
- *   1. supabase.auth.getUser()
- *      - AuthSessionMissingError (no session) → /login
- *      - other error                          → console.error → throw
- *
- *   2. gqlFetch(MeWithLastViewedQuery, { revalidate: 0 })
- *      - UNAUTHENTICATED → /login (via redirectIfUnauthenticated)
- *      - other error      → throw
- *
- *   3. Branch on the result:
- *      a) me.lastViewedCardgroup != null → /learn/{id}
- *      b) myCardgroups not empty         → /cardgroups
- *      c) otherwise                       → /cardgroups/new?welcome=1
- */
+// Root redirect — see docs/frontend.md § routing topology.
 export default async function HomePage() {
   const supabase = await createSupabaseServerClient();
   const {
@@ -44,11 +29,15 @@ export default async function HomePage() {
   try {
     data = await gqlFetch(MeWithLastViewedQuery, { revalidate: 0 });
   } catch (err) {
-    redirectIfUnauthenticated(err, "/login");
+    if (isUnauthenticatedGraphQLError(err)) {
+      redirect("/login");
+    }
+    console.error("[home] gqlFetch failed:", err);
+    throw err;
   }
 
-  // `data` is non-null here: redirectIfUnauthenticated returns `never`, and the
-  // try block either populated `data` or threw (then redirected/rethrew).
+  // `data` is non-null here: the catch block always redirects or rethrows, so
+  // the try block either populated `data` or threw (then redirected/rethrew).
   if (!data) {
     throw new Error("[home] unreachable: gqlFetch resolved without data");
   }

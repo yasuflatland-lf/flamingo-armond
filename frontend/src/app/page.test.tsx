@@ -76,7 +76,9 @@ describe("HomePage (root redirect)", () => {
 
   test("UNAUTHENTICATED from gqlFetch redirects to /login", async () => {
     setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
-    vi.mocked(gqlFetch).mockRejectedValueOnce(new Error("GraphQL errors: UNAUTHENTICATED"));
+    vi.mocked(gqlFetch).mockRejectedValueOnce(
+      new Error(`GraphQL errors: ${JSON.stringify([{ extensions: { code: "UNAUTHENTICATED" } }])}`),
+    );
 
     await expect(HomePage()).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
     expect(redirect).toHaveBeenCalledWith("/login");

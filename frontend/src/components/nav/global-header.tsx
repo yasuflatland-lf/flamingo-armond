@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BookOpen, Plus } from "lucide-react";
+import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { LogoutButton } from "@/app/_components/logout-button";
@@ -8,23 +9,6 @@ import AdminPill from "./admin-pill";
 import { HeaderMeQuery } from "@/app/_components/queries";
 
 const ADMIN_ROLE = "admin" as const;
-
-function isUnauthenticatedGraphQLError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  const prefix = "GraphQL errors: ";
-  if (!err.message.startsWith(prefix)) return false;
-  try {
-    const parsed = JSON.parse(err.message.slice(prefix.length)) as Array<{
-      extensions?: { code?: string };
-    }>;
-    return (
-      Array.isArray(parsed) &&
-      parsed.some((e) => e?.extensions?.code === "UNAUTHENTICATED")
-    );
-  } catch {
-    return false;
-  }
-}
 
 export async function GlobalHeader() {
   const supabase = await createSupabaseServerClient();
