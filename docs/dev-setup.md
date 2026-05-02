@@ -162,7 +162,7 @@ The backend fails to start if any of these is missing — check `supabase status
 
 - **`127.0.0.1` only, never `localhost`**: Google OAuth treats them as distinct hosts. Access the app via `127.0.0.1:3000` so the origin matches what was registered with Google and the `supabase start` output.
 - **Secrets stay in `.env.local`**: never paste them into `supabase/config.toml`. The toml only contains `env()` placeholders.
-- **`backend/.env.example` drift**: `make setup` / `make sync-env` seeds `backend/.env.local` only when that file is entirely absent (`env_ownership[item.target] == 'missing'` in `playbooks/setup.yml`); subsequent runs leave the existing file untouched. When `backend/.env.example` gains a new key (e.g. `SUPER_USER_EMAILS`), operators who already have a seeded `backend/.env.local` will not receive the new line automatically. After pulling from main, check for newly added keys with `git diff main -- backend/.env.example` and copy any missing blocks into `backend/.env.local` by hand.
+- **`backend/.env.example` drift**: `make setup` / `make sync-env` seeds `backend/.env.local` only when that file is entirely absent (`env_ownership[item.target] == 'missing'` in `playbooks/setup.yml`); subsequent runs leave the existing file untouched. When `backend/.env.example` gains a new key (e.g. `SUPER_USER_EMAILS`), operators who already have a seeded `backend/.env.local` will not receive the new line automatically. After pulling from main, check for newly added keys with `git diff main -- backend/.env.example` and add any missing blocks to `backend/.env.local` by hand.
 
 For the production setup of the same Google sign-in path (Supabase project, Vercel, Render, Supabase Auth settings), see `docs/deployment.md`.
 
