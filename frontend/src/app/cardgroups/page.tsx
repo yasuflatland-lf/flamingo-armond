@@ -1,6 +1,6 @@
+import { Plus } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Plus } from "lucide-react";
 import { CardgroupListItem } from "@/components/cardgroups/cardgroup-list-item";
 import type { MyCardgroupsQuery as MyCardgroupsQueryType } from "@/generated/graphql";
 import { gqlFetch } from "@/lib/apollo/server";

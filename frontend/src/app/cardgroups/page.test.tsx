@@ -96,9 +96,7 @@ describe("CardgroupsPage", () => {
 
   it("renders footer-style New cardgroup link when cardgroups list is non-empty", async () => {
     vi.mocked(gqlFetch).mockResolvedValue({
-      myCardgroups: [
-        { id: "cg-1", name: "Spanish Vocab", updatedAt: "2024-06-15T10:00:00.000Z" },
-      ],
+      myCardgroups: [{ id: "cg-1", name: "Spanish Vocab", updatedAt: "2024-06-15T10:00:00.000Z" }],
     } as never);
 
     const jsx = await CardgroupsPage();
@@ -112,9 +110,7 @@ describe("CardgroupsPage", () => {
 
   it("does not render the top-right New cardgroup button when cardgroups exist", async () => {
     vi.mocked(gqlFetch).mockResolvedValue({
-      myCardgroups: [
-        { id: "cg-1", name: "Spanish Vocab", updatedAt: "2024-06-15T10:00:00.000Z" },
-      ],
+      myCardgroups: [{ id: "cg-1", name: "Spanish Vocab", updatedAt: "2024-06-15T10:00:00.000Z" }],
     } as never);
 
     const jsx = await CardgroupsPage();

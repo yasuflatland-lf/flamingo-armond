@@ -39,8 +39,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: vi.fn(() =>
     Promise.resolve({
       auth: {
-        getUser: () =>
-          Promise.resolve({ data: { user: { id: "u-1" } }, error: null }),
+        getUser: () => Promise.resolve({ data: { user: { id: "u-1" } }, error: null }),
       },
     }),
   ),
@@ -290,9 +289,9 @@ describe("authentication boundary", () => {
       },
     } as Awaited<ReturnType<typeof createSupabaseServerClient>>);
 
-    await expect(
-      NewCardgroupPage({ searchParams: Promise.resolve({}) }),
-    ).rejects.toThrow("REDIRECT:/login");
+    await expect(NewCardgroupPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
+      "REDIRECT:/login",
+    );
 
     expect(mockRedirect).toHaveBeenCalledWith("/login");
   });
@@ -308,9 +307,10 @@ describe("authentication boundary", () => {
       },
     } as Awaited<ReturnType<typeof createSupabaseServerClient>>);
 
-    await expect(
-      NewCardgroupPage({ searchParams: Promise.resolve({}) }),
-    ).rejects.toMatchObject({ name: "SomeOtherError", message: "boom" });
+    await expect(NewCardgroupPage({ searchParams: Promise.resolve({}) })).rejects.toMatchObject({
+      name: "SomeOtherError",
+      message: "boom",
+    });
 
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "[cardgroups-new] getUser() failed:",
