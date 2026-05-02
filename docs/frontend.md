@@ -177,10 +177,19 @@ The admin entry surfaces (desktop `AdminPill`, mobile hamburger admin section) a
 Three components live under `frontend/src/components/nav/` and compose into the root layout:
 
 - `GlobalHeader` — RSC; rendered from `app/layout.tsx`. Mobile shows hamburger + logo + truncated email; desktop shows logo + nav links + `+ Card` CTA + `AdminPill` (when admin) + `LogoutButton`. Header MUST degrade silently on `getUser()` or `me`-query failure — see the rule.
-- `GlobalFAB` — Client; floats bottom-right with the coral `--brand-primary` background. Hidden on `/login`, `/learn/*`, `/admin/*`, `/cards/new`, `/cardgroups/new` — i.e. routes that are anonymous-only, full-bleed UI, a different audience, or the FAB's own destination (would loop). Hide list lives in one regex (`HIDDEN_PATH_RE`) inside `global-fab.tsx`; there is no allow-list. The FAB does NOT pre-pend `?cardgroup=...` — `/cards/new` owns the 4-priority resolution; passing the id from the FAB would create two truths.
+- `GlobalFAB` — Client; floats bottom-right with the coral `--brand-primary` background. Hidden on `/login`, `/learn/*`, `/admin/*`, `/cards/new`, `/cardgroups/new` — i.e. routes that are anonymous-only, full-bleed UI, a different audience, or the FAB's own destination (would loop). Hide list lives in one regex (`HIDDEN_PATH_RE`) inside `global-fab.tsx`; there is no allow-list. The FAB also wraps its button in an `md:hidden` container so the desktop header `+ Card` CTA is the **single** add-card affordance at `>= md` — see "Breakpoint-exclusive primary action" below. The FAB does NOT pre-pend `?cardgroup=...` — `/cards/new` owns the 4-priority resolution; passing the id from the FAB would create two truths.
+- `HeaderAddCardLink` — Client; the desktop `+ Card` CTA. Lives in `frontend/src/components/nav/header-add-card-link.tsx` so the surrounding `GlobalHeader` can stay an RSC. Reads `usePathname()` and applies the "current location CTA" pattern below when on `/cards/new`.
 - `HamburgerDrawer` — Client; mobile-only. Three visually-divided groups separated by `<hr>`: (1) primary nav (Cardgroups, Profile), (2) admin entry tinted with `bg-brand-tint` + `border-brand-tint-border` when `isAdmin`, (3) sign-out. The admin tint is the **only** non-CTA use of the brand palette — see "Design tokens" below.
 
 `AdminPill` is a server component rendered inline in the desktop header when `isAdmin === true`. Its tint comes from the same `--brand-tint*` family as the hamburger admin section so the two surfaces are visually linked.
+
+#### Breakpoint-exclusive primary action
+
+When two surfaces would render the same primary CTA at the same time (here: the desktop header `+ Card` button and the mobile `GlobalFAB`), make them **mutually exclusive by Tailwind class** (`md:hidden` on the FAB, `hidden md:flex` would go on a desktop-only nav element) rather than by a JS `useMediaQuery` hook. Two reasons: (1) SSR and CSR render the same markup, so there is no hydration flash where both affordances briefly appear; (2) no React re-render fires on viewport change — the browser handles the transition in CSS. Reach for `useMediaQuery` only when the *content* (not just visibility) differs across breakpoints, which is rare.
+
+#### Current-location CTA — `aria-current="page"` plus disabled styling
+
+When a primary CTA's destination is the page the user is already on, do not hide it (the layout would jump and the user loses orientation) and do not disable it as a `<button>` (it is a `<Link>`, not a button). Apply `aria-current="page"` for screen-reader semantics and pair with `pointer-events-none opacity-60` to make the same `<Link>` visually subdued and unclickable. Drop the hover variant on the same branch — a hover-color flash on a non-interactive element is dishonest. `HeaderAddCardLink` is the reference implementation.
 
 ### Cardgroup chip + picker primitives
 
@@ -462,6 +471,16 @@ if (result?.data?.updateCardgroup?.cardgroup) {
 
 **Form remount via React `key` to reset fields:** After a successful create-mutation, bump a numeric `key` state variable passed to the form component (`<CardForm key={createFormKey} ...>`). React unmounts and remounts the component, resetting all TanStack Form field state without manual `form.reset()` calls.
 
+**Stay-on-page consecutive add:** A create flow may deliberately *not* navigate after success — the user expects to add several items in a row without leaving the page. Three pieces compose:
+
+1. The submit handler does NOT call `router.push(...)` on success. Instead it (a) clears the form, (b) shows a transient success indicator, and (c) leaves the user with an explicit "Done" link to the natural next page (e.g. `/cardgroups/<id>/cards`). The "Done" link is the only navigation-out affordance, so back-button history stays clean — every add is one history entry on the same URL, not N entries on the destination page.
+2. The success indicator is a separate component keyed on a `useState<number | null>` whose value is bumped (`setSuccessKey(Date.now())`) on each successful submit. Because React unmounts-and-remounts on key change, the indicator's `setTimeout(..., 2000)` cleanup runs and a fresh timer starts — two rapid submits get two full 2 s windows, not one extended one. A boolean "isVisible" flag with a single timer would silently extend the previous timer when the second submit lands inside the first's window.
+3. Pin "we did not navigate" in a regression-guard test: `expect(mockPush).not.toHaveBeenCalled()` after a successful submit. Without the inverse assertion, a refactor that re-introduces `router.push(...)` passes the happy-path tests (form clears, indicator renders) and silently breaks the consecutive-add UX. Reference: `frontend/src/app/cards/new/cards-new-client.test.tsx`.
+
+**`onResetReady?: (resetFn: () => void) => void` — callback inversion to expose `form.reset()` to the parent without giving up `useForm` ownership:** The form's parent (e.g. `CardsNewClient`) needs to call `form.reset()` after the parent's submit-handler succeeds, but `useForm()` must live inside the form component because field validators depend on its identity. `forwardRef + useImperativeHandle` works but pulls the parent into the ref dance for one method. The lighter pattern: the form component accepts an optional `onResetReady` callback and runs `useEffect(() => onResetReady?.(() => form.reset({...})), [form, onResetReady])` once after mount, handing the parent a closure over the live `form`. The parent stores the closure in a `useRef<(() => void) | null>` and calls it from its submit handler. This keeps `useForm` lifecycle inside the child and makes the wiring trivially testable (the parent test does not touch the form's internal state). Reference: `frontend/src/components/cardgroups/card-form.tsx` (`onResetReady`) consumed by `frontend/src/app/cards/new/cards-new-client.tsx`.
+
+**Stable callback identity for child effect deps:** When a child component lists a parent-supplied callback in its `useEffect` dependency array (e.g. `useEffect(() => onResetReady?.(...), [form, onResetReady])`, or a self-dismissing indicator's `useEffect(..., [onTimeout])`), passing an inline arrow (`<Child onX={() => ...} />`) makes the dep change identity on every parent re-render and re-fires the effect. For a `setTimeout`-based dismiss this manifests as the timer never firing — each parent re-render restarts it. Wrap the parent-supplied callback in `useCallback(..., [...])` so the identity is stable across renders that do not change the captured closure. The bug surfaced concretely in `cards-new-client.tsx` where a fire-and-forget `setLastViewedCardgroup` mutation settling caused a parent re-render that reset the success indicator's 2 s timer on every animation frame. This is a React fundamentals issue, not a library quirk — but the failure mode is silent (component does not throw, timers just never elapse).
+
 **Validate-then-mutate flows must invalidate the validation result on input edit.** When a UI splits a server-side check (`validateDictionary`) from a destructive mutation (`upsertDictionary`) and gates the mutation button on the validation result, the validation state goes stale the instant the user edits any input feeding into it. Without explicit invalidation, the user can validate text A, edit to text B, and then submit B against a "valid" gate. The pattern is a `useEffect(() => setValidation(null), [<all input deps>])` whose callback only resets state — the deps array is trigger-only, which Biome flags as `lint/correctness/useExhaustiveDependencies`. Suppress with the inline `biome-ignore` comment as in `frontend/src/app/admin/dictionary/dictionary-client.tsx`.
 
 #### Bio explicit clear UX
@@ -669,6 +688,22 @@ afterEach(() => {
 ```
 
 Reference: `frontend/src/components/nav/global-header.test.tsx`. This applies to any test file that calls `vi.spyOn(...)` on a global (`console`, `Date`, `crypto`) or a module export.
+
+### `vi.useRealTimers()` in `afterEach` is a defensive guard for fake-timer leaks
+
+A single test that calls `vi.useFakeTimers()` and then `throw`s — or simply forgets to call `vi.useRealTimers()` at the end — leaks fake timers into every subsequent test in the same file. Symptoms: `userEvent` interactions hang because their internal `setTimeout(0)` never fires, and `MockedProvider`'s async resolution never settles because the microtask runner is paused. The whole suite then times out with no useful stack pointing at the offending test. Pin a defensive `vi.useRealTimers()` in `afterEach` in any file that touches fake timers (or *might* touch them via a refactor):
+
+```ts
+afterEach(() => {
+  vi.useRealTimers();
+  // ...other teardown
+});
+```
+
+Two corollaries:
+
+1. **Real timers + `waitFor` is usually the right tool for `setTimeout`-based UI** (e.g. a 2 s self-dismissing banner). Switching to fake timers `AFTER` the `setTimeout` is already pending does not migrate the existing real-timer handle into the fake queue — the timer keeps running on real time while `vi.advanceTimersByTime(...)` does nothing. Either install fake timers before the component mounts, or stay on real timers and `waitFor(..., { timeout: 3000 })`.
+2. **Avoid `mockImplementation(() => {})` on outer console spies that wrap an Apollo leak spy.** The leak spy from `installApolloMockLeakSpy` is itself a `console.warn` spy with `mockImplementation`; installing a second `vi.spyOn(console, "warn")` afterwards makes the second spy *outer* (it intercepts first), and an `outer.mockImplementation(() => {})` call swallows every warning before it ever reaches the inner leak spy — the inner spy then records nothing and `assertNoLeaks()` becomes a no-op. Track non-leak warnings via `expect(consoleWarnSpy).toHaveBeenCalledWith(...)` instead, and keep the outer spy in pass-through (call-recording) mode. Restore the outer spy first in `afterEach`, then the leak spy — LIFO order matches the install order. See the rule in `.claude/rules/pagination.md` § "Capture `console.warn` for MockedProvider leaks" for the full chain.
 
 ### Apollo Client v4 testing migration gotchas
 
