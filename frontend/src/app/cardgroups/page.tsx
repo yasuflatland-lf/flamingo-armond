@@ -35,7 +35,7 @@ export default async function CardgroupsPage() {
         <h1 className="text-2xl font-semibold">My Cardgroups</h1>
         <Link
           href="/cardgroups/new"
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          className="rounded-md bg-brand-primary px-4 py-2 text-sm font-medium text-brand-primary-foreground hover:opacity-90 transition-opacity"
         >
           New cardgroup
         </Link>
@@ -46,7 +46,7 @@ export default async function CardgroupsPage() {
           <p className="mb-4 text-muted-foreground">You haven&apos;t created any cardgroups yet.</p>
           <Link
             href="/cardgroups/new"
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+            className="rounded-md bg-brand-primary px-4 py-2 text-sm font-medium text-brand-primary-foreground hover:opacity-90 transition-opacity"
           >
             New cardgroup
           </Link>
