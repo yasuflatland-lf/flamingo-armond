@@ -28,9 +28,12 @@ import HomePage from "@/app/page";
 
 // ---------------------------------------------------------------------------
 
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
 beforeEach(() => {
   vi.clearAllMocks();
   resetMockSupabase();
+  consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -61,5 +64,20 @@ describe("HomePage (root redirect)", () => {
 
     await expect(HomePage()).rejects.toBe(transportError);
     expect(redirect).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[home]"),
+      transportError.name,
+      transportError.message,
+    );
+  });
+
+  test("AuthSessionMissingError is silenced and user is redirected to /login", async () => {
+    const noSession = new Error("Auth session missing!");
+    noSession.name = "AuthSessionMissingError";
+    setMockSupabaseUserError(noSession);
+
+    await expect(HomePage()).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
+    expect(redirect).toHaveBeenCalledWith("/login");
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 });

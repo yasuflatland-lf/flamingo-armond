@@ -7,6 +7,9 @@ export default async function HomePage() {
     data: { user },
     error,
   } = await supabase.auth.getUser();
-  if (error && error.name !== "AuthSessionMissingError") throw error;
+  if (error && error.name !== "AuthSessionMissingError") {
+    console.error("[home] getUser() failed:", error.name, error.message);
+    throw error;
+  }
   redirect(user ? "/cardgroups" : "/login");
 }
