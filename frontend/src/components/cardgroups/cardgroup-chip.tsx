@@ -2,6 +2,7 @@
 
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 type CardgroupChipProps = {
   name: string | null;
@@ -9,6 +10,8 @@ type CardgroupChipProps = {
 };
 
 export function CardgroupChip({ name, onChangeRequested }: CardgroupChipProps) {
+  // Truthy coalescing (||) intentionally treats "" the same as null — see test
+  // "renders placeholder for empty-string name (treated as no name)".
   const displayName = name || "Select cardgroup";
   const isMuted = !name;
 
@@ -23,9 +26,10 @@ export function CardgroupChip({ name, onChangeRequested }: CardgroupChipProps) {
       className="inline-flex items-center gap-2"
     >
       <span
-        className={`truncate max-w-[12ch] sm:max-w-[20ch] text-sm ${
-          isMuted ? "text-muted-foreground" : ""
-        }`}
+        className={cn(
+          "truncate max-w-[12ch] sm:max-w-[20ch] text-sm",
+          isMuted && "text-muted-foreground",
+        )}
       >
         {displayName}
       </span>

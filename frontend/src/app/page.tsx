@@ -13,19 +13,15 @@ export default async function HomePage() {
     error: authErr,
   } = await supabase.auth.getUser();
 
-  if (authErr) {
-    if (authErr.name === "AuthSessionMissingError") {
-      redirect("/login");
-    }
+  // AuthSessionMissingError is the "no session" signal — fall through to the
+  // !user redirect below. Any other auth error is a real failure.
+  if (authErr && authErr.name !== "AuthSessionMissingError") {
     console.error("[home] getUser() failed:", authErr.name, authErr.message);
     throw authErr;
   }
+  if (!user) redirect("/login");
 
-  if (!user) {
-    redirect("/login");
-  }
-
-  let data: MeWithLastViewedQueryType | null = null;
+  let data: MeWithLastViewedQueryType;
   try {
     data = await gqlFetch(MeWithLastViewedQuery, { revalidate: 0 });
   } catch (err) {
@@ -34,12 +30,6 @@ export default async function HomePage() {
     }
     console.error("[home] gqlFetch failed:", err);
     throw err;
-  }
-
-  // `data` is non-null here: the catch block always redirects or rethrows, so
-  // the try block either populated `data` or threw (then redirected/rethrew).
-  if (!data) {
-    throw new Error("[home] unreachable: gqlFetch resolved without data");
   }
 
   const lastViewedId = data.me?.lastViewedCardgroup?.id ?? null;

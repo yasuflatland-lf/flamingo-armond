@@ -12,6 +12,7 @@ const learner = {
   email: `returning-learn-${runId}@example.test`,
   password: "e2e-password",
 };
+const SWIPE_CARD = '[data-testid="swipe-card"]';
 
 let groupA: Awaited<ReturnType<typeof seedCardgroup>>;
 let groupB: Awaited<ReturnType<typeof seedCardgroup>>;
@@ -45,55 +46,46 @@ test.describe
       context,
       page,
     }) => {
-      // ── Session 1: warm the lastViewedCardgroup by visiting /learn/A. ─────
+      // Session 1: warm last_viewed by visiting /learn/A then /learn/B.
       await loginAs(context, learner);
 
-      // The user has cardgroups but no last_viewed yet → home redirects to /cardgroups.
+      // User has cardgroups but no last_viewed yet → home redirects to /cardgroups.
       await page.goto("/");
       await page.waitForURL("**/cardgroups", { timeout: 10_000 });
 
-      // Visit /learn/A directly — LearnClient's mount effect fires
-      // setLastViewedCardgroup, which persists last_viewed = A server-side.
+      // LearnClient's mount effect fires setLastViewedCardgroup, persisting last_viewed server-side.
       const responseA = await page.goto(`/learn/${groupA.id}`);
       expect(responseA?.ok(), `goto /learn/A returned ${responseA?.status()}`).toBe(true);
       await expect(page.getByText(groupA.name)).toBeVisible();
-      // Wait for at least one swipe card so the LearnClient mount effect has
-      // had a tick to issue the mutation. The mutation itself is non-blocking
-      // (warn-on-failure), so we additionally rely on the home-redirect on the
-      // next session to assert the server-side state was actually persisted.
-      await expect(page.locator('[data-testid="swipe-card"]').first()).toBeVisible();
+      await expect(page.locator(SWIPE_CARD).first()).toBeVisible();
 
-      // ── Switch to /learn/B; this re-fires the mutation with cardgroupId=B. ─
+      // Switch to /learn/B; this re-fires the mutation with cardgroupId=B.
       const responseB = await page.goto(`/learn/${groupB.id}`);
       expect(responseB?.ok(), `goto /learn/B returned ${responseB?.status()}`).toBe(true);
       await expect(page.getByText(groupB.name)).toBeVisible();
-      await expect(page.locator('[data-testid="swipe-card"]').first()).toBeVisible();
+      await expect(page.locator(SWIPE_CARD).first()).toBeVisible();
 
-      // Before logout, deterministically wait for the persist mutation to land.
-      // The mount-effect fires setLastViewedCardgroup, which persists cardgroupId=B
-      // server-side. Using waitForResponse keyed on the operation name avoids the
-      // racy networkidle (500ms idle), which can return early under Apollo's async
-      // cache-write timeline and hide persistence regressions.
+      // Deterministically wait for the persist mutation to land before logout.
+      // waitForResponse keyed on the operation name avoids the racy networkidle
+      // (500ms idle), which can return early under Apollo's async cache-write
+      // timeline and hide persistence regressions.
       await page.waitForResponse(
         (res) =>
           res.url().includes("/api/graphql") &&
           res.request().postDataJSON()?.operationName === "SetLastViewedCardgroup",
       );
 
-      // ── Logout: clear cookies so the next login starts from a cold state. ──
+      // Logout: clear cookies so the next login starts cold.
       await context.clearCookies();
-
-      // Sanity check: hitting / now bounces to /login.
       await page.goto("/");
       await page.waitForURL("**/login", { timeout: 10_000 });
 
-      // ── Session 2: re-login and verify home redirects to /learn/B. ────────
+      // Session 2: re-login and verify home redirects to /learn/B.
       await loginAs(context, learner);
       await page.goto("/");
       await page.waitForURL(`**/learn/${groupB.id}`, { timeout: 10_000 });
 
-      // Confirm the page actually rendered the cardgroup B context, not a stale
-      // shell of cardgroup A. waitForURL alone does not assert paint.
+      // Confirm cardgroup B actually painted (waitForURL alone does not assert paint).
       await expect(page.getByText(groupB.name)).toBeVisible();
     });
   });

@@ -8,8 +8,6 @@ import { HamburgerDrawer } from "./hamburger-drawer";
 import AdminPill from "./admin-pill";
 import { HeaderMeQuery } from "@/app/_components/queries";
 
-const ADMIN_ROLE = "admin" as const;
-
 export async function GlobalHeader() {
   const supabase = await createSupabaseServerClient();
   const {
@@ -35,16 +33,14 @@ export async function GlobalHeader() {
   if (user) {
     try {
       const meData = await gqlFetch(HeaderMeQuery, { revalidate: 0 });
-      isAdmin = meData.me?.roles.some((r) => r.name === ADMIN_ROLE) ?? false;
+      isAdmin = meData.me?.roles.some((r) => r.name === "admin") ?? false;
     } catch (err) {
       // Expected race: Supabase session valid but GraphQL token rejected
       // (clock skew, JWKS rotation gap). The /admin layout redirects on
       // actual navigation, so the header degrades silently here.
-      const isUnauthenticated = isUnauthenticatedGraphQLError(err);
-      if (!isUnauthenticated) {
-        const msg = err instanceof Error ? err.message : String(err);
+      if (!isUnauthenticatedGraphQLError(err)) {
         console.warn("[global-header] me query unexpectedly failed", {
-          error_message: msg,
+          error_message: err instanceof Error ? err.message : String(err),
           user_id: user.id,
         });
       }
@@ -79,14 +75,12 @@ export async function GlobalHeader() {
 
       {/* ── Desktop layout (≥ md) ─────────────────────────────────── */}
       <div className="hidden md:flex md:items-center md:gap-4 md:w-full">
-        {/* Logo */}
         <Link href="/" className="font-semibold shrink-0">
           🦩 flamingo-armond
         </Link>
 
         {user ? (
           <>
-            {/* Primary nav links */}
             <nav className="flex items-center gap-3 text-sm ml-2">
               <Link
                 href="/cardgroups"
@@ -105,7 +99,6 @@ export async function GlobalHeader() {
               </Link>
             </nav>
 
-            {/* Right-side user area */}
             <div className="flex items-center gap-3 text-sm ml-auto">
               <Link
                 href="/profile"

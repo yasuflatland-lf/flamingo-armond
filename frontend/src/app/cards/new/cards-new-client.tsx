@@ -46,17 +46,16 @@ export default function CardsNewClient({
 
   async function handleCreate(values: { front: string; back: string }) {
     if (!currentId) return;
-    await createCard({
-      variables: {
-        input: { cardgroupId: currentId, front: values.front, back: values.back },
-      },
-    })
-      .then(() => {
-        router.push(`/cardgroups/${currentId}/cards`);
-      })
-      .catch((err) => {
-        console.error("[cards-new-client] create card rejection", err);
+    try {
+      await createCard({
+        variables: {
+          input: { cardgroupId: currentId, front: values.front, back: values.back },
+        },
       });
+      router.push(`/cardgroups/${currentId}/cards`);
+    } catch (err) {
+      console.error("[cards-new-client] create card rejection", err);
+    }
   }
 
   function handlePickerSelect(newId: string) {

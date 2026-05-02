@@ -25,7 +25,7 @@ export default async function CardsNewPage({ searchParams }: CardsNewPageProps) 
   if (!user) redirect("/login");
 
   // --- Bootstrap data ---
-  let bootstrapData: CardsNewBootstrapQueryType | null = null;
+  let bootstrapData: CardsNewBootstrapQueryType;
   try {
     bootstrapData = await gqlFetch(CardsNewBootstrapQuery, { revalidate: 0 });
   } catch (err) {
@@ -34,10 +34,6 @@ export default async function CardsNewPage({ searchParams }: CardsNewPageProps) 
     }
     console.error("[cards-new] gqlFetch failed:", err);
     throw err;
-  }
-
-  if (!bootstrapData) {
-    throw new Error("[cards-new] unreachable: gqlFetch resolved without data");
   }
 
   const myCardgroups = bootstrapData.myCardgroups;

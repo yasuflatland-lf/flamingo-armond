@@ -12,6 +12,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 
 type Props = {
   open: boolean;
@@ -35,7 +36,7 @@ export default function CardgroupPickerSheet({
   onOpenChange,
   selectedId,
   onSelect,
-}: Props) {
+}: Props): React.ReactElement {
   const { data, loading, error, refetch } = useQuery(MyCardgroupsQuery, {
     skip: !open,
     fetchPolicy: "cache-and-network",
@@ -105,14 +106,12 @@ export default function CardgroupPickerSheet({
                       <button
                         type="button"
                         onClick={() => handleSelect(cg.id)}
-                        className={[
+                        className={cn(
                           "flex w-full items-center justify-between rounded-md px-3 py-3 text-left text-sm",
                           "transition-colors hover:bg-accent hover:text-accent-foreground",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                          isSelected ? "font-medium" : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
+                          isSelected && "font-medium",
+                        )}
                         aria-pressed={isSelected}
                       >
                         <span className="truncate">{cg.name}</span>

@@ -27,9 +27,9 @@ export default async function LearnPage({ params }: { params: Promise<{ cardgrou
 
   const { cardgroupId } = await params;
 
-  let cardgroupData: CardgroupQueryType | null = null;
-  let cardsData: LearnCardsByCardgroupQueryType | null = null;
-  let meData: MeWithLastViewedQueryType | null = null;
+  let cardgroupData: CardgroupQueryType;
+  let cardsData: LearnCardsByCardgroupQueryType;
+  let meData: MeWithLastViewedQueryType;
 
   try {
     [cardgroupData, cardsData, meData] = await Promise.all([
@@ -45,10 +45,10 @@ export default async function LearnPage({ params }: { params: Promise<{ cardgrou
     throw err;
   }
 
-  if (!cardgroupData?.cardgroup) redirect("/cardgroups");
+  if (!cardgroupData.cardgroup) redirect("/cardgroups");
 
-  const cards = cardsData?.cardsByCardgroup ?? [];
-  const lastViewedCardgroupId = meData?.me?.lastViewedCardgroup?.id ?? null;
+  const cards = cardsData.cardsByCardgroup ?? [];
+  const lastViewedCardgroupId = meData.me?.lastViewedCardgroup?.id ?? null;
 
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-background">

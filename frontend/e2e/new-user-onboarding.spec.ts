@@ -13,6 +13,7 @@ const newcomer = {
   password: "e2e-password",
 };
 const cardgroupName = `E2E onboarding ${runId}`;
+const UUID_RE = /^[0-9a-f-]{36}$/;
 
 test.describe
   .serial("new user onboarding", () => {
@@ -33,7 +34,7 @@ test.describe
     }) => {
       await loginAs(context, newcomer);
 
-      // ── 1. Home redirects to onboarding because user has no cardgroups. ───
+      // 1. Home redirects to onboarding because user has no cardgroups.
       await page.goto("/");
       await page.waitForURL("**/cardgroups/new?welcome=1", { timeout: 10_000 });
       await expect(
@@ -41,20 +42,16 @@ test.describe
       ).toBeVisible();
       await expect(page.getByRole("heading", { name: "New cardgroup" })).toBeVisible();
 
-      // ── 2. Submit the create-cardgroup form. ──────────────────────────────
+      // 2. Submit the create-cardgroup form. onCompleted pushes /cardgroups/<newId>;
+      // wait for the navigation rather than a fixed URL so we can capture the new id.
       await page.getByLabel("Name").fill(cardgroupName);
       await page.getByRole("button", { name: "Create" }).click();
-
-      // The mutation's onCompleted pushes /cardgroups/<newId>; wait for the
-      // navigation rather than asserting on the URL string directly so we
-      // capture the new id.
       await page.waitForURL(/\/cardgroups\/[0-9a-f-]{36}$/, { timeout: 15_000 });
-      const cardgroupDetailUrl = page.url();
-      const newCardgroupId = cardgroupDetailUrl.split("/").pop() ?? "";
-      expect(newCardgroupId).toMatch(/^[0-9a-f-]{36}$/);
+      const newCardgroupId = page.url().split("/").pop() ?? "";
+      expect(newCardgroupId).toMatch(UUID_RE);
       await expect(page.getByRole("heading", { name: cardgroupName })).toBeVisible();
 
-      // ── 3. Click the global "+ Card" FAB to open /cards/new. ─────────────
+      // 3. Click the global "+ Card" FAB to open /cards/new.
       // The FAB renders at the root layout level and is hidden on a few paths
       // (/learn/*, /admin/*, /cards/new, /cardgroups/new); /cardgroups/<id> is
       // not on the hidden list so the FAB must be present here.
@@ -62,24 +59,22 @@ test.describe
       await expect(fab).toBeVisible();
       await fab.click();
 
-      // The FAB at the root layout is invoked without lastViewedCardgroupId, so
-      // it navigates to bare /cards/new. The /cards/new RSC then resolves the
+      // The root-layout FAB is invoked without lastViewedCardgroupId, so it
+      // navigates to bare /cards/new. The /cards/new RSC then resolves the
       // cardgroup: ?cardgroup= is empty, me.lastViewedCardgroup is still null
       // (the user has not visited /learn yet), and myCardgroups has exactly one
-      // entry → forcePickerOpen=true so the picker auto-opens with the
-      // chip in its undetermined "Select cardgroup" state.
+      // entry → forcePickerOpen=true so the picker auto-opens.
       await page.waitForURL("**/cards/new", { timeout: 10_000 });
 
-      // ── 4. The cardgroup picker auto-opens — choose the new cardgroup. ────
-      // The picker is a Radix Dialog with focus-trap + aria-hidden on the rest
-      // of the page, so we must not assert against headings outside the dialog
-      // while the picker is open. Assert the picker title (inside the dialog)
-      // first, click the cardgroup, and only then verify the underlying form.
+      // 4. The picker is a Radix Dialog with focus-trap + aria-hidden on the
+      // rest of the page, so we must not assert against headings outside the
+      // dialog while it is open. Assert the dialog title, click the cardgroup,
+      // and only then verify the underlying form.
       const dialog = page.getByRole("dialog", { name: "Select cardgroup" });
       await expect(dialog).toBeVisible();
       await dialog.getByRole("button", { name: cardgroupName }).click();
 
-      // ── 5. URL gains ?cardgroup=<id> and the chip is pre-selected. ───────
+      // 5. URL gains ?cardgroup=<id> and the chip is pre-selected.
       await page.waitForURL(`**/cards/new?cardgroup=${newCardgroupId}`, {
         timeout: 10_000,
       });
@@ -88,18 +83,16 @@ test.describe
       await expect(page.getByRole("heading", { name: "New card" })).toBeVisible();
 
       // The CardgroupChip's aria-label is "Change cardgroup (currently \"<name>\")"
-      // when a cardgroup is selected; the "Select cardgroup" placeholder label
-      // means no cardgroup is selected. Asserting the populated form proves the
-      // pre-select happened.
+      // when populated; the "Select cardgroup" placeholder means none selected.
       await expect(
         page.getByRole("button", {
           name: `Change cardgroup (currently "${cardgroupName}")`,
         }),
       ).toBeVisible();
 
-      // The CardForm should also now be rendered (currentId != null branch),
-      // so the Front input is interactable — a stronger signal than chip text
-      // alone that the resolved cardgroupId reached CardsNewClient.
+      // CardForm renders only when currentId != null — Front being interactable
+      // is a stronger signal than chip text alone that the resolved cardgroupId
+      // reached CardsNewClient.
       await expect(page.getByLabel("Front")).toBeVisible();
     });
   });

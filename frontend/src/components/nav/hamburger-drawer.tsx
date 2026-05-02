@@ -17,6 +17,9 @@ interface HamburgerDrawerProps {
   userEmail?: string | null;
 }
 
+const NAV_LINK_CLASS =
+  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground";
+
 export function HamburgerDrawer({ isAdmin, userEmail }: HamburgerDrawerProps) {
   return (
     <Sheet>
@@ -41,35 +44,25 @@ export function HamburgerDrawer({ isAdmin, userEmail }: HamburgerDrawerProps) {
           </p>
         )}
 
-        {/* Group 1: Navigation */}
         <nav className="flex flex-col gap-1">
           <SheetClose asChild>
-            <Link
-              href="/cardgroups"
-              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
-            >
+            <Link href="/cardgroups" className={NAV_LINK_CLASS}>
               <BookOpen className="h-4 w-4 shrink-0" />
               Cardgroups
             </Link>
           </SheetClose>
 
           <SheetClose asChild>
-            <Link
-              href="/profile"
-              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
-            >
+            <Link href="/profile" className={NAV_LINK_CLASS}>
               <User className="h-4 w-4 shrink-0" />
               Profile
             </Link>
           </SheetClose>
         </nav>
 
-        {/* Divider before admin group (always rendered to preserve layout when admin) */}
         {isAdmin && (
           <>
             <hr className="my-3 border-t" />
-
-            {/* Group 2: Admin */}
             <nav className="flex flex-col gap-1">
               <SheetClose asChild>
                 <Link
@@ -84,10 +77,8 @@ export function HamburgerDrawer({ isAdmin, userEmail }: HamburgerDrawerProps) {
           </>
         )}
 
-        {/* Divider before sign-out */}
         <hr className="my-3 border-t" />
 
-        {/* Group 3: Sign out */}
         <div>
           <LogoutButton />
         </div>
