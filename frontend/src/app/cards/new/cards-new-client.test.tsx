@@ -210,8 +210,11 @@ afterEach(() => {
   // every userEvent / Apollo mutation would silently hang.
   vi.useRealTimers();
   leakSpy.assertNoLeaks();
-  leakSpy.teardown();
+  // Restore outer spy first so console.warn is back to leakSpy's mock, then
+  // restore leakSpy so console.warn is back to the real implementation.
+  // Reversing the order would leave leakSpy's mock installed permanently.
   consoleWarnSpy.mockRestore();
+  leakSpy.teardown();
   consoleErrorSpy.mockRestore();
 });
 
@@ -334,7 +337,10 @@ describe("<CardsNewClient> — stay-on-page consecutive add", () => {
   });
 
   it("logs [cards-new] warning and still resets/shows indicator when setLastViewed rejects", async () => {
-    consoleWarnSpy.mockImplementation(() => {});
+    // leakSpy (inner spy, silent=true) already swallows console output, so no
+    // extra mockImplementation is needed here. Calling mockImplementation on the
+    // outer consoleWarnSpy would break the call chain into leakSpy and silence
+    // Apollo unmatched-mock leak detection for the rest of this test.
     renderClient({
       mocks: [
         makeCreateMock({ front: "Hello", back: "Hola" }),
