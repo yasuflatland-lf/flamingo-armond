@@ -1,6 +1,25 @@
+import { ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import { gqlFetch } from "@/lib/apollo/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { LogoutButton } from "./logout-button";
+import { HeaderMeQuery } from "./queries";
+
+const ADMIN_ROLE = "admin" as const;
+
+function isUnauthenticatedGraphQLError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const prefix = "GraphQL errors: ";
+  if (!err.message.startsWith(prefix)) return false;
+  try {
+    const parsed = JSON.parse(err.message.slice(prefix.length)) as Array<{
+      extensions?: { code?: string };
+    }>;
+    return Array.isArray(parsed) && parsed.some((e) => e?.extensions?.code === "UNAUTHENTICATED");
+  } catch {
+    return false;
+  }
+}
 
 export async function Header() {
   const supabase = await createSupabaseServerClient();
@@ -8,10 +27,7 @@ export async function Header() {
     data: { user },
     error,
   } = await supabase.auth.getUser();
-  // "AuthSessionMissingError" is the normal anonymous case — fall through to
-  // the "Sign in" branch below. Only a different auth-service error means we
-  // genuinely cannot tell the user's state, in which case we degrade by
-  // hiding both the email and the sign-in link to avoid misleading them.
+
   if (error && error.name !== "AuthSessionMissingError") {
     console.error("[header] getUser() failed:", error.message);
     return (
@@ -21,6 +37,30 @@ export async function Header() {
         </Link>
       </header>
     );
+  }
+
+  // Admin role check happens only when authenticated. Skipping the GraphQL
+  // call for anonymous users avoids unnecessary backend traffic and stops
+  // UNAUTHENTICATED noise from polluting the warn log.
+  let isAdmin = false;
+  if (user) {
+    try {
+      const meData = await gqlFetch(HeaderMeQuery, { revalidate: 0 });
+      isAdmin = meData.me?.roles.some((r) => r.name === ADMIN_ROLE) ?? false;
+    } catch (err) {
+      // Expected race: Supabase session is valid but the GraphQL endpoint
+      // rejected the access token (clock skew, JWKS rotation gap, etc.).
+      // The admin layout will redirect on actual /admin navigation, so the
+      // header degrades silently here.
+      const isUnauthenticated = isUnauthenticatedGraphQLError(err);
+      if (!isUnauthenticated) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn("[header] me query unexpectedly failed", {
+          error_message: msg,
+          user_id: user.id,
+        });
+      }
+    }
   }
 
   return (
@@ -37,6 +77,15 @@ export async function Header() {
             >
               Cardgroups
             </Link>
+            {isAdmin ? (
+              <Link
+                href="/admin"
+                className="flex items-center gap-1 text-muted-foreground underline-offset-4 hover:underline"
+              >
+                <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                Admin
+              </Link>
+            ) : null}
             <Link
               href="/profile"
               className="text-muted-foreground underline-offset-4 hover:underline"

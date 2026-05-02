@@ -26,14 +26,14 @@ describe("GET /auth/callback", () => {
     vi.clearAllMocks();
   });
 
-  it("exchanges valid code and redirects to /", async () => {
+  it("exchanges valid code and redirects to /cardgroups by default", async () => {
     mockExchangeCodeForSession.mockResolvedValueOnce({ error: null });
 
     const response = await GET(makeRequest("http://localhost/auth/callback?code=abc123"));
 
     expect(mockExchangeCodeForSession).toHaveBeenCalledWith("abc123");
     expect([301, 302, 307, 308]).toContain(response.status);
-    expect(response.headers.get("location")).toBe("http://localhost/");
+    expect(response.headers.get("location")).toBe("http://localhost/cardgroups");
   });
 
   it("redirects to /login?error=missing_code when code is absent", async () => {

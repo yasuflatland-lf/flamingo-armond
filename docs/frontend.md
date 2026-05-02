@@ -131,6 +131,53 @@ Cache update pattern: read the Connection query via `cache.readQuery` → filter
 
 Early-return guard: the `update` callback must begin with `if (data?.deleteCards == null) return;`. Although Apollo Client normally skips `update` on network-layer rejection, a synchronous error inside the callback body will still fire `cache.evict + cache.gc` on whatever was already processed, causing cards to visually vanish while still present server-side. The guard defends against this: if the server response is absent or null the callback exits before touching the cache, so a transient failure followed by a retry leaves the UI consistent.
 
+## Routing topology
+
+`/cardgroups` is the canonical landing for any signed-in user. The app converges every entry path on it so the user never lands on a stale placeholder or a redirect loop:
+
+| Entry | Anonymous → | Signed-in → |
+|---|---|---|
+| `/` (`app/page.tsx`) | `/login` | `/cardgroups` |
+| `/login` (`app/login/page.tsx`) | render `LoginButton` | `/cardgroups` |
+| `/auth/callback?code=...` (`app/auth/callback/route.ts`) | n/a | `next` query value, defaulting to `/cardgroups` |
+| Header "Admin" link (admin only) | hidden | `/admin` (then `/admin/layout.tsx` gate → `/admin/page.tsx` → `redirect("/admin/users")`) |
+
+Loop prevention is delegated to the redirect chain itself, not to `next`-value inspection in `auth/callback`. A signed-in user landing on `/login` redirects once to `/cardgroups`; a signed-in user landing on `/` does the same. There is no `/cardgroups` self-redirect, so the chain always terminates in at most two hops.
+
+The legacy "render `/` with health check inline" pattern is replaced by `/api/healthz` — see "Route Handler conventions" below. External monitors that polled `/` must move to `/api/healthz`.
+
+The admin link in the global Header is the only UI affordance for entering `/admin`. It renders only when `gqlFetch(HeaderMeQuery)` returns a role named `"admin"`. See `.claude/rules/frontend-rsc-error-handling.md` for the failure-mode contract that lets the Header degrade silently when the role lookup fails.
+
+## Route Handler conventions
+
+Route Handlers under `frontend/src/app/api/**/route.ts` follow the same per-route layout as pages:
+
+- `route.ts` for the handler.
+- `queries.ts` (sibling) for any `graphql()` tagged template the handler uses. Mirror the page-level convention (`app/cardgroups/queries.ts`, `app/_components/queries.ts`); do **not** inline the document into `route.ts`. Shared queries live next to their consumer, not in a global `lib/` bag.
+- `route.test.ts` (sibling) for unit coverage.
+
+### Discriminated-union response shape
+
+Route Handlers that can fail typed (auth, validation, upstream-down) return a discriminated union so consumers narrow exhaustively on a tag field:
+
+```ts
+type HealthzResponse = { ok: true; backend: string } | { ok: false; error: string };
+
+const body: HealthzResponse = { ok: true, backend: data.health };
+return NextResponse.json(body);
+```
+
+The annotation on `body` is load-bearing — `NextResponse.json(...)` is generic over `unknown`, so without the explicit type the compiler accepts any object shape and a refactor that drops `ok` from one branch passes typecheck. Reference: `frontend/src/app/api/healthz/route.ts`.
+
+### `/api/healthz` JSON probe
+
+A public, JSON, cache-bypassing health endpoint. Conventions baked in:
+
+1. **Public** — no auth header required. The backend `health` resolver is whitelisted so no `UNAUTHENTICATED` ever returns. External uptime monitors can poll it without managing credentials.
+2. **`{ revalidate: 0 }`** on the upstream `gqlFetch` so a cached HTTP response cannot mask a live backend outage.
+3. **Status code, not body**: success is `200 + { ok: true, backend: <string> }`; failure is `503 + { ok: false, error: <string> }`. **Never** return `200` with `{ ok: false, ... }` embedded — generic monitors check status codes, not body parsers, and a 200-with-error silently passes every uptime check while the system is down.
+4. **Log before responding on failure**: `console.error("[healthz] backend health check failed:", err)` so an operator can correlate the 503 in logs with the cause.
+
 ## Auth (Supabase)
 
 The Supabase SSR client uses a 3-layer setup mirroring the official `@supabase/ssr` template. Each layer exists because cookie reading/writing differs between contexts:
@@ -552,6 +599,23 @@ render(await CardgroupDetailPage({ params: Promise.resolve({ id: "cg-1" }) }));
 Pre-15 patterns that pass `{ params: { id } }` directly will not type-check or will misbehave at runtime.
 
 `createSupabaseServerClient` is server-only, so RSC tests must stub it. The repo has no MSW; the canonical pattern is a per-test `vi.mock("@/lib/supabase/server", ...)` factory backed by the shared `mockSupabaseServerClient()` helper, with per-case `setMockSupabaseUser(...)` calls in `beforeEach`. The `server-only` import is also stubbed at the Vitest config level (`vitest.config.ts`) so any module that pulls it in transitively does not crash the test runner.
+
+### `vi.spyOn` requires `vi.restoreAllMocks()` in `afterEach`
+
+`vi.clearAllMocks()` resets call history but does **not** restore original implementations. Spies installed via `vi.spyOn(console, "warn")` (or any other property spy) accumulate across tests when only `clearAllMocks` runs in `beforeEach` — the second test sees a spy left behind by the first, and the third sees both. Symptoms are confusing: a `console.warn` spy installed in test A still records calls made by test B's setup, the `expect(spy).not.toHaveBeenCalled()` assertion in test B fails for reasons the test cannot explain.
+
+Pair them:
+
+```ts
+beforeEach(() => {
+  vi.clearAllMocks();    // wipes call history of all known mocks
+});
+afterEach(() => {
+  vi.restoreAllMocks();  // restores any spy installed via vi.spyOn back to the real impl
+});
+```
+
+Reference: `frontend/src/app/_components/header.test.tsx`. This applies to any test file that calls `vi.spyOn(...)` on a global (`console`, `Date`, `crypto`) or a module export.
 
 ### Apollo Client v4 testing migration gotchas
 

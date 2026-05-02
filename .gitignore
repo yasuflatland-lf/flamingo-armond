@@ -80,6 +80,12 @@ backend/server
 /backend/graph/model/models_gen.go
 /frontend/src/generated/
 
+# Next.js auto-generated TypeScript shim. Toggles import paths between
+# `next dev` and `next build` runs (Next.js 16 `isolatedDevBuild`), so
+# committing it produces a churn loop. Regenerated on every Next.js
+# invocation; see docs/dev-setup.md §"Policy on generated files".
+/frontend/next-env.d.ts
+
 # Supabase CLI local state
 supabase/.branches/
 supabase/.temp/
