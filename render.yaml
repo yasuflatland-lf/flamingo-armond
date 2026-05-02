@@ -14,9 +14,12 @@
 #     by `playbooks/setup-prod/postapply.yml` via
 #     `PUT /v1/services/{id}/env-vars/{key}` after the relevant setup phases
 #     have produced the derived values.
-#   - OTEL_EXPORTER_OTLP_ENDPOINT is operator-discretionary, so it is
-#     declared `sync: false` and left for the operator to set manually
-#     in the dashboard (or leave blank for no-op tracing).
+#   - SUPER_USER_EMAILS is operator-discretionary: declared `sync: false`
+#     and left for the operator to set manually in the dashboard. Empty
+#     means the bootstrap admin feature is OFF, which is the safe default.
+#   - OTEL_EXPORTER_OTLP_ENDPOINT is operator-discretionary: declared
+#     `sync: false` and left for the operator to set manually in the
+#     dashboard. Empty means no-op tracing.
 #
 # Operator workflow on first apply / when this file changes:
 #   1. Push the change to `main`.
@@ -64,4 +67,6 @@ services:
       - key: OTEL_EXPORTER_OTLP_ENDPOINT
         sync: false
       - key: PING_TOKEN
+        sync: false
+      - key: SUPER_USER_EMAILS
         sync: false
