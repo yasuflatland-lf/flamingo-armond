@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock next/navigation before importing the page
 vi.mock("next/navigation", () => ({
@@ -36,6 +36,11 @@ function makeSupabaseMock(user: { id: string; email?: string } | null, error: Er
 describe("LoginPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("anonymous user: renders LoginButton and no error banner", async () => {
@@ -74,6 +79,11 @@ describe("LoginPage", () => {
     vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null, boom) as never);
 
     await expect(LoginPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
+      "network failure",
+    );
+    expect(console.error).toHaveBeenCalledWith(
+      "[login] getUser() failed:",
+      "FetchError",
       "network failure",
     );
   });

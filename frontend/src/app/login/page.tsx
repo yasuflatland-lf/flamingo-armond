@@ -10,7 +10,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
     data: { user },
     error: authErr,
   } = await supabase.auth.getUser();
-  if (authErr && authErr.name !== "AuthSessionMissingError") throw authErr;
+  if (authErr && authErr.name !== "AuthSessionMissingError") {
+    console.error("[login] getUser() failed:", authErr.name, authErr.message);
+    throw authErr;
+  }
   if (user) redirect("/cardgroups");
 
   const { error } = await searchParams;
