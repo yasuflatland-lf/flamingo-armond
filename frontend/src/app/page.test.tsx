@@ -20,8 +20,13 @@ vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: () => Promise.resolve(mockSupabaseServerClient()),
 }));
 
+vi.mock("@/lib/apollo/server", () => ({
+  gqlFetch: vi.fn(),
+}));
+
 import { redirect } from "next/navigation";
 import HomePage from "@/app/page";
+import { gqlFetch } from "@/lib/apollo/server";
 
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
@@ -36,21 +41,26 @@ afterEach(() => {
 });
 
 describe("HomePage (root redirect)", () => {
-  test("anonymous user is redirected to /login", async () => {
+  test("anonymous user (user=null, no error) is redirected to /login", async () => {
     setMockSupabaseUser(null);
 
     await expect(HomePage()).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
     expect(redirect).toHaveBeenCalledWith("/login");
+    expect(gqlFetch).not.toHaveBeenCalled();
   });
 
-  test("logged-in user is redirected to /cardgroups", async () => {
-    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
+  test("AuthSessionMissingError is silenced and user is redirected to /login", async () => {
+    const noSession = new Error("Auth session missing!");
+    noSession.name = "AuthSessionMissingError";
+    setMockSupabaseUserError(noSession);
 
-    await expect(HomePage()).rejects.toThrow(`${REDIRECT_PREFIX}/cardgroups`);
-    expect(redirect).toHaveBeenCalledWith("/cardgroups");
+    await expect(HomePage()).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
+    expect(redirect).toHaveBeenCalledWith("/login");
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    expect(gqlFetch).not.toHaveBeenCalled();
   });
 
-  test("non-AuthSessionMissingError from getUser() is rethrown", async () => {
+  test("non-AuthSessionMissingError from getUser() is logged and rethrown", async () => {
     const transportError = new Error("network failure");
     transportError.name = "FetchError";
     setMockSupabaseUserError(transportError);
@@ -64,13 +74,53 @@ describe("HomePage (root redirect)", () => {
     );
   });
 
-  test("AuthSessionMissingError is silenced and user is redirected to /login", async () => {
-    const noSession = new Error("Auth session missing!");
-    noSession.name = "AuthSessionMissingError";
-    setMockSupabaseUserError(noSession);
+  test("UNAUTHENTICATED from gqlFetch redirects to /login", async () => {
+    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
+    vi.mocked(gqlFetch).mockRejectedValueOnce(new Error("GraphQL errors: UNAUTHENTICATED"));
 
     await expect(HomePage()).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
     expect(redirect).toHaveBeenCalledWith("/login");
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  test("non-UNAUTHENTICATED gqlFetch error is rethrown", async () => {
+    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
+    const otherErr = new Error("GraphQL HTTP 500");
+    vi.mocked(gqlFetch).mockRejectedValueOnce(otherErr);
+
+    await expect(HomePage()).rejects.toBe(otherErr);
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  test("user with lastViewedCardgroup is redirected to /learn/{id}", async () => {
+    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
+    vi.mocked(gqlFetch).mockResolvedValueOnce({
+      me: { id: "u-1", lastViewedCardgroup: { id: "cg-42" } },
+      myCardgroups: [{ id: "cg-42" }],
+    } as never);
+
+    await expect(HomePage()).rejects.toThrow(`${REDIRECT_PREFIX}/learn/cg-42`);
+    expect(redirect).toHaveBeenCalledWith("/learn/cg-42");
+  });
+
+  test("user with no lastViewedCardgroup but >=1 myCardgroups → /cardgroups", async () => {
+    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
+    vi.mocked(gqlFetch).mockResolvedValueOnce({
+      me: { id: "u-1", lastViewedCardgroup: null },
+      myCardgroups: [{ id: "cg-1" }],
+    } as never);
+
+    await expect(HomePage()).rejects.toThrow(`${REDIRECT_PREFIX}/cardgroups`);
+    expect(redirect).toHaveBeenCalledWith("/cardgroups");
+  });
+
+  test("brand-new user (no lastViewed, no cardgroups) → /cardgroups/new?welcome=1", async () => {
+    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
+    vi.mocked(gqlFetch).mockResolvedValueOnce({
+      me: { id: "u-1", lastViewedCardgroup: null },
+      myCardgroups: [],
+    } as never);
+
+    await expect(HomePage()).rejects.toThrow(`${REDIRECT_PREFIX}/cardgroups/new?welcome=1`);
+    expect(redirect).toHaveBeenCalledWith("/cardgroups/new?welcome=1");
   });
 });
