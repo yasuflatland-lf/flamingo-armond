@@ -73,12 +73,14 @@ type SheetProps = {
   open?: boolean;
   selectedId?: string | null;
   mocks?: MockedResponse[];
+  createReturnTo?: string;
 };
 
 function renderSheet({
   open = true,
   selectedId = null,
   mocks = baseMocks([CG_1, CG_2]),
+  createReturnTo = "/cards/new",
 }: SheetProps = {}) {
   const onOpenChange = vi.fn();
   const onSelect = vi.fn();
@@ -90,6 +92,7 @@ function renderSheet({
         onOpenChange={onOpenChange}
         selectedId={selectedId}
         onSelect={onSelect}
+        createReturnTo={createReturnTo}
       />
     </MockedProvider>,
   );
@@ -195,14 +198,14 @@ describe("<CardgroupPickerSheet>", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  // S7: empty state — no cardgroups shows empty message and a link to /cardgroups/new.
-  it("shows empty-state copy and a link to /cardgroups/new when myCardgroups is empty", async () => {
+  // S7: empty state — no cardgroups shows friendly text; the standalone CTA is gone.
+  it("shows empty-state copy and the inline create link when myCardgroups is empty", async () => {
     renderSheet({ mocks: baseMocks([]) });
 
     expect(await screen.findByText(/don't have any cardgroups yet/i)).toBeInTheDocument();
 
-    const link = screen.getByRole("link", { name: /create cardgroup/i });
-    expect(link).toHaveAttribute("href", "/cardgroups/new");
+    // The inline "Create new cardgroup…" link must also be present.
+    expect(screen.getByRole("link", { name: /create new cardgroup/i })).toBeInTheDocument();
   });
 
   // S8: sheet title is rendered (accessibility sanity check for aria-labelledby).
@@ -213,5 +216,41 @@ describe("<CardgroupPickerSheet>", () => {
     await waitFor(() => {
       expect(screen.getByText("Select cardgroup")).toBeInTheDocument();
     });
+  });
+
+  // S9: "Create new cardgroup…" link is present even when there are existing cardgroups.
+  it("shows the inline create link when myCardgroups is non-empty", async () => {
+    renderSheet({ mocks: baseMocks([CG_1, CG_2]) });
+
+    await screen.findByText("Spanish Vocab");
+
+    expect(screen.getByRole("link", { name: /create new cardgroup/i })).toBeInTheDocument();
+  });
+
+  // S10: the inline create link's href encodes createReturnTo as the returnTo query parameter.
+  it("builds the create link href with the encoded createReturnTo value", async () => {
+    renderSheet({ mocks: baseMocks([CG_1]), createReturnTo: "/cards/new" });
+
+    await screen.findByText("Spanish Vocab");
+
+    const link = screen.getByRole("link", { name: /create new cardgroup/i });
+    expect(link).toHaveAttribute(
+      "href",
+      `/cardgroups/new?returnTo=${encodeURIComponent("/cards/new")}`,
+    );
+    // Explicit suffix check per spec: createReturnTo="/cards/new" → %2Fcards%2Fnew
+    expect(link.getAttribute("href")).toContain("%2Fcards%2Fnew");
+  });
+
+  // S11: clicking the inline create link calls onOpenChange(false).
+  it("calls onOpenChange(false) when the inline create link is clicked", async () => {
+    const user = userEvent.setup();
+    const { onOpenChange } = renderSheet({ mocks: baseMocks([CG_1]) });
+
+    await screen.findByText("Spanish Vocab");
+
+    await user.click(screen.getByRole("link", { name: /create new cardgroup/i }));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

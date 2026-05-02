@@ -10,6 +10,20 @@ import { installApolloMockLeakSpy } from "../../../../__tests__/utils/mock-apoll
 import CardsNewClient from "./cards-new-client";
 
 // ---------------------------------------------------------------------------
+// Captured picker props — populated by the CardgroupPickerSheet mock below.
+// Only used by the prop-wiring describe block; the consecutive-add tests do
+// not use this mock (they rely on the real component with the picker closed).
+// ---------------------------------------------------------------------------
+let capturedPickerProps: Record<string, unknown> | null = null;
+
+vi.mock("@/components/cardgroups/cardgroup-picker-sheet", () => ({
+  default: (props: Record<string, unknown>) => {
+    capturedPickerProps = props;
+    return null;
+  },
+}));
+
+// ---------------------------------------------------------------------------
 // next/navigation + next/link stubs
 // ---------------------------------------------------------------------------
 
@@ -185,6 +199,7 @@ beforeEach(() => {
   mockPush.mockClear();
   mockReplace.mockClear();
   mockSearchParamsValue = "";
+  capturedPickerProps = null;
   // Capture MockedProvider unmatched-mock leak warnings — assertNoLeaks() in
   // afterEach turns them into hard failures.
   leakSpy = installApolloMockLeakSpy({
@@ -424,5 +439,18 @@ describe("<CardsNewClient> — stay-on-page consecutive add", () => {
     // SuccessIndicator must display the name of cg-2, not cg-1.
     const indicator = await screen.findByRole("status");
     expect(indicator).toHaveTextContent(/✓ Card added to "French 101"/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CardgroupPickerSheet prop wiring
+// ---------------------------------------------------------------------------
+
+describe("<CardsNewClient> — CardgroupPickerSheet prop wiring", () => {
+  it('passes createReturnTo="/cards/new" to CardgroupPickerSheet', () => {
+    renderClient({ initialCardgroupId: CG_ID });
+
+    expect(capturedPickerProps).not.toBeNull();
+    expect(capturedPickerProps?.createReturnTo).toBe("/cards/new");
   });
 });

@@ -123,6 +123,7 @@ export default function CardsNewClient({
         onOpenChange={setPickerOpen}
         selectedId={currentId}
         onSelect={handlePickerSelect}
+        createReturnTo="/cards/new"
       />
 
       {successKey !== null && lastAddedName && (
