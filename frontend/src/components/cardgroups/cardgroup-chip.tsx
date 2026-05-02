@@ -9,7 +9,7 @@ type CardgroupChipProps = {
 };
 
 export function CardgroupChip({ name, onChangeRequested }: CardgroupChipProps) {
-  const displayName = name ?? "Select cardgroup";
+  const displayName = name || "Select cardgroup";
   const isMuted = !name;
 
   return (

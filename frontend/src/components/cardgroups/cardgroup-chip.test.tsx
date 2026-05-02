@@ -15,14 +15,13 @@ describe("<CardgroupChip>", () => {
     expect(screen.getByText("Select cardgroup")).toBeInTheDocument();
   });
 
-  it("renders an empty muted span when name is an empty string", () => {
-    // `name ?? "Select cardgroup"` uses nullish coalescing: "" is not null/undefined,
-    // so the span renders empty. The muted style is applied via isMuted = !name.
-    const { container } = render(<CardgroupChip name="" onChangeRequested={vi.fn()} />);
-    const span = container.querySelector("span.truncate");
-    expect(span).not.toBeNull();
-    expect(span?.textContent).toBe("");
-    expect(span?.className).toMatch(/text-muted-foreground/);
+  it("renders placeholder for empty-string name (treated as no name)", () => {
+    // `name || "Select cardgroup"` uses truthy coalescing, so "" is treated
+    // the same as null and renders the placeholder. Muted style is applied via isMuted = !name.
+    render(<CardgroupChip name="" onChangeRequested={vi.fn()} />);
+    const span = screen.getByText("Select cardgroup");
+    expect(span).toBeInTheDocument();
+    expect(span.className).toMatch(/text-muted-foreground/);
   });
 
   it("fires onChangeRequested when the button is clicked", async () => {
