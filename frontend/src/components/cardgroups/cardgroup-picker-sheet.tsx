@@ -19,7 +19,12 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   selectedId?: string | null;
   onSelect: (cardgroupId: string) => void;
-  /** Path to return to after creating a new cardgroup (encoded into the returnTo query). */
+  /**
+   * Path to return to after creating a new cardgroup. Must be a **pre-sanitized
+   * internal path** (e.g. `/cards/new`). The receiving page applies
+   * `sanitizeReturnTo` defensively, but callers are responsible for not passing
+   * arbitrary user input here.
+   */
   createReturnTo: string;
 };
 
@@ -68,7 +73,18 @@ export default function CardgroupPickerSheet({
         {!loading && error && (
           <div className="flex flex-col items-center gap-3 py-6 text-center">
             <p className="text-sm text-destructive">Failed to load cardgroups</p>
-            <Button variant="outline" size="sm" onClick={() => void refetch()}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                refetch().catch((err) => {
+                  console.warn("[cardgroup-picker-sheet] refetch failed", {
+                    message: err instanceof Error ? err.message : String(err),
+                    err,
+                  });
+                });
+              }}
+            >
               Retry
             </Button>
           </div>
