@@ -40,6 +40,16 @@ vi.mock("./hamburger-drawer", () => ({
   ),
 }));
 
+// HeaderAddCardLink is "use client" and uses usePathname — mock it so the
+// RSC test does not need next/navigation to be fully set up.
+vi.mock("./header-add-card-link", () => ({
+  HeaderAddCardLink: () => (
+    <a href="/cards/new" data-testid="header-add-card-link">
+      Card
+    </a>
+  ),
+}));
+
 // AdminPill default export
 vi.mock("./admin-pill", () => ({
   default: () => (
