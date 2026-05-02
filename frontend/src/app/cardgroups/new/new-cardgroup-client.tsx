@@ -9,7 +9,8 @@ import { MyCardgroupsDocument } from "@/generated/graphql";
 
 interface NewCardgroupClientProps {
   showWelcome?: boolean;
-  returnTo?: string | null;
+  /** Sanitized internal path to return to after creation, or null for the default redirect. */
+  returnTo: string | null;
 }
 
 export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgroupClientProps) {
@@ -34,8 +35,8 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
         router.push(`${returnTo}${sep}cardgroup=${created.id}`);
       } else {
         router.push(`/cardgroups/${created.id}`);
+        router.refresh();
       }
-      router.refresh();
     },
   });
 
@@ -43,7 +44,10 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
     await createCardgroup({
       variables: { input: { name: values.name } },
     }).catch((err) => {
-      console.error("[NewCardgroupClient] mutation rejection", err);
+      console.error("[cardgroups-new] mutation rejection", {
+        message: err instanceof Error ? err.message : String(err),
+        err,
+      });
     });
   }
 
