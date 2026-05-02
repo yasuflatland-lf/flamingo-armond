@@ -14,10 +14,17 @@ import CardsNewClient from "./cards-new-client";
 // Only used by the prop-wiring describe block; the consecutive-add tests do
 // not use this mock (they rely on the real component with the picker closed).
 // ---------------------------------------------------------------------------
-let capturedPickerProps: Record<string, unknown> | null = null;
+type PickerSheetProps = React.ComponentProps<
+  typeof import("@/components/cardgroups/cardgroup-picker-sheet").default
+>;
+let capturedPickerProps: PickerSheetProps | null = null;
 
 vi.mock("@/components/cardgroups/cardgroup-picker-sheet", () => ({
-  default: (props: Record<string, unknown>) => {
+  default: (
+    props: React.ComponentProps<
+      typeof import("@/components/cardgroups/cardgroup-picker-sheet").default
+    >,
+  ) => {
     capturedPickerProps = props;
     return null;
   },

@@ -70,9 +70,9 @@ test.describe.serial("cardgroups flow", () => {
 
     // Locate the footer link specifically — it lives inside the border-t container
     // after the list, not the empty-state CTA. Both branches use the same link
-    // text so we scope to the one rendered in the non-empty branch (no dashed
-    // wrapper) by checking its href points to /cardgroups/new without a returnTo.
-    const footerLink = page.getByRole("link", { name: /New cardgroup/ }).last();
+    // text so we scope to the wrapper that renders only in the non-empty branch.
+    const footerScope = page.locator(".mt-6.border-t.pt-4");
+    const footerLink = footerScope.getByRole("link", { name: /New cardgroup/ });
     await expect(footerLink).toBeVisible();
     await expect(footerLink).toHaveAttribute("href", "/cardgroups/new");
 
