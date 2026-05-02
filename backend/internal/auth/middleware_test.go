@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -299,5 +300,84 @@ func TestRejectAttachesErrorChainAttribute(t *testing.T) {
 	}
 	if _, ok := chain.(map[string]any); !ok {
 		t.Fatalf("expected error_chain to be a JSON object, got %T", chain)
+	}
+}
+
+// TestMiddleware_EmailVerifiedPropagated verifies that the email_verified JWT
+// claim is correctly propagated into AuthUser.EmailVerified for the three
+// possible cases: present and true, present and false, and absent (zero value).
+func TestMiddleware_EmailVerifiedPropagated(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name              string
+		claimsEmailVerif  any // the value to set in JWT claims; nil means omit the field
+		wantEmailVerified bool
+	}{
+		{
+			name:              "present and true",
+			claimsEmailVerif:  true,
+			wantEmailVerified: true,
+		},
+		{
+			name:              "present and false",
+			claimsEmailVerif:  false,
+			wantEmailVerified: false,
+		},
+		{
+			name:              "absent (zero value)",
+			claimsEmailVerif:  nil,
+			wantEmailVerified: false,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := newFixture(t)
+
+			// Build an Echo instance whose handler captures AuthUser.EmailVerified
+			// and encodes it into the response body so the test can assert on it.
+			kf, err := NewJWKSKeyfunc(f.mwCtx, Config{
+				JWKSURL:  f.jwksURL,
+				Audience: f.audience,
+				Issuer:   f.issuer,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			mw, err := AuthMiddleware(kf, Config{
+				JWKSURL:  f.jwksURL,
+				Audience: f.audience,
+				Issuer:   f.issuer,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			e := echo.New()
+			q := e.Group("/query", mw)
+			q.POST("", func(c *echo.Context) error {
+				u := UserFrom(c.Request().Context())
+				if u == nil {
+					return c.String(http.StatusOK, "anon")
+				}
+				return c.String(http.StatusOK, fmt.Sprintf("verified:%v", u.EmailVerified))
+			})
+
+			claims := jwt.MapClaims{
+				"sub": "uuid-ev-test",
+				"aud": f.audience,
+				"iss": f.issuer,
+				"exp": time.Now().Add(time.Hour).Unix(),
+			}
+			if tc.claimsEmailVerif != nil {
+				claims["email_verified"] = tc.claimsEmailVerif
+			}
+			tok := f.signJWT(t, claims, jwt.SigningMethodES256, nil, "")
+
+			wantBody := fmt.Sprintf("verified:%v", tc.wantEmailVerified)
+			assert200(t, send(e, "Bearer "+tok), wantBody)
+		})
 	}
 }
