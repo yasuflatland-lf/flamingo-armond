@@ -21,7 +21,12 @@ export default async function ProfilePage() {
     data: { user },
     error: authErr,
   } = await supabase.auth.getUser();
-  if (authErr) throw authErr;
+  // AuthSessionMissingError is the "no session" signal — fall through to the
+  // !user redirect below. Any other auth error is a real failure.
+  if (authErr && authErr.name !== "AuthSessionMissingError") {
+    console.error("[profile] getUser() failed:", authErr.name, authErr.message);
+    throw authErr;
+  }
   if (!user) redirect("/login");
 
   const data = await gqlFetch(MeQuery, { revalidate: 0 });

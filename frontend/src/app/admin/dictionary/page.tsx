@@ -19,7 +19,12 @@ export default async function AdminDictionaryPage() {
     data: { user },
     error: authErr,
   } = await supabase.auth.getUser();
-  if (authErr) throw authErr;
+  // AuthSessionMissingError is the "no session" signal — fall through to the
+  // !user redirect below. Any other auth error is a real failure.
+  if (authErr && authErr.name !== "AuthSessionMissingError") {
+    console.error("[admin/dictionary] getUser() failed:", authErr.name, authErr.message);
+    throw authErr;
+  }
   if (!user) redirect("/login");
 
   return <DictionaryImportClient />;
