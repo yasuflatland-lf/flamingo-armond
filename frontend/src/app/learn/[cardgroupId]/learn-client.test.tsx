@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
+import { InMemoryCache, gql } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
-import { describe, expect, it } from "vitest";
-import { HandleSwipeDocument } from "@/generated/graphql";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { HandleSwipeDocument, SetLastViewedCardgroupDocument } from "@/generated/graphql";
 import { LearnClient } from "./learn-client";
 
 const CG_ID = "cg-1";
@@ -147,5 +148,183 @@ describe("<LearnClient>", () => {
       "href",
       `/cardgroups/${CG_ID}/cards`,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Persist-last-viewed path
+// ---------------------------------------------------------------------------
+
+const USER_ID = "u-1";
+
+/** Builds a SetLastViewedCardgroup mock that tracks whether it was called. */
+function makePersistMock(cardgroupId: string, onCalled?: () => void) {
+  return {
+    request: {
+      query: SetLastViewedCardgroupDocument,
+      variables: { cardgroupId },
+    },
+    result: () => {
+      onCalled?.();
+      return {
+        data: {
+          setLastViewedCardgroup: {
+            __typename: "User" as const,
+            id: USER_ID,
+            lastViewedCardgroup: {
+              __typename: "Cardgroup" as const,
+              id: cardgroupId,
+            },
+          },
+        },
+      };
+    },
+  };
+}
+
+describe("<LearnClient> persist-last-viewed path", () => {
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleWarnSpy.mockRestore();
+  });
+
+  it("fires SetLastViewedCardgroup mutation when ids differ", async () => {
+    const mutationCalled = vi.fn();
+    render(
+      <MockedProvider mocks={[makePersistMock(CG_ID, mutationCalled)]}>
+        <LearnClient
+          cardgroupId={CG_ID}
+          initialCards={[CARD_1]}
+          lastViewedCardgroupId="cg-other"
+        />
+      </MockedProvider>,
+    );
+
+    await waitFor(() => {
+      expect(mutationCalled).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("writes lastViewedCardgroup into the Apollo cache after mutation resolves", async () => {
+    const cache = new InMemoryCache();
+
+    render(
+      <MockedProvider mocks={[makePersistMock(CG_ID)]} cache={cache}>
+        <LearnClient
+          cardgroupId={CG_ID}
+          initialCards={[CARD_1]}
+          lastViewedCardgroupId="cg-other"
+        />
+      </MockedProvider>,
+    );
+
+    const LastViewedFragment = gql`
+      fragment LastViewedCheck on User {
+        lastViewedCardgroup {
+          id
+        }
+      }
+    `;
+
+    await waitFor(() => {
+      const cached = cache.readFragment<{ lastViewedCardgroup: { id: string } | null }>({
+        id: `User:${USER_ID}`,
+        fragment: LastViewedFragment,
+      });
+      expect(cached?.lastViewedCardgroup?.id).toBe(CG_ID);
+    });
+  });
+
+  it("swallows a GraphQLError from the persist mutation without throwing", async () => {
+    const graphqlErrorMock = {
+      request: {
+        query: SetLastViewedCardgroupDocument,
+        variables: { cardgroupId: CG_ID },
+      },
+      result: {
+        errors: [
+          new GraphQLError("forbidden", {
+            extensions: { code: "BAD_USER_INPUT" },
+          }),
+        ],
+      },
+    };
+
+    render(
+      <MockedProvider mocks={[graphqlErrorMock]}>
+        <LearnClient
+          cardgroupId={CG_ID}
+          initialCards={[CARD_1]}
+          lastViewedCardgroupId="cg-other"
+        />
+      </MockedProvider>,
+    );
+
+    await waitFor(() => {
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "[learn] setLastViewedCardgroup failed",
+        expect.objectContaining({ cardgroupId: CG_ID }),
+      );
+    });
+    // Component must still render the card stack — no crash.
+    expect(screen.getByText("Hello")).toBeInTheDocument();
+  });
+
+  it("swallows a network error from the persist mutation without throwing", async () => {
+    const networkErrorMock = {
+      request: {
+        query: SetLastViewedCardgroupDocument,
+        variables: { cardgroupId: CG_ID },
+      },
+      error: new Error("network failure"),
+    };
+
+    render(
+      <MockedProvider mocks={[networkErrorMock]}>
+        <LearnClient
+          cardgroupId={CG_ID}
+          initialCards={[CARD_1]}
+          lastViewedCardgroupId="cg-other"
+        />
+      </MockedProvider>,
+    );
+
+    await waitFor(() => {
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "[learn] setLastViewedCardgroup failed",
+        expect.objectContaining({ cardgroupId: CG_ID }),
+      );
+    });
+    // Component must still render the card stack — no crash.
+    expect(screen.getByText("Hello")).toBeInTheDocument();
+  });
+
+  it("does not carry optimisticResponse in the persist mutation", () => {
+    // Static assertion: the source of the LearnClient function must not include
+    // `optimisticResponse` inside the SetLastViewedCardgroup mutate call.
+    // The comment block in learn-client.tsx explains why — typed errors from
+    // @apollo/client v3.x are not reliably rolled back from optimistic writes
+    // (see pagination.md).
+    //
+    // Strategy: find the section of source between `SetLastViewedCardgroup` and
+    // the next `.catch(` that follows it, and assert no `optimisticResponse`
+    // key appears there. `handleSwipe` is the only call that legitimately
+    // uses `optimisticResponse` and it appears earlier in the source.
+    const source = LearnClient.toString();
+
+    const persistStart = source.indexOf("SetLastViewedCardgroup");
+    expect(persistStart).toBeGreaterThan(-1);
+
+    // Find the .catch( that closes the persist mutation chain.
+    const persistCatchIdx = source.indexOf(".catch(", persistStart);
+    expect(persistCatchIdx).toBeGreaterThan(-1);
+
+    const persistBlock = source.slice(persistStart, persistCatchIdx);
+    expect(persistBlock).not.toContain("optimisticResponse");
   });
 });

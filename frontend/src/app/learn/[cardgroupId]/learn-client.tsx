@@ -3,7 +3,7 @@
 import { gql } from "@apollo/client";
 import { useApolloClient, useMutation } from "@apollo/client/react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HandleSwipeMutation, SetLastViewedCardgroupMutation } from "@/app/learn/queries";
 import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
 import { SwipeStatusBar } from "@/components/learn/swipe-status-bar";
@@ -128,9 +128,16 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
   // No `optimisticResponse`: setLastViewedCardgroup can return typed errors
   // (BAD_USER_INPUT, UNAUTHENTICATED) which @apollo/client v3.x does not
   // reliably roll back from optimistic writes — see pagination.md.
+  //
+  // `lastDispatchedRef` is a mutable ref (not state) so it can be read and
+  // written synchronously — state updates are async and would allow Strict
+  // Mode's double-mount to fire two mutations for the same cardgroupId.
   const client = useApolloClient();
+  const lastDispatchedRef = useRef<string | null>(null);
   useEffect(() => {
     if (lastViewedCardgroupId === cardgroupId) return;
+    if (lastDispatchedRef.current === cardgroupId) return;
+    lastDispatchedRef.current = cardgroupId;
     client
       .mutate({
         mutation: SetLastViewedCardgroupMutation,
@@ -156,7 +163,7 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
         },
       })
       .catch((err) => {
-        console.warn("[learn] setLastViewedCardgroup failed", err);
+        console.warn("[learn] setLastViewedCardgroup failed", { cardgroupId, err });
       });
   }, [cardgroupId, lastViewedCardgroupId, client]);
 
