@@ -208,17 +208,17 @@ When `render.yaml` itself changes (e.g. you bump `buildCommand`), reapply via **
 
 #### Bootstrap admin (production)
 
-Run this procedure only on the very first admin bootstrap for a fresh environment, or when an existing environment has lost its last admin and the `adminGrantRole` mutation is therefore unreachable. Day-to-day admin grants and revocations go through the GraphQL `adminGrantRole` / `adminRevokeRole` mutations and do not require any change to `SUPER_USER_EMAILS`.
+Run this procedure only on the very first admin bootstrap for a fresh environment, or when an existing environment has lost its last admin and the `assignRole` mutation is therefore unreachable. Day-to-day admin grants and revocations go through the GraphQL `assignRole` / `revokeRole` mutations and do not require any change to `SUPER_USER_EMAILS`.
 
-1. Land the change that wires `SUPER_USER_EMAILS` into `render.yaml` on `main` (already done by the same change that introduces this section).
+1. Confirm `render.yaml` declares `SUPER_USER_EMAILS` with `sync: false` under the `flamingo-backend` service. If it does not, land that change on `main` first.
 2. In the Render dashboard, open **Blueprints → flamingo-armond → Manual Sync** so the `sync: false` placeholder for `SUPER_USER_EMAILS` shows up on the service's environment page.
-3. In the Render dashboard, open **flamingo-backend → Environment**, find `SUPER_USER_EMAILS`, and set its value to the comma-separated list of email addresses to bootstrap (e.g. `alice@example.com,bob@example.com`). Keep the list short — every entry is a long-lived backdoor until removed.
+3. In the Render dashboard, open **flamingo-backend → Environment**, find `SUPER_USER_EMAILS`, and set its value to the comma-separated list of email addresses to bootstrap (e.g. `alice@example.com,bob@example.com`). Keep the list short — every entry is a standing auto-promotion path that grants admin to anyone who can complete Google OAuth as that verified email.
 4. Save. Render auto-redeploys the service when an environment variable changes; no Manual Deploy click is needed.
-5. Once the new instance is live, tail the service logs and confirm the startup line `super-user bootstrap enabled email_count=N` appears exactly once, where `N` matches the number of comma-separated entries you set. If `N` does not match, the value was mistyped (e.g. spaces around commas) — fix it in step 3 and let the redeploy roll.
+5. Once the new instance is live, tail the service logs and confirm a JSON line with `"msg":"super-user bootstrap enabled"` and `"email_count":N` appears exactly once, where `N` matches the number of comma-separated entries you set. If `N` does not match, the value was mistyped (e.g. spaces around commas) — fix it in step 3 and let the redeploy roll.
 6. Have each listed user sign in to the production frontend via Google OAuth. The promotion is best-effort and runs on the first authenticated request the backend sees from each verified email; loading any page that issues a GraphQL `me` query is sufficient.
-7. For each promoted account, confirm the log line `superuser: promoted to admin user_id=<sub>` appears exactly once in the backend logs. From this point onward the user can use the GraphQL `adminGrantRole` / `adminRevokeRole` mutations to manage other admins.
+7. For each promoted account, confirm a JSON line with `"msg":"superuser: promoted to admin"` and a `"user_id"` field carrying that user's Supabase `sub` appears exactly once in the backend logs. From this point onward the user can use the GraphQL `assignRole` / `revokeRole` mutations to manage other admins.
 
-Removing an email from `SUPER_USER_EMAILS` does **not** revoke a previously granted admin role — the `adminRevokeRole` mutation is the only revocation path. See `docs/backend-auth.md` § "Bootstrap admin via `SUPER_USER_EMAILS`" for the design rationale (security gate on `email_verified=true`, no-auto-revocation, WARN-and-continue failure mode).
+Removing an email from `SUPER_USER_EMAILS` does **not** revoke a previously granted admin role — the `revokeRole` mutation is the only revocation path. See [the "Bootstrap admin via `SUPER_USER_EMAILS`" subsection of `docs/backend-auth.md`](backend-auth.md#bootstrap-admin-via-super_user_emails) for the design rationale (security gate on `email_verified=true`, no automatic revocation).
 
 ### Step 3 — Vercel
 
