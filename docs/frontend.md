@@ -615,7 +615,7 @@ afterEach(() => {
 });
 ```
 
-Reference: `frontend/src/app/_components/header.test.tsx`. This applies to any test file that calls `vi.spyOn(...)` on a global (`console`, `Date`, `crypto`) or a module export.
+Reference: `frontend/src/components/nav/global-header.test.tsx`. This applies to any test file that calls `vi.spyOn(...)` on a global (`console`, `Date`, `crypto`) or a module export.
 
 ### Apollo Client v4 testing migration gotchas
 
