@@ -343,6 +343,12 @@ type Role {
 extend type User {
   """Roles assigned to this user. Resolved via the per-request RoleByUserID DataLoader."""
   roles: [Role!]!
+  """
+  The cardgroup this user most recently viewed on /learn.
+  Used to land returning users directly on the learn screen.
+  Null when never set, or when the referenced cardgroup was deleted (FK cascade SET NULL).
+  """
+  lastViewedCardgroup: Cardgroup
 }
 
 """One element in a UserConnection."""
@@ -392,4 +398,16 @@ extend type Mutation {
   updateRole(id: ID!, name: String!): Role!
   """Admin-only. Delete a role. The system role "admin" cannot be deleted (FORBIDDEN). Returns true on success."""
   deleteRole(id: ID!): Boolean!
+}
+
+extend type Mutation {
+  """
+  Records the cardgroup the authenticated user most recently viewed on /learn.
+  Idempotent. Returns the updated user.
+  Errors:
+   - UNAUTHENTICATED  — caller has no session
+   - BAD_USER_INPUT   — cardgroupId does not exist or is not owned by caller
+                        (existence of others' cardgroups is not leaked: same code in both cases)
+  """
+  setLastViewedCardgroup(cardgroupId: ID!): User!
 }

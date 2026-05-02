@@ -217,6 +217,13 @@ func (r *countingRepo) ListPage(
 	panic("countingRepo.ListPage not configured")
 }
 
+// SetLastViewedCardgroup satisfies repository.UserRepository. Loader-layer
+// tests never invoke this path; panic if called so accidental coupling is
+// surfaced rather than silently no-oped.
+func (r *countingRepo) SetLastViewedCardgroup(_ context.Context, _, _ string) error {
+	panic("countingRepo.SetLastViewedCardgroup not configured")
+}
+
 // loadAll concurrently loads all ids through l and returns aligned results/errors.
 func loadAll(ctx context.Context, l *loader.Loaders, ids []string) ([]*domain.User, []error) {
 	results := make([]*domain.User, len(ids))

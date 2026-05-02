@@ -10,6 +10,7 @@ import (
 	"backend/internal/auth"
 	"backend/internal/gqlerr"
 	"backend/internal/loader"
+	"backend/internal/repository"
 	"backend/internal/textdic"
 	"backend/internal/usecase"
 	"context"
@@ -218,6 +219,15 @@ func (r *mutationResolver) DeleteRole(ctx context.Context, id string) (bool, err
 	return true, nil
 }
 
+// SetLastViewedCardgroup is the resolver for the setLastViewedCardgroup field.
+func (r *mutationResolver) SetLastViewedCardgroup(ctx context.Context, cardgroupID string) (*model.User, error) {
+	user, err := r.LastViewedCardgroupUC.Set(ctx, cardgroupID)
+	if err != nil {
+		return nil, err
+	}
+	return toUserModel(user), nil
+}
+
 // Health is the resolver for the health field.
 func (r *queryResolver) Health(ctx context.Context) (string, error) {
 	return "ok", nil
@@ -424,6 +434,38 @@ func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Rol
 		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "resolver: user roles"))
 	}
 	return toRoleModels(roles), nil
+}
+
+// LastViewedCardgroup is the resolver for the lastViewedCardgroup field.
+//
+// toUserModel parks the cardgroup ID inside obj.LastViewedCardgroup.ID when
+// the underlying domain.User has a non-nil LastViewedCardgroupID; nil here
+// means "user never set one" and resolves to GraphQL null without touching
+// the DataLoader. When the FK was concurrently set-null by an
+// ON DELETE SET NULL cascade between the model conversion and this resolver,
+// the DataLoader returns ErrNotFound; that case is also surfaced as null
+// (consistent with the schema docstring) rather than as an error.
+func (r *userResolver) LastViewedCardgroup(ctx context.Context, obj *model.User) (*model.Cardgroup, error) {
+	if obj.LastViewedCardgroup == nil || obj.LastViewedCardgroup.ID == "" {
+		return nil, nil
+	}
+	loaders := loader.For(ctx)
+	if loaders == nil {
+		return nil, gqlerr.Internal(ctx, eris.New("loader: middleware not installed for /query"))
+	}
+	cg, err := loaders.Cardgroup.Load(ctx, obj.LastViewedCardgroup.ID)()
+	if err != nil {
+		// A SET NULL cascade between toUserModel and this resolver leaves the
+		// ID dangling; treat as "no last viewed cardgroup" rather than INTERNAL.
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, nil
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, gqlerr.Cancelled(ctx, err)
+		}
+		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "resolver: user last viewed cardgroup"))
+	}
+	return toCardgroupModel(cg), nil
 }
 
 // Card returns generated.CardResolver implementation.

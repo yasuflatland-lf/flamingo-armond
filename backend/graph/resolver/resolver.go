@@ -6,14 +6,15 @@ import (
 )
 
 type Resolver struct {
-	UserUC       *usecase.UserUsecase
-	CardgroupUC  *usecase.CardgroupUsecase
-	CardUC       *usecase.CardUsecase
-	SwipeUC      *usecase.SwipeUsecase
-	AuthSvc      *auth.Service
-	DictionaryUC usecase.DictionaryUsecase
-	AdminUserUC  usecase.AdminUserUsecase
-	AdminRoleUC  usecase.AdminRoleUsecase
+	UserUC                *usecase.UserUsecase
+	CardgroupUC           *usecase.CardgroupUsecase
+	CardUC                *usecase.CardUsecase
+	SwipeUC               *usecase.SwipeUsecase
+	AuthSvc               *auth.Service
+	DictionaryUC          usecase.DictionaryUsecase
+	AdminUserUC           usecase.AdminUserUsecase
+	AdminRoleUC           usecase.AdminRoleUsecase
+	LastViewedCardgroupUC usecase.LastViewedCardgroupUsecase
 }
 
 // NewResolver wires every Resolver dependency. Tests may pass nil for unused
@@ -27,15 +28,17 @@ func NewResolver(
 	dictionaryUC usecase.DictionaryUsecase,
 	adminUserUC usecase.AdminUserUsecase,
 	adminRoleUC usecase.AdminRoleUsecase,
+	lastViewedCardgroupUC usecase.LastViewedCardgroupUsecase,
 ) *Resolver {
 	return &Resolver{
-		UserUC:       user,
-		CardgroupUC:  cardgroupUC,
-		CardUC:       cardUC,
-		SwipeUC:      swipeUC,
-		AuthSvc:      authSvc,
-		DictionaryUC: dictionaryUC,
-		AdminUserUC:  adminUserUC,
-		AdminRoleUC:  adminRoleUC,
+		UserUC:                user,
+		CardgroupUC:           cardgroupUC,
+		CardUC:                cardUC,
+		SwipeUC:               swipeUC,
+		AuthSvc:               authSvc,
+		DictionaryUC:          dictionaryUC,
+		AdminUserUC:           adminUserUC,
+		AdminRoleUC:           adminRoleUC,
+		LastViewedCardgroupUC: lastViewedCardgroupUC,
 	}
 }

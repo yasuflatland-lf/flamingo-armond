@@ -44,7 +44,7 @@ func ptr(s string) *string { return &s }
 // given mock repository.
 func newServer(mock *mockUserRepository) *handler.Server {
 	uc := usecase.NewUserUsecase(mock)
-	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
