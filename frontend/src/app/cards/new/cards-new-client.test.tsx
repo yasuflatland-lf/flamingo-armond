@@ -1,0 +1,404 @@
+// @vitest-environment jsdom
+import type { MockedResponse } from "@apollo/client/testing";
+import { MockedProvider } from "@apollo/client/testing/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { GraphQLError } from "graphql";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { installApolloMockLeakSpy } from "../../../../__tests__/utils/mock-apollo-paginated";
+import { CreateCardDocument, SetLastViewedCardgroupDocument } from "@/generated/graphql";
+import CardsNewClient from "./cards-new-client";
+
+// ---------------------------------------------------------------------------
+// next/navigation + next/link stubs
+// ---------------------------------------------------------------------------
+
+const mockPush = vi.fn();
+const mockReplace = vi.fn();
+let mockSearchParamsValue = "";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockPush, replace: mockReplace }),
+  useSearchParams: () => new URLSearchParams(mockSearchParamsValue),
+}));
+
+vi.mock("next/link", () => ({
+  default: ({
+    href,
+    children,
+    ...rest
+  }: {
+    href: string;
+    children: React.ReactNode;
+  }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+
+const CG_ID = "cg-1";
+const CG_NAME = "Spanish 101";
+
+const myCardgroups = [
+  { id: CG_ID, name: CG_NAME },
+  { id: "cg-2", name: "French 101" },
+];
+
+function makeCreateMock(args: {
+  front: string;
+  back: string;
+  cardId?: string;
+  onCalled?: () => void;
+  errors?: GraphQLError[];
+  networkError?: Error;
+}): MockedResponse {
+  const { front, back, cardId = "card-new-1", onCalled, errors, networkError } = args;
+  if (networkError) {
+    return {
+      request: {
+        query: CreateCardDocument,
+        variables: { input: { cardgroupId: CG_ID, front, back } },
+      },
+      error: networkError,
+    };
+  }
+  return {
+    request: {
+      query: CreateCardDocument,
+      variables: { input: { cardgroupId: CG_ID, front, back } },
+    },
+    result: () => {
+      onCalled?.();
+      if (errors) {
+        return { errors };
+      }
+      return {
+        data: {
+          createCard: {
+            __typename: "CreateCardPayload" as const,
+            card: {
+              __typename: "Card" as const,
+              id: cardId,
+              front,
+              back,
+              due: "2026-04-30T00:00:00Z",
+              state: 0,
+              cardgroupId: CG_ID,
+            },
+          },
+        },
+      };
+    },
+  };
+}
+
+function makePersistMock(args: {
+  cardgroupId?: string;
+  onCalled?: () => void;
+  errors?: GraphQLError[];
+  networkError?: Error;
+} = {}): MockedResponse {
+  const { cardgroupId = CG_ID, onCalled, errors, networkError } = args;
+  if (networkError) {
+    return {
+      request: {
+        query: SetLastViewedCardgroupDocument,
+        variables: { cardgroupId },
+      },
+      error: networkError,
+    };
+  }
+  return {
+    request: {
+      query: SetLastViewedCardgroupDocument,
+      variables: { cardgroupId },
+    },
+    result: () => {
+      onCalled?.();
+      if (errors) {
+        return { errors };
+      }
+      return {
+        data: {
+          setLastViewedCardgroup: {
+            __typename: "User" as const,
+            id: "u-1",
+            lastViewedCardgroup: {
+              __typename: "Cardgroup" as const,
+              id: cardgroupId,
+            },
+          },
+        },
+      };
+    },
+  };
+}
+
+function renderClient(
+  opts: {
+    initialCardgroupId?: string | null;
+    forcePickerOpen?: boolean;
+    mocks?: MockedResponse[];
+  } = {},
+) {
+  const {
+    initialCardgroupId = CG_ID,
+    forcePickerOpen = false,
+    mocks = [],
+  } = opts;
+  return render(
+    <MockedProvider mocks={mocks}>
+      <CardsNewClient
+        initialCardgroupId={initialCardgroupId}
+        forcePickerOpen={forcePickerOpen}
+        myCardgroups={myCardgroups}
+      />
+    </MockedProvider>,
+  );
+}
+
+async function fillAndSubmit(front: string, back: string) {
+  const user = userEvent.setup();
+  const frontInput = screen.getByLabelText(/front/i);
+  const backInput = screen.getByLabelText(/back/i);
+  await user.clear(frontInput);
+  await user.type(frontInput, front);
+  await user.clear(backInput);
+  await user.type(backInput, back);
+  await user.click(screen.getByRole("button", { name: /add card/i }));
+}
+
+// ---------------------------------------------------------------------------
+// Setup / teardown
+// ---------------------------------------------------------------------------
+
+let leakSpy: ReturnType<typeof installApolloMockLeakSpy>;
+let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+beforeEach(() => {
+  mockPush.mockClear();
+  mockReplace.mockClear();
+  mockSearchParamsValue = "";
+  // Capture MockedProvider unmatched-mock leak warnings — assertNoLeaks() in
+  // afterEach turns them into hard failures.
+  leakSpy = installApolloMockLeakSpy({
+    operationNames: ["CreateCard", "SetLastViewedCardgroup"],
+  });
+  // Track non-leak warnings so we can introspect [cards-new] persist failures.
+  consoleWarnSpy = vi.spyOn(console, "warn");
+  consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+});
+
+afterEach(() => {
+  // Always reset to real timers — a test that throws while fake timers are
+  // installed would otherwise leak fake timers into subsequent tests and
+  // every userEvent / Apollo mutation would silently hang.
+  vi.useRealTimers();
+  leakSpy.assertNoLeaks();
+  leakSpy.teardown();
+  consoleWarnSpy.mockRestore();
+  consoleErrorSpy.mockRestore();
+});
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe("<CardsNewClient> — stay-on-page consecutive add", () => {
+  it("clears the front/back inputs after a successful submit", async () => {
+    renderClient({
+      mocks: [
+        makeCreateMock({ front: "Hello", back: "Hola" }),
+        makePersistMock(),
+      ],
+    });
+
+    await fillAndSubmit("Hello", "Hola");
+
+    await waitFor(() => {
+      expect((screen.getByLabelText(/front/i) as HTMLInputElement).value).toBe("");
+    });
+    expect((screen.getByLabelText(/back/i) as HTMLInputElement).value).toBe("");
+  });
+
+  it("fires SetLastViewedCardgroup exactly once with the current cardgroup id", async () => {
+    const persistCalled = vi.fn();
+    renderClient({
+      mocks: [
+        makeCreateMock({ front: "Hello", back: "Hola" }),
+        makePersistMock({ onCalled: persistCalled }),
+      ],
+    });
+
+    await fillAndSubmit("Hello", "Hola");
+
+    await waitFor(() => {
+      expect(persistCalled).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("renders the SuccessIndicator with role=status, aria-live=polite, and the cardgroup name", async () => {
+    renderClient({
+      mocks: [
+        makeCreateMock({ front: "Hello", back: "Hola" }),
+        makePersistMock(),
+      ],
+    });
+
+    await fillAndSubmit("Hello", "Hola");
+
+    const indicator = await screen.findByRole("status");
+    expect(indicator).toHaveAttribute("aria-live", "polite");
+    expect(indicator).toHaveTextContent(`Card added to "${CG_NAME}"`);
+  });
+
+  it("does NOT call router.push after a successful submit (regression guard)", async () => {
+    renderClient({
+      mocks: [
+        makeCreateMock({ front: "Hello", back: "Hola" }),
+        makePersistMock(),
+      ],
+    });
+
+    await fillAndSubmit("Hello", "Hola");
+
+    // Wait for the success indicator so we know the submit chain ran.
+    await screen.findByRole("status");
+
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("dismisses the SuccessIndicator after 2 s", async () => {
+    // Real timers throughout: userEvent and Apollo MockedProvider both rely
+    // on real timer/microtask scheduling, and switching to fake timers AFTER
+    // the SuccessIndicator's setTimeout is already pending does not migrate
+    // the existing real-timer handle into the fake-timer queue. So we wait
+    // the wall-clock 2 s with a generous test-level timeout instead.
+    renderClient({
+      mocks: [
+        makeCreateMock({ front: "Hello", back: "Hola" }),
+        makePersistMock(),
+      ],
+    });
+
+    await fillAndSubmit("Hello", "Hola");
+    const indicator = await screen.findByRole("status");
+    expect(indicator).toBeInTheDocument();
+
+    // Real-time wait for the indicator's 2 s setTimeout; cap at 3 s.
+    await waitFor(
+      () => {
+        expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      },
+      { timeout: 3000, interval: 100 },
+    );
+  }, 10000);
+
+  it("two consecutive submits each render a fresh SuccessIndicator", async () => {
+    renderClient({
+      mocks: [
+        makeCreateMock({ front: "Hello", back: "Hola", cardId: "c-1" }),
+        makePersistMock(),
+        makeCreateMock({ front: "Bye", back: "Adios", cardId: "c-2" }),
+        makePersistMock(),
+      ],
+    });
+
+    // First submit.
+    await fillAndSubmit("Hello", "Hola");
+    const firstIndicator = await screen.findByRole("status");
+    expect(firstIndicator).toBeInTheDocument();
+
+    // Second submit — the form should be clear, fill again.
+    await fillAndSubmit("Bye", "Adios");
+
+    // The indicator should still be visible (key bumped → remount, restarts timer).
+    await waitFor(() => {
+      expect(screen.queryByRole("status")).toBeInTheDocument();
+    });
+  });
+
+  it("logs [cards-new] warning and still resets/shows indicator when setLastViewed rejects", async () => {
+    consoleWarnSpy.mockImplementation(() => {});
+    renderClient({
+      mocks: [
+        makeCreateMock({ front: "Hello", back: "Hola" }),
+        makePersistMock({
+          errors: [
+            new GraphQLError("forbidden", {
+              extensions: { code: "BAD_USER_INPUT" },
+            }),
+          ],
+        }),
+      ],
+    });
+
+    await fillAndSubmit("Hello", "Hola");
+
+    await waitFor(() => {
+      expect((screen.getByLabelText(/front/i) as HTMLInputElement).value).toBe("");
+    });
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    // No alert banner from createCard (which succeeded).
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "[cards-new] setLastViewedCardgroup failed",
+        expect.objectContaining({ cardgroupId: CG_ID }),
+      );
+    });
+  });
+
+  it("does NOT reset the form and does NOT show indicator when createCard rejects; surfaces error banner", async () => {
+    renderClient({
+      mocks: [
+        makeCreateMock({
+          front: "Hello",
+          back: "Hola",
+          errors: [
+            new GraphQLError("backend exploded", {
+              extensions: { code: "INTERNAL_SERVER_ERROR" },
+            }),
+          ],
+        }),
+      ],
+    });
+
+    await fillAndSubmit("Hello", "Hola");
+
+    // Banner from CardForm's getBackendErrorBanner.
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+    // Form values are preserved so the user can retry.
+    expect((screen.getByLabelText(/front/i) as HTMLInputElement).value).toBe("Hello");
+    expect((screen.getByLabelText(/back/i) as HTMLInputElement).value).toBe("Hola");
+    // No success indicator.
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it('renders a "Done" link to /cardgroups/<currentId>/cards when currentId is set', () => {
+    renderClient({ initialCardgroupId: CG_ID });
+
+    const done = screen.getByRole("link", { name: /done/i });
+    expect(done).toHaveAttribute("href", `/cardgroups/${CG_ID}/cards`);
+  });
+
+  it('does NOT render the "Done" link when currentId is null', () => {
+    renderClient({
+      initialCardgroupId: null,
+      // forcePickerOpen would render the picker which queries MyCardgroups; keep
+      // it closed here so MockedProvider does not need an extra mock.
+      forcePickerOpen: false,
+    });
+
+    expect(screen.queryByRole("link", { name: /done/i })).not.toBeInTheDocument();
+  });
+});
