@@ -24,6 +24,12 @@
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
   --radius: 0.625rem;
+  /* Brand tokens — flamingo coral palette */
+  --brand-primary: oklch(73.64% 0.189 18.45);
+  --brand-primary-foreground: oklch(100% 0 0);
+  --brand-tint: oklch(98.5% 0.012 18.45);
+  --brand-tint-border: oklch(91% 0.04 18.45);
+  --brand-tint-foreground: oklch(45% 0.13 18.45);
 }
 
 .dark {
@@ -46,6 +52,12 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
+  /* Brand tokens — intentionally identical to light mode */
+  --brand-primary: oklch(73.64% 0.189 18.45);
+  --brand-primary-foreground: oklch(100% 0 0);
+  --brand-tint: oklch(98.5% 0.012 18.45);
+  --brand-tint-border: oklch(91% 0.04 18.45);
+  --brand-tint-foreground: oklch(45% 0.13 18.45);
 }
 
 @theme inline {
@@ -68,6 +80,11 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-primary-foreground: var(--brand-primary-foreground);
+  --color-brand-tint: var(--brand-tint);
+  --color-brand-tint-border: var(--brand-tint-border);
+  --color-brand-tint-foreground: var(--brand-tint-foreground);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

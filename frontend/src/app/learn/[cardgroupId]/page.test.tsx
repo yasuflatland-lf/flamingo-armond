@@ -20,12 +20,14 @@ vi.mock("./learn-client", () => ({
   LearnClient: ({
     cardgroupId,
     initialCards,
+    lastViewedCardgroupId,
   }: {
     cardgroupId: string;
     initialCards: unknown[];
+    lastViewedCardgroupId: string | null;
   }) => (
     <div data-testid="learn-client">
-      {cardgroupId}:{initialCards.length}
+      {cardgroupId}:{initialCards.length}:{lastViewedCardgroupId ?? "null"}
     </div>
   ),
 }));
@@ -58,7 +60,9 @@ describe("LearnPage", () => {
     vi.mocked(createSupabaseServerClient).mockResolvedValue(
       makeSupabaseMock({ id: "user-1" }) as never,
     );
-    vi.mocked(gqlFetch).mockRejectedValue(new Error("GraphQL errors: UNAUTHENTICATED"));
+    vi.mocked(gqlFetch).mockRejectedValue(
+      new Error(`GraphQL errors: ${JSON.stringify([{ extensions: { code: "UNAUTHENTICATED" } }])}`),
+    );
 
     await expect(LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) })).rejects.toThrow(
       "REDIRECT:/cardgroups",
@@ -84,12 +88,17 @@ describe("LearnPage", () => {
             cardgroupId: "cg-1",
           },
         ],
+      } as never)
+      .mockResolvedValueOnce({
+        me: { id: "user-1", lastViewedCardgroup: { id: "cg-old" } },
+        myCardgroups: [],
       } as never);
 
     const jsx = await LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) });
     render(jsx);
 
     expect(screen.getByText("Spanish")).toBeInTheDocument();
-    expect(screen.getByTestId("learn-client")).toHaveTextContent("cg-1:1");
+    // Format: cardgroupId:initialCards.length:lastViewedCardgroupId
+    expect(screen.getByTestId("learn-client")).toHaveTextContent("cg-1:1:cg-old");
   });
 });

@@ -38,3 +38,5 @@ models:
     fields:
       roles:
         resolver: true
+      lastViewedCardgroup:
+        resolver: true

@@ -77,6 +77,16 @@ The repository's two upsert call sites are deliberately asymmetric. `cards (card
 
 The flip side is that the conflict key MUST be unique within the input batch. If two rows in the same `INSERT ... VALUES (...), (...)` collide on the conflict target, Postgres raises SQLSTATE `21000` ("ON CONFLICT DO UPDATE command cannot affect row a second time") and aborts the whole statement — Postgres deliberately does not silently merge intra-batch duplicates because either-row-wins is non-deterministic. The application layer must dedup by conflict key before issuing the SQL; the dictionary usecase keeps the *last* occurrence and reports earlier ones as soft errors.
 
+### `users.last_viewed_cardgroup_id` — nullable FK with `ON DELETE SET NULL`
+
+`users` carries a nullable `last_viewed_cardgroup_id uuid REFERENCES cardgroups(id) ON DELETE SET NULL` column to remember the cardgroup a returning user most recently studied. Three design choices are load-bearing:
+
+- **Nullable + default null** — every existing user row stays valid without a backfill; the migration is forward-only and the down half drops the column cleanly. A NOT NULL with a default would force an arbitrary cardgroup choice for users who have never visited `/learn`.
+- **`ON DELETE SET NULL`, not `CASCADE`** — when a cardgroup is deleted, the only meaning of `last_viewed_cardgroup_id` is "where to land you next" (presentation state). `CASCADE` would delete the user, which is absurd; `SET NULL` lets the HomePage redirect fall through to the next branch (cardgroups list, or onboarding).
+- **`CREATE INDEX ... (last_viewed_cardgroup_id)`** — without an index, the cascading `SET NULL` on cardgroup delete forces a full users table scan. The index is on the dependent side, not the parent. Postgres does not auto-index the FK side; this is a known foot-gun on cascading deletes.
+
+The existing `users` UPDATE RLS policy keys on `auth.uid() = id`, so the new column inherits the same row-level constraint without a policy edit. `backend/internal/repository/rls_user_test.go` covers cross-user UPDATE rejection on this column explicitly.
+
 ### Startup order
 
 ```

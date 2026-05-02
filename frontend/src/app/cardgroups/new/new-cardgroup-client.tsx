@@ -7,7 +7,11 @@ import { CreateCardgroupMutation } from "@/app/cardgroups/queries";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
 import { MyCardgroupsDocument } from "@/generated/graphql";
 
-export function NewCardgroupClient() {
+interface NewCardgroupClientProps {
+  showWelcome?: boolean;
+}
+
+export function NewCardgroupClient({ showWelcome = false }: NewCardgroupClientProps) {
   const router = useRouter();
 
   const [createCardgroup, { loading, error }] = useMutation(CreateCardgroupMutation, {
@@ -38,6 +42,17 @@ export function NewCardgroupClient() {
 
   return (
     <main className="mx-auto max-w-xl p-8">
+      {showWelcome && (
+        <div className="mb-8 rounded-lg border border-border bg-card p-6">
+          <h2 className="mb-2 text-lg font-semibold">
+            Welcome! Let's create your first cardgroup.
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            A cardgroup holds the cards you want to study together. You can always add more cards
+            later.
+          </p>
+        </div>
+      )}
       <div className="mb-6 flex items-center gap-4">
         <Link href="/cardgroups" className="text-sm text-muted-foreground hover:underline">
           &larr; Back

@@ -121,7 +121,7 @@ For Connection types (`*Connection` / `*Edge`), use `readQuery + writeQuery` (no
 
 ### Pagination patterns
 
-The reference implementation is `frontend/src/app/cardgroups/[id]/cards/cards-client.tsx` (`useQuery` + `fetchMore` with an IntersectionObserver sentinel). See `.claude/rules/pagination.md` for IntersectionObserver in-flight guards, `fetchMoreError` handling, `NetworkStatus.fetchMore` conventions, and MockedProvider warn-spy patterns.
+The reference implementation is `frontend/src/app/cardgroups/[id]/cards/cards-client.tsx` (`useQuery` + `fetchMore` with an IntersectionObserver sentinel). See `.claude/rules/pagination.md` for IntersectionObserver in-flight guards, `fetchMoreError` handling, `NetworkStatus.fetchMore` conventions, MockedProvider warn-spy patterns, and the sibling `useRef<string | null>` discriminator-keyed mount-effect mutation guard (used by `LearnClient` to fire `setLastViewedCardgroup` exactly once per cardgroup, not once per render).
 
 ### Bulk delete cache update pattern
 
@@ -133,20 +133,73 @@ Early-return guard: the `update` callback must begin with `if (data?.deleteCards
 
 ## Routing topology
 
-`/cardgroups` is the canonical landing for any signed-in user. The app converges every entry path on it so the user never lands on a stale placeholder or a redirect loop:
+`/` (HomePage RSC) is the canonical landing — every entry converges there, and `/` then routes the user to the most useful next screen rather than dropping them on a static page. The convergence guarantees no stale-placeholder or redirect-loop edge case can develop:
 
 | Entry | Anonymous → | Signed-in → |
 |---|---|---|
-| `/` (`app/page.tsx`) | `/login` | `/cardgroups` |
-| `/login` (`app/login/page.tsx`) | render `LoginButton` | `/cardgroups` |
+| `/` (`app/page.tsx`) | `/login` | 4-branch redirect (see below) |
+| `/login` (`app/login/page.tsx`) | render `LoginButton` | `/` (delegating the post-login routing decision back to HomePage) |
 | `/auth/callback?code=...` (`app/auth/callback/route.ts`) | n/a | `next` query value, defaulting to `/cardgroups` |
+| `/cards/new?cardgroup=<id>` | `/login` | render chip + `CardForm`; resolves cardgroup via 4-priority chain (see `/cards/new` below) |
+| `/cardgroups/new?welcome=1` | `/login` | render new-cardgroup form with welcome copy (onboarding entry) |
 | Header "Admin" link (admin only) | hidden | `/admin` (then `/admin/layout.tsx` gate → `/admin/page.tsx` → `redirect("/admin/users")`) |
 
-Loop prevention is delegated to the redirect chain itself, not to `next`-value inspection in `auth/callback`. A signed-in user landing on `/login` redirects once to `/cardgroups`; a signed-in user landing on `/` does the same. There is no `/cardgroups` self-redirect, so the chain always terminates in at most two hops.
+### HomePage 4-branch redirect
+
+`/` (HomePage RSC) fetches `MeWithLastViewedQuery` and chooses the next screen in this order:
+
+1. `me.lastViewedCardgroup != null` → `redirect("/learn/${id}")` — returning users land directly on the swipe UI, skipping the cardgroup list.
+2. `myCardgroups.length > 0` → `redirect("/cardgroups")` — user owns cardgroups but has never used `/learn`; they need to pick one.
+3. else → `redirect("/cardgroups/new?welcome=1")` — onboarding for first-time users.
+4. (matrix corner) anonymous → `redirect("/login")`, handled before the GraphQL fetch.
+
+Loop prevention: HomePage only redirects *outward* — never to `/` — so the chain terminates in one hop. `/learn/[id]` and `/cardgroups` do not redirect back to `/`, so a returning user's two-hop login flow is `/login → / → /learn/[id]`.
+
+### `/cards/new` cardgroup resolution (4-priority chain)
+
+The global "+ Card" CTA lands on `/cards/new` (the FAB does **not** carry `?cardgroup=...` — the route owns the resolution). The page resolves the cardgroup id in this order:
+
+1. `searchParams.cardgroup` — accepted only if the id appears in the user's `myCardgroups` list. A non-owned id silently falls through (no `BAD_USER_INPUT` surface) so a stale URL after sharing or revoke does not 500.
+2. `me.lastViewedCardgroup.id` — same ownership check (defensive; the FK already cascades).
+3. User has cardgroups but neither (1) nor (2) resolved → render the chip in undetermined state and **force the picker open** so the user explicitly chooses.
+4. `myCardgroups.length === 0` → `redirect("/cardgroups/new?welcome=1")` — the same onboarding target as HomePage branch (3).
+
+The URL `?cardgroup=<id>` is the **single source of truth** for the chip + form pair: the picker calls `router.replace("/cards/new?cardgroup=<newId>", { scroll: false })`, and chip / form re-render against the new URL. No client-side state holds a duplicate "selected cardgroup" — eliminates the chip-vs-form drift class of bugs.
+
+`/login` redirects signed-in users back to `/` (not directly to `/cardgroups`) so the post-login branching lives in exactly one place — HomePage. A second branching site in `/login` would have to repeat the `lastViewedCardgroup` lookup and would silently rot when HomePage's logic evolves.
 
 The legacy "render `/` with health check inline" pattern is replaced by `/api/healthz` — see "Route Handler conventions" below. External monitors that polled `/` must move to `/api/healthz`.
 
-The admin link in the global Header is the only UI affordance for entering `/admin`. It renders only when `gqlFetch(HeaderMeQuery)` returns a role named `"admin"`. See `.claude/rules/frontend-rsc-error-handling.md` for the failure-mode contract that lets the Header degrade silently when the role lookup fails.
+The admin entry surfaces (desktop `AdminPill`, mobile hamburger admin section) are the only UI affordances for entering `/admin`. Both render only when `gqlFetch(HeaderMeQuery)` returns a role named `"admin"`. The `/admin/layout.tsx` server-side gate is the enforcement boundary — header visibility is a UI hint, not security. See `.claude/rules/frontend-rsc-error-handling.md` for the failure-mode contract that lets the Header degrade silently when the role lookup fails.
+
+### Global navigation primitives
+
+Three components live under `frontend/src/components/nav/` and compose into the root layout:
+
+- `GlobalHeader` — RSC; rendered from `app/layout.tsx`. Mobile shows hamburger + logo + truncated email; desktop shows logo + nav links + `+ Card` CTA + `AdminPill` (when admin) + `LogoutButton`. Header MUST degrade silently on `getUser()` or `me`-query failure — see the rule.
+- `GlobalFAB` — Client; floats bottom-right with the coral `--brand-primary` background. Hidden on `/login`, `/learn/*`, `/admin/*`, `/cards/new`, `/cardgroups/new` — i.e. routes that are anonymous-only, full-bleed UI, a different audience, or the FAB's own destination (would loop). Hide list lives in one regex (`HIDDEN_PATH_RE`) inside `global-fab.tsx`; there is no allow-list. The FAB does NOT pre-pend `?cardgroup=...` — `/cards/new` owns the 4-priority resolution; passing the id from the FAB would create two truths.
+- `HamburgerDrawer` — Client; mobile-only. Three visually-divided groups separated by `<hr>`: (1) primary nav (Cardgroups, Profile), (2) admin entry tinted with `bg-brand-tint` + `border-brand-tint-border` when `isAdmin`, (3) sign-out. The admin tint is the **only** non-CTA use of the brand palette — see "Design tokens" below.
+
+`AdminPill` is a server component rendered inline in the desktop header when `isAdmin === true`. Its tint comes from the same `--brand-tint*` family as the hamburger admin section so the two surfaces are visually linked.
+
+### Cardgroup chip + picker primitives
+
+`CardgroupChip` (client) and `CardgroupPickerSheet` (client) live under `frontend/src/components/cardgroups/`. The chip is a short pill with the current cardgroup name + `ChevronDown`; tapping it opens the picker. The picker is a shadcn `Sheet` rendered with `side="bottom"` on all viewport sizes (the original plan considered a desktop `Dialog` variant via `useMediaQuery`, but a bottom sheet works on both and avoids dragging in a media-query hook just for one component). It is backed by `MyCardgroupsQuery` via `useQuery`. Two consumers exist today: `/cards/new` (chip + form pair, single source of truth in URL) and any future page that needs cardgroup-scoped writes from a non-cardgroup-scoped route.
+
+The chip truncates names to `max-w-[12ch] sm:max-w-[20ch]`; long names show as ellipsis-on-mobile and the full name appears in the picker. There is no tooltip — tapping the chip already reveals the full list.
+
+### Design tokens — brand palette usage rules
+
+`globals.css` defines five brand tokens (`--brand-primary`, `--brand-primary-foreground`, `--brand-tint`, `--brand-tint-border`, `--brand-tint-foreground`). The product palette is intentionally narrow:
+
+- `--brand-primary` (coral `#FE7F70` via OKLCH) — primary CTAs only: `+ Card` FAB, the `+ Card` desktop nav button, and primary form Save buttons. Not for body text, links, or hover states.
+- `--brand-tint*` — admin entry surfaces only: `AdminPill` and the hamburger admin section. Marks "you are crossing into the admin area" without screaming the same volume as a primary CTA.
+
+Every other surface uses shadcn's slate-based defaults (`--primary`, `--secondary`, `--accent`). New components should only reach for the brand tokens when they fall into one of those two categories — adding a third use site dilutes the signal.
+
+### Welcome copy on `/cardgroups/new?welcome=1`
+
+The `?welcome=1` query parameter makes `/cardgroups/new` (already the cardgroup-create page) double as the onboarding screen for first-time users by conditionally rendering a welcome banner above the form. HomePage branch (3) and `/cards/new` priority (4) both target this URL. Without the query parameter, the page renders only the form — same behaviour as before. Driving the difference from the URL keeps onboarding statelessly bookmarkable / sharable and avoids a separate `/welcome` route whose only difference would be the copy.
 
 ## Route Handler conventions
 
@@ -615,7 +668,7 @@ afterEach(() => {
 });
 ```
 
-Reference: `frontend/src/app/_components/header.test.tsx`. This applies to any test file that calls `vi.spyOn(...)` on a global (`console`, `Date`, `crypto`) or a module export.
+Reference: `frontend/src/components/nav/global-header.test.tsx`. This applies to any test file that calls `vi.spyOn(...)` on a global (`console`, `Date`, `crypto`) or a module export.
 
 ### Apollo Client v4 testing migration gotchas
 

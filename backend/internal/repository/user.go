@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 
@@ -15,12 +16,13 @@ import (
 // gormUser is the row mapping for public.users. Package-private so
 // callers cannot bypass the domain conversion.
 type gormUser struct {
-	ID          string    `gorm:"column:id;primaryKey;type:uuid"`
-	DisplayName *string   `gorm:"column:display_name"`
-	Bio         *string   `gorm:"column:bio"`
-	AvatarURL   *string   `gorm:"column:avatar_url"`
-	CreatedAt   time.Time `gorm:"column:created_at"`
-	UpdatedAt   time.Time `gorm:"column:updated_at"`
+	ID                    string    `gorm:"column:id;primaryKey;type:uuid"`
+	DisplayName           *string   `gorm:"column:display_name"`
+	Bio                   *string   `gorm:"column:bio"`
+	AvatarURL             *string   `gorm:"column:avatar_url"`
+	LastViewedCardgroupID *string   `gorm:"column:last_viewed_cardgroup_id;type:uuid"`
+	CreatedAt             time.Time `gorm:"column:created_at"`
+	UpdatedAt             time.Time `gorm:"column:updated_at"`
 }
 
 func (gormUser) TableName() string { return "users" }
@@ -34,6 +36,18 @@ var ErrNotFound = errors.New("repository: not found")
 // Plain errors.New so callers can branch with errors.Is without going through
 // eris's chain walk.
 var ErrCursorNotFound = errors.New("user pagination: cursor user not found")
+
+// ErrCardgroupNotFound is returned when SetLastViewedCardgroup targets a
+// cardgroup that is missing OR not owned by the calling user. Joined with
+// ErrNotFound so legacy callers that match the general sentinel keep working.
+//
+// Both "missing" and "not owned" collapse to the same sentinel deliberately:
+// surfacing distinct sentinels would let a caller distinguish the two cases
+// and probe the existence of cardgroups owned by other users.
+var ErrCardgroupNotFound = errors.Join(
+	errors.New("repository: cardgroup not found"),
+	ErrNotFound,
+)
 
 // User pagination caps. maxUserPageSize is the user-facing limit; userPageCap
 // is the repository limit set to maxUserPageSize+1 so the usecase's "+1 fetch"
@@ -56,6 +70,13 @@ type UserRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.User, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.User, error)
 	Update(ctx context.Context, id string, patch UserUpdate) (*domain.User, error)
+	// SetLastViewedCardgroup updates users.last_viewed_cardgroup_id atomically,
+	// verifying ownership in the same statement: the UPDATE only fires when the
+	// cardgroup exists AND is owned by userID. Returns
+	// errors.Join(ErrCardgroupNotFound, ErrNotFound) when no row is updated —
+	// the same sentinel for "cardgroup missing" and "cardgroup not owned" so
+	// the caller cannot probe other users' cardgroups via error shape.
+	SetLastViewedCardgroup(ctx context.Context, userID, cardgroupID string) error
 	// ListPage returns a page of users ordered by created_at DESC with id ASC
 	// as a stable tiebreaker. The cursor is the user UUID. Forward paging uses
 	// `after` (exclusive); backward paging uses `before` (exclusive). `first`
@@ -310,11 +331,64 @@ func escapeLikePattern(s string) string {
 
 func userToDomain(g gormUser) *domain.User {
 	return &domain.User{
-		ID:          g.ID,
-		DisplayName: g.DisplayName,
-		Bio:         g.Bio,
-		AvatarURL:   g.AvatarURL,
-		CreatedAt:   g.CreatedAt,
-		UpdatedAt:   g.UpdatedAt,
+		ID:                    g.ID,
+		DisplayName:           g.DisplayName,
+		Bio:                   g.Bio,
+		AvatarURL:             g.AvatarURL,
+		LastViewedCardgroupID: g.LastViewedCardgroupID,
+		CreatedAt:             g.CreatedAt,
+		UpdatedAt:             g.UpdatedAt,
 	}
+}
+
+// SetLastViewedCardgroup performs an ownership-checked UPDATE in a single SQL
+// statement: the row is touched only when (a) the user row exists and (b) the
+// referenced cardgroup exists AND is owned by the same user. Either condition
+// failing produces RowsAffected == 0, which is reported as
+// errors.Join(ErrCardgroupNotFound, ErrNotFound). The "cardgroup missing" and
+// "cardgroup not owned" cases collapse to the same sentinel so the caller
+// cannot probe existence of cardgroups owned by other users.
+//
+// FK race: between the EXISTS subquery and the UPDATE statement, the
+// referenced cardgroup can be deleted by a concurrent admin operation. The
+// resulting Postgres FK violation (23503) on last_viewed_cardgroup_id is
+// classified by classifyUserCardgroupFKError so the caller still receives
+// ErrCardgroupNotFound rather than INTERNAL.
+func (r *userRepo) SetLastViewedCardgroup(ctx context.Context, userID, cardgroupID string) error {
+	res := r.db.WithContext(ctx).
+		Model(&gormUser{}).
+		Where("id = ? AND EXISTS (SELECT 1 FROM cardgroups WHERE id = ? AND owner_id = ?)",
+			userID, cardgroupID, userID).
+		Updates(map[string]any{
+			"last_viewed_cardgroup_id": cardgroupID,
+		})
+	if res.Error != nil {
+		if classified := classifyUserCardgroupFKError(res.Error); classified != nil {
+			return classified
+		}
+		return eris.Wrap(res.Error, "repository: set last viewed cardgroup")
+	}
+	if res.RowsAffected == 0 {
+		return ErrCardgroupNotFound
+	}
+	return nil
+}
+
+// classifyUserCardgroupFKError maps a Postgres FK violation (code 23503) on
+// the users.last_viewed_cardgroup_id column to ErrCardgroupNotFound. This
+// shields the usecase from a TOCTOU race where the cardgroup is deleted
+// between the EXISTS subquery and the UPDATE. The constraint name match is
+// anchored on "last_viewed_cardgroup_id" — the column is unique to this FK
+// in the users table, so the substring is unambiguous. Returns nil when err
+// is not a FK violation so callers can use it as a pre-filter before falling
+// through to eris.Wrap.
+func classifyUserCardgroupFKError(err error) error {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23503" {
+		return nil
+	}
+	if strings.Contains(pgErr.ConstraintName, "last_viewed_cardgroup_id") {
+		return ErrCardgroupNotFound
+	}
+	return nil
 }
