@@ -198,12 +198,27 @@ Dynamic env vars (declared with `sync: false` in `render.yaml`; Blueprint create
 | `SUPABASE_JWT_ISSUER` | `https://<project-ref>.supabase.co/auth/v1` | Phase 6. |
 | `PING_TOKEN` | Auto-generated 32-byte hex token consumed by the readiness-ping workflow (see [Keep-alive ping workflow](#keep-alive-ping-workflow)). | Phase 6 (`postapply.yml`). |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint, or empty for no-op tracing. | Operator (manual, persisted across Blueprint syncs because of `sync: false`). |
+| `SUPER_USER_EMAILS` | Comma-separated email allowlist for first-admin bootstrap. Empty = feature OFF. | Operator (manual, persisted across Blueprint syncs because of `sync: false`). |
 
 When the Blueprint apply wizard prompts for the `sync: false` placeholders, leave them blank and click Save. Re-running `make setup-prod-postapply` reconciles the Supabase-derived three from the state file via the Render API, then triggers the first deploy.
 
 After the service is created, copy the deploy hook URL from **Settings → Deploy Hook** and store it as the GitHub Actions secret `RENDER_DEPLOY_HOOK_URL` (used by `.github/workflows/backend.yml`). When using `make setup-prod`, this registration is automated via `gh secret set` with the value piped through stdin — see the "Three security patterns" subsection above.
 
 When `render.yaml` itself changes (e.g. you bump `buildCommand`), reapply via **Blueprints → flamingo-armond → Manual Sync** in the dashboard, then re-run `make setup-prod-postapply` to deploy.
+
+#### Bootstrap admin (production)
+
+Run this procedure only on the very first admin bootstrap for a fresh environment, or when an existing environment has lost its last admin and the `adminGrantRole` mutation is therefore unreachable. Day-to-day admin grants and revocations go through the GraphQL `adminGrantRole` / `adminRevokeRole` mutations and do not require any change to `SUPER_USER_EMAILS`.
+
+1. Land the change that wires `SUPER_USER_EMAILS` into `render.yaml` on `main` (already done by the same change that introduces this section).
+2. In the Render dashboard, open **Blueprints → flamingo-armond → Manual Sync** so the `sync: false` placeholder for `SUPER_USER_EMAILS` shows up on the service's environment page.
+3. In the Render dashboard, open **flamingo-backend → Environment**, find `SUPER_USER_EMAILS`, and set its value to the comma-separated list of email addresses to bootstrap (e.g. `alice@example.com,bob@example.com`). Keep the list short — every entry is a long-lived backdoor until removed.
+4. Save. Render auto-redeploys the service when an environment variable changes; no Manual Deploy click is needed.
+5. Once the new instance is live, tail the service logs and confirm the startup line `super-user bootstrap enabled email_count=N` appears exactly once, where `N` matches the number of comma-separated entries you set. If `N` does not match, the value was mistyped (e.g. spaces around commas) — fix it in step 3 and let the redeploy roll.
+6. Have each listed user sign in to the production frontend via Google OAuth. The promotion is best-effort and runs on the first authenticated request the backend sees from each verified email; loading any page that issues a GraphQL `me` query is sufficient.
+7. For each promoted account, confirm the log line `superuser: promoted to admin user_id=<sub>` appears exactly once in the backend logs. From this point onward the user can use the GraphQL `adminGrantRole` / `adminRevokeRole` mutations to manage other admins.
+
+Removing an email from `SUPER_USER_EMAILS` does **not** revoke a previously granted admin role — the `adminRevokeRole` mutation is the only revocation path. See `docs/backend-auth.md` § "Bootstrap admin via `SUPER_USER_EMAILS`" for the design rationale (security gate on `email_verified=true`, no-auto-revocation, WARN-and-continue failure mode).
 
 ### Step 3 — Vercel
 
