@@ -4,9 +4,10 @@ package auth
 import "context"
 
 type AuthUser struct {
-	Sub   string
-	Email string
-	Role  string
+	Sub           string
+	Email         string
+	EmailVerified bool
+	Role          string
 }
 
 type contextKey struct{}
