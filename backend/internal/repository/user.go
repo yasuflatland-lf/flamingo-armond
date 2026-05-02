@@ -37,18 +37,16 @@ var ErrNotFound = errors.New("repository: not found")
 // eris's chain walk.
 var ErrCursorNotFound = errors.New("user pagination: cursor user not found")
 
-// errCardgroupNotFoundBase is the unjoined sentinel for the "cardgroup row
-// missing OR not owned by the calling user" condition. It is exposed as
-// ErrCardgroupNotFound, joined with ErrNotFound so legacy callers that match
-// the general sentinel keep working.
+// ErrCardgroupNotFound is returned when SetLastViewedCardgroup targets a
+// cardgroup that is missing OR not owned by the calling user. Joined with
+// ErrNotFound so legacy callers that match the general sentinel keep working.
 //
 // Both "missing" and "not owned" collapse to the same sentinel deliberately:
 // surfacing distinct sentinels would let a caller distinguish the two cases
 // and probe the existence of cardgroups owned by other users.
-var (
-	errCardgroupNotFoundBase = errors.New("repository: cardgroup not found")
-
-	ErrCardgroupNotFound = errors.Join(errCardgroupNotFoundBase, ErrNotFound)
+var ErrCardgroupNotFound = errors.Join(
+	errors.New("repository: cardgroup not found"),
+	ErrNotFound,
 )
 
 // User pagination caps. maxUserPageSize is the user-facing limit; userPageCap

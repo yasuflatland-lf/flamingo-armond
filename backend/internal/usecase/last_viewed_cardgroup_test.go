@@ -24,7 +24,6 @@ type mockLastViewedCardgroupRepo struct {
 	findResult *domain.User
 	findErr    error
 	findCalls  int
-	lastFindID string
 }
 
 func (m *mockLastViewedCardgroupRepo) SetLastViewedCardgroup(_ context.Context, userID, cardgroupID string) error {
@@ -34,9 +33,8 @@ func (m *mockLastViewedCardgroupRepo) SetLastViewedCardgroup(_ context.Context, 
 	return m.setErr
 }
 
-func (m *mockLastViewedCardgroupRepo) FindByID(_ context.Context, id string) (*domain.User, error) {
+func (m *mockLastViewedCardgroupRepo) FindByID(_ context.Context, _ string) (*domain.User, error) {
 	m.findCalls++
-	m.lastFindID = id
 	if m.findErr != nil {
 		return nil, m.findErr
 	}

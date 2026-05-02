@@ -76,17 +76,14 @@ func (u *lastViewedCardgroupUsecase) Set(ctx context.Context, cardgroupID string
 
 	user, err := u.users.FindByID(ctx, caller.Sub)
 	if err != nil {
-		switch {
-		case errors.Is(err, repository.ErrNotFound):
-			// The user row vanished between the UPDATE and the refetch — only
-			// possible if the auth.users row was deleted concurrently. Surface
-			// as INTERNAL with the wrapped sentinel for log correlation.
-			return nil, gqlerr.Internal(ctx, eris.Wrap(err, "usecase: set last viewed cardgroup: refetch"))
-		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		// ErrNotFound here means the user row vanished between the UPDATE and
+		// the refetch — only possible if the auth.users row was deleted
+		// concurrently. Treated as INTERNAL like any other refetch failure,
+		// with the wrapped sentinel preserved for log correlation.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, gqlerr.Cancelled(ctx, err)
-		default:
-			return nil, gqlerr.Internal(ctx, eris.Wrap(err, "usecase: set last viewed cardgroup: refetch"))
 		}
+		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "usecase: set last viewed cardgroup: refetch"))
 	}
 	return user, nil
 }
