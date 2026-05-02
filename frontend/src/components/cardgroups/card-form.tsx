@@ -121,7 +121,7 @@ export function CardForm({
       </form.Field>
 
       <div className="flex items-center gap-2">
-        <Button type="submit" disabled={submitting}>
+        <Button type="submit" variant="brand" disabled={submitting}>
           {submitting ? "Saving..." : resolvedLabel}
         </Button>
         {onCancel && (
