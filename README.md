@@ -11,6 +11,16 @@
 
 ![Production architecture](docs/images/architecture.png)
 
+## Pre-conditions
+
+Production deployment uses three external services. Create accounts before running `make setup-prod` — free tiers cover everything this repo provisions:
+
+- **Supabase** — managed Postgres + Auth: https://supabase.com
+- **Render** — hosts the Go backend: https://render.com
+- **Vercel** — hosts the Next.js frontend: https://vercel.com
+
+Local development does not require any of these — `make setup` boots a local Supabase via Docker. Provider tokens and the env-var matrix live in `docs/deployment.md`.
+
 ## Quick Start
 
 ### 1. Prerequisites
