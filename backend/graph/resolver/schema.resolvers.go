@@ -438,13 +438,14 @@ func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Rol
 
 // LastViewedCardgroup is the resolver for the lastViewedCardgroup field.
 //
-// toUserModel parks the cardgroup ID inside obj.LastViewedCardgroup.ID when
-// the underlying domain.User has a non-nil LastViewedCardgroupID; nil here
-// means "user never set one" and resolves to GraphQL null without touching
-// the DataLoader. When the FK was concurrently set-null by an
-// ON DELETE SET NULL cascade between the model conversion and this resolver,
-// the DataLoader returns ErrNotFound; that case is also surfaced as null
-// (consistent with the schema docstring) rather than as an error.
+// LastViewedCardgroup hydrates obj.LastViewedCardgroup.ID — parked there by
+// toUserModel — into a full Cardgroup via the per-request DataLoader.
+//
+// Returns nil when the parked ID is empty (the User had no last_viewed at fetch
+// time) or when the DataLoader returns repository.ErrNotFound — the latter
+// covers an ON DELETE SET NULL cascade that lands between the parent user
+// fetch and this field resolver. Other DataLoader errors map to gqlerr.Internal
+// (or gqlerr.Cancelled for ctx-cancellation, per error-wrapping.md).
 func (r *userResolver) LastViewedCardgroup(ctx context.Context, obj *model.User) (*model.Cardgroup, error) {
 	if obj.LastViewedCardgroup == nil || obj.LastViewedCardgroup.ID == "" {
 		return nil, nil
