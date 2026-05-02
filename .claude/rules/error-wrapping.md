@@ -69,6 +69,55 @@ Today's call sites:
 3. **`gqlerr.Cancelled(ctx, err)`** — client cancellation / server timeout returned through GraphQL (uses `LogWarn`, WARN level).
 4. **`auth/middleware.go reject(c, cause)`** — token-rejection log (uses `LogWarn`, WARN level).
 
+### Defensive `eris.Wrap` at log sites that consume narrow interfaces
+
+When a log site receives an `error` from a method on a **consumer-defined narrow interface** (e.g. `auth.adminChecker.IsAdmin`, `auth.roleAssigner.AssignToUser`), the production implementation may return an eris-wrapped error today, but a future stub or alternate implementation is free to return a stdlib `errors.New` value — at which point `eris.ToJSON(err, true)` emits an `external`-only payload with no `root.stack`. The fix is to wrap once at the log site itself before handing off to `LogWarn` / `LogError`:
+
+```go
+isAdmin, err := p.checker.IsAdmin(ctx, u.Sub)
+if err != nil {
+    logging.LogWarn(ctx, slog.Default(), "superuser: admin check failed",
+        eris.Wrap(err, "superuser: IsAdmin"),
+        slog.String("user_id", u.Sub))
+    return next(c)
+}
+```
+
+The wrap is cheap (one frame of stack), idempotent (wrapping an already-eris error nests cleanly under `wrap[]` while preserving the original `root`), and guarantees the log line carries a `root.stack` regardless of which interface implementation produced the error. Used in `auth/superuser.go` at both the `IsAdmin` and `AssignToUser` failure sites.
+
+### Test the `error_chain` shape, not just its presence
+
+A test that asserts only `rec0["error_chain"] != nil` passes whether the value is the rich `{root: {stack: [...]}, wrap: [...]}` shape or the degraded `{external: "..."}` shape that `eris.ToJSON` emits for stdlib errors. The degraded shape is exactly what slips in when a stub returns `errors.New(...)` — the test goes green, the log line ships with no stack, and operators triaging the WARN have nothing to grep for. Assert the structural shape:
+
+```go
+chain, ok := rec0["error_chain"].(map[string]any)
+if !ok { t.Fatalf("error_chain is not a JSON object: %T", rec0["error_chain"]) }
+root, hasRoot := chain["root"].(map[string]any)
+if !hasRoot {
+    t.Error("error_chain must have root entry (got external-only shape; stub may be using stdlib errors)")
+}
+if root != nil {
+    if stack, _ := root["stack"].([]any); len(stack) == 0 {
+        t.Error("error_chain.root.stack must contain at least one frame")
+    }
+}
+```
+
+Test stubs that produce errors must also use `eris.New(...)` (not `errors.New(...)`) so the assertion exercises the same code path production hits. Pattern in `backend/internal/auth/superuser_test.go` (`M7_IsAdminError`, `M8_AssignToUserError`).
+
+### Assert PII *absence* on log lines that carry `user_id`
+
+Logs that intentionally include a stable identifier (`user_id`, `cardgroup_id`) and intentionally omit PII (`email`, `display_name`) need a CI-enforced floor on the omission, not just the inclusion. A future contributor adding `slog.String("email", u.Email)` for "easier triage" silently regresses the redaction policy unless the test fails. Pair every "field is present" assertion with a "field is absent" check on the same record:
+
+```go
+if rec0["user_id"] != wantUserID { t.Errorf(...) }
+if _, hasEmail := rec0["email"]; hasEmail {
+    t.Error("WARN log must not contain 'email' field (PII protection)")
+}
+```
+
+Used in the `superuser_test.go` INFO and WARN cases — the policy in `auth/superuser.go` is "log `user_id` only", and the absence-tests are what hold that contract.
+
 ## Why `eris` over alternatives
 
 - **`fmt.Errorf("%w")`**: no stack trace, can only carry a string context.

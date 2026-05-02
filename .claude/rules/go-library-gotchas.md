@@ -118,6 +118,81 @@ other context attribute) itself. The pattern in
 calling `slog.WarnContext(ctx, ...)` — is the correct template for any
 context-enriched slog handler.
 
+## Constructor panics are the right tool for "non-empty config requires non-nil deps"
+
+When a constructor accepts a feature-flag-shaped configuration plus the dependencies that are required *only* when the flag is non-empty, returning an error is awkward (every caller has to plumb an extra error through `run()`) and a silent half-configured struct is a per-request nil-deref hazard. Panic at construction is the right level of force: the misconfiguration is an operator-visible programming error, not a runtime input, and `run()` has not yet started the HTTP server when it fires — Echo's `Recover` middleware is not in the path, so the panic crashes the process at boot.
+
+```go
+func NewSuperUserPromoter(emails map[string]struct{}, adminRoleID string,
+    checker adminChecker, assigner roleAssigner) *SuperUserPromoter {
+    if len(emails) > 0 {
+        if checker == nil      { panic("auth: ... checker must not be nil when emails is non-empty") }
+        if assigner == nil     { panic("auth: ... assigner must not be nil when emails is non-empty") }
+        if adminRoleID == ""   { panic("auth: ... adminRoleID must not be empty when emails is non-empty") }
+    }
+    // empty-emails path: nil deps are intentional; Middleware() returns a pass-through.
+}
+```
+
+The pattern only applies to config-shaped constructors where one branch (here, the OFF branch) legitimately accepts zero values. Constructors whose contract is "always need these deps" should use a regular nil-check + return-error.
+
+## Go `map` is a reference type — copy in the constructor when accepting one
+
+A constructor that stashes a caller-supplied `map` directly (`p.emails = emails`) leaves the invariant under the caller's control: any later `delete(emails, k)` or `emails[k] = struct{}{}` mutates the constructed object's internal state without going through any of its methods. This is silent and almost impossible to track down because the receiver has no API surface that names the violation. `slice` has the same property; the fix shape is the same.
+
+```go
+emailsCopy := make(map[string]struct{}, len(emails))
+for k := range emails { emailsCopy[k] = struct{}{} }
+return &SuperUserPromoter{ emails: emailsCopy, /* ... */ }
+```
+
+The copy is `O(n)` once at construction and the receiver's invariants are now tamper-proof. Apply to any constructor whose stored field is a reference type (`map`, `slice`, `chan`) and whose correctness depends on the contents being stable.
+
+## `json:",omitempty"` controls marshal output, never the decode path
+
+`omitempty` is a *marshal-side* directive: it tells `encoding/json.Marshal` to skip the field when its value is the zero value. It does **not** affect `Unmarshal`. A claim like `EmailVerified bool \`json:"email_verified,omitempty"\`` decodes a missing claim as the Go zero value (`false`) — the same as `bool` would do without the tag. This is desirable for security gates that should default-deny on a missing claim, but only when the design explicitly relies on that behaviour:
+
+```go
+type supabaseClaims struct {
+    Email         string `json:"email,omitempty"`
+    EmailVerified bool   `json:"email_verified,omitempty"`
+    // missing claim => EmailVerified == false (zero value), not an error.
+}
+```
+
+If the design requires distinguishing "claim absent" from "claim present and false", use `*bool` instead and check for nil. Either choice is fine; what is **not** fine is assuming `omitempty` does anything for the receiving direction. Asserted in `backend/internal/auth/superuser_test.go` (`TestSupabaseClaims_EmailVerified`).
+
+## Echo middleware factory: build the no-op decision once, not per-request
+
+When a middleware has a feature-flag branch ("do something when configured, otherwise pass through"), evaluate the flag once at construction time and return a different function from the factory. A `len(p.emails) == 0` check inside the per-request closure runs on every request even when the feature is off; lifting it out of the closure makes the OFF path a literal `func(next) { return next }` and the inliner can optimise the call entirely:
+
+```go
+func (p *SuperUserPromoter) Middleware() echo.MiddlewareFunc {
+    if len(p.emails) == 0 {
+        return func(next echo.HandlerFunc) echo.HandlerFunc { return next }
+    }
+    return func(next echo.HandlerFunc) echo.HandlerFunc {
+        return func(c *echo.Context) error { /* full hot path */ }
+    }
+}
+```
+
+Read the source-of-truth field directly (`len(p.emails) == 0`) rather than caching the decision in a derived `bool` on the struct — see "Derived flags drift" below.
+
+## Derived flags drift; read the source of truth instead
+
+A `passthrough bool` field on a struct that is "kept in sync with `len(emails) == 0`" introduces two states that the type system does not enforce to agree. Any future constructor variant, copy, or mutation path that sets one and forgets the other produces a struct whose hot-path branch disagrees with its data. The fix is to delete the cache and read the source of truth at the decision point:
+
+```go
+// AVOID: derived flag duplicates state already in p.emails.
+type SuperUserPromoter struct { emails map[string]struct{}; passthrough bool /* derived */ }
+
+// PREFER: compute on read; impossible to drift.
+if len(p.emails) == 0 { /* pass-through branch */ }
+```
+
+The rule generalises to any field that is fully determined by another field on the same struct: prefer recomputation unless profiling shows the read is hot enough to matter. For an Echo middleware factory `Middleware()` that runs once per process (not per request), the cost is rounding-error.
+
 ## `slog.Handler.WithGroup` nests subsequent attrs inside the group object
 
 Calling `handler.WithGroup("g")` on a `slog.JSONHandler` (or any handler that
