@@ -13,6 +13,18 @@ Chat replies between Claude Code and the user remain in 日本語 — the rule c
 
 Do not reference PR numbers (`PR6`, `PR11`, …) or merge order in committed text. PR numbers are unstable across squash/rebase/fork-merge and rot quickly. Phrase architectural facts as standing statements ("the Supabase SSR client uses…") rather than historical notes ("PR6 introduces…"). Issue links (`[#22]`) are permanent and may stay.
 
+The same rule extends to **self-referential change-history phrasing**: "(already done by the same change that introduces this section)", "(this PR adds…)", "(in this section we now…)" all rot the moment another change touches the file. The reader who arrives six months later has no way to know which "this section" the parenthetical meant. Phrase preconditions as standing operator instructions ("Confirm `render.yaml` declares X. If it does not, land that first.") rather than historical narration. The same review cycle that exposed the PR-number rule also surfaced the self-referential variant; both fail for the same reason.
+
+## Verify cross-doc symbols against the source of truth, never against a sibling doc
+
+When a doc references a GraphQL mutation name, a Go function name, an env-var name, or any other code-level identifier, the source of truth is `schema/schema.graphql`, the Go source file, or the canonical config — **never** a sibling doc. A typo in `docs/A.md` that gets copied verbatim into `docs/B.md` looks self-consistent (both docs agree) and survives review by anyone who checks A and B against each other instead of against the schema. The failure mode that exposed this rule: an `adminRevokeRole` reference (no such mutation; the actual mutation is `revokeRole`) lived in one doc and propagated into a new doc via copy-paste from the issue body that itself carried the typo. Resolve every cross-doc symbol by grepping the schema or source on the same edit.
+
+## Markdown anchor links over bare-text references
+
+Cross-doc references should be Markdown anchor links — `[\`docs/foo.md\` § "Section title"](foo.md#section-title)` — not bare text — `See \`docs/foo.md\` § "Section title"`. The anchor link is rot-loud: a heading rename breaks the anchor and a CI link-checker catches it. A bare-text reference is rot-silent: the heading can drift arbitrarily and nothing complains until a reader tries to follow it.
+
+GitHub's slug rules for the anchor portion: lowercase the heading, replace spaces with hyphens, drop backticks, **keep underscores as-is**. So `## Bootstrap admin via \`SUPER_USER_EMAILS\`` slugs to `#bootstrap-admin-via-super_user_emails` (underscore preserved). Symbols other than `_` and `-` are dropped, not transliterated. When in doubt, render the doc on github.com once and copy the anchor from the heading's hover-link.
+
 ## Verification
 
 Run before committing — both should print nothing:

@@ -180,6 +180,14 @@ The structural config of the backend service lives in `render.yaml` at the repo 
 
 In the Render dashboard click **New → Blueprint** and point at `yasuflatland-lf/flamingo-armond` on `main`. Render reads `render.yaml` and creates `flamingo-backend` with the structural config above and the static env-var values below.
 
+**Env-var taxonomy.** `render.yaml` declares three classes of env vars; new variables fall into one of them:
+
+- **Static** — literal `value:` in `render.yaml`, reconciled by Blueprint sync. Use when the value is identical across all production environments and lives in the repo (e.g. `APP_ENV=production`).
+- **Dynamic, derivable from another system** — `sync: false` in `render.yaml`, value upserted by `playbooks/setup-prod/postapply.yml` via `PUT /v1/services/{id}/env-vars/{key}` after the relevant setup phase has produced the derived value. Use when the value comes from another provider's API output (e.g. Supabase DSN/JWKS URL, auto-generated `PING_TOKEN`).
+- **Operator-discretionary** — `sync: false` in `render.yaml`, no postapply PUT, no GitHub Actions secret, no state-file entry. The operator sets the value manually in the Render dashboard. Use when the value is a policy decision that no other system can derive (e.g. `OTEL_EXPORTER_OTLP_ENDPOINT`, `SUPER_USER_EMAILS`). Document the operator-set procedure inline in this Step 2 section.
+
+Mirror the existing pattern of the closest peer (e.g. operator-discretionary → mirror `OTEL_EXPORTER_OTLP_ENDPOINT`, derivable → mirror `PING_TOKEN`) when adding a new env var.
+
 Static env vars (managed by Blueprint sync — defined with `value:` in `render.yaml`):
 
 | Variable | Value |

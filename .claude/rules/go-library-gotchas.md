@@ -193,6 +193,10 @@ if len(p.emails) == 0 { /* pass-through branch */ }
 
 The rule generalises to any field that is fully determined by another field on the same struct: prefer recomputation unless profiling shows the read is hot enough to matter. For an Echo middleware factory `Middleware()` that runs once per process (not per request), the cost is rounding-error.
 
+## `slog.NewJSONHandler` renders attrs as JSON keys, not `key=value` pairs
+
+The production logger in `backend/cmd/server/main.go` is `slog.NewJSONHandler(os.Stderr, ...)`. A call site that writes `logger.Info("super-user bootstrap enabled", "email_count", n)` therefore lands in the log stream as `{"msg":"super-user bootstrap enabled","email_count":3}`, **not** the `slog.NewTextHandler` shape `msg="super-user bootstrap enabled" email_count=3` that test stubs and quick-reproduce snippets often print. Operator-facing docs that quote a log line for grep instructions must quote the JSON shape — instructing an operator to grep for `email_count=N` against a JSON-handler stream produces zero matches. The failure mode that exposed this rule: a runbook said "look for `email_count=3`" while production emitted `"email_count":3`, and the operator gave up after `grep` returned nothing. The rule applies symmetrically to any future operator runbook that embeds a log-line excerpt — match the rendering of whichever handler the relevant `main()` constructs.
+
 ## `slog.Handler.WithGroup` nests subsequent attrs inside the group object
 
 Calling `handler.WithGroup("g")` on a `slog.JSONHandler` (or any handler that
