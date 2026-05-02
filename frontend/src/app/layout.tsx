@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Header } from "./_components/header";
+import { GlobalHeader } from "@/components/nav/global-header";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -20,7 +20,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       */}
       <body suppressHydrationWarning>
         <Providers>
-          <Header />
+          <GlobalHeader />
           {children}
         </Providers>
       </body>
