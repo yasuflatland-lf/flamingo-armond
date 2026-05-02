@@ -4,8 +4,8 @@ import { useMutation } from "@apollo/client/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SetLastViewedCardgroupMutation } from "@/app/learn/queries";
 import { CreateCardMutation } from "@/app/cardgroups/queries";
+import { SetLastViewedCardgroupMutation } from "@/app/learn/queries";
 import { CardForm } from "@/components/cardgroups/card-form";
 import { CardgroupChip } from "@/components/cardgroups/cardgroup-chip";
 import CardgroupPickerSheet from "@/components/cardgroups/cardgroup-picker-sheet";
@@ -30,13 +30,7 @@ type Props = {
  * consecutive adds remount this component and restart the timer instead of
  * silently extending the previous one.
  */
-function SuccessIndicator({
-  message,
-  onTimeout,
-}: {
-  message: string;
-  onTimeout: () => void;
-}) {
+function SuccessIndicator({ message, onTimeout }: { message: string; onTimeout: () => void }) {
   useEffect(() => {
     const t = setTimeout(onTimeout, 2000);
     return () => clearTimeout(t);
@@ -65,7 +59,6 @@ export default function CardsNewClient({
   const urlCardgroupId = searchParams.get("cardgroup");
   const currentId = urlCardgroupId ?? initialCardgroupId;
 
-  // Derive the display name from the server-seeded list.
   const currentName =
     currentId != null ? (myCardgroups.find((cg) => cg.id === currentId)?.name ?? null) : null;
 
@@ -76,7 +69,6 @@ export default function CardsNewClient({
   // optimistic writes on typed errors — see .claude/rules/pagination.md.
   const [setLastViewed] = useMutation(SetLastViewedCardgroupMutation);
 
-  // Form-reset callback handed up by <CardForm> via onResetReady.
   const resetFormRef = useRef<(() => void) | null>(null);
   // `successKey` doubles as "is the indicator visible?" (null = hidden) and as
   // a remount key — bumping it on each successful submit forces SuccessIndicator
