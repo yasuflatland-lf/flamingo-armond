@@ -20,12 +20,14 @@ vi.mock("./learn-client", () => ({
   LearnClient: ({
     cardgroupId,
     initialCards,
+    lastViewedCardgroupId,
   }: {
     cardgroupId: string;
     initialCards: unknown[];
+    lastViewedCardgroupId: string | null;
   }) => (
     <div data-testid="learn-client">
-      {cardgroupId}:{initialCards.length}
+      {cardgroupId}:{initialCards.length}:{lastViewedCardgroupId ?? "null"}
     </div>
   ),
 }));
@@ -84,12 +86,17 @@ describe("LearnPage", () => {
             cardgroupId: "cg-1",
           },
         ],
+      } as never)
+      .mockResolvedValueOnce({
+        me: { id: "user-1", lastViewedCardgroup: { id: "cg-old" } },
+        myCardgroups: [],
       } as never);
 
     const jsx = await LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) });
     render(jsx);
 
     expect(screen.getByText("Spanish")).toBeInTheDocument();
-    expect(screen.getByTestId("learn-client")).toHaveTextContent("cg-1:1");
+    // Format: cardgroupId:initialCards.length:lastViewedCardgroupId
+    expect(screen.getByTestId("learn-client")).toHaveTextContent("cg-1:1:cg-old");
   });
 });

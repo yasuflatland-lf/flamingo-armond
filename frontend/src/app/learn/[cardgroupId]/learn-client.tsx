@@ -1,9 +1,10 @@
 "use client";
 
-import { useMutation } from "@apollo/client/react";
+import { gql } from "@apollo/client";
+import { useApolloClient, useMutation } from "@apollo/client/react";
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
-import { HandleSwipeMutation } from "@/app/learn/queries";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { HandleSwipeMutation, SetLastViewedCardgroupMutation } from "@/app/learn/queries";
 import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
 import { SwipeStatusBar } from "@/components/learn/swipe-status-bar";
 import { Button } from "@/components/ui/button";
@@ -96,9 +97,11 @@ function ModeBadge({ mode, metrics }: { mode: number; metrics: PerformanceMetric
 type Props = {
   cardgroupId: string;
   initialCards: LearnCard[];
+  /** The id of the user's `lastViewedCardgroup` at server-render time. */
+  lastViewedCardgroupId: string | null;
 };
 
-export function LearnClient({ cardgroupId, initialCards }: Props) {
+export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }: Props) {
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
   const [completed, setCompleted] = useState(0);
   const [swipeDirection, setSwipeDirection] = useState<SwipeDirection | null>(null);
@@ -112,6 +115,50 @@ export function LearnClient({ cardgroupId, initialCards }: Props) {
   const [handleSwipe, { error, loading }] = useMutation(HandleSwipeMutation);
   const backendError = useMemo(() => getBackendErrorBanner(error), [error]);
   const visibleError = localError ?? backendError;
+
+  // Persist this cardgroup as the user's last-viewed cardgroup so the HomePage
+  // RSC can land them here on next visit. Frontend skips the network call when
+  // the server already reports this cardgroup as last-viewed; the server has
+  // no throttle (YAGNI). Errors are non-fatal — learning continues.
+  //
+  // The mutation is fired via the imperative client API rather than useMutation
+  // so the cache update can run regardless of caller render state, and so we
+  // can keep the effect's dependency surface narrow.
+  //
+  // No `optimisticResponse`: setLastViewedCardgroup can return typed errors
+  // (BAD_USER_INPUT, UNAUTHENTICATED) which @apollo/client v3.x does not
+  // reliably roll back from optimistic writes — see pagination.md.
+  const client = useApolloClient();
+  useEffect(() => {
+    if (lastViewedCardgroupId === cardgroupId) return;
+    client
+      .mutate({
+        mutation: SetLastViewedCardgroupMutation,
+        variables: { cardgroupId },
+        update: (cache, { data }) => {
+          if (!data?.setLastViewedCardgroup) return;
+          cache.writeFragment({
+            id: cache.identify({
+              __typename: "User",
+              id: data.setLastViewedCardgroup.id,
+            }),
+            fragment: gql`
+              fragment LastViewedFragment on User {
+                lastViewedCardgroup {
+                  id
+                }
+              }
+            `,
+            data: {
+              lastViewedCardgroup: data.setLastViewedCardgroup.lastViewedCardgroup,
+            },
+          });
+        },
+      })
+      .catch((err) => {
+        console.warn("[learn] setLastViewedCardgroup failed", err);
+      });
+  }, [cardgroupId, lastViewedCardgroupId, client]);
 
   const reconcileQueue = useCallback((data: HandleSwipeMutationType | null | undefined) => {
     if (data?.handleSwipe) {

@@ -50,9 +50,12 @@ const DEFAULT_METRICS = {
 };
 
 function renderLearnClient(mocks: unknown[], initialCards = [CARD_1]) {
+  // Pass `lastViewedCardgroupId === CG_ID` so the persist-last-viewed effect
+  // short-circuits before issuing a mutation; that mutation is exercised in
+  // its own test below and would otherwise need a mock entry in every case.
   render(
     <MockedProvider mocks={mocks as never}>
-      <LearnClient cardgroupId={CG_ID} initialCards={initialCards} />
+      <LearnClient cardgroupId={CG_ID} initialCards={initialCards} lastViewedCardgroupId={CG_ID} />
     </MockedProvider>,
   );
 }

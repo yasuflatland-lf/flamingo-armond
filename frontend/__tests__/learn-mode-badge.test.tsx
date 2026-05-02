@@ -57,7 +57,7 @@ it("renders the adaptive mode badge from the swipe response", async () => {
 
   render(
     <MockedProvider mocks={[mock]}>
-      <LearnClient cardgroupId={CG_ID} initialCards={[CARD]} />
+      <LearnClient cardgroupId={CG_ID} initialCards={[CARD]} lastViewedCardgroupId={CG_ID} />
     </MockedProvider>,
   );
 
