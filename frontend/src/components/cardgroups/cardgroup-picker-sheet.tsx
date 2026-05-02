@@ -52,10 +52,9 @@ export default function CardgroupPickerSheet({
       <SheetContent
         side="bottom"
         className="mx-auto max-h-[70vh] w-full max-w-lg overflow-y-auto rounded-t-xl pb-safe"
-        aria-labelledby="cardgroup-picker-title"
       >
         <SheetHeader className="mb-4">
-          <SheetTitle id="cardgroup-picker-title">Select cardgroup</SheetTitle>
+          <SheetTitle>Select cardgroup</SheetTitle>
           <SheetDescription className="sr-only">
             Choose the cardgroup for this card.
           </SheetDescription>
@@ -82,7 +81,7 @@ export default function CardgroupPickerSheet({
               </p>
               <Link
                 href="/cardgroups/new"
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                className="rounded-md bg-brand-primary px-4 py-2 text-sm font-medium text-brand-primary-foreground hover:opacity-90 transition-opacity"
                 onClick={() => onOpenChange(false)}
               >
                 Create cardgroup

@@ -15,7 +15,7 @@ if (error && error.name !== "AuthSessionMissingError") {
 // `user` is `User | null` here — branch on it.
 ```
 
-The filter is keyed on `error.name` (string), not on `instanceof` — Supabase's class identity does not survive serialization across the SDK's internal boundaries reliably. Used today in `frontend/src/components/nav/global-header.tsx`, `frontend/src/app/page.tsx`, `frontend/src/app/login/page.tsx`, `frontend/src/app/cards/new/page.tsx`, and `frontend/src/app/cardgroups/new/page.tsx`.
+The filter is keyed on `error.name` (string), not on `instanceof` — Supabase's class identity does not survive serialization across the SDK's internal boundaries reliably. The pattern applies to every RSC, layout, route handler, or server action that calls `supabase.auth.getUser()`. To find all current call sites: `grep -rn "auth.getUser\|auth.getSession\|auth.getClaims" frontend/src/`. Any new file added to those results must include the filter — there is no per-file list to maintain because the list rotted before this entry was rewritten.
 
 ## Header (root layout) MUST degrade on failure, never throw
 

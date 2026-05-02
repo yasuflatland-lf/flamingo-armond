@@ -22,7 +22,12 @@ export default async function CardgroupDetailPage({ params }: { params: Promise<
     data: { user },
     error: authErr,
   } = await supabase.auth.getUser();
-  if (authErr) throw authErr;
+  // AuthSessionMissingError is the "no session" signal — fall through to the
+  // !user redirect below. Any other auth error is a real failure.
+  if (authErr && authErr.name !== "AuthSessionMissingError") {
+    console.error("[cardgroups/:id] getUser() failed:", authErr.name, authErr.message);
+    throw authErr;
+  }
   if (!user) redirect("/login");
 
   const { id } = await params;
@@ -55,7 +60,7 @@ export default async function CardgroupDetailPage({ params }: { params: Promise<
       {cards.length === 0 ? (
         <div className="mb-8 rounded-lg border border-dashed border-border p-6 text-center">
           <p className="mb-4 text-muted-foreground">No cards yet. Add some to get started.</p>
-          <Button asChild>
+          <Button asChild variant="brand">
             <Link href={`/cardgroups/${id}/cards`}>Add card</Link>
           </Button>
         </div>
@@ -81,7 +86,7 @@ export default async function CardgroupDetailPage({ params }: { params: Promise<
       )}
 
       <div className="flex flex-wrap gap-3">
-        <Button asChild>
+        <Button asChild variant="brand">
           <Link href={`/learn/${id}`}>Start learning</Link>
         </Button>
         <Button asChild variant="outline">
