@@ -3,6 +3,8 @@ package database_test
 import (
 	"context"
 	"database/sql"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,59 @@ import (
 
 	"backend/internal/database"
 )
+
+// cardsUpsertIndexVersion is the integer timestamp embedded in the
+// 20260503000000_add_cards_upsert_index migration file. New migrations added
+// to this repo land at higher version numbers, so any migration "above"
+// this one needs rolling off before the index migration itself can be
+// stepped down.
+const cardsUpsertIndexVersion int = 20260503000000
+
+// migrationsAboveCardsUpsertIndex counts how many up-migrations sit strictly
+// above the cards_upsert_index migration in the embedded source. Returning
+// 0 keeps the historical "single -1 step toggles the index" behaviour;
+// returning N > 0 lets the test peel off the newer migrations before
+// touching the index pair.
+//
+// The function inspects the on-disk migrations directory (relative to the
+// _test package) rather than parsing the embedded FS, because the embed.FS
+// var is package-private. This is acceptable for test code: the migrations
+// directory is right next to this file in the same package.
+func migrationsAboveCardsUpsertIndex(t *testing.T) int {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(".", "migrations"))
+	if err != nil {
+		t.Fatalf("read migrations dir: %v", err)
+	}
+	seen := map[string]struct{}{}
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasSuffix(name, ".up.sql") {
+			continue
+		}
+		// Filename pattern: <version>_<name>.up.sql; the version is everything
+		// up to the first underscore and parses as an int.
+		us := strings.IndexByte(name, '_')
+		if us <= 0 {
+			continue
+		}
+		versionStr := name[:us]
+		// Track unique versions; .down.sql / .up.sql pairs share a version.
+		seen[versionStr] = struct{}{}
+	}
+	count := 0
+	for v := range seen {
+		// Strip leading zeros via direct numeric compare on the string after
+		// pad to the same width as cardsUpsertIndexVersion. The timestamps in
+		// this repo are all 14 digits already, so a lexicographic compare
+		// matches a numeric compare.
+		if len(v) == 14 && v > "20260503000000" {
+			count++
+		}
+	}
+	_ = cardsUpsertIndexVersion // kept for documentation parity with the constant
+	return count
+}
 
 // indexExists returns true if a relation named indexName exists in
 // public's pg_indexes. Used by both directions of the migration test.
@@ -55,6 +110,17 @@ func TestCardsUpsertIndex_CleanDBSucceeds(t *testing.T) {
 		t.Fatalf("expected %q to exist after migrate up, but it does not", indexName)
 	}
 
+	// Roll forward off the index migration so we can roll the index migration
+	// itself back. New migrations added after 20260503000000 (e.g.
+	// 20260503000001) sit between the index migration and HEAD; rolling them
+	// off first keeps this test pinned to the cards_upsert_index step pair.
+	stepsAboveIndex := migrationsAboveCardsUpsertIndex(t)
+	if stepsAboveIndex > 0 {
+		if err := database.MigrateStepsForTest(testDSN, -stepsAboveIndex); err != nil {
+			t.Fatalf("migrate down %d steps to top of cards_upsert_index: %v", stepsAboveIndex, err)
+		}
+	}
+
 	// Roll the index migration back and confirm the index is gone.
 	if err := database.MigrateStepsForTest(testDSN, -1); err != nil {
 		t.Fatalf("migrate down 1 step: %v", err)
@@ -64,8 +130,8 @@ func TestCardsUpsertIndex_CleanDBSucceeds(t *testing.T) {
 	}
 
 	// Re-apply so the DB ends in the migrated-up state for the rest of the suite.
-	if err := database.MigrateStepsForTest(testDSN, 1); err != nil {
-		t.Fatalf("migrate up 1 step (restore): %v", err)
+	if err := database.MigrateStepsForTest(testDSN, 1+stepsAboveIndex); err != nil {
+		t.Fatalf("migrate up %d step(s) (restore): %v", 1+stepsAboveIndex, err)
 	}
 	if !indexExists(t, ctx, sqlDB, indexName) {
 		t.Fatalf("expected %q to be re-created after migrate up, but it is missing", indexName)
@@ -83,6 +149,16 @@ func TestCardsUpsertIndex_DuplicatesBlockMigration(t *testing.T) {
 
 	sqlDB := sqlDBForTest(t, db)
 	const indexName = "uq_cards_cardgroup_front"
+
+	// Roll forward off any post-index migrations first so the next -1 step
+	// targets cards_upsert_index itself. See TestCardsUpsertIndex_CleanDBSucceeds
+	// for the rationale; this test mirrors the same step accounting.
+	stepsAboveIndex := migrationsAboveCardsUpsertIndex(t)
+	if stepsAboveIndex > 0 {
+		if err := database.MigrateStepsForTest(testDSN, -stepsAboveIndex); err != nil {
+			t.Fatalf("migrate down %d steps to top of cards_upsert_index: %v", stepsAboveIndex, err)
+		}
+	}
 
 	// Step 1: roll the index migration back so we can plant a duplicate
 	// the unique index would otherwise reject. The index must be absent
@@ -148,8 +224,8 @@ func TestCardsUpsertIndex_DuplicatesBlockMigration(t *testing.T) {
 	if err := database.MigrateForceForTest(testDSN, 20260502130000); err != nil {
 		t.Fatalf("force version to predecessor: %v", err)
 	}
-	if err := database.MigrateStepsForTest(testDSN, 1); err != nil {
-		t.Fatalf("migrate up 1 step (restore): %v", err)
+	if err := database.MigrateStepsForTest(testDSN, 1+stepsAboveIndex); err != nil {
+		t.Fatalf("migrate up %d step(s) (restore): %v", 1+stepsAboveIndex, err)
 	}
 	if !indexExists(t, ctx, sqlDB, indexName) {
 		t.Fatalf("expected %q to exist after restore migrate up, but it is missing", indexName)
