@@ -20,9 +20,7 @@ export function CardgroupChip({ name, onChangeRequested }: CardgroupChipProps) {
       type="button"
       variant="outline"
       onClick={onChangeRequested}
-      aria-label={
-        name ? `Change cardgroup (currently "${name}")` : "Select cardgroup"
-      }
+      aria-label={name ? `Change cardgroup (currently "${name}")` : "Select cardgroup"}
       className="inline-flex items-center gap-2"
     >
       <span

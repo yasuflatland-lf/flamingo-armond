@@ -17,7 +17,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MyCardgroupsDocument } from "@/generated/graphql";
-import { installApolloMockLeakSpy, type ApolloMockLeakSpyResult } from "../../../__tests__/utils/mock-apollo-paginated";
+import {
+  type ApolloMockLeakSpyResult,
+  installApolloMockLeakSpy,
+} from "../../../__tests__/utils/mock-apollo-paginated";
 import CardgroupPickerSheet from "./cardgroup-picker-sheet";
 
 // ---------------------------------------------------------------------------
@@ -34,11 +37,26 @@ vi.mock("next/link", () => ({
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const CG_1 = { __typename: "Cardgroup" as const, id: "cg-1", name: "Spanish Vocab", updatedAt: "2026-01-01T00:00:00Z" };
-const CG_2 = { __typename: "Cardgroup" as const, id: "cg-2", name: "Japanese Kanji", updatedAt: "2026-01-02T00:00:00Z" };
-const CG_3 = { __typename: "Cardgroup" as const, id: "cg-3", name: "French Phrases", updatedAt: "2026-01-03T00:00:00Z" };
+const CG_1 = {
+  __typename: "Cardgroup" as const,
+  id: "cg-1",
+  name: "Spanish Vocab",
+  updatedAt: "2026-01-01T00:00:00Z",
+};
+const CG_2 = {
+  __typename: "Cardgroup" as const,
+  id: "cg-2",
+  name: "Japanese Kanji",
+  updatedAt: "2026-01-02T00:00:00Z",
+};
+const CG_3 = {
+  __typename: "Cardgroup" as const,
+  id: "cg-3",
+  name: "French Phrases",
+  updatedAt: "2026-01-03T00:00:00Z",
+};
 
-function baseMocks(cardgroups: typeof CG_1[]): MockedResponse[] {
+function baseMocks(cardgroups: (typeof CG_1)[]): MockedResponse[] {
   return [
     {
       request: { query: MyCardgroupsDocument },
@@ -110,7 +128,13 @@ describe("<CardgroupPickerSheet>", () => {
   // S2: loading indicator visible while the mocked response is pending.
   it("shows a loading indicator while the query is in flight", async () => {
     renderSheet({
-      mocks: [{ request: { query: MyCardgroupsDocument }, delay: Infinity, result: { data: { myCardgroups: [] } } }],
+      mocks: [
+        {
+          request: { query: MyCardgroupsDocument },
+          delay: Infinity,
+          result: { data: { myCardgroups: [] } },
+        },
+      ],
     });
 
     // Radix Sheet renders the portal content when open=true.

@@ -44,7 +44,9 @@ export function NewCardgroupClient({ showWelcome = false }: NewCardgroupClientPr
     <main className="mx-auto max-w-xl p-8">
       {showWelcome && (
         <div className="mb-8 rounded-lg border border-border bg-card p-6">
-          <h2 className="mb-2 text-lg font-semibold">Welcome! Let's create your first cardgroup.</h2>
+          <h2 className="mb-2 text-lg font-semibold">
+            Welcome! Let's create your first cardgroup.
+          </h2>
           <p className="text-sm text-muted-foreground">
             A cardgroup holds the cards you want to study together. You can always add more cards
             later.

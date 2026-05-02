@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { BookOpen, Menu, ShieldCheck, User } from "lucide-react";
+import Link from "next/link";
+import { LogoutButton } from "@/app/_components/logout-button";
 import {
   Sheet,
   SheetClose,
@@ -10,7 +11,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { LogoutButton } from "@/app/_components/logout-button";
 
 interface HamburgerDrawerProps {
   isAdmin: boolean;
@@ -38,11 +38,7 @@ export function HamburgerDrawer({ isAdmin, userEmail }: HamburgerDrawerProps) {
           <SheetTitle className="sr-only">Menu</SheetTitle>
         </SheetHeader>
 
-        {userEmail && (
-          <p className="mb-4 truncate text-xs text-muted-foreground">
-            {userEmail}
-          </p>
-        )}
+        {userEmail && <p className="mb-4 truncate text-xs text-muted-foreground">{userEmail}</p>}
 
         <nav className="flex flex-col gap-1">
           <SheetClose asChild>

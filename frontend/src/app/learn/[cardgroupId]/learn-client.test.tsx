@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { InMemoryCache, gql } from "@apollo/client";
+import { gql, InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -197,11 +197,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
     const mutationCalled = vi.fn();
     render(
       <MockedProvider mocks={[makePersistMock(CG_ID, mutationCalled)]}>
-        <LearnClient
-          cardgroupId={CG_ID}
-          initialCards={[CARD_1]}
-          lastViewedCardgroupId="cg-other"
-        />
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
       </MockedProvider>,
     );
 
@@ -215,11 +211,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
 
     render(
       <MockedProvider mocks={[makePersistMock(CG_ID)]} cache={cache}>
-        <LearnClient
-          cardgroupId={CG_ID}
-          initialCards={[CARD_1]}
-          lastViewedCardgroupId="cg-other"
-        />
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
       </MockedProvider>,
     );
 
@@ -257,11 +249,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
 
     render(
       <MockedProvider mocks={[graphqlErrorMock]}>
-        <LearnClient
-          cardgroupId={CG_ID}
-          initialCards={[CARD_1]}
-          lastViewedCardgroupId="cg-other"
-        />
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
       </MockedProvider>,
     );
 
@@ -286,11 +274,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
 
     render(
       <MockedProvider mocks={[networkErrorMock]}>
-        <LearnClient
-          cardgroupId={CG_ID}
-          initialCards={[CARD_1]}
-          lastViewedCardgroupId="cg-other"
-        />
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
       </MockedProvider>,
     );
 

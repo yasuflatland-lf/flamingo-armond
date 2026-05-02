@@ -1,12 +1,12 @@
 "use client";
 
+import { useMutation } from "@apollo/client/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { CreateCardMutation } from "@/app/cardgroups/queries";
 import { CardForm } from "@/components/cardgroups/card-form";
 import { CardgroupChip } from "@/components/cardgroups/cardgroup-chip";
 import CardgroupPickerSheet from "@/components/cardgroups/cardgroup-picker-sheet";
-import { useMutation } from "@apollo/client/react";
 
 type Cardgroup = {
   id: string;
@@ -37,12 +37,9 @@ export default function CardsNewClient({
 
   // Derive the display name from the server-seeded list.
   const currentName =
-    currentId != null
-      ? (myCardgroups.find((cg) => cg.id === currentId)?.name ?? null)
-      : null;
+    currentId != null ? (myCardgroups.find((cg) => cg.id === currentId)?.name ?? null) : null;
 
-  const [createCard, { loading: creating, error: createError }] =
-    useMutation(CreateCardMutation);
+  const [createCard, { loading: creating, error: createError }] = useMutation(CreateCardMutation);
 
   async function handleCreate(values: { front: string; back: string }) {
     if (!currentId) return;
@@ -66,10 +63,7 @@ export default function CardsNewClient({
     <div className="space-y-6">
       <div className="flex items-center gap-3">
         <span className="text-sm font-medium text-muted-foreground">Cardgroup</span>
-        <CardgroupChip
-          name={currentName}
-          onChangeRequested={() => setPickerOpen(true)}
-        />
+        <CardgroupChip name={currentName} onChangeRequested={() => setPickerOpen(true)} />
       </div>
 
       <CardgroupPickerSheet
@@ -90,9 +84,7 @@ export default function CardsNewClient({
           error={createError}
         />
       ) : (
-        <p className="text-sm text-muted-foreground">
-          Select a cardgroup above to add a card.
-        </p>
+        <p className="text-sm text-muted-foreground">Select a cardgroup above to add a card.</p>
       )}
     </div>
   );

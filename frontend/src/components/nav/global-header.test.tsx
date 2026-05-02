@@ -10,7 +10,10 @@ import {
 
 // Minimal stubs for Next.js server components in jsdom.
 vi.mock("next/link", () => ({
-  default: ({ children, ...rest }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children?: React.ReactNode }) => (
+  default: ({
+    children,
+    ...rest
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children?: React.ReactNode }) => (
     <a {...rest}>{children}</a>
   ),
 }));
@@ -39,12 +42,20 @@ vi.mock("./hamburger-drawer", () => ({
 
 // AdminPill default export
 vi.mock("./admin-pill", () => ({
-  default: () => <a href="/admin" aria-label="Admin area">Admin</a>,
+  default: () => (
+    <a href="/admin" aria-label="Admin area">
+      Admin
+    </a>
+  ),
 }));
 
 // LogoutButton
 vi.mock("@/app/_components/logout-button", () => ({
-  LogoutButton: () => <button data-testid="logout-button">Logout</button>,
+  LogoutButton: () => (
+    <button type="button" data-testid="logout-button">
+      Logout
+    </button>
+  ),
 }));
 
 import { gqlFetch } from "@/lib/apollo/server";

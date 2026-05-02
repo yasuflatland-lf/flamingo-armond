@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
+import Link from "next/link";
 
 export default function AdminPill() {
   return (

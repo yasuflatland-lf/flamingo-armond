@@ -1,12 +1,12 @@
-import Link from "next/link";
 import { BookOpen, Plus } from "lucide-react";
+import Link from "next/link";
+import { LogoutButton } from "@/app/_components/logout-button";
+import { HeaderMeQuery } from "@/app/_components/queries";
 import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { LogoutButton } from "@/app/_components/logout-button";
-import { HamburgerDrawer } from "./hamburger-drawer";
 import AdminPill from "./admin-pill";
-import { HeaderMeQuery } from "@/app/_components/queries";
+import { HamburgerDrawer } from "./hamburger-drawer";
 
 export async function GlobalHeader() {
   const supabase = await createSupabaseServerClient();
@@ -51,9 +51,7 @@ export async function GlobalHeader() {
     <header className="flex items-center justify-between border-b px-4 py-3">
       {/* ── Mobile layout (< md) ─────────────────────────────────── */}
       <div className="flex items-center gap-3 md:hidden">
-        {user && (
-          <HamburgerDrawer isAdmin={isAdmin} userEmail={user.email} />
-        )}
+        {user && <HamburgerDrawer isAdmin={isAdmin} userEmail={user.email} />}
         <Link href="/" className="font-semibold">
           🦩 flamingo-armond
         </Link>

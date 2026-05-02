@@ -25,8 +25,8 @@ vi.mock("@/lib/apollo/server", () => ({
 }));
 
 import { redirect } from "next/navigation";
-import { gqlFetch } from "@/lib/apollo/server";
 import CardsNewPage from "@/app/cards/new/page";
+import { gqlFetch } from "@/lib/apollo/server";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -34,10 +34,7 @@ import CardsNewPage from "@/app/cards/new/page";
 
 type Cardgroup = { id: string; name: string };
 
-function makeBootstrapData(opts: {
-  myCardgroups: Cardgroup[];
-  lastViewedId?: string | null;
-}) {
+function makeBootstrapData(opts: { myCardgroups: Cardgroup[]; lastViewedId?: string | null }) {
   return {
     me: {
       id: "u-1",
@@ -57,10 +54,7 @@ type CardsNewClientProps = {
  * Recursively search a React element tree for a node whose `type` display name
  * matches `componentName` and return its props.
  */
-function findElementProps(
-  node: unknown,
-  componentName: string,
-): CardsNewClientProps | null {
+function findElementProps(node: unknown, componentName: string): CardsNewClientProps | null {
   if (node == null || typeof node !== "object") return null;
   const el = node as Record<string, unknown>;
   // React element: { type, props, ... }
@@ -126,9 +120,9 @@ describe("CardsNewPage — auth branches", () => {
   test("anonymous user (user=null, no error) → redirect /login, gqlFetch not called", async () => {
     setMockSupabaseUser(null);
 
-    await expect(
-      CardsNewPage({ searchParams: Promise.resolve({}) }),
-    ).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
+    await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
+      `${REDIRECT_PREFIX}/login`,
+    );
 
     expect(redirect).toHaveBeenCalledWith("/login");
     expect(gqlFetch).not.toHaveBeenCalled();
@@ -139,9 +133,9 @@ describe("CardsNewPage — auth branches", () => {
     noSession.name = "AuthSessionMissingError";
     setMockSupabaseUserError(noSession);
 
-    await expect(
-      CardsNewPage({ searchParams: Promise.resolve({}) }),
-    ).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
+    await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
+      `${REDIRECT_PREFIX}/login`,
+    );
 
     expect(redirect).toHaveBeenCalledWith("/login");
     expect(consoleErrorSpy).not.toHaveBeenCalled();
@@ -153,9 +147,7 @@ describe("CardsNewPage — auth branches", () => {
     transportError.name = "FetchError";
     setMockSupabaseUserError(transportError);
 
-    await expect(
-      CardsNewPage({ searchParams: Promise.resolve({}) }),
-    ).rejects.toBe(transportError);
+    await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toBe(transportError);
 
     expect(redirect).not.toHaveBeenCalled();
     expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -180,9 +172,9 @@ describe("CardsNewPage — gqlFetch error branches", () => {
       new Error(`GraphQL errors: ${JSON.stringify([{ extensions: { code: "UNAUTHENTICATED" } }])}`),
     );
 
-    await expect(
-      CardsNewPage({ searchParams: Promise.resolve({}) }),
-    ).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
+    await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
+      `${REDIRECT_PREFIX}/login`,
+    );
 
     expect(redirect).toHaveBeenCalledWith("/login");
   });
@@ -191,9 +183,7 @@ describe("CardsNewPage — gqlFetch error branches", () => {
     const otherErr = new Error("GraphQL HTTP 500");
     vi.mocked(gqlFetch).mockRejectedValueOnce(otherErr);
 
-    await expect(
-      CardsNewPage({ searchParams: Promise.resolve({}) }),
-    ).rejects.toBe(otherErr);
+    await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toBe(otherErr);
 
     expect(redirect).not.toHaveBeenCalled();
   });
@@ -293,9 +283,9 @@ describe("CardsNewPage — cardgroup resolution", () => {
       }) as never,
     );
 
-    await expect(
-      CardsNewPage({ searchParams: Promise.resolve({}) }),
-    ).rejects.toThrow(`${REDIRECT_PREFIX}/cardgroups/new?welcome=1`);
+    await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
+      `${REDIRECT_PREFIX}/cardgroups/new?welcome=1`,
+    );
 
     expect(redirect).toHaveBeenCalledWith("/cardgroups/new?welcome=1");
   });

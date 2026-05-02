@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { GlobalHeader } from "@/components/nav/global-header";
 import { GlobalFAB } from "@/components/nav/global-fab";
+import { GlobalHeader } from "@/components/nav/global-header";
 import { Providers } from "./providers";
 import "./globals.css";
 

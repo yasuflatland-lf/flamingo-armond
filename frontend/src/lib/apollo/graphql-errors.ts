@@ -12,10 +12,7 @@ export function isUnauthenticatedGraphQLError(err: unknown): boolean {
     const parsed = JSON.parse(err.message.slice(prefix.length)) as Array<{
       extensions?: { code?: string };
     }>;
-    return (
-      Array.isArray(parsed) &&
-      parsed.some((e) => e?.extensions?.code === "UNAUTHENTICATED")
-    );
+    return Array.isArray(parsed) && parsed.some((e) => e?.extensions?.code === "UNAUTHENTICATED");
   } catch {
     return false;
   }

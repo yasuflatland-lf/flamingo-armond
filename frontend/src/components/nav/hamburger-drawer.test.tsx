@@ -11,7 +11,11 @@ vi.mock("next/navigation", () => ({
 
 // Mock LogoutButton — it reaches into Supabase/router which are not needed here.
 vi.mock("@/app/_components/logout-button", () => ({
-  LogoutButton: () => <button data-testid="logout-button">Sign out</button>,
+  LogoutButton: () => (
+    <button type="button" data-testid="logout-button">
+      Sign out
+    </button>
+  ),
 }));
 
 import { HamburgerDrawer } from "./hamburger-drawer";
@@ -65,7 +69,10 @@ describe("<HamburgerDrawer>", () => {
 
     await user.click(screen.getByRole("button", { name: "Open menu" }));
 
-    expect(screen.getByRole("link", { name: /cardgroups/i })).toHaveAttribute("href", "/cardgroups");
+    expect(screen.getByRole("link", { name: /cardgroups/i })).toHaveAttribute(
+      "href",
+      "/cardgroups",
+    );
   });
 
   it("Profile link points to /profile", async () => {
