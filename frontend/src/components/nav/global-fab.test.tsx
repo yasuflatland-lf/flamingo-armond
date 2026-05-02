@@ -26,6 +26,7 @@ afterEach(() => {
 describe("<GlobalFAB>", () => {
   describe("hidden paths — returns null", () => {
     it.each([
+      ["/login"],
       ["/learn/abc123"],
       ["/learn/abc123/"],
       ["/admin/users"],
@@ -58,37 +59,13 @@ describe("<GlobalFAB>", () => {
     expect(screen.getByRole("button", { name: "Add new card" })).toBeInTheDocument();
   });
 
-  it("click with lastViewedCardgroupId calls router.push with cardgroup query param", async () => {
-    const user = userEvent.setup();
-    const router = makeRouter();
-    vi.mocked(useRouter).mockReturnValue(router as never);
-    vi.mocked(usePathname).mockReturnValue("/cardgroups");
-
-    render(<GlobalFAB lastViewedCardgroupId="cg-1" />);
-    await user.click(screen.getByRole("button", { name: "Add new card" }));
-
-    expect(router.push).toHaveBeenCalledWith("/cards/new?cardgroup=cg-1");
-  });
-
-  it("click without lastViewedCardgroupId calls router.push with bare /cards/new", async () => {
+  it("click navigates to /cards/new", async () => {
     const user = userEvent.setup();
     const router = makeRouter();
     vi.mocked(useRouter).mockReturnValue(router as never);
     vi.mocked(usePathname).mockReturnValue("/cardgroups");
 
     render(<GlobalFAB />);
-    await user.click(screen.getByRole("button", { name: "Add new card" }));
-
-    expect(router.push).toHaveBeenCalledWith("/cards/new");
-  });
-
-  it("click with lastViewedCardgroupId=null calls router.push with bare /cards/new", async () => {
-    const user = userEvent.setup();
-    const router = makeRouter();
-    vi.mocked(useRouter).mockReturnValue(router as never);
-    vi.mocked(usePathname).mockReturnValue("/profile");
-
-    render(<GlobalFAB lastViewedCardgroupId={null} />);
     await user.click(screen.getByRole("button", { name: "Add new card" }));
 
     expect(router.push).toHaveBeenCalledWith("/cards/new");
