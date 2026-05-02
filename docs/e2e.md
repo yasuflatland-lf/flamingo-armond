@@ -61,6 +61,22 @@ Playwright's auto-wait retries `toBeVisible()` until the element appears in the 
 
 To confirm that a swipe advanced to the next card, record the active card's `aria-label` before the swipe, swipe, then assert that the new active card has a different `aria-label` **and** that the new label was not already in the set of previously-seen cards. Do not rely on the absolute position of elements in the DOM — `SwipeCardStack` mounts background cards simultaneously, so a position-based selector may match a background card rather than the truly active one.
 
+### Wait for GraphQL persistence by `operationName`, not `networkidle`
+
+When a test asserts on side-effects of a fire-and-forget client-side mutation (e.g. `setLastViewedCardgroup` fired from a `useEffect` on `/learn` mount), do **not** rely on `page.waitForLoadState("networkidle")` to catch the request. `networkidle` fires after 500 ms of no network activity, which can elapse before Apollo's async cache write reaches the wire — the test then proceeds and asserts on a state that has not yet been persisted, hiding the regression.
+
+The deterministic alternative is `page.waitForResponse(...)` keyed on the GraphQL `operationName`:
+
+```ts
+await page.waitForResponse(
+  (res) =>
+    res.url().includes("/api/graphql") &&
+    res.request().postDataJSON()?.operationName === "SetLastViewedCardgroup",
+);
+```
+
+Read `operationName` from the request body (`postDataJSON`) rather than matching on the URL or response headers — every GraphQL operation in this app POSTs to `/api/graphql`, so URL alone is not selective. `operationName` is the tightest cross-spec key and survives APQ-rewriting (the persisted-query wire format keeps `operationName` in the body even when the document is replaced by a hash). Reference: `frontend/e2e/returning-user-learn-redirect.spec.ts`.
+
 ### Scope button locators to the active card
 
 `SwipeCardStack` mounts background cards behind the active card, and each rendered card includes its own `Easy` / `Hard` buttons. `getByRole("button", { name: "Easy" })` therefore matches multiple elements in the accessibility tree. Scope the locator to the active card's container (e.g. `activeCard.getByRole("button", { name: "Easy" })`) to avoid `strict mode violation: locator.click() resolved to N elements` failures and to ensure the action targets the foreground card.

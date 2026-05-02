@@ -232,6 +232,19 @@ When `DeleteByIDsTx` processes fewer ids than were requested (foreign-owned ids 
 
 `NewCardInput` accepts optional all-or-nothing FSRS state overrides: nine fields (`due, stability, difficulty, elapsedDays, scheduledDays, reps, lapses, state, lastReview`) or none. Mixed input triggers `domain.ErrFSRSOverridePartial`; invalid state values trigger `domain.ErrFSRSOverrideStateInvalid`. This all-or-nothing semantics prevents mixed-state cards when importing a dictionary — a single bad value would otherwise corrupt the set. The `domain.NewFSRSStateFromInput` function centralizes the validation and sentinels; the usecase translates them to `gqlerr.BadUserInput` before returning. The resolver uses a `toFSRSOverride` helper that returns `nil` when all nine fields are nil, delegating the "all-or-none" rule entirely to the domain factory. A `*StructWithRequiredFields` schema type would encode the constraint more precisely, but requires reshaping the resolver; defer until the type is touched again.
 
+### `setLastViewedCardgroup` and `User.lastViewedCardgroup`
+
+Records the cardgroup a returning user most recently studied so `/` (HomePage RSC) can land them directly on `/learn/[id]` next visit. Two surface elements:
+
+- **Field** `User.lastViewedCardgroup: Cardgroup` — nullable; resolves through the existing Cardgroup DataLoader, so listing N users does not fan out into N round-trips.
+- **Mutation** `setLastViewedCardgroup(cardgroupId: ID!): User!` — idempotent; the repository emits a single `UPDATE users SET last_viewed_cardgroup_id = ? WHERE id = ? AND EXISTS (SELECT 1 FROM cardgroups WHERE id = ? AND owner_id = ?)`. The ownership check lives inside the same statement to avoid a TOCTOU window between a `FindByID` and an `UPDATE`.
+
+#### Existence-oracle prevention via collapsed `BAD_USER_INPUT`
+
+"Cardgroup does not exist" and "cardgroup exists but is owned by another user" both surface as the same `BAD_USER_INPUT` on the `cardgroupId` field — never `UNAUTHENTICATED`, never a separate "not found" code. A distinguishable response would let an attacker brute-force cardgroup UUIDs to enumerate which IDs exist on the platform. The repository returns `errors.Join(ErrCardgroupNotFound, ErrNotFound)` for both cases (the `RowsAffected == 0` branch cannot tell them apart by design); the usecase translates the specific sentinel to `gqlerr.BadUserInput("cardgroupId", "cardgroup not found or not owned")`. This mirrors the same posture the `cardgroup(id:)` query takes — see [Authorization at the usecase layer](#authorization-at-the-usecase-layer) — and the cross-aggregate cursor validation rule in `.claude/rules/pagination.md`.
+
+The new sentinel `repository.ErrCardgroupNotFound` follows the `errors.Join(specific, general)` "missing"-sentinel convention from `.claude/rules/error-wrapping.md`: callers branching on the general `ErrNotFound` continue to work without modification, and the usecase can match the specific sentinel first to attach the per-field message.
+
 ### Adaptive learning performance mode
 
 `backend/internal/domain/service/user_performance.go` is a stateless calculator. `SwipeUsecase.HandleSwipe` records the swipe and commits the FSRS update first, then loads the latest 100 swipe records for the user through `SwipeRecordRepository.ListRecentByUser`. This post-commit read keeps transactional rollback behavior simple and lets the just-created swipe participate in the next response's metrics.
