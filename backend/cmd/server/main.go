@@ -61,6 +61,7 @@ func newGraphQLServer(r *resolver.Resolver) *handler.Server {
 func newRouter(
 	resolvers *resolver.Resolver,
 	authMW echo.MiddlewareFunc,
+	promoter *auth.SuperUserPromoter,
 	userRepo repository.UserRepository,
 	roleRepo repository.RoleRepository,
 	cardgroupRepo repository.CardgroupRepository,
@@ -106,7 +107,7 @@ func newRouter(
 			return r.Method + " " + r.URL.Path
 		}),
 	)
-	q := e.Group("/query", authMW, loader.Middleware(userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo...))
+	q := e.Group("/query", authMW, promoter.Middleware(), loader.Middleware(userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo...))
 	q.POST("", echo.WrapHandler(otelGQLHandler))
 	e.GET("/playground", echo.WrapHandler(playground.Handler("GraphQL", "/query")))
 
@@ -195,6 +196,20 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
 	authSvc := auth.NewService(userRoleRepo)
 
+	// super-user auto-promote bootstrap
+	superUserEmails := auth.ParseSuperUserSet(os.Getenv("SUPER_USER_EMAILS"))
+	var promoter *auth.SuperUserPromoter
+	if len(superUserEmails) > 0 {
+		adminRole, err := roleRepo.FindByName(ctx, "admin")
+		if err != nil {
+			return eris.Wrap(err, "run: lookup admin role for super-user bootstrap")
+		}
+		promoter = auth.NewSuperUserPromoter(superUserEmails, adminRole.ID, authSvc, roleRepo)
+		logger.Info("super-user bootstrap enabled", "email_count", len(superUserEmails))
+	} else {
+		promoter = auth.NewSuperUserPromoter(nil, "", nil, nil)
+	}
+
 	userUC := usecase.NewUserUsecase(userRepo)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo)
@@ -209,7 +224,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
 	// telemetry.Init for the full ordering invariant.
-	e := newRouter(resolvers, authMW, userRepo, roleRepo, cardgroupRepo, cardRepo, pingHandler, swipeRecordRepo)
+	e := newRouter(resolvers, authMW, promoter, userRepo, roleRepo, cardgroupRepo, cardRepo, pingHandler, swipeRecordRepo)
 	e.Logger = logger
 
 	port := os.Getenv("PORT")

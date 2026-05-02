@@ -141,7 +141,7 @@ func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, nil, nil, nil, nil, ping.New(nil, "test-token")))
+	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil), nil, nil, nil, nil, ping.New(nil, "test-token")))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -451,7 +451,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
-	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil), mw, userRepo, roleRepo, cardgroupRepo, cardRepo, ping.New(pingRecordRepo, "test-token"), swipeRecordRepo)
+	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil), userRepo, roleRepo, cardgroupRepo, cardRepo, ping.New(pingRecordRepo, "test-token"), swipeRecordRepo)
 
 	ts := httptest.NewServer(e)
 	t.Cleanup(ts.Close)
