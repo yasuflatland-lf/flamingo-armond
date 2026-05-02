@@ -5,8 +5,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { installApolloMockLeakSpy } from "../../../../__tests__/utils/mock-apollo-paginated";
 import { CreateCardDocument, SetLastViewedCardgroupDocument } from "@/generated/graphql";
+import { installApolloMockLeakSpy } from "../../../../__tests__/utils/mock-apollo-paginated";
 import CardsNewClient from "./cards-new-client";
 
 // ---------------------------------------------------------------------------
@@ -23,14 +23,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({
-    href,
-    children,
-    ...rest
-  }: {
-    href: string;
-    children: React.ReactNode;
-  }) => (
+  default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
     <a href={href} {...rest}>
       {children}
     </a>
@@ -106,12 +99,14 @@ function makeCreateMock(args: {
   };
 }
 
-function makePersistMock(args: {
-  cardgroupId?: string;
-  onCalled?: () => void;
-  errors?: GraphQLError[];
-  networkError?: Error;
-} = {}): MockedResponse {
+function makePersistMock(
+  args: {
+    cardgroupId?: string;
+    onCalled?: () => void;
+    errors?: GraphQLError[];
+    networkError?: Error;
+  } = {},
+): MockedResponse {
   const { cardgroupId = CG_ID, onCalled, errors, networkError } = args;
   if (networkError) {
     return {
@@ -155,11 +150,7 @@ function renderClient(
     mocks?: MockedResponse[];
   } = {},
 ) {
-  const {
-    initialCardgroupId = CG_ID,
-    forcePickerOpen = false,
-    mocks = [],
-  } = opts;
+  const { initialCardgroupId = CG_ID, forcePickerOpen = false, mocks = [] } = opts;
   return render(
     <MockedProvider mocks={mocks}>
       <CardsNewClient
@@ -225,10 +216,7 @@ afterEach(() => {
 describe("<CardsNewClient> — stay-on-page consecutive add", () => {
   it("clears the front/back inputs after a successful submit", async () => {
     renderClient({
-      mocks: [
-        makeCreateMock({ front: "Hello", back: "Hola" }),
-        makePersistMock(),
-      ],
+      mocks: [makeCreateMock({ front: "Hello", back: "Hola" }), makePersistMock()],
     });
 
     await fillAndSubmit("Hello", "Hola");
@@ -257,10 +245,7 @@ describe("<CardsNewClient> — stay-on-page consecutive add", () => {
 
   it("renders the SuccessIndicator with role=status, aria-live=polite, and the cardgroup name", async () => {
     renderClient({
-      mocks: [
-        makeCreateMock({ front: "Hello", back: "Hola" }),
-        makePersistMock(),
-      ],
+      mocks: [makeCreateMock({ front: "Hello", back: "Hola" }), makePersistMock()],
     });
 
     await fillAndSubmit("Hello", "Hola");
@@ -272,10 +257,7 @@ describe("<CardsNewClient> — stay-on-page consecutive add", () => {
 
   it("does NOT call router.push after a successful submit (regression guard)", async () => {
     renderClient({
-      mocks: [
-        makeCreateMock({ front: "Hello", back: "Hola" }),
-        makePersistMock(),
-      ],
+      mocks: [makeCreateMock({ front: "Hello", back: "Hola" }), makePersistMock()],
     });
 
     await fillAndSubmit("Hello", "Hola");
@@ -293,10 +275,7 @@ describe("<CardsNewClient> — stay-on-page consecutive add", () => {
     // the existing real-timer handle into the fake-timer queue. So we wait
     // the wall-clock 2 s with a generous test-level timeout instead.
     renderClient({
-      mocks: [
-        makeCreateMock({ front: "Hello", back: "Hola" }),
-        makePersistMock(),
-      ],
+      mocks: [makeCreateMock({ front: "Hello", back: "Hola" }), makePersistMock()],
     });
 
     await fillAndSubmit("Hello", "Hola");
