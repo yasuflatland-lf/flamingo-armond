@@ -60,8 +60,9 @@ These values target a public API on Render. Revisit if the threat model or deplo
 | `DB_MAX_CONN_LIFETIME` | no | `30m` | Maximum lifetime of a pooled connection |
 | `DB_MAX_CONN_IDLE_TIME` | no | `5m` | Maximum idle time before a connection is evicted |
 | `PING_TOKEN` | yes | — | Bearer token for `POST /internal/ping`. Server refuses to start if empty. |
+| `SUPER_USER_EMAILS` | no | *(empty)* | Comma-separated trusted email addresses promoted to `admin` on first authenticated request. See `docs/backend-auth.md` § "Bootstrap admin". |
 
-`PORT`, `SHUTDOWN_TIMEOUT`, and `SWIPE_NEXT_BATCH_SIZE` are optional with safe defaults. The three `SUPABASE_JWT_*` variables, `SUPABASE_DB_URL`, and `PING_TOKEN` are all required — the server refuses to start if any is missing (fail-fast via `ConfigFromEnv` or inline check in `run()`).
+`PORT`, `SHUTDOWN_TIMEOUT`, `SWIPE_NEXT_BATCH_SIZE`, and `SUPER_USER_EMAILS` are optional with safe defaults. The three `SUPABASE_JWT_*` variables, `SUPABASE_DB_URL`, and `PING_TOKEN` are all required — the server refuses to start if any is missing (fail-fast via `ConfigFromEnv` or inline check in `run()`).
 
 ## Testing patterns
 

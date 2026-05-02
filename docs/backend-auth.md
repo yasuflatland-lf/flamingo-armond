@@ -74,8 +74,9 @@ See also the general env-vars table above.
 | `SUPABASE_JWKS_URL` | yes | — | JWKS endpoint URL (e.g. `https://<project>.supabase.co/auth/v1/.well-known/jwks.json`) |
 | `SUPABASE_JWT_AUDIENCE` | yes | — | Expected `aud` claim value |
 | `SUPABASE_JWT_ISSUER` | yes | — | Expected `iss` claim value |
+| `SUPER_USER_EMAILS` | no | *(empty)* | Comma-separated list of trusted email addresses (Supabase / Google OAuth). On the first authenticated request from a matching account whose JWT carries `email_verified=true`, the backend grants the `admin` role. Empty disables the feature. |
 
-All three are required. `ConfigFromEnv()` returns an error and the server fails to start if any is missing or empty — silent misconfiguration is not allowed.
+The three `SUPABASE_JWT_*` variables are required. `ConfigFromEnv()` returns an error and the server fails to start if any is missing or empty — silent misconfiguration is not allowed. `SUPER_USER_EMAILS` is optional; when empty the bootstrap-admin middleware is constructed as a zero-cost pass-through.
 
 ### Authorization gates: object-level vs. field-level
 
@@ -111,6 +112,20 @@ A user who is allowed to assign and revoke roles can also revoke their own admin
 3. If both, return `gqlerr.NewForbidden("cannot remove your own admin role")`.
 
 This guard belongs in the usecase, not in the UI: the UI is one of N possible callers, and a CLI / API consumer / Apollo Studio request can hit the resolver directly. The role-name lookup is mandatory — comparing role IDs would couple the guard to seed data that varies between environments. The hardcoded `"admin"` matches `auth.Service.IsAdmin`'s same hardcoded literal; both move together when a second privileged role is introduced.
+
+### Bootstrap admin via `SUPER_USER_EMAILS`
+
+A fresh deployment has zero admin rows, but every existing admin-management mutation is gated on `requireAdmin` and the `user_roles` RLS policy requires `is_admin(auth.uid())` — a chicken-and-egg deadlock. The `auth.SuperUserPromoter` post-auth Echo middleware breaks the loop without weakening either gate: when the first authenticated request from an email listed in `SUPER_USER_EMAILS` arrives, the middleware grants that user the `admin` role and lets the request continue. Subsequent requests short-circuit on the `IsAdmin == true` branch, so steady-state cost is one cached role lookup. See `backend/internal/auth/superuser.go`.
+
+**`email_verified=true` is a mandatory security gate, not a heuristic.** Supabase only sets the claim once the OAuth provider has confirmed the user controls the address. Promoting on email-match alone would let any account that *claims* an env-listed address (e.g. via a misconfigured identity provider) inherit admin. The middleware reads the claim from `AuthUser.EmailVerified` (threaded through `supabaseClaims.EmailVerified` and `auth/middleware.go`'s `AuthUser` constructor) and returns `next(c)` without any DB call when the claim is missing or false. Because `encoding/json` leaves an absent boolean at zero (`false`), the absence-equals-deny posture is automatic — the JSON `omitempty` tag on `EmailVerified` only affects marshal output and never the decode path.
+
+**No automatic revocation.** Removing an email from `SUPER_USER_EMAILS` does not strip the role; the existing `adminRevokeRole` mutation remains the only path. This is deliberate: a typo in the env var should not silently lock the service out of every admin operation on the next deploy.
+
+**Failure mode: WARN + continue, never 5xx.** Both `IsAdmin` and `AssignToUser` failures are logged via `logging.LogWarn` (carrying the eris `error_chain`) and the middleware falls through to `next(c)`. The promotion is best-effort — a transient DB blip during a routine page load should not surface as a user-facing error. Any downstream resolver that actually requires admin remains protected by `requireAdmin`, which is fail-closed.
+
+**Concurrent first-login is safe.** `repository.RoleRepository.AssignToUser` uses `INSERT ... ON CONFLICT DO NOTHING`, so two simultaneous requests from the same user that both read `IsAdmin == false` produce two harmless inserts — both return `nil`, both proceed.
+
+**Constructor invariants are enforced via panic.** When `emails` is non-empty but any of `checker`, `assigner`, or `adminRoleID` is nil/empty, `NewSuperUserPromoter` panics during `run()`. This is a fail-fast for operator misconfiguration: the alternative — returning an error or silently building a half-configured promoter — would either bury the misconfiguration in a startup log or leave a per-request nil-deref hazard. Empty-emails callers (the OFF path) intentionally pass `nil, "", nil, nil`; the panic guard only fires when the operator opted into the feature but wired it wrong.
 
 ### Multi-layer security test coverage
 
