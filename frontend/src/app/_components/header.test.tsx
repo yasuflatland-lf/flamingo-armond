@@ -117,7 +117,14 @@ describe("Header", () => {
   // Branch 4: gqlFetch throws UNAUTHENTICATED
   it("me throws UNAUTHENTICATED: Admin link hidden; console.warn NOT called", async () => {
     setMockSupabaseUser({ id: "u-3", email: "race@test.com" });
-    vi.mocked(gqlFetch).mockRejectedValue(new Error("UNAUTHENTICATED: token rejected"));
+    vi.mocked(gqlFetch).mockRejectedValue(
+      new Error(
+        "GraphQL errors: " +
+          JSON.stringify([
+            { message: "Not authenticated", extensions: { code: "UNAUTHENTICATED" } },
+          ]),
+      ),
+    );
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     render(await Header());
@@ -145,7 +152,18 @@ describe("Header", () => {
     );
   });
 
-  // Branch 6: getUser returns a non-AuthSessionMissingError
+  // Branch 6: me resolves with null user
+  it("me resolves with null user: Admin link hidden", async () => {
+    setMockSupabaseUser({ id: "u-5", email: "ghost@test.com" });
+    vi.mocked(gqlFetch).mockResolvedValue({ me: null } as never);
+
+    render(await Header());
+
+    expect(screen.queryByRole("link", { name: /admin/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /cardgroups/i })).toBeInTheDocument();
+  });
+
+  // Branch 7: getUser returns a non-AuthSessionMissingError
   it("getUser non-session error: renders only logo header; console.error called", async () => {
     const networkError = new Error("boom");
     networkError.name = "NetworkError";

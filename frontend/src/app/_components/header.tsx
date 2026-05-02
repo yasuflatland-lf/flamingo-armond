@@ -5,6 +5,22 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { LogoutButton } from "./logout-button";
 import { HeaderMeQuery } from "./queries";
 
+const ADMIN_ROLE = "admin" as const;
+
+function isUnauthenticatedGraphQLError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const prefix = "GraphQL errors: ";
+  if (!err.message.startsWith(prefix)) return false;
+  try {
+    const parsed = JSON.parse(err.message.slice(prefix.length)) as Array<{
+      extensions?: { code?: string };
+    }>;
+    return Array.isArray(parsed) && parsed.some((e) => e?.extensions?.code === "UNAUTHENTICATED");
+  } catch {
+    return false;
+  }
+}
+
 export async function Header() {
   const supabase = await createSupabaseServerClient();
   const {
@@ -30,15 +46,15 @@ export async function Header() {
   if (user) {
     try {
       const meData = await gqlFetch(HeaderMeQuery, { revalidate: 0 });
-      isAdmin = meData.me?.roles.some((r) => r.name === "admin") ?? false;
+      isAdmin = meData.me?.roles.some((r) => r.name === ADMIN_ROLE) ?? false;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("UNAUTHENTICATED")) {
-        // Expected race: Supabase session is valid but the GraphQL endpoint
-        // rejected the access token (clock skew, JWKS rotation gap, etc.).
-        // The admin layout will redirect on actual /admin navigation, so the
-        // header degrades silently here.
-      } else {
+      // Expected race: Supabase session is valid but the GraphQL endpoint
+      // rejected the access token (clock skew, JWKS rotation gap, etc.).
+      // The admin layout will redirect on actual /admin navigation, so the
+      // header degrades silently here.
+      const isUnauthenticated = isUnauthenticatedGraphQLError(err);
+      if (!isUnauthenticated) {
+        const msg = err instanceof Error ? err.message : String(err);
         console.warn("[header] me query unexpectedly failed", {
           error_message: msg,
           user_id: user.id,
