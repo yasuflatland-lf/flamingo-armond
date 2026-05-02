@@ -49,10 +49,6 @@ vi.mock("lucide-react", () => ({
 import { gqlFetch } from "@/lib/apollo/server";
 import { Header } from "./header";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 function makeRolesResponse(roleNames: string[]) {
   return {
     me: {
@@ -60,10 +56,6 @@ function makeRolesResponse(roleNames: string[]) {
     },
   };
 }
-
-// ---------------------------------------------------------------------------
-// Suite
-// ---------------------------------------------------------------------------
 
 beforeEach(() => {
   resetMockSupabase();
@@ -75,7 +67,6 @@ afterEach(() => {
 });
 
 describe("Header", () => {
-  // Branch 1: Anonymous user
   it("anonymous: renders Sign in link and does NOT call gqlFetch", async () => {
     setMockSupabaseUser(null);
 
@@ -87,7 +78,6 @@ describe("Header", () => {
     expect(vi.mocked(gqlFetch)).not.toHaveBeenCalled();
   });
 
-  // Branch 2: Logged-in non-admin user
   it("logged-in non-admin: renders Cardgroups + email + Logout but no Admin link", async () => {
     setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
     vi.mocked(gqlFetch).mockResolvedValue(makeRolesResponse(["user"]) as never);
@@ -100,7 +90,6 @@ describe("Header", () => {
     expect(screen.queryByRole("link", { name: /admin/i })).not.toBeInTheDocument();
   });
 
-  // Branch 3: Logged-in admin user
   it("logged-in admin: renders Admin link with href=/admin", async () => {
     setMockSupabaseUser({ id: "u-2", email: "admin@test.com" });
     vi.mocked(gqlFetch).mockResolvedValue(makeRolesResponse(["admin", "user"]) as never);
@@ -114,7 +103,6 @@ describe("Header", () => {
     expect(adminLink).toHaveAttribute("href", "/admin");
   });
 
-  // Branch 4: gqlFetch throws UNAUTHENTICATED
   it("me throws UNAUTHENTICATED: Admin link hidden; console.warn NOT called", async () => {
     setMockSupabaseUser({ id: "u-3", email: "race@test.com" });
     vi.mocked(gqlFetch).mockRejectedValue(
@@ -133,7 +121,6 @@ describe("Header", () => {
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
-  // Branch 5: gqlFetch throws an unexpected error
   it("me throws unexpected error: Admin link hidden; console.warn called with message and user id", async () => {
     setMockSupabaseUser({ id: "u-4", email: "err@test.com" });
     vi.mocked(gqlFetch).mockRejectedValue(new Error("503 service unavailable"));
@@ -152,7 +139,6 @@ describe("Header", () => {
     );
   });
 
-  // Branch 6: me resolves with null user
   it("me resolves with null user: Admin link hidden", async () => {
     setMockSupabaseUser({ id: "u-5", email: "ghost@test.com" });
     vi.mocked(gqlFetch).mockResolvedValue({ me: null } as never);
@@ -163,7 +149,6 @@ describe("Header", () => {
     expect(screen.getByRole("link", { name: /cardgroups/i })).toBeInTheDocument();
   });
 
-  // Branch 7: getUser returns a non-AuthSessionMissingError
   it("getUser non-session error: renders only logo header; console.error called", async () => {
     const networkError = new Error("boom");
     networkError.name = "NetworkError";

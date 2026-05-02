@@ -6,11 +6,8 @@ import {
   setMockSupabaseUserError,
 } from "../../__tests__/utils/mock-supabase";
 
-// ---------------------------------------------------------------------------
 // next/navigation mock — `redirect` throws so the server component aborts the
 // same way Next.js's server runtime does.
-// ---------------------------------------------------------------------------
-
 const REDIRECT_PREFIX = "REDIRECT:";
 
 vi.mock("next/navigation", () => ({
@@ -26,8 +23,6 @@ vi.mock("@/lib/supabase/server", () => ({
 import { redirect } from "next/navigation";
 import HomePage from "@/app/page";
 
-// ---------------------------------------------------------------------------
-
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
@@ -39,8 +34,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
 });
-
-// ---------------------------------------------------------------------------
 
 describe("HomePage (root redirect)", () => {
   test("anonymous user is redirected to /login", async () => {

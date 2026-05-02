@@ -2,14 +2,13 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock next/navigation before importing the page
+// `redirect` throws so the server component aborts the same way Next.js's server runtime does.
 vi.mock("next/navigation", () => ({
   redirect: vi.fn((url: string) => {
     throw new Error(`REDIRECT:${url}`);
   }),
 }));
 
-// Mock createSupabaseServerClient
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: vi.fn(),
 }));
