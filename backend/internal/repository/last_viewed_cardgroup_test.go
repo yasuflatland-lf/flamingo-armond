@@ -5,6 +5,7 @@ package repository_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -232,5 +233,99 @@ func TestUserRepository_SetLastViewedCardgroup_DomainRoundTrip(t *testing.T) {
 	// Confirm the rest of the domain shape is untouched by the new field.
 	if after.ID != userID {
 		t.Fatalf("ID changed: got %q, want %q", after.ID, userID)
+	}
+}
+
+// TestRLS_SetLastViewedCardgroup_AuthenticatedRoleBlocksCrossUserUpdate verifies
+// that the users_update_own_or_admin RLS policy (from migration
+// 20260502130000_add_rls_policies.up.sql) blocks an UPDATE on
+// users.last_viewed_cardgroup_id when the Postgres session is running as the
+// authenticated role but request.jwt.claim.sub identifies a DIFFERENT user from
+// the row being updated.
+//
+// Architecture note: the Go repository layer (SetLastViewedCardgroup) connects
+// as the migration owner and bypasses RLS by definition. The RLS policies exist
+// to protect direct authenticated-role access (Supabase PostgREST / Edge
+// callers). This test exercises that second line of defence directly via raw SQL
+// inside a transaction that impersonates the authenticated role.
+//
+// Test shape: victim owns a cardgroup; attacker has a valid session (JWT claim
+// points to attacker). The attacker issues a raw UPDATE against victim's row.
+// RLS must block the UPDATE — RowsAffected == 0 is the expected outcome.
+func TestRLS_SetLastViewedCardgroup_AuthenticatedRoleBlocksCrossUserUpdate(t *testing.T) {
+	// Not parallel: SET LOCAL ROLE / SET LOCAL config changes are
+	// transaction-scoped and do not leak, but running in parallel with other
+	// tests that also manipulate the same table rows is fine only if test data
+	// is independent. Using t.Parallel() is safe here because victim/attacker
+	// are freshly inserted rows, but to keep the intent explicit and avoid any
+	// accidental interaction with the shared sqlDB handle, we omit t.Parallel().
+	ctx := context.Background()
+
+	victimID := insertAuthUser(t, ctx)
+	attackerID := insertAuthUser(t, ctx)
+	victimCGID := insertCardgroupSQL(t, ctx, victimID, "victim-cg")
+
+	// Set victim's last_viewed_cardgroup_id using the superuser path so there is
+	// a non-NULL value to attempt overwriting.
+	repo := repository.NewUserRepository(testDB.GORM)
+	if err := repo.SetLastViewedCardgroup(ctx, victimID, victimCGID); err != nil {
+		t.Fatalf("setup SetLastViewedCardgroup for victim: %v", err)
+	}
+
+	// Open a raw *sql.DB from testDSN (the same superuser DSN used by the
+	// container). SET LOCAL ROLE is available to superusers without needing a
+	// separate connection string for the authenticated role.
+	rawDB, err := sql.Open("pgx", testDSN)
+	if err != nil {
+		t.Fatalf("sql.Open testDSN: %v", err)
+	}
+	defer rawDB.Close()
+
+	// All SET LOCAL statements must be inside a transaction.
+	tx, err := rawDB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	defer tx.Rollback() //nolint:errcheck // cleanup-only rollback
+
+	// Impersonate the authenticated role. SET LOCAL is transaction-scoped and
+	// resets on COMMIT/ROLLBACK, so this does not affect other connections or
+	// tests.
+	if _, err := tx.ExecContext(ctx, "SET LOCAL ROLE authenticated"); err != nil {
+		t.Fatalf("SET LOCAL ROLE authenticated: %v", err)
+	}
+
+	// Claim to be the attacker, not the victim.
+	if _, err := tx.ExecContext(ctx,
+		"SELECT set_config('request.jwt.claim.sub', $1, true)", attackerID,
+	); err != nil {
+		t.Fatalf("set_config request.jwt.claim.sub: %v", err)
+	}
+
+	// Issue the UPDATE that the attacker should NOT be able to perform: updating
+	// the victim's row. The RLS policy (id = auth.uid() OR is_admin(auth.uid()))
+	// evaluates auth.uid() as attackerID, so the WHERE id = victimID row is
+	// invisible to the attacker and RowsAffected must be 0.
+	result, err := tx.ExecContext(ctx,
+		"UPDATE public.users SET last_viewed_cardgroup_id = $1 WHERE id = $2",
+		victimCGID, victimID,
+	)
+	if err != nil {
+		// A permission-denied error is also an acceptable RLS enforcement signal,
+		// but the policy uses USING (not WITH CHECK alone), so Postgres silently
+		// filters the row rather than erroring. Either way we treat it as blocked.
+		t.Logf("UPDATE returned error (also an RLS block signal): %v", err)
+		return
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		t.Fatalf("RowsAffected: %v", err)
+	}
+	if rowsAffected != 0 {
+		t.Fatalf(
+			"RLS policy users_update_own_or_admin did not block cross-user UPDATE: "+
+				"attacker %q updated victim %q row, RowsAffected = %d (want 0)",
+			attackerID, victimID, rowsAffected,
+		)
 	}
 }
