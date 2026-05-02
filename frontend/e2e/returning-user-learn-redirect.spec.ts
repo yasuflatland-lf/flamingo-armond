@@ -69,10 +69,16 @@ test.describe
       await expect(page.getByText(groupB.name)).toBeVisible();
       await expect(page.locator('[data-testid="swipe-card"]').first()).toBeVisible();
 
-      // Give the mount-effect mutation a brief moment to round-trip before we
-      // tear down the session. The mutation has no UI signal, so we wait on a
-      // background network idle marker instead of a DOM event.
-      await page.waitForLoadState("networkidle");
+      // Before logout, deterministically wait for the persist mutation to land.
+      // The mount-effect fires setLastViewedCardgroup, which persists cardgroupId=B
+      // server-side. Using waitForResponse keyed on the operation name avoids the
+      // racy networkidle (500ms idle), which can return early under Apollo's async
+      // cache-write timeline and hide persistence regressions.
+      await page.waitForResponse(
+        (res) =>
+          res.url().includes("/api/graphql") &&
+          res.request().postDataJSON()?.operationName === "SetLastViewedCardgroup",
+      );
 
       // ── Logout: clear cookies so the next login starts from a cold state. ──
       await context.clearCookies();
