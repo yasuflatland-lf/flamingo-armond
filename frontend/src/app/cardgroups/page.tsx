@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Plus } from "lucide-react";
 import { CardgroupListItem } from "@/components/cardgroups/cardgroup-list-item";
 import type { MyCardgroupsQuery as MyCardgroupsQueryType } from "@/generated/graphql";
 import { gqlFetch } from "@/lib/apollo/server";
@@ -31,14 +32,8 @@ export default async function CardgroupsPage() {
 
   return (
     <main className="mx-auto max-w-2xl p-8">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6">
         <h1 className="text-2xl font-semibold">My Cardgroups</h1>
-        <Link
-          href="/cardgroups/new"
-          className="rounded-md bg-brand-primary px-4 py-2 text-sm font-medium text-brand-primary-foreground hover:opacity-90 transition-opacity"
-        >
-          New cardgroup
-        </Link>
       </div>
 
       {cardgroups.length === 0 ? (
@@ -52,11 +47,22 @@ export default async function CardgroupsPage() {
           </Link>
         </div>
       ) : (
-        <ul className="space-y-2">
-          {cardgroups.map((cg) => (
-            <CardgroupListItem key={cg.id} id={cg.id} name={cg.name} updatedAt={cg.updatedAt} />
-          ))}
-        </ul>
+        <>
+          <ul className="space-y-2">
+            {cardgroups.map((cg) => (
+              <CardgroupListItem key={cg.id} id={cg.id} name={cg.name} updatedAt={cg.updatedAt} />
+            ))}
+          </ul>
+          <div className="mt-6 border-t pt-4 text-center">
+            <Link
+              href="/cardgroups/new"
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground hover:underline"
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+              New cardgroup
+            </Link>
+          </div>
+        </>
       )}
     </main>
   );
