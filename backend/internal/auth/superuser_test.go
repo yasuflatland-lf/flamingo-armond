@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v5"
+	"github.com/rotisserie/eris"
 )
 
 // ---------------------------------------------------------------------------
@@ -126,16 +126,6 @@ func TestSupabaseClaims_EmailVerified(t *testing.T) {
 // Helpers for middleware tests
 // ---------------------------------------------------------------------------
 
-// newEchoContext builds a minimal Echo context from an httptest request so that
-// the middleware chain can be exercised without a full Echo HTTP server.
-func newEchoContext(t *testing.T, req *http.Request) *echo.Context {
-	t.Helper()
-	e := echo.New()
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	return c
-}
-
 // runMiddleware runs promoter.Middleware()(next)(c) and returns the response recorder.
 func runMiddleware(t *testing.T, promoter *SuperUserPromoter, u *AuthUser) *httptest.ResponseRecorder {
 	t.Helper()
@@ -200,7 +190,7 @@ func makeSet(emails ...string) map[string]struct{} {
 
 // M1: empty emails map — IsAdmin and AssignToUser must never be called.
 func TestSuperUserPromoter_M1_EmptyEmails(t *testing.T) {
-	// Not parallel: captureDefaultLogger mutates global slog default.
+	t.Parallel()
 	var isAdminCalls, assignCalls atomic.Int64
 	checker := stubAdminChecker{fn: func(_ context.Context, _ string) (bool, error) {
 		isAdminCalls.Add(1)
@@ -408,9 +398,10 @@ func TestSuperUserPromoter_M7_IsAdminError(t *testing.T) {
 	var buf bytes.Buffer
 	captureDefaultLogger(t, &buf)
 
+	const wantUserID = "user-1"
 	var assignCalls atomic.Int64
 	checker := stubAdminChecker{fn: func(_ context.Context, _ string) (bool, error) {
-		return false, errors.New("db: connection refused")
+		return false, eris.New("db: connection refused")
 	}}
 	assigner := stubRoleAssigner{fn: func(_ context.Context, _, _ string) error {
 		assignCalls.Add(1)
@@ -418,7 +409,7 @@ func TestSuperUserPromoter_M7_IsAdminError(t *testing.T) {
 	}}
 	promoter := NewSuperUserPromoter(makeSet("a@x.com"), "role-id", checker, assigner)
 
-	u := &AuthUser{Sub: "user-1", Email: "a@x.com", EmailVerified: true}
+	u := &AuthUser{Sub: wantUserID, Email: "a@x.com", EmailVerified: true}
 	rec := runMiddleware(t, promoter, u)
 
 	if rec.Code != http.StatusOK {
@@ -439,8 +430,24 @@ func TestSuperUserPromoter_M7_IsAdminError(t *testing.T) {
 	if rec0["msg"] != "superuser: admin check failed" {
 		t.Errorf("unexpected msg: %v", rec0["msg"])
 	}
-	if _, ok := rec0["error_chain"]; !ok {
-		t.Error("expected error_chain attribute in WARN log")
+	if rec0["user_id"] != wantUserID {
+		t.Errorf("expected user_id=%q in WARN log, got %v", wantUserID, rec0["user_id"])
+	}
+	if _, hasEmail := rec0["email"]; hasEmail {
+		t.Error("WARN log must not contain 'email' field (PII protection)")
+	}
+	chain, ok := rec0["error_chain"].(map[string]any)
+	if !ok {
+		t.Fatalf("error_chain is not a JSON object: %T", rec0["error_chain"])
+	}
+	root, hasRoot := chain["root"].(map[string]any)
+	if !hasRoot {
+		t.Error("error_chain must have root entry (got external-only shape; stub may be using stdlib errors)")
+	}
+	if root != nil {
+		if stack, _ := root["stack"].([]any); len(stack) == 0 {
+			t.Error("error_chain.root.stack must contain at least one frame")
+		}
 	}
 }
 
@@ -450,15 +457,16 @@ func TestSuperUserPromoter_M8_AssignToUserError(t *testing.T) {
 	var buf bytes.Buffer
 	captureDefaultLogger(t, &buf)
 
+	const wantUserID = "user-1"
 	checker := stubAdminChecker{fn: func(_ context.Context, _ string) (bool, error) {
 		return false, nil
 	}}
 	assigner := stubRoleAssigner{fn: func(_ context.Context, _, _ string) error {
-		return errors.New("db: deadlock detected")
+		return eris.New("db: deadlock detected")
 	}}
 	promoter := NewSuperUserPromoter(makeSet("a@x.com"), "role-id", checker, assigner)
 
-	u := &AuthUser{Sub: "user-1", Email: "a@x.com", EmailVerified: true}
+	u := &AuthUser{Sub: wantUserID, Email: "a@x.com", EmailVerified: true}
 	rec := runMiddleware(t, promoter, u)
 
 	if rec.Code != http.StatusOK {
@@ -476,8 +484,24 @@ func TestSuperUserPromoter_M8_AssignToUserError(t *testing.T) {
 	if rec0["msg"] != "superuser: role assignment failed" {
 		t.Errorf("unexpected msg: %v", rec0["msg"])
 	}
-	if _, ok := rec0["error_chain"]; !ok {
-		t.Error("expected error_chain attribute in WARN log")
+	if rec0["user_id"] != wantUserID {
+		t.Errorf("expected user_id=%q in WARN log, got %v", wantUserID, rec0["user_id"])
+	}
+	if _, hasEmail := rec0["email"]; hasEmail {
+		t.Error("WARN log must not contain 'email' field (PII protection)")
+	}
+	chain, ok := rec0["error_chain"].(map[string]any)
+	if !ok {
+		t.Fatalf("error_chain is not a JSON object: %T", rec0["error_chain"])
+	}
+	root, hasRoot := chain["root"].(map[string]any)
+	if !hasRoot {
+		t.Error("error_chain must have root entry (got external-only shape; stub may be using stdlib errors)")
+	}
+	if root != nil {
+		if stack, _ := root["stack"].([]any); len(stack) == 0 {
+			t.Error("error_chain.root.stack must contain at least one frame")
+		}
 	}
 }
 
@@ -540,5 +564,51 @@ func TestSuperUserPromoter_M9_ConcurrentFirstLogin(t *testing.T) {
 	}
 	if n := assignCalls.Load(); n != int64(goroutines) {
 		t.Errorf("expected %d AssignToUser calls, got %d", goroutines, n)
+	}
+}
+
+// TestSuperUserPromoter_AuthUserWithEmptySub verifies that a non-nil AuthUser
+// with an empty Sub field (u.Sub == "") is treated as anonymous and neither
+// IsAdmin nor AssignToUser is called, even when the email is in the set.
+func TestSuperUserPromoter_AuthUserWithEmptySub(t *testing.T) {
+	// Not parallel: captureDefaultLogger mutates global slog default.
+	var checkerCalls atomic.Int64
+	var assignerCalls atomic.Int64
+	promoter := NewSuperUserPromoter(
+		map[string]struct{}{"a@x.com": {}},
+		"admin-role-id",
+		stubAdminChecker{fn: func(ctx context.Context, _ string) (bool, error) {
+			checkerCalls.Add(1)
+			return false, nil
+		}},
+		stubRoleAssigner{fn: func(ctx context.Context, _, _ string) error {
+			assignerCalls.Add(1)
+			return nil
+		}},
+	)
+	u := &AuthUser{Sub: "", Email: "a@x.com", EmailVerified: true}
+	rec := runMiddleware(t, promoter, u)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d", rec.Code)
+	}
+	if checkerCalls.Load() != 0 {
+		t.Errorf("expected IsAdmin not called, got %d", checkerCalls.Load())
+	}
+	if assignerCalls.Load() != 0 {
+		t.Errorf("expected AssignToUser not called, got %d", assignerCalls.Load())
+	}
+}
+
+// TestNewSuperUserPromoter_NilMapIsPassthrough verifies that constructing a
+// promoter with a nil email map does not panic, and that the resulting
+// middleware is a zero-cost pass-through that never calls checker or assigner.
+func TestNewSuperUserPromoter_NilMapIsPassthrough(t *testing.T) {
+	t.Parallel()
+	// No checker/assigner provided; must not be called when map is empty/nil.
+	promoter := NewSuperUserPromoter(nil, "", nil, nil)
+	u := &AuthUser{Sub: "user-1", Email: "anyone@example.com", EmailVerified: true}
+	rec := runMiddleware(t, promoter, u)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d", rec.Code)
 	}
 }
