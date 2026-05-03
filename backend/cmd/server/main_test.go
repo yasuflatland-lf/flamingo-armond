@@ -28,6 +28,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
+	"github.com/rotisserie/eris"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"go.opentelemetry.io/otel"
@@ -40,6 +41,7 @@ import (
 	"backend/internal/domain"
 	"backend/internal/domain/service"
 	"backend/internal/handler/ping"
+	"backend/internal/logging"
 	"backend/internal/repository"
 	"backend/internal/telemetry"
 	"backend/internal/usecase"
@@ -1699,18 +1701,75 @@ func TestHandleSwipe_RollsBackWhenSwipeRecordInsertFails(t *testing.T) {
 	}
 }
 
-// TestRun_SuperUserBootstrap_WarnsWhenNoEscapeHatch covers the WARN log path
-// added for issue #87: SUPER_USER_EMAILS empty AND zero admin role-holders in
-// the DB must emit a single WARN with admin_count=0.
-//
-// The test exercises the bootstrap fragment inline (not via run()) to avoid
-// the overhead of standing up a full HTTP server. The inline logic mirrors the
-// else-branch of run() exactly.
-func TestRun_SuperUserBootstrap_WarnsWhenNoEscapeHatch(t *testing.T) {
+// failingCountRepo satisfies repository.RoleRepository with only CountAdminUsers
+// implemented. All other methods panic with "not used in this test" to catch
+// unexpected calls during unit tests of bootstrapSuperUserPromoter.
+type failingCountRepo struct {
+	err error
+}
+
+func (f failingCountRepo) CountAdminUsers(_ context.Context) (int64, error) {
+	return 0, f.err
+}
+func (f failingCountRepo) FindByID(_ context.Context, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (f failingCountRepo) FindByName(_ context.Context, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (f failingCountRepo) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (f failingCountRepo) Create(_ context.Context, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (f failingCountRepo) Update(_ context.Context, _, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (f failingCountRepo) Delete(_ context.Context, _ string) error {
+	panic("not used in this test")
+}
+func (f failingCountRepo) AssignToUser(_ context.Context, _, _ string) error {
+	panic("not used in this test")
+}
+func (f failingCountRepo) RevokeFromUser(_ context.Context, _, _ string) error {
+	panic("not used in this test")
+}
+func (f failingCountRepo) ListByUser(_ context.Context, _ string) ([]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (f failingCountRepo) ListByUserIDs(_ context.Context, _ []string) (map[string][]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (f failingCountRepo) ListAll(_ context.Context) ([]*domain.Role, error) {
+	panic("not used in this test")
+}
+
+// decodeLogRecords parses newline-delimited JSON log output from a bytes.Buffer
+// and returns the decoded records. Fatals on malformed JSON.
+func decodeLogRecords(t *testing.T, buf *bytes.Buffer) []map[string]any {
+	t.Helper()
+	var records []map[string]any
+	for _, line := range bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		var rec map[string]any
+		if err := json.Unmarshal(line, &rec); err != nil {
+			t.Fatalf("decode log line %q: %v", line, err)
+		}
+		records = append(records, rec)
+	}
+	return records
+}
+
+// TestBootstrapSuperUserPromoter_WarnsWhenNoEscapeHatch covers the WARN log
+// path: SUPER_USER_EMAILS empty AND zero admin role-holders in the DB must
+// emit a single WARN with admin_count=0.
+func TestBootstrapSuperUserPromoter_WarnsWhenNoEscapeHatch(t *testing.T) {
 	// Do not run in parallel — this test opens a DB connection and logs to a
 	// local buffer; parallel would risk DB-state interference from other tests
 	// that insert user_roles rows.
-	t.Setenv("SUPER_USER_EMAILS", "")
 
 	ctx := t.Context()
 
@@ -1733,33 +1792,19 @@ func TestRun_SuperUserBootstrap_WarnsWhenNoEscapeHatch(t *testing.T) {
 		t.Skipf("pre-condition: %d admin role-holder(s) already exist; WARN branch would not fire — skipping", adminCount)
 	}
 
-	// Capture WARN-level log output via an inline JSON logger, mirroring the
-	// pattern from internal/auth/superuser_test.go (captureDefaultLogger /
-	// decodeLogLines). No global state is mutated here; the logger is local.
+	// Capture WARN-level log output via an inline JSON logger.
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	// Inline the bootstrap fragment from run()'s else-branch.
-	superUserEmails := auth.ParseSuperUserSet(os.Getenv("SUPER_USER_EMAILS"))
-	if len(superUserEmails) == 0 {
-		if n, countErr := roleRepo.CountAdminUsers(ctx); countErr == nil && n == 0 {
-			logger.Warn("super-user bootstrap: no admin configured and no admin role-holder exists",
-				"admin_count", int64(0))
-		}
+	promoter, err := bootstrapSuperUserPromoter(ctx, logger, nil, roleRepo, "")
+	if err != nil {
+		t.Fatalf("bootstrapSuperUserPromoter returned unexpected error: %v", err)
+	}
+	if promoter == nil {
+		t.Fatal("bootstrapSuperUserPromoter returned nil promoter")
 	}
 
-	// Decode newline-delimited JSON log lines.
-	var records []map[string]any
-	for _, line := range bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n")) {
-		if len(line) == 0 {
-			continue
-		}
-		var rec map[string]any
-		if err := json.Unmarshal(line, &rec); err != nil {
-			t.Fatalf("decode log line %q: %v", line, err)
-		}
-		records = append(records, rec)
-	}
+	records := decodeLogRecords(t, &buf)
 
 	// Locate the expected WARN record.
 	const wantMsg = "super-user bootstrap: no admin configured and no admin role-holder exists"
@@ -1783,5 +1828,79 @@ func TestRun_SuperUserBootstrap_WarnsWhenNoEscapeHatch(t *testing.T) {
 	// numbers; json.Unmarshal into map[string]any decodes them as float64.
 	if got, _ := found["admin_count"].(float64); got != 0 {
 		t.Errorf("want admin_count=0, got %v", got)
+	}
+}
+
+// TestBootstrapSuperUserPromoter_WarnOnCountError verifies that a DB failure
+// in CountAdminUsers is non-fatal: bootstrapSuperUserPromoter returns a
+// pass-through promoter and emits a structured WARN with error_chain.root.stack.
+func TestBootstrapSuperUserPromoter_WarnOnCountError(t *testing.T) {
+	ctx := t.Context()
+
+	// Use a stub that returns an eris error so the structural error_chain
+	// assertion (root.stack non-empty) can be verified. Using eris.New here
+	// matches the convention in .claude/rules/error-wrapping.md §
+	// "Test the error_chain shape" — stubs must use eris.New so the assertion
+	// exercises the same code path production hits.
+	stub := failingCountRepo{err: eris.New("repository: simulated DB failure")}
+
+	// Capture log output at WARN+ level.
+	var buf bytes.Buffer
+	logger := slog.New(logging.NewContextHandler(
+		slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}),
+		func(_ context.Context) string { return "" },
+	))
+
+	promoter, err := bootstrapSuperUserPromoter(ctx, logger, nil, stub, "")
+	if err != nil {
+		t.Fatalf("bootstrapSuperUserPromoter returned unexpected error: %v", err)
+	}
+	if promoter == nil {
+		t.Fatal("bootstrapSuperUserPromoter returned nil promoter")
+	}
+
+	records := decodeLogRecords(t, &buf)
+
+	// 1. The "admin count check failed" WARN must be present.
+	const wantCountErrMsg = "super-user bootstrap: admin count check failed"
+	var countErrRec map[string]any
+	for _, rec := range records {
+		if rec["msg"] == wantCountErrMsg {
+			countErrRec = rec
+			break
+		}
+	}
+	if countErrRec == nil {
+		t.Fatalf("expected WARN log line %q not found in output: %s", wantCountErrMsg, buf.String())
+	}
+
+	// 2. Assert level is WARN.
+	if got, _ := countErrRec["level"].(string); got != "WARN" {
+		t.Errorf("want level=WARN, got %q", got)
+	}
+
+	// 3. Assert structural error_chain shape (root.stack non-empty).
+	// See .claude/rules/error-wrapping.md § "Test the error_chain shape".
+	chain, ok := countErrRec["error_chain"].(map[string]any)
+	if !ok {
+		t.Fatalf("error_chain is not a JSON object: %T", countErrRec["error_chain"])
+	}
+	root, hasRoot := chain["root"].(map[string]any)
+	if !hasRoot {
+		t.Error("error_chain must have root entry (got external-only shape; stub may be using stdlib errors)")
+	}
+	if root != nil {
+		if stack, _ := root["stack"].([]any); len(stack) == 0 {
+			t.Error("error_chain.root.stack must contain at least one frame")
+		}
+	}
+
+	// 4. The "no admin configured" WARN must NOT appear — the count failed,
+	//    so we never learned whether adminCount == 0.
+	const wantNoEscapeMsg = "super-user bootstrap: no admin configured and no admin role-holder exists"
+	for _, rec := range records {
+		if rec["msg"] == wantNoEscapeMsg {
+			t.Errorf("unexpected log line %q: should only appear when count succeeds with 0", wantNoEscapeMsg)
+		}
 	}
 }

@@ -323,14 +323,13 @@
             INSERT INTO public.user_roles (user_id, role_id)
             SELECT u.id, r.id FROM auth.users u, public.roles r
             WHERE u.email = '{{ admin_email | replace("'", "''") }}' AND r.name = 'admin'
-            ON CONFLICT DO NOTHING
-            RETURNING user_id;
+            ON CONFLICT DO NOTHING;
       register: seed_admin_result
-      changed_when: "'INSERT 0 1' in seed_admin_result.stderr"
+      changed_when: "'INSERT 0 1' in seed_admin_result.stdout"
       tags: [seed-admin]
 
     - name: Confirm seed-admin outcome
       ansible.builtin.debug:
         msg:
-          - "{{ 'OK: granted admin role to ' + admin_email if 'INSERT 0 1' in (seed_admin_result.stderr | default('')) else 'NO-OP: ' + admin_email + ' either has no auth.users row yet (sign in once first) or already holds admin' }}"
+          - "{{ 'OK: granted admin role to ' + admin_email if 'INSERT 0 1' in (seed_admin_result.stdout | default('')) else 'NO-OP: ' + admin_email + ' either has no auth.users row yet (sign in once first) or already holds admin' }}"
       tags: [seed-admin]

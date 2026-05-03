@@ -150,7 +150,7 @@ This is the deliberate "you have no escape hatch" warning — the next signed-in
 `make db-reset` truncates `public.user_roles`, so any previously bootstrapped admin loses the role until they sign in again with a `SUPER_USER_EMAILS`-listed address. To re-promote without a fresh login round-trip:
 
 ```bash
-supabase db remote sql <<'SQL'
+psql "$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')" <<'SQL'
 INSERT INTO public.user_roles (user_id, role_id)
 SELECT u.id, r.id
   FROM auth.users u, public.roles r

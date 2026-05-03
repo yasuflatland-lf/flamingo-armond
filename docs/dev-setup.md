@@ -153,12 +153,12 @@ The backend grants the `admin` role automatically on first sign-in for any email
    If `email_count` is `0`, your edit did not take effect — re-check the file path and restart.
 3. Sign in at `http://127.0.0.1:3000/login` with one of the listed accounts. The Admin pill appears in the global header and `/admin/*` routes become reachable.
 
-**After `make db-reset`:** `public.user_roles` is wiped, but `SUPER_USER_EMAILS` only re-promotes on **first sign-in** — your existing session still believes it is admin until the next login. Sign out and back in once.
+**After `make db-reset`:** `public.user_roles` is wiped, but the super-user middleware re-promotes automatically on the next authenticated request for any email in `SUPER_USER_EMAILS` — simply reload any page or trigger any GraphQL call. No sign-out is required.
 
 **Manual SQL fallback** (only if your backend cannot write `user_roles` for some reason — e.g. you are debugging the Authorization-header propagation gap and need an admin without a successful login round-trip):
 
 ```bash
-supabase db remote sql <<'SQL'
+psql "$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')" <<'SQL'
 INSERT INTO public.user_roles (user_id, role_id)
 SELECT u.id, r.id
   FROM auth.users u, public.roles r
@@ -167,7 +167,7 @@ ON CONFLICT DO NOTHING;
 SQL
 ```
 
-A future `make seed-admin EMAIL=you@example.com` target wraps this SQL — see [`backend-auth.md` § "Bootstrap admin via `SUPER_USER_EMAILS`"](backend-auth.md#bootstrap-admin-via-super_user_emails).
+The `make seed-admin EMAIL=you@example.com` target wraps this SQL — see [`backend-auth.md` § "Bootstrap admin via `SUPER_USER_EMAILS`"](backend-auth.md#bootstrap-admin-via-super_user_emails).
 
 ### Day-to-day
 
