@@ -94,10 +94,7 @@ describe("<HeaderAddCardLink>", () => {
 
     it("renders href with cardgroup query param", () => {
       render(<HeaderAddCardLink />);
-      expect(screen.getByRole("link")).toHaveAttribute(
-        "href",
-        "/cards/new?cardgroup=cg-abc",
-      );
+      expect(screen.getByRole("link")).toHaveAttribute("href", "/cards/new?cardgroup=cg-abc");
     });
 
     it("does not have aria-current attribute", () => {
@@ -123,10 +120,7 @@ describe("<HeaderAddCardLink>", () => {
 
     it("renders href with cardgroup query param", () => {
       render(<HeaderAddCardLink />);
-      expect(screen.getByRole("link")).toHaveAttribute(
-        "href",
-        "/cards/new?cardgroup=cg-abc",
-      );
+      expect(screen.getByRole("link")).toHaveAttribute("href", "/cards/new?cardgroup=cg-abc");
     });
 
     it("does not have aria-current attribute", () => {

@@ -45,16 +45,11 @@ describe("<GlobalFAB>", () => {
   });
 
   describe("visible paths — renders 'Add new cardgroup' label", () => {
-    it.each([["/cardgroups"]])(
-      "renders 'Add new cardgroup' button on %s",
-      (path) => {
-        vi.mocked(usePathname).mockReturnValue(path);
-        render(<GlobalFAB />);
-        expect(
-          screen.getByRole("button", { name: "Add new cardgroup" }),
-        ).toBeInTheDocument();
-      },
-    );
+    it.each([["/cardgroups"]])("renders 'Add new cardgroup' button on %s", (path) => {
+      vi.mocked(usePathname).mockReturnValue(path);
+      render(<GlobalFAB />);
+      expect(screen.getByRole("button", { name: "Add new cardgroup" })).toBeInTheDocument();
+    });
   });
 
   describe("visible paths — renders 'Add new card' label", () => {
@@ -65,9 +60,7 @@ describe("<GlobalFAB>", () => {
     ])("renders 'Add new card' button on %s", (path) => {
       vi.mocked(usePathname).mockReturnValue(path);
       render(<GlobalFAB />);
-      expect(
-        screen.getByRole("button", { name: "Add new card" }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Add new card" })).toBeInTheDocument();
     });
   });
 

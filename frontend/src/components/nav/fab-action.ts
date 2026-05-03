@@ -26,12 +26,12 @@ export function resolveFabAction(pathname: string): FabAction | null {
 
   const cardsMatch = CARDGROUP_CARDS_RE.exec(pathname);
   if (cardsMatch) {
-    return { href: "/cards/new?cardgroup=" + cardsMatch[1], label: "Add new card" };
+    return { href: `/cards/new?cardgroup=${cardsMatch[1]}`, label: "Add new card" };
   }
 
   const detailMatch = CARDGROUP_DETAIL_RE.exec(pathname);
   if (detailMatch) {
-    return { href: "/cards/new?cardgroup=" + detailMatch[1], label: "Add new card" };
+    return { href: `/cards/new?cardgroup=${detailMatch[1]}`, label: "Add new card" };
   }
 
   return { href: "/cards/new", label: "Add new card" };

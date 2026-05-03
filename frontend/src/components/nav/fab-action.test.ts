@@ -14,10 +14,7 @@ describe("resolveFabAction", () => {
 
   describe("creates a card with cardgroup pre-selected on cardgroup detail/cards", () => {
     it.each([
-      [
-        "/cardgroups/abc-123",
-        { href: "/cards/new?cardgroup=abc-123", label: "Add new card" },
-      ],
+      ["/cardgroups/abc-123", { href: "/cards/new?cardgroup=abc-123", label: "Add new card" }],
       [
         "/cardgroups/abc-123/cards",
         { href: "/cards/new?cardgroup=abc-123", label: "Add new card" },
