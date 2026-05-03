@@ -167,6 +167,7 @@ describe("<GlobalHeader> (RSC)", () => {
     expect(screen.queryByLabelText("Admin area")).not.toBeInTheDocument();
     // UNAUTHENTICATED is silenced — no console.error, no console.warn for this case
     expect(consoleErrorSpy).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
 
   it("logged-in user + unexpected gqlFetch error → no admin pill and console.warn is called", async () => {
