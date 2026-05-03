@@ -7,9 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vektah/gqlparser/v2/gqlerror"
 	"gorm.io/gorm"
 
 	"backend/internal/domain"
+	"backend/internal/gqlerr"
 	"backend/internal/repository"
 )
 
@@ -51,6 +53,9 @@ type mockCardRepository struct {
 		orderBy     repository.CardOrderBy
 		dir         repository.SortOrder
 	}
+
+	findByCardgroupAndFrontResult *domain.Card
+	findByCardgroupAndFrontErr    error
 }
 
 func (m *mockCardRepository) FindByID(_ context.Context, _ string) (*domain.Card, error) {
@@ -74,6 +79,9 @@ func (m *mockCardRepository) DeleteByIDsTx(_ context.Context, _ *gorm.DB, ownerI
 func (m *mockCardRepository) Create(_ context.Context, card *domain.Card) error {
 	m.capturedCreate = card
 	return m.createErr
+}
+func (m *mockCardRepository) FindByCardgroupAndFront(_ context.Context, _ string, _ string) (*domain.Card, error) {
+	return m.findByCardgroupAndFrontResult, m.findByCardgroupAndFrontErr
 }
 func (m *mockCardRepository) Update(_ context.Context, _ string, patch repository.CardUpdate) (*domain.Card, error) {
 	m.capturedPatch = patch
@@ -568,5 +576,57 @@ func TestCardUsecase_ListCardsByCardgroupConnection_ResolveCursorHydratesDueFiel
 			}
 			tc.assertFn(t, got)
 		})
+	}
+}
+
+func TestCardUsecase_Create_Duplicate(t *testing.T) {
+	t.Parallel()
+
+	fixture := &domain.Card{ID: "fixture-id", CardgroupID: "cg1", Front: "hello", Back: "fixture-back"}
+	cardRepo := &mockCardRepository{
+		createErr:                     repository.ErrCardDuplicateFront,
+		findByCardgroupAndFrontResult: fixture,
+	}
+	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
+	uc := NewCardUsecase(nil, cardRepo, cgRepo)
+
+	_, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "hello", Back: "world"})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	assertGQLErr(t, err, string(gqlerr.CodeBadUserInput), "front")
+
+	gqlErr, ok := err.(*gqlerror.Error)
+	if !ok {
+		t.Fatalf("expected *gqlerror.Error, got %T", err)
+	}
+	if got, _ := gqlErr.Extensions["reason"].(string); got != "CARD_DUPLICATE_FRONT" {
+		t.Fatalf("expected extensions.reason=%q, got %q", "CARD_DUPLICATE_FRONT", got)
+	}
+	if got, _ := gqlErr.Extensions["existingCardId"].(string); got != "fixture-id" {
+		t.Fatalf("expected extensions.existingCardId=%q, got %q", "fixture-id", got)
+	}
+	if got, _ := gqlErr.Extensions["existingBack"].(string); got != "fixture-back" {
+		t.Fatalf("expected extensions.existingBack=%q, got %q", "fixture-back", got)
+	}
+}
+
+func TestCardUsecase_Create_DuplicateLookupRace(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &mockCardRepository{
+		createErr:                  repository.ErrCardDuplicateFront,
+		findByCardgroupAndFrontErr: repository.ErrNotFound,
+	}
+	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
+	uc := NewCardUsecase(nil, cardRepo, cgRepo)
+
+	_, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "hello", Back: "world"})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
+		t.Fatalf("expected INTERNAL error, got %v", err)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 
 	"backend/internal/auth"
@@ -29,6 +30,7 @@ type CardRepository interface {
 		dir repository.SortOrder,
 	) ([]*domain.Card, int64, error)
 	Create(ctx context.Context, card *domain.Card) error
+	FindByCardgroupAndFront(ctx context.Context, cardgroupID, front string) (*domain.Card, error)
 	Update(ctx context.Context, id string, patch repository.CardUpdate) (*domain.Card, error)
 	Delete(ctx context.Context, id string) error
 	DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error)
@@ -203,6 +205,24 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (*domain.C
 		return nil, translateCardErr(ctx, err)
 	}
 	if err := u.cardRepo.Create(ctx, card); err != nil {
+		if errors.Is(err, repository.ErrCardDuplicateFront) {
+			existing, lookupErr := u.cardRepo.FindByCardgroupAndFront(ctx, in.CardgroupID, front)
+			if lookupErr != nil {
+				// ErrNotFound here means the duplicate row vanished between the
+				// failed INSERT and this SELECT — a concurrent delete raced us.
+				// Treat it as an internal error; the client can retry.
+				return nil, gqlerr.Internal(ctx, eris.Wrap(lookupErr, "usecase: lookup duplicate card after 23505"))
+			}
+			return nil, gqlerr.BadUserInputWithExtensions(
+				"front",
+				"card with same front exists in this cardgroup",
+				map[string]any{
+					"reason":         "CARD_DUPLICATE_FRONT",
+					"existingCardId": existing.ID,
+					"existingBack":   existing.Back,
+				},
+			)
+		}
 		return nil, gqlerr.Internal(ctx, err)
 	}
 	return card, nil
