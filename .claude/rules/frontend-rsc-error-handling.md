@@ -56,6 +56,61 @@ try {
 
 The older `redirectIfUnauthenticated` helper (in `frontend/src/lib/apollo/server-redirect.ts`) still uses a substring match and is grandfathered for legacy redirect-only sites where both sides converge on the same `/login` target. **New** code paths — silent swallow vs. warn vs. redirect, anything that branches finer than "redirect on auth failure" — MUST use the structural helper.
 
+### Use `CombinedGraphQLErrors.is(err)` — never `instanceof CombinedGraphQLErrors`
+
+Apollo Client ships `CombinedGraphQLErrors.is(err)` as the canonical check because `instanceof` is unreliable across module realm boundaries. In a Next.js build, the server bundle and the client bundle each have their own copy of `@apollo/client/errors`; a `CombinedGraphQLErrors` created in one realm does not pass `instanceof` in the other. The `.is()` static method uses a duck-type check (`err?.graphQLErrors != null`) that survives the realm split.
+
+Every helper in `frontend/src/lib/apollo/graphql-errors.ts` uses `.is()` already. Any new helper added to that file — or anywhere else that must detect a `CombinedGraphQLErrors` — must also use `.is()`:
+
+```ts
+// AVOID: fails silently when the error originates in a different bundle realm.
+if (err instanceof CombinedGraphQLErrors) { ... }
+
+// PREFER: duck-type check, realm-safe.
+if (CombinedGraphQLErrors.is(err)) { ... }
+```
+
+**How to apply:** grep for `instanceof CombinedGraphQLErrors` before any merge; every hit is a bug. The lint rule does not catch this automatically — it must be verified in code review. Reference: `frontend/src/lib/apollo/graphql-errors.ts` (`tryGetDuplicateCardInfo`).
+
+### `getBackendErrorBanner` deliberately skips field-level `BAD_USER_INPUT` — use `getBackendFieldErrors` first
+
+`getBackendErrorBanner` (`frontend/src/lib/apollo/errors.ts`) returns `undefined` for `BAD_USER_INPUT` errors that carry an `extensions.field`, because those errors are meant to be displayed inline next to the offending field, not in a generic banner. A call site that passes such an error to `getBackendErrorBanner` and displays the result will silently show nothing.
+
+Any UI flow that wants to surface a field-level error inline (instead of a generic banner) MUST explicitly call `getBackendFieldErrors(err)?.<field>` first, then fall back to `getBackendErrorBanner`, then to a generic copy string:
+
+```ts
+// correct: check field-level error first, then banner, then generic fallback
+const fieldErrors = getBackendFieldErrors(err);
+const banner = getBackendErrorBanner(err);
+setErrorMessage(
+  fieldErrors?.front ??    // field-level inline message
+  banner ??                // generic banner (skipped for field-level BAD_USER_INPUT)
+  "An unexpected error occurred",
+);
+```
+
+The three-way fallback ensures every typed error from the backend reaches the UI at the most specific level available, without duplicating the field-level message in a second banner. Reference: `frontend/src/app/cards/new/cards-new-client.tsx` `handleOverwrite`.
+
+### Structural error parsers must `console.warn` (not silently `continue`) when the shape narrows wrong
+
+A helper like `tryGetDuplicateCardInfo` iterates `err.errors` and skips entries whose extensions do not match the expected discriminator. When the discriminator (`extensions.reason === "CARD_DUPLICATE_FRONT"`) matches but the payload is missing required fields (`existingCardId`, `existingBack`), silently calling `continue` downgrades a partially-valid backend payload to a generic error path with no observable signal. Operators have no way to know a CARD_DUPLICATE_FRONT entry was received but discarded.
+
+Emit a `console.warn` with the raw `extensions` object when the discriminator matches but the shape is wrong:
+
+```ts
+if (!ext || ext.code !== "BAD_USER_INPUT" || ext.reason !== "CARD_DUPLICATE_FRONT") continue;
+// discriminator matched — now validate required fields
+if (typeof existingCardId !== "string" || existingCardId === "") {
+  console.warn(
+    "[graphql-errors] CARD_DUPLICATE_FRONT entry missing required extension fields",
+    { entry: { message: entry.message, extensions: ext } },
+  );
+  continue;
+}
+```
+
+**PII review gate:** new extension fields added to any backend error variant appear verbatim in this warn payload. Review every new field against the PII policy before landing — field names like `existingBack` (card content) may carry user-authored text, while `existingCardId` (a UUID) is safe. Reference: `frontend/src/lib/apollo/graphql-errors.ts` (`tryGetDuplicateCardInfo`).
+
 ## `console.error("[scope] getUser() failed:", err.name, err.message)` before throwing in RSC
 
 Next.js may abbreviate or replace thrown errors in production (the App Router strips error.message in prod and renders a generic "Application error" page unless the error is a `NEXT_REDIRECT` or similar special). Operators triaging a failure see only the boundary log, not the underlying cause. RSCs that rethrow a real `getUser()` failure must log first:
