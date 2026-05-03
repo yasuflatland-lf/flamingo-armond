@@ -4,6 +4,64 @@ This document records non-obvious Ansible idioms and test-infrastructure decisio
 
 ## Ansible idioms
 
+### `psql` stdout vs stderr: `RETURNING` corrupts `changed_when` detection
+
+`psql` writes the command tag (`INSERT 0 1`) to **stdout**, not stderr. When a task
+uses `register:` on a `command:` / `shell:` that runs `psql`, the tag appears in
+`result.stdout`, and a `changed_when: "'INSERT 0 1' in result.stdout"` check works
+correctly.
+
+Adding `RETURNING <cols>` to the SQL mixes row-set data into stdout alongside the
+command tag. Because the tag is no longer the only line on stdout, a naive
+`'INSERT 0 1' in result.stdout` check may still match — but the presence of extra
+rows makes the detection fragile for multi-row inserts where the tag shifts to
+`INSERT 0 N`. If the `changed_when` goal is simply "did a new row land", drop
+`RETURNING` entirely and check for `INSERT 0 1` in stdout; the row-set output is
+not needed when the task only needs to detect whether the insert fired.
+
+**How to apply:** when writing an Ansible task that wraps a `psql` insert, choose
+one of two shapes:
+
+- **No `RETURNING`, check stdout for tag** — reliable and sufficient when you only
+  need to know whether the row was inserted.
+- **Keep `RETURNING`, parse stdout structurally** — only if the task must consume
+  the returned columns; in this case do not also rely on `INSERT 0 1` detection
+  because the stdout line order varies.
+
+### `supabase db remote sql` does not exist — use `psql` directly
+
+`supabase db remote` is a schema-diff tool; it does not accept arbitrary SQL.
+Attempting `supabase db remote sql` returns an error. To run a SQL file or
+heredoc against a remote Supabase project from an Ansible task, extract the
+connection string and call `psql` directly:
+
+```yaml
+- name: Get DB_URL from supabase status
+  command: >
+    python3 -c "
+    import subprocess, json
+    out = subprocess.check_output(['supabase', 'status', '--output', 'json'])
+    print(json.loads(out)['DB URL'])
+    "
+  register: db_url_result
+
+- name: Run admin SQL
+  command: >
+    psql "{{ db_url_result.stdout | trim }}" -c "{{ sql_statement }}"
+  register: psql_result
+  changed_when: "'INSERT 0 1' in psql_result.stdout"
+```
+
+Using `supabase status --output json` (parsed with Python) rather than the shell
+one-liner `supabase status -o env | grep '^DB_URL='` is more robust to quoting and
+to future changes in the text-format output. Both forms appear in `docs/dev-setup.md`
+§ "Manual SQL fallback" for human use; the JSON form is preferred inside Ansible.
+
+**Why:** a `supabase db remote sql` call that compiles cleanly in a task file will
+fail at runtime with an unhelpful "unknown command" error. The fix is not a flag
+change — the subcommand simply does not exist. Always verify CLI subcommands against
+`supabase --help` / `supabase <cmd> --help` before authoring Ansible tasks.
+
 ### `block: when:` is the correct early-exit idiom inside `include_tasks`
 
 `meta: end_host` and `meta: end_play` both terminate scope at the play level — not at the included file level. Calling either inside an `include_tasks` fragment causes the *entire play* (all phases) to stop, not just the current fragment. The correct idiom for a conditional short-circuit (e.g. a 404 means "already done") is to wrap the remaining tasks inside a `block:` guarded by `when: <condition>`. Both the 404 block and the 200 block fall through to the end of the file and the calling play continues normally. Reaching for `end_host` or `end_play` is natural but wrong here.
