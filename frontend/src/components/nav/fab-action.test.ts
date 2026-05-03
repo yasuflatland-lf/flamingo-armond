@@ -72,8 +72,8 @@ describe("resolveFabAction", () => {
     });
   });
 
-  describe("is shadowed by HIDDEN_PATH_RE for /cardgroups/new", () => {
-    it("returns a card-with-group action for /cardgroups/new (the literal 'new' is treated as a cardgroup id; HIDDEN_PATH_RE in global-fab.tsx is what suppresses the FAB on this path)", () => {
+  describe("is shadowed externally by GlobalFAB's hidden-path guard for /cardgroups/new", () => {
+    it("returns a card-with-group action (the literal 'new' is treated as a cardgroup id; GlobalFAB suppresses the FAB on this path via its own hidden-path guard)", () => {
       expect(resolveFabAction("/cardgroups/new")).toEqual({
         kind: "card-with-group",
         href: "/cards/new?cardgroup=new",

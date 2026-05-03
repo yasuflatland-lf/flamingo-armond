@@ -145,9 +145,30 @@ describe("<HeaderAddCardLink>", () => {
       mockUsePathname.mockReturnValue("/cardgroups/new");
     });
 
-    it("renders href with cardgroup query param (header treats 'new' as an id; this is a known limitation guarded by HIDDEN_PATH_RE on the FAB side, but the header has no equivalent guard)", () => {
+    it("renders href with cardgroup query param (header treats 'new' as an id; this is a known limitation suppressed by GlobalFAB's hidden-path guard on the FAB side, but the header has no equivalent guard)", () => {
       render(<HeaderAddCardLink />);
       expect(screen.getByRole("link")).toHaveAttribute("href", "/cards/new?cardgroup=new");
+    });
+  });
+
+  describe("when on a cardgroup edit page", () => {
+    beforeEach(() => {
+      mockUsePathname.mockReturnValue("/cardgroups/cg-abc/edit");
+    });
+
+    it("renders href as /cards/new because resolveFabAction returns null on edit pages", () => {
+      render(<HeaderAddCardLink />);
+      expect(screen.getByRole("link")).toHaveAttribute("href", "/cards/new");
+    });
+
+    it("does not have aria-current attribute", () => {
+      render(<HeaderAddCardLink />);
+      expect(screen.getByRole("link")).not.toHaveAttribute("aria-current");
+    });
+
+    it("does not have pointer-events-none class", () => {
+      render(<HeaderAddCardLink />);
+      expect(screen.getByRole("link")).not.toHaveClass("pointer-events-none");
     });
   });
 });

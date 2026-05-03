@@ -9,7 +9,10 @@ export function HeaderAddCardLink() {
   const pathname = usePathname();
   const onCardsNew = pathname === "/cards/new";
   const action = resolveFabAction(pathname);
-  const href = action !== null && action.kind !== "cardgroup" ? action.href : "/cards/new";
+  const href =
+    action !== null && (action.kind === "card-with-group" || action.kind === "card")
+      ? action.href
+      : "/cards/new";
   return (
     <Link
       href={href}
