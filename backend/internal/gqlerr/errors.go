@@ -20,6 +20,13 @@ const (
 	CodeCancelled       Code = "CANCELLED"
 )
 
+// BadUserInputReason is the sub-discriminator emitted under extensions.reason
+// for BAD_USER_INPUT errors that carry a typed payload. Frontend handlers branch
+// on the value of reason rather than the human-readable message.
+type BadUserInputReason string
+
+const ReasonCardDuplicateFront BadUserInputReason = "CARD_DUPLICATE_FRONT"
+
 func Unauthenticated() *gqlerror.Error {
 	return &gqlerror.Error{
 		Message: "unauthenticated",
@@ -42,6 +49,14 @@ func BadUserInput(field, message string) *gqlerror.Error {
 // BadUserInputWithExtensions returns a BAD_USER_INPUT error with additional
 // extensions merged into the standard {code, field} envelope. Reserved keys
 // (code, field) in extra are ignored to keep the envelope stable.
+//
+// The design places variant-specific data under an extensions.reason
+// sub-discriminator rather than a separate top-level code so that
+// IsCode(err, CodeBadUserInput) and existing field-error UI keep working without
+// modification. Reach for this helper — rather than BadUserInput — when the
+// payload needs to be structurally parsed by the frontend (e.g. to surface an
+// existing duplicate entity). For plain field validation messages, BadUserInput
+// is sufficient.
 func BadUserInputWithExtensions(field, message string, extra map[string]any) *gqlerror.Error {
 	ext := map[string]any{
 		"code":  string(CodeBadUserInput),
@@ -56,8 +71,27 @@ func BadUserInputWithExtensions(field, message string, extra map[string]any) *gq
 	return &gqlerror.Error{Message: message, Extensions: ext}
 }
 
-func Internal(ctx context.Context, err error) *gqlerror.Error {
-	logging.LogError(ctx, slog.Default(), "internal error", err)
+// BadUserInputCardDuplicateFront returns the BAD_USER_INPUT envelope used when
+// a card insert collides with the (cardgroup_id, front) unique index. The
+// frontend's tryGetDuplicateCardInfo helper parses the (reason, existingCardId,
+// existingBack) extension trio.
+func BadUserInputCardDuplicateFront(existingCardID, existingBack string) *gqlerror.Error {
+	return BadUserInputWithExtensions("front",
+		"card with same front exists in this cardgroup",
+		map[string]any{
+			"reason":         string(ReasonCardDuplicateFront),
+			"existingCardId": existingCardID,
+			"existingBack":   existingBack,
+		})
+}
+
+// Internal logs err at ERROR level and returns a generic INTERNAL gqlerror. The
+// optional attrs are attached to the log line only — the wire response is always
+// the same {code: INTERNAL, message: "internal server error"} shape. Use attrs
+// to attach triage-relevant context (e.g. entity IDs) that must not leak to the
+// client but helps operators distinguish a known race from a real regression.
+func Internal(ctx context.Context, err error, attrs ...slog.Attr) *gqlerror.Error {
+	logging.LogError(ctx, slog.Default(), "internal error", err, attrs...)
 	return &gqlerror.Error{
 		Message: "internal server error",
 		Extensions: map[string]any{
