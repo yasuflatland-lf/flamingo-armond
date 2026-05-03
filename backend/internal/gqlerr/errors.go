@@ -39,6 +39,23 @@ func BadUserInput(field, message string) *gqlerror.Error {
 	}
 }
 
+// BadUserInputWithExtensions returns a BAD_USER_INPUT error with additional
+// extensions merged into the standard {code, field} envelope. Reserved keys
+// (code, field) in extra are ignored to keep the envelope stable.
+func BadUserInputWithExtensions(field, message string, extra map[string]any) *gqlerror.Error {
+	ext := map[string]any{
+		"code":  string(CodeBadUserInput),
+		"field": field,
+	}
+	for k, v := range extra {
+		if k == "code" || k == "field" {
+			continue
+		}
+		ext[k] = v
+	}
+	return &gqlerror.Error{Message: message, Extensions: ext}
+}
+
 func Internal(ctx context.Context, err error) *gqlerror.Error {
 	logging.LogError(ctx, slog.Default(), "internal error", err)
 	return &gqlerror.Error{
