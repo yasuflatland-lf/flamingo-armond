@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen codegen-yacc test clean clean-frontend clean-backend doctor db-reset setup-prod setup-prod-preflight setup-prod-postapply teardown-prod teardown-prod-preflight
+.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen codegen-yacc test clean clean-frontend clean-backend doctor db-reset setup-prod setup-prod-preflight setup-prod-postapply teardown-prod teardown-prod-preflight seed-admin
 
 # Most env / Supabase targets dispatch to the playbook below; tags select the subset.
 ANSIBLE := ansible-playbook -i playbooks/inventory.local playbooks/setup.yml
@@ -35,6 +35,10 @@ supabase-restart: ## Stop and re-boot local Supabase (use after editing .env Goo
 
 db-reset: ## DESTRUCTIVE: drop and re-create local Supabase DB (re-runs migrations + seed)
 	supabase db reset
+
+seed-admin: ## Grant admin role to EMAIL=<address> via local Supabase psql (idempotent; one-shot fallback)
+	@if [ -z "$(EMAIL)" ]; then echo "ERROR: EMAIL is required, e.g. make seed-admin EMAIL=you@example.com"; exit 1; fi
+	@$(ANSIBLE) --tags seed-admin -e "admin_email=$(EMAIL)"
 
 sync-env: ## Idempotently sync .env (root) + frontend/backend .env.local using marker-aware ownership
 	@$(ANSIBLE) --tags sync-env
