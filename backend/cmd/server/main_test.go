@@ -1701,28 +1701,65 @@ func TestHandleSwipe_RollsBackWhenSwipeRecordInsertFails(t *testing.T) {
 	}
 }
 
+// panicRoleRepo is an embed base that satisfies repository.RoleRepository with
+// every method panicking. Concrete stubs embed this and override only the
+// methods their test exercises; any unexpected call fails loudly.
+type panicRoleRepo struct{}
+
+func (panicRoleRepo) FindByID(_ context.Context, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (panicRoleRepo) FindByName(_ context.Context, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (panicRoleRepo) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (panicRoleRepo) Create(_ context.Context, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (panicRoleRepo) Update(_ context.Context, _, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (panicRoleRepo) Delete(_ context.Context, _ string) error {
+	panic("not used in this test")
+}
+func (panicRoleRepo) AssignToUser(_ context.Context, _, _ string) error {
+	panic("not used in this test")
+}
+func (panicRoleRepo) RevokeFromUser(_ context.Context, _, _ string) error {
+	panic("not used in this test")
+}
+func (panicRoleRepo) ListByUser(_ context.Context, _ string) ([]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (panicRoleRepo) ListByUserIDs(_ context.Context, _ []string) (map[string][]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (panicRoleRepo) ListAll(_ context.Context) ([]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (panicRoleRepo) CountAdminUsers(_ context.Context) (int64, error) {
+	panic("not used in this test")
+}
+
 // failingCountRepo satisfies repository.RoleRepository with only CountAdminUsers
-// implemented. All other methods panic with "not used in this test" to catch
-// unexpected calls during unit tests of bootstrapSuperUserPromoter.
+// implemented. All other methods panic via the embedded panicRoleRepo.
 type failingCountRepo struct {
+	panicRoleRepo
 	err error
 }
 
 func (f failingCountRepo) CountAdminUsers(_ context.Context) (int64, error) {
 	return 0, f.err
 }
-func (f failingCountRepo) FindByID(_ context.Context, _ string) (*domain.Role, error) {
-	panic("not used in this test")
-}
-func (f failingCountRepo) FindByName(_ context.Context, _ string) (*domain.Role, error) {
-	panic("not used in this test")
-}
 
 // findByNameRepo satisfies repository.RoleRepository with FindByName returning
-// a configurable (role, error) pair. CountAdminUsers panics to catch unexpected
-// calls — the non-empty-emails branch in bootstrapSuperUserPromoter never calls
-// CountAdminUsers, only FindByName.
+// a configurable (role, error) pair. CountAdminUsers panics via the embedded
+// panicRoleRepo — the non-empty-emails branch in bootstrapSuperUserPromoter
+// never calls CountAdminUsers, only FindByName.
 type findByNameRepo struct {
+	panicRoleRepo
 	role *domain.Role
 	err  error
 }
@@ -1730,109 +1767,17 @@ type findByNameRepo struct {
 func (f findByNameRepo) FindByName(_ context.Context, _ string) (*domain.Role, error) {
 	return f.role, f.err
 }
-func (f findByNameRepo) CountAdminUsers(_ context.Context) (int64, error) {
-	panic("not used in this test")
-}
-func (f findByNameRepo) FindByID(_ context.Context, _ string) (*domain.Role, error) {
-	panic("not used in this test")
-}
-func (f findByNameRepo) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Role, error) {
-	panic("not used in this test")
-}
-func (f findByNameRepo) Create(_ context.Context, _ string) (*domain.Role, error) {
-	panic("not used in this test")
-}
-func (f findByNameRepo) Update(_ context.Context, _, _ string) (*domain.Role, error) {
-	panic("not used in this test")
-}
-func (f findByNameRepo) Delete(_ context.Context, _ string) error {
-	panic("not used in this test")
-}
-func (f findByNameRepo) AssignToUser(_ context.Context, _, _ string) error {
-	panic("not used in this test")
-}
-func (f findByNameRepo) RevokeFromUser(_ context.Context, _, _ string) error {
-	panic("not used in this test")
-}
-func (f findByNameRepo) ListByUser(_ context.Context, _ string) ([]*domain.Role, error) {
-	panic("not used in this test")
-}
-func (f findByNameRepo) ListByUserIDs(_ context.Context, _ []string) (map[string][]*domain.Role, error) {
-	panic("not used in this test")
-}
-func (f findByNameRepo) ListAll(_ context.Context) ([]*domain.Role, error) {
-	panic("not used in this test")
-}
 
 // existingAdminRepo satisfies repository.RoleRepository with CountAdminUsers
 // returning a fixed count. Used by deterministic tests for the Branch E path
 // (admin role-holders already exist → no WARN emitted).
 type existingAdminRepo struct {
+	panicRoleRepo
 	count int64
 }
 
 func (e existingAdminRepo) CountAdminUsers(_ context.Context) (int64, error) {
 	return e.count, nil
-}
-func (e existingAdminRepo) FindByID(_ context.Context, _ string) (*domain.Role, error) {
-	panic("not used in this test")
-}
-func (e existingAdminRepo) FindByName(_ context.Context, _ string) (*domain.Role, error) {
-	panic("not used in this test")
-}
-func (e existingAdminRepo) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Role, error) {
-	panic("not used in this test")
-}
-func (e existingAdminRepo) Create(_ context.Context, _ string) (*domain.Role, error) {
-	panic("not used in this test")
-}
-func (e existingAdminRepo) Update(_ context.Context, _, _ string) (*domain.Role, error) {
-	panic("not used in this test")
-}
-func (e existingAdminRepo) Delete(_ context.Context, _ string) error {
-	panic("not used in this test")
-}
-func (e existingAdminRepo) AssignToUser(_ context.Context, _, _ string) error {
-	panic("not used in this test")
-}
-func (e existingAdminRepo) RevokeFromUser(_ context.Context, _, _ string) error {
-	panic("not used in this test")
-}
-func (e existingAdminRepo) ListByUser(_ context.Context, _ string) ([]*domain.Role, error) {
-	panic("not used in this test")
-}
-func (e existingAdminRepo) ListByUserIDs(_ context.Context, _ []string) (map[string][]*domain.Role, error) {
-	panic("not used in this test")
-}
-func (e existingAdminRepo) ListAll(_ context.Context) ([]*domain.Role, error) {
-	panic("not used in this test")
-}
-func (f failingCountRepo) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Role, error) {
-	panic("not used in this test")
-}
-func (f failingCountRepo) Create(_ context.Context, _ string) (*domain.Role, error) {
-	panic("not used in this test")
-}
-func (f failingCountRepo) Update(_ context.Context, _, _ string) (*domain.Role, error) {
-	panic("not used in this test")
-}
-func (f failingCountRepo) Delete(_ context.Context, _ string) error {
-	panic("not used in this test")
-}
-func (f failingCountRepo) AssignToUser(_ context.Context, _, _ string) error {
-	panic("not used in this test")
-}
-func (f failingCountRepo) RevokeFromUser(_ context.Context, _, _ string) error {
-	panic("not used in this test")
-}
-func (f failingCountRepo) ListByUser(_ context.Context, _ string) ([]*domain.Role, error) {
-	panic("not used in this test")
-}
-func (f failingCountRepo) ListByUserIDs(_ context.Context, _ []string) (map[string][]*domain.Role, error) {
-	panic("not used in this test")
-}
-func (f failingCountRepo) ListAll(_ context.Context) ([]*domain.Role, error) {
-	panic("not used in this test")
 }
 
 // decodeLogRecords parses newline-delimited JSON log output from a bytes.Buffer
