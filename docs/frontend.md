@@ -191,6 +191,17 @@ When two surfaces would render the same primary CTA at the same time (here: the 
 
 When a primary CTA's destination is the page the user is already on, do not hide it (the layout would jump and the user loses orientation) and do not disable it as a `<button>` (it is a `<Link>`, not a button). Apply `aria-current="page"` for screen-reader semantics and pair with `pointer-events-none opacity-60` to make the same `<Link>` visually subdued and unclickable. Drop the hover variant on the same branch — a hover-color flash on a non-interactive element is dishonest. `HeaderAddCardLink` is the reference implementation.
 
+#### Two-layer hide pattern: static-path regex + dynamic-segment helper
+
+The FAB's "do not show this control" rule has two distinct flavours: (a) static path patterns where the decision depends only on the literal pathname (`/login`, `/learn/*`, `/admin/*`, `/cards/new`, `/cardgroups/new`, `/profile`), and (b) dynamic-segment patterns where the decision depends on parsing the segment (`/cardgroups/<id>/edit` — the FAB has nothing meaningful to add on an edit form). Encoding both in one regex makes the regex grow monotonically with every new edit-shaped path; encoding both in `resolveFabAction` mixes "what should the FAB do here" with "should the FAB exist here". The cleaner split is:
+
+- `HIDDEN_PATH_RE` in `frontend/src/components/nav/global-fab.tsx` — static-path allowlist of *paths to hide* (regex over the literal pathname).
+- `resolveFabAction(pathname)` in `frontend/src/components/nav/fab-action.ts` — returns `null` for dynamic patterns where no FAB action makes sense (today: the cardgroup-edit shape).
+
+`GlobalFAB` short-circuits on `HIDDEN_PATH_RE.test(pathname)` first, then on `resolveFabAction(pathname) === null`.
+
+**Cross-layer interaction must be tested explicitly.** A path that is suppressed by ONE layer but produces a non-null/non-suppressed value at the OTHER layer is the failure mode this split introduces. Today's example: `/cardgroups/new` is hidden by `HIDDEN_PATH_RE` but `resolveFabAction("/cardgroups/new")` returns `{ kind: "card-with-group", cardgroupId: "new" }` — the literal `"new"` is treated as a cardgroup id by `CARDGROUP_DETAIL_RE`. Without an explicit cross-layer test, a future contributor "consolidating" both layers into one might inadvertently expose the FAB on the new-cardgroup form. The test in `frontend/src/components/nav/fab-action.test.ts` (`is shadowed externally by GlobalFAB's hidden-path guard for /cardgroups/new`) documents that responsibility-split — it is the only place the split is explicit; production code looks consistent either way.
+
 ### Cardgroup chip + picker primitives
 
 `CardgroupChip` (client) and `CardgroupPickerSheet` (client) live under `frontend/src/components/cardgroups/`. The chip is a short pill with the current cardgroup name + `ChevronDown`; tapping it opens the picker. The picker is a shadcn `Sheet` rendered with `side="bottom"` on all viewport sizes (the original plan considered a desktop `Dialog` variant via `useMediaQuery`, but a bottom sheet works on both and avoids dragging in a media-query hook just for one component). It is backed by `MyCardgroupsQuery` via `useQuery`. Two consumers exist today: `/cards/new` (chip + form pair, single source of truth in URL) and any future page that needs cardgroup-scoped writes from a non-cardgroup-scoped route.
@@ -240,7 +251,7 @@ const body: HealthzResponse = { ok: true, backend: data.health };
 return NextResponse.json(body);
 ```
 
-The annotation on `body` is load-bearing — `NextResponse.json(...)` is generic over `unknown`, so without the explicit type the compiler accepts any object shape and a refactor that drops `ok` from one branch passes typecheck. Reference: `frontend/src/app/api/healthz/route.ts`.
+The annotation on `body` is load-bearing — `NextResponse.json(...)` is generic over `unknown`, so without the explicit type the compiler accepts any object shape and a refactor that drops `ok` from one branch passes typecheck. Reference: `frontend/src/app/api/healthz/route.ts`. The general "discriminated union over flat DTO" rule (covering factory output beyond Route Handler responses) lives in [`.claude/rules/frontend-typescript-conventions.md` § "Discriminated union over flat DTO when consumers must branch on the variant"](../.claude/rules/frontend-typescript-conventions.md#discriminated-union-over-flat-dto-when-consumers-must-branch-on-the-variant).
 
 ### `/api/healthz` JSON probe
 
@@ -753,3 +764,35 @@ Test code copy-pasted from v3 examples will fail typecheck against v4:
 ### TypeScript strict array indexing in fixtures
 
 With `noUncheckedIndexedAccess` on, `arr[i]` is typed as `T | undefined`, so `cardsFixture[0].front` does not type-check. Resolve at the access site with a non-null assertion plus a Biome-ignore comment justifying the literal-array safety (`cardsFixture[0]!.front`), or shape the fixture as a tuple via `as const` so the type system knows the length statically. The non-null-assertion route is preferred for variable-length fixtures.
+
+### Extract pure logic out of client components for `@vitest-environment node` tests
+
+When a client component contains a pure mapping function — e.g. a pathname → action lookup, a route → label lookup, a state → CSS-class lookup — lifting that function into a sibling module enables testing it under `// @vitest-environment node`. The node environment skips jsdom setup, React mock plumbing, and `next/navigation` mocks; the test runs as a plain function-call assertion against a string input.
+
+```ts
+// frontend/src/components/nav/fab-action.ts — pure helper, no React, no next/navigation imports.
+export function resolveFabAction(pathname: string): FabAction | null { /* ... */ }
+
+// frontend/src/components/nav/fab-action.test.ts
+// @vitest-environment node
+import { describe, expect, it } from "vitest";
+import { resolveFabAction } from "./fab-action";
+
+describe("resolveFabAction", () => {
+  it("returns Add new cardgroup href for exact /cardgroups", () => {
+    expect(resolveFabAction("/cardgroups")).toEqual({ kind: "cardgroup", /* ... */ });
+  });
+});
+```
+
+The component then becomes a thin shell that calls the helper:
+
+```tsx
+// frontend/src/components/nav/global-fab.tsx
+const action = resolveFabAction(pathname);
+if (action === null) return null;
+```
+
+**Why:** pure logic + jsdom is wasted overhead — every test pays for the DOM environment to assert a string-in-string-out result. Node tests are faster (no jsdom bootstrap), clearer (no `vi.mock` of `next/navigation`), and the production code gets a forcing function to keep the helper React-free. The same testability-extraction principle is documented for the backend in `.claude/rules/go-library-gotchas.md` § "Extract startup helpers to make branch coverage testable without a live server".
+
+**How to apply:** when a client component's render function or hook callback contains branching logic that depends only on its arguments (not on React state, refs, or router objects), lift that logic into a sibling `.ts` file with no React or Next.js imports, and write its tests under `// @vitest-environment node`. The component imports the helper and calls it. Reference: `frontend/src/components/nav/fab-action.ts` consumed by `global-fab.tsx` and `header-add-card-link.tsx`; the test file `fab-action.test.ts` runs under the node environment while the component tests stay on jsdom.
