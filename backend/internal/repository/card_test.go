@@ -210,6 +210,60 @@ func TestCardRepository_FindDueCardsTx_OrderedAndScoped(t *testing.T) {
 	require.Equal(t, later.ID, due[1].ID)
 }
 
+func TestCardRepo_Create_DuplicateFront(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	first := newCard(cg.ID, "same-front", "back-one")
+	if err := repo.Create(ctx, first); err != nil {
+		t.Fatalf("Create (first): %v", err)
+	}
+
+	second := newCard(cg.ID, "same-front", "back-two")
+	err := repo.Create(ctx, second)
+	if !errors.Is(err, repository.ErrCardDuplicateFront) {
+		t.Fatalf("Create (duplicate): want ErrCardDuplicateFront, got %v", err)
+	}
+	// ErrCardDuplicateFront is a standalone "found" sentinel; must NOT match ErrNotFound.
+	if errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("ErrCardDuplicateFront must not match ErrNotFound, got %v", err)
+	}
+}
+
+func TestCardRepo_FindByCardgroupAndFront(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	card := newCard(cg.ID, "find-front", "find-back")
+	if err := repo.Create(ctx, card); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// Hit: existing (cardgroup_id, front) pair returns the card.
+	got, err := repo.FindByCardgroupAndFront(ctx, cg.ID, "find-front")
+	if err != nil {
+		t.Fatalf("FindByCardgroupAndFront (hit): %v", err)
+	}
+	if got.ID != card.ID {
+		t.Errorf("FindByCardgroupAndFront (hit): ID = %q, want %q", got.ID, card.ID)
+	}
+	if got.Back != "find-back" {
+		t.Errorf("FindByCardgroupAndFront (hit): Back = %q, want %q", got.Back, "find-back")
+	}
+
+	// Miss: unknown front value must return ErrNotFound.
+	_, err = repo.FindByCardgroupAndFront(ctx, cg.ID, "no-such-front")
+	if !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("FindByCardgroupAndFront (miss): want ErrNotFound, got %v", err)
+	}
+}
+
 func TestCardRepository_OnCardgroupDeleteCascade(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

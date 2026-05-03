@@ -7,12 +7,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
 	"backend/internal/domain"
 )
+
+// ErrCardDuplicateFront is returned by Create when an INSERT collides with the
+// (cardgroup_id, front) unique index. Standalone — do NOT join with ErrNotFound;
+// the row was found, which is precisely the failure (see error-wrapping.md).
+var ErrCardDuplicateFront = errors.New("repository: card with same front exists in cardgroup")
 
 // CardOrderBy is the allowlist of fields that paginated card queries may sort by.
 // Lexicographic tuple order is always (orderField, id) so cursors stay deterministic
@@ -89,6 +95,10 @@ type CardRepository interface {
 	) (cards []*domain.Card, totalCount int64, err error)
 	FindDueCardsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
 	Create(ctx context.Context, card *domain.Card) error
+	// FindByCardgroupAndFront returns the card identified by the (cardgroup_id,
+	// front) unique key, or ErrNotFound when no such row exists. The front value
+	// is matched exactly; trimming is the caller's responsibility.
+	FindByCardgroupAndFront(ctx context.Context, cardgroupID, front string) (*domain.Card, error)
 	UpdateFSRSStateTx(ctx context.Context, tx *gorm.DB, id string, state domain.FSRSState) error
 	Update(ctx context.Context, id string, patch CardUpdate) (*domain.Card, error)
 	Delete(ctx context.Context, id string) error
@@ -329,9 +339,28 @@ func (r *cardRepo) FindDueCardsTx(ctx context.Context, tx *gorm.DB, cardgroupID 
 
 func (r *cardRepo) Create(ctx context.Context, card *domain.Card) error {
 	if err := r.db.WithContext(ctx).Create(cardToRow(card)).Error; err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" &&
+			strings.Contains(pgErr.ConstraintName, "uq_cards_cardgroup_front") {
+			return ErrCardDuplicateFront
+		}
 		return eris.Wrap(err, "repository: create card")
 	}
 	return nil
+}
+
+func (r *cardRepo) FindByCardgroupAndFront(ctx context.Context, cardgroupID, front string) (*domain.Card, error) {
+	var row gormCard
+	err := r.db.WithContext(ctx).
+		Where("cardgroup_id = ? AND front = ?", cardgroupID, front).
+		Take(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, eris.Wrap(err, "repository: find card by cardgroup and front")
+	}
+	return cardToDomain(row), nil
 }
 
 func (r *cardRepo) UpdateFSRSStateTx(ctx context.Context, tx *gorm.DB, id string, state domain.FSRSState) error {
