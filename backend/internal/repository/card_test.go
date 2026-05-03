@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
@@ -278,4 +279,79 @@ func TestCardRepository_OnCardgroupDeleteCascade(t *testing.T) {
 
 	_, err := cardRepo.FindByID(ctx, card.ID)
 	require.True(t, errors.Is(err, repository.ErrNotFound), "got %v", err)
+}
+
+// TestCardRepo_FindByCardgroupAndFront_CardgroupScoped guards the
+// cardgroup_id predicate in FindByCardgroupAndFront: a card with the same
+// front value in a different cardgroup must not bleed through.
+func TestCardRepo_FindByCardgroupAndFront_CardgroupScoped(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	cgA := insertCardgroup(t, ctx, ownerID)
+	cgB := insertCardgroup(t, ctx, ownerID)
+
+	cardA := newCard(cgA.ID, "apple", "back-A")
+	cardB := newCard(cgB.ID, "apple", "back-B")
+	require.NoError(t, repo.Create(ctx, cardA))
+	require.NoError(t, repo.Create(ctx, cardB))
+
+	got, err := repo.FindByCardgroupAndFront(ctx, cgB.ID, "apple")
+	require.NoError(t, err)
+	require.Equal(t, cardB.ID, got.ID, "must return cardgroup B's card, not cardgroup A's")
+}
+
+// TestCardRepo_FindByCardgroupAndFront_TrimSensitive guards the exact-match
+// contract: callers are responsible for trimming; the repo must not do TRIM /
+// LOWER / LIKE matching. A front with surrounding whitespace must not match a
+// stored value without it.
+func TestCardRepo_FindByCardgroupAndFront_TrimSensitive(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	card := newCard(cg.ID, "apple", "back")
+	require.NoError(t, repo.Create(ctx, card))
+
+	_, err := repo.FindByCardgroupAndFront(ctx, cg.ID, " apple ")
+	require.True(t, errors.Is(err, repository.ErrNotFound),
+		"padded front must not match exact-stored value; got %v", err)
+}
+
+// TestCardRepo_Create_OtherUniqueViolationNotMisclassified guards the
+// ConstraintName check in Create: a 23505 violation on a constraint other than
+// uq_cards_cardgroup_front (here: cards_pkey) must NOT be returned as
+// ErrCardDuplicateFront. It must still surface as a non-nil error.
+func TestCardRepo_Create_OtherUniqueViolationNotMisclassified(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cgA := insertCardgroup(t, ctx, ownerID)
+	cgB := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	fixedID := uuid.NewString()
+	first := newCard(cgA.ID, "front-pkey-1", "back-1")
+	first.ID = fixedID
+	require.NoError(t, repo.Create(ctx, first))
+
+	// Reuse the same id with a different cardgroup and front to hit cards_pkey,
+	// not uq_cards_cardgroup_front.
+	second := newCard(cgB.ID, "front-pkey-2", "back-2")
+	second.ID = fixedID
+	err := repo.Create(ctx, second)
+
+	require.Error(t, err, "duplicate primary key must return an error")
+	require.False(t, errors.Is(err, repository.ErrCardDuplicateFront),
+		"cards_pkey violation must not be classified as ErrCardDuplicateFront; got %v", err)
+
+	// Confirm the underlying Postgres error code is 23505 so the test
+	// exercises the intended code path.
+	var pgErr *pgconn.PgError
+	require.True(t, errors.As(err, &pgErr), "underlying error must be a pgconn.PgError; got %T %v", err, err)
+	require.Equal(t, "23505", pgErr.Code)
 }
