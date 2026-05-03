@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { devices, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { loginAs, seedUser } from "./_auth";
 
 // Scenario: a brand-new user (zero cardgroups, no last_viewed) is funnelled
@@ -20,9 +20,12 @@ test.describe
     // The global FAB is intentionally hidden at >= md (`md:hidden` in
     // GlobalFAB) because desktop users get the same affordance via the
     // header "Add card" link. This scenario is specifically the FAB path,
-    // so override the project default Desktop Chrome viewport with a
-    // mobile device for this describe block only.
-    test.use({ ...devices["iPhone 14"] });
+    // so shrink the viewport below the md breakpoint (768px). We only
+    // override viewport here — spreading a full devices[...] descriptor
+    // includes defaultBrowserType, which Playwright forbids inside a
+    // describe group ("forces a new worker") and would also require a
+    // matching project entry, neither of which we want here.
+    test.use({ viewport: { width: 390, height: 844 } });
 
     test.beforeAll(async () => {
       // Seed only the auth user + role; deliberately NO cardgroup so the home
