@@ -398,6 +398,13 @@ describe("<CardsNewClient> — stay-on-page consecutive add", () => {
     expect((screen.getByLabelText(/back/i) as HTMLInputElement).value).toBe("Hola");
     // No success indicator.
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[cards-new-client] create card rejection",
+        expect.objectContaining({ message: expect.any(String) }),
+      );
+    });
   });
 
   it('renders a "Done" link to /cardgroups/<currentId>/cards when currentId is set', () => {
