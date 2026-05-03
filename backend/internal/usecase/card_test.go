@@ -1,15 +1,21 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
+	"github.com/rotisserie/eris"
+	"github.com/vektah/gqlparser/v2/gqlerror"
 	"gorm.io/gorm"
 
 	"backend/internal/domain"
+	"backend/internal/gqlerr"
 	"backend/internal/repository"
 )
 
@@ -51,6 +57,11 @@ type mockCardRepository struct {
 		orderBy     repository.CardOrderBy
 		dir         repository.SortOrder
 	}
+
+	findByCardgroupAndFrontResult                *domain.Card
+	findByCardgroupAndFrontErr                   error
+	findByCardgroupAndFrontCalledWithCardgroupID string
+	findByCardgroupAndFrontCalledWithFront       string
 }
 
 func (m *mockCardRepository) FindByID(_ context.Context, _ string) (*domain.Card, error) {
@@ -74,6 +85,11 @@ func (m *mockCardRepository) DeleteByIDsTx(_ context.Context, _ *gorm.DB, ownerI
 func (m *mockCardRepository) Create(_ context.Context, card *domain.Card) error {
 	m.capturedCreate = card
 	return m.createErr
+}
+func (m *mockCardRepository) FindByCardgroupAndFront(_ context.Context, cardgroupID string, front string) (*domain.Card, error) {
+	m.findByCardgroupAndFrontCalledWithCardgroupID = cardgroupID
+	m.findByCardgroupAndFrontCalledWithFront = front
+	return m.findByCardgroupAndFrontResult, m.findByCardgroupAndFrontErr
 }
 func (m *mockCardRepository) Update(_ context.Context, _ string, patch repository.CardUpdate) (*domain.Card, error) {
 	m.capturedPatch = patch
@@ -568,5 +584,191 @@ func TestCardUsecase_ListCardsByCardgroupConnection_ResolveCursorHydratesDueFiel
 			}
 			tc.assertFn(t, got)
 		})
+	}
+}
+
+// decodeJSONRecords parses newline-delimited JSON log lines from buf.
+func decodeJSONRecords(t *testing.T, data []byte) []map[string]any {
+	t.Helper()
+	var records []map[string]any
+	for _, line := range bytes.Split(bytes.TrimSpace(data), []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		var rec map[string]any
+		if err := json.Unmarshal(line, &rec); err != nil {
+			t.Fatalf("decode log line %q: %v", line, err)
+		}
+		records = append(records, rec)
+	}
+	return records
+}
+
+func TestCardUsecase_Create_Duplicate(t *testing.T) {
+	t.Parallel()
+
+	fixture := &domain.Card{ID: "fixture-id", CardgroupID: "cg1", Front: "hello", Back: "fixture-back"}
+	cardRepo := &mockCardRepository{
+		createErr:                     repository.ErrCardDuplicateFront,
+		findByCardgroupAndFrontResult: fixture,
+	}
+	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
+	uc := NewCardUsecase(nil, cardRepo, cgRepo)
+
+	// Submit with surrounding whitespace to regression-guard the TrimSpace contract.
+	_, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "  hello  ", Back: "world"})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	assertGQLErr(t, err, string(gqlerr.CodeBadUserInput), "front")
+
+	gqlErr, ok := err.(*gqlerror.Error)
+	if !ok {
+		t.Fatalf("expected *gqlerror.Error, got %T", err)
+	}
+	if got, _ := gqlErr.Extensions["reason"].(string); got != "CARD_DUPLICATE_FRONT" {
+		t.Fatalf("expected extensions.reason=%q, got %q", "CARD_DUPLICATE_FRONT", got)
+	}
+	if got, _ := gqlErr.Extensions["existingCardId"].(string); got != "fixture-id" {
+		t.Fatalf("expected extensions.existingCardId=%q, got %q", "fixture-id", got)
+	}
+	if got, _ := gqlErr.Extensions["existingBack"].(string); got != "fixture-back" {
+		t.Fatalf("expected extensions.existingBack=%q, got %q", "fixture-back", got)
+	}
+
+	// Verify FindByCardgroupAndFront was called with the trimmed front and correct cardgroupID.
+	if cardRepo.findByCardgroupAndFrontCalledWithCardgroupID != "cg1" {
+		t.Errorf("expected FindByCardgroupAndFront cardgroupID=%q, got %q",
+			"cg1", cardRepo.findByCardgroupAndFrontCalledWithCardgroupID)
+	}
+	if cardRepo.findByCardgroupAndFrontCalledWithFront != "hello" {
+		t.Errorf("expected FindByCardgroupAndFront front=%q (trimmed), got %q",
+			"hello", cardRepo.findByCardgroupAndFrontCalledWithFront)
+	}
+}
+
+// Two race-path tests exist: TestCardUsecase_Create_DuplicateLookupRace tests the
+// "unrelated DB error" branch; TestCardUsecase_Create_DuplicateLookupRace_RowVanished
+// tests the actual documented race — the duplicate row vanished before the lookup
+// (repository.ErrNotFound, a stdlib sentinel). The latter proves that production's
+// eris.Wrap at the call site makes the error_chain rich even for stdlib sentinels.
+func TestCardUsecase_Create_DuplicateLookupRace(t *testing.T) {
+	// Not parallel: mutates the global slog default.
+	const wantCardgroupID = "cg-test-id"
+
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	defer slog.SetDefault(prev)
+
+	cardRepo := &mockCardRepository{
+		createErr:                  repository.ErrCardDuplicateFront,
+		findByCardgroupAndFrontErr: eris.New("db: connection reset"),
+	}
+	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: wantCardgroupID, OwnerID: "u1"}}
+	uc := NewCardUsecase(nil, cardRepo, cgRepo)
+
+	_, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: wantCardgroupID, Front: "hello", Back: "world"})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
+		t.Fatalf("expected INTERNAL error, got %v", err)
+	}
+
+	records := decodeJSONRecords(t, buf.Bytes())
+	if len(records) == 0 {
+		t.Fatal("expected at least one ERROR log record, got none")
+	}
+	rec0 := records[0]
+
+	if rec0["level"] != "ERROR" {
+		t.Errorf("expected level=ERROR, got %v", rec0["level"])
+	}
+
+	chain, ok := rec0["error_chain"].(map[string]any)
+	if !ok {
+		t.Fatalf("error_chain is not a JSON object: %T", rec0["error_chain"])
+	}
+	root, hasRoot := chain["root"].(map[string]any)
+	if !hasRoot {
+		t.Error("error_chain must have root entry (got external-only shape; stub may be using stdlib errors)")
+	}
+	if root != nil {
+		if stack, _ := root["stack"].([]any); len(stack) == 0 {
+			t.Error("error_chain.root.stack must contain at least one frame")
+		}
+	}
+
+	if rec0["cardgroup_id"] != wantCardgroupID {
+		t.Errorf("expected cardgroup_id=%q in ERROR log, got %v", wantCardgroupID, rec0["cardgroup_id"])
+	}
+	if _, hasFront := rec0["front"]; hasFront {
+		t.Error("ERROR log must not contain 'front' field (user-supplied content)")
+	}
+}
+
+// TestCardUsecase_Create_DuplicateLookupRace_RowVanished exercises the documented
+// race scenario: the duplicate row disappears between the failed INSERT and the
+// subsequent SELECT, causing FindByCardgroupAndFront to return repository.ErrNotFound
+// (a stdlib errors.New sentinel). The load-bearing assertion is that error_chain.root
+// is present with a non-empty stack — proving that production's eris.Wrap at the
+// call site constructs a rich chain even when the underlying error is a stdlib sentinel.
+func TestCardUsecase_Create_DuplicateLookupRace_RowVanished(t *testing.T) {
+	// Not parallel: mutates the global slog default.
+	const wantCardgroupID = "cg-vanished-id"
+
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	defer slog.SetDefault(prev)
+
+	cardRepo := &mockCardRepository{
+		createErr:                  repository.ErrCardDuplicateFront,
+		findByCardgroupAndFrontErr: repository.ErrNotFound,
+	}
+	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: wantCardgroupID, OwnerID: "u1"}}
+	uc := NewCardUsecase(nil, cardRepo, cgRepo)
+
+	_, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: wantCardgroupID, Front: "hello", Back: "world"})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
+		t.Fatalf("expected INTERNAL error, got %v", err)
+	}
+
+	records := decodeJSONRecords(t, buf.Bytes())
+	if len(records) == 0 {
+		t.Fatal("expected at least one ERROR log record, got none")
+	}
+	rec0 := records[0]
+
+	if rec0["level"] != "ERROR" {
+		t.Errorf("expected level=ERROR, got %v", rec0["level"])
+	}
+
+	// Load-bearing: eris.Wrap in production must produce a rich chain even when
+	// the wrapped error is a stdlib sentinel (no stack of its own).
+	chain, ok := rec0["error_chain"].(map[string]any)
+	if !ok {
+		t.Fatalf("error_chain is not a JSON object: %T", rec0["error_chain"])
+	}
+	root, hasRoot := chain["root"].(map[string]any)
+	if !hasRoot {
+		t.Error("error_chain must have root entry (got external-only shape; eris.Wrap may be missing at the call site)")
+	}
+	if root != nil {
+		if stack, _ := root["stack"].([]any); len(stack) == 0 {
+			t.Error("error_chain.root.stack must contain at least one frame")
+		}
+	}
+
+	if rec0["cardgroup_id"] != wantCardgroupID {
+		t.Errorf("expected cardgroup_id=%q in ERROR log, got %v", wantCardgroupID, rec0["cardgroup_id"])
+	}
+	if _, hasFront := rec0["front"]; hasFront {
+		t.Error("ERROR log must not contain 'front' field (user-supplied content)")
 	}
 }

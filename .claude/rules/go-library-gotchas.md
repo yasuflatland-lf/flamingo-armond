@@ -89,6 +89,36 @@ db.Where("name ILIKE ?", "%"+escapeLike(query)+"%")
 
 Order matters: escape `\` first, then `%` and `_`, otherwise the second pass re-escapes the backslash from the first pass. The same rule applies to `name ILIKE ? || '%'` (prefix match) and to any other `LIKE` predicate fed by user input.
 
+## GORM exact-match `FindBy*` helpers: callers own trimming, repos own nothing
+
+A `FindByXxx` method that uses `WHERE col = ?` performs byte-for-byte equality — no `TRIM`, no `LOWER`, no `LIKE`. The caller (usecase layer) is responsible for `strings.TrimSpace` before invoking the repo. The repo must not silently normalise input, because any future LIKE/LOWER "convenience" change would make the unique-index enforcement and the lookup disagree. Regression-guard the contract with a negative integration test:
+
+```go
+// Padded front must not match an exactly-stored value.
+_, err := repo.FindByCardgroupAndFront(ctx, cg.ID, " apple ")
+require.True(t, errors.Is(err, repository.ErrNotFound),
+    "padded front must not match exact-stored value; got %v", err)
+```
+
+This pairs with the GORM `LIKE` escape rule above: both rules block accidental broadening of match semantics on a column that backs a unique index.
+
+## Repository lookup methods scoped by tenant ID require a cross-tenant negative test
+
+Any `FindBy*` method that includes a `cardgroup_id = ?` (or other tenant-scoping) predicate must be regression-guarded by inserting the same discriminating value into **two** separate tenant rows and asserting the result is the tenant-scoped row, not the other one. Without this guard, dropping or accidentally omitting the predicate in a refactor silently leaks another tenant's row through duplicate-detection or query logic:
+
+```go
+cardA := newCard(cgA.ID, "apple", "back-A")
+cardB := newCard(cgB.ID, "apple", "back-B")
+require.NoError(t, repo.Create(ctx, cardA))
+require.NoError(t, repo.Create(ctx, cardB))
+
+got, err := repo.FindByCardgroupAndFront(ctx, cgB.ID, "apple")
+require.NoError(t, err)
+require.Equal(t, cardB.ID, got.ID, "must return cardgroup B's card, not cardgroup A's")
+```
+
+Apply this pattern to any repository method whose correctness depends on a tenant-scoping predicate.
+
 ## GORM rejects unconditional `Delete` — use `Where("1 = 1")` to opt out
 
 GORM v2+ refuses a `Delete` call that has no `WHERE` clause as a safety net against accidental full-table deletes. It returns an `ErrMissingWhereClause` error.
@@ -246,6 +276,8 @@ names the method, making the gap obvious without inspecting the stub.
 to the tests. Each scenario-level stub embeds it and overrides only the methods the
 scenario exercises. Do not share the base across packages — keep it local to the
 test file so the panic message stays readable.
+
+**Adding a method to an interface breaks test stubs in OTHER packages silently at the test level.** The production build (`go build ./...`) succeeds because production callers use the concrete implementation. But hand-rolled test doubles in packages such as `loader/` or `graph/resolver/` that embed the interface type stop compiling. Run `go build ./...` *before* `go test ./...` after any interface-method addition to surface the cascade before any test-run noise masks it. Panic-base stubs make the failure loud once the build passes: a missing override panics immediately rather than returning a silent zero-value that can mask a logic bug. Audit every hand-rolled stub for the new method on the same change.
 
 ## Extract startup helpers to make branch coverage testable without a live server
 

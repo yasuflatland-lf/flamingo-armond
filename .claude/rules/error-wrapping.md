@@ -48,9 +48,34 @@ The same shape applies when the DB rejects an `INSERT` or `UPDATE` for colliding
 
 **Anchor `ConstraintName` matches on the narrowest unambiguous fragment.** `strings.Contains(pgErr.ConstraintName, "roles")` would also match `user_roles_pkey` and route a join-table primary-key collision into `ErrRoleDuplicate`, which is wrong. The roles table emits its unique constraint on the `name` column, so the precise check is `strings.Contains(pgErr.ConstraintName, "name")`. The same rule extends to any future unique sentinel: pick the column or constraint suffix that no other constraint in the schema can collide with.
 
+**Add a negative integration test for any 23505 classification branch.** A positive test confirms that the target constraint maps to the sentinel; a negative test confirms that a *different* 23505 violation (e.g. a primary-key collision via `cards_pkey`) does **not** mis-route into the same sentinel. Without the negative test, widening the `strings.Contains` fragment in a future refactor silently routes unrelated unique violations through the wrong sentinel — the positive test stays green and the mis-classification ships undetected:
+
+```go
+// Force a 23505 on a different constraint (primary key) and assert the error
+// is NOT classified as the typed sentinel.
+second.ID = fixedID
+err := repo.Create(ctx, second)
+require.Error(t, err)
+require.False(t, errors.Is(err, repository.ErrCardDuplicateFront),
+    "cards_pkey violation must not be classified as ErrCardDuplicateFront; got %v", err)
+var pgErr *pgconn.PgError
+require.True(t, errors.As(err, &pgErr))
+require.Equal(t, "23505", pgErr.Code) // confirm we hit the intended path
+```
+
 ### Standalone sentinels: not every new sentinel joins `ErrNotFound`
 
 The layered-sentinel pattern (`errors.Join(specific, general)`) only works when the specific case is **semantically a refinement** of the general case. `ErrUserNotFound` and `ErrRoleNotFound` refine `ErrNotFound`, so joining is correct: a caller branching only on `ErrNotFound` still gets the right behaviour. But `ErrRoleDuplicate` is the inverse condition — the row was *found* and that is precisely the failure. Joining it with `ErrNotFound` would make `errors.Is(err, ErrNotFound)` true for a duplicate insert, which is a lie that any general-purpose 404 mapper would happily act on. Keep "found" sentinels (duplicate, conflict, already-exists) standalone; only "missing" sentinels get the `errors.Join` treatment.
+
+### Two-tier `gqlerr` API: generic open helper + domain-specific typed wrapper
+
+When a `BAD_USER_INPUT` error needs to carry a structured payload beyond the standard `{code, field}` envelope (e.g. an existing entity's ID and a preview field for the frontend to display), use two layers:
+
+1. **Generic open helper** — `BadUserInputWithExtensions(field, message string, extra map[string]any)` accepts any extension map. Use it for new one-off cases.
+2. **Domain-specific typed wrapper** — once a call site stabilises, wrap the generic helper in a named function (`BadUserInputCardDuplicateFront(existingCardID, existingBack string)`) so the call site is compile-checked and the extension keys are assembled in one place.
+3. **Typed reason constant** — pair the wrapper with a `BadUserInputReason` constant (e.g. `ReasonCardDuplicateFront = "CARD_DUPLICATE_FRONT"`) so the discriminator string the frontend branches on lives in exactly one place and is never stringly-typed at the call site.
+
+The frontend discriminates on `extensions.reason` (a sub-key), not on `extensions.code`. This keeps the top-level `code` as the coarse class (`BAD_USER_INPUT`) so existing `IsCode` matchers and field-error UI keep working without modification.
 
 ## Logging
 
@@ -61,6 +86,8 @@ All error sites that produce a structured log entry must attach the eris chain a
 - are a no-op when `err == nil`.
 
 Use `LogWarn` for any non-ERROR site that needs the `error_chain` attribute; do not hand-roll `slog.Warn(... eris.ToJSON ...)` calls.
+
+When a wrapper already forwards to a variadic helper (e.g. `logging.LogError(ctx, logger, msg, err, attrs...)`), expose the variadic slot at the wrapper rather than minting a sibling function. `gqlerr.Internal(ctx, err, attrs ...slog.Attr)` follows this shape: existing two-arg call sites keep compiling unchanged, and new sites can attach structured triage context (e.g. `slog.String("cardgroup_id", id)`) to the log line without a name-change cascade. The extra attrs appear only in the ERROR log — the wire response is always the same `{code: INTERNAL, message: "internal server error"}` envelope.
 
 Today's call sites:
 
@@ -104,6 +131,8 @@ if root != nil {
 ```
 
 Test stubs that produce errors must also use `eris.New(...)` (not `errors.New(...)`) so the assertion exercises the same code path production hits. Pattern in `backend/internal/auth/superuser_test.go` (`M7_IsAdminError`, `M8_AssignToUserError`).
+
+**A single `eris.New` stub is not enough to prove production's `eris.Wrap` is load-bearing.** A test where the stub always returns an eris-wrapped error passes the `error_chain.root.stack` assertion whether or not production wraps the error — because the stub's own eris chain provides the root. Add a sibling test that stubs the *actual* stdlib sentinel (e.g. `repository.ErrNotFound`, a plain `errors.New` value) and still asserts the rich shape. Only that test will fail if someone removes the production `eris.Wrap` call at the log site. Reference: `backend/internal/usecase/card_test.go` (`TestCardUsecase_Create_DuplicateLookupRace_RowVanished`) — the documented race where the duplicate row vanishes before the follow-up SELECT returns `repository.ErrNotFound`, and the test proves that the usecase's `eris.Wrap(lookupErr, ...)` is what makes the chain rich.
 
 ### Assert PII *absence* on log lines that carry `user_id`
 

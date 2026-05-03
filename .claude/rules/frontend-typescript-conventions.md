@@ -40,7 +40,7 @@ If the project style evolves to allow branded types, replace the JSDoc with a no
 
 ## `expect.objectContaining({ message })` is not enough — add a discriminating key
 
-`Error.prototype.message` is an own (though non-enumerable) property on every `Error` instance. Vitest's `expect.objectContaining` uses `hasOwnProperty` for key checks. Therefore, asserting `expect.objectContaining({ message: expect.any(String) })` against a `console.error` second argument will pass whether the argument is the intended structured object `{ message, err }` OR a bare `Error` regression. The test is tautologically green and the regression ships silently.
+`Error.prototype.message` is an own (though non-enumerable) property on every `Error` instance. Vitest's `expect.objectContaining` uses `hasOwnProperty` for key checks. Therefore, asserting `expect.objectContaining({ message: expect.any(String) })` against a `console.error` or `console.warn` second argument will pass whether the argument is the intended structured object `{ message, err }` OR a bare `Error` regression. The test is tautologically green and the regression ships silently.
 
 The fix is to include a discriminating own-property key that exists in the structured object but NOT on `Error` instances — e.g. `err: expect.anything()`.
 
@@ -61,9 +61,9 @@ expect(consoleSpy).toHaveBeenCalledWith(
 );
 ```
 
-**Why:** structured log arguments (`{ message, err }`) are deliberately different from a raw `Error`. The assertion must verify the structure matches what was intentionally logged, not just that some string-ish property exists.
+**Why:** structured log arguments (`{ message, err }`) are deliberately different from a raw `Error`. The assertion must verify the structure matches what was intentionally logged, not just that some string-ish property exists. The rule applies equally to `console.error` and `console.warn` — both are used for structured payloads in this codebase (e.g. `tryGetDuplicateCardInfo` emits a `console.warn` with `{ entry }` rather than a bare string).
 
-**How to apply:** whenever a `console.error` / `console.warn` call passes a structured object as the second argument, pair the `message` matcher with at least one additional key that distinguishes the object from a bare `Error`. Reference: `frontend/src/app/cards/new/cards-new-client.test.tsx` `handleCreate` log assertion.
+**How to apply:** whenever a `console.error` / `console.warn` call passes a structured object as the second argument, pair the `message` matcher with at least one additional key that distinguishes the object from a bare `Error`. Reference: `frontend/src/app/cards/new/cards-new-client.test.tsx` `handleCreate` log assertion and `frontend/src/lib/apollo/graphql-errors.test.ts`.
 
 ## TanStack Form `_handleSubmit` re-throws — chain `.catch()` on `form.handleSubmit()`
 
@@ -104,6 +104,32 @@ onSubmit: async ({ value }) => {
 
 **How to apply:** every `useForm.onSubmit` that calls an external `submit` prop must re-throw after the catch/log. The re-throw is forward-safe even when the current caller wraps `submit` in its own `try/catch` — the rejection does not bubble past that boundary today. This rule pairs with the `.catch()` rule above; they must land together. Reference: `frontend/src/components/cardgroups/card-form.tsx`.
 
+## Radix `AlertDialogAction` closes the dialog synchronously — call `e.preventDefault()` to keep it open on failure
+
+Radix UI's `AlertDialogAction` calls `onOpenChange(false)` synchronously as soon as its `onClick` handler resolves, regardless of whether the action succeeded or failed. For a confirm action that may fail and must keep the dialog mounted (e.g. an overwrite mutation that returns a typed `BAD_USER_INPUT`), this means a failed action still closes the dialog and the user loses any inline error message.
+
+The fix: call `e.preventDefault()` at the start of the `onClick` handler and let the consuming component decide when to close the dialog based on the outcome of the operation.
+
+```tsx
+<AlertDialogAction
+  onClick={async (e) => {
+    e.preventDefault(); // prevent Radix from closing on click — we close on success only
+    try {
+      await onConfirm();
+      // caller closes the dialog (e.g. setDuplicate(null)) on success
+    } catch {
+      // dialog stays open; surface error inline
+    }
+  }}
+>
+  Confirm
+</AlertDialogAction>
+```
+
+The cancel path uses the standard `AlertDialogCancel` component, which closes correctly without `preventDefault`. The cancel path is the catch-all close path for any non-action close (backdrop click, Escape key, explicit cancel).
+
+**How to apply:** any `AlertDialogAction` whose `onClick` fires an async operation that can fail and must keep the dialog mounted MUST call `e.preventDefault()` at the top of the handler. Reference: `frontend/src/app/cards/new/cards-new-client.tsx` `DuplicateOverwriteDialog`.
+
 ## Discriminated union over flat DTO when consumers must branch on the variant
 
 A factory whose output has semantically distinct shapes — e.g. "navigate to a cardgroup form", "navigate to a card form with a pre-selected cardgroup id", "navigate to a generic card form" — has two encodings available: (a) a flat DTO with a string `href` plus runtime introspection (`href.startsWith("/cards/new")`), or (b) a discriminated union with a `kind` tag. The flat DTO erases an invariant the factory already knows; the union preserves it.
@@ -119,6 +145,8 @@ export type FabAction =
 **Why:** runtime-introspection (`startsWith`, `includes`, regex on the `href`) rots silently as new variants are added. A future `/cards/new/bulk` action would be silently picked up by `href.startsWith("/cards/new")` and routed through the wrong branch with no compile-time warning. The discriminant check forces every branching consumer to acknowledge the new variant during code review (see also "Positive allowlist over negative exclusion" below).
 
 **How to apply:** when a factory returns one of N semantically distinct shapes AND any consumer needs to branch on which shape was returned, model the output as `{ kind: "..." } & ...` and let consumers narrow on `kind`. Use literal-type fields (`href: "/cardgroups/new"`) where the value is an invariant of the variant — the type system will reject any factory branch that produces a different string. Reference: `frontend/src/components/nav/fab-action.ts` (`FabAction`) consumed by `frontend/src/components/nav/global-fab.tsx` and `frontend/src/components/nav/header-add-card-link.tsx`. This rule generalises the route-handler-specific § "Discriminated-union response shape" in `docs/frontend.md`.
+
+**Inverse case — do NOT use a discriminated union when only one "open" variant exists.** When a piece of state has exactly two shapes — "present with data" and "absent" — `T | null` is the right model. The `null` IS the second variant and TypeScript narrows it for free. A discriminated union shape `{ kind: "open"; data: T } | null` adds no type-safety value when no consumer ever branches on `kind` itself; it just adds boilerplate. Reference: `frontend/src/app/cards/new/cards-new-client.tsx` (`DuplicateState = { existingCardId, existingBack, ... } | null`). Reach for the union only when variants are semantically distinct and consumers branch on which one is active.
 
 ## Positive allowlist over negative exclusion in discriminated-union narrowing
 

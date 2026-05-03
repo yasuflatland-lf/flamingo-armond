@@ -5,7 +5,11 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CreateCardDocument, SetLastViewedCardgroupDocument } from "@/generated/graphql";
+import {
+  CreateCardDocument,
+  SetLastViewedCardgroupDocument,
+  UpdateCardDocument,
+} from "@/generated/graphql";
 import { installApolloMockLeakSpy } from "../../../../__tests__/utils/mock-apollo-paginated";
 import CardsNewClient from "./cards-new-client";
 
@@ -120,6 +124,77 @@ function makeCreateMock(args: {
   };
 }
 
+/**
+ * Build a GraphQLError carrying the BAD_USER_INPUT + CARD_DUPLICATE_FRONT
+ * extensions shape that the backend returns when (cardgroup_id, front)
+ * collides on insert. MockedProvider serves this via the `errors:` field; the
+ * Apollo client wraps the resulting response into a CombinedGraphQLErrors
+ * rejection so `tryGetDuplicateCardInfo(err)` matches.
+ */
+function makeDuplicateFrontError(args: {
+  existingCardId: string;
+  existingBack: string;
+}): GraphQLError {
+  return new GraphQLError("card with same front exists in this cardgroup", {
+    extensions: {
+      code: "BAD_USER_INPUT",
+      field: "front",
+      reason: "CARD_DUPLICATE_FRONT",
+      existingCardId: args.existingCardId,
+      existingBack: args.existingBack,
+    },
+  });
+}
+
+function makeUpdateMock(args: {
+  id: string;
+  back: string;
+  cardgroupId?: string;
+  front?: string;
+  onCalled?: () => void;
+  errors?: GraphQLError[];
+  networkError?: Error;
+}): MockedResponse {
+  const { id, back, cardgroupId = CG_ID, front = "apple", onCalled, errors, networkError } = args;
+  if (networkError) {
+    return {
+      request: {
+        query: UpdateCardDocument,
+        variables: { id, input: { back } },
+      },
+      error: networkError,
+    };
+  }
+  return {
+    request: {
+      query: UpdateCardDocument,
+      variables: { id, input: { back } },
+    },
+    result: () => {
+      onCalled?.();
+      if (errors) {
+        return { errors };
+      }
+      return {
+        data: {
+          updateCard: {
+            __typename: "UpdateCardPayload" as const,
+            card: {
+              __typename: "Card" as const,
+              id,
+              front,
+              back,
+              due: "2026-04-30T00:00:00Z",
+              state: 0,
+              cardgroupId,
+            },
+          },
+        },
+      };
+    },
+  };
+}
+
 function makePersistMock(
   args: {
     cardgroupId?: string;
@@ -210,7 +285,7 @@ beforeEach(() => {
   // Capture MockedProvider unmatched-mock leak warnings — assertNoLeaks() in
   // afterEach turns them into hard failures.
   leakSpy = installApolloMockLeakSpy({
-    operationNames: ["CreateCard", "SetLastViewedCardgroup"],
+    operationNames: ["CreateCard", "SetLastViewedCardgroup", "UpdateCard"],
   });
   // Track non-leak warnings so we can introspect [cards-new] persist failures.
   consoleWarnSpy = vi.spyOn(console, "warn");
@@ -456,6 +531,220 @@ describe("<CardsNewClient> — stay-on-page consecutive add", () => {
     // SuccessIndicator must display the name of cg-2, not cg-1.
     const indicator = await screen.findByRole("status");
     expect(indicator).toHaveTextContent(/✓ Card added to "French 101"/);
+  });
+});
+
+describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
+  it("shows duplicate dialog with side-by-side comparison when create returns CARD_DUPLICATE_FRONT", async () => {
+    renderClient({
+      mocks: [
+        makeCreateMock({
+          front: "apple",
+          back: "new back text",
+          errors: [
+            makeDuplicateFrontError({
+              existingCardId: "existing-id",
+              existingBack: "existing back text",
+            }),
+          ],
+        }),
+      ],
+    });
+
+    await fillAndSubmit("apple", "new back text");
+
+    // Dialog title acts as the discriminator.
+    await screen.findByText("Card already exists");
+    // Both sides of the comparison must be visible to make the choice informed.
+    expect(screen.getByText("existing back text")).toBeInTheDocument();
+    expect(screen.getByText("new back text")).toBeInTheDocument();
+    // No success indicator for the failed create.
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    // Duplicate-front is routine validation: the create-rejection log path must
+    // be skipped so operators are not paged for a normal collision.
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+      "[cards-new-client] create card rejection",
+      expect.anything(),
+    );
+    // Dialog itself does not surface an inline error banner unless updateCard
+    // fails; CardForm's banner is also empty for field-only BAD_USER_INPUT.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("confirm overwrite calls updateCard and resets form", async () => {
+    const updateCalled = vi.fn();
+    renderClient({
+      mocks: [
+        makeCreateMock({
+          front: "apple",
+          back: "new back text",
+          errors: [
+            makeDuplicateFrontError({
+              existingCardId: "existing-id",
+              existingBack: "existing back text",
+            }),
+          ],
+        }),
+        // Second MockedResponse entry consumed by the overwrite click.
+        makeUpdateMock({
+          id: "existing-id",
+          back: "new back text",
+          onCalled: updateCalled,
+        }),
+        // Mirror create-success path: setLastViewed fire-and-forget.
+        makePersistMock(),
+      ],
+    });
+
+    await fillAndSubmit("apple", "new back text");
+
+    const user = userEvent.setup();
+    const confirmBtn = await screen.findByRole("button", { name: "Overwrite" });
+    await user.click(confirmBtn);
+
+    // updateCard mock was consumed exactly once.
+    await waitFor(() => {
+      expect(updateCalled).toHaveBeenCalledTimes(1);
+    });
+    // Dialog closes.
+    await waitFor(() => {
+      expect(screen.queryByText("Card already exists")).not.toBeInTheDocument();
+    });
+    // Form is reset.
+    expect((screen.getByLabelText(/front/i) as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText(/back/i) as HTMLInputElement).value).toBe("");
+    // Success indicator appears.
+    expect(screen.getByRole("status")).toBeInTheDocument();
+  });
+
+  it("cancel keeps form intact and does not call updateCard", async () => {
+    renderClient({
+      mocks: [
+        makeCreateMock({
+          front: "apple",
+          back: "new back text",
+          errors: [
+            makeDuplicateFrontError({
+              existingCardId: "existing-id",
+              existingBack: "existing back text",
+            }),
+          ],
+        }),
+        // No updateCard mock — the leak spy in afterEach would catch a stray call.
+      ],
+    });
+
+    await fillAndSubmit("apple", "new back text");
+
+    const user = userEvent.setup();
+    const cancelBtn = await screen.findByRole("button", { name: "Cancel" });
+    await user.click(cancelBtn);
+
+    // Dialog closes.
+    await waitFor(() => {
+      expect(screen.queryByText("Card already exists")).not.toBeInTheDocument();
+    });
+    // Form values preserved so the user can edit `front` and resubmit.
+    expect((screen.getByLabelText(/front/i) as HTMLInputElement).value).toBe("apple");
+    expect((screen.getByLabelText(/back/i) as HTMLInputElement).value).toBe("new back text");
+    // No success indicator.
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("overwrite mutation error keeps dialog open and surfaces inline error", async () => {
+    renderClient({
+      mocks: [
+        makeCreateMock({
+          front: "apple",
+          back: "new back text",
+          errors: [
+            makeDuplicateFrontError({
+              existingCardId: "existing-id",
+              existingBack: "existing back text",
+            }),
+          ],
+        }),
+        makeUpdateMock({
+          id: "existing-id",
+          back: "new back text",
+          networkError: new Error("network failure"),
+        }),
+      ],
+    });
+
+    await fillAndSubmit("apple", "new back text");
+
+    const user = userEvent.setup();
+    const confirmBtn = await screen.findByRole("button", { name: "Overwrite" });
+    await user.click(confirmBtn);
+
+    // Dialog stays mounted.
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Card already exists")).toBeInTheDocument();
+    // Form is NOT reset.
+    expect((screen.getByLabelText(/front/i) as HTMLInputElement).value).toBe("apple");
+    expect((screen.getByLabelText(/back/i) as HTMLInputElement).value).toBe("new back text");
+    // No success indicator.
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    // The inline error log carries the structured shape.
+    await waitFor(() => {
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[cards-new-client] overwrite card rejection",
+        expect.objectContaining({
+          message: expect.any(String),
+          err: expect.anything(),
+        }),
+      );
+    });
+  });
+
+  it("shows field-level error from updateCard back validator inline in the dialog", async () => {
+    // Two MockedResponse entries: the first triggers the duplicate dialog,
+    // the second is consumed by the overwrite click and rejects with a
+    // BAD_USER_INPUT error carrying field=back. The dialog must render the
+    // backend message verbatim instead of the generic fallback.
+    const backValidatorMessage = "back must be at most 4096 characters";
+    renderClient({
+      mocks: [
+        makeCreateMock({
+          front: "apple",
+          back: "new back text",
+          errors: [
+            makeDuplicateFrontError({
+              existingCardId: "existing-id",
+              existingBack: "existing back text",
+            }),
+          ],
+        }),
+        makeUpdateMock({
+          id: "existing-id",
+          back: "new back text",
+          errors: [
+            new GraphQLError(backValidatorMessage, {
+              extensions: { code: "BAD_USER_INPUT", field: "back" },
+            }),
+          ],
+        }),
+      ],
+    });
+
+    await fillAndSubmit("apple", "new back text");
+
+    const user = userEvent.setup();
+    const confirmBtn = await screen.findByRole("button", { name: "Overwrite" });
+    await user.click(confirmBtn);
+
+    // Dialog stays open and the backend's field-level message replaces the
+    // generic fallback.
+    await waitFor(() => {
+      expect(screen.getByText(backValidatorMessage)).toBeInTheDocument();
+    });
+    expect(screen.getByText("Card already exists")).toBeInTheDocument();
+    // The generic fallback must NOT be shown when a field-level message is
+    // available — that was the original bug.
+    expect(screen.queryByText("Overwrite failed. Please try again.")).not.toBeInTheDocument();
   });
 });
 

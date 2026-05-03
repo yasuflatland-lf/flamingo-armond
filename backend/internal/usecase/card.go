@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 
 	"backend/internal/auth"
@@ -29,6 +30,7 @@ type CardRepository interface {
 		dir repository.SortOrder,
 	) ([]*domain.Card, int64, error)
 	Create(ctx context.Context, card *domain.Card) error
+	FindByCardgroupAndFront(ctx context.Context, cardgroupID, front string) (*domain.Card, error)
 	Update(ctx context.Context, id string, patch repository.CardUpdate) (*domain.Card, error)
 	Delete(ctx context.Context, id string) error
 	DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error)
@@ -203,6 +205,20 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (*domain.C
 		return nil, translateCardErr(ctx, err)
 	}
 	if err := u.cardRepo.Create(ctx, card); err != nil {
+		if errors.Is(err, repository.ErrCardDuplicateFront) {
+			existing, lookupErr := u.cardRepo.FindByCardgroupAndFront(ctx, in.CardgroupID, front)
+			if lookupErr != nil {
+				// The lookup may race with a concurrent delete (the duplicate row vanished
+				// between the failed INSERT and this SELECT) or fail for an unrelated DB
+				// reason. Either way, surface as Internal so the client can retry; the
+				// duplicate is recoverable input, but a failed re-lookup is not.
+				return nil, gqlerr.Internal(ctx,
+					eris.Wrap(lookupErr, "usecase: lookup duplicate card after 23505"),
+					slog.String("cardgroup_id", in.CardgroupID),
+				)
+			}
+			return nil, gqlerr.BadUserInputCardDuplicateFront(existing.ID, existing.Back)
+		}
 		return nil, gqlerr.Internal(ctx, err)
 	}
 	return card, nil

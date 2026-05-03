@@ -50,6 +50,56 @@ func TestBadUserInput(t *testing.T) {
 	}
 }
 
+func TestBadUserInputWithExtensions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("merges extra keys", func(t *testing.T) {
+		t.Parallel()
+		got := gqlerr.BadUserInputWithExtensions("front", "duplicate card", map[string]any{
+			"reason":         "CARD_DUPLICATE_FRONT",
+			"existingCardId": "abc-123",
+		})
+
+		if got.Message != "duplicate card" {
+			t.Errorf("Message = %q, want %q", got.Message, "duplicate card")
+		}
+		if code := extString(t, got, "code"); code != "BAD_USER_INPUT" {
+			t.Errorf("Extensions[code] = %q, want %q", code, "BAD_USER_INPUT")
+		}
+		if field := extString(t, got, "field"); field != "front" {
+			t.Errorf("Extensions[field] = %q, want %q", field, "front")
+		}
+		if reason := extString(t, got, "reason"); reason != "CARD_DUPLICATE_FRONT" {
+			t.Errorf("Extensions[reason] = %q, want %q", reason, "CARD_DUPLICATE_FRONT")
+		}
+		if id := extString(t, got, "existingCardId"); id != "abc-123" {
+			t.Errorf("Extensions[existingCardId] = %q, want %q", id, "abc-123")
+		}
+	})
+
+	t.Run("ignores reserved code override", func(t *testing.T) {
+		t.Parallel()
+		got := gqlerr.BadUserInputWithExtensions("front", "duplicate card", map[string]any{
+			"code": "OVERRIDE",
+		})
+
+		if code := extString(t, got, "code"); code != "BAD_USER_INPUT" {
+			t.Errorf("Extensions[code] = %q, want %q (override must be ignored)", code, "BAD_USER_INPUT")
+		}
+	})
+
+	t.Run("ignores reserved field override", func(t *testing.T) {
+		t.Parallel()
+		got := gqlerr.BadUserInputWithExtensions("front", "duplicate card", map[string]any{
+			"field": "hijacked",
+		})
+
+		if field := extString(t, got, "field"); field != "front" {
+			t.Errorf("Extensions[field] = %q, want %q (override must be ignored)", field, "front")
+		}
+	})
+}
+
 func TestInternal_message(t *testing.T) {
 	t.Parallel()
 
@@ -161,6 +211,88 @@ func TestIsCode_Forbidden(t *testing.T) {
 
 	if !gqlerr.IsCode(gqlerr.NewForbidden("x"), gqlerr.CodeForbidden) {
 		t.Error("IsCode should return true for FORBIDDEN code")
+	}
+}
+
+func TestBadUserInputCardDuplicateFront(t *testing.T) {
+	t.Parallel()
+
+	existingID := "card-uuid-123"
+	existingBack := "the answer"
+
+	got := gqlerr.BadUserInputCardDuplicateFront(existingID, existingBack)
+
+	want := gqlerr.BadUserInputWithExtensions("front",
+		"card with same front exists in this cardgroup",
+		map[string]any{
+			"reason":         string(gqlerr.ReasonCardDuplicateFront),
+			"existingCardId": existingID,
+			"existingBack":   existingBack,
+		})
+
+	if got.Message != want.Message {
+		t.Errorf("Message = %q, want %q", got.Message, want.Message)
+	}
+	if code := extString(t, got, "code"); code != "BAD_USER_INPUT" {
+		t.Errorf("Extensions[code] = %q, want %q", code, "BAD_USER_INPUT")
+	}
+	if field := extString(t, got, "field"); field != "front" {
+		t.Errorf("Extensions[field] = %q, want %q", field, "front")
+	}
+	if reason := extString(t, got, "reason"); reason != "CARD_DUPLICATE_FRONT" {
+		t.Errorf("Extensions[reason] = %q, want %q", reason, "CARD_DUPLICATE_FRONT")
+	}
+	if id := extString(t, got, "existingCardId"); id != existingID {
+		t.Errorf("Extensions[existingCardId] = %q, want %q", id, existingID)
+	}
+	if back := extString(t, got, "existingBack"); back != existingBack {
+		t.Errorf("Extensions[existingBack] = %q, want %q", back, existingBack)
+	}
+}
+
+func TestInternal_VariadicAttrs(t *testing.T) {
+	// Not parallel: mutates the global slog default.
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelError})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	got := gqlerr.Internal(
+		context.Background(),
+		eris.New("test error"),
+		slog.String("user_id", "u1"),
+		slog.String("cardgroup_id", "cg1"),
+	)
+
+	if got.Extensions["code"] != "INTERNAL" {
+		t.Errorf("Extensions[code] = %v, want %q", got.Extensions["code"], "INTERNAL")
+	}
+
+	var rec map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &rec); err != nil {
+		t.Fatalf("decode log record: %v (raw: %s)", err, buf.String())
+	}
+	if rec["user_id"] != "u1" {
+		t.Errorf("log record user_id = %v, want %q", rec["user_id"], "u1")
+	}
+	if rec["cardgroup_id"] != "cg1" {
+		t.Errorf("log record cardgroup_id = %v, want %q", rec["cardgroup_id"], "cg1")
+	}
+	if rec["level"] != "ERROR" {
+		t.Errorf("log record level = %v, want %q", rec["level"], "ERROR")
+	}
+	chain, ok := rec["error_chain"].(map[string]any)
+	if !ok {
+		t.Fatalf("error_chain is not a JSON object: %T", rec["error_chain"])
+	}
+	root, hasRoot := chain["root"].(map[string]any)
+	if !hasRoot {
+		t.Error("error_chain must have root entry (got external-only shape; stub may be using stdlib errors)")
+	}
+	if root != nil {
+		if stack, _ := root["stack"].([]any); len(stack) == 0 {
+			t.Error("error_chain.root.stack must contain at least one frame")
+		}
 	}
 }
 

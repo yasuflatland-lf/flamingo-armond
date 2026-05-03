@@ -44,6 +44,9 @@ func (m *cardMockRepo) FindPageByCardgroup(
 ) ([]*domain.Card, int64, error) {
 	return nil, 0, nil
 }
+func (m *cardMockRepo) FindByCardgroupAndFront(_ context.Context, _, _ string) (*domain.Card, error) {
+	return nil, nil
+}
 func (m *cardMockRepo) Create(_ context.Context, _ *domain.Card) error { return nil }
 func (m *cardMockRepo) Update(_ context.Context, _ string, _ repository.CardUpdate) (*domain.Card, error) {
 	return nil, nil
