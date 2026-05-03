@@ -113,8 +113,10 @@ test.describe
     });
 
     // ── Scenario 3 ──────────────────────────────────────────────────────────────
-    // Picker-driven create flow: /cards/new → open picker → "Create new cardgroup…"
-    // → /cardgroups/new?returnTo=%2Fcards%2Fnew → fill name → submit →
+    // Picker-driven create flow: /cards/new auto-opens the picker (user has one
+    // cardgroup but no lastViewed → forcePickerOpen=true Priority 3 in
+    // app/cards/new/page.tsx) → "Create new cardgroup…" link →
+    // /cardgroups/new?returnTo=%2Fcards%2Fnew → fill name → submit →
     // /cards/new?cardgroup=<newId> with the form interactive and chip pre-selected.
     test("picker 'Create new cardgroup…' link returns to /cards/new with new cardgroup pre-selected", async ({
       context,
@@ -124,14 +126,12 @@ test.describe
 
       const response = await page.goto("/cards/new");
       expect(response?.ok(), `goto /cards/new returned ${response?.status()}`).toBe(true);
-      await expect(page.getByRole("heading", { name: "New card" })).toBeVisible();
 
-      // Open the cardgroup picker by clicking the chip.
-      const chip = page.getByRole("button", { name: /Select cardgroup|Change cardgroup/ });
-      await expect(chip).toBeVisible();
-      await chip.click();
-
-      // The picker renders as a bottom Sheet (role="dialog", title "Select cardgroup").
+      // The picker auto-opens (Radix Dialog with focus-trap + aria-hidden on
+      // the rest of the page), so the "New card" heading and the underlying
+      // chip are not in the accessibility tree until the picker closes.
+      // Assert the dialog first; the underlying page is verified below after
+      // navigation back to /cards/new with ?cardgroup=<newId>.
       const dialog = page.getByRole("dialog", { name: "Select cardgroup" });
       await expect(dialog).toBeVisible();
 
