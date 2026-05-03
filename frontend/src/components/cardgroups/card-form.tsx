@@ -56,6 +56,7 @@ export function CardForm({
     onSubmit: async ({ value }) => {
       await submit(value).catch((err) => {
         console.error("[card-form] submit rejected", err);
+        throw err;
       });
     },
   });
