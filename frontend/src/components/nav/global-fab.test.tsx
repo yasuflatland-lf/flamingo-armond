@@ -33,6 +33,7 @@ describe("<GlobalFAB>", () => {
       ["/admin"],
       ["/cards/new"],
       ["/cardgroups/new"],
+      ["/cardgroups/new/"],
       ["/profile"],
       ["/profile/"],
       ["/cardgroups/abc123/edit"],

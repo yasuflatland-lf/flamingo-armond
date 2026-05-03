@@ -139,4 +139,15 @@ describe("<HeaderAddCardLink>", () => {
       expect(screen.getByRole("link")).toHaveAttribute("href", "/cards/new");
     });
   });
+
+  describe("when on the new-cardgroup form", () => {
+    beforeEach(() => {
+      mockUsePathname.mockReturnValue("/cardgroups/new");
+    });
+
+    it("renders href with cardgroup query param (header treats 'new' as an id; this is a known limitation guarded by HIDDEN_PATH_RE on the FAB side, but the header has no equivalent guard)", () => {
+      render(<HeaderAddCardLink />);
+      expect(screen.getByRole("link")).toHaveAttribute("href", "/cards/new?cardgroup=new");
+    });
+  });
 });

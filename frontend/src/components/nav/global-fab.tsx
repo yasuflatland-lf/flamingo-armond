@@ -6,7 +6,7 @@ import { resolveFabAction } from "./fab-action";
 
 // Hidden on /login (anonymous-only), /learn (full-bleed swipe UI),
 // /admin (different audience), /cards/new + /cardgroups/new (FAB target — would loop),
-// and /profile (mid-edit form).
+// and /profile (FAB action does not apply to profile editing).
 const HIDDEN_PATH_RE = /^\/(login|learn|admin|cards\/new|cardgroups\/new|profile)(\/|$)/;
 
 export function GlobalFAB() {
