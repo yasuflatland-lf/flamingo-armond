@@ -47,10 +47,10 @@ export function tryGetDuplicateCardInfo(err: unknown): DuplicateCardInfo | null 
   for (const ge of err.errors) {
     const ext = ge.extensions as Record<string, unknown> | undefined;
     if (!ext) continue;
-    if (ext["code"] !== "BAD_USER_INPUT") continue;
-    if (ext["reason"] !== "CARD_DUPLICATE_FRONT") continue;
-    const existingCardId = ext["existingCardId"];
-    const existingBack = ext["existingBack"];
+    if (ext.code !== "BAD_USER_INPUT") continue;
+    if (ext.reason !== "CARD_DUPLICATE_FRONT") continue;
+    const existingCardId = ext.existingCardId;
+    const existingBack = ext.existingBack;
     if (typeof existingCardId !== "string" || existingCardId === "") continue;
     if (typeof existingBack !== "string" || existingBack === "") continue;
     return { existingCardId, existingBack };
