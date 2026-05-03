@@ -19,7 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
 import { tryGetDuplicateCardInfo } from "@/lib/apollo/graphql-errors";
 
 type Cardgroup = {
@@ -174,9 +174,8 @@ export default function CardsNewClient({
   // deleted between page render and submit) and Apollo v3.x does not roll back
   // optimistic writes on typed errors — see .claude/rules/pagination.md.
   const [setLastViewed] = useMutation(SetLastViewedCardgroupMutation);
-  // Overwrite path also drops `optimisticResponse`: updateCard can fail typed
-  // (UNAUTHENTICATED on session expiry, BAD_USER_INPUT from validators) and
-  // Apollo v3.x does not roll back optimistic writes on typed errors.
+  // Same Apollo v3.x rollback caveat as createCard above (UNAUTHENTICATED on
+  // session expiry, BAD_USER_INPUT from validators).
   const [updateCard, { loading: overwriting }] = useMutation(UpdateCardMutation);
 
   const resetFormRef = useRef<(() => void) | null>(null);
@@ -218,9 +217,12 @@ export default function CardsNewClient({
       setLastAddedName(currentName);
       setSuccessKey(Date.now());
     } catch (err) {
-      // Duplicate-front is a routine validation outcome, not a failure: surface
-      // the overwrite dialog and skip both the generic error toast and the
-      // console.error log. Anything else falls through to the existing path.
+      // Duplicate-front is routine validation, not a failure operators should
+      // be paged for: open the overwrite dialog, set `duplicate` state, and skip
+      // the [cards-new-client] console.error log. CardForm's banner stays empty
+      // because the duplicate-front error is a field-level BAD_USER_INPUT and
+      // getBackendErrorBanner returns undefined for that shape; any inline
+      // front-field message is shadowed by the dialog that overlays the form.
       const dupe = tryGetDuplicateCardInfo(err);
       if (dupe) {
         setDuplicate({
@@ -259,10 +261,15 @@ export default function CardsNewClient({
       setSuccessKey(Date.now());
     } catch (err) {
       // Leave `duplicate` set so the dialog stays mounted; surface the failure
-      // inline. Use the same shape the form uses (getBackendErrorBanner) so the
-      // message is familiar to the user.
-      const banner = getBackendErrorBanner(err) ?? "上書きに失敗しました。もう一度お試しください。";
-      setOverwriteError(banner);
+      // inline. Field-level error on `back` is the only validation-failure shape
+      // updateCard can return today (the input only carries `back`); surface it
+      // directly since getBackendErrorBanner skips field-level BAD_USER_INPUT
+      // and would otherwise fall through to the generic JP fallback.
+      const fieldErrors = getBackendFieldErrors(err);
+      const banner = getBackendErrorBanner(err);
+      const message =
+        fieldErrors.back ?? banner ?? "上書きに失敗しました。もう一度お試しください。";
+      setOverwriteError(message);
       console.error("[cards-new-client] overwrite card rejection", {
         message: err instanceof Error ? err.message : String(err),
         err,

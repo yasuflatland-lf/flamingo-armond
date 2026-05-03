@@ -152,9 +152,10 @@ function makeUpdateMock(args: {
   cardgroupId?: string;
   front?: string;
   onCalled?: () => void;
+  errors?: GraphQLError[];
   networkError?: Error;
 }): MockedResponse {
-  const { id, back, cardgroupId = CG_ID, front = "apple", onCalled, networkError } = args;
+  const { id, back, cardgroupId = CG_ID, front = "apple", onCalled, errors, networkError } = args;
   if (networkError) {
     return {
       request: {
@@ -171,6 +172,9 @@ function makeUpdateMock(args: {
     },
     result: () => {
       onCalled?.();
+      if (errors) {
+        return { errors };
+      }
       return {
         data: {
           updateCard: {
@@ -556,6 +560,15 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
     expect(screen.getByText("new back text")).toBeInTheDocument();
     // No success indicator for the failed create.
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    // Duplicate-front is routine validation: the create-rejection log path must
+    // be skipped so operators are not paged for a normal collision.
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+      "[cards-new-client] create card rejection",
+      expect.anything(),
+    );
+    // Dialog itself does not surface an inline error banner unless updateCard
+    // fails; CardForm's banner is also empty for field-only BAD_USER_INPUT.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("confirm overwrite calls updateCard and resets form", async () => {
@@ -685,6 +698,55 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
         }),
       );
     });
+  });
+
+  it("shows field-level error from updateCard back validator inline in the dialog", async () => {
+    // Two MockedResponse entries: the first triggers the duplicate dialog,
+    // the second is consumed by the overwrite click and rejects with a
+    // BAD_USER_INPUT error carrying field=back. The dialog must render the
+    // backend message verbatim instead of the generic JP fallback.
+    const backValidatorMessage = "back must be at most 4096 characters";
+    renderClient({
+      mocks: [
+        makeCreateMock({
+          front: "apple",
+          back: "new back text",
+          errors: [
+            makeDuplicateFrontError({
+              existingCardId: "existing-id",
+              existingBack: "existing back text",
+            }),
+          ],
+        }),
+        makeUpdateMock({
+          id: "existing-id",
+          back: "new back text",
+          errors: [
+            new GraphQLError(backValidatorMessage, {
+              extensions: { code: "BAD_USER_INPUT", field: "back" },
+            }),
+          ],
+        }),
+      ],
+    });
+
+    await fillAndSubmit("apple", "new back text");
+
+    const user = userEvent.setup();
+    const confirmBtn = await screen.findByRole("button", { name: "上書き" });
+    await user.click(confirmBtn);
+
+    // Dialog stays open and the backend's field-level message replaces the
+    // generic JP fallback.
+    await waitFor(() => {
+      expect(screen.getByText(backValidatorMessage)).toBeInTheDocument();
+    });
+    expect(screen.getByText("カードはすでに存在します")).toBeInTheDocument();
+    // The generic fallback must NOT be shown when a field-level message is
+    // available — that was the original bug.
+    expect(
+      screen.queryByText("上書きに失敗しました。もう一度お試しください。"),
+    ).not.toBeInTheDocument();
   });
 });
 
