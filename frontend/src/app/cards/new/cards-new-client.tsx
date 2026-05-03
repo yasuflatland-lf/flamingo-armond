@@ -193,6 +193,21 @@ export default function CardsNewClient({
 
   const handleSuccessTimeout = useCallback(() => setSuccessKey(null), []);
 
+  // Shared post-success tail for both the create and overwrite paths:
+  // fire-and-forget the last-viewed hint (must not block the UI; setLastViewed
+  // can fail typed when the cardgroup was deleted between page render and
+  // submit), reset the form, and bump the success indicator. See
+  // .claude/rules/pagination.md on dropping optimisticResponse for typed-fail mutations.
+  function markCreationSucceeded() {
+    if (!currentId) return;
+    void setLastViewed({ variables: { cardgroupId: currentId } }).catch((err) => {
+      console.warn("[cards-new] setLastViewedCardgroup failed", { cardgroupId: currentId, err });
+    });
+    resetFormRef.current?.();
+    setLastAddedName(currentName);
+    setSuccessKey(Date.now());
+  }
+
   async function handleCreate(values: { front: string; back: string }) {
     if (!currentId) return;
     try {
@@ -201,15 +216,7 @@ export default function CardsNewClient({
           input: { cardgroupId: currentId, front: values.front, back: values.back },
         },
       });
-      // Fire-and-forget: this is the 4-priority-chain hint for the next visit
-      // and must not block or fail the create flow. No `await` so a slow or
-      // erroring persist call cannot delay the form reset.
-      void setLastViewed({ variables: { cardgroupId: currentId } }).catch((err) => {
-        console.warn("[cards-new] setLastViewedCardgroup failed", { cardgroupId: currentId, err });
-      });
-      resetFormRef.current?.();
-      setLastAddedName(currentName);
-      setSuccessKey(Date.now());
+      markCreationSucceeded();
     } catch (err) {
       // Duplicate-front is routine validation, not a failure operators should
       // be paged for: open the overwrite dialog, set `duplicate` state, and skip
@@ -245,20 +252,13 @@ export default function CardsNewClient({
         },
       });
       setDuplicate(null);
-      // Mirror the create-success path: fire-and-forget the last-viewed hint,
-      // reset the form, and bump the success indicator.
-      void setLastViewed({ variables: { cardgroupId: currentId } }).catch((err) => {
-        console.warn("[cards-new] setLastViewedCardgroup failed", { cardgroupId: currentId, err });
-      });
-      resetFormRef.current?.();
-      setLastAddedName(currentName);
-      setSuccessKey(Date.now());
+      markCreationSucceeded();
     } catch (err) {
       // Leave `duplicate` set so the dialog stays mounted; surface the failure
       // inline. Field-level error on `back` is the only validation-failure shape
       // updateCard can return today (the input only carries `back`); surface it
       // directly since getBackendErrorBanner skips field-level BAD_USER_INPUT
-      // and would otherwise fall through to the generic JP fallback.
+      // and would otherwise fall through to the generic banner fallback.
       const fieldErrors = getBackendFieldErrors(err);
       const banner = getBackendErrorBanner(err);
       const message = fieldErrors.back ?? banner ?? "Overwrite failed. Please try again.";
