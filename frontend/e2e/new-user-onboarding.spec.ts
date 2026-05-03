@@ -38,7 +38,7 @@ test.describe
       });
     });
 
-    test("welcome page → create cardgroup → FAB → picker → chip pre-select", async ({
+    test("welcome page → create cardgroup → FAB lands on /cards/new with chip pre-selected", async ({
       context,
       page,
     }) => {
@@ -61,35 +61,23 @@ test.describe
       expect(newCardgroupId).toMatch(UUID_RE);
       await expect(page.getByRole("heading", { name: cardgroupName })).toBeVisible();
 
-      // 3. Click the global "+ Card" FAB to open /cards/new.
-      // The FAB renders at the root layout level and is hidden on a few paths
-      // (/learn/*, /admin/*, /cards/new, /cardgroups/new); /cardgroups/<id> is
+      // 3. Click the global "+ Card" FAB. On a /cardgroups/<id> page,
+      // resolveFabAction returns kind: "card-with-group" so the FAB href is
+      // /cards/new?cardgroup=<id> — no picker dialog, the chip is pre-selected
+      // from the URL. The FAB renders at the root layout level and is hidden on
+      // /learn/*, /admin/*, /cards/new, /cardgroups/new; /cardgroups/<id> is
       // not on the hidden list so the FAB must be present here.
       const fab = page.getByRole("button", { name: "Add new card" });
       await expect(fab).toBeVisible();
       await fab.click();
 
-      // The root-layout FAB is invoked without lastViewedCardgroupId, so it
-      // navigates to bare /cards/new. The /cards/new RSC then resolves the
-      // cardgroup: ?cardgroup= is empty, me.lastViewedCardgroup is still null
-      // (the user has not visited /learn yet), and myCardgroups has exactly one
-      // entry → forcePickerOpen=true so the picker auto-opens.
-      await page.waitForURL("**/cards/new", { timeout: 10_000 });
-
-      // 4. The picker is a Radix Dialog with focus-trap + aria-hidden on the
-      // rest of the page, so we must not assert against headings outside the
-      // dialog while it is open. Assert the dialog title, click the cardgroup,
-      // and only then verify the underlying form.
-      const dialog = page.getByRole("dialog", { name: "Select cardgroup" });
-      await expect(dialog).toBeVisible();
-      await dialog.getByRole("button", { name: cardgroupName }).click();
-
-      // 5. URL gains ?cardgroup=<id> and the chip is pre-selected.
+      // 4. URL carries ?cardgroup=<id> from the moment we land — no picker
+      // round-trip needed because the cardgroup id was propagated via the FAB
+      // href.
       await page.waitForURL(`**/cards/new?cardgroup=${newCardgroupId}`, {
         timeout: 10_000,
       });
 
-      // With the dialog closed, the underlying page is back in the a11y tree.
       await expect(page.getByRole("heading", { name: "New card" })).toBeVisible();
 
       // The CardgroupChip's aria-label is "Change cardgroup (currently \"<name>\")"
