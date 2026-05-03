@@ -402,7 +402,10 @@ describe("<CardsNewClient> — stay-on-page consecutive add", () => {
     await waitFor(() => {
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         "[cards-new-client] create card rejection",
-        expect.objectContaining({ message: expect.any(String) }),
+        expect.objectContaining({
+          message: expect.any(String),
+          err: expect.anything(),
+        }),
       );
     });
   });
