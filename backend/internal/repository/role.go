@@ -97,6 +97,12 @@ type RoleRepository interface {
 	// ListAll returns every role ordered by name ASC. Returns an empty
 	// slice (never nil) when no roles exist.
 	ListAll(ctx context.Context) ([]*domain.Role, error)
+
+	// CountAdminUsers returns the number of distinct user_roles rows that
+	// reference the role named "admin". Returns 0 (not an error) when the
+	// admin role row itself does not exist — callers treat the absence of
+	// the role and an empty assignment table as the same operational state.
+	CountAdminUsers(ctx context.Context) (int64, error)
 }
 
 type roleRepo struct{ db *gorm.DB }
@@ -355,6 +361,19 @@ func (r *roleRepo) ListAll(ctx context.Context) ([]*domain.Role, error) {
 		out[i] = roleToDomain(rows[i])
 	}
 	return out, nil
+}
+
+func (r *roleRepo) CountAdminUsers(ctx context.Context) (int64, error) {
+	var n int64
+	err := r.db.WithContext(ctx).
+		Table("user_roles").
+		Joins("JOIN roles ON roles.id = user_roles.role_id").
+		Where("roles.name = ?", "admin").
+		Count(&n).Error
+	if err != nil {
+		return 0, eris.Wrap(err, "repository: count admin users")
+	}
+	return n, nil
 }
 
 func roleToDomain(g gormRole) *domain.Role {

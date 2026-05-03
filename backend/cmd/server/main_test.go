@@ -28,6 +28,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
+	"github.com/rotisserie/eris"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"go.opentelemetry.io/otel"
@@ -40,6 +41,7 @@ import (
 	"backend/internal/domain"
 	"backend/internal/domain/service"
 	"backend/internal/handler/ping"
+	"backend/internal/logging"
 	"backend/internal/repository"
 	"backend/internal/telemetry"
 	"backend/internal/usecase"
@@ -1696,5 +1698,375 @@ func TestHandleSwipe_RollsBackWhenSwipeRecordInsertFails(t *testing.T) {
 	}
 	if swipeCount != 0 {
 		t.Fatalf("swipe_records count=%d, want 0", swipeCount)
+	}
+}
+
+// panicRoleRepo is an embed base that satisfies repository.RoleRepository with
+// every method panicking. Concrete stubs embed this and override only the
+// methods their test exercises; any unexpected call fails loudly.
+type panicRoleRepo struct{}
+
+func (panicRoleRepo) FindByID(_ context.Context, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (panicRoleRepo) FindByName(_ context.Context, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (panicRoleRepo) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (panicRoleRepo) Create(_ context.Context, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (panicRoleRepo) Update(_ context.Context, _, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (panicRoleRepo) Delete(_ context.Context, _ string) error {
+	panic("not used in this test")
+}
+func (panicRoleRepo) AssignToUser(_ context.Context, _, _ string) error {
+	panic("not used in this test")
+}
+func (panicRoleRepo) RevokeFromUser(_ context.Context, _, _ string) error {
+	panic("not used in this test")
+}
+func (panicRoleRepo) ListByUser(_ context.Context, _ string) ([]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (panicRoleRepo) ListByUserIDs(_ context.Context, _ []string) (map[string][]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (panicRoleRepo) ListAll(_ context.Context) ([]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (panicRoleRepo) CountAdminUsers(_ context.Context) (int64, error) {
+	panic("not used in this test")
+}
+
+// failingCountRepo satisfies repository.RoleRepository with only CountAdminUsers
+// implemented. All other methods panic via the embedded panicRoleRepo.
+type failingCountRepo struct {
+	panicRoleRepo
+	err error
+}
+
+func (f failingCountRepo) CountAdminUsers(_ context.Context) (int64, error) {
+	return 0, f.err
+}
+
+// findByNameRepo satisfies repository.RoleRepository with FindByName returning
+// a configurable (role, error) pair. CountAdminUsers panics via the embedded
+// panicRoleRepo — the non-empty-emails branch in bootstrapSuperUserPromoter
+// never calls CountAdminUsers, only FindByName.
+type findByNameRepo struct {
+	panicRoleRepo
+	role *domain.Role
+	err  error
+}
+
+func (f findByNameRepo) FindByName(_ context.Context, _ string) (*domain.Role, error) {
+	return f.role, f.err
+}
+
+// existingAdminRepo satisfies repository.RoleRepository with CountAdminUsers
+// returning a fixed count. Used by deterministic tests for the Branch E path
+// (admin role-holders already exist → no WARN emitted).
+type existingAdminRepo struct {
+	panicRoleRepo
+	count int64
+}
+
+func (e existingAdminRepo) CountAdminUsers(_ context.Context) (int64, error) {
+	return e.count, nil
+}
+
+// decodeLogRecords parses newline-delimited JSON log output from a bytes.Buffer
+// and returns the decoded records. Fatals on malformed JSON.
+func decodeLogRecords(t *testing.T, buf *bytes.Buffer) []map[string]any {
+	t.Helper()
+	var records []map[string]any
+	for _, line := range bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		var rec map[string]any
+		if err := json.Unmarshal(line, &rec); err != nil {
+			t.Fatalf("decode log line %q: %v", line, err)
+		}
+		records = append(records, rec)
+	}
+	return records
+}
+
+// TestBootstrapSuperUserPromoter_WarnsWhenNoEscapeHatch covers the WARN log
+// path: SUPER_USER_EMAILS empty AND zero admin role-holders in the DB must
+// emit a single WARN with admin_count=0.
+func TestBootstrapSuperUserPromoter_WarnsWhenNoEscapeHatch(t *testing.T) {
+	// Do not run in parallel — this test opens a DB connection and logs to a
+	// local buffer; parallel would risk DB-state interference from other tests
+	// that insert user_roles rows.
+
+	ctx := t.Context()
+
+	db, err := database.Open(ctx, database.Config{URL: testDBURL})
+	if err != nil {
+		t.Fatalf("db open: %v", err)
+	}
+	defer db.Close()
+
+	roleRepo := repository.NewRoleRepository(db.GORM)
+
+	// Confirm there are no admin role-holders in this test DB state so the
+	// WARN branch fires. Other tests may insert user_roles rows but none grant
+	// the admin role as part of their setup.
+	adminCount, err := roleRepo.CountAdminUsers(ctx)
+	if err != nil {
+		t.Fatalf("CountAdminUsers: %v", err)
+	}
+	if adminCount != 0 {
+		t.Skipf("pre-condition: %d admin role-holder(s) already exist; WARN branch would not fire — skipping", adminCount)
+	}
+
+	// Capture WARN-level log output via an inline JSON logger.
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	promoter, err := bootstrapSuperUserPromoter(ctx, logger, nil, roleRepo, "")
+	if err != nil {
+		t.Fatalf("bootstrapSuperUserPromoter returned unexpected error: %v", err)
+	}
+	if promoter == nil {
+		t.Fatal("bootstrapSuperUserPromoter returned nil promoter")
+	}
+
+	records := decodeLogRecords(t, &buf)
+
+	// Locate the expected WARN record.
+	const wantMsg = "super-user bootstrap: no admin configured and no admin role-holder exists"
+	var found map[string]any
+	for _, rec := range records {
+		if rec["msg"] == wantMsg {
+			found = rec
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("expected WARN log line %q not found in output: %s", wantMsg, buf.String())
+	}
+
+	// Assert level is WARN.
+	if got, _ := found["level"].(string); got != "WARN" {
+		t.Errorf("want level=WARN, got %q", got)
+	}
+
+	// Assert admin_count is 0. slog.NewJSONHandler encodes numbers as JSON
+	// numbers; json.Unmarshal into map[string]any decodes them as float64.
+	if got, _ := found["admin_count"].(float64); got != 0 {
+		t.Errorf("want admin_count=0, got %v", got)
+	}
+}
+
+// TestBootstrapSuperUserPromoter_WarnOnCountError verifies that a DB failure
+// in CountAdminUsers is non-fatal: bootstrapSuperUserPromoter returns a
+// pass-through promoter and emits a structured WARN with error_chain.root.stack.
+func TestBootstrapSuperUserPromoter_WarnOnCountError(t *testing.T) {
+	ctx := t.Context()
+
+	// Use a stub that returns an eris error so the structural error_chain
+	// assertion (root.stack non-empty) can be verified. Using eris.New here
+	// matches the convention in .claude/rules/error-wrapping.md §
+	// "Test the error_chain shape" — stubs must use eris.New so the assertion
+	// exercises the same code path production hits.
+	stub := failingCountRepo{err: eris.New("repository: simulated DB failure")}
+
+	// Capture log output at WARN+ level.
+	var buf bytes.Buffer
+	logger := slog.New(logging.NewContextHandler(
+		slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}),
+		func(_ context.Context) string { return "" },
+	))
+
+	promoter, err := bootstrapSuperUserPromoter(ctx, logger, nil, stub, "")
+	if err != nil {
+		t.Fatalf("bootstrapSuperUserPromoter returned unexpected error: %v", err)
+	}
+	if promoter == nil {
+		t.Fatal("bootstrapSuperUserPromoter returned nil promoter")
+	}
+
+	records := decodeLogRecords(t, &buf)
+
+	// 1. The "admin count check failed" WARN must be present.
+	const wantCountErrMsg = "super-user bootstrap: admin count check failed"
+	var countErrRec map[string]any
+	for _, rec := range records {
+		if rec["msg"] == wantCountErrMsg {
+			countErrRec = rec
+			break
+		}
+	}
+	if countErrRec == nil {
+		t.Fatalf("expected WARN log line %q not found in output: %s", wantCountErrMsg, buf.String())
+	}
+
+	// 2. Assert level is WARN.
+	if got, _ := countErrRec["level"].(string); got != "WARN" {
+		t.Errorf("want level=WARN, got %q", got)
+	}
+
+	// 3. Assert structural error_chain shape (root.stack non-empty).
+	// See .claude/rules/error-wrapping.md § "Test the error_chain shape".
+	chain, ok := countErrRec["error_chain"].(map[string]any)
+	if !ok {
+		t.Fatalf("error_chain is not a JSON object: %T", countErrRec["error_chain"])
+	}
+	root, hasRoot := chain["root"].(map[string]any)
+	if !hasRoot {
+		t.Error("error_chain must have root entry (got external-only shape; stub may be using stdlib errors)")
+	}
+	if root != nil {
+		if stack, _ := root["stack"].([]any); len(stack) == 0 {
+			t.Error("error_chain.root.stack must contain at least one frame")
+		}
+	}
+
+	// 4. The "no admin configured" WARN must NOT appear — the count failed,
+	//    so we never learned whether adminCount == 0.
+	const wantNoEscapeMsg = "super-user bootstrap: no admin configured and no admin role-holder exists"
+	for _, rec := range records {
+		if rec["msg"] == wantNoEscapeMsg {
+			t.Errorf("unexpected log line %q: should only appear when count succeeds with 0", wantNoEscapeMsg)
+		}
+	}
+}
+
+// userRoleStub satisfies repository.UserRoleRepository. HasRole always returns
+// (false, nil) — sufficient for constructing auth.NewService in tests that only
+// need to verify promoter construction, not per-request role checks.
+type userRoleStub struct{}
+
+func (userRoleStub) HasRole(_ context.Context, _, _ string) (bool, error) {
+	return false, nil
+}
+
+// TestBootstrapSuperUserPromoter_FindByNameError covers Branch A: when
+// SUPER_USER_EMAILS is non-empty but the admin role lookup (FindByName) fails,
+// bootstrapSuperUserPromoter must propagate the error and return nil.
+func TestBootstrapSuperUserPromoter_FindByNameError(t *testing.T) {
+	ctx := t.Context()
+
+	roleErr := eris.New("repository: simulated FindByName failure")
+	stub := findByNameRepo{err: roleErr}
+
+	authSvc := auth.NewService(userRoleStub{})
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, stub, "you@example.com")
+
+	if err == nil {
+		t.Fatal("expected non-nil error when FindByName fails, got nil")
+	}
+	if !errors.Is(err, roleErr) {
+		t.Errorf("expected wrapped sentinel errors.Is(err, roleErr) to be true; err=%v", err)
+	}
+	if promoter != nil {
+		t.Errorf("expected nil promoter on error, got %v", promoter)
+	}
+
+	// No log output is expected for this fatal-error path.
+	records := decodeLogRecords(t, &buf)
+	for _, rec := range records {
+		if rec["level"] == "WARN" {
+			t.Errorf("unexpected WARN log on FindByName-error path: %v", rec)
+		}
+	}
+}
+
+// TestBootstrapSuperUserPromoter_NonEmptyEmailsHappyPath covers Branch B:
+// when SUPER_USER_EMAILS is non-empty and FindByName succeeds, the function
+// must return a non-nil active promoter and emit a single INFO log with
+// msg="super-user bootstrap enabled" and email_count matching the parsed set.
+func TestBootstrapSuperUserPromoter_NonEmptyEmailsHappyPath(t *testing.T) {
+	ctx := t.Context()
+
+	adminRole := &domain.Role{ID: "role-uuid-123", Name: "admin"}
+	stub := findByNameRepo{role: adminRole}
+
+	authSvc := auth.NewService(userRoleStub{})
+
+	// Capture all log output so we can assert INFO and absence of WARN.
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	const emailsEnv = "alice@example.com,bob@example.com"
+	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, stub, emailsEnv)
+
+	if err != nil {
+		t.Fatalf("bootstrapSuperUserPromoter returned unexpected error: %v", err)
+	}
+	if promoter == nil {
+		t.Fatal("expected non-nil promoter, got nil")
+	}
+
+	records := decodeLogRecords(t, &buf)
+
+	// Locate the INFO "super-user bootstrap enabled" record.
+	const wantMsg = "super-user bootstrap enabled"
+	var infoRec map[string]any
+	for _, rec := range records {
+		if rec["msg"] == wantMsg {
+			infoRec = rec
+			break
+		}
+	}
+	if infoRec == nil {
+		t.Fatalf("expected INFO log line %q not found in output: %s", wantMsg, buf.String())
+	}
+
+	if got, _ := infoRec["level"].(string); got != "INFO" {
+		t.Errorf("want level=INFO, got %q", got)
+	}
+
+	// ParseSuperUserSet("alice@example.com,bob@example.com") should produce 2 entries.
+	wantCount := float64(len(auth.ParseSuperUserSet(emailsEnv)))
+	if got, _ := infoRec["email_count"].(float64); got != wantCount {
+		t.Errorf("want email_count=%.0f, got %.0f", wantCount, got)
+	}
+
+	// No WARN log must appear on the happy path.
+	for _, rec := range records {
+		if rec["level"] == "WARN" {
+			t.Errorf("unexpected WARN log on happy path: %v", rec)
+		}
+	}
+}
+
+// TestBootstrapSuperUserPromoter_NoWarnWhenAdminExists covers Branch E:
+// when SUPER_USER_EMAILS is empty AND at least one admin role-holder already
+// exists, bootstrapSuperUserPromoter must return a pass-through promoter
+// without emitting any log lines.
+func TestBootstrapSuperUserPromoter_NoWarnWhenAdminExists(t *testing.T) {
+	ctx := t.Context()
+
+	// Stub returns count=1 (at least one admin already exists).
+	stub := existingAdminRepo{count: 1}
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	promoter, err := bootstrapSuperUserPromoter(ctx, logger, nil, stub, "")
+
+	if err != nil {
+		t.Fatalf("bootstrapSuperUserPromoter returned unexpected error: %v", err)
+	}
+	if promoter == nil {
+		t.Fatal("expected non-nil pass-through promoter, got nil")
+	}
+
+	records := decodeLogRecords(t, &buf)
+	if len(records) != 0 {
+		t.Errorf("expected no log output when admin already exists, got: %s", buf.String())
 	}
 }

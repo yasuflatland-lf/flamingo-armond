@@ -84,6 +84,10 @@ func (r *countingRoleRepo) ListAll(_ context.Context) ([]*domain.Role, error) {
 	panic("countingRoleRepo.ListAll not configured")
 }
 
+func (r *countingRoleRepo) CountAdminUsers(_ context.Context) (int64, error) {
+	panic("countingRoleRepo.CountAdminUsers not configured")
+}
+
 func emptyRoleRepo() *countingRoleRepo {
 	return &countingRoleRepo{
 		findByIDs: func(_ context.Context, _ []string) (map[string]*domain.Role, error) {

@@ -146,6 +146,44 @@ func shutdownTimeout(logger *slog.Logger) time.Duration {
 	return d
 }
 
+// bootstrapSuperUserPromoter constructs the SuperUserPromoter and emits the
+// startup INFO/WARN logs for the super-user bootstrap path. Extracted so its
+// branching logic can be unit-tested without spinning up the full run() server.
+//
+// Returns the promoter and an error only when the admin role lookup fails for
+// a non-empty SUPER_USER_EMAILS configuration. A failure to count existing
+// admin role-holders is non-fatal: the WARN log records the error_chain and
+// the function returns a pass-through promoter.
+func bootstrapSuperUserPromoter(
+	ctx context.Context,
+	logger *slog.Logger,
+	authSvc *auth.Service,
+	roleRepo repository.RoleRepository,
+	emailsEnv string,
+) (*auth.SuperUserPromoter, error) {
+	superUserEmails := auth.ParseSuperUserSet(emailsEnv)
+	if len(superUserEmails) > 0 {
+		adminRole, err := roleRepo.FindByName(ctx, "admin")
+		if err != nil {
+			return nil, eris.Wrap(err, "run: lookup admin role for super-user bootstrap")
+		}
+		logger.Info("super-user bootstrap enabled", "email_count", len(superUserEmails))
+		return auth.NewSuperUserPromoter(superUserEmails, adminRole.ID, authSvc, roleRepo), nil
+	}
+	// No SUPER_USER_EMAILS configured. Check whether at least one admin
+	// already exists in the DB; if not, the operator has no escape hatch
+	// and we emit a single-line WARN to make the misconfiguration visible.
+	// A failed count query is non-fatal — log the eris chain and continue.
+	if adminCount, err := roleRepo.CountAdminUsers(ctx); err != nil {
+		logging.LogWarn(ctx, logger, "super-user bootstrap: admin count check failed",
+			eris.Wrap(err, "run: count admin users for bootstrap check"))
+	} else if adminCount == 0 {
+		logger.Warn("super-user bootstrap: no admin configured and no admin role-holder exists",
+			"admin_count", adminCount)
+	}
+	return auth.NewSuperUserPromoter(nil, "", nil, nil), nil
+}
+
 func run(ctx context.Context, logger *slog.Logger) error {
 	// telemetry.Init must run first: it registers the global TracerProvider and
 	// TextMapPropagator via otel.SetTextMapPropagator. newRouter (called below)
@@ -196,20 +234,9 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
 	authSvc := auth.NewService(userRoleRepo)
 
-	// Bootstrap super-user auto-promotion. If SUPER_USER_EMAILS is set, construct
-	// a promoter that grants the admin role on first login from those addresses.
-	// Otherwise, construct a pass-through promoter (zero per-request cost).
-	superUserEmails := auth.ParseSuperUserSet(os.Getenv("SUPER_USER_EMAILS"))
-	var promoter *auth.SuperUserPromoter
-	if len(superUserEmails) > 0 {
-		adminRole, err := roleRepo.FindByName(ctx, "admin")
-		if err != nil {
-			return eris.Wrap(err, "run: lookup admin role for super-user bootstrap")
-		}
-		promoter = auth.NewSuperUserPromoter(superUserEmails, adminRole.ID, authSvc, roleRepo)
-		logger.Info("super-user bootstrap enabled", "email_count", len(superUserEmails))
-	} else {
-		promoter = auth.NewSuperUserPromoter(nil, "", nil, nil)
+	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, roleRepo, os.Getenv("SUPER_USER_EMAILS"))
+	if err != nil {
+		return err
 	}
 
 	userUC := usecase.NewUserUsecase(userRepo)

@@ -6,6 +6,11 @@
 #   ansible-playbook setup.yml --tags supabase
 #   ansible-playbook setup.yml --tags sync-env
 #   ansible-playbook setup.yml --tags google-check
+#   ansible-playbook setup.yml --tags seed-admin -e admin_email=you@example.com
+#
+# Tasks tagged `never` (e.g. seed-admin) are skipped on a default run and only
+# execute when their tag is passed explicitly via `--tags`. Without `never`,
+# Ansible runs every task on a tag-less invocation regardless of `tags:`.
 - name: flamingo-armond local dev setup
   hosts: localhost
   gather_facts: false
@@ -287,3 +292,54 @@
           - "  Then sign in at http://127.0.0.1:3000/login."
       when: google_configured
       tags: [google-check]
+
+    # --- One-shot admin promotion via SQL (local Supabase only) ---
+    # Inserts a (user_id, admin_role_id) row by joining auth.users on email and
+    # public.roles on name='admin'. Idempotent via ON CONFLICT DO NOTHING.
+    # Reads the local Supabase DB URL from `supabase status` to avoid
+    # hard-coding the suffix that varies per host.
+    #
+    # Tagged `never` so these tasks only run when invoked with the explicit
+    # `--tags seed-admin` selector (i.e. via `make seed-admin EMAIL=...`).
+    # Without `never`, a default `make setup` (no `--tags`) would execute every
+    # task in the playbook and fail at "Validate admin_email is provided".
+    - name: Validate admin_email is provided
+      ansible.builtin.fail:
+        msg: |
+          seed-admin requires admin_email. Invoke as:
+            make seed-admin EMAIL=you@example.com
+      when: admin_email is not defined or (admin_email | trim | length) == 0
+      tags: [seed-admin, never]
+
+    - name: Resolve local Supabase DB URL
+      ansible.builtin.shell: |
+        set -o pipefail
+        supabase status --output json | python3 -c 'import json,sys; print(json.load(sys.stdin)["DB_URL"])'
+      args:
+        executable: /bin/bash
+      register: supabase_db_url
+      changed_when: false
+      tags: [seed-admin, never]
+
+    - name: Insert admin role assignment for {{ admin_email }} (idempotent)
+      ansible.builtin.command:
+        argv:
+          - psql
+          - "{{ supabase_db_url.stdout | trim }}"
+          - -v
+          - "ON_ERROR_STOP=1"
+          - -c
+          - >-
+            INSERT INTO public.user_roles (user_id, role_id)
+            SELECT u.id, r.id FROM auth.users u, public.roles r
+            WHERE u.email = '{{ admin_email | replace("'", "''") }}' AND r.name = 'admin'
+            ON CONFLICT DO NOTHING;
+      register: seed_admin_result
+      changed_when: "'INSERT 0 1' in seed_admin_result.stdout"
+      tags: [seed-admin, never]
+
+    - name: Confirm seed-admin outcome
+      ansible.builtin.debug:
+        msg:
+          - "{{ 'OK: granted admin role to ' + admin_email if 'INSERT 0 1' in (seed_admin_result.stdout | default('')) else 'NO-OP: ' + admin_email + ' either has no auth.users row yet (sign in once first) or already holds admin' }}"
+      tags: [seed-admin, never]

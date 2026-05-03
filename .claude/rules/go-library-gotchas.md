@@ -208,3 +208,93 @@ under the `"g"` JSON key, not at the top level. In `logging.ContextHandler`,
 Log queries and tests that expect top-level `request_id` will miss it.
 `backend/internal/logging/handler_test.go` (`TestContextHandler_WithAttrsAndWithGroupPreserveRequestID`)
 documents and asserts this shape.
+
+## Embed a `panic` base struct to eliminate interface-stub boilerplate
+
+When a large interface (e.g. `RoleRepository` with 12 methods) needs multiple test
+doubles that each override only 1–2 methods, embedding a shared "panic base" struct
+cuts boilerplate by ~55 lines per stub and keeps each double focused on the methods
+under test.
+
+```go
+// panicRoleRepo implements every method of repository.RoleRepository by panicking.
+// Embed it in test doubles that only need to override a subset of methods.
+type panicRoleRepo struct{}
+
+func (panicRoleRepo) Create(ctx context.Context, r model.Role) (model.Role, error) {
+    panic("panicRoleRepo: Create not expected in this test")
+}
+// ... one method per interface member, all panicking ...
+
+// Stub that only cares about FindByName:
+type stubFindByNameRepo struct {
+    panicRoleRepo
+    result model.Role
+    err    error
+}
+func (s stubFindByNameRepo) FindByName(ctx context.Context, name string) (model.Role, error) {
+    return s.result, s.err
+}
+```
+
+**Why:** any call to a method that was not intentionally overridden panics
+immediately, surfacing the unexpected call in the test output rather than silently
+returning a zero value that could mask a production logic bug. The panic message
+names the method, making the gap obvious without inspecting the stub.
+
+**How to apply:** define `panicXxx` once per interface in a `_test.go` file adjacent
+to the tests. Each scenario-level stub embeds it and overrides only the methods the
+scenario exercises. Do not share the base across packages — keep it local to the
+test file so the panic message stays readable.
+
+## Extract startup helpers to make branch coverage testable without a live server
+
+When `run()` or `main()` contains branching logic (e.g. "if `SUPER_USER_EMAILS`
+is set, build a promoter; otherwise build a no-op"), testing each branch requires
+standing up the full HTTP server unless the logic lives in a separate helper. A
+thin helper that accepts its external dependencies as parameters can be exercised
+with stub repos without starting any network listener.
+
+```go
+// bootstrapSuperUserPromoter returns a configured SuperUserPromoter or an
+// error. It is a standalone function so tests can inject stub dependencies.
+func bootstrapSuperUserPromoter(
+    ctx context.Context,
+    logger *slog.Logger,
+    authSvc authService,
+    roleRepo repository.RoleRepository,
+    emailsEnv string,
+) (*auth.SuperUserPromoter, error) { ... }
+```
+
+**Why:** inlining the branch in `run()` means every test of that branch must
+start the real Echo server and real DB client. The startup cost is high, the test
+is slow, and flaky network conditions can make coverage non-deterministic. A
+helper with injected deps turns five branches into five fast, deterministic unit
+tests.
+
+**How to apply:** when a startup function acquires a concrete dependency (DB pool,
+HTTP client, config value) and then branches on it, split the acquisition step
+from the branching step. Pass the already-acquired dep into the helper so the test
+can substitute a stub. Reference: `backend/cmd/server/main.go`
+`bootstrapSuperUserPromoter` (5 branches × stub-driven unit test).
+
+## Inline copy of production logic in tests is an anti-pattern
+
+A test that re-implements a branch from the code under test — e.g. an
+`if len(emails) > 0 { logger.Warn(...) }` block inside the test body — will stay
+green even after the production code is refactored away from that branch. The test
+is asserting its own copy of the logic, not the production path, so the two can
+diverge silently.
+
+**Why:** the test's "copy" and the production code are two independent sources of
+truth. When the production code changes, the test still matches its own copy and
+CI stays green. The regression ships.
+
+**How to apply:** the tipping point for a refactor is "can the test call the
+production helper directly instead of re-implementing it?" If yes, refactor: expose
+the helper (or extract it), pass stubs in, and assert on the helper's actual
+output. If the logic is truly untestable at the unit level without a live server,
+that is a signal to extract a helper first (see "Extract startup helpers" above).
+The `bootstrapSuperUserPromoter` extraction replaced inline test copies with direct
+calls that exercise real production code paths.
