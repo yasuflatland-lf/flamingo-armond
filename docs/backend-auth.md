@@ -147,7 +147,7 @@ This is the deliberate "you have no escape hatch" warning — the next signed-in
 
 ### Manual SQL fallback (post-`make db-reset`)
 
-`make db-reset` truncates `public.user_roles`, so any previously bootstrapped admin loses the role until they sign in again with a `SUPER_USER_EMAILS`-listed address. To re-promote without a fresh login round-trip:
+`make db-reset` re-runs all migrations and resets `public.user_roles` to empty, so any previously bootstrapped admin loses the role until the user makes their next authenticated request with a listed address (a page reload suffices — no new OAuth login is required). To re-promote without waiting for the next request:
 
 ```bash
 psql "$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')" <<'SQL'

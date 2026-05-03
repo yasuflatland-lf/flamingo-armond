@@ -1717,6 +1717,96 @@ func (f failingCountRepo) FindByID(_ context.Context, _ string) (*domain.Role, e
 func (f failingCountRepo) FindByName(_ context.Context, _ string) (*domain.Role, error) {
 	panic("not used in this test")
 }
+
+// findByNameRepo satisfies repository.RoleRepository with FindByName returning
+// a configurable (role, error) pair. CountAdminUsers panics to catch unexpected
+// calls — the non-empty-emails branch in bootstrapSuperUserPromoter never calls
+// CountAdminUsers, only FindByName.
+type findByNameRepo struct {
+	role *domain.Role
+	err  error
+}
+
+func (f findByNameRepo) FindByName(_ context.Context, _ string) (*domain.Role, error) {
+	return f.role, f.err
+}
+func (f findByNameRepo) CountAdminUsers(_ context.Context) (int64, error) {
+	panic("not used in this test")
+}
+func (f findByNameRepo) FindByID(_ context.Context, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (f findByNameRepo) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (f findByNameRepo) Create(_ context.Context, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (f findByNameRepo) Update(_ context.Context, _, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (f findByNameRepo) Delete(_ context.Context, _ string) error {
+	panic("not used in this test")
+}
+func (f findByNameRepo) AssignToUser(_ context.Context, _, _ string) error {
+	panic("not used in this test")
+}
+func (f findByNameRepo) RevokeFromUser(_ context.Context, _, _ string) error {
+	panic("not used in this test")
+}
+func (f findByNameRepo) ListByUser(_ context.Context, _ string) ([]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (f findByNameRepo) ListByUserIDs(_ context.Context, _ []string) (map[string][]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (f findByNameRepo) ListAll(_ context.Context) ([]*domain.Role, error) {
+	panic("not used in this test")
+}
+
+// existingAdminRepo satisfies repository.RoleRepository with CountAdminUsers
+// returning a fixed count. Used by deterministic tests for the Branch E path
+// (admin role-holders already exist → no WARN emitted).
+type existingAdminRepo struct {
+	count int64
+}
+
+func (e existingAdminRepo) CountAdminUsers(_ context.Context) (int64, error) {
+	return e.count, nil
+}
+func (e existingAdminRepo) FindByID(_ context.Context, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (e existingAdminRepo) FindByName(_ context.Context, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (e existingAdminRepo) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (e existingAdminRepo) Create(_ context.Context, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (e existingAdminRepo) Update(_ context.Context, _, _ string) (*domain.Role, error) {
+	panic("not used in this test")
+}
+func (e existingAdminRepo) Delete(_ context.Context, _ string) error {
+	panic("not used in this test")
+}
+func (e existingAdminRepo) AssignToUser(_ context.Context, _, _ string) error {
+	panic("not used in this test")
+}
+func (e existingAdminRepo) RevokeFromUser(_ context.Context, _, _ string) error {
+	panic("not used in this test")
+}
+func (e existingAdminRepo) ListByUser(_ context.Context, _ string) ([]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (e existingAdminRepo) ListByUserIDs(_ context.Context, _ []string) (map[string][]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (e existingAdminRepo) ListAll(_ context.Context) ([]*domain.Role, error) {
+	panic("not used in this test")
+}
 func (f failingCountRepo) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Role, error) {
 	panic("not used in this test")
 }
@@ -1902,5 +1992,136 @@ func TestBootstrapSuperUserPromoter_WarnOnCountError(t *testing.T) {
 		if rec["msg"] == wantNoEscapeMsg {
 			t.Errorf("unexpected log line %q: should only appear when count succeeds with 0", wantNoEscapeMsg)
 		}
+	}
+}
+
+// userRoleStub satisfies repository.UserRoleRepository. HasRole always returns
+// (false, nil) — sufficient for constructing auth.NewService in tests that only
+// need to verify promoter construction, not per-request role checks.
+type userRoleStub struct{}
+
+func (userRoleStub) HasRole(_ context.Context, _, _ string) (bool, error) {
+	return false, nil
+}
+
+// TestBootstrapSuperUserPromoter_FindByNameError covers Branch A: when
+// SUPER_USER_EMAILS is non-empty but the admin role lookup (FindByName) fails,
+// bootstrapSuperUserPromoter must propagate the error and return nil.
+func TestBootstrapSuperUserPromoter_FindByNameError(t *testing.T) {
+	ctx := t.Context()
+
+	roleErr := eris.New("repository: simulated FindByName failure")
+	stub := findByNameRepo{err: roleErr}
+
+	authSvc := auth.NewService(userRoleStub{})
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, stub, "you@example.com")
+
+	if err == nil {
+		t.Fatal("expected non-nil error when FindByName fails, got nil")
+	}
+	if !errors.Is(err, roleErr) {
+		t.Errorf("expected wrapped sentinel errors.Is(err, roleErr) to be true; err=%v", err)
+	}
+	if promoter != nil {
+		t.Errorf("expected nil promoter on error, got %v", promoter)
+	}
+
+	// No log output is expected for this fatal-error path.
+	records := decodeLogRecords(t, &buf)
+	for _, rec := range records {
+		if rec["level"] == "WARN" {
+			t.Errorf("unexpected WARN log on FindByName-error path: %v", rec)
+		}
+	}
+}
+
+// TestBootstrapSuperUserPromoter_NonEmptyEmailsHappyPath covers Branch B:
+// when SUPER_USER_EMAILS is non-empty and FindByName succeeds, the function
+// must return a non-nil active promoter and emit a single INFO log with
+// msg="super-user bootstrap enabled" and email_count matching the parsed set.
+func TestBootstrapSuperUserPromoter_NonEmptyEmailsHappyPath(t *testing.T) {
+	ctx := t.Context()
+
+	adminRole := &domain.Role{ID: "role-uuid-123", Name: "admin"}
+	stub := findByNameRepo{role: adminRole}
+
+	authSvc := auth.NewService(userRoleStub{})
+
+	// Capture all log output so we can assert INFO and absence of WARN.
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	const emailsEnv = "alice@example.com,bob@example.com"
+	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, stub, emailsEnv)
+
+	if err != nil {
+		t.Fatalf("bootstrapSuperUserPromoter returned unexpected error: %v", err)
+	}
+	if promoter == nil {
+		t.Fatal("expected non-nil promoter, got nil")
+	}
+
+	records := decodeLogRecords(t, &buf)
+
+	// Locate the INFO "super-user bootstrap enabled" record.
+	const wantMsg = "super-user bootstrap enabled"
+	var infoRec map[string]any
+	for _, rec := range records {
+		if rec["msg"] == wantMsg {
+			infoRec = rec
+			break
+		}
+	}
+	if infoRec == nil {
+		t.Fatalf("expected INFO log line %q not found in output: %s", wantMsg, buf.String())
+	}
+
+	if got, _ := infoRec["level"].(string); got != "INFO" {
+		t.Errorf("want level=INFO, got %q", got)
+	}
+
+	// ParseSuperUserSet("alice@example.com,bob@example.com") should produce 2 entries.
+	wantCount := float64(len(auth.ParseSuperUserSet(emailsEnv)))
+	if got, _ := infoRec["email_count"].(float64); got != wantCount {
+		t.Errorf("want email_count=%.0f, got %.0f", wantCount, got)
+	}
+
+	// No WARN log must appear on the happy path.
+	for _, rec := range records {
+		if rec["level"] == "WARN" {
+			t.Errorf("unexpected WARN log on happy path: %v", rec)
+		}
+	}
+}
+
+// TestBootstrapSuperUserPromoter_NoWarnWhenAdminExists covers Branch E:
+// when SUPER_USER_EMAILS is empty AND at least one admin role-holder already
+// exists, bootstrapSuperUserPromoter must return a pass-through promoter
+// without emitting any log lines.
+func TestBootstrapSuperUserPromoter_NoWarnWhenAdminExists(t *testing.T) {
+	ctx := t.Context()
+
+	// Stub returns count=1 (at least one admin already exists).
+	stub := existingAdminRepo{count: 1}
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	promoter, err := bootstrapSuperUserPromoter(ctx, logger, nil, stub, "")
+
+	if err != nil {
+		t.Fatalf("bootstrapSuperUserPromoter returned unexpected error: %v", err)
+	}
+	if promoter == nil {
+		t.Fatal("expected non-nil pass-through promoter, got nil")
+	}
+
+	records := decodeLogRecords(t, &buf)
+	if len(records) != 0 {
+		t.Errorf("expected no log output when admin already exists, got: %s", buf.String())
 	}
 }
