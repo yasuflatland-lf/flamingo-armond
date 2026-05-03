@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { expect, test } from "@playwright/test";
+import { devices, expect, test } from "@playwright/test";
 import { loginAs, seedUser } from "./_auth";
 
 // Scenario: a brand-new user (zero cardgroups, no last_viewed) is funnelled
@@ -17,6 +17,13 @@ const UUID_RE = /^[0-9a-f-]{36}$/;
 
 test.describe
   .serial("new user onboarding", () => {
+    // The global FAB is intentionally hidden at >= md (`md:hidden` in
+    // GlobalFAB) because desktop users get the same affordance via the
+    // header "Add card" link. This scenario is specifically the FAB path,
+    // so override the project default Desktop Chrome viewport with a
+    // mobile device for this describe block only.
+    test.use({ ...devices["iPhone 14"] });
+
     test.beforeAll(async () => {
       // Seed only the auth user + role; deliberately NO cardgroup so the home
       // RSC routes to /cardgroups/new?welcome=1 on first login.
