@@ -50,6 +50,15 @@ vi.mock("./header-add-card-link", () => ({
   ),
 }));
 
+// HeaderSignInLink is "use client" and uses usePathname for the same reason.
+vi.mock("./header-sign-in-link", () => ({
+  HeaderSignInLink: ({ className }: { className?: string }) => (
+    <a href="/login" className={className} data-testid="header-sign-in-link">
+      Sign in
+    </a>
+  ),
+}));
+
 // AdminPill default export
 vi.mock("./admin-pill", () => ({
   default: () => (

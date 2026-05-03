@@ -8,6 +8,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import AdminPill from "./admin-pill";
 import { HamburgerDrawer } from "./hamburger-drawer";
 import { HeaderAddCardLink } from "./header-add-card-link";
+import { HeaderSignInLink } from "./header-sign-in-link";
 
 export async function GlobalHeader() {
   const supabase = await createSupabaseServerClient();
@@ -66,11 +67,7 @@ export async function GlobalHeader() {
       )}
 
       {/* Mobile: sign-in link when anonymous */}
-      {!user && (
-        <Link href="/login" className="text-sm underline md:hidden">
-          Sign in
-        </Link>
-      )}
+      {!user && <HeaderSignInLink className="text-sm underline md:hidden" />}
 
       {/* ── Desktop layout (≥ md) ─────────────────────────────────── */}
       <div className="hidden md:flex md:items-center md:gap-4 md:w-full">
@@ -105,9 +102,7 @@ export async function GlobalHeader() {
           </>
         ) : (
           <div className="ml-auto">
-            <Link href="/login" className="text-sm underline">
-              Sign in
-            </Link>
+            <HeaderSignInLink className="text-sm underline" />
           </div>
         )}
       </div>
