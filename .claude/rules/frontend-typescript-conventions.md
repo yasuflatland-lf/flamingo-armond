@@ -103,3 +103,75 @@ onSubmit: async ({ value }) => {
 **Why:** `_handleSubmit` gates `formState.isSubmitSuccessful` on whether `onSubmit` resolves or rejects. A swallowed rejection makes the form believe the submission succeeded, which can unblock navigation, clear state, or show a success banner while the mutation actually failed.
 
 **How to apply:** every `useForm.onSubmit` that calls an external `submit` prop must re-throw after the catch/log. The re-throw is forward-safe even when the current caller wraps `submit` in its own `try/catch` — the rejection does not bubble past that boundary today. This rule pairs with the `.catch()` rule above; they must land together. Reference: `frontend/src/components/cardgroups/card-form.tsx`.
+
+## Discriminated union over flat DTO when consumers must branch on the variant
+
+A factory whose output has semantically distinct shapes — e.g. "navigate to a cardgroup form", "navigate to a card form with a pre-selected cardgroup id", "navigate to a generic card form" — has two encodings available: (a) a flat DTO with a string `href` plus runtime introspection (`href.startsWith("/cards/new")`), or (b) a discriminated union with a `kind` tag. The flat DTO erases an invariant the factory already knows; the union preserves it.
+
+```ts
+// frontend/src/components/nav/fab-action.ts
+export type FabAction =
+  | { kind: "cardgroup"; href: "/cardgroups/new"; label: "Add new cardgroup" }
+  | { kind: "card-with-group"; href: string; label: "Add new card"; cardgroupId: string }
+  | { kind: "card"; href: "/cards/new"; label: "Add new card" };
+```
+
+**Why:** runtime-introspection (`startsWith`, `includes`, regex on the `href`) rots silently as new variants are added. A future `/cards/new/bulk` action would be silently picked up by `href.startsWith("/cards/new")` and routed through the wrong branch with no compile-time warning. The discriminant check forces every branching consumer to acknowledge the new variant during code review (see also "Positive allowlist over negative exclusion" below).
+
+**How to apply:** when a factory returns one of N semantically distinct shapes AND any consumer needs to branch on which shape was returned, model the output as `{ kind: "..." } & ...` and let consumers narrow on `kind`. Use literal-type fields (`href: "/cardgroups/new"`) where the value is an invariant of the variant — the type system will reject any factory branch that produces a different string. Reference: `frontend/src/components/nav/fab-action.ts` (`FabAction`) consumed by `frontend/src/components/nav/global-fab.tsx` and `frontend/src/components/nav/header-add-card-link.tsx`. This rule generalises the route-handler-specific § "Discriminated-union response shape" in `docs/frontend.md`.
+
+## Positive allowlist over negative exclusion in discriminated-union narrowing
+
+Given a discriminated union with `kind` tags, two narrowing styles are syntactically valid but semantically opposite:
+
+```tsx
+// AVOID: open-ended — every future variant silently passes through.
+const href = action !== null && action.kind !== "cardgroup" ? action.href : "/cards/new";
+
+// PREFER: closed — every future variant must be explicitly added or falls to the default.
+// frontend/src/components/nav/header-add-card-link.tsx
+const href =
+  action !== null && (action.kind === "card-with-group" || action.kind === "card")
+    ? action.href
+    : "/cards/new";
+```
+
+**Why:** extension-by-default is rarely what consumer code intends. A new variant added to the union (e.g. a future `kind: "bulk-card"`) silently slips through the negative-exclusion form because `action.kind !== "cardgroup"` is true for the new variant too. The positive-allowlist form forces the addition to surface as a compile decision: either the new variant belongs in this consumer's allow list (add it) or it does not (the default branch handles it). This is the consumer-side mirror of the type-design analyzer's exhaustiveness pattern.
+
+**How to apply:** any consumer that branches on a discriminated union's `kind` should enumerate the variants it actually wants — never the variants it does not want. The single exception is when the consumer is the type-system-enforced exhaustive switch (e.g. a `never`-defaulted `switch (action.kind)`); there, every variant is named and the compiler enforces totality. Reference: `frontend/src/components/nav/header-add-card-link.tsx` after a review finding that `action.kind !== "cardgroup"` allowed any future variant to be silently treated as a card-form destination.
+
+## `as string` cast on regex captures under `noUncheckedIndexedAccess`
+
+The frontend tsconfig enables `noUncheckedIndexedAccess`, which widens `RegExpExecArray[number]` to `string | undefined`. For a capture group the regex makes mandatory (i.e. the regex cannot match without producing that capture), the soundest pattern is `const id = match[1] as string;` paired with a comment naming the invariant the cast relies on:
+
+```ts
+// frontend/src/components/nav/fab-action.ts
+const cardsMatch = CARDGROUP_CARDS_RE.exec(pathname);
+if (cardsMatch) {
+  // cardsMatch[1] is always defined when the regex matched (capture group 1 is required)
+  const id = cardsMatch[1] as string;
+  return { kind: "card-with-group", href: `/cards/new?cardgroup=${id}`, /* ... */ };
+}
+```
+
+Avoid `String(match[1] ?? "")` — that turns `undefined` into the literal string `"undefined"`, which silently corrupts downstream URLs. Avoid the bare non-null assertion `match[1]!` because it offers no docstring anchor for the invariant: a future contributor reading `match[1]!` cannot tell whether the assertion is sound or a leftover from a refactor.
+
+**Why:** `noUncheckedIndexedAccess` is a project-wide flag that future contributors may not be aware of. Without the comment, the `as string` cast looks superfluous and is a candidate for "cleanup" by anyone reading the code in isolation. The comment names the invariant (capture group N is required by this regex) so the cast survives review.
+
+**How to apply:** for every regex-capture access where the capture is required by the regex, use `as string` with a one-line comment naming the required capture group. The comment is load-bearing — do not delete it during refactoring. The same pattern applies to other `noUncheckedIndexedAccess`-affected accesses (e.g. `Object.keys(o)[0]`); the rule is "explain the invariant, not just satisfy the compiler." Reference: `frontend/src/components/nav/fab-action.ts` (`cardsMatch[1] as string`, `detailMatch[1] as string`).
+
+## Cross-module constant references in test descriptions are silent-rot coupling
+
+A test description that names a sibling module's constant by its identifier — e.g. `"shadowed by HIDDEN_PATH_RE in global-fab.tsx"` — couples the test to that constant's exact name. A rename of the constant (or its replacement by a different mechanism, e.g. a `Set` lookup or a different regex name) leaves the test description misleading with no compile-time signal. Prefer module-relative wording that names the responsibility, not the symbol:
+
+```ts
+// AVOID: rots the moment the constant is renamed.
+describe("is shadowed externally by HIDDEN_PATH_RE in global-fab.tsx", () => { ... });
+
+// PREFER: frontend/src/components/nav/fab-action.test.ts
+describe("is shadowed externally by GlobalFAB's hidden-path guard for /cardgroups/new", () => { ... });
+```
+
+**Why:** linters do not check English prose. A `grep` for the renamed constant will not find the stale test description; reviewers checking the test diff against the production diff will not flag a description that still reads naturally. The misalignment is invisible until a future reader is confused enough to investigate.
+
+**How to apply:** when a test description must reference a sibling module's behaviour, name the **module's responsibility** (e.g. "GlobalFAB's hidden-path guard") rather than the **constant's identifier** (e.g. `HIDDEN_PATH_RE`). The same rule extends to source comments that justify a piece of code by referencing a sibling module. Reference: `frontend/src/components/nav/fab-action.test.ts` and `frontend/src/components/nav/header-add-card-link.test.tsx` after a review finding that referring to `HIDDEN_PATH_RE` by name in test prose would rot the moment the constant was replaced.
