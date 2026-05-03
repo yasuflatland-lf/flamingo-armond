@@ -103,7 +103,10 @@ export default function CardsNewClient({
       setLastAddedName(currentName);
       setSuccessKey(Date.now());
     } catch (err) {
-      console.error("[cards-new-client] create card rejection", err);
+      console.error("[cards-new-client] create card rejection", {
+        message: err instanceof Error ? err.message : String(err),
+        err,
+      });
     }
   }
 
