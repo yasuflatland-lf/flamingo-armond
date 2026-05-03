@@ -42,7 +42,12 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     data: { user },
     error: authErr,
   } = await supabase.auth.getUser();
-  if (authErr) throw authErr;
+  // AuthSessionMissingError is the "no session" signal — fall through to the
+  // !user redirect below. Any other auth error is a real failure.
+  if (authErr && authErr.name !== "AuthSessionMissingError") {
+    console.error("[admin] getUser() failed:", authErr.name, authErr.message);
+    throw authErr;
+  }
   if (!user) redirect("/");
 
   // Step 2: admin-role check via GraphQL. UNAUTHENTICATED can still happen

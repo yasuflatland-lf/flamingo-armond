@@ -398,6 +398,16 @@ describe("<CardsNewClient> — stay-on-page consecutive add", () => {
     expect((screen.getByLabelText(/back/i) as HTMLInputElement).value).toBe("Hola");
     // No success indicator.
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[cards-new-client] create card rejection",
+        expect.objectContaining({
+          message: expect.any(String),
+          err: expect.anything(),
+        }),
+      );
+    });
   });
 
   it('renders a "Done" link to /cardgroups/<currentId>/cards when currentId is set', () => {
@@ -459,5 +469,26 @@ describe("<CardsNewClient> — CardgroupPickerSheet prop wiring", () => {
 
     expect(capturedPickerProps).not.toBeNull();
     expect(capturedPickerProps?.createReturnTo).toBe("/cards/new");
+  });
+
+  it("onSelect calls router.replace with the new cardgroup path and scroll:false", () => {
+    renderClient({ initialCardgroupId: CG_ID, forcePickerOpen: false });
+
+    expect(capturedPickerProps).not.toBeNull();
+    capturedPickerProps!.onSelect("cg-2");
+
+    expect(mockReplace).toHaveBeenCalledWith("/cards/new?cardgroup=cg-2", { scroll: false });
+  });
+
+  it("passes open=true to CardgroupPickerSheet when forcePickerOpen is true", () => {
+    renderClient({ initialCardgroupId: null, forcePickerOpen: true });
+
+    expect(capturedPickerProps?.open).toBe(true);
+  });
+
+  it("passes open=false to CardgroupPickerSheet when forcePickerOpen is false", () => {
+    renderClient({ initialCardgroupId: CG_ID, forcePickerOpen: false });
+
+    expect(capturedPickerProps?.open).toBe(false);
   });
 });
