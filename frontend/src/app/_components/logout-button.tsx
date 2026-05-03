@@ -14,6 +14,11 @@ export function LogoutButton() {
       console.error("[logout] signOut failed:", error.message);
       return;
     }
+    // Navigate to /login first so the layout re-renders for that URL — the
+    // HeaderSignInLink suppresses itself on /login, avoiding the brief
+    // "Sign in" flash that occurs when refresh() re-renders the protected
+    // page's anonymous header before its server-side redirect kicks in.
+    router.replace("/login");
     router.refresh();
   }
 

@@ -1,4 +1,4 @@
-import { BookOpen, Plus } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import Link from "next/link";
 import { LogoutButton } from "@/app/_components/logout-button";
 import { HeaderMeQuery } from "@/app/_components/queries";
@@ -7,6 +7,8 @@ import { gqlFetch } from "@/lib/apollo/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import AdminPill from "./admin-pill";
 import { HamburgerDrawer } from "./hamburger-drawer";
+import { HeaderAddCardLink } from "./header-add-card-link";
+import { HeaderSignInLink } from "./header-sign-in-link";
 
 export async function GlobalHeader() {
   const supabase = await createSupabaseServerClient();
@@ -65,11 +67,7 @@ export async function GlobalHeader() {
       )}
 
       {/* Mobile: sign-in link when anonymous */}
-      {!user && (
-        <Link href="/login" className="text-sm underline md:hidden">
-          Sign in
-        </Link>
-      )}
+      {!user && <HeaderSignInLink className="text-sm underline md:hidden" />}
 
       {/* ── Desktop layout (≥ md) ─────────────────────────────────── */}
       <div className="hidden md:flex md:items-center md:gap-4 md:w-full">
@@ -88,13 +86,7 @@ export async function GlobalHeader() {
                 Cardgroups
               </Link>
 
-              <Link
-                href="/cards/new"
-                className="flex items-center gap-1.5 rounded-md bg-brand-primary px-3 py-1.5 text-sm font-medium text-brand-primary-foreground hover:opacity-90 transition-opacity"
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                Card
-              </Link>
+              <HeaderAddCardLink />
             </nav>
 
             <div className="flex items-center gap-3 text-sm ml-auto">
@@ -110,9 +102,7 @@ export async function GlobalHeader() {
           </>
         ) : (
           <div className="ml-auto">
-            <Link href="/login" className="text-sm underline">
-              Sign in
-            </Link>
+            <HeaderSignInLink className="text-sm underline" />
           </div>
         )}
       </div>

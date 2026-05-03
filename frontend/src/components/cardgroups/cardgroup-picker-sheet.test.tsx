@@ -73,12 +73,14 @@ type SheetProps = {
   open?: boolean;
   selectedId?: string | null;
   mocks?: MockedResponse[];
+  createReturnTo?: string;
 };
 
 function renderSheet({
   open = true,
   selectedId = null,
   mocks = baseMocks([CG_1, CG_2]),
+  createReturnTo = "/cards/new",
 }: SheetProps = {}) {
   const onOpenChange = vi.fn();
   const onSelect = vi.fn();
@@ -90,6 +92,7 @@ function renderSheet({
         onOpenChange={onOpenChange}
         selectedId={selectedId}
         onSelect={onSelect}
+        createReturnTo={createReturnTo}
       />
     </MockedProvider>,
   );
@@ -156,6 +159,85 @@ describe("<CardgroupPickerSheet>", () => {
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
   });
 
+  // S12: clicking Retry triggers a refetch — error UI replaced by loaded list.
+  it("clicking Retry triggers a refetch and shows the cardgroup list on success", async () => {
+    const user = userEvent.setup();
+
+    // Two mock entries for the same query: first errors, second succeeds.
+    // MockedProvider consumes entries in order; the refetch consumes the second.
+    const retryMocks: MockedResponse[] = [
+      {
+        request: { query: MyCardgroupsDocument },
+        error: new Error("network failure"),
+      },
+      {
+        request: { query: MyCardgroupsDocument },
+        result: { data: { myCardgroups: [CG_1, CG_2] } },
+      },
+    ];
+
+    renderSheet({ mocks: retryMocks });
+
+    // Wait for the error state to appear.
+    expect(await screen.findByText(/failed to load cardgroups/i)).toBeInTheDocument();
+
+    const retryButton = screen.getByRole("button", { name: /retry/i });
+
+    // Click Retry — this fires refetch(), consuming the second mock.
+    await user.click(retryButton);
+
+    // After the refetch resolves, the cardgroup list must be rendered.
+    expect(await screen.findByText("Spanish Vocab")).toBeInTheDocument();
+    expect(screen.getByText("Japanese Kanji")).toBeInTheDocument();
+  });
+
+  // S13: Retry that fails again warns once — rejection is caught and logged.
+  it("S13: Retry that fails again warns once", async () => {
+    const user = userEvent.setup();
+
+    // Two mock entries that both error: initial load fails, refetch also fails.
+    const doubleErrorMocks: MockedResponse[] = [
+      {
+        request: { query: MyCardgroupsDocument },
+        error: new Error("network failure"),
+      },
+      {
+        request: { query: MyCardgroupsDocument },
+        error: new Error("still down"),
+      },
+    ];
+
+    // Outer spy layered AFTER the leak spy (LIFO restore: outer first, then leak).
+    // No mockImplementation — calls flow through to the leak spy.
+    const consoleWarnSpy = vi.spyOn(console, "warn");
+
+    try {
+      renderSheet({ mocks: doubleErrorMocks });
+
+      // Wait for the initial error state.
+      expect(await screen.findByText(/failed to load cardgroups/i)).toBeInTheDocument();
+
+      // Click Retry — refetch fires and also errors.
+      await user.click(screen.getByRole("button", { name: /retry/i }));
+
+      // The .catch handler must have logged a warn with our scope tag.
+      await waitFor(() => {
+        expect(consoleWarnSpy).toHaveBeenCalledWith(
+          "[cardgroup-picker-sheet] refetch failed",
+          expect.objectContaining({
+            message: expect.any(String),
+          }),
+        );
+      });
+
+      // Error UI is still visible after the second failure.
+      expect(screen.getByText(/failed to load cardgroups/i)).toBeInTheDocument();
+    } finally {
+      // Restore outer spy first (LIFO), then leak spy teardown happens in afterEach.
+      consoleWarnSpy.mockRestore();
+    }
+  });
+
   // S4: success state renders the list of cardgroup names.
   it("renders all cardgroup names on successful load", async () => {
     renderSheet({ mocks: baseMocks([CG_1, CG_2, CG_3]) });
@@ -195,14 +277,14 @@ describe("<CardgroupPickerSheet>", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  // S7: empty state — no cardgroups shows empty message and a link to /cardgroups/new.
-  it("shows empty-state copy and a link to /cardgroups/new when myCardgroups is empty", async () => {
+  // S7: empty state — no cardgroups shows friendly text; the standalone CTA is gone.
+  it("shows empty-state copy and the inline create link when myCardgroups is empty", async () => {
     renderSheet({ mocks: baseMocks([]) });
 
     expect(await screen.findByText(/don't have any cardgroups yet/i)).toBeInTheDocument();
 
-    const link = screen.getByRole("link", { name: /create cardgroup/i });
-    expect(link).toHaveAttribute("href", "/cardgroups/new");
+    // The inline "Create new cardgroup…" link must also be present.
+    expect(screen.getByRole("link", { name: /create new cardgroup/i })).toBeInTheDocument();
   });
 
   // S8: sheet title is rendered (accessibility sanity check for aria-labelledby).
@@ -213,5 +295,41 @@ describe("<CardgroupPickerSheet>", () => {
     await waitFor(() => {
       expect(screen.getByText("Select cardgroup")).toBeInTheDocument();
     });
+  });
+
+  // S9: "Create new cardgroup…" link is present even when there are existing cardgroups.
+  it("shows the inline create link when myCardgroups is non-empty", async () => {
+    renderSheet({ mocks: baseMocks([CG_1, CG_2]) });
+
+    await screen.findByText("Spanish Vocab");
+
+    expect(screen.getByRole("link", { name: /create new cardgroup/i })).toBeInTheDocument();
+  });
+
+  // S10: the inline create link's href encodes createReturnTo as the returnTo query parameter.
+  it("builds the create link href with the encoded createReturnTo value", async () => {
+    renderSheet({ mocks: baseMocks([CG_1]), createReturnTo: "/cards/new" });
+
+    await screen.findByText("Spanish Vocab");
+
+    const link = screen.getByRole("link", { name: /create new cardgroup/i });
+    expect(link).toHaveAttribute(
+      "href",
+      `/cardgroups/new?returnTo=${encodeURIComponent("/cards/new")}`,
+    );
+    // Explicit suffix check per spec: createReturnTo="/cards/new" → %2Fcards%2Fnew
+    expect(link.getAttribute("href")).toContain("%2Fcards%2Fnew");
+  });
+
+  // S11: clicking the inline create link calls onOpenChange(false).
+  it("calls onOpenChange(false) when the inline create link is clicked", async () => {
+    const user = userEvent.setup();
+    const { onOpenChange } = renderSheet({ mocks: baseMocks([CG_1]) });
+
+    await screen.findByText("Spanish Vocab");
+
+    await user.click(screen.getByRole("link", { name: /create new cardgroup/i }));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

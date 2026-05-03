@@ -16,13 +16,15 @@ export function GlobalFAB() {
   }
 
   return (
-    <button
-      type="button"
-      aria-label="Add new card"
-      onClick={() => router.push("/cards/new")}
-      className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-brand-primary text-brand-primary-foreground shadow-lg"
-    >
-      <Plus className="h-6 w-6" aria-hidden="true" />
-    </button>
+    <div className="md:hidden">
+      <button
+        type="button"
+        aria-label="Add new card"
+        onClick={() => router.push("/cards/new")}
+        className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-brand-primary text-brand-primary-foreground shadow-lg"
+      >
+        <Plus className="h-6 w-6" aria-hidden="true" />
+      </button>
+    </div>
   );
 }

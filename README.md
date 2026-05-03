@@ -2,14 +2,24 @@
 
 [![backend CI](https://github.com/yasuflatland-lf/flamingo-armond/actions/workflows/backend.yml/badge.svg?branch=main)](https://github.com/yasuflatland-lf/flamingo-armond/actions/workflows/backend.yml)
 [![frontend CI](https://github.com/yasuflatland-lf/flamingo-armond/actions/workflows/frontend.yml/badge.svg?branch=main)](https://github.com/yasuflatland-lf/flamingo-armond/actions/workflows/frontend.yml)
-[![codecov backend](https://img.shields.io/codecov/c/github/yasuflatland-lf/flamingo-armond/main?flag=backend&label=backend&logo=codecov&logoColor=white)](https://codecov.io/gh/yasuflatland-lf/flamingo-armond)
-[![codecov frontend](https://img.shields.io/codecov/c/github/yasuflatland-lf/flamingo-armond/main?flag=frontend&label=frontend&logo=codecov&logoColor=white)](https://codecov.io/gh/yasuflatland-lf/flamingo-armond)
+[![codecov backend](https://codecov.io/gh/yasuflatland-lf/flamingo-armond/branch/main/graph/badge.svg?flag=backend)](https://codecov.io/gh/yasuflatland-lf/flamingo-armond)
+[![codecov frontend](https://codecov.io/gh/yasuflatland-lf/flamingo-armond/branch/main/graph/badge.svg?flag=frontend)](https://codecov.io/gh/yasuflatland-lf/flamingo-armond)
 
 🦩 Swiping Flashcard app — a Go (Echo) backend, a Next.js 16 frontend, and a shared GraphQL schema, with Supabase for Postgres + Auth.
 
 ## Architecture
 
 ![Production architecture](docs/images/architecture.png)
+
+## Pre-conditions
+
+Production deployment uses three external services. Create accounts before running `make setup-prod` — free tiers cover everything this repo provisions:
+
+- **Supabase** — managed Postgres + Auth: https://supabase.com
+- **Render** — hosts the Go backend: https://render.com
+- **Vercel** — hosts the Next.js frontend: https://vercel.com
+
+Local development does not require any of these — `make setup` boots a local Supabase via Docker. Provider tokens and the env-var matrix live in `docs/deployment.md`.
 
 ## Quick Start
 

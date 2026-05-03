@@ -70,4 +70,11 @@ describe("<GlobalFAB>", () => {
 
     expect(router.push).toHaveBeenCalledWith("/cards/new");
   });
+
+  it("wraps the button in an md:hidden container so the FAB is hidden at >= md breakpoint", () => {
+    vi.mocked(usePathname).mockReturnValue("/cardgroups");
+    render(<GlobalFAB />);
+    const button = screen.getByRole("button", { name: /add new card/i });
+    expect(button.parentElement).toHaveClass("md:hidden");
+  });
 });

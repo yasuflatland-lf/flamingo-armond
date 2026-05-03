@@ -9,9 +9,11 @@ import { MyCardgroupsDocument } from "@/generated/graphql";
 
 interface NewCardgroupClientProps {
   showWelcome?: boolean;
+  /** Sanitized internal path to return to after creation, or null for the default redirect. */
+  returnTo: string | null;
 }
 
-export function NewCardgroupClient({ showWelcome = false }: NewCardgroupClientProps) {
+export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgroupClientProps) {
   const router = useRouter();
 
   const [createCardgroup, { loading, error }] = useMutation(CreateCardgroupMutation, {
@@ -26,9 +28,15 @@ export function NewCardgroupClient({ showWelcome = false }: NewCardgroupClientPr
       });
     },
     onCompleted(data) {
-      if (!data?.createCardgroup?.cardgroup?.id) return;
-      router.push(`/cardgroups/${data.createCardgroup.cardgroup.id}`);
-      router.refresh();
+      const created = data?.createCardgroup?.cardgroup;
+      if (!created?.id) return;
+      if (returnTo) {
+        const sep = returnTo.includes("?") ? "&" : "?";
+        router.push(`${returnTo}${sep}cardgroup=${created.id}`);
+      } else {
+        router.push(`/cardgroups/${created.id}`);
+        router.refresh();
+      }
     },
   });
 
@@ -36,7 +44,10 @@ export function NewCardgroupClient({ showWelcome = false }: NewCardgroupClientPr
     await createCardgroup({
       variables: { input: { name: values.name } },
     }).catch((err) => {
-      console.error("[NewCardgroupClient] mutation rejection", err);
+      console.error("[cardgroups-new] mutation rejection", {
+        message: err instanceof Error ? err.message : String(err),
+        err,
+      });
     });
   }
 

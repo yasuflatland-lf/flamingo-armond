@@ -3,7 +3,7 @@
 // cardgroupId injection happens in the parent's submit callback, not inside this component.
 
 import { useForm } from "@tanstack/react-form";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +23,13 @@ export type CardFormProps = {
   submitting?: boolean;
   error?: unknown;
   onCancel?: () => void;
+  /**
+   * Optional callback invoked once after mount with a function the parent can
+   * call to reset the form to empty values. Used by stay-on-page consecutive-add
+   * flows (e.g. /cards/new) where the parent owns "submit succeeded → clear inputs"
+   * and never unmounts the form between submissions.
+   */
+  onResetReady?: (resetFn: () => void) => void;
 };
 
 export function CardForm({
@@ -34,6 +41,7 @@ export function CardForm({
   submitting = false,
   error,
   onCancel,
+  onResetReady,
 }: CardFormProps) {
   const resolvedLabel = submitLabel ?? (mode === "create" ? "Add" : "Save");
   const schema = mode === "create" ? newCardSchema.omit({ cardgroupId: true }) : updateCardSchema;
@@ -51,6 +59,13 @@ export function CardForm({
       });
     },
   });
+
+  // Hand the parent a stable resetter so it can clear the form after a successful
+  // submit without unmounting. The dependency on `onResetReady` keeps the wiring
+  // up to date if the parent ever swaps callback identity.
+  useEffect(() => {
+    onResetReady?.(() => form.reset({ front: "", back: "" }));
+  }, [form, onResetReady]);
 
   return (
     <form
@@ -106,7 +121,7 @@ export function CardForm({
       </form.Field>
 
       <div className="flex items-center gap-2">
-        <Button type="submit" disabled={submitting}>
+        <Button type="submit" variant="brand" disabled={submitting}>
           {submitting ? "Saving..." : resolvedLabel}
         </Button>
         {onCancel && (

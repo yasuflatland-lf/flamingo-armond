@@ -17,6 +17,16 @@ const UUID_RE = /^[0-9a-f-]{36}$/;
 
 test.describe
   .serial("new user onboarding", () => {
+    // The global FAB is intentionally hidden at >= md (`md:hidden` in
+    // GlobalFAB) because desktop users get the same affordance via the
+    // header "Add card" link. This scenario is specifically the FAB path,
+    // so shrink the viewport below the md breakpoint (768px). We only
+    // override viewport here — spreading a full devices[...] descriptor
+    // includes defaultBrowserType, which Playwright forbids inside a
+    // describe group ("forces a new worker") and would also require a
+    // matching project entry, neither of which we want here.
+    test.use({ viewport: { width: 390, height: 844 } });
+
     test.beforeAll(async () => {
       // Seed only the auth user + role; deliberately NO cardgroup so the home
       // RSC routes to /cardgroups/new?welcome=1 on first login.

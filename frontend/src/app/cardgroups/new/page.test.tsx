@@ -6,15 +6,21 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CreateCardgroupDocument, MyCardgroupsDocument } from "@/generated/graphql";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { NewCardgroupClient } from "./new-cardgroup-client";
+import NewCardgroupPage, { sanitizeReturnTo } from "./page";
 
 // Stub next/navigation so the client component can render outside Next.js.
 const mockPush = vi.fn();
 const mockRefresh = vi.fn();
+const mockRedirect = vi.fn((path: string) => {
+  throw new Error(`REDIRECT:${path}`);
+});
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
+  redirect: (path: string) => mockRedirect(path),
 }));
 
 // Stub next/link so it renders an anchor without Next.js router context.
@@ -23,6 +29,19 @@ vi.mock("next/link", () => ({
     <a href={href} {...rest}>
       {children}
     </a>
+  ),
+}));
+
+// Stub the Supabase server client — required because page.tsx imports it at
+// module-evaluation time (the import itself triggers the module graph).
+// Using vi.fn() so individual tests can override with mockResolvedValueOnce.
+vi.mock("@/lib/supabase/server", () => ({
+  createSupabaseServerClient: vi.fn(() =>
+    Promise.resolve({
+      auth: {
+        getUser: () => Promise.resolve({ data: { user: { id: "u-1" } }, error: null }),
+      },
+    }),
   ),
 }));
 
@@ -57,11 +76,12 @@ function renderPage(
   mocks: MockedResponse[] = [],
   errorPolicy?: "all" | "none" | "ignore",
   cache?: InMemoryCache,
+  returnTo: string | null = null,
 ) {
   const defaultOptions = errorPolicy ? { mutate: { errorPolicy } } : undefined;
   render(
     <MockedProvider mocks={mocks} defaultOptions={defaultOptions} cache={cache}>
-      <NewCardgroupClient />
+      <NewCardgroupClient returnTo={returnTo} />
     </MockedProvider>,
   );
 }
@@ -199,5 +219,143 @@ describe("<NewCardgroupPage> (client)", () => {
       expect(screen.getByText("Your session expired. Please sign in again.")).toBeInTheDocument();
     });
     expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
+  it("on success with returnTo navigates to returnTo?cardgroup=<id> and does not refresh", async () => {
+    const user = userEvent.setup();
+    mockPush.mockClear();
+    mockRefresh.mockClear();
+
+    renderPage([makeCreateMock("My New Group")], undefined, undefined, "/cards/new");
+
+    await user.type(screen.getByRole("textbox"), "My New Group");
+    await user.click(screen.getByRole("button", { name: /create/i }));
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith(`/cards/new?cardgroup=${CREATED_CARDGROUP.id}`);
+    });
+    expect(mockRefresh).not.toHaveBeenCalled();
+  });
+
+  it("on success with returnTo containing query string uses & separator", async () => {
+    const user = userEvent.setup();
+    mockPush.mockClear();
+
+    renderPage([makeCreateMock("My New Group")], undefined, undefined, "/foo?bar=1");
+
+    await user.type(screen.getByRole("textbox"), "My New Group");
+    await user.click(screen.getByRole("button", { name: /create/i }));
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith(`/foo?bar=1&cardgroup=${CREATED_CARDGROUP.id}`);
+    });
+  });
+
+  it("on success with null returnTo falls back to /cardgroups/<id>", async () => {
+    const user = userEvent.setup();
+    mockPush.mockClear();
+
+    renderPage([makeCreateMock("My New Group")], undefined, undefined, null);
+
+    await user.type(screen.getByRole("textbox"), "My New Group");
+    await user.click(screen.getByRole("button", { name: /create/i }));
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith(`/cardgroups/${CREATED_CARDGROUP.id}`);
+    });
+  });
+});
+
+describe("authentication boundary", () => {
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockRedirect.mockClear();
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("redirects to /login when getUser returns no user (AuthSessionMissingError)", async () => {
+    vi.mocked(createSupabaseServerClient).mockResolvedValueOnce({
+      auth: {
+        getUser: () =>
+          Promise.resolve({
+            data: { user: null },
+            error: { name: "AuthSessionMissingError", message: "Auth session missing!" },
+          }),
+      },
+    } as Awaited<ReturnType<typeof createSupabaseServerClient>>);
+
+    await expect(NewCardgroupPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
+      "REDIRECT:/login",
+    );
+
+    expect(mockRedirect).toHaveBeenCalledWith("/login");
+  });
+
+  it("console.errors and rethrows on a non-AuthSessionMissingError getUser failure", async () => {
+    vi.mocked(createSupabaseServerClient).mockResolvedValueOnce({
+      auth: {
+        getUser: () =>
+          Promise.resolve({
+            data: { user: null },
+            error: { name: "SomeOtherError", message: "boom" },
+          }),
+      },
+    } as Awaited<ReturnType<typeof createSupabaseServerClient>>);
+
+    await expect(NewCardgroupPage({ searchParams: Promise.resolve({}) })).rejects.toMatchObject({
+      name: "SomeOtherError",
+      message: "boom",
+    });
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[cardgroups-new] getUser() failed:",
+      "SomeOtherError",
+      "boom",
+    );
+  });
+});
+
+describe("sanitizeReturnTo", () => {
+  it("allows internal paths starting with /", () => {
+    expect(sanitizeReturnTo("/cards/new")).toBe("/cards/new");
+  });
+
+  it("allows internal paths with query string", () => {
+    expect(sanitizeReturnTo("/cards/new?foo=1")).toBe("/cards/new?foo=1");
+  });
+
+  it("rejects protocol-relative URLs starting with //", () => {
+    expect(sanitizeReturnTo("//evil.com")).toBeNull();
+  });
+
+  it("rejects https:// URLs", () => {
+    expect(sanitizeReturnTo("https://evil.com")).toBeNull();
+  });
+
+  it("rejects bare hostnames without leading slash", () => {
+    expect(sanitizeReturnTo("evil.com")).toBeNull();
+  });
+
+  it("rejects undefined", () => {
+    expect(sanitizeReturnTo(undefined)).toBeNull();
+  });
+
+  it("rejects empty string", () => {
+    expect(sanitizeReturnTo("")).toBeNull();
+  });
+
+  it("rejects backslash-bypass /\\evil.com", () => {
+    expect(sanitizeReturnTo("/\\evil.com")).toBeNull();
+  });
+
+  it("rejects backslash-bypass /\\\\evil.com", () => {
+    // double-escaped to land "/\\evil.com" as the runtime string -- verify the helper
+    // when called with the raw form a browser may emit
+    expect(sanitizeReturnTo("/\\\\evil.com")).toBeNull();
   });
 });
