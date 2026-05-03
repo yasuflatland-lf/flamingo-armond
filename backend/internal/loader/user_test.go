@@ -179,6 +179,9 @@ func (r *countingCardRepo) DeleteByIDsTx(_ context.Context, _ *gorm.DB, _ string
 func (r *countingCardRepo) UpsertManyTx(_ context.Context, _ *gorm.DB, _ []*domain.Card) (repository.UpsertManyTxResult, error) {
 	panic("countingCardRepo.UpsertManyTx not configured")
 }
+func (r *countingCardRepo) FindByCardgroupAndFront(_ context.Context, _, _ string) (*domain.Card, error) {
+	panic("countingCardRepo.FindByCardgroupAndFront not configured")
+}
 
 func emptyCardRepo() *countingCardRepo {
 	return &countingCardRepo{
