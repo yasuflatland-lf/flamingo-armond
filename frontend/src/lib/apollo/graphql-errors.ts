@@ -53,6 +53,7 @@ export function tryGetDuplicateCardInfo(err: unknown): DuplicateCardInfo | null 
       existingCardId === "" ||
       typeof existingBack !== "string"
     ) {
+      // New extension fields added to CARD_DUPLICATE_FRONT must be reviewed for PII before landing — they appear verbatim in this warn payload.
       console.warn(
         "[graphql-errors] CARD_DUPLICATE_FRONT entry missing required extension fields",
         { entry: { message: entry.message, extensions: ext } },
