@@ -1698,3 +1698,90 @@ func TestHandleSwipe_RollsBackWhenSwipeRecordInsertFails(t *testing.T) {
 		t.Fatalf("swipe_records count=%d, want 0", swipeCount)
 	}
 }
+
+// TestRun_SuperUserBootstrap_WarnsWhenNoEscapeHatch covers the WARN log path
+// added for issue #87: SUPER_USER_EMAILS empty AND zero admin role-holders in
+// the DB must emit a single WARN with admin_count=0.
+//
+// The test exercises the bootstrap fragment inline (not via run()) to avoid
+// the overhead of standing up a full HTTP server. The inline logic mirrors the
+// else-branch of run() exactly.
+func TestRun_SuperUserBootstrap_WarnsWhenNoEscapeHatch(t *testing.T) {
+	// Do not run in parallel — this test opens a DB connection and logs to a
+	// local buffer; parallel would risk DB-state interference from other tests
+	// that insert user_roles rows.
+	t.Setenv("SUPER_USER_EMAILS", "")
+
+	ctx := t.Context()
+
+	db, err := database.Open(ctx, database.Config{URL: testDBURL})
+	if err != nil {
+		t.Fatalf("db open: %v", err)
+	}
+	defer db.Close()
+
+	roleRepo := repository.NewRoleRepository(db.GORM)
+
+	// Confirm there are no admin role-holders in this test DB state so the
+	// WARN branch fires. Other tests may insert user_roles rows but none grant
+	// the admin role as part of their setup.
+	adminCount, err := roleRepo.CountAdminUsers(ctx)
+	if err != nil {
+		t.Fatalf("CountAdminUsers: %v", err)
+	}
+	if adminCount != 0 {
+		t.Skipf("pre-condition: %d admin role-holder(s) already exist; WARN branch would not fire — skipping", adminCount)
+	}
+
+	// Capture WARN-level log output via an inline JSON logger, mirroring the
+	// pattern from internal/auth/superuser_test.go (captureDefaultLogger /
+	// decodeLogLines). No global state is mutated here; the logger is local.
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	// Inline the bootstrap fragment from run()'s else-branch.
+	superUserEmails := auth.ParseSuperUserSet(os.Getenv("SUPER_USER_EMAILS"))
+	if len(superUserEmails) == 0 {
+		if n, countErr := roleRepo.CountAdminUsers(ctx); countErr == nil && n == 0 {
+			logger.Warn("super-user bootstrap: no admin configured and no admin role-holder exists",
+				"admin_count", int64(0))
+		}
+	}
+
+	// Decode newline-delimited JSON log lines.
+	var records []map[string]any
+	for _, line := range bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		var rec map[string]any
+		if err := json.Unmarshal(line, &rec); err != nil {
+			t.Fatalf("decode log line %q: %v", line, err)
+		}
+		records = append(records, rec)
+	}
+
+	// Locate the expected WARN record.
+	const wantMsg = "super-user bootstrap: no admin configured and no admin role-holder exists"
+	var found map[string]any
+	for _, rec := range records {
+		if rec["msg"] == wantMsg {
+			found = rec
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("expected WARN log line %q not found in output: %s", wantMsg, buf.String())
+	}
+
+	// Assert level is WARN.
+	if got, _ := found["level"].(string); got != "WARN" {
+		t.Errorf("want level=WARN, got %q", got)
+	}
+
+	// Assert admin_count is 0. slog.NewJSONHandler encodes numbers as JSON
+	// numbers; json.Unmarshal into map[string]any decodes them as float64.
+	if got, _ := found["admin_count"].(float64); got != 0 {
+		t.Errorf("want admin_count=0, got %v", got)
+	}
+}

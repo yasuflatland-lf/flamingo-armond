@@ -210,6 +210,17 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		logger.Info("super-user bootstrap enabled", "email_count", len(superUserEmails))
 	} else {
 		promoter = auth.NewSuperUserPromoter(nil, "", nil, nil)
+		// No SUPER_USER_EMAILS configured. Check whether at least one admin
+		// already exists in the DB; if not, the operator has no escape hatch
+		// and we emit a single-line WARN to make the misconfiguration visible.
+		// A failed count query is non-fatal — log the eris chain and continue.
+		if adminCount, err := roleRepo.CountAdminUsers(ctx); err != nil {
+			logging.LogWarn(ctx, logger, "super-user bootstrap: admin count check failed",
+				eris.Wrap(err, "run: count admin users for bootstrap WARN"))
+		} else if adminCount == 0 {
+			logger.Warn("super-user bootstrap: no admin configured and no admin role-holder exists",
+				"admin_count", int64(0))
+		}
 	}
 
 	userUC := usecase.NewUserUsecase(userRepo)

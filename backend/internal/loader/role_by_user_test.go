@@ -71,6 +71,10 @@ func (s *roleBatchRepoStub) ListAll(_ context.Context) ([]*domain.Role, error) {
 	panic("roleBatchRepoStub.ListAll not configured")
 }
 
+func (s *roleBatchRepoStub) CountAdminUsers(_ context.Context) (int64, error) {
+	panic("roleBatchRepoStub.CountAdminUsers not configured")
+}
+
 // Compile-time assertion that the stub satisfies the unified interface.
 var _ repository.RoleRepository = (*roleBatchRepoStub)(nil)
 
