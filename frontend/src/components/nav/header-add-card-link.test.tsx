@@ -86,4 +86,63 @@ describe("<HeaderAddCardLink>", () => {
       expect(screen.getByRole("link")).toHaveClass("hover:opacity-90");
     });
   });
+
+  describe("when on a cardgroup detail page", () => {
+    beforeEach(() => {
+      mockUsePathname.mockReturnValue("/cardgroups/cg-abc");
+    });
+
+    it("renders href with cardgroup query param", () => {
+      render(<HeaderAddCardLink />);
+      expect(screen.getByRole("link")).toHaveAttribute(
+        "href",
+        "/cards/new?cardgroup=cg-abc",
+      );
+    });
+
+    it("does not have aria-current attribute", () => {
+      render(<HeaderAddCardLink />);
+      expect(screen.getByRole("link")).not.toHaveAttribute("aria-current");
+    });
+
+    it("does not have pointer-events-none class", () => {
+      render(<HeaderAddCardLink />);
+      expect(screen.getByRole("link")).not.toHaveClass("pointer-events-none");
+    });
+
+    it("has hover:opacity-90 class", () => {
+      render(<HeaderAddCardLink />);
+      expect(screen.getByRole("link")).toHaveClass("hover:opacity-90");
+    });
+  });
+
+  describe("when on a cardgroup cards sub-page", () => {
+    beforeEach(() => {
+      mockUsePathname.mockReturnValue("/cardgroups/cg-abc/cards");
+    });
+
+    it("renders href with cardgroup query param", () => {
+      render(<HeaderAddCardLink />);
+      expect(screen.getByRole("link")).toHaveAttribute(
+        "href",
+        "/cards/new?cardgroup=cg-abc",
+      );
+    });
+
+    it("does not have aria-current attribute", () => {
+      render(<HeaderAddCardLink />);
+      expect(screen.getByRole("link")).not.toHaveAttribute("aria-current");
+    });
+  });
+
+  describe("when on the cardgroups list page", () => {
+    beforeEach(() => {
+      mockUsePathname.mockReturnValue("/cardgroups");
+    });
+
+    it("renders href as /cards/new (header is card-targeted; FAB action targets cardgroups)", () => {
+      render(<HeaderAddCardLink />);
+      expect(screen.getByRole("link")).toHaveAttribute("href", "/cards/new");
+    });
+  });
 });

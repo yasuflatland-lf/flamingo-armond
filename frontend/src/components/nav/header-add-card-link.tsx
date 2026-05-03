@@ -3,13 +3,16 @@
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { resolveFabAction } from "./fab-action";
 
 export function HeaderAddCardLink() {
   const pathname = usePathname();
   const onCardsNew = pathname === "/cards/new";
+  const action = resolveFabAction(pathname);
+  const href = action?.href.startsWith("/cards/new") ? action.href : "/cards/new";
   return (
     <Link
-      href="/cards/new"
+      href={href}
       aria-current={onCardsNew ? "page" : undefined}
       className={`flex items-center gap-1.5 rounded-md bg-brand-primary px-3 py-1.5 text-sm font-medium text-brand-primary-foreground transition-opacity ${
         onCardsNew ? "pointer-events-none opacity-60" : "hover:opacity-90"
