@@ -208,20 +208,16 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (*domain.C
 		if errors.Is(err, repository.ErrCardDuplicateFront) {
 			existing, lookupErr := u.cardRepo.FindByCardgroupAndFront(ctx, in.CardgroupID, front)
 			if lookupErr != nil {
-				// ErrNotFound here means the duplicate row vanished between the
-				// failed INSERT and this SELECT — a concurrent delete raced us.
-				// Treat it as an internal error; the client can retry.
-				return nil, gqlerr.Internal(ctx, eris.Wrap(lookupErr, "usecase: lookup duplicate card after 23505"))
+				// The lookup may race with a concurrent delete (the duplicate row vanished
+				// between the failed INSERT and this SELECT) or fail for an unrelated DB
+				// reason. Either way, surface as Internal so the client can retry; the
+				// duplicate is recoverable input, but a failed re-lookup is not.
+				return nil, gqlerr.Internal(ctx,
+					eris.Wrap(lookupErr, "usecase: lookup duplicate card after 23505"),
+					slog.String("cardgroup_id", in.CardgroupID),
+				)
 			}
-			return nil, gqlerr.BadUserInputWithExtensions(
-				"front",
-				"card with same front exists in this cardgroup",
-				map[string]any{
-					"reason":         "CARD_DUPLICATE_FRONT",
-					"existingCardId": existing.ID,
-					"existingBack":   existing.Back,
-				},
-			)
+			return nil, gqlerr.BadUserInputCardDuplicateFront(existing.ID, existing.Back)
 		}
 		return nil, gqlerr.Internal(ctx, err)
 	}
