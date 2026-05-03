@@ -43,16 +43,22 @@ export type DuplicateCardInfo = {
  * GraphQL `extensions.code`".
  */
 export function tryGetDuplicateCardInfo(err: unknown): DuplicateCardInfo | null {
-  if (!(err instanceof CombinedGraphQLErrors)) return null;
-  for (const ge of err.errors) {
-    const ext = ge.extensions as Record<string, unknown> | undefined;
-    if (!ext) continue;
-    if (ext.code !== "BAD_USER_INPUT") continue;
-    if (ext.reason !== "CARD_DUPLICATE_FRONT") continue;
-    const existingCardId = ext.existingCardId;
-    const existingBack = ext.existingBack;
-    if (typeof existingCardId !== "string" || existingCardId === "") continue;
-    if (typeof existingBack !== "string" || existingBack === "") continue;
+  if (!CombinedGraphQLErrors.is(err)) return null;
+  for (const entry of err.errors) {
+    const ext = entry?.extensions as Record<string, unknown> | undefined;
+    if (!ext || ext.code !== "BAD_USER_INPUT" || ext.reason !== "CARD_DUPLICATE_FRONT") continue;
+    const { existingCardId, existingBack } = ext;
+    if (
+      typeof existingCardId !== "string" ||
+      existingCardId === "" ||
+      typeof existingBack !== "string"
+    ) {
+      console.warn(
+        "[graphql-errors] CARD_DUPLICATE_FRONT entry missing required extension fields",
+        { entry: { message: entry.message, extensions: ext } },
+      );
+      continue;
+    }
     return { existingCardId, existingBack };
   }
   return null;

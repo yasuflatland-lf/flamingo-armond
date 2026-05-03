@@ -1,5 +1,5 @@
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { isUnauthenticatedGraphQLError, tryGetDuplicateCardInfo } from "./graphql-errors";
 
 const PREFIX = "GraphQL errors: ";
@@ -153,7 +153,7 @@ describe("tryGetDuplicateCardInfo", () => {
     expect(tryGetDuplicateCardInfo(err)).toBeNull();
   });
 
-  test("shape mismatch: empty-string existingBack returns null", () => {
+  test("valid match: empty-string existingBack is accepted (back field may be empty)", () => {
     const err = makeCombined([
       {
         message: "duplicate",
@@ -165,7 +165,108 @@ describe("tryGetDuplicateCardInfo", () => {
         },
       },
     ]);
-    expect(tryGetDuplicateCardInfo(err)).toBeNull();
+    expect(tryGetDuplicateCardInfo(err)).toEqual({
+      existingCardId: "abc-123",
+      existingBack: "",
+    });
+  });
+
+  describe("malformed payload: warns once when code+reason match but shape fails", () => {
+    let warnSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+    });
+
+    test("empty existingCardId triggers console.warn and returns null", () => {
+      const err = makeCombined([
+        {
+          message: "duplicate",
+          extensions: {
+            code: "BAD_USER_INPUT",
+            reason: "CARD_DUPLICATE_FRONT",
+            existingCardId: "",
+            existingBack: "some back",
+          },
+        },
+      ]);
+      const result = tryGetDuplicateCardInfo(err);
+      expect(result).toBeNull();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[graphql-errors] CARD_DUPLICATE_FRONT entry missing required extension fields",
+        expect.objectContaining({
+          entry: expect.objectContaining({
+            extensions: expect.objectContaining({ reason: "CARD_DUPLICATE_FRONT" }),
+          }),
+        }),
+      );
+    });
+
+    test("missing existingCardId triggers console.warn and returns null", () => {
+      const err = makeCombined([
+        {
+          message: "duplicate",
+          extensions: {
+            code: "BAD_USER_INPUT",
+            reason: "CARD_DUPLICATE_FRONT",
+            existingBack: "some back",
+          },
+        },
+      ]);
+      const result = tryGetDuplicateCardInfo(err);
+      expect(result).toBeNull();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[graphql-errors] CARD_DUPLICATE_FRONT entry missing required extension fields",
+        expect.objectContaining({
+          entry: expect.objectContaining({
+            extensions: expect.objectContaining({ reason: "CARD_DUPLICATE_FRONT" }),
+          }),
+        }),
+      );
+    });
+
+    test("non-string existingBack triggers console.warn and returns null", () => {
+      const err = makeCombined([
+        {
+          message: "duplicate",
+          extensions: {
+            code: "BAD_USER_INPUT",
+            reason: "CARD_DUPLICATE_FRONT",
+            existingCardId: "abc-123",
+            existingBack: 99,
+          },
+        },
+      ]);
+      const result = tryGetDuplicateCardInfo(err);
+      expect(result).toBeNull();
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[graphql-errors] CARD_DUPLICATE_FRONT entry missing required extension fields",
+        expect.objectContaining({
+          entry: expect.objectContaining({
+            extensions: expect.objectContaining({ reason: "CARD_DUPLICATE_FRONT" }),
+          }),
+        }),
+      );
+    });
+
+    test("entries that do not match discriminator do not trigger console.warn", () => {
+      const err = makeCombined([
+        {
+          message: "bad input no reason",
+          extensions: { code: "BAD_USER_INPUT", existingCardId: "", existingBack: "" },
+        },
+      ]);
+      const result = tryGetDuplicateCardInfo(err);
+      expect(result).toBeNull();
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
   });
 
   test("multi-entry: only one entry matches, returns that entry's payload", () => {
