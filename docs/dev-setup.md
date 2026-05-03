@@ -137,6 +137,38 @@ Sync logic lives in `playbooks/setup.yml` as declarative Ansible tasks. To wire 
 5. Sign in via `http://127.0.0.1:3000/login` once the frontend is running (`make dev-frontend`). The `/profile` page exercises the full sign-in path end to end.
 6. Supabase Studio: http://127.0.0.1:54323
 
+### First admin (local Supabase)
+
+The backend grants the `admin` role automatically on first sign-in for any email listed in `SUPER_USER_EMAILS`. This is the **only** supported path to bootstrap a local admin without manually editing the database.
+
+1. Open `backend/.env.local` and add (or uncomment) the line:
+   ```
+   SUPER_USER_EMAILS=you@example.com
+   ```
+   Comma-separate multiple emails. Whitespace and case are normalised by the backend.
+2. Restart the backend (`make dev-backend` or the `backend` panel in `make dev`). On startup, look for the JSON log line confirming the bootstrap is armed:
+   ```
+   {"level":"INFO","msg":"super-user bootstrap enabled","email_count":1}
+   ```
+   If `email_count` is `0`, your edit did not take effect — re-check the file path and restart.
+3. Sign in at `http://127.0.0.1:3000/login` with one of the listed accounts. The Admin pill appears in the global header and `/admin/*` routes become reachable.
+
+**After `make db-reset`:** `public.user_roles` is wiped, but `SUPER_USER_EMAILS` only re-promotes on **first sign-in** — your existing session still believes it is admin until the next login. Sign out and back in once.
+
+**Manual SQL fallback** (only if your backend cannot write `user_roles` for some reason — e.g. you are debugging the Authorization-header propagation gap and need an admin without a successful login round-trip):
+
+```bash
+supabase db remote sql <<'SQL'
+INSERT INTO public.user_roles (user_id, role_id)
+SELECT u.id, r.id
+  FROM auth.users u, public.roles r
+  WHERE u.email = 'you@example.com' AND r.name = 'admin'
+ON CONFLICT DO NOTHING;
+SQL
+```
+
+A future `make seed-admin EMAIL=you@example.com` target wraps this SQL — see [`backend-auth.md` § "Bootstrap admin via `SUPER_USER_EMAILS`"](backend-auth.md#bootstrap-admin-via-super_user_emails).
+
 ### Day-to-day
 
 | Task | Command |
@@ -162,7 +194,7 @@ The backend fails to start if any of these is missing — check `supabase status
 
 - **`127.0.0.1` only, never `localhost`**: Google OAuth treats them as distinct hosts. Access the app via `127.0.0.1:3000` so the origin matches what was registered with Google and the `supabase start` output.
 - **Secrets stay in `.env.local`**: never paste them into `supabase/config.toml`. The toml only contains `env()` placeholders.
-- **`backend/.env.example` drift**: `make setup` / `make sync-env` seeds `backend/.env.local` only when that file is entirely absent (`env_ownership[item.target] == 'missing'` in `playbooks/setup.yml`); subsequent runs leave the existing file untouched. When `backend/.env.example` gains a new key (e.g. `SUPER_USER_EMAILS`), operators who already have a seeded `backend/.env.local` will not receive the new line automatically. After pulling from main, check for newly added keys with `git diff main -- backend/.env.example` and add any missing blocks to `backend/.env.local` by hand.
+- **`backend/.env.example` drift**: `make setup` / `make sync-env` seeds `backend/.env.local` only when that file is entirely absent (`env_ownership[item.target] == 'missing'` in `playbooks/setup.yml`); subsequent runs leave the existing file untouched. When `backend/.env.example` gains a new key (e.g. `SUPER_USER_EMAILS`), operators who already have a seeded `backend/.env.local` will not receive the new line automatically. After pulling from main, check for newly added keys with `git diff main -- backend/.env.example` and add any missing blocks to `backend/.env.local` by hand. See [§ "First admin (local Supabase)"](#first-admin-local-supabase) for the bootstrap path that depends on this key.
 
 For the production setup of the same Google sign-in path (Supabase project, Vercel, Render, Supabase Auth settings), see `docs/deployment.md`.
 

@@ -127,6 +127,46 @@ A fresh deployment has zero admin rows, but every existing admin-management muta
 
 **Constructor invariants are enforced via panic.** When `emails` is non-empty but any of `checker`, `assigner`, or `adminRoleID` is nil/empty, `NewSuperUserPromoter` panics during `run()`. This is a fail-fast for operator misconfiguration: the alternative — returning an error or silently building a half-configured promoter — would either bury the misconfiguration in a startup log or leave a per-request nil-deref hazard. Empty-emails callers (the OFF path) intentionally pass `nil, "", nil, nil`; the panic guard only fires when the operator opted into the feature but wired it wrong.
 
+### Confirming the bootstrap is armed
+
+The backend logs a single INFO line on successful startup when `SUPER_USER_EMAILS` is non-empty:
+
+```
+{"level":"INFO","msg":"super-user bootstrap enabled","email_count":N}
+```
+
+`email_count` is the number of normalised, deduplicated entries the parser accepted from the env var. If `email_count` differs from what you put in the env (or is `0` when you expected a non-zero value), the parser dropped malformed entries silently — recheck for stray quotes or empty comma-separated fields.
+
+When `SUPER_USER_EMAILS` is empty AND no row in `public.user_roles` references the `admin` role, the backend additionally logs:
+
+```
+{"level":"WARN","msg":"super-user bootstrap: no admin configured and no admin role-holder exists","admin_count":0}
+```
+
+This is the deliberate "you have no escape hatch" warning — the next signed-in user has no path to admin without operator intervention. Set `SUPER_USER_EMAILS` and restart, or run the SQL fallback below. The check tolerates DB unavailability: a failed count query logs `eris`-wrapped WARN context but does not block startup.
+
+### Manual SQL fallback (post-`make db-reset`)
+
+`make db-reset` truncates `public.user_roles`, so any previously bootstrapped admin loses the role until they sign in again with a `SUPER_USER_EMAILS`-listed address. To re-promote without a fresh login round-trip:
+
+```bash
+supabase db remote sql <<'SQL'
+INSERT INTO public.user_roles (user_id, role_id)
+SELECT u.id, r.id
+  FROM auth.users u, public.roles r
+  WHERE u.email = 'you@example.com' AND r.name = 'admin'
+ON CONFLICT DO NOTHING;
+SQL
+```
+
+Or use the Make target wrapper:
+
+```
+make seed-admin EMAIL=you@example.com
+```
+
+The Make target executes the same INSERT through the local Supabase Postgres container (no `Authorization` header round-trip required).
+
 ### Multi-layer security test coverage
 
 Authorization rules implemented at the usecase level need tests at **both** the usecase layer and the resolver layer. Usecase tests confirm the rule (right sentinel returned, right error code mapped) but cannot catch wire-format regressions: an `extensions.code` typo, a resolver that swallows the usecase error and returns `nil`, or a gqlgen codec change that drops the `field` extension. Resolver-level wire tests built against `handler.NewServer` (see `docs/backend.md` § "Resolver-level wire tests") are the only layer that exercises the full request envelope. Apply this dual-layer rule to every guard whose failure mode is "user gains access they should not have" — privilege checks, owner checks, self-demotion, and role-mutation paths.
