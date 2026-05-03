@@ -29,9 +29,10 @@ export async function updateSession(request: NextRequest) {
   // CRITICAL: getUser() is what triggers token refresh — removing this call
   // silently breaks session renewal, leaving users with expired tokens.
   const { error } = await supabase.auth.getUser();
-  if (error) {
-    // Surface to edge-runtime stderr; failure here is anonymous-pass-through, not auth bug
-    console.error("[supabase/middleware] getUser() failed:", error.message);
+  // AuthSessionMissingError is the "no session" signal for every anonymous
+  // request and is not actionable — logging it would flood edge-runtime stderr.
+  if (error && error.name !== "AuthSessionMissingError") {
+    console.error("[supabase/middleware] getUser() failed:", error.name, error.message);
   }
 
   return supabaseResponse;
