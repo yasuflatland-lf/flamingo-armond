@@ -554,7 +554,7 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
     await fillAndSubmit("apple", "new back text");
 
     // Dialog title acts as the discriminator.
-    await screen.findByText("カードはすでに存在します");
+    await screen.findByText("Card already exists");
     // Both sides of the comparison must be visible to make the choice informed.
     expect(screen.getByText("existing back text")).toBeInTheDocument();
     expect(screen.getByText("new back text")).toBeInTheDocument();
@@ -599,7 +599,7 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
     await fillAndSubmit("apple", "new back text");
 
     const user = userEvent.setup();
-    const confirmBtn = await screen.findByRole("button", { name: "上書き" });
+    const confirmBtn = await screen.findByRole("button", { name: "Overwrite" });
     await user.click(confirmBtn);
 
     // updateCard mock was consumed exactly once.
@@ -608,7 +608,7 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
     });
     // Dialog closes.
     await waitFor(() => {
-      expect(screen.queryByText("カードはすでに存在します")).not.toBeInTheDocument();
+      expect(screen.queryByText("Card already exists")).not.toBeInTheDocument();
     });
     // Form is reset.
     expect((screen.getByLabelText(/front/i) as HTMLInputElement).value).toBe("");
@@ -637,12 +637,12 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
     await fillAndSubmit("apple", "new back text");
 
     const user = userEvent.setup();
-    const cancelBtn = await screen.findByRole("button", { name: "キャンセル" });
+    const cancelBtn = await screen.findByRole("button", { name: "Cancel" });
     await user.click(cancelBtn);
 
     // Dialog closes.
     await waitFor(() => {
-      expect(screen.queryByText("カードはすでに存在します")).not.toBeInTheDocument();
+      expect(screen.queryByText("Card already exists")).not.toBeInTheDocument();
     });
     // Form values preserved so the user can edit `front` and resubmit.
     expect((screen.getByLabelText(/front/i) as HTMLInputElement).value).toBe("apple");
@@ -675,14 +675,14 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
     await fillAndSubmit("apple", "new back text");
 
     const user = userEvent.setup();
-    const confirmBtn = await screen.findByRole("button", { name: "上書き" });
+    const confirmBtn = await screen.findByRole("button", { name: "Overwrite" });
     await user.click(confirmBtn);
 
     // Dialog stays mounted.
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
     });
-    expect(screen.getByText("カードはすでに存在します")).toBeInTheDocument();
+    expect(screen.getByText("Card already exists")).toBeInTheDocument();
     // Form is NOT reset.
     expect((screen.getByLabelText(/front/i) as HTMLInputElement).value).toBe("apple");
     expect((screen.getByLabelText(/back/i) as HTMLInputElement).value).toBe("new back text");
@@ -704,7 +704,7 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
     // Two MockedResponse entries: the first triggers the duplicate dialog,
     // the second is consumed by the overwrite click and rejects with a
     // BAD_USER_INPUT error carrying field=back. The dialog must render the
-    // backend message verbatim instead of the generic JP fallback.
+    // backend message verbatim instead of the generic fallback.
     const backValidatorMessage = "back must be at most 4096 characters";
     renderClient({
       mocks: [
@@ -733,20 +733,18 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
     await fillAndSubmit("apple", "new back text");
 
     const user = userEvent.setup();
-    const confirmBtn = await screen.findByRole("button", { name: "上書き" });
+    const confirmBtn = await screen.findByRole("button", { name: "Overwrite" });
     await user.click(confirmBtn);
 
     // Dialog stays open and the backend's field-level message replaces the
-    // generic JP fallback.
+    // generic fallback.
     await waitFor(() => {
       expect(screen.getByText(backValidatorMessage)).toBeInTheDocument();
     });
-    expect(screen.getByText("カードはすでに存在します")).toBeInTheDocument();
+    expect(screen.getByText("Card already exists")).toBeInTheDocument();
     // The generic fallback must NOT be shown when a field-level message is
     // available — that was the original bug.
-    expect(
-      screen.queryByText("上書きに失敗しました。もう一度お試しください。"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Overwrite failed. Please try again.")).not.toBeInTheDocument();
   });
 });
 

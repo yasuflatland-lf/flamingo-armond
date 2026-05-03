@@ -70,12 +70,6 @@ function SuccessIndicator({ message, onTimeout }: { message: string; onTimeout: 
   );
 }
 
-/**
- * Confirmation dialog for the duplicate-front overwrite flow. Renders a
- * side-by-side comparison of the existing card's back and the user's new
- * back so the choice is informed. User-facing strings are Japanese to match
- * the rest of the UX text in this app.
- */
 function DuplicateOverwriteDialog({
   duplicate,
   onConfirm,
@@ -103,22 +97,22 @@ function DuplicateOverwriteDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>カードはすでに存在します</AlertDialogTitle>
+          <AlertDialogTitle>Card already exists</AlertDialogTitle>
           <AlertDialogDescription>
-            「{duplicate.attemptedFront}
-            」というカードはすでにこのカードグループにあります。裏面を新しい内容で上書きしますか？学習履歴は維持されます。
+            A card with the front &ldquo;{duplicate.attemptedFront}&rdquo; already exists in this
+            cardgroup. Overwrite its back with your new content? Learning history is preserved.
           </AlertDialogDescription>
         </AlertDialogHeader>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
-            <div className="text-xs font-medium text-muted-foreground">既存の裏面</div>
+            <div className="text-xs font-medium text-muted-foreground">Existing back</div>
             <pre className="whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-2 text-sm">
               {duplicate.existingBack}
             </pre>
           </div>
           <div className="space-y-1">
-            <div className="text-xs font-medium text-muted-foreground">新しい裏面</div>
+            <div className="text-xs font-medium text-muted-foreground">New back</div>
             <pre className="whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-2 text-sm">
               {duplicate.attemptedBack}
             </pre>
@@ -132,7 +126,7 @@ function DuplicateOverwriteDialog({
         ) : null}
 
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>キャンセル</AlertDialogCancel>
+          <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={(e) => {
               // Suppress Radix's default close-on-action behaviour. Closing is
@@ -144,7 +138,7 @@ function DuplicateOverwriteDialog({
             }}
             disabled={loading}
           >
-            {loading ? "上書き中…" : "上書き"}
+            {loading ? "Overwriting…" : "Overwrite"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -267,8 +261,7 @@ export default function CardsNewClient({
       // and would otherwise fall through to the generic JP fallback.
       const fieldErrors = getBackendFieldErrors(err);
       const banner = getBackendErrorBanner(err);
-      const message =
-        fieldErrors.back ?? banner ?? "上書きに失敗しました。もう一度お試しください。";
+      const message = fieldErrors.back ?? banner ?? "Overwrite failed. Please try again.";
       setOverwriteError(message);
       console.error("[cards-new-client] overwrite card rejection", {
         message: err instanceof Error ? err.message : String(err),
