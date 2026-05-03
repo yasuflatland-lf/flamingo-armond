@@ -6,6 +6,11 @@
 #   ansible-playbook setup.yml --tags supabase
 #   ansible-playbook setup.yml --tags sync-env
 #   ansible-playbook setup.yml --tags google-check
+#   ansible-playbook setup.yml --tags seed-admin -e admin_email=you@example.com
+#
+# Tasks tagged `never` (e.g. seed-admin) are skipped on a default run and only
+# execute when their tag is passed explicitly via `--tags`. Without `never`,
+# Ansible runs every task on a tag-less invocation regardless of `tags:`.
 - name: flamingo-armond local dev setup
   hosts: localhost
   gather_facts: false
@@ -293,13 +298,18 @@
     # public.roles on name='admin'. Idempotent via ON CONFLICT DO NOTHING.
     # Reads the local Supabase DB URL from `supabase status` to avoid
     # hard-coding the suffix that varies per host.
+    #
+    # Tagged `never` so these tasks only run when invoked with the explicit
+    # `--tags seed-admin` selector (i.e. via `make seed-admin EMAIL=...`).
+    # Without `never`, a default `make setup` (no `--tags`) would execute every
+    # task in the playbook and fail at "Validate admin_email is provided".
     - name: Validate admin_email is provided
       ansible.builtin.fail:
         msg: |
           seed-admin requires admin_email. Invoke as:
             make seed-admin EMAIL=you@example.com
       when: admin_email is not defined or (admin_email | trim | length) == 0
-      tags: [seed-admin]
+      tags: [seed-admin, never]
 
     - name: Resolve local Supabase DB URL
       ansible.builtin.shell: |
@@ -309,7 +319,7 @@
         executable: /bin/bash
       register: supabase_db_url
       changed_when: false
-      tags: [seed-admin]
+      tags: [seed-admin, never]
 
     - name: Insert admin role assignment for {{ admin_email }} (idempotent)
       ansible.builtin.command:
@@ -326,10 +336,10 @@
             ON CONFLICT DO NOTHING;
       register: seed_admin_result
       changed_when: "'INSERT 0 1' in seed_admin_result.stdout"
-      tags: [seed-admin]
+      tags: [seed-admin, never]
 
     - name: Confirm seed-admin outcome
       ansible.builtin.debug:
         msg:
           - "{{ 'OK: granted admin role to ' + admin_email if 'INSERT 0 1' in (seed_admin_result.stdout | default('')) else 'NO-OP: ' + admin_email + ' either has no auth.users row yet (sign in once first) or already holds admin' }}"
-      tags: [seed-admin]
+      tags: [seed-admin, never]
