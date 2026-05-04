@@ -38,6 +38,7 @@ export default async function ProfilePage() {
     <main className="mx-auto max-w-xl p-8">
       <h1 className="mb-6 text-2xl font-semibold">Edit profile</h1>
       <ProfileForm
+        email={user.email ?? null}
         initial={{
           displayName: data.me.displayName ?? "",
           bio: data.me.bio ?? "",
