@@ -1,9 +1,11 @@
 "use client";
 
 import { BookOpen, GraduationCap, Settings, ShieldCheck, User } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
+import { LogoutButton } from "@/app/_components/logout-button";
 import {
   Sidebar,
   SidebarContent,
@@ -16,7 +18,6 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { AvatarPopover } from "./avatar-popover";
 import { HeaderSignInLink } from "./header-sign-in-link";
 
 interface GlobalRailProps {
@@ -64,7 +65,7 @@ function resolveActiveItem(pathname: string): ActiveItem {
 
 export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
   const pathname = usePathname();
-  const { state, toggleSidebar, setOpen, isMobile } = useSidebar();
+  const { state, setOpen, isMobile } = useSidebar();
 
   // Hover-flyout close timer. Use useRef (not useState) to avoid an async update
   // dropping a pointerenter that arrives in the same frame as the timeout fires
@@ -116,18 +117,33 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
       onPointerLeave={handlePointerLeave}
     >
       <SidebarHeader>
-        <button
-          type="button"
-          onClick={toggleSidebar}
-          aria-expanded={state === "expanded"}
-          aria-label="Toggle navigation rail"
-          className="flex h-8 items-center gap-2 rounded-md px-2 text-left font-semibold hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-        >
-          <span aria-hidden="true" className="shrink-0 text-lg leading-none">
-            🦩
-          </span>
-          <span className="truncate group-data-[collapsible=icon]:hidden">flamingo-armond</span>
-        </button>
+        <div className="flex flex-col gap-2">
+          <Link
+            href="/cardgroups"
+            aria-label="flamingo-armond home"
+            className="flex h-12 items-center justify-center rounded-md hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+          >
+            {/* unoptimized avoids requiring images.dangerouslyAllowSVG in next.config.ts */}
+            <Image
+              src="/flamingo.svg"
+              alt="flamingo-armond"
+              width={48}
+              height={48}
+              priority
+              unoptimized
+            />
+          </Link>
+          {user !== null && user.email !== null && (
+            <p className="truncate px-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+              {user.email}
+            </p>
+          )}
+          {user !== null && (
+            <div className="px-1 group-data-[collapsible=icon]:hidden">
+              <LogoutButton />
+            </div>
+          )}
+        </div>
       </SidebarHeader>
 
       {user !== null && (
@@ -202,12 +218,6 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
-      )}
-
-      {user !== null && (
-        <SidebarFooter>
-          <AvatarPopover email={user.email} />
-        </SidebarFooter>
       )}
 
       {user === null && pathname !== "/login" && (

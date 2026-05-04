@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock next/link so it renders a plain <a> in jsdom.
@@ -21,10 +20,22 @@ vi.mock("next/navigation", () => ({
 }));
 
 // AvatarPopover reaches into LogoutButton -> Supabase -> router. Stub it so the
-// rail test stays focused on rail logic, not popover internals.
+// rail test stays focused on rail logic, not popover internals. The rail no
+// longer mounts AvatarPopover after Task 7 — the stub remains so the legacy
+// import path in `avatar-popover.tsx` (still on disk until Task 8) does not
+// pull Supabase into the test environment if any indirect importer survives.
 vi.mock("./avatar-popover", () => ({
   AvatarPopover: ({ email }: { email: string | null }) => (
     <div data-testid="avatar-popover" data-email={email ?? ""} />
+  ),
+}));
+
+// LogoutButton reaches into Supabase. Stub it to keep the test self-contained.
+vi.mock("@/app/_components/logout-button", () => ({
+  LogoutButton: () => (
+    <button type="button" data-testid="logout-button">
+      Sign out
+    </button>
   ),
 }));
 
@@ -59,6 +70,14 @@ afterEach(() => {
 function renderRail(props: React.ComponentProps<typeof GlobalRail>) {
   return render(
     <SidebarProvider>
+      <GlobalRail {...props} />
+    </SidebarProvider>,
+  );
+}
+
+function renderRailCollapsed(props: React.ComponentProps<typeof GlobalRail>) {
+  return render(
+    <SidebarProvider defaultOpen={false}>
       <GlobalRail {...props} />
     </SidebarProvider>,
   );
@@ -179,24 +198,6 @@ describe("<GlobalRail>", () => {
     });
   });
 
-  describe("S4 — logo button toggles aria-expanded", () => {
-    it("clicking the logo toggles aria-expanded between true and false", async () => {
-      const user = userEvent.setup();
-      mockUsePathname.mockReturnValue("/");
-      renderRail({ user: { email: "u@example.com" }, isAdmin: true });
-
-      const logo = screen.getByRole("button", { name: /toggle navigation rail/i });
-      // SidebarProvider defaults to open=true, so initial state is "expanded".
-      expect(logo).toHaveAttribute("aria-expanded", "true");
-
-      await user.click(logo);
-      expect(logo).toHaveAttribute("aria-expanded", "false");
-
-      await user.click(logo);
-      expect(logo).toHaveAttribute("aria-expanded", "true");
-    });
-  });
-
   describe("S5 — anonymous user", () => {
     it("renders a Sign in link in the footer and no authenticated nav items when user is null", () => {
       mockUsePathname.mockReturnValue("/cardgroups");
@@ -215,8 +216,8 @@ describe("<GlobalRail>", () => {
       // do not get a LogoutButton or avatar popover.
       expect(screen.queryByTestId("avatar-popover")).toBeNull();
 
-      // The logo button still renders so anonymous viewers can read the brand.
-      expect(screen.getByRole("button", { name: /toggle navigation rail/i })).toBeInTheDocument();
+      // The logo link still renders so anonymous viewers can read the brand.
+      expect(screen.getByRole("link", { name: /flamingo-armond home/i })).toBeInTheDocument();
     });
 
     it("anonymous on /login: rail footer does not render the Sign in link or its empty wrapper", () => {
@@ -229,58 +230,77 @@ describe("<GlobalRail>", () => {
     });
   });
 
-  describe("avatar popover wiring", () => {
-    it("forwards the user's email to the AvatarPopover when signed in", () => {
-      mockUsePathname.mockReturnValue("/");
-      const { container } = renderRail({
-        user: { email: "alice@example.com" },
-        isAdmin: false,
-      });
+  describe("S7 — header slot reshape (logo image + email + Logout)", () => {
+    it("renders the flamingo.svg logo at 48x48 with priority", () => {
+      mockUsePathname.mockReturnValue("/cardgroups");
+      const { container } = renderRail({ user: { email: "u@example.com" }, isAdmin: false });
 
-      const popover = within(container).getByTestId("avatar-popover");
-      expect(popover).toHaveAttribute("data-email", "alice@example.com");
+      // next/image renders an <img> in jsdom. Match by alt text.
+      const logo = container.querySelector('img[alt="flamingo-armond"]');
+      expect(logo).not.toBeNull();
+      expect(logo).toHaveAttribute("width", "48");
+      expect(logo).toHaveAttribute("height", "48");
+      // The logo wraps in a Link to /cardgroups (home).
+      const homeLink = logo?.closest("a");
+      expect(homeLink).toHaveAttribute("href", "/cardgroups");
     });
 
-    it("renders the AvatarPopover with no email text when user.email is null", () => {
-      mockUsePathname.mockReturnValue("/");
-      const { container } = renderRail({
-        user: { email: null },
-        isAdmin: false,
-      });
+    it("renders the user's email in the header when signed in with non-null email", () => {
+      mockUsePathname.mockReturnValue("/cardgroups");
+      renderRail({ user: { email: "alice@example.com" }, isAdmin: false });
+      expect(screen.getByText("alice@example.com")).toBeInTheDocument();
+    });
 
-      // The popover is still present (user is signed in), but email is null.
-      const popover = within(container).getByTestId("avatar-popover");
-      expect(popover).toBeInTheDocument();
-      // data-email falls back to "" in the stub when email is null.
-      expect(popover).toHaveAttribute("data-email", "");
+    it("omits the email row when user.email is null but renders the rest of the header", () => {
+      mockUsePathname.mockReturnValue("/cardgroups");
+      const { container } = renderRail({ user: { email: null }, isAdmin: false });
+      // Logo + Logout still render; no email text node containing "@".
+      expect(container.querySelector('img[alt="flamingo-armond"]')).not.toBeNull();
+      expect(screen.queryByText(/@/)).not.toBeInTheDocument();
+      expect(screen.getByTestId("logout-button")).toBeInTheDocument();
+    });
+
+    it("renders the LogoutButton in the header when signed in", () => {
+      mockUsePathname.mockReturnValue("/cardgroups");
+      renderRail({ user: { email: "u@example.com" }, isAdmin: false });
+      expect(screen.getByTestId("logout-button")).toBeInTheDocument();
+    });
+
+    it("does not render LogoutButton or email when user is null (anonymous)", () => {
+      mockUsePathname.mockReturnValue("/cardgroups");
+      renderRail({ user: null, isAdmin: false });
+      expect(screen.queryByTestId("logout-button")).toBeNull();
+      expect(screen.queryByText(/@/)).not.toBeInTheDocument();
+    });
+
+    it("does NOT render the AvatarPopover in the rail footer when signed in", () => {
+      mockUsePathname.mockReturnValue("/cardgroups");
+      renderRail({ user: { email: "u@example.com" }, isAdmin: false });
+      // Identity moved to the header — AvatarPopover stub must never mount now.
+      expect(screen.queryByTestId("avatar-popover")).toBeNull();
     });
   });
 
   describe("S6 — hover flyout (useRef-based timer guard)", () => {
-    it("pointerEnter on a collapsed rail expands it (aria-expanded becomes true)", async () => {
-      const user = userEvent.setup();
+    it("pointerEnter on a collapsed rail expands it (data-state becomes expanded)", () => {
       mockUsePathname.mockReturnValue("/");
-      const { container } = renderRail({
+      const { container } = renderRailCollapsed({
         user: { email: "u@example.com" },
         isAdmin: false,
       });
 
-      const logoBtn = screen.getByRole("button", { name: /toggle navigation rail/i });
-
-      // First collapse the rail so we can test expand on hover.
-      await user.click(logoBtn);
-      expect(logoBtn).toHaveAttribute("aria-expanded", "false");
-
-      // Find the Sidebar element that has the onPointerEnter handler.
       const sidebar = container.querySelector("[data-sidebar='sidebar']");
       if (!sidebar) throw new Error("[data-sidebar='sidebar'] element not found");
 
-      // Fire pointer enter — React synthetic event fires through fireEvent.
+      // Initial state should be collapsed because we rendered with defaultOpen=false.
+      const sidebarRoot = container.querySelector("[data-state]");
+      expect(sidebarRoot).toHaveAttribute("data-state", "collapsed");
+
       act(() => {
         fireEvent.pointerEnter(sidebar);
       });
 
-      expect(logoBtn).toHaveAttribute("aria-expanded", "true");
+      expect(sidebarRoot).toHaveAttribute("data-state", "expanded");
     });
 
     it("no late state update after unmount when pointerLeave timer is pending", () => {
