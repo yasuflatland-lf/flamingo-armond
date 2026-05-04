@@ -124,6 +124,10 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
 
       const result = await handleSwipe({
         variables: { input: { cardId: card.id, cardgroupId, mode } },
+        // performanceMode/metrics are optimistic placeholders; the real values arrive via
+        // Apollo cache once the server responds. They stay in the document so the codegen
+        // type stays whole. No consumer reads them today (see .claude/plans/ux_improvement.md
+        // §3.2 — ModeBadge / performance state were removed by the pure-minimal refactor).
         optimisticResponse: {
           __typename: "Mutation",
           handleSwipe: {
@@ -143,6 +147,13 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
 
       if (result?.data?.handleSwipe) {
         setQueue(result.data.handleSwipe.nextCards);
+      } else if (result !== null) {
+        // Mutation resolved (no .catch), but the server payload is missing handleSwipe.
+        // The optimistic queue is now the source of truth; surface for operator triage.
+        console.warn("[LearnClient] handleSwipe resolved without data", {
+          cardId: card.id,
+          cardgroupId,
+        });
       }
     },
     [cardgroupId, handleSwipe, queue],
