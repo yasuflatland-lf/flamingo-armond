@@ -8,10 +8,9 @@ import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CreateCardgroupDocument, MyCardgroupsDocument } from "@/generated/graphql";
-import { sanitizeReturnTo } from "@/lib/sanitize-return-to";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { NewCardgroupClient } from "./new-cardgroup-client";
-import NewCardgroupPage from "./page";
+import NewCardgroupPage, { sanitizeReturnTo } from "./page";
 
 // Stub next/navigation so the client component can render outside Next.js.
 const mockPush = vi.fn();
