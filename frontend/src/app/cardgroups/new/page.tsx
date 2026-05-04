@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { sanitizeReturnTo } from "@/lib/sanitize-return-to";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { NewCardgroupClient } from "./new-cardgroup-client";
 
@@ -24,4 +23,16 @@ export default async function NewCardgroupPage({ searchParams }: NewCardgroupPag
   const safeReturnTo = sanitizeReturnTo(returnTo);
 
   return <NewCardgroupClient showWelcome={showWelcome} returnTo={safeReturnTo} />;
+}
+
+/**
+ * Open-redirect guard: allow only internal paths (must start with "/" but not
+ * "//"). Rejects missing values, protocol-relative URLs ("//evil.com"), and
+ * any scheme-bearing URLs ("https://...").
+ */
+export function sanitizeReturnTo(value: string | undefined): string | null {
+  if (!value) return null;
+  // reject "//" and "/\" -- both normalise to protocol-relative in browsers
+  if (!value.startsWith("/") || value[1] === "/" || value[1] === "\\") return null;
+  return value;
 }

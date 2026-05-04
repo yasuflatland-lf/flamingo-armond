@@ -1,39 +1,11 @@
 const CARDGROUP_DETAIL_RE = /^\/cardgroups\/([^/]+)$/;
 const CARDGROUP_CARDS_RE = /^\/cardgroups\/([^/]+)\/cards$/;
 const CARDGROUP_EDIT_RE = /^\/cardgroups\/([^/]+)\/edit(\/|$)/;
-const LEARN_RE = /^\/learn\/([^/]+)$/;
 
 export type FabAction =
   | { kind: "cardgroup"; href: "/cardgroups/new"; label: "Add new cardgroup" }
-  | {
-      kind: "card-with-group";
-      /** Pre-encoded URL — already URL-safe, route via `router.push(href)` directly. */
-      href: string;
-      label: "Add new card";
-      /**
-       * Raw, unencoded cardgroup id (e.g. for display, analytics, or as a React key).
-       * Do NOT interpolate into a URL without `encodeURIComponent` — `href` is the
-       * correct field for navigation.
-       */
-      cardgroupId: string;
-    }
+  | { kind: "card-with-group"; href: string; label: "Add new card"; cardgroupId: string }
   | { kind: "card"; href: "/cards/new"; label: "Add new card" };
-
-/**
- * Build a `card-with-group` action from a raw cardgroup id captured from a
- * regex. `href` is URL-encoded, `cardgroupId` stays raw — see the JSDoc on
- * the union variant for the contract callers must observe.
- */
-function cardWithGroup(
-  rawId: string,
-  options: { withReturnToLearn?: boolean } = {},
-): Extract<FabAction, { kind: "card-with-group" }> {
-  const encodedId = encodeURIComponent(rawId);
-  const href = options.withReturnToLearn
-    ? `/cards/new?cardgroup=${encodedId}&return=/learn/${encodedId}`
-    : `/cards/new?cardgroup=${encodedId}`;
-  return { kind: "card-with-group", href, label: "Add new card", cardgroupId: rawId };
-}
 
 /**
  * Maps the current pathname to the FAB destination and accessible label.
@@ -51,16 +23,29 @@ export function resolveFabAction(pathname: string): FabAction | null {
     return { kind: "cardgroup", href: "/cardgroups/new", label: "Add new cardgroup" };
   }
 
-  // Each match below has a required capture group 1, so `match[1] as string` is
-  // sound (see frontend-typescript-conventions.md § "as string cast on regex captures").
   const cardsMatch = CARDGROUP_CARDS_RE.exec(pathname);
-  if (cardsMatch) return cardWithGroup(cardsMatch[1] as string);
+  if (cardsMatch) {
+    // cardsMatch[1] is always defined when the regex matched (capture group 1 is required)
+    const id = cardsMatch[1] as string;
+    return {
+      kind: "card-with-group",
+      href: `/cards/new?cardgroup=${id}`,
+      label: "Add new card",
+      cardgroupId: id,
+    };
+  }
 
   const detailMatch = CARDGROUP_DETAIL_RE.exec(pathname);
-  if (detailMatch) return cardWithGroup(detailMatch[1] as string);
-
-  const learnMatch = LEARN_RE.exec(pathname);
-  if (learnMatch) return cardWithGroup(learnMatch[1] as string, { withReturnToLearn: true });
+  if (detailMatch) {
+    // detailMatch[1] is always defined when the regex matched (capture group 1 is required)
+    const id = detailMatch[1] as string;
+    return {
+      kind: "card-with-group",
+      href: `/cards/new?cardgroup=${id}`,
+      label: "Add new card",
+      cardgroupId: id,
+    };
+  }
 
   return { kind: "card", href: "/cards/new", label: "Add new card" };
 }

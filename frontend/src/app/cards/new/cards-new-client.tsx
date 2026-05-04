@@ -3,7 +3,7 @@
 import { useMutation } from "@apollo/client/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CreateCardMutation, UpdateCardMutation } from "@/app/cardgroups/queries";
 import { SetLastViewedCardgroupMutation } from "@/app/learn/queries";
 import { CardForm } from "@/components/cardgroups/card-form";
@@ -21,7 +21,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
 import { tryGetDuplicateCardInfo } from "@/lib/apollo/graphql-errors";
-import { sanitizeReturnTo } from "@/lib/sanitize-return-to";
 
 type Cardgroup = {
   id: string;
@@ -48,6 +47,28 @@ type DuplicateState = {
   attemptedFront: string;
   attemptedBack: string;
 } | null;
+
+/**
+ * Transient banner that announces a successful card creation. Self-dismisses
+ * after 2 s. The parent assigns a fresh `key` on every successful submit so
+ * consecutive adds remount this component and restart the timer instead of
+ * silently extending the previous one.
+ */
+function SuccessIndicator({ message, onTimeout }: { message: string; onTimeout: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onTimeout, 2000);
+    return () => clearTimeout(t);
+  }, [onTimeout]);
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900"
+    >
+      {message}
+    </div>
+  );
+}
 
 function DuplicateOverwriteDialog({
   duplicate,
@@ -138,45 +159,53 @@ export default function CardsNewClient({
   const urlCardgroupId = searchParams.get("cardgroup");
   const currentId = urlCardgroupId ?? initialCardgroupId;
 
-  // Sanitize the ?return= param so an open-redirect cannot be introduced via
-  // user-supplied input. sanitizeReturnTo rejects external URLs (protocol-
-  // relative or scheme-bearing) and returns null for anything that is not a
-  // safe internal path. The type is string | null (required, not optional) so
-  // downstream branches must acknowledge the absence explicitly.
-  const returnTo: string | null = sanitizeReturnTo(searchParams.get("return") ?? undefined);
-
   const currentName =
     currentId != null ? (myCardgroups.find((cg) => cg.id === currentId)?.name ?? null) : null;
 
   const [createCard, { loading: creating, error: createError }] = useMutation(CreateCardMutation);
-  // Do not carry an `optimisticResponse` for either mutation. setLastViewed can
-  // fail typed (BAD_USER_INPUT when the cardgroup was deleted between page render
-  // and submit) and Apollo v3.x does not roll back optimistic writes on typed
-  // errors — see .claude/rules/pagination.md.
+  // Stay-on-page consecutive-add: do not carry an `optimisticResponse` for either
+  // mutation. setLastViewed can fail typed (BAD_USER_INPUT when the cardgroup was
+  // deleted between page render and submit) and Apollo v3.x does not roll back
+  // optimistic writes on typed errors — see .claude/rules/pagination.md.
   const [setLastViewed] = useMutation(SetLastViewedCardgroupMutation);
   // Same Apollo v3.x rollback caveat as createCard above (UNAUTHENTICATED on
   // session expiry, BAD_USER_INPUT from validators).
   const [updateCard, { loading: overwriting }] = useMutation(UpdateCardMutation);
 
+  const resetFormRef = useRef<(() => void) | null>(null);
+  // `successKey` doubles as "is the indicator visible?" (null = hidden) and as
+  // a remount key — bumping it on each successful submit forces SuccessIndicator
+  // to remount and restart its 2 s timer.
+  const [successKey, setSuccessKey] = useState<number | null>(null);
+  const [lastAddedName, setLastAddedName] = useState<string | null>(null);
   const [duplicate, setDuplicate] = useState<DuplicateState>(null);
   // Inline error rendered inside DuplicateOverwriteDialog when updateCard fails.
   // Sibling state (rather than reusing createError) so the dialog stays open
   // and the message survives even after the create-mutation hook resets.
   const [overwriteError, setOverwriteError] = useState<string | null>(null);
 
+  // Stable callback identities so that CardForm's useEffect([form, onResetReady])
+  // and SuccessIndicator's useEffect([onTimeout]) do not re-fire on every parent
+  // re-render (e.g. after the fire-and-forget setLastViewed mutation settles).
+  const handleResetReady = useCallback((fn: () => void) => {
+    resetFormRef.current = fn;
+  }, []);
+
+  const handleSuccessTimeout = useCallback(() => setSuccessKey(null), []);
+
   // Shared post-success tail for both the create and overwrite paths:
   // fire-and-forget the last-viewed hint (must not block the UI; setLastViewed
   // can fail typed when the cardgroup was deleted between page render and
-  // submit), then navigate away. When a ?return= param was supplied (and
-  // passed the open-redirect guard above), push to that path; otherwise push
-  // to the cardgroup's cards list. See .claude/rules/pagination.md on dropping
-  // optimisticResponse for typed-fail mutations.
+  // submit), reset the form, and bump the success indicator. See
+  // .claude/rules/pagination.md on dropping optimisticResponse for typed-fail mutations.
   function markCreationSucceeded() {
     if (!currentId) return;
     void setLastViewed({ variables: { cardgroupId: currentId } }).catch((err) => {
       console.warn("[cards-new] setLastViewedCardgroup failed", { cardgroupId: currentId, err });
     });
-    router.push(returnTo ?? `/cardgroups/${currentId}/cards`);
+    resetFormRef.current?.();
+    setLastAddedName(currentName);
+    setSuccessKey(Date.now());
   }
 
   async function handleCreate(values: { front: string; back: string }) {
@@ -247,13 +276,7 @@ export default function CardsNewClient({
   }
 
   function handlePickerSelect(newId: string) {
-    // Preserve the sanitized ?return= param so the post-create navigation
-    // intent survives a cardgroup switch. Only the already-sanitized returnTo
-    // value is re-encoded here — raw searchParams.get("return") is never used
-    // directly (see sanitizeReturnTo call above).
-    const params = new URLSearchParams({ cardgroup: newId });
-    if (returnTo !== null) params.set("return", returnTo);
-    router.replace(`/cards/new?${params.toString()}`, { scroll: false });
+    router.replace(`/cards/new?cardgroup=${newId}`, { scroll: false });
   }
 
   return (
@@ -271,6 +294,14 @@ export default function CardsNewClient({
         createReturnTo="/cards/new"
       />
 
+      {successKey !== null && lastAddedName && (
+        <SuccessIndicator
+          key={successKey}
+          message={`✓ Card added to "${lastAddedName}"`}
+          onTimeout={handleSuccessTimeout}
+        />
+      )}
+
       {currentId != null ? (
         <CardForm
           mode="create"
@@ -280,6 +311,7 @@ export default function CardsNewClient({
           submitLabel="Add card"
           submitting={creating}
           error={createError}
+          onResetReady={handleResetReady}
         />
       ) : (
         <p className="text-sm text-muted-foreground">Select a cardgroup above to add a card.</p>
