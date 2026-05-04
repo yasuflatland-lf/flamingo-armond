@@ -4,8 +4,14 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("next/link", () => ({
-  default: ({ href, children, ...rest }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
-    <a href={href} {...rest}>{children}</a>
+  default: ({
+    href,
+    children,
+    ...rest
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
   ),
 }));
 
@@ -14,9 +20,7 @@ import { CardgroupRowActions } from "./cardgroup-row-actions";
 describe("<CardgroupRowActions>", () => {
   it("renders a trigger labelled with the cardgroup name (per-row disambiguation)", () => {
     render(<CardgroupRowActions id="cg-1" name="Spanish 101" />);
-    expect(
-      screen.getByRole("button", { name: "Actions for Spanish 101" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Actions for Spanish 101" })).toBeInTheDocument();
   });
 
   it("opens the menu on click and exposes Start learning + Rename items", async () => {

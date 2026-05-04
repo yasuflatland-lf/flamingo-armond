@@ -24,8 +24,8 @@ vi.mock("@/lib/apollo/server", () => ({
 }));
 
 import { redirect } from "next/navigation";
-import LearnIndexPage from "./page";
 import { gqlFetch } from "@/lib/apollo/server";
+import LearnIndexPage from "./page";
 
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 

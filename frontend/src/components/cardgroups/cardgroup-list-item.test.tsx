@@ -3,8 +3,14 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("next/link", () => ({
-  default: ({ href, children, ...rest }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
-    <a href={href} {...rest}>{children}</a>
+  default: ({
+    href,
+    children,
+    ...rest
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
   ),
 }));
 
@@ -26,9 +32,7 @@ describe("<CardgroupListItem>", () => {
 
   it("renders a per-row Actions trigger labelled with the cardgroup name", () => {
     render(<CardgroupListItem id="cg-1" name="My Flashcards" updatedAt={fixedDate} />);
-    expect(
-      screen.getByRole("button", { name: "Actions for My Flashcards" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Actions for My Flashcards" })).toBeInTheDocument();
   });
 
   it("renders formatted date text", () => {

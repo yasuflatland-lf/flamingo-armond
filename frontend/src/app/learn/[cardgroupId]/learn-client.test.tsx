@@ -83,11 +83,7 @@ function renderLearnClient(mocks: unknown[], initialCards = [CARD_1]) {
   // its own test below and would otherwise need a mock entry in every case.
   render(
     <MockedProvider mocks={mocks as never}>
-      <LearnClient
-        cardgroupId={CG_ID}
-        initialCards={initialCards}
-        lastViewedCardgroupId={CG_ID}
-      />
+      <LearnClient cardgroupId={CG_ID} initialCards={initialCards} lastViewedCardgroupId={CG_ID} />
     </MockedProvider>,
   );
 }
@@ -237,7 +233,6 @@ describe("<LearnClient>", () => {
       `/cardgroups/${CG_ID}/cards`,
     );
   });
-
 });
 
 // ---------------------------------------------------------------------------
@@ -294,11 +289,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
     const mutationCalled = vi.fn();
     render(
       <MockedProvider mocks={[makePersistMock(CG_ID, mutationCalled)]}>
-        <LearnClient
-          cardgroupId={CG_ID}
-          initialCards={[CARD_1]}
-          lastViewedCardgroupId="cg-other"
-        />
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
       </MockedProvider>,
     );
 
@@ -312,11 +303,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
 
     render(
       <MockedProvider mocks={[makePersistMock(CG_ID)]} cache={cache}>
-        <LearnClient
-          cardgroupId={CG_ID}
-          initialCards={[CARD_1]}
-          lastViewedCardgroupId="cg-other"
-        />
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
       </MockedProvider>,
     );
 
@@ -357,11 +344,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
   ] as const)("swallows %s from the persist mutation without throwing", async (_, mockEntry) => {
     render(
       <MockedProvider mocks={[mockEntry]}>
-        <LearnClient
-          cardgroupId={CG_ID}
-          initialCards={[CARD_1]}
-          lastViewedCardgroupId="cg-other"
-        />
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
       </MockedProvider>,
     );
 

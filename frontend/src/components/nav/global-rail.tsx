@@ -152,15 +152,8 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={active === "learning"}
-                    tooltip="Learning"
-                  >
-                    <Link
-                      href="/learn"
-                      aria-current={active === "learning" ? "page" : undefined}
-                    >
+                  <SidebarMenuButton asChild isActive={active === "learning"} tooltip="Learning">
+                    <Link href="/learn" aria-current={active === "learning" ? "page" : undefined}>
                       <GraduationCap aria-hidden="true" />
                       <span>Learning</span>
                     </Link>
