@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -102,9 +102,10 @@ describe("<AppShell>", () => {
         </AppShell>,
       );
 
+      // The rail footer legitimately shows the email; scope this assertion to the
+      // mobile-header only, which must not render any email text.
       const mobileHeader = screen.getByTestId("mobile-header");
-      expect(mobileHeader.querySelector("span")).toBeNull();
-      expect(screen.queryByText(/@/)).not.toBeInTheDocument();
+      expect(within(mobileHeader).queryByText(/@/)).toBeNull();
     });
   });
 
@@ -160,8 +161,8 @@ describe("<AppShell>", () => {
     });
   });
 
-  describe("S6 — isAdmin=true: Admin link appears in both rail and drawer", () => {
-    it("the rail body contains an Admin link when isAdmin=true", () => {
+  describe("S6 — isAdmin=true: Admin sub-links appear in both rail and drawer", () => {
+    it("the rail body contains the admin sub-links (Users, Roles, Dictionary) when isAdmin=true", () => {
       mockUsePathname.mockReturnValue("/");
       render(
         <AppShell user={SIGNED_IN_USER} isAdmin={true}>
@@ -169,13 +170,14 @@ describe("<AppShell>", () => {
         </AppShell>,
       );
 
-      // The rail container (always in DOM) must have an Admin link pointing to /admin.
+      // The rail container (always in DOM) must have all three admin sub-links.
       const railContainer = screen.getByTestId("rail-container");
-      const railAdminLink = railContainer.querySelector("a[href='/admin']");
-      expect(railAdminLink).not.toBeNull();
+      expect(railContainer.querySelector("a[href='/admin/users']")).not.toBeNull();
+      expect(railContainer.querySelector("a[href='/admin/roles']")).not.toBeNull();
+      expect(railContainer.querySelector("a[href='/admin/dictionary']")).not.toBeNull();
     });
 
-    it("the drawer body contains an Admin link when isAdmin=true", async () => {
+    it("the drawer body contains the admin sub-links (Users, Roles, Dictionary) when isAdmin=true", async () => {
       const user = userEvent.setup();
       mockUsePathname.mockReturnValue("/");
       render(
@@ -188,9 +190,14 @@ describe("<AppShell>", () => {
       const drawerTrigger = screen.getByRole("button", { name: /open navigation menu/i });
       await user.click(drawerTrigger);
 
-      // The drawer body must have an Admin link (portaled into document.body by
-      // the Sheet component — use screen to search the full document).
-      expect(screen.getByRole("link", { name: /admin/i })).toHaveAttribute("href", "/admin");
+      // The drawer body must have all three admin sub-links (portaled into
+      // document.body by the Sheet component — use screen to search the full document).
+      expect(screen.getByRole("link", { name: /users/i })).toHaveAttribute("href", "/admin/users");
+      expect(screen.getByRole("link", { name: /roles/i })).toHaveAttribute("href", "/admin/roles");
+      expect(screen.getByRole("link", { name: /dictionary/i })).toHaveAttribute(
+        "href",
+        "/admin/dictionary",
+      );
     });
   });
 });
