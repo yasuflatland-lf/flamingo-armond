@@ -5,7 +5,18 @@ const LEARN_RE = /^\/learn\/([^/]+)$/;
 
 export type FabAction =
   | { kind: "cardgroup"; href: "/cardgroups/new"; label: "Add new cardgroup" }
-  | { kind: "card-with-group"; href: string; label: "Add new card"; cardgroupId: string }
+  | {
+      kind: "card-with-group";
+      /** Pre-encoded URL — already URL-safe, route via `router.push(href)` directly. */
+      href: string;
+      label: "Add new card";
+      /**
+       * Raw, unencoded cardgroup id (e.g. for display, analytics, or as a React key).
+       * Do NOT interpolate into a URL without `encodeURIComponent` — `href` is the
+       * correct field for navigation.
+       */
+      cardgroupId: string;
+    }
   | { kind: "card"; href: "/cards/new"; label: "Add new card" };
 
 /**
