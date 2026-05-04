@@ -66,10 +66,11 @@ function renderRail(props: React.ComponentProps<typeof GlobalRail>) {
 
 describe("<GlobalRail>", () => {
   describe("S1 — items render when signed in", () => {
-    it("renders Cardgroups, Profile, Admin, and Settings links with correct hrefs when isAdmin=true", () => {
+    it("renders Learning, Cardgroups, Profile, Admin, and Settings links with correct hrefs when isAdmin=true", () => {
       mockUsePathname.mockReturnValue("/");
       renderRail({ user: { email: "u@example.com" }, isAdmin: true });
 
+      expect(screen.getByRole("link", { name: /^learning$/i })).toHaveAttribute("href", "/learn");
       expect(screen.getByRole("link", { name: /cardgroups/i })).toHaveAttribute(
         "href",
         "/cardgroups",
@@ -112,14 +113,27 @@ describe("<GlobalRail>", () => {
       expect(screen.getByRole("link", { name: /settings/i })).not.toHaveAttribute("aria-current");
     });
 
-    it("marks Cardgroups as the current page when pathname is /learn/abc (study session is part of the cardgroups flow)", () => {
-      mockUsePathname.mockReturnValue("/learn/abc");
+    it("marks Learning as the current page when pathname is /learn (the index)", () => {
+      mockUsePathname.mockReturnValue("/learn");
       renderRail({ user: { email: "u@example.com" }, isAdmin: true });
 
-      expect(screen.getByRole("link", { name: /cardgroups/i })).toHaveAttribute(
+      expect(screen.getByRole("link", { name: /^learning$/i })).toHaveAttribute(
         "aria-current",
         "page",
       );
+      // Cardgroups must NOT be marked current.
+      expect(screen.getByRole("link", { name: /cardgroups/i })).not.toHaveAttribute("aria-current");
+    });
+
+    it("marks Learning as the current page when pathname is /learn/abc", () => {
+      mockUsePathname.mockReturnValue("/learn/abc");
+      renderRail({ user: { email: "u@example.com" }, isAdmin: true });
+
+      expect(screen.getByRole("link", { name: /^learning$/i })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+      expect(screen.getByRole("link", { name: /cardgroups/i })).not.toHaveAttribute("aria-current");
     });
 
     it("marks Profile as the current page when pathname is /profile", () => {

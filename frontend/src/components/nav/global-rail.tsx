@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Settings, ShieldCheck, User } from "lucide-react";
+import { BookOpen, GraduationCap, Settings, ShieldCheck, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
@@ -37,14 +37,16 @@ const HOVER_CLOSE_DELAY_MS = 150;
  * negative exclusion") so that future top-level routes do not silently match an
  * existing rail item.
  */
-type ActiveItem = "cardgroups" | "profile" | "admin" | "settings" | null;
+type ActiveItem = "learning" | "cardgroups" | "profile" | "admin" | "settings" | null;
 
 function resolveActiveItem(pathname: string): ActiveItem {
+  if (pathname === "/learn" || pathname.startsWith("/learn/")) {
+    return "learning";
+  }
   if (
     pathname === "/cardgroups" ||
     pathname.startsWith("/cardgroups/") ||
-    pathname.startsWith("/cards/") ||
-    pathname.startsWith("/learn/")
+    pathname.startsWith("/cards/")
   ) {
     return "cardgroups";
   }
@@ -133,6 +135,22 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={active === "learning"}
+                    tooltip="Learning"
+                  >
+                    <Link
+                      href="/learn"
+                      aria-current={active === "learning" ? "page" : undefined}
+                    >
+                      <GraduationCap aria-hidden="true" />
+                      <span>Learning</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+
                 <SidebarMenuItem>
                   <SidebarMenuButton
                     asChild
