@@ -16,6 +16,27 @@ interface Props { returnTo: string | null; }
 
 The required form surfaces callers that forgot to wire the prop (compile error: "returnTo is missing") rather than silently defaulting to `undefined`. Reference: `frontend/src/app/cardgroups/new/new-cardgroup-client.tsx` (`returnTo: string | null`) after a review finding that the optional form allowed callers to skip the prop and lose the sanitized redirect value without any error.
 
+### Widen `string` to `string | null` rather than fabricating an empty-string default
+
+When a value has natural absence semantics — e.g. a Supabase user without an email, an unset profile bio, an optional last-viewed cardgroup — type the field as `string | null` and let consumers branch on `null`. Falling back to `""` at the layout boundary (`email: user.email ?? ""`) collapses two distinct states into one observable outcome:
+
+```tsx
+// AVOID: "" loses the distinction between "no email on this account" and "email is the empty string".
+<AppShell user={{ email: user.email ?? "" }} isAdmin={isAdmin} />
+
+// PREFER: keep the absence-bearing type all the way to the consumer.
+<AppShell user={{ email: user.email }} isAdmin={isAdmin} />
+
+interface AppShellProps {
+  user: { email: string | null } | null;
+  // ...
+}
+```
+
+The empty-string fallback is convenient because every consumer that does `user.email.length`, `user.email.toLowerCase()`, or `<span>{user.email}</span>` "just works" — but every one of those sites silently renders an empty string for the absence case, which is rarely the intended UI. Branch explicitly: `{user.email !== null && <span>{user.email}</span>}` mirrors the runtime invariant.
+
+**Why:** `T | null` is a single forcing function; `T = ""` is a per-consumer convention that has to be re-asserted at every read site, and any consumer that forgets is a silent bug. The same rule extends to numeric fields where `0` is a legitimate value (use `number | null`, not `number = 0`) and to dates (use `Date | null`, not the epoch). Reference: `frontend/src/components/nav/global-rail.tsx` and `frontend/src/components/nav/app-shell.tsx` (`user: { email: string | null } | null`). This rule pairs with the required-vs-optional rule above: prefer `email: string | null` (required, nullable) over `email?: string` (optional, narrower-than-it-looks).
+
 ## JSDoc as the enforcer of "pre-sanitized" invariants when branded types are not used
 
 When a function or component accepts a value that must have crossed a security boundary before being passed (e.g. "this path has been validated as an internal path"), and the project style does not use branded/nominal types, a load-bearing JSDoc comment is the only compile-time signal available. The comment must:
@@ -37,6 +58,27 @@ createReturnTo: string;
 The JSDoc documents a two-layer defence: the caller sanitizes before passing, the receiver sanitizes again on arrival. Both layers are intentional — the "defensive" layer in the receiver is the last-resort guard against a future caller that skips pre-sanitization. Reference: `frontend/src/components/cardgroups/cardgroup-picker-sheet.tsx` (`createReturnTo` prop).
 
 If the project style evolves to allow branded types, replace the JSDoc with a nominal type (e.g. `type InternalPath = string & { readonly __brand: "InternalPath" }`) and a constructor function that calls `sanitizeReturnTo`. Until then, treat the JSDoc as load-bearing — do not remove it during refactoring without adding the branded type.
+
+### Adjacent rule: raw vs encoded twin fields on the same variant need JSDoc on both
+
+A discriminated-union variant that intentionally exposes both a pre-encoded URL **and** the raw value the URL was built from (e.g. a navigation factory variant carrying `href: string` *and* `cardgroupId: string`) presents two `string`-typed fields the type system cannot tell apart. A future consumer doing `router.push(\`/learn/${action.cardgroupId}\`)` instead of `router.push(action.href)` silently bypasses encoding — the same correctness risk that made the encoded field exist in the first place. Pair each field with JSDoc that names its contract:
+
+```ts
+| {
+    kind: "card-with-group";
+    /** Pre-encoded URL — already URL-safe, route via `router.push(href)` directly. */
+    href: string;
+    label: "Add new card";
+    /**
+     * Raw, unencoded cardgroup id (e.g. for display, analytics, or as a React key).
+     * Do NOT interpolate into a URL without `encodeURIComponent` — `href` is the
+     * correct field for navigation.
+     */
+    cardgroupId: string;
+  }
+```
+
+The JSDoc is the only compile-time signal that the two fields have different contracts. Removing either docstring during refactoring is a load-bearing change — treat it the same as removing the "pre-sanitized" JSDoc above. Reference: `frontend/src/components/nav/fab-action.ts` (`FabAction` `card-with-group` variant). The deeper alternative (drop the raw field entirely and force consumers to either re-parse it from `href` or expose a separate decoded helper) is acceptable, but only when no current consumer has a legitimate use for the raw form (e.g. a React `key`, an analytics event payload, a screen-reader label).
 
 ## `expect.objectContaining({ message })` is not enough — add a discriminating key
 
@@ -138,6 +180,36 @@ The cancel path uses the standard `AlertDialogCancel` component, which closes co
 
 **How to apply:** any `AlertDialogAction` whose `onClick` fires an async operation that can fail and must keep the dialog mounted MUST call `e.preventDefault()` at the top of the handler. Reference: `frontend/src/app/cards/new/cards-new-client.tsx` `DuplicateOverwriteDialog`.
 
+## Radix `asChild` Slot collapses a `null` child into an empty wrapper — gate at the parent
+
+Radix UI primitives that accept `asChild` (e.g. `<Sheet>`, `<SidebarMenuButton>`, `<TooltipTrigger>`, `<SheetClose>`) forward props to the rendered child via the Radix `Slot` component. When the child component returns `null` (e.g. a self-suppressing `<HeaderSignInLink>` that returns `null` on `/login`), `Slot` renders nothing — but the **wrapping** Radix container (`<SidebarFooter>`, the `<nav>` block, the `<SidebarMenuItem>`) is still mounted, leaving an empty rectangle in the layout with the wrapper's padding, border, and ARIA semantics intact. There is no DOM-level signal that the slot collapsed; CSS-only review misses it because the empty container is a 1-pixel-tall gap.
+
+```tsx
+// AVOID: child self-suppresses on /login, but the SidebarFooter still mounts.
+{user === null && (
+  <SidebarFooter>
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton asChild tooltip="Sign in">
+          <HeaderSignInLink />  {/* returns null on /login */}
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  </SidebarFooter>
+)}
+
+// PREFER: gate the wrapper at the same place the child would self-suppress.
+{user === null && pathname !== "/login" && (
+  <SidebarFooter>
+    {/* ...same child tree... */}
+  </SidebarFooter>
+)}
+```
+
+**Why:** the child's self-suppression is correct for the standalone case (e.g. when `<HeaderSignInLink>` is rendered inside something that does not have its own padding), but `asChild` Slot composition does not propagate "child rendered nothing" up to the wrapper. The two layers must agree on the suppression condition, or the layer with the broader visibility wins by default. Self-suppression in the child is convenient for one-off use; gating at the parent is correct when the parent contributes its own visual chrome.
+
+**How to apply:** any time a child of a Radix `asChild` slot returns `null` for a known input, audit every wrapper in the chain that contributes visible chrome (padding, border, `<hr>`, ARIA landmark) and gate the outermost contributor on the same condition. Pair the parent gate with a co-located test that mounts the parent on the suppressing route and asserts the wrapper itself is absent — `expect(screen.queryByRole("contentinfo")).not.toBeInTheDocument()` is more forcing than `queryByRole("link", { name: /Sign in/i })` because the link is gone in both the right and wrong implementations. Reference: `frontend/src/components/nav/global-rail.tsx` and `frontend/src/components/nav/logo-drawer.tsx` (`pathname !== "/login"` gate around the Sign-in `SidebarFooter` / drawer `<nav>`).
+
 ## Discriminated union over flat DTO when consumers must branch on the variant
 
 A factory whose output has semantically distinct shapes — e.g. "navigate to a cardgroup form", "navigate to a card form with a pre-selected cardgroup id", "navigate to a generic card form" — has two encodings available: (a) a flat DTO with a string `href` plus runtime introspection (`href.startsWith("/cards/new")`), or (b) a discriminated union with a `kind` tag. The flat DTO erases an invariant the factory already knows; the union preserves it.
@@ -195,6 +267,28 @@ Avoid `String(match[1] ?? "")` — that turns `undefined` into the literal strin
 **Why:** `noUncheckedIndexedAccess` is a project-wide flag that future contributors may not be aware of. Without the comment, the `as string` cast looks superfluous and is a candidate for "cleanup" by anyone reading the code in isolation. The comment names the invariant (capture group N is required by this regex) so the cast survives review.
 
 **How to apply:** for every regex-capture access where the capture is required by the regex, use `as string` with a one-line comment naming the required capture group. The comment is load-bearing — do not delete it during refactoring. The same pattern applies to other `noUncheckedIndexedAccess`-affected accesses (e.g. `Object.keys(o)[0]`); the rule is "explain the invariant, not just satisfy the compiler." Reference: `frontend/src/components/nav/fab-action.ts` (`cardsMatch[1] as string`, `detailMatch[1] as string`).
+
+## `router.replace` / `router.push` must propagate preserved query params explicitly
+
+When code rewrites the URL via `router.replace` or `router.push` from inside a flow that already received user-controlled query params (e.g. `?return=`, `?next=`, `?welcome=1`), the rewrite must explicitly carry those params forward. A naive `router.replace(\`/cards/new?cardgroup=${id}\`)` from a picker handler drops every other param the user arrived with — including the `?return=` that was supposed to control post-create navigation. The user's intent is silently lost; there is no log, no redirect-to-default, no error. The next post-create step then routes the user somewhere they did not ask for.
+
+```tsx
+// AVOID: drops every other query param the user arrived with.
+function handlePickerSelect(newId: string) {
+  router.replace(`/cards/new?cardgroup=${encodeURIComponent(newId)}`, { scroll: false });
+}
+
+// PREFER: rebuild via URLSearchParams and re-attach already-sanitized params.
+function handlePickerSelect(newId: string) {
+  const params = new URLSearchParams({ cardgroup: newId });
+  if (returnTo !== null) params.set("return", returnTo);  // already sanitized upstream
+  router.replace(`/cards/new?${params.toString()}`, { scroll: false });
+}
+```
+
+**Why:** the URL is the single source of truth for cross-component flow state in this codebase (see `docs/frontend.md` § "/cards/new cardgroup resolution"). A handler that rewrites part of the URL is implicitly responsible for preserving every other part — anything else silently breaks the contract that the URL drives the rendered tree. The fix is to use `URLSearchParams` to assemble the new query string from the **sanitized** values already in component scope (`returnTo` post-`sanitizeReturnTo`, never raw `searchParams.get(...)`); never re-read raw user-controlled strings from `searchParams` and concatenate them into the URL — that re-opens the open-redirect surface that `sanitizeReturnTo` was meant to close.
+
+**How to apply:** any `router.replace` / `router.push` call inside a flow that has its own `?return=` / `?next=` / shared-flow-state query param must (a) build the new URL via `URLSearchParams`, not string interpolation, and (b) re-attach the param from a previously-sanitized variable, not from `searchParams.get(...)`. Pair the implementation with a regression test that mounts the component with a `return=` value and asserts both the happy path (param preserved) and the rejection path (open-redirect value not propagated). Reference: `frontend/src/app/cards/new/cards-new-client.tsx` `handlePickerSelect`.
 
 ## Audit collapsed helpers for branches that lose all side effects
 
