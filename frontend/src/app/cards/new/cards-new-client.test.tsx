@@ -310,8 +310,8 @@ afterEach(() => {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("<CardsNewClient> — stay-on-page consecutive add", () => {
-  it("clears the front/back inputs after a successful submit", async () => {
+describe("<CardsNewClient> — navigate-on-success", () => {
+  it("calls router.push with default cardgroup cards path after a successful submit (no ?return=)", async () => {
     renderClient({
       mocks: [makeCreateMock({ front: "Hello", back: "Hola" }), makePersistMock()],
     });
@@ -319,9 +319,8 @@ describe("<CardsNewClient> — stay-on-page consecutive add", () => {
     await fillAndSubmit("Hello", "Hola");
 
     await waitFor(() => {
-      expect((screen.getByLabelText(/front/i) as HTMLInputElement).value).toBe("");
+      expect(mockPush).toHaveBeenCalledWith(`/cardgroups/${CG_ID}/cards`);
     });
-    expect((screen.getByLabelText(/back/i) as HTMLInputElement).value).toBe("");
   });
 
   it("fires SetLastViewedCardgroup exactly once with the current cardgroup id", async () => {
@@ -340,79 +339,7 @@ describe("<CardsNewClient> — stay-on-page consecutive add", () => {
     });
   });
 
-  it("renders the SuccessIndicator with role=status, aria-live=polite, and the cardgroup name", async () => {
-    renderClient({
-      mocks: [makeCreateMock({ front: "Hello", back: "Hola" }), makePersistMock()],
-    });
-
-    await fillAndSubmit("Hello", "Hola");
-
-    const indicator = await screen.findByRole("status");
-    expect(indicator).toHaveAttribute("aria-live", "polite");
-    expect(indicator).toHaveTextContent(/✓ Card added to "Spanish 101"/);
-  });
-
-  it("does NOT call router.push after a successful submit (regression guard)", async () => {
-    renderClient({
-      mocks: [makeCreateMock({ front: "Hello", back: "Hola" }), makePersistMock()],
-    });
-
-    await fillAndSubmit("Hello", "Hola");
-
-    // Wait for the success indicator so we know the submit chain ran.
-    await screen.findByRole("status");
-
-    expect(mockPush).not.toHaveBeenCalled();
-  });
-
-  it("dismisses the SuccessIndicator after 2 s", async () => {
-    // Real timers throughout: userEvent and Apollo MockedProvider both rely
-    // on real timer/microtask scheduling, and switching to fake timers AFTER
-    // the SuccessIndicator's setTimeout is already pending does not migrate
-    // the existing real-timer handle into the fake-timer queue. So we wait
-    // the wall-clock 2 s with a generous test-level timeout instead.
-    renderClient({
-      mocks: [makeCreateMock({ front: "Hello", back: "Hola" }), makePersistMock()],
-    });
-
-    await fillAndSubmit("Hello", "Hola");
-    const indicator = await screen.findByRole("status");
-    expect(indicator).toBeInTheDocument();
-
-    // Real-time wait for the indicator's 2 s setTimeout; cap at 3 s.
-    await waitFor(
-      () => {
-        expect(screen.queryByRole("status")).not.toBeInTheDocument();
-      },
-      { timeout: 3000, interval: 100 },
-    );
-  }, 10000);
-
-  it("two consecutive submits each render a fresh SuccessIndicator", async () => {
-    renderClient({
-      mocks: [
-        makeCreateMock({ front: "Hello", back: "Hola", cardId: "c-1" }),
-        makePersistMock(),
-        makeCreateMock({ front: "Bye", back: "Adios", cardId: "c-2" }),
-        makePersistMock(),
-      ],
-    });
-
-    // First submit.
-    await fillAndSubmit("Hello", "Hola");
-    const firstIndicator = await screen.findByRole("status");
-    expect(firstIndicator).toBeInTheDocument();
-
-    // Second submit — the form should be clear, fill again.
-    await fillAndSubmit("Bye", "Adios");
-
-    // The indicator should still be visible (key bumped → remount, restarts timer).
-    await waitFor(() => {
-      expect(screen.queryByRole("status")).toBeInTheDocument();
-    });
-  });
-
-  it("logs [cards-new] warning and still resets/shows indicator when setLastViewed rejects", async () => {
+  it("logs [cards-new] warning and still calls router.push when setLastViewed rejects", async () => {
     // leakSpy (inner spy, silent=true) already swallows console output, so no
     // extra mockImplementation is needed here. Calling mockImplementation on the
     // outer consoleWarnSpy would break the call chain into leakSpy and silence
@@ -432,10 +359,10 @@ describe("<CardsNewClient> — stay-on-page consecutive add", () => {
 
     await fillAndSubmit("Hello", "Hola");
 
+    // Navigation still happens even if setLastViewed rejects (fire-and-forget).
     await waitFor(() => {
-      expect((screen.getByLabelText(/front/i) as HTMLInputElement).value).toBe("");
+      expect(mockPush).toHaveBeenCalledWith(`/cardgroups/${CG_ID}/cards`);
     });
-    expect(screen.getByRole("status")).toBeInTheDocument();
     // No alert banner from createCard (which succeeded).
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 
@@ -447,7 +374,7 @@ describe("<CardsNewClient> — stay-on-page consecutive add", () => {
     });
   });
 
-  it("does NOT reset the form and does NOT show indicator when createCard rejects; surfaces error banner", async () => {
+  it("does NOT call router.push when createCard rejects; surfaces error banner", async () => {
     renderClient({
       mocks: [
         makeCreateMock({
@@ -471,8 +398,8 @@ describe("<CardsNewClient> — stay-on-page consecutive add", () => {
     // Form values are preserved so the user can retry.
     expect((screen.getByLabelText(/front/i) as HTMLInputElement).value).toBe("Hello");
     expect((screen.getByLabelText(/back/i) as HTMLInputElement).value).toBe("Hola");
-    // No success indicator.
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    // No navigation on rejection.
+    expect(mockPush).not.toHaveBeenCalled();
 
     await waitFor(() => {
       expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -503,7 +430,7 @@ describe("<CardsNewClient> — stay-on-page consecutive add", () => {
     expect(screen.queryByRole("link", { name: /done/i })).not.toBeInTheDocument();
   });
 
-  it("uses URL cardgroup id (not initialCardgroupId) for setLastViewed and SuccessIndicator after picker switch", async () => {
+  it("uses URL cardgroup id (not initialCardgroupId) for setLastViewed and router.push after picker switch", async () => {
     // Simulate the router having already written cg-2 into the URL (e.g. the
     // user picked "French 101" via the picker and the URL reflects that).
     // initialCardgroupId is still cg-1 (server-resolved before the client switch).
@@ -528,9 +455,10 @@ describe("<CardsNewClient> — stay-on-page consecutive add", () => {
       expect(persistCalled).toHaveBeenCalledTimes(1);
     });
 
-    // SuccessIndicator must display the name of cg-2, not cg-1.
-    const indicator = await screen.findByRole("status");
-    expect(indicator).toHaveTextContent(/✓ Card added to "French 101"/);
+    // router.push must navigate to cg-2's cards list, not cg-1's.
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/cardgroups/cg-2/cards");
+    });
   });
 });
 
@@ -558,8 +486,8 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
     // Both sides of the comparison must be visible to make the choice informed.
     expect(screen.getByText("existing back text")).toBeInTheDocument();
     expect(screen.getByText("new back text")).toBeInTheDocument();
-    // No success indicator for the failed create.
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    // No navigation for the failed create.
+    expect(mockPush).not.toHaveBeenCalled();
     // Duplicate-front is routine validation: the create-rejection log path must
     // be skipped so operators are not paged for a normal collision.
     expect(consoleErrorSpy).not.toHaveBeenCalledWith(
@@ -571,7 +499,7 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("confirm overwrite calls updateCard and resets form", async () => {
+  it("confirm overwrite calls updateCard and navigates to the cardgroup cards list", async () => {
     const updateCalled = vi.fn();
     renderClient({
       mocks: [
@@ -610,11 +538,10 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
     await waitFor(() => {
       expect(screen.queryByText("Card already exists")).not.toBeInTheDocument();
     });
-    // Form is reset.
-    expect((screen.getByLabelText(/front/i) as HTMLInputElement).value).toBe("");
-    expect((screen.getByLabelText(/back/i) as HTMLInputElement).value).toBe("");
-    // Success indicator appears.
-    expect(screen.getByRole("status")).toBeInTheDocument();
+    // Navigation happens after successful overwrite.
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith(`/cardgroups/${CG_ID}/cards`);
+    });
   });
 
   it("cancel keeps form intact and does not call updateCard", async () => {
@@ -647,8 +574,8 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
     // Form values preserved so the user can edit `front` and resubmit.
     expect((screen.getByLabelText(/front/i) as HTMLInputElement).value).toBe("apple");
     expect((screen.getByLabelText(/back/i) as HTMLInputElement).value).toBe("new back text");
-    // No success indicator.
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    // No navigation on cancel.
+    expect(mockPush).not.toHaveBeenCalled();
   });
 
   it("overwrite mutation error keeps dialog open and surfaces inline error", async () => {
@@ -683,11 +610,11 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
     });
     expect(screen.getByText("Card already exists")).toBeInTheDocument();
-    // Form is NOT reset.
+    // Form is NOT reset (overwrite failed, so the user can retry).
     expect((screen.getByLabelText(/front/i) as HTMLInputElement).value).toBe("apple");
     expect((screen.getByLabelText(/back/i) as HTMLInputElement).value).toBe("new back text");
-    // No success indicator.
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    // No navigation on overwrite failure.
+    expect(mockPush).not.toHaveBeenCalled();
     // The inline error log carries the structured shape.
     await waitFor(() => {
       expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -779,5 +706,56 @@ describe("<CardsNewClient> — CardgroupPickerSheet prop wiring", () => {
     renderClient({ initialCardgroupId: CG_ID, forcePickerOpen: false });
 
     expect(capturedPickerProps?.open).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ?return= query parameter — open-redirect guard and post-create navigation
+// ---------------------------------------------------------------------------
+
+describe("<CardsNewClient> — ?return= navigation", () => {
+  it("pushes to the sanitized ?return= path after a successful create", async () => {
+    // A valid internal path is allowed through; router.push should use it.
+    mockSearchParamsValue = `cardgroup=${CG_ID}&return=/learn/abc`;
+
+    renderClient({
+      mocks: [makeCreateMock({ front: "Hello", back: "Hola" }), makePersistMock()],
+    });
+
+    await fillAndSubmit("Hello", "Hola");
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith("/learn/abc");
+    });
+  });
+
+  it("falls back to /cardgroups/<id>/cards when no ?return= param is present", async () => {
+    // No return param — mockSearchParamsValue is reset to "" in beforeEach.
+    renderClient({
+      mocks: [makeCreateMock({ front: "Hello", back: "Hola" }), makePersistMock()],
+    });
+
+    await fillAndSubmit("Hello", "Hola");
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith(`/cardgroups/${CG_ID}/cards`);
+    });
+  });
+
+  it("falls back to /cardgroups/<id>/cards when ?return= is an external URL (open-redirect blocked)", async () => {
+    // sanitizeReturnTo returns null for external URLs; the fallback path is used.
+    mockSearchParamsValue = `cardgroup=${CG_ID}&return=https://evil.example.com`;
+
+    renderClient({
+      mocks: [makeCreateMock({ front: "Hello", back: "Hola" }), makePersistMock()],
+    });
+
+    await fillAndSubmit("Hello", "Hola");
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith(`/cardgroups/${CG_ID}/cards`);
+    });
+    // The evil URL must never be passed to router.push.
+    expect(mockPush).not.toHaveBeenCalledWith("https://evil.example.com");
   });
 });
