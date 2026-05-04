@@ -15,8 +15,9 @@ import CardsNewClient from "./cards-new-client";
 
 // ---------------------------------------------------------------------------
 // Captured picker props — populated by the CardgroupPickerSheet mock below.
-// Only used by the prop-wiring describe block; the consecutive-add tests do
-// not use this mock (they rely on the real component with the picker closed).
+// Only used by the CardgroupPickerSheet prop-wiring describe block; the
+// navigate-on-success tests do not use this mock (they rely on the real
+// component with the picker closed).
 // ---------------------------------------------------------------------------
 type PickerSheetProps = React.ComponentProps<
   typeof import("@/components/cardgroups/cardgroup-picker-sheet").default
