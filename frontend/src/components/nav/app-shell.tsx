@@ -4,7 +4,7 @@ import { LogoDrawer } from "./logo-drawer";
 
 interface AppShellProps {
   /** Required user record. Callers must pass a value or explicit null. */
-  user: { email: string } | null;
+  user: { email: string | null } | null;
   /** Required admin flag — callers must explicitly pass false for non-admins. */
   isAdmin: boolean;
   children: React.ReactNode;
@@ -15,8 +15,11 @@ interface AppShellProps {
  * a logo-triggered drawer on mobile (<md). The <SidebarProvider> lives here so
  * the rail and drawer share the same sidebar context.
  *
- * This is a server component — GlobalRail and LogoDrawer are client components
- * that manage their own interactive state, so no "use client" is needed here.
+ * AppShell is a server component. GlobalRail, LogoDrawer, and SidebarProvider
+ * are all client components — React Server Components composition rules allow
+ * us to mount them as children from this server component. However, any state
+ * added to AppShell itself must remain server-side, so keep the "use client"
+ * directive off this file.
  */
 export function AppShell({ user, isAdmin, children }: AppShellProps) {
   return (
@@ -37,7 +40,7 @@ export function AppShell({ user, isAdmin, children }: AppShellProps) {
           className="md:hidden flex items-center justify-between px-4 h-12 border-b"
         >
           <LogoDrawer user={user} isAdmin={isAdmin} />
-          {user && (
+          {user && user.email !== null && (
             <span className="text-sm text-muted-foreground truncate max-w-[160px]">
               {user.email}
             </span>

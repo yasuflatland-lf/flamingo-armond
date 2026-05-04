@@ -11,9 +11,10 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { HeaderSignInLink } from "./header-sign-in-link";
 
 interface LogoDrawerProps {
-  user: { email: string } | null;
+  user: { email: string | null } | null;
   isAdmin: boolean;
 }
 
@@ -37,6 +38,14 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
         <SheetHeader>
           <SheetTitle className="sr-only">Navigation menu</SheetTitle>
         </SheetHeader>
+
+        {!user && (
+          <nav className="flex flex-col gap-1">
+            <SheetClose asChild>
+              <HeaderSignInLink className={NAV_LINK_CLASS} />
+            </SheetClose>
+          </nav>
+        )}
 
         {user && (
           <>
@@ -83,7 +92,9 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
             <hr className="my-3 border-t" />
 
             <div className="mt-auto flex flex-col gap-2">
-              <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+              {user.email !== null && (
+                <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+              )}
               <LogoutButton />
             </div>
           </>

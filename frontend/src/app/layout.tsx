@@ -51,7 +51,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     error && error.name !== "AuthSessionMissingError"
       ? null
       : user
-        ? { email: user.email ?? "" }
+        ? { email: user.email ?? null }
         : null;
 
   return (

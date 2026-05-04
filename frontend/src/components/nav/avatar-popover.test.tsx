@@ -90,5 +90,31 @@ describe("<AvatarPopover>", () => {
       render(<AvatarPopover email="user@example.com" />);
       expect(screen.getByRole("button", { name: "Open account menu" })).toBeInTheDocument();
     });
+
+    it("renders the User icon fallback when email is an empty string", () => {
+      render(<AvatarPopover email="" />);
+      // No initial letter — the lucide User icon is rendered instead.
+      expect(document.querySelector("svg")).toBeInTheDocument();
+    });
+
+    it("renders the User icon fallback when email is null", () => {
+      render(<AvatarPopover email={null} />);
+      // No initial letter — the lucide User icon is rendered instead.
+      expect(document.querySelector("svg")).toBeInTheDocument();
+    });
+  });
+
+  describe("email row in popover content", () => {
+    it("hides the email row when email is null", async () => {
+      const user = userEvent.setup();
+      render(<AvatarPopover email={null} />);
+
+      await user.click(screen.getByRole("button", { name: "Open account menu" }));
+
+      // The email row must not appear at all when email is null.
+      expect(screen.queryByText(/@/)).not.toBeInTheDocument();
+      // The Logout button is still present regardless of email.
+      expect(screen.getByRole("button", { name: /logout/i })).toBeInTheDocument();
+    });
   });
 });

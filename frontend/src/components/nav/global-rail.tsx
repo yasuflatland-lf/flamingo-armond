@@ -17,10 +17,11 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { AvatarPopover } from "./avatar-popover";
+import { HeaderSignInLink } from "./header-sign-in-link";
 
 interface GlobalRailProps {
   /** Required user record. Callers must pass a value or explicit null. */
-  user: { email: string } | null;
+  user: { email: string | null } | null;
   /** Required admin flag — callers must explicitly pass false for non-admins. */
   isAdmin: boolean;
 }
@@ -188,6 +189,18 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
       {user !== null && (
         <SidebarFooter>
           <AvatarPopover email={user.email} />
+        </SidebarFooter>
+      )}
+
+      {user === null && (
+        <SidebarFooter>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild tooltip="Sign in">
+                <HeaderSignInLink />
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
         </SidebarFooter>
       )}
     </Sidebar>

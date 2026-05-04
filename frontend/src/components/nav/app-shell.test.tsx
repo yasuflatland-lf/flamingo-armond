@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock next/link so it renders a plain <a> in jsdom.
@@ -22,8 +23,8 @@ vi.mock("next/navigation", () => ({
 // AvatarPopover reaches into LogoutButton -> Supabase -> router. Stub it so the
 // shell test stays focused on shell layout logic, not popover internals.
 vi.mock("./avatar-popover", () => ({
-  AvatarPopover: ({ email }: { email: string }) => (
-    <div data-testid="avatar-popover" data-email={email} />
+  AvatarPopover: ({ email }: { email: string | null }) => (
+    <div data-testid="avatar-popover" data-email={email ?? ""} />
   ),
 }));
 
@@ -115,7 +116,8 @@ describe("<AppShell>", () => {
   });
 
   describe("S4 — anonymous user", () => {
-    it("renders no email in the mobile header and no rail nav items when user is null", () => {
+    it("renders no email in the mobile header, no rail nav items, and a Sign in link when user is null", () => {
+      mockUsePathname.mockReturnValue("/cardgroups");
       render(
         <AppShell user={null} isAdmin={false}>
           <div />
@@ -126,12 +128,30 @@ describe("<AppShell>", () => {
       const mobileHeader = screen.getByTestId("mobile-header");
       expect(mobileHeader).not.toHaveTextContent("@");
 
-      // Rail shows no nav links for anonymous users (GlobalRail gates them on
-      // user !== null).
+      // Rail shows no authenticated nav links for anonymous users.
       expect(screen.queryByRole("link", { name: /cardgroups/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /profile/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /admin/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /settings/i })).toBeNull();
+
+      // Anonymous users see a Sign in CTA (in the rail footer).
+      expect(screen.getByRole("link", { name: /sign in/i })).toBeInTheDocument();
+    });
+  });
+
+  describe("S4b — signed-in user with null email", () => {
+    it("renders no email span in the mobile header when user.email is null", () => {
+      render(
+        <AppShell user={{ email: null }} isAdmin={false}>
+          <div />
+        </AppShell>,
+      );
+
+      const mobileHeader = screen.getByTestId("mobile-header");
+      // No email span — the null guard suppresses the element entirely.
+      expect(mobileHeader).not.toHaveTextContent("@");
+      // The mobile header still renders (the user object itself is non-null).
+      expect(mobileHeader).toBeInTheDocument();
     });
   });
 
@@ -145,6 +165,40 @@ describe("<AppShell>", () => {
 
       expect(screen.getByTestId("content")).toBeInTheDocument();
       expect(screen.getByTestId("content")).toHaveTextContent("hello");
+    });
+  });
+
+  describe("S6 — isAdmin=true: Admin link appears in both rail and drawer", () => {
+    it("the rail body contains an Admin link when isAdmin=true", () => {
+      mockUsePathname.mockReturnValue("/");
+      render(
+        <AppShell user={SIGNED_IN_USER} isAdmin={true}>
+          <div />
+        </AppShell>,
+      );
+
+      // The rail container (always in DOM) must have an Admin link pointing to /admin.
+      const railContainer = screen.getByTestId("rail-container");
+      const railAdminLink = railContainer.querySelector("a[href='/admin']");
+      expect(railAdminLink).not.toBeNull();
+    });
+
+    it("the drawer body contains an Admin link when isAdmin=true", async () => {
+      const user = userEvent.setup();
+      mockUsePathname.mockReturnValue("/");
+      render(
+        <AppShell user={SIGNED_IN_USER} isAdmin={true}>
+          <div />
+        </AppShell>,
+      );
+
+      // Open the drawer so drawer links enter the DOM.
+      const drawerTrigger = screen.getByRole("button", { name: /open navigation menu/i });
+      await user.click(drawerTrigger);
+
+      // The drawer body must have an Admin link (portaled into document.body by
+      // the Sheet component — use screen to search the full document).
+      expect(screen.getByRole("link", { name: /admin/i })).toHaveAttribute("href", "/admin");
     });
   });
 });

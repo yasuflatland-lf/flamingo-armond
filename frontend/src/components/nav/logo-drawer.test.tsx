@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock next/navigation so Link and other hooks resolve in jsdom.
+// usePathname is mocked per-test so anonymous Sign-in-link tests can set a
+// non-/login pathname (the link self-suppresses on /login).
+const mockUsePathname = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: vi.fn(() => ({ push: vi.fn(), replace: vi.fn() })),
-  usePathname: vi.fn(() => "/"),
+  usePathname: () => mockUsePathname(),
 }));
 
 // Mock LogoutButton — it reaches into Supabase/router which are not needed here.
@@ -21,6 +23,11 @@ vi.mock("@/app/_components/logout-button", () => ({
 import { LogoDrawer } from "./logo-drawer";
 
 const SIGNED_IN_USER = { email: "user@example.com" };
+
+beforeEach(() => {
+  // Default to a non-/login path so HeaderSignInLink renders for anonymous tests.
+  mockUsePathname.mockReturnValue("/cardgroups");
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -75,12 +82,17 @@ describe("<LogoDrawer>", () => {
     expect(adminLink).toHaveAttribute("href", "/admin");
   });
 
-  it("anonymous user (user === null): drawer body shows no nav items and no email", async () => {
+  it("anonymous user (user === null): drawer body shows a Sign in link but no nav items and no email", async () => {
     const user = userEvent.setup();
+    mockUsePathname.mockReturnValue("/cardgroups");
     render(<LogoDrawer user={null} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
 
+    // Anonymous users see a Sign in CTA.
+    expect(screen.getByRole("link", { name: /sign in/i })).toBeInTheDocument();
+
+    // No authenticated nav items.
     expect(screen.queryByRole("link", { name: /cardgroups/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /profile/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/@/)).not.toBeInTheDocument();
@@ -93,6 +105,17 @@ describe("<LogoDrawer>", () => {
     await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
 
     expect(screen.queryByTestId("logout-button")).not.toBeInTheDocument();
+  });
+
+  it("anonymous user on /login: Sign in link is suppressed (self-suppression behavior)", async () => {
+    const user = userEvent.setup();
+    mockUsePathname.mockReturnValue("/login");
+    render(<LogoDrawer user={null} isAdmin={false} />);
+
+    await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
+
+    // HeaderSignInLink self-suppresses on /login.
+    expect(screen.queryByRole("link", { name: /sign in/i })).not.toBeInTheDocument();
   });
 
   it("signed-in user: email address is visible in the drawer body", async () => {
@@ -110,6 +133,20 @@ describe("<LogoDrawer>", () => {
 
     await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
 
+    expect(screen.getByTestId("logout-button")).toBeInTheDocument();
+  });
+
+  it("signed-in user with null email: drawer shows nav items but no email text", async () => {
+    const user = userEvent.setup();
+    render(<LogoDrawer user={{ email: null }} isAdmin={false} />);
+
+    await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
+
+    // Nav links are still present — the user is signed in.
+    expect(screen.getByRole("link", { name: /cardgroups/i })).toBeInTheDocument();
+    // No email text in the bottom block when email is null.
+    expect(screen.queryByText(/@/)).not.toBeInTheDocument();
+    // LogoutButton is still present.
     expect(screen.getByTestId("logout-button")).toBeInTheDocument();
   });
 });

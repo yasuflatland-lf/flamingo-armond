@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,8 +23,8 @@ vi.mock("next/navigation", () => ({
 // AvatarPopover reaches into LogoutButton -> Supabase -> router. Stub it so the
 // rail test stays focused on rail logic, not popover internals.
 vi.mock("./avatar-popover", () => ({
-  AvatarPopover: ({ email }: { email: string }) => (
-    <div data-testid="avatar-popover" data-email={email} />
+  AvatarPopover: ({ email }: { email: string | null }) => (
+    <div data-testid="avatar-popover" data-email={email ?? ""} />
   ),
 }));
 
@@ -121,6 +121,45 @@ describe("<GlobalRail>", () => {
         "page",
       );
     });
+
+    it("marks Profile as the current page when pathname is /profile", () => {
+      mockUsePathname.mockReturnValue("/profile");
+      renderRail({ user: { email: "u@example.com" }, isAdmin: true });
+
+      expect(screen.getByRole("link", { name: /profile/i })).toHaveAttribute("aria-current", "page");
+
+      // Other items must NOT be marked as current.
+      expect(screen.getByRole("link", { name: /cardgroups/i })).not.toHaveAttribute("aria-current");
+      expect(screen.getByRole("link", { name: /admin/i })).not.toHaveAttribute("aria-current");
+      expect(screen.getByRole("link", { name: /settings/i })).not.toHaveAttribute("aria-current");
+    });
+
+    it("marks Admin as the current page when pathname is /admin/users (requires isAdmin=true)", () => {
+      mockUsePathname.mockReturnValue("/admin/users");
+      renderRail({ user: { email: "u@example.com" }, isAdmin: true });
+
+      expect(screen.getByRole("link", { name: /admin/i })).toHaveAttribute("aria-current", "page");
+
+      // Other items must NOT be marked as current.
+      expect(screen.getByRole("link", { name: /cardgroups/i })).not.toHaveAttribute("aria-current");
+      expect(screen.getByRole("link", { name: /profile/i })).not.toHaveAttribute("aria-current");
+      expect(screen.getByRole("link", { name: /settings/i })).not.toHaveAttribute("aria-current");
+    });
+
+    it("marks Settings as the current page when pathname is /settings", () => {
+      mockUsePathname.mockReturnValue("/settings");
+      renderRail({ user: { email: "u@example.com" }, isAdmin: true });
+
+      expect(screen.getByRole("link", { name: /settings/i })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+
+      // Other items must NOT be marked as current.
+      expect(screen.getByRole("link", { name: /cardgroups/i })).not.toHaveAttribute("aria-current");
+      expect(screen.getByRole("link", { name: /profile/i })).not.toHaveAttribute("aria-current");
+      expect(screen.getByRole("link", { name: /admin/i })).not.toHaveAttribute("aria-current");
+    });
   });
 
   describe("S4 — logo button toggles aria-expanded", () => {
@@ -142,11 +181,14 @@ describe("<GlobalRail>", () => {
   });
 
   describe("S5 — anonymous user", () => {
-    it("renders no rail items and no avatar popover when user is null", () => {
-      mockUsePathname.mockReturnValue("/");
+    it("renders a Sign in link in the footer and no authenticated nav items when user is null", () => {
+      mockUsePathname.mockReturnValue("/cardgroups");
       renderRail({ user: null, isAdmin: false });
 
-      // Negative: none of the rail navigation items appear.
+      // Positive: anonymous users see a Sign in CTA in the rail footer.
+      expect(screen.getByRole("link", { name: /sign in/i })).toBeInTheDocument();
+
+      // Negative: none of the authenticated rail navigation items appear.
       expect(screen.queryByRole("link", { name: /cardgroups/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /profile/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /admin/i })).toBeNull();
@@ -171,6 +213,81 @@ describe("<GlobalRail>", () => {
 
       const popover = within(container).getByTestId("avatar-popover");
       expect(popover).toHaveAttribute("data-email", "alice@example.com");
+    });
+
+    it("renders the AvatarPopover with no email text when user.email is null", () => {
+      mockUsePathname.mockReturnValue("/");
+      const { container } = renderRail({
+        user: { email: null },
+        isAdmin: false,
+      });
+
+      // The popover is still present (user is signed in), but email is null.
+      const popover = within(container).getByTestId("avatar-popover");
+      expect(popover).toBeInTheDocument();
+      // data-email falls back to "" in the stub when email is null.
+      expect(popover).toHaveAttribute("data-email", "");
+    });
+  });
+
+  describe("S6 — hover flyout (useRef-based timer guard)", () => {
+    it("pointerEnter on a collapsed rail expands it (aria-expanded becomes true)", async () => {
+      const user = userEvent.setup();
+      mockUsePathname.mockReturnValue("/");
+      const { container } = renderRail({
+        user: { email: "u@example.com" },
+        isAdmin: false,
+      });
+
+      const logoBtn = screen.getByRole("button", { name: /toggle navigation rail/i });
+
+      // First collapse the rail so we can test expand on hover.
+      await user.click(logoBtn);
+      expect(logoBtn).toHaveAttribute("aria-expanded", "false");
+
+      // Find the Sidebar element that has the onPointerEnter handler.
+      const sidebar = container.querySelector("[data-sidebar='sidebar']");
+      if (!sidebar) throw new Error("[data-sidebar='sidebar'] element not found");
+
+      // Fire pointer enter — React synthetic event fires through fireEvent.
+      act(() => {
+        fireEvent.pointerEnter(sidebar);
+      });
+
+      expect(logoBtn).toHaveAttribute("aria-expanded", "true");
+    });
+
+    it("no late state update after unmount when pointerLeave timer is pending", () => {
+      vi.useFakeTimers();
+      try {
+        mockUsePathname.mockReturnValue("/");
+        const { unmount, container } = renderRail({
+          user: { email: "u@example.com" },
+          isAdmin: false,
+        });
+
+        const sidebar = container.querySelector("[data-sidebar='sidebar']");
+        if (!sidebar) throw new Error("[data-sidebar='sidebar'] element not found");
+
+        // Trigger the hover-leave timer without letting it fire.
+        act(() => {
+          fireEvent.pointerLeave(sidebar);
+        });
+
+        // Unmount before the 150ms timer fires — the useEffect cleanup clears it.
+        act(() => {
+          unmount();
+        });
+
+        // Advance time past the timer: should not throw "Can't perform a React
+        // state update on an unmounted component" warnings.
+        act(() => {
+          vi.advanceTimersByTime(200);
+        });
+        // If we reach here without error, the cleanup ref guard is working.
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });
