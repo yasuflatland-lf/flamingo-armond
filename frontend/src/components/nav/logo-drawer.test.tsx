@@ -43,6 +43,29 @@ describe("<LogoDrawer>", () => {
     expect(screen.getByRole("link", { name: /cardgroups/i })).toBeInTheDocument();
   });
 
+  it("renders the flamingo.svg trigger at 48x48 (text label is gone)", () => {
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+    const trigger = screen.getByRole("button", { name: "Open navigation menu" });
+    const logo = trigger.querySelector('img[alt="flamingo-armond"]');
+    expect(logo).not.toBeNull();
+    expect(logo).toHaveAttribute("width", "48");
+    expect(logo).toHaveAttribute("height", "48");
+    // The literal text "flamingo-armond" must not appear inside the trigger.
+    expect(trigger).not.toHaveTextContent(/flamingo-armond/);
+  });
+
+  it("Learning link is present at the top of the drawer body and points at /learn", async () => {
+    const user = userEvent.setup();
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+    await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
+
+    const learning = screen.getByRole("link", { name: /^learning$/i });
+    expect(learning).toBeInTheDocument();
+    expect(learning).toHaveAttribute("href", "/learn");
+  });
+
   it("no hamburger-style 'Open menu' trigger exists — the new logo-driven drawer trigger replaces the prior hamburger trigger", () => {
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 

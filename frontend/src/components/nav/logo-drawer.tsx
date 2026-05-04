@@ -1,6 +1,7 @@
 "use client";
 
-import { BookOpen, Settings, ShieldCheck, User } from "lucide-react";
+import { BookOpen, GraduationCap, Settings, ShieldCheck, User } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/app/_components/logout-button";
@@ -33,9 +34,16 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
         <button
           type="button"
           aria-label="Open navigation menu"
-          className="rounded-md p-2 hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring font-semibold"
+          className="flex items-center justify-center rounded-md p-2 hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring"
         >
-          🦩 flamingo-armond
+          <Image
+            src="/flamingo.svg"
+            alt="flamingo-armond"
+            width={48}
+            height={48}
+            priority
+            unoptimized
+          />
         </button>
       </SheetTrigger>
 
@@ -55,6 +63,13 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
         {user && (
           <>
             <nav className="flex flex-col gap-1">
+              <SheetClose asChild>
+                <Link href="/learn" className={NAV_LINK_CLASS}>
+                  <GraduationCap className="h-4 w-4 shrink-0" />
+                  Learning
+                </Link>
+              </SheetClose>
+
               <SheetClose asChild>
                 <Link href="/cardgroups" className={NAV_LINK_CLASS}>
                   <BookOpen className="h-4 w-4 shrink-0" />
