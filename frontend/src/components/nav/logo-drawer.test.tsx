@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -62,24 +62,46 @@ describe("<LogoDrawer>", () => {
     expect(settingsLink).toHaveAttribute("href", "/settings");
   });
 
-  it("isAdmin=false does not render the Admin link", async () => {
+  it("isAdmin=false does not render any admin nav links", async () => {
     const user = userEvent.setup();
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
 
-    expect(screen.queryByRole("link", { name: /^admin$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^users$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^roles$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^dictionary$/i })).not.toBeInTheDocument();
   });
 
-  it("isAdmin=true renders the Admin link pointing to /admin", async () => {
+  it("isAdmin=true renders all three admin nav links with correct hrefs", async () => {
     const user = userEvent.setup();
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={true} />);
 
     await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
 
-    const adminLink = screen.getByRole("link", { name: /admin/i });
-    expect(adminLink).toBeInTheDocument();
-    expect(adminLink).toHaveAttribute("href", "/admin");
+    const usersLink = screen.getByRole("link", { name: /^users$/i });
+    expect(usersLink).toBeInTheDocument();
+    expect(usersLink).toHaveAttribute("href", "/admin/users");
+
+    const rolesLink = screen.getByRole("link", { name: /^roles$/i });
+    expect(rolesLink).toBeInTheDocument();
+    expect(rolesLink).toHaveAttribute("href", "/admin/roles");
+
+    const dictionaryLink = screen.getByRole("link", { name: /^dictionary$/i });
+    expect(dictionaryLink).toBeInTheDocument();
+    expect(dictionaryLink).toHaveAttribute("href", "/admin/dictionary");
+  });
+
+  it("Profile link in the bottom block has href=/profile and is present for signed-in users", async () => {
+    const user = userEvent.setup();
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+    await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
+
+    const bottomBlock = screen.getByTestId("bottom-block");
+    const profileLink = within(bottomBlock).getByRole("link", { name: /profile/i });
+    expect(profileLink).toBeInTheDocument();
+    expect(profileLink).toHaveAttribute("href", "/profile");
   });
 
   it("anonymous user (user === null): drawer body shows a Sign in link but no nav items and no email", async () => {
