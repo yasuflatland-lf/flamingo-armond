@@ -247,7 +247,7 @@ export default function CardsNewClient({
   }
 
   function handlePickerSelect(newId: string) {
-    router.replace(`/cards/new?cardgroup=${newId}`, { scroll: false });
+    router.replace(`/cards/new?cardgroup=${encodeURIComponent(newId)}`, { scroll: false });
   }
 
   return (
