@@ -5,8 +5,35 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  type ApolloMockLeakSpyResult,
+  installApolloMockLeakSpy,
+} from "../../../../__tests__/utils/mock-apollo-paginated";
 import { HandleSwipeDocument, SetLastViewedCardgroupDocument } from "@/generated/graphql";
 import { LearnClient } from "./learn-client";
+
+// ---------------------------------------------------------------------------
+// File-wide MockedProvider leak spy.
+//
+// Installed as the OUTERMOST `console.warn` spy (top-level `beforeEach` runs
+// before any describe-level `beforeEach`), and torn down LAST in the matching
+// `afterEach`. Per pagination.md § "Spy stacking: install order is outer-first,
+// teardown is LIFO", any per-describe `console.warn` spy installed below
+// stacks on top and MUST NOT call `mockImplementation(() => {})` — that would
+// swallow the leak warning before the leak spy records it.
+// ---------------------------------------------------------------------------
+let leakSpy: ApolloMockLeakSpyResult;
+
+beforeEach(() => {
+  leakSpy = installApolloMockLeakSpy({
+    operationNames: ["HandleSwipe", "SetLastViewedCardgroup"],
+  });
+});
+
+afterEach(() => {
+  leakSpy.assertNoLeaks();
+  leakSpy.teardown();
+});
 
 const CG_ID = "cg-1";
 
@@ -196,10 +223,18 @@ function makePersistMock(cardgroupId: string, onCalled?: () => void) {
 }
 
 describe("<LearnClient> persist-last-viewed path", () => {
+  // Forwarding spy: do NOT call `mockImplementation(() => {})` here. Per
+  // pagination.md § "Spy stacking", this spy is the OUTER spy (installed after
+  // the file-wide leak spy) and must forward every `console.warn` call through
+  // to the underlying leak spy so MockedProvider leaks are still recorded.
+  // Tests that expect a `[learn] setLastViewedCardgroup failed` warn assert
+  // it explicitly via `toHaveBeenCalledWith` below. LIFO teardown is preserved
+  // automatically: this describe-scoped `afterEach` runs before the file-wide
+  // `afterEach`, so `consoleWarnSpy` restores first, then the leak spy.
   let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, "warn");
   });
 
   afterEach(() => {
