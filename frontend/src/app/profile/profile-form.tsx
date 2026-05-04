@@ -83,11 +83,7 @@ export function ProfileForm({ email, initial }: Props) {
 
       <div className="mb-4 space-y-2">
         <Label>Email</Label>
-        {email !== null ? (
-          <p>{email}</p>
-        ) : (
-          <p className="italic">No email on this account</p>
-        )}
+        {email !== null ? <p>{email}</p> : <p className="italic">No email on this account</p>}
         <Link href="/profile/change-email" className="text-sm underline">
           Change email
         </Link>

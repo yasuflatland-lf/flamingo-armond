@@ -171,10 +171,7 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
                     return (
                       <SidebarMenuItem key={item.href}>
                         <SidebarMenuButton asChild isActive={isItemActive} tooltip={item.label}>
-                          <Link
-                            href={item.href}
-                            aria-current={isItemActive ? "page" : undefined}
-                          >
+                          <Link href={item.href} aria-current={isItemActive ? "page" : undefined}>
                             <Icon aria-hidden="true" />
                             <span>{item.label}</span>
                           </Link>

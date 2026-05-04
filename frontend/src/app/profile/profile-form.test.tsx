@@ -338,7 +338,10 @@ describe("<ProfileForm>", () => {
 
     render(
       <MockedProvider mocks={mocks}>
-        <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: undefined as unknown as string }} />
+        <ProfileForm
+          email="alice@example.com"
+          initial={{ displayName: "Alice", bio: undefined as unknown as string }}
+        />
       </MockedProvider>,
     );
 

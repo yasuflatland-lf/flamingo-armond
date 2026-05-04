@@ -88,14 +88,8 @@ describe("<GlobalRail>", () => {
         "href",
         "/cardgroups",
       );
-      expect(screen.getByRole("link", { name: /users/i })).toHaveAttribute(
-        "href",
-        "/admin/users",
-      );
-      expect(screen.getByRole("link", { name: /roles/i })).toHaveAttribute(
-        "href",
-        "/admin/roles",
-      );
+      expect(screen.getByRole("link", { name: /users/i })).toHaveAttribute("href", "/admin/users");
+      expect(screen.getByRole("link", { name: /roles/i })).toHaveAttribute("href", "/admin/roles");
       expect(screen.getByRole("link", { name: /dictionary/i })).toHaveAttribute(
         "href",
         "/admin/dictionary",
