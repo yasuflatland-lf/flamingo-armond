@@ -35,18 +35,25 @@
     path: "{{ state_file }}"
   register: _state_stat
 
-- name: Load state file (Phase 4)
+- name: Load state file (Phase 4 reads Phase 2/3 outputs)
   ansible.builtin.include_vars:
     file: "{{ state_file }}"
+    name: existing_state
   when: _state_stat.stat.exists
+
+# Coerce to a mapping so `existing_state.<key>` access and `| default(...)`
+# behave consistently when the file is absent, empty, or YAML-null.
+- name: Ensure existing_state is a mapping
+  ansible.builtin.set_fact:
+    existing_state: "{{ existing_state if (existing_state is defined and existing_state is mapping) else {} }}"
 
 - name: Assert Phase 2 (supabase) and Phase 3 (render) have run
   ansible.builtin.assert:
     that:
       - _state_stat.stat.exists
-      - backend_url is defined
-      - supabase_url is defined
-      - supabase_anon_key is defined
+      - (existing_state.backend_url | default('') | length) > 0
+      - (existing_state.supabase_url | default('') | length) > 0
+      - (existing_state.supabase_anon_key | default('') | length) > 0
     fail_msg: >-
       Required state values from earlier phases are missing.
 
@@ -56,6 +63,15 @@
       - The state file is corrupt or was hand-edited.
         Restore from the most recent backup:
           cp "$(ls -1t {{ state_file }}.*~ 2>/dev/null | head -1)" {{ state_file }}
+
+# Rebind upstream values to top-level facts so downstream tasks (`Show env
+# vars`, `Define desired env vars`, etc.) keep their existing references.
+# The assert above guarantees these keys are present and non-empty.
+- name: Rebind Phase 2/3 values from existing_state
+  ansible.builtin.set_fact:
+    backend_url: "{{ existing_state.backend_url }}"
+    supabase_url: "{{ existing_state.supabase_url }}"
+    supabase_anon_key: "{{ existing_state.supabase_anon_key }}"
 
 # ---------------------------------------------------------------------------
 # Show env vars the operator can verify after the API registers them.
@@ -90,16 +106,19 @@
       Press Enter once the project has been created.
   when: not confirm
 
-- name: Prompt for Vercel project ID
+- name: Prompt for Vercel project ID (empty input keeps existing)
   ansible.builtin.pause:
-    prompt: "Vercel project ID (Settings -> General -> Project ID; starts with prj_)"
+    prompt: "Vercel project ID [current: {{ existing_state.vercel_project_id | default('(none)') }}] (Settings -> General -> Project ID; starts with prj_; press Enter to keep current)"
     echo: true
   register: vercel_project_id_prompt
   when: not confirm
 
-- name: Resolve vercel_project_id
+- name: Resolve vercel_project_id (keep existing on empty input)
   ansible.builtin.set_fact:
-    vercel_project_id: "{{ vercel_project_id_prompt.user_input | default('') | trim }}"
+    vercel_project_id: >-
+      {{ (vercel_project_id_prompt.user_input | default('') | trim)
+         if (vercel_project_id_prompt.user_input | default('') | trim | length) > 0
+         else existing_state.vercel_project_id | default('') }}
 
 - name: Validate vercel_project_id shape
   ansible.builtin.assert:
@@ -108,7 +127,8 @@
     fail_msg: >-
       vercel_project_id must start with 'prj_' followed by alphanumeric
       characters. Got: '{{ vercel_project_id }}'.
-      Copy the value from Vercel -> Settings -> General -> Project ID.
+      Copy the value from Vercel -> Settings -> General -> Project ID,
+      or re-run and press Enter to reuse the value already in {{ state_file }}.
 
 # ---------------------------------------------------------------------------
 # Read VERCEL_API_TOKEN from the environment (Phase 1 already verified it
@@ -343,16 +363,19 @@
   ansible.builtin.debug:
     msg: "Reconciled {{ vercel_desired_env | length }} env vars on Vercel project {{ vercel_project_id }} (PATCH existing, POST new)."
 
-- name: Prompt for Vercel production URL
+- name: Prompt for Vercel production URL (empty input keeps existing)
   ansible.builtin.pause:
-    prompt: "Vercel production URL (e.g. https://flamingo-armond.vercel.app or custom domain)"
+    prompt: "Vercel production URL [current: {{ existing_state.production_url | default('(none)') }}] (e.g. https://flamingo-armond.vercel.app or custom domain; press Enter to keep current)"
     echo: true
   register: production_url_prompt
   when: not confirm
 
-- name: Resolve production_url
+- name: Resolve production_url (keep existing on empty input)
   ansible.builtin.set_fact:
-    production_url: "{{ production_url_prompt.user_input | default('') | trim }}"
+    production_url: >-
+      {{ (production_url_prompt.user_input | default('') | trim)
+         if (production_url_prompt.user_input | default('') | trim | length) > 0
+         else existing_state.production_url | default('') }}
 
 - name: Validate production_url shape
   ansible.builtin.assert:
@@ -360,7 +383,8 @@
       - production_url is match('^https://.+')
     fail_msg: >-
       production_url must begin with 'https://'. Got: '{{ production_url }}'.
-      Enter the full URL shown in Vercel -> Settings -> Domains.
+      Enter the full URL shown in Vercel -> Settings -> Domains,
+      or re-run and press Enter to reuse the value already in {{ state_file }}.
 
 # State file is known to exist at this point (assert above would have failed
 # otherwise), so re-reading via lookup is safe without errors='ignore'.
