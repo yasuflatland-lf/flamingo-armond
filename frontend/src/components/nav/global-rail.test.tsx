@@ -19,17 +19,6 @@ vi.mock("next/navigation", () => ({
   usePathname: () => mockUsePathname(),
 }));
 
-// AvatarPopover reaches into LogoutButton -> Supabase -> router. Stub it so the
-// rail test stays focused on rail logic, not popover internals. The rail no
-// longer mounts AvatarPopover after Task 7 — the stub remains so the legacy
-// import path in `avatar-popover.tsx` (still on disk until Task 8) does not
-// pull Supabase into the test environment if any indirect importer survives.
-vi.mock("./avatar-popover", () => ({
-  AvatarPopover: ({ email }: { email: string | null }) => (
-    <div data-testid="avatar-popover" data-email={email ?? ""} />
-  ),
-}));
-
 // LogoutButton reaches into Supabase. Stub it to keep the test self-contained.
 vi.mock("@/app/_components/logout-button", () => ({
   LogoutButton: () => (
