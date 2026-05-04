@@ -64,6 +64,6 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   const isAdmin = meData.me?.roles.some((r) => r.name === "admin") ?? false;
   if (!isAdmin) redirect("/");
 
-  // Sub-pages each render their own <main>; use a fragment to avoid double-nesting.
+  // Sub-pages own their <main>; this layout stays a pass-through.
   return <>{children}</>;
 }

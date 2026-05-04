@@ -110,9 +110,9 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
   // Profile link is not part of `resolveActiveItem`'s center-item domain.
   const profileActive = pathname === "/profile" || pathname.startsWith("/profile/");
 
-  // Admin fallback: when no admin item matches but the path is under /admin/*,
-  // light up Users (per plan §6 / decision F-1). Encoded with a literal-string
-  // discriminator on `item.href`, not a numeric index — see
+  // Admin fallback: light up Users when /admin/<unknown> falls through,
+  // so the rail always points at a valid admin destination. Encoded with a
+  // literal-string discriminator on `item.href`, not a numeric index — see
   // `.claude/rules/frontend-typescript-conventions.md` § "Positive allowlist".
   const matchedAnyAdmin = ADMIN_NAV_ITEMS.some(
     (i) => pathname === i.href || pathname.startsWith(`${i.href}/`),
@@ -220,7 +220,7 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
             Wrap LogoutButton in a div with the collapsed-hide class so the
             button label collapses with the rail. The class is intentionally on
             the wrapper, not on LogoutButton itself — that keeps LogoutButton
-            uncoupled from the rail's collapsed-state CSS group (see plan §10).
+            uncoupled from the rail's collapsed-state CSS group.
           */}
           <div className="group-data-[collapsible=icon]:hidden">
             <LogoutButton />
