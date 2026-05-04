@@ -81,7 +81,7 @@ describe("LearnIndexPage", () => {
     vi.mocked(gqlFetch).mockRejectedValueOnce(otherErr);
     await expect(LearnIndexPage()).rejects.toBe(otherErr);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[learn-index]"),
+      expect.stringContaining("[learn-index] me query failed"),
       otherErr,
     );
   });
