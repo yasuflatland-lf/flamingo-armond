@@ -152,9 +152,8 @@ describe("<GlobalRail>", () => {
       expect(screen.queryByRole("link", { name: /admin/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /settings/i })).toBeNull();
 
-      // Negative: the avatar popover is gated on user !== null, matching the
-      // existing anonymous behaviour in global-header.tsx (no LogoutButton when
-      // anonymous).
+      // Negative: the avatar popover is gated on user !== null — anonymous users
+      // do not get a LogoutButton or avatar popover.
       expect(screen.queryByTestId("avatar-popover")).toBeNull();
 
       // The logo button still renders so anonymous viewers can read the brand.
