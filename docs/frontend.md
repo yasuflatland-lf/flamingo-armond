@@ -796,3 +796,50 @@ if (action === null) return null;
 **Why:** pure logic + jsdom is wasted overhead — every test pays for the DOM environment to assert a string-in-string-out result. Node tests are faster (no jsdom bootstrap), clearer (no `vi.mock` of `next/navigation`), and the production code gets a forcing function to keep the helper React-free. The same testability-extraction principle is documented for the backend in `.claude/rules/go-library-gotchas.md` § "Extract startup helpers to make branch coverage testable without a live server".
 
 **How to apply:** when a client component's render function or hook callback contains branching logic that depends only on its arguments (not on React state, refs, or router objects), lift that logic into a sibling `.ts` file with no React or Next.js imports, and write its tests under `// @vitest-environment node`. The component imports the helper and calls it. Reference: `frontend/src/components/nav/fab-action.ts` consumed by `global-fab.tsx` and `header-add-card-link.tsx`; the test file `fab-action.test.ts` runs under the node environment while the component tests stay on jsdom.
+
+### Co-located component-level test for prop-guard branches the integration path cannot reach
+
+When a presentational component grows a new prop with a guard (`completedCount != null && completedCount > 0 && (...)`) plus a singular/plural ternary, the page-level integration test (e.g. `LearnClient` mounted with a `MockedProvider`) only exercises the populated branch — the parent always passes a real number, so `undefined` and `=== 0` are unreachable from above. A co-located test next to the component is the cheapest, most-targeted home for those branches: no `MockedProvider`, no Apollo wiring, no router mocks, just `render(<Component {...props} />)` and `screen.getByText(...)` for each branch:
+
+```tsx
+// frontend/src/components/learn/swipe-card-stack.test.tsx
+// @vitest-environment jsdom
+describe("SwipeCardStack — Session-complete count line", () => {
+  it("renders no count line when completedCount is undefined", () => {
+    render(<SwipeCardStack {...baseProps} />);
+    expect(screen.queryByText(/You reviewed/)).not.toBeInTheDocument();
+  });
+  it("renders no count line when completedCount is 0", () => {
+    render(<SwipeCardStack {...baseProps} completedCount={0} />);
+    expect(screen.queryByText(/You reviewed/)).not.toBeInTheDocument();
+  });
+  it("renders singular when completedCount is 1", () => {
+    render(<SwipeCardStack {...baseProps} completedCount={1} />);
+    expect(screen.getByText("You reviewed 1 card in this batch.")).toBeInTheDocument();
+  });
+  it("renders plural when completedCount is 2", () => {
+    render(<SwipeCardStack {...baseProps} completedCount={2} />);
+    expect(screen.getByText("You reviewed 2 cards in this batch.")).toBeInTheDocument();
+  });
+});
+```
+
+**Why:** the page-level test is shaped by the page's own contract (real query results, real navigation), so adding a "what if this prop were 0" branch to it forces the test to invent a synthetic state the page never emits. The co-located component test owns the prop's contract directly — every branch the prop can reach is a test, every test is one render. The cost is tiny (≤30 lines per component, no Apollo overhead), and the coverage is exhaustive in a way the integration test cannot be. This is the presentational-component analogue of the helper-extraction pattern above: there, the helper is pure code; here, the prop's branch table is the "pure" surface.
+
+**How to apply:** when a presentational component under `frontend/src/components/` adds a prop whose values branch the rendered output AND the parent at the integration site only passes a single value (or a narrow value range), add a co-located `<component>.test.tsx` next to the component covering every branch the prop can take. Use jsdom (the component renders DOM) and skip `MockedProvider` / `next/navigation` mocks unless the component actually uses them. Reference: `frontend/src/components/learn/swipe-card-stack.test.tsx` covering `completedCount` undefined / 0 / 1 / 2 branches that `LearnClient` integration tests cannot reach.
+
+### Grep `frontend/` not `frontend/src/` when deleting a component
+
+A plan that says "delete component `X`" must locate every reference to `X` across the **whole** `frontend/` tree, not just `frontend/src/`. Tests live in two locations: co-located under `frontend/src/**/<file>.test.tsx` AND top-level under `frontend/__tests__/**/*.test.tsx` (see [the narrow / broad split contract](#the-narrow--broad-split-is-a-contract)). A `grep -r X frontend/src/` reports zero hits while a stale top-level test still imports the deleted component, the file fails at run time, and CI catches the gap only after the cleanup commit lands.
+
+```bash
+# AVOID: misses frontend/__tests__/, frontend/e2e/, frontend/playwright.config.ts.
+grep -rn "ModeBadge" frontend/src/
+
+# PREFER: catches every committed reference.
+grep -rn "ModeBadge" frontend/ --include="*.ts" --include="*.tsx"
+```
+
+**Why:** the top-level `frontend/__tests__/` directory holds broad page tests by convention, and an older feature's broad test may import a presentational component that the current refactor is removing. The Biome lint passes on a stale test file (it just imports a now-undefined symbol from a path that still exists), and the runtime failure does not surface until `pnpm test` runs. Since CI already runs the full test suite, the failure surfaces eventually — but a tighter grep up-front avoids the cleanup-commit-then-fix-tests churn.
+
+**How to apply:** before `git rm`-ing a component file, grep the whole `frontend/` directory (not just `frontend/src/`). The same rule extends to any cross-tree symbol: the GraphQL `graphql()` document discovery scans `frontend/src/**` but Playwright specs under `frontend/e2e/` reference page paths and component selectors, and `frontend/playwright.config.ts` may reference paths that contain the removed component name in a comment or fixture. Reference: the Learn-screen pure-minimal refactor at `.claude/plans/ux_improvement.md §3.5` listed test-file updates only under `frontend/src/app/learn/[cardgroupId]/` and missed `frontend/__tests__/learn-mode-badge.test.tsx` (top-level), exposing the gap at run time.
