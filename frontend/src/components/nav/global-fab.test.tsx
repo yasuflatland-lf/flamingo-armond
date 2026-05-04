@@ -80,9 +80,7 @@ describe("<GlobalFAB>", () => {
     render(<GlobalFAB />);
     await user.click(screen.getByRole("button", { name: "Add new card" }));
 
-    expect(router.push).toHaveBeenCalledWith(
-      "/cards/new?cardgroup=abc-123&return=/learn/abc-123",
-    );
+    expect(router.push).toHaveBeenCalledWith("/cards/new?cardgroup=abc-123&return=/learn/abc-123");
   });
 
   it("click on /cardgroups navigates to /cardgroups/new", async () => {

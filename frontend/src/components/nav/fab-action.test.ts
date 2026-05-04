@@ -58,11 +58,7 @@ describe("resolveFabAction", () => {
   });
 
   describe("default to creating a card", () => {
-    it.each([
-      ["/"],
-      ["/profile"],
-      ["/login"],
-    ])("returns generic /cards/new for %s", (pathname) => {
+    it.each([["/"], ["/profile"], ["/login"]])("returns generic /cards/new for %s", (pathname) => {
       expect(resolveFabAction(pathname)).toEqual({
         kind: "card",
         href: "/cards/new",

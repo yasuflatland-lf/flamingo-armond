@@ -46,8 +46,8 @@ vi.mock("next/navigation", () => ({
 // Import after mocks are registered.
 // ---------------------------------------------------------------------------
 
-import { gqlFetch } from "@/lib/apollo/server";
 import RootLayout from "@/app/layout";
+import { gqlFetch } from "@/lib/apollo/server";
 
 // ---------------------------------------------------------------------------
 // Helper: build the UNAUTHENTICATED error exactly as gqlFetch throws it.

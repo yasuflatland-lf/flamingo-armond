@@ -713,10 +713,9 @@ describe("<CardsNewClient> — CardgroupPickerSheet prop wiring", () => {
 
     // The rebuilt URL must carry both the new cardgroup id and the sanitized
     // return path. encodeURIComponent("/learn/cg-1") === "%2Flearn%2Fcg-1".
-    expect(mockReplace).toHaveBeenCalledWith(
-      "/cards/new?cardgroup=cg-2&return=%2Flearn%2Fcg-1",
-      { scroll: false },
-    );
+    expect(mockReplace).toHaveBeenCalledWith("/cards/new?cardgroup=cg-2&return=%2Flearn%2Fcg-1", {
+      scroll: false,
+    });
   });
 
   it("onSelect does NOT include ?return= when the return param is an external URL (blocked by sanitizeReturnTo)", () => {

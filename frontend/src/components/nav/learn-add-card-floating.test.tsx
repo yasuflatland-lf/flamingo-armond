@@ -18,10 +18,7 @@ describe("<LearnAddCardFloating>", () => {
   it("S1: href includes cardgroupId in both query param and return path", () => {
     render(<LearnAddCardFloating cardgroupId="abc-123" cardgroupName="Test Group" />);
     const link = screen.getByRole("link");
-    expect(link).toHaveAttribute(
-      "href",
-      "/cards/new?cardgroup=abc-123&return=/learn/abc-123",
-    );
+    expect(link).toHaveAttribute("href", "/cards/new?cardgroup=abc-123&return=/learn/abc-123");
   });
 
   it("S2: aria-label embeds cardgroupName", () => {

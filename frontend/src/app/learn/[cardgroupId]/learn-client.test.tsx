@@ -243,25 +243,22 @@ describe("<LearnClient>", () => {
   it("renders the floating plus button in the empty-card state", () => {
     renderLearnClient([], []);
 
-    expect(
-      screen.getByRole("link", { name: `Add a new card to ${CG_NAME}` }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: `Add a new card to ${CG_NAME}` })).toBeInTheDocument();
   });
 
   it("renders the floating plus button with the correct aria-label", () => {
     renderLearnClient([]);
 
-    expect(
-      screen.getByRole("link", { name: `Add a new card to ${CG_NAME}` }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: `Add a new card to ${CG_NAME}` })).toBeInTheDocument();
   });
 
   it("floating plus button href points to the new-card form with cardgroup and return params", () => {
     renderLearnClient([]);
 
-    expect(
-      screen.getByRole("link", { name: `Add a new card to ${CG_NAME}` }),
-    ).toHaveAttribute("href", `/cards/new?cardgroup=${CG_ID}&return=/learn/${CG_ID}`);
+    expect(screen.getByRole("link", { name: `Add a new card to ${CG_NAME}` })).toHaveAttribute(
+      "href",
+      `/cards/new?cardgroup=${CG_ID}&return=/learn/${CG_ID}`,
+    );
   });
 
   it("floating plus button aria-label embeds the cardgroup name", () => {

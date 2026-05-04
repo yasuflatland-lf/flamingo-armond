@@ -126,7 +126,10 @@ describe("<GlobalRail>", () => {
       mockUsePathname.mockReturnValue("/profile");
       renderRail({ user: { email: "u@example.com" }, isAdmin: true });
 
-      expect(screen.getByRole("link", { name: /profile/i })).toHaveAttribute("aria-current", "page");
+      expect(screen.getByRole("link", { name: /profile/i })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
 
       // Other items must NOT be marked as current.
       expect(screen.getByRole("link", { name: /cardgroups/i })).not.toHaveAttribute("aria-current");

@@ -14,8 +14,7 @@ interface AvatarPopoverProps {
 }
 
 export function AvatarPopover({ email }: AvatarPopoverProps) {
-  const initial =
-    email !== null && email.length > 0 ? email[0]!.toUpperCase() : null;
+  const initial = email !== null && email.length > 0 ? email[0]?.toUpperCase() : null;
 
   return (
     <Popover>
