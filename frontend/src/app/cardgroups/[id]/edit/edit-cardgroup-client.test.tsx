@@ -71,7 +71,7 @@ describe("<EditCardgroupClient>", () => {
     await user.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/cardgroups/cg-1");
+      expect(mockPush).toHaveBeenCalledWith("/cardgroups/cg-1/cards");
     });
   });
 

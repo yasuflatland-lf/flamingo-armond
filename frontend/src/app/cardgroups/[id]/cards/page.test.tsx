@@ -156,7 +156,7 @@ describe("CardsPage (RSC)", () => {
     );
   });
 
-  it("renders back link to the cardgroup detail page", async () => {
+  it("renders back link to the cardgroups list", async () => {
     vi.mocked(createSupabaseServerClient).mockResolvedValue(
       makeSupabaseMock({ id: "user-1" }) as never,
     );
@@ -168,6 +168,6 @@ describe("CardsPage (RSC)", () => {
     render(jsx);
 
     const backLink = screen.getByRole("link", { name: /back/i });
-    expect(backLink).toHaveAttribute("href", "/cardgroups/cg-1");
+    expect(backLink).toHaveAttribute("href", "/cardgroups");
   });
 });

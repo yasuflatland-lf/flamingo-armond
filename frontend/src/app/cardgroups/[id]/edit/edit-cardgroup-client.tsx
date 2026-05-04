@@ -45,7 +45,7 @@ export function EditCardgroupClient({ cardgroup }: Props) {
     });
 
     if (result?.data?.updateCardgroup?.cardgroup) {
-      router.push(`/cardgroups/${cardgroup.id}`);
+      router.push(`/cardgroups/${cardgroup.id}/cards`);
     }
   }
 
@@ -105,7 +105,7 @@ export function EditCardgroupClient({ cardgroup }: Props) {
     <main className="mx-auto max-w-xl p-8">
       <div className="mb-6 flex items-center gap-4">
         <Link
-          href={`/cardgroups/${cardgroup.id}`}
+          href={`/cardgroups/${cardgroup.id}/cards`}
           className="text-sm text-muted-foreground hover:underline"
         >
           &larr; Back

@@ -58,7 +58,7 @@ export default async function CardsPage({ params }: { params: Promise<{ id: stri
   return (
     <main className="mx-auto max-w-2xl p-8">
       <div className="mb-3 flex items-center gap-4">
-        <Link href={`/cardgroups/${id}`} className="text-sm text-muted-foreground hover:underline">
+        <Link href="/cardgroups" className="text-sm text-muted-foreground hover:underline">
           &larr; Back
         </Link>
       </div>
