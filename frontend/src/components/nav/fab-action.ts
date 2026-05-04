@@ -20,6 +20,22 @@ export type FabAction =
   | { kind: "card"; href: "/cards/new"; label: "Add new card" };
 
 /**
+ * Build a `card-with-group` action from a raw cardgroup id captured from a
+ * regex. `href` is URL-encoded, `cardgroupId` stays raw — see the JSDoc on
+ * the union variant for the contract callers must observe.
+ */
+function cardWithGroup(
+  rawId: string,
+  options: { withReturnToLearn?: boolean } = {},
+): Extract<FabAction, { kind: "card-with-group" }> {
+  const encodedId = encodeURIComponent(rawId);
+  const href = options.withReturnToLearn
+    ? `/cards/new?cardgroup=${encodedId}&return=/learn/${encodedId}`
+    : `/cards/new?cardgroup=${encodedId}`;
+  return { kind: "card-with-group", href, label: "Add new card", cardgroupId: rawId };
+}
+
+/**
  * Maps the current pathname to the FAB destination and accessible label.
  * Returns null when the FAB has nothing meaningful to show for this path.
  * Each caller decides how to handle null (e.g. hide the FAB, or fall back to a default).
@@ -35,44 +51,16 @@ export function resolveFabAction(pathname: string): FabAction | null {
     return { kind: "cardgroup", href: "/cardgroups/new", label: "Add new cardgroup" };
   }
 
+  // Each match below has a required capture group 1, so `match[1] as string` is
+  // sound (see frontend-typescript-conventions.md § "as string cast on regex captures").
   const cardsMatch = CARDGROUP_CARDS_RE.exec(pathname);
-  if (cardsMatch) {
-    // cardsMatch[1] is always defined when the regex matched (capture group 1 is required)
-    const rawId = cardsMatch[1] as string;
-    const encodedId = encodeURIComponent(rawId);
-    return {
-      kind: "card-with-group",
-      href: `/cards/new?cardgroup=${encodedId}`,
-      label: "Add new card",
-      cardgroupId: rawId,
-    };
-  }
+  if (cardsMatch) return cardWithGroup(cardsMatch[1] as string);
 
   const detailMatch = CARDGROUP_DETAIL_RE.exec(pathname);
-  if (detailMatch) {
-    // detailMatch[1] is always defined when the regex matched (capture group 1 is required)
-    const rawId = detailMatch[1] as string;
-    const encodedId = encodeURIComponent(rawId);
-    return {
-      kind: "card-with-group",
-      href: `/cards/new?cardgroup=${encodedId}`,
-      label: "Add new card",
-      cardgroupId: rawId,
-    };
-  }
+  if (detailMatch) return cardWithGroup(detailMatch[1] as string);
 
   const learnMatch = LEARN_RE.exec(pathname);
-  if (learnMatch) {
-    // learnMatch[1] is always defined when the regex matched (capture group 1 is required)
-    const rawId = learnMatch[1] as string;
-    const encodedId = encodeURIComponent(rawId);
-    return {
-      kind: "card-with-group",
-      href: `/cards/new?cardgroup=${encodedId}&return=/learn/${encodedId}`,
-      label: "Add new card",
-      cardgroupId: rawId,
-    };
-  }
+  if (learnMatch) return cardWithGroup(learnMatch[1] as string, { withReturnToLearn: true });
 
   return { kind: "card", href: "/cards/new", label: "Add new card" };
 }

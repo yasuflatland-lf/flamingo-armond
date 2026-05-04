@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/nav/app-shell";
 import { GlobalFAB } from "@/components/nav/global-fab";
-import { HeaderMeQuery } from "./_components/queries";
 import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { HeaderMeQuery } from "./_components/queries";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -21,14 +21,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     error,
   } = await supabase.auth.getUser();
 
-  if (error && error.name !== "AuthSessionMissingError") {
+  // AuthSessionMissingError is the normal anonymous-request signal — anything
+  // else from getUser() is a real failure that must degrade the shell to null.
+  const getUserFailed = error != null && error.name !== "AuthSessionMissingError";
+  if (getUserFailed) {
     console.error("[layout] getUser() failed:", error.name, error.message);
   }
 
   // Skip the GraphQL me-query when the user is anonymous: the backend would
   // return UNAUTHENTICATED and the warn log would fill with expected noise.
   let isAdmin = false;
-  if (user && !(error && error.name !== "AuthSessionMissingError")) {
+  if (user && !getUserFailed) {
     try {
       const meData = await gqlFetch(HeaderMeQuery, { revalidate: 0 });
       isAdmin = meData.me?.roles.some((r) => r.name === "admin") ?? false;
@@ -47,12 +50,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 
   // Degrade to null user on a real getUser() error so AppShell renders the
   // anonymous shell rather than an authenticated shell with potentially stale data.
-  const shellUser =
-    error && error.name !== "AuthSessionMissingError"
-      ? null
-      : user
-        ? { email: user.email ?? null }
-        : null;
+  const shellUser = getUserFailed || !user ? null : { email: user.email ?? null };
 
   return (
     <html lang="en">

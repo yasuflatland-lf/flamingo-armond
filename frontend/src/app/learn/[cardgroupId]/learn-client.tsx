@@ -51,7 +51,12 @@ type Props = {
   lastViewedCardgroupId: string | null;
 };
 
-export function LearnClient({ cardgroupId, cardgroupName, initialCards, lastViewedCardgroupId }: Props) {
+export function LearnClient({
+  cardgroupId,
+  cardgroupName,
+  initialCards,
+  lastViewedCardgroupId,
+}: Props) {
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
   const [completed, setCompleted] = useState(0);
   const [swipeDirection, setSwipeDirection] = useState<SwipeDirection | null>(null);
@@ -161,10 +166,10 @@ export function LearnClient({ cardgroupId, cardgroupName, initialCards, lastView
     [cardgroupId, handleSwipe, queue],
   );
 
-  if (initialCards.length === 0) {
-    return (
-      <>
-        <LearnAddCardFloating cardgroupId={cardgroupId} cardgroupName={cardgroupName} />
+  return (
+    <>
+      <LearnAddCardFloating cardgroupId={cardgroupId} cardgroupName={cardgroupName} />
+      {initialCards.length === 0 ? (
         <section className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-md rounded-lg border border-dashed border-border p-8 text-center">
             <h1 className="mb-2 text-xl font-semibold">No cards to learn</h1>
@@ -176,37 +181,32 @@ export function LearnClient({ cardgroupId, cardgroupName, initialCards, lastView
             </Button>
           </div>
         </section>
-      </>
-    );
-  }
+      ) : (
+        <section className="flex flex-1 flex-col">
+          {visibleError ? (
+            <div
+              className="mx-auto mb-4 w-full max-w-xl rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+              role="alert"
+            >
+              {visibleError}
+            </div>
+          ) : null}
 
-  return (
-    <>
-      <LearnAddCardFloating cardgroupId={cardgroupId} cardgroupName={cardgroupName} />
-      <section className="flex flex-1 flex-col">
-      {visibleError ? (
-        <div
-          className="mx-auto mb-4 w-full max-w-xl rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-        >
-          {visibleError}
-        </div>
-      ) : null}
-
-      <div className="relative flex min-h-[560px] flex-1 items-center justify-center sm:min-h-[620px]">
-        <SwipeCardStack
-          cards={queue}
-          onCardSwiped={onSwipe}
-          onSwipeProgress={(direction, progress) => {
-            setSwipeDirection(direction);
-            setSwipeProgress(progress);
-          }}
-          swipeDirection={swipeDirection}
-          swipeProgress={swipeProgress}
-          completedCount={completed}
-        />
-      </div>
-    </section>
+          <div className="relative flex min-h-[560px] flex-1 items-center justify-center sm:min-h-[620px]">
+            <SwipeCardStack
+              cards={queue}
+              onCardSwiped={onSwipe}
+              onSwipeProgress={(direction, progress) => {
+                setSwipeDirection(direction);
+                setSwipeProgress(progress);
+              }}
+              swipeDirection={swipeDirection}
+              swipeProgress={swipeProgress}
+              completedCount={completed}
+            />
+          </div>
+        </section>
+      )}
     </>
   );
 }
