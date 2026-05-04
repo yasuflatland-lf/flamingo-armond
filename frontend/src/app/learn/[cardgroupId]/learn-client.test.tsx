@@ -280,61 +280,46 @@ describe("<LearnClient> persist-last-viewed path", () => {
     });
   });
 
-  it("swallows a GraphQLError from the persist mutation without throwing", async () => {
-    const graphqlErrorMock = {
-      request: {
-        query: SetLastViewedCardgroupDocument,
-        variables: { cardgroupId: CG_ID },
+  it.each([
+    [
+      "a GraphQLError",
+      {
+        request: { query: SetLastViewedCardgroupDocument, variables: { cardgroupId: CG_ID } },
+        result: {
+          errors: [new GraphQLError("forbidden", { extensions: { code: "BAD_USER_INPUT" } })],
+        },
       },
-      result: {
-        errors: [
-          new GraphQLError("forbidden", {
-            extensions: { code: "BAD_USER_INPUT" },
-          }),
-        ],
+    ],
+    [
+      "a network error",
+      {
+        request: { query: SetLastViewedCardgroupDocument, variables: { cardgroupId: CG_ID } },
+        error: new Error("network failure"),
       },
-    };
-
-    render(
-      <MockedProvider mocks={[graphqlErrorMock]}>
-        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
-      </MockedProvider>,
-    );
-
-    await waitFor(() => {
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        "[learn] setLastViewedCardgroup failed",
-        expect.objectContaining({ cardgroupId: CG_ID }),
+    ],
+  ] as const)(
+    "swallows %s from the persist mutation without throwing",
+    async (_, mockEntry) => {
+      render(
+        <MockedProvider mocks={[mockEntry]}>
+          <LearnClient
+            cardgroupId={CG_ID}
+            initialCards={[CARD_1]}
+            lastViewedCardgroupId="cg-other"
+          />
+        </MockedProvider>,
       );
-    });
-    // Component must still render the card stack — no crash.
-    expect(screen.getByText("Hello")).toBeInTheDocument();
-  });
 
-  it("swallows a network error from the persist mutation without throwing", async () => {
-    const networkErrorMock = {
-      request: {
-        query: SetLastViewedCardgroupDocument,
-        variables: { cardgroupId: CG_ID },
-      },
-      error: new Error("network failure"),
-    };
-
-    render(
-      <MockedProvider mocks={[networkErrorMock]}>
-        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
-      </MockedProvider>,
-    );
-
-    await waitFor(() => {
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        "[learn] setLastViewedCardgroup failed",
-        expect.objectContaining({ cardgroupId: CG_ID }),
-      );
-    });
-    // Component must still render the card stack — no crash.
-    expect(screen.getByText("Hello")).toBeInTheDocument();
-  });
+      await waitFor(() => {
+        expect(consoleWarnSpy).toHaveBeenCalledWith(
+          "[learn] setLastViewedCardgroup failed",
+          expect.objectContaining({ cardgroupId: CG_ID }),
+        );
+      });
+      // Component must still render the card stack — no crash.
+      expect(screen.getByText("Hello")).toBeInTheDocument();
+    },
+  );
 
   it("does not carry optimisticResponse in the persist mutation", () => {
     // Static assertion: the source of the LearnClient function must not include

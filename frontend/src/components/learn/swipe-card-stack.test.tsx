@@ -8,7 +8,7 @@ describe("SwipeCardStack — Session-complete count line", () => {
     cards: [] as Parameters<typeof SwipeCardStack>[0]["cards"],
     onCardSwiped: vi.fn(),
     onSwipeProgress: vi.fn(),
-    swipeDirection: null as null,
+    swipeDirection: null,
     swipeProgress: 0,
   };
 
