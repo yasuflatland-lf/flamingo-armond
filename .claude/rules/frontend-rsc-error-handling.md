@@ -140,6 +140,79 @@ if (user) {
 
 This is the inverse of the "fail-closed in `gqlFetch`" rule documented in `docs/frontend.md` § "Authorization forwarding in `gqlFetch`": `gqlFetch` itself throws on a session-fetch error rather than silently sending an anonymous request, but **callers** of `gqlFetch` are responsible for not invoking it in the first place when they already know the user is anonymous.
 
+## Pair every `try { ... } finally { setLoading(false) }` with a `catch` for transport rejections
+
+Client components that toggle a loading flag around a third-party SDK call typically write `try { await sdk.doThing(); ... } finally { setLoading(false); }`. The `finally` releases the UI lock so the button re-enables, but it does **not** observe the rejection. The Supabase JS pattern is the canonical example: `await supabase.auth.updateUser({ ... })` returns API-level errors via the resolved `{ error }` object, but **transport-level** failures (network unreachable, DNS failure, request timeout) come out as a rejected promise. Without a `catch`, the rejection escapes the React event handler — no banner renders, no log fires, the user just sees the form return to the idle state with no feedback.
+
+```tsx
+// AVOID: API errors handled, transport rejections silently lost.
+try {
+  setLoading(true);
+  const { error } = await supabase.auth.updateUser({ email });
+  if (error) { setError(classify(error.message)); return; }
+  setSuccess(true);
+} finally {
+  setLoading(false);
+}
+
+// PREFER: catch the rejected promise, log the error name only, surface a generic banner.
+try {
+  setLoading(true);
+  const { error } = await supabase.auth.updateUser({ email });
+  if (error) { setError(classify(error.message)); return; }
+  setSuccess(true);
+} catch (err) {
+  // Transport-level failure (network, timeout). The API-shaped failure goes via { error } above.
+  // Do NOT log err.message — SDK exception messages can echo user-typed input (the email here).
+  console.warn("[change-email] updateUser threw:", err instanceof Error ? err.name : "unknown");
+  setError("Network error. Please check your connection and try again.");
+} finally {
+  setLoading(false);
+}
+```
+
+**Why:** the two failure modes (API-shaped `{ error }` resolve and rejected promise) reach the call site through different channels. A try/finally without a catch handles only the resolve channel; the reject channel surfaces as an unhandled-promise warning at most, with no UI signal. The user is stuck — the form looks idle, the action did nothing, and nothing tells them why.
+
+**How to apply:** every async event handler that wraps a third-party SDK call in `try/finally` for a UI lock release MUST have a paired `catch`. The catch logs `err.name` only (not `err.message` — SDK exceptions can echo user input, including the very value the user typed into the form), and sets a generic user-facing banner. Test the rejection path with `mockRejectedValue(Object.assign(new Error("network down"), { name: "FetchError" }))` and assert both the banner copy AND the structural log call (`expect(consoleWarnSpy).toHaveBeenCalledWith("[scope] action threw:", "FetchError")`) — the structural assertion is what guarantees `err.message` is not in the log payload, per `.claude/rules/frontend-typescript-conventions.md` § "`expect.objectContaining({ message })` is not enough — add a discriminating key". Reference: `frontend/src/app/profile/change-email/change-email-client.tsx` `handleSubmit` (the `catch (err)` arm and test S7 in the sibling test file).
+
+## Substring-matching SDK error strings: pair mapped copy with raw-message warn for unmapped paths
+
+When mapping a third-party SDK's error.message strings to user-facing copy via `.includes(...)` (e.g. classifying Supabase's `"Email rate limit exceeded"` to `"Too many requests..."`), three risks compose:
+
+1. **Echo risk** — an unmapped error falls through to the UI and exposes the raw upstream string, leaking error names, request IDs, or technical wording the user has no context for.
+2. **Operator-blind risk** — if the unmapped path silently shows a generic banner, operators get no signal to extend the classifier when a new upstream message starts firing.
+3. **PII risk** — the raw message goes into a `console.warn`. Some SDKs (e.g. browser `fetch` exceptions, third-party validators) echo user-typed input verbatim into the message, so blindly logging `err.message` re-leaks the input.
+
+The compliant shape is a classifier returning `string | null` (mapped copy or `null` to mean "unmapped") plus a two-branch call site:
+
+```ts
+function classifySupabaseError(message: string): string | null {
+  const lower = message.toLowerCase();
+  if (lower.includes("rate limit")) return "Too many requests. Please wait a moment and try again.";
+  if (lower.includes("already registered")) return "That email address is already in use.";
+  return null;
+}
+
+const classified = classifySupabaseError(err.message);
+if (classified !== null) {
+  // Classified: operators know what happened from the user copy + err.name; no raw needed.
+  console.warn("[scope] updateUser failed:", err.name);
+  setError(classified);
+} else {
+  // Unmapped: log the raw upstream message so operators can extend classifySupabaseError.
+  // PII gate: this is safe ONLY when the upstream's API error messages are server-generated
+  // and do not echo user-typed input. Verify per SDK before applying.
+  console.warn("[scope] updateUser failed (unmapped):", err.name, err.message);
+  setError("Could not send confirmation link. Please try again.");
+}
+```
+
+The `string | null` shape collapses indirection at the call site — a wrapper return type like `{ userMessage, classified }` was tried and rejected during review because every caller had to read both fields, and the `userMessage` slot duplicated the generic-fallback copy already living at the call site. Returning `null` lets the call site own the generic copy and the unmapped log together.
+
+**Why:** the unmapped path is what catches new upstream message variants. Without a raw-message log there, the classifier silently falls behind every SDK update — the user keeps seeing the generic copy, and operators have no telemetry to know which upstream message was the one that needs a new mapping. Conversely, logging the raw message on the **mapped** path is redundant and adds log noise — the mapped copy + `err.name` are enough for operator triage.
+
+**How to apply:** any classifier that turns SDK strings into user-facing copy returns `string | null`, and the unmapped branch emits a 3-arg `console.warn("[scope] action failed (unmapped):", err.name, err.message)`. Document the PII gate explicitly in a code comment ("Supabase API error messages are server-generated and do not echo user-typed input, so this is PII-safe"). Pair with two tests: one that asserts the mapped path logs `(prefix, err.name)` only (2-arg shape), and one that asserts the unmapped path logs `(prefix, err.name, err.message)` (3-arg shape). The structural-call assertions guarantee no future contributor adds `err.message` to the mapped path's warn (which would re-introduce the leak this rule prevents). Reference: `frontend/src/app/profile/change-email/change-email-client.tsx` (`classifyUpdateUserError` returning `string | null`) and the S3/S5/S6 test cases in the sibling test file.
+
 ## `revalidate: 0` for any RSC fetch that depends on the current user
 
 Any GraphQL query whose result depends on `Authorization` (role lookups, `me`, owned-resource queries, profile data) must pass `{ revalidate: 0 }` to `gqlFetch`. Caching auth-sensitive data either across users (via Next's data cache key, which does not include the access token) or across role changes (admin role revoked while the cached page is alive) is a correctness bug. Used today in `frontend/src/components/nav/global-header.tsx`, `frontend/src/app/page.tsx`, `frontend/src/app/cards/new/page.tsx`, `frontend/src/app/admin/layout.tsx`, `frontend/src/app/profile/page.tsx`, and `frontend/src/app/api/healthz/route.ts` (the last one for probe freshness, not auth, but the constant is the same).

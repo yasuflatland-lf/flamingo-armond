@@ -345,6 +345,8 @@ Per-page `getUser()` checks under `admin/dictionary/page.tsx` and `admin/users/p
 
 The string-match approach (`msg.includes("UNAUTHENTICATED")`) follows the existing `redirectIfUnauthenticated` shape rather than a structured-error type. Replacing it with a typed error envelope is a separate concern; do not introduce a one-off classifier inside the admin layout.
 
+There is no `app/admin/page.tsx` — direct hits on `/admin` (no sub-route) return Next's 404. This is a deliberate accepted tradeoff: every internal entry point links to a specific `/admin/<sub>` route (e.g. the rail's three admin items each link directly to `/admin/users`, `/admin/roles`, `/admin/dictionary`), so a redirect-shim page would have no callers. The two preconditions for keeping `/admin` as a 404: (a) every internal caller links to a specific sub-route (verify with `grep -rn "\"/admin\"\|'/admin'" frontend/src/`); (b) no operator runbook instructs a human to type `/admin` as the entry. If either condition is added later, restore `app/admin/page.tsx` as a server-side `redirect("/admin/users")` shim — the layout gate above runs before the shim, so security posture is unchanged.
+
 ### `usePathname()` returns `string | null` despite the typed return
 
 The `next/navigation` `usePathname()` type signature is `string`, but the hook returns `null` during pre-render and outside the App Router runtime. Components that branch on the path (e.g. an active-link sidebar) must guard with `pathname != null && (...)` before reading `.startsWith` or `.substring`, otherwise SSR crashes with a `Cannot read property of null` error that escapes the route's error boundary because layouts are hoisted above the boundary segment.
