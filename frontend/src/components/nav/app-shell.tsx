@@ -40,11 +40,6 @@ export function AppShell({ user, isAdmin, children }: AppShellProps) {
           className="md:hidden flex items-center justify-between px-4 h-12 border-b"
         >
           <LogoDrawer user={user} isAdmin={isAdmin} />
-          {user && user.email !== null && (
-            <span className="text-sm text-muted-foreground truncate max-w-[160px]">
-              {user.email}
-            </span>
-          )}
         </header>
 
         {/* Main content — SidebarInset handles the left-offset when the PC rail

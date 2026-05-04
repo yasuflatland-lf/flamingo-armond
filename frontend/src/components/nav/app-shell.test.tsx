@@ -20,14 +20,6 @@ vi.mock("next/navigation", () => ({
   usePathname: () => mockUsePathname(),
 }));
 
-// AvatarPopover reaches into LogoutButton -> Supabase -> router. Stub it so the
-// shell test stays focused on shell layout logic, not popover internals.
-vi.mock("./avatar-popover", () => ({
-  AvatarPopover: ({ email }: { email: string | null }) => (
-    <div data-testid="avatar-popover" data-email={email ?? ""} />
-  ),
-}));
-
 // LogoutButton reaches into Supabase. Stub it to keep the test self-contained.
 vi.mock("@/app/_components/logout-button", () => ({
   LogoutButton: () => (
@@ -102,8 +94,8 @@ describe("<AppShell>", () => {
     });
   });
 
-  describe("S3 — email in mobile header when signed in", () => {
-    it("displays the signed-in user's email inside the mobile header", () => {
+  describe("S3 — does not render the email in the mobile header", () => {
+    it("does not render the signed-in user's email inside the mobile header", () => {
       render(
         <AppShell user={SIGNED_IN_USER} isAdmin={false}>
           <div />
@@ -111,7 +103,8 @@ describe("<AppShell>", () => {
       );
 
       const mobileHeader = screen.getByTestId("mobile-header");
-      expect(mobileHeader).toHaveTextContent(SIGNED_IN_USER.email);
+      expect(mobileHeader.querySelector("span")).toBeNull();
+      expect(screen.queryByText(/@/)).not.toBeInTheDocument();
     });
   });
 
@@ -151,22 +144,6 @@ describe("<AppShell>", () => {
       // The parent-level /login guard suppresses the Sign in link in the rail
       // footer and the drawer body — no Sign in link should be mounted anywhere.
       expect(screen.queryAllByRole("link", { name: /sign in/i })).toHaveLength(0);
-    });
-  });
-
-  describe("S4c — signed-in user with null email", () => {
-    it("renders no email span in the mobile header when user.email is null", () => {
-      render(
-        <AppShell user={{ email: null }} isAdmin={false}>
-          <div />
-        </AppShell>,
-      );
-
-      const mobileHeader = screen.getByTestId("mobile-header");
-      // No email span — the null guard suppresses the element entirely.
-      expect(mobileHeader).not.toHaveTextContent("@");
-      // The mobile header still renders (the user object itself is non-null).
-      expect(mobileHeader).toBeInTheDocument();
     });
   });
 
