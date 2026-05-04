@@ -44,6 +44,11 @@ const HOVER_CLOSE_DELAY_MS = 150;
  */
 type ActiveItem = "cardgroups" | "settings" | null;
 
+/** Matches `pathname` against a top-level route — exact match or a sub-route prefix. */
+function matchesRoute(pathname: string, route: string): boolean {
+  return pathname === route || pathname.startsWith(`${route}/`);
+}
+
 function resolveActiveItem(pathname: string): ActiveItem {
   if (
     pathname === "/cardgroups" ||
@@ -108,17 +113,14 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
 
   // Footer Profile link active state — computed inline because the footer
   // Profile link is not part of `resolveActiveItem`'s center-item domain.
-  const profileActive = pathname === "/profile" || pathname.startsWith("/profile/");
+  const profileActive = matchesRoute(pathname, "/profile");
 
   // Admin fallback: light up Users when /admin/<unknown> falls through,
   // so the rail always points at a valid admin destination. Encoded with a
   // literal-string discriminator on `item.href`, not a numeric index — see
   // `.claude/rules/frontend-typescript-conventions.md` § "Positive allowlist".
-  const matchedAnyAdmin = ADMIN_NAV_ITEMS.some(
-    (i) => pathname === i.href || pathname.startsWith(`${i.href}/`),
-  );
-  const fallbackToUsers =
-    !matchedAnyAdmin && (pathname === "/admin" || pathname.startsWith("/admin/"));
+  const matchedAnyAdmin = ADMIN_NAV_ITEMS.some((i) => matchesRoute(pathname, i.href));
+  const fallbackToUsers = !matchedAnyAdmin && matchesRoute(pathname, "/admin");
 
   return (
     <Sidebar
@@ -164,8 +166,7 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
                 {isAdmin &&
                   ADMIN_NAV_ITEMS.map((item) => {
                     const isItemActive =
-                      pathname === item.href ||
-                      pathname.startsWith(`${item.href}/`) ||
+                      matchesRoute(pathname, item.href) ||
                       (item.href === "/admin/users" && fallbackToUsers);
                     const Icon = item.icon;
                     return (

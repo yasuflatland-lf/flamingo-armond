@@ -17,21 +17,17 @@ type Props = {
   currentEmail: string | null;
 };
 
-type Classification = { userMessage: string; classified: boolean };
-
-function classifyUpdateUserError(message: string): Classification {
+// Returns the mapped user-facing message, or null when the Supabase message is
+// unmapped — null lets the caller log the raw message and show generic copy.
+function classifyUpdateUserError(message: string): string | null {
   const lower = message.toLowerCase();
   if (lower.includes("rate limit")) {
-    return {
-      userMessage: "Too many requests. Please wait a moment and try again.",
-      classified: true,
-    };
+    return "Too many requests. Please wait a moment and try again.";
   }
   if (lower.includes("already registered")) {
-    return { userMessage: "That email address is already in use.", classified: true };
+    return "That email address is already in use.";
   }
-  // Generic copy for unmapped errors: avoids leaking technical strings or request IDs to the user.
-  return { userMessage: "Could not send confirmation link. Please try again.", classified: false };
+  return null;
 }
 
 export function ChangeEmailClient({ currentEmail }: Props) {
@@ -49,10 +45,11 @@ export function ChangeEmailClient({ currentEmail }: Props) {
       const supabase = createSupabaseBrowserClient();
       const { error: updateErr } = await supabase.auth.updateUser({ email: newEmail });
       if (updateErr) {
-        const classification = classifyUpdateUserError(updateErr.message);
-        if (classification.classified) {
+        const classified = classifyUpdateUserError(updateErr.message);
+        if (classified !== null) {
           // Classified: operators know what happened from the user copy + error.name; no raw needed.
           console.warn("[change-email] updateUser failed:", updateErr.name);
+          setError(classified);
         } else {
           // Unmapped: log the raw Supabase message so operators can extend classifyUpdateUserError.
           // Supabase API error messages are server-generated and do not echo user-typed input,
@@ -62,8 +59,8 @@ export function ChangeEmailClient({ currentEmail }: Props) {
             updateErr.name,
             updateErr.message,
           );
+          setError("Could not send confirmation link. Please try again.");
         }
-        setError(classification.userMessage);
         return;
       }
       setSuccess(true);
