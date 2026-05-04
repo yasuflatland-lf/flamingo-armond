@@ -7,7 +7,6 @@ import { GraphQLError } from "graphql";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CardsByCardgroupConnectionDocument,
-  CreateCardDocument,
   DeleteCardDocument,
   UpdateCardDocument,
 } from "@/generated/graphql";
@@ -32,16 +31,6 @@ const CARD_2 = {
   front: "Bye",
   back: "Adios",
   due: "2024-06-15",
-  state: 0,
-  cardgroupId: CG_ID,
-};
-
-const NEW_CARD = {
-  __typename: "Card" as const,
-  id: "c-3",
-  front: "Cat",
-  back: "Gato",
-  due: "2024-06-16",
   state: 0,
   cardgroupId: CG_ID,
 };
@@ -90,20 +79,6 @@ function defaultPageInfo(edges: ReturnType<typeof edge>[]) {
     hasPreviousPage: false,
     startCursor: edges[0]?.cursor ?? null,
     endCursor: edges[edges.length - 1]?.cursor ?? null,
-  };
-}
-
-function makeCreateMock(
-  input: { cardgroupId: string; front: string; back: string },
-  card = NEW_CARD,
-) {
-  return {
-    request: { query: CreateCardDocument, variables: { input } },
-    result: {
-      data: {
-        createCard: { __typename: "CreateCardPayload" as const, card },
-      },
-    },
   };
 }
 
@@ -170,64 +145,10 @@ describe("<CardsClient>", () => {
     expect(screen.getByText("Bye")).toBeInTheDocument();
   });
 
-  it("add success appends a new row", async () => {
-    const user = userEvent.setup();
-    const createMock = makeCreateMock({ cardgroupId: CG_ID, front: "Cat", back: "Gato" });
-
-    // Pre-populate cache with the connection so the create update callback can read/write it.
-    const cache = new InMemoryCache();
-    cache.writeQuery({
-      query: CardsByCardgroupConnectionDocument,
-      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
-      data: { cardsByCardgroupConnection: connection([CARD_1, CARD_2]) },
-    });
-
-    renderClient([createMock], [CARD_1, CARD_2], { cache });
-
-    const addFrontInput = screen.getAllByLabelText(/front/i)[0] as HTMLElement;
-    const addBackInput = screen.getAllByLabelText(/back/i)[0] as HTMLElement;
-
-    await user.click(addFrontInput);
-    await user.type(addFrontInput, "Cat");
-    await user.click(addBackInput);
-    await user.type(addBackInput, "Gato");
-
-    await user.click(screen.getByRole("button", { name: /^add$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Cat")).toBeInTheDocument();
-    });
-  });
-
-  it("add BAD_USER_INPUT(field=front) shows inline error", async () => {
-    const user = userEvent.setup();
-
-    const mock = {
-      request: {
-        query: CreateCardDocument,
-        variables: { input: { cardgroupId: CG_ID, front: "x", back: "y" } },
-      },
-      result: {
-        errors: [
-          new GraphQLError("front is too short", {
-            extensions: { code: "BAD_USER_INPUT", field: "front" },
-          }),
-        ],
-      },
-    };
-
-    renderClient([mock], [], { errorPolicy: true });
-
-    const frontInput = screen.getByLabelText(/front/i);
-    const backInput = screen.getByLabelText(/back/i);
-
-    await user.type(frontInput, "x");
-    await user.type(backInput, "y");
-    await user.click(screen.getByRole("button", { name: /^add$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText("front is too short")).toBeInTheDocument();
-    });
+  it("create form and Add a card heading are not present", () => {
+    renderClient([]);
+    expect(screen.queryByText(/add a card/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^add$/i })).toBeNull();
   });
 
   it("edit toggle shows edit form and cancel reverts to view", async () => {
@@ -237,8 +158,7 @@ describe("<CardsClient>", () => {
     const firstEditBtn = screen.getAllByRole("button", { name: /edit/i })[0] as HTMLElement;
     await user.click(firstEditBtn);
 
-    // [0] = add form (empty), [1] = edit form (prefilled)
-    const editFrontInput = screen.getAllByLabelText(/front/i)[1] as HTMLElement;
+    const editFrontInput = screen.getByLabelText(/front/i) as HTMLElement;
     expect(editFrontInput).toHaveValue("Hello");
 
     await user.click(screen.getByRole("button", { name: /cancel/i }));
@@ -271,11 +191,11 @@ describe("<CardsClient>", () => {
     const firstEditBtn = screen.getAllByRole("button", { name: /edit/i })[0] as HTMLElement;
     await user.click(firstEditBtn);
 
-    const editFrontInput = screen.getAllByLabelText(/front/i)[1] as HTMLElement;
+    const editFrontInput = screen.getByLabelText(/front/i) as HTMLElement;
     await user.clear(editFrontInput);
     await user.type(editFrontInput, "Hello updated");
 
-    const editBackInput = screen.getAllByLabelText(/back/i)[1] as HTMLElement;
+    const editBackInput = screen.getByLabelText(/back/i) as HTMLElement;
     await user.clear(editBackInput);
     await user.type(editBackInput, "Hola updated");
 
@@ -345,37 +265,6 @@ describe("<CardsClient>", () => {
     });
   });
 
-  it("submit button is disabled while mutation in flight", async () => {
-    const user = userEvent.setup();
-
-    // Use a never-resolving mock so the mutation stays in-flight.
-    const mock = {
-      request: {
-        query: CreateCardDocument,
-        variables: { input: { cardgroupId: CG_ID, front: "Slow", back: "Lento" } },
-      },
-      result: () =>
-        new Promise<never>(() => {
-          // never resolves
-        }),
-    };
-
-    renderClient([mock], []);
-
-    const frontInput = screen.getByLabelText(/front/i);
-    const backInput = screen.getByLabelText(/back/i);
-
-    await user.type(frontInput, "Slow");
-    await user.type(backInput, "Lento");
-
-    const addBtn = screen.getByRole("button", { name: /^add$/i });
-    await user.click(addBtn);
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /saving/i })).toBeDisabled();
-    });
-  });
-
   it("edit save failure keeps the row in edit mode and shows the inline error", async () => {
     const user = userEvent.setup();
 
@@ -398,7 +287,7 @@ describe("<CardsClient>", () => {
     const editBtn = screen.getByRole("button", { name: /edit/i });
     await user.click(editBtn);
 
-    const editFrontInput = screen.getAllByLabelText(/front/i)[1] as HTMLElement;
+    const editFrontInput = screen.getByLabelText(/front/i) as HTMLElement;
     await user.clear(editFrontInput);
 
     await user.click(screen.getByRole("button", { name: /^save$/i }));
@@ -407,41 +296,8 @@ describe("<CardsClient>", () => {
       expect(screen.getByText("front is required")).toBeInTheDocument();
     });
 
-    expect(screen.getAllByLabelText(/front/i)).toHaveLength(2);
+    expect(screen.getByLabelText(/front/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument();
-  });
-
-  it("add-card form is reset after successful create", async () => {
-    const user = userEvent.setup();
-    const createMock = makeCreateMock({ cardgroupId: CG_ID, front: "Cat", back: "Gato" });
-
-    const cache = new InMemoryCache();
-    cache.writeQuery({
-      query: CardsByCardgroupConnectionDocument,
-      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
-      data: { cardsByCardgroupConnection: connection([CARD_1, CARD_2]) },
-    });
-
-    renderClient([createMock], [CARD_1, CARD_2], { cache });
-
-    const addFrontInput = screen.getAllByLabelText(/front/i)[0] as HTMLElement;
-    const addBackInput = screen.getAllByLabelText(/back/i)[0] as HTMLElement;
-
-    await user.click(addFrontInput);
-    await user.type(addFrontInput, "Cat");
-    await user.click(addBackInput);
-    await user.type(addBackInput, "Gato");
-
-    await user.click(screen.getByRole("button", { name: /^add$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Cat")).toBeInTheDocument();
-    });
-
-    const resetFrontInput = screen.getAllByLabelText(/front/i)[0] as HTMLInputElement;
-    const resetBackInput = screen.getAllByLabelText(/back/i)[0] as HTMLInputElement;
-    expect(resetFrontInput.value).toBe("");
-    expect(resetBackInput.value).toBe("");
   });
 
   // G1: useQuery error surfaces a banner via the cards-query-error testid.
@@ -461,37 +317,6 @@ describe("<CardsClient>", () => {
     const banner = await screen.findByTestId("cards-query-error");
     // INTERNAL errors surface with the original message via getBackendErrorBanner.
     expect(banner).toHaveTextContent("boom");
-  });
-
-  // G4: cold cache create writes a fresh connection and the new card renders.
-  it("create on cold cache renders the new card", async () => {
-    const user = userEvent.setup();
-    const createMock = makeCreateMock({ cardgroupId: CG_ID, front: "Cat", back: "Gato" });
-
-    // Cold cache — no seeded cardsByCardgroupConnection entry.
-    const cache = new InMemoryCache();
-
-    renderClient([createMock], [], { cache });
-
-    const addFrontInput = screen.getByLabelText(/front/i) as HTMLElement;
-    const addBackInput = screen.getByLabelText(/back/i) as HTMLElement;
-
-    await user.type(addFrontInput, "Cat");
-    await user.type(addBackInput, "Gato");
-
-    await user.click(screen.getByRole("button", { name: /^add$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Cat")).toBeInTheDocument();
-    });
-
-    const cached = cache.readQuery({
-      query: CardsByCardgroupConnectionDocument,
-      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
-    });
-    expect(cached?.cardsByCardgroupConnection.edges).toHaveLength(1);
-    expect(cached?.cardsByCardgroupConnection.edges[0]?.node.id).toBe(NEW_CARD.id);
-    expect(cached?.cardsByCardgroupConnection.totalCount).toBe(1);
   });
 
   // G5: delete decrements totalCount unconditionally — even when the filter is a

@@ -148,6 +148,12 @@ describe("CardsPage (RSC)", () => {
     expect(screen.getByTestId("cards-client")).toHaveAttribute("data-cardgroup-id", "cg-1");
     expect(screen.getByText("Hello")).toBeInTheDocument();
     expect(screen.getByText("World")).toBeInTheDocument();
+
+    const addCardLink = screen.getByRole("link", { name: /\+ add card/i });
+    expect(addCardLink).toHaveAttribute(
+      "href",
+      "/cards/new?cardgroup=cg-1&return=/cardgroups/cg-1/cards",
+    );
   });
 
   it("renders back link to the cardgroup detail page", async () => {

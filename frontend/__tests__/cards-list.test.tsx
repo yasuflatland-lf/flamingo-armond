@@ -177,15 +177,14 @@ describe("CardsPage — broad integration (RSC + CardsClient)", () => {
     expect(screen.getByText("front-003")).toBeInTheDocument();
   });
 
-  // I2: Empty state — the page renders and CardsClient shows the empty-state
-  // copy from the source ("No cards yet. Add one above.").
+  // I2: Empty state — the page renders and CardsClient shows the empty-state copy.
   it("shows empty-state copy when gqlFetch returns an empty connection", async () => {
     setMockSupabaseUser({ id: "user-admin-1" });
 
     mockCardsPageGql(EMPTY_CONNECTION);
     await renderPage(EMPTY_CONNECTION);
 
-    expect(screen.getByText("No cards yet. Add one above.")).toBeInTheDocument();
+    expect(screen.getByText("No cards yet.")).toBeInTheDocument();
   });
 
   // I3: Supabase auth transport error — page rethrows without redirecting.

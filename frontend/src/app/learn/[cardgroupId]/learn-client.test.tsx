@@ -36,6 +36,7 @@ afterEach(() => {
 });
 
 const CG_ID = "cg-1";
+const CG_NAME = "Spanish Basics";
 
 const CARD_1 = {
   __typename: "Card" as const,
@@ -83,7 +84,12 @@ function renderLearnClient(mocks: unknown[], initialCards = [CARD_1]) {
   // its own test below and would otherwise need a mock entry in every case.
   render(
     <MockedProvider mocks={mocks as never}>
-      <LearnClient cardgroupId={CG_ID} initialCards={initialCards} lastViewedCardgroupId={CG_ID} />
+      <LearnClient
+        cardgroupId={CG_ID}
+        cardgroupName={CG_NAME}
+        initialCards={initialCards}
+        lastViewedCardgroupId={CG_ID}
+      />
     </MockedProvider>,
   );
 }
@@ -180,6 +186,50 @@ describe("<LearnClient>", () => {
     });
   });
 
+  describe("handleSwipe resolved-without-data branch", () => {
+    // Forwarding spy: do NOT call `mockImplementation(() => {})` here. Per
+    // pagination.md § "Spy stacking", this spy is the OUTER spy (installed after
+    // the file-wide leak spy) and must forward every `console.warn` call through
+    // to the underlying leak spy so MockedProvider leaks are still recorded.
+    let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      consoleWarnSpy = vi.spyOn(console, "warn");
+    });
+
+    afterEach(() => {
+      consoleWarnSpy.mockRestore();
+    });
+
+    it("emits a console.warn with cardId and cardgroupId when handleSwipe resolves with null data", async () => {
+      const user = userEvent.setup();
+      const mock = {
+        request: {
+          query: HandleSwipeDocument,
+          variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, mode: 4 } },
+        },
+        result: {
+          data: {
+            handleSwipe: null,
+          },
+        },
+      };
+      renderLearnClient([mock], [CARD_1]);
+
+      await user.click(screen.getByRole("button", { name: "Easy" }));
+
+      await waitFor(() => {
+        expect(consoleWarnSpy).toHaveBeenCalledWith(
+          "[LearnClient] handleSwipe resolved without data",
+          expect.objectContaining({
+            cardId: expect.any(String),
+            cardgroupId: CG_ID,
+          }),
+        );
+      });
+    });
+  });
+
   it("renders an empty-card state with a manage cards link", () => {
     renderLearnClient([], []);
 
@@ -188,6 +238,34 @@ describe("<LearnClient>", () => {
       "href",
       `/cardgroups/${CG_ID}/cards`,
     );
+  });
+
+  it("renders the floating plus button in the empty-card state", () => {
+    renderLearnClient([], []);
+
+    expect(screen.getByRole("link", { name: `Add a new card to ${CG_NAME}` })).toBeInTheDocument();
+  });
+
+  it("renders the floating plus button with the correct aria-label", () => {
+    renderLearnClient([]);
+
+    expect(screen.getByRole("link", { name: `Add a new card to ${CG_NAME}` })).toBeInTheDocument();
+  });
+
+  it("floating plus button href points to the new-card form with cardgroup and return params", () => {
+    renderLearnClient([]);
+
+    expect(screen.getByRole("link", { name: `Add a new card to ${CG_NAME}` })).toHaveAttribute(
+      "href",
+      `/cards/new?cardgroup=${CG_ID}&return=/learn/${CG_ID}`,
+    );
+  });
+
+  it("floating plus button aria-label embeds the cardgroup name", () => {
+    renderLearnClient([]);
+
+    const link = screen.getByRole("link", { name: `Add a new card to ${CG_NAME}` });
+    expect(link).toHaveAccessibleName(`Add a new card to ${CG_NAME}`);
   });
 });
 
@@ -245,7 +323,12 @@ describe("<LearnClient> persist-last-viewed path", () => {
     const mutationCalled = vi.fn();
     render(
       <MockedProvider mocks={[makePersistMock(CG_ID, mutationCalled)]}>
-        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
+        <LearnClient
+          cardgroupId={CG_ID}
+          cardgroupName={CG_NAME}
+          initialCards={[CARD_1]}
+          lastViewedCardgroupId="cg-other"
+        />
       </MockedProvider>,
     );
 
@@ -259,7 +342,12 @@ describe("<LearnClient> persist-last-viewed path", () => {
 
     render(
       <MockedProvider mocks={[makePersistMock(CG_ID)]} cache={cache}>
-        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
+        <LearnClient
+          cardgroupId={CG_ID}
+          cardgroupName={CG_NAME}
+          initialCards={[CARD_1]}
+          lastViewedCardgroupId="cg-other"
+        />
       </MockedProvider>,
     );
 
@@ -300,7 +388,12 @@ describe("<LearnClient> persist-last-viewed path", () => {
   ] as const)("swallows %s from the persist mutation without throwing", async (_, mockEntry) => {
     render(
       <MockedProvider mocks={[mockEntry]}>
-        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
+        <LearnClient
+          cardgroupId={CG_ID}
+          cardgroupName={CG_NAME}
+          initialCards={[CARD_1]}
+          lastViewedCardgroupId="cg-other"
+        />
       </MockedProvider>,
     );
 
