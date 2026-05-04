@@ -20,14 +20,6 @@ vi.mock("next/navigation", () => ({
   usePathname: () => mockUsePathname(),
 }));
 
-// AvatarPopover reaches into LogoutButton -> Supabase -> router. Stub it so the
-// shell test stays focused on shell layout logic, not popover internals.
-vi.mock("./avatar-popover", () => ({
-  AvatarPopover: ({ email }: { email: string | null }) => (
-    <div data-testid="avatar-popover" data-email={email ?? ""} />
-  ),
-}));
-
 // LogoutButton reaches into Supabase. Stub it to keep the test self-contained.
 vi.mock("@/app/_components/logout-button", () => ({
   LogoutButton: () => (
