@@ -68,12 +68,102 @@ describe("<ChangeEmailClient>", () => {
         screen.getByText("Too many requests. Please wait a moment and try again."),
       ).toBeInTheDocument();
     });
-    // The warn must not include the new email address (PII absence).
-    for (const call of consoleWarnSpy.mock.calls) {
-      for (const arg of call) {
-        expect(String(arg)).not.toContain("bob@example.com");
-      }
-    }
+    // Structural exact-call assertion: only the error name is logged, never the email (PII).
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "[change-email] updateUser failed:",
+      "AuthApiError",
+    );
+  });
+
+  it("S5 maps an already-registered error to user-facing copy", async () => {
+    const user = userEvent.setup();
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockUpdateUser.mockResolvedValue({
+      data: null,
+      error: { name: "AuthApiError", message: "User already registered" },
+    });
+
+    render(<ChangeEmailClient currentEmail="alice@example.com" />);
+
+    const input = screen.getByLabelText(/new email/i);
+    await user.type(input, "bob@example.com");
+    await user.click(screen.getByRole("button", { name: /send confirmation link/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("That email address is already in use.")).toBeInTheDocument();
+    });
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "[change-email] updateUser failed:",
+      "AuthApiError",
+    );
+  });
+
+  it("S6 shows the generic copy and logs the raw message on unmapped errors", async () => {
+    const user = userEvent.setup();
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockUpdateUser.mockResolvedValue({
+      data: null,
+      error: { name: "AuthApiError", message: "some unmapped error xyz" },
+    });
+
+    render(<ChangeEmailClient currentEmail="alice@example.com" />);
+
+    const input = screen.getByLabelText(/new email/i);
+    await user.type(input, "bob@example.com");
+    await user.click(screen.getByRole("button", { name: /send confirmation link/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Could not send confirmation link. Please try again."),
+      ).toBeInTheDocument();
+    });
+    // Structural exact 3-arg assertion: name + raw message logged on unmapped path only.
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "[change-email] updateUser failed (unmapped):",
+      "AuthApiError",
+      "some unmapped error xyz",
+    );
+  });
+
+  it("S7 shows a network-error banner and logs the error name (not message) on transport-level rejection", async () => {
+    const user = userEvent.setup();
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const transportError = Object.assign(new Error("network down"), { name: "FetchError" });
+    mockUpdateUser.mockRejectedValue(transportError);
+
+    render(<ChangeEmailClient currentEmail="alice@example.com" />);
+
+    const input = screen.getByLabelText(/new email/i);
+    await user.type(input, "bob@example.com");
+    await user.click(screen.getByRole("button", { name: /send confirmation link/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Network error. Please check your connection and try again."),
+      ).toBeInTheDocument();
+    });
+    // Structural exact-call assertion: only err.name ("FetchError") is logged,
+    // never err.message ("network down" — potential PII carrier).
+    expect(consoleWarnSpy).toHaveBeenCalledWith("[change-email] updateUser threw:", "FetchError");
+  });
+
+  it("S8 disables the submit button and shows 'Sending...' while the request is in-flight", async () => {
+    const user = userEvent.setup();
+    // Never-resolving promise keeps loading=true for the duration of the assertion.
+    mockUpdateUser.mockReturnValue(new Promise<never>(() => {}));
+
+    render(<ChangeEmailClient currentEmail="alice@example.com" />);
+
+    const input = screen.getByLabelText(/new email/i);
+    await user.type(input, "bob@example.com");
+
+    const button = screen.getByRole("button", { name: /send confirmation link/i });
+    await user.click(button);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /sending/i })).toBeDisabled();
+    });
+    expect(screen.getByRole("button", { name: /sending/i })).toHaveTextContent(/sending/i);
   });
 
   it("S4 Cancel button links to /profile", () => {

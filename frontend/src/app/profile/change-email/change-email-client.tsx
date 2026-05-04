@@ -17,15 +17,21 @@ type Props = {
   currentEmail: string | null;
 };
 
-function classifyUpdateUserError(message: string): string {
+type Classification = { userMessage: string; classified: boolean };
+
+function classifyUpdateUserError(message: string): Classification {
   const lower = message.toLowerCase();
   if (lower.includes("rate limit")) {
-    return "Too many requests. Please wait a moment and try again.";
+    return {
+      userMessage: "Too many requests. Please wait a moment and try again.",
+      classified: true,
+    };
   }
   if (lower.includes("already registered")) {
-    return "That email address is already in use.";
+    return { userMessage: "That email address is already in use.", classified: true };
   }
-  return message;
+  // Generic copy for unmapped errors: avoids leaking technical strings or request IDs to the user.
+  return { userMessage: "Could not send confirmation link. Please try again.", classified: false };
 }
 
 export function ChangeEmailClient({ currentEmail }: Props) {
@@ -43,12 +49,29 @@ export function ChangeEmailClient({ currentEmail }: Props) {
       const supabase = createSupabaseBrowserClient();
       const { error: updateErr } = await supabase.auth.updateUser({ email: newEmail });
       if (updateErr) {
-        // Do NOT log the new email address — PII absence policy.
-        console.warn("[change-email] updateUser failed:", updateErr.name);
-        setError(classifyUpdateUserError(updateErr.message));
+        const classification = classifyUpdateUserError(updateErr.message);
+        if (classification.classified) {
+          // Classified: operators know what happened from the user copy + error.name; no raw needed.
+          console.warn("[change-email] updateUser failed:", updateErr.name);
+        } else {
+          // Unmapped: log the raw Supabase message so operators can extend classifyUpdateUserError.
+          // Supabase API error messages are server-generated and do not echo user-typed input,
+          // so this is PII-safe.
+          console.warn(
+            "[change-email] updateUser failed (unmapped):",
+            updateErr.name,
+            updateErr.message,
+          );
+        }
+        setError(classification.userMessage);
         return;
       }
       setSuccess(true);
+    } catch (err) {
+      // Transport-level failure (network, timeout). The API-shaped failure goes via updateErr above.
+      // Do NOT log err.message — Supabase exception messages can include the email the user typed.
+      console.warn("[change-email] updateUser threw:", err instanceof Error ? err.name : "unknown");
+      setError("Network error. Please check your connection and try again.");
     } finally {
       setLoading(false);
     }
