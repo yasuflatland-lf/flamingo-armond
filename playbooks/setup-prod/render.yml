@@ -31,18 +31,25 @@
 - name: Load state file (Phase 3 reads Phase 2 outputs)
   ansible.builtin.include_vars:
     file: "{{ state_file }}"
+    name: existing_state
   when: _state_stat.stat.exists
+
+# Coerce to a mapping so `existing_state.<key>` access and `| default(...)`
+# behave consistently when the file is absent, empty, or YAML-null.
+- name: Ensure existing_state is a mapping
+  ansible.builtin.set_fact:
+    existing_state: "{{ existing_state if (existing_state is defined and existing_state is mapping) else {} }}"
 
 - name: Assert required Phase 2 keys are present
   ansible.builtin.assert:
     that:
       - _state_stat.stat.exists
-      - supabase_project_ref is defined and (supabase_project_ref | length) > 0
-      - supabase_url is defined and (supabase_url | length) > 0
-      - supabase_jwks_url is defined and (supabase_jwks_url | length) > 0
-      - supabase_jwt_issuer is defined and (supabase_jwt_issuer | length) > 0
-      - supabase_anon_key is defined and (supabase_anon_key | length) > 0
-      - supabase_db_url is defined and (supabase_db_url | length) > 0
+      - (existing_state.supabase_project_ref | default('') | length) > 0
+      - (existing_state.supabase_url | default('') | length) > 0
+      - (existing_state.supabase_jwks_url | default('') | length) > 0
+      - (existing_state.supabase_jwt_issuer | default('') | length) > 0
+      - (existing_state.supabase_anon_key | default('') | length) > 0
+      - (existing_state.supabase_db_url | default('') | length) > 0
     fail_msg: |
       Required state keys from Phase 2 (supabase) are missing or empty.
       Run Phase 2 first:
@@ -108,15 +115,18 @@
 
       Press Enter when the service is created and you have all three values ready.
 
-# --- Collect render_service_id ---
+# --- Collect render_service_id (empty input keeps existing) ---
 - name: Prompt for Render service ID
   ansible.builtin.pause:
-    prompt: "Render service ID (format: srv-<alphanumeric>)"
+    prompt: "Render service ID [current: {{ existing_state.render_service_id | default('(none)') }}] (format: srv-<alphanumeric>; press Enter to keep current)"
   register: _render_service_id_input
 
-- name: Store render_service_id fact
+- name: Resolve render_service_id (keep existing on empty input)
   ansible.builtin.set_fact:
-    render_service_id: "{{ _render_service_id_input.user_input | trim }}"
+    render_service_id: >-
+      {{ (_render_service_id_input.user_input | default('') | trim)
+         if (_render_service_id_input.user_input | default('') | trim | length) > 0
+         else existing_state.render_service_id | default('') }}
 
 - name: Validate render_service_id format
   ansible.builtin.assert:
@@ -126,15 +136,18 @@
       render_service_id '{{ render_service_id }}' does not match the expected
       pattern srv-<alphanumeric>. Find it in Render: Settings > General.
 
-# --- Collect backend_url ---
+# --- Collect backend_url (empty input keeps existing) ---
 - name: Prompt for Render backend URL
   ansible.builtin.pause:
-    prompt: "Render backend URL (https://...onrender.com, or custom domain starting with https://)"
+    prompt: "Render backend URL [current: {{ existing_state.backend_url | default('(none)') }}] (https://...; press Enter to keep current)"
   register: _backend_url_input
 
-- name: Store backend_url fact
+- name: Resolve backend_url (keep existing on empty input)
   ansible.builtin.set_fact:
-    backend_url: "{{ _backend_url_input.user_input | trim }}"
+    backend_url: >-
+      {{ (_backend_url_input.user_input | default('') | trim)
+         if (_backend_url_input.user_input | default('') | trim | length) > 0
+         else existing_state.backend_url | default('') }}
 
 - name: Validate backend_url format
   ansible.builtin.assert:
@@ -144,17 +157,48 @@
       backend_url '{{ backend_url }}' must start with https://.
       Custom domains are accepted; the URL does not have to end in .onrender.com.
 
-# --- Collect deploy hook URL (no_log) ---
+# --- Check whether RENDER_DEPLOY_HOOK_URL is already a GitHub Actions secret.
+# The deploy-hook URL itself is not stored in the state file (sensitive,
+# single-use registration sink), so we cannot show it back in the prompt. We
+# can, however, check whether the GH secret already exists and let the
+# operator skip re-prompt + re-registration on a re-run. `gh secret list`
+# only reveals names, not values, so this check is safe to log.
+- name: Check whether RENDER_DEPLOY_HOOK_URL secret already exists
+  ansible.builtin.shell:
+    cmd: gh secret list --repo {{ repo }} --json name -q '[.[] | select(.name == "RENDER_DEPLOY_HOOK_URL")] | length'
+  register: _gh_secret_check
+  changed_when: false
+  failed_when: false
+
+- name: Determine deploy-hook secret presence
+  ansible.builtin.set_fact:
+    deploy_hook_already_registered: "{{ (_gh_secret_check.rc == 0) and ((_gh_secret_check.stdout | default('0') | trim | int) > 0) }}"
+
+# --- Collect deploy hook URL (no_log; empty input keeps existing GH secret if registered) ---
 - name: Prompt for Render deploy hook URL
   ansible.builtin.pause:
-    prompt: "Render deploy hook URL (https://api.render.com/deploy/...)"
+    prompt: "Render deploy hook URL [current: {{ '(registered in GitHub; press Enter to keep)' if deploy_hook_already_registered else '(not registered yet)' }}] (https://api.render.com/deploy/...)"
   no_log: true
   register: _deploy_hook_input
 
-- name: Store deploy_hook_url fact
+- name: Store deploy_hook_url fact (empty if keeping existing GH secret)
   ansible.builtin.set_fact:
-    deploy_hook_url: "{{ _deploy_hook_input.user_input | trim }}"
+    deploy_hook_url: "{{ _deploy_hook_input.user_input | default('') | trim }}"
   no_log: true
+
+# Hard-fail only when the operator entered nothing AND the secret has never
+# been registered. Re-runs that intentionally keep the existing secret pass
+# this gate via deploy_hook_already_registered=true.
+- name: Require deploy hook URL on first run
+  ansible.builtin.fail:
+    msg: |
+      RENDER_DEPLOY_HOOK_URL is not yet registered in GitHub and no value was
+      provided. Copy the deploy hook URL from Render: Settings > Deploy Hook,
+      then re-run:
+        ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags render
+  when:
+    - (deploy_hook_url | length) == 0
+    - not deploy_hook_already_registered
 
 - name: Validate deploy hook URL format
   ansible.builtin.assert:
@@ -163,6 +207,7 @@
     fail_msg: |
       deploy_hook_url must start with https://api.render.com/deploy/.
       Copy it from Render: Settings > Deploy Hook.
+  when: (deploy_hook_url | length) > 0
   no_log: true
 
 # --- Register deploy hook as GitHub Actions secret ---
@@ -170,6 +215,8 @@
 # deploy-hook URL with a trailing `\n`, which makes the CI's
 # `curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"` fail with code=000 and break
 # every push-triggered deploy until the secret is manually re-set.
+#
+# Skipped on re-runs that kept the existing secret (empty input above).
 - name: Register RENDER_DEPLOY_HOOK_URL as a GitHub Actions secret
   ansible.builtin.shell:
     cmd: gh secret set RENDER_DEPLOY_HOOK_URL --repo {{ repo }}
@@ -179,6 +226,7 @@
   no_log: true
   failed_when: false
   changed_when: _gh_secret_result.rc == 0
+  when: (deploy_hook_url | length) > 0
 
 - name: Fail with remediation if gh secret set failed
   ansible.builtin.fail:
@@ -196,22 +244,29 @@
         - `repo` var is wrong / repo not found. Verify {{ repo }} is correct.
 
       Then retry: ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags render
-  when: _gh_secret_result.rc != 0
+  when:
+    - (deploy_hook_url | length) > 0
+    - _gh_secret_result.rc | default(0) != 0
 
 - name: Confirm GitHub secret registered
   ansible.builtin.debug:
-    msg: "RENDER_DEPLOY_HOOK_URL registered as a GitHub Actions secret in {{ repo }}."
+    msg: >-
+      {{ 'RENDER_DEPLOY_HOOK_URL registered as a GitHub Actions secret in ' ~ repo ~ '.'
+         if (deploy_hook_url | length) > 0
+         else 'RENDER_DEPLOY_HOOK_URL kept as-is (existing GitHub Actions secret in ' ~ repo ~ ').' }}
 
-# --- Generate PING_TOKEN if not already in state ---
+# --- Reuse PING_TOKEN from state, or generate if missing ---
 # The token is auto-generated (no external source); generating it here, in
 # Phase 3, means it is available in the state file before Phase 6 needs to
-# push it to Render via the API. Idempotent: if the state file already
+# push it to Render via the API. Idempotent: when the state file already
 # carries a non-empty ping_token (re-run of Phase 3), the existing value is
-# loaded by include_vars above and the generation task is skipped.
-- name: Generate PING_TOKEN if not already in state
+# kept; otherwise a fresh token is generated.
+- name: Reuse or generate PING_TOKEN
   ansible.builtin.set_fact:
-    ping_token: "{{ lookup('pipe', 'openssl rand -hex 32') }}"
-  when: ping_token is not defined or (ping_token | string | length) == 0
+    ping_token: >-
+      {{ existing_state.ping_token
+         if ((existing_state.ping_token | default('') | string | trim | length) > 0)
+         else lookup('pipe', 'openssl rand -hex 32') }}
   no_log: true
 
 # --- Persist render_service_id, backend_url, and ping_token into state file ---
