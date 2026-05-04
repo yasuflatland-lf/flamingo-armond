@@ -12,6 +12,7 @@ type Props<TCard extends SwipeCardData> = {
   onSwipeProgress?: (direction: SwipeDirection | null, progress: number) => void;
   swipeDirection: SwipeDirection | null;
   swipeProgress: number;
+  completedCount?: number;
 };
 
 export function SwipeCardStack<TCard extends SwipeCardData>({
@@ -20,6 +21,7 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
   onSwipeProgress,
   swipeDirection,
   swipeProgress,
+  completedCount,
 }: Props<TCard>) {
   const activeCard = cards[0];
 
@@ -60,6 +62,11 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
         <p className="mb-6 text-sm text-muted-foreground">
           There are no due cards left in this batch.
         </p>
+        {completedCount != null && completedCount > 0 && (
+          <p className="mb-6 text-sm text-muted-foreground">
+            You reviewed {completedCount} {completedCount === 1 ? "card" : "cards"} in this batch.
+          </p>
+        )}
         <Button type="button" variant="outline" onClick={() => window.location.reload()}>
           Refresh cards
         </Button>

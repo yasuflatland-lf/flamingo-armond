@@ -34,33 +34,26 @@ test.beforeEach(async ({ context }) => {
   await loginAs(context, learner);
 });
 
-test("swipes easy cards and shows adaptive mode feedback", async ({ page }) => {
+test("swipes easy cards and advances through the deck", async ({ page }) => {
   const response = await page.goto(`/learn/${cardgroup.id}`);
   expect(response?.ok(), `goto returned status ${response?.status()}`).toBe(true);
 
-  await expect(page.getByText(cardgroup.name)).toBeVisible();
+  // The post-refactor learn page renders only the SwipeCardStack — no cardgroup
+  // name, no progress bar, no mode badge, no success%, no Saving indicator. We
+  // confirm we landed on the right cardgroup via the active card's aria-label,
+  // which carries the per-cardgroup `runId` prefix from seedCards.
   const activeCard = page.locator('[data-testid="swipe-card"][tabindex="0"]');
   await expect(activeCard).toHaveAccessibleName(new RegExp(`^Flashcard: learn-${runId}-`));
-  await expect(page.getByText("0 completed / 12 remaining")).toBeVisible();
 
   const seen: string[] = [];
-  for (let completed = 1; completed <= 3; completed += 1) {
+  for (let i = 0; i < 3; i += 1) {
     const before = await activeCard.getAttribute("aria-label");
     if (before) seen.push(before);
     await activeCard.getByRole("button", { name: "Easy" }).click();
     await expect(activeCard).not.toHaveAttribute("aria-label", before ?? "");
-    // remaining count is non-deterministic after server reconcile (capped at swipeNextBatchSize=10),
-    // so we only assert the completed count and that a remaining counter renders at all.
-    await expect(page.getByText(`${completed} completed`)).toBeVisible();
-    await expect(page.getByText(/\d+ remaining/)).toBeVisible();
-    await expect(page.getByText("Saving...")).toHaveCount(0);
   }
 
   const after = await activeCard.getAttribute("aria-label");
   expect(seen).not.toContain(after);
-
-  const validModes = /Mode: (Difficult|Default|Good|Easy|In While)/;
-  await expect(page.getByText(validModes)).toBeVisible();
-  await expect(page.getByText("100% success")).toBeVisible();
   await expect(activeCard).toHaveAccessibleName(new RegExp(`^Flashcard: learn-${runId}-`));
 });

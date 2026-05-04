@@ -42,7 +42,7 @@ If the project style evolves to allow branded types, replace the JSDoc with a no
 
 `Error.prototype.message` is an own (though non-enumerable) property on every `Error` instance. Vitest's `expect.objectContaining` uses `hasOwnProperty` for key checks. Therefore, asserting `expect.objectContaining({ message: expect.any(String) })` against a `console.error` or `console.warn` second argument will pass whether the argument is the intended structured object `{ message, err }` OR a bare `Error` regression. The test is tautologically green and the regression ships silently.
 
-The fix is to include a discriminating own-property key that exists in the structured object but NOT on `Error` instances — e.g. `err: expect.anything()`.
+The fix is to include any **own-property key that does not exist on `Error.prototype`** as a discriminating key — `err`, `entry`, `cardgroupId`, `cardId`, `userId`, etc. all qualify. The rule is "any key the structured payload carries that a bare `Error` does not", not specifically `err`.
 
 ```ts
 // AVOID — passes for both `{ message: "...", err }` AND a bare Error regression.
@@ -59,11 +59,19 @@ expect(consoleSpy).toHaveBeenCalledWith(
     err: expect.anything(),
   }),
 );
+
+// ALSO COMPLIANT — any structured-payload-only key works as the discriminator.
+// Used in `learn-client.test.tsx`: the `[learn] setLastViewedCardgroup failed`
+// payload carries `cardgroupId`, which `Error.prototype` does not.
+expect(consoleSpy).toHaveBeenCalledWith(
+  "[learn] setLastViewedCardgroup failed",
+  expect.objectContaining({ cardgroupId: CG_ID }),
+);
 ```
 
 **Why:** structured log arguments (`{ message, err }`) are deliberately different from a raw `Error`. The assertion must verify the structure matches what was intentionally logged, not just that some string-ish property exists. The rule applies equally to `console.error` and `console.warn` — both are used for structured payloads in this codebase (e.g. `tryGetDuplicateCardInfo` emits a `console.warn` with `{ entry }` rather than a bare string).
 
-**How to apply:** whenever a `console.error` / `console.warn` call passes a structured object as the second argument, pair the `message` matcher with at least one additional key that distinguishes the object from a bare `Error`. Reference: `frontend/src/app/cards/new/cards-new-client.test.tsx` `handleCreate` log assertion and `frontend/src/lib/apollo/graphql-errors.test.ts`.
+**How to apply:** whenever a `console.error` / `console.warn` call passes a structured object as the second argument, the assertion must reference at least one key whose presence on the payload (and absence on `Error.prototype`) the test relies on. Adding `err: expect.anything()` is the most general fix; using a domain-specific key (`cardgroupId`, `entry`, etc.) is equally compliant and often clearer because it documents what the payload actually carries. Reference: `frontend/src/app/cards/new/cards-new-client.test.tsx` `handleCreate` log assertion (uses `err`), `frontend/src/lib/apollo/graphql-errors.test.ts` (uses `entry`), and `frontend/src/app/learn/[cardgroupId]/learn-client.test.tsx` persist-fail assertion (uses `cardgroupId`).
 
 ## TanStack Form `_handleSubmit` re-throws — chain `.catch()` on `form.handleSubmit()`
 
@@ -187,6 +195,50 @@ Avoid `String(match[1] ?? "")` — that turns `undefined` into the literal strin
 **Why:** `noUncheckedIndexedAccess` is a project-wide flag that future contributors may not be aware of. Without the comment, the `as string` cast looks superfluous and is a candidate for "cleanup" by anyone reading the code in isolation. The comment names the invariant (capture group N is required by this regex) so the cast survives review.
 
 **How to apply:** for every regex-capture access where the capture is required by the regex, use `as string` with a one-line comment naming the required capture group. The comment is load-bearing — do not delete it during refactoring. The same pattern applies to other `noUncheckedIndexedAccess`-affected accesses (e.g. `Object.keys(o)[0]`); the rule is "explain the invariant, not just satisfy the compiler." Reference: `frontend/src/components/nav/fab-action.ts` (`cardsMatch[1] as string`, `detailMatch[1] as string`).
+
+## Audit collapsed helpers for branches that lose all side effects
+
+When a refactor inlines a multi-purpose helper into a single call site and drops one of the helper's responsibilities at the same time, the surviving guard can leave a branch with no observable effect at all. The original helper combined two side effects under one shared guard:
+
+```ts
+// before — helper that ran two updates under one shape-check
+function reconcileQueue(data: HandleSwipeMutation | null | undefined) {
+  if (data?.handleSwipe) {
+    setQueue(data.handleSwipe.nextCards);
+    setPerformance(data.handleSwipe.performanceMode);
+  }
+}
+```
+
+A "drop the performance-mode UI" refactor inlines the helper and removes `setPerformance`. The naive transcription leaves a `data?.handleSwipe`-shaped guard with only `setQueue` inside — and the *else* arm becomes a pure silent no-op:
+
+```ts
+// after — the else arm is now a pure silent no-op; no log, no rollback, no UI signal
+if (result?.data?.handleSwipe) {
+  setQueue(result.data.handleSwipe.nextCards);
+}
+```
+
+If `handleSwipe` resolves without a payload (mutation completed, server response missing the field), the optimistic queue silently becomes the source of truth and the operator has no way to triage the gap. The fix is an explicit `else if` that distinguishes the rollback path from the missing-data path, with a `console.warn` for operator triage:
+
+```ts
+if (result?.data?.handleSwipe) {
+  setQueue(result.data.handleSwipe.nextCards);
+} else if (result !== null) {
+  // Mutation resolved (no .catch), but the server payload is missing handleSwipe.
+  // The optimistic queue is now the source of truth; surface for operator triage.
+  console.warn("[LearnClient] handleSwipe resolved without data", {
+    cardId: card.id,
+    cardgroupId,
+  });
+}
+```
+
+The `result !== null` discriminator distinguishes "mutation rejected and `.catch` returned `null`" (rollback already happened) from "mutation resolved but the payload is incomplete" (the case worth warning about). Without the discriminator, the rejected path triggers the warn redundantly.
+
+**Why:** removing one of two side effects from a shared guard converts the guard from "do thing A and thing B together" to "do thing A or do nothing", and "do nothing" is rarely what the original guard's else case meant. The original `reconcileQueue` had nothing in the else case because both updates were always-together; once they split, the else case is suddenly a real failure mode that needs a real handler.
+
+**How to apply:** when refactoring a helper that combines multiple side effects into a single inline call site, audit the resulting guard branches for any case that now has zero observable effect. If a branch can legitimately be reached at runtime but does nothing, replace it with an explicit `console.warn` for operator triage (or a state-rollback, depending on what "no observable effect" hides). Reference: `frontend/src/app/learn/[cardgroupId]/learn-client.tsx` (`handleSwipe` callback) — the post-refactor `else if (result !== null)` warn after `reconcileQueue` was inlined and `setPerformance` was removed.
 
 ## Cross-module constant references in test descriptions are silent-rot coupling
 

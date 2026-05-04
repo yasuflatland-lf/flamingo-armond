@@ -54,16 +54,18 @@ test.describe
       await page.waitForURL("**/cardgroups", { timeout: 10_000 });
 
       // LearnClient's mount effect fires setLastViewedCardgroup, persisting last_viewed server-side.
+      // The post-refactor learn page no longer renders the cardgroup name, so we
+      // confirm the correct cardgroup landed by matching the active card's
+      // aria-label against the per-cardgroup `runId` front prefix from seedCards.
+      const activeCard = page.locator(`${SWIPE_CARD}[tabindex="0"]`);
       const responseA = await page.goto(`/learn/${groupA.id}`);
       expect(responseA?.ok(), `goto /learn/A returned ${responseA?.status()}`).toBe(true);
-      await expect(page.getByText(groupA.name)).toBeVisible();
-      await expect(page.locator(SWIPE_CARD).first()).toBeVisible();
+      await expect(activeCard).toHaveAccessibleName(new RegExp(`^Flashcard: a-${runId}-`));
 
       // Switch to /learn/B; this re-fires the mutation with cardgroupId=B.
       const responseB = await page.goto(`/learn/${groupB.id}`);
       expect(responseB?.ok(), `goto /learn/B returned ${responseB?.status()}`).toBe(true);
-      await expect(page.getByText(groupB.name)).toBeVisible();
-      await expect(page.locator(SWIPE_CARD).first()).toBeVisible();
+      await expect(activeCard).toHaveAccessibleName(new RegExp(`^Flashcard: b-${runId}-`));
 
       // Deterministically wait for the persist mutation to land before logout.
       // waitForResponse keyed on the operation name avoids the racy networkidle
@@ -86,6 +88,8 @@ test.describe
       await page.waitForURL(`**/learn/${groupB.id}`, { timeout: 10_000 });
 
       // Confirm cardgroup B actually painted (waitForURL alone does not assert paint).
-      await expect(page.getByText(groupB.name)).toBeVisible();
+      // Match the active card's aria-label rather than the cardgroup name, which
+      // the post-refactor learn page no longer renders.
+      await expect(activeCard).toHaveAccessibleName(new RegExp(`^Flashcard: b-${runId}-`));
     });
   });

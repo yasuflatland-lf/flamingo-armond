@@ -6,7 +6,34 @@ import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HandleSwipeDocument, SetLastViewedCardgroupDocument } from "@/generated/graphql";
+import {
+  type ApolloMockLeakSpyResult,
+  installApolloMockLeakSpy,
+} from "../../../../__tests__/utils/mock-apollo-paginated";
 import { LearnClient } from "./learn-client";
+
+// ---------------------------------------------------------------------------
+// File-wide MockedProvider leak spy.
+//
+// Installed as the OUTERMOST `console.warn` spy (top-level `beforeEach` runs
+// before any describe-level `beforeEach`), and torn down LAST in the matching
+// `afterEach`. Per pagination.md § "Spy stacking: install order is outer-first,
+// teardown is LIFO", any per-describe `console.warn` spy installed below
+// stacks on top and MUST NOT call `mockImplementation(() => {})` — that would
+// swallow the leak warning before the leak spy records it.
+// ---------------------------------------------------------------------------
+let leakSpy: ApolloMockLeakSpyResult;
+
+beforeEach(() => {
+  leakSpy = installApolloMockLeakSpy({
+    operationNames: ["HandleSwipe", "SetLastViewedCardgroup"],
+  });
+});
+
+afterEach(() => {
+  leakSpy.assertNoLeaks();
+  leakSpy.teardown();
+});
 
 const CG_ID = "cg-1";
 
@@ -119,6 +146,19 @@ describe("<LearnClient>", () => {
     expect(screen.queryByText("Bye")).not.toBeInTheDocument();
   });
 
+  it("renders the Session-complete count line after the queue empties", async () => {
+    const user = userEvent.setup();
+    const swipe = makeSwipeMock(4, []);
+    renderLearnClient([swipe.mock], [CARD_1]);
+
+    await user.click(screen.getByRole("button", { name: "Easy" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Session complete")).toBeInTheDocument();
+    });
+    expect(screen.getByText("You reviewed 1 card in this batch.")).toBeInTheDocument();
+  });
+
   it("rolls back the card and shows an error when handleSwipe fails", async () => {
     const user = userEvent.setup();
     const mock = {
@@ -183,10 +223,18 @@ function makePersistMock(cardgroupId: string, onCalled?: () => void) {
 }
 
 describe("<LearnClient> persist-last-viewed path", () => {
+  // Forwarding spy: do NOT call `mockImplementation(() => {})` here. Per
+  // pagination.md § "Spy stacking", this spy is the OUTER spy (installed after
+  // the file-wide leak spy) and must forward every `console.warn` call through
+  // to the underlying leak spy so MockedProvider leaks are still recorded.
+  // Tests that expect a `[learn] setLastViewedCardgroup failed` warn assert
+  // it explicitly via `toHaveBeenCalledWith` below. LIFO teardown is preserved
+  // automatically: this describe-scoped `afterEach` runs before the file-wide
+  // `afterEach`, so `consoleWarnSpy` restores first, then the leak spy.
   let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, "warn");
   });
 
   afterEach(() => {
@@ -232,48 +280,26 @@ describe("<LearnClient> persist-last-viewed path", () => {
     });
   });
 
-  it("swallows a GraphQLError from the persist mutation without throwing", async () => {
-    const graphqlErrorMock = {
-      request: {
-        query: SetLastViewedCardgroupDocument,
-        variables: { cardgroupId: CG_ID },
+  it.each([
+    [
+      "a GraphQLError",
+      {
+        request: { query: SetLastViewedCardgroupDocument, variables: { cardgroupId: CG_ID } },
+        result: {
+          errors: [new GraphQLError("forbidden", { extensions: { code: "BAD_USER_INPUT" } })],
+        },
       },
-      result: {
-        errors: [
-          new GraphQLError("forbidden", {
-            extensions: { code: "BAD_USER_INPUT" },
-          }),
-        ],
+    ],
+    [
+      "a network error",
+      {
+        request: { query: SetLastViewedCardgroupDocument, variables: { cardgroupId: CG_ID } },
+        error: new Error("network failure"),
       },
-    };
-
+    ],
+  ] as const)("swallows %s from the persist mutation without throwing", async (_, mockEntry) => {
     render(
-      <MockedProvider mocks={[graphqlErrorMock]}>
-        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
-      </MockedProvider>,
-    );
-
-    await waitFor(() => {
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        "[learn] setLastViewedCardgroup failed",
-        expect.objectContaining({ cardgroupId: CG_ID }),
-      );
-    });
-    // Component must still render the card stack — no crash.
-    expect(screen.getByText("Hello")).toBeInTheDocument();
-  });
-
-  it("swallows a network error from the persist mutation without throwing", async () => {
-    const networkErrorMock = {
-      request: {
-        query: SetLastViewedCardgroupDocument,
-        variables: { cardgroupId: CG_ID },
-      },
-      error: new Error("network failure"),
-    };
-
-    render(
-      <MockedProvider mocks={[networkErrorMock]}>
+      <MockedProvider mocks={[mockEntry]}>
         <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
       </MockedProvider>,
     );

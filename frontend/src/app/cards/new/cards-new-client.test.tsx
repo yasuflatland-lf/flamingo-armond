@@ -764,7 +764,7 @@ describe("<CardsNewClient> — CardgroupPickerSheet prop wiring", () => {
     renderClient({ initialCardgroupId: CG_ID, forcePickerOpen: false });
 
     expect(capturedPickerProps).not.toBeNull();
-    capturedPickerProps!.onSelect("cg-2");
+    capturedPickerProps?.onSelect("cg-2");
 
     expect(mockReplace).toHaveBeenCalledWith("/cards/new?cardgroup=cg-2", { scroll: false });
   });
