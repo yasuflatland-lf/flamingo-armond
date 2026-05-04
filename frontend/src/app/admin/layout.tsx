@@ -4,7 +4,6 @@ import { graphql } from "@/generated";
 import type { AdminLayoutMeQuery as AdminLayoutMeQueryType } from "@/generated/graphql";
 import { gqlFetch } from "@/lib/apollo/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { AdminSidebar } from "./_components/admin-sidebar";
 
 /**
  * Single source of truth admin gate. Runs entirely on the server before any
@@ -65,11 +64,6 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   const isAdmin = meData.me?.roles.some((r) => r.name === "admin") ?? false;
   if (!isAdmin) redirect("/");
 
-  // The root layout already supplies a <Header />; only the sidebar + content area belong here.
-  return (
-    <div className="flex min-h-[calc(100vh-3.5rem)]">
-      <AdminSidebar />
-      <main className="flex-1 p-6">{children}</main>
-    </div>
-  );
+  // Sub-pages each render their own <main>; use a fragment to avoid double-nesting.
+  return <>{children}</>;
 }
