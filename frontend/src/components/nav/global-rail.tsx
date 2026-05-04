@@ -1,9 +1,10 @@
 "use client";
 
-import { BookOpen, Settings, ShieldCheck, User } from "lucide-react";
+import { BookOpen, Settings, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
+import { LogoutButton } from "@/app/_components/logout-button";
 import {
   Sidebar,
   SidebarContent,
@@ -16,8 +17,8 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { AvatarPopover } from "./avatar-popover";
 import { HeaderSignInLink } from "./header-sign-in-link";
+import { ADMIN_NAV_ITEMS } from "./nav-items";
 
 interface GlobalRailProps {
   /** Required user record. Callers must pass a value or explicit null. */
@@ -32,12 +33,16 @@ const HOVER_CLOSE_DELAY_MS = 150;
 /**
  * Resolve the active rail item from the current pathname.
  *
+ * Only handles the static center items (Cardgroups, Settings). Admin items and
+ * the footer Profile link compute their own active state inline, so this
+ * function deliberately does not return `"profile"` or `"admin"`.
+ *
  * Uses a positive-allowlist style (per
  * `.claude/rules/frontend-typescript-conventions.md` § "Positive allowlist over
  * negative exclusion") so that future top-level routes do not silently match an
  * existing rail item.
  */
-type ActiveItem = "cardgroups" | "profile" | "admin" | "settings" | null;
+type ActiveItem = "cardgroups" | "settings" | null;
 
 function resolveActiveItem(pathname: string): ActiveItem {
   if (
@@ -47,12 +52,6 @@ function resolveActiveItem(pathname: string): ActiveItem {
     pathname.startsWith("/learn/")
   ) {
     return "cardgroups";
-  }
-  if (pathname === "/profile") {
-    return "profile";
-  }
-  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
-    return "admin";
   }
   if (pathname === "/settings") {
     return "settings";
@@ -107,6 +106,20 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
 
   const active = resolveActiveItem(pathname);
 
+  // Footer Profile link active state — computed inline because the footer
+  // Profile link is not part of `resolveActiveItem`'s center-item domain.
+  const profileActive = pathname === "/profile" || pathname.startsWith("/profile/");
+
+  // Admin fallback: when no admin item matches but the path is under /admin/*,
+  // light up Users (per plan §6 / decision F-1). Encoded with a literal-string
+  // discriminator on `item.href`, not a numeric index — see
+  // `.claude/rules/frontend-typescript-conventions.md` § "Positive allowlist".
+  const matchedAnyAdmin = ADMIN_NAV_ITEMS.some(
+    (i) => pathname === i.href || pathname.startsWith(`${i.href}/`),
+  );
+  const fallbackToUsers =
+    !matchedAnyAdmin && (pathname === "/admin" || pathname.startsWith("/admin/"));
+
   return (
     <Sidebar
       collapsible="icon"
@@ -124,7 +137,6 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
           <span aria-hidden="true" className="shrink-0 text-lg leading-none">
             🦩
           </span>
-          <span className="truncate group-data-[collapsible=icon]:hidden">flamingo-armond</span>
         </button>
       </SidebarHeader>
 
@@ -149,25 +161,27 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
 
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={active === "profile"} tooltip="Profile">
-                    <Link href="/profile" aria-current={active === "profile" ? "page" : undefined}>
-                      <User aria-hidden="true" />
-                      <span>Profile</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-
-                {isAdmin && (
-                  <SidebarMenuItem>
-                    <SidebarMenuButton asChild isActive={active === "admin"} tooltip="Admin">
-                      <Link href="/admin" aria-current={active === "admin" ? "page" : undefined}>
-                        <ShieldCheck aria-hidden="true" />
-                        <span>Admin</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )}
+                {isAdmin &&
+                  ADMIN_NAV_ITEMS.map((item) => {
+                    const isItemActive =
+                      pathname === item.href ||
+                      pathname.startsWith(`${item.href}/`) ||
+                      (item.href === "/admin/users" && fallbackToUsers);
+                    const Icon = item.icon;
+                    return (
+                      <SidebarMenuItem key={item.href}>
+                        <SidebarMenuButton asChild isActive={isItemActive} tooltip={item.label}>
+                          <Link
+                            href={item.href}
+                            aria-current={isItemActive ? "page" : undefined}
+                          >
+                            <Icon aria-hidden="true" />
+                            <span>{item.label}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
 
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild isActive={active === "settings"} tooltip="Settings">
@@ -188,7 +202,32 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
 
       {user !== null && (
         <SidebarFooter>
-          <AvatarPopover email={user.email} />
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={profileActive} tooltip="Profile">
+                <Link href="/profile" aria-current={profileActive ? "page" : undefined}>
+                  <User aria-hidden="true" />
+                  <span>Profile</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+
+          {user.email !== null && (
+            <p className="truncate px-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+              {user.email}
+            </p>
+          )}
+
+          {/*
+            Wrap LogoutButton in a div with the collapsed-hide class so the
+            button label collapses with the rail. The class is intentionally on
+            the wrapper, not on LogoutButton itself — that keeps LogoutButton
+            uncoupled from the rail's collapsed-state CSS group (see plan §10).
+          */}
+          <div className="group-data-[collapsible=icon]:hidden">
+            <LogoutButton />
+          </div>
         </SidebarFooter>
       )}
 
