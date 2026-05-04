@@ -126,10 +126,10 @@ export function LearnClient({ cardgroupId, cardgroupName, initialCards, lastView
 
       const result = await handleSwipe({
         variables: { input: { cardId: card.id, cardgroupId, mode } },
-        // performanceMode/metrics are optimistic placeholders; the real values arrive via
-        // Apollo cache once the server responds. They stay in the document so the codegen
-        // type stays whole. No consumer reads them today (see .claude/plans/ux_improvement.md
-        // §3.2 — ModeBadge / performance state were removed by the pure-minimal refactor).
+        // performanceMode and metrics are optimistic placeholders. The SwipeResponse
+        // schema requires both fields, so we write zero/no-op values here until the
+        // server reconciles the cache. No UI consumer reads them today, but omitting
+        // them from the optimistic write would break the codegen-generated type contract.
         optimisticResponse: {
           __typename: "Mutation",
           handleSwipe: {

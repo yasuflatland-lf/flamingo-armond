@@ -186,6 +186,50 @@ describe("<LearnClient>", () => {
     });
   });
 
+  describe("handleSwipe resolved-without-data branch", () => {
+    // Forwarding spy: do NOT call `mockImplementation(() => {})` here. Per
+    // pagination.md § "Spy stacking", this spy is the OUTER spy (installed after
+    // the file-wide leak spy) and must forward every `console.warn` call through
+    // to the underlying leak spy so MockedProvider leaks are still recorded.
+    let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      consoleWarnSpy = vi.spyOn(console, "warn");
+    });
+
+    afterEach(() => {
+      consoleWarnSpy.mockRestore();
+    });
+
+    it("emits a console.warn with cardId and cardgroupId when handleSwipe resolves with null data", async () => {
+      const user = userEvent.setup();
+      const mock = {
+        request: {
+          query: HandleSwipeDocument,
+          variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, mode: 4 } },
+        },
+        result: {
+          data: {
+            handleSwipe: null,
+          },
+        },
+      };
+      renderLearnClient([mock], [CARD_1]);
+
+      await user.click(screen.getByRole("button", { name: "Easy" }));
+
+      await waitFor(() => {
+        expect(consoleWarnSpy).toHaveBeenCalledWith(
+          "[LearnClient] handleSwipe resolved without data",
+          expect.objectContaining({
+            cardId: expect.any(String),
+            cardgroupId: CG_ID,
+          }),
+        );
+      });
+    });
+  });
+
   it("renders an empty-card state with a manage cards link", () => {
     renderLearnClient([], []);
 
@@ -194,6 +238,14 @@ describe("<LearnClient>", () => {
       "href",
       `/cardgroups/${CG_ID}/cards`,
     );
+  });
+
+  it("renders the floating plus button in the empty-card state", () => {
+    renderLearnClient([], []);
+
+    expect(
+      screen.getByRole("link", { name: `Add a new card to ${CG_NAME}` }),
+    ).toBeInTheDocument();
   });
 
   it("renders the floating plus button with the correct aria-label", () => {
