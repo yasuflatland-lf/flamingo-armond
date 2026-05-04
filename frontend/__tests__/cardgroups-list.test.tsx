@@ -106,14 +106,15 @@ describe("CardgroupsPage", () => {
     expect(screen.getByText("Spanish Vocab")).toBeInTheDocument();
     expect(screen.getByText("Japanese Kanji")).toBeInTheDocument();
 
-    // Each item renders a link to /cardgroups/<id>
+    // Each item renders a link to /cardgroups/<id>/cards (skipping the redirect
+    // hop introduced by the /cardgroups/[id] detail-page collapse).
     expect(screen.getByRole("link", { name: /spanish vocab/i })).toHaveAttribute(
       "href",
-      "/cardgroups/cardgroup-001",
+      "/cardgroups/cardgroup-001/cards",
     );
     expect(screen.getByRole("link", { name: /japanese kanji/i })).toHaveAttribute(
       "href",
-      "/cardgroups/cardgroup-002",
+      "/cardgroups/cardgroup-002/cards",
     );
 
     expect(redirect).not.toHaveBeenCalled();
