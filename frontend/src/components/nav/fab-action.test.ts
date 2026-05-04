@@ -100,4 +100,44 @@ describe("resolveFabAction", () => {
       });
     });
   });
+
+  describe("URL-encodes captured cardgroup ids that contain special characters", () => {
+    it("encodes & in id for /cardgroups/:id/cards branch — href is encoded, cardgroupId is raw", () => {
+      const result = resolveFabAction("/cardgroups/abc&evil/cards");
+      expect(result).toEqual({
+        kind: "card-with-group",
+        href: "/cards/new?cardgroup=abc%26evil",
+        label: "Add new card",
+        cardgroupId: "abc&evil",
+      });
+    });
+
+    it("encodes & in id for /cardgroups/:id branch — href is encoded, cardgroupId is raw", () => {
+      const result = resolveFabAction("/cardgroups/abc&evil");
+      expect(result).toEqual({
+        kind: "card-with-group",
+        href: "/cards/new?cardgroup=abc%26evil",
+        label: "Add new card",
+        cardgroupId: "abc&evil",
+      });
+    });
+
+    it("encodes & in id for /learn/:id branch — href has both query param and return path encoded, cardgroupId is raw", () => {
+      const result = resolveFabAction("/learn/abc&evil");
+      expect(result).toEqual({
+        kind: "card-with-group",
+        href: "/cards/new?cardgroup=abc%26evil&return=/learn/abc%26evil",
+        label: "Add new card",
+        cardgroupId: "abc&evil",
+      });
+    });
+
+    it("/learn/abc/extra (extra segment) does NOT match LEARN_RE and falls through to the generic card action", () => {
+      expect(resolveFabAction("/learn/abc/extra")).toEqual({
+        kind: "card",
+        href: "/cards/new",
+        label: "Add new card",
+      });
+    });
+  });
 });

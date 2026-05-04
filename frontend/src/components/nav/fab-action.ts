@@ -27,36 +27,39 @@ export function resolveFabAction(pathname: string): FabAction | null {
   const cardsMatch = CARDGROUP_CARDS_RE.exec(pathname);
   if (cardsMatch) {
     // cardsMatch[1] is always defined when the regex matched (capture group 1 is required)
-    const id = cardsMatch[1] as string;
+    const rawId = cardsMatch[1] as string;
+    const encodedId = encodeURIComponent(rawId);
     return {
       kind: "card-with-group",
-      href: `/cards/new?cardgroup=${id}`,
+      href: `/cards/new?cardgroup=${encodedId}`,
       label: "Add new card",
-      cardgroupId: id,
+      cardgroupId: rawId,
     };
   }
 
   const detailMatch = CARDGROUP_DETAIL_RE.exec(pathname);
   if (detailMatch) {
     // detailMatch[1] is always defined when the regex matched (capture group 1 is required)
-    const id = detailMatch[1] as string;
+    const rawId = detailMatch[1] as string;
+    const encodedId = encodeURIComponent(rawId);
     return {
       kind: "card-with-group",
-      href: `/cards/new?cardgroup=${id}`,
+      href: `/cards/new?cardgroup=${encodedId}`,
       label: "Add new card",
-      cardgroupId: id,
+      cardgroupId: rawId,
     };
   }
 
   const learnMatch = LEARN_RE.exec(pathname);
   if (learnMatch) {
     // learnMatch[1] is always defined when the regex matched (capture group 1 is required)
-    const id = learnMatch[1] as string;
+    const rawId = learnMatch[1] as string;
+    const encodedId = encodeURIComponent(rawId);
     return {
       kind: "card-with-group",
-      href: `/cards/new?cardgroup=${id}&return=/learn/${id}`,
+      href: `/cards/new?cardgroup=${encodedId}&return=/learn/${encodedId}`,
       label: "Add new card",
-      cardgroupId: id,
+      cardgroupId: rawId,
     };
   }
 

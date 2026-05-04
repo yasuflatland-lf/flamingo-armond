@@ -8,7 +8,8 @@ interface LearnAddCardFloatingProps {
 }
 
 export function LearnAddCardFloating({ cardgroupId, cardgroupName }: LearnAddCardFloatingProps) {
-  const href = `/cards/new?cardgroup=${cardgroupId}&return=/learn/${cardgroupId}`;
+  const encodedId = encodeURIComponent(cardgroupId);
+  const href = `/cards/new?cardgroup=${encodedId}&return=/learn/${encodedId}`;
 
   return (
     <Button

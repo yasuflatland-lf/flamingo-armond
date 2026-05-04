@@ -39,4 +39,16 @@ describe("<LearnAddCardFloating>", () => {
     expect(link.className).toContain("hidden");
     expect(link.className).toContain("md:flex");
   });
+
+  it("S4: URL-encodes cardgroupId containing special characters — href uses percent-encoding, aria-label uses raw name", () => {
+    // "abc&evil" must become "abc%26evil" in both the query param and the return path.
+    render(<LearnAddCardFloating cardgroupId="abc&evil" cardgroupName="Tricky & Group" />);
+    const link = screen.getByRole("link");
+    expect(link).toHaveAttribute(
+      "href",
+      "/cards/new?cardgroup=abc%26evil&return=/learn/abc%26evil",
+    );
+    // The aria-label uses the raw cardgroupName, not the id — no encoding needed here.
+    expect(link).toHaveAttribute("aria-label", "Add a new card to Tricky & Group");
+  });
 });
