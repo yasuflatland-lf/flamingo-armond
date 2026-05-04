@@ -119,6 +119,19 @@ describe("<LearnClient>", () => {
     expect(screen.queryByText("Bye")).not.toBeInTheDocument();
   });
 
+  it("renders the Session-complete count line after the queue empties", async () => {
+    const user = userEvent.setup();
+    const swipe = makeSwipeMock(4, []);
+    renderLearnClient([swipe.mock], [CARD_1]);
+
+    await user.click(screen.getByRole("button", { name: "Easy" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Session complete")).toBeInTheDocument();
+    });
+    expect(screen.getByText("You reviewed 1 card in this batch.")).toBeInTheDocument();
+  });
+
   it("rolls back the card and shows an error when handleSwipe fails", async () => {
     const user = userEvent.setup();
     const mock = {
