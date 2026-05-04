@@ -5,11 +5,11 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { HandleSwipeDocument, SetLastViewedCardgroupDocument } from "@/generated/graphql";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
 } from "../../../../__tests__/utils/mock-apollo-paginated";
-import { HandleSwipeDocument, SetLastViewedCardgroupDocument } from "@/generated/graphql";
 import { LearnClient } from "./learn-client";
 
 // ---------------------------------------------------------------------------
@@ -297,29 +297,22 @@ describe("<LearnClient> persist-last-viewed path", () => {
         error: new Error("network failure"),
       },
     ],
-  ] as const)(
-    "swallows %s from the persist mutation without throwing",
-    async (_, mockEntry) => {
-      render(
-        <MockedProvider mocks={[mockEntry]}>
-          <LearnClient
-            cardgroupId={CG_ID}
-            initialCards={[CARD_1]}
-            lastViewedCardgroupId="cg-other"
-          />
-        </MockedProvider>,
-      );
+  ] as const)("swallows %s from the persist mutation without throwing", async (_, mockEntry) => {
+    render(
+      <MockedProvider mocks={[mockEntry]}>
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
+      </MockedProvider>,
+    );
 
-      await waitFor(() => {
-        expect(consoleWarnSpy).toHaveBeenCalledWith(
-          "[learn] setLastViewedCardgroup failed",
-          expect.objectContaining({ cardgroupId: CG_ID }),
-        );
-      });
-      // Component must still render the card stack — no crash.
-      expect(screen.getByText("Hello")).toBeInTheDocument();
-    },
-  );
+    await waitFor(() => {
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "[learn] setLastViewedCardgroup failed",
+        expect.objectContaining({ cardgroupId: CG_ID }),
+      );
+    });
+    // Component must still render the card stack — no crash.
+    expect(screen.getByText("Hello")).toBeInTheDocument();
+  });
 
   it("does not carry optimisticResponse in the persist mutation", () => {
     // Static assertion: the source of the LearnClient function must not include
