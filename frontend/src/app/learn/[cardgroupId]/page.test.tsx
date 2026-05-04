@@ -97,7 +97,6 @@ describe("LearnPage", () => {
     const jsx = await LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) });
     render(jsx);
 
-    expect(screen.getByText("Spanish")).toBeInTheDocument();
     // Format: cardgroupId:initialCards.length:lastViewedCardgroupId
     expect(screen.getByTestId("learn-client")).toHaveTextContent("cg-1:1:cg-old");
   });

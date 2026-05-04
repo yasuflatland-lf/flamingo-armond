@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CardgroupQuery } from "@/app/cardgroups/queries";
 import { MeWithLastViewedQuery } from "@/app/queries";
@@ -53,17 +52,6 @@ export default async function LearnPage({ params }: { params: Promise<{ cardgrou
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-background">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-5xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <Link
-            href={`/cardgroups/${cardgroupId}`}
-            className="text-sm text-muted-foreground hover:underline"
-          >
-            Back
-          </Link>
-          <p className="truncate text-sm font-medium text-muted-foreground">
-            {cardgroupData.cardgroup.name}
-          </p>
-        </div>
         <LearnClient
           cardgroupId={cardgroupId}
           initialCards={cards}
