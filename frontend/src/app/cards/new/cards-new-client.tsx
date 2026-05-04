@@ -4,7 +4,6 @@ import { useMutation } from "@apollo/client/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { sanitizeReturnTo } from "@/app/cardgroups/new/page";
 import { CreateCardMutation, UpdateCardMutation } from "@/app/cardgroups/queries";
 import { SetLastViewedCardgroupMutation } from "@/app/learn/queries";
 import { CardForm } from "@/components/cardgroups/card-form";
@@ -22,6 +21,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
 import { tryGetDuplicateCardInfo } from "@/lib/apollo/graphql-errors";
+import { sanitizeReturnTo } from "@/lib/sanitize-return-to";
 
 type Cardgroup = {
   id: string;
