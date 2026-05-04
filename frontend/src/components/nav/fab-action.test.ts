@@ -60,11 +60,29 @@ describe("resolveFabAction", () => {
   describe("default to creating a card", () => {
     it.each([
       ["/"],
-      ["/learn/abc-123"],
       ["/profile"],
       ["/login"],
     ])("returns generic /cards/new for %s", (pathname) => {
       expect(resolveFabAction(pathname)).toEqual({
+        kind: "card",
+        href: "/cards/new",
+        label: "Add new card",
+      });
+    });
+  });
+
+  describe("creates a card with cardgroup pre-selected and return param on /learn/:id", () => {
+    it("returns card-with-group action with return param for /learn/abc-123", () => {
+      expect(resolveFabAction("/learn/abc-123")).toEqual({
+        kind: "card-with-group",
+        href: "/cards/new?cardgroup=abc-123&return=/learn/abc-123",
+        label: "Add new card",
+        cardgroupId: "abc-123",
+      });
+    });
+
+    it("falls through to generic card action for /learn (no id segment)", () => {
+      expect(resolveFabAction("/learn")).toEqual({
         kind: "card",
         href: "/cards/new",
         label: "Add new card",

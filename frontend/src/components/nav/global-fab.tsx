@@ -4,10 +4,11 @@ import { Plus } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { resolveFabAction } from "./fab-action";
 
-// Hidden on /login (anonymous-only), /learn (full-bleed swipe UI),
-// /admin (different audience), /cards/new + /cardgroups/new (FAB target — would loop),
+// Hidden on /login (anonymous-only), /admin (different audience),
+// /cards/new + /cardgroups/new (FAB target — would loop),
 // and /profile (FAB action does not apply to profile editing).
-const HIDDEN_PATH_RE = /^\/(login|learn|admin|cards\/new|cardgroups\/new|profile)(\/|$)/;
+// /learn/:id is intentionally visible so users can add cards while studying.
+const HIDDEN_PATH_RE = /^\/(login|admin|cards\/new|cardgroups\/new|profile)(\/|$)/;
 
 export function GlobalFAB() {
   const pathname = usePathname();

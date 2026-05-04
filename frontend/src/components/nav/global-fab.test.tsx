@@ -27,8 +27,6 @@ describe("<GlobalFAB>", () => {
   describe("hidden paths — returns null", () => {
     it.each([
       ["/login"],
-      ["/learn/abc123"],
-      ["/learn/abc123/"],
       ["/admin/users"],
       ["/admin"],
       ["/cards/new"],
@@ -63,6 +61,28 @@ describe("<GlobalFAB>", () => {
       render(<GlobalFAB />);
       expect(screen.getByRole("button", { name: "Add new card" })).toBeInTheDocument();
     });
+  });
+
+  describe("visible on learn paths — renders 'Add new card' with cardgroup pre-selected", () => {
+    it("renders 'Add new card' button on /learn/abc-123", () => {
+      vi.mocked(usePathname).mockReturnValue("/learn/abc-123");
+      render(<GlobalFAB />);
+      expect(screen.getByRole("button", { name: "Add new card" })).toBeInTheDocument();
+    });
+  });
+
+  it("click on /learn/abc-123 navigates to /cards/new?cardgroup=abc-123&return=/learn/abc-123", async () => {
+    const user = userEvent.setup();
+    const router = makeRouter();
+    vi.mocked(useRouter).mockReturnValue(router as never);
+    vi.mocked(usePathname).mockReturnValue("/learn/abc-123");
+
+    render(<GlobalFAB />);
+    await user.click(screen.getByRole("button", { name: "Add new card" }));
+
+    expect(router.push).toHaveBeenCalledWith(
+      "/cards/new?cardgroup=abc-123&return=/learn/abc-123",
+    );
   });
 
   it("click on /cardgroups navigates to /cardgroups/new", async () => {

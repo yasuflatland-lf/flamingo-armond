@@ -1,6 +1,7 @@
 const CARDGROUP_DETAIL_RE = /^\/cardgroups\/([^/]+)$/;
 const CARDGROUP_CARDS_RE = /^\/cardgroups\/([^/]+)\/cards$/;
 const CARDGROUP_EDIT_RE = /^\/cardgroups\/([^/]+)\/edit(\/|$)/;
+const LEARN_RE = /^\/learn\/([^/]+)$/;
 
 export type FabAction =
   | { kind: "cardgroup"; href: "/cardgroups/new"; label: "Add new cardgroup" }
@@ -42,6 +43,18 @@ export function resolveFabAction(pathname: string): FabAction | null {
     return {
       kind: "card-with-group",
       href: `/cards/new?cardgroup=${id}`,
+      label: "Add new card",
+      cardgroupId: id,
+    };
+  }
+
+  const learnMatch = LEARN_RE.exec(pathname);
+  if (learnMatch) {
+    // learnMatch[1] is always defined when the regex matched (capture group 1 is required)
+    const id = learnMatch[1] as string;
+    return {
+      kind: "card-with-group",
+      href: `/cards/new?cardgroup=${id}&return=/learn/${id}`,
       label: "Add new card",
       cardgroupId: id,
     };
