@@ -88,10 +88,10 @@ describe("CardgroupsPage", () => {
     expect(screen.getByText("Math Formulas")).toBeInTheDocument();
 
     const spanishLink = screen.getByRole("link", { name: /spanish vocab/i });
-    expect(spanishLink).toHaveAttribute("href", "/cardgroups/cg-1");
+    expect(spanishLink).toHaveAttribute("href", "/cardgroups/cg-1/cards");
 
     const mathLink = screen.getByRole("link", { name: /math formulas/i });
-    expect(mathLink).toHaveAttribute("href", "/cardgroups/cg-2");
+    expect(mathLink).toHaveAttribute("href", "/cardgroups/cg-2/cards");
   });
 
   it("renders footer-style New cardgroup link when cardgroups list is non-empty", async () => {
