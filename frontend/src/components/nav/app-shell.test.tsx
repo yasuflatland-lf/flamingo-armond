@@ -139,7 +139,22 @@ describe("<AppShell>", () => {
     });
   });
 
-  describe("S4b — signed-in user with null email", () => {
+  describe("S4b — anonymous on /login: no Sign in links", () => {
+    it("anonymous on /login: zero Sign in links across both surfaces", () => {
+      mockUsePathname.mockReturnValue("/login");
+      render(
+        <AppShell user={null} isAdmin={false}>
+          <div />
+        </AppShell>,
+      );
+
+      // The parent-level /login guard suppresses the Sign in link in the rail
+      // footer and the drawer body — no Sign in link should be mounted anywhere.
+      expect(screen.queryAllByRole("link", { name: /sign in/i })).toHaveLength(0);
+    });
+  });
+
+  describe("S4c — signed-in user with null email", () => {
     it("renders no email span in the mobile header when user.email is null", () => {
       render(
         <AppShell user={{ email: null }} isAdmin={false}>

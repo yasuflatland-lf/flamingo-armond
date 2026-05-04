@@ -201,6 +201,15 @@ describe("<GlobalRail>", () => {
       // The logo button still renders so anonymous viewers can read the brand.
       expect(screen.getByRole("button", { name: /toggle navigation rail/i })).toBeInTheDocument();
     });
+
+    it("anonymous on /login: rail footer does not render the Sign in link or its empty wrapper", () => {
+      mockUsePathname.mockReturnValue("/login");
+      renderRail({ user: null, isAdmin: false });
+
+      // The Sign in link must be absent — the parent guard suppresses the entire
+      // footer block on /login, so no empty wrapper container is mounted either.
+      expect(screen.queryByRole("link", { name: /sign in/i })).toBeNull();
+    });
   });
 
   describe("avatar popover wiring", () => {
