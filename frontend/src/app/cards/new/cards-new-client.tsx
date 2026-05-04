@@ -247,7 +247,15 @@ export default function CardsNewClient({
   }
 
   function handlePickerSelect(newId: string) {
-    router.replace(`/cards/new?cardgroup=${encodeURIComponent(newId)}`, { scroll: false });
+    // Preserve the sanitized ?return= param so the post-create navigation
+    // intent survives a cardgroup switch. Only the already-sanitized returnTo
+    // value is re-encoded here — raw searchParams.get("return") is never used
+    // directly (see sanitizeReturnTo call above).
+    const newUrl =
+      returnTo !== null
+        ? `/cards/new?cardgroup=${encodeURIComponent(newId)}&return=${encodeURIComponent(returnTo)}`
+        : `/cards/new?cardgroup=${encodeURIComponent(newId)}`;
+    router.replace(newUrl, { scroll: false });
   }
 
   return (

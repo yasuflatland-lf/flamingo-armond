@@ -688,13 +688,51 @@ describe("<CardsNewClient> — CardgroupPickerSheet prop wiring", () => {
     expect(capturedPickerProps?.createReturnTo).toBe("/cards/new");
   });
 
-  it("onSelect calls router.replace with the new cardgroup path and scroll:false", () => {
+  it("onSelect calls router.replace with the new cardgroup path and scroll:false (no ?return=)", () => {
+    // mockSearchParamsValue is "" (reset in beforeEach) — no return param present.
     renderClient({ initialCardgroupId: CG_ID, forcePickerOpen: false });
 
     expect(capturedPickerProps).not.toBeNull();
     capturedPickerProps?.onSelect("cg-2");
 
     expect(mockReplace).toHaveBeenCalledWith("/cards/new?cardgroup=cg-2", { scroll: false });
+    // Confirm the URL does not include a stray &return= when none was present.
+    expect(mockReplace).not.toHaveBeenCalledWith(
+      expect.stringContaining("return="),
+      expect.anything(),
+    );
+  });
+
+  it("onSelect preserves the existing ?return= query param when switching cardgroups", () => {
+    // Simulate arriving via /cards/new?cardgroup=cg-1&return=/learn/cg-1
+    mockSearchParamsValue = "cardgroup=cg-1&return=/learn/cg-1";
+    renderClient({ initialCardgroupId: CG_ID, forcePickerOpen: false });
+
+    expect(capturedPickerProps).not.toBeNull();
+    capturedPickerProps?.onSelect("cg-2");
+
+    // The rebuilt URL must carry both the new cardgroup id and the sanitized
+    // return path. encodeURIComponent("/learn/cg-1") === "%2Flearn%2Fcg-1".
+    expect(mockReplace).toHaveBeenCalledWith(
+      "/cards/new?cardgroup=cg-2&return=%2Flearn%2Fcg-1",
+      { scroll: false },
+    );
+  });
+
+  it("onSelect does NOT include ?return= when the return param is an external URL (blocked by sanitizeReturnTo)", () => {
+    // sanitizeReturnTo rejects external URLs; the rebuilt URL must not carry
+    // a poisoned return= value.
+    mockSearchParamsValue = "cardgroup=cg-1&return=https://evil.example.com";
+    renderClient({ initialCardgroupId: CG_ID, forcePickerOpen: false });
+
+    expect(capturedPickerProps).not.toBeNull();
+    capturedPickerProps?.onSelect("cg-2");
+
+    expect(mockReplace).toHaveBeenCalledWith("/cards/new?cardgroup=cg-2", { scroll: false });
+    expect(mockReplace).not.toHaveBeenCalledWith(
+      expect.stringContaining("evil.example.com"),
+      expect.anything(),
+    );
   });
 
   it("passes open=true to CardgroupPickerSheet when forcePickerOpen is true", () => {
