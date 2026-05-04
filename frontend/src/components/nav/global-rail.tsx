@@ -192,7 +192,7 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
         </SidebarFooter>
       )}
 
-      {user === null && (
+      {user === null && pathname !== "/login" && (
         <SidebarFooter>
           <SidebarMenu>
             <SidebarMenuItem>

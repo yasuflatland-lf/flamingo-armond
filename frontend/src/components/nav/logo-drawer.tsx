@@ -2,6 +2,7 @@
 
 import { BookOpen, Settings, ShieldCheck, User } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/app/_components/logout-button";
 import {
   Sheet,
@@ -14,7 +15,9 @@ import {
 import { HeaderSignInLink } from "./header-sign-in-link";
 
 interface LogoDrawerProps {
+  /** Required user record. Callers must pass a value or explicit null. */
   user: { email: string | null } | null;
+  /** Required admin flag — callers must explicitly pass false for non-admins. */
   isAdmin: boolean;
 }
 
@@ -22,6 +25,8 @@ const NAV_LINK_CLASS =
   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground";
 
 export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
+  const pathname = usePathname();
+
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -39,7 +44,7 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
           <SheetTitle className="sr-only">Navigation menu</SheetTitle>
         </SheetHeader>
 
-        {!user && (
+        {user === null && pathname !== "/login" && (
           <nav className="flex flex-col gap-1">
             <SheetClose asChild>
               <HeaderSignInLink className={NAV_LINK_CLASS} />
