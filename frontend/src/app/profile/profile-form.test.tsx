@@ -45,7 +45,7 @@ describe("<ProfileForm>", () => {
   it("renders defaults", () => {
     render(
       <MockedProvider mocks={[]}>
-        <ProfileForm initial={{ displayName: "Alice", bio: "hi" }} />
+        <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
     );
 
@@ -53,12 +53,34 @@ describe("<ProfileForm>", () => {
     expect(screen.getByDisplayValue("hi")).toBeInTheDocument();
   });
 
+  it("renders email as read-only text and a Change email link", () => {
+    render(
+      <MockedProvider mocks={[]}>
+        <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
+      </MockedProvider>,
+    );
+
+    expect(screen.getByText("alice@example.com")).toBeInTheDocument();
+    const changeEmailLink = screen.getByRole("link", { name: /change email/i });
+    expect(changeEmailLink).toHaveAttribute("href", "/profile/change-email");
+  });
+
+  it("renders fallback text when email is null", () => {
+    render(
+      <MockedProvider mocks={[]}>
+        <ProfileForm email={null} initial={{ displayName: "Alice", bio: "hi" }} />
+      </MockedProvider>,
+    );
+
+    expect(screen.getByText("No email on this account")).toBeInTheDocument();
+  });
+
   it("displayName empty triggers Zod error before submit", async () => {
     const user = userEvent.setup();
 
     render(
       <MockedProvider mocks={[]}>
-        <ProfileForm initial={{ displayName: "Alice", bio: "" }} />
+        <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "" }} />
       </MockedProvider>,
     );
 
@@ -76,7 +98,7 @@ describe("<ProfileForm>", () => {
 
     render(
       <MockedProvider mocks={[]}>
-        <ProfileForm initial={{ displayName: "", bio: "" }} />
+        <ProfileForm email="alice@example.com" initial={{ displayName: "", bio: "" }} />
       </MockedProvider>,
     );
 
@@ -98,7 +120,7 @@ describe("<ProfileForm>", () => {
 
     render(
       <MockedProvider mocks={[]}>
-        <ProfileForm initial={{ displayName: "Alice", bio: "" }} />
+        <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "" }} />
       </MockedProvider>,
     );
 
@@ -122,7 +144,7 @@ describe("<ProfileForm>", () => {
 
     render(
       <MockedProvider mocks={mocks}>
-        <ProfileForm initial={{ displayName: "Alice", bio: "hi" }} />
+        <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
     );
 
@@ -150,7 +172,7 @@ describe("<ProfileForm>", () => {
 
     render(
       <MockedProvider mocks={mocks}>
-        <ProfileForm initial={{ displayName: "Alice", bio: "hello" }} />
+        <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hello" }} />
       </MockedProvider>,
     );
 
@@ -182,7 +204,7 @@ describe("<ProfileForm>", () => {
 
     render(
       <MockedProvider mocks={mocks} defaultOptions={{ mutate: { errorPolicy: "all" } }}>
-        <ProfileForm initial={{ displayName: "Alice", bio: "hi" }} />
+        <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
     );
 
@@ -214,7 +236,7 @@ describe("<ProfileForm>", () => {
 
     render(
       <MockedProvider mocks={mocks} defaultOptions={{ mutate: { errorPolicy: "all" } }}>
-        <ProfileForm initial={{ displayName: "Alice", bio: "hi" }} />
+        <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
     );
 
@@ -246,7 +268,7 @@ describe("<ProfileForm>", () => {
 
     render(
       <MockedProvider mocks={mocks} defaultOptions={{ mutate: { errorPolicy: "all" } }}>
-        <ProfileForm initial={{ displayName: "Alice", bio: "hi" }} />
+        <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
     );
 
@@ -272,7 +294,7 @@ describe("<ProfileForm>", () => {
 
     render(
       <MockedProvider mocks={mocks}>
-        <ProfileForm initial={{ displayName: "Alice", bio: "hi" }} />
+        <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
     );
 
@@ -316,7 +338,10 @@ describe("<ProfileForm>", () => {
 
     render(
       <MockedProvider mocks={mocks}>
-        <ProfileForm initial={{ displayName: "Alice", bio: undefined as unknown as string }} />
+        <ProfileForm
+          email="alice@example.com"
+          initial={{ displayName: "Alice", bio: undefined as unknown as string }}
+        />
       </MockedProvider>,
     );
 

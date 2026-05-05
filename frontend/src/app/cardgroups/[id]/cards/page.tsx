@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CardgroupQuery } from "@/app/cardgroups/queries";
+import { Button } from "@/components/ui/button";
 import type {
   CardgroupQuery as CardgroupQueryType,
   CardsByCardgroupConnectionQuery as CardsByCardgroupConnectionQueryType,
@@ -56,12 +57,17 @@ export default async function CardsPage({ params }: { params: Promise<{ id: stri
 
   return (
     <main className="mx-auto max-w-2xl p-8">
-      <div className="mb-6 flex items-center gap-4">
+      <div className="mb-3 flex items-center gap-4">
         <Link href={`/cardgroups/${id}`} className="text-sm text-muted-foreground hover:underline">
           &larr; Back
         </Link>
       </div>
-      <h1 className="mb-6 text-2xl font-semibold">Cards in {cardgroup.name}</h1>
+      <div className="mb-3 flex items-baseline justify-between gap-4">
+        <h1 className="text-2xl font-semibold">Cards in {cardgroup.name}</h1>
+        <Button asChild variant="brand" size="sm">
+          <Link href={`/cards/new?cardgroup=${id}&return=/cardgroups/${id}/cards`}>+ Add card</Link>
+        </Button>
+      </div>
       <CardsClient
         cardgroupId={id}
         initialEdges={initialEdges}

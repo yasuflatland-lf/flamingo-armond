@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HandleSwipeMutation, SetLastViewedCardgroupMutation } from "@/app/learn/queries";
 import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
+import { LearnAddCardFloating } from "@/components/nav/learn-add-card-floating";
 import { Button } from "@/components/ui/button";
 import type {
   HandleSwipeMutation as HandleSwipeMutationType,
@@ -44,12 +45,18 @@ function withTypename(card: LearnCard): LearnCard & { __typename: "Card" } {
 
 type Props = {
   cardgroupId: string;
+  cardgroupName: string;
   initialCards: LearnCard[];
   /** The id of the user's `lastViewedCardgroup` at server-render time. */
   lastViewedCardgroupId: string | null;
 };
 
-export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }: Props) {
+export function LearnClient({
+  cardgroupId,
+  cardgroupName,
+  initialCards,
+  lastViewedCardgroupId,
+}: Props) {
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
   const [completed, setCompleted] = useState(0);
   const [swipeDirection, setSwipeDirection] = useState<SwipeDirection | null>(null);
@@ -124,10 +131,10 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
 
       const result = await handleSwipe({
         variables: { input: { cardId: card.id, cardgroupId, mode } },
-        // performanceMode/metrics are optimistic placeholders; the real values arrive via
-        // Apollo cache once the server responds. They stay in the document so the codegen
-        // type stays whole. No consumer reads them today (see .claude/plans/ux_improvement.md
-        // §3.2 — ModeBadge / performance state were removed by the pure-minimal refactor).
+        // performanceMode and metrics are optimistic placeholders. The SwipeResponse
+        // schema requires both fields, so we write zero/no-op values here until the
+        // server reconciles the cache. No UI consumer reads them today, but omitting
+        // them from the optimistic write would break the codegen-generated type contract.
         optimisticResponse: {
           __typename: "Mutation",
           handleSwipe: {
@@ -159,46 +166,47 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
     [cardgroupId, handleSwipe, queue],
   );
 
-  if (initialCards.length === 0) {
-    return (
-      <section className="flex flex-1 items-center justify-center">
-        <div className="w-full max-w-md rounded-lg border border-dashed border-border p-8 text-center">
-          <h1 className="mb-2 text-xl font-semibold">No cards to learn</h1>
-          <p className="mb-6 text-sm text-muted-foreground">
-            Add cards to this cardgroup before starting a learning session.
-          </p>
-          <Button asChild>
-            <Link href={`/cardgroups/${cardgroupId}/cards`}>Manage cards</Link>
-          </Button>
-        </div>
-      </section>
-    );
-  }
-
   return (
-    <section className="flex flex-1 flex-col">
-      {visibleError ? (
-        <div
-          className="mx-auto mb-4 w-full max-w-xl rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-          role="alert"
-        >
-          {visibleError}
-        </div>
-      ) : null}
+    <>
+      <LearnAddCardFloating cardgroupId={cardgroupId} cardgroupName={cardgroupName} />
+      {initialCards.length === 0 ? (
+        <section className="flex flex-1 items-center justify-center">
+          <div className="w-full max-w-md rounded-lg border border-dashed border-border p-8 text-center">
+            <h1 className="mb-2 text-xl font-semibold">No cards to learn</h1>
+            <p className="mb-6 text-sm text-muted-foreground">
+              Add cards to this cardgroup before starting a learning session.
+            </p>
+            <Button asChild>
+              <Link href={`/cardgroups/${cardgroupId}/cards`}>Manage cards</Link>
+            </Button>
+          </div>
+        </section>
+      ) : (
+        <section className="flex flex-1 flex-col">
+          {visibleError ? (
+            <div
+              className="mx-auto mb-4 w-full max-w-xl rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+              role="alert"
+            >
+              {visibleError}
+            </div>
+          ) : null}
 
-      <div className="relative flex min-h-[560px] flex-1 items-center justify-center sm:min-h-[620px]">
-        <SwipeCardStack
-          cards={queue}
-          onCardSwiped={onSwipe}
-          onSwipeProgress={(direction, progress) => {
-            setSwipeDirection(direction);
-            setSwipeProgress(progress);
-          }}
-          swipeDirection={swipeDirection}
-          swipeProgress={swipeProgress}
-          completedCount={completed}
-        />
-      </div>
-    </section>
+          <div className="relative flex min-h-[560px] flex-1 items-center justify-center sm:min-h-[620px]">
+            <SwipeCardStack
+              cards={queue}
+              onCardSwiped={onSwipe}
+              onSwipeProgress={(direction, progress) => {
+                setSwipeDirection(direction);
+                setSwipeProgress(progress);
+              }}
+              swipeDirection={swipeDirection}
+              swipeProgress={swipeProgress}
+              completedCount={completed}
+            />
+          </div>
+        </section>
+      )}
+    </>
   );
 }

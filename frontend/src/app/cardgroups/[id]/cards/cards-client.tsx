@@ -1,10 +1,9 @@
 "use client";
 
-import { gql, NetworkStatus } from "@apollo/client";
+import { NetworkStatus } from "@apollo/client";
 import { useMutation, useQuery } from "@apollo/client/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  CreateCardMutation,
   DeleteCardMutation,
   DeleteCardsMutation,
   UpdateCardMutation,
@@ -47,7 +46,6 @@ export function CardsClient({
   initialTotalCount,
 }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [createFormKey, setCreateFormKey] = useState(0);
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -144,69 +142,6 @@ export function CardsClient({
     observer.observe(node);
     return () => observer.disconnect();
   }, [pageInfo.hasNextPage, fetchMoreError, requestNextPage]);
-
-  const [createCard, { loading: creating, error: createError }] = useMutation(CreateCardMutation, {
-    update(cache, { data: createData }) {
-      if (!createData?.createCard?.card) return;
-      const newCard = createData.createCard.card;
-      // Write the new Card into the cache so any edge that references it resolves correctly.
-      cache.writeFragment({
-        id: cache.identify({ __typename: "Card", id: newCard.id }),
-        fragment: gql`
-          fragment NewCardFields on Card {
-            id
-            front
-            back
-            due
-            state
-            cardgroupId
-          }
-        `,
-        data: newCard,
-      });
-      // Use readQuery/writeQuery so cold caches (no existing connection entry) get
-      // a freshly-written connection — cache.modify silently no-ops when the field
-      // is missing, which would lose the new card on first load.
-      const variables = { cardgroupId, first: CARDS_PAGE_SIZE };
-      const existing = cache.readQuery({
-        query: CardsByCardgroupConnectionDocument,
-        variables,
-      });
-      const newEdge = {
-        __typename: "CardEdge" as const,
-        cursor: newCard.id,
-        node: newCard,
-      };
-      const next = existing
-        ? {
-            cardsByCardgroupConnection: {
-              ...existing.cardsByCardgroupConnection,
-              edges: [...existing.cardsByCardgroupConnection.edges, newEdge],
-              totalCount: existing.cardsByCardgroupConnection.totalCount + 1,
-            },
-          }
-        : {
-            cardsByCardgroupConnection: {
-              __typename: "CardConnection" as const,
-              edges: [newEdge],
-              pageInfo: {
-                __typename: "PageInfo" as const,
-                hasNextPage: false,
-                hasPreviousPage: false,
-                startCursor: newCard.id,
-                endCursor: newCard.id,
-              },
-              totalCount: 1,
-            },
-          };
-      cache.writeQuery({
-        query: CardsByCardgroupConnectionDocument,
-        variables,
-        data: next,
-      });
-      setCreateFormKey((k) => k + 1);
-    },
-  });
 
   // Update propagates automatically via Apollo cache normalization (Card has id).
   const [updateCard, { loading: updating, error: updateError }] = useMutation(UpdateCardMutation);
@@ -310,14 +245,6 @@ export function CardsClient({
     }
   }
 
-  async function handleCreate(values: { front: string; back: string }) {
-    await createCard({
-      variables: { input: { cardgroupId, front: values.front, back: values.back } },
-    }).catch((err) => {
-      console.error("[CardsClient] create rejection", err);
-    });
-  }
-
   async function handleUpdate(id: string, values: { front: string; back: string }) {
     const result = await updateCard({
       variables: { id, input: { front: values.front, back: values.back } },
@@ -333,7 +260,7 @@ export function CardsClient({
   const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {queryBannerError && (
         <div
           className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
@@ -359,22 +286,6 @@ export function CardsClient({
           {bulkDeleteBannerError}
         </div>
       )}
-
-      <section>
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
-          Add a card
-        </h2>
-        <CardForm
-          key={createFormKey}
-          mode="create"
-          idPrefix="add-"
-          defaultValues={{ front: "", back: "" }}
-          submit={handleCreate}
-          submitLabel="Add"
-          submitting={creating}
-          error={createError}
-        />
-      </section>
 
       <section>
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
@@ -418,7 +329,7 @@ export function CardsClient({
         )}
 
         {edges.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No cards yet. Add one above.</p>
+          <p className="text-sm text-muted-foreground">No cards yet.</p>
         ) : (
           <ul className="space-y-3">
             {edges.map((edge) => {

@@ -2,6 +2,7 @@
 
 import { useMutation } from "@apollo/client/react";
 import { useForm } from "@tanstack/react-form";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -26,9 +27,13 @@ const UpdateProfileMutation = graphql(`
   }
 `);
 
-type Props = { initial: { displayName: string; bio: string } };
+type Props = {
+  /** The user's email address. Required — callers must pass the value or explicit null; never collapse to "". */
+  email: string | null;
+  initial: { displayName: string; bio: string };
+};
 
-export function ProfileForm({ initial }: Props) {
+export function ProfileForm({ email, initial }: Props) {
   const router = useRouter();
   const [updateProfile, { loading, error }] = useMutation(UpdateProfileMutation, {
     onCompleted: () => router.refresh(),
@@ -75,6 +80,14 @@ export function ProfileForm({ initial }: Props) {
           {bannerError}
         </div>
       ) : null}
+
+      <div className="mb-4 space-y-2">
+        <Label>Email</Label>
+        {email !== null ? <p>{email}</p> : <p className="italic">No email on this account</p>}
+        <Link href="/profile/change-email" className="text-sm underline">
+          Change email
+        </Link>
+      </div>
 
       <form.Field
         name="displayName"
