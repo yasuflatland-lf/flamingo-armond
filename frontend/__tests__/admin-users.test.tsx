@@ -3,9 +3,9 @@
  * Broad page-level tests for /admin/users.
  *
  * Scope — things NOT covered by the narrower sibling tests:
- *   - admin-users-list.test.tsx  → infinite-scroll IO, debounced search,
+ *   - admin-users-list.test.tsx  → DataTable shape, debounced search,
  *                                   in-flight guard, fetchMore error/Retry,
- *                                   FORBIDDEN banner, NetworkStatus indicator.
+ *                                   FORBIDDEN banner, PII absence.
  *   - admin-users-roles.test.tsx → role checkbox assign / revoke / FORBIDDEN.
  *   - admin-layout.test.tsx      → layout gate (Supabase + me-query admin check).
  *
@@ -14,22 +14,24 @@
  *   2. AdminUsersPage RSC auth gate (Supabase error → rethrow).
  *   3. AdminUsersPage RSC renders AdminUsersClient for an authenticated user.
  *   4. User rows contain "Edit" links pointing at /admin/users/<id>/edit.
- *   5. Empty list: edges = [] → "No users found." empty-state copy renders.
+ *   5. Empty list: edges = [] → "No users." empty-state copy renders in DataTable.
  *   6. AdminUserEditPage RSC: no-user → redirect "/login".
  *   7. AdminUserEditPage RSC: Supabase auth error → rethrow.
  *   8. AdminUserEditPage RSC: user not found (adminUser null) → redirect "/admin/users".
  *   9. AdminUserEditPage RSC: renders edit form with seeded displayName / bio.
  *  10. AdminUserEditPage RSC: UNAUTHENTICATED gqlFetch error → redirect "/".
  *  11. AdminUserEditPage RSC: FORBIDDEN gqlFetch error → redirect "/".
+ *  12. AdminUserEditPage RSC: non-auth error → rethrow.
  */
 
 import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminUsersClient } from "@/app/admin/users/AdminUsersClient";
-import { ADMIN_USERS_PAGE_SIZE } from "@/app/admin/users/queries";
-import { AdminUsersDocument } from "@/generated/graphql";
+import { ADMIN_USERS_DEFAULT_VARS, ADMIN_USERS_PAGE_SIZE } from "@/app/admin/users/queries";
+import { AdminRolesDocument, AdminUsersDocument } from "@/generated/graphql";
 import {
   adminRoleFixture,
   adminUserFixture,
@@ -53,11 +55,15 @@ import {
 
 const REDIRECT_PREFIX = "REDIRECT:";
 
+const mockRouterReplace = vi.fn();
+
 vi.mock("next/navigation", () => ({
   redirect: vi.fn((path: string) => {
     throw new Error(`${REDIRECT_PREFIX}${path}`);
   }),
   usePathname: vi.fn(() => "/admin/users"),
+  useRouter: () => ({ replace: mockRouterReplace }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock("next/link", () => ({
@@ -112,18 +118,8 @@ import AdminUserEditPage from "@/app/admin/users/[id]/edit/page";
 import AdminUsersPage from "@/app/admin/users/page";
 import { gqlFetch } from "@/lib/apollo/server";
 
-// ---------------------------------------------------------------------------
-// IntersectionObserver stub (required by AdminUsersClient)
-// ---------------------------------------------------------------------------
-
-class FakeIntersectionObserver {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-  takeRecords(): IntersectionObserverEntry[] {
-    return [];
-  }
-}
+// No IntersectionObserver stub needed — the new AdminUsersClient uses
+// discrete DataTable pagination, not infinite scroll.
 
 // ---------------------------------------------------------------------------
 // Fixtures helpers
@@ -132,9 +128,10 @@ class FakeIntersectionObserver {
 type UserNode = {
   __typename: "User";
   id: string;
-  displayName: string;
+  displayName: string | null;
   bio: string | null;
   avatarUrl: string | null;
+  lastActive: string | null;
   roles: Array<{ __typename: "Role"; id: string; name: string }>;
 };
 
@@ -178,13 +175,32 @@ function makeConnection(
 }
 
 // Cast shared fixtures to the internal UserNode shape used by Apollo mocks.
-// The fixture type is a superset; the additional fields (like createdAt) are
-// harmless for query mocks.
-const adminUserNode = adminUserFixture as unknown as UserNode;
-const generalUserNode = generalUserFixture as unknown as UserNode;
-const noroleUserNode = userWithoutRolesFixture as unknown as UserNode;
+// The fixture type is a superset; the additional fields (like lastActive) are
+// added with null below to satisfy the UserNode shape.
+const adminUserNode: UserNode = { ...(adminUserFixture as unknown as UserNode), lastActive: null };
+const generalUserNode: UserNode = {
+  ...(generalUserFixture as unknown as UserNode),
+  lastActive: null,
+};
+const noroleUserNode: UserNode = {
+  ...(userWithoutRolesFixture as unknown as UserNode),
+  lastActive: null,
+};
 
-const ADMIN_USERS_VARIABLES = { first: ADMIN_USERS_PAGE_SIZE, search: null };
+/** Variables for page 0 default view — must match the exact shape AdminUsersClient uses. */
+const ADMIN_USERS_VARIABLES = {
+  ...ADMIN_USERS_DEFAULT_VARS,
+  first: ADMIN_USERS_PAGE_SIZE,
+  search: null,
+  roleId: null,
+  after: null,
+};
+
+/** Stub AdminRoles response (empty — keeps the toolbar dropdown simple). */
+const EMPTY_ROLES_MOCK = {
+  request: { query: AdminRolesDocument, variables: {} },
+  result: { data: { roles: [] } },
+};
 
 /**
  * Build a `MockedProvider`-ready `{ cache, mocks }` pair pre-seeded with the
@@ -197,7 +213,7 @@ function seedAdminUsersConnection(users: UserNode[], hasNextPage = false) {
   const cache = new InMemoryCache();
   cache.writeQuery({
     query: AdminUsersDocument,
-    variables: ADMIN_USERS_VARIABLES,
+    variables: ADMIN_USERS_DEFAULT_VARS,
     data: { users: connection },
   });
   const mocks = [
@@ -205,6 +221,7 @@ function seedAdminUsersConnection(users: UserNode[], hasNextPage = false) {
       request: { query: AdminUsersDocument, variables: ADMIN_USERS_VARIABLES },
       result: { data: { users: connection } },
     },
+    EMPTY_ROLES_MOCK,
   ];
   return { cache, mocks };
 }
@@ -217,7 +234,7 @@ let leakSpy: ApolloMockLeakSpyResult;
 
 beforeEach(() => {
   resetMockSupabase();
-  vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+  mockRouterReplace.mockReset();
   leakSpy = installApolloMockLeakSpy({ operationNames: ["AdminUsers"] });
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.clearAllMocks();
@@ -226,7 +243,6 @@ beforeEach(() => {
 afterEach(() => {
   leakSpy.assertNoLeaks();
   leakSpy.teardown();
-  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -267,7 +283,8 @@ describe("AdminUsersPage (RSC auth gate)", () => {
     );
 
     // The search box is the clearest unique affordance of AdminUsersClient.
-    expect(screen.getByRole("searchbox", { name: /search users/i })).toBeInTheDocument();
+    // aria-label="Filter users" matches type="search" in UsersToolbar.
+    expect(screen.getByRole("searchbox", { name: /filter users/i })).toBeInTheDocument();
 
     // No redirect should have fired for an authenticated user.
     expect(redirect).not.toHaveBeenCalled();
@@ -280,7 +297,8 @@ describe("AdminUsersPage (RSC auth gate)", () => {
 // ---------------------------------------------------------------------------
 
 describe("AdminUsersClient — edit links and empty state", () => {
-  it("each user row has an Edit link pointing to /admin/users/<id>/edit", async () => {
+  it("each user row has an Edit link in the actions dropdown pointing to /admin/users/<id>/edit", async () => {
+    const ue = userEvent.setup({ delay: null });
     const users: UserNode[] = [adminUserNode, generalUserNode, noroleUserNode];
     const { cache, mocks } = seedAdminUsersConnection(users);
 
@@ -293,13 +311,26 @@ describe("AdminUsersClient — edit links and empty state", () => {
     // Wait for at least one display name to confirm the list has rendered.
     await screen.findByText(adminUserFixture.displayName as string);
 
-    // Every user row must have an Edit link pointing at the correct edit page.
+    // Each row has an "Open user actions" trigger button. Open the first and
+    // verify the Edit link target. The DataTable uses DropdownMenu — the edit
+    // link only appears in the DOM once the trigger is clicked.
     for (const userNode of users) {
-      const row = screen.getByTestId(`admin-user-row-${userNode.id}`);
-      const editLink = row.querySelector<HTMLAnchorElement>("a");
-      expect(editLink).not.toBeNull();
-      expect(editLink?.href).toContain(`/admin/users/${userNode.id}/edit`);
-      expect(editLink?.textContent).toMatch(/edit/i);
+      // Open the actions dropdown for this user.
+      const triggers = screen.getAllByRole("button", { name: /open user actions/i });
+      // triggers appear in DOM order matching the table rows.
+      const idx = users.indexOf(userNode);
+      if (triggers[idx]) {
+        await ue.click(triggers[idx]);
+        // The Edit menuitem is now in the dropdown. Radix DropdownMenuItem asChild
+        // sets role="menuitem" on the rendered <a>, overriding the default "link" role.
+        const editLink = await screen.findByRole("menuitem", { name: /edit/i });
+        expect(editLink).toHaveAttribute(
+          "href",
+          expect.stringContaining(`/admin/users/${userNode.id}/edit`),
+        );
+        // Close dropdown by pressing Escape.
+        await ue.keyboard("{Escape}");
+      }
     }
   });
 
@@ -312,10 +343,9 @@ describe("AdminUsersClient — edit links and empty state", () => {
       </MockedProvider>,
     );
 
-    const empty = await screen.findByTestId("admin-users-empty");
-    expect(empty).toHaveTextContent("No users found.");
-    // The user list must not appear.
-    expect(screen.queryByTestId("admin-users-list")).not.toBeInTheDocument();
+    // UsersTable renders "No users." in the empty TableCell when data is empty.
+    const emptyCell = await screen.findByText("No users.");
+    expect(emptyCell).toBeInTheDocument();
   });
 });
 

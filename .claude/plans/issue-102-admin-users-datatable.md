@@ -115,7 +115,7 @@ Each commit ~1 logical unit (no interleaving). Suggested boundaries:
 - [x] B4 — users-toolbar.tsx (search input + role single-select via Popover+Command; vendored DataTableFacetedFilter not reused due to TanStack Column coupling)
 - [x] B5 — users-table.tsx (manual pagination + handlePaginationChange routes pageIndex/pageSize back to parent callbacks; React.ReactElement return type for project consistency)
 - [x] B6 — AdminUsersClient.tsx rewrite (370 lines; cursor walking via Map<pageIndex, endCursor>; URL state via URLSearchParams; SSR seed in page.tsx; mechanical prop fix to existing tests; typecheck PASS)
-- [ ] B7 — frontend test update
+- [x] B7 — frontend test update (10 cases in admin-users-list.test.tsx including leak spy + PII discriminator + Retry-after-error two-mock pattern; 547 tests pass; key learning: Radix `DropdownMenuItem asChild` sets `role="menuitem"`, NOT `role="link"`)
 - [ ] C1 — PR review loop
 - [ ] C2 — code-simplifier
 - [ ] C3 — test fix loop

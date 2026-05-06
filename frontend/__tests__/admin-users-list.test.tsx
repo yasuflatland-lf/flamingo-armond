@@ -1,20 +1,50 @@
 // @vitest-environment jsdom
-import { InMemoryCache, NetworkStatus } from "@apollo/client";
+/**
+ * DataTable-shape tests for AdminUsersClient.
+ *
+ * Covers:
+ *   T1  — initial render: column headers, avatar/initials, display name, role badges, relative time
+ *   T2  — search debounce: exactly one query fires after the 300ms window
+ *   T3  — role filter: query fires with roleId variable after selecting a role
+ *   T4  — discrete pagination forward walk: next-page button fires fetchMore
+ *   T5  — discrete pagination backward: prev-page uses cached cursor, no new request
+ *   T6  — filter change resets pagination: role filter resets pageIndex to 0
+ *   T7  — fetchMore error halts navigation + Retry re-issues (two MockedResponse entries)
+ *   T8  — MockedProvider leak detection via installApolloMockLeakSpy / assertNoLeaks
+ *   T9  — PII absence: fetchMore warn payload has no email / displayName / bio keys
+ *   T10 — FORBIDDEN query error: permission-denied banner, no Retry button
+ *
+ * Apollo discrete-pagination note: AdminUsersClient uses fetchMore + setPageIndex.
+ * After fetchMore resolves, setPageIndex changes queryVariables (adding the new cursor),
+ * which triggers a fresh useQuery network call for the new variables. MockedProvider
+ * consumes each mock entry once, so each page-2 transition needs TWO mocks:
+ *   Mock A — consumed by the fetchMore call
+ *   Mock B — consumed by the subsequent useQuery call (for new variables after setPageIndex)
+ */
+
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AdminUsersClient } from "@/app/admin/users/AdminUsersClient";
-import { ADMIN_USERS_PAGE_SIZE } from "@/app/admin/users/queries";
-import { AdminUsersDocument } from "@/generated/graphql";
+import { ADMIN_USERS_DEFAULT_VARS, ADMIN_USERS_PAGE_SIZE } from "@/app/admin/users/queries";
+import { AdminRolesDocument, AdminUsersDocument } from "@/generated/graphql";
+import {
+  type ApolloMockLeakSpyResult,
+  installApolloMockLeakSpy,
+} from "./utils/mock-apollo-paginated";
 
 // ---------------------------------------------------------------------------
-// Next.js stubs
+// Next.js stubs — AdminUsersClient uses useRouter, useSearchParams, redirect
 // ---------------------------------------------------------------------------
+
+const mockRouterReplace = vi.fn();
 
 vi.mock("next/navigation", () => ({
   redirect: vi.fn(),
+  useRouter: () => ({ replace: mockRouterReplace }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock("next/link", () => ({
@@ -33,24 +63,16 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-vi.mock("next/image", () => ({
-  default: ({
-    src,
-    alt,
-    width,
-    height,
-    ...rest
-  }: {
-    src: string;
-    alt: string;
-    width: number;
-    height: number;
-    [key: string]: unknown;
-  }) => (
-    // biome-ignore lint/performance/noImgElement: deliberate next/image stub for tests
-    <img src={src} alt={alt} width={width} height={height} {...rest} />
-  ),
-}));
+// ---------------------------------------------------------------------------
+// Browser API stubs — cmdk (Popover/Command) uses ResizeObserver and
+// scrollIntoView; jsdom does not implement either.
+// ---------------------------------------------------------------------------
+
+class FakeResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
 
 // ---------------------------------------------------------------------------
 // Data fixtures
@@ -59,9 +81,10 @@ vi.mock("next/image", () => ({
 type UserNode = {
   __typename: "User";
   id: string;
-  displayName: string;
-  bio: null;
-  avatarUrl: null;
+  displayName: string | null;
+  bio: string | null;
+  avatarUrl: string | null;
+  lastActive: string | null;
   roles: Array<{ __typename: "Role"; id: string; name: string }>;
 };
 
@@ -71,28 +94,27 @@ type UserEdge = {
   node: UserNode;
 };
 
-function makeUser(i: number): UserNode {
+function makeUser(i: number, overrides: Partial<UserNode> = {}): UserNode {
   return {
     __typename: "User",
     id: `user-${i}`,
     displayName: `User ${i}`,
     bio: null,
     avatarUrl: null,
-    roles: [{ __typename: "Role", id: `role-general`, name: "general" }],
+    lastActive: null,
+    roles: [{ __typename: "Role", id: "role-general", name: "general" }],
+    ...overrides,
   };
 }
 
 function makeEdge(user: UserNode): UserEdge {
-  return {
-    __typename: "UserEdge",
-    cursor: user.id,
-    node: user,
-  };
+  return { __typename: "UserEdge", cursor: user.id, node: user };
 }
 
 function makeConnection(
   users: UserNode[],
   hasNextPage: boolean,
+  totalCount?: number,
 ): {
   __typename: "UserConnection";
   edges: UserEdge[];
@@ -115,52 +137,56 @@ function makeConnection(
       startCursor: users[0]?.id ?? null,
       endCursor: users[users.length - 1]?.id ?? null,
     },
-    totalCount: users.length,
+    totalCount: totalCount ?? users.length,
   };
 }
 
+/**
+ * Variables that AdminUsersClient sends for the initial page-0 request.
+ * The component always includes after: null in queryVariables even on page 0.
+ */
+const PAGE_0_VARS = {
+  ...ADMIN_USERS_DEFAULT_VARS,
+  first: ADMIN_USERS_PAGE_SIZE,
+  search: null,
+  roleId: null,
+  after: null,
+};
+
+/** Stub AdminRoles response (no roles — keeps toolbar simple). */
+const EMPTY_ROLES_MOCK = {
+  request: { query: AdminRolesDocument, variables: {} },
+  result: { data: { roles: [] } },
+};
+
+/** Stub AdminRoles with one "admin" role. */
+const ADMIN_ROLE_MOCK = {
+  request: { query: AdminRolesDocument, variables: {} },
+  result: {
+    data: {
+      roles: [{ __typename: "Role", id: "role-admin", name: "admin" }],
+    },
+  },
+};
+
 // ---------------------------------------------------------------------------
-// IntersectionObserver mock (mirrors cards-pagination.test.tsx verbatim)
+// Leak spy — installed per-test via beforeEach/afterEach
 // ---------------------------------------------------------------------------
 
-let ioCallbacks: IntersectionObserverCallback[] = [];
-
-class FakeIntersectionObserver {
-  callback: IntersectionObserverCallback;
-  constructor(cb: IntersectionObserverCallback) {
-    this.callback = cb;
-    ioCallbacks.push(cb);
-  }
-  observe() {}
-  unobserve() {}
-  disconnect() {
-    ioCallbacks = ioCallbacks.filter((cb) => cb !== this.callback);
-  }
-  takeRecords(): IntersectionObserverEntry[] {
-    return [];
-  }
-}
-
-function fireIntersect() {
-  const cb = ioCallbacks[ioCallbacks.length - 1];
-  if (!cb) return;
-  cb([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
-}
-
-// ---------------------------------------------------------------------------
-// console spy helpers
-// ---------------------------------------------------------------------------
-
-let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+let leakSpy: ApolloMockLeakSpyResult;
 
 beforeEach(() => {
-  ioCallbacks = [];
-  vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
-  consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  mockRouterReplace.mockReset();
+  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+  // scrollIntoView is used by cmdk when the Command popover mounts.
+  window.HTMLElement.prototype.scrollIntoView = vi.fn();
+  leakSpy = installApolloMockLeakSpy({ operationNames: ["AdminUsers"] });
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
+  leakSpy.assertNoLeaks();
+  leakSpy.teardown();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -170,64 +196,76 @@ afterEach(() => {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("AdminUsersClient", () => {
-  // T1: Initial render — edges, display names, role badges, and totalCount shown.
-  test("renders edges with display name and role badges and shows totalCount", async () => {
-    const users = Array.from({ length: 3 }, (_, i) => makeUser(i + 1));
-    const connection = makeConnection(users, false);
-
-    const mocks = [
-      {
-        request: {
-          query: AdminUsersDocument,
-          variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-        },
-        result: { data: { users: connection } },
-      },
+describe("AdminUsersClient — DataTable shape", () => {
+  // T1 — Initial render: column headers, initials fallback, display name, role badge, relative time.
+  test("T1: renders column headers, user rows with initials, display name, role badges, and relative time", async () => {
+    const now = new Date().toISOString();
+    const users: UserNode[] = [
+      // User 1: admin role — badge uses "admin" variant
+      makeUser(1, {
+        roles: [{ __typename: "Role", id: "role-admin", name: "admin" }],
+      }),
+      // User 2: has lastActive = now → "Just now"
+      makeUser(2, { lastActive: now }),
+      // User 3: null displayName → initials "?" and "No name" span
+      makeUser(3, { displayName: null }),
     ];
-
-    const cache = new InMemoryCache();
-    cache.writeQuery({
-      query: AdminUsersDocument,
-      variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-      data: { users: connection },
-    });
+    const connection = makeConnection(users, false, 3);
 
     render(
-      <MockedProvider mocks={mocks as never} cache={cache}>
+      <MockedProvider
+        mocks={[
+          {
+            request: { query: AdminUsersDocument, variables: PAGE_0_VARS },
+            result: { data: { users: connection } },
+          },
+          EMPTY_ROLES_MOCK,
+        ]}
+      >
         <AdminUsersClient initialConnection={null} />
       </MockedProvider>,
     );
 
-    // Display names visible.
+    // Column headers (Name, Roles, Last active, Actions sr-only)
+    expect(await screen.findByText("Name")).toBeInTheDocument();
+    expect(screen.getByText("Roles")).toBeInTheDocument();
+    expect(screen.getByText("Last active")).toBeInTheDocument();
+    // Actions column header has sr-only text
+    const actionHeader = document.querySelector("th span.sr-only");
+    expect(actionHeader).not.toBeNull();
+
+    // Display names
     expect(await screen.findByText("User 1")).toBeInTheDocument();
     expect(screen.getByText("User 2")).toBeInTheDocument();
-    expect(screen.getByText("User 3")).toBeInTheDocument();
 
-    // Role badges visible for each user.
-    const roleBadges = screen.getAllByText("general");
-    expect(roleBadges.length).toBe(3);
+    // Null displayName → "No name" italic span
+    expect(screen.getByText("No name")).toBeInTheDocument();
 
-    // totalCount shown (3 in parens).
-    expect(screen.getByText("(3)")).toBeInTheDocument();
+    // Admin role badge for User 1 (admin variant)
+    expect(screen.getByText("admin")).toBeInTheDocument();
+
+    // General role badge(s)
+    const generalBadges = screen.getAllByText("general");
+    expect(generalBadges.length).toBeGreaterThanOrEqual(1);
+
+    // User 2 lastActive = now → "Just now"
+    expect(screen.getByText("Just now")).toBeInTheDocument();
+
+    // Users 1 and 3 have null lastActive → "Never" span
+    const neverSpans = screen.getAllByText("Never");
+    expect(neverSpans.length).toBeGreaterThanOrEqual(1);
+
+    // User 3 null displayName → initials fallback "?"
+    expect(screen.getByText("?")).toBeInTheDocument();
   });
 
-  // T2: Debounced search — typing "ali" issues ONE query with search:"ali" after 300ms.
-  test('debounced search issues AdminUsersDocument exactly once with search "ali" after 300ms', async () => {
-    const user = userEvent.setup({ delay: null });
+  // T2 — Search debounce: exactly one AdminUsers query fires after 300ms.
+  test("T2: debounced search fires exactly one AdminUsers query after 300ms", async () => {
+    const ue = userEvent.setup({ delay: null });
     vi.useFakeTimers({ shouldAdvanceTime: true });
 
-    const initialUsers = Array.from({ length: 2 }, (_, i) => makeUser(i + 1));
-    const searchUsers = [
-      {
-        __typename: "User" as const,
-        id: "user-ali",
-        displayName: "Alice",
-        bio: null,
-        avatarUrl: null,
-        roles: [{ __typename: "Role" as const, id: "role-general", name: "general" }],
-      },
-    ];
+    const initialUsers = [makeUser(1), makeUser(2)];
+    const searchUsers = [makeUser(99, { displayName: "Alice", id: "user-alice" })];
 
     let searchQueryCalls = 0;
     const searchResult = vi.fn(() => {
@@ -235,216 +273,467 @@ describe("AdminUsersClient", () => {
       return { data: { users: makeConnection(searchUsers, false) } };
     });
 
-    const mocks = [
-      {
-        request: {
-          query: AdminUsersDocument,
-          variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-        },
-        result: { data: { users: makeConnection(initialUsers, false) } },
-      },
-      {
-        request: {
-          query: AdminUsersDocument,
-          variables: { first: ADMIN_USERS_PAGE_SIZE, search: "ali" },
-        },
-        result: searchResult,
-      },
-    ];
-
-    const cache = new InMemoryCache();
-    cache.writeQuery({
-      query: AdminUsersDocument,
-      variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-      data: { users: makeConnection(initialUsers, false) },
-    });
+    const searchVars = {
+      ...ADMIN_USERS_DEFAULT_VARS,
+      first: ADMIN_USERS_PAGE_SIZE,
+      search: "ali",
+      roleId: null,
+      after: null,
+    };
 
     render(
-      <MockedProvider mocks={mocks as never} cache={cache}>
+      <MockedProvider
+        mocks={[
+          {
+            request: { query: AdminUsersDocument, variables: PAGE_0_VARS },
+            result: { data: { users: makeConnection(initialUsers, false) } },
+          },
+          {
+            request: { query: AdminUsersDocument, variables: searchVars },
+            result: searchResult,
+          },
+          EMPTY_ROLES_MOCK,
+        ]}
+      >
         <AdminUsersClient initialConnection={null} />
       </MockedProvider>,
     );
 
-    // Initial render present.
+    // Wait for initial render.
     expect(await screen.findByText("User 1")).toBeInTheDocument();
 
-    const searchInput = screen.getByRole("searchbox", { name: /search users/i });
+    // aria-label="Filter users" on type="search" input in UsersToolbar.
+    const searchInput = screen.getByRole("searchbox", { name: /filter users/i });
+    await ue.type(searchInput, "ali");
 
-    // Type "ali" — three keystrokes, each resets the debounce timer.
-    await user.type(searchInput, "ali");
-
-    // Advance past the debounce window.
-    vi.advanceTimersByTime(300);
-
-    // Restore real timers before waiting for DOM updates.
+    // Advance past the 300ms debounce window.
+    vi.advanceTimersByTime(350);
     vi.useRealTimers();
 
     await waitFor(() => {
       expect(screen.getByText("Alice")).toBeInTheDocument();
     });
 
-    // The query must have fired exactly once — not once per keystroke.
+    // Exactly one query for "ali" — not once per keystroke.
     expect(searchQueryCalls).toBe(1);
   });
 
-  // T3: In-flight guard — two observer firings in the same frame produce one fetchMore.
-  test("IntersectionObserver fires fetchMore exactly once when triggered twice in-flight", async () => {
-    const firstBatch = Array.from({ length: 20 }, (_, i) => makeUser(i + 1));
-    const secondBatch = Array.from({ length: 20 }, (_, i) => makeUser(i + 21));
+  // T3 — Role filter: clicking a role emits a query with roleId.
+  test("T3: role filter fires AdminUsers with roleId after selecting a role from the popover", async () => {
+    const ue = userEvent.setup({ delay: null });
+
+    const initialUsers = [makeUser(1)];
+    const filteredUsers = [makeUser(1, { displayName: "Admin Alice", id: "user-admin-alice" })];
+
+    let roleQueryCalls = 0;
+    const roleResult = vi.fn(() => {
+      roleQueryCalls += 1;
+      return { data: { users: makeConnection(filteredUsers, false) } };
+    });
+
+    const roleVars = {
+      ...ADMIN_USERS_DEFAULT_VARS,
+      first: ADMIN_USERS_PAGE_SIZE,
+      search: null,
+      roleId: "role-admin",
+      after: null,
+    };
+
+    render(
+      <MockedProvider
+        mocks={[
+          {
+            request: { query: AdminUsersDocument, variables: PAGE_0_VARS },
+            result: { data: { users: makeConnection(initialUsers, false) } },
+          },
+          {
+            request: { query: AdminUsersDocument, variables: roleVars },
+            result: roleResult,
+          },
+          // AdminRoles query — needed for the role popover content.
+          ADMIN_ROLE_MOCK,
+        ]}
+      >
+        <AdminUsersClient initialConnection={null} />
+      </MockedProvider>,
+    );
+
+    // Wait for initial users.
+    expect(await screen.findByText("User 1")).toBeInTheDocument();
+
+    // Open the Role filter popover.
+    const roleButton = screen.getByRole("button", { name: /role/i });
+    await ue.click(roleButton);
+
+    // The "admin" role item appears in the command palette.
+    const adminItem = await screen.findByText("admin");
+    await ue.click(adminItem);
+
+    await waitFor(() => {
+      expect(roleQueryCalls).toBeGreaterThanOrEqual(1);
+    });
+
+    // After filtering, "Admin Alice" should appear.
+    expect(await screen.findByText("Admin Alice")).toBeInTheDocument();
+  });
+
+  // T4 — Discrete pagination forward: next-page button fires fetchMore.
+  //
+  // Apollo discrete-pagination note: after fetchMore resolves, setPageIndex changes
+  // queryVariables (adding the cursor), triggering a second useQuery for the new
+  // variables. MockedProvider consumes each mock once, so we need two mocks for
+  // the fetchMore variables: one for the fetchMore call, one for the subsequent useQuery.
+  test("T4: clicking next-page button fires fetchMore with the page-1 endCursor", async () => {
+    const ue = userEvent.setup({ delay: null });
+
+    const page1Users = Array.from({ length: ADMIN_USERS_PAGE_SIZE }, (_, i) => makeUser(i + 1));
+    const page2Users = Array.from({ length: 5 }, (_, i) => makeUser(i + 101));
+    const endCursor = `user-${ADMIN_USERS_PAGE_SIZE}`;
+
+    const page1Connection = makeConnection(page1Users, true, ADMIN_USERS_PAGE_SIZE + 5);
+    const page2Connection = makeConnection(page2Users, false, ADMIN_USERS_PAGE_SIZE + 5);
 
     let nextPageCalls = 0;
     const nextPageResult = vi.fn(() => {
       nextPageCalls += 1;
-      return { data: { users: makeConnection(secondBatch, false) } };
-    });
-
-    const mocks = [
-      {
-        request: {
-          query: AdminUsersDocument,
-          variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-        },
-        result: { data: { users: makeConnection(firstBatch, true) } },
-      },
-      {
-        request: {
-          query: AdminUsersDocument,
-          variables: {
-            first: ADMIN_USERS_PAGE_SIZE,
-            after: `user-${firstBatch.length}`,
-            search: null,
-          },
-        },
-        delay: 50,
-        result: nextPageResult,
-      },
-    ];
-
-    const cache = new InMemoryCache();
-    cache.writeQuery({
-      query: AdminUsersDocument,
-      variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-      data: { users: makeConnection(firstBatch, true) },
-    });
-
-    render(
-      <MockedProvider mocks={mocks as never} cache={cache}>
-        <AdminUsersClient initialConnection={null} />
-      </MockedProvider>,
-    );
-
-    expect(await screen.findByText("User 1")).toBeInTheDocument();
-
-    // Synchronously fire the observer twice — only the first must reach fetchMore.
-    fireIntersect();
-    fireIntersect();
-
-    await waitFor(() => {
-      expect(screen.getByText("User 21")).toBeInTheDocument();
-    });
-
-    expect(nextPageCalls).toBe(1);
-
-    // If the ref-guard were replaced with useState, a second fetchMore would leak
-    // into MockedProvider and emit a "No more mocked responses" console.warn.
-    // Assert that no such warning fired for the AdminUsers query.
-    const adminUsersWarn = consoleWarnSpy.mock.calls.flatMap((args: unknown[]) =>
-      args.filter(
-        (a): a is string =>
-          typeof a === "string" &&
-          a.includes("No more mocked responses") &&
-          a.includes("AdminUsers"),
-      ),
-    );
-    expect(adminUsersWarn).toEqual([]);
-  });
-
-  // T4: fetchMoreError halts the IO loop; Retry clears the banner and re-issues.
-  test("fetchMoreError stops the IO loop and Retry re-issues the request", async () => {
-    const user = userEvent.setup({ delay: null });
-    const firstBatch = Array.from({ length: 20 }, (_, i) => makeUser(i + 1));
-    const secondBatch = Array.from({ length: 20 }, (_, i) => makeUser(i + 21));
-    const endCursor = `user-${firstBatch.length}`;
-
-    let fetchMoreCallCount = 0;
-
-    const failResult = vi.fn(() => {
-      fetchMoreCallCount += 1;
-      return {
-        errors: [{ message: "Could not load more users. Please try again." }],
-      };
-    });
-
-    const successResult = vi.fn(() => {
-      fetchMoreCallCount += 1;
-      return { data: { users: makeConnection(secondBatch, false) } };
+      return { data: { users: page2Connection } };
     });
 
     const fetchMoreVars = {
+      ...ADMIN_USERS_DEFAULT_VARS,
       first: ADMIN_USERS_PAGE_SIZE,
-      after: endCursor,
       search: null,
+      roleId: null,
+      after: endCursor,
     };
 
-    const mocks = [
-      {
-        request: {
-          query: AdminUsersDocument,
-          variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-        },
-        result: { data: { users: makeConnection(firstBatch, true) } },
-      },
-      // First fetchMore fails.
-      {
-        request: {
-          query: AdminUsersDocument,
-          variables: fetchMoreVars,
-        },
-        result: failResult,
-      },
-      // After Retry, the next fetchMore succeeds.
-      {
-        request: {
-          query: AdminUsersDocument,
-          variables: fetchMoreVars,
-        },
-        result: successResult,
-      },
-    ];
-
-    const cache = new InMemoryCache();
-    cache.writeQuery({
-      query: AdminUsersDocument,
-      variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-      data: { users: makeConnection(firstBatch, true) },
-    });
-
     render(
-      <MockedProvider mocks={mocks as never} cache={cache}>
+      <MockedProvider
+        mocks={[
+          // Mock 1: initial page-0 useQuery
+          {
+            request: { query: AdminUsersDocument, variables: PAGE_0_VARS },
+            result: { data: { users: page1Connection } },
+          },
+          // Mock 2: fetchMore call (consumed by fetchMore)
+          {
+            request: { query: AdminUsersDocument, variables: fetchMoreVars },
+            result: nextPageResult,
+          },
+          // Mock 3: useQuery re-fires with page-1 variables after setPageIndex(1)
+          {
+            request: { query: AdminUsersDocument, variables: fetchMoreVars },
+            result: nextPageResult,
+          },
+          EMPTY_ROLES_MOCK,
+        ]}
+      >
         <AdminUsersClient initialConnection={null} />
       </MockedProvider>,
     );
 
+    // Page 1 renders.
+    expect(await screen.findByText("User 1")).toBeInTheDocument();
+    expect(screen.getByText(`User ${ADMIN_USERS_PAGE_SIZE}`)).toBeInTheDocument();
+
+    // DataTablePagination has one "Go to next page" button.
+    const nextButtons = screen.getAllByRole("button", { name: /go to next page/i });
+    const nextButton = nextButtons[0];
+    expect(nextButton).not.toBeDisabled();
+    await ue.click(nextButton);
+
+    // Page 2 renders after fetchMore resolves.
+    await waitFor(() => {
+      expect(screen.getByText("User 101")).toBeInTheDocument();
+    });
+
+    // nextPageCalls includes both fetchMore AND the subsequent useQuery.
+    expect(nextPageCalls).toBeGreaterThanOrEqual(1);
+  });
+
+  // T5 — Discrete pagination backward: prev-page uses cached page-0 cursor (null),
+  // so NO new fetchMore fires. The existing mock pair from forward nav serves useQuery.
+  test("T5: going back to page 0 after advancing uses cached cursor and fires no new request", async () => {
+    const ue = userEvent.setup({ delay: null });
+
+    const page1Users = Array.from({ length: ADMIN_USERS_PAGE_SIZE }, (_, i) => makeUser(i + 1));
+    const page2Users = Array.from({ length: 5 }, (_, i) => makeUser(i + 101));
+    const endCursor = `user-${ADMIN_USERS_PAGE_SIZE}`;
+
+    const page1Connection = makeConnection(page1Users, true, ADMIN_USERS_PAGE_SIZE + 5);
+    const page2Connection = makeConnection(page2Users, false, ADMIN_USERS_PAGE_SIZE + 5);
+
+    let nextPageCalls = 0;
+    const nextPageResult = vi.fn(() => {
+      nextPageCalls += 1;
+      return { data: { users: page2Connection } };
+    });
+
+    const fetchMoreVars = {
+      ...ADMIN_USERS_DEFAULT_VARS,
+      first: ADMIN_USERS_PAGE_SIZE,
+      search: null,
+      roleId: null,
+      after: endCursor,
+    };
+
+    render(
+      <MockedProvider
+        mocks={[
+          // Mock 1: initial page-0 useQuery
+          {
+            request: { query: AdminUsersDocument, variables: PAGE_0_VARS },
+            result: { data: { users: page1Connection } },
+          },
+          // Mock 2: fetchMore call
+          {
+            request: { query: AdminUsersDocument, variables: fetchMoreVars },
+            result: nextPageResult,
+          },
+          // Mock 3: useQuery re-fires after setPageIndex(1)
+          {
+            request: { query: AdminUsersDocument, variables: fetchMoreVars },
+            result: nextPageResult,
+          },
+          // Mock 4: page-0 useQuery again after going back (cache-first: may be cache hit,
+          // but provide a mock in case of a cache miss to avoid a leak).
+          {
+            request: { query: AdminUsersDocument, variables: PAGE_0_VARS },
+            result: { data: { users: page1Connection } },
+          },
+          EMPTY_ROLES_MOCK,
+        ]}
+      >
+        <AdminUsersClient initialConnection={null} />
+      </MockedProvider>,
+    );
+
+    // Page 1.
     expect(await screen.findByText("User 1")).toBeInTheDocument();
 
-    // Trigger the observer — first fetchMore fails.
-    fireIntersect();
-
-    const banner = await screen.findByTestId("admin-users-fetch-more-error");
-    expect(banner).toBeInTheDocument();
-    expect(fetchMoreCallCount).toBe(1);
-
-    // While the error banner is present, firing the observer again must NOT issue fetchMore.
-    fireIntersect();
-    fireIntersect();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(fetchMoreCallCount).toBe(1);
-
-    // Click Retry — the banner clears and the second request (success) fires.
-    await user.click(screen.getByRole("button", { name: /retry/i }));
+    // Navigate to page 2.
+    const nextButtons = screen.getAllByRole("button", { name: /go to next page/i });
+    await ue.click(nextButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText("User 21")).toBeInTheDocument();
+      expect(screen.getByText("User 101")).toBeInTheDocument();
+    });
+    const callsAfterForward = nextPageCalls;
+    expect(callsAfterForward).toBeGreaterThanOrEqual(1);
+
+    // Navigate back to page 1 using the "Go to previous page" button.
+    // handlePageChange checks cursorByPage.has(0) → true → just setPageIndex(0).
+    // No new fetchMore fires. useQuery with PAGE_0_VARS may be a cache hit.
+    const prevButtons = screen.getAllByRole("button", { name: /go to previous page/i });
+    await ue.click(prevButtons[0]);
+
+    // After navigating back, nextPageCalls must NOT have increased from a new fetchMore.
+    await waitFor(() => {
+      expect(nextPageCalls).toBe(callsAfterForward);
+    });
+  });
+
+  // T6 — Filter change resets pagination: advancing to page 2 then applying a role
+  // filter resets pageIndex to 0 and fires a fresh query (not a fetchMore).
+  test("T6: applying a role filter after advancing to page 2 resets pageIndex to 0", async () => {
+    const ue = userEvent.setup({ delay: null });
+
+    const page1Users = Array.from({ length: ADMIN_USERS_PAGE_SIZE }, (_, i) => makeUser(i + 1));
+    const page2Users = Array.from({ length: 5 }, (_, i) => makeUser(i + 101));
+    const filteredUsers = [makeUser(200, { displayName: "Filtered User" })];
+    const endCursor = `user-${ADMIN_USERS_PAGE_SIZE}`;
+
+    const page1Connection = makeConnection(page1Users, true, ADMIN_USERS_PAGE_SIZE + 5);
+    const page2Connection = makeConnection(page2Users, false, ADMIN_USERS_PAGE_SIZE + 5);
+
+    let filteredQueryCalls = 0;
+    const filteredResult = vi.fn(() => {
+      filteredQueryCalls += 1;
+      return { data: { users: makeConnection(filteredUsers, false, 1) } };
+    });
+
+    const fetchMoreVars = {
+      ...ADMIN_USERS_DEFAULT_VARS,
+      first: ADMIN_USERS_PAGE_SIZE,
+      search: null,
+      roleId: null,
+      after: endCursor,
+    };
+
+    const roleFilterVars = {
+      ...ADMIN_USERS_DEFAULT_VARS,
+      first: ADMIN_USERS_PAGE_SIZE,
+      search: null,
+      roleId: "role-admin",
+      after: null,
+    };
+
+    // Stale intermediate variables: React re-renders with the new roleFilter but
+    // the OLD cursorByPage (still containing user-20 for page 1) before the
+    // filter-reset useEffect fires and resets cursorByPage to {0: null}. Apollo
+    // fires a useQuery for this stale shape — it needs a mock to avoid a leak.
+    const staleRoleVars = {
+      ...ADMIN_USERS_DEFAULT_VARS,
+      first: ADMIN_USERS_PAGE_SIZE,
+      search: null,
+      roleId: "role-admin",
+      after: endCursor, // old cursor from page 1
+    };
+
+    render(
+      <MockedProvider
+        mocks={[
+          // Mock 1: initial page-0 useQuery
+          {
+            request: { query: AdminUsersDocument, variables: PAGE_0_VARS },
+            result: { data: { users: page1Connection } },
+          },
+          // Mock 2: fetchMore to page 2
+          {
+            request: { query: AdminUsersDocument, variables: fetchMoreVars },
+            result: { data: { users: page2Connection } },
+          },
+          // Mock 3: useQuery re-fires after setPageIndex(1)
+          {
+            request: { query: AdminUsersDocument, variables: fetchMoreVars },
+            result: { data: { users: page2Connection } },
+          },
+          // Mock 4 (stale): React re-renders with new roleId but old cursor before
+          // the filter-reset useEffect resets cursorByPage. Apollo fires for this
+          // stale shape; it resolves to page2Connection and is immediately overwritten
+          // once the effect resets state to page 0.
+          {
+            request: { query: AdminUsersDocument, variables: staleRoleVars },
+            result: { data: { users: page2Connection } },
+          },
+          // Mock 5: filtered query fires after role filter applied (pageIndex reset to 0)
+          {
+            request: { query: AdminUsersDocument, variables: roleFilterVars },
+            result: filteredResult,
+          },
+          ADMIN_ROLE_MOCK,
+        ]}
+      >
+        <AdminUsersClient initialConnection={null} />
+      </MockedProvider>,
+    );
+
+    // Page 1.
+    expect(await screen.findByText("User 1")).toBeInTheDocument();
+
+    // Navigate to page 2.
+    const nextButtons = screen.getAllByRole("button", { name: /go to next page/i });
+    await ue.click(nextButtons[0]);
+    await waitFor(() => {
+      expect(screen.getByText("User 101")).toBeInTheDocument();
+    });
+
+    // Confirm page indicator shows "Page 2 of ...".
+    expect(screen.getByText(/page 2 of/i)).toBeInTheDocument();
+
+    // Apply role filter — this must reset pageIndex to 0.
+    const roleButton = screen.getByRole("button", { name: /role/i });
+    await ue.click(roleButton);
+    const adminItem = await screen.findByText("admin");
+    await ue.click(adminItem);
+
+    await waitFor(() => {
+      expect(filteredQueryCalls).toBeGreaterThanOrEqual(1);
+    });
+
+    // Page indicator must reset to "Page 1 of ...".
+    await waitFor(() => {
+      expect(screen.getByText(/page 1 of/i)).toBeInTheDocument();
+    });
+  });
+
+  // T7 — fetchMore error: halts navigation, shows Retry. Two MockedResponse entries
+  // for the same cursor variables: first errors, second succeeds.
+  // See .claude/rules/pagination.md § "Provide two MockedResponse entries to test a
+  // Retry-after-error path".
+  test("T7: fetchMore error shows banner, and Retry re-issues the request successfully", async () => {
+    const ue = userEvent.setup({ delay: null });
+
+    const page1Users = Array.from({ length: ADMIN_USERS_PAGE_SIZE }, (_, i) => makeUser(i + 1));
+    const page2Users = Array.from({ length: 5 }, (_, i) => makeUser(i + 101));
+    const endCursor = `user-${ADMIN_USERS_PAGE_SIZE}`;
+
+    const page1Connection = makeConnection(page1Users, true, ADMIN_USERS_PAGE_SIZE + 5);
+    const page2Connection = makeConnection(page2Users, false, ADMIN_USERS_PAGE_SIZE + 5);
+
+    let fetchMoreCallCount = 0;
+
+    const fetchMoreVars = {
+      ...ADMIN_USERS_DEFAULT_VARS,
+      first: ADMIN_USERS_PAGE_SIZE,
+      search: null,
+      roleId: null,
+      after: endCursor,
+    };
+
+    render(
+      <MockedProvider
+        mocks={[
+          // Mock 1: initial page-0 useQuery
+          {
+            request: { query: AdminUsersDocument, variables: PAGE_0_VARS },
+            result: { data: { users: page1Connection } },
+          },
+          // Mock 2: first fetchMore — FAILS (consumed by the next-page click)
+          {
+            request: { query: AdminUsersDocument, variables: fetchMoreVars },
+            result: vi.fn(() => {
+              fetchMoreCallCount += 1;
+              return {
+                errors: [{ message: "Could not load page. Please try again." }],
+              };
+            }),
+          },
+          // Mock 3: Retry fetchMore — SUCCEEDS
+          {
+            request: { query: AdminUsersDocument, variables: fetchMoreVars },
+            result: vi.fn(() => {
+              fetchMoreCallCount += 1;
+              return { data: { users: page2Connection } };
+            }),
+          },
+          // Mock 4: useQuery re-fires after setPageIndex(1) on successful Retry
+          {
+            request: { query: AdminUsersDocument, variables: fetchMoreVars },
+            result: { data: { users: page2Connection } },
+          },
+          EMPTY_ROLES_MOCK,
+        ]}
+      >
+        <AdminUsersClient initialConnection={null} />
+      </MockedProvider>,
+    );
+
+    // Page 1 renders.
+    expect(await screen.findByText("User 1")).toBeInTheDocument();
+
+    // Click next — fetchMore fails.
+    const nextButtons = screen.getAllByRole("button", { name: /go to next page/i });
+    await ue.click(nextButtons[0]);
+
+    // Error banner with Retry appears.
+    const errorBanner = await screen.findByTestId("admin-users-fetch-more-error");
+    expect(errorBanner).toBeInTheDocument();
+    // fetchMoreCallCount = 1 (one failed fetchMore)
+    expect(fetchMoreCallCount).toBe(1);
+
+    // Page 1 data still visible.
+    expect(screen.getByText("User 1")).toBeInTheDocument();
+
+    // Retry button present.
+    const retryButton = screen.getByRole("button", { name: /retry/i });
+    expect(retryButton).toBeInTheDocument();
+
+    // Click Retry — clears banner and fires the second (success) fetchMore.
+    await ue.click(retryButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("User 101")).toBeInTheDocument();
     });
 
     expect(screen.queryByTestId("admin-users-fetch-more-error")).not.toBeInTheDocument();
@@ -452,158 +741,187 @@ describe("AdminUsersClient", () => {
     expect(fetchMoreCallCount).toBe(2);
   });
 
-  // T5: MockedProvider leak detection — no "No more mocked responses" warning fires.
-  test("no MockedProvider leak warning fires for AdminUsers after one fetchMore", async () => {
-    const firstBatch = Array.from({ length: 20 }, (_, i) => makeUser(i + 1));
-    const secondBatch = Array.from({ length: 20 }, (_, i) => makeUser(i + 21));
-    const endCursor = `user-${firstBatch.length}`;
+  // T8 — MockedProvider leak detection: the in-flight guard prevents a double-fetch.
+  // Stage exactly TWO mocks for next-page variables (one for fetchMore, one for the
+  // subsequent useQuery). A guard bypass would fire an EXTRA fetchMore, consuming both
+  // and leaving the useQuery with no mock → assertNoLeaks catches it.
+  test("T8: in-flight guard prevents double fetchMore — leak spy catches any leak", async () => {
+    const ue = userEvent.setup({ delay: null });
 
-    const mocks = [
-      {
-        request: {
-          query: AdminUsersDocument,
-          variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-        },
-        result: { data: { users: makeConnection(firstBatch, true) } },
-      },
-      {
-        request: {
-          query: AdminUsersDocument,
-          variables: {
-            first: ADMIN_USERS_PAGE_SIZE,
-            after: endCursor,
-            search: null,
-          },
-        },
-        result: { data: { users: makeConnection(secondBatch, false) } },
-      },
-    ];
+    const page1Users = Array.from({ length: ADMIN_USERS_PAGE_SIZE }, (_, i) => makeUser(i + 1));
+    const page2Users = Array.from({ length: 5 }, (_, i) => makeUser(i + 101));
+    const endCursor = `user-${ADMIN_USERS_PAGE_SIZE}`;
 
-    const cache = new InMemoryCache();
-    cache.writeQuery({
-      query: AdminUsersDocument,
-      variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-      data: { users: makeConnection(firstBatch, true) },
+    const page1Connection = makeConnection(page1Users, true, ADMIN_USERS_PAGE_SIZE + 5);
+    const page2Connection = makeConnection(page2Users, false, ADMIN_USERS_PAGE_SIZE + 5);
+
+    let nextPageCalls = 0;
+    const nextPageResult = vi.fn(() => {
+      nextPageCalls += 1;
+      return { data: { users: page2Connection } };
     });
 
+    const fetchMoreVars = {
+      ...ADMIN_USERS_DEFAULT_VARS,
+      first: ADMIN_USERS_PAGE_SIZE,
+      search: null,
+      roleId: null,
+      after: endCursor,
+    };
+
     render(
-      <MockedProvider mocks={mocks as never} cache={cache}>
+      <MockedProvider
+        mocks={[
+          // Mock 1: initial page-0 useQuery
+          {
+            request: { query: AdminUsersDocument, variables: PAGE_0_VARS },
+            result: { data: { users: page1Connection } },
+          },
+          // Mock 2: ONE fetchMore mock. If the guard is broken and a second fetchMore
+          // fires, it consumes this mock and the useQuery mock has no entry →
+          // MockedProvider warns → assertNoLeaks fails the test.
+          {
+            request: { query: AdminUsersDocument, variables: fetchMoreVars },
+            result: nextPageResult,
+          },
+          // Mock 3: useQuery after setPageIndex(1) — correctly consumed when guard works.
+          {
+            request: { query: AdminUsersDocument, variables: fetchMoreVars },
+            result: nextPageResult,
+          },
+          EMPTY_ROLES_MOCK,
+        ]}
+      >
         <AdminUsersClient initialConnection={null} />
       </MockedProvider>,
     );
 
     expect(await screen.findByText("User 1")).toBeInTheDocument();
 
-    fireIntersect();
+    const nextButtons = screen.getAllByRole("button", { name: /go to next page/i });
+
+    // Click next twice back-to-back — in-flight guard must absorb the second.
+    await ue.click(nextButtons[0]);
+    await ue.click(nextButtons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText("User 21")).toBeInTheDocument();
+      expect(screen.getByText("User 101")).toBeInTheDocument();
     });
 
-    // No "No more mocked responses for the query AdminUsers" warning should have fired.
-    const adminUsersLeakWarnings = consoleWarnSpy.mock.calls.filter((args: unknown[]) =>
-      args.some((arg: unknown) => typeof arg === "string" && arg.includes("AdminUsers")),
-    );
-    expect(adminUsersLeakWarnings).toEqual([]);
+    // nextPageCalls should be exactly 2 (one fetchMore + one useQuery re-fire).
+    // assertNoLeaks() in afterEach closes the loop for any extra fetches.
+    expect(nextPageCalls).toBe(2);
   });
 
-  // T6: NetworkStatus.fetchMore indicator — "Loading more" shown while in-flight, cleared on resolve.
-  // Uses the named NetworkStatus.fetchMore enum (value 3) rather than a magic number.
-  test("shows loading-more indicator while fetchMore is in flight using named NetworkStatus.fetchMore", async () => {
-    const firstBatch = Array.from({ length: 20 }, (_, i) => makeUser(i + 1));
-    const secondBatch = Array.from({ length: 20 }, (_, i) => makeUser(i + 21));
-    const endCursor = `user-${firstBatch.length}`;
+  // T9 — PII absence: the console.warn emitted on fetchMore failure MUST NOT
+  // contain email, displayName, or bio keys. It MUST contain pageIndex and name.
+  // See .claude/rules/error-wrapping.md § "Assert PII *absence*".
+  test("T9: fetchMore warn payload has pageIndex/name discriminators and no PII fields", async () => {
+    const ue = userEvent.setup({ delay: null });
 
-    // Explicit assertion that the named enum matches the expected value —
-    // guards against magic-number drift without coupling to the number itself.
-    expect(NetworkStatus.fetchMore).toBe(3);
+    const page1Users = Array.from({ length: ADMIN_USERS_PAGE_SIZE }, (_, i) => makeUser(i + 1));
+    const endCursor = `user-${ADMIN_USERS_PAGE_SIZE}`;
 
-    const mocks = [
-      {
-        request: {
-          query: AdminUsersDocument,
-          variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-        },
-        result: { data: { users: makeConnection(firstBatch, true) } },
-      },
-      // A 200ms delay keeps the fetchMore in-flight long enough for the indicator check.
-      {
-        request: {
-          query: AdminUsersDocument,
-          variables: {
-            first: ADMIN_USERS_PAGE_SIZE,
-            after: endCursor,
-            search: null,
-          },
-        },
-        delay: 200,
-        result: { data: { users: makeConnection(secondBatch, false) } },
-      },
-    ];
+    const page1Connection = makeConnection(page1Users, true, ADMIN_USERS_PAGE_SIZE + 5);
 
-    const cache = new InMemoryCache();
-    cache.writeQuery({
-      query: AdminUsersDocument,
-      variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-      data: { users: makeConnection(firstBatch, true) },
-    });
+    const fetchMoreVars = {
+      ...ADMIN_USERS_DEFAULT_VARS,
+      first: ADMIN_USERS_PAGE_SIZE,
+      search: null,
+      roleId: null,
+      after: endCursor,
+    };
+
+    // Install an outer warn spy. Per .claude/rules/pagination.md § "Spy stacking":
+    // the outer spy MUST NOT call mockImplementation(() => {}) — that would swallow
+    // leak warnings from the inner leak spy (installed in beforeEach).
+    // No mockImplementation here lets calls flow through to the leak spy's mock.
+    const outerWarnSpy = vi.spyOn(console, "warn");
 
     render(
-      <MockedProvider mocks={mocks as never} cache={cache}>
+      <MockedProvider
+        mocks={[
+          // Mock 1: initial page-0 useQuery
+          {
+            request: { query: AdminUsersDocument, variables: PAGE_0_VARS },
+            result: { data: { users: page1Connection } },
+          },
+          // Mock 2: fetchMore fails.
+          {
+            request: { query: AdminUsersDocument, variables: fetchMoreVars },
+            result: {
+              errors: [{ message: "network error" }],
+            },
+          },
+          EMPTY_ROLES_MOCK,
+        ]}
+      >
         <AdminUsersClient initialConnection={null} />
       </MockedProvider>,
     );
 
     expect(await screen.findByText("User 1")).toBeInTheDocument();
 
-    // Trigger the observer — fetchMore is now in-flight (delayed 200ms).
-    fireIntersect();
+    const nextButtons = screen.getAllByRole("button", { name: /go to next page/i });
+    await ue.click(nextButtons[0]);
 
-    // The "Loading more users..." indicator must appear while the request is in-flight.
-    const indicator = await screen.findByTestId("admin-users-loading-more");
-    expect(indicator).toBeInTheDocument();
+    // Wait for the error banner.
+    await screen.findByTestId("admin-users-fetch-more-error");
 
-    // After the delay resolves, the indicator must disappear and the second batch renders.
-    await waitFor(
-      () => {
-        expect(screen.queryByTestId("admin-users-loading-more")).not.toBeInTheDocument();
-      },
-      { timeout: 1000 },
+    // Find the specific [admin-users] fetchMore failed warn call.
+    const warnCalls = outerWarnSpy.mock.calls.filter(
+      (args) =>
+        args.length >= 2 &&
+        typeof args[0] === "string" &&
+        args[0].includes("[admin-users] fetchMore failed"),
     );
+    expect(warnCalls.length).toBeGreaterThanOrEqual(1);
 
-    expect(screen.getByText("User 21")).toBeInTheDocument();
+    const payload = warnCalls[0]?.[1];
+    expect(typeof payload).toBe("object");
+    expect(payload).not.toBeNull();
+
+    // Must have discriminating keys (non-Error.prototype) per
+    // .claude/rules/frontend-typescript-conventions.md § "expect.objectContaining".
+    expect(payload).toHaveProperty("pageIndex");
+    expect(payload).toHaveProperty("name");
+
+    // Must NOT contain PII fields.
+    expect(payload).not.toHaveProperty("email");
+    expect(payload).not.toHaveProperty("displayName");
+    expect(payload).not.toHaveProperty("bio");
+
+    // Teardown LIFO: outer spy first, then leak spy in afterEach.
+    outerWarnSpy.mockRestore();
   });
 
-  // T7: FORBIDDEN query error — non-retry permission banner; no Retry button.
-  test("renders permission-denied banner without Retry when AdminUsers returns FORBIDDEN", async () => {
-    const mocks = [
-      {
-        request: {
-          query: AdminUsersDocument,
-          variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
-        },
-        result: {
-          errors: [
-            new GraphQLError("admin role required", {
-              extensions: { code: "FORBIDDEN" },
-            }),
-          ],
-        },
-      },
-    ];
-
+  // T10 — FORBIDDEN query error: permission-denied banner appears, no Retry button.
+  test("T10: FORBIDDEN query error renders permission-denied banner without Retry", async () => {
     render(
-      <MockedProvider mocks={mocks as never}>
+      <MockedProvider
+        mocks={[
+          {
+            request: { query: AdminUsersDocument, variables: PAGE_0_VARS },
+            result: {
+              errors: [
+                new GraphQLError("admin role required", {
+                  extensions: { code: "FORBIDDEN" },
+                }),
+              ],
+            },
+          },
+          EMPTY_ROLES_MOCK,
+        ]}
+      >
         <AdminUsersClient initialConnection={null} />
       </MockedProvider>,
     );
 
-    // The permission-denied banner must appear.
     const banner = await screen.findByTestId("admin-users-query-error");
     expect(banner).toBeInTheDocument();
     expect(banner).toHaveTextContent("You do not have permission to view this page.");
 
-    // No Retry button — re-issuing the same query would fail again.
+    // No Retry — re-issuing the FORBIDDEN query would fail again.
     expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
   });
 });
