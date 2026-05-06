@@ -386,6 +386,13 @@ extend type User {
   Null when never set, or when the referenced cardgroup was deleted (FK cascade SET NULL).
   """
   lastViewedCardgroup: Cardgroup
+  """
+  Server-recorded timestamp of the most recent authenticated request from
+  this user. Updated by the auth middleware on every successful JWT
+  verification. Null until the user makes their first authenticated
+  request after the column is introduced.
+  """
+  lastActive: Time
 }
 
 """One element in a UserConnection."""
@@ -404,8 +411,12 @@ type UserConnection {
 }
 
 extend type Query {
-  """Admin-only. Paginated user list. Non-admin callers receive FORBIDDEN."""
-  users(first: Int, after: ID, last: Int, before: ID, search: String): UserConnection!
+  """
+  Admin-only. Paginated user list. Non-admin callers receive FORBIDDEN.
+  `search` matches `displayName` case-insensitively. `roleId` (when
+  non-null) restricts results to users assigned that role.
+  """
+  users(first: Int, after: ID, last: Int, before: ID, search: String, roleId: ID): UserConnection!
   """Admin-only. Single user with roles populated. Non-admin callers receive FORBIDDEN."""
   adminUser(id: ID!): User
   """Admin-only. List all roles (used by admin role-assignment UI). Non-admin callers receive FORBIDDEN."""
