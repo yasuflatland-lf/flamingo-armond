@@ -6,6 +6,8 @@ package repository_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -273,4 +275,279 @@ func TestCardgroupRepository_NameLengthCheckRejectsTooLong(t *testing.T) {
 
 	err := repo.Create(ctx, cg)
 	require.Error(t, err, "DB CHECK constraint should reject a 101-char name")
+}
+
+// ---------------------------------------------------------------------------
+// FindPageByOwner / CountByOwner integration tests
+// ---------------------------------------------------------------------------
+
+// insertNamedCardgroups inserts cardgroups with the given names for ownerID
+// and returns the domain objects in insertion order.
+func insertNamedCardgroups(t *testing.T, ctx context.Context, ownerID string, names []string) []*domain.Cardgroup {
+	t.Helper()
+	repo := repository.NewCardgroupRepository(testDB.GORM)
+	cgs := make([]*domain.Cardgroup, len(names))
+	for i, name := range names {
+		now := time.Now().UTC().Add(time.Duration(i) * time.Millisecond)
+		cg := &domain.Cardgroup{
+			ID:        uuid.NewString(),
+			OwnerID:   ownerID,
+			Name:      name,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		require.NoError(t, repo.Create(ctx, cg))
+		cgs[i] = cg
+	}
+	return cgs
+}
+
+// cardgroupNameSet builds a set of names from a slice for membership checks.
+func cardgroupNameSet(cgs []*domain.Cardgroup) map[string]struct{} {
+	m := make(map[string]struct{}, len(cgs))
+	for _, cg := range cgs {
+		m[cg.Name] = struct{}{}
+	}
+	return m
+}
+
+// cardgroupIDSetFromSlice builds a set of IDs from a slice for membership checks.
+func cardgroupIDSetFromSlice(cgs []*domain.Cardgroup) map[string]struct{} {
+	m := make(map[string]struct{}, len(cgs))
+	for _, cg := range cgs {
+		m[cg.ID] = struct{}{}
+	}
+	return m
+}
+
+// TestCardgroupRepo_FindPageByOwner_EmptyResult confirms that querying a
+// fresh owner with no cardgroups returns an empty slice without error.
+func TestCardgroupRepo_FindPageByOwner_EmptyResult(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardgroupRepository(testDB.GORM)
+
+	got, err := repo.FindPageByOwner(
+		ctx, ownerID, nil, nil, 10, 0,
+		repository.CardgroupOrderByCreatedAt, repository.SortAsc, nil,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Empty(t, got)
+
+	total, err := repo.CountByOwner(ctx, ownerID, nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), total)
+}
+
+// TestCardgroupRepo_FindPageByOwner_ExactMatch confirms that an exact-name
+// search term returns only the matching cardgroup.
+func TestCardgroupRepo_FindPageByOwner_ExactMatch(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardgroupRepository(testDB.GORM)
+
+	insertNamedCardgroups(t, ctx, ownerID, []string{"Exact Match", "Other Group"})
+
+	search := "Exact Match"
+	got, err := repo.FindPageByOwner(
+		ctx, ownerID, nil, nil, 10, 0,
+		repository.CardgroupOrderByCreatedAt, repository.SortAsc, &search,
+	)
+	require.NoError(t, err)
+	require.Len(t, got, 1, "exactly one group should match the search term")
+	require.Equal(t, "Exact Match", got[0].Name)
+
+	total, err := repo.CountByOwner(ctx, ownerID, &search)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+}
+
+// TestCardgroupRepo_FindPageByOwner_PartialMatch confirms that a substring
+// search returns all groups whose names contain the term.
+func TestCardgroupRepo_FindPageByOwner_PartialMatch(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardgroupRepository(testDB.GORM)
+
+	insertNamedCardgroups(t, ctx, ownerID, []string{"green apple", "apple pie", "banana"})
+
+	search := "apple"
+	got, err := repo.FindPageByOwner(
+		ctx, ownerID, nil, nil, 10, 0,
+		repository.CardgroupOrderByCreatedAt, repository.SortAsc, &search,
+	)
+	require.NoError(t, err)
+	names := cardgroupNameSet(got)
+	require.Contains(t, names, "green apple", "partial match should hit 'green apple'")
+	require.Contains(t, names, "apple pie", "partial match should hit 'apple pie'")
+	require.NotContains(t, names, "banana", "banana must not appear in apple search results")
+	require.Len(t, got, 2)
+
+	total, err := repo.CountByOwner(ctx, ownerID, &search)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), total)
+}
+
+// TestCardgroupRepo_FindPageByOwner_LIKEEscape verifies that a percent sign in
+// the search term matches literally and does not act as a wildcard. Inserting
+// "100%" and "1000" then searching for "100%" must return only the former;
+// without escaping the pattern "%100%%%" would also match "1000".
+func TestCardgroupRepo_FindPageByOwner_LIKEEscape(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardgroupRepository(testDB.GORM)
+
+	insertNamedCardgroups(t, ctx, ownerID, []string{"100%", "1000"})
+
+	search := "100%"
+	got, err := repo.FindPageByOwner(
+		ctx, ownerID, nil, nil, 10, 0,
+		repository.CardgroupOrderByCreatedAt, repository.SortAsc, &search,
+	)
+	require.NoError(t, err)
+	names := cardgroupNameSet(got)
+	// "100%" must be found because its name literally contains "100%".
+	require.Contains(t, names, "100%", "literal percent must match the row named '100%%'")
+	// "1000" must NOT be found — without escaping, '%' would be a wildcard and
+	// the pattern "%%100%%" would match "1000" too.
+	require.NotContains(t, names, "1000", "unescaped '%' would wrongly match '1000'; escaping must prevent that")
+	require.Len(t, got, 1, "only one row should match the literal '100%%' search")
+
+	total, err := repo.CountByOwner(ctx, ownerID, &search)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+}
+
+// TestCardgroupRepo_FindPageByOwner_LIKEUnderscoreEscape verifies that an
+// underscore in the search term matches literally and does not act as a
+// single-character wildcard. Searching for "a_b" must return "a_b" but not
+// "acb".
+func TestCardgroupRepo_FindPageByOwner_LIKEUnderscoreEscape(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardgroupRepository(testDB.GORM)
+
+	insertNamedCardgroups(t, ctx, ownerID, []string{"a_b", "acb"})
+
+	search := "a_b"
+	got, err := repo.FindPageByOwner(
+		ctx, ownerID, nil, nil, 10, 0,
+		repository.CardgroupOrderByCreatedAt, repository.SortAsc, &search,
+	)
+	require.NoError(t, err)
+	names := cardgroupNameSet(got)
+	// "a_b" must match because the literal underscore appears in the name.
+	require.Contains(t, names, "a_b", "literal underscore must match the row named 'a_b'")
+	// "acb" must NOT match — without escaping '_' would be a single-char wildcard.
+	require.NotContains(t, names, "acb", "unescaped '_' would wrongly match 'acb'; escaping must prevent that")
+	require.Len(t, got, 1, "only one row should match the literal 'a_b' search")
+}
+
+// TestCardgroupRepo_FindPageByOwner_LIKEBackslashEscape verifies that a
+// backslash in the search term matches literally. Searching for the Go string
+// `back\slash` must return "back\slash" but not "backslash".
+func TestCardgroupRepo_FindPageByOwner_LIKEBackslashEscape(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardgroupRepository(testDB.GORM)
+
+	// Go raw string: the name literally contains a backslash character.
+	insertNamedCardgroups(t, ctx, ownerID, []string{`back\slash`, "backslash"})
+
+	// Search for the literal backslash-containing name.
+	search := `back\slash`
+	got, err := repo.FindPageByOwner(
+		ctx, ownerID, nil, nil, 10, 0,
+		repository.CardgroupOrderByCreatedAt, repository.SortAsc, &search,
+	)
+	require.NoError(t, err)
+	names := cardgroupNameSet(got)
+	require.Contains(t, names, `back\slash`, "literal backslash must match the row named 'back\\slash'")
+	require.NotContains(t, names, "backslash", "row without backslash must not match the literal backslash search")
+	require.Len(t, got, 1, "only one row should match the literal backslash search")
+}
+
+// TestCardgroupRepo_FindPageByOwner_CrossTenant verifies that FindPageByOwner
+// and CountByOwner are scoped to ownerID: a row inserted for a different owner
+// must not appear in the results even when both owners have a cardgroup with
+// the same name.
+func TestCardgroupRepo_FindPageByOwner_CrossTenant(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerA := insertAuthUser(t, ctx)
+	ownerB := insertAuthUser(t, ctx)
+	repo := repository.NewCardgroupRepository(testDB.GORM)
+
+	insertNamedCardgroups(t, ctx, ownerA, []string{"shared name", "only A"})
+	insertNamedCardgroups(t, ctx, ownerB, []string{"shared name", "only B"})
+
+	// Query scoped to ownerB.
+	gotB, err := repo.FindPageByOwner(
+		ctx, ownerB, nil, nil, 20, 0,
+		repository.CardgroupOrderByCreatedAt, repository.SortAsc, nil,
+	)
+	require.NoError(t, err)
+	idsB := cardgroupIDSetFromSlice(gotB)
+
+	// Fetch ownerA's IDs to assert they do not bleed into ownerB's results.
+	gotA, err := repo.FindPageByOwner(
+		ctx, ownerA, nil, nil, 20, 0,
+		repository.CardgroupOrderByCreatedAt, repository.SortAsc, nil,
+	)
+	require.NoError(t, err)
+
+	for _, cgA := range gotA {
+		require.NotContains(t, idsB, cgA.ID,
+			"ownerA's cardgroup %q must not appear in ownerB's page results", cgA.Name)
+	}
+
+	// CountByOwner for ownerB must return exactly 2 (its own rows only).
+	totalB, err := repo.CountByOwner(ctx, ownerB, nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), totalB,
+		"CountByOwner must count only ownerB's cardgroups")
+}
+
+// TestCardgroupRepo_FindPageByOwner_PlusOneFetch verifies that the repository
+// respects the caller-supplied limit and returns at most `first` rows,
+// allowing the usecase layer to detect a next page by requesting first+1.
+func TestCardgroupRepo_FindPageByOwner_PlusOneFetch(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardgroupRepository(testDB.GORM)
+
+	names := make([]string, 5)
+	for i := range names {
+		names[i] = fmt.Sprintf("cg-%02d", i)
+	}
+	insertNamedCardgroups(t, ctx, ownerID, names)
+
+	// Request first=3 (which represents the usecase sending first+1=3 when
+	// the user asked for first=2). The repo must return exactly 3 rows.
+	got, err := repo.FindPageByOwner(
+		ctx, ownerID, nil, nil, 3, 0,
+		repository.CardgroupOrderByCreatedAt, repository.SortAsc, nil,
+	)
+	require.NoError(t, err)
+	require.Len(t, got, 3,
+		"first=3 must return exactly 3 rows so the usecase can detect hasNextPage")
+
+	// Verify the rows are in ASC order and belong to the right owner.
+	for _, cg := range got {
+		require.Equal(t, ownerID, cg.OwnerID)
+	}
+	sortedGot := make([]*domain.Cardgroup, len(got))
+	copy(sortedGot, got)
+	sort.Slice(sortedGot, func(i, j int) bool { return sortedGot[i].CreatedAt.Before(sortedGot[j].CreatedAt) })
+	for i, cg := range got {
+		require.Equal(t, sortedGot[i].ID, cg.ID, "rows must be in CreatedAt ASC order")
+	}
 }

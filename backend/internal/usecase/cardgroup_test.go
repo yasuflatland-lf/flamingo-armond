@@ -35,6 +35,12 @@ type mockCardgroupRepository struct {
 	// Delete
 	deleteErr    error
 	deleteCalled bool
+
+	// FindPageByOwner / CountByOwner — used by pagination tests.
+	findPageResult []*domain.Cardgroup
+	findPageErr    error
+	countResult    int64
+	countErr       error
 }
 
 func (m *mockCardgroupRepository) FindByID(_ context.Context, _ string) (*domain.Cardgroup, error) {
@@ -61,9 +67,7 @@ func (m *mockCardgroupRepository) Delete(_ context.Context, _ string) error {
 	return m.deleteErr
 }
 
-// FindPageByOwner / CountByOwner are stubbed for interface conformance only;
-// pagination behaviour is exercised by the usecase-level tests that supply
-// their own mocks.
+// FindPageByOwner returns findPageResult/findPageErr when set; otherwise nil.
 func (m *mockCardgroupRepository) FindPageByOwner(
 	_ context.Context,
 	_ string,
@@ -73,11 +77,12 @@ func (m *mockCardgroupRepository) FindPageByOwner(
 	_ repository.SortOrder,
 	_ *string,
 ) ([]*domain.Cardgroup, error) {
-	return nil, nil
+	return m.findPageResult, m.findPageErr
 }
 
+// CountByOwner returns countResult/countErr when set; otherwise 0, nil.
 func (m *mockCardgroupRepository) CountByOwner(_ context.Context, _ string, _ *string) (int64, error) {
-	return 0, nil
+	return m.countResult, m.countErr
 }
 
 // --- helpers already defined in user_test.go (authedCtx, anonCtx, ptr, assertGQLErr) ---
@@ -424,5 +429,202 @@ func TestCardgroupUsecase_Delete_Success(t *testing.T) {
 	}
 	if !repo.deleteCalled {
 		t.Fatal("expected repo.Delete to be called")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ListCardgroupsByOwnerConnection — mixed-direction guard tests
+// ---------------------------------------------------------------------------
+
+// TestCardgroupUC_ConnectionGuards_AfterAndBefore verifies that supplying both
+// after and before is rejected with BAD_USER_INPUT before any repo call.
+func TestCardgroupUC_ConnectionGuards_AfterAndBefore(t *testing.T) {
+	t.Parallel()
+	repo := &mockCardgroupRepository{}
+	uc := NewCardgroupUsecase(repo)
+
+	after := "cursor-a"
+	before := "cursor-b"
+	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("user-1"), CardgroupConnectionInput{
+		After:  &after,
+		Before: &before,
+	})
+
+	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+}
+
+// TestCardgroupUC_ConnectionGuards_FirstAndBefore verifies that combining first
+// (forward page size) with before (backward cursor) is rejected.
+func TestCardgroupUC_ConnectionGuards_FirstAndBefore(t *testing.T) {
+	t.Parallel()
+	repo := &mockCardgroupRepository{}
+	uc := NewCardgroupUsecase(repo)
+
+	first := 5
+	before := "cursor-b"
+	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("user-1"), CardgroupConnectionInput{
+		First:  &first,
+		Before: &before,
+	})
+
+	assertGQLErr(t, err, "BAD_USER_INPUT", "before")
+}
+
+// TestCardgroupUC_ConnectionGuards_LastAndAfter verifies that combining last
+// (backward page size) with after (forward cursor) is rejected.
+func TestCardgroupUC_ConnectionGuards_LastAndAfter(t *testing.T) {
+	t.Parallel()
+	repo := &mockCardgroupRepository{}
+	uc := NewCardgroupUsecase(repo)
+
+	last := 5
+	after := "cursor-a"
+	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("user-1"), CardgroupConnectionInput{
+		Last:  &last,
+		After: &after,
+	})
+
+	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+}
+
+// TestCardgroupUC_ConnectionGuards_BeforeAlone verifies that before without
+// a companion last value is rejected as ambiguous.
+func TestCardgroupUC_ConnectionGuards_BeforeAlone(t *testing.T) {
+	t.Parallel()
+	repo := &mockCardgroupRepository{}
+	uc := NewCardgroupUsecase(repo)
+
+	before := "cursor-b"
+	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("user-1"), CardgroupConnectionInput{
+		Before: &before,
+	})
+
+	assertGQLErr(t, err, "BAD_USER_INPUT", "before")
+}
+
+// TestCardgroupUC_ConnectionGuards_AfterAlone verifies that after without a
+// companion first value is rejected as ambiguous.
+func TestCardgroupUC_ConnectionGuards_AfterAlone(t *testing.T) {
+	t.Parallel()
+	repo := &mockCardgroupRepository{}
+	uc := NewCardgroupUsecase(repo)
+
+	after := "cursor-a"
+	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("user-1"), CardgroupConnectionInput{
+		After: &after,
+	})
+
+	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+}
+
+// ---------------------------------------------------------------------------
+// ListCardgroupsByOwnerConnection — cross-tenant cursor test
+// ---------------------------------------------------------------------------
+
+// TestCardgroupUC_Connection_CursorFromOtherOwner_BadUserInput verifies that
+// passing a cursor (cardgroup ID) belonging to a different owner is rejected
+// with BAD_USER_INPUT rather than leaking the existence of foreign cardgroups.
+func TestCardgroupUC_Connection_CursorFromOtherOwner_BadUserInput(t *testing.T) {
+	t.Parallel()
+
+	// The cursor ID maps to a cardgroup owned by owner-A, not owner-B.
+	foreignCG := &domain.Cardgroup{ID: "cg-owner-a", OwnerID: "owner-a", Name: "Foreign"}
+	repo := &mockCardgroupRepository{findResult: foreignCG}
+	uc := NewCardgroupUsecase(repo)
+
+	first := 5
+	after := "cg-owner-a"
+	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("owner-b"), CardgroupConnectionInput{
+		First: &first,
+		After: &after,
+	})
+
+	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+}
+
+// ---------------------------------------------------------------------------
+// ListCardgroupsByOwnerConnection — happy-path tests
+// ---------------------------------------------------------------------------
+
+// TestCardgroupUC_Connection_FirstPage verifies the basic forward page-1
+// scenario: 3 cardgroups in the repo, first=2 → 2 edges returned, hasNextPage
+// true, totalCount 3.
+func TestCardgroupUC_Connection_FirstPage(t *testing.T) {
+	t.Parallel()
+
+	cgs := []*domain.Cardgroup{
+		{ID: "cg1", OwnerID: "user-1", Name: "Alpha"},
+		{ID: "cg2", OwnerID: "user-1", Name: "Beta"},
+		// The third row is the "+1" the usecase requests to detect hasNextPage.
+		{ID: "cg3", OwnerID: "user-1", Name: "Gamma"},
+	}
+	// The mock returns all 3 rows (simulating repo returning first+1=3 rows).
+	repo := &mockCardgroupRepository{
+		findPageResult: cgs,
+		countResult:    3,
+	}
+	uc := NewCardgroupUsecase(repo)
+
+	first := 2
+	out, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("user-1"), CardgroupConnectionInput{
+		First: &first,
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.TotalCount != 3 {
+		t.Fatalf("TotalCount = %d, want 3", out.TotalCount)
+	}
+	if len(out.Cardgroups) != 2 {
+		t.Fatalf("len(Cardgroups) = %d, want 2 (trailing row trimmed)", len(out.Cardgroups))
+	}
+	if !out.HasNext {
+		t.Fatal("HasNext = false, want true (overflow row detected)")
+	}
+	if out.HasPrev {
+		t.Fatal("HasPrev = true, want false (no after cursor on page 1)")
+	}
+	if out.StartCur != "cg1" {
+		t.Fatalf("StartCur = %q, want %q", out.StartCur, "cg1")
+	}
+	if out.EndCur != "cg2" {
+		t.Fatalf("EndCur = %q, want %q", out.EndCur, "cg2")
+	}
+}
+
+// TestCardgroupUC_Connection_Search verifies that a search filter is forwarded
+// to the repository and the totalCount reflects the filtered count.
+func TestCardgroupUC_Connection_Search(t *testing.T) {
+	t.Parallel()
+
+	// Only "apple" matches the search; "banana" is absent from the page result.
+	matched := []*domain.Cardgroup{
+		{ID: "cg1", OwnerID: "user-1", Name: "apple"},
+	}
+	repo := &mockCardgroupRepository{
+		findPageResult: matched,
+		countResult:    1,
+	}
+	uc := NewCardgroupUsecase(repo)
+
+	first := 10
+	search := "app"
+	out, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("user-1"), CardgroupConnectionInput{
+		First:  &first,
+		Search: &search,
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.TotalCount != 1 {
+		t.Fatalf("TotalCount = %d, want 1", out.TotalCount)
+	}
+	if len(out.Cardgroups) != 1 {
+		t.Fatalf("len(Cardgroups) = %d, want 1", len(out.Cardgroups))
+	}
+	if out.Cardgroups[0].Name != "apple" {
+		t.Fatalf("Cardgroups[0].Name = %q, want %q", out.Cardgroups[0].Name, "apple")
 	}
 }
