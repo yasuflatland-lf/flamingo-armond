@@ -181,7 +181,7 @@ Three components live under `frontend/src/components/nav/` and compose into the 
 - `GlobalHeader` — RSC; rendered from `app/layout.tsx`. Mobile shows hamburger + logo + truncated email; desktop shows logo + nav links + `+ Card` CTA + `AdminPill` (when admin) + `LogoutButton`. Header MUST degrade silently on `getUser()` or `me`-query failure — see the rule.
 - `GlobalFAB` — Client; floats bottom-right with the coral `--brand-primary` background. Hidden on `/login`, `/learn/*`, `/admin/*`, `/cards/new`, `/cardgroups/new` — i.e. routes that are anonymous-only, full-bleed UI, a different audience, or the FAB's own destination (would loop). Hide list lives in one regex (`HIDDEN_PATH_RE`) inside `global-fab.tsx`; there is no allow-list. The FAB also wraps its button in an `md:hidden` container so the desktop header `+ Card` CTA is the **single** add-card affordance at `>= md` — see "Breakpoint-exclusive primary action" below. The FAB does NOT pre-pend `?cardgroup=...` — `/cards/new` owns the 4-priority resolution; passing the id from the FAB would create two truths.
 - `HeaderAddCardLink` — Client; the desktop `+ Card` CTA. Lives in `frontend/src/components/nav/header-add-card-link.tsx` so the surrounding `GlobalHeader` can stay an RSC. Reads `usePathname()` and applies the "current location CTA" pattern below when on `/cards/new`.
-- `HamburgerDrawer` — Client; mobile-only. Three visually-divided groups separated by `<hr>`: (1) primary nav (Cardgroups, Profile), (2) admin entry tinted with `bg-brand-tint` + `border-brand-tint-border` when `isAdmin`, (3) sign-out. The admin tint is the **only** non-CTA use of the brand palette — see "Design tokens" below.
+- `HamburgerDrawer` — Client; mobile-only. Three visually-divided groups separated by `<hr>`: (1) primary nav (Cardgroups, Profile), (2) admin entry tinted with `bg-brand-tint` + `border-brand-tint-border` when `isAdmin`, (3) sign-out. The admin tint is a non-CTA use of the brand palette — see "Design tokens" below.
 
 `AdminPill` is a server component rendered inline in the desktop header when `isAdmin === true`. Its tint comes from the same `--brand-tint*` family as the hamburger admin section so the two surfaces are visually linked.
 
@@ -226,13 +226,30 @@ The asymmetry reflects the information hierarchy: the header "+ Card" button and
 `globals.css` defines five brand tokens (`--brand-primary`, `--brand-primary-foreground`, `--brand-tint`, `--brand-tint-border`, `--brand-tint-foreground`). The product palette is intentionally narrow:
 
 - `--brand-primary` (coral `#FE7F70` via OKLCH) — primary CTAs only: `+ Card` FAB, the `+ Card` desktop nav button, and primary form Save buttons. Not for body text, links, or hover states.
-- `--brand-tint*` — admin entry surfaces only: `AdminPill` and the hamburger admin section. Marks "you are crossing into the admin area" without screaming the same volume as a primary CTA.
+- `--brand-tint*` — low-volume brand-identity surfaces: (1) the sign-in brand panel (`/login` left column), (2) admin entry surfaces (`AdminPill`, the drawer admin section). The tint signals "this surface carries product identity or marks a context switch" without competing with a primary CTA. Use `bg-brand-tint` for the panel background, `text-brand-tint-foreground` for headings, and `text-brand-tint-foreground/80` for secondary copy on that background.
 
-Every other surface uses shadcn's slate-based defaults (`--primary`, `--secondary`, `--accent`). New components should only reach for the brand tokens when they fall into one of those two categories — adding a third use site dilutes the signal.
+Every other surface uses shadcn's slate-based defaults (`--primary`, `--secondary`, `--accent`). New components should only reach for the brand tokens when they fall into one of the categories above — adding a fourth use site for `--brand-tint*` or a second category for `--brand-primary` dilutes the signal, so reviewers should push back unless the new surface is clearly identity-bearing or a primary CTA.
 
 ### Welcome copy on `/cardgroups/new?welcome=1`
 
 The `?welcome=1` query parameter makes `/cardgroups/new` (already the cardgroup-create page) double as the onboarding screen for first-time users by conditionally rendering a welcome banner above the form. HomePage branch (3) and `/cards/new` priority (4) both target this URL. Without the query parameter, the page renders only the form — same behaviour as before. Driving the difference from the URL keeps onboarding statelessly bookmarkable / sharable and avoids a separate `/welcome` route whose only difference would be the copy.
+
+### Sign-in page layout (`/login`)
+
+`/login` bypasses `AppShell` (root layout short-circuits when `pathname === "/login"`) and owns the entire viewport. The page uses a split-screen shell:
+
+```tsx
+<main data-testid="login-grid" className="relative grid h-svh lg:grid-cols-2">
+  <div className="max-lg:hidden ... bg-brand-tint">{/* brand panel */}</div>
+  <div className="flex flex-col">{/* form column: h1, error banner, OAuth button, footer */}</div>
+</main>
+```
+
+Three rules apply to any future page that adopts this shell (e.g. `/signup`, `/reset-password`):
+
+1. **`h-svh`, not `h-screen` or `min-h-screen`.** `h-screen` resolves to `100vh`, which on Safari mobile includes the address-bar height that collapses on scroll — a non-scrolling full-viewport page measured against `100vh` ends up taller than the visible area and the bottom content is cut off. `h-svh` (small viewport height) is the always-visible height and is the correct unit for a fixed-viewport login shell. Use `min-h-svh` only when the content can grow taller than the viewport.
+2. **Brand panel hidden below `lg` with `max-lg:hidden`.** The left column hides below `lg`; the right column is always visible. This keeps the mobile experience a single-column form (no wasted vertical space for branding) while letting desktop carry the full-bleed brand panel.
+3. **`<main>` landmark required.** Because `AppShell` is bypassed, the page is the only place a `<main>` landmark can be emitted — see [`.claude/rules/frontend-rsc-error-handling.md` § "Pages that bypass AppShell MUST render their own `<main>` landmark"](../.claude/rules/frontend-rsc-error-handling.md#pages-that-bypass-appshell-must-render-their-own-main-landmark).
 
 ## Route Handler conventions
 

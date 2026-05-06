@@ -99,4 +99,65 @@ describe("LoginPage", () => {
 
     expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
   });
+
+  describe("split-screen layout (anonymous user)", () => {
+    let container: HTMLElement;
+
+    beforeEach(async () => {
+      vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
+      const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
+      ({ container } = render(jsx));
+    });
+
+    it("outer wrapper has h-svh and lg:grid-cols-2", () => {
+      const grid = container.querySelector("[data-testid='login-grid']");
+      expect(grid).toBeInTheDocument();
+      expect(grid?.className).toMatch(/h-svh/);
+      expect(grid?.className).toMatch(/lg:grid-cols-2/);
+    });
+
+    it("brand panel has max-lg:hidden", () => {
+      const brandPanel = container.querySelector("[data-testid='brand-panel']");
+      expect(brandPanel).toBeInTheDocument();
+      expect(brandPanel?.className).toMatch(/max-lg:hidden/);
+    });
+
+    it("brand panel shows flamingo logo and app name", () => {
+      const brandPanel = container.querySelector("[data-testid='brand-panel']");
+      expect(brandPanel).toBeInTheDocument();
+      expect(brandPanel?.querySelector("[aria-label='Flamingo']")).toBeInTheDocument();
+      expect(brandPanel?.textContent).toContain("flamingo-armond");
+    });
+
+    it("brand panel does not contain an email address (PII)", () => {
+      const brandPanel = container.querySelector("[data-testid='brand-panel']");
+      expect(brandPanel?.textContent).not.toMatch(/@/);
+    });
+
+    it("form column renders OAuth button, Terms link, and Privacy link", () => {
+      expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /terms/i })).toHaveAttribute("href", "/terms");
+      expect(screen.getByRole("link", { name: /privacy/i })).toHaveAttribute("href", "/privacy");
+    });
+
+    it("Sign in heading renders as h1", () => {
+      expect(screen.getByRole("heading", { level: 1, name: /sign in/i })).toBeInTheDocument();
+    });
+
+    it("main landmark is present for screen reader navigation", () => {
+      expect(screen.getByRole("main")).toBeInTheDocument();
+    });
+  });
+
+  it("split-screen: error banner and brand panel both render when error param is set", async () => {
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
+
+    const jsx = await LoginPage({ searchParams: Promise.resolve({ error: "access_denied" }) });
+    const { container } = render(jsx);
+
+    expect(container.querySelector("[data-testid='login-grid']")).toBeInTheDocument();
+    expect(container.querySelector("[data-testid='brand-panel']")).toBeInTheDocument();
+    expect(screen.getByText(/sign-in failed: access_denied/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
+  });
 });
