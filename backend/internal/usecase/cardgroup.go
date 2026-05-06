@@ -413,6 +413,11 @@ func resolveCardgroupPageSize(first, last *int) (int, int, error) {
 // orderBy populated. Returns BAD_USER_INPUT when the cursor cardgroup
 // cannot be found OR when it belongs to another owner — the latter would
 // otherwise leak existence of cardgroups outside the caller's tenant.
+//
+// The cross-tenant check runs even when orderBy is ID (no extra column to
+// hydrate). Without it, an attacker could probe for the existence of
+// foreign cardgroups by paging past a guessed cursor and observing whether
+// any rows come back.
 func (u *CardgroupUsecase) resolveCardgroupCursor(
 	ctx context.Context,
 	cursorID *string,
@@ -422,24 +427,6 @@ func (u *CardgroupUsecase) resolveCardgroupCursor(
 ) (*repository.CardgroupCursor, error) {
 	if cursorID == nil || *cursorID == "" {
 		return nil, nil
-	}
-	c := &repository.CardgroupCursor{ID: *cursorID}
-	if orderBy == repository.CardgroupOrderByID {
-		// Even when the cursor field is the id itself, we still need to
-		// confirm cross-tenant access — otherwise an attacker can probe
-		// for the existence of foreign cardgroups by paging past the
-		// cursor and observing whether any rows come back.
-		cg, err := u.repo.FindByID(ctx, *cursorID)
-		if err != nil {
-			if errors.Is(err, repository.ErrNotFound) {
-				return nil, gqlerr.BadUserInput(field, "cursor not found")
-			}
-			return nil, gqlerr.Internal(ctx, eris.Wrap(err, "usecase: hydrate cardgroup cursor"))
-		}
-		if cg.OwnerID != ownerID {
-			return nil, gqlerr.BadUserInput(field, "cursor not found")
-		}
-		return c, nil
 	}
 	cg, err := u.repo.FindByID(ctx, *cursorID)
 	if err != nil {
@@ -451,7 +438,11 @@ func (u *CardgroupUsecase) resolveCardgroupCursor(
 	if cg.OwnerID != ownerID {
 		return nil, gqlerr.BadUserInput(field, "cursor not found")
 	}
+
+	c := &repository.CardgroupCursor{ID: *cursorID}
 	switch orderBy {
+	case repository.CardgroupOrderByID:
+		// No extra column needed; ownership-check above is the gate.
 	case repository.CardgroupOrderByName:
 		name := cg.Name
 		c.Name = &name

@@ -948,8 +948,8 @@ func TestCardgroupRepo_FindPageByOwner_BothFirstAndLastZero(t *testing.T) {
 }
 
 // TestCardgroupRepo_FindPageByOwner_NegativeFirstClampedToZero verifies
-// clampCardgroupPageSize maps a negative first to 0 and triggers the
-// short-circuit path described above.
+// clampPageSize maps a negative first to 0 and triggers the short-circuit
+// path described above.
 func TestCardgroupRepo_FindPageByOwner_NegativeFirstClampedToZero(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

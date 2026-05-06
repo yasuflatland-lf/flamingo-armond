@@ -133,8 +133,8 @@ func (r *cardgroupRepo) FindPageByOwner(
 	dir SortOrder,
 	search *string,
 ) ([]*domain.Cardgroup, error) {
-	first = clampCardgroupPageSize(first)
-	last = clampCardgroupPageSize(last)
+	first = clampPageSize(first)
+	last = clampPageSize(last)
 
 	if first == 0 && last == 0 {
 		return []*domain.Cardgroup{}, nil
@@ -154,11 +154,9 @@ func (r *cardgroupRepo) FindPageByOwner(
 	}
 
 	q := r.db.WithContext(ctx).Model(&gormCardgroup{}).Where("owner_id = ?", ownerID)
-
 	if pattern, ok := cardgroupSearchPattern(search); ok {
 		q = q.Where("name ILIKE ?", pattern)
 	}
-
 	if cursor != nil {
 		clauseSQL, args, err := cardgroupCursorWhere(orderBy, effectiveDir, cursor)
 		if err != nil {
@@ -166,7 +164,6 @@ func (r *cardgroupRepo) FindPageByOwner(
 		}
 		q = q.Where(clauseSQL, args...)
 	}
-
 	q = q.Order(cardgroupOrderClause(orderBy, effectiveDir)).Limit(limit)
 
 	var rows []gormCardgroup
@@ -216,28 +213,14 @@ func cardgroupSearchPattern(search *string) (string, bool) {
 	return "%" + escapeLikePattern(trimmed) + "%", true
 }
 
-// clampCardgroupPageSize bounds the per-direction limit at pageCap (101) so
-// the usecase's "+1 fetch" trick survives a request at the documented max
-// of 100.
-func clampCardgroupPageSize(n int) int {
-	if n < 0 {
-		return 0
-	}
-	if n > pageCap {
-		return pageCap
-	}
-	return n
-}
-
 // cardgroupOrderClause renders the SQL ORDER BY tail. When orderBy is `id`
 // only one column appears; otherwise the secondary `id` keeps the ordering
 // total.
 func cardgroupOrderClause(orderBy CardgroupOrderBy, dir SortOrder) string {
-	d := string(dir)
 	if orderBy == CardgroupOrderByID {
-		return "id " + d
+		return "id " + string(dir)
 	}
-	return string(orderBy) + " " + d + ", id " + d
+	return string(orderBy) + " " + string(dir) + ", id " + string(dir)
 }
 
 // cardgroupCursorWhere builds the tuple-comparison WHERE for the supplied
