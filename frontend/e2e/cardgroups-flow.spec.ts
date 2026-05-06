@@ -3,8 +3,7 @@ import { expect, test } from "@playwright/test";
 import { loginAs, seedCardgroup, seedUser } from "./_auth";
 
 // Covers the cardgroup-creation navigation refactor:
-//   - Footer link on /cardgroups (with at least one cardgroup)
-//   - Empty-state CTA on /cardgroups (zero cardgroups)
+//   - Primary action on /cardgroups (with at least one cardgroup) and empty state
 //   - Picker-driven create flow from /cards/new
 //   - Open-redirect rejection for external returnTo values
 
@@ -49,10 +48,11 @@ test.describe
     });
 
     // ── Scenario 1 ──────────────────────────────────────────────────────────────
-    // Footer-link path on /cardgroups: with at least one cardgroup the footer
-    // "New cardgroup" link is visible at the bottom of the list. Clicking it
-    // lands on /cardgroups/new with no returnTo, and the form is interactive.
-    test("footer link on /cardgroups leads to /cardgroups/new without returnTo", async ({
+    // Primary action on /cardgroups: with at least one cardgroup the "+ New
+    // cardgroup" link is visible in the page-shell header (primaryActions).
+    // Clicking it lands on /cardgroups/new with no returnTo, and the form is
+    // interactive.
+    test("primary action on /cardgroups leads to /cardgroups/new without returnTo", async ({
       context,
       page,
     }) => {
@@ -64,24 +64,14 @@ test.describe
       // The seeded cardgroup must be visible, confirming the non-empty branch renders.
       await expect(page.getByText(seededCardgroupName)).toBeVisible();
 
-      // The large dashed-border CTA must NOT be present in the non-empty branch.
-      await expect(
-        page
-          .getByRole("link", { name: "New cardgroup" })
-          .filter({ hasText: "New cardgroup" })
-          .first(),
-      ).toBeVisible();
-
-      // Locate the footer link specifically — it lives inside the border-t container
-      // after the list, not the empty-state CTA. Both branches use the same link
-      // text so we scope to the wrapper that renders only in the non-empty branch.
-      const footerScope = page.locator(".mt-6.border-t.pt-4");
-      const footerLink = footerScope.getByRole("link", { name: /New cardgroup/ });
-      await expect(footerLink).toBeVisible();
-      await expect(footerLink).toHaveAttribute("href", "/cardgroups/new");
+      // The primary "+ New cardgroup" action in the page-shell header.
+      // After the listing-page-shell refactor it lives in primaryActions, not the footer.
+      const newCardgroupLink = page.getByRole("link", { name: /New cardgroup/ });
+      await expect(newCardgroupLink).toBeVisible();
+      await expect(newCardgroupLink).toHaveAttribute("href", "/cardgroups/new");
 
       // Click it and verify we land on /cardgroups/new with the form interactive.
-      await footerLink.click();
+      await newCardgroupLink.click();
       await page.waitForURL("**/cardgroups/new", { timeout: 10_000 });
       await expect(page.getByRole("heading", { name: "New cardgroup" })).toBeVisible();
       await expect(page.getByLabel("Name")).toBeVisible();
@@ -89,9 +79,10 @@ test.describe
     });
 
     // ── Scenario 2 ──────────────────────────────────────────────────────────────
-    // Empty-state on /cardgroups: with zero cardgroups the dashed-border large CTA
-    // is the only "New cardgroup" affordance; the footer link is not present.
-    test("empty state on /cardgroups shows only the dashed CTA, not the footer link", async ({
+    // Empty-state on /cardgroups: with zero cardgroups the "No cardgroups yet"
+    // copy is shown. The primary action link in the page-shell header is the
+    // only "New cardgroup" affordance (the dashed empty-state CTA was removed).
+    test("empty state on /cardgroups shows the empty-state copy and primary action", async ({
       context,
       page,
     }) => {
@@ -100,16 +91,16 @@ test.describe
       const response = await page.goto("/cardgroups");
       expect(response?.ok(), `goto /cardgroups returned ${response?.status()}`).toBe(true);
 
-      // The empty-state description text confirms we are in the zero-cardgroup branch.
-      await expect(page.getByText("You haven't created any cardgroups yet.")).toBeVisible();
+      // The empty-state copy confirms we are in the zero-cardgroup branch.
+      // After the listing-page-shell refactor the copy is "No cardgroups yet".
+      await expect(page.getByText("No cardgroups yet")).toBeVisible();
 
-      // The dashed-border CTA link must be visible.
-      const ctaLink = page.getByRole("link", { name: "New cardgroup" });
-      await expect(ctaLink).toBeVisible();
+      // The primary action link is rendered in the page-shell header even in the empty state.
+      const newCardgroupLink = page.getByRole("link", { name: /New cardgroup/ });
+      await expect(newCardgroupLink).toBeVisible();
 
-      // There must be exactly ONE "New cardgroup" link — the footer link is absent
-      // in the empty-state branch.
-      await expect(ctaLink).toHaveCount(1);
+      // There is exactly one "New cardgroup" link (the dashed empty-state CTA was removed).
+      await expect(newCardgroupLink).toHaveCount(1);
     });
 
     // ── Scenario 3 ──────────────────────────────────────────────────────────────
