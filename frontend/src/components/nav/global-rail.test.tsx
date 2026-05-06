@@ -283,29 +283,6 @@ describe("<GlobalRail>", () => {
       expect(profileLink).toHaveAttribute("href", "/profile");
     });
 
-    it("renders the user's email in the footer when user.email is a string", () => {
-      mockUsePathname.mockReturnValue("/");
-      const { container } = renderRail({
-        user: { email: "alice@example.com" },
-        isAdmin: false,
-      });
-
-      expect(within(getFooter(container)).getByText("alice@example.com")).toBeInTheDocument();
-    });
-
-    it("does NOT render any email <p> when user.email is null", () => {
-      mockUsePathname.mockReturnValue("/");
-      const { container } = renderRail({
-        user: { email: null },
-        isAdmin: false,
-      });
-
-      // The footer is still mounted (Profile + Logout still render), but no
-      // email text appears anywhere inside it.
-      const footer = getFooter(container);
-      expect(within(footer).queryByText(/@/)).not.toBeInTheDocument();
-    });
-
     it("renders the Logout button (mocked) in the footer", () => {
       mockUsePathname.mockReturnValue("/");
       const { container } = renderRail({
@@ -314,19 +291,6 @@ describe("<GlobalRail>", () => {
       });
 
       expect(within(getFooter(container)).getByTestId("logout-button")).toBeInTheDocument();
-    });
-
-    it("the email <p> carries the group-data-[collapsible=icon]:hidden class so it collapses with the rail (per A-3)", () => {
-      mockUsePathname.mockReturnValue("/");
-      const { container } = renderRail({
-        user: { email: "alice@example.com" },
-        isAdmin: false,
-      });
-
-      const emailEl = within(getFooter(container)).getByText("alice@example.com");
-      // Use className.includes — the element carries multiple Tailwind classes
-      // and we only need to assert the presence of the collapsed-hide one.
-      expect(emailEl.className.includes("group-data-[collapsible=icon]:hidden")).toBe(true);
     });
 
     it("the Logout button's wrapping div carries the group-data-[collapsible=icon]:hidden class so the labelled button hides in the icon-only state", () => {

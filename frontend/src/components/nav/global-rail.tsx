@@ -211,12 +211,6 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
             </SidebarMenuItem>
           </SidebarMenu>
 
-          {user.email !== null && (
-            <p className="truncate px-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-              {user.email}
-            </p>
-          )}
-
           {/*
             Wrap LogoutButton in a div with the collapsed-hide class so the
             button label collapses with the rail. The class is intentionally on
