@@ -16,13 +16,14 @@ import (
 // gormUser is the row mapping for public.users. Package-private so
 // callers cannot bypass the domain conversion.
 type gormUser struct {
-	ID                    string    `gorm:"column:id;primaryKey;type:uuid"`
-	DisplayName           *string   `gorm:"column:display_name"`
-	Bio                   *string   `gorm:"column:bio"`
-	AvatarURL             *string   `gorm:"column:avatar_url"`
-	LastViewedCardgroupID *string   `gorm:"column:last_viewed_cardgroup_id;type:uuid"`
-	CreatedAt             time.Time `gorm:"column:created_at"`
-	UpdatedAt             time.Time `gorm:"column:updated_at"`
+	ID                    string     `gorm:"column:id;primaryKey;type:uuid"`
+	DisplayName           *string    `gorm:"column:display_name"`
+	Bio                   *string    `gorm:"column:bio"`
+	AvatarURL             *string    `gorm:"column:avatar_url"`
+	LastViewedCardgroupID *string    `gorm:"column:last_viewed_cardgroup_id;type:uuid"`
+	LastActive            *time.Time `gorm:"column:last_active"`
+	CreatedAt             time.Time  `gorm:"column:created_at"`
+	UpdatedAt             time.Time  `gorm:"column:updated_at"`
 }
 
 func (gormUser) TableName() string { return "users" }
@@ -87,8 +88,12 @@ type UserRepository interface {
 	// Whitespace-only input is treated as nil. `%` and `_` literals in the
 	// search term are escaped so they match literally.
 	//
-	// total is computed via a separate COUNT(*) scoped by the same search
-	// predicate as the page query (cursor predicate excluded).
+	// roleID, when non-nil and non-empty, restricts results to users that have
+	// a row in user_roles with the given role_id. The same filter applies to
+	// the totalCount query so the count stays consistent with the page.
+	//
+	// total is computed via a separate COUNT(*) scoped by the same search and
+	// roleID predicates as the page query (cursor predicate excluded).
 	//
 	// Repository caps page size at userPageCap so callers can use the
 	// usecase-level +1 fetch trick at the documented maximum.
@@ -97,7 +102,13 @@ type UserRepository interface {
 		after, before *string,
 		first, last int,
 		search *string,
+		roleID *string,
 	) (users []*domain.User, total int64, err error)
+	// TouchLastActive sets users.last_active to the current DB timestamp for
+	// the given userID in a single UPDATE statement. Returns nil when no row
+	// is affected (the user row may not yet exist locally — that is expected
+	// during lazy account creation and must not block the request).
+	TouchLastActive(ctx context.Context, userID string) error
 }
 
 type userRepo struct{ db *gorm.DB }
@@ -170,6 +181,7 @@ func (r *userRepo) ListPage(
 	after, before *string,
 	first, last int,
 	search *string,
+	roleID *string,
 ) ([]*domain.User, int64, error) {
 	if first < 0 || last < 0 {
 		return nil, 0, eris.New("user repo: first/last must be >= 0")
@@ -189,14 +201,23 @@ func (r *userRepo) ListPage(
 		}
 	}
 
-	// totalCount mirrors the page predicate (search only) but ignores the
-	// cursor predicate, so callers can compute "items after this point" /
+	// Normalise roleID: nil or empty string means no filter.
+	hasRoleFilter := roleID != nil && *roleID != ""
+
+	// totalCount mirrors the page predicates (search + roleID) but ignores
+	// the cursor predicate, so callers can compute "items after this point" /
 	// "page X of Y" without a second round-trip. Run before the zero-page
 	// short-circuit so callers asking only for totalCount still get a real
 	// value.
 	countQ := r.db.WithContext(ctx).Model(&gormUser{})
 	if hasSearch {
 		countQ = countQ.Where("display_name ILIKE ?", searchPattern)
+	}
+	if hasRoleFilter {
+		countQ = countQ.Where(
+			"EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = users.id AND ur.role_id = ?)",
+			*roleID,
+		)
 	}
 	var total int64
 	if err := countQ.Count(&total).Error; err != nil {
@@ -227,6 +248,12 @@ func (r *userRepo) ListPage(
 	q := r.db.WithContext(ctx).Model(&gormUser{})
 	if hasSearch {
 		q = q.Where("display_name ILIKE ?", searchPattern)
+	}
+	if hasRoleFilter {
+		q = q.Where(
+			"EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = users.id AND ur.role_id = ?)",
+			*roleID,
+		)
 	}
 
 	if cursorID != nil {
@@ -336,9 +363,26 @@ func userToDomain(g gormUser) *domain.User {
 		Bio:                   g.Bio,
 		AvatarURL:             g.AvatarURL,
 		LastViewedCardgroupID: g.LastViewedCardgroupID,
+		LastActive:            g.LastActive,
 		CreatedAt:             g.CreatedAt,
 		UpdatedAt:             g.UpdatedAt,
 	}
+}
+
+// TouchLastActive sets users.last_active to the current DB timestamp for the
+// given userID in a single UPDATE. No error is returned when zero rows are
+// affected: the user row may not yet exist locally during lazy account creation
+// and missing rows must not block the calling request.
+func (r *userRepo) TouchLastActive(ctx context.Context, userID string) error {
+	res := r.db.WithContext(ctx).
+		Model(&gormUser{}).
+		Where("id = ?", userID).
+		Update("last_active", gorm.Expr("NOW()"))
+	if res.Error != nil {
+		return eris.Wrap(res.Error, "user.TouchLastActive")
+	}
+	// Zero rows affected is not an error — the user row is created lazily.
+	return nil
 }
 
 // SetLastViewedCardgroup performs an ownership-checked UPDATE in a single SQL

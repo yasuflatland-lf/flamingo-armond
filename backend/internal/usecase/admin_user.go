@@ -64,6 +64,7 @@ type AdminUserUsecase interface {
 		ctx context.Context,
 		first, last *int,
 		after, before, search *string,
+		roleID *string,
 	) (*AdminUserConnection, error)
 	Get(ctx context.Context, id string) (*domain.User, error)
 	Update(ctx context.Context, id string, input AdminUpdateUserInput) (*domain.User, error)
@@ -82,6 +83,7 @@ type adminUserRepository interface {
 		after, before *string,
 		first, last int,
 		search *string,
+		roleID *string,
 	) ([]*domain.User, int64, error)
 }
 
@@ -161,6 +163,7 @@ func (u *adminUserUsecase) List(
 	ctx context.Context,
 	first, last *int,
 	after, before, search *string,
+	roleID *string,
 ) (*AdminUserConnection, error) {
 	if _, err := u.requireAdmin(ctx); err != nil {
 		return nil, err
@@ -201,7 +204,7 @@ func (u *adminUserUsecase) List(
 		repoLast++
 	}
 
-	users, total, err := u.users.ListPage(ctx, after, before, repoFirst, repoLast, search)
+	users, total, err := u.users.ListPage(ctx, after, before, repoFirst, repoLast, search, roleID)
 	if err != nil {
 		if errors.Is(err, repository.ErrCursorNotFound) {
 			field := "after"

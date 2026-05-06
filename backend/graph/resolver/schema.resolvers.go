@@ -361,8 +361,8 @@ func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.Vali
 }
 
 // Users is the resolver for the users field.
-func (r *queryResolver) Users(ctx context.Context, first *int, after *string, last *int, before *string, search *string) (*model.UserConnection, error) {
-	uc, err := r.AdminUserUC.List(ctx, first, last, after, before, search)
+func (r *queryResolver) Users(ctx context.Context, first *int, after *string, last *int, before *string, search *string, roleID *string) (*model.UserConnection, error) {
+	uc, err := r.AdminUserUC.List(ctx, first, last, after, before, search, roleID)
 	if err != nil {
 		return nil, err
 	}

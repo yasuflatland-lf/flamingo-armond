@@ -14,6 +14,10 @@ type User struct {
 	// ON DELETE SET NULL FK so a deleted cardgroup nulls the column without
 	// cascading to the user row.
 	LastViewedCardgroupID *string
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
+	// LastActive is the timestamp of the most recent authenticated request
+	// recorded by the auth middleware. Nil when the user has never made an
+	// authenticated request after the column was introduced.
+	LastActive *time.Time
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }

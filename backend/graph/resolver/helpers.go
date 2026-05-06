@@ -18,6 +18,7 @@ func toUserModel(user *domain.User) *model.User {
 		DisplayName: user.DisplayName,
 		Bio:         user.Bio,
 		AvatarURL:   user.AvatarURL,
+		LastActive:  user.LastActive,
 	}
 	// LastViewedCardgroup carries only the ID across the model boundary; the
 	// userResolver.LastViewedCardgroup field resolver hydrates the rest via the
