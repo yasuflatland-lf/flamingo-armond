@@ -18,7 +18,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
 
   const { error } = await searchParams;
   return (
-    <div data-testid="login-grid" className="relative grid h-svh lg:grid-cols-2">
+    <main data-testid="login-grid" className="relative grid h-svh lg:grid-cols-2">
       {/* Brand panel — hidden below lg breakpoint */}
       <div
         data-testid="brand-panel"
@@ -52,6 +52,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
           .
         </footer>
       </div>
-    </div>
+    </main>
   );
 }

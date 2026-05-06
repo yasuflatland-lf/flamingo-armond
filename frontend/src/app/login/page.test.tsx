@@ -155,4 +155,34 @@ describe("LoginPage", () => {
     expect(screen.getByRole("link", { name: /terms/i })).toHaveAttribute("href", "/terms");
     expect(screen.getByRole("link", { name: /privacy/i })).toHaveAttribute("href", "/privacy");
   });
+
+  it("split-screen: Sign in heading renders as h1", async () => {
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
+
+    const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
+    render(jsx);
+
+    expect(screen.getByRole("heading", { level: 1, name: /sign in/i })).toBeInTheDocument();
+  });
+
+  it("split-screen: main landmark is present for screen reader navigation", async () => {
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
+
+    const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
+    render(jsx);
+
+    expect(screen.getByRole("main")).toBeInTheDocument();
+  });
+
+  it("split-screen: error banner and brand panel both render when error param is set", async () => {
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
+
+    const jsx = await LoginPage({ searchParams: Promise.resolve({ error: "access_denied" }) });
+    const { container } = render(jsx);
+
+    expect(container.querySelector("[data-testid='login-grid']")).toBeInTheDocument();
+    expect(container.querySelector("[data-testid='brand-panel']")).toBeInTheDocument();
+    expect(screen.getByText(/sign-in failed: access_denied/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
+  });
 });

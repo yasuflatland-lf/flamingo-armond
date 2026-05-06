@@ -28,7 +28,6 @@ export function AppShell({ user, isAdmin, children }: AppShellProps) {
           Sidebar gap div participates in the flex row and offsets SidebarInset.
           The wrapper is hidden on mobile; the Sidebar component handles mobile
           display internally via a Sheet overlay. */}
-      {/* PC layout (md+): persistent rail on the left */}
       <aside
         data-testid="rail-container"
         className="hidden md:flex"
