@@ -17,7 +17,7 @@ export default async function ChangeEmailPage() {
   if (!user) redirect("/login");
 
   return (
-    <main className="mx-auto max-w-xl p-8">
+    <main className="p-8">
       <h1 className="mb-6 text-2xl font-semibold">Change email</h1>
       <ChangeEmailClient currentEmail={user.email ?? null} />
     </main>

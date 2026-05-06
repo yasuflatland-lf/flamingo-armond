@@ -29,7 +29,7 @@ export default function ProfileError({ error, reset }: ErrorPageProps) {
   }, [error, router]);
 
   return (
-    <main className="mx-auto max-w-xl p-8">
+    <main className="p-8">
       <h1 className="mb-3 text-2xl font-semibold">Couldn&apos;t load your profile</h1>
       <p className="mb-6 text-sm text-muted-foreground">
         Something went wrong while loading your profile. Please try again in a moment.
