@@ -31,7 +31,7 @@ export default async function CardgroupsPage() {
   const cardgroups = data.myCardgroups;
 
   return (
-    <main className="mx-auto max-w-2xl p-8">
+    <main className="p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold">My Cardgroups</h1>
       </div>
