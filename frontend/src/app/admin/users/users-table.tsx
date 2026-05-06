@@ -61,6 +61,12 @@ export function UsersTable({
   onPageSizeChange,
   isLoading,
 }: UsersTableProps): React.ReactElement {
+  if (pageSize <= 0 || pageIndex < 0 || totalCount < 0) {
+    throw new Error(
+      `UsersTable: invalid pagination state — pageIndex=${pageIndex}, pageSize=${pageSize}, totalCount=${totalCount}`,
+    );
+  }
+
   const totalPages = Math.ceil(totalCount / pageSize);
 
   /**
@@ -93,6 +99,10 @@ export function UsersTable({
       pagination: { pageIndex, pageSize },
     },
     onPaginationChange: handlePaginationChange,
+    // Row selection is intentionally disabled — the listing has no bulk
+    // actions, and DataTablePagination uses this flag to suppress its
+    // "N of M selected" counter.
+    enableRowSelection: false,
   });
 
   return (

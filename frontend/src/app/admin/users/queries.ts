@@ -17,6 +17,7 @@ export const ADMIN_USERS_DEFAULT_VARS: AdminUsersQueryVariables = {
   first: ADMIN_USERS_PAGE_SIZE,
   search: null,
   roleId: null,
+  after: null,
 };
 
 export const AdminUserFieldsFragment = graphql(`

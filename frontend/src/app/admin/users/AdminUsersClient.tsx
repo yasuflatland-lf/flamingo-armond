@@ -12,7 +12,7 @@ import {
   AdminUsersDocument,
   type AdminUsersQuery,
 } from "@/generated/graphql";
-import { classifyQueryError, getBackendErrorBanner } from "@/lib/apollo/errors";
+import { classifyQueryError } from "@/lib/apollo/errors";
 import { ADMIN_USERS_DEFAULT_VARS, ADMIN_USERS_PAGE_SIZE } from "./queries";
 import { type AdminUserRow, getUsersColumns } from "./users-columns";
 import { UsersTable } from "./users-table";
@@ -33,18 +33,6 @@ interface AdminUsersClientProps {
 }
 
 /**
- * Read pageIndex from a URL `?page=N` value (1-based). Returns 0 when the
- * value is missing, non-numeric, or < 1. The URL convention is 1-based for
- * human-friendliness; internal state is 0-based.
- */
-function parsePageParam(raw: string | null): number {
-  if (raw === null) return 0;
-  const n = Number.parseInt(raw, 10);
-  if (Number.isNaN(n) || n < 1) return 0;
-  return n - 1;
-}
-
-/**
  * Convert a masked Connection edge into the AdminUserRow shape consumed by
  * the DataTable. Fragment masking is compile-time only (see
  * `frontend/src/generated/fragment-masking.ts` — `useFragment` is a pure
@@ -55,15 +43,16 @@ function parsePageParam(raw: string | null): number {
  *   plain object").
  */
 function edgeToRow(edge: Edge): AdminUserRow {
-  const user = edge.node as unknown as AdminUserFieldsFragmentType;
-  const roles = edge.node.roles as unknown as AdminRoleFieldsFragmentType[];
+  // Fragment masking is compile-time only at runtime — see docs/frontend.md.
+  const node = edge.node as unknown as AdminUserFieldsFragmentType & {
+    roles: AdminRoleFieldsFragmentType[];
+  };
   return {
-    id: user.id,
-    displayName: user.displayName ?? null,
-    bio: user.bio ?? null,
-    avatarUrl: user.avatarUrl ?? null,
-    lastActive: user.lastActive ?? null,
-    roles: roles.map((r) => ({ id: r.id, name: r.name })),
+    id: node.id,
+    displayName: node.displayName ?? null,
+    avatarUrl: node.avatarUrl ?? null,
+    lastActive: node.lastActive ?? null,
+    roles: node.roles.map((r) => ({ id: r.id, name: r.name })),
   };
 }
 
@@ -84,20 +73,26 @@ export function AdminUsersClient({ initialConnection }: AdminUsersClientProps) {
   const [roleFilter, setRoleFilter] = useState<string | null>(
     () => searchParams.get("roleId") || null,
   );
-  const [pageIndex, setPageIndex] = useState<number>(() =>
-    parsePageParam(searchParams.get("page")),
-  );
+  // Page index is intentionally not URL-synced; cursor walks make non-zero
+  // deep links unsupportable. Search and roleId remain URL-synced.
+  const [pageIndex, setPageIndex] = useState<number>(0);
   const [pageSize, setPageSize] = useState<number>(ADMIN_USERS_PAGE_SIZE);
   // Map page index -> the `after` cursor that produces that page (page 0 = null).
   // Discrete pagination over a Relay Connection requires a cursor walk: when
   // navigating to page N for the first time, we walk forward issuing fetchMore
   // for each missing cursor and stash each resulting endCursor. For backward
-  // navigation, the cursor is already cached. Cursor walks N times — fine for
-  // /admin/users sizes, per the issue's Implementation Notes (option (a)).
+  // navigation, the cursor is already cached.
+  // Cursor walks N times for "goto page N" first visits — acceptable because
+  // the admin users count is bounded (operator workflow, not a high-traffic
+  // listing) and cached cursors short-circuit subsequent revisits.
   const [cursorByPage, setCursorByPage] = useState<Map<number, string | null>>(
     () => new Map([[0, null]]),
   );
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
+  // Track whether the current fetchMoreError is a FORBIDDEN error. Retry would
+  // loop forever on a session-revoked role, so the Retry button must be
+  // suppressed in that case.
+  const [fetchMoreErrorIsForbidden, setFetchMoreErrorIsForbidden] = useState(false);
 
   // Strict Mode / re-render safe in-flight guard for fetchMore. Required to
   // prevent overlapping cursor walks. See .claude/rules/pagination.md.
@@ -107,9 +102,12 @@ export function AdminUsersClient({ initialConnection }: AdminUsersClientProps) {
 
   // ------------------------------------------------------------------
   // SSR seed: write initialConnection into the cache once on mount with
-  // ADMIN_USERS_DEFAULT_VARS as the cache key. The first useQuery pass on
-  // the default view becomes a cache hit. Non-default URLs (search, role,
-  // page > 0) miss the seed — that is fine; they fall through to a fetch.
+  // ADMIN_USERS_DEFAULT_VARS as the cache key. useQuery runs during the
+  // first render before this effect fires, so the initial pass still
+  // dispatches a fetch — but the seed populates the cache before paint
+  // so the rendered tree shows server-fetched data without a network
+  // round-trip blocking the user. Non-default URLs (search, role)
+  // miss the seed; they fall through to a fetch.
   // ------------------------------------------------------------------
   useEffect(() => {
     if (seededRef.current || initialConnection == null) return;
@@ -142,23 +140,25 @@ export function AdminUsersClient({ initialConnection }: AdminUsersClientProps) {
   useEffect(() => {
     fetchingRef.current = false;
     setFetchMoreError(null);
+    setFetchMoreErrorIsForbidden(false);
     setPageIndex(0);
     setCursorByPage(new Map([[0, null]]));
   }, [searchQuery, roleFilter]);
 
   // ------------------------------------------------------------------
-  // URL sync: reflect searchQuery / roleFilter / pageIndex into ?search&roleId&page.
-  // Build via URLSearchParams (never string-interpolated).
+  // URL sync: reflect searchQuery / roleFilter into ?search&roleId.
+  // Page index is intentionally NOT synced — cursor walks make non-zero deep
+  // links unsupportable (we'd need cursors we never fetched). Build via
+  // URLSearchParams (never string-interpolated).
   // ------------------------------------------------------------------
   useEffect(() => {
     const params = new URLSearchParams();
     if (searchQuery !== null) params.set("search", searchQuery);
     if (roleFilter !== null) params.set("roleId", roleFilter);
-    if (pageIndex > 0) params.set("page", String(pageIndex + 1));
     const qs = params.toString();
     const target = qs.length > 0 ? `/admin/users?${qs}` : "/admin/users";
     router.replace(target, { scroll: false });
-  }, [router, searchQuery, roleFilter, pageIndex]);
+  }, [router, searchQuery, roleFilter]);
 
   // ------------------------------------------------------------------
   // Apollo wiring
@@ -198,6 +198,20 @@ export function AdminUsersClient({ initialConnection }: AdminUsersClientProps) {
     const masked = (rolesResult.data?.roles ?? []) as unknown as AdminRoleFieldsFragmentType[];
     return masked.map((r) => ({ id: r.id, name: r.name }));
   }, [rolesResult.data]);
+
+  // Surface an AdminRoles query failure to operator triage. The dropdown
+  // silently degrades to empty (non-fatal for the rest of the page), but the
+  // failure must be observable in logs. err.message is omitted because backend
+  // GraphQL error messages may carry user-authored content (PII gate).
+  // The dep array lists rolesResult.error as the trigger and the body reads
+  // only that field, so the deps are intentionally exhaustive.
+  useEffect(() => {
+    if (rolesResult.error) {
+      console.warn("[admin-users] AdminRoles query failed", {
+        name: rolesResult.error.name,
+      });
+    }
+  }, [rolesResult.error]);
 
   const queryErrorKind = classifyQueryError(queryError);
 
@@ -261,8 +275,14 @@ export function AdminUsersClient({ initialConnection }: AdminUsersClientProps) {
           });
           setPageIndex(next);
           setFetchMoreError(null);
+          setFetchMoreErrorIsForbidden(false);
         })
         .catch((err) => {
+          const kind = classifyQueryError(err);
+          if (kind?.kind === "unauthenticated") {
+            redirect("/");
+            return;
+          }
           // Structured warn for operator triage. err.message is omitted because
           // backend messages may carry user-authored content.
           // See .claude/rules/frontend-typescript-conventions.md.
@@ -272,9 +292,13 @@ export function AdminUsersClient({ initialConnection }: AdminUsersClientProps) {
             searchQuery,
             roleId: roleFilter,
           });
-          setFetchMoreError(
-            getBackendErrorBanner(err) ?? "Could not load this page. Please try again.",
-          );
+          if (kind?.kind === "forbidden") {
+            setFetchMoreError("You no longer have permission to load more users.");
+            setFetchMoreErrorIsForbidden(true);
+            return;
+          }
+          setFetchMoreError(kind?.message ?? "Could not load this page. Please try again.");
+          setFetchMoreErrorIsForbidden(false);
         })
         .finally(() => {
           fetchingRef.current = false;
@@ -341,17 +365,20 @@ export function AdminUsersClient({ initialConnection }: AdminUsersClientProps) {
           data-testid="admin-users-fetch-more-error"
         >
           <span>{fetchMoreError}</span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setFetchMoreError(null);
-              handlePageChange(pageIndex + 1);
-            }}
-          >
-            Retry
-          </Button>
+          {/* FORBIDDEN — no Retry; re-issuing the request would fail again */}
+          {!fetchMoreErrorIsForbidden && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setFetchMoreError(null);
+                handlePageChange(pageIndex + 1);
+              }}
+            >
+              Retry
+            </Button>
+          )}
         </div>
       )}
 

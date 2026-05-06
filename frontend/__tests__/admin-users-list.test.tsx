@@ -438,7 +438,7 @@ describe("AdminUsersClient — DataTable shape", () => {
 
     // DataTablePagination has one "Go to next page" button.
     const nextButtons = screen.getAllByRole("button", { name: /go to next page/i });
-    const nextButton = nextButtons[0];
+    const nextButton = nextButtons[0] as HTMLElement;
     expect(nextButton).not.toBeDisabled();
     await ue.click(nextButton);
 
@@ -513,7 +513,7 @@ describe("AdminUsersClient — DataTable shape", () => {
 
     // Navigate to page 2.
     const nextButtons = screen.getAllByRole("button", { name: /go to next page/i });
-    await ue.click(nextButtons[0]);
+    await ue.click(nextButtons[0] as HTMLElement);
 
     await waitFor(() => {
       expect(screen.getByText("User 101")).toBeInTheDocument();
@@ -525,7 +525,7 @@ describe("AdminUsersClient — DataTable shape", () => {
     // handlePageChange checks cursorByPage.has(0) → true → just setPageIndex(0).
     // No new fetchMore fires. useQuery with PAGE_0_VARS may be a cache hit.
     const prevButtons = screen.getAllByRole("button", { name: /go to previous page/i });
-    await ue.click(prevButtons[0]);
+    await ue.click(prevButtons[0] as HTMLElement);
 
     // After navigating back, nextPageCalls must NOT have increased from a new fetchMore.
     await waitFor(() => {
@@ -623,7 +623,7 @@ describe("AdminUsersClient — DataTable shape", () => {
 
     // Navigate to page 2.
     const nextButtons = screen.getAllByRole("button", { name: /go to next page/i });
-    await ue.click(nextButtons[0]);
+    await ue.click(nextButtons[0] as HTMLElement);
     await waitFor(() => {
       expect(screen.getByText("User 101")).toBeInTheDocument();
     });
@@ -714,7 +714,7 @@ describe("AdminUsersClient — DataTable shape", () => {
 
     // Click next — fetchMore fails.
     const nextButtons = screen.getAllByRole("button", { name: /go to next page/i });
-    await ue.click(nextButtons[0]);
+    await ue.click(nextButtons[0] as HTMLElement);
 
     // Error banner with Retry appears.
     const errorBanner = await screen.findByTestId("admin-users-fetch-more-error");
@@ -801,8 +801,8 @@ describe("AdminUsersClient — DataTable shape", () => {
     const nextButtons = screen.getAllByRole("button", { name: /go to next page/i });
 
     // Click next twice back-to-back — in-flight guard must absorb the second.
-    await ue.click(nextButtons[0]);
-    await ue.click(nextButtons[0]);
+    await ue.click(nextButtons[0] as HTMLElement);
+    await ue.click(nextButtons[0] as HTMLElement);
 
     await waitFor(() => {
       expect(screen.getByText("User 101")).toBeInTheDocument();
@@ -863,7 +863,7 @@ describe("AdminUsersClient — DataTable shape", () => {
     expect(await screen.findByText("User 1")).toBeInTheDocument();
 
     const nextButtons = screen.getAllByRole("button", { name: /go to next page/i });
-    await ue.click(nextButtons[0]);
+    await ue.click(nextButtons[0] as HTMLElement);
 
     // Wait for the error banner.
     await screen.findByTestId("admin-users-fetch-more-error");

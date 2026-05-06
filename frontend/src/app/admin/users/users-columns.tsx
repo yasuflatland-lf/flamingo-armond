@@ -27,7 +27,6 @@ import {
 export type AdminUserRow = {
   id: string;
   displayName: string | null;
-  bio: string | null;
   avatarUrl: string | null;
   lastActive: string | null;
   roles: { id: string; name: string }[];
@@ -65,8 +64,12 @@ function formatRelativeTime(lastActive: string | null): React.ReactNode {
     return <span className="text-muted-foreground">Never</span>;
   }
 
-  const now = Date.now();
-  const diffMs = now - new Date(lastActive).getTime();
+  const parsed = new Date(lastActive).getTime();
+  if (Number.isNaN(parsed)) {
+    console.warn("[admin-users] invalid lastActive timestamp", { length: lastActive.length });
+    return <span className="text-muted-foreground italic">unknown</span>;
+  }
+  const diffMs = Date.now() - parsed;
   const diffSec = Math.floor(diffMs / 1000);
 
   if (diffSec < 60) return "Just now";
@@ -89,9 +92,11 @@ function formatRelativeTime(lastActive: string | null): React.ReactNode {
 
 /**
  * Returns TanStack Table column definitions for the admin users DataTable.
- *
- * All columns are non-sortable; ordering is controlled server-side via the
- * cursor-based connection. See `.claude/rules/pagination.md` for the design.
+ * `enableSorting: false` on every column is intentional — the server
+ * connection has a fixed (created_at DESC, id ASC) order baked into cursor
+ * encoding (see `.claude/rules/pagination.md`). Enabling client-side sort
+ * would re-order the visible page only, leaving page boundaries inconsistent
+ * with the cursors.
  */
 export function getUsersColumns(): ColumnDef<AdminUserRow>[] {
   return [
