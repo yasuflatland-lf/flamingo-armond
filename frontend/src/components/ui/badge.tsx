@@ -1,5 +1,5 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -15,8 +15,7 @@ const badgeVariants = cva(
           "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
         outline: "text-foreground",
         // admin variant: distinct blue style for the admin role badge
-        admin:
-          "border-transparent bg-blue-600 text-white hover:bg-blue-600/80",
+        admin: "border-transparent bg-blue-600 text-white hover:bg-blue-600/80",
       },
     },
     defaultVariants: {

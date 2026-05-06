@@ -1,14 +1,14 @@
 "use client";
 
-import * as React from "react";
 import {
+  type ColumnDef,
   flexRender,
   getCoreRowModel,
-  useReactTable,
-  type ColumnDef,
   type PaginationState,
   type Updater,
+  useReactTable,
 } from "@tanstack/react-table";
+import type * as React from "react";
 
 import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import {

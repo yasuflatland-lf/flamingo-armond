@@ -1070,9 +1070,7 @@ describe("AdminUsersClient — DataTable shape", () => {
         typeof args[0] === "string" &&
         args[0].includes("[admin-users] AdminRoles query failed"),
     );
-    expect(adminRolesWarns[0]?.[1]).toEqual(
-      expect.objectContaining({ name: expect.any(String) }),
-    );
+    expect(adminRolesWarns[0]?.[1]).toEqual(expect.objectContaining({ name: expect.any(String) }));
 
     // Teardown LIFO: outer spy first, then leak spy in afterEach.
     outerWarnSpy.mockRestore();
