@@ -19,7 +19,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   const { error } = await searchParams;
   return (
     <main data-testid="login-grid" className="relative grid h-svh lg:grid-cols-2">
-      {/* Brand panel — hidden below lg breakpoint */}
       <div
         data-testid="brand-panel"
         className="max-lg:hidden flex flex-col items-center justify-center gap-6 bg-brand-tint"
@@ -33,7 +32,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
         </div>
       </div>
 
-      {/* Form column — always visible */}
       <div className="flex flex-col">
         <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
           <h1 className="text-2xl font-semibold">Sign in</h1>
