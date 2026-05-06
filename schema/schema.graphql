@@ -76,9 +76,23 @@ type UpdateCardgroupPayload {
 
 extend type Query {
   """All cardgroups owned by the authenticated caller. Ordered by updated_at desc."""
-  myCardgroups: [Cardgroup!]!
+  myCardgroups: [Cardgroup!]! @deprecated(reason: "Use myCardgroupsConnection")
   """Single cardgroup by ID. Returns UNAUTHENTICATED for non-owners (existence is not leaked)."""
   cardgroup(id: ID!): Cardgroup
+  """
+  Paginated cardgroups owned by the authenticated caller. Forward pagination uses
+  (first, after); backward uses (last, before). Cursor is the cardgroup UUID. Default
+  page size is 20; max is 100. Optional case-insensitive substring search on name.
+  """
+  myCardgroupsConnection(
+    first: Int,
+    after: ID,
+    last: Int,
+    before: ID,
+    search: String,
+    orderBy: CardgroupOrderBy = UPDATED_AT,
+    orderDirection: SortOrder = DESC
+  ): CardgroupConnection!
 }
 
 extend type Mutation {
@@ -168,6 +182,14 @@ enum CardOrderBy {
   DUE
 }
 
+"""Field to order Cardgroups by in paginated queries."""
+enum CardgroupOrderBy {
+  ID
+  CREATED_AT
+  UPDATED_AT
+  NAME
+}
+
 """Relay PageInfo describing whether more pages exist on either side and the boundary cursors."""
 type PageInfo {
   hasNextPage: Boolean!
@@ -191,6 +213,21 @@ type CardConnection {
   Total cards in the cardgroup, regardless of page window.
   Backed by a separate COUNT(*); intended for cardgroups up to ~10k cards.
   """
+  totalCount: Int!
+}
+
+"""One cardgroup plus the cursor pointing at it."""
+type CardgroupEdge {
+  """Opaque cursor for resuming pagination at this edge. Currently the cardgroup id."""
+  cursor: ID!
+  node: Cardgroup!
+}
+
+"""A page of cardgroups returned from a paginated query."""
+type CardgroupConnection {
+  edges: [CardgroupEdge!]!
+  pageInfo: PageInfo!
+  """Total cardgroup count matching the filter (independent of paging)."""
   totalCount: Int!
 }
 

@@ -7,7 +7,12 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CreateCardgroupDocument, MyCardgroupsDocument } from "@/generated/graphql";
+import { CARDGROUPS_DEFAULT_VARS } from "@/app/cardgroups/queries";
+import {
+  CreateCardgroupDocument,
+  MyCardgroupsConnectionDocument,
+  MyCardgroupsDocument,
+} from "@/generated/graphql";
 import { sanitizeReturnTo } from "@/lib/sanitize-return-to";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { NewCardgroupClient } from "./new-cardgroup-client";
@@ -161,6 +166,54 @@ describe("<NewCardgroupPage> (client)", () => {
       name: CREATED_CARDGROUP.name,
       updatedAt: CREATED_CARDGROUP.updatedAt,
     });
+  });
+
+  it("seeds the new cardgroup into a cold MyCardgroupsConnection cache via production update callback", async () => {
+    // This test exercises the cold-cache `else` branch in
+    // new-cardgroup-client.tsx's useMutation update() callback.
+    // The cache has NO pre-seeded MyCardgroupsConnection entry — MockedProvider
+    // calls the production update callback, which builds a minimal connection.
+    // Per .claude/rules/go-library-gotchas.md § "Inline copy of production logic
+    // in tests is an anti-pattern", we do NOT re-implement the update logic here;
+    // the mutation callback in new-cardgroup-client.tsx is the sole implementation.
+    const user = userEvent.setup();
+    mockPush.mockClear();
+
+    // Cold cache: no MyCardgroupsConnection pre-seed, but MyCardgroupsDocument
+    // must be pre-seeded because the update callback also writes the flat list.
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: MyCardgroupsDocument,
+      data: { myCardgroups: [] },
+    });
+    // Deliberately do NOT seed MyCardgroupsConnectionDocument — this is the
+    // cold-cache branch.
+
+    renderPage([makeCreateMock("Cold Cache Group")], undefined, cache);
+
+    await user.type(screen.getByRole("textbox"), "Cold Cache Group");
+    await user.click(screen.getByRole("button", { name: /create/i }));
+
+    // Wait for navigation (signals mutation + update callback completed).
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith(`/cardgroups/${CREATED_CARDGROUP.id}`);
+    });
+
+    // The production else-branch in update() must have written a minimal
+    // MyCardgroupsConnection into the cache.
+    const result = cache.readQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+    });
+    expect(result?.myCardgroupsConnection.edges).toHaveLength(1);
+    // makeCreateMock echoes the submitted name back in the result, so the node
+    // name is "Cold Cache Group", not CREATED_CARDGROUP.name.
+    expect(result?.myCardgroupsConnection.edges[0]).toMatchObject({
+      cursor: CREATED_CARDGROUP.id,
+      node: { id: CREATED_CARDGROUP.id, name: "Cold Cache Group" },
+    });
+    expect(result?.myCardgroupsConnection.pageInfo.hasNextPage).toBe(false);
+    expect(result?.myCardgroupsConnection.totalCount).toBe(1);
   });
 
   it("BAD_USER_INPUT on field 'name' shows inline error", async () => {

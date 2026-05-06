@@ -126,6 +126,20 @@ func (r *countingCardgroupRepo) Update(_ context.Context, _ string, _ repository
 func (r *countingCardgroupRepo) Delete(_ context.Context, _ string) error {
 	panic("countingCardgroupRepo.Delete not configured")
 }
+func (r *countingCardgroupRepo) FindPageByOwner(
+	_ context.Context,
+	_ string,
+	_, _ *repository.CardgroupCursor,
+	_, _ int,
+	_ repository.CardgroupOrderBy,
+	_ repository.SortOrder,
+	_ *string,
+) ([]*domain.Cardgroup, error) {
+	panic("countingCardgroupRepo.FindPageByOwner not configured")
+}
+func (r *countingCardgroupRepo) CountByOwner(_ context.Context, _ string, _ *string) (int64, error) {
+	panic("countingCardgroupRepo.CountByOwner not configured")
+}
 
 func emptyCardgroupRepo() *countingCardgroupRepo {
 	return &countingCardgroupRepo{

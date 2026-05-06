@@ -81,6 +81,18 @@ Read `operationName` from the request body (`postDataJSON`) rather than matching
 
 `SwipeCardStack` mounts background cards behind the active card, and each rendered card includes its own `Easy` / `Hard` buttons. `getByRole("button", { name: "Easy" })` therefore matches multiple elements in the accessibility tree. Scope the locator to the active card's container (e.g. `activeCard.getByRole("button", { name: "Easy" })`) to avoid `strict mode violation: locator.click() resolved to N elements` failures and to ensure the action targets the foreground card.
 
+### Pin `toHaveCount(1)` after consolidating duplicate CTAs into a shell
+
+When a refactor unifies multiple CTAs into a single page-shell `primaryActions` slot — e.g. removing a populated-state footer link and a dashed empty-state CTA in favour of one shell-level "+ New cardgroup" link — the visible behaviour for a single test run is identical whether the shell renders one link or, by regression, the old extras come back alongside the new one. A `getByRole("link", { name: /New cardgroup/ }).toBeVisible()` assertion alone passes either way; the assertion that locks the consolidation in place is the count:
+
+```ts
+const newCardgroupLink = page.getByRole("link", { name: /New cardgroup/ });
+await expect(newCardgroupLink).toBeVisible();
+await expect(newCardgroupLink).toHaveCount(1); // exactly one "New cardgroup" CTA on the page
+```
+
+Run this assertion in BOTH the populated-state branch and the empty-state branch of the same listing page — the empty-state branch is where the old dashed CTA used to live and is the natural place a regression would resurface. Reference: `frontend/e2e/cardgroups-flow.spec.ts` (`empty state on /cardgroups shows the empty-state copy and primary action`).
+
 ## Local Run
 
 Start Supabase and backend first:

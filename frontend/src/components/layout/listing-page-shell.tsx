@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-interface AdminPageShellProps {
+interface ListingPageShellProps {
   /** Page title shown as the leading heading. */
   title: ReactNode;
   /** Optional supporting copy under the title. */
@@ -17,25 +17,25 @@ interface AdminPageShellProps {
 }
 
 /**
- * Shared shell for admin and admin-adjacent listing pages.
+ * Shared shell for listing pages (admin, cardgroups, or any similar page).
  *
  * Mirrors the shadcn-admin Tasks/Users `<Main>` shape: a flex column with
  * a wrap-friendly title row, an optional toolbar slot, and the page body.
- * Padding matches the existing `p-8` adopted across cardgroups/admin pages
+ * Padding matches the existing `p-8` adopted across listing pages
  * after the recent max-width removal, so this shell stays liquid.
  *
  * Intentionally unaware of authorization — admin gating lives in
- * `app/admin/layout.tsx`. AdminPageShell is reusable from any listing page
+ * `app/admin/layout.tsx`. ListingPageShell is reusable from any listing page
  * (admin or not) that wants the same header + toolbar geometry.
  */
-export function AdminPageShell({
+export function ListingPageShell({
   title,
   description,
   primaryActions,
   toolbar,
   children,
   className,
-}: AdminPageShellProps) {
+}: ListingPageShellProps) {
   return (
     <main className={cn("flex flex-1 flex-col gap-4 p-8 sm:gap-6", className)}>
       <div className="flex flex-wrap items-end justify-between gap-2">

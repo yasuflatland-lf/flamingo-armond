@@ -45,6 +45,8 @@ Natural SQL "give me N rows before X" is awkward. The repository inverts the `OR
 
 A cursor pointing at a card in another cardgroup is treated as a malformed user-supplied parameter. Returning `UNAUTHENTICATED` would leak existence of cards in other cardgroups; `BAD_USER_INPUT` with `field = "after"` / `field = "before"` is the correct posture.
 
+The same rule extends to **owner-scoped** Connection queries that have no parent aggregate (e.g. `myCardgroupsConnection`): a cursor for a cardgroup belonging to another owner must also surface as `BAD_USER_INPUT`. The non-obvious case is the **`orderBy = ID` fast path**: the usecase has nothing to hydrate (the cursor's only column IS its id), so there is a temptation to skip the cursor lookup entirely. Skipping it lets an attacker probe foreign-cardgroup existence by paging past a guessed id and observing whether any rows come back. The cursor lookup must run on the ID-orderBy branch as well, purely as an ownership gate; treat the lookup's "wrong owner" outcome the same as the "not found" outcome (`BAD_USER_INPUT` with `field = "after"` / `"before"`) so the response shape is identical for "exists but foreign" and "does not exist". Reference: `backend/internal/usecase/cardgroup.go` `resolveCardgroupCursor` runs the FindByID + ownership compare even when `orderBy == ID` and the switch arm has no column to populate.
+
 ### Reject mixed-direction argument combos at the usecase
 
 The repository trusts its inputs. Without explicit usecase-layer guards, malformed combinations silently re-interpret as a forward page-1 request and the client never learns why their cursor was ignored. Reject all five bad combos with `BAD_USER_INPUT` (with `extensions.field` naming the offending argument):
@@ -90,6 +92,44 @@ When migrating an existing flat list to a Connection type, keep the old field wi
 ### Variables shape MUST match between SSR seed and client cache reads
 
 Apollo's cache key is built from canonical-stringified variables. Hard-coding `first: 20` in `page.tsx` while the client uses a `PAGE_SIZE` constant is coincidence-only; bumping the constant breaks the seed-then-update pipeline silently. Lift shared connection variables to one module (e.g. `cards/queries.ts` exports `CARDS_PAGE_SIZE`) that both SSR and client import.
+
+**Export the full default-variables object, not just the page-size scalar.** A `PAGE_SIZE` constant alone leaves three call sites (RSC seed, client `useQuery`, mutation `update` callback) free to disagree on which other variables make it into the cache key — `{ first }` vs `{ first, search: null }` vs `{ first: 20 }` all canonicalise to different keys, and the absence of `search: null` in one branch silently splits the cache. Export a `<TYPE>_DEFAULT_VARS` object typed as the query's generated `*QueryVariables`, and require every read/write site to use it (or spread from it):
+
+```ts
+// frontend/src/app/cardgroups/queries.ts
+export const CARDGROUPS_PAGE_SIZE = 20;
+export const CARDGROUPS_DEFAULT_VARS: MyCardgroupsConnectionQueryVariables = {
+  first: CARDGROUPS_PAGE_SIZE,
+  search: null,
+};
+```
+
+Three call sites consume it: `page.tsx` `gqlFetch(..., { variables: CARDGROUPS_DEFAULT_VARS })`, the client `useQuery({ variables: searchQuery === null ? CARDGROUPS_DEFAULT_VARS : { ...CARDGROUPS_DEFAULT_VARS, search: searchQuery } })`, and the create-mutation `update` callback `cache.readQuery({ ..., variables: CARDGROUPS_DEFAULT_VARS })`. The TypeScript type assertion makes any future variable added to the query schema (`orderBy`, etc.) a compile-time prompt to decide whether the new variable belongs in the default — silent additions that drift one call site away from the others surface as type errors. Reference: `frontend/src/app/cardgroups/queries.ts` (`CARDGROUPS_DEFAULT_VARS`).
+
+### Migrating a flat list to a Connection: write to BOTH cached shapes during the deprecation window
+
+The `@deprecated` schema migration above (§ "Migration via `@deprecated`") leaves the old flat-list query and the new Connection query coexisting in the codebase. A mutation `update` callback that creates an entity must write to BOTH cached shapes for the entire window where any consumer still reads the deprecated query — otherwise the consumer of the old query (often a sibling component like a picker sheet that has not yet migrated) shows stale data after a successful create:
+
+```ts
+update(cache, { data }) {
+  if (!data?.createCardgroup?.cardgroup) return;
+  const created = data.createCardgroup.cardgroup;
+  // Deprecated flat list — keep updating until all readers move over.
+  const flat = cache.readQuery({ query: MyCardgroupsDocument });
+  cache.writeQuery({
+    query: MyCardgroupsDocument,
+    data: { myCardgroups: [created, ...(flat?.myCardgroups ?? [])] },
+  });
+  // New Connection — readQuery + writeQuery with the shared default vars.
+  const conn = cache.readQuery({
+    query: MyCardgroupsConnectionDocument,
+    variables: CARDGROUPS_DEFAULT_VARS,
+  });
+  cache.writeQuery({ /* prepend edge, bump totalCount, or build cold-cache shape */ });
+}
+```
+
+Removing the deprecated branch is the last step of the migration, after a grep confirms zero callers of the old document. Reference: `frontend/src/app/cardgroups/new/new-cardgroup-client.tsx`.
 
 ### Connection create
 
@@ -142,6 +182,18 @@ A component that accepts both an SSR-prop variant (`{ initial: T }`) and a query
 
 The in-flight guard must live in `useRef<boolean>`, not `useState`. State updates are async — the observer can fire twice in the same animation frame and both passes read the previous `false`, double-firing `fetchMore`. A mutable ref is set synchronously, reset in `.finally`, and never schedules a re-render.
 
+**Reset the guard ref AND the error banner when the active filter changes.** A debounced search input that drives the query's `search` variable is a second axis of "the previous in-flight cursor is now stale": between the user starting to type and the debounced `searchQuery` update, a `fetchMore` call carrying the prior page's `endCursor` may resolve into a different result-set's edge list, or fail mid-flight and leave the IO loop halted on a `fetchMoreError` banner that is no longer relevant to what the user is now searching for. The fix is a `useEffect` keyed on the active filter that clears both ref and banner state:
+
+```ts
+// when the active search query changes, drop any in-flight guard + stale error.
+useEffect(() => {
+  fetchingRef.current = false;
+  setFetchMoreError(null);
+}, [searchQuery]);
+```
+
+The dep array intentionally lists only the trigger (`searchQuery`); the body does not read it. Add a `biome-ignore lint/correctness/useExhaustiveDependencies` comment naming the trigger-not-read intent so the rule does not silently re-engage with future code-mod tools. Reference: `frontend/src/app/cardgroups/cardgroups-client.tsx`.
+
 ### One-shot mount-effect mutation guard via `useRef<string | null>`
 
 The same async-state hazard appears whenever a client component fires a mutation **once per discriminator value** from a `useEffect`. React 18 Strict Mode double-mounts dev-time, and any future re-render that re-runs the effect re-fires the mutation — a `useState` "did we send it yet" flag updates async and both passes read the previous value. The fix is the same shape as the IO guard, but the ref holds the **discriminating identity** the mutation was last dispatched for, not a boolean:
@@ -172,6 +224,24 @@ Always import the named `NetworkStatus` enum from `@apollo/client`. Magic number
 ### Capture `console.warn` for MockedProvider leaks, then assert in teardown
 
 The assertion `nextPageCalls === 1` is partially tautological — `MockedProvider` matches per-entry, single-use, keyed on `(query, variables)`, so a leaked second `fetchMore` does not throw. It prints `"No more mocked responses for the query"` to `console.warn` and the `useQuery` hook resolves with `undefined` `data`; tests that depend on the second-page data thus silently pass on stale or missing data. The contract is **capture-then-explicit-assert**, not auto-fail-on-warn: `installApolloMockLeakSpy({ operationNames })` in `frontend/__tests__/utils/mock-apollo-paginated.ts` records every matching warning, and a `assertNoLeaks()` call in `afterEach` converts the captured set into a hard test failure. Restore the spy in the same `afterEach`. Without this, double-fetch regressions pass the call-count assertion silently.
+
+#### Single-mock behavioral test for the in-flight guard
+
+The leak-spy infrastructure also lets a test assert "the production guard prevents a double-fire" without re-implementing the guard in the test. Stage exactly **one** `nextPageMock` and trigger the IO callback twice synchronously within the same tick:
+
+```ts
+const nextPageMock = {
+  request: { query: MyConnDocument, variables: { first: PAGE_SIZE, after: lastCursor } },
+  result: () => { nextPageCalls += 1; return { data: { ... } }; },
+};
+renderClient([initialMock, nextPageMock]);
+fireIntersect();
+fireIntersect(); // synchronous second fire — the production fetchingRef must swallow it
+await waitFor(() => expect(screen.getByText("page 2 item")).toBeInTheDocument());
+expect(nextPageCalls).toBe(1);
+```
+
+If the production `useRef<boolean>` guard is missing or broken, the second `fireIntersect` causes a second `fetchMore` request, no second mock matches, and `MockedProvider` warns. `assertNoLeaks()` in `afterEach` turns that warning into a hard failure. The `nextPageCalls === 1` assertion alone is the partial-tautology case described above — the leak spy is what closes the loop. Reference: `frontend/src/app/cardgroups/cardgroups-client.test.tsx` (`does not fire fetchMore twice when sentinel intersects in the same animation frame`).
 
 #### Spy stacking: install order is outer-first, teardown is LIFO
 

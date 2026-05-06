@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { AdminRolesClient } from "./AdminRolesClient";
 
 describe("AdminRolesClient", () => {
-  it("wires the AdminPageShell with title and description", () => {
+  it("wires the ListingPageShell with title and description", () => {
     render(
       <MockedProvider mocks={[]}>
         <AdminRolesClient initialRoles={[]} />

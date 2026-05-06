@@ -1,13 +1,72 @@
 import { graphql } from "@/generated";
+import type { MyCardgroupsConnectionQueryVariables } from "@/generated/graphql";
 
 // Cardgroup queries
 
+/** Shared page size for myCardgroupsConnection — SSR seed and client must use the same value. */
+export const CARDGROUPS_PAGE_SIZE = 20;
+
+/**
+ * Default variables for {@link MyCardgroupsConnectionDocument}. Every read
+ * site — RSC seed, client `useQuery`, and cache reads/writes in mutation
+ * `update` callbacks — MUST use this object (or spread from it) so Apollo's
+ * cache key is identical across all three. Hard-coding `{ first: 20 }` in one
+ * place and `{ first: 20, search: null }` in another silently splits the cache
+ * and makes SSR seeds dead code.
+ *
+ * See: .claude/rules/pagination.md § "Variables shape MUST match between SSR
+ * seed and client cache reads"
+ */
+export const CARDGROUPS_DEFAULT_VARS: MyCardgroupsConnectionQueryVariables = {
+  first: CARDGROUPS_PAGE_SIZE,
+  search: null,
+};
+
+/** @deprecated Use MyCardgroupsConnectionQuery */
 export const MyCardgroupsQuery = graphql(`
   query MyCardgroups {
     myCardgroups {
       id
       name
       updatedAt
+    }
+  }
+`);
+
+export const MyCardgroupsConnectionQuery = graphql(`
+  query MyCardgroupsConnection(
+    $first: Int
+    $after: ID
+    $last: Int
+    $before: ID
+    $search: String
+    $orderBy: CardgroupOrderBy
+    $orderDirection: SortOrder
+  ) {
+    myCardgroupsConnection(
+      first: $first
+      after: $after
+      last: $last
+      before: $before
+      search: $search
+      orderBy: $orderBy
+      orderDirection: $orderDirection
+    ) {
+      edges {
+        cursor
+        node {
+          id
+          name
+          updatedAt
+        }
+      }
+      pageInfo {
+        hasNextPage
+        hasPreviousPage
+        startCursor
+        endCursor
+      }
+      totalCount
     }
   }
 `);

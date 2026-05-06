@@ -94,6 +94,17 @@ func toUsecaseCardOrderBy(o *model.CardOrderBy) *usecase.CardOrderBy {
 	return &v
 }
 
+// toUsecaseCardgroupOrderBy mirrors toUsecaseCardOrderBy for the
+// CardgroupOrderBy enum (string values "ID", "CREATED_AT", "UPDATED_AT",
+// "NAME").
+func toUsecaseCardgroupOrderBy(o *model.CardgroupOrderBy) *usecase.CardgroupOrderBy {
+	if o == nil {
+		return nil
+	}
+	v := usecase.CardgroupOrderBy(*o)
+	return &v
+}
+
 func toUsecaseSortOrder(d *model.SortOrder) *usecase.SortOrder {
 	if d == nil {
 		return nil
@@ -130,6 +141,28 @@ func toCardConnectionModel(out *usecase.CardConnectionOutput) *model.CardConnect
 		edges[i] = &model.CardEdge{Cursor: c.ID, Node: toCardModel(c)}
 	}
 	return &model.CardConnection{
+		Edges: edges,
+		PageInfo: &model.PageInfo{
+			HasNextPage:     out.HasNext,
+			HasPreviousPage: out.HasPrev,
+			StartCursor:     nilIfEmpty(out.StartCur),
+			EndCursor:       nilIfEmpty(out.EndCur),
+		},
+		TotalCount: int(out.TotalCount),
+	}
+}
+
+// toCardgroupConnectionModel emits cursors as bare cardgroup UUIDs (no
+// base64). Mirrors toCardConnectionModel for the cardgroup aggregate.
+func toCardgroupConnectionModel(out *usecase.CardgroupConnectionOutput) *model.CardgroupConnection {
+	if out == nil {
+		return &model.CardgroupConnection{Edges: []*model.CardgroupEdge{}, PageInfo: &model.PageInfo{}}
+	}
+	edges := make([]*model.CardgroupEdge, len(out.Cardgroups))
+	for i, cg := range out.Cardgroups {
+		edges[i] = &model.CardgroupEdge{Cursor: cg.ID, Node: toCardgroupModel(cg)}
+	}
+	return &model.CardgroupConnection{
 		Edges: edges,
 		PageInfo: &model.PageInfo{
 			HasNextPage:     out.HasNext,
