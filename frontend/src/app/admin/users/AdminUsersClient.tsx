@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   type AdminRoleFieldsFragment as AdminRoleFieldsFragmentType,
   AdminRolesDocument,
-  type AdminUserFieldsFragment as AdminUserFieldsFragmentType,
+  type AdminUserListFieldsFragment as AdminUserListFieldsFragmentType,
   AdminUsersDocument,
   type AdminUsersQuery,
 } from "@/generated/graphql";
@@ -44,7 +44,10 @@ interface AdminUsersClientProps {
  */
 function edgeToRow(edge: Edge): AdminUserRow {
   // Fragment masking is compile-time only at runtime — see docs/frontend.md.
-  const node = edge.node as unknown as AdminUserFieldsFragmentType & {
+  // The list query spreads ...AdminUserListFields (no `bio`) so this is the
+  // narrow fragment type. The detail-side AdminUserFieldsFragmentType extends
+  // it with `bio` for the edit page.
+  const node = edge.node as unknown as AdminUserListFieldsFragmentType & {
     roles: AdminRoleFieldsFragmentType[];
   };
   return {
@@ -103,11 +106,13 @@ export function AdminUsersClient({ initialConnection }: AdminUsersClientProps) {
   // ------------------------------------------------------------------
   // SSR seed: write initialConnection into the cache once on mount with
   // ADMIN_USERS_DEFAULT_VARS as the cache key. useQuery runs during the
-  // first render before this effect fires, so the initial pass still
-  // dispatches a fetch — but the seed populates the cache before paint
-  // so the rendered tree shows server-fetched data without a network
-  // round-trip blocking the user. Non-default URLs (search, role)
-  // miss the seed; they fall through to a fetch.
+  // first render before this effect fires, so render 1 still dispatches
+  // a fetch — but the seed populates the cache during the post-commit
+  // effect, which Apollo translates into a re-render with cached data
+  // on render 2 (typically a few ms after mount, well before the fetch
+  // resolves). The user sees server-fetched data immediately rather
+  // than the loading state. Non-default URLs (search, role) miss the
+  // seed and fall through to the network fetch.
   // ------------------------------------------------------------------
   useEffect(() => {
     if (seededRef.current || initialConnection == null) return;
@@ -280,7 +285,12 @@ export function AdminUsersClient({ initialConnection }: AdminUsersClientProps) {
         .catch((err) => {
           const kind = classifyQueryError(err);
           if (kind?.kind === "unauthenticated") {
-            redirect("/");
+            // redirect() throws NEXT_REDIRECT to navigate. Inside a Promise's
+            // .catch() that throw becomes the rejection of the chained promise
+            // (not a navigation), so the page stays put and the only signal is
+            // the warn log. Use router.replace(), which is fire-and-forget and
+            // schedules the navigation through the App Router.
+            router.replace("/");
             return;
           }
           // Structured warn for operator triage. err.message is omitted because
@@ -304,7 +314,7 @@ export function AdminUsersClient({ initialConnection }: AdminUsersClientProps) {
           fetchingRef.current = false;
         });
     },
-    [cursorByPage, endCursor, fetchMore, pageSize, roleFilter, searchQuery],
+    [cursorByPage, endCursor, fetchMore, pageSize, roleFilter, router, searchQuery],
   );
 
   const columns = useMemo(() => getUsersColumns(), []);

@@ -20,13 +20,31 @@ export const ADMIN_USERS_DEFAULT_VARS: AdminUsersQueryVariables = {
   after: null,
 };
 
-export const AdminUserFieldsFragment = graphql(`
-  fragment AdminUserFields on User {
+/**
+ * Slim list-side fragment — only the columns the listing screen renders.
+ * `bio` is intentionally excluded because the list does not display it; pulling
+ * multi-paragraph user-authored content for every page-of-20 is a meaningful
+ * waste. The detail-side fragment below extends this with `bio` for the edit
+ * page.
+ */
+export const AdminUserListFieldsFragment = graphql(`
+  fragment AdminUserListFields on User {
     id
     displayName
-    bio
     avatarUrl
     lastActive
+  }
+`);
+
+/**
+ * Detail-side fragment — extends list fields with `bio` for the edit page.
+ * Spreads via `...AdminUserListFields` so the two fragments stay in lock-step
+ * for the columns that overlap.
+ */
+export const AdminUserFieldsFragment = graphql(`
+  fragment AdminUserFields on User {
+    ...AdminUserListFields
+    bio
   }
 `);
 
@@ -50,7 +68,7 @@ export const AdminUsersQuery = graphql(`
       edges {
         cursor
         node {
-          ...AdminUserFields
+          ...AdminUserListFields
           roles {
             ...AdminRoleFields
           }

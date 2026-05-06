@@ -13,6 +13,9 @@
  *   T8  — MockedProvider leak detection via installApolloMockLeakSpy / assertNoLeaks
  *   T9  — PII absence: fetchMore warn payload has no email / displayName / bio keys
  *   T10 — FORBIDDEN query error: permission-denied banner, no Retry button
+ *   T11 — fetchMore FORBIDDEN: permission-denied banner, no Retry button
+ *   T12 — fetchMore UNAUTHENTICATED: triggers router.replace("/")
+ *   T13 — AdminRoles query failure: structured warn for operator triage
  *
  * Apollo discrete-pagination note: AdminUsersClient uses fetchMore + setPageIndex.
  * After fetchMore resolves, setPageIndex changes queryVariables (adding the new cursor),
@@ -23,7 +26,7 @@
  */
 
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -890,6 +893,186 @@ describe("AdminUsersClient — DataTable shape", () => {
     expect(payload).not.toHaveProperty("email");
     expect(payload).not.toHaveProperty("displayName");
     expect(payload).not.toHaveProperty("bio");
+
+    // Teardown LIFO: outer spy first, then leak spy in afterEach.
+    outerWarnSpy.mockRestore();
+  });
+
+  // T11 — fetchMore FORBIDDEN: permission-denied banner with no Retry.
+  // A FORBIDDEN response on fetchMore must surface the same permission copy as
+  // the initial-load FORBIDDEN path. Retry is suppressed because re-issuing the
+  // same request would fail again on the same revoked role.
+  test("T11: fetchMore FORBIDDEN renders permission-denied banner without Retry", async () => {
+    const ue = userEvent.setup({ delay: null });
+
+    const page1Users = Array.from({ length: ADMIN_USERS_PAGE_SIZE }, (_, i) => makeUser(i + 1));
+    const endCursor = `user-${ADMIN_USERS_PAGE_SIZE}`;
+    const page1Connection = makeConnection(page1Users, true, ADMIN_USERS_PAGE_SIZE + 5);
+
+    const fetchMoreVars = {
+      ...ADMIN_USERS_DEFAULT_VARS,
+      first: ADMIN_USERS_PAGE_SIZE,
+      search: null,
+      roleId: null,
+      after: endCursor,
+    };
+
+    render(
+      <MockedProvider
+        mocks={[
+          // Mock 1: initial page-0 useQuery
+          {
+            request: { query: AdminUsersDocument, variables: PAGE_0_VARS },
+            result: { data: { users: page1Connection } },
+          },
+          // Mock 2: fetchMore returns FORBIDDEN
+          {
+            request: { query: AdminUsersDocument, variables: fetchMoreVars },
+            result: {
+              errors: [
+                new GraphQLError("admin role required", {
+                  extensions: { code: "FORBIDDEN" },
+                }),
+              ],
+            },
+          },
+          EMPTY_ROLES_MOCK,
+        ]}
+      >
+        <AdminUsersClient initialConnection={null} />
+      </MockedProvider>,
+    );
+
+    expect(await screen.findByText("User 1")).toBeInTheDocument();
+
+    const nextButtons = screen.getAllByRole("button", { name: /go to next page/i });
+    await ue.click(nextButtons[0] as HTMLElement);
+
+    // FORBIDDEN banner appears with the permission-loss copy.
+    const banner = await screen.findByTestId("admin-users-fetch-more-error");
+    expect(banner).toHaveTextContent("You no longer have permission to load more users.");
+
+    // Retry button MUST be absent on the fetchMore banner — Retry is suppressed
+    // for FORBIDDEN because re-issuing would fail again. Scope the query to the
+    // banner so a stray Retry elsewhere does not satisfy this assertion.
+    expect(within(banner).queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
+  });
+
+  // T12 — fetchMore UNAUTHENTICATED: triggers router.replace("/").
+  // redirect() inside .catch() does NOT navigate (its NEXT_REDIRECT throw is
+  // captured as a promise rejection); router.replace is fire-and-forget and is
+  // the correct primitive in this branch.
+  test("T12: fetchMore UNAUTHENTICATED triggers router.replace('/')", async () => {
+    const ue = userEvent.setup({ delay: null });
+
+    const page1Users = Array.from({ length: ADMIN_USERS_PAGE_SIZE }, (_, i) => makeUser(i + 1));
+    const endCursor = `user-${ADMIN_USERS_PAGE_SIZE}`;
+    const page1Connection = makeConnection(page1Users, true, ADMIN_USERS_PAGE_SIZE + 5);
+
+    const fetchMoreVars = {
+      ...ADMIN_USERS_DEFAULT_VARS,
+      first: ADMIN_USERS_PAGE_SIZE,
+      search: null,
+      roleId: null,
+      after: endCursor,
+    };
+
+    render(
+      <MockedProvider
+        mocks={[
+          // Mock 1: initial page-0 useQuery
+          {
+            request: { query: AdminUsersDocument, variables: PAGE_0_VARS },
+            result: { data: { users: page1Connection } },
+          },
+          // Mock 2: fetchMore returns UNAUTHENTICATED
+          {
+            request: { query: AdminUsersDocument, variables: fetchMoreVars },
+            result: {
+              errors: [
+                new GraphQLError("session expired", {
+                  extensions: { code: "UNAUTHENTICATED" },
+                }),
+              ],
+            },
+          },
+          EMPTY_ROLES_MOCK,
+        ]}
+      >
+        <AdminUsersClient initialConnection={null} />
+      </MockedProvider>,
+    );
+
+    expect(await screen.findByText("User 1")).toBeInTheDocument();
+
+    const nextButtons = screen.getAllByRole("button", { name: /go to next page/i });
+    await ue.click(nextButtons[0] as HTMLElement);
+
+    // router.replace must be called with "/" so the user lands at the app's
+    // re-auth entry point.
+    await waitFor(() => {
+      expect(mockRouterReplace).toHaveBeenCalledWith("/");
+    });
+  });
+
+  // T13 — AdminRoles query failure: structured warn for operator triage.
+  // The dropdown silently degrades to empty (non-fatal) but the failure must be
+  // observable in logs. The discriminator key here is `name` — Error.prototype
+  // also exposes `name`, so this is a known weakness of the assertion (per
+  // .claude/rules/frontend-typescript-conventions.md § "expect.objectContaining
+  // ({ message }) is not enough"). The structured payload `{ name }` is what
+  // production emits; a stronger discriminator would require adding a fixed
+  // string field (e.g. `where: "AdminRoles"`) to the production code, which is
+  // out of scope for this iteration.
+  test("T13: AdminRoles query failure logs structured warn with name", async () => {
+    // Outer warn spy — see .claude/rules/pagination.md § "Spy stacking". No
+    // mockImplementation so calls flow through to the inner leak spy.
+    const outerWarnSpy = vi.spyOn(console, "warn");
+
+    const page1Users = [makeUser(1)];
+    const page1Connection = makeConnection(page1Users, false, 1);
+
+    render(
+      <MockedProvider
+        mocks={[
+          {
+            request: { query: AdminUsersDocument, variables: PAGE_0_VARS },
+            result: { data: { users: page1Connection } },
+          },
+          // AdminRoles query fails. The Error reaches useQuery.error, which the
+          // useEffect in AdminUsersClient surfaces via console.warn.
+          {
+            request: { query: AdminRolesDocument, variables: {} },
+            error: new Error("network down"),
+          },
+        ]}
+      >
+        <AdminUsersClient initialConnection={null} />
+      </MockedProvider>,
+    );
+
+    expect(await screen.findByText("User 1")).toBeInTheDocument();
+
+    // The structured warn fires inside the rolesResult.error useEffect.
+    await waitFor(() => {
+      const adminRolesWarns = outerWarnSpy.mock.calls.filter(
+        (args) =>
+          args.length >= 2 &&
+          typeof args[0] === "string" &&
+          args[0].includes("[admin-users] AdminRoles query failed"),
+      );
+      expect(adminRolesWarns.length).toBeGreaterThanOrEqual(1);
+    });
+
+    const adminRolesWarns = outerWarnSpy.mock.calls.filter(
+      (args) =>
+        args.length >= 2 &&
+        typeof args[0] === "string" &&
+        args[0].includes("[admin-users] AdminRoles query failed"),
+    );
+    expect(adminRolesWarns[0]?.[1]).toEqual(
+      expect.objectContaining({ name: expect.any(String) }),
+    );
 
     // Teardown LIFO: outer spy first, then leak spy in afterEach.
     outerWarnSpy.mockRestore();
