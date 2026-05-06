@@ -3,9 +3,9 @@
 import { useMutation } from "@apollo/client/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CreateCardgroupMutation } from "@/app/cardgroups/queries";
+import { CARDGROUPS_PAGE_SIZE, CreateCardgroupMutation } from "@/app/cardgroups/queries";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
-import { MyCardgroupsDocument } from "@/generated/graphql";
+import { MyCardgroupsConnectionDocument, MyCardgroupsDocument } from "@/generated/graphql";
 
 interface NewCardgroupClientProps {
   showWelcome?: boolean;
@@ -19,13 +19,74 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
   const [createCardgroup, { loading, error }] = useMutation(CreateCardgroupMutation, {
     update(cache, { data }) {
       if (!data?.createCardgroup?.cardgroup) return;
+      const created = data.createCardgroup.cardgroup;
+
+      // Update the deprecated flat list cache (still consumed by the cardgroup
+      // picker sheet and a few other call sites).
       const existing = cache.readQuery({ query: MyCardgroupsDocument });
       cache.writeQuery({
         query: MyCardgroupsDocument,
         data: {
-          myCardgroups: [data.createCardgroup.cardgroup, ...(existing?.myCardgroups ?? [])],
+          myCardgroups: [created, ...(existing?.myCardgroups ?? [])],
         },
       });
+
+      // Also update the Connection cache so the /cardgroups listing page
+      // shows the new entry without a refetch when the user returns there.
+      // pagination.md: cache.modify is forbidden — use readQuery + writeQuery
+      // so cold-cache entries are also handled correctly.
+      const connectionVars = { first: CARDGROUPS_PAGE_SIZE };
+      const existingConnection = cache.readQuery({
+        query: MyCardgroupsConnectionDocument,
+        variables: connectionVars,
+      });
+      if (existingConnection) {
+        cache.writeQuery({
+          query: MyCardgroupsConnectionDocument,
+          variables: connectionVars,
+          data: {
+            myCardgroupsConnection: {
+              ...existingConnection.myCardgroupsConnection,
+              edges: [
+                {
+                  __typename: "CardgroupEdge" as const,
+                  cursor: created.id,
+                  node: created,
+                },
+                ...existingConnection.myCardgroupsConnection.edges,
+              ],
+              totalCount: existingConnection.myCardgroupsConnection.totalCount + 1,
+            },
+          },
+        });
+      } else {
+        // Cold cache: build a minimal connection so the listing page can render
+        // the new edge immediately when the user lands there.
+        cache.writeQuery({
+          query: MyCardgroupsConnectionDocument,
+          variables: connectionVars,
+          data: {
+            myCardgroupsConnection: {
+              __typename: "CardgroupConnection" as const,
+              edges: [
+                {
+                  __typename: "CardgroupEdge" as const,
+                  cursor: created.id,
+                  node: created,
+                },
+              ],
+              pageInfo: {
+                __typename: "PageInfo" as const,
+                hasNextPage: false,
+                hasPreviousPage: false,
+                startCursor: created.id,
+                endCursor: created.id,
+              },
+              totalCount: 1,
+            },
+          },
+        });
+      }
     },
     onCompleted(data) {
       const created = data?.createCardgroup?.cardgroup;
