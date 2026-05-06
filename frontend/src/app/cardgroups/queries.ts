@@ -2,12 +2,54 @@ import { graphql } from "@/generated";
 
 // Cardgroup queries
 
+/** Shared page size for myCardgroupsConnection — SSR seed and client must use the same value. */
+export const CARDGROUPS_PAGE_SIZE = 20;
+
+/** @deprecated Use MyCardgroupsConnectionQuery */
 export const MyCardgroupsQuery = graphql(`
   query MyCardgroups {
     myCardgroups {
       id
       name
       updatedAt
+    }
+  }
+`);
+
+export const MyCardgroupsConnectionQuery = graphql(`
+  query MyCardgroupsConnection(
+    $first: Int
+    $after: ID
+    $last: Int
+    $before: ID
+    $search: String
+    $orderBy: CardgroupOrderBy
+    $orderDirection: SortOrder
+  ) {
+    myCardgroupsConnection(
+      first: $first
+      after: $after
+      last: $last
+      before: $before
+      search: $search
+      orderBy: $orderBy
+      orderDirection: $orderDirection
+    ) {
+      edges {
+        cursor
+        node {
+          id
+          name
+          updatedAt
+        }
+      }
+      pageInfo {
+        hasNextPage
+        hasPreviousPage
+        startCursor
+        endCursor
+      }
+      totalCount
     }
   }
 `);
