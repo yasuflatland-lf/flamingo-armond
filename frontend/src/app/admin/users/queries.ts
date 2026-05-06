@@ -1,7 +1,23 @@
 import { graphql } from "@/generated";
+import type { AdminUsersQueryVariables } from "@/generated/graphql";
 
 /** Default page size for the admin users connection. Must stay in sync between SSR seed and client useQuery/cache reads. */
 export const ADMIN_USERS_PAGE_SIZE = 20;
+
+/**
+ * Default variables for {@link AdminUsersQuery}. Every read site — RSC seed,
+ * client `useQuery`, and cache reads/writes in mutation `update` callbacks —
+ * MUST use this object (or spread from it) so Apollo's cache key is identical
+ * across all three.
+ *
+ * See: .claude/rules/pagination.md § "Variables shape MUST match between SSR
+ * seed and client cache reads"
+ */
+export const ADMIN_USERS_DEFAULT_VARS: AdminUsersQueryVariables = {
+  first: ADMIN_USERS_PAGE_SIZE,
+  search: null,
+  roleId: null,
+};
 
 export const AdminUserFieldsFragment = graphql(`
   fragment AdminUserFields on User {
@@ -9,6 +25,7 @@ export const AdminUserFieldsFragment = graphql(`
     displayName
     bio
     avatarUrl
+    lastActive
   }
 `);
 
@@ -26,8 +43,9 @@ export const AdminUsersQuery = graphql(`
     $last: Int
     $before: ID
     $search: String
+    $roleId: ID
   ) {
-    users(first: $first, after: $after, last: $last, before: $before, search: $search) {
+    users(first: $first, after: $after, last: $last, before: $before, search: $search, roleId: $roleId) {
       edges {
         cursor
         node {
