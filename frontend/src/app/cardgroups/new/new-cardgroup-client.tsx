@@ -52,7 +52,7 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
   }
 
   return (
-    <main className="mx-auto max-w-xl p-8">
+    <main className="p-8">
       {showWelcome && (
         <div className="mb-8 rounded-lg border border-border bg-card p-6">
           <h2 className="mb-2 text-lg font-semibold">
