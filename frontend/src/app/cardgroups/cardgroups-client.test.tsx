@@ -11,7 +11,7 @@ import {
   installApolloMockLeakSpy,
 } from "../../../__tests__/utils/mock-apollo-paginated";
 import CardgroupsClient from "./cardgroups-client";
-import { CARDGROUPS_PAGE_SIZE } from "./queries";
+import { CARDGROUPS_DEFAULT_VARS, CARDGROUPS_PAGE_SIZE } from "./queries";
 
 // ---------------------------------------------------------------------------
 // Stub next/navigation and next/link
@@ -450,10 +450,13 @@ describe("<CardgroupsClient> connection cache update (readQuery + writeQuery)", 
   it("prepends new cardgroup into MyCardgroupsConnection cache using readQuery + writeQuery", () => {
     const cache = new InMemoryCache();
 
-    // Pre-seed both the connection cache and the flat list cache
+    // Pre-seed both the connection cache and the flat list cache.
+    // CARDGROUPS_DEFAULT_VARS keeps the cache key identical to what
+    // new-cardgroup-client.tsx and the SSR seed write — any mismatch
+    // would make this read invisible (cache miss).
     cache.writeQuery({
       query: MyCardgroupsConnectionDocument,
-      variables: { first: CARDGROUPS_PAGE_SIZE },
+      variables: CARDGROUPS_DEFAULT_VARS,
       data: { myCardgroupsConnection: makeConnection([CG_1, CG_2]) },
     });
     cache.writeQuery({
@@ -471,7 +474,7 @@ describe("<CardgroupsClient> connection cache update (readQuery + writeQuery)", 
     // Warm-cache path: readQuery returns data, writeQuery prepends
     const existingConnection = cache.readQuery({
       query: MyCardgroupsConnectionDocument,
-      variables: { first: CARDGROUPS_PAGE_SIZE },
+      variables: CARDGROUPS_DEFAULT_VARS,
     });
 
     // Verify readQuery returned non-null (warm cache)
@@ -480,7 +483,7 @@ describe("<CardgroupsClient> connection cache update (readQuery + writeQuery)", 
     if (existingConnection) {
       cache.writeQuery({
         query: MyCardgroupsConnectionDocument,
-        variables: { first: CARDGROUPS_PAGE_SIZE },
+        variables: CARDGROUPS_DEFAULT_VARS,
         data: {
           myCardgroupsConnection: {
             ...existingConnection.myCardgroupsConnection,
@@ -496,7 +499,7 @@ describe("<CardgroupsClient> connection cache update (readQuery + writeQuery)", 
 
     const result = cache.readQuery({
       query: MyCardgroupsConnectionDocument,
-      variables: { first: CARDGROUPS_PAGE_SIZE },
+      variables: CARDGROUPS_DEFAULT_VARS,
     });
 
     expect(result?.myCardgroupsConnection.edges).toHaveLength(3);
@@ -520,7 +523,7 @@ describe("<CardgroupsClient> connection cache update (readQuery + writeQuery)", 
 
     const existingConnection = cache.readQuery({
       query: MyCardgroupsConnectionDocument,
-      variables: { first: CARDGROUPS_PAGE_SIZE },
+      variables: CARDGROUPS_DEFAULT_VARS,
     });
 
     // Cold cache: readQuery must return null
@@ -529,7 +532,7 @@ describe("<CardgroupsClient> connection cache update (readQuery + writeQuery)", 
     // Build a minimal connection (as new-cardgroup-client.tsx does in the else branch)
     cache.writeQuery({
       query: MyCardgroupsConnectionDocument,
-      variables: { first: CARDGROUPS_PAGE_SIZE },
+      variables: CARDGROUPS_DEFAULT_VARS,
       data: {
         myCardgroupsConnection: {
           __typename: "CardgroupConnection" as const,
@@ -548,7 +551,7 @@ describe("<CardgroupsClient> connection cache update (readQuery + writeQuery)", 
 
     const result = cache.readQuery({
       query: MyCardgroupsConnectionDocument,
-      variables: { first: CARDGROUPS_PAGE_SIZE },
+      variables: CARDGROUPS_DEFAULT_VARS,
     });
 
     expect(result?.myCardgroupsConnection.edges).toHaveLength(1);

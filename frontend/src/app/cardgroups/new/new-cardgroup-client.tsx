@@ -3,7 +3,7 @@
 import { useMutation } from "@apollo/client/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CARDGROUPS_PAGE_SIZE, CreateCardgroupMutation } from "@/app/cardgroups/queries";
+import { CARDGROUPS_DEFAULT_VARS, CreateCardgroupMutation } from "@/app/cardgroups/queries";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
 import { MyCardgroupsConnectionDocument, MyCardgroupsDocument } from "@/generated/graphql";
 
@@ -35,15 +35,16 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
       // shows the new entry without a refetch when the user returns there.
       // pagination.md: cache.modify is forbidden — use readQuery + writeQuery
       // so cold-cache entries are also handled correctly.
-      const connectionVars = { first: CARDGROUPS_PAGE_SIZE };
+      // CARDGROUPS_DEFAULT_VARS keeps the cache key in sync with the SSR seed
+      // and the client useQuery — any mismatch makes this write invisible.
       const existingConnection = cache.readQuery({
         query: MyCardgroupsConnectionDocument,
-        variables: connectionVars,
+        variables: CARDGROUPS_DEFAULT_VARS,
       });
       if (existingConnection) {
         cache.writeQuery({
           query: MyCardgroupsConnectionDocument,
-          variables: connectionVars,
+          variables: CARDGROUPS_DEFAULT_VARS,
           data: {
             myCardgroupsConnection: {
               ...existingConnection.myCardgroupsConnection,
@@ -64,7 +65,7 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
         // the new edge immediately when the user lands there.
         cache.writeQuery({
           query: MyCardgroupsConnectionDocument,
-          variables: connectionVars,
+          variables: CARDGROUPS_DEFAULT_VARS,
           data: {
             myCardgroupsConnection: {
               __typename: "CardgroupConnection" as const,

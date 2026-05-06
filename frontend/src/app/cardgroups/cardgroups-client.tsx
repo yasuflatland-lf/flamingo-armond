@@ -13,7 +13,7 @@ import {
   type MyCardgroupsConnectionQuery,
 } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
-import { CARDGROUPS_PAGE_SIZE } from "./queries";
+import { CARDGROUPS_DEFAULT_VARS } from "./queries";
 
 type Connection = MyCardgroupsConnectionQuery["myCardgroupsConnection"];
 
@@ -44,15 +44,25 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   useEffect(() => {
     const timer = setTimeout(() => {
       setSearchQuery(searchInput.trim() || null);
-      // Reset pagination error when the search changes.
-      setFetchMoreError(null);
     }, 300);
     return () => clearTimeout(timer);
   }, [searchInput]);
 
+  // When the active search query changes, any in-flight fetchMore from the
+  // previous search holds a stale cursor. Reset the IO guard and error state
+  // immediately so the new query starts from a clean slate.
+  // See .claude/rules/pagination.md § "IntersectionObserver in-flight guard".
+  // biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery is an intentional trigger dependency; it is not referenced in the body because the effect resets derived IO state, not searchQuery itself.
+  useEffect(() => {
+    fetchingRef.current = false;
+    setFetchMoreError(null);
+  }, [searchQuery]);
+
   // Seed the cache once with the SSR initialConnection so the first useQuery
   // pass (cache-first) renders immediately. Only seed when searchQuery is the
-  // unfiltered "" state, since that is the variable shape the SSR page used.
+  // unfiltered null state, since that is the variable shape the SSR page used.
+  // CARDGROUPS_DEFAULT_VARS keeps the cache key identical to the SSR seed and
+  // the client useQuery — any mismatch silently splits the cache.
   // useRef<boolean> ensures Strict Mode's double-mount does not write twice.
   const apollo = useApolloClient();
   const seededRef = useRef(false);
@@ -62,13 +72,21 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
     seededRef.current = true;
     apollo.writeQuery({
       query: MyCardgroupsConnectionDocument,
-      variables: { first: CARDGROUPS_PAGE_SIZE },
+      variables: CARDGROUPS_DEFAULT_VARS,
       data: { myCardgroupsConnection: initialConnection },
     });
   }, [apollo, initialConnection]);
 
+  // When searchQuery is null we use CARDGROUPS_DEFAULT_VARS verbatim so the
+  // cache key matches the SSR seed exactly. For non-null searches we spread and
+  // override `search`, keeping `first` in sync with the default.
+  const queryVariables =
+    searchQuery === null
+      ? CARDGROUPS_DEFAULT_VARS
+      : { ...CARDGROUPS_DEFAULT_VARS, search: searchQuery };
+
   const { data, fetchMore, loading, networkStatus } = useQuery(MyCardgroupsConnectionDocument, {
-    variables: { first: CARDGROUPS_PAGE_SIZE, search: searchQuery },
+    variables: queryVariables,
     fetchPolicy: "cache-first",
     notifyOnNetworkStatusChange: true,
   });
@@ -89,7 +107,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
     fetchingRef.current = true;
     fetchMore({
       variables: {
-        first: CARDGROUPS_PAGE_SIZE,
+        ...CARDGROUPS_DEFAULT_VARS,
         after: endCursor,
         search: searchQuery,
       },
@@ -113,12 +131,20 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
       .catch((err) => {
         const banner =
           getBackendErrorBanner(err) ?? "Could not load more cardgroups. Please try again.";
+        // Structured warn for operator triage: name + request context only.
+        // err.message is omitted — backend messages may carry user-authored content.
+        // See .claude/rules/frontend-typescript-conventions.md § "expect.objectContaining".
+        console.warn("[cardgroups] fetchMore failed", {
+          name: err instanceof Error ? err.name : "unknown",
+          searchQuery,
+          endCursor: data?.myCardgroupsConnection.pageInfo.endCursor ?? null,
+        });
         setFetchMoreError(banner);
       })
       .finally(() => {
         fetchingRef.current = false;
       });
-  }, [fetchMore, endCursor, hasNextPage, searchQuery]);
+  }, [fetchMore, endCursor, hasNextPage, searchQuery, data]);
 
   useEffect(() => {
     if (!hasNextPage) return;

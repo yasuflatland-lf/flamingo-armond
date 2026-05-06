@@ -147,10 +147,9 @@ describe("CardgroupsPage", () => {
     await expect(CardgroupsPage()).rejects.toThrow("Network unreachable");
   });
 
-  it("renders CardgroupsClient with null initialConnection when gqlFetch throws non-auth error", async () => {
-    // The page catches the error via redirectIfUnauthenticated but passes null
-    // initialConnection to the client component when auth fails.
-    // Non-auth errors rethrow, so this just verifies the UNAUTHENTICATED redirect path works.
+  it("redirects to /login when gqlFetch throws an UNAUTHENTICATED error (structural parse)", async () => {
+    // isUnauthenticatedGraphQLError parses extensions.code structurally — no
+    // substring matching. This test verifies the structural redirect path works.
     vi.mocked(gqlFetch).mockRejectedValue(
       new Error(
         'GraphQL errors: [{"message":"Unauthenticated","extensions":{"code":"UNAUTHENTICATED"}}]',

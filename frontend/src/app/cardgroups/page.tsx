@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 import type { MyCardgroupsConnectionQuery as MyCardgroupsConnectionQueryType } from "@/generated/graphql";
+import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
-import { redirectIfUnauthenticated } from "@/lib/apollo/server-redirect";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import CardgroupsClient from "./cardgroups-client";
-import { CARDGROUPS_PAGE_SIZE, MyCardgroupsConnectionQuery } from "./queries";
+import { CARDGROUPS_DEFAULT_VARS, MyCardgroupsConnectionQuery } from "./queries";
 
 type CardgroupConnection = MyCardgroupsConnectionQueryType["myCardgroupsConnection"];
 
@@ -25,12 +25,20 @@ export default async function CardgroupsPage() {
   let initialConnection: CardgroupConnection | null = null;
   try {
     const data = await gqlFetch(MyCardgroupsConnectionQuery, {
-      variables: { first: CARDGROUPS_PAGE_SIZE },
+      variables: CARDGROUPS_DEFAULT_VARS,
       revalidate: 0,
     });
     initialConnection = data.myCardgroupsConnection;
   } catch (err) {
-    redirectIfUnauthenticated(err, "/login");
+    // Structural parse per .claude/rules/frontend-rsc-error-handling.md §
+    // "Structurally parse GraphQL extensions.code — never substring-match".
+    if (isUnauthenticatedGraphQLError(err)) redirect("/login");
+    console.error(
+      "[cardgroups] gqlFetch failed:",
+      err instanceof Error ? err.name : "unknown",
+      err instanceof Error ? err.message : String(err),
+    );
+    throw err;
   }
 
   return <CardgroupsClient initialConnection={initialConnection} />;
