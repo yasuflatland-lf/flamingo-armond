@@ -99,4 +99,60 @@ describe("LoginPage", () => {
 
     expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
   });
+
+  it("split-screen: outer wrapper has h-svh and lg:grid-cols-2", async () => {
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
+
+    const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
+    const { container } = render(jsx);
+
+    const grid = container.querySelector("[data-testid='login-grid']");
+    expect(grid).toBeInTheDocument();
+    expect(grid?.className).toMatch(/h-svh/);
+    expect(grid?.className).toMatch(/lg:grid-cols-2/);
+  });
+
+  it("split-screen: brand panel has max-lg:hidden", async () => {
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
+
+    const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
+    const { container } = render(jsx);
+
+    const brandPanel = container.querySelector("[data-testid='brand-panel']");
+    expect(brandPanel).toBeInTheDocument();
+    expect(brandPanel?.className).toMatch(/max-lg:hidden/);
+  });
+
+  it("split-screen: brand panel shows flamingo logo and app name", async () => {
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
+
+    const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
+    const { container } = render(jsx);
+
+    const brandPanel = container.querySelector("[data-testid='brand-panel']");
+    expect(brandPanel).toBeInTheDocument();
+    expect(brandPanel?.querySelector("[aria-label='Flamingo']")).toBeInTheDocument();
+    expect(brandPanel?.textContent).toContain("flamingo-armond");
+  });
+
+  it("split-screen: brand panel must not contain any email address (PII)", async () => {
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
+
+    const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
+    const { container } = render(jsx);
+
+    const brandPanel = container.querySelector("[data-testid='brand-panel']");
+    expect(brandPanel?.textContent).not.toMatch(/@/);
+  });
+
+  it("split-screen: form column renders OAuth button, Terms link, and Privacy link", async () => {
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
+
+    const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
+    render(jsx);
+
+    expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /terms/i })).toHaveAttribute("href", "/terms");
+    expect(screen.getByRole("link", { name: /privacy/i })).toHaveAttribute("href", "/privacy");
+  });
 });
