@@ -36,9 +36,16 @@ interface CardgroupsClientProps {
  *    a network round-trip.
  */
 export default function CardgroupsClient({ initialConnection }: CardgroupsClientProps) {
+  const apollo = useApolloClient();
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
+
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // pagination.md: in-flight guard MUST be useRef<boolean>, not useState.
+  const fetchingRef = useRef(false);
+  // Strict Mode double-mount safety: only write the SSR seed into the cache once.
+  const seededRef = useRef(false);
 
   // Debounce: update searchQuery 300ms after the last keystroke.
   useEffect(() => {
@@ -59,16 +66,11 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   }, [searchQuery]);
 
   // Seed the cache once with the SSR initialConnection so the first useQuery
-  // pass (cache-first) renders immediately. Only seed when searchQuery is the
-  // unfiltered null state, since that is the variable shape the SSR page used.
-  // CARDGROUPS_DEFAULT_VARS keeps the cache key identical to the SSR seed and
-  // the client useQuery — any mismatch silently splits the cache.
-  // useRef<boolean> ensures Strict Mode's double-mount does not write twice.
-  const apollo = useApolloClient();
-  const seededRef = useRef(false);
+  // pass (cache-first) renders immediately. CARDGROUPS_DEFAULT_VARS keeps the
+  // cache key identical to the SSR seed and the client useQuery — any mismatch
+  // silently splits the cache.
   useEffect(() => {
-    if (seededRef.current) return;
-    if (initialConnection == null) return;
+    if (seededRef.current || initialConnection == null) return;
     seededRef.current = true;
     apollo.writeQuery({
       query: MyCardgroupsConnectionDocument,
@@ -96,21 +98,12 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   const hasNextPage = connection?.pageInfo.hasNextPage ?? false;
   const endCursor = connection?.pageInfo.endCursor ?? null;
 
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-  // pagination.md: in-flight guard MUST be useRef<boolean>, not useState.
-  const fetchingRef = useRef(false);
-
   const requestNextPage = useCallback(() => {
-    if (fetchingRef.current) return;
-    if (!hasNextPage) return;
+    if (fetchingRef.current || !hasNextPage) return;
 
     fetchingRef.current = true;
     fetchMore({
-      variables: {
-        ...CARDGROUPS_DEFAULT_VARS,
-        after: endCursor,
-        search: searchQuery,
-      },
+      variables: { ...CARDGROUPS_DEFAULT_VARS, after: endCursor, search: searchQuery },
       updateQuery: (prev, { fetchMoreResult }) => {
         if (!fetchMoreResult) return prev;
         return {
@@ -129,35 +122,32 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
         setFetchMoreError(null);
       })
       .catch((err) => {
-        const banner =
-          getBackendErrorBanner(err) ?? "Could not load more cardgroups. Please try again.";
         // Structured warn for operator triage: name + request context only.
         // err.message is omitted — backend messages may carry user-authored content.
         // See .claude/rules/frontend-typescript-conventions.md § "expect.objectContaining".
         console.warn("[cardgroups] fetchMore failed", {
           name: err instanceof Error ? err.name : "unknown",
           searchQuery,
-          endCursor: data?.myCardgroupsConnection.pageInfo.endCursor ?? null,
+          endCursor,
         });
-        setFetchMoreError(banner);
+        setFetchMoreError(
+          getBackendErrorBanner(err) ?? "Could not load more cardgroups. Please try again.",
+        );
       })
       .finally(() => {
         fetchingRef.current = false;
       });
-  }, [fetchMore, endCursor, hasNextPage, searchQuery, data]);
+  }, [fetchMore, endCursor, hasNextPage, searchQuery]);
 
   useEffect(() => {
-    if (!hasNextPage) return;
     // Halt the observer loop while a previous fetch failed; user must click Retry to resume.
-    if (fetchMoreError != null) return;
+    if (!hasNextPage || fetchMoreError != null) return;
     const node = sentinelRef.current;
     if (!node) return;
 
     const observer = new IntersectionObserver((entries) => {
-      const entry = entries[0];
-      if (!entry?.isIntersecting) return;
-      if (fetchingRef.current) return;
-      if (!hasNextPage) return;
+      if (!entries[0]?.isIntersecting) return;
+      if (fetchingRef.current || !hasNextPage) return;
       requestNextPage();
     });
 
@@ -167,7 +157,6 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
 
   const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
   const initialLoading = loading && edges.length === 0 && networkStatus !== NetworkStatus.fetchMore;
-
   const hasSearch = searchQuery !== null && searchQuery !== "";
 
   return (

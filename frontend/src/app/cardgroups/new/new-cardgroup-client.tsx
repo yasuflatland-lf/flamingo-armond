@@ -26,9 +26,7 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
       const existing = cache.readQuery({ query: MyCardgroupsDocument });
       cache.writeQuery({
         query: MyCardgroupsDocument,
-        data: {
-          myCardgroups: [created, ...(existing?.myCardgroups ?? [])],
-        },
+        data: { myCardgroups: [created, ...(existing?.myCardgroups ?? [])] },
       });
 
       // Also update the Connection cache so the /cardgroups listing page
@@ -41,53 +39,36 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
         query: MyCardgroupsConnectionDocument,
         variables: CARDGROUPS_DEFAULT_VARS,
       });
-      if (existingConnection) {
-        cache.writeQuery({
-          query: MyCardgroupsConnectionDocument,
-          variables: CARDGROUPS_DEFAULT_VARS,
-          data: {
-            myCardgroupsConnection: {
-              ...existingConnection.myCardgroupsConnection,
-              edges: [
-                {
-                  __typename: "CardgroupEdge" as const,
-                  cursor: created.id,
-                  node: created,
-                },
-                ...existingConnection.myCardgroupsConnection.edges,
-              ],
-              totalCount: existingConnection.myCardgroupsConnection.totalCount + 1,
+      const newEdge = {
+        __typename: "CardgroupEdge" as const,
+        cursor: created.id,
+        node: created,
+      };
+      const nextConnection = existingConnection
+        ? {
+            ...existingConnection.myCardgroupsConnection,
+            edges: [newEdge, ...existingConnection.myCardgroupsConnection.edges],
+            totalCount: existingConnection.myCardgroupsConnection.totalCount + 1,
+          }
+        : {
+            // Cold cache: build a minimal connection so the listing page can render
+            // the new edge immediately when the user lands there.
+            __typename: "CardgroupConnection" as const,
+            edges: [newEdge],
+            pageInfo: {
+              __typename: "PageInfo" as const,
+              hasNextPage: false,
+              hasPreviousPage: false,
+              startCursor: created.id,
+              endCursor: created.id,
             },
-          },
-        });
-      } else {
-        // Cold cache: build a minimal connection so the listing page can render
-        // the new edge immediately when the user lands there.
-        cache.writeQuery({
-          query: MyCardgroupsConnectionDocument,
-          variables: CARDGROUPS_DEFAULT_VARS,
-          data: {
-            myCardgroupsConnection: {
-              __typename: "CardgroupConnection" as const,
-              edges: [
-                {
-                  __typename: "CardgroupEdge" as const,
-                  cursor: created.id,
-                  node: created,
-                },
-              ],
-              pageInfo: {
-                __typename: "PageInfo" as const,
-                hasNextPage: false,
-                hasPreviousPage: false,
-                startCursor: created.id,
-                endCursor: created.id,
-              },
-              totalCount: 1,
-            },
-          },
-        });
-      }
+            totalCount: 1,
+          };
+      cache.writeQuery({
+        query: MyCardgroupsConnectionDocument,
+        variables: CARDGROUPS_DEFAULT_VARS,
+        data: { myCardgroupsConnection: nextConnection },
+      });
     },
     onCompleted(data) {
       const created = data?.createCardgroup?.cardgroup;
@@ -95,10 +76,10 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
       if (returnTo) {
         const sep = returnTo.includes("?") ? "&" : "?";
         router.push(`${returnTo}${sep}cardgroup=${created.id}`);
-      } else {
-        router.push(`/cardgroups/${created.id}`);
-        router.refresh();
+        return;
       }
+      router.push(`/cardgroups/${created.id}`);
+      router.refresh();
     },
   });
 
