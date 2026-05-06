@@ -219,6 +219,58 @@ Any GraphQL query whose result depends on `Authorization` (role lookups, `me`, o
 
 The three `revalidate` states are documented in `docs/frontend.md` — `0` means no cache, `false` means cache forever, omitted means Next's default heuristic. Pick `0` for auth-sensitive; never collapse to a `number` default.
 
+## `redirect()` from `next/navigation` only navigates from a sync render path — use `router.replace` inside async `.catch`
+
+`next/navigation`'s `redirect()` works by throwing `NEXT_REDIRECT`, which Next's App Router intercepts during render or inside synchronous server-action / event-handler frames. Inside a `Promise.catch()` the throw is captured by the promise machinery and becomes the rejection of the chained promise — Next never sees it, the page does not navigate, and the only signal is the unhandled rejection in the console. The bug is silent: a session-expired branch handles its `UNAUTHENTICATED` correctly but leaves the user stuck on the failing page.
+
+The fix in async / promise-chain contexts is `router.replace(target)` from `useRouter()` — it is fire-and-forget, schedules the navigation through the App Router, and does not depend on a thrown sentinel:
+
+```tsx
+fetchMore({ /* ... */ })
+  .then(() => { /* success */ })
+  .catch((err) => {
+    const kind = classifyQueryError(err);
+    if (kind?.kind === "unauthenticated") {
+      // redirect() throws NEXT_REDIRECT to navigate. Inside a Promise's .catch()
+      // that throw becomes the rejection of the chained promise (not a navigation),
+      // so the page stays put and the only signal is the warn log. Use
+      // router.replace(), which is fire-and-forget and schedules the navigation
+      // through the App Router.
+      router.replace("/");
+      return;
+    }
+    // ...other branches
+  });
+```
+
+**How to apply:** any handler that calls `redirect()` from inside a `.catch`, `.then`, `await`-after-promise, or `setTimeout` callback must convert to `router.replace(target)` (or `router.push(target)`). The reverse is also true: the synchronous-render and server-action paths (RSC body, route handler `GET`/`POST`, `useTransition` server-action callback) MUST keep `redirect()` because they have no `useRouter()` instance available. The two helpers are not interchangeable — pick by call-site context. Reference: `frontend/src/app/admin/users/AdminUsersClient.tsx` `handlePageChange` `.catch` (uses `router.replace("/")` for UNAUTHENTICATED inside a Promise chain).
+
+## Surface non-blocking sibling-query failures via structured `console.warn` for operator triage
+
+When a page fires a secondary "background" query whose failure does not block the primary flow (e.g. a faceted-filter dropdown loading its choices, a sidebar count, a prefetched chip's metadata), the natural failure shape is "render the empty state and move on". The empty state is then indistinguishable from "no data configured" — operators have no signal that the query is silently failing and the dropdown is permanently broken.
+
+Observe the secondary `useQuery.error` field via a `useEffect` and emit a structured `console.warn` with the error's `name` only:
+
+```ts
+const rolesResult = useQuery(AdminRolesDocument, { fetchPolicy: "cache-first" });
+
+// Surface AdminRoles query failure to operator triage. The dropdown silently
+// degrades to empty (non-fatal for the rest of the page), but the failure must
+// be observable in logs. err.message is omitted because backend GraphQL error
+// messages may carry user-authored content (PII gate).
+useEffect(() => {
+  if (rolesResult.error) {
+    console.warn("[admin-users] AdminRoles query failed", {
+      name: rolesResult.error.name,
+    });
+  }
+}, [rolesResult.error]);
+```
+
+**Why:** the page's primary failure branches (banner, redirect) are already covered by `classifyQueryError` on the main query. The secondary query has no UI affordance to fail loudly without harming the main flow — the warn is the only triage seam. Logging `err.name` only (not `err.message`) follows the same PII rule as transport-rejection logging: backend GraphQL error messages can echo user-authored content (cardgroup names, search terms, etc.) and must not enter the warn payload by default.
+
+**How to apply:** any `useQuery` whose result is consumed for a non-blocking UI affordance (a filter dropdown, a count badge, a prefetch) must observe `result.error` in a sibling `useEffect` and emit a `[scope]` warn with `name` only. Reference: `frontend/src/app/admin/users/AdminUsersClient.tsx` (`AdminRoles query failed` warn for the role-filter Popover dropdown).
+
 ## Pages that bypass `AppShell` MUST render their own `<main>` landmark
 
 The root layout in `frontend/src/app/layout.tsx` short-circuits `AppShell` for any route that owns the full viewport (today: `/login` via `pathname === "/login"`). When `AppShell` is bypassed, the rendered tree contains no `<main>`, no `<nav>`, and no shell-level landmarks — the page itself is the only place a landmark can be emitted. Without an explicit `<main>`, screen readers (VoiceOver, JAWS, NVDA) have no jump-to-content target and the page fails WCAG 2.1 SC 1.3.6 ("Identify Purpose").

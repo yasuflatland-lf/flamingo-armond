@@ -217,6 +217,65 @@ The "drop `optimisticResponse`" rule below applies here too: a mutation that can
 
 Without an error halt gate, the IO keeps firing on the same failed cursor and loops invisibly with only `console.error` noise. Set state to a banner string in the `fetchMore` `.catch`, render a Retry button that clears the state and re-invokes the request, and short-circuit the IO `useEffect` while the error is set.
 
+### Classify the `fetchMore` `.catch` — UNAUTHENTICATED redirects, FORBIDDEN suppresses Retry
+
+A `fetchMore` rejection is a query-level error and reaches the `.catch` with the same shape as the initial query error. Three branches must be distinguished, and feeding the rejection straight to `getBackendErrorBanner` (which only produces a banner string) collapses all three into a generic Retry banner that loops on FORBIDDEN and never recovers from session-expired:
+
+- **`UNAUTHENTICATED`** — session expired mid-pagination; the page must navigate (see "router.replace inside async `.catch`" in `frontend-rsc-error-handling.md`), not show a banner.
+- **`FORBIDDEN`** — role revoked while the user is paginating; the banner copy is permission-shaped and the Retry button must be suppressed, otherwise the same `fetchMore` cursor refetches and fails again.
+- **everything else (network, INTERNAL)** — generic banner with Retry.
+
+Use the discriminated `classifyQueryError(err)` helper (`frontend/src/lib/apollo/errors.ts`, `QueryErrorKind = "forbidden" | "unauthenticated" | "banner"`) inside the `fetchMore` `.catch` and branch on the `kind` tag. Persist a `{ message, isForbidden }` shape in the error-banner state so the UI knows whether to render Retry. Reference: `frontend/src/app/admin/users/AdminUsersClient.tsx` (`handlePageChange` `.catch`, `fetchMoreError: { message, isForbidden } | null`).
+
+### Discrete-pagination over a Relay Connection: cursor walk by page index
+
+When the schema only exposes cursor-based pagination but the UI must support "go to page N" / "go to last page" controls (e.g. an admin DataTable with first / prev / next / last buttons), maintain a `Map<pageIndex, after-cursor>` and walk forward one step at a time:
+
+- Page 0's after-cursor is `null` (forward from the start of the result set).
+- For page N > 0 not yet visited, fire `fetchMore` from the current page's `endCursor` and stash that endCursor as page N's after-cursor on resolve.
+- Backward navigation is a state update only — the cursor is already cached.
+- `fetchMore`'s `updateQuery` REPLACES the visible edges (not concatenates) so the cache reflects only the current page; `totalCount` from the server's COUNT(*) drives the page-count display.
+
+```ts
+const [cursorByPage, setCursorByPage] = useState<Map<number, string | null>>(
+  () => new Map([[0, null]]),
+);
+// ...
+fetchMore({
+  variables: { ...DEFAULT_VARS, first: pageSize, after: endCursor, search, roleId },
+  updateQuery: (prev, { fetchMoreResult }) => fetchMoreResult ?? prev,
+}).then(() => {
+  setCursorByPage((prev) => new Map(prev).set(next, endCursor));
+  setPageIndex(next);
+});
+```
+
+**Deep-linking limitation.** A `?page=N` URL parameter cannot be supported, because re-constructing cursors for an arbitrary N requires a forward walk of N pages that the server has no batched form of. Sync only the filter axes (search, roleId) into the URL; treat page index as session-only state. Document this in a comment at the page-index `useState` so future contributors do not "fix" it by adding a `?page=` parameter that silently drops at `redirect()` time. Reference: `frontend/src/app/admin/users/AdminUsersClient.tsx` (`pageIndex` is intentionally not URL-synced; `cursorByPage` walk).
+
+**N-step walk on first deep-jump is the accepted tradeoff.** Clicking "go to last page" from page 0 with totalCount = 200 and pageSize = 20 triggers nine forward `fetchMore` calls. This is acceptable for operator-workflow listings (admin users, admin dictionary) where the row count is bounded and traffic is low; cached cursors short-circuit subsequent revisits. Listings backed by user-volume data (e.g. cards-by-cardgroup) should keep the IntersectionObserver infinite-scroll shape, not migrate to discrete pagination.
+
+### Slim list-side fragment + detail fragment that extends it
+
+When the same `*Fields` GraphQL fragment is reused by both a paginated list query and a single-entity detail/edit query, the list query pulls every detail-only field (e.g. `bio`, multi-paragraph user-authored content) for every row of every page. For a 20-row page that is 20× the bandwidth waste; for the connection's totalCount range it scales linearly.
+
+Split into two fragments — a **slim list fragment** with only the columns the listing renders, and a **detail fragment** that spreads the list fragment and adds the detail-only fields:
+
+```graphql
+fragment AdminUserListFields on User {
+  id
+  displayName
+  avatarUrl
+  lastActive
+}
+
+fragment AdminUserFields on User {
+  ...AdminUserListFields  # spread keeps overlap in lock-step
+  bio
+}
+```
+
+The list query spreads `AdminUserListFields`; the detail/edit query and any role-mutation response spreads `AdminUserFields`. The runtime `as` cast at the list edge-to-row boundary uses the narrow type, so any future detail-only field that is added to the detail fragment but not the list fragment is a compile-time prompt to decide which side it belongs in. Reference: `frontend/src/app/admin/users/queries.ts` (`AdminUserListFields` / `AdminUserFields`).
+
 ### `NetworkStatus.fetchMore`, not magic number
 
 Always import the named `NetworkStatus` enum from `@apollo/client`. Magic numbers silently rot if Apollo renumbers (vanishingly rare, but the named import costs nothing).

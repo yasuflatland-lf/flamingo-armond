@@ -171,6 +171,18 @@ The Make target executes the same INSERT through the local Supabase Postgres con
 
 Authorization rules implemented at the usecase level need tests at **both** the usecase layer and the resolver layer. Usecase tests confirm the rule (right sentinel returned, right error code mapped) but cannot catch wire-format regressions: an `extensions.code` typo, a resolver that swallows the usecase error and returns `nil`, or a gqlgen codec change that drops the `field` extension. Resolver-level wire tests built against `handler.NewServer` (see `docs/backend.md` § "Resolver-level wire tests") are the only layer that exercises the full request envelope. Apply this dual-layer rule to every guard whose failure mode is "user gains access they should not have" — privilege checks, owner checks, self-demotion, and role-mutation paths.
 
+### `users.last_active` write boundary
+
+`AuthMiddleware` writes `users.last_active = NOW()` for every successfully verified JWT. The boundary is the auth middleware (not a dedicated mutation, not a per-resolver hook) because:
+
+- **Coverage** — every authenticated request touches the column, including reads. A per-mutation hook would miss anyone who only ever loads `/cardgroups` and never mutates.
+- **One-write-per-request** — the middleware fires exactly once per request frame, so a single page load that fans out into 8 parallel GraphQL queries records one `last_active` bump (the auth middleware runs at the HTTP layer, not per-operation).
+- **Fire-and-forget** — the write runs in a goroutine with a 5-second timeout on a fresh `context.Background()` so the DB round-trip never adds latency to the hot request path. A lost update is acceptable: `last_active` is for human display only and does not affect auth correctness. The pattern is documented in `.claude/rules/go-library-gotchas.md` § "Fire-and-forget goroutine: snapshot context-scoped IDs".
+
+The middleware accepts a `lastActiveToucher` interface (a single-method consumer-defined narrow interface) rather than `repository.UserRepository`. Pass `nil` to disable the write — useful in unit tests that do not need a database. Reference: `backend/internal/auth/middleware.go` (`AuthMiddleware` constructor signature) and `backend/internal/repository/user.go` (`TouchLastActive` is a single `UPDATE ... WHERE id = ?` that returns `nil` on `RowsAffected == 0`, because the user row is created lazily and a missing row must not block the request).
+
+**Failure shape: WARN + 200, never block the request.** A `TouchLastActive` error logs via `logging.LogWarn` (eris `error_chain`, `user_id`, `request_id` propagated from the originating request) and the goroutine exits. The HTTP handler always returns 200 to the user. The WARN payload deliberately omits `email` / `display_name` / `bio` — see `.claude/rules/error-wrapping.md` § "Assert PII *absence* on log lines that carry `user_id`" for the policy.
+
 ### Echo v5 + gqlgen error propagation
 
 `echo.WrapHandler` (v5) converts a `http.Handler` into an `echo.HandlerFunc` that always returns `nil`. gqlgen's `handler.Server` is an `http.Handler`: it writes GraphQL errors into the response body as `{"errors":[...]}` with HTTP 200, and only ever writes a 5xx for catastrophic transport failures. Because `WrapHandler` returns `nil`, Echo's central error pipeline never sees these, which is fine: the GraphQL error is already transported in-band. Do **not** wrap gqlgen with a custom adapter that translates non-2xx into `echo.NewHTTPError` — that would cause a double write on the already-committed `ResponseWriter`.

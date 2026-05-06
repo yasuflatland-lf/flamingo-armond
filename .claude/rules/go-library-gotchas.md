@@ -311,6 +311,39 @@ from the branching step. Pass the already-acquired dep into the helper so the te
 can substitute a stub. Reference: `backend/cmd/server/main.go`
 `bootstrapSuperUserPromoter` (5 branches × stub-driven unit test).
 
+## Fire-and-forget goroutine: snapshot context-scoped IDs, then re-attach to a fresh background context
+
+A handler that wants to perform a non-critical side-effect after the response (e.g. update `users.last_active = NOW()` for every authenticated request) must spawn a goroutine that **outlives the request context**. Two intertwined hazards:
+
+1. **The request context is cancelled when the response is flushed.** Borrowing `c.Request().Context()` directly into `go func()` aborts the side-effect mid-DB-write. The fix is `context.WithTimeout(context.Background(), 5*time.Second)` inside the goroutine.
+2. **A fresh `context.Background()` strips every context-scoped value.** The slog `ContextHandler` reads `request_id` from the context (see `slog.Handler.WithGroup` rule above). Without re-attaching the ID, the goroutine's WARN log carries no `request_id` and operators cannot correlate the failure with the originating request.
+
+The pattern is to read the ID **synchronously** in the request frame, capture it as a goroutine parameter, and re-attach via a domain helper (`internalmw.WithRequestID(ctx, id)`) on the fresh background context:
+
+```go
+// Read request_id before the goroutine starts: the request context is cancelled
+// when the response is flushed, but the ID string is cheap to copy.
+reqID := internalmw.RequestIDFromContext(r.Context())
+go func(userID, requestID string) {
+    bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    if requestID != "" {
+        bgCtx = internalmw.WithRequestID(bgCtx, requestID)
+    }
+    if err := repo.TouchLastActive(bgCtx, userID); err != nil {
+        logging.LogWarn(bgCtx, slog.Default(), "auth: last_active update failed",
+            eris.Wrap(err, "auth: TouchLastActive"),
+            slog.String("user_id", userID))
+    }
+}(u.Sub, reqID)
+```
+
+**Why a public `WithRequestID` helper.** The `requestIDKey{}` context-key type is unexported, so callers outside `internal/middleware` cannot construct a context that carries the ID without going through a helper. Adding `WithRequestID(ctx, id) context.Context` next to the existing `RequestIDFromContext(ctx) string` keeps the key private while giving the auth middleware (and any future fire-and-forget caller) a typed seam. Reference: `backend/internal/middleware/request_id.go` (`WithRequestID`) consumed by `backend/internal/auth/middleware.go` (the `TouchLastActive` goroutine).
+
+**Why the `eris.Wrap` at the log site is load-bearing.** The repo method may be implemented by a stub or alternate backend that returns a plain stdlib `errors.New`, in which case `eris.ToJSON(err, true)` produces an `external`-only payload with no `root.stack`. The log-site wrap guarantees the chain is rich regardless. This is the same rule as `.claude/rules/error-wrapping.md` § "Defensive `eris.Wrap` at log sites that consume narrow interfaces" — apply it to fire-and-forget call sites too.
+
+**Test the goroutine without racing on a shared `bytes.Buffer`.** A test that captures slog output via `slog.NewJSONHandler(&bytes.Buffer{}, ...)` and reads the buffer concurrently with the goroutine writing to it has a data race that goes undetected without `-race`. The pattern is a thread-safe `chanLogHandler` whose `Handle` method copies record attrs into a `chan map[string]any`; the test drains the channel with a deadline (`select { case r := <-logCh: ...; case <-time.After(3s): t.Fatal(...) }`). Reference: `backend/internal/auth/middleware_test.go` (`chanLogHandler`, `installChanLogger`, `waitForLog`).
+
 ## Inline copy of production logic in tests is an anti-pattern
 
 A test that re-implements a branch from the code under test — e.g. an

@@ -582,6 +582,52 @@ The container CSS class is stable (it comes from the layout, not from dynamic da
 
 `shadcn init` is interactive and not suitable for CI or non-interactive environments. The fallback is to hand-write `components.json`, `lib/utils.ts`, and the `globals.css` base tokens following the shadcn JSON schema — that is how this repo's shadcn baseline was bootstrapped.
 
+### shadcn `DataTablePagination`: gate the "N of M selected" counter on `enableRowSelection`
+
+The vendored shadcn `DataTablePagination` (`frontend/src/components/ui/data-table-pagination.tsx`) renders `"{N} of {M} row(s) selected"` on its left edge by default. For a listing that has no row-selection feature (no checkbox column, no bulk-action bar), this counter renders permanently as `"0 of N row(s) selected."` — a visually noisy lie that the page does not even support selection.
+
+The fix is two coordinated changes:
+
+1. **Gate the counter render** on `table.options.enableRowSelection !== false`. The default is `undefined`, which keeps the counter visible (back-compatible with selection-aware tables). Render an empty `<div className="flex-1" />` in the `false` branch so the right-side controls keep their flex layout.
+2. **Pass `enableRowSelection: false` in `useReactTable`** for any DataTable that has no selection feature. Without this, the gate's default-`undefined` keeps the counter visible.
+
+```tsx
+// frontend/src/components/ui/data-table-pagination.tsx
+{table.options.enableRowSelection !== false ? (
+  <div className="flex-1 text-sm text-muted-foreground">
+    {table.getFilteredSelectedRowModel().rows.length} of{" "}
+    {table.getFilteredRowModel().rows.length} row(s) selected.
+  </div>
+) : (
+  <div className="flex-1" />
+)}
+
+// frontend/src/app/admin/users/users-table.tsx
+const table = useReactTable<AdminUserRow>({
+  // ...
+  enableRowSelection: false, // suppresses DataTablePagination's "N of M selected" counter
+});
+```
+
+The two changes are coupled: omitting either restores the visible default. Reference: `frontend/src/components/ui/data-table-pagination.tsx` and `frontend/src/app/admin/users/users-table.tsx`.
+
+### shadcn `DataTableFacetedFilter` is TanStack-`Column`-coupled — do not reuse for server-side filters
+
+The vendored shadcn `DataTableFacetedFilter` calls `column.getFilterValue` / `column.setFilterValue` on a TanStack `Column<TData>` instance, so it requires the filter to bind to a real Column from a `useReactTable` instance. For server-side filters that drive a GraphQL variable (e.g. `roleId` on `AdminUsersClient`) and are NOT a column of the rendered table, there is no Column to bind to — wiring a synthetic Column purely to feed the primitive is more code than re-implementing the popover.
+
+The pattern for server-side faceted filters: build the popover directly from `Popover` + `Command` (`CommandInput`, `CommandList`, `CommandGroup`, `CommandItem`, `CommandSeparator`) and own the selected-value state at the parent client component. The trigger button reads from props; the `Clear filter` row appears only when a value is set. Reference: `frontend/src/app/admin/users/users-toolbar.tsx` (single-select role filter, pure Popover + Command, no DataTableFacetedFilter import).
+
+### Vendored shadcn DataTable primitives in this repo
+
+The DataTable shell is composed from primitives vendored under `frontend/src/components/ui/`:
+
+- `table.tsx` — semantic `<Table>` / `<TableHeader>` / etc.
+- `data-table-column-header.tsx` — sortable column header (sorting is disabled in the admin users listing because the cursor order is fixed server-side).
+- `data-table-pagination.tsx` — first / prev / next / last buttons, "Rows per page" select, "Page X of Y" indicator. Reads `totalPages` from a prop when supplied so server-side `totalCount` drives the page count rather than `table.getPageCount()`.
+- `dropdown-menu.tsx`, `select.tsx`, `command.tsx`, `avatar.tsx`, `badge.tsx` — supporting primitives.
+
+All five were added by `pnpm dlx shadcn add`; manual edits to `data-table-pagination.tsx` (the `enableRowSelection` gate above) are noted in the file.
+
 ## Backend error-code contract
 
 The backend (`backend/internal/gqlerr`) returns three `extensions.code` values. The frontend handles them at two layers:
