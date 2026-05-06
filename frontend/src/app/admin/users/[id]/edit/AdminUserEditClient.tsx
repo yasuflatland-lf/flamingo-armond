@@ -147,7 +147,7 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
   }
 
   return (
-    <main className="mx-auto max-w-2xl p-8">
+    <main className="p-8">
       {/* Navigation */}
       <div className="mb-6 flex items-center gap-4">
         <Link href="/admin/users" className="text-sm text-muted-foreground hover:underline">

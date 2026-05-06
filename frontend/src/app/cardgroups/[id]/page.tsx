@@ -51,7 +51,7 @@ export default async function CardgroupDetailPage({ params }: { params: Promise<
   const previewCards = cards.slice(0, 5);
 
   return (
-    <main className="mx-auto max-w-2xl p-8">
+    <main className="p-8">
       <h1 className="mb-2 text-2xl font-semibold">{cardgroup.name}</h1>
       <p className="mb-6 text-sm text-muted-foreground">
         Updated {formatMediumDate(cardgroup.updatedAt as string)}

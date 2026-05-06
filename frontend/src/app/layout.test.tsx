@@ -42,6 +42,14 @@ vi.mock("next/navigation", () => ({
   usePathname: vi.fn(() => "/"),
 }));
 
+// next/headers — middleware forwards the request pathname via x-pathname so
+// the server component can decide whether to mount AppShell. Tests override
+// the return value for the /login bypass case.
+const mockGetHeader = vi.fn<(name: string) => string | null>(() => null);
+vi.mock("next/headers", () => ({
+  headers: vi.fn(() => Promise.resolve({ get: mockGetHeader })),
+}));
+
 // ---------------------------------------------------------------------------
 // Import after mocks are registered.
 // ---------------------------------------------------------------------------
@@ -130,6 +138,9 @@ let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   vi.clearAllMocks();
   resetMockSupabase();
+  // Default: x-pathname is absent, so layout falls through to the AppShell
+  // branch. The /login test overrides this per-case.
+  mockGetHeader.mockReturnValue(null);
   consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -300,5 +311,22 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
     expect(consoleWarnSpy).not.toHaveBeenCalled();
     expect(props.user).toBeNull();
     expect(props.isAdmin).toBe(false);
+  });
+
+  // Case 9: /login route bypasses AppShell entirely. The layout must NOT call
+  // Supabase getUser() (the auth page handles its own session check) and the
+  // returned tree must NOT contain an AppShell element. The supabase server
+  // client mock would still be invocable, but the layout must short-circuit
+  // before reaching it.
+  test("/login: layout renders bare children without AppShell, no Supabase or gqlFetch calls", async () => {
+    mockGetHeader.mockImplementation((name) => (name === "x-pathname" ? "/login" : null));
+
+    const tree = await RootLayout({ children: <div data-testid="login-children" /> });
+    const appShellProps = findElementProps(tree, "AppShell");
+
+    expect(appShellProps).toBeNull();
+    expect(gqlFetch).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
 });

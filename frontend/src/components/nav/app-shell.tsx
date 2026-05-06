@@ -24,6 +24,10 @@ interface AppShellProps {
 export function AppShell({ user, isAdmin, children }: AppShellProps) {
   return (
     <SidebarProvider>
+      {/* PC layout (md+): GlobalRail is a direct child of SidebarProvider so the
+          Sidebar gap div participates in the flex row and offsets SidebarInset.
+          The wrapper is hidden on mobile; the Sidebar component handles mobile
+          display internally via a Sheet overlay. */}
       {/* PC layout (md+): persistent rail on the left */}
       <aside
         data-testid="rail-container"
@@ -42,8 +46,6 @@ export function AppShell({ user, isAdmin, children }: AppShellProps) {
           <LogoDrawer user={user} isAdmin={isAdmin} />
         </header>
 
-        {/* Main content — SidebarInset handles the left-offset when the PC rail
-            is visible, via peer CSS selectors in the Shadcn sidebar primitive. */}
         <SidebarInset>{children}</SidebarInset>
       </div>
     </SidebarProvider>

@@ -16,7 +16,7 @@ export default async function SettingsPage() {
   if (!user) redirect("/login");
 
   return (
-    <main className="mx-auto max-w-xl p-8">
+    <main className="p-8">
       <h1 className="mb-6 text-2xl font-semibold">Settings</h1>
       <div className="rounded-lg border border-input bg-background p-4">
         <h2 className="font-semibold">Coming soon.</h2>

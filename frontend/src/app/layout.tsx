@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/nav/app-shell";
 import { GlobalFAB } from "@/components/nav/global-fab";
@@ -15,6 +16,22 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
+  // Read the pathname forwarded by middleware so this server component can
+  // decide whether to mount the navigation shell. /login renders bare so the
+  // sign-in screen owns the entire viewport.
+  const headersList = await headers();
+  const pathname = headersList.get("x-pathname") ?? "/";
+
+  if (pathname === "/login") {
+    return (
+      <html lang="en">
+        <body suppressHydrationWarning>
+          <Providers>{children}</Providers>
+        </body>
+      </html>
+    );
+  }
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },

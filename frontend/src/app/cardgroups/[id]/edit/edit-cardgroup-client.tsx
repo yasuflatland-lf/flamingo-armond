@@ -102,7 +102,7 @@ export function EditCardgroupClient({ cardgroup }: Props) {
   );
 
   return (
-    <main className="mx-auto max-w-xl p-8">
+    <main className="p-8">
       <div className="mb-6 flex items-center gap-4">
         <Link
           href={`/cardgroups/${cardgroup.id}`}

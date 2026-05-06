@@ -44,7 +44,7 @@ export function LoginButton() {
   }
 
   return (
-    <Button onClick={handleSignIn} type="button">
+    <Button onClick={handleSignIn} type="button" variant="brand">
       <GoogleGLogo />
       Continue with Google
     </Button>
