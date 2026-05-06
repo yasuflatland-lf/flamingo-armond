@@ -2,6 +2,7 @@
 
 import { useMutation } from "@apollo/client/react";
 import { useState } from "react";
+import { AdminPageShell } from "@/components/admin/admin-page-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
@@ -133,9 +134,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
   }
 
   return (
-    <div className="space-y-4 p-8">
-      <h1 className="text-2xl font-semibold">Roles</h1>
-
+    <AdminPageShell title="Roles" description="Manage roles available to assign to users.">
       {error && (
         <div
           role="alert"
@@ -271,6 +270,6 @@ export function AdminRolesClient({ initialRoles }: Props) {
           </div>
         </li>
       </ul>
-    </div>
+    </AdminPageShell>
   );
 }
