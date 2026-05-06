@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 
 	"github.com/rotisserie/eris"
 )
@@ -258,6 +259,11 @@ func (r *queryResolver) Cardgroup(ctx context.Context, id string) (*model.Cardgr
 		return nil, err
 	}
 	return toCardgroupModel(cg), nil
+}
+
+// MyCardgroupsConnection is the resolver for the myCardgroupsConnection field.
+func (r *queryResolver) MyCardgroupsConnection(ctx context.Context, first *int, after *string, last *int, before *string, search *string, orderBy *model.CardgroupOrderBy, orderDirection *model.SortOrder) (*model.CardgroupConnection, error) {
+	panic(fmt.Errorf("not implemented: MyCardgroupsConnection - myCardgroupsConnection"))
 }
 
 // Card is the resolver for the card field.
