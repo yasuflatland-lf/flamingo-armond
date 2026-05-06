@@ -356,6 +356,66 @@ describe("<CardgroupsClient>", () => {
     });
   });
 
+  // S5b: in-flight guard — fireIntersect called twice in the same tick fires
+  //      fetchMore only once. The second call must be swallowed by fetchingRef.
+  //      The LeakSpy detects any leaked second fetchMore request.
+  it("does not fire fetchMore twice when sentinel intersects in the same animation frame", async () => {
+    const cache = new InMemoryCache();
+    const page1Conn = makeConnection([CG_1, CG_2], true, 3);
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: { first: CARDGROUPS_PAGE_SIZE, search: null },
+      data: { myCardgroupsConnection: page1Conn },
+    });
+
+    const initialMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: { first: CARDGROUPS_PAGE_SIZE, search: null },
+      },
+      result: { data: { myCardgroupsConnection: page1Conn } },
+    };
+
+    let nextPageCalls = 0;
+    // Only ONE nextPageMock entry — a second fetchMore would be an unmatched
+    // request and the LeakSpy in afterEach converts the console.warn into a
+    // hard test failure.
+    const nextPageMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: {
+          first: CARDGROUPS_PAGE_SIZE,
+          after: CG_2.id,
+          search: null,
+        },
+      },
+      result: () => {
+        nextPageCalls += 1;
+        return { data: { myCardgroupsConnection: makeConnection([CG_3], false, 3) } };
+      },
+    };
+
+    renderClient([initialMock, nextPageMock], null, cache);
+
+    // Wait for page 1 to render.
+    expect(await screen.findByText("Spanish Vocab")).toBeInTheDocument();
+
+    // Fire the sentinel intersection **twice synchronously in the same tick**.
+    // The useRef<boolean> in-flight guard must swallow the second call before it
+    // reaches fetchMore. If it does not, the LeakSpy in afterEach will catch the
+    // unmatched second request and fail the test.
+    fireIntersect();
+    fireIntersect();
+
+    // Wait for the single page-2 fetch to complete.
+    await waitFor(() => {
+      expect(screen.getByText("Biology Notes")).toBeInTheDocument();
+    });
+
+    // The production fetchMore must have been called exactly once.
+    expect(nextPageCalls).toBe(1);
+  });
+
   // S6: halts IO loop on fetchMore error, shows retry, succeeds after retry
   //
   // Two MockedResponse entries for fetchMore per pagination.md:

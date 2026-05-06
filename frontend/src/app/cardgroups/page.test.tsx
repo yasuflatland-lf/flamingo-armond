@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock next/navigation before importing the page
 vi.mock("next/navigation", () => ({
@@ -78,6 +78,70 @@ function makeConnection(items: { id: string; name: string; updatedAt: string }[]
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// AuthSessionMissingError filter — .claude/rules/frontend-rsc-error-handling.md
+// § "AuthSessionMissingError is the no session signal"
+// ---------------------------------------------------------------------------
+
+describe("CardgroupsPage — AuthSessionMissingError filter", () => {
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("redirects to /login on AuthSessionMissingError without calling console.error or gqlFetch", async () => {
+    // AuthSessionMissingError is the normal anonymous-visitor signal; it must NOT
+    // be treated as a real failure (no console.error, no gqlFetch, just redirect).
+    vi.mocked(createSupabaseServerClient).mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: null },
+          error: { name: "AuthSessionMissingError", message: "Auth session missing!" },
+        }),
+      },
+    } as never);
+
+    await expect(CardgroupsPage()).rejects.toThrow("REDIRECT:/login");
+
+    // The filter must NOT log a console.error for the expected anonymous path.
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    // gqlFetch must not be called when there is no authenticated user.
+    expect(vi.mocked(gqlFetch)).not.toHaveBeenCalled();
+  });
+
+  it("calls console.error and rethrows when getUser returns a non-AuthSessionMissingError", async () => {
+    // Any error other than AuthSessionMissingError is a real auth failure and
+    // must bubble up so the error boundary handles it.
+    const fakeError = { name: "NetworkAuthError", message: "something broke" };
+    vi.mocked(createSupabaseServerClient).mockResolvedValue({
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: null },
+          error: fakeError,
+        }),
+      },
+    } as never);
+
+    await expect(CardgroupsPage()).rejects.toMatchObject({
+      name: fakeError.name,
+      message: fakeError.message,
+    });
+
+    // Discriminating key: the second argument is the error name (string), not an
+    // Error instance — per rules § "expect.objectContaining".
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[cardgroups] getUser() failed:",
+      fakeError.name,
+      fakeError.message,
+    );
+  });
+});
 
 describe("CardgroupsPage", () => {
   beforeEach(() => {
