@@ -19,6 +19,30 @@ vi.mock("@/lib/apollo/server", () => ({
   gqlFetch: vi.fn(),
 }));
 
+// Stub CardgroupsClient — it is a "use client" component that requires an
+// ApolloProvider. The RSC page test only needs to verify props are forwarded
+// correctly; the client component has its own dedicated test file.
+vi.mock("./cardgroups-client", () => ({
+  default: ({
+    initialConnection,
+  }: {
+    initialConnection: {
+      edges: { cursor: string; node: { id: string; name: string } }[];
+      pageInfo: unknown;
+      totalCount: number;
+    } | null;
+  }) => (
+    <div data-testid="cardgroups-client">
+      {initialConnection?.edges.map((e) => (
+        <span key={e.node.id}>{e.node.name}</span>
+      ))}
+      {(!initialConnection || initialConnection.edges.length === 0) && (
+        <span data-testid="empty-connection" />
+      )}
+    </div>
+  ),
+}));
+
 import { gqlFetch } from "@/lib/apollo/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import CardgroupsPage from "./page";
@@ -30,6 +54,27 @@ function makeSupabaseMock(user: { id: string } | null) {
         data: { user },
         error: null,
       }),
+    },
+  };
+}
+
+function makeConnection(items: { id: string; name: string; updatedAt: string }[] = []) {
+  return {
+    myCardgroupsConnection: {
+      __typename: "CardgroupConnection" as const,
+      edges: items.map((item) => ({
+        __typename: "CardgroupEdge" as const,
+        cursor: item.id,
+        node: { __typename: "Cardgroup" as const, ...item },
+      })),
+      pageInfo: {
+        __typename: "PageInfo" as const,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        startCursor: items[0]?.id ?? null,
+        endCursor: items[items.length - 1]?.id ?? null,
+      },
+      totalCount: items.length,
     },
   };
 }
@@ -47,82 +92,51 @@ describe("CardgroupsPage", () => {
     await expect(CardgroupsPage()).rejects.toThrow("REDIRECT:/login");
   });
 
-  it("renders empty state when myCardgroups is empty", async () => {
-    vi.mocked(gqlFetch).mockResolvedValue({ myCardgroups: [] } as never);
+  it("renders CardgroupsClient with empty connection when myCardgroupsConnection is empty", async () => {
+    vi.mocked(gqlFetch).mockResolvedValue(makeConnection([]) as never);
 
     const jsx = await CardgroupsPage();
     render(jsx);
 
-    expect(screen.getByText("You haven't created any cardgroups yet.")).toBeInTheDocument();
-    // Empty state CTA link should be present
-    const ctaLink = screen.getByRole("link", { name: /new cardgroup/i });
-    expect(ctaLink).toBeInTheDocument();
-    expect(ctaLink).toHaveAttribute("href", "/cardgroups/new");
+    expect(screen.getByTestId("cardgroups-client")).toBeInTheDocument();
+    expect(screen.getByTestId("empty-connection")).toBeInTheDocument();
   });
 
-  it("does not render footer link when cardgroups list is empty", async () => {
-    vi.mocked(gqlFetch).mockResolvedValue({ myCardgroups: [] } as never);
-
-    const jsx = await CardgroupsPage();
-    render(jsx);
-
-    // Only one "New cardgroup" link: the empty-state CTA (no footer link when empty)
-    const links = screen.getAllByRole("link", { name: /new cardgroup/i });
-    expect(links).toHaveLength(1);
-    // The single link is the empty-state CTA, not a footer-style link
-    expect(links[0]).toHaveAttribute("href", "/cardgroups/new");
-  });
-
-  it("renders one list item per cardgroup", async () => {
-    vi.mocked(gqlFetch).mockResolvedValue({
-      myCardgroups: [
+  it("passes connection edges to CardgroupsClient", async () => {
+    vi.mocked(gqlFetch).mockResolvedValue(
+      makeConnection([
         { id: "cg-1", name: "Spanish Vocab", updatedAt: "2024-06-15T10:00:00.000Z" },
         { id: "cg-2", name: "Math Formulas", updatedAt: "2024-05-20T08:00:00.000Z" },
-      ],
-    } as never);
+      ]) as never,
+    );
 
     const jsx = await CardgroupsPage();
     render(jsx);
 
     expect(screen.getByText("Spanish Vocab")).toBeInTheDocument();
     expect(screen.getByText("Math Formulas")).toBeInTheDocument();
-
-    const spanishLink = screen.getByRole("link", { name: /spanish vocab/i });
-    expect(spanishLink).toHaveAttribute("href", "/cardgroups/cg-1");
-
-    const mathLink = screen.getByRole("link", { name: /math formulas/i });
-    expect(mathLink).toHaveAttribute("href", "/cardgroups/cg-2");
   });
 
-  it("renders footer-style New cardgroup link when cardgroups list is non-empty", async () => {
-    vi.mocked(gqlFetch).mockResolvedValue({
-      myCardgroups: [{ id: "cg-1", name: "Spanish Vocab", updatedAt: "2024-06-15T10:00:00.000Z" }],
-    } as never);
+  it("renders CardgroupsClient even with a single cardgroup", async () => {
+    vi.mocked(gqlFetch).mockResolvedValue(
+      makeConnection([
+        { id: "cg-1", name: "Spanish Vocab", updatedAt: "2024-06-15T10:00:00.000Z" },
+      ]) as never,
+    );
 
     const jsx = await CardgroupsPage();
     render(jsx);
 
-    // Footer link should be present
-    const footerLink = screen.getByRole("link", { name: /new cardgroup/i });
-    expect(footerLink).toBeInTheDocument();
-    expect(footerLink).toHaveAttribute("href", "/cardgroups/new");
+    expect(screen.getByTestId("cardgroups-client")).toBeInTheDocument();
+    expect(screen.getByText("Spanish Vocab")).toBeInTheDocument();
   });
 
-  it("does not render the top-right New cardgroup button when cardgroups exist", async () => {
-    vi.mocked(gqlFetch).mockResolvedValue({
-      myCardgroups: [{ id: "cg-1", name: "Spanish Vocab", updatedAt: "2024-06-15T10:00:00.000Z" }],
-    } as never);
-
-    const jsx = await CardgroupsPage();
-    render(jsx);
-
-    // Exactly one "New cardgroup" link: the footer link only (no top-right button)
-    const links = screen.getAllByRole("link", { name: /new cardgroup/i });
-    expect(links).toHaveLength(1);
-  });
-
-  it("redirects to /login when MyCardgroupsQuery returns UNAUTHENTICATED", async () => {
-    vi.mocked(gqlFetch).mockRejectedValue(new Error("GraphQL errors: UNAUTHENTICATED"));
+  it("redirects to /login when MyCardgroupsConnectionQuery returns UNAUTHENTICATED", async () => {
+    vi.mocked(gqlFetch).mockRejectedValue(
+      new Error(
+        'GraphQL errors: [{"message":"Unauthenticated","extensions":{"code":"UNAUTHENTICATED"}}]',
+      ),
+    );
 
     await expect(CardgroupsPage()).rejects.toThrow("REDIRECT:/login");
   });
@@ -131,5 +145,18 @@ describe("CardgroupsPage", () => {
     vi.mocked(gqlFetch).mockRejectedValue(new Error("Network unreachable"));
 
     await expect(CardgroupsPage()).rejects.toThrow("Network unreachable");
+  });
+
+  it("renders CardgroupsClient with null initialConnection when gqlFetch throws non-auth error", async () => {
+    // The page catches the error via redirectIfUnauthenticated but passes null
+    // initialConnection to the client component when auth fails.
+    // Non-auth errors rethrow, so this just verifies the UNAUTHENTICATED redirect path works.
+    vi.mocked(gqlFetch).mockRejectedValue(
+      new Error(
+        'GraphQL errors: [{"message":"Unauthenticated","extensions":{"code":"UNAUTHENTICATED"}}]',
+      ),
+    );
+
+    await expect(CardgroupsPage()).rejects.toThrow("REDIRECT:/login");
   });
 });

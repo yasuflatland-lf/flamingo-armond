@@ -46,6 +46,29 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+// Stub CardgroupsClient — the RSC-level tests only need to verify what props
+// the server component passes down. The client component has its own test file.
+vi.mock("@/app/cardgroups/cardgroups-client", () => ({
+  default: ({
+    initialConnection,
+  }: {
+    initialConnection: {
+      edges: { cursor: string; node: { id: string; name: string } }[];
+      pageInfo: unknown;
+      totalCount: number;
+    } | null;
+  }) => (
+    <div data-testid="cardgroups-client">
+      {initialConnection?.edges.map((e) => (
+        <span key={e.node.id}>{e.node.name}</span>
+      ))}
+      {(!initialConnection || initialConnection.edges.length === 0) && (
+        <span data-testid="empty-connection" />
+      )}
+    </div>
+  ),
+}));
+
 // ---------------------------------------------------------------------------
 // Imports — after vi.mock declarations
 // ---------------------------------------------------------------------------
@@ -65,6 +88,27 @@ import {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function makeConnection(items: { id: string; name: string; updatedAt: string }[] = []) {
+  return {
+    myCardgroupsConnection: {
+      __typename: "CardgroupConnection" as const,
+      edges: items.map((item) => ({
+        __typename: "CardgroupEdge" as const,
+        cursor: item.id,
+        node: { __typename: "Cardgroup" as const, ...item },
+      })),
+      pageInfo: {
+        __typename: "PageInfo" as const,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        startCursor: items[0]?.id ?? null,
+        endCursor: items[items.length - 1]?.id ?? null,
+      },
+      totalCount: items.length,
+    },
+  };
+}
 
 function mockGqlFetch(data: unknown): void {
   vi.mocked(gqlFetch).mockResolvedValue(data as never);
@@ -98,7 +142,7 @@ describe("CardgroupsPage", () => {
     const cg1 = makeCardgroup({ id: "cardgroup-001", name: "Spanish Vocab" });
     const cg2 = makeCardgroup({ id: "cardgroup-002", name: "Japanese Kanji" });
 
-    mockGqlFetch({ myCardgroups: [cg1, cg2] });
+    mockGqlFetch(makeConnection([cg1, cg2]));
 
     const tree = await CardgroupsPage();
     render(tree as React.ReactElement);
@@ -106,28 +150,18 @@ describe("CardgroupsPage", () => {
     expect(screen.getByText("Spanish Vocab")).toBeInTheDocument();
     expect(screen.getByText("Japanese Kanji")).toBeInTheDocument();
 
-    // Each item renders a link to /cardgroups/<id>
-    expect(screen.getByRole("link", { name: /spanish vocab/i })).toHaveAttribute(
-      "href",
-      "/cardgroups/cardgroup-001",
-    );
-    expect(screen.getByRole("link", { name: /japanese kanji/i })).toHaveAttribute(
-      "href",
-      "/cardgroups/cardgroup-002",
-    );
-
     expect(redirect).not.toHaveBeenCalled();
   });
 
   it("renders the empty-state hint when the user has no cardgroups", async () => {
     setMockSupabaseUser({ id: generalUserFixture.id });
 
-    mockGqlFetch({ myCardgroups: [] });
+    mockGqlFetch(makeConnection([]));
 
     const tree = await CardgroupsPage();
     render(tree as React.ReactElement);
 
-    expect(screen.getByText(/you haven't created any cardgroups yet/i)).toBeInTheDocument();
+    expect(screen.getByTestId("empty-connection")).toBeInTheDocument();
 
     expect(redirect).not.toHaveBeenCalled();
   });
