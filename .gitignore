@@ -75,6 +75,7 @@ vite.config.ts.timestamp-*
 
 # Claude Code
 /.claude/plans
+.claude/scheduled_tasks.lock
 backend/server
 
 # Generated code — regenerated locally and in CI. Both sides are ignored; see

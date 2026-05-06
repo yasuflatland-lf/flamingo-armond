@@ -27,8 +27,6 @@ on:
       - 'backend/**'
       - '.tool-versions'
       - '.github/workflows/e2e.yml'
-  schedule:
-    - cron: '0 4 * * *'
 
 concurrency:
   group: e2e-${{ github.ref }}
