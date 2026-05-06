@@ -195,7 +195,7 @@ describe("AdminUsersClient", () => {
 
     render(
       <MockedProvider mocks={mocks as never} cache={cache}>
-        <AdminUsersClient />
+        <AdminUsersClient initialConnection={null} />
       </MockedProvider>,
     );
 
@@ -261,7 +261,7 @@ describe("AdminUsersClient", () => {
 
     render(
       <MockedProvider mocks={mocks as never} cache={cache}>
-        <AdminUsersClient />
+        <AdminUsersClient initialConnection={null} />
       </MockedProvider>,
     );
 
@@ -329,7 +329,7 @@ describe("AdminUsersClient", () => {
 
     render(
       <MockedProvider mocks={mocks as never} cache={cache}>
-        <AdminUsersClient />
+        <AdminUsersClient initialConnection={null} />
       </MockedProvider>,
     );
 
@@ -421,7 +421,7 @@ describe("AdminUsersClient", () => {
 
     render(
       <MockedProvider mocks={mocks as never} cache={cache}>
-        <AdminUsersClient />
+        <AdminUsersClient initialConnection={null} />
       </MockedProvider>,
     );
 
@@ -488,7 +488,7 @@ describe("AdminUsersClient", () => {
 
     render(
       <MockedProvider mocks={mocks as never} cache={cache}>
-        <AdminUsersClient />
+        <AdminUsersClient initialConnection={null} />
       </MockedProvider>,
     );
 
@@ -550,7 +550,7 @@ describe("AdminUsersClient", () => {
 
     render(
       <MockedProvider mocks={mocks as never} cache={cache}>
-        <AdminUsersClient />
+        <AdminUsersClient initialConnection={null} />
       </MockedProvider>,
     );
 
@@ -594,7 +594,7 @@ describe("AdminUsersClient", () => {
 
     render(
       <MockedProvider mocks={mocks as never}>
-        <AdminUsersClient />
+        <AdminUsersClient initialConnection={null} />
       </MockedProvider>,
     );
 

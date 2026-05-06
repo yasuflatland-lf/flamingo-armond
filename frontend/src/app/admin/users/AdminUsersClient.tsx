@@ -1,111 +1,208 @@
 "use client";
 
-import { NetworkStatus } from "@apollo/client";
-import { useQuery } from "@apollo/client/react";
-import Image from "next/image";
-import Link from "next/link";
-import { redirect } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useFragment } from "@/generated/fragment-masking";
-import { AdminUsersDocument, type AdminUsersQuery } from "@/generated/graphql";
+import { useApolloClient, useQuery } from "@apollo/client/react";
+import { redirect, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ListingPageShell } from "@/components/layout/listing-page-shell";
+import { Button } from "@/components/ui/button";
+import {
+  type AdminRoleFieldsFragment as AdminRoleFieldsFragmentType,
+  AdminRolesDocument,
+  type AdminUserFieldsFragment as AdminUserFieldsFragmentType,
+  AdminUsersDocument,
+  type AdminUsersQuery,
+} from "@/generated/graphql";
 import { classifyQueryError, getBackendErrorBanner } from "@/lib/apollo/errors";
-import { ADMIN_USERS_PAGE_SIZE, AdminRoleFieldsFragment, AdminUserFieldsFragment } from "./queries";
+import { ADMIN_USERS_DEFAULT_VARS, ADMIN_USERS_PAGE_SIZE } from "./queries";
+import { type AdminUserRow, getUsersColumns } from "./users-columns";
+import { UsersTable } from "./users-table";
+import { UsersToolbar } from "./users-toolbar";
 
 type Connection = AdminUsersQuery["users"];
 type Edge = Connection["edges"][number];
 
-function UserRow({ edge }: { edge: Edge }) {
-  const user = useFragment(AdminUserFieldsFragment, edge.node);
-  const roles = useFragment(AdminRoleFieldsFragment, edge.node.roles);
-
-  return (
-    <li
-      key={user.id}
-      className="flex items-start gap-4 rounded-md border border-border px-4 py-3"
-      data-testid={`admin-user-row-${user.id}`}
-    >
-      {/* Avatar */}
-      {user.avatarUrl ? (
-        <Image
-          src={user.avatarUrl}
-          alt={user.displayName ?? "User avatar"}
-          width={40}
-          height={40}
-          className="h-10 w-10 shrink-0 rounded-full object-cover"
-        />
-      ) : (
-        <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-muted-foreground"
-          aria-hidden="true"
-        >
-          {(user.displayName ?? "?").charAt(0).toUpperCase()}
-        </div>
-      )}
-
-      {/* Name, bio, roles */}
-      <div className="min-w-0 flex-1 space-y-1">
-        <p className="text-sm font-medium">
-          {user.displayName ?? <span className="italic text-muted-foreground">No name</span>}
-        </p>
-        {user.bio && <p className="truncate text-sm text-muted-foreground">{user.bio}</p>}
-        {roles.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {roles.map((role) => (
-              <span
-                key={role.id}
-                className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
-              >
-                {role.name}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Edit link */}
-      <Link
-        href={`/admin/users/${user.id}/edit`}
-        className="shrink-0 text-sm text-muted-foreground hover:underline"
-      >
-        Edit
-      </Link>
-    </li>
-  );
+interface AdminUsersClientProps {
+  /**
+   * SSR-seeded connection for the default view (no search, no role filter,
+   * page 0). Written to the cache once on mount so the first useQuery pass
+   * is a cache hit and the page renders without a client-side round-trip.
+   * Null when the SSR seed failed (the page-level catch logs and falls
+   * through to a client-side fetch).
+   */
+  initialConnection: Connection | null;
 }
 
-export function AdminUsersClient() {
-  const [searchInput, setSearchInput] = useState("");
-  const [searchQuery, setSearchQuery] = useState<string | null>(null);
+/**
+ * Read pageIndex from a URL `?page=N` value (1-based). Returns 0 when the
+ * value is missing, non-numeric, or < 1. The URL convention is 1-based for
+ * human-friendliness; internal state is 0-based.
+ */
+function parsePageParam(raw: string | null): number {
+  if (raw === null) return 0;
+  const n = Number.parseInt(raw, 10);
+  if (Number.isNaN(n) || n < 1) return 0;
+  return n - 1;
+}
+
+/**
+ * Convert a masked Connection edge into the AdminUserRow shape consumed by
+ * the DataTable. Fragment masking is compile-time only (see
+ * `frontend/src/generated/fragment-masking.ts` — `useFragment` is a pure
+ * type-cast at runtime), so a runtime `as` assertion is the established
+ * pattern in this codebase. Reference:
+ *   frontend/src/app/admin/users/[id]/edit/AdminUserEditClient.tsx
+ *   ("fragment masking is compile-time only; at runtime the shape is the
+ *   plain object").
+ */
+function edgeToRow(edge: Edge): AdminUserRow {
+  const user = edge.node as unknown as AdminUserFieldsFragmentType;
+  const roles = edge.node.roles as unknown as AdminRoleFieldsFragmentType[];
+  return {
+    id: user.id,
+    displayName: user.displayName ?? null,
+    bio: user.bio ?? null,
+    avatarUrl: user.avatarUrl ?? null,
+    lastActive: user.lastActive ?? null,
+    roles: roles.map((r) => ({ id: r.id, name: r.name })),
+  };
+}
+
+export function AdminUsersClient({ initialConnection }: AdminUsersClientProps) {
+  const apollo = useApolloClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // ------------------------------------------------------------------
+  // State
+  // ------------------------------------------------------------------
+  // searchInput is the raw text the user is typing; searchQuery is the
+  // debounced value that drives the GraphQL request.
+  const [searchInput, setSearchInput] = useState(() => searchParams.get("search") ?? "");
+  const [searchQuery, setSearchQuery] = useState<string | null>(
+    () => searchParams.get("search")?.trim() || null,
+  );
+  const [roleFilter, setRoleFilter] = useState<string | null>(
+    () => searchParams.get("roleId") || null,
+  );
+  const [pageIndex, setPageIndex] = useState<number>(() =>
+    parsePageParam(searchParams.get("page")),
+  );
+  const [pageSize, setPageSize] = useState<number>(ADMIN_USERS_PAGE_SIZE);
+  // Map page index -> the `after` cursor that produces that page (page 0 = null).
+  // Discrete pagination over a Relay Connection requires a cursor walk: when
+  // navigating to page N for the first time, we walk forward issuing fetchMore
+  // for each missing cursor and stash each resulting endCursor. For backward
+  // navigation, the cursor is already cached. Cursor walks N times — fine for
+  // /admin/users sizes, per the issue's Implementation Notes (option (a)).
+  const [cursorByPage, setCursorByPage] = useState<Map<number, string | null>>(
+    () => new Map([[0, null]]),
+  );
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
 
-  // Debounce: update searchQuery 300ms after the last keystroke.
+  // Strict Mode / re-render safe in-flight guard for fetchMore. Required to
+  // prevent overlapping cursor walks. See .claude/rules/pagination.md.
+  const fetchingRef = useRef(false);
+  // One-shot SSR seed write into the Apollo cache.
+  const seededRef = useRef(false);
+
+  // ------------------------------------------------------------------
+  // SSR seed: write initialConnection into the cache once on mount with
+  // ADMIN_USERS_DEFAULT_VARS as the cache key. The first useQuery pass on
+  // the default view becomes a cache hit. Non-default URLs (search, role,
+  // page > 0) miss the seed — that is fine; they fall through to a fetch.
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    if (seededRef.current || initialConnection == null) return;
+    seededRef.current = true;
+    apollo.writeQuery({
+      query: AdminUsersDocument,
+      variables: ADMIN_USERS_DEFAULT_VARS,
+      data: { users: initialConnection },
+    });
+  }, [apollo, initialConnection]);
+
+  // ------------------------------------------------------------------
+  // Debounced search: update searchQuery 300ms after the last keystroke.
+  // ------------------------------------------------------------------
   useEffect(() => {
     const timer = setTimeout(() => {
       setSearchQuery(searchInput.trim() || null);
-      // Reset pagination error when the search changes.
-      setFetchMoreError(null);
     }, 300);
     return () => clearTimeout(timer);
   }, [searchInput]);
+
+  // ------------------------------------------------------------------
+  // Filter change reset: when searchQuery or roleFilter changes, the prior
+  // cursor walk is invalidated. Reset pageIndex, the cursor map, the in-flight
+  // guard, and any stale error banner.
+  // See .claude/rules/pagination.md § "Reset the guard ref AND the error banner
+  // when the active filter changes".
+  // ------------------------------------------------------------------
+  // biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery and roleFilter are intentional trigger dependencies; the body resets derived pagination state, not the trigger values themselves.
+  useEffect(() => {
+    fetchingRef.current = false;
+    setFetchMoreError(null);
+    setPageIndex(0);
+    setCursorByPage(new Map([[0, null]]));
+  }, [searchQuery, roleFilter]);
+
+  // ------------------------------------------------------------------
+  // URL sync: reflect searchQuery / roleFilter / pageIndex into ?search&roleId&page.
+  // Build via URLSearchParams (never string-interpolated).
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (searchQuery !== null) params.set("search", searchQuery);
+    if (roleFilter !== null) params.set("roleId", roleFilter);
+    if (pageIndex > 0) params.set("page", String(pageIndex + 1));
+    const qs = params.toString();
+    const target = qs.length > 0 ? `/admin/users?${qs}` : "/admin/users";
+    router.replace(target, { scroll: false });
+  }, [router, searchQuery, roleFilter, pageIndex]);
+
+  // ------------------------------------------------------------------
+  // Apollo wiring
+  // ------------------------------------------------------------------
+  // Variables for the active page. When pageIndex === 0 and there is no search
+  // / role filter, this matches ADMIN_USERS_DEFAULT_VARS exactly so the cache
+  // key aligns with the SSR seed. For non-default views we spread from the
+  // default so any future-added variable in the schema lands in one place.
+  const queryVariables = useMemo(() => {
+    const after = cursorByPage.get(pageIndex) ?? null;
+    return {
+      ...ADMIN_USERS_DEFAULT_VARS,
+      first: pageSize,
+      search: searchQuery,
+      roleId: roleFilter,
+      after,
+    };
+  }, [cursorByPage, pageIndex, pageSize, searchQuery, roleFilter]);
 
   const {
     data,
     fetchMore,
     loading,
-    networkStatus,
     error: queryError,
     refetch,
   } = useQuery(AdminUsersDocument, {
-    variables: { first: ADMIN_USERS_PAGE_SIZE, search: searchQuery },
+    variables: queryVariables,
     fetchPolicy: "cache-first",
     notifyOnNetworkStatusChange: true,
   });
 
+  // Fetch the role list for the toolbar. Errors are non-fatal: render an empty
+  // list and let the rest of the page work. Fragment masking is compile-time
+  // only at runtime, so a single `as` cast unwraps the whole array.
+  const rolesResult = useQuery(AdminRolesDocument, { fetchPolicy: "cache-first" });
+  const availableRoles = useMemo(() => {
+    const masked = (rolesResult.data?.roles ?? []) as unknown as AdminRoleFieldsFragmentType[];
+    return masked.map((r) => ({ id: r.id, name: r.name }));
+  }, [rolesResult.data]);
+
   const queryErrorKind = classifyQueryError(queryError);
 
-  // UNAUTHENTICATED post-mount means the session expired while the page was open.
-  // The server-side gate in page.tsx already blocks the initial load, so this
-  // handles the mid-session case. Redirect to "/" where the app will re-auth.
+  // UNAUTHENTICATED post-mount: session expired mid-session. Redirect to "/"
+  // where the app re-auths. (page.tsx blocks the initial load.)
   if (queryErrorKind?.kind === "unauthenticated") {
     redirect("/");
   }
@@ -113,91 +210,99 @@ export function AdminUsersClient() {
   const queryBannerError = queryErrorKind?.kind === "banner" ? queryErrorKind.message : undefined;
 
   const connection = data?.users;
-  const edges: Edge[] = connection?.edges ?? [];
-  const hasNextPage = connection?.pageInfo.hasNextPage ?? false;
-  const endCursor = connection?.pageInfo.endCursor ?? null;
   const totalCount = connection?.totalCount ?? 0;
+  const endCursor = connection?.pageInfo.endCursor ?? null;
 
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const fetchingRef = useRef(false);
+  // Hydrate one AdminUserRow per masked edge. edgeToRow is a pure function so
+  // useMemo memoisation is safe.
+  const rows: AdminUserRow[] = useMemo(
+    () => (connection?.edges ?? []).map(edgeToRow),
+    [connection],
+  );
 
-  const requestNextPage = useCallback(() => {
-    if (fetchingRef.current) return;
-    if (!hasNextPage) return;
-
-    fetchingRef.current = true;
-    fetchMore({
-      variables: {
-        first: ADMIN_USERS_PAGE_SIZE,
-        after: endCursor,
-        search: searchQuery,
-      },
-      updateQuery: (prev, { fetchMoreResult }) => {
-        if (!fetchMoreResult) return prev;
-        return {
-          users: {
-            ...fetchMoreResult.users,
-            edges: [...prev.users.edges, ...fetchMoreResult.users.edges],
-          },
-        };
-      },
-    })
-      .then(() => {
-        setFetchMoreError(null);
+  // ------------------------------------------------------------------
+  // Page navigation: cursor walk to a target page index.
+  //
+  // The cursor model does not natively support "goto page N", so we walk
+  // forward from the highest cached cursor: for each missing intermediate page
+  // we fetchMore with the previous page's endCursor and stash the new endCursor
+  // in cursorByPage. Backward navigation is a single state update (the cursor
+  // is already cached). The fetchMore updateQuery REPLACES edges so the cache
+  // reflects only the current page (not a concatenation across pages).
+  // ------------------------------------------------------------------
+  const handlePageChange = useCallback(
+    (next: number) => {
+      if (next < 0 || fetchingRef.current) return;
+      // Backward navigation or current page: cursor is already cached.
+      if (cursorByPage.has(next)) {
+        setPageIndex(next);
+        return;
+      }
+      // Forward navigation: walk one step at a time. The pagination control
+      // calls this for `pageIndex + 1`, so the cursor we need is the endCursor
+      // of the currently displayed page.
+      if (endCursor === null) return;
+      fetchingRef.current = true;
+      fetchMore({
+        variables: {
+          ...ADMIN_USERS_DEFAULT_VARS,
+          first: pageSize,
+          search: searchQuery,
+          roleId: roleFilter,
+          after: endCursor,
+        },
+        updateQuery: (prev, { fetchMoreResult }) => fetchMoreResult ?? prev,
       })
-      .catch((err) => {
-        const banner = getBackendErrorBanner(err) ?? "Could not load more users. Please try again.";
-        setFetchMoreError(banner);
-      })
-      .finally(() => {
-        fetchingRef.current = false;
-      });
-  }, [fetchMore, endCursor, hasNextPage, searchQuery]);
+        .then(() => {
+          setCursorByPage((prev) => {
+            const updated = new Map(prev);
+            updated.set(next, endCursor);
+            return updated;
+          });
+          setPageIndex(next);
+          setFetchMoreError(null);
+        })
+        .catch((err) => {
+          // Structured warn for operator triage. err.message is omitted because
+          // backend messages may carry user-authored content.
+          // See .claude/rules/frontend-typescript-conventions.md.
+          console.warn("[admin-users] fetchMore failed", {
+            name: err instanceof Error ? err.name : "unknown",
+            pageIndex: next,
+            searchQuery,
+            roleId: roleFilter,
+          });
+          setFetchMoreError(
+            getBackendErrorBanner(err) ?? "Could not load this page. Please try again.",
+          );
+        })
+        .finally(() => {
+          fetchingRef.current = false;
+        });
+    },
+    [cursorByPage, endCursor, fetchMore, pageSize, roleFilter, searchQuery],
+  );
 
-  useEffect(() => {
-    if (!hasNextPage) return;
-    // Halt the observer loop while a previous fetch failed; user must click Retry to resume.
-    if (fetchMoreError != null) return;
-    const node = sentinelRef.current;
-    if (!node) return;
-
-    const observer = new IntersectionObserver((entries) => {
-      const entry = entries[0];
-      if (!entry?.isIntersecting) return;
-      if (fetchingRef.current) return;
-      requestNextPage();
-    });
-
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [hasNextPage, fetchMoreError, requestNextPage]);
-
-  const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
-  const initialLoading = loading && edges.length === 0 && networkStatus !== NetworkStatus.fetchMore;
+  const columns = useMemo(() => getUsersColumns(), []);
 
   return (
-    <main className="p-8">
-      <div className="mb-6 flex items-center gap-4">
-        <h1 className="text-2xl font-semibold">Users</h1>
-        <span className="text-sm text-muted-foreground">({totalCount})</span>
-      </div>
-
-      {/* Search input */}
-      <div className="mb-6">
-        <input
-          type="search"
-          placeholder="Search users..."
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label="Search users"
+    <ListingPageShell
+      title="Users"
+      description="Manage user accounts and role assignments."
+      toolbar={
+        <UsersToolbar
+          searchInput={searchInput}
+          onSearchInputChange={setSearchInput}
+          roleFilterValue={roleFilter}
+          onRoleFilterChange={setRoleFilter}
+          availableRoles={availableRoles}
         />
-      </div>
-
-      {/* FORBIDDEN error banner — no Retry since re-issuing the query would fail again */}
+      }
+    >
+      {/* FORBIDDEN — no Retry; re-issuing the query would fail again */}
       {queryErrorKind?.kind === "forbidden" && (
         <div
-          className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
           role="alert"
           data-testid="admin-users-query-error"
         >
@@ -205,76 +310,61 @@ export function AdminUsersClient() {
         </div>
       )}
 
-      {/* Generic query error banner with Retry */}
-      {queryBannerError && (
+      {/* Generic query error with Retry */}
+      {queryBannerError !== undefined && (
         <div
-          className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
           role="alert"
           data-testid="admin-users-query-error"
         >
           <span>{queryBannerError}</span>
-          <button type="button" className="ml-3 underline" onClick={() => refetch()}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="ml-3"
+            onClick={() => refetch()}
+          >
             Retry
-          </button>
+          </Button>
         </div>
       )}
 
-      {/* Loading state */}
-      {initialLoading && (
-        <p className="text-sm text-muted-foreground" data-testid="admin-users-loading">
-          Loading...
-        </p>
-      )}
-
-      {/* Empty state */}
-      {!initialLoading && !queryErrorKind && edges.length === 0 && (
-        <p className="text-sm text-muted-foreground" data-testid="admin-users-empty">
-          No users found.
-        </p>
-      )}
-
-      {/* User list */}
-      {edges.length > 0 && (
-        <ul className="space-y-3" data-testid="admin-users-list">
-          {edges.map((edge) => (
-            <UserRow key={edge.cursor} edge={edge} />
-          ))}
-        </ul>
-      )}
-
-      {/* Intersection sentinel for infinite scroll */}
-      <div ref={sentinelRef} aria-hidden="true" data-testid="admin-users-sentinel" />
-
-      {/* fetchMore error banner with Retry */}
-      {fetchMoreError && (
+      {/* Page-fetch error with Retry — blocks further navigation while showing.
+          Equivalent to the IO halt gate in the prior infinite-scroll design;
+          see .claude/rules/pagination.md § "fetchMoreError != null halts the
+          IO loop". */}
+      {fetchMoreError !== null && (
         <div
-          className="mt-3 flex flex-col items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+          className="flex flex-col items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
           role="alert"
           data-testid="admin-users-fetch-more-error"
         >
           <span>{fetchMoreError}</span>
-          <button
+          <Button
             type="button"
-            className="rounded-md border border-destructive/40 px-3 py-1 text-xs hover:bg-destructive/10"
+            variant="outline"
+            size="sm"
             onClick={() => {
               setFetchMoreError(null);
-              requestNextPage();
+              handlePageChange(pageIndex + 1);
             }}
           >
             Retry
-          </button>
+          </Button>
         </div>
       )}
 
-      {/* Loading more indicator */}
-      {!fetchMoreError && fetchingMore && hasNextPage && (
-        <p
-          className="mt-3 text-center text-xs text-muted-foreground"
-          data-testid="admin-users-loading-more"
-        >
-          Loading more users...
-        </p>
-      )}
-    </main>
+      <UsersTable
+        columns={columns}
+        data={rows}
+        pageIndex={pageIndex}
+        pageSize={pageSize}
+        totalCount={totalCount}
+        onPageChange={handlePageChange}
+        onPageSizeChange={setPageSize}
+        isLoading={loading && rows.length === 0}
+      />
+    </ListingPageShell>
   );
 }

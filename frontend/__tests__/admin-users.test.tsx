@@ -286,7 +286,7 @@ describe("AdminUsersClient — edit links and empty state", () => {
 
     render(
       <MockedProvider mocks={mocks as never} cache={cache}>
-        <AdminUsersClient />
+        <AdminUsersClient initialConnection={null} />
       </MockedProvider>,
     );
 
@@ -308,7 +308,7 @@ describe("AdminUsersClient — edit links and empty state", () => {
 
     render(
       <MockedProvider mocks={mocks as never} cache={cache}>
-        <AdminUsersClient />
+        <AdminUsersClient initialConnection={null} />
       </MockedProvider>,
     );
 
