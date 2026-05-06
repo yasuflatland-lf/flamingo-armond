@@ -256,16 +256,16 @@ func (u *CardgroupUsecase) ListCardgroupsByOwnerConnection(
 		return nil, gqlerr.BadUserInput("after", "after and before are mutually exclusive")
 	}
 	if in.First != nil && *in.First > 0 && in.Before != nil {
-		return nil, gqlerr.BadUserInput("before", "before requires last, not first")
+		return nil, gqlerr.BadUserInput("before", "last must be > 0 when before is set (received first, not last)")
 	}
 	if in.Last != nil && *in.Last > 0 && in.After != nil {
-		return nil, gqlerr.BadUserInput("after", "after requires first, not last")
+		return nil, gqlerr.BadUserInput("after", "first must be > 0 when after is set (received last, not first)")
 	}
 	if in.Before != nil && (in.First == nil || *in.First <= 0) && (in.Last == nil || *in.Last <= 0) {
-		return nil, gqlerr.BadUserInput("before", "before requires last")
+		return nil, gqlerr.BadUserInput("before", "last must be > 0 when before is set")
 	}
 	if in.After != nil && (in.First == nil || *in.First <= 0) && (in.Last == nil || *in.Last <= 0) {
-		return nil, gqlerr.BadUserInput("after", "after requires first")
+		return nil, gqlerr.BadUserInput("after", "first must be > 0 when after is set")
 	}
 
 	orderBy, dir, err := resolveCardgroupOrderBy(in.OrderBy, in.OrderDirection)
@@ -388,7 +388,7 @@ func resolveCardgroupOrderBy(
 // neither is provided, matching the schema's documented default.
 func resolveCardgroupPageSize(first, last *int) (int, int, error) {
 	if first != nil && last != nil {
-		return 0, 0, gqlerr.BadUserInput("first", "specify either first or last")
+		return 0, 0, gqlerr.BadUserInput("first", "specify either first or last, not both")
 	}
 	if first == nil && last == nil {
 		return defaultPageSize, 0, nil
@@ -461,6 +461,8 @@ func (u *CardgroupUsecase) resolveCardgroupCursor(
 	case repository.CardgroupOrderByUpdatedAt:
 		ua := cg.UpdatedAt
 		c.UpdatedAt = &ua
+	default:
+		return nil, gqlerr.Internal(ctx, eris.Errorf("usecase: cardgroup unhandled orderBy %q", orderBy))
 	}
 	return c, nil
 }
