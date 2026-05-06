@@ -18,9 +18,10 @@
 - [x] Task 2: Tests verified, typecheck/lint pass
 - [x] Task 3: Committed (38acf25 → cherry-picked as 42f8099 onto feature/uiux_improvement_20240506)
 - [x] Step 2 (round 1): Critical fixed — `<main>` landmark; duplicate comment removed; 3 tests added (commit e8192b4)
-- [ ] Step 3: Code simplified
-- [ ] Step 4: Full test suite verified
-- [ ] Step 5: Docs updated
+- [x] Step 2 (round 2): PASS — no remaining Critical/Important issues
+- [x] Step 3: Code simplified — JSX comments removed, tests consolidated with nested describe+beforeEach (commit 6a0bf0c)
+- [x] Step 4: Full test suite verified — 535/535 pass, typecheck clean
+- [x] Step 5: Docs updated — h-svh rule, <main> landmark rule, brand-tint widened (commit ecff7a5)
 
 ---
 
