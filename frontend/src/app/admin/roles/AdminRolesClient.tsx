@@ -133,7 +133,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4 p-8">
+    <div className="space-y-4 p-8">
       <h1 className="text-2xl font-semibold">Roles</h1>
 
       {error && (

@@ -131,7 +131,7 @@ export function DictionaryImportClient() {
     validationResult?.valid === true && validationResult.parsedWords.length > 0 && !!cardgroupId;
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
+    <main className="p-8">
       <div className="mb-6 flex items-center gap-4">
         <Link href="/cardgroups" className="text-sm text-muted-foreground hover:underline">
           &larr; Back

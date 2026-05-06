@@ -176,7 +176,7 @@ export function AdminUsersClient() {
   const initialLoading = loading && edges.length === 0 && networkStatus !== NetworkStatus.fetchMore;
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
+    <main className="p-8">
       <div className="mb-6 flex items-center gap-4">
         <h1 className="text-2xl font-semibold">Users</h1>
         <span className="text-sm text-muted-foreground">({totalCount})</span>
