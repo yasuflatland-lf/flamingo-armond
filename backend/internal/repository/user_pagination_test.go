@@ -86,7 +86,7 @@ func TestUserPagination_EmptyTable(t *testing.T) {
 
 	// A unique nonsense search term ensures no other test's user matches.
 	q := "no-such-user-xyz-" + uuid.NewString()
-	users, total, err := repo.ListPage(ctx, nil, nil, 10, 0, &q)
+	users, total, err := repo.ListPage(ctx, nil, nil, 10, 0, &q, nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), total)
 	require.NotNil(t, users)
@@ -116,7 +116,7 @@ func TestUserPagination_ForwardPageOne(t *testing.T) {
 	}
 	want := expectedListOrder(users)
 
-	got, total, err := repo.ListPage(ctx, nil, nil, 3, 0, ptrStr(tag))
+	got, total, err := repo.ListPage(ctx, nil, nil, 3, 0, ptrStr(tag), nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(5), total)
 	require.Len(t, got, 3)
@@ -147,7 +147,7 @@ func TestUserPagination_ForwardPageTwo(t *testing.T) {
 	want := expectedListOrder(users)
 
 	// Page 1: first=2 → want[0..1].
-	page1, _, err := repo.ListPage(ctx, nil, nil, 2, 0, ptrStr(tag))
+	page1, _, err := repo.ListPage(ctx, nil, nil, 2, 0, ptrStr(tag), nil)
 	require.NoError(t, err)
 	require.Len(t, page1, 2)
 	require.Equal(t, want[0], page1[0].ID)
@@ -155,7 +155,7 @@ func TestUserPagination_ForwardPageTwo(t *testing.T) {
 
 	// Page 2: after = last cursor of page 1, first=2 → want[2..3].
 	cursor := page1[1].ID
-	page2, _, err := repo.ListPage(ctx, &cursor, nil, 2, 0, ptrStr(tag))
+	page2, _, err := repo.ListPage(ctx, &cursor, nil, 2, 0, ptrStr(tag), nil)
 	require.NoError(t, err)
 	require.Len(t, page2, 2)
 	require.Equal(t, want[2], page2[0].ID)
@@ -188,7 +188,7 @@ func TestUserPagination_BackwardBeforeCursor(t *testing.T) {
 	// last=2 before=want[3] should return want[1..2] — the page immediately
 	// before the cursor — in the same display order as forward.
 	cursor := want[3]
-	got, total, err := repo.ListPage(ctx, nil, &cursor, 0, 2, ptrStr(tag))
+	got, total, err := repo.ListPage(ctx, nil, &cursor, 0, 2, ptrStr(tag), nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(5), total)
 	require.Len(t, got, 2)
@@ -238,7 +238,7 @@ func TestUserPagination_SearchSubstring(t *testing.T) {
 		insertUserWithName(t, ctx, r.body+tag, now.Add(time.Duration(i)*time.Hour))
 	}
 
-	got, total, err := repo.ListPage(ctx, nil, nil, 10, 0, &needle)
+	got, total, err := repo.ListPage(ctx, nil, nil, 10, 0, &needle, nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), total)
 	require.Len(t, got, 3)
@@ -280,7 +280,7 @@ func TestUserPagination_SearchEscapesPercentLiteral(t *testing.T) {
 	// Search "<marker>100%": must match only "<marker>100%legit". If `%`
 	// were treated as a wildcard, "<marker>100reasons" would also match.
 	q := marker + "100%"
-	got, total, err := repo.ListPage(ctx, nil, nil, 10, 0, &q)
+	got, total, err := repo.ListPage(ctx, nil, nil, 10, 0, &q, nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)
 	require.Len(t, got, 1)
@@ -308,7 +308,7 @@ func TestUserPagination_SearchEscapesUnderscoreLiteral(t *testing.T) {
 	// treated as a single-character wildcard, "<marker>admin" would also
 	// match (the underscore covers any single character between "a" and "m").
 	q := marker + "a_min"
-	got, total, err := repo.ListPage(ctx, nil, nil, 10, 0, &q)
+	got, total, err := repo.ListPage(ctx, nil, nil, 10, 0, &q, nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)
 	require.Len(t, got, 1)
@@ -325,7 +325,7 @@ func TestUserPagination_CursorNotFound(t *testing.T) {
 	repo := repository.NewUserRepository(testDB.GORM)
 
 	missing := uuid.NewString()
-	_, _, err := repo.ListPage(ctx, &missing, nil, 5, 0, nil)
+	_, _, err := repo.ListPage(ctx, &missing, nil, 5, 0, nil, nil)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, repository.ErrCursorNotFound),
 		"expected ErrCursorNotFound, got %v", err)
@@ -347,13 +347,13 @@ func TestUserPagination_PageCapAllowsMaxPlusOne(t *testing.T) {
 
 	// first=101 must return all 101 rows because userPageCap == 101.
 	q := tag
-	cards101, total101, err := repo.ListPage(ctx, nil, nil, 101, 0, &q)
+	cards101, total101, err := repo.ListPage(ctx, nil, nil, 101, 0, &q, nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(101), total101)
 	require.Len(t, cards101, 101)
 
 	// first=100 must be limited to 100 rows.
-	cards100, total100, err := repo.ListPage(ctx, nil, nil, 100, 0, &q)
+	cards100, total100, err := repo.ListPage(ctx, nil, nil, 100, 0, &q, nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(101), total100)
 	require.Len(t, cards100, 100)
@@ -374,7 +374,7 @@ func TestUserPagination_ZeroPageReturnsTotal(t *testing.T) {
 	}
 
 	q := tag
-	users, total, err := repo.ListPage(ctx, nil, nil, 0, 0, &q)
+	users, total, err := repo.ListPage(ctx, nil, nil, 0, 0, &q, nil)
 	require.NoError(t, err)
 	require.NotNil(t, users)
 	require.Empty(t, users)
@@ -388,10 +388,10 @@ func TestUserPagination_NegativeFirstOrLast(t *testing.T) {
 	ctx := context.Background()
 	repo := repository.NewUserRepository(testDB.GORM)
 
-	_, _, err := repo.ListPage(ctx, nil, nil, -1, 0, nil)
+	_, _, err := repo.ListPage(ctx, nil, nil, -1, 0, nil, nil)
 	require.Error(t, err)
 
-	_, _, err = repo.ListPage(ctx, nil, nil, 0, -1, nil)
+	_, _, err = repo.ListPage(ctx, nil, nil, 0, -1, nil, nil)
 	require.Error(t, err)
 }
 
@@ -407,10 +407,101 @@ func TestUserPagination_BlankSearchTreatedAsNoFilter(t *testing.T) {
 	insertUserAt(t, ctx, time.Now().UTC().Truncate(time.Microsecond))
 
 	blank := "   "
-	_, total, err := repo.ListPage(ctx, nil, nil, 1, 0, &blank)
+	_, total, err := repo.ListPage(ctx, nil, nil, 1, 0, &blank, nil)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, total, int64(1),
 		"blank search must not zero out totalCount")
+}
+
+// ---------------------------------------------------------------------------
+// roleID filter tests
+// ---------------------------------------------------------------------------
+
+// TestUserRepository_ListPage_RoleIDFilter_FiltersByMembership inserts three
+// users, assigns role r1 to user 1 and role r2 to user 2, leaves user 3
+// without any role. Then it asserts:
+//
+//   - ListPage with roleID=r1 returns exactly user 1.
+//   - ListPage with roleID=r2 returns exactly user 2.
+//   - ListPage with roleID=nil returns all three users.
+func TestUserRepository_ListPage_RoleIDFilter_FiltersByMembership(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewUserRepository(testDB.GORM)
+	roleRepo := repository.NewRoleRepository(testDB.GORM)
+
+	tag := "role-flt-" + uuid.NewString()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	id1 := insertUserWithName(t, ctx, tag+"-u1", now)
+	id2 := insertUserWithName(t, ctx, tag+"-u2", now.Add(time.Hour))
+	insertUserWithName(t, ctx, tag+"-u3", now.Add(2*time.Hour))
+
+	// Look up the seeded admin role.
+	r1, err := roleRepo.FindByName(ctx, "admin")
+	require.NoError(t, err)
+
+	// Create a second role for the test so the two filters are distinct.
+	sqlDB := sqlDBHandle(t)
+	r2ID := uuid.NewString()
+	_, err = sqlDB.ExecContext(ctx,
+		`INSERT INTO public.roles (id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+		r2ID, "test-role-"+tag)
+	require.NoError(t, err)
+
+	require.NoError(t, roleRepo.AssignToUser(ctx, id1, r1.ID))
+	require.NoError(t, roleRepo.AssignToUser(ctx, id2, r2ID))
+
+	// Filter by r1 -> only user 1.
+	got, total, err := repo.ListPage(ctx, nil, nil, 10, 0, &tag, &r1.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total, "r1 filter: totalCount must reflect only user 1")
+	require.Len(t, got, 1, "r1 filter: page must contain exactly 1 row")
+	require.Equal(t, id1, got[0].ID, "r1 filter: must return user 1, not user 2 or 3")
+
+	// Filter by r2 -> only user 2.
+	got, total, err = repo.ListPage(ctx, nil, nil, 10, 0, &tag, &r2ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total, "r2 filter: totalCount must reflect only user 2")
+	require.Len(t, got, 1, "r2 filter: page must contain exactly 1 row")
+	require.Equal(t, id2, got[0].ID, "r2 filter: must return user 2, not user 1 or 3")
+
+	// No filter -> all three users.
+	got, total, err = repo.ListPage(ctx, nil, nil, 10, 0, &tag, nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total, "no filter: totalCount must reflect all 3 users")
+	require.Len(t, got, 3, "no filter: page must contain all 3 rows")
+}
+
+// TestUserRepository_ListPage_RoleIDFilter_TotalCountConsistent verifies that
+// the separate COUNT(*) query used for totalCount applies the same roleID
+// predicate as the page query, so the two values stay consistent with each
+// other and are not inflated by unfiltered rows.
+func TestUserRepository_ListPage_RoleIDFilter_TotalCountConsistent(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewUserRepository(testDB.GORM)
+	roleRepo := repository.NewRoleRepository(testDB.GORM)
+
+	tag := "role-cnt-" + uuid.NewString()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	id1 := insertUserWithName(t, ctx, tag+"-u1", now)
+	id2 := insertUserWithName(t, ctx, tag+"-u2", now.Add(time.Hour))
+	insertUserWithName(t, ctx, tag+"-u3", now.Add(2*time.Hour))
+
+	r1, err := roleRepo.FindByName(ctx, "admin")
+	require.NoError(t, err)
+
+	require.NoError(t, roleRepo.AssignToUser(ctx, id1, r1.ID))
+	require.NoError(t, roleRepo.AssignToUser(ctx, id2, r1.ID))
+
+	// first=1: page has 1 row, totalCount should be 2 (both assigned users).
+	got, total, err := repo.ListPage(ctx, nil, nil, 1, 0, &tag, &r1.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), total,
+		"totalCount must count all filtered rows, not just the page; want 2 got %d", total)
+	require.Len(t, got, 1, "page must be capped at first=1")
 }
 
 // uuidShort returns the first 8 hex characters of a fresh uuid — used to

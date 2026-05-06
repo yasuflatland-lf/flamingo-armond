@@ -3,6 +3,7 @@ package repository_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rotisserie/eris"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
@@ -514,6 +516,106 @@ func TestRoleRepository_NotFound(t *testing.T) {
 	_, err := repo.FindByName(ctx, "missing")
 	if !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TouchLastActive tests
+// ---------------------------------------------------------------------------
+
+// TestUserRepository_TouchLastActive_UpdatesColumn inserts a user whose
+// last_active column is NULL, calls TouchLastActive, then re-reads the row
+// and asserts that last_active is non-null and within the last few seconds.
+func TestUserRepository_TouchLastActive_UpdatesColumn(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	id := insertAuthUser(t, ctx)
+	repo := repository.NewUserRepository(testDB.GORM)
+
+	// Verify the column starts as NULL.
+	sqlDB := sqlDBHandle(t)
+	var nullBefore sql.NullTime
+	err := sqlDB.QueryRowContext(ctx,
+		`SELECT last_active FROM public.users WHERE id = $1`, id).Scan(&nullBefore)
+	if err != nil {
+		t.Fatalf("pre-check SELECT: %v", err)
+	}
+	if nullBefore.Valid {
+		t.Fatalf("expected last_active to be NULL before TouchLastActive, got %v", nullBefore.Time)
+	}
+
+	if err := repo.TouchLastActive(ctx, id); err != nil {
+		t.Fatalf("TouchLastActive: %v", err)
+	}
+
+	var nullAfter sql.NullTime
+	err = sqlDB.QueryRowContext(ctx,
+		`SELECT last_active FROM public.users WHERE id = $1`, id).Scan(&nullAfter)
+	if err != nil {
+		t.Fatalf("post-check SELECT: %v", err)
+	}
+	if !nullAfter.Valid {
+		t.Fatal("expected last_active to be non-null after TouchLastActive")
+	}
+	age := time.Since(nullAfter.Time)
+	if age < 0 || age > 10*time.Second {
+		t.Fatalf("last_active = %v, expected within the last 10 seconds (age=%v)", nullAfter.Time, age)
+	}
+}
+
+// TestUserRepository_TouchLastActive_NoRowReturnsNil calls TouchLastActive
+// with a UUID that does not exist in the users table and asserts that nil is
+// returned. Zero rows affected is not an error — the user row may not yet
+// exist during lazy account creation.
+func TestUserRepository_TouchLastActive_NoRowReturnsNil(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewUserRepository(testDB.GORM)
+
+	nonExistent := uuid.NewString()
+	if err := repo.TouchLastActive(ctx, nonExistent); err != nil {
+		t.Fatalf("expected nil for non-existent user, got %v", err)
+	}
+}
+
+// TestUserRepository_TouchLastActive_ContextCancelledReturnsError passes a
+// cancelled context and asserts that a non-nil error is returned. The error
+// must be eris-wrapped (root.stack present) rather than the degraded
+// external-only shape that eris.ToJSON emits for stdlib errors.
+func TestUserRepository_TouchLastActive_ContextCancelledReturnsError(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately so the DB driver sees a dead context.
+	repo := repository.NewUserRepository(testDB.GORM)
+
+	err := repo.TouchLastActive(ctx, uuid.NewString())
+	if err == nil {
+		t.Fatal("expected error for cancelled context, got nil")
+	}
+
+	// The implementation wraps via eris.Wrap(...) so the JSON chain must carry
+	// a root.stack, not just the degraded {external: "..."} shape.
+	chain := eris.ToJSON(err, true)
+	raw, jsonErr := json.Marshal(chain)
+	if jsonErr != nil {
+		t.Fatalf("json.Marshal error chain: %v", jsonErr)
+	}
+	var parsed map[string]any
+	if jsonErr = json.Unmarshal(raw, &parsed); jsonErr != nil {
+		t.Fatalf("json.Unmarshal error chain: %v", jsonErr)
+	}
+	root, hasRoot := parsed["root"].(map[string]any)
+	if !hasRoot {
+		t.Errorf("error_chain must have root entry (got external-only shape; implementation may not eris.Wrap the error); chain=%s", raw)
+	} else {
+		if stack, _ := root["stack"].([]any); len(stack) == 0 {
+			t.Error("error_chain.root.stack must contain at least one frame")
+		}
+	}
+
+	// Confirm the error is not mistaken for a sentinel.
+	if errors.Is(err, repository.ErrNotFound) {
+		t.Error("cancelled-context error must not match ErrNotFound")
 	}
 }
 

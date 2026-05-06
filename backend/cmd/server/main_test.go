@@ -430,7 +430,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	if err != nil {
 		t.Fatalf("jwks keyfunc: %v", err)
 	}
-	mw, err := auth.AuthMiddleware(kf, cfg)
+	mw, err := auth.AuthMiddleware(kf, cfg, nil)
 	if err != nil {
 		t.Fatalf("auth middleware: %v", err)
 	}
@@ -496,14 +496,20 @@ func (c *countingUserRepo) ListPage(
 	after, before *string,
 	first, last int,
 	search *string,
+	roleID *string,
 ) ([]*domain.User, int64, error) {
-	return c.inner.ListPage(ctx, after, before, first, last, search)
+	return c.inner.ListPage(ctx, after, before, first, last, search, roleID)
 }
 
 // SetLastViewedCardgroup forwards to the inner repository so any future test
 // that exercises the last-viewed-cardgroup mutation keeps working.
 func (c *countingUserRepo) SetLastViewedCardgroup(ctx context.Context, userID, cardgroupID string) error {
 	return c.inner.SetLastViewedCardgroup(ctx, userID, cardgroupID)
+}
+
+// TouchLastActive forwards to the inner repository.
+func (c *countingUserRepo) TouchLastActive(ctx context.Context, userID string) error {
+	return c.inner.TouchLastActive(ctx, userID)
 }
 
 // insertAuthUser inserts a row into auth.users so the handle_new_user trigger

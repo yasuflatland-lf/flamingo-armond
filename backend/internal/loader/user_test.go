@@ -234,8 +234,15 @@ func (r *countingRepo) ListPage(
 	_, _ *string,
 	_, _ int,
 	_ *string,
+	_ *string,
 ) ([]*domain.User, int64, error) {
 	panic("countingRepo.ListPage not configured")
+}
+
+// TouchLastActive satisfies repository.UserRepository. The loader-layer tests
+// never invoke this path; panic if called so accidental coupling is surfaced.
+func (r *countingRepo) TouchLastActive(_ context.Context, _ string) error {
+	panic("countingRepo.TouchLastActive not configured")
 }
 
 // SetLastViewedCardgroup satisfies repository.UserRepository. Loader-layer

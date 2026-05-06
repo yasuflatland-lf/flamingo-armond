@@ -41,6 +41,7 @@ type mockAdminUserRepository struct {
 	lastListFirst  int
 	lastListLast   int
 	lastListSearch *string
+	lastListRoleID *string
 }
 
 func (m *mockAdminUserRepository) FindByID(_ context.Context, id string) (*domain.User, error) {
@@ -78,6 +79,7 @@ func (m *mockAdminUserRepository) ListPage(
 	after, before *string,
 	first, last int,
 	search *string,
+	roleID *string,
 ) ([]*domain.User, int64, error) {
 	m.listCalls++
 	m.lastListAfter = after
@@ -85,6 +87,7 @@ func (m *mockAdminUserRepository) ListPage(
 	m.lastListFirst = first
 	m.lastListLast = last
 	m.lastListSearch = search
+	m.lastListRoleID = roleID
 	if m.listErr != nil {
 		return nil, 0, m.listErr
 	}
@@ -206,7 +209,7 @@ func TestAdminUser_NonAdminForbidden(t *testing.T) {
 		{
 			name: "List",
 			call: func(uc AdminUserUsecase) error {
-				_, err := uc.List(adminCallerCtx("u1"), nil, nil, nil, nil, nil)
+				_, err := uc.List(adminCallerCtx("u1"), nil, nil, nil, nil, nil, nil)
 				return err
 			},
 		},
@@ -281,7 +284,7 @@ func TestAdminUser_List_Page1(t *testing.T) {
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
-	out, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil)
+	out, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -339,7 +342,7 @@ func TestAdminUser_List_ForwardPage2(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
 	after := "u-1"
-	out, err := uc.List(adminCallerCtx("admin-1"), intPtr(2), nil, &after, nil, nil)
+	out, err := uc.List(adminCallerCtx("admin-1"), intPtr(2), nil, &after, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -381,7 +384,7 @@ func TestAdminUser_List_Backward(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
 	before := "u-z"
-	out, err := uc.List(adminCallerCtx("admin-1"), nil, intPtr(2), nil, &before, nil)
+	out, err := uc.List(adminCallerCtx("admin-1"), nil, intPtr(2), nil, &before, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -416,7 +419,7 @@ func TestAdminUser_List_BadCursor_After(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
 	stale := "00000000-0000-0000-0000-000000000000"
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, &stale, nil, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, &stale, nil, nil, nil)
 	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
 }
 
@@ -430,7 +433,7 @@ func TestAdminUser_List_BadCursor_Before(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
 	stale := "00000000-0000-0000-0000-000000000000"
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, intPtr(5), nil, &stale, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), nil, intPtr(5), nil, &stale, nil, nil)
 	assertGQLErr(t, err, "BAD_USER_INPUT", "before")
 }
 
@@ -443,7 +446,7 @@ func TestAdminUser_List_BothFirstAndLast(t *testing.T) {
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
-	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(5), intPtr(5), nil, nil, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(5), intPtr(5), nil, nil, nil, nil)
 	assertGQLErr(t, err, "BAD_USER_INPUT", "first")
 	if users.listCalls != 0 {
 		t.Fatalf("expected no repo call, got %d", users.listCalls)
@@ -459,7 +462,7 @@ func TestAdminUser_List_FirstNegative(t *testing.T) {
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
-	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(-1), nil, nil, nil, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(-1), nil, nil, nil, nil, nil)
 	assertGQLErr(t, err, "BAD_USER_INPUT", "first")
 }
 
@@ -471,7 +474,7 @@ func TestAdminUser_List_FirstOverCap(t *testing.T) {
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
-	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(adminUserMaxPageSize+1), nil, nil, nil, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(adminUserMaxPageSize+1), nil, nil, nil, nil, nil)
 	assertGQLErr(t, err, "BAD_USER_INPUT", "first")
 }
 
@@ -486,7 +489,7 @@ func TestAdminUser_List_AfterAndBeforeMutuallyExclusive(t *testing.T) {
 
 	after := "u-a"
 	before := "u-b"
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, &after, &before, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, &after, &before, nil, nil)
 	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
 	if users.listCalls != 0 {
 		t.Fatalf("expected no repo call on cross-cursor rejection, got %d", users.listCalls)
@@ -503,7 +506,7 @@ func TestAdminUser_List_FirstWithBefore(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
 	before := "u-b"
-	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(5), nil, nil, &before, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(5), nil, nil, &before, nil, nil)
 	assertGQLErr(t, err, "BAD_USER_INPUT", "before")
 	if users.listCalls != 0 {
 		t.Fatalf("expected no repo call, got %d", users.listCalls)
@@ -520,7 +523,7 @@ func TestAdminUser_List_LastWithAfter(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
 	after := "u-a"
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, intPtr(5), &after, nil, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), nil, intPtr(5), &after, nil, nil, nil)
 	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
 	if users.listCalls != 0 {
 		t.Fatalf("expected no repo call, got %d", users.listCalls)
@@ -539,7 +542,7 @@ func TestAdminUser_List_BeforeWithoutLast(t *testing.T) {
 
 	before := "u-b"
 	// No first, no last — only before.
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, &before, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, &before, nil, nil)
 	assertGQLErr(t, err, "BAD_USER_INPUT", "before")
 	if users.listCalls != 0 {
 		t.Fatalf("expected no repo call on before-without-last, got %d", users.listCalls)
@@ -558,7 +561,7 @@ func TestAdminUser_List_AfterWithoutFirst(t *testing.T) {
 
 	after := "u-a"
 	// No first, no last — only after.
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, &after, nil, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, &after, nil, nil, nil)
 	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
 	if users.listCalls != 0 {
 		t.Fatalf("expected no repo call on after-without-first, got %d", users.listCalls)
@@ -909,7 +912,7 @@ func TestAdminUser_List_CancelledFromAdminCheck(t *testing.T) {
 	users := &mockAdminUserRepository{}
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil, nil)
 	assertGQLErr(t, err, "CANCELLED", "")
 	if users.listCalls != 0 {
 		t.Fatalf("expected no repo call after cancellation, got %d", users.listCalls)
@@ -925,7 +928,7 @@ func TestAdminUser_List_CancelledFromRepo(t *testing.T) {
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil, nil)
 	assertGQLErr(t, err, "CANCELLED", "")
 }
 
@@ -958,7 +961,7 @@ func TestAdminUser_AnonymousUnauthenticated(t *testing.T) {
 	users := &mockAdminUserRepository{}
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
-	_, err := uc.List(anonCtx(), nil, nil, nil, nil, nil)
+	_, err := uc.List(anonCtx(), nil, nil, nil, nil, nil, nil)
 	assertGQLErr(t, err, "UNAUTHENTICATED", "")
 	if authChk.calls != 0 {
 		t.Fatalf("expected 0 IsAdmin calls for anonymous caller, got %d", authChk.calls)
@@ -974,7 +977,7 @@ func TestAdminUser_IsAdminInternalError(t *testing.T) {
 	users := &mockAdminUserRepository{}
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
-	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil)
+	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil, nil)
 	assertGQLErr(t, err, "INTERNAL", "")
 }
 
@@ -1029,4 +1032,59 @@ func TestAdminUser_Get_Cancelled(t *testing.T) {
 
 	_, err := uc.Get(adminCallerCtx("admin-1"), "u-target")
 	assertGQLErr(t, err, "CANCELLED", "")
+}
+
+// ---------------------------------------------------------------------------
+// List roleID filter pass-through
+// ---------------------------------------------------------------------------
+
+// TestAdminUserUsecase_List_RoleIDFilterEmpty_NoFilterApplied verifies that a
+// nil roleID (or empty-string roleID) is forwarded to the repository unchanged,
+// without the usecase converting it to a non-nil pointer. A nil roleID signals
+// "no role filter" to the repository; the usecase must not fabricate a filter
+// the caller did not request.
+func TestAdminUserUsecase_List_RoleIDFilterEmpty_NoFilterApplied(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{
+		listResult: []*domain.User{{ID: "u-1"}},
+		listTotal:  1,
+	}
+	authChk := &adminAuthChecker{admins: map[string]bool{"caller": true}}
+	uc, _, _ := buildAdminUC(users, nil, authChk)
+
+	// nil roleID — no filter intended.
+	_, err := uc.List(adminCallerCtx("caller"), nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if users.lastListRoleID != nil {
+		t.Fatalf("repo received non-nil roleID=%v, want nil (no-filter signal)", users.lastListRoleID)
+	}
+}
+
+// TestAdminUserUsecase_List_RoleIDFilterNonNil_PassedThrough verifies that a
+// non-nil roleID from the caller is forwarded to the repository exactly as
+// supplied. The usecase must not drop, transform, or replace the value.
+func TestAdminUserUsecase_List_RoleIDFilterNonNil_PassedThrough(t *testing.T) {
+	t.Parallel()
+
+	want := "role-123"
+	users := &mockAdminUserRepository{
+		listResult: []*domain.User{{ID: "u-1"}},
+		listTotal:  1,
+	}
+	authChk := &adminAuthChecker{admins: map[string]bool{"caller": true}}
+	uc, _, _ := buildAdminUC(users, nil, authChk)
+
+	_, err := uc.List(adminCallerCtx("caller"), nil, nil, nil, nil, nil, &want)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if users.lastListRoleID == nil {
+		t.Fatal("repo received nil roleID, want non-nil")
+	}
+	if *users.lastListRoleID != want {
+		t.Fatalf("repo roleID = %q, want %q", *users.lastListRoleID, want)
+	}
 }

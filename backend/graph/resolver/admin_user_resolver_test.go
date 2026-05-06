@@ -34,7 +34,7 @@ type mockAdminUserUsecase struct {
 	revokeErr    error
 }
 
-func (m *mockAdminUserUsecase) List(_ context.Context, _, _ *int, _, _, _ *string) (*usecase.AdminUserConnection, error) {
+func (m *mockAdminUserUsecase) List(_ context.Context, _, _ *int, _, _, _, _ *string) (*usecase.AdminUserConnection, error) {
 	return m.listResult, m.listErr
 }
 func (m *mockAdminUserUsecase) Get(_ context.Context, _ string) (*domain.User, error) {
