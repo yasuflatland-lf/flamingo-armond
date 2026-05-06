@@ -190,37 +190,42 @@ func (r *userRepo) ListPage(
 	last = clampUserPageSize(last)
 
 	// Normalise search: trim, treat blank as nil, escape ILIKE wildcards so
-	// "%" and "_" supplied by the caller match literally.
+	// "%" and "_" supplied by the caller match literally. Whitespace-only
+	// input falls through as no filter.
 	var searchPattern string
-	hasSearch := false
 	if search != nil {
-		trimmed := strings.TrimSpace(*search)
-		if trimmed != "" {
+		if trimmed := strings.TrimSpace(*search); trimmed != "" {
 			searchPattern = "%" + escapeLikePattern(trimmed) + "%"
-			hasSearch = true
 		}
 	}
-
 	// Normalise roleID: nil or empty string means no filter.
-	hasRoleFilter := roleID != nil && *roleID != ""
+	var roleIDFilter string
+	if roleID != nil {
+		roleIDFilter = *roleID
+	}
+
+	// applyFilters layers the search + roleID predicates onto a query. Used
+	// both by the page query and the COUNT(*) so the two stay in lock-step.
+	applyFilters := func(q *gorm.DB) *gorm.DB {
+		if searchPattern != "" {
+			q = q.Where("display_name ILIKE ?", searchPattern)
+		}
+		if roleIDFilter != "" {
+			q = q.Where(
+				"EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = users.id AND ur.role_id = ?)",
+				roleIDFilter,
+			)
+		}
+		return q
+	}
 
 	// totalCount mirrors the page predicates (search + roleID) but ignores
 	// the cursor predicate, so callers can compute "items after this point" /
 	// "page X of Y" without a second round-trip. Run before the zero-page
 	// short-circuit so callers asking only for totalCount still get a real
 	// value.
-	countQ := r.db.WithContext(ctx).Model(&gormUser{})
-	if hasSearch {
-		countQ = countQ.Where("display_name ILIKE ?", searchPattern)
-	}
-	if hasRoleFilter {
-		countQ = countQ.Where(
-			"EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = users.id AND ur.role_id = ?)",
-			*roleID,
-		)
-	}
 	var total int64
-	if err := countQ.Count(&total).Error; err != nil {
+	if err := applyFilters(r.db.WithContext(ctx).Model(&gormUser{})).Count(&total).Error; err != nil {
 		return nil, 0, eris.Wrap(err, "repository: count users")
 	}
 
@@ -245,16 +250,7 @@ func (r *userRepo) ListPage(
 		reverse = true
 	}
 
-	q := r.db.WithContext(ctx).Model(&gormUser{})
-	if hasSearch {
-		q = q.Where("display_name ILIKE ?", searchPattern)
-	}
-	if hasRoleFilter {
-		q = q.Where(
-			"EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = users.id AND ur.role_id = ?)",
-			*roleID,
-		)
-	}
+	q := applyFilters(r.db.WithContext(ctx).Model(&gormUser{}))
 
 	if cursorID != nil {
 		// Hydrate the cursor user's created_at so we can build the tuple

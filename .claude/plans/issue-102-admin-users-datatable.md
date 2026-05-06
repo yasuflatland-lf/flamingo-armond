@@ -116,10 +116,19 @@ Each commit ~1 logical unit (no interleaving). Suggested boundaries:
 - [x] B5 — users-table.tsx (manual pagination + handlePaginationChange routes pageIndex/pageSize back to parent callbacks; React.ReactElement return type for project consistency)
 - [x] B6 — AdminUsersClient.tsx rewrite (370 lines; cursor walking via Map<pageIndex, endCursor>; URL state via URLSearchParams; SSR seed in page.tsx; mechanical prop fix to existing tests; typecheck PASS)
 - [x] B7 — frontend test update (10 cases in admin-users-list.test.tsx including leak spy + PII discriminator + Retry-after-error two-mock pattern; 547 tests pass; key learning: Radix `DropdownMenuItem asChild` sets `role="menuitem"`, NOT `role="link"`)
-- [ ] C1 — PR review loop
+- [x] C1 — PR review loop (3 iterations: 1→fixed 7C+12I, 2→fixed 1C+4I, 3→lint autofix; final: 0C/0I in scope)
 - [ ] C2 — code-simplifier
 - [ ] C3 — test fix loop
 - [ ] C4 — docs
+
+## Decision log (for code review iteration)
+
+- **Deep-link `?page=N`**: dropped from URL contract (cursor model can't reconstruct cursors for arbitrary N). Search and roleId remain URL-synced.
+- **Discrete pagination over cursor connection**: option (a) — cursor walks N times via `cursorByPage: Map<pageIndex, endCursor>`. Acceptable for bounded admin user count.
+- **DataTableFacetedFilter not reused**: vendored faceted filter is coupled to TanStack Column API; users-toolbar built its own Popover+Command since the role filter is server-side.
+- **Fragment split**: AdminUserListFields (slim, no bio) for list; AdminUserFields extends with bio for detail/mutations.
+- **Fire-and-forget last_active write**: 5s background context, request_id propagated, fire-and-forget goroutine. Writes on every authenticated request (debounce deferred).
+- **Defer**: Intl.RelativeTimeFormat polish, CONCURRENTLY index, redirect-in-render investigation, FORBIDDEN-at-SSR redirect, several test-coverage suggestions, type/doc polish.
 
 ## Decision log (for code review iteration)
 

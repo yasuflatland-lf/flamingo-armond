@@ -69,25 +69,24 @@ function formatRelativeTime(lastActive: string | null): React.ReactNode {
     console.warn("[admin-users] invalid lastActive timestamp", { length: lastActive.length });
     return <span className="text-muted-foreground italic">unknown</span>;
   }
-  const diffMs = Date.now() - parsed;
-  const diffSec = Math.floor(diffMs / 1000);
-
+  const diffSec = Math.floor((Date.now() - parsed) / 1000);
   if (diffSec < 60) return "Just now";
 
+  const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"} ago`;
+
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin} minute${diffMin === 1 ? "" : "s"} ago`;
+  if (diffMin < 60) return plural(diffMin, "minute");
 
   const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr} hour${diffHr === 1 ? "" : "s"} ago`;
+  if (diffHr < 24) return plural(diffHr, "hour");
 
   const diffDay = Math.floor(diffHr / 24);
-  if (diffDay < 30) return `${diffDay} day${diffDay === 1 ? "" : "s"} ago`;
+  if (diffDay < 30) return plural(diffDay, "day");
 
   const diffMo = Math.floor(diffDay / 30);
-  if (diffMo < 12) return `${diffMo} month${diffMo === 1 ? "" : "s"} ago`;
+  if (diffMo < 12) return plural(diffMo, "month");
 
-  const diffYr = Math.floor(diffMo / 12);
-  return `${diffYr} year${diffYr === 1 ? "" : "s"} ago`;
+  return plural(Math.floor(diffMo / 12), "year");
 }
 
 /**

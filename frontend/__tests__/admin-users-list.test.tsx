@@ -32,7 +32,11 @@ import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AdminUsersClient } from "@/app/admin/users/AdminUsersClient";
 import { ADMIN_USERS_DEFAULT_VARS, ADMIN_USERS_PAGE_SIZE } from "@/app/admin/users/queries";
-import { AdminRolesDocument, AdminUsersDocument } from "@/generated/graphql";
+import {
+  AdminRolesDocument,
+  AdminUsersDocument,
+  type AdminUsersQueryVariables,
+} from "@/generated/graphql";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
@@ -148,13 +152,18 @@ function makeConnection(
  * Variables that AdminUsersClient sends for the initial page-0 request.
  * The component always includes after: null in queryVariables even on page 0.
  */
-const PAGE_0_VARS = {
+const PAGE_0_VARS: AdminUsersQueryVariables = {
   ...ADMIN_USERS_DEFAULT_VARS,
   first: ADMIN_USERS_PAGE_SIZE,
   search: null,
   roleId: null,
   after: null,
 };
+
+/** Build query variables by overriding fields on PAGE_0_VARS. */
+function varsWith(overrides: Partial<AdminUsersQueryVariables>): AdminUsersQueryVariables {
+  return { ...PAGE_0_VARS, ...overrides };
+}
 
 /** Stub AdminRoles response (no roles — keeps toolbar simple). */
 const EMPTY_ROLES_MOCK = {
@@ -171,6 +180,44 @@ const ADMIN_ROLE_MOCK = {
     },
   },
 };
+
+/**
+ * Filter a spy's calls down to those whose first argument (the format prefix)
+ * contains the supplied substring. Used by T9 and T13 to find scope-prefixed
+ * structured warn calls without re-asserting the prefix shape every time.
+ */
+function findWarnCallsBy(
+  spy: { mock: { calls: unknown[][] } },
+  prefixSubstring: string,
+): unknown[][] {
+  return spy.mock.calls.filter(
+    (args) =>
+      args.length >= 2 &&
+      typeof args[0] === "string" &&
+      (args[0] as string).includes(prefixSubstring),
+  );
+}
+
+/**
+ * Build the standard page-1 / page-2 fixture set used by the pagination tests
+ * (T4 – T9, T11 – T12). Page 1 has PAGE_SIZE users (1..PAGE_SIZE) with
+ * hasNextPage=true; page 2 has 5 users (101..105) with hasNextPage=false.
+ * The endCursor of page 1 (`user-${PAGE_SIZE}`) is reused as the `after`
+ * cursor for the fetchMore call.
+ */
+function makePagedFixtures() {
+  const page1Users = Array.from({ length: ADMIN_USERS_PAGE_SIZE }, (_, i) => makeUser(i + 1));
+  const page2Users = Array.from({ length: 5 }, (_, i) => makeUser(i + 101));
+  const endCursor = `user-${ADMIN_USERS_PAGE_SIZE}`;
+  return {
+    page1Users,
+    page2Users,
+    endCursor,
+    page1Connection: makeConnection(page1Users, true, ADMIN_USERS_PAGE_SIZE + 5),
+    page2Connection: makeConnection(page2Users, false, ADMIN_USERS_PAGE_SIZE + 5),
+    fetchMoreVars: varsWith({ after: endCursor }),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Leak spy — installed per-test via beforeEach/afterEach
@@ -276,13 +323,7 @@ describe("AdminUsersClient — DataTable shape", () => {
       return { data: { users: makeConnection(searchUsers, false) } };
     });
 
-    const searchVars = {
-      ...ADMIN_USERS_DEFAULT_VARS,
-      first: ADMIN_USERS_PAGE_SIZE,
-      search: "ali",
-      roleId: null,
-      after: null,
-    };
+    const searchVars = varsWith({ search: "ali" });
 
     render(
       <MockedProvider
@@ -334,13 +375,7 @@ describe("AdminUsersClient — DataTable shape", () => {
       return { data: { users: makeConnection(filteredUsers, false) } };
     });
 
-    const roleVars = {
-      ...ADMIN_USERS_DEFAULT_VARS,
-      first: ADMIN_USERS_PAGE_SIZE,
-      search: null,
-      roleId: "role-admin",
-      after: null,
-    };
+    const roleVars = varsWith({ roleId: "role-admin" });
 
     render(
       <MockedProvider
@@ -389,26 +424,13 @@ describe("AdminUsersClient — DataTable shape", () => {
   test("T4: clicking next-page button fires fetchMore with the page-1 endCursor", async () => {
     const ue = userEvent.setup({ delay: null });
 
-    const page1Users = Array.from({ length: ADMIN_USERS_PAGE_SIZE }, (_, i) => makeUser(i + 1));
-    const page2Users = Array.from({ length: 5 }, (_, i) => makeUser(i + 101));
-    const endCursor = `user-${ADMIN_USERS_PAGE_SIZE}`;
-
-    const page1Connection = makeConnection(page1Users, true, ADMIN_USERS_PAGE_SIZE + 5);
-    const page2Connection = makeConnection(page2Users, false, ADMIN_USERS_PAGE_SIZE + 5);
+    const { page1Connection, page2Connection, fetchMoreVars } = makePagedFixtures();
 
     let nextPageCalls = 0;
     const nextPageResult = vi.fn(() => {
       nextPageCalls += 1;
       return { data: { users: page2Connection } };
     });
-
-    const fetchMoreVars = {
-      ...ADMIN_USERS_DEFAULT_VARS,
-      first: ADMIN_USERS_PAGE_SIZE,
-      search: null,
-      roleId: null,
-      after: endCursor,
-    };
 
     render(
       <MockedProvider
@@ -459,26 +481,13 @@ describe("AdminUsersClient — DataTable shape", () => {
   test("T5: going back to page 0 after advancing uses cached cursor and fires no new request", async () => {
     const ue = userEvent.setup({ delay: null });
 
-    const page1Users = Array.from({ length: ADMIN_USERS_PAGE_SIZE }, (_, i) => makeUser(i + 1));
-    const page2Users = Array.from({ length: 5 }, (_, i) => makeUser(i + 101));
-    const endCursor = `user-${ADMIN_USERS_PAGE_SIZE}`;
-
-    const page1Connection = makeConnection(page1Users, true, ADMIN_USERS_PAGE_SIZE + 5);
-    const page2Connection = makeConnection(page2Users, false, ADMIN_USERS_PAGE_SIZE + 5);
+    const { page1Connection, page2Connection, fetchMoreVars } = makePagedFixtures();
 
     let nextPageCalls = 0;
     const nextPageResult = vi.fn(() => {
       nextPageCalls += 1;
       return { data: { users: page2Connection } };
     });
-
-    const fetchMoreVars = {
-      ...ADMIN_USERS_DEFAULT_VARS,
-      first: ADMIN_USERS_PAGE_SIZE,
-      search: null,
-      roleId: null,
-      after: endCursor,
-    };
 
     render(
       <MockedProvider
@@ -541,13 +550,8 @@ describe("AdminUsersClient — DataTable shape", () => {
   test("T6: applying a role filter after advancing to page 2 resets pageIndex to 0", async () => {
     const ue = userEvent.setup({ delay: null });
 
-    const page1Users = Array.from({ length: ADMIN_USERS_PAGE_SIZE }, (_, i) => makeUser(i + 1));
-    const page2Users = Array.from({ length: 5 }, (_, i) => makeUser(i + 101));
+    const { page1Connection, page2Connection, endCursor, fetchMoreVars } = makePagedFixtures();
     const filteredUsers = [makeUser(200, { displayName: "Filtered User" })];
-    const endCursor = `user-${ADMIN_USERS_PAGE_SIZE}`;
-
-    const page1Connection = makeConnection(page1Users, true, ADMIN_USERS_PAGE_SIZE + 5);
-    const page2Connection = makeConnection(page2Users, false, ADMIN_USERS_PAGE_SIZE + 5);
 
     let filteredQueryCalls = 0;
     const filteredResult = vi.fn(() => {
@@ -555,33 +559,13 @@ describe("AdminUsersClient — DataTable shape", () => {
       return { data: { users: makeConnection(filteredUsers, false, 1) } };
     });
 
-    const fetchMoreVars = {
-      ...ADMIN_USERS_DEFAULT_VARS,
-      first: ADMIN_USERS_PAGE_SIZE,
-      search: null,
-      roleId: null,
-      after: endCursor,
-    };
-
-    const roleFilterVars = {
-      ...ADMIN_USERS_DEFAULT_VARS,
-      first: ADMIN_USERS_PAGE_SIZE,
-      search: null,
-      roleId: "role-admin",
-      after: null,
-    };
+    const roleFilterVars = varsWith({ roleId: "role-admin" });
 
     // Stale intermediate variables: React re-renders with the new roleFilter but
     // the OLD cursorByPage (still containing user-20 for page 1) before the
     // filter-reset useEffect fires and resets cursorByPage to {0: null}. Apollo
     // fires a useQuery for this stale shape — it needs a mock to avoid a leak.
-    const staleRoleVars = {
-      ...ADMIN_USERS_DEFAULT_VARS,
-      first: ADMIN_USERS_PAGE_SIZE,
-      search: null,
-      roleId: "role-admin",
-      after: endCursor, // old cursor from page 1
-    };
+    const staleRoleVars = varsWith({ roleId: "role-admin", after: endCursor });
 
     render(
       <MockedProvider
@@ -657,22 +641,8 @@ describe("AdminUsersClient — DataTable shape", () => {
   test("T7: fetchMore error shows banner, and Retry re-issues the request successfully", async () => {
     const ue = userEvent.setup({ delay: null });
 
-    const page1Users = Array.from({ length: ADMIN_USERS_PAGE_SIZE }, (_, i) => makeUser(i + 1));
-    const page2Users = Array.from({ length: 5 }, (_, i) => makeUser(i + 101));
-    const endCursor = `user-${ADMIN_USERS_PAGE_SIZE}`;
-
-    const page1Connection = makeConnection(page1Users, true, ADMIN_USERS_PAGE_SIZE + 5);
-    const page2Connection = makeConnection(page2Users, false, ADMIN_USERS_PAGE_SIZE + 5);
-
+    const { page1Connection, page2Connection, fetchMoreVars } = makePagedFixtures();
     let fetchMoreCallCount = 0;
-
-    const fetchMoreVars = {
-      ...ADMIN_USERS_DEFAULT_VARS,
-      first: ADMIN_USERS_PAGE_SIZE,
-      search: null,
-      roleId: null,
-      after: endCursor,
-    };
 
     render(
       <MockedProvider
@@ -751,26 +721,13 @@ describe("AdminUsersClient — DataTable shape", () => {
   test("T8: in-flight guard prevents double fetchMore — leak spy catches any leak", async () => {
     const ue = userEvent.setup({ delay: null });
 
-    const page1Users = Array.from({ length: ADMIN_USERS_PAGE_SIZE }, (_, i) => makeUser(i + 1));
-    const page2Users = Array.from({ length: 5 }, (_, i) => makeUser(i + 101));
-    const endCursor = `user-${ADMIN_USERS_PAGE_SIZE}`;
-
-    const page1Connection = makeConnection(page1Users, true, ADMIN_USERS_PAGE_SIZE + 5);
-    const page2Connection = makeConnection(page2Users, false, ADMIN_USERS_PAGE_SIZE + 5);
+    const { page1Connection, page2Connection, fetchMoreVars } = makePagedFixtures();
 
     let nextPageCalls = 0;
     const nextPageResult = vi.fn(() => {
       nextPageCalls += 1;
       return { data: { users: page2Connection } };
     });
-
-    const fetchMoreVars = {
-      ...ADMIN_USERS_DEFAULT_VARS,
-      first: ADMIN_USERS_PAGE_SIZE,
-      search: null,
-      roleId: null,
-      after: endCursor,
-    };
 
     render(
       <MockedProvider
@@ -822,18 +779,7 @@ describe("AdminUsersClient — DataTable shape", () => {
   test("T9: fetchMore warn payload has pageIndex/name discriminators and no PII fields", async () => {
     const ue = userEvent.setup({ delay: null });
 
-    const page1Users = Array.from({ length: ADMIN_USERS_PAGE_SIZE }, (_, i) => makeUser(i + 1));
-    const endCursor = `user-${ADMIN_USERS_PAGE_SIZE}`;
-
-    const page1Connection = makeConnection(page1Users, true, ADMIN_USERS_PAGE_SIZE + 5);
-
-    const fetchMoreVars = {
-      ...ADMIN_USERS_DEFAULT_VARS,
-      first: ADMIN_USERS_PAGE_SIZE,
-      search: null,
-      roleId: null,
-      after: endCursor,
-    };
+    const { page1Connection, fetchMoreVars } = makePagedFixtures();
 
     // Install an outer warn spy. Per .claude/rules/pagination.md § "Spy stacking":
     // the outer spy MUST NOT call mockImplementation(() => {}) — that would swallow
@@ -872,12 +818,7 @@ describe("AdminUsersClient — DataTable shape", () => {
     await screen.findByTestId("admin-users-fetch-more-error");
 
     // Find the specific [admin-users] fetchMore failed warn call.
-    const warnCalls = outerWarnSpy.mock.calls.filter(
-      (args) =>
-        args.length >= 2 &&
-        typeof args[0] === "string" &&
-        args[0].includes("[admin-users] fetchMore failed"),
-    );
+    const warnCalls = findWarnCallsBy(outerWarnSpy, "[admin-users] fetchMore failed");
     expect(warnCalls.length).toBeGreaterThanOrEqual(1);
 
     const payload = warnCalls[0]?.[1];
@@ -905,17 +846,7 @@ describe("AdminUsersClient — DataTable shape", () => {
   test("T11: fetchMore FORBIDDEN renders permission-denied banner without Retry", async () => {
     const ue = userEvent.setup({ delay: null });
 
-    const page1Users = Array.from({ length: ADMIN_USERS_PAGE_SIZE }, (_, i) => makeUser(i + 1));
-    const endCursor = `user-${ADMIN_USERS_PAGE_SIZE}`;
-    const page1Connection = makeConnection(page1Users, true, ADMIN_USERS_PAGE_SIZE + 5);
-
-    const fetchMoreVars = {
-      ...ADMIN_USERS_DEFAULT_VARS,
-      first: ADMIN_USERS_PAGE_SIZE,
-      search: null,
-      roleId: null,
-      after: endCursor,
-    };
+    const { page1Connection, fetchMoreVars } = makePagedFixtures();
 
     render(
       <MockedProvider
@@ -965,17 +896,7 @@ describe("AdminUsersClient — DataTable shape", () => {
   test("T12: fetchMore UNAUTHENTICATED triggers router.replace('/')", async () => {
     const ue = userEvent.setup({ delay: null });
 
-    const page1Users = Array.from({ length: ADMIN_USERS_PAGE_SIZE }, (_, i) => makeUser(i + 1));
-    const endCursor = `user-${ADMIN_USERS_PAGE_SIZE}`;
-    const page1Connection = makeConnection(page1Users, true, ADMIN_USERS_PAGE_SIZE + 5);
-
-    const fetchMoreVars = {
-      ...ADMIN_USERS_DEFAULT_VARS,
-      first: ADMIN_USERS_PAGE_SIZE,
-      search: null,
-      roleId: null,
-      after: endCursor,
-    };
+    const { page1Connection, fetchMoreVars } = makePagedFixtures();
 
     render(
       <MockedProvider
@@ -1055,21 +976,12 @@ describe("AdminUsersClient — DataTable shape", () => {
 
     // The structured warn fires inside the rolesResult.error useEffect.
     await waitFor(() => {
-      const adminRolesWarns = outerWarnSpy.mock.calls.filter(
-        (args) =>
-          args.length >= 2 &&
-          typeof args[0] === "string" &&
-          args[0].includes("[admin-users] AdminRoles query failed"),
-      );
-      expect(adminRolesWarns.length).toBeGreaterThanOrEqual(1);
+      expect(
+        findWarnCallsBy(outerWarnSpy, "[admin-users] AdminRoles query failed").length,
+      ).toBeGreaterThanOrEqual(1);
     });
 
-    const adminRolesWarns = outerWarnSpy.mock.calls.filter(
-      (args) =>
-        args.length >= 2 &&
-        typeof args[0] === "string" &&
-        args[0].includes("[admin-users] AdminRoles query failed"),
-    );
+    const adminRolesWarns = findWarnCallsBy(outerWarnSpy, "[admin-users] AdminRoles query failed");
     expect(adminRolesWarns[0]?.[1]).toEqual(expect.objectContaining({ name: expect.any(String) }));
 
     // Teardown LIFO: outer spy first, then leak spy in afterEach.

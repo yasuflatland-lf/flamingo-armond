@@ -91,11 +91,13 @@ export function AdminUsersClient({ initialConnection }: AdminUsersClientProps) {
   const [cursorByPage, setCursorByPage] = useState<Map<number, string | null>>(
     () => new Map([[0, null]]),
   );
-  const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
-  // Track whether the current fetchMoreError is a FORBIDDEN error. Retry would
-  // loop forever on a session-revoked role, so the Retry button must be
-  // suppressed in that case.
-  const [fetchMoreErrorIsForbidden, setFetchMoreErrorIsForbidden] = useState(false);
+  // Page-fetch error banner. `isForbidden` suppresses the Retry button: a
+  // FORBIDDEN response (e.g. session-revoked admin role) would loop forever
+  // on Retry, so only the banner copy renders for that branch.
+  const [fetchMoreError, setFetchMoreError] = useState<{
+    message: string;
+    isForbidden: boolean;
+  } | null>(null);
 
   // Strict Mode / re-render safe in-flight guard for fetchMore. Required to
   // prevent overlapping cursor walks. See .claude/rules/pagination.md.
@@ -145,7 +147,6 @@ export function AdminUsersClient({ initialConnection }: AdminUsersClientProps) {
   useEffect(() => {
     fetchingRef.current = false;
     setFetchMoreError(null);
-    setFetchMoreErrorIsForbidden(false);
     setPageIndex(0);
     setCursorByPage(new Map([[0, null]]));
   }, [searchQuery, roleFilter]);
@@ -280,7 +281,6 @@ export function AdminUsersClient({ initialConnection }: AdminUsersClientProps) {
           });
           setPageIndex(next);
           setFetchMoreError(null);
-          setFetchMoreErrorIsForbidden(false);
         })
         .catch((err) => {
           const kind = classifyQueryError(err);
@@ -303,12 +303,16 @@ export function AdminUsersClient({ initialConnection }: AdminUsersClientProps) {
             roleId: roleFilter,
           });
           if (kind?.kind === "forbidden") {
-            setFetchMoreError("You no longer have permission to load more users.");
-            setFetchMoreErrorIsForbidden(true);
+            setFetchMoreError({
+              message: "You no longer have permission to load more users.",
+              isForbidden: true,
+            });
             return;
           }
-          setFetchMoreError(kind?.message ?? "Could not load this page. Please try again.");
-          setFetchMoreErrorIsForbidden(false);
+          setFetchMoreError({
+            message: kind?.message ?? "Could not load this page. Please try again.",
+            isForbidden: false,
+          });
         })
         .finally(() => {
           fetchingRef.current = false;
@@ -374,9 +378,9 @@ export function AdminUsersClient({ initialConnection }: AdminUsersClientProps) {
           role="alert"
           data-testid="admin-users-fetch-more-error"
         >
-          <span>{fetchMoreError}</span>
+          <span>{fetchMoreError.message}</span>
           {/* FORBIDDEN — no Retry; re-issuing the request would fail again */}
-          {!fetchMoreErrorIsForbidden && (
+          {!fetchMoreError.isForbidden && (
             <Button
               type="button"
               variant="outline"

@@ -59,6 +59,11 @@ func newFixture(t *testing.T) *testFixture {
 	}
 }
 
+// cfg returns the auth.Config that matches this fixture's JWKS server.
+func (f *testFixture) cfg() Config {
+	return Config{JWKSURL: f.jwksURL, Audience: f.audience, Issuer: f.issuer}
+}
+
 // signJWT signs claims with the given method. If key is nil, the fixture's ES256 private key is used.
 // Pass jwt.UnsafeAllowNoneSignatureType for SigningMethodNone, or []byte for HS*.
 func (f *testFixture) signJWT(t *testing.T, claims jwt.MapClaims, alg jwt.SigningMethod, key any, kid string) string {
@@ -80,24 +85,7 @@ func (f *testFixture) signJWT(t *testing.T, claims jwt.MapClaims, alg jwt.Signin
 
 func (f *testFixture) newEcho(t *testing.T) *echo.Echo {
 	t.Helper()
-	kf, err := NewJWKSKeyfunc(f.mwCtx, Config{JWKSURL: f.jwksURL, Audience: f.audience, Issuer: f.issuer})
-	if err != nil {
-		t.Fatal(err)
-	}
-	mw, err := AuthMiddleware(kf, Config{JWKSURL: f.jwksURL, Audience: f.audience, Issuer: f.issuer}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	e := echo.New()
-	q := e.Group("/query", mw)
-	q.POST("", func(c *echo.Context) error {
-		u := UserFrom(c.Request().Context())
-		if u == nil {
-			return c.String(http.StatusOK, "anon")
-		}
-		return c.String(http.StatusOK, "authed:"+u.Sub)
-	})
-	return e
+	return buildEchoWithRepo(t, f, nil, false)
 }
 
 func send(e *echo.Echo, authz string) *httptest.ResponseRecorder {
@@ -258,9 +246,7 @@ func TestMiddleware_WrongKid(t *testing.T) {
 func TestAuthMiddleware_RejectsEmptyConfig(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
-	kf, err := NewJWKSKeyfunc(f.mwCtx, Config{
-		JWKSURL: f.jwksURL, Audience: f.audience, Issuer: f.issuer,
-	})
+	kf, err := NewJWKSKeyfunc(f.mwCtx, f.cfg())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,19 +330,12 @@ func TestMiddleware_EmailVerifiedPropagated(t *testing.T) {
 
 			// Build an Echo instance whose handler captures AuthUser.EmailVerified
 			// and encodes it into the response body so the test can assert on it.
-			kf, err := NewJWKSKeyfunc(f.mwCtx, Config{
-				JWKSURL:  f.jwksURL,
-				Audience: f.audience,
-				Issuer:   f.issuer,
-			})
+			cfg := f.cfg()
+			kf, err := NewJWKSKeyfunc(f.mwCtx, cfg)
 			if err != nil {
 				t.Fatal(err)
 			}
-			mw, err := AuthMiddleware(kf, Config{
-				JWKSURL:  f.jwksURL,
-				Audience: f.audience,
-				Issuer:   f.issuer,
-			}, nil)
+			mw, err := AuthMiddleware(kf, cfg, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -494,63 +473,28 @@ func (h *chanLogHandler) Handle(ctx context.Context, r slog.Record) error {
 // ---------------------------------------------------------------------------
 
 // buildEchoWithRepo constructs an Echo instance whose /query route is guarded
-// by AuthMiddleware wired with the given lastActiveToucher stub.
-func buildEchoWithRepo(t *testing.T, f *testFixture, repo lastActiveToucher) *echo.Echo {
+// by AuthMiddleware wired with the given lastActiveToucher stub. When
+// withRequestID is true, the request-ID middleware is installed ahead of
+// AuthMiddleware so the goroutine can read the originating request's ID via
+// internalmw.RequestIDFromContext.
+func buildEchoWithRepo(t *testing.T, f *testFixture, repo lastActiveToucher, withRequestID bool) *echo.Echo {
 	t.Helper()
-	kf, err := NewJWKSKeyfunc(f.mwCtx, Config{
-		JWKSURL:  f.jwksURL,
-		Audience: f.audience,
-		Issuer:   f.issuer,
-	})
+	cfg := f.cfg()
+	kf, err := NewJWKSKeyfunc(f.mwCtx, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	mw, err := AuthMiddleware(kf, Config{
-		JWKSURL:  f.jwksURL,
-		Audience: f.audience,
-		Issuer:   f.issuer,
-	}, repo)
+	mw, err := AuthMiddleware(kf, cfg, repo)
 	if err != nil {
 		t.Fatal(err)
 	}
 	e := echo.New()
-	q := e.Group("/query", mw)
-	q.POST("", func(c *echo.Context) error {
-		u := UserFrom(c.Request().Context())
-		if u == nil {
-			return c.String(http.StatusOK, "anon")
-		}
-		return c.String(http.StatusOK, "authed:"+u.Sub)
-	})
-	return e
-}
-
-// buildEchoWithRepoAndRequestID constructs an Echo instance that installs the
-// request-ID middleware ahead of AuthMiddleware. Use this variant when the test
-// needs to assert that the goroutine's WARN log carries the originating
-// request's X-Request-ID value.
-func buildEchoWithRepoAndRequestID(t *testing.T, f *testFixture, repo lastActiveToucher) *echo.Echo {
-	t.Helper()
-	kf, err := NewJWKSKeyfunc(f.mwCtx, Config{
-		JWKSURL:  f.jwksURL,
-		Audience: f.audience,
-		Issuer:   f.issuer,
-	})
-	if err != nil {
-		t.Fatal(err)
+	mws := []echo.MiddlewareFunc{}
+	if withRequestID {
+		mws = append(mws, internalmw.RequestID())
 	}
-	mw, err := AuthMiddleware(kf, Config{
-		JWKSURL:  f.jwksURL,
-		Audience: f.audience,
-		Issuer:   f.issuer,
-	}, repo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	e := echo.New()
-	// Request-ID middleware must run before AuthMiddleware so the goroutine can
-	// read the ID from the request context via internalmw.RequestIDFromContext.
-	q := e.Group("/query", internalmw.RequestID(), mw)
+	mws = append(mws, mw)
+	q := e.Group("/query", mws...)
 	q.POST("", func(c *echo.Context) error {
 		u := UserFrom(c.Request().Context())
 		if u == nil {
@@ -574,6 +518,37 @@ func sendWithRequestID(e *echo.Echo, authz, requestID string) *httptest.Response
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 	return rec
+}
+
+// installChanLogger swaps slog.Default() for a ContextHandler-wrapped
+// channel-backed handler and returns the channel from which tests can drain
+// log records. The previous default is restored via t.Cleanup.
+func installChanLogger(t *testing.T) chan map[string]any {
+	t.Helper()
+	chanHandler, logCh := newChanLogHandler()
+	ctxHandler := logging.NewContextHandler(chanHandler, internalmw.RequestIDFromContext)
+	prev := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	slog.SetDefault(slog.New(ctxHandler))
+	return logCh
+}
+
+// waitForLog drains logCh until a record with msg == wantMsg arrives, or
+// fatals after 3 seconds. Returns the matching record.
+func waitForLog(t *testing.T, logCh <-chan map[string]any, wantMsg string) map[string]any {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case r := <-logCh:
+			if r["msg"] == wantMsg {
+				return r
+			}
+		case <-deadline:
+			t.Fatalf("timed out waiting for WARN log %q", wantMsg)
+			return nil
+		}
+	}
 }
 
 // assertRichErrorChain validates that warnRec carries the rich
@@ -610,7 +585,7 @@ func TestAuthMiddleware_TouchLastActive_FiresAsync_NoBlock(t *testing.T) {
 	f := newFixture(t)
 
 	stub := newBlockingUserRepo()
-	e := buildEchoWithRepo(t, f, stub)
+	e := buildEchoWithRepo(t, f, stub, false)
 
 	const wantSub = "uuid-async"
 	tok := f.signJWT(t, jwt.MapClaims{
@@ -655,20 +630,14 @@ func TestAuthMiddleware_TouchLastActive_FiresAsync_NoBlock(t *testing.T) {
 // races against the goroutine that writes them.
 func TestAuthMiddleware_TouchLastActive_OnError_LogsWarn_NoPII(t *testing.T) {
 	// Not parallel: mutates the global slog default.
-	chanHandler, logCh := newChanLogHandler()
-	// Wrap chanHandler in a ContextHandler so request_id is injected into
-	// records by the same mechanism production uses.
-	ctxHandler := logging.NewContextHandler(chanHandler, internalmw.RequestIDFromContext)
-	prev := slog.Default()
-	t.Cleanup(func() { slog.SetDefault(prev) })
-	slog.SetDefault(slog.New(ctxHandler))
+	logCh := installChanLogger(t)
 
 	f := newFixture(t)
 
 	const wantSub = "uuid-warn-test"
 	const wantRequestID = "test-req-id-pii-check"
 	stub := &errorUserRepo{err: eris.New("db: connection refused")}
-	e := buildEchoWithRepoAndRequestID(t, f, stub)
+	e := buildEchoWithRepo(t, f, stub, true)
 
 	tok := f.signJWT(t, jwt.MapClaims{
 		"sub": wantSub, "email": "secret@example.com",
@@ -679,21 +648,7 @@ func TestAuthMiddleware_TouchLastActive_OnError_LogsWarn_NoPII(t *testing.T) {
 	rec := sendWithRequestID(e, "Bearer "+tok, wantRequestID)
 	assert200(t, rec, "authed:"+wantSub)
 
-	// Drain channel records until the expected log line arrives or timeout.
-	var warnRec map[string]any
-	deadline := time.After(3 * time.Second)
-drain:
-	for {
-		select {
-		case r := <-logCh:
-			if r["msg"] == "auth: last_active update failed" {
-				warnRec = r
-				break drain
-			}
-		case <-deadline:
-			t.Fatalf("timed out waiting for WARN log 'auth: last_active update failed'")
-		}
-	}
+	warnRec := waitForLog(t, logCh, "auth: last_active update failed")
 
 	if warnRec["level"] != "WARN" {
 		t.Errorf("expected level=WARN, got %v", warnRec["level"])
@@ -725,11 +680,7 @@ drain:
 // would fail.
 func TestAuthMiddleware_TouchLastActive_StdlibError_StillRichChain(t *testing.T) {
 	// Not parallel: mutates the global slog default.
-	chanHandler, logCh := newChanLogHandler()
-	ctxHandler := logging.NewContextHandler(chanHandler, internalmw.RequestIDFromContext)
-	prev := slog.Default()
-	t.Cleanup(func() { slog.SetDefault(prev) })
-	slog.SetDefault(slog.New(ctxHandler))
+	logCh := installChanLogger(t)
 
 	f := newFixture(t)
 
@@ -737,7 +688,7 @@ func TestAuthMiddleware_TouchLastActive_StdlibError_StillRichChain(t *testing.T)
 	// Use a plain stdlib error — NOT eris.New — to prove the middleware's own
 	// eris.Wrap at the log site is what makes the chain rich.
 	stub := &errorUserRepo{err: errors.New("db: connection refused")}
-	e := buildEchoWithRepo(t, f, stub)
+	e := buildEchoWithRepo(t, f, stub, false)
 
 	tok := f.signJWT(t, jwt.MapClaims{
 		"sub": wantSub, "aud": f.audience, "iss": f.issuer,
@@ -747,20 +698,7 @@ func TestAuthMiddleware_TouchLastActive_StdlibError_StillRichChain(t *testing.T)
 	rec := send(e, "Bearer "+tok)
 	assert200(t, rec, "authed:"+wantSub)
 
-	var warnRec map[string]any
-	deadline := time.After(3 * time.Second)
-drainStdlib:
-	for {
-		select {
-		case r := <-logCh:
-			if r["msg"] == "auth: last_active update failed" {
-				warnRec = r
-				break drainStdlib
-			}
-		case <-deadline:
-			t.Fatalf("timed out waiting for WARN log 'auth: last_active update failed'")
-		}
-	}
+	warnRec := waitForLog(t, logCh, "auth: last_active update failed")
 
 	// The middleware wraps the stdlib error with eris.Wrap, so the chain must
 	// be rich (root.stack present) even though the stub returned errors.New.
