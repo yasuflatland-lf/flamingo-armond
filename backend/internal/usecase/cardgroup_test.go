@@ -23,7 +23,7 @@ type mockCardgroupRepository struct {
 	findByOwnerErr    error
 
 	// Create
-	createErr     error
+	createErr      error
 	capturedCreate *domain.Cardgroup
 
 	// Update
@@ -59,6 +59,25 @@ func (m *mockCardgroupRepository) Update(_ context.Context, _ string, patch repo
 func (m *mockCardgroupRepository) Delete(_ context.Context, _ string) error {
 	m.deleteCalled = true
 	return m.deleteErr
+}
+
+// FindPageByOwner / CountByOwner are stubbed for interface conformance only;
+// pagination behaviour is exercised by the usecase-level tests that supply
+// their own mocks.
+func (m *mockCardgroupRepository) FindPageByOwner(
+	_ context.Context,
+	_ string,
+	_, _ *repository.CardgroupCursor,
+	_, _ int,
+	_ repository.CardgroupOrderBy,
+	_ repository.SortOrder,
+	_ *string,
+) ([]*domain.Cardgroup, error) {
+	return nil, nil
+}
+
+func (m *mockCardgroupRepository) CountByOwner(_ context.Context, _ string, _ *string) (int64, error) {
+	return 0, nil
 }
 
 // --- helpers already defined in user_test.go (authedCtx, anonCtx, ptr, assertGQLErr) ---
