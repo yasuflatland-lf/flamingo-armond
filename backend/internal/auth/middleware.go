@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -12,13 +13,28 @@ import (
 	"github.com/rotisserie/eris"
 
 	"backend/internal/logging"
+	"backend/internal/repository"
 )
 
 const wwwAuthenticate = `Bearer realm="api"`
 
-// AuthMiddleware returns an error at construction if cfg is missing required fields,
-// because jwt.WithAudience("")/WithIssuer("") would silently match tokens with empty claims.
-func AuthMiddleware(kf keyfunc.Keyfunc, cfg Config) (echo.MiddlewareFunc, error) {
+// lastActiveToucher is the subset of repository.UserRepository used by
+// AuthMiddleware to record authenticated activity. The narrow interface keeps
+// the middleware decoupled from the full repository surface and simplifies
+// test doubles.
+type lastActiveToucher interface {
+	TouchLastActive(ctx context.Context, userID string) error
+}
+
+// AuthMiddleware returns an error at construction if cfg is missing required
+// fields, because jwt.WithAudience("")/WithIssuer("") would silently match
+// tokens with empty claims.
+//
+// userRepo is optional. When provided, a fire-and-forget goroutine writes
+// last_active = NOW() for every successfully authenticated request. Pass nil
+// (or omit) to disable the behaviour (e.g. in unit tests that do not need a
+// database).
+func AuthMiddleware(kf keyfunc.Keyfunc, cfg Config, userRepo repository.UserRepository) (echo.MiddlewareFunc, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -55,6 +71,23 @@ func AuthMiddleware(kf keyfunc.Keyfunc, cfg Config) (echo.MiddlewareFunc, error)
 			}
 			r := c.Request()
 			c.SetRequest(r.WithContext(withUser(r.Context(), u)))
+
+			// Fire-and-forget: update last_active asynchronously so the DB
+			// round-trip does not add latency to the hot request path. A lost
+			// update is acceptable because last_active is for human display only
+			// and does not affect auth correctness.
+			if userRepo != nil {
+				go func(userID string) {
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					if err := userRepo.TouchLastActive(ctx, userID); err != nil {
+						logging.LogWarn(ctx, slog.Default(), "auth: last_active update failed",
+							eris.Wrap(err, "auth: TouchLastActive"),
+							slog.String("user_id", userID))
+					}
+				}(u.Sub)
+			}
+
 			return next(c)
 		}
 	}, nil

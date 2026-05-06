@@ -208,10 +208,6 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	if err != nil {
 		return eris.Wrap(err, "run")
 	}
-	authMW, err := auth.AuthMiddleware(kf, cfg)
-	if err != nil {
-		return eris.Wrap(err, "run")
-	}
 
 	dbCfg, err := database.ConfigFromEnv()
 	if err != nil {
@@ -226,6 +222,13 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	}
 
 	userRepo := repository.NewUserRepository(db.GORM)
+
+	// AuthMiddleware is constructed after userRepo so it can write last_active
+	// asynchronously for every successfully authenticated request.
+	authMW, err := auth.AuthMiddleware(kf, cfg, userRepo)
+	if err != nil {
+		return eris.Wrap(err, "run")
+	}
 	roleRepo := repository.NewRoleRepository(db.GORM)
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	cardRepo := repository.NewCardRepository(db.GORM)
