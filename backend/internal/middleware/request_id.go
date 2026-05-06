@@ -24,6 +24,14 @@ func RequestIDFromContext(ctx context.Context) string {
 	return v
 }
 
+// WithRequestID returns a child of ctx with the given request ID stored under
+// the same key that RequestIDFromContext reads. Use this to propagate a
+// request-scoped ID into a fresh context (e.g. a fire-and-forget goroutine
+// that cannot borrow the request context because it outlives the request).
+func WithRequestID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, requestIDKey{}, id)
+}
+
 func generateRequestID() string {
 	id, err := uuid.NewV7()
 	if err != nil {

@@ -13,7 +13,7 @@ import (
 	"github.com/rotisserie/eris"
 
 	"backend/internal/logging"
-	"backend/internal/repository"
+	internalmw "backend/internal/middleware"
 )
 
 const wwwAuthenticate = `Bearer realm="api"`
@@ -30,11 +30,11 @@ type lastActiveToucher interface {
 // fields, because jwt.WithAudience("")/WithIssuer("") would silently match
 // tokens with empty claims.
 //
-// userRepo is optional. When provided, a fire-and-forget goroutine writes
+// repo is optional. When provided, a fire-and-forget goroutine writes
 // last_active = NOW() for every successfully authenticated request. Pass nil
 // (or omit) to disable the behaviour (e.g. in unit tests that do not need a
 // database).
-func AuthMiddleware(kf keyfunc.Keyfunc, cfg Config, userRepo repository.UserRepository) (echo.MiddlewareFunc, error) {
+func AuthMiddleware(kf keyfunc.Keyfunc, cfg Config, repo lastActiveToucher) (echo.MiddlewareFunc, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -76,16 +76,26 @@ func AuthMiddleware(kf keyfunc.Keyfunc, cfg Config, userRepo repository.UserRepo
 			// round-trip does not add latency to the hot request path. A lost
 			// update is acceptable because last_active is for human display only
 			// and does not affect auth correctness.
-			if userRepo != nil {
-				go func(userID string) {
-					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if repo != nil {
+				// Read request_id before the goroutine starts: the request context
+				// is cancelled when the response is flushed, but the ID string is
+				// cheap to copy and we want the WARN log to carry the originating
+				// request's ID so operators can correlate by grep.
+				reqID := internalmw.RequestIDFromContext(r.Context())
+				go func(userID, requestID string) {
+					bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 					defer cancel()
-					if err := userRepo.TouchLastActive(ctx, userID); err != nil {
-						logging.LogWarn(ctx, slog.Default(), "auth: last_active update failed",
+					// Re-attach request_id to the fresh background context so the
+					// ContextHandler slog handler includes it in the WARN log line.
+					if requestID != "" {
+						bgCtx = internalmw.WithRequestID(bgCtx, requestID)
+					}
+					if err := repo.TouchLastActive(bgCtx, userID); err != nil {
+						logging.LogWarn(bgCtx, slog.Default(), "auth: last_active update failed",
 							eris.Wrap(err, "auth: TouchLastActive"),
 							slog.String("user_id", userID))
 					}
-				}(u.Sub)
+				}(u.Sub, reqID)
 			}
 
 			return next(c)

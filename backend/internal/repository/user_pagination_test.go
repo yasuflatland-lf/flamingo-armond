@@ -504,6 +504,62 @@ func TestUserRepository_ListPage_RoleIDFilter_TotalCountConsistent(t *testing.T)
 	require.Len(t, got, 1, "page must be capped at first=1")
 }
 
+// TestUserRepository_ListPage_RoleIDFilter_MultiRoleUser verifies that a user
+// with memberships in two roles is counted exactly once per role filter and
+// exactly once in the unfiltered result. This catches a future refactor that
+// replaces the EXISTS subquery with a bare JOIN, which would double-count rows
+// for multi-role users without a DISTINCT clause.
+func TestUserRepository_ListPage_RoleIDFilter_MultiRoleUser(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewUserRepository(testDB.GORM)
+	roleRepo := repository.NewRoleRepository(testDB.GORM)
+
+	tag := "multi-role-" + uuid.NewString()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	// Insert exactly one user who will hold both roles.
+	userID := insertUserWithName(t, ctx, tag+"-u1", now)
+
+	// r1: the pre-seeded admin role.
+	r1, err := roleRepo.FindByName(ctx, "admin")
+	require.NoError(t, err)
+
+	// r2: a fresh role unique to this test run.
+	sqlDB := sqlDBHandle(t)
+	r2ID := uuid.NewString()
+	_, err = sqlDB.ExecContext(ctx,
+		`INSERT INTO public.roles (id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+		r2ID, "test-role-"+tag)
+	require.NoError(t, err)
+
+	// Assign both roles to the single user.
+	require.NoError(t, roleRepo.AssignToUser(ctx, userID, r1.ID))
+	require.NoError(t, roleRepo.AssignToUser(ctx, userID, r2ID))
+
+	// Filter by r1: must return the user exactly once (not twice).
+	got, total, err := repo.ListPage(ctx, nil, nil, 10, 0, &tag, &r1.ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total, "r1 filter: multi-role user must be counted once")
+	require.Len(t, got, 1, "r1 filter: page must contain exactly 1 row")
+	require.Equal(t, userID, got[0].ID, "r1 filter: must return the correct user")
+
+	// Filter by r2: must return the user exactly once.
+	got, total, err = repo.ListPage(ctx, nil, nil, 10, 0, &tag, &r2ID)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total, "r2 filter: multi-role user must be counted once")
+	require.Len(t, got, 1, "r2 filter: page must contain exactly 1 row")
+	require.Equal(t, userID, got[0].ID, "r2 filter: must return the correct user")
+
+	// No filter: must return the user exactly once (not once per role).
+	got, total, err = repo.ListPage(ctx, nil, nil, 10, 0, &tag, nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total,
+		"no filter: multi-role user must appear exactly once, not once per role membership")
+	require.Len(t, got, 1, "no filter: page must contain exactly 1 row")
+	require.Equal(t, userID, got[0].ID, "no filter: must return the correct user")
+}
+
 // uuidShort returns the first 8 hex characters of a fresh uuid — used to
 // disambiguate display_name suffixes inside a single test without bloating
 // log output.

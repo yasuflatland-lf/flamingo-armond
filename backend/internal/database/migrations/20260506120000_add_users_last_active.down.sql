@@ -1,6 +1,8 @@
 -- Reverse 20260506120000_add_users_last_active.up.sql.
--- Drop the index before the column so the index does not become orphaned
--- mid-migration if a step fails.
+-- Reverse the up migration in opposite creation order: drop the explicit
+-- index first, then the column. (Postgres would also auto-drop the index
+-- when the column is dropped, but stating it explicitly keeps the audit
+-- trail symmetric with the up migration.)
 
 BEGIN;
 

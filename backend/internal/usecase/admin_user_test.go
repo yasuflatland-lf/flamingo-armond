@@ -1039,10 +1039,9 @@ func TestAdminUser_Get_Cancelled(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestAdminUserUsecase_List_RoleIDFilterEmpty_NoFilterApplied verifies that a
-// nil roleID (or empty-string roleID) is forwarded to the repository unchanged,
-// without the usecase converting it to a non-nil pointer. A nil roleID signals
-// "no role filter" to the repository; the usecase must not fabricate a filter
-// the caller did not request.
+// nil roleID is forwarded to the repository unchanged. Empty-string handling
+// is the repository's responsibility (see ListPage `hasRoleFilter` check);
+// the usecase must not transform the value before forwarding.
 func TestAdminUserUsecase_List_RoleIDFilterEmpty_NoFilterApplied(t *testing.T) {
 	t.Parallel()
 
@@ -1060,6 +1059,36 @@ func TestAdminUserUsecase_List_RoleIDFilterEmpty_NoFilterApplied(t *testing.T) {
 	}
 	if users.lastListRoleID != nil {
 		t.Fatalf("repo received non-nil roleID=%v, want nil (no-filter signal)", users.lastListRoleID)
+	}
+}
+
+// TestAdminUserUsecase_List_RoleIDFilterEmptyString_PassedThrough verifies that
+// an empty-string roleID (&"") is forwarded to the repository as &"" without
+// being converted to nil by the usecase. The distinction matters because the
+// repository's hasRoleFilter check treats nil and &"" differently: nil means
+// "no filter", while &"" is forwarded as a no-op filter that the repository
+// handles internally. The usecase must not add a short-circuit that collapses
+// &"" to nil at the wrong layer.
+func TestAdminUserUsecase_List_RoleIDFilterEmptyString_PassedThrough(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{
+		listResult: []*domain.User{{ID: "u-1"}},
+		listTotal:  1,
+	}
+	authChk := &adminAuthChecker{admins: map[string]bool{"caller": true}}
+	uc, _, _ := buildAdminUC(users, nil, authChk)
+
+	empty := ""
+	_, err := uc.List(adminCallerCtx("caller"), nil, nil, nil, nil, nil, &empty)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if users.lastListRoleID == nil {
+		t.Fatal("repo received nil roleID, want &\"\" (empty-string forwarded unchanged)")
+	}
+	if *users.lastListRoleID != "" {
+		t.Fatalf("repo roleID = %q, want \"\" (empty string forwarded as-is)", *users.lastListRoleID)
 	}
 }
 

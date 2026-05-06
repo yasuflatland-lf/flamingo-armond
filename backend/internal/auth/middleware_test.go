@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -19,8 +20,8 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/rotisserie/eris"
 
-	"backend/internal/domain"
-	"backend/internal/repository"
+	"backend/internal/logging"
+	internalmw "backend/internal/middleware"
 )
 
 type testFixture struct {
@@ -390,36 +391,19 @@ func TestMiddleware_EmailVerifiedPropagated(t *testing.T) {
 // Stubs for TouchLastActive middleware tests
 // ---------------------------------------------------------------------------
 
-// panicUserRepo is a panic-base stub for repository.UserRepository. Every
-// method panics so tests that embed it only implement what they exercise.
-type panicUserRepo struct{}
+// panicToucher is a panic-base stub for lastActiveToucher. Its single method
+// panics so tests that embed it only implement what they exercise.
+type panicToucher struct{}
 
-func (panicUserRepo) FindByID(_ context.Context, _ string) (*domain.User, error) {
-	panic("panicUserRepo: FindByID not expected")
-}
-func (panicUserRepo) FindByIDs(_ context.Context, _ []string) (map[string]*domain.User, error) {
-	panic("panicUserRepo: FindByIDs not expected")
-}
-func (panicUserRepo) Update(_ context.Context, _ string, _ repository.UserUpdate) (*domain.User, error) {
-	panic("panicUserRepo: Update not expected")
-}
-func (panicUserRepo) SetLastViewedCardgroup(_ context.Context, _, _ string) error {
-	panic("panicUserRepo: SetLastViewedCardgroup not expected")
-}
-func (panicUserRepo) ListPage(
-	_ context.Context, _, _ *string, _, _ int, _ *string, _ *string,
-) ([]*domain.User, int64, error) {
-	panic("panicUserRepo: ListPage not expected")
-}
-func (panicUserRepo) TouchLastActive(_ context.Context, _ string) error {
-	panic("panicUserRepo: TouchLastActive not expected")
+func (panicToucher) TouchLastActive(_ context.Context, _ string) error {
+	panic("panicToucher: TouchLastActive not expected")
 }
 
-// blockingUserRepo wraps panicUserRepo and provides a TouchLastActive that
+// blockingUserRepo wraps panicToucher and provides a TouchLastActive that
 // blocks on a channel until released by the test. After release it records
 // the user ID it was called with.
 type blockingUserRepo struct {
-	panicUserRepo
+	panicToucher
 	release chan struct{}
 	called  chan string // receives the userID when the goroutine is unblocked
 }
@@ -437,10 +421,10 @@ func (r *blockingUserRepo) TouchLastActive(_ context.Context, userID string) err
 	return nil
 }
 
-// errorUserRepo wraps panicUserRepo and returns a pre-canned error from
+// errorUserRepo wraps panicToucher and returns a pre-canned error from
 // TouchLastActive.
 type errorUserRepo struct {
-	panicUserRepo
+	panicToucher
 	err error
 }
 
@@ -510,8 +494,8 @@ func (h *chanLogHandler) Handle(ctx context.Context, r slog.Record) error {
 // ---------------------------------------------------------------------------
 
 // buildEchoWithRepo constructs an Echo instance whose /query route is guarded
-// by AuthMiddleware wired with the given userRepo stub.
-func buildEchoWithRepo(t *testing.T, f *testFixture, userRepo repository.UserRepository) *echo.Echo {
+// by AuthMiddleware wired with the given lastActiveToucher stub.
+func buildEchoWithRepo(t *testing.T, f *testFixture, repo lastActiveToucher) *echo.Echo {
 	t.Helper()
 	kf, err := NewJWKSKeyfunc(f.mwCtx, Config{
 		JWKSURL:  f.jwksURL,
@@ -525,7 +509,7 @@ func buildEchoWithRepo(t *testing.T, f *testFixture, userRepo repository.UserRep
 		JWKSURL:  f.jwksURL,
 		Audience: f.audience,
 		Issuer:   f.issuer,
-	}, userRepo)
+	}, repo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -539,6 +523,80 @@ func buildEchoWithRepo(t *testing.T, f *testFixture, userRepo repository.UserRep
 		return c.String(http.StatusOK, "authed:"+u.Sub)
 	})
 	return e
+}
+
+// buildEchoWithRepoAndRequestID constructs an Echo instance that installs the
+// request-ID middleware ahead of AuthMiddleware. Use this variant when the test
+// needs to assert that the goroutine's WARN log carries the originating
+// request's X-Request-ID value.
+func buildEchoWithRepoAndRequestID(t *testing.T, f *testFixture, repo lastActiveToucher) *echo.Echo {
+	t.Helper()
+	kf, err := NewJWKSKeyfunc(f.mwCtx, Config{
+		JWKSURL:  f.jwksURL,
+		Audience: f.audience,
+		Issuer:   f.issuer,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mw, err := AuthMiddleware(kf, Config{
+		JWKSURL:  f.jwksURL,
+		Audience: f.audience,
+		Issuer:   f.issuer,
+	}, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := echo.New()
+	// Request-ID middleware must run before AuthMiddleware so the goroutine can
+	// read the ID from the request context via internalmw.RequestIDFromContext.
+	q := e.Group("/query", internalmw.RequestID(), mw)
+	q.POST("", func(c *echo.Context) error {
+		u := UserFrom(c.Request().Context())
+		if u == nil {
+			return c.String(http.StatusOK, "anon")
+		}
+		return c.String(http.StatusOK, "authed:"+u.Sub)
+	})
+	return e
+}
+
+// sendWithRequestID sends a POST /query with both an Authorization header and
+// an X-Request-ID header. Returns the response recorder.
+func sendWithRequestID(e *echo.Echo, authz, requestID string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/query", nil)
+	if authz != "" {
+		req.Header.Set("Authorization", authz)
+	}
+	if requestID != "" {
+		req.Header.Set(internalmw.RequestIDHeader, requestID)
+	}
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	return rec
+}
+
+// assertRichErrorChain validates that warnRec carries the rich
+// error_chain.root.stack shape that eris-wrapped errors produce. Extracted so
+// both the eris-error and stdlib-error sibling tests share the assertion.
+func assertRichErrorChain(t *testing.T, warnRec map[string]any) {
+	t.Helper()
+	// error_chain must be the rich root.stack shape.
+	// Note: error_chain is captured directly from slog.Attr (no JSON round-trip),
+	// so eris.ToJSON's []string root.stack stays as []string — not []any.
+	chain, ok := warnRec["error_chain"].(map[string]any)
+	if !ok {
+		t.Fatalf("error_chain is not a JSON object: %T", warnRec["error_chain"])
+	}
+	root, hasRoot := chain["root"].(map[string]any)
+	if !hasRoot {
+		t.Error("error_chain must have root entry (got external-only shape; stub may be using stdlib errors)")
+	}
+	if root != nil {
+		if stack, _ := root["stack"].([]string); len(stack) == 0 {
+			t.Error("error_chain.root.stack must contain at least one frame")
+		}
+	}
 }
 
 // TestAuthMiddleware_TouchLastActive_FiresAsync_NoBlock verifies that the
@@ -585,10 +643,11 @@ func TestAuthMiddleware_TouchLastActive_FiresAsync_NoBlock(t *testing.T) {
 }
 
 // TestAuthMiddleware_TouchLastActive_OnError_LogsWarn_NoPII verifies that
-// when the userRepo.TouchLastActive returns an error, the middleware:
+// when the repo.TouchLastActive returns an eris-wrapped error, the middleware:
 //   - emits a WARN-level log line,
 //   - attaches a rich error_chain (root.stack present),
 //   - includes user_id in the log,
+//   - carries the originating request's request_id so operators can correlate,
 //   - does NOT include email, display_name, or bio (PII protection).
 //
 // The request still returns 200 — the failed write must not block the handler.
@@ -596,16 +655,20 @@ func TestAuthMiddleware_TouchLastActive_FiresAsync_NoBlock(t *testing.T) {
 // races against the goroutine that writes them.
 func TestAuthMiddleware_TouchLastActive_OnError_LogsWarn_NoPII(t *testing.T) {
 	// Not parallel: mutates the global slog default.
-	handler, logCh := newChanLogHandler()
+	chanHandler, logCh := newChanLogHandler()
+	// Wrap chanHandler in a ContextHandler so request_id is injected into
+	// records by the same mechanism production uses.
+	ctxHandler := logging.NewContextHandler(chanHandler, internalmw.RequestIDFromContext)
 	prev := slog.Default()
 	t.Cleanup(func() { slog.SetDefault(prev) })
-	slog.SetDefault(slog.New(handler))
+	slog.SetDefault(slog.New(ctxHandler))
 
 	f := newFixture(t)
 
 	const wantSub = "uuid-warn-test"
+	const wantRequestID = "test-req-id-pii-check"
 	stub := &errorUserRepo{err: eris.New("db: connection refused")}
-	e := buildEchoWithRepo(t, f, stub)
+	e := buildEchoWithRepoAndRequestID(t, f, stub)
 
 	tok := f.signJWT(t, jwt.MapClaims{
 		"sub": wantSub, "email": "secret@example.com",
@@ -613,7 +676,7 @@ func TestAuthMiddleware_TouchLastActive_OnError_LogsWarn_NoPII(t *testing.T) {
 		"exp": time.Now().Add(time.Hour).Unix(),
 	}, jwt.SigningMethodES256, nil, "")
 
-	rec := send(e, "Bearer "+tok)
+	rec := sendWithRequestID(e, "Bearer "+tok, wantRequestID)
 	assert200(t, rec, "authed:"+wantSub)
 
 	// Drain channel records until the expected log line arrives or timeout.
@@ -639,6 +702,11 @@ drain:
 		t.Errorf("expected user_id=%q in WARN log, got %v", wantSub, warnRec["user_id"])
 	}
 
+	// request_id must propagate from the originating request into the goroutine's log.
+	if warnRec["request_id"] != wantRequestID {
+		t.Errorf("expected request_id=%q in WARN log, got %v", wantRequestID, warnRec["request_id"])
+	}
+
 	// PII must not appear.
 	for _, field := range []string{"email", "display_name", "bio"} {
 		if _, has := warnRec[field]; has {
@@ -646,21 +714,55 @@ drain:
 		}
 	}
 
-	// error_chain must be the rich root.stack shape.
-	// Note: error_chain is captured directly from slog.Attr (no JSON round-trip),
-	// so eris.ToJSON's []string root.stack stays as []string — not []any.
-	chain, ok := warnRec["error_chain"].(map[string]any)
-	if !ok {
-		t.Fatalf("error_chain is not a JSON object: %T", warnRec["error_chain"])
-	}
-	root, hasRoot := chain["root"].(map[string]any)
-	if !hasRoot {
-		t.Error("error_chain must have root entry (got external-only shape; stub may be using stdlib errors)")
-	}
-	if root != nil {
-		// eris.ToJSON emits root.stack as []string (Go native type, no JSON round-trip).
-		if stack, _ := root["stack"].([]string); len(stack) == 0 {
-			t.Error("error_chain.root.stack must contain at least one frame")
+	assertRichErrorChain(t, warnRec)
+}
+
+// TestAuthMiddleware_TouchLastActive_StdlibError_StillRichChain verifies that
+// even when the repo stub returns a plain stdlib error (errors.New, not eris),
+// the middleware's eris.Wrap call at the log site produces a rich
+// error_chain.root.stack — proving the wrap is load-bearing. If the wrap were
+// removed, the chain would degrade to the external-only shape and this test
+// would fail.
+func TestAuthMiddleware_TouchLastActive_StdlibError_StillRichChain(t *testing.T) {
+	// Not parallel: mutates the global slog default.
+	chanHandler, logCh := newChanLogHandler()
+	ctxHandler := logging.NewContextHandler(chanHandler, internalmw.RequestIDFromContext)
+	prev := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	slog.SetDefault(slog.New(ctxHandler))
+
+	f := newFixture(t)
+
+	const wantSub = "uuid-stdlib-err-test"
+	// Use a plain stdlib error — NOT eris.New — to prove the middleware's own
+	// eris.Wrap at the log site is what makes the chain rich.
+	stub := &errorUserRepo{err: errors.New("db: connection refused")}
+	e := buildEchoWithRepo(t, f, stub)
+
+	tok := f.signJWT(t, jwt.MapClaims{
+		"sub": wantSub, "aud": f.audience, "iss": f.issuer,
+		"exp": time.Now().Add(time.Hour).Unix(),
+	}, jwt.SigningMethodES256, nil, "")
+
+	rec := send(e, "Bearer "+tok)
+	assert200(t, rec, "authed:"+wantSub)
+
+	var warnRec map[string]any
+	deadline := time.After(3 * time.Second)
+drainStdlib:
+	for {
+		select {
+		case r := <-logCh:
+			if r["msg"] == "auth: last_active update failed" {
+				warnRec = r
+				break drainStdlib
+			}
+		case <-deadline:
+			t.Fatalf("timed out waiting for WARN log 'auth: last_active update failed'")
 		}
 	}
+
+	// The middleware wraps the stdlib error with eris.Wrap, so the chain must
+	// be rich (root.stack present) even though the stub returned errors.New.
+	assertRichErrorChain(t, warnRec)
 }
