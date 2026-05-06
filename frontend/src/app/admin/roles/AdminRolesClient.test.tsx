@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { AdminRolesClient } from "./AdminRolesClient";
 
 describe("AdminRolesClient", () => {
-  it("renders the AdminPageShell heading", () => {
+  it("wires the AdminPageShell with title and description", () => {
     render(
       <MockedProvider mocks={[]}>
         <AdminRolesClient initialRoles={[]} />
@@ -15,5 +15,7 @@ describe("AdminRolesClient", () => {
     );
 
     expect(screen.getByRole("heading", { level: 1, name: "Roles" })).toBeInTheDocument();
+    expect(screen.getByRole("main")).toBeInTheDocument();
+    expect(screen.getByText("Manage roles available to assign to users.")).toBeInTheDocument();
   });
 });
