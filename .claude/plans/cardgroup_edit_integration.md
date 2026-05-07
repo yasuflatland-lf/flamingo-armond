@@ -340,6 +340,13 @@ shadcn の `dropdown-menu.tsx` は未インストールなので追加が必要�
 - 実工数: 1 日 (見積 1 日)
 - 備考: `cards-client.tsx` の各非編集行を `<SwipeableRow>` でラップ。`rowRefs` Map で per-row RefObject を管理し、別行タップ時に `closeOtherRows()` を呼ぶ。選択モード (`selectedIds.size > 0`) および編集中 (`editingId === card.id`) の行は `disabled={true}`。`window.matchMedia` スタブを `jest-dom.ts` setup に追加し全 jsdom テストで安全なデフォルトを確保。`cards-client.test.tsx` に 4 テスト追加 (SwipeableRow レンダリング / 選択モード disable / 編集モード disable / closeOtherRows 配線)。8a: commit ee9c2c7、8b: 本コミット。
 
+### Step 2-5 final
+- 着手日 / 完了日: 2026-04-30 / 2026-05-08
+- Step 2 (PR review loop): 3 rounds / 約 3 日、`.claude/plans/` 内で incremental design→code→feedback を繰り返し。
+- Step 3 (code-simplifier): `simplify` skill で既存コード 4 重複ロジックを refactor し、新規 SwipeableRow component に統合。
+- Step 4 (test verification): 既存 Wave 1-2 をカバーする新規テスト + 既存テスト全 pass 確認。`jest` / `go test` 両方実行。
+- Step 5 (docs): `.claude/rules/` 3 ファイル + `docs/` 2 ファイル に 10+ new sections を追加、cardgroup-edit-integration の learnings を定着させた。
+
 ## 10. 参考
 
 - ブレインストーミングのモック: `.superpowers/brainstorm/19211-1778187647/content/` (gitignored)
