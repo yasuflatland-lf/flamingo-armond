@@ -1104,12 +1104,10 @@ describe("<CardsClient>", () => {
     expect(_pendingCount()).toBe(1);
     expect(mutationFired).toBe(false);
 
-    // Suppress the warn this handler emits so the leak spy stays clean.
-    // Per .claude/rules/pagination.md § "Spy stacking": this outer spy must
-    // forward to the leak spy via the original implementation, not swallow.
-    // We use mockImplementation(() => {}) here narrowly; the beforeunload
-    // handler is the only call site emitting a warn during this test.
-    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Install the outer spy WITHOUT mockImplementation so the leak spy still
+    // receives all console.warn calls. Per .claude/rules/pagination.md
+    // § "Spy stacking": do NOT swallow the outer spy's implementation.
+    const consoleWarnSpy = vi.spyOn(console, "warn");
 
     // Dispatch beforeunload — the handler calls flushPendingDeletes which
     // immediately fires commitDelete and removes the entry from the registry.
@@ -1127,6 +1125,34 @@ describe("<CardsClient>", () => {
     expect(consoleWarnSpy).toHaveBeenCalledWith(
       "[CardsClient] flushPendingDeletes on beforeunload — may be cancelled by browser",
     );
+    consoleWarnSpy.mockRestore();
+  });
+
+  // T3b: beforeunload handler does NOT warn or flush when nothing is pending.
+  // Pairs with T3 above which confirms warn IS emitted when a delete is pending.
+  it("beforeunload event does nothing when no pending deletes exist", async () => {
+    // Ensure the registry is clean before the test.
+    await flushPendingDeletes();
+    expect(_pendingCount()).toBe(0);
+
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: DEFAULT_VARS,
+      data: { cardsByCardgroupConnection: connection([CARD_1, CARD_2]) },
+    });
+    renderClient([], [CARD_1, CARD_2], { cache });
+
+    const consoleWarnSpy = vi.spyOn(console, "warn");
+
+    window.dispatchEvent(new Event("beforeunload"));
+
+    // No pending deletes — warn must not fire and registry stays at 0.
+    expect(consoleWarnSpy).not.toHaveBeenCalledWith(
+      "[CardsClient] flushPendingDeletes on beforeunload — may be cancelled by browser",
+    );
+    expect(_pendingCount()).toBe(0);
+
     consoleWarnSpy.mockRestore();
   });
 

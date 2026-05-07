@@ -32,7 +32,7 @@ import {
   type CardsByCardgroupConnectionQueryVariables,
 } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
-import { flushPendingDeletes, scheduleDelete } from "@/lib/undo-delete";
+import { _pendingCount, flushPendingDeletes, scheduleDelete } from "@/lib/undo-delete";
 import { cardsDefaultVars } from "./queries";
 
 type Connection = CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"];
@@ -398,6 +398,7 @@ export function CardsClient({
   // sendBeacon cannot reliably attach. Document and accept the limitation.
   useEffect(() => {
     function onBeforeUnload() {
+      if (_pendingCount() === 0) return;
       console.warn(
         "[CardsClient] flushPendingDeletes on beforeunload — may be cancelled by browser",
       );
