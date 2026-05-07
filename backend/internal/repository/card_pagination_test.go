@@ -338,6 +338,126 @@ func TestCardRepository_FindPageByCardgroup_ZeroPageReturnsTotal(t *testing.T) {
 	require.Equal(t, int64(5), total)
 }
 
+// TestCardRepo_FindPageByCardgroup_Search_WithAfter verifies that the ILIKE
+// search filter is preserved when an `after` cursor is present. A bug that
+// drops the predicate on the cursor branch would return non-matching cards on
+// the second page, causing both the wrong IDs and a wrong page-3 hasNextPage
+// signal.
+//
+// Setup: 5 cards, 3 of which match "apple" in their front text (front-apple-0,
+// front-apple-1, front-apple-2). The remaining 2 do not match.
+// Order: created_at ASC so the cursor walk is deterministic.
+//
+// Steps:
+//  1. Page 1 (first=2, after=nil, search="apple") → 2 matching cards,
+//     totalCount=3, the third matching card is the next page.
+//  2. Take the cursor from the last returned edge (front-apple-1).
+//  3. Page 2 (first=2, after=cursor, search="apple") → exactly 1 card
+//     (front-apple-2), totalCount=3, hasNextPage=false.
+//  4. Assert no non-matching card ever appears in either page.
+func TestCardRepo_FindPageByCardgroup_Search_WithAfter(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	now := time.Now().UTC()
+
+	// 3 cards whose front matches "apple", staggered so created_at order is
+	// deterministic.
+	matchingFronts := []string{"front-apple-0", "front-apple-1", "front-apple-2"}
+	matching := make([]*domain.Card, 3)
+	for i, front := range matchingFronts {
+		c := newCard(cg.ID, front, "back")
+		c.CreatedAt = now.Add(time.Duration(i) * time.Hour)
+		c.UpdatedAt = c.CreatedAt
+		c.FSRS.Due = c.CreatedAt
+		require.NoError(t, repo.Create(ctx, c))
+		matching[i] = c
+	}
+
+	// 2 cards that do NOT match "apple" — inserted after the matching ones so
+	// they sort last by created_at.
+	nonMatching := make([]*domain.Card, 2)
+	for i, front := range []string{"front-cherry", "front-banana"} {
+		c := newCard(cg.ID, front, "back")
+		c.CreatedAt = now.Add(time.Duration(3+i) * time.Hour)
+		c.UpdatedAt = c.CreatedAt
+		c.FSRS.Due = c.CreatedAt
+		require.NoError(t, repo.Create(ctx, c))
+		nonMatching[i] = c
+	}
+
+	// Re-fetch so DB-rounded timestamps are used in the cursor comparisons.
+	for i, c := range matching {
+		got, err := repo.FindByID(ctx, c.ID)
+		require.NoError(t, err)
+		matching[i] = got
+	}
+
+	search := "apple"
+
+	// --- Page 1 ---
+	page1, total1, err := repo.FindPageByCardgroup(
+		ctx, cg.ID, nil, nil,
+		// Request 2+1 (the +1 trick) so the usecase can detect hasNextPage.
+		3, 0,
+		repository.CardOrderByCreatedAt, repository.SortAsc,
+		&search,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total1, "totalCount must count only matching cards")
+	// With first=3 we get all 3 back — trim to 2 to simulate the usecase's +1 trick.
+	require.Len(t, page1, 3)
+	hasNextPage1 := len(page1) > 2
+	require.True(t, hasNextPage1, "page 1 should signal hasNextPage=true")
+	// Trim to the actual page size.
+	page1 = page1[:2]
+
+	// Verify page 1 contains the first two matching cards.
+	require.Equal(t, matching[0].ID, page1[0].ID)
+	require.Equal(t, matching[1].ID, page1[1].ID)
+
+	// Assert no non-matching card leaked into page 1.
+	for _, c := range page1 {
+		for _, nm := range nonMatching {
+			require.NotEqual(t, nm.ID, c.ID,
+				"non-matching card %s must not appear in page 1", nm.ID)
+		}
+	}
+
+	// --- Cursor from the last edge of page 1 ---
+	last1 := page1[len(page1)-1]
+	cursor := &repository.CardCursor{
+		ID:        last1.ID,
+		CreatedAt: &last1.CreatedAt,
+	}
+
+	// --- Page 2 ---
+	page2, total2, err := repo.FindPageByCardgroup(
+		ctx, cg.ID, cursor, nil,
+		3, 0,
+		repository.CardOrderByCreatedAt, repository.SortAsc,
+		&search,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total2, "totalCount must still be 3 on page 2")
+	// Only one matching card remains after the cursor.
+	require.Len(t, page2, 1, "page 2 must return exactly 1 matching card")
+	require.Equal(t, matching[2].ID, page2[0].ID)
+	hasNextPage2 := len(page2) > 2
+	require.False(t, hasNextPage2, "page 2 should signal hasNextPage=false")
+
+	// Assert no non-matching card leaked into page 2.
+	for _, c := range page2 {
+		for _, nm := range nonMatching {
+			require.NotEqual(t, nm.ID, c.ID,
+				"non-matching card %s must not appear in page 2", nm.ID)
+		}
+	}
+}
+
 // sortByID returns a copy of cards sorted by ID ascending.
 func sortByID(cards []*domain.Card) []*domain.Card {
 	out := make([]*domain.Card, len(cards))
