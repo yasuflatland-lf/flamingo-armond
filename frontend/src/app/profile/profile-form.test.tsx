@@ -305,6 +305,39 @@ describe("<ProfileForm>", () => {
     });
   });
 
+  it("keeps formState.isSubmitSuccessful=false after a rejecting submit (regression: issue #111)", async () => {
+    const user = userEvent.setup();
+
+    // A network-level rejection causes the mutation promise to reject, which previously
+    // escaped as an unhandled rejection. After the fix, onSubmit re-throws and
+    // form.handleSubmit() swallows at the JSX call site — isSubmitSuccessful must stay false.
+    const mocks = [
+      {
+        request: {
+          query: UpdateProfileDocument,
+          variables: { input: { displayName: "Alice", bio: "hi" } },
+        },
+        error: new Error("network down"),
+      },
+    ];
+
+    render(
+      <MockedProvider mocks={mocks}>
+        <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
+      </MockedProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    // Wait for the mutation rejection to propagate and settle.
+    await waitFor(() => {
+      const sentinel = screen.getByTestId("is-submit-successful");
+      // isSubmitSuccessful must remain "false" — a "true" here means onSubmit swallowed
+      // the rejection and TanStack Form incorrectly treated the submit as successful.
+      expect(sentinel).toHaveAttribute("data-value", "false");
+    });
+  });
+
   it("bio untouched undefined sends mutation without bio variable", async () => {
     const user = userEvent.setup();
     const mutationCalled = vi.fn();

@@ -62,6 +62,7 @@ export function ProfileForm({ email, initial }: Props) {
         },
       }).catch((err) => {
         console.error("[ProfileForm] mutation rejection", err);
+        throw err; // keep formState.isSubmitSuccessful correct
       });
     },
   });
@@ -71,7 +72,11 @@ export function ProfileForm({ email, initial }: Props) {
       onSubmit={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        void form.handleSubmit();
+        form.handleSubmit().catch(() => {
+          // The inner submit handler's .catch already logged; swallow here so the
+          // re-thrown rejection (which keeps formState.isSubmitSuccessful=false correct)
+          // does not surface as an unhandled browser promise rejection.
+        });
       }}
       className="space-y-4"
     >
@@ -140,6 +145,17 @@ export function ProfileForm({ email, initial }: Props) {
       <Button type="submit" disabled={loading}>
         {loading ? "Saving..." : "Save"}
       </Button>
+
+      {/* Hidden sentinel used by tests to observe formState.isSubmitSuccessful */}
+      <form.Subscribe selector={(state) => state.isSubmitSuccessful}>
+        {(isSubmitSuccessful) => (
+          <span
+            data-testid="is-submit-successful"
+            data-value={String(isSubmitSuccessful)}
+            hidden
+          />
+        )}
+      </form.Subscribe>
     </form>
   );
 }
