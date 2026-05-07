@@ -56,7 +56,7 @@ test.describe
 
       const cardsResponse = await page.goto(`/cardgroups/${cardgroup.id}/cards`);
       expect(cardsResponse?.ok(), `goto returned status ${cardsResponse?.status()}`).toBe(true);
-      await expect(page.getByRole("heading", { name: `Cards in ${cardgroup.name}` })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1, name: cardgroup.name })).toBeVisible();
       await expect(page.getByText(frontA)).toBeVisible();
       await expect(page.getByText(frontB)).toBeVisible();
     });
