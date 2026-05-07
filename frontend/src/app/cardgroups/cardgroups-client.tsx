@@ -164,7 +164,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
       title="My cardgroups"
       description="Browse and manage the cardgroups you have created."
       primaryActions={
-        <Button asChild variant="brand">
+        <Button asChild variant="brand" className="hidden md:inline-flex">
           <Link href="/cardgroups/new">+ New cardgroup</Link>
         </Button>
       }
