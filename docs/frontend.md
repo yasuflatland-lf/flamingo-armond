@@ -873,4 +873,8 @@ grep -rn "ModeBadge" frontend/ --include="*.ts" --include="*.tsx"
 2. For each, decide whether the asserted behaviour still exists somewhere (in the replacement component, in the layout that hosts it, in a route-level test). If yes, ensure a new test in that location covers the same branch.
 3. For each behaviour that no longer exists, the deletion is correct — but say so in the commit message so reviewers can verify intent rather than guess.
 
+## Delayed-DELETE undo toast, SwipeableRow, and useReducedMotion
+
+See [`docs/frontend-undo-toast.md`](frontend-undo-toast.md) — sonner snackbar undo pattern, mobile swipe-to-delete row component, and the `useReducedMotion` JS hook. Split from this file because this file is at its 600-line soft cap.
+
 The cleanest concrete failure mode: a deleted `global-header.test.tsx` had eight branches asserting that the root layout degrades silently on `getUser()` failure / `gqlFetch` `UNAUTHENTICATED` / `me`-fetch failure. Those branches now live in `app/layout.tsx`, but no test covered them after the deletion landed — the gap was caught only in review. The fix was a new `app/layout.test.tsx` that re-asserts every branch against the post-refactor implementation. Reference: `frontend/src/app/layout.test.tsx`.

@@ -334,6 +334,55 @@ The `result !== null` discriminator distinguishes "mutation rejected and `.catch
 
 **How to apply:** when refactoring a helper that combines multiple side effects into a single inline call site, audit the resulting guard branches for any case that now has zero observable effect. If a branch can legitimately be reached at runtime but does nothing, replace it with an explicit `console.warn` for operator triage (or a state-rollback, depending on what "no observable effect" hides). Reference: `frontend/src/app/learn/[cardgroupId]/learn-client.tsx` (`handleSwipe` callback) — the post-refactor `else if (result !== null)` warn after `reconcileQueue` was inlined and `setPerformance` was removed.
 
+## Module-level singleton `Map` keyed by entity id requires a non-empty-string guard at the entry point
+
+A module-level `Map<string, T>` (e.g. a pending-timer registry keyed by entity id) gives `""` an equal claim to be a valid key as any UUID. Two callers that independently pass `""` — a "stub id" code path, a short-circuit branch, a future caller that skips id resolution — collide silently: the second call's `cancelPending("")` cancels the first's timer, the first entry's `commitDelete` is never invoked, the cache stays in the optimistically-removed state, and the server never receives the DELETE.
+
+The fix is a synchronous throw at the top of the public entry point. This is a programming-error guard, not user-input validation — the same level of force as the constructor-panic pattern in `.claude/rules/go-library-gotchas.md` § "Constructor panics are the right tool for non-empty config requires non-nil deps". The throw's stack trace names the bad call site; a `try/catch` that swallows it is a separate review concern at the swallowing site, not this module's problem.
+
+```ts
+export function scheduleDelete(opts: ScheduleDeleteOptions): ScheduleDeleteHandle {
+  if (!opts.id) {
+    throw new Error("undo-delete: id must be a non-empty string");
+  }
+  // ...
+}
+```
+
+**Why:** `Map.get("")` and `Map.get(someRealId)` are both `O(1)` lookups. There is no runtime signal when two unrelated call sites share `""` as a key — no duplicate-key warning, no assertion, no type error. The only gate available is an explicit guard at the entry point.
+
+**How to apply:** any module that exposes a public function accepting an id that keys into a module-level `Map` must validate `!id` (or `id === ""`) at the top of that function and throw synchronously. Pair with a co-located test that asserts the throw is synchronous and the message matches verbatim. Reference: `frontend/src/lib/undo-delete.ts` `scheduleDelete`.
+
+## Re-scheduling a module-level singleton entry: commit prior immediately; warn-only on prior failure
+
+When the same entity id is re-scheduled on a module-level pending registry (e.g. a fast double-swipe-to-delete on the same row triggers `scheduleDelete` twice for the same card id), naively calling `cancelPending(id)` discards the prior entry without invoking its `commitDelete`. The optimistic cache removal is now permanent — but the server never received the DELETE. Equally bad: routing the prior commit's rejection to `onCommitFailed` shows a user-facing "Could not delete. Please try again." banner for an item already gone from view. The user has no actionable retry path; the banner is misleading.
+
+The correct pattern has two parts: (1) commit the prior entry immediately — preserving the user's intent that the prior optimistic remove is permanent — and (2) route the prior commit's rejection to `console.warn` only, NOT to `onCommitFailed`:
+
+```ts
+const existing = pending.get(opts.id);
+if (existing !== undefined) {
+  if (existing.toastId !== undefined) toast.dismiss(existing.toastId);
+  clearTimeout(existing.timerId);
+  pending.delete(opts.id);
+  void existing.commitDelete().catch((err) => {
+    // Prior optimistic-remove is preserved (the new schedule is the authoritative
+    // intent). Do NOT call existing.onCommitFailed — the item is already gone
+    // from the user's view; a banner would be misleading and has no retry path.
+    console.warn(
+      "[undo-delete] prior pending delete commit failed on re-schedule",
+      { id: opts.id, err },
+    );
+  });
+}
+```
+
+Per § "`expect.objectContaining({ message })` is not enough — add a discriminating key": include `id` and `err` in the structured warn payload so any test matcher discriminates against a bare `Error` regression.
+
+**Why:** the trade-off is intentional. A server-DELETE failure on the prior entry leaves the client cache and server briefly out of sync — surfaced via a developer-tools warn. The user does NOT see a retry-prompted banner because there is no valid retry path for an entity the user has already re-deleted.
+
+**How to apply:** any module-level pending registry that accepts a re-schedule for an already-pending id must (a) dismiss the prior UI affordance (toast, banner), (b) clear the prior timer, (c) fire the prior `commitDelete` immediately, and (d) route the prior commit's rejection to `console.warn` with a structured `{ id, err }` payload — NOT to the user-facing error callback. Reference: `frontend/src/lib/undo-delete.ts` `scheduleDelete` re-schedule branch.
+
 ## Cross-module constant references in test descriptions are silent-rot coupling
 
 A test description that names a sibling module's constant by its identifier — e.g. `"shadowed by HIDDEN_PATH_RE in global-fab.tsx"` — couples the test to that constant's exact name. A rename of the constant (or its replacement by a different mechanism, e.g. a `Set` lookup or a different regex name) leaves the test description misleading with no compile-time signal. Prefer module-relative wording that names the responsibility, not the symbol:
