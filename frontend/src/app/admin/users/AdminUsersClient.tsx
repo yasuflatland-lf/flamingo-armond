@@ -66,12 +66,12 @@ function UserRow({ edge }: { edge: Edge }) {
 
       {/* Edit link */}
       <Button asChild variant="ghost" size="icon" className="shrink-0">
-      <Link
-        href={`/admin/users/${user.id}/edit`}
-        aria-label={`Edit ${user.displayName ?? "user"}`}
-      >
+        <Link
+          href={`/admin/users/${user.id}/edit`}
+          aria-label={`Edit ${user.displayName ?? "user"}`}
+        >
           <Pencil aria-hidden="true" className="h-4 w-4" />
-      </Link>
+        </Link>
       </Button>
     </li>
   );

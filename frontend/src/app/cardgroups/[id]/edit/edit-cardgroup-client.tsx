@@ -4,8 +4,11 @@ import { useMutation } from "@apollo/client/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { CARDGROUPS_DEFAULT_VARS, DeleteCardgroupMutation, UpdateCardgroupMutation } from "@/app/cardgroups/queries";
-import { MyCardgroupsConnectionDocument, MyCardgroupsDocument } from "@/generated/graphql";
+import {
+  CARDGROUPS_DEFAULT_VARS,
+  DeleteCardgroupMutation,
+  UpdateCardgroupMutation,
+} from "@/app/cardgroups/queries";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
 import {
   AlertDialog,
@@ -19,6 +22,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { MyCardgroupsConnectionDocument, MyCardgroupsDocument } from "@/generated/graphql";
 
 type Props = {
   cardgroup: { id: string; name: string };
@@ -137,10 +141,7 @@ export function EditCardgroupClient({ cardgroup }: Props) {
   return (
     <main className="p-8">
       <div className="mb-6 flex items-center gap-4">
-        <Link
-          href="/cardgroups"
-          className="text-sm text-muted-foreground hover:underline"
-        >
+        <Link href="/cardgroups" className="text-sm text-muted-foreground hover:underline">
           &larr; Back
         </Link>
         <h1 className="text-2xl font-semibold">Edit cardgroup</h1>

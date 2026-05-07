@@ -210,7 +210,12 @@ export function DictionaryImportClient() {
           >
             {validating ? "Validating..." : "Validate"}
           </Button>
-          <Button type="button" variant="brand" onClick={handleImport} disabled={!canImport || upserting}>
+          <Button
+            type="button"
+            variant="brand"
+            onClick={handleImport}
+            disabled={!canImport || upserting}
+          >
             {upserting ? "Importing..." : "Import"}
           </Button>
         </div>
