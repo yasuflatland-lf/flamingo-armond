@@ -344,17 +344,23 @@ describe("useReducedMotion", () => {
   });
 
   it("updates reactively when the media query changes", async () => {
-    // Capture the change listener so we can fire it manually.
-    let capturedListener: ((e: MediaQueryListEvent) => void) | null = null;
+    // useSyncExternalStore: the subscribe callback is () => void (not a
+    // MediaQueryListEvent handler). After React calls it, useSyncExternalStore
+    // re-invokes getSnapshot() — which reads window.matchMedia(...).matches —
+    // so the mock must return the updated matches value by that time.
+    let capturedListener: (() => void) | null = null;
+    let currentMatches = false;
 
     Object.defineProperty(window, "matchMedia", {
       writable: true,
       configurable: true,
       value: vi.fn().mockImplementation((query: string) => ({
-        matches: false,
+        get matches() {
+          return query.includes("prefers-reduced-motion") ? currentMatches : false;
+        },
         media: query,
         onchange: null,
-        addEventListener: (_event: string, handler: (e: MediaQueryListEvent) => void) => {
+        addEventListener: (_event: string, handler: () => void) => {
           if (query.includes("prefers-reduced-motion")) {
             capturedListener = handler;
           }
@@ -369,9 +375,10 @@ describe("useReducedMotion", () => {
     const { result } = renderHook(() => useReducedMotion());
     expect(result.current).toBe(false);
 
-    // Fire the change event to simulate the user enabling reduced-motion.
+    // Simulate the user enabling reduced-motion: update matches, then notify.
     act(() => {
-      capturedListener?.({ matches: true } as MediaQueryListEvent);
+      currentMatches = true;
+      capturedListener?.();
     });
 
     expect(result.current).toBe(true);
