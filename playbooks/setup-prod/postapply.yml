@@ -235,6 +235,8 @@
           value: "{{ supabase_jwt_issuer }}"
         - key: PING_TOKEN
           value: "{{ ping_token }}"
+        - key: SUPER_USER_EMAILS
+          value: "{{ lookup('env', 'SUPER_USER_EMAILS') | default('') }}"
       loop_control:
         label: "{{ item.key }}"
   rescue:
