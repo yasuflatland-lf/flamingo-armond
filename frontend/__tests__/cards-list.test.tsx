@@ -184,7 +184,7 @@ describe("CardsPage — broad integration (RSC + CardsClient)", () => {
     mockCardsPageGql(EMPTY_CONNECTION);
     await renderPage(EMPTY_CONNECTION);
 
-    expect(screen.getByText("No cards yet.")).toBeInTheDocument();
+    expect(screen.getByText("Add some new cards to get started.")).toBeInTheDocument();
   });
 
   // I3: Supabase auth transport error — page rethrows without redirecting.

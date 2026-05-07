@@ -294,12 +294,14 @@ describe("AdminUsersClient — edit links and empty state", () => {
     await screen.findByText(adminUserFixture.displayName as string);
 
     // Every user row must have an Edit link pointing at the correct edit page.
+    // The link is icon-only, so the accessible name is the aria-label rather
+    // than text content.
     for (const userNode of users) {
       const row = screen.getByTestId(`admin-user-row-${userNode.id}`);
       const editLink = row.querySelector<HTMLAnchorElement>("a");
       expect(editLink).not.toBeNull();
       expect(editLink?.href).toContain(`/admin/users/${userNode.id}/edit`);
-      expect(editLink?.textContent).toMatch(/edit/i);
+      expect(editLink?.getAttribute("aria-label")).toMatch(/edit/i);
     }
   });
 
