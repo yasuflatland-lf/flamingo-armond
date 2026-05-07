@@ -139,6 +139,14 @@ Write the new entity via `cache.writeFragment` first so any other cached edge th
 
 Filter the edge out of the cached connection, decrement `totalCount` (clamped at 0 — the deleted item may live on a page that was never fetched into edges), then `cache.evict` + `cache.gc()` to drop the normalised entity. Eviction alone is not enough — the connection field is a list of `{ cursor, node }` objects whose `node` reference is broken by evict but the parent edge stays in the array.
 
+### Optimistic-rollback cache key MUST track the active query variables, not the default factory
+
+A `cardsDefaultVars(cardgroupId)` factory produces the cache vars for the unfiltered query (e.g. `{ cardgroupId, first: 20, search: null }`). When the user has an active filter (e.g. `searchQuery !== null`), the live `useQuery` is keyed on a **different** cache entry. A delete handler that snapshots and writes via the default-vars factory calls `readQuery` on the unfiltered entry, gets `null`, and the `if (snapshot)` guard silently skips the optimistic remove — the deleted row stays visible until the server commit settles. The same miss affects bulk-delete `update` callbacks.
+
+**Why:** Apollo's cache key is the canonical-stringified variables object. The default-vars factory and the active-query variables are only equal when no filter is active; as soon as `searchQuery !== null`, they diverge and target different cache entries. This is the dual of § "Variables shape MUST match between SSR seed and client cache reads": that rule governs the three SSR-seed/client-query/update call sites all agreeing on the *default* key; this rule governs mutation `update` and optimistic-rollback callbacks agreeing with the *active* key.
+
+**How to apply:** derive the snapshot read and rollback `writeQuery` vars from the same `queryVariables` memo that the component's active `useQuery` uses. Add `queryVariables` to the `useCallback` dep array. Reserve the default-vars factory for SSR seed and cold-cache base reads only. Reference: `frontend/src/app/cardgroups/[id]/cards/cards-client.tsx` `handleDeleteRow` and the bulk-delete `update` callback — both switched from `cardsDefaultVars(cardgroupId)` to `queryVariables`.
+
 ### Connection update (cache normalization)
 
 Rely on Apollo cache normalization (entities with `id` are normalized by default). No manual `update` callback is needed; mutations that touch a normalised entity propagate to every cached query that reads it.
@@ -212,6 +220,44 @@ useEffect(() => {
 Two non-obvious points: (1) the SSR-seeded "current server value" lets the effect skip the network entirely when nothing changed — keep that prop, do not collapse the check to "always fire once"; (2) the mutation should run via the imperative `client.mutate(...)` (not `useMutation`) so the cache update runs regardless of caller render state and the effect's dependency surface stays narrow. Reference: `frontend/src/app/learn/[cardgroupId]/learn-client.tsx` persisting `lastViewedCardgroup`.
 
 The "drop `optimisticResponse`" rule below applies here too: a mutation that can plausibly return `BAD_USER_INPUT` (e.g. cardgroup deleted between page render and the effect firing) should not carry an optimistic write.
+
+### `useEffect` cleanup must not fire `void asyncFn()` for navigation-time side effects
+
+Putting a flush call such as `flushPendingDeletes()` inside the `useEffect` cleanup function (`return () => { void asyncFn(); }`) is unreliable. The cleanup fires synchronously on unmount or dep-change; the returned Promise is voided; React does not keep the component alive while the async work runs; in-flight mutations can be abandoned mid-flight with no error surface.
+
+**Why:** the cleanup callback is not an async boundary — `void asyncFn()` discards the Promise before the first `await` inside it can settle. Apollo's mutation dispatch happens inside the awaited network round-trip; voiding the Promise means the network request may never be enqueued, depending on how far execution got before the component was torn down.
+
+**How to apply:** detect the pathname change via a `previousPathnameRef = useRef(pathname)` and fire the flush in the **effect body** when `pathname` differs from the ref. The async work runs while the component is still mounted and the Apollo client context is alive:
+
+```ts
+const previousPathnameRef = useRef(pathname);
+useEffect(() => {
+  if (previousPathnameRef.current !== pathname) {
+    void flushPendingDeletes();
+    previousPathnameRef.current = pathname;
+  }
+}, [pathname]);
+```
+
+This pairs with the IntersectionObserver in-flight guard (§ above): both patterns use a `useRef` to track external-trigger state that must not be read asynchronously. Reference: `frontend/src/app/cardgroups/[id]/cards/cards-client.tsx` `previousPathnameRef` pattern.
+
+### `beforeunload` flush is browser-cancellable; gate the warn on pending count
+
+A `beforeunload` listener that unconditionally fires `void flushPendingDeletes()` produces false-positive operator noise on every routine navigation even when there is nothing pending. More critically, modern browsers cancel pending `fetch` / XHR requests when `beforeunload` fires unless the request uses `keepalive: true` or `sendBeacon` — neither of which is viable for GraphQL endpoints that require `Authorization` headers. The flush is therefore a best-effort hint, not a guarantee.
+
+**How to apply:** gate both the warn and the flush on `_pendingCount() > 0` to avoid signal noise on routine navigation. Document the browser-cancellation limitation in a code comment so a future maintainer does not replace the warn with a user-facing error message:
+
+```ts
+function onBeforeUnload() {
+  if (_pendingCount() === 0) return;
+  console.warn(
+    "[CardsClient] flushPendingDeletes on beforeunload — may be cancelled by browser",
+  );
+  void flushPendingDeletes();
+}
+```
+
+**Why:** an unconditional warn desensitizes operators to the real signal — a non-zero pending count at unload time is worth triaging; a zero-pending unload is routine. The gate makes the warn a meaningful signal rather than noise. Reference: `frontend/src/app/cardgroups/[id]/cards/cards-client.tsx` `onBeforeUnload` after `_pendingCount` was exported from `frontend/src/lib/undo-delete.ts`.
 
 ### `fetchMoreError != null` halts the IO loop
 

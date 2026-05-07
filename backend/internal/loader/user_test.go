@@ -169,6 +169,7 @@ func (r *countingCardRepo) FindPageByCardgroup(
 	_, _ *repository.CardCursor,
 	_, _ int,
 	_ repository.CardOrderBy, _ repository.SortOrder,
+	_ *string,
 ) ([]*domain.Card, int64, error) {
 	panic("countingCardRepo.FindPageByCardgroup not configured")
 }

@@ -92,6 +92,7 @@ type CardRepository interface {
 		first, last int,
 		orderBy CardOrderBy,
 		dir SortOrder,
+		search *string,
 	) (cards []*domain.Card, totalCount int64, err error)
 	FindDueCardsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
 	Create(ctx context.Context, card *domain.Card) error
@@ -173,10 +174,23 @@ func (r *cardRepo) FindByCardgroup(ctx context.Context, cardgroupID string) ([]*
 	return out, nil
 }
 
+// escapeLike escapes the three Postgres LIKE metacharacters so user-supplied
+// text is treated as a literal substring. Order matters: escape '\' first,
+// otherwise the second pass would re-escape the already-escaped sequences.
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	s = strings.ReplaceAll(s, `_`, `\_`)
+	return s
+}
+
 // FindPageByCardgroup returns a window of cards for a cardgroup ordered by
 // (orderField, id) so cursors stay deterministic. Forward paging uses `after`
 // + `first`; backward paging uses `before` + `last`. totalCount reflects every
 // row in the cardgroup, not just the page.
+// When search is non-nil and non-empty, only cards whose front OR back contains
+// the search text (case-insensitive ILIKE partial match) are returned.
+// The search is applied to both totalCount and the page window.
 func (r *cardRepo) FindPageByCardgroup(
 	ctx context.Context,
 	cardgroupID string,
@@ -184,19 +198,26 @@ func (r *cardRepo) FindPageByCardgroup(
 	first, last int,
 	orderBy CardOrderBy,
 	dir SortOrder,
+	search *string,
 ) ([]*domain.Card, int64, error) {
 	first = clampPageSize(first)
 	last = clampPageSize(last)
 
-	// totalCount comes from a separate COUNT(*) scoped to the cardgroup.
-	// Computed before the no-rows short-circuit so callers passing first=0
-	// still observe the real cardgroup size. Acceptable for <= 10k cards/
-	// group; revisit if the cap grows.
+	// Base query scoped to the cardgroup.
+	base := r.db.WithContext(ctx).Model(&gormCard{}).Where("cardgroup_id = ?", cardgroupID)
+
+	// Non-nil search is guaranteed by the usecase to be non-empty and trimmed.
+	// escapeLike guards against LIKE metacharacter injection.
+	if search != nil {
+		pattern := "%" + escapeLike(*search) + "%"
+		base = base.Where("(front ILIKE ? OR back ILIKE ?)", pattern, pattern)
+	}
+
+	// totalCount comes from a separate COUNT(*) scoped to the cardgroup (and
+	// search filter, if active). Computed before the no-rows short-circuit so
+	// callers passing first=0 still observe the real count.
 	var total int64
-	if err := r.db.WithContext(ctx).
-		Model(&gormCard{}).
-		Where("cardgroup_id = ?", cardgroupID).
-		Count(&total).Error; err != nil {
+	if err := base.Count(&total).Error; err != nil {
 		return nil, 0, eris.Wrap(err, "repository: count cards by cardgroup")
 	}
 
@@ -217,16 +238,14 @@ func (r *cardRepo) FindPageByCardgroup(
 		reverse = true
 	}
 
-	q := r.db.WithContext(ctx).
-		Model(&gormCard{}).
-		Where("cardgroup_id = ?", cardgroupID)
+	q := base
 
 	if cursor != nil {
-		clause, args, err := cursorWhere(orderBy, effectiveDir, cursor)
+		clauseStr, args, err := cursorWhere(orderBy, effectiveDir, cursor)
 		if err != nil {
 			return nil, 0, eris.Wrap(err, "repository: build cursor where")
 		}
-		q = q.Where(clause, args...)
+		q = q.Where(clauseStr, args...)
 	}
 
 	q = q.Order(orderClause(orderBy, effectiveDir)).Limit(limit)

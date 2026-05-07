@@ -34,8 +34,6 @@ describe("<GlobalFAB>", () => {
       ["/cardgroups/new/"],
       ["/profile"],
       ["/profile/"],
-      ["/cardgroups/abc123/edit"],
-      ["/cardgroups/abc123/edit/"],
     ])("renders nothing on %s", (path) => {
       vi.mocked(usePathname).mockReturnValue(path);
       const { container } = render(<GlobalFAB />);
@@ -53,8 +51,8 @@ describe("<GlobalFAB>", () => {
 
   describe("visible paths — renders 'Add new card' label", () => {
     it.each([
-      ["/cardgroups/abc123"],
-      ["/cardgroups/abc123/cards"],
+      ["/cardgroups/abc123/edit"],
+      ["/cardgroups/abc123/edit/"],
       ["/"],
     ])("renders 'Add new card' button on %s", (path) => {
       vi.mocked(usePathname).mockReturnValue(path);
@@ -95,23 +93,11 @@ describe("<GlobalFAB>", () => {
     expect(router.push).toHaveBeenCalledWith("/cardgroups/new");
   });
 
-  it("click on /cardgroups/abc123 navigates to /cards/new?cardgroup=abc123", async () => {
+  it("click on /cardgroups/abc123/edit navigates to /cards/new?cardgroup=abc123", async () => {
     const user = userEvent.setup();
     const router = makeRouter();
     vi.mocked(useRouter).mockReturnValue(router as never);
-    vi.mocked(usePathname).mockReturnValue("/cardgroups/abc123");
-
-    render(<GlobalFAB />);
-    await user.click(screen.getByRole("button", { name: "Add new card" }));
-
-    expect(router.push).toHaveBeenCalledWith("/cards/new?cardgroup=abc123");
-  });
-
-  it("click on /cardgroups/abc123/cards navigates to /cards/new?cardgroup=abc123", async () => {
-    const user = userEvent.setup();
-    const router = makeRouter();
-    vi.mocked(useRouter).mockReturnValue(router as never);
-    vi.mocked(usePathname).mockReturnValue("/cardgroups/abc123/cards");
+    vi.mocked(usePathname).mockReturnValue("/cardgroups/abc123/edit");
 
     render(<GlobalFAB />);
     await user.click(screen.getByRole("button", { name: "Add new card" }));
@@ -132,7 +118,7 @@ describe("<GlobalFAB>", () => {
   });
 
   it("wraps the button in an md:hidden container so the FAB is hidden at >= md breakpoint", () => {
-    vi.mocked(usePathname).mockReturnValue("/cardgroups/abc123");
+    vi.mocked(usePathname).mockReturnValue("/cardgroups/abc123/edit");
     render(<GlobalFAB />);
     const button = screen.getByRole("button", { name: /add new card/i });
     expect(button.parentElement).toHaveClass("md:hidden");

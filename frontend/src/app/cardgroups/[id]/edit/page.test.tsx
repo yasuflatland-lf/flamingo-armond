@@ -17,9 +17,18 @@ vi.mock("@/lib/apollo/server", () => ({
 }));
 
 // Stub the client component so the RSC page test does not need Apollo context
-vi.mock("./edit-cardgroup-client", () => ({
-  EditCardgroupClient: ({ cardgroup }: { cardgroup: { id: string; name: string } }) => (
-    <div data-testid="edit-client">{cardgroup.name}</div>
+vi.mock("./cardgroup-management-client", () => ({
+  CardgroupManagementClient: ({
+    cardgroup,
+    initialTotalCount,
+  }: {
+    cardgroup: { id: string; name: string };
+    initialTotalCount: number;
+  }) => (
+    <div data-testid="management-client">
+      <span data-testid="management-name">{cardgroup.name}</span>
+      <span data-testid="management-total">{initialTotalCount}</span>
+    </div>
   ),
 }));
 
@@ -42,6 +51,27 @@ function makeParams(id: string) {
   return { params: Promise.resolve({ id }) };
 }
 
+const cardgroupResult = {
+  cardgroup: {
+    id: "cg-1",
+    name: "Spanish Vocab",
+    updatedAt: "2024-06-15T10:00:00.000Z",
+  },
+};
+
+const connectionResult = {
+  cardsByCardgroupConnection: {
+    edges: [],
+    pageInfo: {
+      hasNextPage: false,
+      hasPreviousPage: false,
+      startCursor: null,
+      endCursor: null,
+    },
+    totalCount: 7,
+  },
+};
+
 describe("EditCardgroupPage", () => {
   it("redirects to /login when no user is authenticated", async () => {
     vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
@@ -53,7 +83,9 @@ describe("EditCardgroupPage", () => {
     vi.mocked(createSupabaseServerClient).mockResolvedValue(
       makeSupabaseMock({ id: "user-1" }) as never,
     );
-    vi.mocked(gqlFetch).mockResolvedValue({ cardgroup: null } as never);
+    vi.mocked(gqlFetch)
+      .mockResolvedValueOnce({ cardgroup: null } as never)
+      .mockResolvedValueOnce(connectionResult as never);
 
     await expect(EditCardgroupPage(makeParams("cg-1"))).rejects.toThrow("REDIRECT:/cardgroups");
   });
@@ -62,27 +94,26 @@ describe("EditCardgroupPage", () => {
     vi.mocked(createSupabaseServerClient).mockResolvedValue(
       makeSupabaseMock({ id: "user-1" }) as never,
     );
-    vi.mocked(gqlFetch).mockRejectedValue(new Error("GraphQL errors: UNAUTHENTICATED"));
+    vi.mocked(gqlFetch).mockRejectedValue(
+      new Error('GraphQL errors: [{"extensions":{"code":"UNAUTHENTICATED"}}]'),
+    );
 
     await expect(EditCardgroupPage(makeParams("cg-1"))).rejects.toThrow("REDIRECT:/cardgroups");
   });
 
-  it("renders the edit client with the cardgroup data", async () => {
+  it("renders the management client with cardgroup data and initial connection counts", async () => {
     vi.mocked(createSupabaseServerClient).mockResolvedValue(
       makeSupabaseMock({ id: "user-1" }) as never,
     );
-    vi.mocked(gqlFetch).mockResolvedValue({
-      cardgroup: {
-        id: "cg-1",
-        name: "Spanish Vocab",
-        updatedAt: "2024-06-15T10:00:00.000Z",
-      },
-    } as never);
+    vi.mocked(gqlFetch)
+      .mockResolvedValueOnce(cardgroupResult as never)
+      .mockResolvedValueOnce(connectionResult as never);
 
     const jsx = await EditCardgroupPage(makeParams("cg-1"));
     render(jsx);
 
-    expect(screen.getByTestId("edit-client")).toBeInTheDocument();
-    expect(screen.getByText("Spanish Vocab")).toBeInTheDocument();
+    expect(screen.getByTestId("management-client")).toBeInTheDocument();
+    expect(screen.getByTestId("management-name")).toHaveTextContent("Spanish Vocab");
+    expect(screen.getByTestId("management-total")).toHaveTextContent("7");
   });
 });

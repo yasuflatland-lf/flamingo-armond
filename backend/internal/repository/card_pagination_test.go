@@ -50,7 +50,7 @@ func TestCardRepository_FindPageByCardgroup_ForwardByID(t *testing.T) {
 	sorted := sortByID(cards)
 
 	got, total, err := repo.FindPageByCardgroup(
-		ctx, cg.ID, nil, nil, 2, 0, repository.CardOrderByID, repository.SortAsc,
+		ctx, cg.ID, nil, nil, 2, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(5), total)
@@ -61,7 +61,7 @@ func TestCardRepository_FindPageByCardgroup_ForwardByID(t *testing.T) {
 	got, total, err = repo.FindPageByCardgroup(
 		ctx, cg.ID,
 		&repository.CardCursor{ID: sorted[1].ID}, nil,
-		2, 0, repository.CardOrderByID, repository.SortAsc,
+		2, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(5), total)
@@ -72,7 +72,7 @@ func TestCardRepository_FindPageByCardgroup_ForwardByID(t *testing.T) {
 	got, total, err = repo.FindPageByCardgroup(
 		ctx, cg.ID,
 		&repository.CardCursor{ID: sorted[3].ID}, nil,
-		2, 0, repository.CardOrderByID, repository.SortAsc,
+		2, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(5), total)
@@ -92,7 +92,7 @@ func TestCardRepository_FindPageByCardgroup_BackwardByID(t *testing.T) {
 
 	// last=2, before=nil should return the final two ids in ASC order.
 	got, total, err := repo.FindPageByCardgroup(
-		ctx, cg.ID, nil, nil, 0, 2, repository.CardOrderByID, repository.SortAsc,
+		ctx, cg.ID, nil, nil, 0, 2, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(5), total)
@@ -104,7 +104,7 @@ func TestCardRepository_FindPageByCardgroup_BackwardByID(t *testing.T) {
 	got, _, err = repo.FindPageByCardgroup(
 		ctx, cg.ID,
 		nil, &repository.CardCursor{ID: sorted[3].ID},
-		0, 2, repository.CardOrderByID, repository.SortAsc,
+		0, 2, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
@@ -120,7 +120,7 @@ func TestCardRepository_FindPageByCardgroup_EmptyGroup(t *testing.T) {
 	repo := repository.NewCardRepository(testDB.GORM)
 
 	got, total, err := repo.FindPageByCardgroup(
-		ctx, cg.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc,
+		ctx, cg.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), total)
@@ -138,7 +138,7 @@ func TestCardRepository_FindPageByCardgroup_SinglePage(t *testing.T) {
 	insertCards(t, ctx, repo, cg.ID, 3)
 
 	got, total, err := repo.FindPageByCardgroup(
-		ctx, cg.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc,
+		ctx, cg.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), total)
@@ -156,7 +156,7 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue(t *testing.T) {
 	// insertCards staggers Due by +1h per index, so cards[0] is earliest.
 
 	got, total, err := repo.FindPageByCardgroup(
-		ctx, cg.ID, nil, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc,
+		ctx, cg.ID, nil, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), total)
@@ -170,7 +170,7 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue(t *testing.T) {
 		Due: &cards[1].FSRS.Due,
 	}
 	got, _, err = repo.FindPageByCardgroup(
-		ctx, cg.ID, cursor, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc,
+		ctx, cg.ID, cursor, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Len(t, got, 1)
@@ -188,7 +188,7 @@ func TestCardRepository_FindPageByCardgroup_OrderByCreatedAtDesc(t *testing.T) {
 	// DESC: newest first → cards[3], cards[2], cards[1], cards[0].
 
 	got, total, err := repo.FindPageByCardgroup(
-		ctx, cg.ID, nil, nil, 2, 0, repository.CardOrderByCreatedAt, repository.SortDesc,
+		ctx, cg.ID, nil, nil, 2, 0, repository.CardOrderByCreatedAt, repository.SortDesc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(4), total)
@@ -201,7 +201,7 @@ func TestCardRepository_FindPageByCardgroup_OrderByCreatedAtDesc(t *testing.T) {
 		CreatedAt: &cards[2].CreatedAt,
 	}
 	got, _, err = repo.FindPageByCardgroup(
-		ctx, cg.ID, cursor, nil, 2, 0, repository.CardOrderByCreatedAt, repository.SortDesc,
+		ctx, cg.ID, cursor, nil, 2, 0, repository.CardOrderByCreatedAt, repository.SortDesc, nil,
 	)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
@@ -221,13 +221,13 @@ func TestCardRepository_FindPageByCardgroup_TotalCountIsScopedToCardgroup(t *tes
 	insertCards(t, ctx, repo, cg2.ID, 5)
 
 	_, total, err := repo.FindPageByCardgroup(
-		ctx, cg1.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc,
+		ctx, cg1.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), total)
 
 	_, total, err = repo.FindPageByCardgroup(
-		ctx, cg2.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc,
+		ctx, cg2.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(5), total)
@@ -265,7 +265,7 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue(t *tes
 	dueT := sorted[0].FSRS.Due
 
 	page1, total, err := repo.FindPageByCardgroup(
-		ctx, cg.ID, nil, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc,
+		ctx, cg.ID, nil, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), total)
@@ -278,7 +278,7 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue(t *tes
 		Due: &dueT,
 	}
 	page2, _, err := repo.FindPageByCardgroup(
-		ctx, cg.ID, cursor, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc,
+		ctx, cg.ID, cursor, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Len(t, page2, 1, "third card should appear exactly once")
@@ -300,7 +300,7 @@ func TestCardRepository_FindPageByCardgroup_PageCapAllowsMaxPlusOne(t *testing.T
 
 	// first=101 must return all 101 rows because pageCap == 101.
 	cards101, total101, err := repo.FindPageByCardgroup(
-		ctx, cg.ID, nil, nil, 101, 0, repository.CardOrderByID, repository.SortAsc,
+		ctx, cg.ID, nil, nil, 101, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(101), total101)
@@ -308,7 +308,7 @@ func TestCardRepository_FindPageByCardgroup_PageCapAllowsMaxPlusOne(t *testing.T
 
 	// first=100 must be limited to 100 rows, confirming the cap still applies.
 	cards100, total100, err := repo.FindPageByCardgroup(
-		ctx, cg.ID, nil, nil, 100, 0, repository.CardOrderByID, repository.SortAsc,
+		ctx, cg.ID, nil, nil, 100, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(101), total100)
@@ -328,7 +328,7 @@ func TestCardRepository_FindPageByCardgroup_ZeroPageReturnsTotal(t *testing.T) {
 	insertCards(t, ctx, repo, cg.ID, 5)
 
 	cards, total, err := repo.FindPageByCardgroup(
-		ctx, cg.ID, nil, nil, 0, 0, repository.CardOrderByID, repository.SortAsc,
+		ctx, cg.ID, nil, nil, 0, 0, repository.CardOrderByID, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	// No rows requested, but the slice must be non-nil and empty.
@@ -336,6 +336,118 @@ func TestCardRepository_FindPageByCardgroup_ZeroPageReturnsTotal(t *testing.T) {
 	require.Len(t, cards, 0)
 	// totalCount must reflect the actual number of cards in the group.
 	require.Equal(t, int64(5), total)
+}
+
+// TestCardRepo_FindPageByCardgroup_Search_WithAfter verifies that the ILIKE
+// search filter is preserved when an `after` cursor is present. A bug that
+// drops the predicate on the cursor branch would return non-matching cards on
+// the second page, causing both the wrong IDs and a wrong page-3 hasNextPage
+// signal.
+//
+// Setup: 5 cards, 3 of which match "apple" in their front text (front-apple-0,
+// front-apple-1, front-apple-2). The remaining 2 do not match.
+// Order: created_at ASC so the cursor walk is deterministic.
+//
+// Steps:
+//  1. Page 1 (first=2, after=nil, search="apple") → 2 matching cards,
+//     totalCount=3, the third matching card is the next page.
+//  2. Take the cursor from the last returned edge (front-apple-1).
+//  3. Page 2 (first=2, after=cursor, search="apple") → exactly 1 card
+//     (front-apple-2), totalCount=3, hasNextPage=false.
+//  4. Assert no non-matching card ever appears in either page.
+func TestCardRepo_FindPageByCardgroup_Search_WithAfter(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	now := time.Now().UTC()
+
+	// 3 cards whose front matches "apple", staggered so created_at order is
+	// deterministic.
+	matchingFronts := []string{"front-apple-0", "front-apple-1", "front-apple-2"}
+	matching := make([]*domain.Card, 3)
+	for i, front := range matchingFronts {
+		c := newCard(cg.ID, front, "back")
+		c.CreatedAt = now.Add(time.Duration(i) * time.Hour)
+		c.UpdatedAt = c.CreatedAt
+		c.FSRS.Due = c.CreatedAt
+		require.NoError(t, repo.Create(ctx, c))
+		matching[i] = c
+	}
+
+	// 2 cards that do NOT match "apple" — inserted after the matching ones so
+	// they sort last by created_at.
+	nonMatching := make([]*domain.Card, 2)
+	for i, front := range []string{"front-cherry", "front-banana"} {
+		c := newCard(cg.ID, front, "back")
+		c.CreatedAt = now.Add(time.Duration(3+i) * time.Hour)
+		c.UpdatedAt = c.CreatedAt
+		c.FSRS.Due = c.CreatedAt
+		require.NoError(t, repo.Create(ctx, c))
+		nonMatching[i] = c
+	}
+
+	// Re-fetch so DB-rounded timestamps are used in the cursor comparisons.
+	for i, c := range matching {
+		got, err := repo.FindByID(ctx, c.ID)
+		require.NoError(t, err)
+		matching[i] = got
+	}
+
+	search := "apple"
+
+	// --- Page 1 ---
+	page1, total1, err := repo.FindPageByCardgroup(
+		ctx, cg.ID, nil, nil,
+		// Request 2+1 (the +1 trick) so the usecase can detect hasNextPage.
+		3, 0,
+		repository.CardOrderByCreatedAt, repository.SortAsc,
+		&search,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total1, "totalCount must count only matching cards")
+	require.Len(t, page1, 3)
+	require.True(t, len(page1) > 2, "page 1 should signal hasNextPage=true")
+	page1 = page1[:2]
+
+	require.Equal(t, matching[0].ID, page1[0].ID)
+	require.Equal(t, matching[1].ID, page1[1].ID)
+
+	for _, c := range page1 {
+		for _, nm := range nonMatching {
+			require.NotEqual(t, nm.ID, c.ID,
+				"non-matching card %s must not appear in page 1", nm.ID)
+		}
+	}
+
+	// --- Cursor from the last edge of page 1 ---
+	last1 := page1[len(page1)-1]
+	cursor := &repository.CardCursor{
+		ID:        last1.ID,
+		CreatedAt: &last1.CreatedAt,
+	}
+
+	// --- Page 2 ---
+	page2, total2, err := repo.FindPageByCardgroup(
+		ctx, cg.ID, cursor, nil,
+		3, 0,
+		repository.CardOrderByCreatedAt, repository.SortAsc,
+		&search,
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total2, "totalCount must still be 3 on page 2")
+	require.Len(t, page2, 1, "page 2 must return exactly 1 matching card")
+	require.Equal(t, matching[2].ID, page2[0].ID)
+	require.False(t, len(page2) > 2, "page 2 should signal hasNextPage=false")
+
+	for _, c := range page2 {
+		for _, nm := range nonMatching {
+			require.NotEqual(t, nm.ID, c.ID,
+				"non-matching card %s must not appear in page 2", nm.ID)
+		}
+	}
 }
 
 // sortByID returns a copy of cards sorted by ID ascending.

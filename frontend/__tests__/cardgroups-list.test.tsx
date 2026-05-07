@@ -14,16 +14,6 @@ vi.mock("@/lib/apollo/server", () => ({
   gqlFetch: vi.fn(),
 }));
 
-// Mock server-redirect so tests can control whether the error is surfaced as a
-// redirect or as a plain rethrow. The real implementation calls redirect() only
-// for UNAUTHENTICATED errors; here the stub unconditionally rethrows, which is
-// sufficient for the cases in this file that reach the server-redirect path.
-vi.mock("@/lib/apollo/server-redirect", () => ({
-  redirectIfUnauthenticated: vi.fn((err: unknown) => {
-    throw err;
-  }),
-}));
-
 vi.mock("next/navigation", () => ({
   redirect: vi.fn((path: string) => {
     throw new Error(`REDIRECT:${path}`);

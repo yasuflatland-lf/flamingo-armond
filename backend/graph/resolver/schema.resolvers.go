@@ -296,13 +296,14 @@ func (r *queryResolver) CardsByCardgroup(ctx context.Context, cardgroupID string
 }
 
 // CardsByCardgroupConnection is the resolver for the cardsByCardgroupConnection field.
-func (r *queryResolver) CardsByCardgroupConnection(ctx context.Context, cardgroupID string, first *int, after *string, last *int, before *string, orderBy *model.CardOrderBy, orderDirection *model.SortOrder) (*model.CardConnection, error) {
+func (r *queryResolver) CardsByCardgroupConnection(ctx context.Context, cardgroupID string, first *int, after *string, last *int, before *string, search *string, orderBy *model.CardOrderBy, orderDirection *model.SortOrder) (*model.CardConnection, error) {
 	out, err := r.CardUC.ListCardsByCardgroupConnection(ctx, usecase.CardConnectionInput{
 		CardgroupID:    cardgroupID,
 		First:          first,
 		Last:           last,
 		After:          after,
 		Before:         before,
+		Search:         search,
 		OrderBy:        toUsecaseCardOrderBy(orderBy),
 		OrderDirection: toUsecaseSortOrder(orderDirection),
 	})

@@ -1,5 +1,3 @@
-const CARDGROUP_DETAIL_RE = /^\/cardgroups\/([^/]+)$/;
-const CARDGROUP_CARDS_RE = /^\/cardgroups\/([^/]+)\/cards$/;
 const CARDGROUP_EDIT_RE = /^\/cardgroups\/([^/]+)\/edit(\/|$)/;
 const LEARN_RE = /^\/learn\/([^/]+)$/;
 
@@ -43,21 +41,17 @@ function cardWithGroup(
  * Pure function — no side effects, no imports from React or Next.js.
  */
 export function resolveFabAction(pathname: string): FabAction | null {
-  if (CARDGROUP_EDIT_RE.test(pathname)) {
-    return null;
-  }
-
   if (pathname === "/cardgroups") {
     return { kind: "cardgroup", href: "/cardgroups/new", label: "Add new cardgroup" };
   }
 
   // Each match below has a required capture group 1, so `match[1] as string` is
   // sound (see frontend-typescript-conventions.md § "as string cast on regex captures").
-  const cardsMatch = CARDGROUP_CARDS_RE.exec(pathname);
-  if (cardsMatch) return cardWithGroup(cardsMatch[1] as string);
-
-  const detailMatch = CARDGROUP_DETAIL_RE.exec(pathname);
-  if (detailMatch) return cardWithGroup(detailMatch[1] as string);
+  // /cardgroups/:id/edit is the integrated cardgroup management screen (cards
+  // list + settings). /cardgroups/:id and /cardgroups/:id/cards both redirect
+  // to /edit at the page level, so they are not handled here.
+  const editMatch = CARDGROUP_EDIT_RE.exec(pathname);
+  if (editMatch) return cardWithGroup(editMatch[1] as string);
 
   const learnMatch = LEARN_RE.exec(pathname);
   if (learnMatch) return cardWithGroup(learnMatch[1] as string, { withReturnToLearn: true });

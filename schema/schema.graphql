@@ -239,6 +239,8 @@ extend type Query {
   """
   Paginated cards in a cardgroup. Forward pagination uses (first, after); backward uses (last, before).
   Cursor is the card UUID. Default page size is 20; max is 100.
+  Optional case-insensitive substring search on front OR back (ILIKE partial match).
+  Nil or empty string skips the search filter.
   """
   cardsByCardgroupConnection(
     cardgroupId: ID!,
@@ -246,6 +248,7 @@ extend type Query {
     after: ID,
     last: Int,
     before: ID,
+    search: String,
     orderBy: CardOrderBy = ID,
     orderDirection: SortOrder = ASC
   ): CardConnection!

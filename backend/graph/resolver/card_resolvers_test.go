@@ -41,6 +41,7 @@ func (m *cardMockRepo) FindPageByCardgroup(
 	_, _ int,
 	_ repository.CardOrderBy,
 	_ repository.SortOrder,
+	_ *string,
 ) ([]*domain.Card, int64, error) {
 	return nil, 0, nil
 }

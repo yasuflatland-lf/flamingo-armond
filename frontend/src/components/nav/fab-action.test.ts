@@ -13,10 +13,10 @@ describe("resolveFabAction", () => {
     });
   });
 
-  describe("creates a card with cardgroup pre-selected on cardgroup detail/cards", () => {
+  describe("creates a card with cardgroup pre-selected on cardgroups edit (integrated management screen)", () => {
     it.each([
       [
-        "/cardgroups/abc-123",
+        "/cardgroups/abc-123/edit",
         {
           kind: "card-with-group",
           href: "/cards/new?cardgroup=abc-123",
@@ -25,7 +25,7 @@ describe("resolveFabAction", () => {
         },
       ],
       [
-        "/cardgroups/abc-123/cards",
+        "/cardgroups/abc-123/edit/",
         {
           kind: "card-with-group",
           href: "/cards/new?cardgroup=abc-123",
@@ -34,7 +34,7 @@ describe("resolveFabAction", () => {
         },
       ],
       [
-        "/cardgroups/0190f9f4-3ad8-7d52-b1d0-6f6b5f5a9c2c",
+        "/cardgroups/0190f9f4-3ad8-7d52-b1d0-6f6b5f5a9c2c/edit",
         {
           kind: "card-with-group",
           href: "/cards/new?cardgroup=0190f9f4-3ad8-7d52-b1d0-6f6b5f5a9c2c",
@@ -42,18 +42,8 @@ describe("resolveFabAction", () => {
           cardgroupId: "0190f9f4-3ad8-7d52-b1d0-6f6b5f5a9c2c",
         },
       ],
-    ])("returns card href with cardgroup param for %s", (pathname, expected) => {
+    ])("returns card-with-group action for %s", (pathname, expected) => {
       expect(resolveFabAction(pathname)).toEqual(expected);
-    });
-  });
-
-  describe("hides on cardgroups edit", () => {
-    it.each([
-      ["/cardgroups/abc-123/edit"],
-      ["/cardgroups/abc-123/edit/"],
-      ["/cardgroups/abc-123/edit/anything"],
-    ])("returns null for %s", (pathname) => {
-      expect(resolveFabAction(pathname)).toBeNull();
     });
   });
 
@@ -87,29 +77,18 @@ describe("resolveFabAction", () => {
   });
 
   describe("is shadowed externally by GlobalFAB's hidden-path guard for /cardgroups/new", () => {
-    it("returns a card-with-group action (the literal 'new' is treated as a cardgroup id; GlobalFAB suppresses the FAB on this path via its own hidden-path guard)", () => {
+    it("returns the generic card action for /cardgroups/new (no detail/cards regex matches it; GlobalFAB suppresses the FAB on this path anyway via its own hidden-path guard)", () => {
       expect(resolveFabAction("/cardgroups/new")).toEqual({
-        kind: "card-with-group",
-        href: "/cards/new?cardgroup=new",
+        kind: "card",
+        href: "/cards/new",
         label: "Add new card",
-        cardgroupId: "new",
       });
     });
   });
 
   describe("URL-encodes captured cardgroup ids that contain special characters", () => {
-    it("encodes & in id for /cardgroups/:id/cards branch — href is encoded, cardgroupId is raw", () => {
-      const result = resolveFabAction("/cardgroups/abc&evil/cards");
-      expect(result).toEqual({
-        kind: "card-with-group",
-        href: "/cards/new?cardgroup=abc%26evil",
-        label: "Add new card",
-        cardgroupId: "abc&evil",
-      });
-    });
-
-    it("encodes & in id for /cardgroups/:id branch — href is encoded, cardgroupId is raw", () => {
-      const result = resolveFabAction("/cardgroups/abc&evil");
+    it("encodes & in id for /cardgroups/:id/edit branch — href is encoded, cardgroupId is raw", () => {
+      const result = resolveFabAction("/cardgroups/abc&evil/edit");
       expect(result).toEqual({
         kind: "card-with-group",
         href: "/cards/new?cardgroup=abc%26evil",

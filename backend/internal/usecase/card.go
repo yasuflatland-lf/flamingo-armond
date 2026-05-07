@@ -28,6 +28,7 @@ type CardRepository interface {
 		first, last int,
 		orderBy repository.CardOrderBy,
 		dir repository.SortOrder,
+		search *string,
 	) ([]*domain.Card, int64, error)
 	Create(ctx context.Context, card *domain.Card) error
 	FindByCardgroupAndFront(ctx context.Context, cardgroupID, front string) (*domain.Card, error)
@@ -109,9 +110,12 @@ const (
 // CardConnectionInput captures the GraphQL pagination arguments. Pointer
 // fields preserve "absent" semantics from the schema.
 type CardConnectionInput struct {
-	CardgroupID    string
-	First, Last    *int
-	After, Before  *string // raw GraphQL ID strings (cursor = card UUID)
+	CardgroupID   string
+	First, Last   *int
+	After, Before *string // raw GraphQL ID strings (cursor = card UUID)
+	// Search is optional; nil disables the filter. The usecase normalizes
+	// whitespace-only strings to nil before reaching the repository.
+	Search         *string
 	OrderBy        *CardOrderBy
 	OrderDirection *SortOrder
 }
@@ -316,6 +320,19 @@ func (u *CardUsecase) ListCardsByCardgroupConnection(
 		return nil, err
 	}
 
+	// Normalize: nil and whitespace-only both mean "no filter". After this
+	// block, a non-nil search pointer is guaranteed to hold a non-empty,
+	// trimmed string — the repository can rely on this invariant.
+	search := in.Search
+	if search != nil {
+		trimmed := strings.TrimSpace(*search)
+		if trimmed == "" {
+			search = nil
+		} else {
+			search = &trimmed
+		}
+	}
+
 	// Request one extra row to detect whether another page exists. Trim
 	// before returning to the caller.
 	wantFirst := first
@@ -328,7 +345,7 @@ func (u *CardUsecase) ListCardsByCardgroupConnection(
 	}
 
 	cards, total, err := u.cardRepo.FindPageByCardgroup(
-		ctx, in.CardgroupID, after, before, wantFirst, wantLast, orderBy, dir,
+		ctx, in.CardgroupID, after, before, wantFirst, wantLast, orderBy, dir, search,
 	)
 	if err != nil {
 		return nil, gqlerr.Internal(ctx, err)
