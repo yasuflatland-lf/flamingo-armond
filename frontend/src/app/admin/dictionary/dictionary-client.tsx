@@ -3,7 +3,7 @@
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { useLazyQuery, useMutation, useQuery } from "@apollo/client/react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import {
@@ -55,20 +55,12 @@ export function DictionaryImportClient() {
   const [cardgroupId, setCardgroupId] = useState<string>("");
   const [payloadText, setPayloadText] = useState<string>("");
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  // validatedPayload tracks the payloadText value that was in effect when the last
+  // successful validate call completed. canImport checks this against the current
+  // payloadText to prevent importing a stale/edited payload without re-validating.
+  const [validatedPayload, setValidatedPayload] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [bannerError, setBannerError] = useState<string>("");
-
-  // Invalidate validation when the user edits the payload or switches cardgroup,
-  // so Import stays disabled until they re-Validate. Without this, a stale
-  // validate result lets users import a payload that no longer matches the
-  // validated structure. payloadText and cardgroupId are trigger-only deps:
-  // the callback always resets to null and does not read them.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional trigger-only deps
-  useEffect(() => {
-    setValidationResult(null);
-    setImportResult(null);
-    setBannerError("");
-  }, [payloadText, cardgroupId]);
 
   const {
     data: cardgroupsData,
@@ -88,12 +80,15 @@ export function DictionaryImportClient() {
   async function handleValidate() {
     setBannerError("");
     setValidationResult(null);
+    setValidatedPayload(null);
     setImportResult(null);
     const payload = encodePayload(payloadText);
     try {
       const result = await runValidate({ variables: { input: { payload } } });
       if (result.data?.validateDictionary) {
         setValidationResult(result.data.validateDictionary);
+        // Record which payloadText was validated so canImport can detect stale edits.
+        setValidatedPayload(payloadText);
       }
       if (result.error) {
         setBannerError(classifyError(result.error));
@@ -128,7 +123,10 @@ export function DictionaryImportClient() {
   }
 
   const canImport =
-    validationResult?.valid === true && validationResult.parsedWords.length > 0 && !!cardgroupId;
+    validationResult?.valid === true &&
+    validationResult.parsedWords.length > 0 &&
+    !!cardgroupId &&
+    validatedPayload === payloadText;
 
   return (
     <main className="p-8">
