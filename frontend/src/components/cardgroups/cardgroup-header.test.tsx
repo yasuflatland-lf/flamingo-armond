@@ -198,9 +198,7 @@ describe("<CardgroupHeader>", () => {
     await user.click(confirmBtn);
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Your session expired. Please sign in again."),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Your session expired. Please sign in again.")).toBeInTheDocument();
     });
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     expect(mockPush).not.toHaveBeenCalled();
@@ -230,9 +228,7 @@ describe("<CardgroupHeader>", () => {
     await user.click(confirmBtn);
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Could not reach the server. Please try again."),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Could not reach the server. Please try again.")).toBeInTheDocument();
     });
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     expect(mockPush).not.toHaveBeenCalled();

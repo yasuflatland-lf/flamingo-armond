@@ -4,10 +4,7 @@ import { useMutation } from "@apollo/client/react";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import {
-  CARDGROUPS_DEFAULT_VARS,
-  DeleteCardgroupMutation,
-} from "@/app/cardgroups/queries";
+import { CARDGROUPS_DEFAULT_VARS, DeleteCardgroupMutation } from "@/app/cardgroups/queries";
 import { RenameCardgroupDialog } from "@/components/cardgroups/rename-cardgroup-dialog";
 import {
   AlertDialog,
@@ -66,10 +63,7 @@ export function CardgroupHeader({ cardgroup, totalCount }: Props) {
                 edges: existingConnection.myCardgroupsConnection.edges.filter(
                   (edge) => edge.node.id !== cardgroup.id,
                 ),
-                totalCount: Math.max(
-                  0,
-                  existingConnection.myCardgroupsConnection.totalCount - 1,
-                ),
+                totalCount: Math.max(0, existingConnection.myCardgroupsConnection.totalCount - 1),
               },
             },
           });
@@ -110,19 +104,12 @@ export function CardgroupHeader({ cardgroup, totalCount }: Props) {
         <div className="ml-auto">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Cardgroup options"
-              >
+              <Button variant="ghost" size="icon" aria-label="Cardgroup options">
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onSelect={() => setRenameOpen(true)}
-                className="gap-2"
-              >
+              <DropdownMenuItem onSelect={() => setRenameOpen(true)} className="gap-2">
                 <Pencil className="h-4 w-4" />
                 Rename
               </DropdownMenuItem>
@@ -144,11 +131,7 @@ export function CardgroupHeader({ cardgroup, totalCount }: Props) {
         </div>
       </div>
 
-      <RenameCardgroupDialog
-        cardgroup={cardgroup}
-        open={renameOpen}
-        onOpenChange={setRenameOpen}
-      />
+      <RenameCardgroupDialog cardgroup={cardgroup} open={renameOpen} onOpenChange={setRenameOpen} />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
@@ -159,10 +142,7 @@ export function CardgroupHeader({ cardgroup, totalCount }: Props) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           {deleteBannerError && (
-            <div
-              className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-              role="alert"
-            >
+            <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
               {deleteBannerError}
             </div>
           )}

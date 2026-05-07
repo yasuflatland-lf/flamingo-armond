@@ -29,11 +29,7 @@ function renderDialog(mocks: MockedResponse[] = [], open = true, errorPolicy?: "
   const defaultOptions = errorPolicy ? { mutate: { errorPolicy } } : undefined;
   render(
     <MockedProvider mocks={mocks} defaultOptions={defaultOptions}>
-      <RenameCardgroupDialog
-        cardgroup={CARDGROUP}
-        open={open}
-        onOpenChange={onOpenChange}
-      />
+      <RenameCardgroupDialog cardgroup={CARDGROUP} open={open} onOpenChange={onOpenChange} />
     </MockedProvider>,
   );
   return { onOpenChange };
@@ -128,9 +124,7 @@ describe("<RenameCardgroupDialog>", () => {
     await user.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Could not reach the server. Please try again."),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Could not reach the server. Please try again.")).toBeInTheDocument();
     });
     expect(mockRefresh).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);

@@ -22,12 +22,10 @@ const { mockToastDismiss } = vi.hoisted(() => ({
 }));
 
 vi.mock("sonner", () => {
-  const toastFn = vi.fn(
-    (_label: string, opts?: { action?: { onClick?: () => void } }) => {
-      lastUndoAction = opts?.action?.onClick;
-      return ++toastIdCounter;
-    },
-  ) as ReturnType<typeof vi.fn> & { dismiss: ReturnType<typeof vi.fn> };
+  const toastFn = vi.fn((_label: string, opts?: { action?: { onClick?: () => void } }) => {
+    lastUndoAction = opts?.action?.onClick;
+    return ++toastIdCounter;
+  }) as ReturnType<typeof vi.fn> & { dismiss: ReturnType<typeof vi.fn> };
   toastFn.dismiss = mockToastDismiss;
   return { toast: toastFn };
 });
@@ -148,9 +146,7 @@ describe("scheduleDelete", () => {
 
   it("throws synchronously when id is an empty string", () => {
     const opts = makeOpts({ id: "" });
-    expect(() => scheduleDelete(opts)).toThrow(
-      "undo-delete: id must be a non-empty string",
-    );
+    expect(() => scheduleDelete(opts)).toThrow("undo-delete: id must be a non-empty string");
   });
 
   describe("re-scheduling the same id", () => {

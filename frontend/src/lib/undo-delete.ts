@@ -81,10 +81,9 @@ export function scheduleDelete(opts: ScheduleDeleteOptions): ScheduleDeleteHandl
   // by a real DELETE before the new schedule starts.
   const existing = pending.get(id);
   if (existing !== undefined) {
-    console.warn(
-      "[undo-delete] re-scheduling pending id; committing prior delete immediately",
-      { id },
-    );
+    console.warn("[undo-delete] re-scheduling pending id; committing prior delete immediately", {
+      id,
+    });
     if (existing.toastId !== undefined) toast.dismiss(existing.toastId);
     clearTimeout(existing.timerId);
     pending.delete(id);
@@ -93,10 +92,7 @@ export function scheduleDelete(opts: ScheduleDeleteOptions): ScheduleDeleteHandl
       // authoritative intent). Do NOT call existing.onCommitFailed here
       // because the item is already gone from the user's view; surfacing
       // a banner would be misleading and the user has no actionable retry path.
-      console.warn(
-        "[undo-delete] prior pending delete commit failed on re-schedule",
-        { id, err },
-      );
+      console.warn("[undo-delete] prior pending delete commit failed on re-schedule", { id, err });
     });
   }
 

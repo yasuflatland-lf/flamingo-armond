@@ -4,12 +4,7 @@ import { useMutation } from "@apollo/client/react";
 import { useRouter } from "next/navigation";
 import { UpdateCardgroupMutation } from "@/app/cardgroups/queries";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type Props = {
   cardgroup: { id: string; name: string };
