@@ -1,4 +1,4 @@
-import { List, Pencil, Play } from "lucide-react";
+import { List, Pencil, Play, Plus } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CardgroupQuery, CardsByCardgroupQuery } from "@/app/cardgroups/queries";
@@ -89,7 +89,10 @@ export default async function CardgroupDetailPage({ params }: { params: Promise<
               card creation form for this cardgroup) via the card-with-group
               FAB variant, which routes directly to /cards/new?cardgroup=<id>. */}
           <Button asChild variant="brand" className="hidden md:inline-flex">
-            <Link href={`/cardgroups/${id}/cards`}>Add card</Link>
+            <Link href={`/cardgroups/${id}/cards`}>
+              <span>Add card</span>
+              <Plus aria-hidden="true" />
+            </Link>
           </Button>
         </div>
       ) : (

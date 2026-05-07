@@ -2,6 +2,7 @@
 
 import { NetworkStatus } from "@apollo/client";
 import { useApolloClient, useQuery } from "@apollo/client/react";
+import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CardgroupListItem } from "@/components/cardgroups/cardgroup-list-item";
@@ -165,7 +166,10 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
       description="Browse and manage the cardgroups you have created."
       primaryActions={
         <Button asChild variant="brand" className="hidden md:inline-flex">
-          <Link href="/cardgroups/new">+ New cardgroup</Link>
+          <Link href="/cardgroups/new">
+            <span>New cardgroup</span>
+            <Plus aria-hidden="true" />
+          </Link>
         </Button>
       }
       toolbar={<CardgroupsToolbar searchInput={searchInput} onSearchInputChange={setSearchInput} />}
