@@ -14,6 +14,10 @@ import {
 } from "@/app/cardgroups/queries";
 import { CardForm } from "@/components/cardgroups/card-form";
 import {
+  SwipeableRow,
+  type SwipeableRowHandle,
+} from "@/components/cardgroups/swipeable-row";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -62,6 +66,12 @@ export function CardsClient({
   const apollo = useApolloClient();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
+
+  // Map of per-row SwipeableRow refs, keyed by card id. When the user taps a
+  // different row to enter edit mode, we close any half-open row first via its
+  // ref. Using a Map (not a ref to an object literal) avoids stale-closure
+  // concerns: the same Map instance persists across renders.
+  const rowRefs = useRef<Map<string, React.RefObject<SwipeableRowHandle | null>>>(new Map());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Debounced search: searchInput is the immediate input value; searchQuery is
@@ -94,6 +104,17 @@ export function CardsClient({
 
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
+  }, []);
+
+  // Close any half-open SwipeableRow that is not the row being activated.
+  // Called before setEditingId so the swipe reveal does not remain open while
+  // the row beneath it switches to inline-edit mode.
+  const closeOtherRows = useCallback((exceptCardId: string) => {
+    for (const [id, ref] of rowRefs.current.entries()) {
+      if (id !== exceptCardId) {
+        ref.current?.close();
+      }
+    }
   }, []);
 
   // Debounce: update searchQuery 300ms after the last keystroke.
@@ -540,67 +561,89 @@ export function CardsClient({
                   />
                 </li>
               ) : (
-                <li
-                  key={card.id}
-                  className="group flex items-start justify-between gap-4 rounded-md border border-border px-4 py-3"
-                >
-                  {/* Checkbox cell — clicks must NOT bubble to the row edit trigger.
-                      The handlers are no-op stoppers, not user-facing interactivity;
-                      the inner <input> remains the keyboard/mouse target. */}
-                  {/* biome-ignore lint/a11y/noStaticElementInteractions: span is a click/keydown stopper, not an interactive element; the inner <input> is the actual control. */}
-                  <span
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => e.stopPropagation()}
-                    className="mt-0.5 shrink-0"
-                  >
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 cursor-pointer accent-primary"
-                      checked={selectedIds.has(card.id)}
-                      onChange={() => toggleSelected(card.id)}
-                      aria-label="Select card"
-                      data-testid={`card-select-${card.id}`}
-                    />
-                  </span>
-                  {/* Text region acts as the edit trigger. role/tabIndex/onKeyDown
-                      let keyboard users (Tab + Enter/Space) enter edit mode.
-                      A native <button> would be ideal but the row also nests an
-                      action <button> for delete; nested buttons are invalid HTML. */}
-                  {/* biome-ignore lint/a11y/useSemanticElements: a native <button> here would nest the action <button> for delete (invalid HTML); role="button" preserves screen-reader semantics without the markup conflict. */}
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setEditingId(card.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        setEditingId(card.id);
+                <li key={card.id} className="rounded-md border border-border overflow-hidden">
+                  <SwipeableRow
+                    ref={(() => {
+                      // Lazily create and cache a RefObject per card id so the
+                      // ref identity is stable across re-renders. The Map lives
+                      // in rowRefs.current and is never cleared during the list's
+                      // lifetime (entries for removed cards become garbage-collected
+                      // when the card is no longer in `edges`).
+                      if (!rowRefs.current.has(card.id)) {
+                        rowRefs.current.set(card.id, { current: null });
                       }
-                    }}
-                    className="min-w-0 flex-1 cursor-pointer space-y-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    aria-label={`Edit card ${card.front}`}
-                    data-testid={`card-edit-target-${card.id}`}
+                      // biome-ignore lint/style/noNonNullAssertion: we just set the entry above so it is always defined.
+                      return rowRefs.current.get(card.id)!;
+                    })()}
+                    onDelete={() => handleDeleteRow(card.id)}
+                    // Disable swipe while selection mode is active so checkboxes
+                    // receive touch events without interference.
+                    disabled={selectedIds.size > 0 || editingId === card.id}
+                    ariaLabel="Delete card"
                   >
-                    <p className="text-sm font-medium">{card.front}</p>
-                    <p className="text-sm text-muted-foreground">{card.back}</p>
-                  </div>
-                  {/* biome-ignore lint/a11y/noStaticElementInteractions: div is a click/keydown stopper, not an interactive element; the inner Delete <button> is the actual control. */}
-                  <div
-                    className="flex shrink-0 gap-2"
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => e.stopPropagation()}
-                  >
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      aria-label="Delete card"
-                      onClick={() => handleDeleteRow(card.id)}
-                      data-testid={`card-delete-${card.id}`}
-                      className="opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
-                    >
-                      <Trash2 aria-hidden="true" className="h-4 w-4" />
-                    </Button>
-                  </div>
+                    <div className="group flex items-start justify-between gap-4 px-4 py-3">
+                      {/* Checkbox cell — clicks must NOT bubble to the row edit trigger.
+                          The handlers are no-op stoppers, not user-facing interactivity;
+                          the inner <input> remains the keyboard/mouse target. */}
+                      {/* biome-ignore lint/a11y/noStaticElementInteractions: span is a click/keydown stopper, not an interactive element; the inner <input> is the actual control. */}
+                      <span
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                        className="mt-0.5 shrink-0"
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 cursor-pointer accent-primary"
+                          checked={selectedIds.has(card.id)}
+                          onChange={() => toggleSelected(card.id)}
+                          aria-label="Select card"
+                          data-testid={`card-select-${card.id}`}
+                        />
+                      </span>
+                      {/* Text region acts as the edit trigger. role/tabIndex/onKeyDown
+                          let keyboard users (Tab + Enter/Space) enter edit mode.
+                          Close any half-open sibling row before entering edit mode. */}
+                      {/* biome-ignore lint/a11y/useSemanticElements: a native <button> here would nest the action <button> for delete (invalid HTML); role="button" preserves screen-reader semantics without the markup conflict. */}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
+                          closeOtherRows(card.id);
+                          setEditingId(card.id);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            closeOtherRows(card.id);
+                            setEditingId(card.id);
+                          }
+                        }}
+                        className="min-w-0 flex-1 cursor-pointer space-y-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-label={`Edit card ${card.front}`}
+                        data-testid={`card-edit-target-${card.id}`}
+                      >
+                        <p className="text-sm font-medium">{card.front}</p>
+                        <p className="text-sm text-muted-foreground">{card.back}</p>
+                      </div>
+                      {/* biome-ignore lint/a11y/noStaticElementInteractions: div is a click/keydown stopper, not an interactive element; the inner Delete <button> is the actual control. */}
+                      <div
+                        className="flex shrink-0 gap-2"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          aria-label="Delete card"
+                          onClick={() => handleDeleteRow(card.id)}
+                          data-testid={`card-delete-${card.id}`}
+                          className="opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+                        >
+                          <Trash2 aria-hidden="true" className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </SwipeableRow>
                 </li>
               );
             })}

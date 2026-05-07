@@ -51,6 +51,41 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+// Mock SwipeableRow as a plain div so integration tests stay free of gesture
+// library internals. The `disabled` prop is forwarded as a data attribute so
+// tests can assert its value. The `close` imperative handle is wired via
+// forwardRef so closeOtherRows() calls in the production code work without
+// throwing. Task 8a's swipeable-row.test.tsx is the canonical test for gesture
+// behaviour.
+vi.mock("@/components/cardgroups/swipeable-row", async () => {
+  const { forwardRef } = await import("react");
+  return {
+    SwipeableRow: forwardRef(function SwipeableRowMock(
+      {
+        children,
+        disabled,
+        onDelete: _onDelete,
+        ariaLabel: _ariaLabel,
+      }: {
+        children: React.ReactNode;
+        disabled?: boolean;
+        onDelete: () => void;
+        ariaLabel?: string;
+      },
+      _ref: React.Ref<{ close(): void }>,
+    ) {
+      return (
+        <div
+          data-testid="swipeable-row-mock"
+          data-disabled={disabled ? "true" : "false"}
+        >
+          {children}
+        </div>
+      );
+    }),
+  };
+});
+
 import { CardsClient } from "./cards-client";
 
 // ---------------------------------------------------------------------------
@@ -779,5 +814,79 @@ describe("<CardsClient>", () => {
     await waitFor(() => {
       expect(screen.getByText("Three")).toBeInTheDocument();
     });
+  });
+
+  // Task 8b: each non-editing row is wrapped in SwipeableRow.
+  it("wraps each card row in SwipeableRow", () => {
+    renderClient([]);
+    const wrappers = screen.getAllByTestId("swipeable-row-mock");
+    // One SwipeableRow per card (CARD_1 and CARD_2).
+    expect(wrappers).toHaveLength(2);
+  });
+
+  // Task 8b: selection mode disables swipe on all rows.
+  it("disables SwipeableRow when selection mode is active", async () => {
+    const user = userEvent.setup();
+    renderClient([]);
+
+    // Before selection mode, disabled should be false.
+    const wrappersBefore = screen.getAllByTestId("swipeable-row-mock");
+    for (const w of wrappersBefore) {
+      expect(w).toHaveAttribute("data-disabled", "false");
+    }
+
+    // Enter selection mode by checking a card.
+    await user.click(screen.getByTestId("card-select-c-1"));
+
+    // All SwipeableRow wrappers should be disabled now.
+    const wrappersAfter = screen.getAllByTestId("swipeable-row-mock");
+    for (const w of wrappersAfter) {
+      expect(w).toHaveAttribute("data-disabled", "true");
+    }
+  });
+
+  // Task 8b: editing a row disables swipe on that row only.
+  it("disables SwipeableRow for the row currently in edit mode", async () => {
+    const user = userEvent.setup();
+    renderClient([]);
+
+    // Enter edit mode for CARD_1 (the mocked SwipeableRow renders children
+    // unconditionally, so the edit target remains accessible).
+    await user.click(screen.getByTestId("card-edit-target-c-1"));
+
+    // CARD_1 row is now in edit mode — its SwipeableRow wrapper should be gone
+    // (the editing branch renders a plain <li> without SwipeableRow). Only
+    // CARD_2's wrapper remains.
+    const wrappers = screen.getAllByTestId("swipeable-row-mock");
+    // Only the non-editing card still has a SwipeableRow wrapper.
+    expect(wrappers).toHaveLength(1);
+    expect(wrappers[0]).toHaveAttribute("data-disabled", "false");
+  });
+
+  // Task 8b: tapping a row's text region closes other half-open rows.
+  // Because SwipeableRow is mocked as a plain div, we verify that
+  // closeOtherRows is wired by checking that the edit-target click succeeds
+  // without errors when multiple rows exist (the ref-map iteration path is
+  // exercised without throwing). The imperative close() API is covered by
+  // swipeable-row.test.tsx (Task 8a).
+  it("tapping a second row's edit target does not throw (closeOtherRows is wired)", async () => {
+    const user = userEvent.setup();
+    renderClient([]);
+
+    // Click CARD_1 to enter edit mode — closeOtherRows(CARD_1.id) is called.
+    await user.click(screen.getByTestId("card-edit-target-c-1"));
+    expect(screen.getByLabelText(/front/i)).toBeInTheDocument();
+
+    // Cancel and click CARD_2 — closeOtherRows(CARD_2.id) is called,
+    // iterating the map and attempting to close CARD_1's ref (which is now
+    // unmounted since CARD_1 is in edit mode; the optional-chaining in
+    // closeOtherRows makes this a safe no-op).
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /cancel/i })).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId("card-edit-target-c-2"));
+    expect(screen.getByLabelText(/front/i)).toBeInTheDocument();
   });
 });
