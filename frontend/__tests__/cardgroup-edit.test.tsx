@@ -144,15 +144,19 @@ describe("EditCardgroupPage — broad integration (RSC + management screen)", ()
     expect(screen.getByText("front-003")).toBeInTheDocument();
   });
 
-  it("renders the Settings, Danger zone, and Cards section headings", async () => {
+  it("renders the kebab button and card count Badge in the page header", async () => {
+    // Settings and Danger zone were moved into the kebab DropdownMenu (Task 1).
+    // The count chip was removed from the toolbar (Task 2); count shows in the
+    // page-level Badge next to the h1 instead.
     setMockSupabaseUser({ id: "user-admin-1" });
 
     mockEditPageGql(POPULATED_CONNECTION);
     await renderPage(POPULATED_CONNECTION);
 
-    expect(screen.getByRole("heading", { level: 2, name: /^settings$/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 2, name: /danger zone/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 2, name: /^cards \(/i })).toBeInTheDocument();
+    // The kebab trigger button is present.
+    expect(screen.getByRole("button", { name: /cardgroup options/i })).toBeInTheDocument();
+    // The Badge with the card count is present (3 cards in POPULATED_CONNECTION).
+    expect(screen.getByText("3 cards")).toBeInTheDocument();
   });
 
   it("renders Start learning and Add card section-header links with correct hrefs", async () => {

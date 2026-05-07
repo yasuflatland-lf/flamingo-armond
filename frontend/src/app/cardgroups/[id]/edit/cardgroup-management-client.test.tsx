@@ -3,23 +3,35 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CardgroupManagementClient } from "./cardgroup-management-client";
 
-// Stub the two children so this test focuses on layout and chrome
-// (header, Back link, h1, slot composition). Mutation behaviour is
-// covered by CardgroupSettingsCard's own test file.
-vi.mock("@/components/cardgroups/cardgroup-settings-card", () => ({
-  CardgroupSettingsCard: ({ cardgroup }: { cardgroup: { id: string; name: string } }) => (
-    <div data-testid="settings-stub">{cardgroup.id}</div>
+// Stub the children so this test focuses on layout chrome.
+// CardgroupHeader mutation behaviour is covered by cardgroup-header.test.tsx.
+// CardgroupCardsSection behaviour is covered by cardgroup-cards-section.test.tsx.
+vi.mock("@/components/cardgroups/cardgroup-header", () => ({
+  CardgroupHeader: ({
+    cardgroup,
+    totalCount,
+  }: {
+    cardgroup: { id: string; name: string };
+    totalCount: number;
+  }) => (
+    <div data-testid="header-stub">
+      <h1>{cardgroup.name}</h1>
+      <span data-testid="header-total">{totalCount}</span>
+    </div>
   ),
 }));
 vi.mock("@/components/cardgroups/cardgroup-cards-section", () => ({
   CardgroupCardsSection: ({
     cardgroupId,
     initialTotalCount,
+    renderPageHeader,
   }: {
     cardgroupId: string;
     initialTotalCount: number;
+    renderPageHeader?: (args: { totalCount: number }) => React.ReactNode;
   }) => (
     <div data-testid="cards-section-stub">
+      {renderPageHeader ? renderPageHeader({ totalCount: initialTotalCount }) : null}
       <span data-testid="cards-section-id">{cardgroupId}</span>
       <span data-testid="cards-section-total">{initialTotalCount}</span>
     </div>
@@ -56,10 +68,13 @@ describe("<CardgroupManagementClient>", () => {
         initialTotalCount={0}
       />,
     );
-    expect(screen.getByRole("link", { name: /back/i })).toHaveAttribute("href", "/cardgroups");
+    expect(screen.getByRole("link", { name: /cardgroups/i })).toHaveAttribute(
+      "href",
+      "/cardgroups",
+    );
   });
 
-  it("renders both the SettingsCard and CardsSection child slots", () => {
+  it("passes totalCount from renderPageHeader to CardgroupHeader via the render prop", () => {
     render(
       <CardgroupManagementClient
         cardgroup={CARDGROUP}
@@ -68,9 +83,10 @@ describe("<CardgroupManagementClient>", () => {
         initialTotalCount={5}
       />,
     );
-    expect(screen.getByTestId("settings-stub")).toHaveTextContent("cg-1");
+    // The stub invokes renderPageHeader with the initialTotalCount value,
+    // and the CardgroupHeader stub renders it as data-testid="header-total".
+    expect(screen.getByTestId("header-total")).toHaveTextContent("5");
     expect(screen.getByTestId("cards-section-id")).toHaveTextContent("cg-1");
-    expect(screen.getByTestId("cards-section-total")).toHaveTextContent("5");
   });
 
   it("uses a single <main> landmark", () => {

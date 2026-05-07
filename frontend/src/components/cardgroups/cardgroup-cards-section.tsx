@@ -2,6 +2,7 @@
 
 import { Play, Plus } from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import {
   type CardConnectionPageInfo,
   type CardEdge,
@@ -14,6 +15,13 @@ type Props = {
   initialEdges: CardEdge[];
   initialPageInfo: CardConnectionPageInfo;
   initialTotalCount: number;
+  /**
+   * Optional render prop that lets the parent render a page-level header with
+   * the live totalCount sourced from the Apollo cache. When provided, the
+   * render prop receives `{ totalCount }` and is invoked above the toolbar row.
+   * When omitted, no page-level header is rendered by this component.
+   */
+  renderPageHeader?: (args: { totalCount: number }) => ReactNode;
 };
 
 export function CardgroupCardsSection({
@@ -21,6 +29,7 @@ export function CardgroupCardsSection({
   initialEdges,
   initialPageInfo,
   initialTotalCount,
+  renderPageHeader,
 }: Props) {
   const addCardHref = `/cards/new?cardgroup=${encodeURIComponent(
     cardgroupId,
@@ -29,13 +38,11 @@ export function CardgroupCardsSection({
 
   // The render-prop form lets CardsClient pass its live totalCount (read from
   // Apollo cache, kept in sync with delete/bulk-delete/fetchMore) into the
-  // heading without the parent running a duplicate useQuery for the same key.
+  // heading and any parent-level header without running a duplicate useQuery.
   const renderHeader = ({ totalCount }: { totalCount: number }) => (
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-      <h2 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-        Cards ({totalCount})
-      </h2>
-      <div className="flex gap-2">
+    <div>
+      {renderPageHeader ? renderPageHeader({ totalCount }) : null}
+      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
         <Button asChild variant="outline" size="sm">
           <Link href={learnHref}>
             Start learning

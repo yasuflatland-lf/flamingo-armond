@@ -26,22 +26,46 @@ const PAGE_INFO = {
   endCursor: null,
 };
 
-function renderSection(cardgroupId = "cg-1", initialTotalCount = 7) {
+function renderSection(
+  cardgroupId = "cg-1",
+  initialTotalCount = 7,
+  renderPageHeader?: (args: { totalCount: number }) => ReactNode,
+) {
   render(
     <CardgroupCardsSection
       cardgroupId={cardgroupId}
       initialEdges={[]}
       initialPageInfo={PAGE_INFO}
       initialTotalCount={initialTotalCount}
+      renderPageHeader={renderPageHeader}
     />,
   );
 }
 
 describe("<CardgroupCardsSection>", () => {
-  it("renders the Cards heading using the totalCount the render-prop receives from CardsClient", () => {
-    // The stub passes totalCount: 12 — covers the live cache value, not the SSR seed
+  it("renders the toolbar buttons without a count chip", () => {
+    // The count chip was removed — count is now shown in the page-level Badge
+    // via the renderPageHeader render prop. The toolbar contains only Start
+    // learning and Add card.
     renderSection("cg-1", 7);
-    expect(screen.getByRole("heading", { level: 2, name: /cards \(12\)/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /start learning/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /add card/i })).toBeInTheDocument();
+    // No h2 "Cards (N)" heading in the toolbar row.
+    expect(screen.queryByRole("heading", { name: /cards \(/i })).not.toBeInTheDocument();
+  });
+
+  it("invokes renderPageHeader with the live totalCount from CardsClient", () => {
+    // The stub passes totalCount: 12 — covers the live cache value.
+    renderSection("cg-1", 7, ({ totalCount }) => (
+      <div data-testid="page-header-slot">{totalCount} cards</div>
+    ));
+    // The page-level slot receives the live count, not the SSR seed (7).
+    expect(screen.getByTestId("page-header-slot")).toHaveTextContent("12 cards");
+  });
+
+  it("does not render the page header slot when renderPageHeader is omitted", () => {
+    renderSection("cg-1", 7);
+    expect(screen.queryByTestId("page-header-slot")).not.toBeInTheDocument();
   });
 
   it("renders a Start learning link to /learn/:id", () => {
@@ -71,7 +95,6 @@ describe("<CardgroupCardsSection>", () => {
   it("forwards the section header into the CardsClient sectionHeader slot", () => {
     renderSection();
     const stub = screen.getByTestId("cards-client-stub");
-    expect(stub).toContainElement(screen.getByRole("heading", { name: /cards \(/i }));
     expect(stub).toContainElement(screen.getByRole("link", { name: /start learning/i }));
     expect(stub).toContainElement(screen.getByRole("link", { name: /add card/i }));
   });
