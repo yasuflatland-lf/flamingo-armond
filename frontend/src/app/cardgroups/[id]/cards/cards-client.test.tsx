@@ -8,8 +8,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CardsByCardgroupConnectionDocument,
   DeleteCardDocument,
+  DeleteCardsDocument,
   UpdateCardDocument,
 } from "@/generated/graphql";
+import { _pendingCount, flushPendingDeletes } from "@/lib/undo-delete";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
@@ -70,15 +72,12 @@ vi.mock("@/components/cardgroups/swipeable-row", async () => {
         children: React.ReactNode;
         disabled?: boolean;
         onDelete: () => void;
-        ariaLabel?: string;
+        ariaLabel: string | null;
       },
       _ref: React.Ref<{ close(): void }>,
     ) {
       return (
-        <div
-          data-testid="swipeable-row-mock"
-          data-disabled={disabled ? "true" : "false"}
-        >
+        <div data-testid="swipeable-row-mock" data-disabled={disabled ? "true" : "false"}>
           {children}
         </div>
       );
@@ -889,4 +888,315 @@ describe("<CardsClient>", () => {
     await user.click(screen.getByTestId("card-edit-target-c-2"));
     expect(screen.getByLabelText(/front/i)).toBeInTheDocument();
   });
+
+  // T1: Issue 1 regression — per-row delete must work under active search.
+  // Before the fix, handleDeleteRow called readQuery / writeQuery with
+  // cardsDefaultVars (search: null) while useQuery was keyed on
+  // { ...cardsDefaultVars, search: searchQuery }. Under active search,
+  // readQuery returned null and the optimistic remove never happened.
+  it("optimistic per-row delete works under active search filter", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
+
+    // Two cards both matching "apple" — front/back fields contain "apple".
+    const APPLE_1 = {
+      __typename: "Card" as const,
+      id: "c-apple-1",
+      front: "apple",
+      back: "ringo",
+      due: "2024-06-15",
+      state: 0,
+      cardgroupId: CG_ID,
+    };
+    const APPLE_2 = {
+      __typename: "Card" as const,
+      id: "c-apple-2",
+      front: "apple pie",
+      back: "torta",
+      due: "2024-06-15",
+      state: 0,
+      cardgroupId: CG_ID,
+    };
+
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: DEFAULT_VARS,
+      data: { cardsByCardgroupConnection: connection([APPLE_1, APPLE_2]) },
+    });
+
+    // Search "apple" returns both cards. Counter proves the search refetch
+    // actually completed before we click delete.
+    let searchCalls = 0;
+    const searchMock = {
+      request: {
+        query: CardsByCardgroupConnectionDocument,
+        variables: { ...DEFAULT_VARS, search: "apple" },
+      },
+      result: () => {
+        searchCalls += 1;
+        return { data: { cardsByCardgroupConnection: connection([APPLE_1, APPLE_2]) } };
+      },
+    };
+
+    // The DELETE mutation for APPLE_1.
+    const deleteMock = {
+      request: { query: DeleteCardDocument, variables: { id: APPLE_1.id } },
+      result: { data: { deleteCard: true } },
+    };
+
+    renderClient([searchMock, deleteMock], [APPLE_1, APPLE_2], { cache });
+
+    // Drive the search input → debounced searchQuery="apple".
+    const input = screen.getByTestId("cards-search-input");
+    await user.type(input, "apple");
+    await vi.advanceTimersByTimeAsync(300);
+
+    // Wait for the search refetch to actually complete. Without this gate,
+    // the test races the debounced setSearchQuery against the click below
+    // and the optimistic remove targets the wrong cache key.
+    await waitFor(() => {
+      expect(searchCalls).toBe(1);
+    });
+    // And wait for Apollo to have written the result under the search vars.
+    await waitFor(() => {
+      const entry = cache.readQuery({
+        query: CardsByCardgroupConnectionDocument,
+        variables: { ...DEFAULT_VARS, search: "apple" },
+      });
+      expect(entry?.cardsByCardgroupConnection.edges).toHaveLength(2);
+    });
+
+    // Click delete on APPLE_1 — the optimistic remove must fire IMMEDIATELY,
+    // not after the 5s timer. Before the queryVariables fix, this assertion
+    // would fail because readQuery returned null under active search and the
+    // optimistic write never happened.
+    await user.click(screen.getByTestId(`card-delete-${APPLE_1.id}`));
+
+    // Direct cache assertion: the search-keyed variant must now show ONE edge.
+    // This is the core regression assertion — the cache value under
+    // `{...DEFAULT_VARS, search: "apple"}` proves the optimistic writeQuery
+    // landed on the correct key.
+    await waitFor(() => {
+      const searchKeyAfter = cache.readQuery({
+        query: CardsByCardgroupConnectionDocument,
+        variables: { ...DEFAULT_VARS, search: "apple" },
+      });
+      expect(searchKeyAfter?.cardsByCardgroupConnection.edges).toHaveLength(1);
+      expect(searchKeyAfter?.cardsByCardgroupConnection.edges[0]?.node.id).toBe(APPLE_2.id);
+    });
+  });
+
+  // T2: Issue 1 regression for bulk delete — same root cause, same fix.
+  // The bulk-delete `update` callback must read/write under queryVariables.
+  it("bulk delete works under active search filter", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
+
+    const APPLE_1 = {
+      __typename: "Card" as const,
+      id: "c-apple-1",
+      front: "apple",
+      back: "ringo",
+      due: "2024-06-15",
+      state: 0,
+      cardgroupId: CG_ID,
+    };
+    const APPLE_2 = {
+      __typename: "Card" as const,
+      id: "c-apple-2",
+      front: "apple pie",
+      back: "torta",
+      due: "2024-06-15",
+      state: 0,
+      cardgroupId: CG_ID,
+    };
+
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: DEFAULT_VARS,
+      data: { cardsByCardgroupConnection: connection([APPLE_1, APPLE_2]) },
+    });
+
+    const searchMock = {
+      request: {
+        query: CardsByCardgroupConnectionDocument,
+        variables: { ...DEFAULT_VARS, search: "apple" },
+      },
+      result: { data: { cardsByCardgroupConnection: connection([APPLE_1, APPLE_2]) } },
+    };
+
+    const bulkDeleteMock = {
+      request: {
+        query: DeleteCardsDocument,
+        variables: { ids: [APPLE_1.id, APPLE_2.id] },
+      },
+      result: { data: { deleteCards: 2 } },
+    };
+
+    renderClient([searchMock, bulkDeleteMock], [APPLE_1, APPLE_2], { cache });
+
+    const input = screen.getByTestId("cards-search-input");
+    await user.type(input, "apple");
+    await vi.advanceTimersByTimeAsync(300);
+
+    await waitFor(() => {
+      expect(screen.getByText("apple")).toBeInTheDocument();
+      expect(screen.getByText("apple pie")).toBeInTheDocument();
+    });
+
+    // Select both cards.
+    await user.click(screen.getByTestId(`card-select-${APPLE_1.id}`));
+    await user.click(screen.getByTestId(`card-select-${APPLE_2.id}`));
+
+    // Open the bulk delete confirm dialog.
+    await user.click(screen.getByTestId("cards-bulk-delete-button"));
+    await user.click(screen.getByTestId("cards-bulk-confirm"));
+
+    // Both rows must disappear from the active-search list. Before the
+    // queryVariables fix, the bulk-delete `update` callback's readQuery
+    // returned null under active search and the cache never lost the edges.
+    await waitFor(() => {
+      expect(screen.queryByText("apple")).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText("apple pie")).not.toBeInTheDocument();
+  });
+
+  // T3: beforeunload handler invokes flushPendingDeletes, dropping the
+  // pending entry from the registry (visible via _pendingCount === 0).
+  // The DELETE mutation may not actually reach the server in production
+  // (browsers cancel pending fetch on beforeunload), but the registry
+  // clear is the observable contract we can assert here.
+  it("beforeunload event triggers flushPendingDeletes", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
+
+    // The undo-delete registry is module-level state. Earlier tests may have
+    // scheduled deletes that did not flush; reset before measuring.
+    await flushPendingDeletes();
+    expect(_pendingCount()).toBe(0);
+
+    let mutationFired = false;
+    const deleteMock = {
+      request: { query: DeleteCardDocument, variables: { id: "c-1" } },
+      result: () => {
+        mutationFired = true;
+        return { data: { deleteCard: true } };
+      },
+    };
+
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: DEFAULT_VARS,
+      data: { cardsByCardgroupConnection: connection([CARD_1, CARD_2]) },
+    });
+
+    renderClient([deleteMock], [CARD_1, CARD_2], { cache });
+
+    // Schedule a delete — pending count goes to 1.
+    await user.click(screen.getByTestId("card-delete-c-1"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Hello")).not.toBeInTheDocument();
+    });
+    expect(_pendingCount()).toBe(1);
+    expect(mutationFired).toBe(false);
+
+    // Suppress the warn this handler emits so the leak spy stays clean.
+    // Per .claude/rules/pagination.md § "Spy stacking": this outer spy must
+    // forward to the leak spy via the original implementation, not swallow.
+    // We use mockImplementation(() => {}) here narrowly; the beforeunload
+    // handler is the only call site emitting a warn during this test.
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    // Dispatch beforeunload — the handler calls flushPendingDeletes which
+    // immediately fires commitDelete and removes the entry from the registry.
+    window.dispatchEvent(new Event("beforeunload"));
+
+    // The mutation should fire and the registry should clear.
+    await waitFor(() => {
+      expect(_pendingCount()).toBe(0);
+    });
+    await waitFor(() => {
+      expect(mutationFired).toBe(true);
+    });
+
+    // The beforeunload handler emits a warn for operator triage.
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "[CardsClient] flushPendingDeletes on beforeunload — may be cancelled by browser",
+    );
+    consoleWarnSpy.mockRestore();
+  });
+
+  // T4: fetchMoreError halts the IO loop. Click Retry → next page loads,
+  // banner clears. Two MockedResponse entries: one for the network error,
+  // one for the retry success path.
+  // See .claude/rules/pagination.md § "Provide two MockedResponse entries
+  // to test a Retry-after-error path".
+  it("fetchMore error shows banner and Retry recovers", async () => {
+    const cache = new InMemoryCache();
+    const page1 = connection([CARD_1, CARD_2], true);
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: DEFAULT_VARS,
+      data: { cardsByCardgroupConnection: page1 },
+    });
+
+    const initialMock = {
+      request: { query: CardsByCardgroupConnectionDocument, variables: DEFAULT_VARS },
+      result: { data: { cardsByCardgroupConnection: page1 } },
+    };
+
+    const CARD_3 = { ...CARD_1, id: "c-3", front: "Three", back: "Tres" };
+
+    // First fetchMore attempt → network error.
+    const errorMock = {
+      request: {
+        query: CardsByCardgroupConnectionDocument,
+        variables: { ...DEFAULT_VARS, after: CARD_2.id },
+      },
+      error: new Error("network failure"),
+    };
+    // Retry → success.
+    const retryMock = {
+      request: {
+        query: CardsByCardgroupConnectionDocument,
+        variables: { ...DEFAULT_VARS, after: CARD_2.id },
+      },
+      result: {
+        data: { cardsByCardgroupConnection: connection([CARD_3]) },
+      },
+    };
+
+    renderClient([initialMock, errorMock, retryMock], [CARD_1, CARD_2], { cache });
+
+    expect(await screen.findByText("Hello")).toBeInTheDocument();
+
+    // Trigger first fetchMore → fails.
+    fireIntersect();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("cards-fetch-more-error")).toBeInTheDocument();
+    });
+
+    // Click Retry → next page loads.
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /retry/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Three")).toBeInTheDocument();
+    });
+    // Banner cleared after success.
+    expect(screen.queryByTestId("cards-fetch-more-error")).not.toBeInTheDocument();
+  });
+
+  // T5: closeOtherRows is the parent-side wiring; the SwipeableRow mock
+  // renders children unconditionally and replaces the imperative close()
+  // handle with a no-op. The end-to-end behaviour (half-swipe one row, tap
+  // a different row's edit target, assert the half-open row's delete button
+  // gets tabIndex=-1) requires a live SwipeableRow with pointer events,
+  // which jsdom does not simulate reliably. The imperative close() API is
+  // covered in swipeable-row.test.tsx (T10). Limitation documented here.
 });

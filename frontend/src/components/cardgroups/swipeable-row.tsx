@@ -25,8 +25,14 @@ export interface SwipeableRowProps {
    * checkboxes receive touch events without interference.
    */
   disabled?: boolean;
-  /** Accessible label for the delete action button revealed on half-swipe. */
-  ariaLabel?: string;
+  /**
+   * Accessible label for the delete action button revealed on half-swipe.
+   * Required (`string | null`) — pass `null` to accept the default "Delete"
+   * label, or a contextual string (e.g. "Delete card") to override it.
+   * See `.claude/rules/frontend-typescript-conventions.md` § "Required
+   * `string | null` over optional `?: string | null`".
+   */
+  ariaLabel: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -34,10 +40,10 @@ export interface SwipeableRowProps {
 // ---------------------------------------------------------------------------
 
 /** Fraction of row width at which a released swipe snaps to half-open. */
-const HALF_OPEN_THRESHOLD = 0.30;
+const HALF_OPEN_THRESHOLD = 0.3;
 
 /** Fraction of row width at which a swipe is treated as a full delete commit. */
-const FULL_SWIPE_THRESHOLD = 0.60;
+const FULL_SWIPE_THRESHOLD = 0.6;
 
 /** Width of the revealed Delete button action area in pixels. */
 const ACTION_WIDTH = 80;
@@ -62,28 +68,24 @@ const ACTION_WIDTH = 80;
  * The component exposes an imperative `close()` handle via `ref` so a parent
  * list can close any half-open row when the user taps a different row.
  */
-export const SwipeableRow = forwardRef<SwipeableRowHandle, SwipeableRowProps>(
-  function SwipeableRow({ children, onDelete, disabled = false, ariaLabel }, ref) {
-    const reducedMotion = useReducedMotion();
+export const SwipeableRow = forwardRef<SwipeableRowHandle, SwipeableRowProps>(function SwipeableRow(
+  { children, onDelete, disabled = false, ariaLabel },
+  ref,
+) {
+  const reducedMotion = useReducedMotion();
 
-    // When reduced-motion is requested, render children without any swipe layer.
-    // The parent's hover Delete icon serves as the delete affordance.
-    if (reducedMotion) {
-      return <>{children}</>;
-    }
+  // When reduced-motion is requested, render children without any swipe layer.
+  // The parent's hover Delete icon serves as the delete affordance.
+  if (reducedMotion) {
+    return <>{children}</>;
+  }
 
-    return (
-      <SwipeableRowInner
-        ref={ref}
-        onDelete={onDelete}
-        disabled={disabled}
-        ariaLabel={ariaLabel}
-      >
-        {children}
-      </SwipeableRowInner>
-    );
-  },
-);
+  return (
+    <SwipeableRowInner ref={ref} onDelete={onDelete} disabled={disabled} ariaLabel={ariaLabel}>
+      {children}
+    </SwipeableRowInner>
+  );
+});
 
 // ---------------------------------------------------------------------------
 // Inner animated implementation (only mounted when motion is allowed)
@@ -183,11 +185,7 @@ const SwipeableRowInner = forwardRef<SwipeableRowHandle, SwipeableRowProps>(
     };
 
     return (
-      <div
-        ref={rowRef}
-        className="relative overflow-hidden"
-        data-testid="swipeable-row-container"
-      >
+      <div ref={rowRef} className="relative overflow-hidden" data-testid="swipeable-row-container">
         {/* Delete action revealed behind the row */}
         <div
           className="absolute inset-y-0 right-0 flex items-center justify-center bg-destructive"
@@ -197,7 +195,7 @@ const SwipeableRowInner = forwardRef<SwipeableRowHandle, SwipeableRowProps>(
           <button
             type="button"
             className="flex h-full w-full items-center justify-center text-destructive-foreground"
-            aria-label={ariaLabel ?? "Delete"}
+            aria-label={ariaLabel === null ? "Delete" : ariaLabel}
             tabIndex={isHalfOpen ? 0 : -1}
             onClick={handleDeleteButtonClick}
             data-testid="swipe-delete-button"

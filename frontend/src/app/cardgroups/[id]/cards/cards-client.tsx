@@ -13,10 +13,7 @@ import {
   UpdateCardMutation,
 } from "@/app/cardgroups/queries";
 import { CardForm } from "@/components/cardgroups/card-form";
-import {
-  SwipeableRow,
-  type SwipeableRowHandle,
-} from "@/components/cardgroups/swipeable-row";
+import { SwipeableRow, type SwipeableRowHandle } from "@/components/cardgroups/swipeable-row";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -248,10 +245,15 @@ export function CardsClient({
         // so deletedCount === 0 means nothing to mutate locally either.
         if (deletedCount === 0) return;
 
-        const queryVars = cardsDefaultVars(cardgroupId);
+        // Use queryVariables (the same memo useQuery is keyed on) so the
+        // readQuery / writeQuery pair targets the live cache entry under any
+        // active search filter. cardsDefaultVars(cardgroupId) would mismatch
+        // when searchQuery !== null and the optimistic remove would be lost.
+        // See .claude/rules/pagination.md § "Variables shape MUST match
+        // between SSR seed and client cache reads".
         const existing = cache.readQuery({
           query: CardsByCardgroupConnectionDocument,
-          variables: queryVars,
+          variables: queryVariables,
         });
 
         if (existing) {
@@ -260,7 +262,7 @@ export function CardsClient({
           );
           cache.writeQuery({
             query: CardsByCardgroupConnectionDocument,
-            variables: queryVars,
+            variables: queryVariables,
             data: {
               cardsByCardgroupConnection: {
                 ...existing.cardsByCardgroupConnection,
@@ -298,12 +300,17 @@ export function CardsClient({
   // edge, then schedule the real DELETE for 5 seconds via scheduleDelete. On
   // Undo (within 5s) the snapshot is restored. On commit failure, the snapshot
   // is restored and the banner surfaces the error.
+  //
+  // Uses `queryVariables` (the same memo useQuery is keyed on) for both the
+  // snapshot read and the rollback writeQuery so the optimistic remove targets
+  // the live cache entry under any active search filter.
+  // See .claude/rules/pagination.md § "Variables shape MUST match between SSR
+  // seed and client cache reads".
   const handleDeleteRow = useCallback(
     (cardId: string) => {
-      const queryVars = cardsDefaultVars(cardgroupId);
       const snapshot = apollo.readQuery({
         query: CardsByCardgroupConnectionDocument,
-        variables: queryVars,
+        variables: queryVariables,
       });
 
       // Optimistic step: drop the matching edge and decrement totalCount.
@@ -313,7 +320,7 @@ export function CardsClient({
         );
         apollo.writeQuery({
           query: CardsByCardgroupConnectionDocument,
-          variables: queryVars,
+          variables: queryVariables,
           data: {
             cardsByCardgroupConnection: {
               ...snapshot.cardsByCardgroupConnection,
@@ -328,7 +335,7 @@ export function CardsClient({
         if (snapshot !== null) {
           apollo.writeQuery({
             query: CardsByCardgroupConnectionDocument,
-            variables: queryVars,
+            variables: queryVariables,
             data: snapshot,
           });
         }
@@ -359,21 +366,41 @@ export function CardsClient({
         },
       });
     },
-    [apollo, cardgroupId, deleteCardMutation],
+    [apollo, deleteCardMutation, queryVariables],
   );
 
   // Flush pending deletes on pathname change so a user who navigates away
   // inside the 5-second undo window does not silently lose the DELETE request.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is an intentional trigger dependency; the effect's body does not read it.
+  //
+  // Fire on the *change*, not in cleanup: cleanup callbacks run while React is
+  // tearing the component down, so `void flushPendingDeletes()` returns a
+  // Promise the runtime never awaits and the in-flight DELETE mutations get
+  // dropped. Triggering inside the effect body — keyed on a previous-pathname
+  // ref — runs while the component is still mounted and the async context is
+  // alive long enough for Apollo to flush the mutations.
+  const previousPathnameRef = useRef(pathname);
   useEffect(() => {
-    return () => {
+    if (previousPathnameRef.current !== pathname) {
       void flushPendingDeletes();
-    };
+      previousPathnameRef.current = pathname;
+    }
   }, [pathname]);
 
   // Browser-level navigation safety net for the same flush concern.
+  //
+  // NOTE: most browsers cancel pending fetch / XHR requests when `beforeunload`
+  // fires, so the DELETE mutations triggered from here are NOT guaranteed to
+  // reach the server — the user may navigate away before the request settles.
+  // The console.warn surfaces the discard so operators can see in dev tools
+  // that the pending DELETE may have been dropped. Switching to
+  // `navigator.sendBeacon` would only work for endpoints that accept anonymous
+  // POSTs; this app's GraphQL endpoint requires Authorization headers, which
+  // sendBeacon cannot reliably attach. Document and accept the limitation.
   useEffect(() => {
     function onBeforeUnload() {
+      console.warn(
+        "[CardsClient] flushPendingDeletes on beforeunload — may be cancelled by browser",
+      );
       void flushPendingDeletes();
     }
     window.addEventListener("beforeunload", onBeforeUnload);

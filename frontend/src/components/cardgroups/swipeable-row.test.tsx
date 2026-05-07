@@ -126,7 +126,7 @@ function simulateSwipe(element: Element, deltaX: number) {
 describe("<SwipeableRow>", () => {
   it("T1 — renders children inside the swipeable layer", () => {
     render(
-      <SwipeableRow onDelete={vi.fn()}>
+      <SwipeableRow onDelete={vi.fn()} ariaLabel={null}>
         <span>Card front</span>
       </SwipeableRow>,
     );
@@ -137,7 +137,7 @@ describe("<SwipeableRow>", () => {
   it("T2 — full swipe left (≥ 60% of width = 180px) calls onDelete", async () => {
     const onDelete = vi.fn();
     render(
-      <SwipeableRow onDelete={onDelete}>
+      <SwipeableRow onDelete={onDelete} ariaLabel={null}>
         <span>Card</span>
       </SwipeableRow>,
     );
@@ -200,7 +200,7 @@ describe("<SwipeableRow>", () => {
   it("T5 — short swipe (< 30% = 90px) snaps back, Delete button is hidden (tabIndex -1)", async () => {
     const onDelete = vi.fn();
     render(
-      <SwipeableRow onDelete={onDelete}>
+      <SwipeableRow onDelete={onDelete} ariaLabel={null}>
         <span>Card</span>
       </SwipeableRow>,
     );
@@ -220,7 +220,7 @@ describe("<SwipeableRow>", () => {
   it("T6 — rightward swipe does nothing (unidirectional left-only)", async () => {
     const onDelete = vi.fn();
     render(
-      <SwipeableRow onDelete={onDelete}>
+      <SwipeableRow onDelete={onDelete} ariaLabel={null}>
         <span>Card</span>
       </SwipeableRow>,
     );
@@ -238,7 +238,7 @@ describe("<SwipeableRow>", () => {
   it("T7 — disabled=true makes swipe a no-op (onDelete not called, tabIndex stays -1)", async () => {
     const onDelete = vi.fn();
     render(
-      <SwipeableRow onDelete={onDelete} disabled>
+      <SwipeableRow onDelete={onDelete} disabled ariaLabel={null}>
         <span>Card</span>
       </SwipeableRow>,
     );
@@ -257,7 +257,7 @@ describe("<SwipeableRow>", () => {
 
     const onDelete = vi.fn();
     render(
-      <SwipeableRow onDelete={onDelete}>
+      <SwipeableRow onDelete={onDelete} ariaLabel={null}>
         <span>Reduced motion card</span>
       </SwipeableRow>,
     );
@@ -276,7 +276,7 @@ describe("<SwipeableRow>", () => {
 
     const onDelete = vi.fn();
     const { container } = render(
-      <SwipeableRow onDelete={onDelete}>
+      <SwipeableRow onDelete={onDelete} ariaLabel={null}>
         <span>Card</span>
       </SwipeableRow>,
     );
@@ -298,7 +298,7 @@ describe("<SwipeableRow>", () => {
     const ref = createRef<SwipeableRowHandle>();
 
     render(
-      <SwipeableRow ref={ref} onDelete={onDelete}>
+      <SwipeableRow ref={ref} onDelete={onDelete} ariaLabel={null}>
         <span>Card</span>
       </SwipeableRow>,
     );
