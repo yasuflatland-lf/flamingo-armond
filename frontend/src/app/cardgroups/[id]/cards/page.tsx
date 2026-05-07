@@ -1,3 +1,4 @@
+import { Plus } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CardgroupQuery } from "@/app/cardgroups/queries";
@@ -65,7 +66,10 @@ export default async function CardsPage({ params }: { params: Promise<{ id: stri
       <div className="mb-3 flex items-baseline justify-between gap-4">
         <h1 className="text-2xl font-semibold">Cards in {cardgroup.name}</h1>
         <Button asChild variant="brand" size="sm">
-          <Link href={`/cards/new?cardgroup=${id}&return=/cardgroups/${id}/cards`}>+ Add card</Link>
+          <Link href={`/cards/new?cardgroup=${id}&return=/cardgroups/${id}/cards`}>
+            Add card
+            <Plus aria-hidden="true" className="ml-1.5 h-4 w-4" />
+          </Link>
         </Button>
       </div>
       <CardsClient
