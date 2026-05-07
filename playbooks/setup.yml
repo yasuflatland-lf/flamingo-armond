@@ -293,6 +293,83 @@
       when: google_configured
       tags: [google-check]
 
+    # --- Auto seed-admin from SUPER_USER_EMAILS (runs on every make setup / make sync-env) ---
+    # Reads SUPER_USER_EMAILS from backend/.env.local and grants the admin role to each
+    # address that already has an auth.users row. Idempotent: ON CONFLICT DO NOTHING.
+    # Addresses not yet signed in are silently skipped; re-running after first login grants
+    # the role without further operator action.
+    - name: Read backend/.env.local for SUPER_USER_EMAILS
+      ansible.builtin.slurp:
+        src: "{{ repo_root }}/backend/.env.local"
+      register: _backend_env_for_seed
+      when: env_ownership[repo_root + '/backend/.env.local'] != 'user-owned'
+      tags: [sync-env]
+
+    - name: Parse SUPER_USER_EMAILS from backend/.env.local
+      ansible.builtin.set_fact:
+        _super_user_emails: >-
+          {{ (_backend_env_for_seed.content | b64decode).split('\n')
+             | select('match', '^SUPER_USER_EMAILS=')
+             | map('regex_replace', '^SUPER_USER_EMAILS=', '')
+             | list | first | default('')
+             | split(',')
+             | map('trim')
+             | map('trim', '"')
+             | reject('equalto', '')
+             | list }}
+      when: _backend_env_for_seed is not skipped
+      tags: [sync-env]
+
+    - name: Skip seed-admin-from-env when SUPER_USER_EMAILS is empty
+      ansible.builtin.debug:
+        msg: "seed-admin-from-env: SUPER_USER_EMAILS is not set -- skipping."
+      when: _backend_env_for_seed is not skipped and (_super_user_emails | default([]) | length) == 0
+      tags: [sync-env]
+
+    - name: Resolve local Supabase DB URL for seed-admin-from-env
+      ansible.builtin.shell: |
+        set -o pipefail
+        supabase status --output json | python3 -c 'import json,sys; print(json.load(sys.stdin)["DB_URL"])'
+      args:
+        executable: /bin/bash
+      register: _seed_db_url
+      changed_when: false
+      when: _backend_env_for_seed is not skipped and (_super_user_emails | length) > 0
+      tags: [sync-env]
+
+    - name: Grant admin role to each SUPER_USER_EMAILS address (idempotent)
+      ansible.builtin.command:
+        argv:
+          - psql
+          - "{{ _seed_db_url.stdout | trim }}"
+          - -v
+          - "ON_ERROR_STOP=1"
+          - -c
+          - >-
+            INSERT INTO public.user_roles (user_id, role_id)
+            SELECT u.id, r.id FROM auth.users u, public.roles r
+            WHERE u.email = '{{ item | replace("'", "''") }}' AND r.name = 'admin'
+            ON CONFLICT DO NOTHING;
+      register: _seed_results
+      changed_when: "'INSERT 0 1' in _seed_results.stdout"
+      loop: "{{ _super_user_emails }}"
+      loop_control:
+        label: "{{ item }}"
+      when: _backend_env_for_seed is not skipped and (_super_user_emails | length) > 0
+      tags: [sync-env]
+
+    - name: Report seed-admin-from-env outcome per address
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'granted admin to ' + item.item
+             if 'INSERT 0 1' in (item.stdout | default(''))
+             else 'no-op (not yet signed in or already admin): ' + item.item }}
+      loop: "{{ _seed_results.results | default([]) }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: _backend_env_for_seed is not skipped and (_super_user_emails | length) > 0
+      tags: [sync-env]
+
     # --- One-shot admin promotion via SQL (local Supabase only) ---
     # Inserts a (user_id, admin_role_id) row by joining auth.users on email and
     # public.roles on name='admin'. Idempotent via ON CONFLICT DO NOTHING.
