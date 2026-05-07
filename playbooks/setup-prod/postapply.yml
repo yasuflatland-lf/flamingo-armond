@@ -76,6 +76,7 @@
       and confirm `.env` (or your shell) exports a valid Render API key.
   when: (render_api_key | length) == 0
 
+
 - name: Read VERCEL_API_TOKEN from the environment
   ansible.builtin.set_fact:
     vercel_token: "{{ lookup('env', 'VERCEL_API_TOKEN') }}"
@@ -226,6 +227,7 @@
         status_code: [200]
       register: env_upsert
       no_log: true
+      when: (item.value | string | length) > 0
       loop:
         - key: SUPABASE_DB_URL
           value: "{{ supabase_db_url }}"
