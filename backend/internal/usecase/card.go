@@ -28,6 +28,7 @@ type CardRepository interface {
 		first, last int,
 		orderBy repository.CardOrderBy,
 		dir repository.SortOrder,
+		search *string,
 	) ([]*domain.Card, int64, error)
 	Create(ctx context.Context, card *domain.Card) error
 	FindByCardgroupAndFront(ctx context.Context, cardgroupID, front string) (*domain.Card, error)
@@ -112,6 +113,7 @@ type CardConnectionInput struct {
 	CardgroupID    string
 	First, Last    *int
 	After, Before  *string // raw GraphQL ID strings (cursor = card UUID)
+	Search         *string // optional; nil or empty string disables the filter
 	OrderBy        *CardOrderBy
 	OrderDirection *SortOrder
 }
@@ -328,7 +330,7 @@ func (u *CardUsecase) ListCardsByCardgroupConnection(
 	}
 
 	cards, total, err := u.cardRepo.FindPageByCardgroup(
-		ctx, in.CardgroupID, after, before, wantFirst, wantLast, orderBy, dir,
+		ctx, in.CardgroupID, after, before, wantFirst, wantLast, orderBy, dir, in.Search,
 	)
 	if err != nil {
 		return nil, gqlerr.Internal(ctx, err)

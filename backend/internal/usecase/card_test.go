@@ -56,6 +56,7 @@ type mockCardRepository struct {
 		last        int
 		orderBy     repository.CardOrderBy
 		dir         repository.SortOrder
+		search      *string
 	}
 
 	findByCardgroupAndFrontResult                *domain.Card
@@ -113,6 +114,7 @@ func (m *mockCardRepository) FindPageByCardgroup(
 	first, last int,
 	orderBy repository.CardOrderBy,
 	dir repository.SortOrder,
+	search *string,
 ) ([]*domain.Card, int64, error) {
 	m.capturedFindPage.cardgroupID = cardgroupID
 	m.capturedFindPage.after = after
@@ -121,6 +123,7 @@ func (m *mockCardRepository) FindPageByCardgroup(
 	m.capturedFindPage.last = last
 	m.capturedFindPage.orderBy = orderBy
 	m.capturedFindPage.dir = dir
+	m.capturedFindPage.search = search
 	return m.findPageRows, m.findPageTotal, m.findPageErr
 }
 
@@ -770,5 +773,76 @@ func TestCardUsecase_Create_DuplicateLookupRace_RowVanished(t *testing.T) {
 	}
 	if _, hasFront := rec0["front"]; hasFront {
 		t.Error("ERROR log must not contain 'front' field (user-supplied content)")
+	}
+}
+
+// strPtr returns a pointer to s. Helper used by search passthrough tests.
+func strPtr(s string) *string { return &s }
+
+// TestCardUsecase_ListCardsByCardgroupConnection_SearchPassthrough verifies that
+// the Search field in CardConnectionInput is passed through unchanged to the
+// repository's FindPageByCardgroup call. The usecase must not alter, clear, or
+// default the search value.
+func TestCardUsecase_ListCardsByCardgroupConnection_SearchPassthrough(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name        string
+		searchInput *string
+		wantSearch  *string
+	}{
+		{
+			name:        "nil search is forwarded as nil",
+			searchInput: nil,
+			wantSearch:  nil,
+		},
+		{
+			name:        "non-nil search string is forwarded unchanged",
+			searchInput: strPtr("apple"),
+			wantSearch:  strPtr("apple"),
+		},
+		{
+			name:        "empty string search is forwarded as empty string",
+			searchInput: strPtr(""),
+			wantSearch:  strPtr(""),
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cardRepo := &mockCardRepository{
+				findPageRows:  []*domain.Card{},
+				findPageTotal: 0,
+			}
+			cgRepo := &mockCardgroupRepoForCard{
+				findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"},
+			}
+			uc := NewCardUsecase(nil, cardRepo, cgRepo)
+
+			_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
+				CardgroupID: "cg1",
+				Search:      tc.searchInput,
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			got := cardRepo.capturedFindPage.search
+			if tc.wantSearch == nil {
+				if got != nil {
+					t.Fatalf("expected search=nil, got %q", *got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("expected search=%q, got nil", *tc.wantSearch)
+			}
+			if *got != *tc.wantSearch {
+				t.Fatalf("expected search=%q, got %q", *tc.wantSearch, *got)
+			}
+		})
 	}
 }
