@@ -218,7 +218,7 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
         </div>
 
         {/* Save button */}
-        <Button type="button" onClick={handleSave} disabled={saving}>
+        <Button type="button" variant="brand" onClick={handleSave} disabled={saving}>
           {saving ? "Saving..." : "Save changes"}
         </Button>
 
@@ -243,7 +243,7 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
                         checked={isAssigned}
                         disabled={isInflight}
                         onChange={() => handleRoleToggle(role.id, isAssigned)}
-                        className="h-4 w-4 rounded border-input accent-primary"
+                        className="h-4 w-4 rounded border-input accent-brand"
                         aria-label={role.name}
                       />
                       <label htmlFor={checkboxId} className="cursor-pointer text-sm">
