@@ -205,7 +205,7 @@ describe("scheduleDelete", () => {
       warnSpy.mockRestore();
     });
 
-    it("invokes the prior onCommitFailed when the prior commitDelete rejects on re-schedule", async () => {
+    it("does NOT invoke onCommitFailed but does warn when prior commitDelete rejects on re-schedule", async () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
       const priorError = new Error("prior commit failed");
@@ -232,12 +232,22 @@ describe("scheduleDelete", () => {
       // Flush microtasks so the rejected promise settles.
       await Promise.resolve();
 
-      // The prior commitDelete was called and rejected; onCommitFailed must fire.
+      // The prior commitDelete was called and rejected.
       expect(commitA).toHaveBeenCalledOnce();
-      // Note: optimisticRollback is NOT called on re-schedule commit path —
-      // the prior optimistic remove is still what the caller wanted.
+      // optimisticRollback is NOT called — the prior optimistic remove is the
+      // correct UX state (the new schedule is now the authoritative intent).
       expect(rollbackA).not.toHaveBeenCalled();
-      expect(failedA).toHaveBeenCalledWith(priorError);
+      // onCommitFailed must NOT be called — surfacing a banner is misleading
+      // because the item is already gone from the user's view per the new schedule.
+      expect(failedA).not.toHaveBeenCalled();
+      // Instead, a console.warn with discriminating { id, err } keys is emitted
+      // so operators get a triage signal without a user-visible banner.
+      // Per .claude/rules/frontend-typescript-conventions.md § "expect.objectContaining
+      // is not enough — add a discriminating key": include both `id` and `err`.
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[undo-delete] prior pending delete commit failed on re-schedule",
+        expect.objectContaining({ id: "dup-reject", err: priorError }),
+      );
 
       // Clean up second timer.
       await vi.runAllTimersAsync();

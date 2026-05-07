@@ -90,7 +90,14 @@ export function scheduleDelete(opts: ScheduleDeleteOptions): ScheduleDeleteHandl
     clearTimeout(existing.timerId);
     pending.delete(id);
     void existing.commitDelete().catch((err) => {
-      if (existing.onCommitFailed !== undefined) existing.onCommitFailed(err);
+      // Prior optimistic-remove is preserved (the new schedule is the
+      // authoritative intent). Do NOT call existing.onCommitFailed here
+      // because the item is already gone from the user's view; surfacing
+      // a banner would be misleading and the user has no actionable retry path.
+      console.warn(
+        "[undo-delete] prior pending delete commit failed on re-schedule",
+        { id, err },
+      );
     });
   }
 
