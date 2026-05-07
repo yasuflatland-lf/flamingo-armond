@@ -28,6 +28,7 @@ const UNDO_DELAY_MS = 5000;
 
 interface PendingDelete {
   timerId: ReturnType<typeof setTimeout>;
+  toastId: string | number | undefined;
   commitDelete: () => Promise<unknown>;
   optimisticRollback: () => void;
   onCommitFailed?: (err: unknown) => void;
@@ -70,10 +71,28 @@ export interface ScheduleDeleteHandle {
 export function scheduleDelete(opts: ScheduleDeleteOptions): ScheduleDeleteHandle {
   const { id, label, optimisticRollback, commitDelete, onCommitFailed } = opts;
 
-  // If a previous pending delete for the same id exists, clear it without
-  // committing (the caller is responsible for idempotency at the mutation level
-  // if a new delete supersedes a prior one for the same entity).
-  cancelPending(id);
+  // Guard: id must be a non-empty string. Two callers colliding on "" would
+  // silently cancel each other's timers. This is a programming error.
+  if (!opts.id) {
+    throw new Error("undo-delete: id must be a non-empty string");
+  }
+
+  // If a previous pending delete for the same id already exists, commit it
+  // immediately so the optimistic remove already applied to the cache is backed
+  // by a real DELETE before the new schedule starts.
+  const existing = pending.get(id);
+  if (existing !== undefined) {
+    console.warn(
+      "[undo-delete] re-scheduling pending id; committing prior delete immediately",
+      { id },
+    );
+    if (existing.toastId !== undefined) toast.dismiss(existing.toastId);
+    clearTimeout(existing.timerId);
+    pending.delete(id);
+    void existing.commitDelete().catch((err) => {
+      if (existing.onCommitFailed !== undefined) existing.onCommitFailed(err);
+    });
+  }
 
   const commit = async () => {
     pending.delete(id);
@@ -87,14 +106,6 @@ export function scheduleDelete(opts: ScheduleDeleteOptions): ScheduleDeleteHandl
 
   const timerId = setTimeout(commit, UNDO_DELAY_MS);
 
-  const entry: PendingDelete = {
-    timerId,
-    commitDelete,
-    optimisticRollback,
-    onCommitFailed,
-  };
-  pending.set(id, entry);
-
   const handle: ScheduleDeleteHandle = {
     undo() {
       cancelPending(id);
@@ -102,13 +113,22 @@ export function scheduleDelete(opts: ScheduleDeleteOptions): ScheduleDeleteHandl
     },
   };
 
-  toast(label, {
+  const toastId = toast(label, {
     duration: UNDO_DELAY_MS,
     action: {
       label: "Undo",
       onClick: () => handle.undo(),
     },
   });
+
+  const entry: PendingDelete = {
+    timerId,
+    toastId,
+    commitDelete,
+    optimisticRollback,
+    onCommitFailed,
+  };
+  pending.set(id, entry);
 
   return handle;
 }

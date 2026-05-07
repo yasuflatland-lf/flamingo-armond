@@ -14,12 +14,23 @@ import { _pendingCount, flushPendingDeletes, scheduleDelete } from "./undo-delet
 // ---------------------------------------------------------------------------
 
 let lastUndoAction: (() => void) | undefined;
+let toastIdCounter = 0;
 
-vi.mock("sonner", () => ({
-  toast: vi.fn((_label: string, opts?: { action?: { onClick?: () => void } }) => {
-    lastUndoAction = opts?.action?.onClick;
-  }),
+// Use vi.hoisted so these refs are available inside the hoisted vi.mock factory.
+const { mockToastDismiss } = vi.hoisted(() => ({
+  mockToastDismiss: vi.fn(),
 }));
+
+vi.mock("sonner", () => {
+  const toastFn = vi.fn(
+    (_label: string, opts?: { action?: { onClick?: () => void } }) => {
+      lastUndoAction = opts?.action?.onClick;
+      return ++toastIdCounter;
+    },
+  ) as ReturnType<typeof vi.fn> & { dismiss: ReturnType<typeof vi.fn> };
+  toastFn.dismiss = mockToastDismiss;
+  return { toast: toastFn };
+});
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -48,6 +59,8 @@ describe("scheduleDelete", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     lastUndoAction = undefined;
+    toastIdCounter = 0;
+    mockToastDismiss.mockReset();
   });
 
   afterEach(async () => {
@@ -116,15 +129,10 @@ describe("scheduleDelete", () => {
     const optsA = makeOpts({ id: "card-a" });
     const optsB = makeOpts({ id: "card-b" });
 
-    scheduleDelete(optsA);
+    const handleA = scheduleDelete(optsA);
     scheduleDelete(optsB);
 
-    // Undo only the first delete.
-    const undoAAction = lastUndoAction;
-
-    // Schedule B comes second and overwrites lastUndoAction, so capture A's
-    // undo explicitly via the returned handle.
-    const handleA = scheduleDelete(optsA); // re-schedule A (replaces prior timer)
+    // Undo A via the handle returned from the first schedule.
     handleA.undo();
 
     await vi.runAllTimersAsync();
@@ -136,9 +144,105 @@ describe("scheduleDelete", () => {
     // B was not touched — its commitDelete should have fired.
     expect(optsB.commitDelete).toHaveBeenCalledOnce();
     expect(optsB.optimisticRollback).not.toHaveBeenCalled();
+  });
 
-    // Suppress unused variable warning.
-    void undoAAction;
+  it("throws synchronously when id is an empty string", () => {
+    const opts = makeOpts({ id: "" });
+    expect(() => scheduleDelete(opts)).toThrow(
+      "undo-delete: id must be a non-empty string",
+    );
+  });
+
+  describe("re-scheduling the same id", () => {
+    it("immediately commits the prior pending delete and starts a fresh timer", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const commitA = vi.fn().mockResolvedValue(undefined);
+      const rollbackA = vi.fn();
+      const failedA = vi.fn();
+
+      const commitB = vi.fn().mockResolvedValue(undefined);
+      const rollbackB = vi.fn();
+
+      scheduleDelete({
+        id: "dup-id",
+        label: "First delete",
+        commitDelete: commitA,
+        optimisticRollback: rollbackA,
+        onCommitFailed: failedA,
+      });
+
+      // At this point, the prior delete is pending — not yet committed.
+      expect(commitA).not.toHaveBeenCalled();
+
+      // Re-schedule the same id.
+      scheduleDelete({
+        id: "dup-id",
+        label: "Second delete",
+        commitDelete: commitB,
+        optimisticRollback: rollbackB,
+      });
+
+      // The prior commitDelete must have fired immediately (no rollback, since
+      // the optimistic remove is what the caller committed to UX-wise).
+      // Allow the promise microtask to flush via a resolved-promise await.
+      await Promise.resolve();
+      expect(commitA).toHaveBeenCalledOnce();
+      expect(rollbackA).not.toHaveBeenCalled();
+
+      // A console.warn must have been emitted with a discriminating `id` key.
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[undo-delete] re-scheduling pending id; committing prior delete immediately",
+        expect.objectContaining({ id: "dup-id" }),
+      );
+
+      // The new schedule's commit fires after 5 s.
+      expect(commitB).not.toHaveBeenCalled();
+      await vi.runAllTimersAsync();
+      expect(commitB).toHaveBeenCalledOnce();
+      expect(rollbackB).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+
+    it("invokes the prior onCommitFailed when the prior commitDelete rejects on re-schedule", async () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const priorError = new Error("prior commit failed");
+      const commitA = vi.fn().mockRejectedValue(priorError);
+      const rollbackA = vi.fn();
+      const failedA = vi.fn();
+
+      scheduleDelete({
+        id: "dup-reject",
+        label: "First delete",
+        commitDelete: commitA,
+        optimisticRollback: rollbackA,
+        onCommitFailed: failedA,
+      });
+
+      // Re-schedule — triggers immediate commit of the prior entry.
+      scheduleDelete({
+        id: "dup-reject",
+        label: "Second delete",
+        commitDelete: vi.fn().mockResolvedValue(undefined),
+        optimisticRollback: vi.fn(),
+      });
+
+      // Flush microtasks so the rejected promise settles.
+      await Promise.resolve();
+
+      // The prior commitDelete was called and rejected; onCommitFailed must fire.
+      expect(commitA).toHaveBeenCalledOnce();
+      // Note: optimisticRollback is NOT called on re-schedule commit path —
+      // the prior optimistic remove is still what the caller wanted.
+      expect(rollbackA).not.toHaveBeenCalled();
+      expect(failedA).toHaveBeenCalledWith(priorError);
+
+      // Clean up second timer.
+      await vi.runAllTimersAsync();
+      warnSpy.mockRestore();
+    });
   });
 });
 
@@ -146,6 +250,8 @@ describe("flushPendingDeletes", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     lastUndoAction = undefined;
+    toastIdCounter = 0;
+    mockToastDismiss.mockReset();
   });
 
   afterEach(() => {
