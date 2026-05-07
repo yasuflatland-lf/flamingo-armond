@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation } from "@apollo/client/react";
+import { Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { Button } from "@/components/ui/button";
@@ -207,24 +208,24 @@ export function AdminRolesClient({ initialRoles }: Props) {
                 <Button
                   type="button"
                   variant="outline"
-                  size="sm"
+                  size="icon"
                   onClick={() => handleStartEdit(role)}
                   disabled={busy || isSystemRole(role)}
                   aria-label={`Edit ${role.name}`}
                   data-testid={`admin-role-edit-btn-${role.id}`}
                 >
-                  Edit
+                  <Pencil aria-hidden="true" className="h-4 w-4" />
                 </Button>
                 <Button
                   type="button"
                   variant="destructive"
-                  size="sm"
+                  size="icon"
                   onClick={() => handleDelete(role.id)}
                   disabled={busy || isSystemRole(role)}
                   aria-label={`Delete ${role.name}`}
                   data-testid={`admin-role-delete-btn-${role.id}`}
                 >
-                  Delete
+                  <Trash2 aria-hidden="true" className="h-4 w-4" />
                 </Button>
               </div>
             )}

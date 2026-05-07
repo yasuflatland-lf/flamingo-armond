@@ -2,10 +2,12 @@
 
 import { NetworkStatus } from "@apollo/client";
 import { useQuery } from "@apollo/client/react";
+import { Pencil } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { useFragment } from "@/generated/fragment-masking";
 import { AdminUsersDocument, type AdminUsersQuery } from "@/generated/graphql";
 import { classifyQueryError, getBackendErrorBanner } from "@/lib/apollo/errors";
@@ -63,12 +65,14 @@ function UserRow({ edge }: { edge: Edge }) {
       </div>
 
       {/* Edit link */}
-      <Link
-        href={`/admin/users/${user.id}/edit`}
-        className="shrink-0 text-sm text-muted-foreground hover:underline"
-      >
-        Edit
-      </Link>
+      <Button asChild variant="ghost" size="icon" className="shrink-0">
+        <Link
+          href={`/admin/users/${user.id}/edit`}
+          aria-label={`Edit ${user.displayName ?? "user"}`}
+        >
+          <Pencil aria-hidden="true" className="h-4 w-4" />
+        </Link>
+      </Button>
     </li>
   );
 }

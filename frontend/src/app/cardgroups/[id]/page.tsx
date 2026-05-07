@@ -1,3 +1,4 @@
+import { List, Pencil, Play, Plus } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CardgroupQuery, CardsByCardgroupQuery } from "@/app/cardgroups/queries";
@@ -52,16 +53,46 @@ export default async function CardgroupDetailPage({ params }: { params: Promise<
 
   return (
     <main className="p-8">
-      <h1 className="mb-2 text-2xl font-semibold">{cardgroup.name}</h1>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Updated {formatMediumDate(cardgroup.updatedAt as string)}
-      </p>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h1 className="mb-2 text-2xl font-semibold">{cardgroup.name}</h1>
+          <p className="text-sm text-muted-foreground">
+            Updated {formatMediumDate(cardgroup.updatedAt as string)}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button asChild variant="outline">
+            <Link href={`/cardgroups/${id}/edit`}>
+              <span>Edit</span>
+              <Pencil aria-hidden="true" />
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href={`/cardgroups/${id}/cards`}>
+              <span>Manage cards</span>
+              <List aria-hidden="true" />
+            </Link>
+          </Button>
+          <Button asChild variant="brand">
+            <Link href={`/learn/${id}`}>
+              <span>Start learning</span>
+              <Play aria-hidden="true" />
+            </Link>
+          </Button>
+        </div>
+      </div>
 
       {cards.length === 0 ? (
         <div className="mb-8 rounded-lg border border-dashed border-border p-6 text-center">
           <p className="mb-4 text-muted-foreground">No cards yet. Add some to get started.</p>
-          <Button asChild variant="brand">
-            <Link href={`/cardgroups/${id}/cards`}>Add card</Link>
+          {/* Hidden on mobile; GlobalFAB reaches the same end goal (open the
+              card creation form for this cardgroup) via the card-with-group
+              FAB variant, which routes directly to /cards/new?cardgroup=<id>. */}
+          <Button asChild variant="brand" className="hidden md:inline-flex">
+            <Link href={`/cardgroups/${id}/cards`}>
+              <span>Add card</span>
+              <Plus aria-hidden="true" />
+            </Link>
           </Button>
         </div>
       ) : (
@@ -84,18 +115,6 @@ export default async function CardgroupDetailPage({ params }: { params: Promise<
           )}
         </section>
       )}
-
-      <div className="flex flex-wrap gap-3">
-        <Button asChild variant="brand">
-          <Link href={`/learn/${id}`}>Start learning</Link>
-        </Button>
-        <Button asChild variant="outline">
-          <Link href={`/cardgroups/${id}/edit`}>Edit</Link>
-        </Button>
-        <Button asChild variant="outline">
-          <Link href={`/cardgroups/${id}/cards`}>Manage cards</Link>
-        </Button>
-      </div>
     </main>
   );
 }

@@ -149,7 +149,7 @@ describe("CardsPage (RSC)", () => {
     expect(screen.getByText("Hello")).toBeInTheDocument();
     expect(screen.getByText("World")).toBeInTheDocument();
 
-    const addCardLink = screen.getByRole("link", { name: /\+ add card/i });
+    const addCardLink = screen.getByRole("link", { name: /add card/i });
     expect(addCardLink).toHaveAttribute(
       "href",
       "/cards/new?cardgroup=cg-1&return=/cardgroups/cg-1/cards",

@@ -157,6 +157,33 @@ function renderClient(
 // ---------------------------------------------------------------------------
 
 describe("<CardgroupsClient>", () => {
+  // "New cardgroup" header button is hidden on mobile because GlobalFAB
+  // provides the same action at <md breakpoints. Mirrors the
+  // `learn-add-card-floating` PC-only pattern.
+  it("hides the 'New cardgroup' header button below md (mobile uses GlobalFAB)", async () => {
+    const cache = new InMemoryCache();
+    const emptyConn = makeConnection([]);
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: { first: CARDGROUPS_PAGE_SIZE, search: null },
+      data: { myCardgroupsConnection: emptyConn },
+    });
+
+    const initialMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: { first: CARDGROUPS_PAGE_SIZE, search: null },
+      },
+      result: { data: { myCardgroupsConnection: emptyConn } },
+    };
+
+    renderClient([initialMock], null, cache);
+
+    const link = await screen.findByRole("link", { name: /new cardgroup/i });
+    expect(link.className).toContain("hidden");
+    expect(link.className).toContain("md:inline-flex");
+  });
+
   // S1: empty state — no cardgroups, no active search
   it("renders empty state when no cardgroups and no search", async () => {
     const cache = new InMemoryCache();

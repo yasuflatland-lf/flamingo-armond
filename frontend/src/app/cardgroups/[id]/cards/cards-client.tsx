@@ -2,6 +2,7 @@
 
 import { NetworkStatus } from "@apollo/client";
 import { useMutation, useQuery } from "@apollo/client/react";
+import { Pencil, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   DeleteCardMutation,
@@ -307,6 +308,7 @@ export function CardsClient({
                   data-testid="cards-bulk-delete-button"
                 >
                   Delete selected
+                  <Trash2 aria-hidden="true" className="ml-1.5 h-4 w-4" />
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
@@ -324,12 +326,13 @@ export function CardsClient({
             </AlertDialog>
             <Button variant="outline" size="sm" onClick={clearSelection}>
               Cancel
+              <X aria-hidden="true" className="ml-1.5 h-4 w-4" />
             </Button>
           </div>
         )}
 
         {edges.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No cards yet.</p>
+          <p className="text-sm text-muted-foreground">Add some new cards to get started.</p>
         ) : (
           <ul className="space-y-3">
             {edges.map((edge) => {
@@ -365,13 +368,18 @@ export function CardsClient({
                     <p className="text-sm text-muted-foreground">{card.back}</p>
                   </div>
                   <div className="flex shrink-0 gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setEditingId(card.id)}>
-                      Edit
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      aria-label="Edit card"
+                      onClick={() => setEditingId(card.id)}
+                    >
+                      <Pencil aria-hidden="true" className="h-4 w-4" />
                     </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="destructive" size="sm">
-                          Delete
+                        <Button variant="destructive" size="icon" aria-label="Delete card">
+                          <Trash2 aria-hidden="true" className="h-4 w-4" />
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
