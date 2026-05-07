@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/nav/app-shell";
 import { GlobalFAB } from "@/components/nav/global-fab";
+import { Toaster } from "@/components/ui/sonner";
 import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -82,6 +83,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <AppShell user={shellUser} isAdmin={isAdmin}>
             {children}
             <GlobalFAB />
+            {/*
+              Toaster must live inside AppShell (a client-boundary component) because
+              sonner requires a client rendering context. Placing it here ensures the
+              toast container is mounted for every authenticated route while remaining
+              inside the client boundary. RSC + sonner is incompatible at the layout
+              level, so this is the correct seam (per plan § 8 risk row).
+            */}
+            <Toaster />
           </AppShell>
         </Providers>
       </body>
