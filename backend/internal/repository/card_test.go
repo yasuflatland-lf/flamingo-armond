@@ -447,7 +447,11 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 		require.Len(t, got, 5)
 	})
 
-	t.Run("empty string search returns all cards", func(t *testing.T) {
+	// Defensive: the usecase normalizes empty/whitespace-only strings to nil
+	// before reaching the repository, so this path is not a real-world caller.
+	// The test is kept to verify the repository itself remains correct if ever
+	// called directly (e.g. from tests or future non-GraphQL callers).
+	t.Run("empty string search returns all cards (defensive)", func(t *testing.T) {
 		t.Parallel()
 		got, total, err := repo.FindPageByCardgroup(
 			ctx, cg.ID, nil, nil, 10, 0, repository.CardOrderByID, repository.SortAsc, strPtr(""),

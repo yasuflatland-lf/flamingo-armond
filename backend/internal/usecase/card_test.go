@@ -780,9 +780,12 @@ func TestCardUsecase_Create_DuplicateLookupRace_RowVanished(t *testing.T) {
 func strPtr(s string) *string { return &s }
 
 // TestCardUsecase_ListCardsByCardgroupConnection_SearchPassthrough verifies that
-// the Search field in CardConnectionInput is passed through unchanged to the
-// repository's FindPageByCardgroup call. The usecase must not alter, clear, or
-// default the search value.
+// the usecase normalizes the Search field before forwarding to the repository:
+//   - nil stays nil (no filter)
+//   - a non-empty, non-whitespace string is passed trimmed
+//   - empty string is normalized to nil (no filter)
+//   - whitespace-only string is normalized to nil (no filter)
+//   - a string with leading/trailing spaces is trimmed before forwarding
 func TestCardUsecase_ListCardsByCardgroupConnection_SearchPassthrough(t *testing.T) {
 	t.Parallel()
 
@@ -797,14 +800,24 @@ func TestCardUsecase_ListCardsByCardgroupConnection_SearchPassthrough(t *testing
 			wantSearch:  nil,
 		},
 		{
-			name:        "non-nil search string is forwarded unchanged",
+			name:        "non-empty search string is forwarded unchanged",
 			searchInput: strPtr("apple"),
 			wantSearch:  strPtr("apple"),
 		},
 		{
-			name:        "empty string search is forwarded as empty string",
+			name:        "empty string is normalized to nil",
 			searchInput: strPtr(""),
-			wantSearch:  strPtr(""),
+			wantSearch:  nil,
+		},
+		{
+			name:        "whitespace-only string is normalized to nil",
+			searchInput: strPtr("   "),
+			wantSearch:  nil,
+		},
+		{
+			name:        "leading and trailing spaces are trimmed",
+			searchInput: strPtr("  apple  "),
+			wantSearch:  strPtr("apple"),
 		},
 	}
 
