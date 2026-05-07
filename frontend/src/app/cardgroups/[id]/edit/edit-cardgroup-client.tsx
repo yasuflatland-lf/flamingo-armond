@@ -4,7 +4,11 @@ import { useMutation } from "@apollo/client/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { DeleteCardgroupMutation, UpdateCardgroupMutation } from "@/app/cardgroups/queries";
+import {
+  CARDGROUPS_DEFAULT_VARS,
+  DeleteCardgroupMutation,
+  UpdateCardgroupMutation,
+} from "@/app/cardgroups/queries";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
 import {
   AlertDialog,
@@ -18,6 +22,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { MyCardgroupsConnectionDocument, MyCardgroupsDocument } from "@/generated/graphql";
 
 type Props = {
   cardgroup: { id: string; name: string };
@@ -45,14 +50,46 @@ export function EditCardgroupClient({ cardgroup }: Props) {
     });
 
     if (result?.data?.updateCardgroup?.cardgroup) {
-      router.push(`/cardgroups/${cardgroup.id}`);
+      router.push("/cardgroups");
     }
   }
 
   async function handleDelete() {
     const result = await deleteCardgroup({
       variables: { id: cardgroup.id },
-      update(cache) {
+      update(cache, { data }) {
+        if (!data?.deleteCardgroup) return;
+
+        const existingConnection = cache.readQuery({
+          query: MyCardgroupsConnectionDocument,
+          variables: CARDGROUPS_DEFAULT_VARS,
+        });
+        if (existingConnection) {
+          cache.writeQuery({
+            query: MyCardgroupsConnectionDocument,
+            variables: CARDGROUPS_DEFAULT_VARS,
+            data: {
+              myCardgroupsConnection: {
+                ...existingConnection.myCardgroupsConnection,
+                edges: existingConnection.myCardgroupsConnection.edges.filter(
+                  (edge) => edge.node.id !== cardgroup.id,
+                ),
+                totalCount: Math.max(0, existingConnection.myCardgroupsConnection.totalCount - 1),
+              },
+            },
+          });
+        }
+
+        const existingFlat = cache.readQuery({ query: MyCardgroupsDocument });
+        if (existingFlat) {
+          cache.writeQuery({
+            query: MyCardgroupsDocument,
+            data: {
+              myCardgroups: existingFlat.myCardgroups.filter((cg) => cg.id !== cardgroup.id),
+            },
+          });
+        }
+
         cache.evict({
           id: cache.identify({ __typename: "Cardgroup", id: cardgroup.id }),
         });
@@ -104,10 +141,7 @@ export function EditCardgroupClient({ cardgroup }: Props) {
   return (
     <main className="p-8">
       <div className="mb-6 flex items-center gap-4">
-        <Link
-          href={`/cardgroups/${cardgroup.id}`}
-          className="text-sm text-muted-foreground hover:underline"
-        >
+        <Link href="/cardgroups" className="text-sm text-muted-foreground hover:underline">
           &larr; Back
         </Link>
         <h1 className="text-2xl font-semibold">Edit cardgroup</h1>

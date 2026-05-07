@@ -302,7 +302,7 @@ export function CardsClient({
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button
-                  variant="destructive"
+                  variant="outline"
                   size="sm"
                   disabled={bulkDeleting}
                   data-testid="cards-bulk-delete-button"
@@ -378,7 +378,7 @@ export function CardsClient({
                     </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="destructive" size="icon" aria-label="Delete card">
+                        <Button variant="outline" size="icon" aria-label="Delete card">
                           <Trash2 aria-hidden="true" className="h-4 w-4" />
                         </Button>
                       </AlertDialogTrigger>
