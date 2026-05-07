@@ -1,7 +1,5 @@
-import { Pencil } from "lucide-react";
 import Link from "next/link";
 import { DeleteCardgroupButton } from "@/components/cardgroups/delete-cardgroup-button";
-import { Button } from "@/components/ui/button";
 import { formatMediumDate } from "@/lib/format";
 
 export type CardgroupListItemProps = {
@@ -17,11 +15,6 @@ export function CardgroupListItem({ id, name, updatedAt }: CardgroupListItemProp
         <span className="truncate font-medium text-foreground">{name}</span>
         <span className="text-sm text-muted-foreground">Updated {formatMediumDate(updatedAt)}</span>
       </Link>
-      <Button asChild variant="outline" size="icon" aria-label={`Manage cardgroup ${name}`}>
-        <Link href={`/cardgroups/${id}/edit`}>
-          <Pencil className="h-4 w-4" />
-        </Link>
-      </Button>
       <DeleteCardgroupButton id={id} name={name} />
     </li>
   );

@@ -29,14 +29,6 @@ describe("<CardgroupListItem>", () => {
     expect(link).toHaveAttribute("href", "/cardgroups/cg-1/edit");
   });
 
-  it("renders a manage icon link to /cardgroups/[id]/edit as a sibling of the name link", () => {
-    renderItem({ id: "cg-1", name: "My Flashcards", updatedAt: fixedDate });
-    const nameLink = screen.getByRole("link", { name: /^My Flashcards/i });
-    const manageLink = screen.getByRole("link", { name: /manage cardgroup my flashcards/i });
-    expect(manageLink).toHaveAttribute("href", "/cardgroups/cg-1/edit");
-    expect(nameLink.contains(manageLink)).toBe(false);
-  });
-
   it("renders formatted date text", () => {
     renderItem({ id: "cg-1", name: "My Flashcards", updatedAt: fixedDate });
     // Intl.DateTimeFormat en-US medium: "Jun 15, 2024"
