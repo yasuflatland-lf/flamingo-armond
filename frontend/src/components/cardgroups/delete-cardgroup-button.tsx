@@ -93,7 +93,7 @@ export function DeleteCardgroupButton({ id, name }: Props) {
       <AlertDialogTrigger asChild>
         <Button
           type="button"
-          variant="destructive"
+          variant="outline"
           size="icon"
           aria-label={`Delete cardgroup ${name}`}
         >
