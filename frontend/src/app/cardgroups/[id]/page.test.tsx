@@ -173,6 +173,26 @@ describe("CardgroupDetailPage", () => {
     expect(addCardLink).toHaveAttribute("href", "/cardgroups/cg-1/cards");
   });
 
+  it("hides the empty-state Add card button on mobile (Tailwind hidden md:inline-flex)", async () => {
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(
+      makeSupabaseMock({ id: "user-1" }) as never,
+    );
+
+    vi.mocked(gqlFetch)
+      .mockResolvedValueOnce({
+        cardgroup: { id: "cg-1", name: "Empty Deck", updatedAt: FIXED_DATE },
+      } as never)
+      .mockResolvedValueOnce({ cardsByCardgroup: [] } as never);
+
+    const jsx = await CardgroupDetailPage({ params: makeParams("cg-1") });
+    render(jsx);
+
+    // The Button uses asChild so the className lands on the <a> rendered by next/link.
+    const addCardLink = screen.getByRole("link", { name: /add card/i });
+    expect(addCardLink.className).toContain("hidden");
+    expect(addCardLink.className).toContain("md:inline-flex");
+  });
+
   it("truncates card front text longer than 80 characters", async () => {
     vi.mocked(createSupabaseServerClient).mockResolvedValue(
       makeSupabaseMock({ id: "user-1" }) as never,
