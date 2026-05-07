@@ -58,6 +58,10 @@ export function LearnClient({
   lastViewedCardgroupId,
 }: Props) {
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
+  const queueRef = useRef(queue);
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
   const [completed, setCompleted] = useState(0);
   const [swipeDirection, setSwipeDirection] = useState<SwipeDirection | null>(null);
   const [swipeProgress, setSwipeProgress] = useState(0);
@@ -127,7 +131,9 @@ export function LearnClient({
       setQueue((current) => current.filter((candidate) => candidate.id !== card.id));
       setCompleted((current) => current + 1);
 
-      const remaining = queue.filter((candidate) => candidate.id !== card.id).map(withTypename);
+      const remaining = queueRef.current
+        .filter((candidate) => candidate.id !== card.id)
+        .map(withTypename);
 
       const result = await handleSwipe({
         variables: { input: { cardId: card.id, cardgroupId, mode } },
@@ -163,7 +169,7 @@ export function LearnClient({
         });
       }
     },
-    [cardgroupId, handleSwipe, queue],
+    [cardgroupId, handleSwipe],
   );
 
   return (
