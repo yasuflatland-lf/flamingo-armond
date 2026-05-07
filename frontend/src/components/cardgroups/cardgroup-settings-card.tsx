@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation } from "@apollo/client/react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
@@ -23,12 +22,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { MyCardgroupsConnectionDocument, MyCardgroupsDocument } from "@/generated/graphql";
+import { getBackendErrorBanner } from "@/lib/apollo/errors";
 
 type Props = {
   cardgroup: { id: string; name: string };
 };
 
-export function EditCardgroupClient({ cardgroup }: Props) {
+export function CardgroupSettingsCard({ cardgroup }: Props) {
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -39,18 +39,20 @@ export function EditCardgroupClient({ cardgroup }: Props) {
     useMutation(DeleteCardgroupMutation);
 
   const mutating = updating || deleting;
-  const activeError = deleteError ?? updateError;
+  const deleteBannerError = getBackendErrorBanner(deleteError);
 
   async function handleSave(values: { name: string }) {
     const result = await updateCardgroup({
       variables: { id: cardgroup.id, input: { name: values.name } },
     }).catch((err) => {
-      console.error("[EditCardgroupClient] update rejection", err);
+      console.error("[CardgroupSettingsCard] update rejection", err);
       return null;
     });
 
     if (result?.data?.updateCardgroup?.cardgroup) {
-      router.push("/cardgroups");
+      // Stay on the management screen — refresh the RSC tree so the page header
+      // (h1 with the cardgroup name) reflects the new value on the next paint.
+      router.refresh();
     }
   }
 
@@ -96,7 +98,7 @@ export function EditCardgroupClient({ cardgroup }: Props) {
         cache.gc();
       },
     }).catch((err) => {
-      console.error("[EditCardgroupClient] delete rejection", err);
+      console.error("[CardgroupSettingsCard] delete rejection", err);
       return null;
     });
 
@@ -107,53 +109,72 @@ export function EditCardgroupClient({ cardgroup }: Props) {
     }
   }
 
-  const deleteButton = (
-    <AlertDialog open={dialogOpen} onOpenChange={setDialogOpen}>
-      <AlertDialogTrigger asChild>
-        <Button type="button" variant="destructive" disabled={mutating}>
-          Delete
-        </Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete cardgroup</AlertDialogTitle>
-          <AlertDialogDescription>
-            {`This will permanently delete "${cardgroup.name}" and all its cards. This cannot be undone.`}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={mutating}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            className="bg-destructive text-destructive-foreground"
-            disabled={mutating}
-            onClick={(e) => {
-              e.preventDefault();
-              void handleDelete();
-            }}
-          >
-            Delete
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  );
-
   return (
-    <main className="p-8">
-      <div className="mb-6 flex items-center gap-4">
-        <Link href="/cardgroups" className="text-sm text-muted-foreground hover:underline">
-          &larr; Back
-        </Link>
-        <h1 className="text-2xl font-semibold">Edit cardgroup</h1>
-      </div>
-      <CardgroupForm
-        mode="edit"
-        defaultValues={{ name: cardgroup.name }}
-        submit={handleSave}
-        submitting={mutating}
-        error={activeError}
-        secondarySlot={deleteButton}
-      />
-    </main>
+    <div className="space-y-6">
+      <section className="rounded-lg border border-border bg-card p-6">
+        <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-muted-foreground">
+          Settings
+        </h2>
+        <CardgroupForm
+          mode="edit"
+          defaultValues={{ name: cardgroup.name }}
+          submit={handleSave}
+          submitting={mutating}
+          error={updateError}
+        />
+      </section>
+
+      <section
+        aria-labelledby="danger-zone-heading"
+        className="rounded-lg border border-destructive/40 bg-destructive/5 p-6"
+      >
+        <h2
+          id="danger-zone-heading"
+          className="mb-2 text-sm font-medium uppercase tracking-wide text-destructive"
+        >
+          Danger zone
+        </h2>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Deleting this cardgroup permanently removes it and all of its cards. This cannot be
+          undone.
+        </p>
+        <AlertDialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <AlertDialogTrigger asChild>
+            <Button type="button" variant="destructive" disabled={mutating}>
+              Delete cardgroup
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete cardgroup</AlertDialogTitle>
+              <AlertDialogDescription>
+                {`This will permanently delete "${cardgroup.name}" and all its cards. This cannot be undone.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {deleteBannerError && (
+              <div
+                className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+                role="alert"
+              >
+                {deleteBannerError}
+              </div>
+            )}
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={mutating}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground"
+                disabled={mutating}
+                onClick={(e) => {
+                  e.preventDefault();
+                  void handleDelete();
+                }}
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </section>
+    </div>
   );
 }

@@ -22,19 +22,19 @@ describe("<CardgroupListItem>", () => {
     expect(screen.getByText("My Flashcards")).toBeInTheDocument();
   });
 
-  it("renders a link to /cardgroups/[id]", () => {
+  it("renders a link to /cardgroups/[id]/edit (canonical management screen)", () => {
     renderItem({ id: "cg-1", name: "My Flashcards", updatedAt: fixedDate });
     // Accessible name starts with the card name; edit link starts with "Edit cardgroup".
     const link = screen.getByRole("link", { name: /^My Flashcards/i });
-    expect(link).toHaveAttribute("href", "/cardgroups/cg-1");
+    expect(link).toHaveAttribute("href", "/cardgroups/cg-1/edit");
   });
 
-  it("renders an edit icon link to /cardgroups/[id]/edit as a sibling of the name link", () => {
+  it("renders a manage icon link to /cardgroups/[id]/edit as a sibling of the name link", () => {
     renderItem({ id: "cg-1", name: "My Flashcards", updatedAt: fixedDate });
     const nameLink = screen.getByRole("link", { name: /^My Flashcards/i });
-    const editLink = screen.getByRole("link", { name: /edit cardgroup my flashcards/i });
-    expect(editLink).toHaveAttribute("href", "/cardgroups/cg-1/edit");
-    expect(nameLink.contains(editLink)).toBe(false);
+    const manageLink = screen.getByRole("link", { name: /manage cardgroup my flashcards/i });
+    expect(manageLink).toHaveAttribute("href", "/cardgroups/cg-1/edit");
+    expect(nameLink.contains(manageLink)).toBe(false);
   });
 
   it("renders formatted date text", () => {

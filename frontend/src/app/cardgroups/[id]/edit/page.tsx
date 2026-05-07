@@ -1,9 +1,17 @@
 import { redirect } from "next/navigation";
+import {
+  CARDS_PAGE_SIZE,
+  CardsByCardgroupConnectionQuery,
+} from "@/app/cardgroups/[id]/cards/queries";
 import { CardgroupQuery } from "@/app/cardgroups/queries";
+import type {
+  CardgroupQuery as CardgroupQueryType,
+  CardsByCardgroupConnectionQuery as CardsByCardgroupConnectionQueryType,
+} from "@/generated/graphql";
+import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
-import { redirectIfUnauthenticated } from "@/lib/apollo/server-redirect";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { EditCardgroupClient } from "./edit-cardgroup-client";
+import { CardgroupManagementClient } from "./cardgroup-management-client";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -25,15 +33,45 @@ export default async function EditCardgroupPage({ params }: Props) {
   }
   if (!user) redirect("/login");
 
-  let data: { cardgroup?: { id: string; name: string; updatedAt: unknown } | null };
+  let cardgroupData: CardgroupQueryType | null = null;
+  let connectionData: CardsByCardgroupConnectionQueryType | null = null;
+
   try {
-    data = await gqlFetch(CardgroupQuery, { variables: { id }, revalidate: 0 });
+    [cardgroupData, connectionData] = await Promise.all([
+      gqlFetch(CardgroupQuery, { variables: { id }, revalidate: 0 }),
+      gqlFetch(CardsByCardgroupConnectionQuery, {
+        variables: { cardgroupId: id, first: CARDS_PAGE_SIZE },
+        revalidate: 0,
+      }),
+    ]);
   } catch (err) {
-    redirectIfUnauthenticated(err, "/cardgroups");
+    if (isUnauthenticatedGraphQLError(err)) redirect("/cardgroups");
+    console.error(
+      "[cardgroups/:id/edit] gqlFetch failed:",
+      err instanceof Error ? err.name : "unknown",
+      err instanceof Error ? err.message : String(err),
+    );
+    throw err;
   }
 
-  const cg = data.cardgroup;
-  if (!cg) redirect("/cardgroups");
+  if (!cardgroupData?.cardgroup) redirect("/cardgroups");
 
-  return <EditCardgroupClient cardgroup={{ id: cg.id, name: cg.name }} />;
+  const cardgroup = cardgroupData.cardgroup;
+  const initialEdges = connectionData?.cardsByCardgroupConnection.edges ?? [];
+  const initialPageInfo = connectionData?.cardsByCardgroupConnection.pageInfo ?? {
+    hasNextPage: false,
+    hasPreviousPage: false,
+    startCursor: null,
+    endCursor: null,
+  };
+  const initialTotalCount = connectionData?.cardsByCardgroupConnection.totalCount ?? 0;
+
+  return (
+    <CardgroupManagementClient
+      cardgroup={{ id: cardgroup.id, name: cardgroup.name }}
+      initialEdges={initialEdges}
+      initialPageInfo={initialPageInfo}
+      initialTotalCount={initialTotalCount}
+    />
+  );
 }

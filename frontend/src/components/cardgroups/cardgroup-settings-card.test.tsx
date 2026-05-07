@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DeleteCardgroupDocument, UpdateCardgroupDocument } from "@/generated/graphql";
-import { EditCardgroupClient } from "./edit-cardgroup-client";
+import { CardgroupSettingsCard } from "./cardgroup-settings-card";
 
 const mockPush = vi.fn();
 const mockRefresh = vi.fn();
@@ -31,22 +31,28 @@ function makeDeleteMock(
   return { request: { query: DeleteCardgroupDocument, variables }, result };
 }
 
-function renderClient(mocks: MockedResponse[] = [], errorPolicy?: "all" | "none" | "ignore") {
+function renderCard(mocks: MockedResponse[] = [], errorPolicy?: "all" | "none" | "ignore") {
   const defaultOptions = errorPolicy ? { mutate: { errorPolicy } } : undefined;
   render(
     <MockedProvider mocks={mocks} defaultOptions={defaultOptions}>
-      <EditCardgroupClient cardgroup={CARDGROUP} />
+      <CardgroupSettingsCard cardgroup={CARDGROUP} />
     </MockedProvider>,
   );
 }
 
-describe("<EditCardgroupClient>", () => {
+describe("<CardgroupSettingsCard>", () => {
   beforeEach(() => {
     mockPush.mockClear();
     mockRefresh.mockClear();
   });
 
-  it("edit success navigates to /cardgroups", async () => {
+  it("renders Settings and Danger zone sections", () => {
+    renderCard();
+    expect(screen.getByRole("heading", { level: 2, name: /^settings$/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: /danger zone/i })).toBeInTheDocument();
+  });
+
+  it("edit success refreshes the route and stays on the management screen", async () => {
     const user = userEvent.setup();
     const mocks = [
       makeUpdateMock(
@@ -66,13 +72,14 @@ describe("<EditCardgroupClient>", () => {
         },
       ),
     ];
-    renderClient(mocks);
+    renderCard(mocks);
 
-    await user.click(screen.getByRole("button", { name: /save/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/cardgroups");
+      expect(mockRefresh).toHaveBeenCalledTimes(1);
     });
+    expect(mockPush).not.toHaveBeenCalled();
   });
 
   it("edit BAD_USER_INPUT field=name shows inline error", async () => {
@@ -89,25 +96,27 @@ describe("<EditCardgroupClient>", () => {
         },
       ),
     ];
-    renderClient(mocks, "all");
+    renderCard(mocks, "all");
 
-    await user.click(screen.getByRole("button", { name: /save/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
       expect(screen.getByText("name already exists")).toBeInTheDocument();
     });
-    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockRefresh).not.toHaveBeenCalled();
   });
 
-  it("delete dialog opens when Delete button is clicked", async () => {
+  it("delete dialog opens when Delete cardgroup button is clicked", async () => {
     const user = userEvent.setup();
-    renderClient();
+    renderCard();
 
-    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+    await user.click(screen.getByRole("button", { name: /delete cardgroup/i }));
 
     await waitFor(() => {
       expect(screen.getByRole("alertdialog")).toBeInTheDocument();
-      expect(screen.getByText("Delete cardgroup")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { level: 2, name: /^delete cardgroup$/i }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -123,9 +132,9 @@ describe("<EditCardgroupClient>", () => {
         },
       },
     ];
-    renderClient(mocks);
+    renderCard(mocks);
 
-    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+    await user.click(screen.getByRole("button", { name: /delete cardgroup/i }));
     await waitFor(() => {
       expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     });
@@ -150,9 +159,9 @@ describe("<EditCardgroupClient>", () => {
         },
       },
     ];
-    renderClient(mocks);
+    renderCard(mocks);
 
-    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+    await user.click(screen.getByRole("button", { name: /delete cardgroup/i }));
     await waitFor(() => {
       expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     });
@@ -175,6 +184,10 @@ describe("<EditCardgroupClient>", () => {
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith("/cardgroups");
     });
+    // router.refresh() invalidates the RSC cache so the cardgroups index reflects
+    // the deletion on the next paint. Assert it directly so a future regression
+    // that drops it (and silently breaks list freshness) fails CI.
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
 
   it("delete UNAUTHENTICATED shows banner error and dialog stays open", async () => {
@@ -191,9 +204,9 @@ describe("<EditCardgroupClient>", () => {
         },
       ),
     ];
-    renderClient(mocks, "all");
+    renderCard(mocks, "all");
 
-    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+    await user.click(screen.getByRole("button", { name: /delete cardgroup/i }));
     await waitFor(() => {
       expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     });
@@ -212,7 +225,7 @@ describe("<EditCardgroupClient>", () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
-  it("update network rejection shows error banner and does not navigate", async () => {
+  it("update network rejection shows error banner and does not refresh", async () => {
     const user = userEvent.setup();
     const mocks: MockedResponse[] = [
       {
@@ -223,14 +236,14 @@ describe("<EditCardgroupClient>", () => {
         error: new Error("Network error: failed to fetch"),
       },
     ];
-    renderClient(mocks);
+    renderCard(mocks);
 
-    await user.click(screen.getByRole("button", { name: /save/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
       expect(screen.getByText("Could not reach the server. Please try again.")).toBeInTheDocument();
     });
-    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockRefresh).not.toHaveBeenCalled();
   });
 
   it("delete network rejection shows error banner, dialog stays open, and does not navigate", async () => {
@@ -241,9 +254,9 @@ describe("<EditCardgroupClient>", () => {
         error: new Error("Network error: failed to fetch"),
       },
     ];
-    renderClient(mocks);
+    renderCard(mocks);
 
-    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+    await user.click(screen.getByRole("button", { name: /delete cardgroup/i }));
     await waitFor(() => {
       expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     });

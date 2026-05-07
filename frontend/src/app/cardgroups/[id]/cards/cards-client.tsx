@@ -3,6 +3,7 @@
 import { NetworkStatus } from "@apollo/client";
 import { useMutation, useQuery } from "@apollo/client/react";
 import { Pencil, Trash2, X } from "lucide-react";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   DeleteCardMutation,
@@ -30,14 +31,21 @@ import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { CARDS_PAGE_SIZE } from "./queries";
 
 type Connection = CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"];
-type Edge = Connection["edges"][number];
-type PageInfo = Connection["pageInfo"];
+export type CardEdge = Connection["edges"][number];
+export type CardConnectionPageInfo = Connection["pageInfo"];
 
 type Props = {
   cardgroupId: string;
-  initialEdges: Edge[];
-  initialPageInfo: PageInfo;
+  initialEdges: CardEdge[];
+  initialPageInfo: CardConnectionPageInfo;
   initialTotalCount: number;
+  /**
+   * Optional section header. When `undefined`, the default `<h2>Cards (n)</h2>`
+   * is rendered. Pass a `ReactNode` to replace the header, `null` to suppress
+   * it entirely, or a render function to access the live `totalCount` from
+   * Apollo cache without spinning up a second `useQuery` in the parent.
+   */
+  sectionHeader?: ReactNode | ((args: { totalCount: number }) => ReactNode);
 };
 
 export function CardsClient({
@@ -45,6 +53,7 @@ export function CardsClient({
   initialEdges,
   initialPageInfo,
   initialTotalCount,
+  sectionHeader,
 }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
@@ -289,9 +298,15 @@ export function CardsClient({
       )}
 
       <section>
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
-          Cards ({totalCount})
-        </h2>
+        {sectionHeader === undefined ? (
+          <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
+            Cards ({totalCount})
+          </h2>
+        ) : typeof sectionHeader === "function" ? (
+          sectionHeader({ totalCount })
+        ) : (
+          sectionHeader
+        )}
 
         {selectedIds.size > 0 && (
           <div
