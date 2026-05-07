@@ -24,8 +24,17 @@ describe("<CardgroupListItem>", () => {
 
   it("renders a link to /cardgroups/[id]", () => {
     renderItem({ id: "cg-1", name: "My Flashcards", updatedAt: fixedDate });
-    const link = screen.getByRole("link");
+    // Accessible name starts with the card name; edit link starts with "Edit cardgroup".
+    const link = screen.getByRole("link", { name: /^My Flashcards/i });
     expect(link).toHaveAttribute("href", "/cardgroups/cg-1");
+  });
+
+  it("renders an edit icon link to /cardgroups/[id]/edit as a sibling of the name link", () => {
+    renderItem({ id: "cg-1", name: "My Flashcards", updatedAt: fixedDate });
+    const nameLink = screen.getByRole("link", { name: /^My Flashcards/i });
+    const editLink = screen.getByRole("link", { name: /edit cardgroup my flashcards/i });
+    expect(editLink).toHaveAttribute("href", "/cardgroups/cg-1/edit");
+    expect(nameLink.contains(editLink)).toBe(false);
   });
 
   it("renders formatted date text", () => {
@@ -35,11 +44,11 @@ describe("<CardgroupListItem>", () => {
     expect(screen.getByText(/Jun 15, 2024/)).toBeInTheDocument();
   });
 
-  it("renders a Delete button as a sibling of the link (not nested inside it)", () => {
+  it("renders a Delete button as a sibling of the name link (not nested inside it)", () => {
     renderItem({ id: "cg-1", name: "My Flashcards", updatedAt: fixedDate });
-    const link = screen.getByRole("link");
+    const nameLink = screen.getByRole("link", { name: /^My Flashcards/i });
     const deleteBtn = screen.getByRole("button", { name: /delete cardgroup my flashcards/i });
     expect(deleteBtn).toBeInTheDocument();
-    expect(link.contains(deleteBtn)).toBe(false);
+    expect(nameLink.contains(deleteBtn)).toBe(false);
   });
 });
