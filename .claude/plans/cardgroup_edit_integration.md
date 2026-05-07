@@ -298,17 +298,47 @@ shadcn の `dropdown-menu.tsx` は未インストールなので追加が必要�
 - 実工数: 1 日 (見積 1 日)
 - 備考: `cardsByCardgroupConnection` に `search: String` 引数を追加。`escapeLike` を repository で実装し、`%` `_` `\` のエスケープを完遂。cross-tenant test で非漏洩を保証。
 
-### Task 4: (未着手)
+### Task 4: フロント検索 UI + Apollo cache key 整合
+- 着手日 / 完了日: 2026-05-08 / 2026-05-08
+- PR: wave-2-a (local commit 4855835)
+- 実工数: 1 日 (見積 1 日)
+- 備考: `cards-client.tsx` に `searchInput` / `searchQuery` state と 300ms debounce を追加。`searchQuery` 変更時に fetchMore guard と fetchMoreError をリセット。`CARDS_DEFAULT_VARS` を `queries.ts` で export し 3 箇所で統一。
+
 ### Task 5a: sonner 導入 + undo-delete ヘルパ (インフラストラクチャ段階)
 - 着手日 / 完了日: 2026-05-08 / 2026-05-08
 - PR: wave-1-commits (local commit db197be)
 - 実工数: 1 日 (見積 1 日)
-- 備考: `sonner` 依存追加、`components/ui/sonner.tsx` 新規、`lib/undo-delete.ts` 新規（5 秒タイマー方式）。`app/layout.tsx` に Toaster を統合。Wave 2 で `cards-client.tsx` 統合待ち。
+- 備考: `sonner` 依存追加、`components/ui/sonner.tsx` 新規、`lib/undo-delete.ts` 新規（5 秒タイマー方式）。`app/layout.tsx` に Toaster を統合。
 
-### Task 5b: (未着手 — Wave 2)
-### Task 6: (未着手)
-### Task 7: (未着手)
-### Task 8: (未着手)
+### Task 5b: cards-client.tsx への undo-delete 統合
+- 着手日 / 完了日: 2026-05-08 / 2026-05-08
+- PR: wave-2-a (local commit 4855835)
+- 実工数: 1 日 (見積 1 日)
+- 備考: Task 5a の infrastructure を使い、個別削除を `scheduleDelete` に切り替え。AlertDialog (個別) 廃止、Snackbar (Undo) 導入。Bulk delete は AlertDialog 据え置き。
+
+### Task 6: Edit ボタン廃止 / 行クリックで inline 編集
+- 着手日 / 完了日: 2026-05-08 / 2026-05-08
+- PR: wave-2-a (local commit 4855835)
+- 実工数: 1 日 (見積 1 日)
+- 備考: `cards-client.tsx` の行コンポーネントに `onClick={() => setEditingId(card.id)}` を追加。checkbox / Delete アイコンに `e.stopPropagation()` を配置。Edit ボタンと個別削除 AlertDialog を廃止。
+
+### Task 7: Empty state の 3 パターン整備
+- 着手日 / 完了日: 2026-05-08 / 2026-05-08
+- PR: wave-2-a (local commit 4855835)
+- 実工数: 1 日 (見積 1 日)
+- 備考: `cards-client.tsx` の empty state ロジックを拡張。`searchQuery` の有無で "Add cards..." vs "No cards match..." を分岐。Clear search button 実装。
+
+### Task 8a: SwipeableRow コンポーネント (モバイル swipe-to-delete, reduce-motion)
+- 着手日 / 完了日: 2026-05-08 / 2026-05-08
+- PR: wave-2-b (local commit ee9c2c7)
+- 実工数: 1 日 (見積 1 日)
+- 備考: `use-reduced-motion.ts` フック新規作成。`swipeable-row.tsx` + `swipeable-row.test.tsx` 新規。@use-gesture/react + @react-spring/web で左 swipe 実装。Task 8b (cards-client 統合) は Wave 3。
+
+### Task 8b: SwipeableRow を cards-client.tsx に統合
+- 着手日 / 完了日: 2026-05-08 / 2026-05-08
+- PR: wave-3 (commit on feature/cardgroup_edit_cards_integration)
+- 実工数: 1 日 (見積 1 日)
+- 備考: `cards-client.tsx` の各非編集行を `<SwipeableRow>` でラップ。`rowRefs` Map で per-row RefObject を管理し、別行タップ時に `closeOtherRows()` を呼ぶ。選択モード (`selectedIds.size > 0`) および編集中 (`editingId === card.id`) の行は `disabled={true}`。`window.matchMedia` スタブを `jest-dom.ts` setup に追加し全 jsdom テストで安全なデフォルトを確保。`cards-client.test.tsx` に 4 テスト追加 (SwipeableRow レンダリング / 選択モード disable / 編集モード disable / closeOtherRows 配線)。8a: commit ee9c2c7、8b: 本コミット。
 
 ## 10. 参考
 
