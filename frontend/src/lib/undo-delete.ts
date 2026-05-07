@@ -71,9 +71,8 @@ export interface ScheduleDeleteHandle {
 export function scheduleDelete(opts: ScheduleDeleteOptions): ScheduleDeleteHandle {
   const { id, label, optimisticRollback, commitDelete, onCommitFailed } = opts;
 
-  // Guard: id must be a non-empty string. Two callers colliding on "" would
-  // silently cancel each other's timers. This is a programming error.
-  if (!opts.id) {
+  // Empty id would let two callers silently cancel each other's timers.
+  if (!id) {
     throw new Error("undo-delete: id must be a non-empty string");
   }
 

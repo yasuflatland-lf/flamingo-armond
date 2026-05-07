@@ -426,7 +426,7 @@ export function CardsClient({
   }
 
   const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
-  const hasActiveSearch = searchQuery !== null && searchQuery !== "";
+  const hasActiveSearch = searchQuery !== null;
 
   const addCardHref = `/cards/new?cardgroup=${encodeURIComponent(
     cardgroupId,

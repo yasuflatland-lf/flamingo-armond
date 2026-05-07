@@ -206,10 +206,8 @@ func (r *cardRepo) FindPageByCardgroup(
 	// Base query scoped to the cardgroup.
 	base := r.db.WithContext(ctx).Model(&gormCard{}).Where("cardgroup_id = ?", cardgroupID)
 
-	// Apply the search filter when search is non-nil. The usecase layer
-	// guarantees that a non-nil pointer holds a non-empty, trimmed string
-	// (whitespace-only inputs are normalized to nil before reaching here).
-	// escapeLike prevents LIKE metacharacter injection.
+	// Non-nil search is guaranteed by the usecase to be non-empty and trimmed.
+	// escapeLike guards against LIKE metacharacter injection.
 	if search != nil {
 		pattern := "%" + escapeLike(*search) + "%"
 		base = base.Where("(front ILIKE ? OR back ILIKE ?)", pattern, pattern)

@@ -87,8 +87,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               Toaster must live inside AppShell (a client-boundary component) because
               sonner requires a client rendering context. Placing it here ensures the
               toast container is mounted for every authenticated route while remaining
-              inside the client boundary. RSC + sonner is incompatible at the layout
-              level, so this is the correct seam (per plan § 8 risk row).
+              inside the client boundary. RSC + sonner is incompatible at the layout level.
             */}
             <Toaster />
           </AppShell>

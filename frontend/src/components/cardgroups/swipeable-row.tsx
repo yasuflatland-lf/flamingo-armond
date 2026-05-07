@@ -74,8 +74,6 @@ export const SwipeableRow = forwardRef<SwipeableRowHandle, SwipeableRowProps>(fu
 ) {
   const reducedMotion = useReducedMotion();
 
-  // When reduced-motion is requested, render children without any swipe layer.
-  // The parent's hover Delete icon serves as the delete affordance.
   if (reducedMotion) {
     return <>{children}</>;
   }
@@ -92,11 +90,8 @@ export const SwipeableRow = forwardRef<SwipeableRowHandle, SwipeableRowProps>(fu
 // ---------------------------------------------------------------------------
 
 const SwipeableRowInner = forwardRef<SwipeableRowHandle, SwipeableRowProps>(
-  function SwipeableRowInner({ children, onDelete, disabled = false, ariaLabel }, ref) {
-    /** Whether the row is currently snapped to the half-open (reveal) state. */
+  function SwipeableRowInner({ children, onDelete, disabled, ariaLabel }, ref) {
     const [isHalfOpen, setIsHalfOpen] = useState(false);
-
-    /** Ref to the outer row element, used to read its rendered width. */
     const rowRef = useRef<HTMLDivElement>(null);
 
     const [{ x }, api] = useSpring(() => ({
@@ -107,22 +102,18 @@ const SwipeableRowInner = forwardRef<SwipeableRowHandle, SwipeableRowProps>(
     const startDeleteAnimation = useCallback(
       (onComplete: () => void) => {
         const rowWidth = rowRef.current?.offsetWidth ?? 300;
-        // SpringRef.start() returns an array of Promises (one per spring key).
-        // Promise.all resolves once all keys have settled.
         Promise.all(api.start({ x: -rowWidth }))
           .then(() => {
             setIsHalfOpen(false);
             onComplete();
           })
           .catch(() => {
-            // Animation was interrupted (e.g. component unmounted); no-op.
+            // Animation interrupted (e.g. component unmounted) — no-op.
           });
       },
       [api],
     );
 
-    // Expose close() to parent list so it can close this row when another row
-    // is tapped.
     useImperativeHandle(ref, () => ({
       close() {
         setIsHalfOpen(false);
@@ -137,16 +128,12 @@ const SwipeableRowInner = forwardRef<SwipeableRowHandle, SwipeableRowProps>(
           return;
         }
 
-        // Ignore predominantly vertical movements so the user can still scroll
-        // the list. A gesture is treated as horizontal if |dx| >= |dy|.
+        // Ignore predominantly vertical movements so the user can still scroll.
+        // Treat as horizontal only when |dx| >= |dy|.
         const isHorizontal = Math.abs(mx) >= Math.abs(my);
-        if (!isHorizontal && !last) {
-          // Vertical drag in progress — do not interfere with scroll.
-          return;
-        }
+        if (!isHorizontal && !last) return;
 
-        // Clamp to leftward movement only (unidirectional).
-        const clampedMx = Math.min(mx, 0);
+        const clampedMx = Math.min(mx, 0); // clamp to leftward movement only
 
         const rowWidth = rowRef.current?.offsetWidth ?? 300;
         const fraction = Math.abs(clampedMx) / rowWidth;
@@ -167,7 +154,6 @@ const SwipeableRowInner = forwardRef<SwipeableRowHandle, SwipeableRowProps>(
           return;
         }
 
-        // During drag: follow the finger, clamped to leftward movement only.
         if (active) {
           api.start({ x: clampedMx, immediate: true });
         }
@@ -180,13 +166,8 @@ const SwipeableRowInner = forwardRef<SwipeableRowHandle, SwipeableRowProps>(
       },
     );
 
-    const handleDeleteButtonClick = () => {
-      startDeleteAnimation(onDelete);
-    };
-
     return (
       <div ref={rowRef} className="relative overflow-hidden" data-testid="swipeable-row-container">
-        {/* Delete action revealed behind the row */}
         <div
           className="absolute inset-y-0 right-0 flex items-center justify-center bg-destructive"
           style={{ width: ACTION_WIDTH }}
@@ -197,14 +178,13 @@ const SwipeableRowInner = forwardRef<SwipeableRowHandle, SwipeableRowProps>(
             className="flex h-full w-full items-center justify-center text-destructive-foreground"
             aria-label={ariaLabel === null ? "Delete" : ariaLabel}
             tabIndex={isHalfOpen ? 0 : -1}
-            onClick={handleDeleteButtonClick}
+            onClick={() => startDeleteAnimation(onDelete)}
             data-testid="swipe-delete-button"
           >
             <Trash2 className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
 
-        {/* Swipeable foreground row */}
         <animated.div
           {...bind()}
           style={{ x, touchAction: "pan-y" }}

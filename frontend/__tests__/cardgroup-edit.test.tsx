@@ -68,7 +68,7 @@ vi.mock("@/lib/apollo/server", () => ({
 }));
 
 import { redirect } from "next/navigation";
-import { CARDS_PAGE_SIZE } from "@/app/cardgroups/[id]/cards/queries";
+import { cardsDefaultVars } from "@/app/cardgroups/[id]/cards/queries";
 import EditCardgroupPage from "@/app/cardgroups/[id]/edit/page";
 import { gqlFetch } from "@/lib/apollo/server";
 
@@ -104,7 +104,10 @@ async function renderPage(
   const cache = new InMemoryCache();
   cache.writeQuery({
     query: CardsByCardgroupConnectionDocument,
-    variables: { cardgroupId: cgId, first: CARDS_PAGE_SIZE },
+    // Variables shape MUST match cardsDefaultVars(cgId) — cardgroupId, first,
+    // and `search: null`. Omitting `search` silently splits the cache key and
+    // the CardsClient's useQuery returns undefined (falling back to initialEdges).
+    variables: cardsDefaultVars(cgId),
     data: { cardsByCardgroupConnection: connection },
   });
 

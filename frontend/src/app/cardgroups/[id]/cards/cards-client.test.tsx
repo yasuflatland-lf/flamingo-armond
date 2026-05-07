@@ -151,16 +151,6 @@ function connection(
   };
 }
 
-function defaultPageInfo(edges: ReturnType<typeof edge>[]) {
-  return {
-    __typename: "PageInfo" as const,
-    hasNextPage: false,
-    hasPreviousPage: false,
-    startCursor: edges[0]?.cursor ?? null,
-    endCursor: edges[edges.length - 1]?.cursor ?? null,
-  };
-}
-
 // Default vars shape — must match cardsDefaultVars(CG_ID).
 const DEFAULT_VARS = { cardgroupId: CG_ID, first: PAGE_SIZE, search: null };
 
@@ -184,7 +174,7 @@ function renderClient(
     ? { mutate: { errorPolicy: "all" as const } }
     : undefined;
 
-  const initialEdges = initialCards.map(edge);
+  const initialConn = connection(initialCards);
 
   // Seed an InMemoryCache with the initial connection by default. The leak spy
   // catches any unmatched useQuery network call, so every test must either
@@ -200,7 +190,7 @@ function renderClient(
       c.writeQuery({
         query: CardsByCardgroupConnectionDocument,
         variables: DEFAULT_VARS,
-        data: { cardsByCardgroupConnection: connection(initialCards) },
+        data: { cardsByCardgroupConnection: initialConn },
       });
       return c;
     })();
@@ -209,9 +199,9 @@ function renderClient(
     <MockedProvider mocks={mocks as never} defaultOptions={defaultOptions} cache={cache}>
       <CardsClient
         cardgroupId={CG_ID}
-        initialEdges={initialEdges}
-        initialPageInfo={defaultPageInfo(initialEdges)}
-        initialTotalCount={initialEdges.length}
+        initialEdges={initialConn.edges}
+        initialPageInfo={initialConn.pageInfo}
+        initialTotalCount={initialConn.totalCount}
       />
     </MockedProvider>,
   );
@@ -522,15 +512,15 @@ describe("<CardsClient>", () => {
       data: { cardsByCardgroupConnection: connection([CARD_1, CARD_2]) },
     });
 
-    const initialEdges = [CARD_1, CARD_2].map(edge);
+    const initialConn = connection([CARD_1, CARD_2]);
 
     function Harness() {
       return (
         <CardsClient
           cardgroupId={CG_ID}
-          initialEdges={initialEdges}
-          initialPageInfo={defaultPageInfo(initialEdges)}
-          initialTotalCount={initialEdges.length}
+          initialEdges={initialConn.edges}
+          initialPageInfo={initialConn.pageInfo}
+          initialTotalCount={initialConn.totalCount}
         />
       );
     }

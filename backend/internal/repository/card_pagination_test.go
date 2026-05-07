@@ -408,18 +408,13 @@ func TestCardRepo_FindPageByCardgroup_Search_WithAfter(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), total1, "totalCount must count only matching cards")
-	// With first=3 we get all 3 back — trim to 2 to simulate the usecase's +1 trick.
 	require.Len(t, page1, 3)
-	hasNextPage1 := len(page1) > 2
-	require.True(t, hasNextPage1, "page 1 should signal hasNextPage=true")
-	// Trim to the actual page size.
+	require.True(t, len(page1) > 2, "page 1 should signal hasNextPage=true")
 	page1 = page1[:2]
 
-	// Verify page 1 contains the first two matching cards.
 	require.Equal(t, matching[0].ID, page1[0].ID)
 	require.Equal(t, matching[1].ID, page1[1].ID)
 
-	// Assert no non-matching card leaked into page 1.
 	for _, c := range page1 {
 		for _, nm := range nonMatching {
 			require.NotEqual(t, nm.ID, c.ID,
@@ -443,13 +438,10 @@ func TestCardRepo_FindPageByCardgroup_Search_WithAfter(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), total2, "totalCount must still be 3 on page 2")
-	// Only one matching card remains after the cursor.
 	require.Len(t, page2, 1, "page 2 must return exactly 1 matching card")
 	require.Equal(t, matching[2].ID, page2[0].ID)
-	hasNextPage2 := len(page2) > 2
-	require.False(t, hasNextPage2, "page 2 should signal hasNextPage=false")
+	require.False(t, len(page2) > 2, "page 2 should signal hasNextPage=false")
 
-	// Assert no non-matching card leaked into page 2.
 	for _, c := range page2 {
 		for _, nm := range nonMatching {
 			require.NotEqual(t, nm.ID, c.ID,
