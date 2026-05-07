@@ -1,7 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 
 type ErrorPageProps = {
@@ -10,23 +9,15 @@ type ErrorPageProps = {
 };
 
 export default function ProfileError({ error, reset }: ErrorPageProps) {
-  const router = useRouter();
-  const redirected = useRef(false);
-
   useEffect(() => {
+    // UNAUTHENTICATED errors are intercepted in page.tsx (RSC) and redirect
+    // to /login before this boundary is reached. Errors arriving here are
+    // non-auth failures (network, 5xx, unexpected GraphQL errors).
     console.error("[/profile error boundary]", {
       message: error.message,
       digest: error.digest,
     });
-
-    // Substring match: gqlFetch JSON-stringifies GraphQL errors, so the
-    // backend `extensions.code = "UNAUTHENTICATED"` appears literally in
-    // the message. Network/HTTP failures fall through to the generic UI.
-    if (!redirected.current && error.message.includes("UNAUTHENTICATED")) {
-      redirected.current = true;
-      router.replace("/login");
-    }
-  }, [error, router]);
+  }, [error]);
 
   return (
     <main className="p-8">
