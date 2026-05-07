@@ -46,7 +46,7 @@ describe("<EditCardgroupClient>", () => {
     mockRefresh.mockClear();
   });
 
-  it("edit success navigates to detail page", async () => {
+  it("edit success navigates to /cardgroups", async () => {
     const user = userEvent.setup();
     const mocks = [
       makeUpdateMock(
@@ -71,7 +71,7 @@ describe("<EditCardgroupClient>", () => {
     await user.click(screen.getByRole("button", { name: /save/i }));
 
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/cardgroups/cg-1");
+      expect(mockPush).toHaveBeenCalledWith("/cardgroups");
     });
   });
 
