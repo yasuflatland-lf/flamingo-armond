@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import {
-  CARDS_PAGE_SIZE,
   CardsByCardgroupConnectionQuery,
+  cardsDefaultVars,
 } from "@/app/cardgroups/[id]/cards/queries";
 import { CardgroupQuery } from "@/app/cardgroups/queries";
 import type {
@@ -40,7 +40,7 @@ export default async function EditCardgroupPage({ params }: Props) {
     [cardgroupData, connectionData] = await Promise.all([
       gqlFetch(CardgroupQuery, { variables: { id }, revalidate: 0 }),
       gqlFetch(CardsByCardgroupConnectionQuery, {
-        variables: { cardgroupId: id, first: CARDS_PAGE_SIZE },
+        variables: cardsDefaultVars(id),
         revalidate: 0,
       }),
     ]);

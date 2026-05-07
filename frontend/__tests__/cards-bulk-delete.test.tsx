@@ -5,6 +5,29 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// CardsClient reads usePathname for its pending-delete flush effect. Stub it
+// here because this test file only exercises bulk delete, not navigation.
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/cardgroups/cg-bulk-1/edit",
+}));
+// next/link → plain anchor in jsdom (the empty-state CTA renders a Link).
+vi.mock("next/link", () => ({
+  default: ({
+    href,
+    children,
+    ...rest
+  }: {
+    href: string;
+    children: React.ReactNode;
+    [key: string]: unknown;
+  }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+
 import { CardsClient } from "@/app/cardgroups/[id]/cards/cards-client";
 import { CardsByCardgroupConnectionDocument, DeleteCardsDocument } from "@/generated/graphql";
 
@@ -80,7 +103,10 @@ function renderCardsClient(cards: Card[], mocks: object[]) {
   const cache = new InMemoryCache();
   cache.writeQuery({
     query: CardsByCardgroupConnectionDocument,
-    variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+    // Variables shape MUST match cardsDefaultVars(CG_ID) — cardgroupId, first,
+    // and `search: null`. Omitting `search` silently splits the cache key and
+    // the bulk-delete update callback's readQuery returns null.
+    variables: { cardgroupId: CG_ID, first: PAGE_SIZE, search: null },
     data: { cardsByCardgroupConnection: connection },
   });
 

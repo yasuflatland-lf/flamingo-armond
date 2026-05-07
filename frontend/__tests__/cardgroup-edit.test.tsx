@@ -37,6 +37,10 @@ vi.mock("next/navigation", () => ({
     throw new Error("NOT_FOUND");
   }),
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  // CardsClient (rendered via the management screen) reads usePathname for
+  // its pending-delete flush effect. The integration test does not exercise
+  // navigation transitions, so a stable stub value is sufficient.
+  usePathname: () => "/cardgroups/cg-int-1/edit",
 }));
 
 vi.mock("next/link", () => ({

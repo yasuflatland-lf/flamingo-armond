@@ -5,6 +5,29 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// CardsClient reads usePathname for its pending-delete flush effect. Stub it
+// here because this test file only exercises pagination, not navigation.
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/cardgroups/cg-1/edit",
+}));
+// next/link → plain anchor in jsdom (empty-state CTA renders a Link).
+vi.mock("next/link", () => ({
+  default: ({
+    href,
+    children,
+    ...rest
+  }: {
+    href: string;
+    children: React.ReactNode;
+    [key: string]: unknown;
+  }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+
 import { CardsClient } from "@/app/cardgroups/[id]/cards/cards-client";
 import { CardsByCardgroupConnectionDocument } from "@/generated/graphql";
 
@@ -143,7 +166,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
       {
         request: {
           query: CardsByCardgroupConnectionDocument,
-          variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, search: null },
         },
         result: {
           data: {
@@ -154,7 +177,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
       {
         request: {
           query: CardsByCardgroupConnectionDocument,
-          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, after: "c-20" },
+          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, after: "c-20", search: null },
         },
         result: nextPageResult,
       },
@@ -163,7 +186,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
     const cache = new InMemoryCache();
     cache.writeQuery({
       query: CardsByCardgroupConnectionDocument,
-      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+      variables: { cardgroupId: CG_ID, first: PAGE_SIZE, search: null },
       data: { cardsByCardgroupConnection: makeConnection(firstBatch, true) },
     });
 
@@ -227,7 +250,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
       {
         request: {
           query: CardsByCardgroupConnectionDocument,
-          variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, search: null },
         },
         result: {
           data: { cardsByCardgroupConnection: makeConnection(firstBatch, true) },
@@ -236,7 +259,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
       {
         request: {
           query: CardsByCardgroupConnectionDocument,
-          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, after: "c-20" },
+          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, after: "c-20", search: null },
         },
         delay: 50,
         result: nextPageResult,
@@ -246,7 +269,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
     const cache = new InMemoryCache();
     cache.writeQuery({
       query: CardsByCardgroupConnectionDocument,
-      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+      variables: { cardgroupId: CG_ID, first: PAGE_SIZE, search: null },
       data: { cardsByCardgroupConnection: makeConnection(firstBatch, true) },
     });
 
@@ -323,7 +346,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
       {
         request: {
           query: CardsByCardgroupConnectionDocument,
-          variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, search: null },
         },
         result: {
           data: { cardsByCardgroupConnection: makeConnection(firstBatch, true) },
@@ -332,7 +355,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
       {
         request: {
           query: CardsByCardgroupConnectionDocument,
-          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, after: "c-20" },
+          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, after: "c-20", search: null },
         },
         result: nextPageResult,
       },
@@ -341,7 +364,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
     const cache = new InMemoryCache();
     cache.writeQuery({
       query: CardsByCardgroupConnectionDocument,
-      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+      variables: { cardgroupId: CG_ID, first: PAGE_SIZE, search: null },
       data: { cardsByCardgroupConnection: makeConnection(firstBatch, true) },
     });
 
@@ -391,7 +414,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
       {
         request: {
           query: CardsByCardgroupConnectionDocument,
-          variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, search: null },
         },
         result: {
           data: { cardsByCardgroupConnection: makeConnection(firstBatch, true) },
@@ -401,7 +424,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
       {
         request: {
           query: CardsByCardgroupConnectionDocument,
-          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, after: "c-20" },
+          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, after: "c-20", search: null },
         },
         result: {
           errors: [new GraphQLError("boom", { extensions: { code: "INTERNAL" } })],
@@ -411,7 +434,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
       {
         request: {
           query: CardsByCardgroupConnectionDocument,
-          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, after: "c-20" },
+          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, after: "c-20", search: null },
         },
         result: {
           data: { cardsByCardgroupConnection: makeConnection(secondBatch, false) },
@@ -422,7 +445,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
     const cache = new InMemoryCache();
     cache.writeQuery({
       query: CardsByCardgroupConnectionDocument,
-      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+      variables: { cardgroupId: CG_ID, first: PAGE_SIZE, search: null },
       data: { cardsByCardgroupConnection: makeConnection(firstBatch, true) },
     });
 
@@ -471,7 +494,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
       {
         request: {
           query: CardsByCardgroupConnectionDocument,
-          variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, search: null },
         },
         result: {
           data: { cardsByCardgroupConnection: makeConnection(firstBatch, true) },
@@ -480,7 +503,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
       {
         request: {
           query: CardsByCardgroupConnectionDocument,
-          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, after: "c-20" },
+          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, after: "c-20", search: null },
         },
         result: {
           errors: [new GraphQLError("boom1", { extensions: { code: "INTERNAL" } })],
@@ -489,7 +512,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
       {
         request: {
           query: CardsByCardgroupConnectionDocument,
-          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, after: "c-20" },
+          variables: { cardgroupId: CG_ID, first: PAGE_SIZE, after: "c-20", search: null },
         },
         result: {
           errors: [new GraphQLError("boom2", { extensions: { code: "INTERNAL" } })],
@@ -500,7 +523,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
     const cache = new InMemoryCache();
     cache.writeQuery({
       query: CardsByCardgroupConnectionDocument,
-      variables: { cardgroupId: CG_ID, first: PAGE_SIZE },
+      variables: { cardgroupId: CG_ID, first: PAGE_SIZE, search: null },
       data: { cardsByCardgroupConnection: makeConnection(firstBatch, true) },
     });
 
