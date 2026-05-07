@@ -2,7 +2,7 @@
 
 import { NetworkStatus } from "@apollo/client";
 import { useMutation, useQuery } from "@apollo/client/react";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   DeleteCardMutation,
@@ -308,6 +308,7 @@ export function CardsClient({
                   data-testid="cards-bulk-delete-button"
                 >
                   Delete selected
+                  <Trash2 aria-hidden="true" className="ml-1.5 h-4 w-4" />
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
@@ -325,6 +326,7 @@ export function CardsClient({
             </AlertDialog>
             <Button variant="outline" size="sm" onClick={clearSelection}>
               Cancel
+              <X aria-hidden="true" className="ml-1.5 h-4 w-4" />
             </Button>
           </div>
         )}
