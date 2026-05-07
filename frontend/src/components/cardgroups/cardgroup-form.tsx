@@ -50,6 +50,7 @@ export function CardgroupForm({
     onSubmit: async ({ value }) => {
       await submit(value).catch((err) => {
         console.error("[cardgroup-form] submit rejected", err);
+        throw err; // keep formState.isSubmitSuccessful correct
       });
     },
   });
@@ -59,7 +60,11 @@ export function CardgroupForm({
       onSubmit={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        void form.handleSubmit();
+        form.handleSubmit().catch(() => {
+          // The inner submit handler's .catch already logged; swallow here so the
+          // re-thrown rejection (which keeps formState.isSubmitSuccessful=false correct)
+          // does not surface as an unhandled browser promise rejection.
+        });
       }}
       className="space-y-4"
     >
