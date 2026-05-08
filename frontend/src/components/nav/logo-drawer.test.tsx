@@ -140,13 +140,13 @@ describe("<LogoDrawer>", () => {
     expect(screen.queryByRole("link", { name: /sign in/i })).not.toBeInTheDocument();
   });
 
-  it("signed-in user: email address is visible in the drawer body", async () => {
+  it("signed-in user: email address is not shown in the drawer body", async () => {
     const user = userEvent.setup();
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
 
-    expect(screen.getByText("user@example.com")).toBeInTheDocument();
+    expect(screen.queryByText("user@example.com")).not.toBeInTheDocument();
   });
 
   it("signed-in user: LogoutButton is visible in the drawer body", async () => {
