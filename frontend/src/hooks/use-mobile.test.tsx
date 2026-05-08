@@ -29,7 +29,13 @@ function stubMatchMedia(matches: boolean) {
     value: vi.fn().mockReturnValue(mql),
   });
 
-  return { mql, triggerChange: () => listeners.forEach((cb) => cb()) };
+  return {
+    mql,
+    triggerChange: () =>
+      listeners.forEach((cb) => {
+        cb();
+      }),
+  };
 }
 
 function setInnerWidth(width: number) {

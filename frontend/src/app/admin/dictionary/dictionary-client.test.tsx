@@ -235,7 +235,7 @@ describe("<DictionaryImportClient>", () => {
     };
 
     // The edited payload is PAYLOAD_TEXT + " extra"
-    const editedText = PAYLOAD_TEXT + " extra";
+    const editedText = `${PAYLOAD_TEXT} extra`;
     const editedEncoded = encodePayload(editedText);
 
     const VALID_EDITED_RESULT = {
@@ -442,7 +442,7 @@ describe("<DictionaryImportClient>", () => {
 
   // S9: No cardgroup selected — clicking Import shows an inline banner instead of firing mutation
   it("S9: shows banner when Import is clicked without a cardgroup selected (guard in handleImport)", async () => {
-    const user = userEvent.setup();
+    const _user = userEvent.setup();
 
     // Render without any mocks beyond cardgroups — we deliberately skip validation
     // here to test the handleImport guard path. We use a button click that bypasses

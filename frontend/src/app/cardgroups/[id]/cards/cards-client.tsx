@@ -179,7 +179,6 @@ export function CardsClient({
   useEffect(() => {
     hasNextPageRef.current = pageInfo.hasNextPage;
   }, [pageInfo.hasNextPage]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery is the intentional trigger; the body only updates a ref, not state.
   useEffect(() => {
     searchQueryRef.current = searchQuery;
   }, [searchQuery]);

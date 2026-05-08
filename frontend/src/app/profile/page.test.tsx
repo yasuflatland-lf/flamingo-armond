@@ -35,7 +35,11 @@ vi.mock("./profile-form", () => ({
     email: string | null;
     initial: { displayName: string; bio: string };
   }) => (
-    <div data-testid="profile-form" data-email={email ?? ""} data-display-name={initial.displayName}>
+    <div
+      data-testid="profile-form"
+      data-email={email ?? ""}
+      data-display-name={initial.displayName}
+    >
       ProfileForm
     </div>
   ),
@@ -129,9 +133,7 @@ describe("ProfilePage — gqlFetch error branches", () => {
 
   test("UNAUTHENTICATED from gqlFetch → redirect /login (new branch under test)", async () => {
     vi.mocked(gqlFetch).mockRejectedValueOnce(
-      new Error(
-        `GraphQL errors: ${JSON.stringify([{ extensions: { code: "UNAUTHENTICATED" } }])}`,
-      ),
+      new Error(`GraphQL errors: ${JSON.stringify([{ extensions: { code: "UNAUTHENTICATED" } }])}`),
     );
 
     await expect(ProfilePage()).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
@@ -148,10 +150,7 @@ describe("ProfilePage — gqlFetch error branches", () => {
     await expect(ProfilePage()).rejects.toBe(otherErr);
 
     expect(redirect).not.toHaveBeenCalled();
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[profile]"),
-      otherErr,
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("[profile]"), otherErr);
   });
 });
 
@@ -241,9 +240,7 @@ type ProfileFormProps = {
  * Recursively search a React element tree for the ProfileForm stub element and
  * return it so tests can inspect the props forwarded from the page.
  */
-function findProfileFormElement(
-  node: unknown,
-): { props: ProfileFormProps } | null {
+function findProfileFormElement(node: unknown): { props: ProfileFormProps } | null {
   if (node == null || typeof node !== "object") return null;
   const el = node as Record<string, unknown>;
 

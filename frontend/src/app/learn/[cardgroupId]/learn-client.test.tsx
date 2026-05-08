@@ -22,7 +22,7 @@ import { LearnClient } from "./learn-client";
 // so leakage between tests is impossible.
 // ---------------------------------------------------------------------------
 type SwipeCardStackOnCardSwiped = Parameters<
-  (typeof import("@/components/learn/swipe-card-stack"))["SwipeCardStack"]
+  typeof import("@/components/learn/swipe-card-stack")["SwipeCardStack"]
 >[0]["onCardSwiped"];
 
 const capturedOnCardSwiped: SwipeCardStackOnCardSwiped[] = [];
@@ -43,7 +43,10 @@ vi.mock("@/components/learn/swipe-card-stack", () => ({
         <div>
           <p>Session complete</p>
           {props.completedCount != null && props.completedCount > 0 && (
-            <p>You reviewed {props.completedCount} {props.completedCount === 1 ? "card" : "cards"} in this batch.</p>
+            <p>
+              You reviewed {props.completedCount} {props.completedCount === 1 ? "card" : "cards"} in
+              this batch.
+            </p>
           )}
         </div>
       );
@@ -51,9 +54,15 @@ vi.mock("@/components/learn/swipe-card-stack", () => ({
     return (
       <div>
         <p>{activeCard.front}</p>
-        <button type="button" onClick={() => props.onCardSwiped(activeCard as never, "left")}>Again</button>
-        <button type="button" onClick={() => props.onCardSwiped(activeCard as never, "down")}>Hard</button>
-        <button type="button" onClick={() => props.onCardSwiped(activeCard as never, "right")}>Easy</button>
+        <button type="button" onClick={() => props.onCardSwiped(activeCard as never, "left")}>
+          Again
+        </button>
+        <button type="button" onClick={() => props.onCardSwiped(activeCard as never, "down")}>
+          Hard
+        </button>
+        <button type="button" onClick={() => props.onCardSwiped(activeCard as never, "right")}>
+          Easy
+        </button>
       </div>
     );
   },

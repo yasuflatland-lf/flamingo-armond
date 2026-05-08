@@ -149,11 +149,7 @@ export function ProfileForm({ email, initial }: Props) {
       {/* Hidden sentinel used by tests to observe formState.isSubmitSuccessful */}
       <form.Subscribe selector={(state) => state.isSubmitSuccessful}>
         {(isSubmitSuccessful) => (
-          <span
-            data-testid="is-submit-successful"
-            data-value={String(isSubmitSuccessful)}
-            hidden
-          />
+          <span data-testid="is-submit-successful" data-value={String(isSubmitSuccessful)} hidden />
         )}
       </form.Subscribe>
     </form>

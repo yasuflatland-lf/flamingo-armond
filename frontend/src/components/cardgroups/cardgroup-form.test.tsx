@@ -44,9 +44,7 @@ function CardgroupFormWithStatus({
       </form>
       <form.Subscribe selector={(state) => state.isSubmitSuccessful}>
         {(isSubmitSuccessful) => (
-          <div data-testid="is-submit-successful">
-            {String(isSubmitSuccessful)}
-          </div>
+          <div data-testid="is-submit-successful">{String(isSubmitSuccessful)}</div>
         )}
       </form.Subscribe>
     </>

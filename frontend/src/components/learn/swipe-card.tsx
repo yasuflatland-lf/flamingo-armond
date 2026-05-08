@@ -1,7 +1,7 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { RotateCcw, Smile, Zap } from "lucide-react";
+import dynamic from "next/dynamic";
 import type { SwipeDirection } from "@/app/learn/[cardgroupId]/learn-client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -43,10 +43,9 @@ const directionMeta: Record<
 // reload, (c) adding an error fallback complicates the success path's
 // rendering for an edge case. Revisit if telemetry shows non-trivial
 // chunk-failure rates on /learn.
-const AnimatedCard = dynamic(
-  () => import("./animated-card").then((m) => m.AnimatedCard),
-  { ssr: false },
-);
+const AnimatedCard = dynamic(() => import("./animated-card").then((m) => m.AnimatedCard), {
+  ssr: false,
+});
 
 // CardContent is exported so animated-card.tsx can share the same presentational layer.
 export function CardContent({ card, isActive, onSwipe }: Omit<Props, "onSwipeProgress">) {
