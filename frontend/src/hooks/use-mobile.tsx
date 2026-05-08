@@ -10,6 +10,7 @@ function subscribe(callback: () => void) {
 }
 
 function getSnapshot() {
+  if (typeof window === "undefined") return false;
   return window.innerWidth < MOBILE_BREAKPOINT;
 }
 
