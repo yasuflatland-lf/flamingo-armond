@@ -118,7 +118,12 @@ export function LearnClient({
         },
       })
       .catch((err) => {
-        console.warn("[learn] setLastViewedCardgroup failed", { cardgroupId, err });
+        // err.message is omitted — backend messages may echo user-authored content.
+        // See .claude/rules/frontend-rsc-error-handling.md § "Substring-matching SDK error strings".
+        console.warn("[learn] setLastViewedCardgroup failed", {
+          cardgroupId,
+          name: err instanceof Error ? err.name : "unknown",
+        });
       });
   }, [cardgroupId, lastViewedCardgroupId, client]);
 
@@ -151,7 +156,13 @@ export function LearnClient({
           },
         },
       }).catch((err) => {
-        console.error("[LearnClient] handleSwipe rejected", err);
+        // err.message is omitted — backend messages may echo user-authored content.
+        // See .claude/rules/frontend-rsc-error-handling.md § "Substring-matching SDK error strings".
+        console.error("[LearnClient] handleSwipe rejected", {
+          cardId: card.id,
+          cardgroupId,
+          name: err instanceof Error ? err.name : "unknown",
+        });
         setQueue((current) => [card, ...current.filter((candidate) => candidate.id !== card.id)]);
         setCompleted((current) => Math.max(0, current - 1));
         setLocalError("Could not save that swipe. Please try again.");
