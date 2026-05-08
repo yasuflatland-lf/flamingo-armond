@@ -213,6 +213,14 @@ export function CardsClient({
         setFetchMoreError(null);
       })
       .catch((err) => {
+        // Structured warn for operator triage: name + request context only.
+        // err.message is omitted — backend messages may carry user-authored content.
+        // See .claude/rules/frontend-typescript-conventions.md § "expect.objectContaining".
+        console.warn("[cards-client] fetchMore failed", {
+          name: err instanceof Error ? err.name : "unknown",
+          searchQuery: searchQueryRef.current ?? null,
+          endCursor: endCursorRef.current ?? null,
+        });
         const banner = getBackendErrorBanner(err) ?? "Could not load more cards. Please try again.";
         setFetchMoreError(banner);
       })
@@ -310,7 +318,14 @@ export function CardsClient({
       await deleteCards({ variables: { ids } });
       clearSelection();
     } catch (err) {
-      console.error("[CardsClient] bulk delete rejection", err);
+      // Structured log for operator triage: name + domain context only.
+      // err.message is omitted — backend messages may carry user-authored content.
+      // See .claude/rules/frontend-typescript-conventions.md § "expect.objectContaining".
+      console.error("[CardsClient] bulk delete rejection", {
+        name: err instanceof Error ? err.name : "unknown",
+        cardgroupId,
+        ids,
+      });
     }
   }
 
@@ -430,7 +445,14 @@ export function CardsClient({
     const result = await updateCard({
       variables: { id, input: { front: values.front, back: values.back } },
     }).catch((err) => {
-      console.error("[CardsClient] update rejection", err);
+      // Structured log for operator triage: name + domain context only.
+      // err.message is omitted — backend messages may carry user-authored content.
+      // See .claude/rules/frontend-typescript-conventions.md § "expect.objectContaining".
+      console.error("[CardsClient] update rejection", {
+        name: err instanceof Error ? err.name : "unknown",
+        cardgroupId,
+        cardId: id,
+      });
       return null;
     });
     if (result?.data?.updateCard?.card) {

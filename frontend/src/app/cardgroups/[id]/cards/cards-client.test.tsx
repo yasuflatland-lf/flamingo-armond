@@ -1190,12 +1190,30 @@ describe("<CardsClient>", () => {
 
     expect(await screen.findByText("Hello")).toBeInTheDocument();
 
+    // Install the outer spy WITHOUT mockImplementation so the leak spy still
+    // receives all console.warn calls. Per .claude/rules/pagination.md
+    // § "Spy stacking": do NOT swallow the outer spy's implementation.
+    const consoleWarnSpy = vi.spyOn(console, "warn");
+
     // Trigger first fetchMore → fails.
     fireIntersect();
 
     await waitFor(() => {
       expect(screen.getByTestId("cards-fetch-more-error")).toBeInTheDocument();
     });
+
+    // fetchMore failure emits a structured warn for operator triage.
+    // The `endCursor` key discriminates against a bare Error regression.
+    // See .claude/rules/frontend-typescript-conventions.md
+    // § "expect.objectContaining({ message }) is not enough".
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "[cards-client] fetchMore failed",
+      expect.objectContaining({
+        name: expect.any(String),
+        endCursor: expect.anything(),
+      }),
+    );
+    consoleWarnSpy.mockRestore();
 
     // Click Retry → next page loads.
     const user = userEvent.setup();
