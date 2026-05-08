@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { graphql } from "@/generated";
+import type { MeQuery as MeQueryType } from "@/generated/graphql";
+import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { ProfileForm } from "./profile-form";
@@ -29,7 +31,16 @@ export default async function ProfilePage() {
   }
   if (!user) redirect("/login");
 
-  const data = await gqlFetch(MeQuery, { revalidate: 0 });
+  let data: MeQueryType;
+  try {
+    data = await gqlFetch(MeQuery, { revalidate: 0 });
+  } catch (err) {
+    if (isUnauthenticatedGraphQLError(err)) {
+      redirect("/login");
+    }
+    console.error("[profile] gqlFetch failed:", err);
+    throw err;
+  }
   if (!data.me) {
     throw new Error("/profile: me returned null with no error");
   }

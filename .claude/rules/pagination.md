@@ -298,6 +298,119 @@ When a test file installs the leak spy AND a second `vi.spyOn(console, "warn")` 
 
 If a single test needs to suppress a specific `console.warn` call, prefer asserting it explicitly via `expect(consoleWarnSpy).toHaveBeenCalledWith(...)` — the assertion documents intent and the call still flows through to the leak spy. The leak spy itself defaults to `silent: true` (`installApolloMockLeakSpy` swallows the formatted leak warning to keep CI output clean), so the outer spy does not need its own silencer.
 
+### Stabilise `requestNextPage` via the cursor / search / hasNextPage ref triplet
+
+The `useCallback` for `requestNextPage` reads three values that change every time a page lands or the user types into the search box: `endCursor`, `searchQuery`, and `hasNextPage`. If any of them appear in the callback's dep array, the callback gets a fresh identity on every advance — and the IntersectionObserver `useEffect` (which lists `requestNextPage` as a dep) tears down and re-attaches the observer on every page transition. The fix is to mirror all three values into refs and read them via `*.current` inside the callback, leaving only Apollo's stable `fetchMore` (and any cardgroup-id parameter) in the dep array:
+
+```tsx
+const endCursorRef = useRef(endCursor);
+const searchQueryRef = useRef(searchQuery);
+const hasNextPageRef = useRef(hasNextPage);
+useEffect(() => { endCursorRef.current = endCursor; }, [endCursor]);
+useEffect(() => { searchQueryRef.current = searchQuery; }, [searchQuery]);
+useEffect(() => { hasNextPageRef.current = hasNextPage; }, [hasNextPage]);
+
+const requestNextPage = useCallback(() => {
+  if (fetchingRef.current || !hasNextPageRef.current) return;
+  fetchingRef.current = true;
+  fetchMore({
+    variables: {
+      ...DEFAULT_VARS,
+      after: endCursorRef.current,
+      search: searchQueryRef.current,
+    },
+    /* ... */
+  })
+    .then(() => setFetchMoreError(null))
+    .catch((err) => { /* ...structured warn + banner... */ })
+    .finally(() => { fetchingRef.current = false; });
+}, [fetchMore]); // stable identity across page advances + search-text edits
+
+useEffect(() => {
+  if (!hasNextPage || fetchMoreError != null) return;
+  const node = sentinelRef.current;
+  if (!node) return;
+  const observer = new IntersectionObserver((entries) => {
+    if (!entries[0]?.isIntersecting || fetchingRef.current) return;
+    requestNextPage();
+  });
+  observer.observe(node);
+  return () => observer.disconnect();
+}, [hasNextPage, fetchMoreError, requestNextPage]);
+```
+
+**Why apply all three refs together, not just one:** mirroring only `endCursor` while leaving `searchQuery` in the dep array still re-creates the callback on every keystroke; mirroring only `searchQuery` still re-creates it on every page advance. The triplet is the minimal stable set: `endCursor` advances per page, `searchQuery` changes per debounced input, `hasNextPage` flips when the last page is reached. The observer effect's structural deps (`hasNextPage`, `fetchMoreError`) are intentionally still real deps — those are the conditions that should re-subscribe the observer. Dropping `hasNextPage` from the effect's dep array would leave the observer attached past the last page; the rule keeps `hasNextPage` as a structural dep AND mirrors it into a ref so the callback's runtime check reads the current value without taking a per-advance dep.
+
+**How to apply:** any paginated client component that subscribes to an IntersectionObserver and advances via `fetchMore` MUST apply the triplet. Today's call sites are `frontend/src/app/cardgroups/cardgroups-client.tsx`, `frontend/src/app/cardgroups/[id]/cards/cards-client.tsx`, and `frontend/src/app/admin/users/AdminUsersClient.tsx`. New paginated components should follow the same shape from the start — keep the `requestNextPage` dep array narrow to `[fetchMore]` (plus any caller-stable scalar like `cardgroupId`) and mirror every state value the body reads. This rule extends § "IntersectionObserver in-flight guard via `useRef<boolean>`" above: that rule covers the boolean re-entrancy guard; this rule covers the cursor/search/hasNextPage cohort that drives the callback's identity.
+
+### Synchronous SSR cache seed in the render body, not in a `useEffect`
+
+The SSR-seed-into-Apollo-cache pattern has historically run inside a `useEffect(() => apollo.writeQuery(...), [apollo, initialConnection])` with a `seededRef` boolean to survive Strict Mode's double-mount. Running the seed in a post-render effect leaves a window between first paint and the effect firing during which `useQuery` (cache-first) finds the cache empty and may issue a network round-trip — defeating the point of the SSR seed.
+
+The fix is to write the seed synchronously in the component body, gated by the same `seededRef` boolean. The ref is set synchronously, so Strict Mode's double-invoke still produces exactly one write:
+
+```tsx
+// frontend/src/app/cardgroups/cardgroups-client.tsx
+const seededRef = useRef(false);
+
+// Seed runs synchronously during render — no useEffect needed.
+// CARDGROUPS_DEFAULT_VARS keeps the cache key identical to the SSR seed and
+// the client useQuery — any mismatch silently splits the cache.
+if (!seededRef.current && initialConnection != null) {
+  seededRef.current = true;
+  apollo.writeQuery({
+    query: MyCardgroupsConnectionDocument,
+    variables: CARDGROUPS_DEFAULT_VARS,
+    data: { myCardgroupsConnection: initialConnection },
+  });
+}
+
+const { data, fetchMore, /* ... */ } = useQuery(MyCardgroupsConnectionDocument, {
+  variables: queryVariables,
+  fetchPolicy: "cache-first",
+  /* ... */
+});
+```
+
+**Why:** "writes during render" is generally an anti-pattern because most writes are observable side effects that schedule re-renders. Apollo's `cache.writeQuery` is the rare exception: the write does not synchronously trigger a re-render in the calling component (`useQuery`'s subscription notifies on the next microtask), and the operation is idempotent — writing the same data to the same cache key twice produces the same cache state. The synchronous `seededRef` guard makes the second invocation a no-op cheap enough to ignore. The post-effect alternative is the worse trade: the effect fires in a microtask after the first paint, so `useQuery`'s first cache-first read happens against an empty cache and may issue an unnecessary network request.
+
+**How to apply:** any RSC-seeded paginated page that lifts initial data into Apollo cache MUST seed synchronously in the render body, gated by a `useRef(false)` boolean. Do not introduce a `useEffect` for this purpose. Confirm the `variables` object in the `writeQuery` is the **same object identity** the client's `useQuery` is keyed on (the shared `<TYPE>_DEFAULT_VARS` const documented in § "Variables shape MUST match between SSR seed and client cache reads"); a mismatched variables shape means `useQuery` reads a different cache entry than the seed wrote. Reference: `frontend/src/app/cardgroups/cardgroups-client.tsx` (`if (!seededRef.current && initialConnection != null)` synchronous seed). This rule pairs with § "`cache.modify` skips non-existent fields" above: both push cache writes to the seam where the cache-key invariant is enforced.
+
+### Split debounce from immediate-reset effects on the same input
+
+A single effect that combines the debounced state update with the immediate-reset cleanup violates the "one effect, one synchronization" guideline AND silently delays the reset by the debounce window. The user starts typing, the prior page's `fetchingRef = true` and `fetchMoreError` banner remain in place for 300ms, and the IO observer continues to interpret the prior cursor as live during that window. Split into two effects keyed on different triggers — the input for the debounce, the resulting query for the reset:
+
+```tsx
+// frontend/src/app/admin/users/AdminUsersClient.tsx
+// Debounce: update searchQuery 300ms after the last keystroke.
+useEffect(() => {
+  const timer = setTimeout(() => {
+    setSearchQuery(searchInput.trim() || null);
+  }, 300);
+  return () => clearTimeout(timer);
+}, [searchInput]);
+
+// When the active search query changes, drop any in-flight guard and stale error
+// banner immediately so the new query starts from a clean slate.
+// biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery is an intentional trigger dependency; it is not referenced in the body because the effect resets derived IO state, not searchQuery itself.
+useEffect(() => {
+  fetchingRef.current = false;
+  setFetchMoreError(null);
+}, [searchQuery]);
+```
+
+**Why:** the two effects synchronize different things. The debounce effect synchronizes `searchQuery` to `searchInput` with a delay. The reset effect synchronizes `fetchingRef` / `fetchMoreError` to `searchQuery` with no delay. Combining them into one timer ties the reset's timing to the debounce's timing for no reason, which means a stale fetchMore banner stays visible during the entire debounce window even though the user has clearly moved on. Splitting them lets each synchronization run on its own trigger.
+
+**How to apply:** every paginated client component that has both (a) a debounced search-input → search-query pipeline and (b) IO observer reset state (`fetchingRef`, `fetchMoreError`) MUST use two separate effects. Today's call sites are `frontend/src/app/cardgroups/cardgroups-client.tsx`, `frontend/src/app/cardgroups/[id]/cards/cards-client.tsx`, and `frontend/src/app/admin/users/AdminUsersClient.tsx` — all three follow the split-effect shape. The `biome-ignore lint/correctness/useExhaustiveDependencies` comment on the reset effect is load-bearing (see § "Load-bearing `biome-ignore` comments" below) — do not remove it during cleanup.
+
+### Load-bearing `biome-ignore` comments
+
+A `biome-ignore lint/correctness/useExhaustiveDependencies: <intent>` comment on a `useEffect` whose dep array intentionally lists a trigger NOT read in the body (e.g. a reset effect keyed on `searchQuery` whose body only resets derived IO state, never reads `searchQuery` itself) is load-bearing: it documents the trigger-not-read intent so a future code-mod tool, lint-rule upgrade, or IDE quick-fix does not silently re-engage the rule and either (a) widen the dep array to values the effect must NOT depend on, or (b) flag the suppression as a candidate for removal because "the dep is unused inside the body."
+
+**Why:** the lint rule's heuristic is "every value read inside the effect body must appear in the dep array." It does not have a counterpart heuristic for "every value in the dep array must be read inside the body" — listing a trigger you never read is intentional but invisible to the rule. The `biome-ignore` comment is what tells a reader (and a code-mod tool) why the suppression is correct and what would break if the suppression were removed. A reviewer who deletes the comment "because the rule does not fire" silently strips the documentation that prevents the next contributor from removing the trigger from the dep array.
+
+**How to apply:** when adding or refactoring an effect whose dep array carries a trigger-not-read value, write the `biome-ignore` comment with two pieces: (1) the rule name (`lint/correctness/useExhaustiveDependencies`), and (2) a one-sentence intent that names which dep is the trigger AND what the body resets ("`searchQuery` is an intentional trigger dependency; the body resets derived IO state, not `searchQuery` itself"). Treat the comment as load-bearing during code-cleanup passes — do not delete it on the assumption that "the rule does not currently fire." Reference: the reset effects in the three paginated client components named above. This rule pairs with § "Split debounce from immediate-reset effects" above: that rule introduces the trigger-not-read effect; this rule keeps the suppression's documentation alive.
+
 ### Provide two `MockedResponse` entries to test a Retry-after-error path
 
 `MockedProvider` serves entries in order, single-use. A test that mounts with only one `{ request, error }` mock can assert that the error UI appears, but clicking Retry fires `refetch()` — which consumes a second entry. With only one entry, `MockedProvider` prints `"No more mocked responses for the query"` to `console.warn` and the `useQuery` hook resolves with `undefined` data; the refetch path is never exercised in a way that can assert the success state. Supply two matching entries:

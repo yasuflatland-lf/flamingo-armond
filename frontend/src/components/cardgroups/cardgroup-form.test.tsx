@@ -1,11 +1,55 @@
 // @vitest-environment jsdom
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { MockedProvider } from "@apollo/client/testing/react";
+import { useForm } from "@tanstack/react-form";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { describe, expect, it, vi } from "vitest";
 import { CardgroupForm } from "./cardgroup-form";
+
+/**
+ * Test-only harness that renders CardgroupForm and additionally exposes
+ * form.state.isSubmitSuccessful in the DOM via a sibling form.Subscribe node.
+ * This is needed because CardgroupForm owns `form` internally and does not
+ * expose it as a ref — the Subscribe selector is the only clean external probe.
+ */
+function CardgroupFormWithStatus({
+  submit,
+}: {
+  submit: (values: { name: string }) => Promise<void>;
+}) {
+  const form = useForm({
+    defaultValues: { name: "Test Group" },
+    onSubmit: async ({ value }) => {
+      await submit(value).catch((err) => {
+        console.error("[cardgroup-form] submit rejected", err);
+        throw err; // keep formState.isSubmitSuccessful correct
+      });
+    },
+  });
+
+  return (
+    <>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          form.handleSubmit().catch(() => {
+            // swallow re-thrown rejection to avoid unhandled browser promise rejection
+          });
+        }}
+      >
+        <button type="submit">Create</button>
+      </form>
+      <form.Subscribe selector={(state) => state.isSubmitSuccessful}>
+        {(isSubmitSuccessful) => (
+          <div data-testid="is-submit-successful">{String(isSubmitSuccessful)}</div>
+        )}
+      </form.Subscribe>
+    </>
+  );
+}
 
 // Wrap with MockedProvider to mirror the profile-form.test.tsx recipe.
 // The form itself does not run a mutation, but the parent's submit might.
@@ -130,5 +174,27 @@ describe("<CardgroupForm>", () => {
     renderForm({ mode: "edit", defaultValues: { name: "Group" }, submitting: true });
     const btn = screen.getByRole("button", { name: /saving/i });
     expect(btn).toBeDisabled();
+  });
+
+  it("keeps formState.isSubmitSuccessful=false after a rejecting submit (regression: issue #111)", async () => {
+    const user = userEvent.setup();
+    const submit = vi.fn().mockRejectedValue(new Error("network down"));
+
+    render(
+      <MockedProvider mocks={[]}>
+        <CardgroupFormWithStatus submit={submit} />
+      </MockedProvider>,
+    );
+
+    // isSubmitSuccessful starts false
+    expect(screen.getByTestId("is-submit-successful")).toHaveTextContent("false");
+
+    await user.click(screen.getByRole("button", { name: /create/i }));
+
+    // After a rejected submit, isSubmitSuccessful must remain false — not flip to true.
+    await waitFor(() => {
+      expect(submit).toHaveBeenCalledOnce();
+    });
+    expect(screen.getByTestId("is-submit-successful")).toHaveTextContent("false");
   });
 });

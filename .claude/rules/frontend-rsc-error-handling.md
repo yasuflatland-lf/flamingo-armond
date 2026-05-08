@@ -233,3 +233,116 @@ return (
 ```
 
 **How to apply:** any page added to the `AppShell`-bypass branch of `app/layout.tsx` MUST render `<main>` as its outermost content wrapper. Co-locate a test that asserts `screen.getByRole("main")` resolves on the bypassed route — the assertion throws when the landmark is absent, so it is forcing rather than tautological. The shell-rendered routes do not need this rule because `AppShell` already emits the landmark at the layout level; a second `<main>` in a child page would create duplicate landmarks and confuse assistive technology.
+
+## Initial-load UNAUTHENTICATED redirects belong in the RSC `page.tsx`, not in the client `error.tsx`
+
+A client `error.tsx` boundary that performs `router.replace("/login")` from a `useEffect` keyed on `error.message.includes("UNAUTHENTICATED")` is a band-aid: the boundary already received the error, the page rendered the boundary's fallback shell once, and the redirect fires after a post-render microtask. The user briefly sees the "Couldn't load your profile" copy before being navigated. More importantly, substring-matching `error.message` for routing decisions is the exact pattern § "Structurally parse GraphQL `extensions.code`" forbids — it conflates a real `UNAUTHENTICATED` extension with any error whose message text happens to contain the word.
+
+The fix is to intercept the GraphQL error in the RSC `page.tsx` itself, before it bubbles into the boundary, using the structural helper:
+
+```tsx
+// frontend/src/app/profile/page.tsx
+import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
+
+export default async function ProfilePage() {
+  const supabase = await createSupabaseServerClient();
+  const { data: { user }, error: authErr } = await supabase.auth.getUser();
+  if (authErr && authErr.name !== "AuthSessionMissingError") {
+    console.error("[profile] getUser() failed:", authErr.name, authErr.message);
+    throw authErr;
+  }
+  if (!user) redirect("/login");
+
+  let data: MeQueryType;
+  try {
+    data = await gqlFetch(MeQuery, { revalidate: 0 });
+  } catch (err) {
+    if (isUnauthenticatedGraphQLError(err)) {
+      redirect("/login");
+    }
+    console.error("[profile] gqlFetch failed:", err);
+    throw err;
+  }
+  /* ...render with data... */
+}
+```
+
+The `error.tsx` boundary then handles only the residual failure modes (network 5xx, infrastructure errors, mid-session UNAUTHENTICATED from client-side mutations after hydration). It logs the error with `digest` and renders a Retry button — no `router.replace`, no message-substring branching:
+
+```tsx
+// frontend/src/app/profile/error.tsx
+"use client";
+
+export default function ProfileError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  useEffect(() => {
+    // Initial-load UNAUTHENTICATED is intercepted in page.tsx and redirects to
+    // /login before this boundary is reached. This boundary handles residual
+    // failure modes (network, 5xx, post-hydration UNAUTHENTICATED).
+    console.error("[/profile error boundary]", { message: error.message, digest: error.digest });
+  }, [error]);
+  return (/* ...heading + Retry button... */);
+}
+```
+
+**Why:** the RSC has the GraphQL error in scope at the `try/catch` boundary BEFORE the client component ever renders, so the `redirect()` happens server-side and the user navigates without seeing the error fallback. Moving the redirect to the RSC also removes the substring-match dependency: `isUnauthenticatedGraphQLError` parses the structured extension, so the routing decision is correct even when the upstream message text changes. Pin the structural log assertion in the boundary's test — `expect.objectContaining({ message: "...", digest: "..." })` — using `digest` as the discriminating key (`Error.prototype` does not have `digest`) per `frontend-typescript-conventions.md` § "`expect.objectContaining({ message })` is not enough — add a discriminating key".
+
+**How to apply:** any RSC `page.tsx` whose data fetch can return GraphQL `UNAUTHENTICATED` (i.e. any auth-gated query) MUST intercept the error and `redirect("/login")` from the page itself, using `isUnauthenticatedGraphQLError`. The sibling `error.tsx` keeps a small log-and-retry shell for residual failure modes; do not put `router.replace` in `error.tsx`. Today's pattern: `frontend/src/app/profile/page.tsx` (RSC redirect) + `frontend/src/app/profile/error.tsx` (degraded boundary). This rule pairs with § "Structurally parse GraphQL `extensions.code`" — both eliminate substring-matching on error.message at the routing seam.
+
+## Mid-session UNAUTHENTICATED in a client component: degraded banner with `<Link href="/login">`, not `redirect()`
+
+A client component (`"use client"`) that observes `UNAUTHENTICATED` from an Apollo `useQuery` cannot call `redirect()` from `next/navigation` — that helper is RSC-only and throws a runtime error inside a client tree. Calling `router.replace("/login")` is also wrong: the user may have unsaved local state (search input, half-typed form, scroll position) that vanishes on a hard navigation, and the redirect fires from a `useEffect` that produces the same brief flash described in § "Initial-load UNAUTHENTICATED redirects belong in the RSC".
+
+The right shape is a **degraded banner** that surfaces the session-expired message inline and points at `/login` via a `<Link>` the user clicks when they are ready:
+
+```tsx
+// frontend/src/app/admin/users/AdminUsersClient.tsx
+const queryErrorKind = classifyQueryError(queryError);
+
+// UNAUTHENTICATED post-mount means the session expired while the page was
+// open. The server-side gate in page.tsx + the admin layout already block
+// the initial load (which redirects to "/"), so this only fires mid-session.
+// Render a degraded banner pointing to /login rather than calling
+// `redirect()` from a client component — see this rule.
+{queryErrorKind?.kind === "unauthenticated" && (
+  <div role="alert">
+    <span>Your session has expired. </span>
+    <Link href="/login" className="underline">Please sign in again.</Link>
+  </div>
+)}
+```
+
+The `classifyQueryError` helper (in `frontend/src/lib/apollo/errors.ts`) returns a typed `QueryErrorKind` discriminated union — `forbidden`, `unauthenticated`, or `banner` — so the JSX can branch on `kind` without re-implementing the structural extension parse at every call site.
+
+**Why:** the initial-load case is already gated by the RSC `page.tsx` + the admin layout (§ above), so a mid-session UNAUTHENTICATED only fires when the access token expires while the page is alive. The user is already signed in to Supabase locally; a forced redirect throws away their in-page state and takes them to a login form they may not have asked for. The degraded-banner posture surfaces the session expiry, names the recovery, and lets the user choose when to navigate. This is the dual of the RSC rule: server-side initial load is "redirect immediately"; client-side mid-session is "render the banner."
+
+**How to apply:** any client component that issues an auth-required query via Apollo MUST classify `queryError` via `classifyQueryError` and render a `<Link href="/login">` banner for the `unauthenticated` branch. Do not import `redirect` from `next/navigation` into a client component. Do not call `router.replace("/login")` from an effect keyed on the error. Reference: `frontend/src/app/admin/users/AdminUsersClient.tsx` (`queryErrorKind?.kind === "unauthenticated"` banner). The same posture applies to a `FORBIDDEN` mid-session case — render a permission-denied banner without a Retry button (re-issuing the query would fail again).
+
+## Redact `err.message` from structured `console` payloads when the upstream may carry user content
+
+Backend GraphQL error messages can echo user-authored content (a card front, a search query, a profile bio) verbatim — the resolver's `gqlerr.BadUserInput` constructors typically assemble the `message` field from input parameters. A `console.warn(...)` or `console.error(...)` payload that includes the raw `err.message` re-leaks that content into operator logs, browser devtools history, and any Sentry-style collector that ingests `console` calls. The rule is to omit `err.message` and log only stable identifiers — `err.name` for the JS class, plus domain context like `cardgroupId` or `endCursor` that operators need for triage:
+
+```ts
+// frontend/src/app/learn/[cardgroupId]/learn-client.tsx
+.catch((err) => {
+  // err.message is omitted — backend messages may echo user-authored content.
+  console.warn("[learn] setLastViewedCardgroup failed", {
+    cardgroupId,
+    name: err instanceof Error ? err.name : "unknown",
+  });
+});
+
+// frontend/src/app/cardgroups/cardgroups-client.tsx — fetchMore catch
+.catch((err) => {
+  console.warn("[cardgroups] fetchMore failed", {
+    name: err instanceof Error ? err.name : "unknown",
+    searchQuery: search,
+    endCursor: cursor,
+  });
+});
+```
+
+The `err instanceof Error ? err.name : "unknown"` widening handles non-Error rejections (a plain string thrown from a third-party library, a `Promise.reject(undefined)`) without crashing the log call site. The structured payload includes domain context (`cardgroupId`, `searchQuery`, `endCursor`) so operators can correlate the warn with the request without seeing the message body.
+
+**Why:** the substring-matching SDK error rule below (§ "Substring-matching SDK error strings") permits logging `err.message` on the **unmapped** path — but only when the SDK's error messages are server-generated and verifiably do not echo user input. GraphQL backends are the opposite: every typed-error constructor is free to inline the offending input into the message for clarity. The default posture for backend errors is therefore "redact `err.message`"; the substring-classifier carve-out applies only to SDKs whose contract guarantees server-only message provenance.
+
+**How to apply:** every `console.warn` / `console.error` in a client component that catches a backend GraphQL error MUST omit `err.message` from the structured payload. Log `name` (typed via the `instanceof` widen) plus domain identifiers. The user-facing banner copy (`getBackendErrorBanner(err)` or `getBackendFieldErrors(err)?.<field>`) is what surfaces the error to the user; that path runs the parsed extension through a server-trusted classifier and is not the redaction concern. Pin the structural shape with `expect.objectContaining({ name: expect.any(String), cardgroupId: ... })` — using a domain-specific key (`cardgroupId`, `endCursor`) as the discriminator per `frontend-typescript-conventions.md` § "`expect.objectContaining({ message })` is not enough — add a discriminating key", and explicitly assert `expect(payload).not.toHaveProperty("message")` in at least one test per surface so a future contributor that adds `err.message` "for debugging" surfaces in CI. Reference: `frontend/src/app/learn/[cardgroupId]/learn-client.tsx` (handleSwipe + persist failures), `frontend/src/app/cardgroups/cardgroups-client.tsx` (fetchMore catch), `frontend/src/app/cardgroups/[id]/cards/cards-client.tsx` (fetchMore + bulk-delete catches), `frontend/src/app/admin/users/AdminUsersClient.tsx` (fetchMore catch).

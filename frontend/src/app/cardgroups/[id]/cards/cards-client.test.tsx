@@ -1053,6 +1053,59 @@ describe("<CardsClient>", () => {
     expect(screen.queryByText("apple pie")).not.toBeInTheDocument();
   });
 
+  // T2b: bulk-delete rejection emits a structured console.error and the
+  // payload must NOT carry `err.message` (PII redaction).
+  // See .claude/rules/frontend-rsc-error-handling.md
+  // § "Redact `err.message` from structured `console` payloads".
+  it("bulk delete rejection logs structured payload without err.message", async () => {
+    const user = userEvent.setup();
+
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: DEFAULT_VARS,
+      data: { cardsByCardgroupConnection: connection([CARD_1]) },
+    });
+
+    const bulkDeleteErrorMock = {
+      request: {
+        query: DeleteCardsDocument,
+        variables: { ids: [CARD_1.id] },
+      },
+      result: {
+        errors: [new GraphQLError("forbidden", { extensions: { code: "FORBIDDEN" } })],
+      },
+    };
+
+    renderClient([bulkDeleteErrorMock], [CARD_1], { cache });
+
+    expect(await screen.findByText("Hello")).toBeInTheDocument();
+
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await user.click(screen.getByTestId(`card-select-${CARD_1.id}`));
+    await user.click(screen.getByTestId("cards-bulk-delete-button"));
+    await user.click(screen.getByTestId("cards-bulk-confirm"));
+
+    await waitFor(() => {
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[CardsClient] bulk delete rejection",
+        expect.objectContaining({
+          name: expect.any(String),
+          cardgroupId: CG_ID,
+          ids: [CARD_1.id],
+        }),
+      );
+    });
+
+    const errorCall = consoleErrorSpy.mock.calls.find(
+      (call) => call[0] === "[CardsClient] bulk delete rejection",
+    );
+    expect(errorCall?.[1]).not.toHaveProperty("message");
+
+    consoleErrorSpy.mockRestore();
+  });
+
   // T3: beforeunload handler invokes flushPendingDeletes, dropping the
   // pending entry from the registry (visible via _pendingCount === 0).
   // The DELETE mutation may not actually reach the server in production
@@ -1190,12 +1243,40 @@ describe("<CardsClient>", () => {
 
     expect(await screen.findByText("Hello")).toBeInTheDocument();
 
+    // Install the outer spy WITHOUT mockImplementation so the leak spy still
+    // receives all console.warn calls. Per .claude/rules/pagination.md
+    // § "Spy stacking": do NOT swallow the outer spy's implementation.
+    const consoleWarnSpy = vi.spyOn(console, "warn");
+
     // Trigger first fetchMore → fails.
     fireIntersect();
 
     await waitFor(() => {
       expect(screen.getByTestId("cards-fetch-more-error")).toBeInTheDocument();
     });
+
+    // fetchMore failure emits a structured warn for operator triage.
+    // The `endCursor` key discriminates against a bare Error regression.
+    // See .claude/rules/frontend-typescript-conventions.md
+    // § "expect.objectContaining({ message }) is not enough".
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "[cards-client] fetchMore failed",
+      expect.objectContaining({
+        name: expect.any(String),
+        endCursor: expect.anything(),
+      }),
+    );
+
+    // PII redaction contract — frontend-rsc-error-handling.md
+    // § "Redact `err.message` from structured `console` payloads".
+    // Forcing assertion: a future contributor that adds `err.message` "for
+    // debugging" must trip this check.
+    const warnCall = consoleWarnSpy.mock.calls.find(
+      (call) => call[0] === "[cards-client] fetchMore failed",
+    );
+    expect(warnCall?.[1]).not.toHaveProperty("message");
+
+    consoleWarnSpy.mockRestore();
 
     // Click Retry → next page loads.
     const user = userEvent.setup();

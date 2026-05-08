@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { SwipeDirection } from "@/app/learn/[cardgroupId]/learn-client";
 import { Button } from "@/components/ui/button";
 import { SwipeCard, type SwipeCardData } from "./swipe-card";
@@ -25,17 +25,24 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
 }: Props<TCard>) {
   const activeCard = cards[0];
 
+  // Mirror activeCard into a ref so triggerSwipe and the keydown listener do
+  // not need to re-register on every card change — the ref is always current.
+  const activeCardRef = useRef(activeCard);
+  useEffect(() => {
+    activeCardRef.current = activeCard;
+  }, [activeCard]);
+
   const triggerSwipe = useCallback(
     (direction: SwipeDirection) => {
-      if (!activeCard) return;
-      onCardSwiped(activeCard, direction);
+      if (!activeCardRef.current) return;
+      onCardSwiped(activeCardRef.current, direction);
     },
-    [activeCard, onCardSwiped],
+    [onCardSwiped],
   );
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (!activeCard) return;
+      if (!activeCardRef.current) return;
       const activeElement = document.activeElement;
       const tagName = activeElement?.tagName;
       if (tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT") return;
@@ -53,7 +60,7 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeCard, triggerSwipe]);
+  }, [triggerSwipe]); // triggerSwipe is now stable across activeCard changes
 
   if (!activeCard) {
     return (

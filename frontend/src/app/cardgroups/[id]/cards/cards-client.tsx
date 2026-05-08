@@ -166,16 +166,33 @@ export function CardsClient({
   const pageInfo = connection?.pageInfo ?? initialPageInfo;
   const totalCount = connection?.totalCount ?? initialTotalCount;
 
+  // Mirror cursor-related page state into refs so requestNextPage can read them
+  // without being listed as a dep. This prevents the IO observer effect from
+  // disconnecting/reconnecting every time a page loads (which updates endCursor).
+  // See .claude/rules/pagination.md § "IntersectionObserver in-flight guard via useRef<boolean>".
+  const endCursorRef = useRef(pageInfo.endCursor);
+  const hasNextPageRef = useRef(pageInfo.hasNextPage);
+  const searchQueryRef = useRef(searchQuery);
+  useEffect(() => {
+    endCursorRef.current = pageInfo.endCursor;
+  }, [pageInfo.endCursor]);
+  useEffect(() => {
+    hasNextPageRef.current = pageInfo.hasNextPage;
+  }, [pageInfo.hasNextPage]);
+  useEffect(() => {
+    searchQueryRef.current = searchQuery;
+  }, [searchQuery]);
+
   const requestNextPage = useCallback(() => {
     if (fetchingRef.current) return;
-    if (!pageInfo.hasNextPage) return;
+    if (!hasNextPageRef.current) return;
 
     fetchingRef.current = true;
     fetchMore({
       variables: {
         ...cardsDefaultVars(cardgroupId),
-        after: pageInfo.endCursor,
-        search: searchQuery,
+        after: endCursorRef.current,
+        search: searchQueryRef.current,
       },
       updateQuery: (prev, { fetchMoreResult }) => {
         if (!fetchMoreResult) return prev;
@@ -195,13 +212,21 @@ export function CardsClient({
         setFetchMoreError(null);
       })
       .catch((err) => {
+        // Structured warn for operator triage: name + request context only.
+        // err.message is omitted — backend messages may carry user-authored content.
+        // See .claude/rules/frontend-typescript-conventions.md § "expect.objectContaining".
+        console.warn("[cards-client] fetchMore failed", {
+          name: err instanceof Error ? err.name : "unknown",
+          searchQuery: searchQueryRef.current ?? null,
+          endCursor: endCursorRef.current ?? null,
+        });
         const banner = getBackendErrorBanner(err) ?? "Could not load more cards. Please try again.";
         setFetchMoreError(banner);
       })
       .finally(() => {
         fetchingRef.current = false;
       });
-  }, [cardgroupId, fetchMore, pageInfo.endCursor, pageInfo.hasNextPage, searchQuery]);
+  }, [cardgroupId, fetchMore]);
 
   useEffect(() => {
     if (!pageInfo.hasNextPage) return;
@@ -214,7 +239,7 @@ export function CardsClient({
       const entry = entries[0];
       if (!entry?.isIntersecting) return;
       if (fetchingRef.current) return;
-      if (!pageInfo.hasNextPage) return;
+      if (!hasNextPageRef.current) return;
       requestNextPage();
     });
 
@@ -292,7 +317,14 @@ export function CardsClient({
       await deleteCards({ variables: { ids } });
       clearSelection();
     } catch (err) {
-      console.error("[CardsClient] bulk delete rejection", err);
+      // Structured log for operator triage: name + domain context only.
+      // err.message is omitted — backend messages may carry user-authored content.
+      // See .claude/rules/frontend-typescript-conventions.md § "expect.objectContaining".
+      console.error("[CardsClient] bulk delete rejection", {
+        name: err instanceof Error ? err.name : "unknown",
+        cardgroupId,
+        ids,
+      });
     }
   }
 
@@ -412,7 +444,14 @@ export function CardsClient({
     const result = await updateCard({
       variables: { id, input: { front: values.front, back: values.back } },
     }).catch((err) => {
-      console.error("[CardsClient] update rejection", err);
+      // Structured log for operator triage: name + domain context only.
+      // err.message is omitted — backend messages may carry user-authored content.
+      // See .claude/rules/frontend-typescript-conventions.md § "expect.objectContaining".
+      console.error("[CardsClient] update rejection", {
+        name: err instanceof Error ? err.name : "unknown",
+        cardgroupId,
+        cardId: id,
+      });
       return null;
     });
     if (result?.data?.updateCard?.card) {

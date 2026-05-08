@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { gql, InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +11,62 @@ import {
   installApolloMockLeakSpy,
 } from "../../../../__tests__/utils/mock-apollo-paginated";
 import { LearnClient } from "./learn-client";
+
+// ---------------------------------------------------------------------------
+// SwipeCardStack mock — captures the `onCardSwiped` reference on every render
+// so the identity-stability test can assert the callback is not re-created
+// after a swipe triggers a queue state update.
+//
+// `vi.mock` is hoisted before imports by Vite, so the factory runs first.
+// The captured array is populated at render time and is cleared in `beforeEach`
+// so leakage between tests is impossible.
+// ---------------------------------------------------------------------------
+type SwipeCardStackOnCardSwiped = Parameters<
+  typeof import("@/components/learn/swipe-card-stack")["SwipeCardStack"]
+>[0]["onCardSwiped"];
+
+const capturedOnCardSwiped: SwipeCardStackOnCardSwiped[] = [];
+
+vi.mock("@/components/learn/swipe-card-stack", () => ({
+  SwipeCardStack: (props: {
+    cards: { id: string; front: string; back: string }[];
+    onCardSwiped: SwipeCardStackOnCardSwiped;
+    completedCount?: number;
+  }) => {
+    capturedOnCardSwiped.push(props.onCardSwiped);
+    // Render minimal UI so existing tests that assert on card text or swipe
+    // buttons continue to work. The `next/dynamic` AnimatedCard does not render
+    // in jsdom (ssr:false), so the full SwipeCardStack cannot be used as-is.
+    const activeCard = props.cards[0];
+    if (!activeCard) {
+      return (
+        <div>
+          <p>Session complete</p>
+          {props.completedCount != null && props.completedCount > 0 && (
+            <p>
+              You reviewed {props.completedCount} {props.completedCount === 1 ? "card" : "cards"} in
+              this batch.
+            </p>
+          )}
+        </div>
+      );
+    }
+    return (
+      <div>
+        <p>{activeCard.front}</p>
+        <button type="button" onClick={() => props.onCardSwiped(activeCard as never, "left")}>
+          Again
+        </button>
+        <button type="button" onClick={() => props.onCardSwiped(activeCard as never, "down")}>
+          Hard
+        </button>
+        <button type="button" onClick={() => props.onCardSwiped(activeCard as never, "right")}>
+          Easy
+        </button>
+      </div>
+    );
+  },
+}));
 
 // ---------------------------------------------------------------------------
 // File-wide MockedProvider leak spy.
@@ -28,6 +84,8 @@ beforeEach(() => {
   leakSpy = installApolloMockLeakSpy({
     operationNames: ["HandleSwipe", "SetLastViewedCardgroup"],
   });
+  // Reset the captured onCardSwiped array so tests do not bleed into each other.
+  capturedOnCardSwiped.length = 0;
 });
 
 afterEach(() => {
@@ -167,6 +225,7 @@ describe("<LearnClient>", () => {
 
   it("rolls back the card and shows an error when handleSwipe fails", async () => {
     const user = userEvent.setup();
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const mock = {
       request: {
         query: HandleSwipeDocument,
@@ -184,6 +243,22 @@ describe("<LearnClient>", () => {
       expect(screen.getByText("Hello")).toBeInTheDocument();
       expect(screen.getByRole("alert")).toHaveTextContent("Could not save that swipe");
     });
+
+    // PII redaction contract — frontend-rsc-error-handling.md
+    // § "Redact `err.message` from structured `console` payloads".
+    const errorCall = consoleErrorSpy.mock.calls.find(
+      (call) => call[0] === "[LearnClient] handleSwipe rejected",
+    );
+    expect(errorCall).toBeDefined();
+    const payload = errorCall?.[1];
+    expect(payload).toMatchObject({
+      cardId: expect.any(String),
+      cardgroupId: CG_ID,
+      name: expect.any(String),
+    });
+    expect(payload).not.toHaveProperty("message");
+
+    consoleErrorSpy.mockRestore();
   });
 
   describe("handleSwipe resolved-without-data branch", () => {
@@ -405,6 +480,19 @@ describe("<LearnClient> persist-last-viewed path", () => {
     });
     // Component must still render the card stack — no crash.
     expect(screen.getByText("Hello")).toBeInTheDocument();
+
+    // PII redaction contract — frontend-rsc-error-handling.md
+    // § "Redact `err.message` from structured `console` payloads".
+    const warnCall = consoleWarnSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "[learn] setLastViewedCardgroup failed",
+    );
+    expect(warnCall).toBeDefined();
+    const payload = warnCall?.[1];
+    expect(payload).toMatchObject({
+      cardgroupId: CG_ID,
+      name: expect.any(String),
+    });
+    expect(payload).not.toHaveProperty("message");
   });
 
   it("does not carry optimisticResponse in the persist mutation", () => {
@@ -429,5 +517,84 @@ describe("<LearnClient> persist-last-viewed path", () => {
 
     const persistBlock = source.slice(persistStart, persistCatchIdx);
     expect(persistBlock).not.toContain("optimisticResponse");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// onSwipe identity-stability test
+//
+// Asserts that the `onSwipe` callback passed to SwipeCardStack as `onCardSwiped`
+// keeps the same reference across re-renders caused by queue state updates.
+//
+// Regression guard for commit f293612 which replaced `queue` in the
+// `useCallback` dependency array with a `queueRef`. Reverting that commit
+// (putting `queue` back as a dep) would cause `onSwipe` to be re-created on
+// every swipe and this test would fail: `capturedOnCardSwiped[0]` and
+// `capturedOnCardSwiped[1]` would be different function objects.
+//
+// The SwipeCardStack module mock at the top of this file captures the
+// `onCardSwiped` reference on every render into `capturedOnCardSwiped`. The
+// test triggers a swipe by calling the captured callback directly — no button
+// interaction needed, which keeps the test immune to changes in SwipeCardStack's
+// internal UI structure (the `next/dynamic` AnimatedCard rendering, etc.).
+// ---------------------------------------------------------------------------
+
+describe("<LearnClient> onSwipe identity stability", () => {
+  it("passes the same onCardSwiped reference to SwipeCardStack after a swipe re-renders the parent", async () => {
+    const swipeMock = {
+      request: {
+        query: HandleSwipeDocument,
+        variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, mode: 4 } },
+      },
+      result: {
+        data: {
+          handleSwipe: {
+            __typename: "SwipeResponse" as const,
+            nextCards: [CARD_2],
+            performanceMode: 0,
+            metrics: DEFAULT_METRICS,
+          },
+        },
+      },
+    };
+
+    render(
+      <MockedProvider mocks={[swipeMock]}>
+        <LearnClient
+          cardgroupId={CG_ID}
+          cardgroupName={CG_NAME}
+          initialCards={[CARD_1, CARD_2]}
+          lastViewedCardgroupId={CG_ID}
+        />
+      </MockedProvider>,
+    );
+
+    // The first render must have pushed a callback reference.
+    expect(capturedOnCardSwiped.length).toBeGreaterThanOrEqual(1);
+    // capturedOnCardSwiped[0] is always defined here: the expect above would
+    // have thrown if the array were empty. `as` cast satisfies noUncheckedIndexedAccess.
+    const firstRef = capturedOnCardSwiped[0] as SwipeCardStackOnCardSwiped;
+
+    // Trigger a swipe by calling the captured callback directly. This causes
+    // `setQueue` inside onSwipe to fire, which re-renders LearnClient, which
+    // passes `onCardSwiped` to the mock again — capturing a second reference.
+    await act(async () => {
+      await firstRef(CARD_1, "right");
+    });
+
+    // Wait until the re-render caused by the swipe state updates has produced
+    // a second capture. Because the mock SwipeCardStack runs synchronously on
+    // each render, `capturedOnCardSwiped` accumulates one entry per render.
+    await waitFor(() => {
+      expect(capturedOnCardSwiped.length).toBeGreaterThanOrEqual(2);
+    });
+
+    const secondRef = capturedOnCardSwiped[capturedOnCardSwiped.length - 1];
+
+    // The core assertion: onSwipe must be the same function object across
+    // re-renders. If `queue` were in the useCallback dep array (the pre-f293612
+    // state), every queue state update would produce a new function and this
+    // assertion would fail.
+    expect(Object.is(firstRef, secondRef)).toBe(true);
   });
 });

@@ -66,19 +66,23 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
     setFetchMoreError(null);
   }, [searchQuery]);
 
-  // Seed the cache once with the SSR initialConnection so the first useQuery
-  // pass (cache-first) renders immediately. CARDGROUPS_DEFAULT_VARS keeps the
-  // cache key identical to the SSR seed and the client useQuery — any mismatch
-  // silently splits the cache.
-  useEffect(() => {
-    if (seededRef.current || initialConnection == null) return;
+  // Seed the cache synchronously during render (before useQuery runs) with the
+  // SSR initialConnection so the first useQuery pass (cache-first) finds the
+  // data already in the cache and renders without a network round-trip. Doing
+  // this in a useEffect would create a window between first paint and the
+  // post-render write where useQuery sees an empty cache.
+  // CARDGROUPS_DEFAULT_VARS keeps the cache key identical to the SSR seed and
+  // the client useQuery — any mismatch silently splits the cache.
+  // The seededRef guard is synchronous, so it survives Strict Mode's
+  // double-invoke without producing a second write.
+  if (!seededRef.current && initialConnection != null) {
     seededRef.current = true;
     apollo.writeQuery({
       query: MyCardgroupsConnectionDocument,
       variables: CARDGROUPS_DEFAULT_VARS,
       data: { myCardgroupsConnection: initialConnection },
     });
-  }, [apollo, initialConnection]);
+  }
 
   // When searchQuery is null we use CARDGROUPS_DEFAULT_VARS verbatim so the
   // cache key matches the SSR seed exactly. For non-null searches we spread and
@@ -99,12 +103,31 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   const hasNextPage = connection?.pageInfo.hasNextPage ?? false;
   const endCursor = connection?.pageInfo.endCursor ?? null;
 
+  // Mirror cursor / search / hasNextPage into refs so requestNextPage can read
+  // the latest values without taking them as deps. Otherwise requestNextPage's
+  // identity changes every time the cursor advances, which forces the IO
+  // observer effect below to disconnect and reconnect on every page fetch.
+  const endCursorRef = useRef(endCursor);
+  const searchQueryRef = useRef(searchQuery);
+  const hasNextPageRef = useRef(hasNextPage);
+  useEffect(() => {
+    endCursorRef.current = endCursor;
+  }, [endCursor]);
+  useEffect(() => {
+    searchQueryRef.current = searchQuery;
+  }, [searchQuery]);
+  useEffect(() => {
+    hasNextPageRef.current = hasNextPage;
+  }, [hasNextPage]);
+
   const requestNextPage = useCallback(() => {
-    if (fetchingRef.current || !hasNextPage) return;
+    if (fetchingRef.current || !hasNextPageRef.current) return;
 
     fetchingRef.current = true;
+    const cursor = endCursorRef.current;
+    const search = searchQueryRef.current;
     fetchMore({
-      variables: { ...CARDGROUPS_DEFAULT_VARS, after: endCursor, search: searchQuery },
+      variables: { ...CARDGROUPS_DEFAULT_VARS, after: cursor, search },
       updateQuery: (prev, { fetchMoreResult }) => {
         if (!fetchMoreResult) return prev;
         return {
@@ -128,8 +151,8 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
         // See .claude/rules/frontend-typescript-conventions.md § "expect.objectContaining".
         console.warn("[cardgroups] fetchMore failed", {
           name: err instanceof Error ? err.name : "unknown",
-          searchQuery,
-          endCursor,
+          searchQuery: search,
+          endCursor: cursor,
         });
         setFetchMoreError(
           getBackendErrorBanner(err) ?? "Could not load more cardgroups. Please try again.",
@@ -138,7 +161,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
       .finally(() => {
         fetchingRef.current = false;
       });
-  }, [fetchMore, endCursor, hasNextPage, searchQuery]);
+  }, [fetchMore]);
 
   useEffect(() => {
     // Halt the observer loop while a previous fetch failed; user must click Retry to resume.
@@ -147,8 +170,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
     if (!node) return;
 
     const observer = new IntersectionObserver((entries) => {
-      if (!entries[0]?.isIntersecting) return;
-      if (fetchingRef.current || !hasNextPage) return;
+      if (!entries[0]?.isIntersecting || fetchingRef.current) return;
       requestNextPage();
     });
 
