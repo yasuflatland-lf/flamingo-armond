@@ -82,15 +82,27 @@ export function AdminUsersClient() {
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
 
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // pagination.md: in-flight guard MUST be useRef<boolean>, not useState.
+  const fetchingRef = useRef(false);
+
   // Debounce: update searchQuery 300ms after the last keystroke.
   useEffect(() => {
     const timer = setTimeout(() => {
       setSearchQuery(searchInput.trim() || null);
-      // Reset pagination error when the search changes.
-      setFetchMoreError(null);
     }, 300);
     return () => clearTimeout(timer);
   }, [searchInput]);
+
+  // When the active search query changes, any in-flight fetchMore from the
+  // previous search holds a stale cursor. Reset the IO guard and error state
+  // immediately so the new query starts from a clean slate.
+  // See .claude/rules/pagination.md § "IntersectionObserver in-flight guard".
+  // biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery is an intentional trigger dependency; it is not referenced in the body because the effect resets derived IO state, not searchQuery itself.
+  useEffect(() => {
+    fetchingRef.current = false;
+    setFetchMoreError(null);
+  }, [searchQuery]);
 
   const {
     data,
@@ -122,19 +134,32 @@ export function AdminUsersClient() {
   const endCursor = connection?.pageInfo.endCursor ?? null;
   const totalCount = connection?.totalCount ?? 0;
 
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const fetchingRef = useRef(false);
+  // Mirror state into refs so requestNextPage can stay identity-stable across
+  // cursor / search / hasNextPage changes. Otherwise the IO observer effect
+  // (which depends on requestNextPage) disconnects + reconnects on every page.
+  const endCursorRef = useRef(endCursor);
+  const searchQueryRef = useRef(searchQuery);
+  const hasNextPageRef = useRef(hasNextPage);
+  useEffect(() => {
+    endCursorRef.current = endCursor;
+  }, [endCursor]);
+  useEffect(() => {
+    searchQueryRef.current = searchQuery;
+  }, [searchQuery]);
+  useEffect(() => {
+    hasNextPageRef.current = hasNextPage;
+  }, [hasNextPage]);
 
   const requestNextPage = useCallback(() => {
     if (fetchingRef.current) return;
-    if (!hasNextPage) return;
+    if (!hasNextPageRef.current) return;
 
     fetchingRef.current = true;
     fetchMore({
       variables: {
         first: ADMIN_USERS_PAGE_SIZE,
-        after: endCursor,
-        search: searchQuery,
+        after: endCursorRef.current,
+        search: searchQueryRef.current,
       },
       updateQuery: (prev, { fetchMoreResult }) => {
         if (!fetchMoreResult) return prev;
@@ -156,7 +181,7 @@ export function AdminUsersClient() {
       .finally(() => {
         fetchingRef.current = false;
       });
-  }, [fetchMore, endCursor, hasNextPage, searchQuery]);
+  }, [fetchMore]);
 
   useEffect(() => {
     if (!hasNextPage) return;
