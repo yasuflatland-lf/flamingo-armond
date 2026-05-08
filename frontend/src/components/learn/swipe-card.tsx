@@ -31,8 +31,18 @@ const directionMeta: Record<
   right: { label: "Easy", icon: Smile, className: "text-emerald-700 hover:bg-emerald-50" },
 };
 
-// Load AnimatedCard only on the client to avoid @react-spring/web hydration mismatches.
-// The loading fallback renders nothing (same as the old useMounted() === false branch).
+// AnimatedCard ships @react-spring/web + @use-gesture/react, which both
+// require client-only execution. We load it via next/dynamic (ssr: false)
+// to avoid the SSR/hydration mismatch that previously needed useMounted.
+//
+// Trade-off: a chunk-load failure (network blip after deploy, CDN miss)
+// renders the loading fallback (`null`) without surfacing an error UI.
+// The card area is briefly blank and the user must navigate away to recover.
+// Accepted because: (a) chunk failures are rare in production, (b) the
+// learn flow is forgiving — the user can swipe to the next card or
+// reload, (c) adding an error fallback complicates the success path's
+// rendering for an edge case. Revisit if telemetry shows non-trivial
+// chunk-failure rates on /learn.
 const AnimatedCard = dynamic(
   () => import("./animated-card").then((m) => m.AnimatedCard),
   { ssr: false },
