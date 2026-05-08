@@ -5,7 +5,6 @@ import { useQuery } from "@apollo/client/react";
 import { Pencil } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useFragment } from "@/generated/fragment-masking";
@@ -119,13 +118,12 @@ export function AdminUsersClient() {
 
   const queryErrorKind = classifyQueryError(queryError);
 
-  // UNAUTHENTICATED post-mount means the session expired while the page was open.
-  // The server-side gate in page.tsx already blocks the initial load, so this
-  // handles the mid-session case. Redirect to "/" where the app will re-auth.
-  if (queryErrorKind?.kind === "unauthenticated") {
-    redirect("/");
-  }
-
+  // UNAUTHENTICATED post-mount means the session expired while the page was
+  // open. The server-side gate in page.tsx + the admin layout already block
+  // the initial load (which redirects to "/"), so this only fires mid-session.
+  // Render a degraded banner pointing to /login rather than calling
+  // `redirect()` from a client component — see
+  // .claude/rules/frontend-rsc-error-handling.md.
   const queryBannerError = queryErrorKind?.kind === "banner" ? queryErrorKind.message : undefined;
 
   const connection = data?.users;
@@ -175,6 +173,14 @@ export function AdminUsersClient() {
         setFetchMoreError(null);
       })
       .catch((err) => {
+        // Structured warn for operator triage: name + request context only.
+        // err.message is omitted — backend messages may carry user-authored content.
+        // See .claude/rules/frontend-typescript-conventions.md § "expect.objectContaining".
+        console.warn("[admin-users] fetchMore failed", {
+          name: err instanceof Error ? err.name : "unknown",
+          searchQuery: searchQueryRef.current,
+          endCursor: endCursorRef.current ?? null,
+        });
         const banner = getBackendErrorBanner(err) ?? "Could not load more users. Please try again.";
         setFetchMoreError(banner);
       })
@@ -231,6 +237,20 @@ export function AdminUsersClient() {
           data-testid="admin-users-query-error"
         >
           You do not have permission to view this page.
+        </div>
+      )}
+
+      {/* UNAUTHENTICATED mid-session banner — degraded UI pointing at /login. */}
+      {queryErrorKind?.kind === "unauthenticated" && (
+        <div
+          className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+          role="alert"
+          data-testid="admin-users-query-error"
+        >
+          <span>Your session has expired. </span>
+          <Link href="/login" className="underline">
+            Please sign in again.
+          </Link>
         </div>
       )}
 
