@@ -448,6 +448,12 @@ describe("<CardgroupsClient>", () => {
   // Two MockedResponse entries for fetchMore per pagination.md:
   // first is an error, second is success for the retry.
   it("halts IO loop on fetchMore error and shows retry banner, succeeds after retry", async () => {
+    // Forwarding spy: do NOT call `mockImplementation(() => {})` here. Per
+    // pagination.md § "Spy stacking", this spy is the OUTER spy (installed
+    // after the file-wide leak spy in beforeEach) and must forward every
+    // `console.warn` call so the leak spy still records MockedProvider leaks.
+    const consoleWarnSpy = vi.spyOn(console, "warn");
+
     const cache = new InMemoryCache();
     const page1Conn = makeConnection([CG_1, CG_2], true, 3);
     cache.writeQuery({
@@ -509,6 +515,19 @@ describe("<CardgroupsClient>", () => {
     await waitFor(() => {
       expect(screen.getByTestId("cardgroups-fetch-more-error")).toBeInTheDocument();
     });
+
+    // PII redaction contract — frontend-rsc-error-handling.md
+    // § "Redact `err.message` from structured `console` payloads".
+    const warnCall = consoleWarnSpy.mock.calls.find(
+      (call) => call[0] === "[cardgroups] fetchMore failed",
+    );
+    expect(warnCall).toBeDefined();
+    const payload = warnCall?.[1];
+    expect(payload).toMatchObject({
+      name: expect.any(String),
+      endCursor: expect.any(String),
+    });
+    expect(payload).not.toHaveProperty("message");
 
     // The user clicks Retry to resume
     const retryBtn = screen.getByRole("button", { name: /retry/i });

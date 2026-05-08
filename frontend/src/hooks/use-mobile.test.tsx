@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useIsMobile } from "./use-mobile";
+import { getServerSnapshot, getSnapshot, subscribe, useIsMobile } from "./use-mobile";
 
 // Helpers to configure the jsdom matchMedia stub and window.innerWidth.
 
@@ -121,6 +121,42 @@ describe("useIsMobile", () => {
 
       unmount();
       expect(mql.removeEventListener).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // SSR / no-window contract — frontend-typescript-conventions.md
+  // § "useSyncExternalStore over useState + useEffect" requires the
+  // getServerSnapshot value to be a documented, deterministic default.
+  describe("SSR / no-window branches", () => {
+    it("getServerSnapshot returns false (deterministic SSR default)", () => {
+      expect(getServerSnapshot()).toBe(false);
+    });
+
+    it("getSnapshot returns false when window is undefined", () => {
+      const originalWindow = globalThis.window;
+      // biome-ignore lint/suspicious/noExplicitAny: simulate SSR by erasing window
+      (globalThis as any).window = undefined;
+      try {
+        expect(getSnapshot()).toBe(false);
+      } finally {
+        globalThis.window = originalWindow;
+      }
+    });
+
+    it("subscribe returns a no-op unsubscribe when window is undefined", () => {
+      const originalWindow = globalThis.window;
+      // biome-ignore lint/suspicious/noExplicitAny: simulate SSR by erasing window
+      (globalThis as any).window = undefined;
+      try {
+        const unsubscribe = subscribe(() => {
+          throw new Error("callback should never fire in SSR");
+        });
+        expect(typeof unsubscribe).toBe("function");
+        // The returned function MUST be safe to invoke and a no-op.
+        expect(() => unsubscribe()).not.toThrow();
+      } finally {
+        globalThis.window = originalWindow;
+      }
     });
   });
 });

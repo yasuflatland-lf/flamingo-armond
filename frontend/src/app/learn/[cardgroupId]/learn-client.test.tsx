@@ -225,6 +225,7 @@ describe("<LearnClient>", () => {
 
   it("rolls back the card and shows an error when handleSwipe fails", async () => {
     const user = userEvent.setup();
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const mock = {
       request: {
         query: HandleSwipeDocument,
@@ -242,6 +243,22 @@ describe("<LearnClient>", () => {
       expect(screen.getByText("Hello")).toBeInTheDocument();
       expect(screen.getByRole("alert")).toHaveTextContent("Could not save that swipe");
     });
+
+    // PII redaction contract — frontend-rsc-error-handling.md
+    // § "Redact `err.message` from structured `console` payloads".
+    const errorCall = consoleErrorSpy.mock.calls.find(
+      (call) => call[0] === "[LearnClient] handleSwipe rejected",
+    );
+    expect(errorCall).toBeDefined();
+    const payload = errorCall?.[1];
+    expect(payload).toMatchObject({
+      cardId: expect.any(String),
+      cardgroupId: CG_ID,
+      name: expect.any(String),
+    });
+    expect(payload).not.toHaveProperty("message");
+
+    consoleErrorSpy.mockRestore();
   });
 
   describe("handleSwipe resolved-without-data branch", () => {
@@ -463,6 +480,19 @@ describe("<LearnClient> persist-last-viewed path", () => {
     });
     // Component must still render the card stack — no crash.
     expect(screen.getByText("Hello")).toBeInTheDocument();
+
+    // PII redaction contract — frontend-rsc-error-handling.md
+    // § "Redact `err.message` from structured `console` payloads".
+    const warnCall = consoleWarnSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "[learn] setLastViewedCardgroup failed",
+    );
+    expect(warnCall).toBeDefined();
+    const payload = warnCall?.[1];
+    expect(payload).toMatchObject({
+      cardgroupId: CG_ID,
+      name: expect.any(String),
+    });
+    expect(payload).not.toHaveProperty("message");
   });
 
   it("does not carry optimisticResponse in the persist mutation", () => {

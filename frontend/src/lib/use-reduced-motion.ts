@@ -12,19 +12,21 @@ import { useSyncExternalStore } from "react";
 
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
-function subscribe(callback: () => void): () => void {
+// Exported for direct unit testing of SSR / no-window branches that
+// useSyncExternalStore inside jsdom never reaches.
+export function subscribe(callback: () => void): () => void {
   if (typeof window === "undefined") return () => {};
   const mq = window.matchMedia(REDUCED_MOTION_QUERY);
   mq.addEventListener("change", callback);
   return () => mq.removeEventListener("change", callback);
 }
 
-function getSnapshot(): boolean {
+export function getSnapshot(): boolean {
   if (typeof window === "undefined") return false;
   return window.matchMedia(REDUCED_MOTION_QUERY).matches;
 }
 
-function getServerSnapshot(): boolean {
+export function getServerSnapshot(): boolean {
   return false;
 }
 
