@@ -25,15 +25,25 @@ export function AnimatedCard({ card, isActive, onSwipe, onSwipeProgress }: Props
 
   const completeSwipe = useCallback(
     (direction: SwipeDirection) => {
-      const flyX =
-        direction === "left" ? -window.innerWidth : direction === "right" ? window.innerWidth : 0;
-      const flyY = direction === "down" ? window.innerHeight : 0;
-      api.start({
-        x: flyX,
-        y: flyY,
-        rotate: direction === "left" ? -16 : direction === "right" ? 16 : 0,
-        scale: 0.92,
-      });
+      // Per direction, fly the card off-screen along the axis the gesture
+      // committed to. The remaining axis stays at 0 / no rotation.
+      let flyX = 0;
+      let flyY = 0;
+      let flyRotate = 0;
+      switch (direction) {
+        case "left":
+          flyX = -window.innerWidth;
+          flyRotate = -16;
+          break;
+        case "right":
+          flyX = window.innerWidth;
+          flyRotate = 16;
+          break;
+        case "down":
+          flyY = window.innerHeight;
+          break;
+      }
+      api.start({ x: flyX, y: flyY, rotate: flyRotate, scale: 0.92 });
       onSwipe(card, direction);
     },
     [api, card, onSwipe],
