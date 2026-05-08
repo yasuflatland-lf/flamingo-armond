@@ -10,9 +10,10 @@ type ErrorPageProps = {
 
 export default function ProfileError({ error, reset }: ErrorPageProps) {
   useEffect(() => {
-    // UNAUTHENTICATED errors are intercepted in page.tsx (RSC) and redirect
-    // to /login before this boundary is reached. Errors arriving here are
-    // non-auth failures (network, 5xx, unexpected GraphQL errors).
+    // Initial-load UNAUTHENTICATED is intercepted in page.tsx and redirects
+    // to /login before this boundary is reached. This boundary handles the
+    // residual failure modes (network, 5xx, GraphQL errors raised after
+    // hydration — including UNAUTHENTICATED from client-side mutations).
     console.error("[/profile error boundary]", {
       message: error.message,
       digest: error.digest,
