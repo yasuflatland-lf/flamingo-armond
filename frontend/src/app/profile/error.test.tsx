@@ -49,7 +49,10 @@ describe("<ProfileError>", () => {
 
     expect(consoleSpy).toHaveBeenCalledWith(
       "[/profile error boundary]",
-      expect.objectContaining({ digest: "abc123" }),
+      expect.objectContaining({
+        message: "Something broke",
+        digest: "abc123",
+      }),
     );
 
     consoleSpy.mockRestore();
