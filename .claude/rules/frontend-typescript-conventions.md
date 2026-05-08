@@ -398,3 +398,153 @@ describe("is shadowed externally by GlobalFAB's hidden-path guard for /cardgroup
 **Why:** linters do not check English prose. A `grep` for the renamed constant will not find the stale test description; reviewers checking the test diff against the production diff will not flag a description that still reads naturally. The misalignment is invisible until a future reader is confused enough to investigate.
 
 **How to apply:** when a test description must reference a sibling module's behaviour, name the **module's responsibility** (e.g. "GlobalFAB's hidden-path guard") rather than the **constant's identifier** (e.g. `HIDDEN_PATH_RE`). The same rule extends to source comments that justify a piece of code by referencing a sibling module. Reference: `frontend/src/components/nav/fab-action.test.ts` and `frontend/src/components/nav/header-add-card-link.test.tsx` after a review finding that referring to `HIDDEN_PATH_RE` by name in test prose would rot the moment the constant was replaced.
+
+## `useSyncExternalStore` over `useState + useEffect` for browser-store subscriptions
+
+A hook that subscribes to an external browser store (`matchMedia`, `localStorage`, `navigator.onLine`, `document.visibilityState`, `BroadcastChannel`, etc.) and surfaces its current value to React components has two common encodings: (a) `useState` seeded with a lazy initializer plus a `useEffect` that subscribes and re-`setState` on change, or (b) `useSyncExternalStore` with `subscribe` / `getSnapshot` / `getServerSnapshot` callbacks. React's docs explicitly list (b) as the right primitive for this case; the codebase enforces (b) for every browser-store hook.
+
+```ts
+// frontend/src/hooks/use-mobile.tsx
+import { useSyncExternalStore } from "react";
+
+const MOBILE_BREAKPOINT = 768;
+
+function subscribe(callback: () => void) {
+  if (typeof window === "undefined") return () => {};
+  const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+  mql.addEventListener("change", callback);
+  return () => mql.removeEventListener("change", callback);
+}
+
+function getSnapshot() {
+  if (typeof window === "undefined") return false;
+  return window.innerWidth < MOBILE_BREAKPOINT;
+}
+
+function getServerSnapshot() {
+  return false; // SSR default
+}
+
+export function useIsMobile(): boolean {
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+```
+
+**Why:** the `useState + useEffect` shape carries three latent defects that are awkward to remove without rewriting the hook: (1) on first render the hook returns the initial state, then the effect fires post-mount and re-`setState` to the real value, producing a one-frame layout flash for any consumer whose render branches on the value; (2) consumers tend to defend against the flash by widening the type to `boolean | undefined` and collapsing the unset state with `!!isMobile` at the call site, which silently erases the "not yet measured" state; (3) the lazy initializer + effect resync is the canonical "duplicate state initialization" smell — the same value is computed once at mount and once again in the effect "in case it changed", which is evidence the wrong primitive was chosen. `useSyncExternalStore` returns the snapshot synchronously on first render and re-renders only when the subscribed callback fires, eliminating all three. Pair `subscribe` and `getSnapshot` with the `typeof window === "undefined"` guard so tests using `vitest`'s default `node` environment do not crash on import — the SSR snapshot path is what they exercise.
+
+**How to apply:** any hook that observes a browser API and surfaces a primitive value to React MUST use `useSyncExternalStore`. Do not introduce a fresh `useState + useEffect` subscription pattern. The two standalone files in this codebase that follow the rule are `frontend/src/hooks/use-mobile.tsx` (matchMedia for layout breakpoint) and `frontend/src/lib/use-reduced-motion.ts` (matchMedia for `prefers-reduced-motion`); use either as the template. The `getServerSnapshot` value is part of the contract — pick a deterministic SSR default (`false` for "matches" predicates, `null` for absent values) and document it in a one-line comment. This rule supersedes any `useMounted` / `useIsMounted` pattern that wraps `useEffect(() => setMounted(true), [])`; see § "`next/dynamic({ ssr: false })` over a `useMounted` hook" below for the matching production-component pattern.
+
+## `next/dynamic({ ssr: false })` over a `useMounted` hook for hydration-sensitive client-only components
+
+A component that wraps a client-only library (`@react-spring/web`, `@use-gesture/react`, libraries that touch `window` at module scope, animation libraries that paint on first frame) needs a way to skip server-side rendering without a hydration mismatch. The historic shape was `useMounted` — a `useState(false)` plus `useEffect(() => setMounted(true), [])` that gates the client-only render branch. The recommended shape is `dynamic(() => import("./animated-card").then((m) => m.AnimatedCard), { ssr: false })`: the dynamic import handles the SSR skip at the module-loading boundary, eliminating the double render and the `useMounted` state entirely.
+
+```tsx
+// frontend/src/components/learn/swipe-card.tsx
+import dynamic from "next/dynamic";
+
+// AnimatedCard ships @react-spring/web + @use-gesture/react, which both
+// require client-only execution. We load it via next/dynamic (ssr: false)
+// to avoid the SSR/hydration mismatch that previously needed useMounted.
+//
+// Trade-off: a chunk-load failure (network blip after deploy, CDN miss)
+// renders the loading fallback (`null`) without surfacing an error UI.
+// The component area is briefly blank and the user must navigate away to
+// recover. Accepted because: (a) chunk failures are rare in production,
+// (b) the surrounding flow is forgiving, (c) adding an error fallback
+// complicates the success path's rendering for an edge case. Revisit if
+// telemetry shows non-trivial chunk-failure rates on the affected route.
+const AnimatedCard = dynamic(() => import("./animated-card").then((m) => m.AnimatedCard), {
+  ssr: false,
+});
+```
+
+**Why:** `useMounted` is the canonical "you might not need an effect" anti-pattern — the effect's only job is to flip a flag, the flag's only job is to gate the render branch, and the flag exists only because the component is unsafe to render on the server. `next/dynamic` solves the same problem at the module-loading boundary so the consuming component does not need a flag at all. The double render that `useMounted` produces (first pass with the static-fallback branch, second pass with the animated branch) is also a hydration-risk band-aid: if the static fallback's DOM differs in attributes from the animated component's first paint, React still warns about a mismatch on the post-mount render. `next/dynamic` skips the server render entirely, so there is no hydration to mismatch.
+
+**Trade-off — chunk-load failure has no error UI by default.** A `dynamic` import that fails (transient network error, CDN miss after a deploy) renders the loading fallback (`null` by default, or the `loading` callback if provided) and stays there. There is no `error` boundary callback exposed by `next/dynamic`'s API. Document the trade-off in a code comment at the call site so a future contributor does not assume the absence of an error fallback was an oversight. The acceptance criteria for skipping the error fallback are: (1) chunk failures are rare in production, (2) the surrounding flow has a graceful out (the user can navigate away or reload), and (3) adding the error UI would complicate the success path. If telemetry surfaces a non-trivial chunk-failure rate on a specific route, revisit by wrapping the dynamic component in an error boundary with a route-specific fallback.
+
+**How to apply:** any component that previously used `useMounted` (or any equivalent `useState(false) + useEffect(() => setX(true), [])` hydration-skip pattern) MUST migrate to `next/dynamic({ ssr: false })` and document the chunk-load trade-off in a code comment. Do not introduce new `useMounted` hooks. Reference: `frontend/src/components/learn/swipe-card.tsx` (`AnimatedCard` via `next/dynamic`) replaced a prior `useMounted` gate. This rule pairs with § "`useSyncExternalStore` over `useState + useEffect`" above: both delete a `useState + useEffect` initialization pattern in favour of a primitive that React or Next.js provides for the exact use case.
+
+## Stabilize callback identity via `useRef` mirrors when the callback reads frequently-changing state
+
+A `useCallback` whose body reads from a stateful value listed in its dep array gets a fresh identity every time that value changes. When the callback flows down to a child that subscribes to it (e.g. a global keydown listener, an IntersectionObserver, a memoized child component), the subscription is torn down and rebuilt on every state change. The fix is to mirror the state into a ref, list the ref-owning effect as the only dep on the value, and have the callback read `ref.current`:
+
+```tsx
+// frontend/src/components/learn/swipe-card-stack.tsx — keydown listener
+const activeCardRef = useRef(activeCard);
+useEffect(() => {
+  activeCardRef.current = activeCard;
+}, [activeCard]);
+
+// triggerSwipe stays stable across activeCard changes — no dep on activeCard.
+const triggerSwipe = useCallback(
+  (direction: SwipeDirection) => {
+    if (!activeCardRef.current) return;
+    onCardSwiped(activeCardRef.current, direction);
+  },
+  [onCardSwiped],
+);
+
+// keydown listener subscription does not re-register on every card.
+useEffect(() => {
+  function onKeyDown(event: KeyboardEvent) {
+    if (!activeCardRef.current) return;
+    /* ... */
+  }
+  window.addEventListener("keydown", onKeyDown);
+  return () => window.removeEventListener("keydown", onKeyDown);
+}, [triggerSwipe]);
+```
+
+The same shape applies to a `useCallback` that reads from the rendered queue / cursor / search-text but should NOT be re-created when the value advances:
+
+```tsx
+// frontend/src/app/learn/[cardgroupId]/learn-client.tsx — onSwipe callback
+const queueRef = useRef(queue);
+useEffect(() => {
+  queueRef.current = queue;
+}, [queue]);
+
+const onSwipe = useCallback(
+  async (card, direction) => {
+    const remaining = queueRef.current
+      .filter((c) => c.id !== card.id)
+      .map(withTypename);
+    /* ...build optimisticResponse with `remaining`, fire mutation... */
+  },
+  [cardgroupId, handleSwipe], // queue removed from deps via queueRef
+);
+```
+
+**Why:** `useCallback` identity is what React uses to decide whether a child needs to re-subscribe (`useEffect` dep arrays, `React.memo` shallow-equal). A callback that re-creates on every queue update propagates that churn down through every memoized consumer, defeating the memoization. The ref mirror is a one-line indirection that removes the value from the dep array without losing access to it. The `useEffect` that writes the ref is the only place the value is observed, and writes to a ref do not trigger renders or downstream re-subscriptions.
+
+**How to apply:** any `useCallback` that (a) reads from frequently-changing state AND (b) flows to a consumer that re-subscribes on identity change should use a ref mirror. The trigger is "is the callback's identity load-bearing for a consumer's subscription?" — if the answer is yes, mirror. The IntersectionObserver case (cursor / search / hasNextPage triplet) is documented in `.claude/rules/pagination.md` § "Stabilise `requestNextPage` via the cursor / search / hasNextPage ref triplet"; the keydown and queue cases above are non-IO uses of the same shape. Test the stability with a behavioural assertion (e.g. capture the callback in a `vi.fn()` wrapper and assert `toHaveBeenCalledTimes(1)` across multiple state updates) — see `frontend/src/app/learn/[cardgroupId]/learn-client.test.tsx` (`onCardSwiped` reference stability across swipes) and `frontend/src/components/learn/swipe-card-stack.test.tsx` (keydown listener stability across `activeCard` changes).
+
+## Derive during render instead of resetting state via a `useEffect` keyed on the trigger
+
+When a piece of derived state depends on a snapshot of an input that may drift (e.g. "the user has not edited the payload since the last validation"), the obvious shape is a `useEffect([input])` that nulls every dependent piece of state when the input changes. The cleaner shape is to capture the snapshot the input had when the derivation last ran, and compare it to the current input during render:
+
+```tsx
+// frontend/src/app/admin/dictionary/dictionary-client.tsx
+const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+// validatedPayload tracks the payloadText value that was in effect when the last
+// successful validate call completed. canImport checks this against the current
+// payloadText to prevent importing a stale/edited payload without re-validating.
+const [validatedPayload, setValidatedPayload] = useState<string | null>(null);
+
+async function handleValidate() {
+  /* ... */
+  setValidationResult(result.data.validateDictionary);
+  setValidatedPayload(payloadText); // record snapshot at validation time
+}
+
+// Derived during render — no resetting useEffect needed.
+const canImport =
+  validationResult?.valid === true &&
+  validationResult.parsedWords.length > 0 &&
+  !!cardgroupId &&
+  validatedPayload === payloadText; // becomes false the moment the user edits
+```
+
+**Why:** the resetting-effect shape requires three things to land together — (a) the effect itself, (b) a `biome-ignore lint/correctness/useExhaustiveDependencies` comment to acknowledge that the dep array drives a side effect rather than a synchronization, and (c) operator-mental-model debt because a reader has to trace the effect to understand when each piece of state goes back to `null`. The derive-during-render shape collapses all three into a single equality check. The double-render the effect produces (render with stale state → effect fires → re-render with nulled state) is also gone — the comparison runs in the same render the input changed.
+
+**How to apply:** when introducing derived state that should "invalidate when X changes", first ask "can I capture a snapshot of X at the moment the derivation was last valid, and compare during render?" If yes, store the snapshot in a `useState<typeof X | null>` alongside the derived value, set the snapshot in the same handler that produced the derived value, and read the snapshot during render via `snapshot === currentX`. Reach for the resetting `useEffect` only when the invalidation also has to fire a side effect that cannot be expressed as a render-time comparison (a network round-trip, a DOM measurement). Reference: `frontend/src/app/admin/dictionary/dictionary-client.tsx` (`validatedPayload` snapshot replaces the prior three-state-reset effect). This rule pairs with § "Audit collapsed helpers for branches that lose all side effects" above: both push more work into the synchronous render path and out of post-render effects.
