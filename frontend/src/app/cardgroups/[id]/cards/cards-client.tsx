@@ -166,16 +166,34 @@ export function CardsClient({
   const pageInfo = connection?.pageInfo ?? initialPageInfo;
   const totalCount = connection?.totalCount ?? initialTotalCount;
 
+  // Mirror cursor-related page state into refs so requestNextPage can read them
+  // without being listed as a dep. This prevents the IO observer effect from
+  // disconnecting/reconnecting every time a page loads (which updates endCursor).
+  // See .claude/rules/pagination.md § "IntersectionObserver in-flight guard via useRef<boolean>".
+  const endCursorRef = useRef(pageInfo.endCursor);
+  const hasNextPageRef = useRef(pageInfo.hasNextPage);
+  const searchQueryRef = useRef(searchQuery);
+  useEffect(() => {
+    endCursorRef.current = pageInfo.endCursor;
+  }, [pageInfo.endCursor]);
+  useEffect(() => {
+    hasNextPageRef.current = pageInfo.hasNextPage;
+  }, [pageInfo.hasNextPage]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery is the intentional trigger; the body only updates a ref, not state.
+  useEffect(() => {
+    searchQueryRef.current = searchQuery;
+  }, [searchQuery]);
+
   const requestNextPage = useCallback(() => {
     if (fetchingRef.current) return;
-    if (!pageInfo.hasNextPage) return;
+    if (!hasNextPageRef.current) return;
 
     fetchingRef.current = true;
     fetchMore({
       variables: {
         ...cardsDefaultVars(cardgroupId),
-        after: pageInfo.endCursor,
-        search: searchQuery,
+        after: endCursorRef.current,
+        search: searchQueryRef.current,
       },
       updateQuery: (prev, { fetchMoreResult }) => {
         if (!fetchMoreResult) return prev;
@@ -201,7 +219,7 @@ export function CardsClient({
       .finally(() => {
         fetchingRef.current = false;
       });
-  }, [cardgroupId, fetchMore, pageInfo.endCursor, pageInfo.hasNextPage, searchQuery]);
+  }, [cardgroupId, fetchMore]);
 
   useEffect(() => {
     if (!pageInfo.hasNextPage) return;
@@ -214,7 +232,7 @@ export function CardsClient({
       const entry = entries[0];
       if (!entry?.isIntersecting) return;
       if (fetchingRef.current) return;
-      if (!pageInfo.hasNextPage) return;
+      if (!hasNextPageRef.current) return;
       requestNextPage();
     });
 
