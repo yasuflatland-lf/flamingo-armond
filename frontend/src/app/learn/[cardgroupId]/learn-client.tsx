@@ -209,7 +209,7 @@ export function LearnClient({
             </div>
           ) : null}
 
-          <div className="relative flex min-h-[560px] flex-1 items-center justify-center sm:min-h-[620px]">
+          <div className="relative flex min-h-[560px] flex-1 items-start justify-center sm:min-h-[620px]">
             <SwipeCardStack
               cards={queue}
               onCardSwiped={onSwipe}
