@@ -32,17 +32,17 @@ export function RoleListItem({ id, name, isSystem, busy, onDelete }: RoleListIte
   return (
     <li className={wrapperClasses} data-testid={`admin-role-row-${id}`}>
       {isSystem ? (
-        <div className="flex min-w-0 flex-1 flex-col gap-1 p-4" data-testid="admin-role-name">
-          <span className="truncate font-medium text-foreground">{name}</span>
+        <div className="flex min-w-0 flex-1 flex-col gap-1 p-4">
+          <span className="truncate font-medium text-foreground" data-testid="admin-role-name">
+            {name}
+          </span>
           <span className="text-xs text-muted-foreground">System role</span>
         </div>
       ) : (
-        <Link
-          href={`/admin/roles/${id}/edit`}
-          className="flex min-w-0 flex-1 flex-col gap-1 p-4"
-          data-testid="admin-role-name"
-        >
-          <span className="truncate font-medium text-foreground">{name}</span>
+        <Link href={`/admin/roles/${id}/edit`} className="flex min-w-0 flex-1 flex-col gap-1 p-4">
+          <span className="truncate font-medium text-foreground" data-testid="admin-role-name">
+            {name}
+          </span>
         </Link>
       )}
       <Button

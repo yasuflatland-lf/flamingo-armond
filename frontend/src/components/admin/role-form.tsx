@@ -8,16 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
 import { FieldError } from "@/lib/forms/field-error";
-import { newRoleSchema, updateRoleSchema } from "@/schemas/role";
-
-type Mode = "create" | "edit";
+import { roleSchema } from "@/schemas/role";
 
 type RoleFormProps = {
-  mode: Mode;
   defaultValues: { name: string };
   submit: (values: { name: string }) => Promise<void>;
-  /** Defaults to "Create" in create mode, "Save" in edit mode. */
-  submitLabel?: string;
+  /** Label rendered on the submit button (e.g. "Create", "Save"). */
+  submitLabel: string;
   /** Parent passes Apollo mutation `loading` state. */
   submitting?: boolean;
   /** Parent passes Apollo mutation `error` for triage. */
@@ -29,7 +26,6 @@ type RoleFormProps = {
 };
 
 export function RoleForm({
-  mode,
   defaultValues,
   submit,
   submitLabel,
@@ -38,10 +34,7 @@ export function RoleForm({
   readOnly = false,
   secondarySlot,
 }: RoleFormProps) {
-  const resolvedLabel = submitLabel ?? (mode === "create" ? "Create" : "Save");
-
-  const schema = mode === "create" ? newRoleSchema : updateRoleSchema;
-  const nameSchema = schema.shape.name;
+  const nameSchema = roleSchema.shape.name;
 
   const fieldErrors = useMemo(() => getBackendFieldErrors(error), [error]);
   const bannerError = useMemo(() => getBackendErrorBanner(error), [error]);
@@ -52,7 +45,12 @@ export function RoleForm({
     },
     onSubmit: async ({ value }) => {
       await submit(value).catch((err) => {
-        console.error("[role-form] submit rejected", err);
+        // err.message is omitted — backend messages may echo user-authored
+        // input (the role name typed into this form). See
+        // .claude/rules/frontend-rsc-error-handling.md § "Redact err.message".
+        console.error("[role-form] submit rejected", {
+          name: err instanceof Error ? err.name : "unknown",
+        });
         throw err; // keep formState.isSubmitSuccessful correct
       });
     },
@@ -97,7 +95,7 @@ export function RoleForm({
 
       <div className="flex items-center gap-2">
         <Button type="submit" variant="brand" disabled={submitting || readOnly}>
-          {submitting ? "Saving..." : resolvedLabel}
+          {submitting ? "Saving..." : submitLabel}
         </Button>
         {secondarySlot}
       </div>

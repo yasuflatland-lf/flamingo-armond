@@ -1,17 +1,14 @@
 "use client";
 
 import { useMutation } from "@apollo/client/react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
+import { RoleListItem } from "@/components/admin/role-list-item";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
-import {
-  AdminCreateRoleMutation,
-  AdminDeleteRoleMutation,
-  AdminUpdateRoleMutation,
-} from "./queries";
+import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { AdminDeleteRoleMutation, SYSTEM_ROLE_NAMES } from "./queries";
 
 export type RoleItem = { id: string; name: string };
 
@@ -23,106 +20,21 @@ function toMessage(err: unknown): string {
 }
 
 /**
- * Splits a thrown mutation error into an optional banner message and a
- * field-keyed error map. Either may be empty; if both are, callers should
- * fall back to toMessage(err) so the user is never shown a silent failure.
- */
-function classifyMutationError(err: unknown) {
-  return {
-    banner: getBackendErrorBanner(err),
-    fields: getBackendFieldErrors(err),
-  };
-}
-
-/**
- * Client component for the /admin/roles page.
- * Supports listing, inline-edit, add, and delete of roles.
- * The "admin" system role has Edit/Delete disabled (server also enforces this via FORBIDDEN).
- * No optimisticResponse is used — typed-error mutations can fail with FORBIDDEN / BAD_USER_INPUT
- * and the cache must stay truthful (see .claude/rules/pagination.md).
+ * Roles listing page. Add and edit are dedicated routes
+ * (/admin/roles/new and /admin/roles/:id/edit) so this component is a thin
+ * presentational shell over the server-fetched role list. The "admin" and
+ * "general" system roles render as non-clickable rows with delete disabled;
+ * the backend also enforces the guard via FORBIDDEN.
+ *
+ * No optimisticResponse on delete: a typed FORBIDDEN can fail the mutation,
+ * and Apollo does not consistently roll back optimistic writes for typed
+ * GraphQL errors (see .claude/rules/pagination.md).
  */
 export function AdminRolesClient({ initialRoles }: Props) {
   const [roles, setRoles] = useState<RoleItem[]>(initialRoles);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-  const [newName, setNewName] = useState("");
-
-  // Banner error for operations that are not field-level (delete, FORBIDDEN, network, etc.)
   const [error, setError] = useState<string | null>(null);
 
-  // Field-level errors are kept separate per context to avoid cross-row leakage.
-  const [addRowFieldErrors, setAddRowFieldErrors] = useState<Record<string, string>>({});
-  const [editRowFieldErrors, setEditRowFieldErrors] = useState<Record<string, string>>({});
-
-  const [createRoleMutate, { loading: creating }] = useMutation(AdminCreateRoleMutation);
-  const [updateRoleMutate, { loading: updating }] = useMutation(AdminUpdateRoleMutation);
   const [deleteRoleMutate, { loading: deleting }] = useMutation(AdminDeleteRoleMutation);
-
-  const busy = creating || updating || deleting;
-
-  /** The "admin" system role must not be edited or deleted from the UI. */
-  const isSystemRole = (role: RoleItem) => role.name === "admin";
-
-  function handleStartEdit(role: RoleItem) {
-    setEditingId(role.id);
-    setDraft(role.name);
-    setError(null);
-    setEditRowFieldErrors({});
-  }
-
-  function handleCancelEdit() {
-    setEditingId(null);
-    setDraft("");
-    setEditRowFieldErrors({});
-  }
-
-  async function handleSaveEdit(id: string) {
-    setError(null);
-    setEditRowFieldErrors({});
-    const trimmed = draft.trim();
-    if (!trimmed) {
-      setError("Name is required.");
-      return;
-    }
-    try {
-      const res = await updateRoleMutate({ variables: { id, name: trimmed } });
-      // Fragment masking is compile-time only; runtime shape is the plain object.
-      const updated = res.data?.updateRole as RoleItem | undefined;
-      if (updated) {
-        setRoles((prev) => prev.map((r) => (r.id === id ? updated : r)));
-        setEditingId(null);
-        setDraft("");
-      }
-    } catch (err) {
-      const { banner, fields } = classifyMutationError(err);
-      if (Object.keys(fields).length > 0) setEditRowFieldErrors(fields);
-      if (banner) setError(banner);
-      if (!banner && Object.keys(fields).length === 0) setError(toMessage(err));
-    }
-  }
-
-  async function handleCreate() {
-    setError(null);
-    setAddRowFieldErrors({});
-    const trimmed = newName.trim();
-    if (!trimmed) {
-      setError("Name is required.");
-      return;
-    }
-    try {
-      const res = await createRoleMutate({ variables: { name: trimmed } });
-      const created = res.data?.createRole as RoleItem | undefined;
-      if (created) {
-        setRoles((prev) => [...prev, created]);
-        setNewName("");
-      }
-    } catch (err) {
-      const { banner, fields } = classifyMutationError(err);
-      if (Object.keys(fields).length > 0) setAddRowFieldErrors(fields);
-      if (banner) setError(banner);
-      if (!banner && Object.keys(fields).length === 0) setError(toMessage(err));
-    }
-  }
 
   async function handleDelete(id: string) {
     setError(null);
@@ -135,7 +47,18 @@ export function AdminRolesClient({ initialRoles }: Props) {
   }
 
   return (
-    <ListingPageShell title="Roles" description="Manage roles available to assign to users.">
+    <ListingPageShell
+      title="Roles"
+      description="Manage roles available to assign to users."
+      primaryActions={
+        <Button asChild variant="brand" data-testid="admin-roles-new-btn">
+          <Link href="/admin/roles/new">
+            <span>New role</span>
+            <Plus aria-hidden="true" />
+          </Link>
+        </Button>
+      }
+    >
       {error && (
         <div
           role="alert"
@@ -146,132 +69,17 @@ export function AdminRolesClient({ initialRoles }: Props) {
         </div>
       )}
 
-      <ul
-        className="divide-y divide-border rounded-md border border-border"
-        data-testid="admin-roles-list"
-      >
+      <ul className="space-y-3" data-testid="admin-roles-list">
         {roles.map((role) => (
-          <li
+          <RoleListItem
             key={role.id}
-            className="flex flex-col gap-1 p-3"
-            data-testid={`admin-role-row-${role.id}`}
-          >
-            {editingId === role.id ? (
-              <div className="flex items-start gap-3">
-                <div className="flex flex-col gap-1">
-                  <Input
-                    id={`edit-name-${role.id}`}
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    className="max-w-xs"
-                    aria-label="Role name"
-                    aria-invalid={editRowFieldErrors.name ? "true" : undefined}
-                    aria-describedby={
-                      editRowFieldErrors.name ? `edit-name-error-${role.id}` : undefined
-                    }
-                    data-testid="admin-role-edit-input"
-                  />
-                  {editRowFieldErrors.name && (
-                    <p
-                      id={`edit-name-error-${role.id}`}
-                      role="alert"
-                      data-testid="admin-role-edit-field-error"
-                      className="text-xs text-destructive mt-1"
-                    >
-                      {editRowFieldErrors.name}
-                    </p>
-                  )}
-                </div>
-                <Button
-                  type="button"
-                  onClick={() => handleSaveEdit(role.id)}
-                  disabled={busy}
-                  data-testid="admin-role-save-btn"
-                >
-                  Save
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={handleCancelEdit}
-                  disabled={busy}
-                  data-testid="admin-role-cancel-btn"
-                >
-                  Cancel
-                </Button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                <span className="flex-1" data-testid="admin-role-name">
-                  {role.name}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleStartEdit(role)}
-                  disabled={busy || isSystemRole(role)}
-                  aria-label={`Edit ${role.name}`}
-                  data-testid={`admin-role-edit-btn-${role.id}`}
-                >
-                  <Pencil aria-hidden="true" className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleDelete(role.id)}
-                  disabled={busy || isSystemRole(role)}
-                  aria-label={`Delete ${role.name}`}
-                  data-testid={`admin-role-delete-btn-${role.id}`}
-                >
-                  <Trash2 aria-hidden="true" className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-          </li>
+            id={role.id}
+            name={role.name}
+            isSystem={SYSTEM_ROLE_NAMES.has(role.name)}
+            busy={deleting}
+            onDelete={handleDelete}
+          />
         ))}
-
-        {/* Add-role row */}
-        <li className="flex flex-col gap-1 bg-muted/30 p-3">
-          <div className="flex items-start gap-3">
-            <div className="flex flex-col gap-1">
-              <Input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="new-role-name"
-                className="max-w-xs"
-                aria-label="New role name"
-                aria-invalid={addRowFieldErrors.name ? "true" : undefined}
-                aria-describedby={addRowFieldErrors.name ? "add-role-name-error" : undefined}
-                data-testid="admin-role-new-name-input"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleCreate();
-                }}
-              />
-              {addRowFieldErrors.name && (
-                <p
-                  id="add-role-name-error"
-                  role="alert"
-                  data-testid="admin-role-add-field-error"
-                  className="text-xs text-destructive mt-1"
-                >
-                  {addRowFieldErrors.name}
-                </p>
-              )}
-            </div>
-            <Button
-              type="button"
-              variant="brand"
-              onClick={handleCreate}
-              disabled={busy}
-              data-testid="admin-role-add-btn"
-            >
-              Add role
-              <Plus aria-hidden="true" className="ml-1 h-4 w-4" />
-            </Button>
-          </div>
-        </li>
       </ul>
     </ListingPageShell>
   );
