@@ -684,14 +684,13 @@ describe("<CardsClient>", () => {
     });
   });
 
-  // Task 7: empty state pattern 1 — zero cards, no search, shows "Add some
-  // new cards to get started." plus a brand-coloured Add card CTA.
-  it("renders no-cards empty state with Add card CTA when totalCount is 0", () => {
+  // Empty state — zero cards, no search, shows the prompt copy. The Add card
+  // CTA lives in the section toolbar (top-right), not inside the empty state.
+  it("renders no-cards empty state copy when totalCount is 0", () => {
     renderClient([], []);
 
     expect(screen.getByTestId("cards-empty")).toBeInTheDocument();
     expect(screen.getByText("Add some new cards to get started.")).toBeInTheDocument();
-    expect(screen.getByTestId("cards-empty-add-card")).toBeInTheDocument();
   });
 
   // Task 5b regression guard: bulk delete still uses AlertDialog.

@@ -2,8 +2,7 @@
 
 import { NetworkStatus } from "@apollo/client";
 import { useApolloClient, useMutation, useQuery } from "@apollo/client/react";
-import { Plus, Search, Trash2, X } from "lucide-react";
-import Link from "next/link";
+import { Search, Trash2, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -465,10 +464,6 @@ export function CardsClient({
   const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
   const hasActiveSearch = searchQuery !== null;
 
-  const addCardHref = `/cards/new?cardgroup=${encodeURIComponent(
-    cardgroupId,
-  )}&return=/cardgroups/${encodeURIComponent(cardgroupId)}/edit`;
-
   return (
     <div className="space-y-3">
       {queryBannerError && (
@@ -592,12 +587,6 @@ export function CardsClient({
               data-testid="cards-empty"
             >
               <p className="text-sm text-muted-foreground">Add some new cards to get started.</p>
-              <Button asChild variant="brand" size="sm">
-                <Link href={addCardHref} data-testid="cards-empty-add-card">
-                  Add card
-                  <Plus aria-hidden="true" className="ml-1.5 h-4 w-4" />
-                </Link>
-              </Button>
             </div>
           )
         ) : (
