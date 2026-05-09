@@ -26,14 +26,14 @@ const CUSTOM_ROLE: RoleForEdit = { id: "r-mod", name: "moderator" };
 const ADMIN_ROLE: RoleForEdit = { id: "r-admin", name: "admin" };
 
 describe("EditRoleClient", () => {
-  it("renders heading + back link", () => {
+  it("renders heading + cancel link", () => {
     render(
       <MockedProvider mocks={[]}>
         <EditRoleClient role={CUSTOM_ROLE} />
       </MockedProvider>,
     );
     expect(screen.getByRole("heading", { name: /edit role/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /back/i })).toHaveAttribute("href", "/admin/roles");
+    expect(screen.getByRole("link", { name: /cancel/i })).toHaveAttribute("href", "/admin/roles");
   });
 
   it("submits update mutation and navigates on success", async () => {

@@ -4,6 +4,7 @@ import { useMutation } from "@apollo/client/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RoleForm } from "@/components/admin/role-form";
+import { Button } from "@/components/ui/button";
 import { AdminUpdateRoleMutation, SYSTEM_ROLE_NAMES } from "../../queries";
 
 export type RoleForEdit = { id: string; name: string };
@@ -38,12 +39,7 @@ export function EditRoleClient({ role }: Props) {
 
   return (
     <main className="p-8">
-      <div className="mb-6 flex items-center gap-4">
-        <Link href="/admin/roles" className="text-sm text-muted-foreground hover:underline">
-          &larr; Back
-        </Link>
-        <h1 className="text-2xl font-semibold">Edit role</h1>
-      </div>
+      <h1 className="mb-6 text-2xl font-semibold">Edit role</h1>
 
       {readOnly ? (
         <div
@@ -62,6 +58,11 @@ export function EditRoleClient({ role }: Props) {
         submitting={loading}
         error={error}
         readOnly={readOnly}
+        secondarySlot={
+          <Button asChild variant="outline">
+            <Link href="/admin/roles">Cancel</Link>
+          </Button>
+        }
       />
     </main>
   );

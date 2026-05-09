@@ -421,7 +421,7 @@ describe("AdminUserEditPage (RSC)", () => {
     // tested in admin-users-roles.test.tsx; here we verify it is rendered).
     expect(screen.getByRole("checkbox", { name: /admin/i })).toBeInTheDocument();
 
-    // Back-to-users navigation link must be present.
-    expect(screen.getByRole("link", { name: /back to users/i })).toBeInTheDocument();
+    // Cancel link returns the user to the users list without saving.
+    expect(screen.getByRole("link", { name: /cancel/i })).toHaveAttribute("href", "/admin/users");
   });
 });
