@@ -22,7 +22,11 @@ export function NewRoleClient() {
   });
 
   async function handleSubmit(values: { name: string }) {
-    await createRole({ variables: { name: values.name } }).catch((err) => {
+    // Mirror the backend `validateRoleName` normalization so the mutation
+    // always sees the canonical form. TanStack Form's `value` is the raw
+    // user input — Zod's `transform` runs in validators only, not on submit.
+    const name = values.name.trim().toLowerCase();
+    await createRole({ variables: { name } }).catch((err) => {
       // err.message is omitted — backend messages may echo user input.
       console.warn("[admin/roles/new] createRole rejected", {
         name: err instanceof Error ? err.name : "unknown",
@@ -39,9 +43,9 @@ export function NewRoleClient() {
         <h1 className="text-2xl font-semibold">New role</h1>
       </div>
       <RoleForm
-        mode="create"
         defaultValues={{ name: "" }}
         submit={handleSubmit}
+        submitLabel="Create"
         submitting={loading}
         error={error}
       />

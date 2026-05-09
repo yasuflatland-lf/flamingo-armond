@@ -1,7 +1,12 @@
 import { redirect } from "next/navigation";
 import { AdminRoleQuery } from "@/app/admin/roles/queries";
 import type { AdminRoleQuery as AdminRoleQueryType } from "@/generated/graphql";
+import {
+  isForbiddenGraphQLError,
+  isUnauthenticatedGraphQLError,
+} from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
+import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { EditRoleClient, type RoleForEdit } from "./edit-role-client";
 
@@ -13,30 +18,30 @@ type Props = {
  * RSC for editing an existing role.
  *
  * admin/layout.tsx is the source-of-truth admin gate; the per-page getUser
- * here is defense-in-depth.
+ * here is defense-in-depth. UNAUTHENTICATED and FORBIDDEN are routed
+ * separately:
+ *   - UNAUTHENTICATED → /login (session expired or never present).
+ *   - FORBIDDEN → /admin/roles (the admin layout already let this caller in,
+ *     so a FORBIDDEN here means a role lost its admin grant mid-session;
+ *     bouncing to the listing avoids a double-redirect through /login).
  *
- * UNAUTHENTICATED / FORBIDDEN from the role fetch redirect back to the
- * roles listing rather than /login: the admin layout has already let this
- * caller in once, so a typed error here is more likely a stale session
- * than an unauthenticated request.
+ * Per .claude/rules/frontend-rsc-error-handling.md § "Structurally parse
+ * GraphQL extensions.code", the codes are matched via the structural helpers
+ * — never by substring on err.message.
  */
-function redirectOnAuthError(err: unknown): never {
-  const msg = err instanceof Error ? err.message : String(err);
-  if (msg.includes("UNAUTHENTICATED") || msg.includes("FORBIDDEN")) redirect("/admin/roles");
-  throw err;
-}
-
 export default async function EditRolePage({ params }: Props) {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
     error: authErr,
   } = await supabase.auth.getUser();
-  if (authErr && authErr.name !== "AuthSessionMissingError") {
+  // AuthSessionMissingError = anonymous request; stale session = deleted user
+  // with a still-valid JWT. Both are handled by redirecting to /login.
+  if (authErr && !isIgnorableAuthError(authErr)) {
     console.error("[admin/roles/:id/edit] getUser() failed:", authErr.name, authErr.message);
     throw authErr;
   }
-  if (!user) redirect("/login");
+  if (!user || isStaleSessionError(authErr)) redirect("/login");
 
   const { id } = await params;
 
@@ -44,7 +49,14 @@ export default async function EditRolePage({ params }: Props) {
   try {
     data = await gqlFetch(AdminRoleQuery, { variables: { id }, revalidate: 0 });
   } catch (err) {
-    redirectOnAuthError(err);
+    if (isUnauthenticatedGraphQLError(err)) redirect("/login");
+    if (isForbiddenGraphQLError(err)) redirect("/admin/roles");
+    console.error(
+      "[admin/roles/:id/edit] gqlFetch failed:",
+      err instanceof Error ? err.name : "unknown",
+      err instanceof Error ? err.message : String(err),
+    );
+    throw err;
   }
 
   if (!data?.role) redirect("/admin/roles");

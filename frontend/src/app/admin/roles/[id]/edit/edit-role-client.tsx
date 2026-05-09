@@ -4,7 +4,7 @@ import { useMutation } from "@apollo/client/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RoleForm } from "@/components/admin/role-form";
-import { AdminUpdateRoleMutation, isSystemRoleName } from "../../queries";
+import { AdminUpdateRoleMutation, SYSTEM_ROLE_NAMES } from "../../queries";
 
 export type RoleForEdit = { id: string; name: string };
 
@@ -14,7 +14,7 @@ type Props = {
 
 export function EditRoleClient({ role }: Props) {
   const router = useRouter();
-  const readOnly = isSystemRoleName(role.name);
+  const readOnly = SYSTEM_ROLE_NAMES.has(role.name);
 
   const [updateRole, { loading, error }] = useMutation(AdminUpdateRoleMutation, {
     onCompleted(data) {
@@ -25,7 +25,9 @@ export function EditRoleClient({ role }: Props) {
   });
 
   async function handleSubmit(values: { name: string }) {
-    await updateRole({ variables: { id: role.id, name: values.name } }).catch((err) => {
+    // Mirror the backend `validateRoleName` normalization — see new-role-client.tsx.
+    const name = values.name.trim().toLowerCase();
+    await updateRole({ variables: { id: role.id, name } }).catch((err) => {
       // err.message is omitted — backend messages may echo user input.
       console.warn("[admin/roles/:id/edit] updateRole rejected", {
         roleId: role.id,
@@ -54,9 +56,9 @@ export function EditRoleClient({ role }: Props) {
       ) : null}
 
       <RoleForm
-        mode="edit"
         defaultValues={{ name: role.name }}
         submit={handleSubmit}
+        submitLabel="Save"
         submitting={loading}
         error={error}
         readOnly={readOnly}

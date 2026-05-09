@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { NewRoleClient } from "./new-role-client";
 
@@ -14,11 +15,13 @@ export default async function NewRolePage() {
     data: { user },
     error: authErr,
   } = await supabase.auth.getUser();
-  if (authErr && authErr.name !== "AuthSessionMissingError") {
+  // AuthSessionMissingError = anonymous request; stale session = deleted user
+  // with a still-valid JWT. Both are handled by redirecting to /login.
+  if (authErr && !isIgnorableAuthError(authErr)) {
     console.error("[admin/roles/new] getUser() failed:", authErr.name, authErr.message);
     throw authErr;
   }
-  if (!user) redirect("/login");
+  if (!user || isStaleSessionError(authErr)) redirect("/login");
 
   return <NewRoleClient />;
 }
