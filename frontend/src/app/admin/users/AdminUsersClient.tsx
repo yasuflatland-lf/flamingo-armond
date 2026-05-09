@@ -2,11 +2,9 @@
 
 import { NetworkStatus } from "@apollo/client";
 import { useQuery } from "@apollo/client/react";
-import { Pencil } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { useFragment } from "@/generated/fragment-masking";
 import { AdminUsersDocument, type AdminUsersQuery } from "@/generated/graphql";
 import { classifyQueryError, getBackendErrorBanner } from "@/lib/apollo/errors";
@@ -22,56 +20,52 @@ function UserRow({ edge }: { edge: Edge }) {
   return (
     <li
       key={user.id}
-      className="flex items-start gap-4 rounded-md border border-border px-4 py-3"
+      className="flex rounded-md border border-border hover:bg-accent transition-colors"
       data-testid={`admin-user-row-${user.id}`}
     >
-      {/* Avatar */}
-      {user.avatarUrl ? (
-        <Image
-          src={user.avatarUrl}
-          alt={user.displayName ?? "User avatar"}
-          width={40}
-          height={40}
-          className="h-10 w-10 shrink-0 rounded-full object-cover"
-        />
-      ) : (
-        <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-muted-foreground"
-          aria-hidden="true"
-        >
-          {(user.displayName ?? "?").charAt(0).toUpperCase()}
-        </div>
-      )}
-
-      {/* Name, bio, roles */}
-      <div className="min-w-0 flex-1 space-y-1">
-        <p className="text-sm font-medium">
-          {user.displayName ?? <span className="italic text-muted-foreground">No name</span>}
-        </p>
-        {user.bio && <p className="truncate text-sm text-muted-foreground">{user.bio}</p>}
-        {roles.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {roles.map((role) => (
-              <span
-                key={role.id}
-                className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
-              >
-                {role.name}
-              </span>
-            ))}
+      <Link
+        href={`/admin/users/${user.id}/edit`}
+        aria-label={`Edit ${user.displayName ?? "user"}`}
+        className="flex min-w-0 flex-1 items-start gap-4 px-4 py-3"
+      >
+        {/* Avatar */}
+        {user.avatarUrl ? (
+          <Image
+            src={user.avatarUrl}
+            alt={user.displayName ?? "User avatar"}
+            width={40}
+            height={40}
+            className="h-10 w-10 shrink-0 rounded-full object-cover"
+          />
+        ) : (
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-muted-foreground"
+            aria-hidden="true"
+          >
+            {(user.displayName ?? "?").charAt(0).toUpperCase()}
           </div>
         )}
-      </div>
 
-      {/* Edit link */}
-      <Button asChild variant="ghost" size="icon" className="shrink-0">
-        <Link
-          href={`/admin/users/${user.id}/edit`}
-          aria-label={`Edit ${user.displayName ?? "user"}`}
-        >
-          <Pencil aria-hidden="true" className="h-4 w-4" />
-        </Link>
-      </Button>
+        {/* Name, bio, roles */}
+        <div className="min-w-0 flex-1 space-y-1">
+          <p className="text-sm font-medium">
+            {user.displayName ?? <span className="italic text-muted-foreground">No name</span>}
+          </p>
+          {user.bio && <p className="truncate text-sm text-muted-foreground">{user.bio}</p>}
+          {roles.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {roles.map((role) => (
+                <span
+                  key={role.id}
+                  className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+                >
+                  {role.name}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </Link>
     </li>
   );
 }

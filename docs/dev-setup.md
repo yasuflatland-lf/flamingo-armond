@@ -139,7 +139,14 @@ Sync logic lives in `playbooks/setup.yml` as declarative Ansible tasks. To wire 
 
 ### First admin (local Supabase)
 
-The backend grants the `admin` role automatically on first sign-in for any email listed in `SUPER_USER_EMAILS`. This is the **only** supported path to bootstrap a local admin without manually editing the database.
+Two complementary paths grant the `admin` role to any email listed in `SUPER_USER_EMAILS`. Both are sanctioned; pick whichever fits the situation.
+
+- **Middleware auto-promotion** (zero-touch). On any authenticated `/query` request, the post-auth middleware grants `admin` to a matching user **when the JWT carries `email_verified=true`**. Subsequent requests short-circuit on the cached role.
+- **`make sync-env` seed task** (idempotent INSERT). The setup playbook runs `INSERT INTO public.user_roles ... ON CONFLICT DO NOTHING` for every email in `SUPER_USER_EMAILS` that already has an `auth.users` row. Use this when the middleware path has not fired — typically because the current browser session's JWT predates the email confirmation, or the user signed up but has not yet issued a GraphQL request.
+
+Both paths require `public.roles` to exist, which means the backend must have run migrations at least once (i.e. `make dev` / `make dev-backend` started successfully).
+
+#### Steps
 
 1. Open `backend/.env.local` and add (or uncomment) the line:
    ```
@@ -153,9 +160,17 @@ The backend grants the `admin` role automatically on first sign-in for any email
    If `email_count` is `0`, your edit did not take effect — re-check the file path and restart.
 3. Sign in at `http://127.0.0.1:3000/login` with one of the listed accounts. The Admin pill appears in the global header and `/admin/*` routes become reachable.
 
-**After `make db-reset`:** `public.user_roles` is wiped, but the super-user middleware re-promotes automatically on the next authenticated request for any email in `SUPER_USER_EMAILS` — simply reload any page or trigger any GraphQL call. No sign-out is required.
+**If the Admin pill does not appear** after sign-in, the middleware did not promote — almost always because the active session's JWT was issued before email confirmation (so `email_verified` is `false` in the token). Run:
 
-**Manual SQL fallback** (only if your backend cannot write `user_roles` for some reason — e.g. you are debugging the Authorization-header propagation gap and need an admin without a successful login round-trip):
+```bash
+make sync-env
+```
+
+The playbook's seed-admin task INSERTs the `(user_id, admin_role_id)` row directly. After that, sign out and sign back in (or wait for a token refresh) so the next request carries the new role. The task is idempotent — running it when the user is already admin is a no-op.
+
+**After `make db-reset`:** `public.user_roles` is wiped. The middleware re-promotes on the next authenticated request from a JWT with `email_verified=true`; otherwise run `make sync-env` once the backend has been restarted (migrations must have re-created `public.roles`).
+
+**Manual SQL fallback** (only if `make sync-env` is unavailable and you are debugging — e.g. the Authorization-header propagation gap, or you need an admin without a successful login round-trip):
 
 ```bash
 psql "$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')" <<'SQL'

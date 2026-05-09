@@ -8,6 +8,7 @@ import type {
 } from "@/generated/graphql";
 import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
+import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { LearnCardsByCardgroupQuery } from "../queries";
 import { LearnClient } from "./learn-client";
@@ -18,11 +19,13 @@ export default async function LearnPage({ params }: { params: Promise<{ cardgrou
     data: { user },
     error: authErr,
   } = await supabase.auth.getUser();
-  if (authErr && authErr.name !== "AuthSessionMissingError") {
+  // AuthSessionMissingError = anonymous request; stale session = deleted user
+  // with a still-valid JWT. Both are handled by redirecting to /login.
+  if (authErr && !isIgnorableAuthError(authErr)) {
     console.error("[learn] getUser() failed:", authErr.name, authErr.message);
     throw authErr;
   }
-  if (!user) redirect("/login");
+  if (!user || isStaleSessionError(authErr)) redirect("/login");
 
   const { cardgroupId } = await params;
 
@@ -51,7 +54,7 @@ export default async function LearnPage({ params }: { params: Promise<{ cardgrou
 
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-background">
-      <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-5xl flex-col px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-5xl flex-col p-4">
         <LearnClient
           cardgroupId={cardgroupId}
           cardgroupName={cardgroupData.cardgroup.name}

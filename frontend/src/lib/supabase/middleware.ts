@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import { env } from "@/env";
+import { isIgnorableAuthError } from "@/lib/supabase/auth-errors";
 
 export async function updateSession(request: NextRequest) {
   // Forward the request pathname as a header so server components can read it
@@ -41,9 +42,10 @@ export async function updateSession(request: NextRequest) {
   // CRITICAL: getUser() is what triggers token refresh — removing this call
   // silently breaks session renewal, leaving users with expired tokens.
   const { error } = await supabase.auth.getUser();
-  // AuthSessionMissingError is the "no session" signal for every anonymous
-  // request and is not actionable — logging it would flood edge-runtime stderr.
-  if (error && error.name !== "AuthSessionMissingError") {
+  // AuthSessionMissingError = anonymous request (not actionable — would flood
+  // edge-runtime stderr). Stale session = deleted user with a still-valid JWT
+  // (RSC pages redirect to /login; no log needed at the middleware layer).
+  if (error && !isIgnorableAuthError(error)) {
     console.error("[supabase/middleware] getUser() failed:", error.name, error.message);
   }
 

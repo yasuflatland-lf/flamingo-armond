@@ -648,7 +648,7 @@ export function CardsClient({
                     disabled={selectedIds.size > 0 || editingId === card.id}
                     ariaLabel="Delete card"
                   >
-                    <div className="group flex items-start justify-between gap-4 px-4 py-3">
+                    <div className="group flex items-start justify-between gap-4 px-4 py-3 hover:bg-accent transition-colors">
                       {/* Checkbox cell — clicks must NOT bubble to the row edit trigger.
                           The handlers are no-op stoppers, not user-facing interactivity;
                           the inner <input> remains the keyboard/mouse target. */}

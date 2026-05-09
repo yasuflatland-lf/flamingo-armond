@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { isIgnorableAuthError } from "@/lib/supabase/auth-errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { LoginButton } from "./login-button";
 
@@ -10,7 +11,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
     data: { user },
     error: authErr,
   } = await supabase.auth.getUser();
-  if (authErr && authErr.name !== "AuthSessionMissingError") {
+  // AuthSessionMissingError = anonymous request; stale session = deleted user
+  // with a still-valid JWT. For the login page, stale session means user is
+  // null — no redirect to /cardgroups, so the page renders normally.
+  if (authErr && !isIgnorableAuthError(authErr)) {
     console.error("[login] getUser() failed:", authErr.name, authErr.message);
     throw authErr;
   }

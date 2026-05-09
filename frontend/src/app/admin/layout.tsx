@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { graphql } from "@/generated";
 import type { AdminLayoutMeQuery as AdminLayoutMeQueryType } from "@/generated/graphql";
 import { gqlFetch } from "@/lib/apollo/server";
+import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 /**
@@ -41,13 +42,13 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     data: { user },
     error: authErr,
   } = await supabase.auth.getUser();
-  // AuthSessionMissingError is the "no session" signal — fall through to the
-  // !user redirect below. Any other auth error is a real failure.
-  if (authErr && authErr.name !== "AuthSessionMissingError") {
+  // AuthSessionMissingError = anonymous request; stale session = deleted user
+  // with a still-valid JWT. Both are handled by redirecting to /.
+  if (authErr && !isIgnorableAuthError(authErr)) {
     console.error("[admin] getUser() failed:", authErr.name, authErr.message);
     throw authErr;
   }
-  if (!user) redirect("/");
+  if (!user || isStaleSessionError(authErr)) redirect("/");
 
   // Step 2: admin-role check via GraphQL. UNAUTHENTICATED can still happen
   // here even after Supabase reports a user (e.g., expired access token that

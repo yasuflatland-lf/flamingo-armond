@@ -1,0 +1,50 @@
+# Gotchas encountered
+
+> Part of [`docs/frontend.md`](../frontend.md). See the index for related chapters.
+
+**`app/<route>/error.tsx` does not catch errors from `app/layout.tsx`.** Next.js error boundaries scoped to a route segment only catch errors thrown by that segment's RSCs and components. Errors thrown inside `app/layout.tsx` (e.g. the `Header`) escape to `app/global-error.tsx`, or to Next's default crash page if `global-error.tsx` is absent. Keep shared layout components defensive — render degraded states rather than throwing.
+
+**`useRef(false)` is the correct guard for one-shot effects in error boundaries.** When an error boundary needs to call `router.replace()` exactly once, use `const hasRedirected = useRef(false)` to gate the call inside `useEffect`. Using `useState` instead would re-trigger the effect on every re-render. `useRef` mutations do not schedule a re-render and therefore cannot form a feedback loop.
+
+**`router.refresh()` after `router.push()` refreshes the source route, not the destination.** `router.refresh()` re-renders the RSC subtree for whatever page is current at call time. Calling it immediately after `router.push("/other")` targets the *current* page before the navigation settles — the destination route does not receive the refresh. `router.refresh()` is only useful when staying on the same route (e.g. after a mutation that does not navigate). When navigating to a different route, skip `router.refresh()` entirely — the destination page is a fresh server render, so there is nothing stale to clear. Reference: `frontend/src/app/cardgroups/new/new-cardgroup-client.tsx` calls `router.refresh()` only in the no-`returnTo` branch that navigates to `/cardgroups/{id}` (a same-domain refresh of the newly-pushed page is idempotent), and skips it in the `returnTo` branch where the destination is a fully fresh render.
+
+**Next 16 deprecates `middleware.ts` in favour of `proxy.ts`.** The build emits a deprecation warning (not an error) when `src/middleware.ts` exists. We intentionally stay on `middleware.ts` because `@supabase/ssr` templates and ecosystem docs still reference the old name. When the ecosystem catches up and Next removes the old name, rename `src/middleware.ts` → `src/proxy.ts` (and `src/lib/supabase/middleware.ts` → `src/lib/supabase/proxy.ts` for consistency).
+
+**Biome 2 — Tailwind 4 directive parsing**: Without `css.parser.tailwindDirectives: true` in `biome.json`, directives like `@theme`, `@custom-variant`, and `@import "tw-animate-css"` can trigger false-positive lint errors. Add the flag whenever Tailwind 4 CSS is in scope.
+
+**Biome 2 — glob pattern change from v1**: `files.ignore` is replaced by `files.includes` with `!` negation patterns. Prefer `"!.next"` over `"!.next/**"` — the latter can silently fail to exclude the directory in some Biome 2 versions.
+
+**Next.js `Metadata` type import**: `Metadata` (and `MetadataRoute`, `Viewport`, etc.) must be imported from `"next"`, not `"react"`. `ReactNode` stays in `"react"`. The two are easy to conflate when working in the App Router.
+
+**`@t3-oss/env-nextjs` peer on Zod**: `@t3-oss/env-nextjs@0.12.0` requires `zod@^3.24.0`. Zod 3.23.x emits a peer-dependency warning that can obscure real errors. Pin Zod to `>=3.24.0` when using this package.
+
+**Apollo imports — use `@apollo/client-integration-nextjs` for `ApolloClient` and `InMemoryCache` in browser code.** Importing those two symbols from the base `@apollo/client` package produces a client that does not handle Next.js SSR streaming and breaks hydration.
+
+**Apollo Client v4 error type split.** `CombinedGraphQLErrors` lives in `@apollo/client/errors`, **not** `@apollo/client`. Use `CombinedGraphQLErrors.is(error)` for type narrowing, then read `error.errors[0]?.message`. The v3 pattern `error.graphQLErrors` does not exist in v4.
+
+**Apollo Client v4 link tests must go through `ApolloClient`, not `execute(link, op)`.** Apollo Client v4 ships with rxjs internally; the `Observable` type returned by `execute` is the rxjs `Observable`, not the legacy Apollo `Observable`. Constructing a standalone `Observable.of(result)` as a terminal mock no longer works. Instead, construct an `ApolloClient` with your link chain and the mock terminal link, then call `client.query()` or `client.mutate()`. The terminal mock link should use `new Observable(subscriber => { subscriber.next(mockResult); subscriber.complete(); })` (rxjs form).
+
+**RSC code must use `env.BACKEND_URL`, not `/api/graphql`.** The rewrite in `next.config.ts` only applies to browser-originating requests. Server components calling `/api/graphql` would hit a Next 404.
+
+**Vitest v3+ dropped `environmentMatchGlobs`.** Use `environment` in `vitest.config.ts` for the global default and add `// @vitest-environment <name>` at the top of individual test files that need a different environment (e.g. `jsdom`). The `environmentMatchGlobs` option is silently ignored in v3+ — tests that relied on it fall back to the global default without warning.
+
+**Vitest loads `src/env.ts` and crashes if required env vars are unset.** `vitest.config.ts` injects placeholders via `test.env` — currently `BACKEND_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Any new required var added to `src/env.ts` (server or client) must get a corresponding `test.env` entry, otherwise Vitest crashes at module load time before any test runs. Keep values valid for their Zod schema (e.g. `z.string().url()` requires a real URL shape).
+
+**`server-only` has no standalone npm package** — it ships inside Next.js and the Next compiler resolves it. Vitest's node env cannot, so `vitest.config.ts` aliases `server-only` to an empty stub. Without the alias, importing `src/lib/apollo/server.ts` in any test fails to resolve.
+
+**Client components must not import from RSC files that touch `next/headers`.** A `"use client"` component that imports a utility from a file which itself imports `next/headers` (or any other Node-only / server-only API) drags the server dependency into the client bundle and the production build fails — Turbopack errors with `You're importing a component that needs "next/headers"`. The most common form of the bug is exporting a pure helper (e.g. `sanitizeReturnTo`) alongside an RSC `page.tsx` and importing the helper from a client component; even when the helper itself does not touch `next/headers`, the file's other exports do, and the whole module is pulled into the client bundle. The fix is to extract any helper that needs to be reachable from both server and client into a server-agnostic module under `src/lib/` (e.g. `frontend/src/lib/sanitize-return-to.ts`) — its JSDoc should explicitly state that it is safe to import from both contexts. The `vitest` jsdom environment does not catch this because Vitest does not run the Turbopack bundler — only `pnpm build` surfaces it (see Dev quickstart note above). Reference: `frontend/src/lib/sanitize-return-to.ts`, imported by both `frontend/src/app/cardgroups/new/page.tsx` (RSC) and `frontend/src/app/cards/new/cards-new-client.tsx` (client).
+
+**pnpm isolation can hide transitive deps from app code.** `@graphql-typed-document-node/core` is a transitive dep of `@graphql-codegen/client-preset`, but pnpm's strict isolation does not hoist it into `frontend/node_modules` where the generated `@/generated` re-exports need it. Promote such packages to a top-level `devDependency` when the generated-import chain depends on them.
+
+**Stale `tsconfig.tsbuildinfo` survives `rm -rf node_modules`.** After adding/removing typed packages, `tsc --noEmit` can report impossible errors like `'data' is of type 'unknown'` from cached incremental state. Delete `frontend/tsconfig.tsbuildinfo` (and `frontend/.next/`) when type errors look incompatible with the source.
+
+**Biome 2 — `lint` flags things `format` does not auto-fix.** The formatter accepts multi-line forms that the linter then rejects (e.g. `mockResolvedValue(new Response(...))` that lint wants on a single line). Always run `pnpm --filter frontend lint` (Biome `check`) before declaring done — `format` alone is not sufficient.
+
+**`gqlFetch` revalidate has three states, not two.** `revalidate?: number | false` (in `src/lib/apollo/server.ts`) deliberately preserves the difference between *omitted* (Next default heuristic), `0` (no cache), and `false` (cache forever). Collapsing to a `number` default would silently merge two of them — keep the union and only forward `next.revalidate` when the caller passes it explicitly.
+
+**Generated `graphql()` documents flow types into `gqlFetch` call sites.** `@graphql-codegen/client-preset` emits `TypedDocumentNode<TResult, TVars>`, and `gqlFetch<TResult, TVars>(doc, { variables?: TVars })` infers both from the document. Passing wrong-shaped `variables` to e.g. `HealthQuery` becomes a compile error — do not widen the signature to `Record<string, unknown>`.
+
+**TanStack Form `onChange` validator runs synchronously on every keystroke — no built-in debounce.** For long inputs this can cause noticeable jank in tests that type character-by-character. Use `userEvent.paste("long string")` instead of `userEvent.type(...)` in tests to avoid triggering a validator call per character. In production components, add an `asyncDebounceMs` option to the field's async validator when you need network-backed validation.
+
+**TanStack Form field errors are Zod `ZodIssue` objects, not plain strings.** `field.state.meta.errors` is `ValidationError[]` where each entry may be a `ZodIssue`. A `<FieldError>` helper component that calls `issue.message` (or falls back to `String(error)`) keeps rendering consistent across sync and async error paths.
+

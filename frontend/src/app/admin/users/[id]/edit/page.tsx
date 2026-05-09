@@ -4,6 +4,7 @@ import type {
   AdminUserQuery as AdminUserQueryType,
 } from "@/generated/graphql";
 import { gqlFetch } from "@/lib/apollo/server";
+import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { AdminRolesQuery, AdminUserQuery } from "../../queries";
 import { AdminUserEditClient, type RoleOption, type UserForEdit } from "./AdminUserEditClient";
@@ -25,13 +26,13 @@ export default async function AdminUserEditPage({ params }: { params: Promise<{ 
     data: { user },
     error: authErr,
   } = await supabase.auth.getUser();
-  // AuthSessionMissingError is the "no session" signal — fall through to the
-  // !user redirect below. Any other auth error is a real failure.
-  if (authErr && authErr.name !== "AuthSessionMissingError") {
+  // AuthSessionMissingError = anonymous request; stale session = deleted user
+  // with a still-valid JWT. Both are handled by redirecting to /login.
+  if (authErr && !isIgnorableAuthError(authErr)) {
     console.error("[admin/users/:id/edit] getUser() failed:", authErr.name, authErr.message);
     throw authErr;
   }
-  if (!user) redirect("/login");
+  if (!user || isStaleSessionError(authErr)) redirect("/login");
 
   const { id } = await params;
 

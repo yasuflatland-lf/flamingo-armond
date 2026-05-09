@@ -16,7 +16,7 @@ export function LearnAddCardFloating({ cardgroupId, cardgroupName }: LearnAddCar
       asChild
       variant="brand"
       size="icon"
-      className="fixed right-6 top-6 z-40 hidden h-10 w-10 rounded-full md:flex"
+      className="fixed right-6 top-6 z-40 hidden h-10 w-10 rounded-full"
       aria-label={`Add a new card to ${cardgroupName}`}
     >
       <Link href={href}>

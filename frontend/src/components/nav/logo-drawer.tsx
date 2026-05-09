@@ -94,9 +94,6 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
                 </Link>
               </SheetClose>
 
-              {user.email !== null && (
-                <p className="truncate text-xs text-muted-foreground">{user.email}</p>
-              )}
               <LogoutButton />
             </div>
           </>
