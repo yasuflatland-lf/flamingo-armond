@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Settings, User } from "lucide-react";
+import { BookOpen, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
@@ -33,16 +33,16 @@ const HOVER_CLOSE_DELAY_MS = 150;
 /**
  * Resolve the active rail item from the current pathname.
  *
- * Only handles the static center items (Cardgroups, Settings). Admin items and
- * the footer Profile link compute their own active state inline, so this
- * function deliberately does not return `"profile"` or `"admin"`.
+ * Only handles the static center item (Cardgroups). Admin items and the footer
+ * Profile link compute their own active state inline, so this function
+ * deliberately does not return `"profile"` or `"admin"`.
  *
  * Uses a positive-allowlist style (per
  * `docs/frontend/typescript-conventions.md` § "Positive allowlist over
  * negative exclusion") so that future top-level routes do not silently match an
  * existing rail item.
  */
-type ActiveItem = "cardgroups" | "settings" | null;
+type ActiveItem = "cardgroups" | null;
 
 /** Matches `pathname` against a top-level route — exact match or a sub-route prefix. */
 function matchesRoute(pathname: string, route: string): boolean {
@@ -57,9 +57,6 @@ function resolveActiveItem(pathname: string): ActiveItem {
     pathname.startsWith("/learn/")
   ) {
     return "cardgroups";
-  }
-  if (pathname === "/settings") {
-    return "settings";
   }
   return null;
 }
@@ -173,18 +170,6 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
                       </SidebarMenuItem>
                     );
                   })}
-
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={active === "settings"} tooltip="Settings">
-                    <Link
-                      href="/settings"
-                      aria-current={active === "settings" ? "page" : undefined}
-                    >
-                      <Settings aria-hidden="true" />
-                      <span>Settings</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

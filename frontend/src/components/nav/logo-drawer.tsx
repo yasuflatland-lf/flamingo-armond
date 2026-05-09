@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Settings, User } from "lucide-react";
+import { BookOpen, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/app/_components/logout-button";
@@ -53,13 +53,6 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
                 <Link href="/cardgroups" className={NAV_LINK_CLASS}>
                   <BookOpen className="h-4 w-4 shrink-0" aria-hidden="true" />
                   Cardgroups
-                </Link>
-              </SheetClose>
-
-              <SheetClose asChild>
-                <Link href="/settings" className={NAV_LINK_CLASS}>
-                  <Settings className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  Settings
                 </Link>
               </SheetClose>
 
