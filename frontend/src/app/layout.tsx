@@ -23,7 +23,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const headersList = await headers();
   const pathname = headersList.get("x-pathname") ?? "/";
 
-  if (pathname === "/login") {
+  if (pathname === "/login" || pathname === "/onboarding") {
     return (
       <html lang="en">
         <body suppressHydrationWarning>
