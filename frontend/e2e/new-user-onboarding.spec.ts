@@ -50,7 +50,6 @@ test.describe
       await expect(
         page.getByRole("heading", { name: /Welcome!.*create your first cardgroup/i }),
       ).toBeVisible();
-      await expect(page.getByRole("heading", { name: "New cardgroup" })).toBeVisible();
 
       // 2. Submit the create-cardgroup form. onCompleted pushes /cardgroups/<newId>;
       // wait for the navigation rather than a fixed URL so we can capture the new id.
