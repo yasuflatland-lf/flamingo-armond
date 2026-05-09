@@ -343,6 +343,39 @@ func TestCardRepository_DeleteByCardgroupAndFrontsTx_ScopedDelete(t *testing.T) 
 	require.Equal(t, keepB.ID, gotB.ID)
 }
 
+// TestCardRepository_DeleteByCardgroupAndFrontsTx_NonOverlappingFrontsScoped
+// pins the cross-cardgroup scoping contract for the (cardgroup_id, front)
+// natural-key delete: a delete scoped to cgB with a front that exists ONLY in
+// cgA must not touch cgA's row. This complements the _ScopedDelete test, which
+// covers the overlapping-front case; here the front is unique to the wrong
+// cardgroup, which is the regression target if a future refactor drops the
+// `cardgroup_id = ?` clause.
+func TestCardRepository_DeleteByCardgroupAndFrontsTx_NonOverlappingFrontsScoped(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	cgA := insertCardgroup(t, ctx, ownerID)
+	cgB := insertCardgroup(t, ctx, ownerID)
+	cardA := newCard(cgA.ID, "front-only-in-a", "back-a")
+	require.NoError(t, repo.Create(ctx, cardA))
+
+	var affected int64
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var txErr error
+		affected, txErr = repo.DeleteByCardgroupAndFrontsTx(ctx, tx, cgB.ID, []string{"front-only-in-a"})
+		return txErr
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(0), affected,
+		"deleting via cgB must not match a row that lives in cgA")
+
+	got, err := repo.FindByID(ctx, cardA.ID)
+	require.NoError(t, err, "row owned by cgA must still exist")
+	require.Equal(t, cardA.ID, got.ID)
+}
+
 func TestCardRepository_DeleteByCardgroupAndFrontsTx_DeleteByFronts(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

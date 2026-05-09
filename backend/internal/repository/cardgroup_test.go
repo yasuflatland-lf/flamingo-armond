@@ -336,6 +336,34 @@ func TestCardgroupRepository_EnsureByName_Create(t *testing.T) {
 	require.Equal(t, got.ID, found.ID)
 }
 
+// TestCardgroupRepository_EnsureByName_WhitespaceContract pins the current
+// contract that EnsureByName matches name verbatim: leading/trailing whitespace
+// produces a distinct row from the trimmed value. Trimming is the caller's
+// responsibility (the NotionSyncUsecase trims at its boundary). A future
+// caller that bypasses that trim must either trim itself or this contract
+// must change deliberately, not by accident.
+func TestCardgroupRepository_EnsureByName_WhitespaceContract(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardgroupRepository(testDB.GORM)
+
+	base := "Whitespace " + uuid.NewString()
+	trimmed, err := repo.EnsureByName(ctx, ownerID, base)
+	require.NoError(t, err)
+
+	leadingSpace, err := repo.EnsureByName(ctx, ownerID, " "+base)
+	require.NoError(t, err)
+	require.NotEqual(t, trimmed.ID, leadingSpace.ID,
+		"EnsureByName must NOT trim — leading-space name produces a distinct row")
+
+	trailingSpace, err := repo.EnsureByName(ctx, ownerID, base+" ")
+	require.NoError(t, err)
+	require.NotEqual(t, trimmed.ID, trailingSpace.ID,
+		"EnsureByName must NOT trim — trailing-space name produces a distinct row")
+	require.NotEqual(t, leadingSpace.ID, trailingSpace.ID)
+}
+
 func TestCardgroupRepository_EnsureByName_DuplicateRace(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
