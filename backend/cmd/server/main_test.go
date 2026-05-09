@@ -143,9 +143,18 @@ func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil), nil, nil, nil, nil, ping.New(nil, "test-token")))
+	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil), nil, nil, nil, nil, ping.New(nil, "test-token"), nil))
 	t.Cleanup(ts.Close)
 	return ts
+}
+
+func setNotionSyncEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("NOTION_TOKEN", "notion-test-token")
+	t.Setenv("NOTION_PAGE_IDS", "page-1,page-2")
+	t.Setenv("NOTION_TARGET_OWNER_ID", uuid.NewString())
+	t.Setenv("NOTION_TARGET_CARDGROUP_NAME", "English")
+	t.Setenv("NOTION_SYNC_TOKEN", "sync-test-token")
 }
 
 func getJSON(t *testing.T, url string) (int, map[string]string) {
@@ -237,6 +246,7 @@ func TestRunGracefulShutdown(t *testing.T) {
 	t.Setenv("SUPABASE_JWT_ISSUER", "http://issuer.test")
 	t.Setenv("SUPABASE_DB_URL", testDBURL)
 	t.Setenv("PING_TOKEN", "test-token")
+	setNotionSyncEnv(t)
 
 	port := freePort(t)
 	t.Setenv("PORT", port)
@@ -453,7 +463,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
-	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil), userRepo, roleRepo, cardgroupRepo, cardRepo, ping.New(pingRecordRepo, "test-token"), swipeRecordRepo)
+	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil), userRepo, roleRepo, cardgroupRepo, cardRepo, ping.New(pingRecordRepo, "test-token"), nil, swipeRecordRepo)
 
 	ts := httptest.NewServer(e)
 	t.Cleanup(ts.Close)

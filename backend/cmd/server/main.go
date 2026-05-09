@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -30,10 +31,12 @@ import (
 	"backend/internal/auth"
 	"backend/internal/database"
 	"backend/internal/domain/service"
+	"backend/internal/handler/notionsync"
 	"backend/internal/handler/ping"
 	"backend/internal/loader"
 	"backend/internal/logging"
 	internalmw "backend/internal/middleware"
+	"backend/internal/notion"
 	"backend/internal/repository"
 	"backend/internal/telemetry"
 	"backend/internal/usecase"
@@ -67,6 +70,7 @@ func newRouter(
 	cardgroupRepo repository.CardgroupRepository,
 	cardRepo repository.CardRepository,
 	pingHandler *ping.Handler,
+	notionSyncHandler *notionsync.Handler,
 	swipeRecordRepo ...repository.SwipeRecordRepository,
 ) *echo.Echo {
 	e := echo.New()
@@ -87,6 +91,9 @@ func newRouter(
 	})
 
 	e.POST("/internal/ping", pingHandler.Handle, pingHandler.RateLimiter())
+	if notionSyncHandler != nil {
+		e.POST("/internal/notion-sync", notionSyncHandler.Handle)
+	}
 
 	gqlSrv := newGraphQLServer(resolvers)
 	// Wrap only the GraphQL POST handler with otelhttp so the HTTP layer
@@ -144,6 +151,75 @@ func shutdownTimeout(logger *slog.Logger) time.Duration {
 		return defaultShutdownTimeout
 	}
 	return d
+}
+
+type notionSyncEnvConfig struct {
+	NotionToken   string
+	HandlerConfig notionsync.Config
+	RetryConfig   notion.RetryConfig
+}
+
+func notionSyncConfigFromEnv() (notionSyncEnvConfig, error) {
+	required := map[string]string{
+		"NOTION_TOKEN":                 os.Getenv("NOTION_TOKEN"),
+		"NOTION_PAGE_IDS":              os.Getenv("NOTION_PAGE_IDS"),
+		"NOTION_TARGET_OWNER_ID":       os.Getenv("NOTION_TARGET_OWNER_ID"),
+		"NOTION_TARGET_CARDGROUP_NAME": os.Getenv("NOTION_TARGET_CARDGROUP_NAME"),
+		"NOTION_SYNC_TOKEN":            os.Getenv("NOTION_SYNC_TOKEN"),
+	}
+	for key, value := range required {
+		if strings.TrimSpace(value) == "" {
+			return notionSyncEnvConfig{}, eris.Errorf("run: %s env var is required", key)
+		}
+	}
+
+	pageIDs := splitCSV(required["NOTION_PAGE_IDS"])
+	if len(pageIDs) == 0 {
+		return notionSyncEnvConfig{}, eris.New("run: NOTION_PAGE_IDS must contain at least one page id")
+	}
+
+	maxAttempts := 5
+	if raw := strings.TrimSpace(os.Getenv("NOTION_MAX_ATTEMPTS")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n <= 0 {
+			return notionSyncEnvConfig{}, eris.Errorf("run: NOTION_MAX_ATTEMPTS must be a positive integer")
+		}
+		maxAttempts = n
+	}
+	maxElapsed := 2 * time.Minute
+	if raw := strings.TrimSpace(os.Getenv("NOTION_MAX_ELAPSED")); raw != "" {
+		d, err := time.ParseDuration(raw)
+		if err != nil || d <= 0 {
+			return notionSyncEnvConfig{}, eris.Errorf("run: NOTION_MAX_ELAPSED must be a positive duration")
+		}
+		maxElapsed = d
+	}
+
+	return notionSyncEnvConfig{
+		NotionToken: required["NOTION_TOKEN"],
+		HandlerConfig: notionsync.Config{
+			Token:         required["NOTION_SYNC_TOKEN"],
+			PageIDs:       pageIDs,
+			OwnerID:       strings.TrimSpace(required["NOTION_TARGET_OWNER_ID"]),
+			CardgroupName: strings.TrimSpace(required["NOTION_TARGET_CARDGROUP_NAME"]),
+		},
+		RetryConfig: notion.RetryConfig{
+			MaxAttempts: maxAttempts,
+			MaxElapsed:  maxElapsed,
+		},
+	}, nil
+}
+
+func splitCSV(raw string) []string {
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 // bootstrapSuperUserPromoter constructs the SuperUserPromoter and emits the
@@ -217,6 +293,10 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	if err != nil {
 		return eris.Wrap(err, "run: db config")
 	}
+	notionCfg, err := notionSyncConfigFromEnv()
+	if err != nil {
+		return err
+	}
 	if err := database.Migrate(dbCfg.URL); err != nil {
 		return eris.Wrap(err, "run: migrate")
 	}
@@ -247,13 +327,17 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	adminUserUC := usecase.NewAdminUser(userRepo, roleRepo, authSvc)
 	adminRoleUC := usecase.NewAdminRole(roleRepo, authSvc)
 	lastViewedCardgroupUC := usecase.NewLastViewedCardgroup(userRepo)
+	notionCfg.RetryConfig.Logger = logger
+	notionFetcher := notion.NewFetcher(notionCfg.NotionToken, notionCfg.RetryConfig)
+	notionSyncUC := usecase.NewNotionSyncUsecase(notionFetcher, cardgroupRepo, cardRepo, db.GORM, logger)
 
 	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, dictionaryUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC)
 	pingHandler := ping.New(pingRecordRepo, pingToken)
+	notionSyncHandler := notionsync.New(notionSyncUC, notionCfg.HandlerConfig)
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
 	// telemetry.Init for the full ordering invariant.
-	e := newRouter(resolvers, authMW, promoter, userRepo, roleRepo, cardgroupRepo, cardRepo, pingHandler, swipeRecordRepo)
+	e := newRouter(resolvers, authMW, promoter, userRepo, roleRepo, cardgroupRepo, cardRepo, pingHandler, notionSyncHandler, swipeRecordRepo)
 	e.Logger = logger
 
 	port := os.Getenv("PORT")
