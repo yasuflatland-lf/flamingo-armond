@@ -115,7 +115,14 @@ type CardRepository interface {
 	// convert this `Delete` into an unbounded mass delete — far worse than a slow scan.
 	DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error)
 	// DeleteByCardgroupAndFrontsTx hard-deletes cards by the scoped
-	// (cardgroup_id, front) natural key. Empty fronts is a no-op.
+	// (cardgroup_id, front) natural key. Scoping is by cardgroup_id only —
+	// callers must verify the cardgroup is reachable by the calling owner
+	// before invoking this method (NotionSyncUsecase is the canonical caller).
+	//
+	// Empty fronts short-circuits to (0, nil) without touching the DB. With an
+	// empty slice GORM v2 omits the `WHERE front IN (?)` clause altogether,
+	// which would convert this `Delete` into a delete-all-cards-in-cardgroup.
+	// See `.claude/rules/go-library-gotchas.md` § GORM empty IN.
 	DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error)
 	// UpsertManyTx upserts cards by (cardgroup_id, front). Existing rows have
 	// their `back` and `updated_at` columns overwritten; new rows are inserted

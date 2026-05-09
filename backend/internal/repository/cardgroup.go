@@ -322,9 +322,11 @@ func (r *cardgroupRepo) Create(ctx context.Context, cg *domain.Cardgroup) error 
 }
 
 // EnsureByName returns the existing (owner_id, name) cardgroup or creates it
-// when absent. Cardgroup names are not globally unique in the current schema,
-// so this method serializes by owner/name with a transaction-scoped advisory
-// lock instead of changing the public duplicate-name behavior.
+// when absent. The cardgroups table has no UNIQUE(owner_id, name) constraint,
+// so two concurrent callers could otherwise insert duplicate (owner_id, name)
+// rows. This method takes a transaction-scoped advisory lock keyed on
+// (owner_id, name) to serialize lookup-then-insert without adding a DB-level
+// constraint that would change the public duplicate-name semantics.
 func (r *cardgroupRepo) EnsureByName(ctx context.Context, ownerID, name string) (*domain.Cardgroup, error) {
 	var out *domain.Cardgroup
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
