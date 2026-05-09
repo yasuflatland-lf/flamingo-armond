@@ -4,14 +4,8 @@ import { BookOpen, Settings, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/app/_components/logout-button";
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { MobileMenuTrigger } from "@/components/nav/mobile-menu-trigger";
+import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { HeaderSignInLink } from "./header-sign-in-link";
 import { ADMIN_NAV_ITEMS } from "./nav-items";
 
@@ -30,7 +24,11 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
 
   return (
     <Sheet>
-      <Link href="/" aria-label="Flamingo home" className="rounded-md p-2 hover:bg-accent font-semibold">
+      <Link
+        href="/"
+        aria-label="Flamingo home"
+        className="rounded-md p-2 hover:bg-accent font-semibold"
+      >
         🦩
       </Link>
       <MobileMenuTrigger />

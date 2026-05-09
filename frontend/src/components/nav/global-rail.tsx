@@ -2,10 +2,10 @@
 
 import { BookOpen, Settings, User } from "lucide-react";
 import Link from "next/link";
-import { SidebarToggle } from "@/components/nav/sidebar-toggle";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { LogoutButton } from "@/app/_components/logout-button";
+import { SidebarToggle } from "@/components/nav/sidebar-toggle";
 import {
   Sidebar,
   SidebarContent,
@@ -130,11 +130,7 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
     >
       <SidebarHeader>
         <div className="flex h-8 items-center gap-2 px-2">
-          <Link
-            href="/"
-            aria-label="Flamingo home"
-            className="shrink-0 text-lg leading-none"
-          >
+          <Link href="/" aria-label="Flamingo home" className="shrink-0 text-lg leading-none">
             🦩
           </Link>
           <SidebarToggle expanded={state === "expanded"} onToggle={toggleSidebar} />

@@ -133,7 +133,11 @@ describe("OnboardingPage — gqlFetch error branches", () => {
     await expect(OnboardingPage()).rejects.toBe(otherErr);
 
     expect(redirect).not.toHaveBeenCalled();
-    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("[onboarding]"), otherErr);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[onboarding]"),
+      otherErr.name,
+      otherErr.message,
+    );
   });
 });
 
@@ -157,9 +161,7 @@ describe("OnboardingPage — onboarding gate", () => {
   });
 
   test("user needs onboarding (displayName: null) → renders OnboardingForm", async () => {
-    vi.mocked(gqlFetch).mockResolvedValueOnce(
-      makeOnboardingData({ displayName: null }) as never,
-    );
+    vi.mocked(gqlFetch).mockResolvedValueOnce(makeOnboardingData({ displayName: null }) as never);
 
     const result = await OnboardingPage();
 
@@ -173,9 +175,7 @@ describe("OnboardingPage — onboarding gate", () => {
   });
 
   test("user needs onboarding (displayName: '') → renders OnboardingForm", async () => {
-    vi.mocked(gqlFetch).mockResolvedValueOnce(
-      makeOnboardingData({ displayName: "" }) as never,
-    );
+    vi.mocked(gqlFetch).mockResolvedValueOnce(makeOnboardingData({ displayName: "" }) as never);
 
     const result = await OnboardingPage();
 

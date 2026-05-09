@@ -5,8 +5,8 @@ import { gqlFetch } from "@/lib/apollo/server";
 import { isUserOnboarded } from "@/lib/auth/onboarding";
 import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { OnboardingMeQuery } from "./queries";
 import { OnboardingForm } from "./onboarding-form";
+import { OnboardingMeQuery } from "./queries";
 
 export default async function OnboardingPage() {
   const supabase = await createSupabaseServerClient();
@@ -15,8 +15,8 @@ export default async function OnboardingPage() {
     error: authErr,
   } = await supabase.auth.getUser();
 
-  // AuthSessionMissingError = anonymous request; stale session = deleted user
-  // with a still-valid JWT. Both are handled by redirecting to /login.
+  // AuthSessionMissingError (anonymous request) and stale-session errors are ignorable;
+  // they fall through to the redirect below. All other auth errors are rethrown.
   if (authErr && !isIgnorableAuthError(authErr)) {
     console.error("[onboarding] getUser() failed:", authErr.name, authErr.message);
     throw authErr;
@@ -30,7 +30,11 @@ export default async function OnboardingPage() {
     if (isUnauthenticatedGraphQLError(err)) {
       redirect("/login");
     }
-    console.error("[onboarding] gqlFetch failed:", err);
+    console.error(
+      "[onboarding] gqlFetch failed:",
+      err instanceof Error ? err.name : "unknown",
+      err instanceof Error ? err.message : String(err),
+    );
     throw err;
   }
 
