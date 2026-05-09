@@ -142,7 +142,7 @@ export function ProfileForm({ email, initial }: Props) {
         )}
       </form.Field>
 
-      <Button type="submit" disabled={loading}>
+      <Button type="submit" variant="brand" disabled={loading}>
         {loading ? "Saving..." : "Save"}
       </Button>
 
