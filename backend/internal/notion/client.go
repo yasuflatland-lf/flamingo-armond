@@ -54,7 +54,7 @@ func (rt *retryAfterRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 	for attempt := 1; ; attempt++ {
 		res, err := rt.cfg.Transport.RoundTrip(req)
 		if err != nil {
-			return nil, err
+			return nil, eris.Wrap(err, "notion: round trip")
 		}
 		if !shouldRetryStatus(res.StatusCode) {
 			return res, nil
@@ -78,7 +78,7 @@ func (rt *retryAfterRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 			return nil, eris.Wrap(ErrRetryElapsed, "notion: retry request")
 		}
 		if err := rt.cfg.Sleep(req.Context(), wait); err != nil {
-			return nil, err
+			return nil, eris.Wrap(err, "notion: sleep interrupted")
 		}
 	}
 }

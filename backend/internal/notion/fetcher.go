@@ -84,7 +84,7 @@ func (f *APIClientFetcher) fetchBlockChildren(ctx context.Context, blockID notio
 			PageSize:    100,
 		})
 		if err != nil {
-			return nil, err
+			return nil, eris.Wrapf(err, "notion: get block children (block_id=%s, cursor=%q)", blockID, cursor)
 		}
 		all = append(all, resp.Results...)
 		if !resp.HasMore {
