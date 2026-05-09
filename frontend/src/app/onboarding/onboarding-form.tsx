@@ -2,13 +2,11 @@
 
 import { useMutation } from "@apollo/client/react";
 import { useForm } from "@tanstack/react-form";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { graphql } from "@/generated";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
 import { FieldError } from "@/lib/forms/field-error";
@@ -27,41 +25,32 @@ const UpdateProfileMutation = graphql(`
   }
 `);
 
-type Props = {
-  /** The user's email address. Required — callers must pass the value or explicit null; never collapse to "". */
-  email: string | null;
-  initial: { displayName: string; bio: string };
-};
-
-export function ProfileForm({ email, initial }: Props) {
+export function OnboardingForm() {
   const router = useRouter();
   const [updateProfile, { loading, error }] = useMutation(UpdateProfileMutation, {
-    onCompleted: () => router.refresh(),
+    onCompleted: () => router.push("/cardgroups/new?welcome=1"),
   });
 
   const fieldErrors = useMemo(() => getBackendFieldErrors(error), [error]);
   const bannerError = useMemo(() => getBackendErrorBanner(error), [error]);
 
   const displayNameSchema = updateProfileSchema.shape.displayName;
-  const bioSchema = updateProfileSchema.shape.bio;
 
   const form = useForm({
     defaultValues: {
-      displayName: initial.displayName,
-      bio: initial.bio as string | undefined,
+      displayName: "",
     },
     onSubmit: async ({ value }) => {
-      // bio: "" clears, undefined leaves unchanged. Errors surface via the mutation's error state;
-      // the catch prevents unhandled rejections without swallowing diagnostics.
+      // Errors surface via the mutation's error state; the catch prevents
+      // unhandled rejections without swallowing diagnostics.
       await updateProfile({
         variables: {
           input: {
             displayName: value.displayName,
-            bio: value.bio,
           },
         },
       }).catch((err) => {
-        console.error("[ProfileForm] mutation rejection", err);
+        console.error("[OnboardingForm] mutation rejection", err);
         throw err; // keep formState.isSubmitSuccessful correct
       });
     },
@@ -80,19 +69,13 @@ export function ProfileForm({ email, initial }: Props) {
       }}
       className="space-y-4"
     >
+      <h1 className="mb-6 text-2xl font-semibold">Welcome to Flamingo Armond</h1>
+
       {bannerError ? (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
           {bannerError}
         </div>
       ) : null}
-
-      <div className="mb-4 space-y-2">
-        <Label>Email</Label>
-        {email !== null ? <p>{email}</p> : <p className="italic">No email on this account</p>}
-        <Link href="/profile/change-email" className="text-sm underline">
-          Change email
-        </Link>
-      </div>
 
       <form.Field
         name="displayName"
@@ -108,6 +91,9 @@ export function ProfileForm({ email, initial }: Props) {
               onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
             />
+            <p className="text-sm text-muted-foreground">
+              1–50 characters; visible to other users.
+            </p>
             <FieldError
               zodErrors={field.state.meta.errors}
               backendError={fieldErrors.displayName}
@@ -116,34 +102,8 @@ export function ProfileForm({ email, initial }: Props) {
         )}
       </form.Field>
 
-      <form.Field name="bio" validators={{ onChange: bioSchema, onBlur: bioSchema }}>
-        {(field) => (
-          <div className="space-y-2">
-            <Label htmlFor={field.name}>Bio</Label>
-            <Textarea
-              id={field.name}
-              name={field.name}
-              value={field.state.value ?? ""}
-              onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(e.target.value)}
-            />
-            {field.state.value !== "" ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => field.handleChange("")}
-              >
-                Clear bio
-              </Button>
-            ) : null}
-            <FieldError zodErrors={field.state.meta.errors} backendError={fieldErrors.bio} />
-          </div>
-        )}
-      </form.Field>
-
       <Button type="submit" variant="brand" disabled={loading}>
-        {loading ? "Saving..." : "Save"}
+        {loading ? "Saving..." : "Continue"}
       </Button>
 
       {/* Hidden sentinel used by tests to observe formState.isSubmitSuccessful */}

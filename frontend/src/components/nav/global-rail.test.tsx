@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock next/link so it renders a plain <a> in jsdom.
@@ -58,9 +57,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderRail(props: React.ComponentProps<typeof GlobalRail>) {
+function renderRail(
+  props: React.ComponentProps<typeof GlobalRail>,
+  options?: { defaultOpen?: boolean },
+) {
   return render(
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={options?.defaultOpen}>
       <GlobalRail {...props} />
     </SidebarProvider>,
   );
@@ -80,7 +82,7 @@ function getFooter(container: HTMLElement): HTMLElement {
 
 describe("<GlobalRail>", () => {
   describe("S1 — items render when signed in", () => {
-    it("renders Cardgroups, the three admin items (Users / Roles / Dictionary), and Settings with correct hrefs when isAdmin=true", () => {
+    it("renders Cardgroups and the three admin items (Users / Roles / Dictionary) with correct hrefs when isAdmin=true", () => {
       mockUsePathname.mockReturnValue("/");
       renderRail({ user: { email: "u@example.com" }, isAdmin: true });
 
@@ -94,7 +96,7 @@ describe("<GlobalRail>", () => {
         "href",
         "/admin/dictionary",
       );
-      expect(screen.getByRole("link", { name: /settings/i })).toHaveAttribute("href", "/settings");
+      expect(screen.queryByRole("link", { name: /settings/i })).toBeNull();
     });
   });
 
@@ -110,7 +112,6 @@ describe("<GlobalRail>", () => {
 
       // The non-admin items remain present.
       expect(screen.getByRole("link", { name: /cardgroups/i })).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: /settings/i })).toBeInTheDocument();
       // Profile (footer) is also independent of the admin gate.
       expect(screen.getByRole("link", { name: /profile/i })).toBeInTheDocument();
     });
@@ -128,7 +129,6 @@ describe("<GlobalRail>", () => {
       expect(screen.getByRole("link", { name: /users/i })).not.toHaveAttribute("aria-current");
       expect(screen.getByRole("link", { name: /roles/i })).not.toHaveAttribute("aria-current");
       expect(screen.getByRole("link", { name: /dictionary/i })).not.toHaveAttribute("aria-current");
-      expect(screen.getByRole("link", { name: /settings/i })).not.toHaveAttribute("aria-current");
       expect(screen.getByRole("link", { name: /profile/i })).not.toHaveAttribute("aria-current");
     });
 
@@ -153,7 +153,6 @@ describe("<GlobalRail>", () => {
       expect(screen.getByRole("link", { name: /dictionary/i })).not.toHaveAttribute("aria-current");
       // Other non-admin items are also not current.
       expect(screen.getByRole("link", { name: /cardgroups/i })).not.toHaveAttribute("aria-current");
-      expect(screen.getByRole("link", { name: /settings/i })).not.toHaveAttribute("aria-current");
       expect(screen.getByRole("link", { name: /profile/i })).not.toHaveAttribute("aria-current");
     });
 
@@ -184,21 +183,6 @@ describe("<GlobalRail>", () => {
       expect(screen.getByRole("link", { name: /dictionary/i })).not.toHaveAttribute("aria-current");
     });
 
-    it("marks Settings as the current page when pathname is /settings", () => {
-      mockUsePathname.mockReturnValue("/settings");
-      renderRail({ user: { email: "u@example.com" }, isAdmin: true });
-
-      expect(screen.getByRole("link", { name: /settings/i })).toHaveAttribute(
-        "aria-current",
-        "page",
-      );
-
-      // Other items must NOT be marked as current.
-      expect(screen.getByRole("link", { name: /cardgroups/i })).not.toHaveAttribute("aria-current");
-      expect(screen.getByRole("link", { name: /users/i })).not.toHaveAttribute("aria-current");
-      expect(screen.getByRole("link", { name: /profile/i })).not.toHaveAttribute("aria-current");
-    });
-
     it("marks the footer Profile link as the current page when pathname is /profile", () => {
       mockUsePathname.mockReturnValue("/profile");
       const { container } = renderRail({ user: { email: "u@example.com" }, isAdmin: true });
@@ -208,7 +192,6 @@ describe("<GlobalRail>", () => {
 
       // Center items must NOT be marked as current.
       expect(screen.getByRole("link", { name: /cardgroups/i })).not.toHaveAttribute("aria-current");
-      expect(screen.getByRole("link", { name: /settings/i })).not.toHaveAttribute("aria-current");
     });
 
     it("marks the footer Profile link as the current page when pathname is /profile/change-email (sub-route prefix match)", () => {
@@ -220,21 +203,14 @@ describe("<GlobalRail>", () => {
     });
   });
 
-  describe("S4 — logo button toggles aria-expanded", () => {
-    it("clicking the logo toggles aria-expanded between true and false", async () => {
-      const user = userEvent.setup();
+  describe("S4a — logo navigation link", () => {
+    it("renders a Flamingo home link pointing to /", () => {
       mockUsePathname.mockReturnValue("/");
-      renderRail({ user: { email: "u@example.com" }, isAdmin: true });
+      renderRail({ user: { email: "u@example.com" }, isAdmin: false });
 
-      const logo = screen.getByRole("button", { name: /toggle navigation rail/i });
-      // SidebarProvider defaults to open=true, so initial state is "expanded".
-      expect(logo).toHaveAttribute("aria-expanded", "true");
-
-      await user.click(logo);
-      expect(logo).toHaveAttribute("aria-expanded", "false");
-
-      await user.click(logo);
-      expect(logo).toHaveAttribute("aria-expanded", "true");
+      const logoLink = screen.getByRole("link", { name: /flamingo home/i });
+      expect(logoLink).toBeInTheDocument();
+      expect(logoLink).toHaveAttribute("href", "/");
     });
   });
 
@@ -252,13 +228,12 @@ describe("<GlobalRail>", () => {
       expect(screen.queryByRole("link", { name: /users/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /roles/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /dictionary/i })).toBeNull();
-      expect(screen.queryByRole("link", { name: /settings/i })).toBeNull();
 
       // Negative: anonymous users get neither the LogoutButton nor an email line.
       expect(screen.queryByTestId("logout-button")).toBeNull();
 
-      // The logo button still renders so anonymous viewers can read the brand.
-      expect(screen.getByRole("button", { name: /toggle navigation rail/i })).toBeInTheDocument();
+      // The logo link still renders so anonymous viewers can navigate home.
+      expect(screen.getByRole("link", { name: /flamingo home/i })).toBeInTheDocument();
     });
 
     it("anonymous on /login: rail footer does not render the Sign in link or its empty wrapper", () => {
@@ -308,30 +283,29 @@ describe("<GlobalRail>", () => {
   });
 
   describe("S6 — hover flyout (useRef-based timer guard)", () => {
-    it("pointerEnter on a collapsed rail expands it (aria-expanded becomes true)", async () => {
-      const user = userEvent.setup();
+    it("pointerEnter on a collapsed rail expands it (data-state flips to expanded)", () => {
       mockUsePathname.mockReturnValue("/");
-      const { container } = renderRail({
-        user: { email: "u@example.com" },
-        isAdmin: false,
-      });
+      const { container } = renderRail(
+        { user: { email: "u@example.com" }, isAdmin: false },
+        { defaultOpen: false },
+      );
 
-      const logoBtn = screen.getByRole("button", { name: /toggle navigation rail/i });
+      // The Sidebar wrapper carries data-state="expanded" | "collapsed". With
+      // the SidebarToggle gone from the rail header, the wrapper is the only
+      // observable surface for the open-state transition.
+      const wrapper = container.querySelector<HTMLElement>("[data-side='left']");
+      if (!wrapper) throw new Error("[data-side='left'] sidebar wrapper not found");
+      expect(wrapper).toHaveAttribute("data-state", "collapsed");
 
-      // First collapse the rail so we can test expand on hover.
-      await user.click(logoBtn);
-      expect(logoBtn).toHaveAttribute("aria-expanded", "false");
-
-      // Find the Sidebar element that has the onPointerEnter handler.
+      // The Sidebar element receives the onPointerEnter handler.
       const sidebar = container.querySelector("[data-sidebar='sidebar']");
       if (!sidebar) throw new Error("[data-sidebar='sidebar'] element not found");
 
-      // Fire pointer enter — React synthetic event fires through fireEvent.
       act(() => {
         fireEvent.pointerEnter(sidebar);
       });
 
-      expect(logoBtn).toHaveAttribute("aria-expanded", "true");
+      expect(wrapper).toHaveAttribute("data-state", "expanded");
     });
 
     it("no late state update after unmount when pointerLeave timer is pending", () => {

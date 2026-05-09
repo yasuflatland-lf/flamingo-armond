@@ -43,23 +43,29 @@ describe("<LogoDrawer>", () => {
     expect(screen.getByRole("link", { name: /cardgroups/i })).toBeInTheDocument();
   });
 
-  it("no hamburger-style 'Open menu' trigger exists — the new logo-driven drawer trigger replaces the prior hamburger trigger", () => {
+  it("logo is a home link with aria-label='Flamingo home' and href='/'", () => {
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
-    // The prior hamburger trigger used aria-label "Open menu". The logo-driven
-    // drawer must not carry that label — it uses "Open navigation menu" instead.
+    const logoLink = screen.getByRole("link", { name: /flamingo home/i });
+    expect(logoLink).toBeInTheDocument();
+    expect(logoLink).toHaveAttribute("href", "/");
+  });
+
+  it("no button with aria-label 'Open menu' exists — the drawer trigger uses 'Open navigation menu'", () => {
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+    // The drawer trigger button uses aria-label "Open navigation menu"; "Open menu"
+    // must not appear, so a stray duplicate trigger isn't introduced.
     expect(screen.queryByRole("button", { name: /open menu/i })).toBeNull();
   });
 
-  it("Settings link is present in the drawer body", async () => {
+  it("Settings link is not rendered in the drawer body", async () => {
     const user = userEvent.setup();
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
 
-    const settingsLink = screen.getByRole("link", { name: /settings/i });
-    expect(settingsLink).toBeInTheDocument();
-    expect(settingsLink).toHaveAttribute("href", "/settings");
+    expect(screen.queryByRole("link", { name: /settings/i })).toBeNull();
   });
 
   it("isAdmin=false does not render any admin nav links", async () => {

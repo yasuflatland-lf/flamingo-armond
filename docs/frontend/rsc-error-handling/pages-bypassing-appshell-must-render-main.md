@@ -2,7 +2,7 @@
 
 > Part of the [frontend RSC error handling](../../../.claude/rules/frontend-rsc-error-handling.md) rules.
 
-The root layout in `frontend/src/app/layout.tsx` short-circuits `AppShell` for any route that owns the full viewport (today: `/login` via `pathname === "/login"`). When `AppShell` is bypassed, the rendered tree contains no `<main>`, no `<nav>`, and no shell-level landmarks — the page itself is the only place a landmark can be emitted. Without an explicit `<main>`, screen readers (VoiceOver, JAWS, NVDA) have no jump-to-content target and the page fails WCAG 2.1 SC 1.3.6 ("Identify Purpose").
+The root layout in `frontend/src/app/layout.tsx` short-circuits `AppShell` for any route that owns the full viewport — the bypass set lives in a literal-equality check against `pathname`. When `AppShell` is bypassed, the rendered tree contains no `<main>`, no `<nav>`, and no shell-level landmarks — the page itself is the only place a landmark can be emitted. Without an explicit `<main>`, screen readers (VoiceOver, JAWS, NVDA) have no jump-to-content target and the page fails WCAG 2.1 SC 1.3.6 ("Identify Purpose"). For the canonical list of bare-shell routes and the design rationale, see [`docs/frontend/routing-topology.md` § "Bare-shell routes (no `AppShell`)"](../routing-topology.md#bare-shell-routes-no-appshell).
 
 ```tsx
 // frontend/src/app/login/page.tsx

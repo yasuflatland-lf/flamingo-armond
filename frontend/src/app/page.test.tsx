@@ -96,7 +96,7 @@ describe("HomePage (root redirect)", () => {
   test("user with lastViewedCardgroup is redirected to /learn/{id}", async () => {
     setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
     vi.mocked(gqlFetch).mockResolvedValueOnce({
-      me: { id: "u-1", lastViewedCardgroup: { id: "cg-42" } },
+      me: { id: "u-1", displayName: "Alice", lastViewedCardgroup: { id: "cg-42" } },
       myCardgroups: [{ id: "cg-42" }],
     } as never);
 
@@ -107,7 +107,7 @@ describe("HomePage (root redirect)", () => {
   test("user with no lastViewedCardgroup but >=1 myCardgroups → /cardgroups", async () => {
     setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
     vi.mocked(gqlFetch).mockResolvedValueOnce({
-      me: { id: "u-1", lastViewedCardgroup: null },
+      me: { id: "u-1", displayName: "Alice", lastViewedCardgroup: null },
       myCardgroups: [{ id: "cg-1" }],
     } as never);
 
@@ -115,10 +115,21 @@ describe("HomePage (root redirect)", () => {
     expect(redirect).toHaveBeenCalledWith("/cardgroups");
   });
 
-  test("brand-new user (no lastViewed, no cardgroups) → /cardgroups/new?welcome=1", async () => {
+  test("user with displayName: null (not onboarded) → /onboarding", async () => {
     setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
     vi.mocked(gqlFetch).mockResolvedValueOnce({
-      me: { id: "u-1", lastViewedCardgroup: null },
+      me: { id: "u-1", displayName: null, lastViewedCardgroup: null },
+      myCardgroups: [],
+    } as never);
+
+    await expect(HomePage()).rejects.toThrow(`${REDIRECT_PREFIX}/onboarding`);
+    expect(redirect).toHaveBeenCalledWith("/onboarding");
+  });
+
+  test("onboarded user with no lastViewed and no cardgroups → /cardgroups/new?welcome=1", async () => {
+    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
+    vi.mocked(gqlFetch).mockResolvedValueOnce({
+      me: { id: "u-1", displayName: "Alice", lastViewedCardgroup: null },
       myCardgroups: [],
     } as never);
 

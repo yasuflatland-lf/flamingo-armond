@@ -20,6 +20,10 @@ go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
 go run ./cmd/server   # PORT defaults to 1323
 ```
 
+## PR Updates
+
+When rewriting a PR title/body, always write the body to a tempfile and pass `gh pr edit <N> --title "..." --body-file <tempfile>`. Never use HEREDOC or inline `--body "..."` for multiline content. Full rule: [`.claude/rules/pr-updates.md`](.claude/rules/pr-updates.md).
+
 ## Doc tiers
 
 This file is **L1**: keep it ≤35 lines, top-level orientation only. Overflow goes into:

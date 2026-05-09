@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Settings, User } from "lucide-react";
+import { BookOpen, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
@@ -33,16 +33,16 @@ const HOVER_CLOSE_DELAY_MS = 150;
 /**
  * Resolve the active rail item from the current pathname.
  *
- * Only handles the static center items (Cardgroups, Settings). Admin items and
- * the footer Profile link compute their own active state inline, so this
- * function deliberately does not return `"profile"` or `"admin"`.
+ * Only handles the static center item (Cardgroups). Admin items and the footer
+ * Profile link compute their own active state inline, so this function
+ * deliberately does not return `"profile"` or `"admin"`.
  *
  * Uses a positive-allowlist style (per
  * `docs/frontend/typescript-conventions.md` § "Positive allowlist over
  * negative exclusion") so that future top-level routes do not silently match an
  * existing rail item.
  */
-type ActiveItem = "cardgroups" | "settings" | null;
+type ActiveItem = "cardgroups" | null;
 
 /** Matches `pathname` against a top-level route — exact match or a sub-route prefix. */
 function matchesRoute(pathname: string, route: string): boolean {
@@ -58,15 +58,12 @@ function resolveActiveItem(pathname: string): ActiveItem {
   ) {
     return "cardgroups";
   }
-  if (pathname === "/settings") {
-    return "settings";
-  }
   return null;
 }
 
 export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
   const pathname = usePathname();
-  const { state, toggleSidebar, setOpen, isMobile } = useSidebar();
+  const { state, setOpen, isMobile } = useSidebar();
 
   // Hover-flyout close timer. Use useRef (not useState) to avoid an async update
   // dropping a pointerenter that arrives in the same frame as the timeout fires
@@ -128,17 +125,11 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
       onPointerLeave={handlePointerLeave}
     >
       <SidebarHeader>
-        <button
-          type="button"
-          onClick={toggleSidebar}
-          aria-expanded={state === "expanded"}
-          aria-label="Toggle navigation rail"
-          className="flex h-8 items-center gap-2 rounded-md px-2 text-left font-semibold hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-        >
-          <span aria-hidden="true" className="shrink-0 text-lg leading-none">
+        <div className="flex h-8 items-center px-2">
+          <Link href="/" aria-label="Flamingo home" className="shrink-0 text-lg leading-none">
             🦩
-          </span>
-        </button>
+          </Link>
+        </div>
       </SidebarHeader>
 
       {user !== null && (
@@ -179,18 +170,6 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
                       </SidebarMenuItem>
                     );
                   })}
-
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={active === "settings"} tooltip="Settings">
-                    <Link
-                      href="/settings"
-                      aria-current={active === "settings" ? "page" : undefined}
-                    >
-                      <Settings aria-hidden="true" />
-                      <span>Settings</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

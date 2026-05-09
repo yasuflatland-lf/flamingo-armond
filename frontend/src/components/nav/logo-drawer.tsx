@@ -1,17 +1,11 @@
 "use client";
 
-import { BookOpen, Settings, User } from "lucide-react";
+import { BookOpen, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/app/_components/logout-button";
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { MobileMenuTrigger } from "@/components/nav/mobile-menu-trigger";
+import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { HeaderSignInLink } from "./header-sign-in-link";
 import { ADMIN_NAV_ITEMS } from "./nav-items";
 
@@ -30,15 +24,14 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
 
   return (
     <Sheet>
-      <SheetTrigger asChild>
-        <button
-          type="button"
-          aria-label="Open navigation menu"
-          className="rounded-md p-2 hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring font-semibold"
-        >
-          🦩
-        </button>
-      </SheetTrigger>
+      <Link
+        href="/"
+        aria-label="Flamingo home"
+        className="rounded-md p-2 hover:bg-accent font-semibold"
+      >
+        🦩
+      </Link>
+      <MobileMenuTrigger />
 
       <SheetContent side="left" className="flex flex-col">
         <SheetHeader>
@@ -60,13 +53,6 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
                 <Link href="/cardgroups" className={NAV_LINK_CLASS}>
                   <BookOpen className="h-4 w-4 shrink-0" aria-hidden="true" />
                   Cardgroups
-                </Link>
-              </SheetClose>
-
-              <SheetClose asChild>
-                <Link href="/settings" className={NAV_LINK_CLASS}>
-                  <Settings className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  Settings
                 </Link>
               </SheetClose>
 

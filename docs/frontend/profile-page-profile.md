@@ -114,6 +114,8 @@ The mirror uses `Intl.Segmenter` (UAX #29) for `displayName` and `bio` length ch
 
 We use `@tanstack/react-form` for all forms. No adapter package is needed —
 validators are passed directly as per-field Zod schemas.
+
+The pattern documented in this section — TanStack Form + Apollo `useMutation` + `getBackendFieldErrors` / `getBackendErrorBanner` + the inner `.catch + throw` paired with the outer `.handleSubmit().catch(() => {})` — has two consumers today: `frontend/src/app/profile/profile-form.tsx` (the canonical reference) and `frontend/src/app/onboarding/onboarding-form.tsx` (which submits the same `UpdateProfile` mutation but routes the user forward into `/cardgroups/new?welcome=1` on success). Any third consumer should follow the same shape rather than re-deriving it.
 shadcn's `form.tsx` wrapper was removed — TanStack Form's render-prop
 API (`<form.Field>`) does not need it. Forms compose primitive shadcn
 components (`Label`, `Input`, `Textarea`) directly.
