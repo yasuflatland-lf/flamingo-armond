@@ -193,7 +193,7 @@ export function LearnClient({
             <p className="mb-6 text-sm text-muted-foreground">
               Add cards to this cardgroup before starting a learning session.
             </p>
-            <Button asChild>
+            <Button asChild variant="brand">
               <Link href={`/cardgroups/${cardgroupId}/cards`}>Manage cards</Link>
             </Button>
           </div>
