@@ -86,6 +86,7 @@ type CardRepository interface {
 	FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error)
 	FindByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error)
+	ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, cardgroupID string) ([]string, error)
 	FindPageByCardgroup(
 		ctx context.Context,
 		cardgroupID string,
@@ -113,6 +114,9 @@ type CardRepository interface {
 	// slice GORM v2 omits the `WHERE id IN (?)` clause altogether, which would
 	// convert this `Delete` into an unbounded mass delete — far worse than a slow scan.
 	DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error)
+	// DeleteByCardgroupAndFrontsTx hard-deletes cards by the scoped
+	// (cardgroup_id, front) natural key. Empty fronts is a no-op.
+	DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error)
 	// UpsertManyTx upserts cards by (cardgroup_id, front). Existing rows have
 	// their `back` and `updated_at` columns overwritten; new rows are inserted
 	// using the FSRS state values supplied on each domain.Card. Returns the
@@ -173,6 +177,18 @@ func (r *cardRepo) FindByCardgroup(ctx context.Context, cardgroupID string) ([]*
 		out[i] = cardToDomain(rows[i])
 	}
 	return out, nil
+}
+
+func (r *cardRepo) ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, cardgroupID string) ([]string, error) {
+	var fronts []string
+	if err := tx.WithContext(ctx).
+		Model(&gormCard{}).
+		Where("cardgroup_id = ?", cardgroupID).
+		Order("front ASC").
+		Pluck("front", &fronts).Error; err != nil {
+		return nil, eris.Wrap(err, "repository: list card fronts by cardgroup")
+	}
+	return fronts, nil
 }
 
 // escapeLike escapes the three Postgres LIKE metacharacters so user-supplied
@@ -559,6 +575,19 @@ func (r *cardRepo) DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID strin
 		Delete(&gormCard{})
 	if res.Error != nil {
 		return 0, eris.Wrap(res.Error, "repository: bulk delete cards")
+	}
+	return res.RowsAffected, nil
+}
+
+func (r *cardRepo) DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error) {
+	if len(fronts) == 0 {
+		return 0, nil
+	}
+	res := tx.WithContext(ctx).
+		Where("cardgroup_id = ? AND front IN ?", cardgroupID, fronts).
+		Delete(&gormCard{})
+	if res.Error != nil {
+		return 0, eris.Wrap(res.Error, "repository: delete cards by cardgroup and fronts")
 	}
 	return res.RowsAffected, nil
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 
@@ -56,6 +57,7 @@ type CardgroupUpdate struct {
 // aggregate.
 type CardgroupRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
+	FindByName(ctx context.Context, ownerID, name string) (*domain.Cardgroup, error)
 	FindByOwner(ctx context.Context, ownerID string) ([]*domain.Cardgroup, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Cardgroup, error)
 	// FindPageByOwner returns a window of cardgroups owned by ownerID
@@ -78,6 +80,7 @@ type CardgroupRepository interface {
 	// FindPageByOwner so the totalCount survives a zero-page request.
 	CountByOwner(ctx context.Context, ownerID string, search *string) (int64, error)
 	Create(ctx context.Context, cg *domain.Cardgroup) error
+	EnsureByName(ctx context.Context, ownerID, name string) (*domain.Cardgroup, error)
 	Update(ctx context.Context, id string, patch CardgroupUpdate) (*domain.Cardgroup, error)
 	Delete(ctx context.Context, id string) error
 }
@@ -96,6 +99,22 @@ func (r *cardgroupRepo) FindByID(ctx context.Context, id string) (*domain.Cardgr
 			return nil, ErrNotFound
 		}
 		return nil, eris.Wrap(err, "repository: find cardgroup by id")
+	}
+	return cardgroupToDomain(row), nil
+}
+
+// FindByName returns the cardgroup identified by the (owner_id, name) pair, or
+// ErrNotFound when no such row exists.
+func (r *cardgroupRepo) FindByName(ctx context.Context, ownerID, name string) (*domain.Cardgroup, error) {
+	var row gormCardgroup
+	err := r.db.WithContext(ctx).
+		Where("owner_id = ? AND name = ?", ownerID, name).
+		Take(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, eris.Wrap(err, "repository: find cardgroup by name")
 	}
 	return cardgroupToDomain(row), nil
 }
@@ -300,6 +319,51 @@ func (r *cardgroupRepo) Create(ctx context.Context, cg *domain.Cardgroup) error 
 		return eris.Wrap(err, "repository: create cardgroup")
 	}
 	return nil
+}
+
+// EnsureByName returns the existing (owner_id, name) cardgroup or creates it
+// when absent. Cardgroup names are not globally unique in the current schema,
+// so this method serializes by owner/name with a transaction-scoped advisory
+// lock instead of changing the public duplicate-name behavior.
+func (r *cardgroupRepo) EnsureByName(ctx context.Context, ownerID, name string) (*domain.Cardgroup, error) {
+	var out *domain.Cardgroup
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?), hashtext(?))", ownerID, name).Error; err != nil {
+			return eris.Wrap(err, "repository: ensure cardgroup by name: advisory lock")
+		}
+
+		var row gormCardgroup
+		err := tx.Where("owner_id = ? AND name = ?", ownerID, name).Take(&row).Error
+		if err == nil {
+			out = cardgroupToDomain(row)
+			return nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return eris.Wrap(err, "repository: ensure cardgroup by name: lookup")
+		}
+
+		id, err := uuid.NewV7()
+		if err != nil {
+			return eris.Wrap(err, "repository: ensure cardgroup by name: uuid")
+		}
+		now := time.Now().UTC()
+		row = gormCardgroup{
+			ID:        id.String(),
+			OwnerID:   ownerID,
+			Name:      name,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		if err := tx.Create(&row).Error; err != nil {
+			return eris.Wrap(err, "repository: ensure cardgroup by name: create")
+		}
+		out = cardgroupToDomain(row)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // Update applies a partial patch to the cardgroup identified by id. If the

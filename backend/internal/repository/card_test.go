@@ -265,6 +265,116 @@ func TestCardRepo_FindByCardgroupAndFront(t *testing.T) {
 	}
 }
 
+func TestCardRepository_ListFrontsByCardgroupTx_Scoped(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	cgA := insertCardgroup(t, ctx, ownerID)
+	cgB := insertCardgroup(t, ctx, ownerID)
+	require.NoError(t, repo.Create(ctx, newCard(cgA.ID, "banana", "back-a1")))
+	require.NoError(t, repo.Create(ctx, newCard(cgA.ID, "apple", "back-a2")))
+	require.NoError(t, repo.Create(ctx, newCard(cgB.ID, "carrot", "back-b1")))
+
+	var fronts []string
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var txErr error
+		fronts, txErr = repo.ListFrontsByCardgroupTx(ctx, tx, cgA.ID)
+		return txErr
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"apple", "banana"}, fronts)
+}
+
+func TestCardRepository_DeleteByCardgroupAndFrontsTx_EmptySlice(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardRepository(testDB.GORM)
+	cg := insertCardgroup(t, ctx, ownerID)
+	card := newCard(cg.ID, "keep", "back")
+	require.NoError(t, repo.Create(ctx, card))
+
+	var affected int64
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var txErr error
+		affected, txErr = repo.DeleteByCardgroupAndFrontsTx(ctx, tx, cg.ID, nil)
+		return txErr
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(0), affected)
+
+	got, err := repo.FindByID(ctx, card.ID)
+	require.NoError(t, err)
+	require.Equal(t, card.ID, got.ID)
+}
+
+func TestCardRepository_DeleteByCardgroupAndFrontsTx_ScopedDelete(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardRepository(testDB.GORM)
+
+	cgA := insertCardgroup(t, ctx, ownerID)
+	cgB := insertCardgroup(t, ctx, ownerID)
+	deleteA := newCard(cgA.ID, "shared", "back-a")
+	keepA := newCard(cgA.ID, "keep-a", "back-a")
+	keepB := newCard(cgB.ID, "shared", "back-b")
+	require.NoError(t, repo.Create(ctx, deleteA))
+	require.NoError(t, repo.Create(ctx, keepA))
+	require.NoError(t, repo.Create(ctx, keepB))
+
+	var affected int64
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var txErr error
+		affected, txErr = repo.DeleteByCardgroupAndFrontsTx(ctx, tx, cgA.ID, []string{"shared"})
+		return txErr
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), affected)
+
+	_, err = repo.FindByID(ctx, deleteA.ID)
+	require.ErrorIs(t, err, repository.ErrNotFound)
+	_, err = repo.FindByID(ctx, keepA.ID)
+	require.NoError(t, err)
+	gotB, err := repo.FindByID(ctx, keepB.ID)
+	require.NoError(t, err)
+	require.Equal(t, keepB.ID, gotB.ID)
+}
+
+func TestCardRepository_DeleteByCardgroupAndFrontsTx_DeleteByFronts(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardRepository(testDB.GORM)
+	cg := insertCardgroup(t, ctx, ownerID)
+
+	cardA := newCard(cg.ID, "alpha", "back-a")
+	cardB := newCard(cg.ID, "beta", "back-b")
+	cardC := newCard(cg.ID, "gamma", "back-c")
+	require.NoError(t, repo.Create(ctx, cardA))
+	require.NoError(t, repo.Create(ctx, cardB))
+	require.NoError(t, repo.Create(ctx, cardC))
+
+	var affected int64
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var txErr error
+		affected, txErr = repo.DeleteByCardgroupAndFrontsTx(ctx, tx, cg.ID, []string{"alpha", "gamma"})
+		return txErr
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(2), affected)
+
+	_, err = repo.FindByID(ctx, cardA.ID)
+	require.ErrorIs(t, err, repository.ErrNotFound)
+	gotB, err := repo.FindByID(ctx, cardB.ID)
+	require.NoError(t, err)
+	require.Equal(t, cardB.ID, gotB.ID)
+	_, err = repo.FindByID(ctx, cardC.ID)
+	require.ErrorIs(t, err, repository.ErrNotFound)
+}
+
 func TestCardRepository_OnCardgroupDeleteCascade(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
