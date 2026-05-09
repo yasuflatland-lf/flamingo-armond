@@ -11,6 +11,7 @@ require (
 	github.com/graph-gophers/dataloader/v7 v7.1.3
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/joho/godotenv v1.5.1
+	github.com/jomei/notionapi v1.13.3
 	github.com/labstack/echo/v5 v5.1.0
 	github.com/open-spaced-repetition/go-fsrs/v3 v3.3.1
 	github.com/ravilushqa/otelgqlgen v0.17.0
