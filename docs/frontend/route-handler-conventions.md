@@ -19,7 +19,7 @@ const body: HealthzResponse = { ok: true, backend: data.health };
 return NextResponse.json(body);
 ```
 
-The annotation on `body` is load-bearing — `NextResponse.json(...)` is generic over `unknown`, so without the explicit type the compiler accepts any object shape and a refactor that drops `ok` from one branch passes typecheck. Reference: `frontend/src/app/api/healthz/route.ts`. The general "discriminated union over flat DTO" rule (covering factory output beyond Route Handler responses) lives in [`docs/frontend/typescript-conventions.md` § "Discriminated union over flat DTO when consumers must branch on the variant"](typescript-conventions.md#discriminated-union-over-flat-dto-when-consumers-must-branch-on-the-variant).
+The annotation on `body` is load-bearing — `NextResponse.json(...)` is generic over `unknown`, so without the explicit type the compiler accepts any object shape and a refactor that drops `ok` from one branch passes typecheck. Reference: `frontend/src/app/api/healthz/route.ts`. The general "discriminated union over flat DTO" rule (covering factory output beyond Route Handler responses) lives in [`docs/frontend/typescript-conventions/discriminated-union-over-flat-dto.md`](typescript-conventions/discriminated-union-over-flat-dto.md).
 
 ### `/api/healthz` JSON probe
 

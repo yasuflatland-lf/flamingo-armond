@@ -124,9 +124,8 @@ describe("useIsMobile", () => {
     });
   });
 
-  // SSR / no-window contract — frontend-typescript-conventions.md
-  // § "useSyncExternalStore over useState + useEffect" requires the
-  // getServerSnapshot value to be a documented, deterministic default.
+  // SSR / no-window contract — docs/frontend/typescript-conventions/usesyncexternalstore-over-usestate-useeffect.md
+  // requires the getServerSnapshot value to be a documented, deterministic default.
   describe("SSR / no-window branches", () => {
     it("getServerSnapshot returns false (deterministic SSR default)", () => {
       expect(getServerSnapshot()).toBe(false);

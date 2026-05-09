@@ -1266,8 +1266,7 @@ describe("<CardsClient>", () => {
       }),
     );
 
-    // PII redaction contract — frontend-rsc-error-handling.md
-    // § "Redact `err.message` from structured `console` payloads".
+    // PII redaction contract — docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
     // Forcing assertion: a future contributor that adds `err.message` "for
     // debugging" must trip this check.
     const warnCall = consoleWarnSpy.mock.calls.find(

@@ -516,8 +516,7 @@ describe("<CardgroupsClient>", () => {
       expect(screen.getByTestId("cardgroups-fetch-more-error")).toBeInTheDocument();
     });
 
-    // PII redaction contract — frontend-rsc-error-handling.md
-    // § "Redact `err.message` from structured `console` payloads".
+    // PII redaction contract — docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
     const warnCall = consoleWarnSpy.mock.calls.find(
       (call) => call[0] === "[cardgroups] fetchMore failed",
     );

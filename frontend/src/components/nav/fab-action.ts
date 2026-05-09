@@ -46,7 +46,7 @@ export function resolveFabAction(pathname: string): FabAction | null {
   }
 
   // Each match below has a required capture group 1, so `match[1] as string` is
-  // sound (see frontend-typescript-conventions.md § "as string cast on regex captures").
+  // sound (see docs/frontend/typescript-conventions/as-string-cast-on-regex-captures.md).
   // /cardgroups/:id/edit is the integrated cardgroup management screen (cards
   // list + settings). /cardgroups/:id and /cardgroups/:id/cards both redirect
   // to /edit at the page level, so they are not handled here.

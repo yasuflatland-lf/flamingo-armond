@@ -114,8 +114,7 @@ afterEach(() => {
 });
 
 describe("<AdminUsersClient> fetchMore catch", () => {
-  // PII redaction contract — frontend-rsc-error-handling.md
-  // § "Redact `err.message` from structured `console` payloads".
+  // PII redaction contract — docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
   it("logs structured payload without err.message when fetchMore fails", async () => {
     const cache = new InMemoryCache();
     const page1Conn = makeConnection([USER_1, USER_2], true, 3);
