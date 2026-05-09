@@ -59,15 +59,13 @@ describe("<LogoDrawer>", () => {
     expect(screen.queryByRole("button", { name: /open menu/i })).toBeNull();
   });
 
-  it("Settings link is present in the drawer body", async () => {
+  it("Settings link is not rendered in the drawer body", async () => {
     const user = userEvent.setup();
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
 
-    const settingsLink = screen.getByRole("link", { name: /settings/i });
-    expect(settingsLink).toBeInTheDocument();
-    expect(settingsLink).toHaveAttribute("href", "/settings");
+    expect(screen.queryByRole("link", { name: /settings/i })).toBeNull();
   });
 
   it("isAdmin=false does not render any admin nav links", async () => {
