@@ -264,8 +264,7 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
   //     docs/frontend/typescript-conventions.md "expect.objectContaining
   //     ({ message }) is not enough"
   //   - NOT include email or display_name in the payload (PII protection) — per
-  //     .claude/rules/error-wrapping.md "Assert PII absence on log lines that
-  //     carry user_id"
+  //     docs/backend/error-wrapping/assert-pii-absence-on-log-lines.md
   //   - degrade to isAdmin=false without throwing
   test("authenticated user + unexpected gqlFetch error: console.warn with discriminating payload, PII absent, isAdmin=false", async () => {
     const userId = "u-7";

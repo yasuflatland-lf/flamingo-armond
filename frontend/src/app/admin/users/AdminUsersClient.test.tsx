@@ -144,8 +144,8 @@ describe("<AdminUsersClient> fetchMore catch", () => {
       },
     };
 
-    // Forwarding spy: do NOT call mockImplementation here — pagination.md
-    // § "Spy stacking" requires the leak spy below to keep recording.
+    // Forwarding spy: do NOT call mockImplementation here — see
+    // docs/pagination/capture-mockedprovider-warn-leaks.md § "Spy stacking".
     const consoleWarnSpy = vi.spyOn(console, "warn");
 
     render(

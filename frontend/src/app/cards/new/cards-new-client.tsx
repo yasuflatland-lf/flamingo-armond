@@ -152,7 +152,7 @@ export default function CardsNewClient({
   // Do not carry an `optimisticResponse` for either mutation. setLastViewed can
   // fail typed (BAD_USER_INPUT when the cardgroup was deleted between page render
   // and submit) and Apollo v3.x does not roll back optimistic writes on typed
-  // errors — see .claude/rules/pagination.md.
+  // errors — see docs/pagination/drop-optimistic-response-typed-errors.md.
   const [setLastViewed] = useMutation(SetLastViewedCardgroupMutation);
   // Same Apollo v3.x rollback caveat as createCard above (UNAUTHENTICATED on
   // session expiry, BAD_USER_INPUT from validators).
@@ -169,8 +169,7 @@ export default function CardsNewClient({
   // can fail typed when the cardgroup was deleted between page render and
   // submit), then navigate away. When a ?return= param was supplied (and
   // passed the open-redirect guard above), push to that path; otherwise push
-  // to the cardgroup's cards list. See .claude/rules/pagination.md on dropping
-  // optimisticResponse for typed-fail mutations.
+  // to the cardgroup's cards list. See docs/pagination/drop-optimistic-response-typed-errors.md.
   function markCreationSucceeded() {
     if (!currentId) return;
     void setLastViewed({ variables: { cardgroupId: currentId } }).catch((err) => {

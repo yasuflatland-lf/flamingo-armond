@@ -47,7 +47,7 @@ export function RoleForm({
       await submit(value).catch((err) => {
         // err.message is omitted — backend messages may echo user-authored
         // input (the role name typed into this form). See
-        // .claude/rules/frontend-rsc-error-handling.md § "Redact err.message".
+        // docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
         console.error("[role-form] submit rejected", {
           name: err instanceof Error ? err.name : "unknown",
         });

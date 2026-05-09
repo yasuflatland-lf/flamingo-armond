@@ -82,7 +82,7 @@ export function LearnClient({
   //
   // No `optimisticResponse`: setLastViewedCardgroup can return typed errors
   // (BAD_USER_INPUT, UNAUTHENTICATED) which @apollo/client v3.x does not
-  // reliably roll back from optimistic writes — see pagination.md.
+  // reliably roll back from optimistic writes — see docs/pagination/drop-optimistic-response-typed-errors.md.
   //
   // `lastDispatchedRef` is a mutable ref (not state) so it can be read and
   // written synchronously — state updates are async and would allow Strict
@@ -119,7 +119,7 @@ export function LearnClient({
       })
       .catch((err) => {
         // err.message is omitted — backend messages may echo user-authored content.
-        // See .claude/rules/frontend-rsc-error-handling.md § "Substring-matching SDK error strings".
+        // See docs/frontend/rsc-error-handling/substring-matching-sdk-error-strings.md.
         console.warn("[learn] setLastViewedCardgroup failed", {
           cardgroupId,
           name: err instanceof Error ? err.name : "unknown",
@@ -157,7 +157,7 @@ export function LearnClient({
         },
       }).catch((err) => {
         // err.message is omitted — backend messages may echo user-authored content.
-        // See .claude/rules/frontend-rsc-error-handling.md § "Substring-matching SDK error strings".
+        // See docs/frontend/rsc-error-handling/substring-matching-sdk-error-strings.md.
         console.error("[LearnClient] handleSwipe rejected", {
           cardId: card.id,
           cardgroupId,

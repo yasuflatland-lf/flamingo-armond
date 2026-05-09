@@ -463,7 +463,7 @@ func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Rol
 // time) or when the DataLoader returns repository.ErrNotFound — the latter
 // covers an ON DELETE SET NULL cascade that lands between the parent user
 // fetch and this field resolver. Other DataLoader errors map to gqlerr.Internal
-// (or gqlerr.Cancelled for ctx-cancellation, per error-wrapping.md).
+// (or gqlerr.Cancelled for ctx-cancellation, per .claude/rules/error-wrapping.md).
 func (r *userResolver) LastViewedCardgroup(ctx context.Context, obj *model.User) (*model.Cardgroup, error) {
 	if obj.LastViewedCardgroup == nil || obj.LastViewedCardgroup.ID == "" {
 		return nil, nil

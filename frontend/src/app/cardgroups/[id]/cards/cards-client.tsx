@@ -81,8 +81,7 @@ export function CardsClient({
   // commit callback rather than relying on useMutation's `error` because the
   // useMutation hook's `error` clears between mutation calls; we want the
   // banner to persist until the user dismisses it implicitly via a successful
-  // retry. See .claude/rules/pagination.md § "Do not reuse one mutation's
-  // Apollo-managed error state for a sibling mutation's failure surface".
+  // retry. See docs/pagination/do-not-reuse-mutation-error-state.md.
   const [deleteCommitError, setDeleteCommitError] = useState<string | null>(null);
 
   const pathname = usePathname();
@@ -123,13 +122,13 @@ export function CardsClient({
   }, [searchInput]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  // pagination.md: in-flight guard MUST be useRef<boolean>, not useState.
+  // docs/pagination/intersection-observer-in-flight-guard.md: in-flight guard MUST be useRef<boolean>, not useState.
   const fetchingRef = useRef(false);
 
   // When the active search query changes, any in-flight fetchMore from the
   // previous search holds a stale cursor. Reset the IO guard and error state
   // immediately so the new query starts from a clean slate.
-  // See .claude/rules/pagination.md § "Reset the guard ref AND the error banner".
+  // See docs/pagination/intersection-observer-in-flight-guard.md.
   // biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery is an intentional trigger dependency; it is not referenced in the body because the effect resets derived IO state, not searchQuery itself.
   useEffect(() => {
     fetchingRef.current = false;
@@ -169,7 +168,7 @@ export function CardsClient({
   // Mirror cursor-related page state into refs so requestNextPage can read them
   // without being listed as a dep. This prevents the IO observer effect from
   // disconnecting/reconnecting every time a page loads (which updates endCursor).
-  // See .claude/rules/pagination.md § "IntersectionObserver in-flight guard via useRef<boolean>".
+  // See docs/pagination/stabilise-request-next-page-ref-triplet.md.
   const endCursorRef = useRef(pageInfo.endCursor);
   const hasNextPageRef = useRef(pageInfo.hasNextPage);
   const searchQueryRef = useRef(searchQuery);
@@ -274,8 +273,7 @@ export function CardsClient({
         // readQuery / writeQuery pair targets the live cache entry under any
         // active search filter. cardsDefaultVars(cardgroupId) would mismatch
         // when searchQuery !== null and the optimistic remove would be lost.
-        // See .claude/rules/pagination.md § "Variables shape MUST match
-        // between SSR seed and client cache reads".
+        // See docs/pagination/optimistic-rollback-cache-key.md.
         const existing = cache.readQuery({
           query: CardsByCardgroupConnectionDocument,
           variables: queryVariables,
@@ -336,8 +334,7 @@ export function CardsClient({
   // Uses `queryVariables` (the same memo useQuery is keyed on) for both the
   // snapshot read and the rollback writeQuery so the optimistic remove targets
   // the live cache entry under any active search filter.
-  // See .claude/rules/pagination.md § "Variables shape MUST match between SSR
-  // seed and client cache reads".
+  // See docs/pagination/optimistic-rollback-cache-key.md.
   const handleDeleteRow = useCallback(
     (cardId: string) => {
       const snapshot = apollo.readQuery({
@@ -380,7 +377,7 @@ export function CardsClient({
         setDeleteCommitError(null);
         const result = await deleteCardMutation({ variables: { id: cardId } });
         // After a successful commit, evict the normalized entity so dangling
-        // references are cleaned up. Mirrors pagination.md § "Connection delete".
+        // references are cleaned up. Mirrors docs/pagination/connection-delete.md.
         if (result.data?.deleteCard) {
           apollo.cache.evict({ id: apollo.cache.identify({ __typename: "Card", id: cardId }) });
           apollo.cache.gc();

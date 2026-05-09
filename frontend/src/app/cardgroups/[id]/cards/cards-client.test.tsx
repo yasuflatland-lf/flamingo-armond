@@ -1148,7 +1148,7 @@ describe("<CardsClient>", () => {
     expect(mutationFired).toBe(false);
 
     // Install the outer spy WITHOUT mockImplementation so the leak spy still
-    // receives all console.warn calls. Per .claude/rules/pagination.md
+    // receives all console.warn calls. Per docs/pagination/capture-mockedprovider-warn-leaks.md
     // § "Spy stacking": do NOT swallow the outer spy's implementation.
     const consoleWarnSpy = vi.spyOn(console, "warn");
 
@@ -1202,8 +1202,7 @@ describe("<CardsClient>", () => {
   // T4: fetchMoreError halts the IO loop. Click Retry → next page loads,
   // banner clears. Two MockedResponse entries: one for the network error,
   // one for the retry success path.
-  // See .claude/rules/pagination.md § "Provide two MockedResponse entries
-  // to test a Retry-after-error path".
+  // See docs/pagination/two-mocked-responses-for-retry-test.md.
   it("fetchMore error shows banner and Retry recovers", async () => {
     const cache = new InMemoryCache();
     const page1 = connection([CARD_1, CARD_2], true);
@@ -1244,7 +1243,7 @@ describe("<CardsClient>", () => {
     expect(await screen.findByText("Hello")).toBeInTheDocument();
 
     // Install the outer spy WITHOUT mockImplementation so the leak spy still
-    // receives all console.warn calls. Per .claude/rules/pagination.md
+    // receives all console.warn calls. Per docs/pagination/capture-mockedprovider-warn-leaks.md
     // § "Spy stacking": do NOT swallow the outer spy's implementation.
     const consoleWarnSpy = vi.spyOn(console, "warn");
 

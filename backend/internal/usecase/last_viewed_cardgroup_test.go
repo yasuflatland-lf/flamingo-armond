@@ -125,9 +125,9 @@ func TestLastViewedCardgroup_CardgroupNotFound_BadUserInput(t *testing.T) {
 // ErrCardgroupNotFound is layered with errors.Join(ErrNotFound) — the specific
 // sentinel match must be checked first by the usecase. This test guards the
 // "always check more specific sentinel before the general one" rule from
-// .claude/rules/error-wrapping.md by exercising a code path where only the
-// general sentinel is returned: it must NOT be silently routed into a generic
-// "not found" path.
+// docs/backend/error-wrapping/layered-sentinels-via-errors-join.md by
+// exercising a code path where only the general sentinel is returned: it must
+// NOT be silently routed into a generic "not found" path.
 func TestLastViewedCardgroup_LegacyErrNotFound_FallsThroughToInternal(t *testing.T) {
 	t.Parallel()
 
@@ -226,7 +226,7 @@ func TestLastViewedCardgroup_EmptySub_Unauthenticated(t *testing.T) {
 
 // TestLastViewedCardgroup_SentinelOrderingMatters guards the
 // "always check more specific sentinel before the general one" rule from
-// .claude/rules/error-wrapping.md. ErrCardgroupNotFound is errors.Join'd with
+// docs/backend/error-wrapping/layered-sentinels-via-errors-join.md. ErrCardgroupNotFound is errors.Join'd with
 // ErrNotFound, so errors.Is matches both. The usecase must branch on the
 // specific sentinel first — verified here by sending the joined sentinel and
 // asserting we receive BAD_USER_INPUT (cardgroupId) and not INTERNAL.

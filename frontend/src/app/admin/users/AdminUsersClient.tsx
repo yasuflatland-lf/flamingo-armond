@@ -76,7 +76,7 @@ export function AdminUsersClient() {
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  // pagination.md: in-flight guard MUST be useRef<boolean>, not useState.
+  // docs/pagination/intersection-observer-in-flight-guard.md: in-flight guard MUST be useRef<boolean>, not useState.
   const fetchingRef = useRef(false);
 
   // Debounce: update searchQuery 300ms after the last keystroke.
@@ -90,7 +90,7 @@ export function AdminUsersClient() {
   // When the active search query changes, any in-flight fetchMore from the
   // previous search holds a stale cursor. Reset the IO guard and error state
   // immediately so the new query starts from a clean slate.
-  // See .claude/rules/pagination.md § "IntersectionObserver in-flight guard".
+  // See docs/pagination/intersection-observer-in-flight-guard.md.
   // biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery is an intentional trigger dependency; it is not referenced in the body because the effect resets derived IO state, not searchQuery itself.
   useEffect(() => {
     fetchingRef.current = false;

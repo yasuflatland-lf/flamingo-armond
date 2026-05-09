@@ -4,7 +4,7 @@
 
 A module-level `Map<string, T>` (e.g. a pending-timer registry keyed by entity id) gives `""` an equal claim to be a valid key as any UUID. Two callers that independently pass `""` — a "stub id" code path, a short-circuit branch, a future caller that skips id resolution — collide silently: the second call's `cancelPending("")` cancels the first's timer, the first entry's `commitDelete` is never invoked, the cache stays in the optimistically-removed state, and the server never receives the DELETE.
 
-The fix is a synchronous throw at the top of the public entry point. This is a programming-error guard, not user-input validation — the same level of force as the constructor-panic pattern in `.claude/rules/go-library-gotchas.md` § "Constructor panics are the right tool for non-empty config requires non-nil deps". The throw's stack trace names the bad call site; a `try/catch` that swallows it is a separate review concern at the swallowing site, not this module's problem.
+The fix is a synchronous throw at the top of the public entry point. This is a programming-error guard, not user-input validation — the same level of force as the constructor-panic pattern in [`docs/backend/library-gotchas/constructor-panics-for-non-empty-config.md`](../../backend/library-gotchas/constructor-panics-for-non-empty-config.md). The throw's stack trace names the bad call site; a `try/catch` that swallows it is a separate review concern at the swallowing site, not this module's problem.
 
 ```ts
 export function scheduleDelete(opts: ScheduleDeleteOptions): ScheduleDeleteHandle {

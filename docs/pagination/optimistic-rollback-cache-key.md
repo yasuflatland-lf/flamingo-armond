@@ -1,0 +1,9 @@
+# Optimistic-rollback cache key MUST track the active query variables, not the default factory
+
+> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `docs/frontend.md`.
+
+A `cardsDefaultVars(cardgroupId)` factory produces the cache vars for the unfiltered query (e.g. `{ cardgroupId, first: 20, search: null }`). When the user has an active filter (e.g. `searchQuery !== null`), the live `useQuery` is keyed on a **different** cache entry. A delete handler that snapshots and writes via the default-vars factory calls `readQuery` on the unfiltered entry, gets `null`, and the `if (snapshot)` guard silently skips the optimistic remove — the deleted row stays visible until the server commit settles. The same miss affects bulk-delete `update` callbacks.
+
+**Why:** Apollo's cache key is the canonical-stringified variables object. The default-vars factory and the active-query variables are only equal when no filter is active; as soon as `searchQuery !== null`, they diverge and target different cache entries. This is the dual of [`variables-shape-must-match.md` § "Variables shape MUST match between SSR seed and client cache reads"](variables-shape-must-match.md): that rule governs the three SSR-seed/client-query/update call sites all agreeing on the *default* key; this rule governs mutation `update` and optimistic-rollback callbacks agreeing with the *active* key.
+
+**How to apply:** derive the snapshot read and rollback `writeQuery` vars from the same `queryVariables` memo that the component's active `useQuery` uses. Add `queryVariables` to the `useCallback` dep array. Reserve the default-vars factory for SSR seed and cold-cache base reads only. Reference: `frontend/src/app/cardgroups/[id]/cards/cards-client.tsx` `handleDeleteRow` and the bulk-delete `update` callback — both switched from `cardsDefaultVars(cardgroupId)` to `queryVariables`.

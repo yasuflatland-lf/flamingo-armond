@@ -28,7 +28,7 @@ function toMessage(err: unknown): string {
  *
  * No optimisticResponse on delete: a typed FORBIDDEN can fail the mutation,
  * and Apollo does not consistently roll back optimistic writes for typed
- * GraphQL errors (see .claude/rules/pagination.md).
+ * GraphQL errors (see docs/pagination/drop-optimistic-response-typed-errors.md).
  */
 export function AdminRolesClient({ initialRoles }: Props) {
   const [roles, setRoles] = useState<RoleItem[]>(initialRoles);

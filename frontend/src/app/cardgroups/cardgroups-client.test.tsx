@@ -121,14 +121,14 @@ function fireIntersect() {
 let leakSpy: ApolloMockLeakSpyResult;
 
 beforeEach(() => {
-  // pagination.md: installApolloMockLeakSpy in beforeEach
+  // See docs/pagination/capture-mockedprovider-warn-leaks.md: installApolloMockLeakSpy in beforeEach
   leakSpy = installApolloMockLeakSpy({ operationNames: ["MyCardgroupsConnection"] });
   ioCallbacks = [];
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
 });
 
 afterEach(() => {
-  // LIFO per pagination.md Spy stacking rule: assert + teardown the leak spy last
+  // LIFO per docs/pagination/capture-mockedprovider-warn-leaks.md Spy stacking rule: assert + teardown the leak spy last
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -445,11 +445,11 @@ describe("<CardgroupsClient>", () => {
 
   // S6: halts IO loop on fetchMore error, shows retry, succeeds after retry
   //
-  // Two MockedResponse entries for fetchMore per pagination.md:
+  // Two MockedResponse entries for fetchMore per docs/pagination/two-mocked-responses-for-retry-test.md:
   // first is an error, second is success for the retry.
   it("halts IO loop on fetchMore error and shows retry banner, succeeds after retry", async () => {
     // Forwarding spy: do NOT call `mockImplementation(() => {})` here. Per
-    // pagination.md § "Spy stacking", this spy is the OUTER spy (installed
+    // docs/pagination/capture-mockedprovider-warn-leaks.md § "Spy stacking": this spy is the OUTER spy (installed
     // after the file-wide leak spy in beforeEach) and must forward every
     // `console.warn` call so the leak spy still records MockedProvider leaks.
     const consoleWarnSpy = vi.spyOn(console, "warn");
@@ -548,7 +548,7 @@ describe("<CardgroupsClient>", () => {
 // ---------------------------------------------------------------------------
 //
 // These pure InMemoryCache tests verify that the update logic in
-// new-cardgroup-client.tsx uses readQuery + writeQuery per pagination.md.
+// new-cardgroup-client.tsx uses readQuery + writeQuery per docs/pagination/cache-modify-skips-nonexistent-fields.md.
 // cache.modify skips non-existent fields on cold cache; readQuery + writeQuery
 // handles both warm and cold paths correctly.
 

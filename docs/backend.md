@@ -104,9 +104,9 @@ Library-quirk rules (Echo v5 signatures, GORM empty-`IN` behaviour, JWT algorith
 
 - `ErrUserNotFound` — joined with `ErrNotFound` (so legacy `errors.Is(_, ErrNotFound)` callers keep working).
 - `ErrRoleNotFound` — joined with `ErrNotFound` for the same reason.
-- `ErrRoleDuplicate` — **standalone**, not joined with `ErrNotFound`. A duplicate is a "found" condition; joining it would make a generic 404 mapper fire for a duplicate insert. See `.claude/rules/error-wrapping.md` § "Standalone sentinels".
+- `ErrRoleDuplicate` — **standalone**, not joined with `ErrNotFound`. A duplicate is a "found" condition; joining it would make a generic 404 mapper fire for a duplicate insert. See [`docs/backend/error-wrapping/standalone-sentinels-not-every-joins-errnotfound.md`](backend/error-wrapping/standalone-sentinels-not-every-joins-errnotfound.md).
 
-`Create` and `Update` normalise the name with `strings.ToLower(strings.TrimSpace(name))` before insertion, and route Postgres `23505` unique violations through `classifyUniqueError` to `ErrRoleDuplicate`. The classifier anchors on the constraint-name fragment `"name"` rather than `"roles"` to avoid mis-routing `user_roles_pkey` into the role-name sentinel — see `.claude/rules/error-wrapping.md` § "Postgres unique-violation classification".
+`Create` and `Update` normalise the name with `strings.ToLower(strings.TrimSpace(name))` before insertion, and route Postgres `23505` unique violations through `classifyUniqueError` to `ErrRoleDuplicate`. The classifier anchors on the constraint-name fragment `"name"` rather than `"roles"` to avoid mis-routing `user_roles_pkey` into the role-name sentinel — see [`docs/backend/error-wrapping/postgres-unique-violation-23505.md`](backend/error-wrapping/postgres-unique-violation-23505.md).
 
 `Delete` uses `RowsAffected == 0` to detect "id did not exist" rather than a separate existence check, because the `WHERE id = ?` predicate eliminates the empty-`IN` hazard that requires the `1=1` opt-out.
 

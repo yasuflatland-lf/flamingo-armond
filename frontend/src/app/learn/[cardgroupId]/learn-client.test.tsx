@@ -73,7 +73,7 @@ vi.mock("@/components/learn/swipe-card-stack", () => ({
 //
 // Installed as the OUTERMOST `console.warn` spy (top-level `beforeEach` runs
 // before any describe-level `beforeEach`), and torn down LAST in the matching
-// `afterEach`. Per pagination.md § "Spy stacking: install order is outer-first,
+// `afterEach`. Per docs/pagination/capture-mockedprovider-warn-leaks.md § "Spy stacking: install order is outer-first,
 // teardown is LIFO", any per-describe `console.warn` spy installed below
 // stacks on top and MUST NOT call `mockImplementation(() => {})` — that would
 // swallow the leak warning before the leak spy records it.
@@ -263,7 +263,7 @@ describe("<LearnClient>", () => {
 
   describe("handleSwipe resolved-without-data branch", () => {
     // Forwarding spy: do NOT call `mockImplementation(() => {})` here. Per
-    // pagination.md § "Spy stacking", this spy is the OUTER spy (installed after
+    // docs/pagination/capture-mockedprovider-warn-leaks.md § "Spy stacking": this spy is the OUTER spy (installed after
     // the file-wide leak spy) and must forward every `console.warn` call through
     // to the underlying leak spy so MockedProvider leaks are still recorded.
     let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
@@ -377,7 +377,7 @@ function makePersistMock(cardgroupId: string, onCalled?: () => void) {
 
 describe("<LearnClient> persist-last-viewed path", () => {
   // Forwarding spy: do NOT call `mockImplementation(() => {})` here. Per
-  // pagination.md § "Spy stacking", this spy is the OUTER spy (installed after
+  // docs/pagination/capture-mockedprovider-warn-leaks.md § "Spy stacking": this spy is the OUTER spy (installed after
   // the file-wide leak spy) and must forward every `console.warn` call through
   // to the underlying leak spy so MockedProvider leaks are still recorded.
   // Tests that expect a `[learn] setLastViewedCardgroup failed` warn assert
@@ -500,7 +500,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
     // `optimisticResponse` inside the SetLastViewedCardgroup mutate call.
     // The comment block in learn-client.tsx explains why — typed errors from
     // @apollo/client v3.x are not reliably rolled back from optimistic writes
-    // (see pagination.md).
+    // (see docs/pagination/drop-optimistic-response-typed-errors.md).
     //
     // Strategy: find the section of source between `SetLastViewedCardgroup` and
     // the next `.catch(` that follows it, and assert no `optimisticResponse`

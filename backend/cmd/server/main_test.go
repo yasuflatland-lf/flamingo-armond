@@ -1874,9 +1874,9 @@ func TestBootstrapSuperUserPromoter_WarnOnCountError(t *testing.T) {
 
 	// Use a stub that returns an eris error so the structural error_chain
 	// assertion (root.stack non-empty) can be verified. Using eris.New here
-	// matches the convention in .claude/rules/error-wrapping.md §
-	// "Test the error_chain shape" — stubs must use eris.New so the assertion
-	// exercises the same code path production hits.
+	// matches the convention in docs/backend/error-wrapping/test-error-chain-shape-not-presence.md
+	// — stubs must use eris.New so the assertion exercises the same code path
+	// production hits.
 	stub := failingCountRepo{err: eris.New("repository: simulated DB failure")}
 
 	// Capture log output at WARN+ level.
@@ -1915,7 +1915,7 @@ func TestBootstrapSuperUserPromoter_WarnOnCountError(t *testing.T) {
 	}
 
 	// 3. Assert structural error_chain shape (root.stack non-empty).
-	// See .claude/rules/error-wrapping.md § "Test the error_chain shape".
+	// See docs/backend/error-wrapping/test-error-chain-shape-not-presence.md.
 	chain, ok := countErrRec["error_chain"].(map[string]any)
 	if !ok {
 		t.Fatalf("error_chain is not a JSON object: %T", countErrRec["error_chain"])

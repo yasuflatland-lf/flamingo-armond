@@ -512,8 +512,7 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 // TestCardRepo_FindPageByCardgroup_Search_CrossTenantNonLeak verifies that a
 // search applied to one cardgroup does not surface rows from another cardgroup
 // even when both contain cards with the same front/back text. This is the
-// cross-tenant test required by .claude/rules/go-library-gotchas.md §
-// "Repository lookup methods scoped by tenant ID".
+// cross-tenant test required by docs/backend/library-gotchas/repository-cross-tenant-negative-test.md.
 func TestCardRepo_FindPageByCardgroup_Search_CrossTenantNonLeak(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

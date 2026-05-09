@@ -156,7 +156,7 @@ Cross-aggregate references use IDs only — never embed a pointer to another agg
 
 ### Cursor pagination
 
-Relay-style Connection queries (e.g. `cardsByCardgroupConnection`) follow a fixed shape across schema, resolver, usecase, and repository. See `.claude/rules/pagination.md` for the full design (tuple comparison, `+1` fetch trick, `totalCount` trade-off, cross-aggregate validation, three-layer enum sync, and `cursorFieldValue` error handling).
+Relay-style Connection queries (e.g. `cardsByCardgroupConnection`) follow a fixed shape across schema, resolver, usecase, and repository. See `.claude/rules/pagination.md` for the full design; detailed cases are in `docs/pagination/` (tuple comparison, `+1` fetch trick, `totalCount` trade-off, cross-aggregate validation, three-layer enum sync, and `cursorFieldValue` error handling).
 
 ### Consumer-driven repository interfaces
 
@@ -241,7 +241,7 @@ Records the cardgroup a returning user most recently studied so `/` (HomePage RS
 
 #### Existence-oracle prevention via collapsed `BAD_USER_INPUT`
 
-"Cardgroup does not exist" and "cardgroup exists but is owned by another user" both surface as the same `BAD_USER_INPUT` on the `cardgroupId` field — never `UNAUTHENTICATED`, never a separate "not found" code. A distinguishable response would let an attacker brute-force cardgroup UUIDs to enumerate which IDs exist on the platform. The repository returns `errors.Join(ErrCardgroupNotFound, ErrNotFound)` for both cases (the `RowsAffected == 0` branch cannot tell them apart by design); the usecase translates the specific sentinel to `gqlerr.BadUserInput("cardgroupId", "cardgroup not found or not owned")`. This mirrors the same posture the `cardgroup(id:)` query takes — see [Authorization at the usecase layer](#authorization-at-the-usecase-layer) — and the cross-aggregate cursor validation rule in `.claude/rules/pagination.md`.
+"Cardgroup does not exist" and "cardgroup exists but is owned by another user" both surface as the same `BAD_USER_INPUT` on the `cardgroupId` field — never `UNAUTHENTICATED`, never a separate "not found" code. A distinguishable response would let an attacker brute-force cardgroup UUIDs to enumerate which IDs exist on the platform. The repository returns `errors.Join(ErrCardgroupNotFound, ErrNotFound)` for both cases (the `RowsAffected == 0` branch cannot tell them apart by design); the usecase translates the specific sentinel to `gqlerr.BadUserInput("cardgroupId", "cardgroup not found or not owned")`. This mirrors the same posture the `cardgroup(id:)` query takes — see [Authorization at the usecase layer](#authorization-at-the-usecase-layer) — and the [cross-aggregate cursor validation rule](pagination/cursor-cross-aggregate-validation.md).
 
 The new sentinel `repository.ErrCardgroupNotFound` follows the `errors.Join(specific, general)` "missing"-sentinel convention from `.claude/rules/error-wrapping.md`: callers branching on the general `ErrNotFound` continue to work without modification, and the usecase can match the specific sentinel first to attach the per-field message.
 

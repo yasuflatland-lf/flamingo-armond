@@ -70,8 +70,7 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
 
   // Hover-flyout close timer. Use useRef (not useState) to avoid an async update
   // dropping a pointerenter that arrives in the same frame as the timeout fires
-  // (same hazard documented in `.claude/rules/pagination.md` for the
-  // IntersectionObserver in-flight guard).
+  // (same hazard documented in docs/pagination/intersection-observer-in-flight-guard.md).
   const hoverCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearHoverTimer = () => {
