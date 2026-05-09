@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { AdminUsersClient } from "./AdminUsersClient";
 
@@ -8,13 +9,13 @@ export default async function AdminUsersPage() {
     data: { user },
     error: authErr,
   } = await supabase.auth.getUser();
-  // AuthSessionMissingError is the "no session" signal — fall through to the
-  // !user redirect below. Any other auth error is a real failure.
-  if (authErr && authErr.name !== "AuthSessionMissingError") {
+  // AuthSessionMissingError = anonymous request; stale session = deleted user
+  // with a still-valid JWT. Both are handled by redirecting to /.
+  if (authErr && !isIgnorableAuthError(authErr)) {
     console.error("[admin/users] getUser() failed:", authErr.name, authErr.message);
     throw authErr;
   }
-  if (!user) redirect("/");
+  if (!user || isStaleSessionError(authErr)) redirect("/");
 
   return <AdminUsersClient />;
 }

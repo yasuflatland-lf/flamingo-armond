@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import type { CardsNewBootstrapQuery as CardsNewBootstrapQueryType } from "@/generated/graphql";
 import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
+import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import CardsNewClient from "./cards-new-client";
 import { CardsNewBootstrapQuery } from "./queries";
@@ -18,11 +19,13 @@ export default async function CardsNewPage({ searchParams }: CardsNewPageProps) 
     error: authErr,
   } = await supabase.auth.getUser();
 
-  if (authErr && authErr.name !== "AuthSessionMissingError") {
+  // AuthSessionMissingError = anonymous request; stale session = deleted user
+  // with a still-valid JWT. Both are handled by redirecting to /login.
+  if (authErr && !isIgnorableAuthError(authErr)) {
     console.error("[cards-new] getUser() failed:", authErr.name, authErr.message);
     throw authErr;
   }
-  if (!user) redirect("/login");
+  if (!user || isStaleSessionError(authErr)) redirect("/login");
 
   // --- Bootstrap data ---
   let bootstrapData: CardsNewBootstrapQueryType;
