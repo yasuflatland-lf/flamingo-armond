@@ -69,7 +69,7 @@ export function OnboardingForm() {
       }}
       className="space-y-4"
     >
-      <h1 className="mb-6 text-2xl font-semibold">Welcome to flamingo</h1>
+      <h1 className="mb-6 text-2xl font-semibold">Welcome to Flamingo Armond</h1>
 
       {bannerError ? (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
@@ -102,7 +102,7 @@ export function OnboardingForm() {
         )}
       </form.Field>
 
-      <Button type="submit" disabled={loading}>
+      <Button type="submit" variant="brand" disabled={loading}>
         {loading ? "Saving..." : "Continue"}
       </Button>
 
