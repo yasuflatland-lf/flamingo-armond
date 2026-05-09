@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"gorm.io/gorm"
@@ -319,5 +320,87 @@ func TestNotionSyncUsecase_PersistError(t *testing.T) {
 	})
 	if !errors.Is(err, ErrNotionSyncPersist) || !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want persist + boom", err)
+	}
+}
+
+func TestNotionSyncUsecase_CardgroupEnsureError(t *testing.T) {
+	t.Parallel()
+
+	// EnsureByName fails before the transaction is opened. Sync must surface
+	// ErrNotionSyncPersist and the underlying db error, and must not enter the
+	// tx or touch the card repository at all.
+	dbErr := errors.New("db error")
+	fetcher := &stubNotionFetcher{pages: []notion.Page{
+		{ID: "page-1", Text: "apple " + uniqueBack(1) + "\n"},
+	}}
+	cardgroups := &mockNotionCardgroupRepo{err: dbErr}
+	cards := &mockNotionCardRepo{}
+	tx, txCalls := dictTxRunner()
+	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, nil)
+
+	_, err := uc.Sync(context.Background(), SyncFromNotionInput{
+		PageIDs:       []string{"page-1"},
+		OwnerID:       "owner-1",
+		CardgroupName: "English",
+	})
+	if !errors.Is(err, ErrNotionSyncPersist) {
+		t.Fatalf("err = %v, want ErrNotionSyncPersist", err)
+	}
+	if !errors.Is(err, dbErr) {
+		t.Fatalf("err = %v, want wrapped db error", err)
+	}
+	if !strings.Contains(err.Error(), "db error") {
+		t.Fatalf("err.Error() = %q, want it to contain \"db error\"", err.Error())
+	}
+	// The transaction must not have been entered; no card repo method should run.
+	if *txCalls != 0 {
+		t.Fatalf("tx calls = %d, want 0 (tx must not be entered on EnsureByName failure)", *txCalls)
+	}
+	if cards.upsertCalls != 0 || cards.listCalls != 0 || cards.deleteCalls != 0 {
+		t.Fatalf("card repo calls (upsert=%d list=%d delete=%d), want all zero",
+			cards.upsertCalls, cards.listCalls, cards.deleteCalls)
+	}
+}
+
+func TestNotionSyncUsecase_ListFrontsError(t *testing.T) {
+	t.Parallel()
+
+	// ListFrontsByCardgroupTx fails inside the transaction. Sync must surface
+	// ErrNotionSyncPersist and the underlying list error so the caller can
+	// distinguish a persistence failure from a fetch or parse failure.
+	listErr := errors.New("list error")
+	fetcher := &stubNotionFetcher{pages: []notion.Page{
+		{ID: "page-1", Text: "apple " + uniqueBack(1) + "\n"},
+	}}
+	cardgroups := &mockNotionCardgroupRepo{cg: &domain.Cardgroup{ID: "cg-target"}}
+	cards := &mockNotionCardRepo{listErr: listErr}
+	tx, txCalls := dictTxRunner()
+	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, nil)
+
+	_, err := uc.Sync(context.Background(), SyncFromNotionInput{
+		PageIDs:       []string{"page-1"},
+		OwnerID:       "owner-1",
+		CardgroupName: "English",
+	})
+	if !errors.Is(err, ErrNotionSyncPersist) {
+		t.Fatalf("err = %v, want ErrNotionSyncPersist", err)
+	}
+	if !errors.Is(err, listErr) {
+		t.Fatalf("err = %v, want wrapped list error", err)
+	}
+	if !strings.Contains(err.Error(), "list error") {
+		t.Fatalf("err.Error() = %q, want it to contain \"list error\"", err.Error())
+	}
+	// The tx was entered (upsert ran before list), but must have been rolled back.
+	if *txCalls != 1 {
+		t.Fatalf("tx calls = %d, want 1", *txCalls)
+	}
+	// UpsertManyTx runs before ListFrontsByCardgroupTx; it must have been called.
+	if cards.upsertCalls != 1 {
+		t.Fatalf("upsert calls = %d, want 1", cards.upsertCalls)
+	}
+	// Delete must not have been reached after the list failure.
+	if cards.deleteCalls != 0 {
+		t.Fatalf("delete calls = %d, want 0 (must not be reached after list error)", cards.deleteCalls)
 	}
 }
