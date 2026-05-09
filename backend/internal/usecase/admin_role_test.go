@@ -482,22 +482,53 @@ func TestAdminRole_Update_Success(t *testing.T) {
 	}
 }
 
-// TestAdminRole_Update_RenameAdminForbidden enforces the system-role guard:
-// renaming the role whose current name is "admin" is rejected with FORBIDDEN.
-// The repo Update must not be called.
-func TestAdminRole_Update_RenameAdminForbidden(t *testing.T) {
+// TestAdminRole_Update_RenameSystemRoleForbidden enforces the system-role
+// guard for every name in the protected set. Renaming any of them must be
+// rejected with FORBIDDEN, and the repo Update must not be called. A
+// negative case (a non-system role with a similar-looking name) is included
+// so a future widening of the guard cannot silently route a custom role
+// through the system branch.
+func TestAdminRole_Update_RenameSystemRoleForbidden(t *testing.T) {
 	t.Parallel()
 
-	roles := &mockAdminRoleRepoForCRUD{
-		findResult: &domain.Role{ID: "r-admin", Name: "admin"},
+	cases := []struct {
+		name     string
+		roleName string
+		want     string
+	}{
+		{name: "admin", roleName: "admin", want: "FORBIDDEN"},
+		{name: "general", roleName: "general", want: "FORBIDDEN"},
+		// Negative: a non-system role with a confusable prefix must NOT be
+		// rejected by the system-role guard. It still hits the repo Update.
+		{name: "non-system 'general-2'", roleName: "general-2", want: ""},
 	}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _ := buildAdminRoleUC(roles, authChk)
 
-	_, err := uc.Update(authedCtx("admin-1"), "r-admin", "superadmin")
-	assertGQLErr(t, err, "FORBIDDEN", "")
-	if roles.updateCalls != 0 {
-		t.Fatalf("expected 0 repo update calls on system-role guard, got %d", roles.updateCalls)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			roles := &mockAdminRoleRepoForCRUD{
+				findResult: &domain.Role{ID: "r-x", Name: tc.roleName},
+			}
+			authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+			uc, _ := buildAdminRoleUC(roles, authChk)
+
+			_, err := uc.Update(authedCtx("admin-1"), "r-x", "renamed")
+			if tc.want == "FORBIDDEN" {
+				assertGQLErr(t, err, "FORBIDDEN", "")
+				if roles.updateCalls != 0 {
+					t.Fatalf("expected 0 repo update calls on system-role guard, got %d",
+						roles.updateCalls)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error for non-system role: %v", err)
+			}
+			if roles.updateCalls != 1 {
+				t.Fatalf("expected 1 repo update call for non-system role, got %d",
+					roles.updateCalls)
+			}
+		})
 	}
 }
 
@@ -595,22 +626,51 @@ func TestAdminRole_Delete_Success(t *testing.T) {
 	}
 }
 
-// TestAdminRole_Delete_AdminForbidden enforces the system-role guard:
-// deleting the role whose name is "admin" is rejected with FORBIDDEN. The
-// repo Delete must not be called.
-func TestAdminRole_Delete_AdminForbidden(t *testing.T) {
+// TestAdminRole_Delete_SystemRoleForbidden enforces the system-role guard
+// for every name in the protected set on Delete. Deleting any of them must
+// be rejected with FORBIDDEN. A negative case (a non-system role with a
+// confusable prefix) verifies the guard does not over-match.
+func TestAdminRole_Delete_SystemRoleForbidden(t *testing.T) {
 	t.Parallel()
 
-	roles := &mockAdminRoleRepoForCRUD{
-		findResult: &domain.Role{ID: "r-admin", Name: "admin"},
+	cases := []struct {
+		name     string
+		roleName string
+		want     string
+	}{
+		{name: "admin", roleName: "admin", want: "FORBIDDEN"},
+		{name: "general", roleName: "general", want: "FORBIDDEN"},
+		// Negative: a non-system role with a confusable prefix must NOT be
+		// rejected by the guard. It hits the repo Delete instead.
+		{name: "non-system 'admin-2'", roleName: "admin-2", want: ""},
 	}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _ := buildAdminRoleUC(roles, authChk)
 
-	err := uc.Delete(authedCtx("admin-1"), "r-admin")
-	assertGQLErr(t, err, "FORBIDDEN", "")
-	if roles.deleteCalls != 0 {
-		t.Fatalf("expected 0 repo delete calls on system-role guard, got %d", roles.deleteCalls)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			roles := &mockAdminRoleRepoForCRUD{
+				findResult: &domain.Role{ID: "r-x", Name: tc.roleName},
+			}
+			authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+			uc, _ := buildAdminRoleUC(roles, authChk)
+
+			err := uc.Delete(authedCtx("admin-1"), "r-x")
+			if tc.want == "FORBIDDEN" {
+				assertGQLErr(t, err, "FORBIDDEN", "")
+				if roles.deleteCalls != 0 {
+					t.Fatalf("expected 0 repo delete calls on system-role guard, got %d",
+						roles.deleteCalls)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error for non-system role: %v", err)
+			}
+			if roles.deleteCalls != 1 {
+				t.Fatalf("expected 1 repo delete call for non-system role, got %d",
+					roles.deleteCalls)
+			}
+		})
 	}
 }
 

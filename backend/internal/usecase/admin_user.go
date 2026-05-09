@@ -20,6 +20,27 @@ import (
 // auth.Service.IsAdmin.
 const adminRoleName = "admin"
 
+// generalRoleName is the name of the default end-user role seeded alongside
+// "admin". Treated as a system role by AdminRole.Update / AdminRole.Delete:
+// renaming or deleting it is blocked because deployments may rely on the
+// literal name being present.
+const generalRoleName = "general"
+
+// systemRoleNames enumerates the role names that are protected from rename
+// and delete by the AdminRole usecase. The set is closed at compile time so
+// any future system role must be added here explicitly.
+var systemRoleNames = map[string]struct{}{
+	adminRoleName:   {},
+	generalRoleName: {},
+}
+
+// isSystemRole reports whether a role name is in the protected set. Used by
+// AdminRole.Update and AdminRole.Delete to gate the system-role guard.
+func isSystemRole(name string) bool {
+	_, ok := systemRoleNames[name]
+	return ok
+}
+
 // adminUserMaxPageSize is the user-facing cap on AdminUser.List page size.
 // Mirrors the repository-level maxUserPageSize (100). The asymmetry between
 // this value and userPageCap (101) at the repository layer enables the

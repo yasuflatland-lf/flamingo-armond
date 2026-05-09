@@ -166,9 +166,10 @@ func (u *adminRoleUsecase) Create(ctx context.Context, name string) (*domain.Rol
 	return role, nil
 }
 
-// Update renames an existing role. The system "admin" role is renaming-locked:
-// renaming it would break the auth.Service.IsAdmin lookup that hardcodes the
-// literal "admin" string.
+// Update renames an existing role. System roles ("admin", "general") are
+// renaming-locked: renaming "admin" would break the auth.Service.IsAdmin
+// lookup that hardcodes the literal string, and renaming "general" would
+// break any deployment that relies on the literal name being present.
 //
 // TOCTOU: between FindByID and roles.Update another admin can delete the row;
 // the resulting ErrRoleNotFound is mapped back to BAD_USER_INPUT(field=id)
@@ -186,8 +187,8 @@ func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (*domain
 	if err != nil {
 		return nil, mapAdminRoleError(ctx, err, "id", "usecase: admin role update: find")
 	}
-	if existing.Name == adminRoleName {
-		return nil, gqlerr.NewForbidden("cannot rename system role 'admin'")
+	if isSystemRole(existing.Name) {
+		return nil, gqlerr.NewForbidden(fmt.Sprintf("cannot rename system role %q", existing.Name))
 	}
 
 	role, err := u.roles.Update(ctx, id, normalized)
@@ -197,10 +198,12 @@ func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (*domain
 	return role, nil
 }
 
-// Delete removes a role by id. The system "admin" role is delete-locked: a
-// missing admin role would lock every operator out of the management API. The
-// guard matches by name (not by id) because admin-role provisioning is
-// idempotent against the name in the migrations.
+// Delete removes a role by id. System roles ("admin", "general") are
+// delete-locked: a missing admin role would lock every operator out of the
+// management API, and a missing general role would orphan deployments that
+// reference it by literal name. The guard matches by name (not by id)
+// because system-role provisioning is idempotent against the name in the
+// migrations.
 //
 // TOCTOU: between FindByID and roles.Delete another admin can delete the row;
 // the resulting ErrRoleNotFound is mapped back to BAD_USER_INPUT(field=id)
@@ -214,8 +217,8 @@ func (u *adminRoleUsecase) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return mapAdminRoleError(ctx, err, "id", "usecase: admin role delete: find")
 	}
-	if existing.Name == adminRoleName {
-		return gqlerr.NewForbidden("cannot delete system role 'admin'")
+	if isSystemRole(existing.Name) {
+		return gqlerr.NewForbidden(fmt.Sprintf("cannot delete system role %q", existing.Name))
 	}
 
 	if err := u.roles.Delete(ctx, id); err != nil {
