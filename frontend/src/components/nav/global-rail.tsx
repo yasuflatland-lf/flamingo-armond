@@ -2,6 +2,7 @@
 
 import { BookOpen, Settings, User } from "lucide-react";
 import Link from "next/link";
+import { SidebarToggle } from "@/components/nav/sidebar-toggle";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { LogoutButton } from "@/app/_components/logout-button";
@@ -128,17 +129,16 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
       onPointerLeave={handlePointerLeave}
     >
       <SidebarHeader>
-        <button
-          type="button"
-          onClick={toggleSidebar}
-          aria-expanded={state === "expanded"}
-          aria-label="Toggle navigation rail"
-          className="flex h-8 items-center gap-2 rounded-md px-2 text-left font-semibold hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-        >
-          <span aria-hidden="true" className="shrink-0 text-lg leading-none">
+        <div className="flex h-8 items-center gap-2 px-2">
+          <Link
+            href="/"
+            aria-label="Flamingo home"
+            className="shrink-0 text-lg leading-none"
+          >
             🦩
-          </span>
-        </button>
+          </Link>
+          <SidebarToggle expanded={state === "expanded"} onToggle={toggleSidebar} />
+        </div>
       </SidebarHeader>
 
       {user !== null && (

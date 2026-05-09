@@ -10,8 +10,8 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
+import { MobileMenuTrigger } from "@/components/nav/mobile-menu-trigger";
 import { HeaderSignInLink } from "./header-sign-in-link";
 import { ADMIN_NAV_ITEMS } from "./nav-items";
 
@@ -30,15 +30,10 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
 
   return (
     <Sheet>
-      <SheetTrigger asChild>
-        <button
-          type="button"
-          aria-label="Open navigation menu"
-          className="rounded-md p-2 hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring font-semibold"
-        >
-          🦩
-        </button>
-      </SheetTrigger>
+      <Link href="/" aria-label="Flamingo home" className="rounded-md p-2 hover:bg-accent font-semibold">
+        🦩
+      </Link>
+      <MobileMenuTrigger />
 
       <SheetContent side="left" className="flex flex-col">
         <SheetHeader>

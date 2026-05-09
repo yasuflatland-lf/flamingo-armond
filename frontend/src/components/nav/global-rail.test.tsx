@@ -220,8 +220,19 @@ describe("<GlobalRail>", () => {
     });
   });
 
-  describe("S4 — logo button toggles aria-expanded", () => {
-    it("clicking the logo toggles aria-expanded between true and false", async () => {
+  describe("S4a — logo navigation link", () => {
+    it("renders a Flamingo home link pointing to /", () => {
+      mockUsePathname.mockReturnValue("/");
+      renderRail({ user: { email: "u@example.com" }, isAdmin: false });
+
+      const logoLink = screen.getByRole("link", { name: /flamingo home/i });
+      expect(logoLink).toBeInTheDocument();
+      expect(logoLink).toHaveAttribute("href", "/");
+    });
+  });
+
+  describe("S4 — sidebar toggle toggles aria-expanded", () => {
+    it("clicking the toggle button toggles aria-expanded between true and false", async () => {
       const user = userEvent.setup();
       mockUsePathname.mockReturnValue("/");
       renderRail({ user: { email: "u@example.com" }, isAdmin: true });
@@ -257,7 +268,8 @@ describe("<GlobalRail>", () => {
       // Negative: anonymous users get neither the LogoutButton nor an email line.
       expect(screen.queryByTestId("logout-button")).toBeNull();
 
-      // The logo button still renders so anonymous viewers can read the brand.
+      // The logo link and toggle button still render so anonymous viewers can navigate home and control the rail.
+      expect(screen.getByRole("link", { name: /flamingo home/i })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /toggle navigation rail/i })).toBeInTheDocument();
     });
 

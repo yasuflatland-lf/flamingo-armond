@@ -43,6 +43,14 @@ describe("<LogoDrawer>", () => {
     expect(screen.getByRole("link", { name: /cardgroups/i })).toBeInTheDocument();
   });
 
+  it("logo is a home link with aria-label='Flamingo home' and href='/'", () => {
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+    const logoLink = screen.getByRole("link", { name: /flamingo home/i });
+    expect(logoLink).toBeInTheDocument();
+    expect(logoLink).toHaveAttribute("href", "/");
+  });
+
   it("no hamburger-style 'Open menu' trigger exists — the new logo-driven drawer trigger replaces the prior hamburger trigger", () => {
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
