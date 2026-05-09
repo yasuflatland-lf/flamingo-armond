@@ -15,6 +15,7 @@ export const MeWithLastViewedQuery = graphql(`
   query MeWithLastViewed {
     me {
       id
+      displayName
       lastViewedCardgroup {
         id
       }
