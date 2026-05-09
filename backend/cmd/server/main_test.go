@@ -157,6 +157,17 @@ func setNotionSyncEnv(t *testing.T) {
 	t.Setenv("NOTION_SYNC_TOKEN", "sync-test-token")
 }
 
+// unsetNotionSyncEnv blanks all five NOTION_* vars so that run() treats
+// notion-sync as disabled and skips registering /internal/notion-sync.
+func unsetNotionSyncEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("NOTION_TOKEN", "")
+	t.Setenv("NOTION_PAGE_IDS", "")
+	t.Setenv("NOTION_TARGET_OWNER_ID", "")
+	t.Setenv("NOTION_TARGET_CARDGROUP_NAME", "")
+	t.Setenv("NOTION_SYNC_TOKEN", "")
+}
+
 func getJSON(t *testing.T, url string) (int, map[string]string) {
 	t.Helper()
 	res, err := http.Get(url)
@@ -261,6 +272,60 @@ func TestRunGracefulShutdown(t *testing.T) {
 	}()
 
 	waitHealthy(t, port, 3*time.Second)
+
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("run returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not return within timeout after context cancel")
+	}
+}
+
+// TestRun_NotionSyncDisabledWhenEnvMissing verifies that when all five
+// NOTION_* env vars are absent, run() starts successfully and the router does
+// not register /internal/notion-sync (the nil-guard in newRouter skips it).
+// A POST to that path must return 404.
+func TestRun_NotionSyncDisabledWhenEnvMissing(t *testing.T) {
+	tsJWKS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"keys": []}`))
+	}))
+	defer tsJWKS.Close()
+
+	t.Setenv("SUPABASE_JWKS_URL", tsJWKS.URL)
+	t.Setenv("SUPABASE_JWT_AUDIENCE", "authenticated")
+	t.Setenv("SUPABASE_JWT_ISSUER", "http://issuer.test")
+	t.Setenv("SUPABASE_DB_URL", testDBURL)
+	t.Setenv("PING_TOKEN", "test-token")
+	unsetNotionSyncEnv(t)
+
+	port := freePort(t)
+	t.Setenv("PORT", port)
+	t.Setenv("SHUTDOWN_TIMEOUT", "2s")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- run(ctx, slog.New(slog.DiscardHandler))
+	}()
+
+	waitHealthy(t, port, 3*time.Second)
+
+	// /internal/notion-sync must be absent from the router when the handler is nil.
+	res, err := http.Post("http://127.0.0.1:"+port+"/internal/notion-sync", "application/json", nil)
+	if err != nil {
+		t.Fatalf("POST /internal/notion-sync: %v", err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want %d (notion-sync route should be unregistered)", res.StatusCode, http.StatusNotFound)
+	}
 
 	cancel()
 
