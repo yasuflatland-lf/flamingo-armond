@@ -24,6 +24,7 @@ func (s *stubPageService) Get(_ context.Context, id notionapi.PageID) (*notionap
 }
 
 type stubBlockService struct {
+	t         *testing.T
 	responses map[notionapi.BlockID][]*notionapi.GetChildrenResponse
 	err       error
 	calls     []notionapi.BlockID
@@ -33,6 +34,9 @@ func (s *stubBlockService) GetChildren(_ context.Context, id notionapi.BlockID, 
 	s.calls = append(s.calls, id)
 	if s.err != nil {
 		return nil, s.err
+	}
+	if len(s.responses[id]) == 0 {
+		s.t.Fatalf("stubBlockService: unexpected GetChildren call for id=%q (responses exhausted)", id)
 	}
 	resp := s.responses[id][0]
 	s.responses[id] = s.responses[id][1:]
@@ -52,7 +56,7 @@ func TestFetcherFetchPages(t *testing.T) {
 			},
 		},
 	}}
-	blocks := &stubBlockService{responses: map[notionapi.BlockID][]*notionapi.GetChildrenResponse{
+	blocks := &stubBlockService{t: t, responses: map[notionapi.BlockID][]*notionapi.GetChildrenResponse{
 		"page-1": {
 			{
 				Results: []notionapi.Block{
@@ -104,7 +108,7 @@ func TestFetcherFetchPagesEmptyAndWhitespaceSkipped(t *testing.T) {
 	pages := &stubPageService{pages: map[notionapi.PageID]*notionapi.Page{
 		"real-id": {ID: "real-id"},
 	}}
-	blocks := &stubBlockService{responses: map[notionapi.BlockID][]*notionapi.GetChildrenResponse{
+	blocks := &stubBlockService{t: t, responses: map[notionapi.BlockID][]*notionapi.GetChildrenResponse{
 		"real-id": {{Results: nil}},
 	}}
 
@@ -127,7 +131,7 @@ func TestFetcherFetchPagesEmptySliceShortCircuits(t *testing.T) {
 	t.Parallel()
 
 	pages := &stubPageService{}
-	blocks := &stubBlockService{}
+	blocks := &stubBlockService{t: t}
 
 	out, err := NewFetcherFromServices(pages, blocks).FetchPages(context.Background(), nil)
 	if err != nil {
@@ -151,7 +155,7 @@ func TestFetcherAbortOnBlockChildrenError(t *testing.T) {
 	pages := &stubPageService{pages: map[notionapi.PageID]*notionapi.Page{
 		"page-1": {ID: "page-1"},
 	}}
-	blocks := &stubBlockService{err: boom}
+	blocks := &stubBlockService{t: t, err: boom}
 
 	_, err := NewFetcherFromServices(pages, blocks).FetchPages(context.Background(), []string{"page-1"})
 	if !errors.Is(err, boom) {
@@ -170,7 +174,7 @@ func TestFetcherAbortOnFetchError(t *testing.T) {
 
 	boom := errors.New("boom")
 	pages := &stubPageService{err: boom}
-	blocks := &stubBlockService{}
+	blocks := &stubBlockService{t: t}
 
 	_, err := NewFetcherFromServices(pages, blocks).FetchPages(context.Background(), []string{"page-1", "page-2"})
 	if !errors.Is(err, boom) {
