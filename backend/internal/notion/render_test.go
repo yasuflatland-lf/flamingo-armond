@@ -51,6 +51,57 @@ func TestRenderBlocksSupportedPlainText(t *testing.T) {
 	}
 }
 
+func TestRenderBlocksSkipsNilEntries(t *testing.T) {
+	t.Parallel()
+
+	blocks := []notionapi.Block{
+		nil,
+		&notionapi.ParagraphBlock{
+			BasicBlock: notionapi.BasicBlock{Type: notionapi.BlockTypeParagraph},
+			Paragraph: notionapi.Paragraph{
+				RichText: []notionapi.RichText{{PlainText: "after-nil"}},
+			},
+		},
+		nil,
+	}
+
+	got := RenderBlocks(blocks)
+	want := "after-nil"
+	if got != want {
+		t.Fatalf("RenderBlocks() = %q, want %q", got, want)
+	}
+}
+
+func TestRenderBlocksUnsupportedParentDropsChildren(t *testing.T) {
+	t.Parallel()
+
+	// A ToggleBlock is unsupported by both renderBlockText and blockChildren,
+	// so its supported child Paragraph is silently dropped. Pin this contract
+	// so a future change that decides to render toggle children does so
+	// deliberately rather than as a side effect.
+	blocks := []notionapi.Block{
+		&notionapi.ToggleBlock{
+			BasicBlock: notionapi.BasicBlock{Type: notionapi.BlockTypeToggle},
+			Toggle: notionapi.Toggle{
+				RichText: []notionapi.RichText{{PlainText: "toggle-header"}},
+				Children: []notionapi.Block{
+					&notionapi.ParagraphBlock{
+						BasicBlock: notionapi.BasicBlock{Type: notionapi.BlockTypeParagraph},
+						Paragraph: notionapi.Paragraph{
+							RichText: []notionapi.RichText{{PlainText: "child-of-toggle"}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got := RenderBlocks(blocks)
+	if got != "" {
+		t.Fatalf("RenderBlocks() = %q, want empty (unsupported toggle drops both header and children)", got)
+	}
+}
+
 func TestRenderBlocksNestedChildren(t *testing.T) {
 	t.Parallel()
 
