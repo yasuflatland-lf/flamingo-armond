@@ -57,8 +57,7 @@ vi.mock("next/link", () => ({
 // library internals. The `disabled` prop is forwarded as a data attribute so
 // tests can assert its value. The `close` imperative handle is wired via
 // forwardRef so closeOtherRows() calls in the production code work without
-// throwing. Task 8a's swipeable-row.test.tsx is the canonical test for gesture
-// behaviour.
+// throwing. swipeable-row.test.tsx is the canonical test for gesture behaviour.
 vi.mock("@/components/cardgroups/swipeable-row", async () => {
   const { forwardRef } = await import("react");
   return {
@@ -271,7 +270,7 @@ describe("<CardsClient>", () => {
     expect(screen.queryByRole("button", { name: /^add$/i })).toBeNull();
   });
 
-  // Task 6: row click enters edit mode
+  // Row click enters edit mode.
   it("clicking the row text enters edit mode and Cancel reverts to view", async () => {
     const user = userEvent.setup();
     renderClient([]);
@@ -289,7 +288,7 @@ describe("<CardsClient>", () => {
     expect(screen.getByText("Hello")).toBeInTheDocument();
   });
 
-  // Task 6: keyboard activates edit mode (Enter key)
+  // Keyboard activates edit mode via the Enter key.
   it("keyboard Enter on the row text enters edit mode", async () => {
     const user = userEvent.setup();
     renderClient([]);
@@ -301,7 +300,7 @@ describe("<CardsClient>", () => {
     expect(screen.getByLabelText(/front/i)).toBeInTheDocument();
   });
 
-  // Task 6 regression: clicking the checkbox does NOT enter edit mode.
+  // Clicking the row checkbox does NOT enter edit mode.
   it("clicking the checkbox toggles selection without entering edit mode", async () => {
     const user = userEvent.setup();
     renderClient([]);
@@ -312,8 +311,8 @@ describe("<CardsClient>", () => {
     expect(screen.queryByLabelText(/^front$/i)).toBeNull();
   });
 
-  // Task 6 regression: clicking the Delete icon does NOT enter edit mode (and
-  // also does not surface an AlertDialog — Task 5b removed it).
+  // Clicking the per-row Delete icon does NOT enter edit mode and does not
+  // surface an AlertDialog; per-row delete uses scheduleDelete + Undo instead.
   it("clicking the Delete icon does not enter edit mode and does not open AlertDialog", async () => {
     const user = userEvent.setup();
     const cache = new InMemoryCache();
@@ -329,7 +328,7 @@ describe("<CardsClient>", () => {
 
     // Edit mode not entered.
     expect(screen.queryByLabelText(/^front$/i)).toBeNull();
-    // No AlertDialog confirmation appears for per-row delete (Task 5b).
+    // No AlertDialog confirmation appears for per-row delete.
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
@@ -402,7 +401,7 @@ describe("<CardsClient>", () => {
     expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument();
   });
 
-  // Task 5b: per-row delete via scheduleDelete — row disappears immediately,
+  // Per-row delete via scheduleDelete — row disappears immediately,
   // 5-second timer fires real DELETE mutation.
   it("delete via Snackbar: row disappears immediately, mutation fires after 5s", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -442,7 +441,7 @@ describe("<CardsClient>", () => {
     });
   });
 
-  // Task 5b: Undo within 5s restores the row and prevents the DELETE mutation.
+  // Undo within 5s restores the row and prevents the DELETE mutation.
   it("delete then Undo within 5s restores the row and does NOT fire DELETE", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
@@ -490,7 +489,7 @@ describe("<CardsClient>", () => {
     // spy stays clean and the unused entry is harmless.
   });
 
-  // Task 5b: pathname change triggers flushPendingDeletes — DELETE fires
+  // Pathname change triggers flushPendingDeletes — DELETE fires
   // immediately even though the 5s window has not elapsed.
   it("pathname change flushes pending delete, firing DELETE immediately", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -553,7 +552,7 @@ describe("<CardsClient>", () => {
     });
   });
 
-  // Task 4: search debounce — only one fetch fires after 300ms.
+  // Search debounce — only one fetch fires after 300ms.
   it("search debounces by 300ms and fires exactly one network request", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
@@ -593,7 +592,7 @@ describe("<CardsClient>", () => {
     });
   });
 
-  // Task 4: searchQuery change resets the in-flight guard ref AND
+  // searchQuery change resets the in-flight guard ref AND
   // fetchMoreError. We verify by triggering the IO sentinel after a search
   // change and observing that fetchMore is allowed to proceed (the guard was
   // reset). The leak spy in afterEach catches any unmatched leaked request.
@@ -639,7 +638,7 @@ describe("<CardsClient>", () => {
     // matched cleanly between SSR seed, useQuery, and the search refetch.
   });
 
-  // Task 7: empty state pattern 2 — search yields zero matches, Clear search
+  // Empty state — search yields zero matches, Clear search
   // resets searchInput AND searchQuery.
   it("renders no-hits state with Clear search button when search has zero matches", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -693,7 +692,7 @@ describe("<CardsClient>", () => {
     expect(screen.getByText("Add some new cards to get started.")).toBeInTheDocument();
   });
 
-  // Task 5b regression guard: bulk delete still uses AlertDialog.
+  // Bulk delete uses AlertDialog (per-row delete uses scheduleDelete instead).
   it("bulk delete still requires AlertDialog confirmation (not scheduleDelete)", async () => {
     const user = userEvent.setup();
 
@@ -804,7 +803,7 @@ describe("<CardsClient>", () => {
     });
   });
 
-  // Task 8b: each non-editing row is wrapped in SwipeableRow.
+  // Each non-editing row is wrapped in SwipeableRow.
   it("wraps each card row in SwipeableRow", () => {
     renderClient([]);
     const wrappers = screen.getAllByTestId("swipeable-row-mock");
@@ -812,7 +811,7 @@ describe("<CardsClient>", () => {
     expect(wrappers).toHaveLength(2);
   });
 
-  // Task 8b: selection mode disables swipe on all rows.
+  // Selection mode disables swipe on all rows.
   it("disables SwipeableRow when selection mode is active", async () => {
     const user = userEvent.setup();
     renderClient([]);
@@ -833,7 +832,7 @@ describe("<CardsClient>", () => {
     }
   });
 
-  // Task 8b: editing a row disables swipe on that row only.
+  // Editing a row disables swipe on that row only.
   it("disables SwipeableRow for the row currently in edit mode", async () => {
     const user = userEvent.setup();
     renderClient([]);
@@ -851,12 +850,12 @@ describe("<CardsClient>", () => {
     expect(wrappers[0]).toHaveAttribute("data-disabled", "false");
   });
 
-  // Task 8b: tapping a row's text region closes other half-open rows.
+  // Tapping a row's text region closes other half-open rows.
   // Because SwipeableRow is mocked as a plain div, we verify that
   // closeOtherRows is wired by checking that the edit-target click succeeds
   // without errors when multiple rows exist (the ref-map iteration path is
   // exercised without throwing). The imperative close() API is covered by
-  // swipeable-row.test.tsx (Task 8a).
+  // swipeable-row.test.tsx.
   it("tapping a second row's edit target does not throw (closeOtherRows is wired)", async () => {
     const user = userEvent.setup();
     renderClient([]);
