@@ -6,23 +6,6 @@
 
 `uuid.NewV7()` fails only when `crypto/rand` is unavailable, meaning the system is already unhealthy. A silent fallback to `uuid.NewV4()` is not safe — `NewV4` calls the same random source and will also fail. Helper functions that generate IDs must return `(string, error)` and let callers map the failure to `gqlerr.Internal`. The request-ID middleware is the one deliberate exception because it uses a timestamp string as fallback; that is specific to logging context, not business-logic IDs.
 
-## `defer recover()` must re-panic `runtime.Error`
-
-A blanket `recover()` in a `defer` collapses two unrelated failure modes into one user-facing parse error: a real bug like a nil-deref or index-out-of-range (`runtime.Error`) and a legitimate "we asked the parser to give up on this input" panic raised by hand. The runtime.Error case is a server bug and must surface in tests, CI, and crash reports — not get rewritten as `ValidationError`. The textdic parser uses this guard:
-
-```go
-defer func() {
-    if r := recover(); r != nil {
-        if rt, ok := r.(runtime.Error); ok {
-            panic(rt)
-        }
-        err = fmt.Errorf("textdic: parser panic: %v\n%s", r, debug.Stack())
-    }
-}()
-```
-
-Apply the same shape to any new `recover` site that wraps third-party generated code (goyacc parsers, regex engines, text-processing libraries). The `debug.Stack()` capture is mandatory: by the time the recovered error is logged, the original goroutine stack is gone.
-
 ## Echo v5 handler signature uses a pointer receiver
 
 Echo v5 handler and middleware signatures changed from v4. Every handler and middleware factory must use `*echo.Context` (pointer), not the v4 interface form:
@@ -38,17 +21,6 @@ func handler(c echo.Context) error { ... }
 Online samples, AI-generated code, and the official Echo v4 docs all use the interface form. Any paste from those sources requires this fix.
 
 The type is `*echo.Context` — a **pointer to a concrete struct**, not an interface. v5 removed the `echo.Context` interface entirely, so there is no interface to embed or assert against.
-
-## `echo.NewHTTPError` discards manually-set response headers
-
-Echo's default `HTTPErrorHandler` serializes the error and writes a fresh response, discarding any headers set on the context before returning the error. Setting `c.Response().Header().Set("WWW-Authenticate", "...")` and then `return echo.NewHTTPError(401, "...")` will drop the header in the rendered response. The fix is to write the response directly and return `nil`:
-
-```go
-c.Response().Header().Set("WWW-Authenticate", `Bearer realm="api"`)
-return c.String(http.StatusUnauthorized, "unauthorized")
-```
-
-Any future middleware that must send headers on an error response must use this pattern.
 
 ## JWT algorithm confusion: always whitelist valid algorithms
 
@@ -66,293 +38,25 @@ if len(ids) == 0 {
 
 This matters most in DataLoader batch functions, where an empty key slice is a normal edge case.
 
-## GORM v1 string-typed primary key with DB-generated UUID requires `default:` tag
-
-GORM's `BeforeCreate` hook auto-generates a UUID when a primary key field is a `string` type and is zero-valued — but only when the field carries `gorm:"default:..."` in its tag. Without the tag, GORM leaves the field empty and the INSERT fails.
-
-Peer models (`gormUser`, `gormCard`) avoid this by supplying the UUID in the application layer before calling `Create`. `gormPingRecord` is different: `Create` inserts a row without any caller-supplied ID, so the DB must generate it via `gen_random_uuid()`. The tag `gorm:"default:gen_random_uuid()"` is therefore load-bearing even though `AutoMigrate` is not used and the column default is already defined in the migration SQL.
-
-## GORM `LIKE` / `ILIKE` requires escaping `%`, `_`, `\` in user input
-
-A search box that runs `WHERE name ILIKE ? || '%'` with a user-supplied string becomes a pattern-injection surface: a user typing `100%` matches every row containing the literal string `100`, not just rows starting with `100%`. The three Postgres `LIKE` metacharacters are `%`, `_`, and `\` (the default escape). User-supplied search text must be escaped before being wrapped with `%...%`:
-
-```go
-func escapeLike(s string) string {
-    s = strings.ReplaceAll(s, `\`, `\\`)
-    s = strings.ReplaceAll(s, `%`, `\%`)
-    s = strings.ReplaceAll(s, `_`, `\_`)
-    return s
-}
-// ...
-db.Where("name ILIKE ?", "%"+escapeLike(query)+"%")
-```
-
-Order matters: escape `\` first, then `%` and `_`, otherwise the second pass re-escapes the backslash from the first pass. The same rule applies to `name ILIKE ? || '%'` (prefix match) and to any other `LIKE` predicate fed by user input.
-
-## GORM exact-match `FindBy*` helpers: callers own trimming, repos own nothing
-
-A `FindByXxx` method that uses `WHERE col = ?` performs byte-for-byte equality — no `TRIM`, no `LOWER`, no `LIKE`. The caller (usecase layer) is responsible for `strings.TrimSpace` before invoking the repo. The repo must not silently normalise input, because any future LIKE/LOWER "convenience" change would make the unique-index enforcement and the lookup disagree. Regression-guard the contract with a negative integration test:
-
-```go
-// Padded front must not match an exactly-stored value.
-_, err := repo.FindByCardgroupAndFront(ctx, cg.ID, " apple ")
-require.True(t, errors.Is(err, repository.ErrNotFound),
-    "padded front must not match exact-stored value; got %v", err)
-```
-
-This pairs with the GORM `LIKE` escape rule above: both rules block accidental broadening of match semantics on a column that backs a unique index.
-
-## Nullable filter fields: normalize `nil` / empty / whitespace at the usecase boundary
-
-A usecase input struct with a `Search *string` field has two representations of "no filter": `nil` (absent) and a pointer to an empty or whitespace-only string. Leaving both representations in circulation forces every downstream layer — repository, future callers, tests — to re-implement the same `if x != nil && strings.TrimSpace(*x) != ""` guard. The duplication spreads silently; a new caller that forgets the check passes a whitespace-only pointer to the repository, which runs a spurious `ILIKE '%  %'` predicate and returns unexpected results.
-
-Normalize once at the layer that owns the input struct (the usecase, when the input is populated from the resolver). Collapse `nil`, `&""`, and `&"   "` to `nil`; trim leading/trailing whitespace from non-empty strings before storing. The repository then receives a simple invariant: nil means no filter, non-nil means a pre-trimmed, non-empty pattern ready for `escapeLike` + `ILIKE`.
-
-```go
-// usecase, before calling FindPageByCardgroup:
-search := in.Search
-if search != nil {
-    trimmed := strings.TrimSpace(*search)
-    if trimmed == "" {
-        search = nil
-    } else {
-        search = &trimmed
-    }
-}
-// repo receives: nil OR a trimmed, non-empty *string — never whitespace-only.
-```
-
-**Why:** the usecase knows what a blank search means to the user; the repository does not. Pushing the guard down into the repo mixes business semantics (blank = no filter) with persistence mechanics (ILIKE predicate). Pushing it up into the resolver leaks persistence knowledge (the `*string` pointer convention) into the GraphQL layer. The usecase is the right seam.
-
-**How to apply:** add the normalization block at the top of any usecase method that accepts an optional filter `*string`. Keep a single defensive "empty-search returns all rows" integration test directly against the repository so the repo's contract is independently verified. The usecase test should enumerate all four input shapes — `nil`, `&""`, `&"   "`, and `&"  apple  "` — and assert the repository received the expected normalized value. This rule pairs with `GORM exact-match FindBy* helpers: callers own trimming, repos own nothing`: that rule covers trimming for exact-match lookups; this rule covers nullable-filter normalization for substring lookups. Both push normalization to the layer with the strongest knowledge of caller intent.
-
-Reference: `backend/internal/usecase/card.go` `ListCardsByCardgroupConnection`; the simplified repository predicate in `backend/internal/repository/card.go` `FindPageByCardgroup`.
-
-## Repository lookup methods scoped by tenant ID require a cross-tenant negative test
-
-Any `FindBy*` method that includes a `cardgroup_id = ?` (or other tenant-scoping) predicate must be regression-guarded by inserting the same discriminating value into **two** separate tenant rows and asserting the result is the tenant-scoped row, not the other one. Without this guard, dropping or accidentally omitting the predicate in a refactor silently leaks another tenant's row through duplicate-detection or query logic:
-
-```go
-cardA := newCard(cgA.ID, "apple", "back-A")
-cardB := newCard(cgB.ID, "apple", "back-B")
-require.NoError(t, repo.Create(ctx, cardA))
-require.NoError(t, repo.Create(ctx, cardB))
-
-got, err := repo.FindByCardgroupAndFront(ctx, cgB.ID, "apple")
-require.NoError(t, err)
-require.Equal(t, cardB.ID, got.ID, "must return cardgroup B's card, not cardgroup A's")
-```
-
-Apply this pattern to any repository method whose correctness depends on a tenant-scoping predicate.
-
-## GORM rejects unconditional `Delete` — use `Where("1 = 1")` to opt out
-
-GORM v2+ refuses a `Delete` call that has no `WHERE` clause as a safety net against accidental full-table deletes. It returns an `ErrMissingWhereClause` error.
-
-The deliberate opt-out for legitimate full-table deletes is:
-
-```go
-result := db.Where("1 = 1").Delete(&gormPingRecord{})
-```
-
-This makes the intent explicit and satisfies GORM's guard without suppressing the error check.
-
-## `subtle.ConstantTimeCompare` leaks token length — pair with a rate limiter
-
-`crypto/subtle.ConstantTimeCompare` returns early (0) when the two byte slices differ in length, leaking length via timing. For equal-length inputs the comparison runs in constant time. The practical impact for bearer-token checking is small when the token length is public knowledge (e.g. a fixed 64-hex-char token), but the leak becomes meaningful for variable-length or secret-length tokens without an external mitigation.
-
-The `/internal/ping` handler pairs `ConstantTimeCompare` with a per-IP rate limiter (1 req/s, burst 5). The rate limiter makes the length-oracle non-exploitable in practice: an attacker cannot iterate quickly enough to extract useful information before being throttled. Any future endpoint that adopts bearer-token comparison **without** a rate limiter must also add one — or switch to a constant-time scheme that does not branch on length.
-
-## slog context enrichment must precede the log call that announces the enrichment
-
-When a middleware sets a value in the context and then logs a message about
-that action, the `slog.*Context` call must come **after**
-`c.SetRequest(c.Request().WithContext(ctx))`. Logging before the context is
-stored means the very line that announces the event carries no `request_id` (or
-other context attribute) itself. The pattern in
-`backend/internal/middleware/request_id.go` — enriching the context first, then
-calling `slog.WarnContext(ctx, ...)` — is the correct template for any
-context-enriched slog handler.
-
-## Constructor panics are the right tool for "non-empty config requires non-nil deps"
-
-When a constructor accepts a feature-flag-shaped configuration plus the dependencies that are required *only* when the flag is non-empty, returning an error is awkward (every caller has to plumb an extra error through `run()`) and a silent half-configured struct is a per-request nil-deref hazard. Panic at construction is the right level of force: the misconfiguration is an operator-visible programming error, not a runtime input, and `run()` has not yet started the HTTP server when it fires — Echo's `Recover` middleware is not in the path, so the panic crashes the process at boot.
-
-```go
-func NewSuperUserPromoter(emails map[string]struct{}, adminRoleID string,
-    checker adminChecker, assigner roleAssigner) *SuperUserPromoter {
-    if len(emails) > 0 {
-        if checker == nil      { panic("auth: ... checker must not be nil when emails is non-empty") }
-        if assigner == nil     { panic("auth: ... assigner must not be nil when emails is non-empty") }
-        if adminRoleID == ""   { panic("auth: ... adminRoleID must not be empty when emails is non-empty") }
-    }
-    // empty-emails path: nil deps are intentional; Middleware() returns a pass-through.
-}
-```
-
-The pattern only applies to config-shaped constructors where one branch (here, the OFF branch) legitimately accepts zero values. Constructors whose contract is "always need these deps" should use a regular nil-check + return-error.
-
-## Go `map` is a reference type — copy in the constructor when accepting one
-
-A constructor that stashes a caller-supplied `map` directly (`p.emails = emails`) leaves the invariant under the caller's control: any later `delete(emails, k)` or `emails[k] = struct{}{}` mutates the constructed object's internal state without going through any of its methods. This is silent and almost impossible to track down because the receiver has no API surface that names the violation. `slice` has the same property; the fix shape is the same.
-
-```go
-emailsCopy := make(map[string]struct{}, len(emails))
-for k := range emails { emailsCopy[k] = struct{}{} }
-return &SuperUserPromoter{ emails: emailsCopy, /* ... */ }
-```
-
-The copy is `O(n)` once at construction and the receiver's invariants are now tamper-proof. Apply to any constructor whose stored field is a reference type (`map`, `slice`, `chan`) and whose correctness depends on the contents being stable.
-
-## `json:",omitempty"` controls marshal output, never the decode path
-
-`omitempty` is a *marshal-side* directive: it tells `encoding/json.Marshal` to skip the field when its value is the zero value. It does **not** affect `Unmarshal`. A claim like `EmailVerified bool \`json:"email_verified,omitempty"\`` decodes a missing claim as the Go zero value (`false`) — the same as `bool` would do without the tag. This is desirable for security gates that should default-deny on a missing claim, but only when the design explicitly relies on that behaviour:
-
-```go
-type supabaseClaims struct {
-    Email         string `json:"email,omitempty"`
-    EmailVerified bool   `json:"email_verified,omitempty"`
-    // missing claim => EmailVerified == false (zero value), not an error.
-}
-```
-
-If the design requires distinguishing "claim absent" from "claim present and false", use `*bool` instead and check for nil. Either choice is fine; what is **not** fine is assuming `omitempty` does anything for the receiving direction. Asserted in `backend/internal/auth/superuser_test.go` (`TestSupabaseClaims_EmailVerified`).
-
-## Echo middleware factory: build the no-op decision once, not per-request
-
-When a middleware has a feature-flag branch ("do something when configured, otherwise pass through"), evaluate the flag once at construction time and return a different function from the factory. A `len(p.emails) == 0` check inside the per-request closure runs on every request even when the feature is off; lifting it out of the closure makes the OFF path a literal `func(next) { return next }` and the inliner can optimise the call entirely:
-
-```go
-func (p *SuperUserPromoter) Middleware() echo.MiddlewareFunc {
-    if len(p.emails) == 0 {
-        return func(next echo.HandlerFunc) echo.HandlerFunc { return next }
-    }
-    return func(next echo.HandlerFunc) echo.HandlerFunc {
-        return func(c *echo.Context) error { /* full hot path */ }
-    }
-}
-```
-
-Read the source-of-truth field directly (`len(p.emails) == 0`) rather than caching the decision in a derived `bool` on the struct — see "Derived flags drift" below.
-
-## Derived flags drift; read the source of truth instead
-
-A `passthrough bool` field on a struct that is "kept in sync with `len(emails) == 0`" introduces two states that the type system does not enforce to agree. Any future constructor variant, copy, or mutation path that sets one and forgets the other produces a struct whose hot-path branch disagrees with its data. The fix is to delete the cache and read the source of truth at the decision point:
-
-```go
-// AVOID: derived flag duplicates state already in p.emails.
-type SuperUserPromoter struct { emails map[string]struct{}; passthrough bool /* derived */ }
-
-// PREFER: compute on read; impossible to drift.
-if len(p.emails) == 0 { /* pass-through branch */ }
-```
-
-The rule generalises to any field that is fully determined by another field on the same struct: prefer recomputation unless profiling shows the read is hot enough to matter. For an Echo middleware factory `Middleware()` that runs once per process (not per request), the cost is rounding-error.
-
-## `slog.NewJSONHandler` renders attrs as JSON keys, not `key=value` pairs
-
-The production logger in `backend/cmd/server/main.go` is `slog.NewJSONHandler(os.Stderr, ...)`. A call site that writes `logger.Info("super-user bootstrap enabled", "email_count", n)` therefore lands in the log stream as `{"msg":"super-user bootstrap enabled","email_count":3}`, **not** the `slog.NewTextHandler` shape `msg="super-user bootstrap enabled" email_count=3` that test stubs and quick-reproduce snippets often print. Operator-facing docs that quote a log line for grep instructions must quote the JSON shape — instructing an operator to grep for `email_count=N` against a JSON-handler stream produces zero matches. The failure mode that exposed this rule: a runbook said "look for `email_count=3`" while production emitted `"email_count":3`, and the operator gave up after `grep` returned nothing. The rule applies symmetrically to any future operator runbook that embeds a log-line excerpt — match the rendering of whichever handler the relevant `main()` constructs.
-
-## `slog.Handler.WithGroup` nests subsequent attrs inside the group object
-
-Calling `handler.WithGroup("g")` on a `slog.JSONHandler` (or any handler that
-wraps one, such as `logging.ContextHandler`) causes **all** attrs added
-afterward — including those injected by `Handle` via `r.AddAttrs` — to appear
-under the `"g"` JSON key, not at the top level. In `logging.ContextHandler`,
-`request_id` is added via `r.AddAttrs` inside `Handle`, so after
-`WithGroup("grp")` the log line becomes `{"grp":{"request_id":"...","k":"v"}}`.
-Log queries and tests that expect top-level `request_id` will miss it.
-`backend/internal/logging/handler_test.go` (`TestContextHandler_WithAttrsAndWithGroupPreserveRequestID`)
-documents and asserts this shape.
-
-## Embed a `panic` base struct to eliminate interface-stub boilerplate
-
-When a large interface (e.g. `RoleRepository` with 12 methods) needs multiple test
-doubles that each override only 1–2 methods, embedding a shared "panic base" struct
-cuts boilerplate by ~55 lines per stub and keeps each double focused on the methods
-under test.
-
-```go
-// panicRoleRepo implements every method of repository.RoleRepository by panicking.
-// Embed it in test doubles that only need to override a subset of methods.
-type panicRoleRepo struct{}
-
-func (panicRoleRepo) Create(ctx context.Context, r model.Role) (model.Role, error) {
-    panic("panicRoleRepo: Create not expected in this test")
-}
-// ... one method per interface member, all panicking ...
-
-// Stub that only cares about FindByName:
-type stubFindByNameRepo struct {
-    panicRoleRepo
-    result model.Role
-    err    error
-}
-func (s stubFindByNameRepo) FindByName(ctx context.Context, name string) (model.Role, error) {
-    return s.result, s.err
-}
-```
-
-**Why:** any call to a method that was not intentionally overridden panics
-immediately, surfacing the unexpected call in the test output rather than silently
-returning a zero value that could mask a production logic bug. The panic message
-names the method, making the gap obvious without inspecting the stub.
-
-**How to apply:** define `panicXxx` once per interface in a `_test.go` file adjacent
-to the tests. Each scenario-level stub embeds it and overrides only the methods the
-scenario exercises. Do not share the base across packages — keep it local to the
-test file so the panic message stays readable.
-
-**Adding a method to an interface breaks test stubs in OTHER packages silently at the test level.** The production build (`go build ./...`) succeeds because production callers use the concrete implementation. But hand-rolled test doubles in packages such as `loader/` or `graph/resolver/` that embed the interface type stop compiling. Run `go build ./...` *before* `go test ./...` after any interface-method addition to surface the cascade before any test-run noise masks it. Panic-base stubs make the failure loud once the build passes: a missing override panics immediately rather than returning a silent zero-value that can mask a logic bug. Audit every hand-rolled stub for the new method on the same change.
-
-## Extract startup helpers to make branch coverage testable without a live server
-
-When `run()` or `main()` contains branching logic (e.g. "if `SUPER_USER_EMAILS`
-is set, build a promoter; otherwise build a no-op"), testing each branch requires
-standing up the full HTTP server unless the logic lives in a separate helper. A
-thin helper that accepts its external dependencies as parameters can be exercised
-with stub repos without starting any network listener.
-
-```go
-// bootstrapSuperUserPromoter returns a configured SuperUserPromoter or an
-// error. It is a standalone function so tests can inject stub dependencies.
-func bootstrapSuperUserPromoter(
-    ctx context.Context,
-    logger *slog.Logger,
-    authSvc authService,
-    roleRepo repository.RoleRepository,
-    emailsEnv string,
-) (*auth.SuperUserPromoter, error) { ... }
-```
-
-**Why:** inlining the branch in `run()` means every test of that branch must
-start the real Echo server and real DB client. The startup cost is high, the test
-is slow, and flaky network conditions can make coverage non-deterministic. A
-helper with injected deps turns five branches into five fast, deterministic unit
-tests.
-
-**How to apply:** when a startup function acquires a concrete dependency (DB pool,
-HTTP client, config value) and then branches on it, split the acquisition step
-from the branching step. Pass the already-acquired dep into the helper so the test
-can substitute a stub. Reference: `backend/cmd/server/main.go`
-`bootstrapSuperUserPromoter` (5 branches × stub-driven unit test).
-
-## Inline copy of production logic in tests is an anti-pattern
-
-A test that re-implements a branch from the code under test — e.g. an
-`if len(emails) > 0 { logger.Warn(...) }` block inside the test body — will stay
-green even after the production code is refactored away from that branch. The test
-is asserting its own copy of the logic, not the production path, so the two can
-diverge silently.
-
-**Why:** the test's "copy" and the production code are two independent sources of
-truth. When the production code changes, the test still matches its own copy and
-CI stays green. The regression ships.
-
-**How to apply:** the tipping point for a refactor is "can the test call the
-production helper directly instead of re-implementing it?" If yes, refactor: expose
-the helper (or extract it), pass stubs in, and assert on the helper's actual
-output. If the logic is truly untestable at the unit level without a live server,
-that is a signal to extract a helper first (see "Extract startup helpers" above).
-The `bootstrapSuperUserPromoter` extraction replaced inline test copies with direct
-calls that exercise real production code paths.
+## Detailed cases (on-demand)
+
+- [`defer recover()` must re-panic `runtime.Error`](../../docs/backend/library-gotchas/defer-recover-must-rethrow-runtime-error.md)
+- [`echo.NewHTTPError` discards manually-set response headers](../../docs/backend/library-gotchas/echo-newhttperror-discards-headers.md)
+- [GORM v1 string-typed primary key with DB-generated UUID requires `default:` tag](../../docs/backend/library-gotchas/gorm-string-pk-default-tag.md)
+- [GORM `LIKE` / `ILIKE` requires escaping `%`, `_`, `\` in user input](../../docs/backend/library-gotchas/gorm-like-ilike-escape.md)
+- [GORM exact-match `FindBy*` helpers: callers own trimming, repos own nothing](../../docs/backend/library-gotchas/gorm-exact-match-findby-trimming.md)
+- [Nullable filter fields: normalize `nil` / empty / whitespace at the usecase boundary](../../docs/backend/library-gotchas/nullable-filter-normalize-at-usecase.md)
+- [Repository lookup methods scoped by tenant ID require a cross-tenant negative test](../../docs/backend/library-gotchas/repository-cross-tenant-negative-test.md)
+- [GORM rejects unconditional `Delete` — use `Where("1 = 1")` to opt out](../../docs/backend/library-gotchas/gorm-rejects-unconditional-delete.md)
+- [`subtle.ConstantTimeCompare` leaks token length — pair with a rate limiter](../../docs/backend/library-gotchas/subtle-constanttimecompare-length-leak.md)
+- [slog context enrichment must precede the log call that announces the enrichment](../../docs/backend/library-gotchas/slog-context-enrichment-precedes-log.md)
+- [Constructor panics are the right tool for "non-empty config requires non-nil deps"](../../docs/backend/library-gotchas/constructor-panics-for-non-empty-config.md)
+- [Go `map` is a reference type — copy in the constructor when accepting one](../../docs/backend/library-gotchas/go-map-reference-copy-in-constructor.md)
+- [`json:",omitempty"` controls marshal output, never the decode path](../../docs/backend/library-gotchas/json-omitempty-marshal-only.md)
+- [Echo middleware factory: build the no-op decision once, not per-request](../../docs/backend/library-gotchas/echo-middleware-factory-once-at-construction.md)
+- [Derived flags drift; read the source of truth instead](../../docs/backend/library-gotchas/derived-flags-drift.md)
+- [`slog.NewJSONHandler` renders attrs as JSON keys, not `key=value` pairs](../../docs/backend/library-gotchas/slog-jsonhandler-shape.md)
+- [`slog.Handler.WithGroup` nests subsequent attrs inside the group object](../../docs/backend/library-gotchas/slog-withgroup-nests-attrs.md)
+- [Embed a `panic` base struct to eliminate interface-stub boilerplate](../../docs/backend/library-gotchas/panic-base-struct-for-interface-stubs.md)
+- [Extract startup helpers to make branch coverage testable without a live server](../../docs/backend/library-gotchas/extract-startup-helpers-for-branch-coverage.md)
+- [Inline copy of production logic in tests is an anti-pattern](../../docs/backend/library-gotchas/inline-copy-of-production-logic-in-tests.md)

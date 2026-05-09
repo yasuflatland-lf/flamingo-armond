@@ -4,6 +4,7 @@ import { useMutation } from "@apollo/client/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RoleForm } from "@/components/admin/role-form";
+import { Button } from "@/components/ui/button";
 import { AdminCreateRoleMutation } from "../queries";
 
 export function NewRoleClient() {
@@ -36,18 +37,18 @@ export function NewRoleClient() {
 
   return (
     <main className="p-8">
-      <div className="mb-6 flex items-center gap-4">
-        <Link href="/admin/roles" className="text-sm text-muted-foreground hover:underline">
-          &larr; Back
-        </Link>
-        <h1 className="text-2xl font-semibold">New role</h1>
-      </div>
+      <h1 className="mb-6 text-2xl font-semibold">New role</h1>
       <RoleForm
         defaultValues={{ name: "" }}
         submit={handleSubmit}
         submitLabel="Create"
         submitting={loading}
         error={error}
+        secondarySlot={
+          <Button asChild variant="outline">
+            <Link href="/admin/roles">Cancel</Link>
+          </Button>
+        }
       />
     </main>
   );

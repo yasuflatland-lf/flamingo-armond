@@ -1,0 +1,7 @@
+# Cursor cross-aggregate validation → `BAD_USER_INPUT`
+
+> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `docs/frontend.md`.
+
+A cursor pointing at a card in another cardgroup is treated as a malformed user-supplied parameter. Returning `UNAUTHENTICATED` would leak existence of cards in other cardgroups; `BAD_USER_INPUT` with `field = "after"` / `field = "before"` is the correct posture.
+
+The same rule extends to **owner-scoped** Connection queries that have no parent aggregate (e.g. `myCardgroupsConnection`): a cursor for a cardgroup belonging to another owner must also surface as `BAD_USER_INPUT`. The non-obvious case is the **`orderBy = ID` fast path**: the usecase has nothing to hydrate (the cursor's only column IS its id), so there is a temptation to skip the cursor lookup entirely. Skipping it lets an attacker probe foreign-cardgroup existence by paging past a guessed id and observing whether any rows come back. The cursor lookup must run on the ID-orderBy branch as well, purely as an ownership gate; treat the lookup's "wrong owner" outcome the same as the "not found" outcome (`BAD_USER_INPUT` with `field = "after"` / `"before"`) so the response shape is identical for "exists but foreign" and "does not exist". Reference: `backend/internal/usecase/cardgroup.go` `resolveCardgroupCursor` runs the FindByID + ownership compare even when `orderBy == ID` and the switch arm has no column to populate.

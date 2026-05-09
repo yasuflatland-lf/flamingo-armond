@@ -14,8 +14,7 @@ export const CARDGROUPS_PAGE_SIZE = 20;
  * place and `{ first: 20, search: null }` in another silently splits the cache
  * and makes SSR seeds dead code.
  *
- * See: .claude/rules/pagination.md § "Variables shape MUST match between SSR
- * seed and client cache reads"
+ * See: docs/pagination/variables-shape-must-match.md
  */
 export const CARDGROUPS_DEFAULT_VARS: MyCardgroupsConnectionQueryVariables = {
   first: CARDGROUPS_PAGE_SIZE,

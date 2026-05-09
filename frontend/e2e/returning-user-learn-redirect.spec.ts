@@ -63,19 +63,25 @@ test.describe
       await expect(activeCard).toHaveAccessibleName(new RegExp(`^Flashcard: a-${runId}-`));
 
       // Switch to /learn/B; this re-fires the mutation with cardgroupId=B.
+      // Arm waitForResponse BEFORE navigation: LearnClient's mount effect can
+      // resolve the mutation before a post-goto listener attaches, leaving the
+      // listener waiting for a "next" SetLastViewedCardgroup that never fires.
+      // waitForResponse only matches responses arriving after it is awaited, so
+      // the promise must be created before page.goto to bracket the request.
+      const persistB = page.waitForResponse(
+        (res) =>
+          res.url().includes("/api/graphql") &&
+          res.request().postDataJSON()?.operationName === "SetLastViewedCardgroup",
+      );
       const responseB = await page.goto(`/learn/${groupB.id}`);
       expect(responseB?.ok(), `goto /learn/B returned ${responseB?.status()}`).toBe(true);
       await expect(activeCard).toHaveAccessibleName(new RegExp(`^Flashcard: b-${runId}-`));
 
       // Deterministically wait for the persist mutation to land before logout.
-      // waitForResponse keyed on the operation name avoids the racy networkidle
-      // (500ms idle), which can return early under Apollo's async cache-write
-      // timeline and hide persistence regressions.
-      await page.waitForResponse(
-        (res) =>
-          res.url().includes("/api/graphql") &&
-          res.request().postDataJSON()?.operationName === "SetLastViewedCardgroup",
-      );
+      // Keying on the operation name avoids the racy networkidle (500ms idle),
+      // which can return early under Apollo's async cache-write timeline and
+      // hide persistence regressions.
+      await persistB;
 
       // Logout: clear cookies so the next login starts cold.
       await context.clearCookies();

@@ -17,7 +17,8 @@ import (
 
 // ErrCardDuplicateFront is returned by Create when an INSERT collides with the
 // (cardgroup_id, front) unique index. Standalone — do NOT join with ErrNotFound;
-// the row was found, which is precisely the failure (see error-wrapping.md).
+// the row was found, which is precisely the failure (see
+// docs/backend/error-wrapping/standalone-sentinels-not-every-joins-errnotfound.md).
 var ErrCardDuplicateFront = errors.New("repository: card with same front exists in cardgroup")
 
 // CardOrderBy is the allowlist of fields that paginated card queries may sort by.

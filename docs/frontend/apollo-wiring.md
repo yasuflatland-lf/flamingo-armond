@@ -48,11 +48,11 @@ cache.evict({ id: cache.identify({ __typename: "Cardgroup", id: cardgroupId }) }
 cache.gc();
 ```
 
-For Connection types (`*Connection` / `*Edge`), use `readQuery + writeQuery` (not `cache.modify`) and align the variables shape between SSR seed and client. See `.claude/rules/pagination.md` for Connection create, delete, and update cache patterns.
+For Connection types (`*Connection` / `*Edge`), use `readQuery + writeQuery` (not `cache.modify`) and align the variables shape between SSR seed and client. See `.claude/rules/pagination.md` and `docs/pagination/` for Connection create, delete, and update cache patterns.
 
 ### Pagination patterns
 
-The reference implementation is `frontend/src/app/cardgroups/[id]/cards/cards-client.tsx` (`useQuery` + `fetchMore` with an IntersectionObserver sentinel). See `.claude/rules/pagination.md` for IntersectionObserver in-flight guards, `fetchMoreError` handling, `NetworkStatus.fetchMore` conventions, MockedProvider warn-spy patterns, and the sibling `useRef<string | null>` discriminator-keyed mount-effect mutation guard (used by `LearnClient` to fire `setLastViewedCardgroup` exactly once per cardgroup, not once per render).
+The reference implementation is `frontend/src/app/cardgroups/[id]/cards/cards-client.tsx` (`useQuery` + `fetchMore` with an IntersectionObserver sentinel). See `docs/pagination/` for IntersectionObserver in-flight guards, `fetchMoreError` handling, `NetworkStatus.fetchMore` conventions, MockedProvider warn-spy patterns, and the sibling `useRef<string | null>` discriminator-keyed mount-effect mutation guard (used by `LearnClient` to fire `setLastViewedCardgroup` exactly once per cardgroup, not once per render).
 
 ### Bulk delete cache update pattern
 

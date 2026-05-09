@@ -2,8 +2,7 @@
 
 import { NetworkStatus } from "@apollo/client";
 import { useApolloClient, useMutation, useQuery } from "@apollo/client/react";
-import { Plus, Search, Trash2, X } from "lucide-react";
-import Link from "next/link";
+import { Search, Trash2, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -81,8 +80,7 @@ export function CardsClient({
   // commit callback rather than relying on useMutation's `error` because the
   // useMutation hook's `error` clears between mutation calls; we want the
   // banner to persist until the user dismisses it implicitly via a successful
-  // retry. See .claude/rules/pagination.md § "Do not reuse one mutation's
-  // Apollo-managed error state for a sibling mutation's failure surface".
+  // retry. See docs/pagination/do-not-reuse-mutation-error-state.md.
   const [deleteCommitError, setDeleteCommitError] = useState<string | null>(null);
 
   const pathname = usePathname();
@@ -123,13 +121,14 @@ export function CardsClient({
   }, [searchInput]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  // pagination.md: in-flight guard MUST be useRef<boolean>, not useState.
+  // In-flight guard MUST be useRef<boolean>, not useState — see
+  // docs/pagination/intersection-observer-in-flight-guard.md.
   const fetchingRef = useRef(false);
 
   // When the active search query changes, any in-flight fetchMore from the
   // previous search holds a stale cursor. Reset the IO guard and error state
   // immediately so the new query starts from a clean slate.
-  // See .claude/rules/pagination.md § "Reset the guard ref AND the error banner".
+  // See docs/pagination/intersection-observer-in-flight-guard.md.
   // biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery is an intentional trigger dependency; it is not referenced in the body because the effect resets derived IO state, not searchQuery itself.
   useEffect(() => {
     fetchingRef.current = false;
@@ -169,7 +168,7 @@ export function CardsClient({
   // Mirror cursor-related page state into refs so requestNextPage can read them
   // without being listed as a dep. This prevents the IO observer effect from
   // disconnecting/reconnecting every time a page loads (which updates endCursor).
-  // See .claude/rules/pagination.md § "IntersectionObserver in-flight guard via useRef<boolean>".
+  // See docs/pagination/stabilise-request-next-page-ref-triplet.md.
   const endCursorRef = useRef(pageInfo.endCursor);
   const hasNextPageRef = useRef(pageInfo.hasNextPage);
   const searchQueryRef = useRef(searchQuery);
@@ -214,7 +213,7 @@ export function CardsClient({
       .catch((err) => {
         // Structured warn for operator triage: name + request context only.
         // err.message is omitted — backend messages may carry user-authored content.
-        // See .claude/rules/frontend-typescript-conventions.md § "expect.objectContaining".
+        // See docs/frontend/typescript-conventions.md § "expect.objectContaining".
         console.warn("[cards-client] fetchMore failed", {
           name: err instanceof Error ? err.name : "unknown",
           searchQuery: searchQueryRef.current ?? null,
@@ -274,8 +273,7 @@ export function CardsClient({
         // readQuery / writeQuery pair targets the live cache entry under any
         // active search filter. cardsDefaultVars(cardgroupId) would mismatch
         // when searchQuery !== null and the optimistic remove would be lost.
-        // See .claude/rules/pagination.md § "Variables shape MUST match
-        // between SSR seed and client cache reads".
+        // See docs/pagination/optimistic-rollback-cache-key.md.
         const existing = cache.readQuery({
           query: CardsByCardgroupConnectionDocument,
           variables: queryVariables,
@@ -319,7 +317,7 @@ export function CardsClient({
     } catch (err) {
       // Structured log for operator triage: name + domain context only.
       // err.message is omitted — backend messages may carry user-authored content.
-      // See .claude/rules/frontend-typescript-conventions.md § "expect.objectContaining".
+      // See docs/frontend/typescript-conventions.md § "expect.objectContaining".
       console.error("[CardsClient] bulk delete rejection", {
         name: err instanceof Error ? err.name : "unknown",
         cardgroupId,
@@ -336,8 +334,7 @@ export function CardsClient({
   // Uses `queryVariables` (the same memo useQuery is keyed on) for both the
   // snapshot read and the rollback writeQuery so the optimistic remove targets
   // the live cache entry under any active search filter.
-  // See .claude/rules/pagination.md § "Variables shape MUST match between SSR
-  // seed and client cache reads".
+  // See docs/pagination/optimistic-rollback-cache-key.md.
   const handleDeleteRow = useCallback(
     (cardId: string) => {
       const snapshot = apollo.readQuery({
@@ -380,7 +377,7 @@ export function CardsClient({
         setDeleteCommitError(null);
         const result = await deleteCardMutation({ variables: { id: cardId } });
         // After a successful commit, evict the normalized entity so dangling
-        // references are cleaned up. Mirrors pagination.md § "Connection delete".
+        // references are cleaned up. Mirrors docs/pagination/connection-delete.md.
         if (result.data?.deleteCard) {
           apollo.cache.evict({ id: apollo.cache.identify({ __typename: "Card", id: cardId }) });
           apollo.cache.gc();
@@ -446,7 +443,7 @@ export function CardsClient({
     }).catch((err) => {
       // Structured log for operator triage: name + domain context only.
       // err.message is omitted — backend messages may carry user-authored content.
-      // See .claude/rules/frontend-typescript-conventions.md § "expect.objectContaining".
+      // See docs/frontend/typescript-conventions.md § "expect.objectContaining".
       console.error("[CardsClient] update rejection", {
         name: err instanceof Error ? err.name : "unknown",
         cardgroupId,
@@ -466,10 +463,6 @@ export function CardsClient({
 
   const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
   const hasActiveSearch = searchQuery !== null;
-
-  const addCardHref = `/cards/new?cardgroup=${encodeURIComponent(
-    cardgroupId,
-  )}&return=/cardgroups/${encodeURIComponent(cardgroupId)}/edit`;
 
   return (
     <div className="space-y-3">
@@ -594,12 +587,6 @@ export function CardsClient({
               data-testid="cards-empty"
             >
               <p className="text-sm text-muted-foreground">Add some new cards to get started.</p>
-              <Button asChild variant="brand" size="sm">
-                <Link href={addCardHref} data-testid="cards-empty-add-card">
-                  Add card
-                  <Plus aria-hidden="true" className="ml-1.5 h-4 w-4" />
-                </Link>
-              </Button>
             </div>
           )
         ) : (

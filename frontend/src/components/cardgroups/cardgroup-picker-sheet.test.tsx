@@ -7,9 +7,11 @@
  * Tests use MockedProvider from @apollo/client/testing.
  *
  * Leak-spy note: MyCardgroups is not a paginated Connection (flat list), so
- * the pagination.md leak-guard rule does not strictly apply. The spirit of the
- * rule still applies — a duplicate fetch would silently pass with stale data.
- * installApolloMockLeakSpy is used for all tests with a MockedProvider.
+ * the leak-guard rule in
+ * docs/pagination/capture-mockedprovider-warn-leaks.md does not strictly
+ * apply. The spirit of the rule still applies — a duplicate fetch would
+ * silently pass with stale data. installApolloMockLeakSpy is used for all
+ * tests with a MockedProvider.
  */
 import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";

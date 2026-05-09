@@ -44,8 +44,7 @@ describe("useReducedMotion", () => {
     expect(getSnapshot()).toBe(false);
   });
 
-  // SSR / no-window contract — frontend-typescript-conventions.md
-  // § "useSyncExternalStore over useState + useEffect".
+  // SSR / no-window contract — docs/frontend/typescript-conventions/usesyncexternalstore-over-usestate-useeffect.md.
   describe("SSR / no-window branches", () => {
     it("getServerSnapshot returns false (deterministic SSR default)", () => {
       expect(getServerSnapshot()).toBe(false);

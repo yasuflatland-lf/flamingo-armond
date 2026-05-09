@@ -11,7 +11,7 @@ type Props = {
   /**
    * The user's current email address. Required — callers must pass the value
    * or explicit null; never collapse to "". Per
-   * `.claude/rules/frontend-typescript-conventions.md` § "Required `string |
+   * `docs/frontend/typescript-conventions.md` § "Required `string |
    * null` over optional".
    */
   currentEmail: string | null;

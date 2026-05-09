@@ -52,8 +52,7 @@ export const CardsByCardgroupConnectionQuery = graphql(`
  * a static object (the cardgroups-list precedent in `app/cardgroups/queries.ts`
  * has no parent scope).
  *
- * See: .claude/rules/pagination.md § "Variables shape MUST match between SSR
- * seed and client cache reads"
+ * See: docs/pagination/variables-shape-must-match.md
  */
 export function cardsDefaultVars(cardgroupId: string): CardsByCardgroupConnectionQueryVariables {
   return {

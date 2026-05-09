@@ -38,7 +38,7 @@ const HOVER_CLOSE_DELAY_MS = 150;
  * function deliberately does not return `"profile"` or `"admin"`.
  *
  * Uses a positive-allowlist style (per
- * `.claude/rules/frontend-typescript-conventions.md` § "Positive allowlist over
+ * `docs/frontend/typescript-conventions.md` § "Positive allowlist over
  * negative exclusion") so that future top-level routes do not silently match an
  * existing rail item.
  */
@@ -70,8 +70,7 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
 
   // Hover-flyout close timer. Use useRef (not useState) to avoid an async update
   // dropping a pointerenter that arrives in the same frame as the timeout fires
-  // (same hazard documented in `.claude/rules/pagination.md` for the
-  // IntersectionObserver in-flight guard).
+  // (same hazard documented in docs/pagination/intersection-observer-in-flight-guard.md).
   const hoverCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearHoverTimer = () => {
@@ -118,7 +117,7 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
   // Admin fallback: light up Users when /admin/<unknown> falls through,
   // so the rail always points at a valid admin destination. Encoded with a
   // literal-string discriminator on `item.href`, not a numeric index — see
-  // `.claude/rules/frontend-typescript-conventions.md` § "Positive allowlist".
+  // `docs/frontend/typescript-conventions.md` § "Positive allowlist".
   const matchedAnyAdmin = ADMIN_NAV_ITEMS.some((i) => matchesRoute(pathname, i.href));
   const fallbackToUsers = !matchedAnyAdmin && matchesRoute(pathname, "/admin");
 

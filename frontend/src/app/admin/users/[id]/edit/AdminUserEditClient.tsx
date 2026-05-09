@@ -148,13 +148,7 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
 
   return (
     <main className="p-8">
-      {/* Navigation */}
-      <div className="mb-6 flex items-center gap-4">
-        <Link href="/admin/users" className="text-sm text-muted-foreground hover:underline">
-          &larr; Back to users
-        </Link>
-        <h1 className="text-2xl font-semibold">Edit User</h1>
-      </div>
+      <h1 className="mb-6 text-2xl font-semibold">Edit User</h1>
 
       {/* Save success banner */}
       {saveBanner && !saveError && (
@@ -217,10 +211,15 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
           </p>
         </div>
 
-        {/* Save button */}
-        <Button type="button" variant="brand" onClick={handleSave} disabled={saving}>
-          {saving ? "Saving..." : "Save changes"}
-        </Button>
+        {/* Save / Cancel actions */}
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="brand" onClick={handleSave} disabled={saving}>
+            {saving ? "Saving..." : "Save changes"}
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/admin/users">Cancel</Link>
+          </Button>
+        </div>
 
         {/* Role multi-select */}
         <section className="space-y-3">

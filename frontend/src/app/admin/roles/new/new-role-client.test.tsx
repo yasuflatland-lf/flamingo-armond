@@ -24,14 +24,14 @@ vi.mock("next/link", () => ({
 }));
 
 describe("NewRoleClient", () => {
-  it("renders the form heading and back link", () => {
+  it("renders the form heading and cancel link", () => {
     render(
       <MockedProvider mocks={[]}>
         <NewRoleClient />
       </MockedProvider>,
     );
     expect(screen.getByRole("heading", { name: /new role/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /back/i })).toHaveAttribute("href", "/admin/roles");
+    expect(screen.getByRole("link", { name: /cancel/i })).toHaveAttribute("href", "/admin/roles");
   });
 
   it("submits a normalized name and navigates on success", async () => {

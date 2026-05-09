@@ -173,9 +173,9 @@ describe("<NewCardgroupPage> (client)", () => {
     // new-cardgroup-client.tsx's useMutation update() callback.
     // The cache has NO pre-seeded MyCardgroupsConnection entry — MockedProvider
     // calls the production update callback, which builds a minimal connection.
-    // Per .claude/rules/go-library-gotchas.md § "Inline copy of production logic
-    // in tests is an anti-pattern", we do NOT re-implement the update logic here;
-    // the mutation callback in new-cardgroup-client.tsx is the sole implementation.
+    // Per docs/backend/library-gotchas/inline-copy-of-production-logic-in-tests.md,
+    // we do NOT re-implement the update logic here; the mutation callback in
+    // new-cardgroup-client.tsx is the sole implementation.
     const user = userEvent.setup();
     mockPush.mockClear();
 

@@ -1,0 +1,25 @@
+# Frontend TypeScript conventions
+
+> Applies to: `frontend/src/**/*.{ts,tsx}`. Cross-cutting type-design rules that affect correctness, security, or testability and are non-obvious from the TypeScript docs alone.
+
+## Rules
+
+- [Required `string | null` over optional `?: string | null` for security-relevant or caller-deliberate props](typescript-conventions/required-string-null-over-optional-string-null.md) — Prefer required nullable props over optional nullable props for security or deliberate-caller cases.
+- [JSDoc as the enforcer of "pre-sanitized" invariants when branded types are not used](typescript-conventions/jsdoc-as-the-enforcer-of-pre-sanitized-invariants.md) — Use load-bearing JSDoc to document caller-side sanitization contracts when branded types are unavailable.
+- [`expect.objectContaining({ message })` is not enough — add a discriminating key](typescript-conventions/expect-objectcontaining-message-is-not-enough.md) — Add a non-`Error.prototype` key to assertions so bare-`Error` regressions fail the test.
+- [TanStack Form `_handleSubmit` re-throws — chain `.catch()` on `form.handleSubmit()`](typescript-conventions/tanstack-form-handlesubmit-re-throws.md) — Swallow the re-thrown rejection at the JSX call site to avoid unhandled-promise warnings.
+- [Re-throw inside TanStack Form `useForm.onSubmit` to keep `isSubmitSuccessful` correct](typescript-conventions/re-throw-inside-tanstack-form-useform-onsubmit.md) — Re-throw after logging in `onSubmit` so the form does not believe a failed mutation succeeded.
+- [Radix `AlertDialogAction` closes the dialog synchronously — call `e.preventDefault()` to keep it open on failure](typescript-conventions/radix-alertdialogaction-closes-the-dialog-synchronously.md) — Call `e.preventDefault()` so the consuming component controls dialog close on success vs. failure.
+- [Radix `asChild` Slot collapses a `null` child into an empty wrapper — gate at the parent](typescript-conventions/radix-aschild-slot-collapses-a-null-child.md) — Gate the wrapping container at the parent when the child can self-suppress to `null`.
+- [Discriminated union over flat DTO when consumers must branch on the variant](typescript-conventions/discriminated-union-over-flat-dto.md) — Model factory outputs with a `kind` tag instead of runtime introspection of a flat DTO.
+- [Positive allowlist over negative exclusion in discriminated-union narrowing](typescript-conventions/positive-allowlist-over-negative-exclusion.md) — Enumerate the variants you want, never the variants you do not want.
+- [`as string` cast on regex captures under `noUncheckedIndexedAccess`](typescript-conventions/as-string-cast-on-regex-captures.md) — Use `as string` with a load-bearing invariant comment for required regex captures.
+- [`router.replace` / `router.push` must propagate preserved query params explicitly](typescript-conventions/router-replace-router-push-must-propagate-query-params.md) — Re-attach already-sanitized query params via `URLSearchParams` when rewriting the URL.
+- [Audit collapsed helpers for branches that lose all side effects](typescript-conventions/helper-inline-refactor-no-op-branches.md) — When inlining a multi-purpose helper, replace silent no-op branches with an explicit `console.warn`.
+- [Module-level singleton `Map` keyed by entity id requires a non-empty-string guard at the entry point](typescript-conventions/module-level-singleton-map-keyed-by-entity-id.md) — Throw synchronously on empty-string ids so two unrelated callers cannot collide on `""`.
+- [Re-scheduling a module-level singleton entry: commit prior immediately; warn-only on prior failure](typescript-conventions/re-scheduling-a-module-level-singleton-entry.md) — Commit the prior entry on re-schedule and route its failure to `console.warn`, not the user banner.
+- [Cross-module constant references in test descriptions are silent-rot coupling](typescript-conventions/cross-module-constant-references-in-test-descriptions.md) — Name the sibling module's responsibility, not its constant identifier, in test prose.
+- [`useSyncExternalStore` over `useState + useEffect` for browser-store subscriptions](typescript-conventions/usesyncexternalstore-over-usestate-useeffect.md) — Use `useSyncExternalStore` for any hook that observes a browser API and surfaces its value.
+- [`next/dynamic({ ssr: false })` over a `useMounted` hook for hydration-sensitive client-only components](typescript-conventions/next-dynamic-ssr-false-over-a-usemounted-hook.md) — Skip SSR at the module-loading boundary instead of gating render with a `useMounted` flag.
+- [Stabilize callback identity via `useRef` mirrors when the callback reads frequently-changing state](typescript-conventions/stabilize-callback-identity-via-useref-mirrors.md) — Mirror frequently-changing state into refs so `useCallback` identity stays stable across updates.
+- [Derive during render instead of resetting state via a `useEffect` keyed on the trigger](typescript-conventions/derive-during-render-instead-of-resetting-state.md) — Capture a snapshot at the moment of derivation and compare during render instead of nulling state in an effect.
