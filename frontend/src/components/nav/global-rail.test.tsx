@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock next/link so it renders a plain <a> in jsdom.
@@ -58,9 +57,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderRail(props: React.ComponentProps<typeof GlobalRail>) {
+function renderRail(
+  props: React.ComponentProps<typeof GlobalRail>,
+  options?: { defaultOpen?: boolean },
+) {
   return render(
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={options?.defaultOpen}>
       <GlobalRail {...props} />
     </SidebarProvider>,
   );
@@ -212,24 +214,6 @@ describe("<GlobalRail>", () => {
     });
   });
 
-  describe("S4 — sidebar toggle toggles aria-expanded", () => {
-    it("clicking the toggle button toggles aria-expanded between true and false", async () => {
-      const user = userEvent.setup();
-      mockUsePathname.mockReturnValue("/");
-      renderRail({ user: { email: "u@example.com" }, isAdmin: true });
-
-      const logo = screen.getByRole("button", { name: /toggle navigation rail/i });
-      // SidebarProvider defaults to open=true, so initial state is "expanded".
-      expect(logo).toHaveAttribute("aria-expanded", "true");
-
-      await user.click(logo);
-      expect(logo).toHaveAttribute("aria-expanded", "false");
-
-      await user.click(logo);
-      expect(logo).toHaveAttribute("aria-expanded", "true");
-    });
-  });
-
   describe("S5 — anonymous user", () => {
     it("renders a Sign in link in the footer and no authenticated nav items when user is null", () => {
       mockUsePathname.mockReturnValue("/cardgroups");
@@ -248,9 +232,8 @@ describe("<GlobalRail>", () => {
       // Negative: anonymous users get neither the LogoutButton nor an email line.
       expect(screen.queryByTestId("logout-button")).toBeNull();
 
-      // The logo link and toggle button still render so anonymous viewers can navigate home and control the rail.
+      // The logo link still renders so anonymous viewers can navigate home.
       expect(screen.getByRole("link", { name: /flamingo home/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /toggle navigation rail/i })).toBeInTheDocument();
     });
 
     it("anonymous on /login: rail footer does not render the Sign in link or its empty wrapper", () => {
@@ -300,30 +283,29 @@ describe("<GlobalRail>", () => {
   });
 
   describe("S6 — hover flyout (useRef-based timer guard)", () => {
-    it("pointerEnter on a collapsed rail expands it (aria-expanded becomes true)", async () => {
-      const user = userEvent.setup();
+    it("pointerEnter on a collapsed rail expands it (data-state flips to expanded)", () => {
       mockUsePathname.mockReturnValue("/");
-      const { container } = renderRail({
-        user: { email: "u@example.com" },
-        isAdmin: false,
-      });
+      const { container } = renderRail(
+        { user: { email: "u@example.com" }, isAdmin: false },
+        { defaultOpen: false },
+      );
 
-      const logoBtn = screen.getByRole("button", { name: /toggle navigation rail/i });
+      // The Sidebar wrapper carries data-state="expanded" | "collapsed". With
+      // the SidebarToggle gone from the rail header, the wrapper is the only
+      // observable surface for the open-state transition.
+      const wrapper = container.querySelector<HTMLElement>("[data-side='left']");
+      if (!wrapper) throw new Error("[data-side='left'] sidebar wrapper not found");
+      expect(wrapper).toHaveAttribute("data-state", "collapsed");
 
-      // First collapse the rail so we can test expand on hover.
-      await user.click(logoBtn);
-      expect(logoBtn).toHaveAttribute("aria-expanded", "false");
-
-      // Find the Sidebar element that has the onPointerEnter handler.
+      // The Sidebar element receives the onPointerEnter handler.
       const sidebar = container.querySelector("[data-sidebar='sidebar']");
       if (!sidebar) throw new Error("[data-sidebar='sidebar'] element not found");
 
-      // Fire pointer enter — React synthetic event fires through fireEvent.
       act(() => {
         fireEvent.pointerEnter(sidebar);
       });
 
-      expect(logoBtn).toHaveAttribute("aria-expanded", "true");
+      expect(wrapper).toHaveAttribute("data-state", "expanded");
     });
 
     it("no late state update after unmount when pointerLeave timer is pending", () => {
