@@ -10,7 +10,8 @@
 - [Tailwind 4 notes](frontend/tailwind-4-notes.md) — CSS-first config via `@theme` in `globals.css`, no `tailwind.config.ts`, PostCSS plugin notes.
 - [Codegen](frontend/codegen.md) — `graphql-codegen` client-preset wiring, document discovery, and the `prebuild` lifecycle.
 - [Apollo wiring](frontend/apollo-wiring.md) — `gqlFetch` for RSC, `ApolloNextAppProvider` for the browser, and cache mutation patterns (create/delete/Connection).
-- [Routing topology](frontend/routing-topology.md) — HomePage 4-branch redirect, `/cards/new` resolution chain, global nav primitives, login/cardgroup-create flows.
+- [Routing topology](frontend/routing-topology.md) — HomePage redirect chain, `/cards/new` resolution chain, global nav primitives, login/cardgroup-create/bare-shell flows.
+- [Onboarding gate](frontend/onboarding-gate.md) — Why HomePage owns the `displayName`-required gate, why the `isUserOnboarded` predicate is shared between HomePage and `/onboarding`, why `/onboarding` is bare-shell.
 - [Route Handler conventions](frontend/route-handler-conventions.md) — Per-route layout for `app/api/**/route.ts`, discriminated-union responses, the `/api/healthz` JSON probe.
 - [Auth (Supabase)](frontend/auth-supabase.md) — 3-layer Supabase SSR client, `authLink`, middleware cookie rotation, and known gotchas.
 - [Profile page (`/profile`)](frontend/profile-page-profile.md) — RSC + client form pattern, admin layout gate, form library conventions, and field-error surfacing.

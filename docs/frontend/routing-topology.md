@@ -6,23 +6,34 @@
 
 | Entry | Anonymous → | Signed-in → |
 |---|---|---|
-| `/` (`app/page.tsx`) | `/login` | 4-branch redirect (see below) |
+| `/` (`app/page.tsx`) | `/login` | redirect chain (see below) |
 | `/login` (`app/login/page.tsx`) | render `LoginButton` | `/` (delegating the post-login routing decision back to HomePage) |
-| `/auth/callback?code=...` (`app/auth/callback/route.ts`) | n/a | `next` query value, defaulting to `/cardgroups` |
+| `/auth/callback?code=...` (`app/auth/callback/route.ts`) | n/a | `next` query value, defaulting to `/` (so HomePage owns the post-OAuth landing decision) |
+| `/onboarding` (`app/onboarding/page.tsx`) | `/login` | render `OnboardingForm`; already-onboarded users redirect to `/` (self-guard via `isUserOnboarded`) |
 | `/cards/new?cardgroup=<id>` | `/login` | render chip + `CardForm`; resolves cardgroup via 4-priority chain (see `/cards/new` below) |
-| `/cardgroups/new?welcome=1` | `/login` | render new-cardgroup form with welcome copy (onboarding entry) |
-| Header "Admin" link (admin only) | hidden | `/admin` (then `/admin/layout.tsx` gate → `/admin/page.tsx` → `redirect("/admin/users")`) |
+| `/cardgroups/new?welcome=1` | `/login` | render new-cardgroup form with welcome copy (post-onboarding entry) |
+| Admin entry (rail item, admin only) | hidden | `/admin/<sub>` (no `/admin` shim — see "Unified admin layout" in [`profile-page-profile.md`](./profile-page-profile.md)) |
 
-### HomePage 4-branch redirect
+### HomePage redirect chain
 
-`/` (HomePage RSC) fetches `MeWithLastViewedQuery` and chooses the next screen in this order:
+`/` (HomePage RSC) is the single decision point for "where does this user belong next". It fetches `MeWithLastViewedQuery` and walks the chain in priority order:
 
-1. `me.lastViewedCardgroup != null` → `redirect("/learn/${id}")` — returning users land directly on the swipe UI, skipping the cardgroup list.
-2. `myCardgroups.length > 0` → `redirect("/cardgroups")` — user owns cardgroups but has never used `/learn`; they need to pick one.
-3. else → `redirect("/cardgroups/new?welcome=1")` — onboarding for first-time users.
-4. (matrix corner) anonymous → `redirect("/login")`, handled before the GraphQL fetch.
+```
+HomePage (/)
+├─ no Supabase session            → /login
+├─ !isUserOnboarded(me)           → /onboarding          (highest signed-in priority)
+├─ me.lastViewedCardgroup != null → /learn/{id}
+├─ myCardgroups.length > 0        → /cardgroups
+└─ else                           → /cardgroups/new?welcome=1
+```
 
-Loop prevention: HomePage only redirects *outward* — never to `/` — so the chain terminates in one hop. `/learn/[id]` and `/cardgroups` do not redirect back to `/`, so a returning user's two-hop login flow is `/login → / → /learn/[id]`.
+Why `isUserOnboarded` is the highest signed-in priority: a user whose `displayName` was nulled by an admin (or who completed OAuth but never finished `/onboarding`) would otherwise land on `/learn/{lastViewedCardgroup}` or `/cardgroups` with an empty profile — visible to other users — and have no in-product affordance to fix it. The gate sits ahead of the cardgroup branches so the empty-`displayName` state is structurally unreachable on any signed-in surface.
+
+The completion predicate is `isUserOnboarded(me)` in `frontend/src/lib/auth/onboarding.ts` — see [`onboarding-gate.md`](./onboarding-gate.md) for why the same predicate also self-guards `/onboarding` (preventing onboarded users who deep-link there from sitting on a no-op form).
+
+Loop prevention: HomePage only redirects *outward* — never to `/` — so the chain terminates in one hop. `/learn/[id]`, `/cardgroups`, and `/onboarding` do not redirect back to `/`, so a returning user's two-hop login flow is `/login → / → /learn/[id]`. `/onboarding` itself redirects already-onboarded users *outward* to `/`, where the chain runs again and lands them on the right screen.
+
+The OAuth callback at `/auth/callback` defaults its post-exchange redirect to `/` (not directly to `/cardgroups`) so the post-sign-in routing decision lives in exactly one place — HomePage. A second branching site in the callback would have to repeat both the `lastViewedCardgroup` lookup and the onboarding check, and would silently rot whenever HomePage's logic evolves.
 
 ### `/cards/new` cardgroup resolution (4-priority chain)
 
@@ -31,26 +42,26 @@ The global "+ Card" CTA lands on `/cards/new` (the FAB does **not** carry `?card
 1. `searchParams.cardgroup` — accepted only if the id appears in the user's `myCardgroups` list. A non-owned id silently falls through (no `BAD_USER_INPUT` surface) so a stale URL after sharing or revoke does not 500.
 2. `me.lastViewedCardgroup.id` — same ownership check (defensive; the FK already cascades).
 3. User has cardgroups but neither (1) nor (2) resolved → render the chip in undetermined state and **force the picker open** so the user explicitly chooses.
-4. `myCardgroups.length === 0` → `redirect("/cardgroups/new?welcome=1")` — the same onboarding target as HomePage branch (3).
+4. `myCardgroups.length === 0` → `redirect("/cardgroups/new?welcome=1")` — the same target as HomePage's "no cardgroups yet" branch.
 
 The URL `?cardgroup=<id>` is the **single source of truth** for the chip + form pair: the picker calls `router.replace("/cards/new?cardgroup=<newId>", { scroll: false })`, and chip / form re-render against the new URL. No client-side state holds a duplicate "selected cardgroup" — eliminates the chip-vs-form drift class of bugs.
 
-`/login` redirects signed-in users back to `/` (not directly to `/cardgroups`) so the post-login branching lives in exactly one place — HomePage. A second branching site in `/login` would have to repeat the `lastViewedCardgroup` lookup and would silently rot when HomePage's logic evolves.
+`/login` (when hit by an already-signed-in user) follows the same single-decision-point rule: it redirects to `/`, never directly to `/cardgroups` or `/learn/...`, for the same reason the OAuth callback does.
 
 The legacy "render `/` with health check inline" pattern is replaced by `/api/healthz` — see "Route Handler conventions" below. External monitors that polled `/` must move to `/api/healthz`.
 
-The admin entry surfaces (desktop `AdminPill`, mobile hamburger admin section) are the only UI affordances for entering `/admin`. Both render only when `gqlFetch(HeaderMeQuery)` returns a role named `"admin"`. The `/admin/layout.tsx` server-side gate is the enforcement boundary — header visibility is a UI hint, not security. See `.claude/rules/frontend-rsc-error-handling.md` for the failure-mode contract that lets the Header degrade silently when the role lookup fails.
+The admin entry surfaces (desktop rail admin items / `AdminPill`, mobile drawer admin section) are the only UI affordances for entering `/admin`. All render only when `gqlFetch(HeaderMeQuery)` returns a role named `"admin"`. The `/admin/layout.tsx` server-side gate is the enforcement boundary — nav visibility is a UI hint, not security. See `.claude/rules/frontend-rsc-error-handling.md` for the failure-mode contract that lets the shell degrade silently when the role lookup fails.
 
 ### Global navigation primitives
 
-Three components live under `frontend/src/components/nav/` and compose into the root layout:
+The shell components live under `frontend/src/components/nav/` and compose into the root layout:
 
-- `GlobalHeader` — RSC; rendered from `app/layout.tsx`. Mobile shows hamburger + logo + truncated email; desktop shows logo + nav links + `+ Card` CTA + `AdminPill` (when admin) + `LogoutButton`. Header MUST degrade silently on `getUser()` or `me`-query failure — see the rule.
-- `GlobalFAB` — Client; floats bottom-right with the coral `--brand-primary` background. Hidden on `/login`, `/learn/*`, `/admin/*`, `/cards/new`, `/cardgroups/new` — i.e. routes that are anonymous-only, full-bleed UI, a different audience, or the FAB's own destination (would loop). Hide list lives in one regex (`HIDDEN_PATH_RE`) inside `global-fab.tsx`; there is no allow-list. The FAB also wraps its button in an `md:hidden` container so the desktop header `+ Card` CTA is the **single** add-card affordance at `>= md` — see "Breakpoint-exclusive primary action" below. The FAB does NOT pre-pend `?cardgroup=...` — `/cards/new` owns the 4-priority resolution; passing the id from the FAB would create two truths.
-- `HeaderAddCardLink` — Client; the desktop `+ Card` CTA. Lives in `frontend/src/components/nav/header-add-card-link.tsx` so the surrounding `GlobalHeader` can stay an RSC. Reads `usePathname()` and applies the "current location CTA" pattern below when on `/cards/new`.
-- `HamburgerDrawer` — Client; mobile-only. Three visually-divided groups separated by `<hr>`: (1) primary nav (Cardgroups, Profile), (2) admin entry tinted with `bg-brand-tint` + `border-brand-tint-border` when `isAdmin`, (3) sign-out. The admin tint is a non-CTA use of the brand palette — see "Design tokens" below.
-
-`AdminPill` is a server component rendered inline in the desktop header when `isAdmin === true`. Its tint comes from the same `--brand-tint*` family as the hamburger admin section so the two surfaces are visually linked.
+- `AppShell` — RSC; rendered from `app/layout.tsx` for every route except the bare-shell set. Owns the `<SidebarProvider>` so the desktop rail and the mobile drawer share one sidebar context. Mounts `GlobalRail` on `md+` (hidden on mobile via `hidden md:flex`) and a mobile top bar containing `LogoDrawer` on `<md`.
+- `GlobalRail` — Client; the persistent desktop sidebar. Header carries the 🦩 logo (a plain `<Link href="/">`) next to a separate `SidebarToggle` icon button. Body holds Cardgroups + admin items + Settings (when signed in); footer holds Profile + sign-out. Hover-flyout opens the rail when collapsed; a `useRef`-tracked timer prevents pointer-leave flicker.
+- `LogoDrawer` — Client; mobile-only. The 🦩 logo is a plain `<Link href="/">`; the `MobileMenuTrigger` is a separate adjacent button that opens a Radix `Sheet`. The drawer body groups (1) primary nav (Cardgroups, Settings, admin items), (2) Profile + sign-out below an `<hr>`.
+- `SidebarToggle` / `MobileMenuTrigger` — Client atoms. The logo is split from the toggle on both surfaces: tapping 🦩 always navigates home; the adjacent button always opens/closes the nav. Conflating "go home" and "expand the rail" onto one element is a design-systems anti-pattern — a tap on the logo would either do the wrong thing for half the user's intents or silently change behaviour based on collapsed/expanded state.
+- `GlobalFAB` — Client; floats bottom-right with the coral `--brand-primary` background. Hidden on `/login`, `/learn/*`, `/admin/*`, `/cards/new`, `/cardgroups/new`, `/profile` — i.e. routes that are anonymous-only, full-bleed UI, a different audience, or the FAB's own destination (would loop). Bare-shell routes (e.g. `/onboarding`) get FAB suppression for free because they bypass `AppShell` entirely. Hide list lives in one regex (`HIDDEN_PATH_RE`) inside `global-fab.tsx`; there is no allow-list. The FAB also wraps its button in an `md:hidden` container so the desktop `+ Card` CTA is the **single** add-card affordance at `>= md` — see "Breakpoint-exclusive primary action" below. The FAB does NOT pre-pend `?cardgroup=...` — `/cards/new` owns the 4-priority resolution; passing the id from the FAB would create two truths.
+- `AdminPill` — RSC; tinted entry chip into `/admin/*`. Rendered only when the role lookup returns `"admin"`. Tint comes from the `--brand-tint*` family so the admin-section tint in the drawer and the pill are visually linked.
 
 #### Breakpoint-exclusive primary action
 
@@ -99,11 +110,15 @@ Every other surface uses shadcn's slate-based defaults (`--primary`, `--secondar
 
 ### Welcome copy on `/cardgroups/new?welcome=1`
 
-The `?welcome=1` query parameter makes `/cardgroups/new` (already the cardgroup-create page) double as the onboarding screen for first-time users by conditionally rendering a welcome banner above the form. HomePage branch (3) and `/cards/new` priority (4) both target this URL. Without the query parameter, the page renders only the form — same behaviour as before. Driving the difference from the URL keeps onboarding statelessly bookmarkable / sharable and avoids a separate `/welcome` route whose only difference would be the copy.
+The `?welcome=1` query parameter makes `/cardgroups/new` (already the cardgroup-create page) double as the post-onboarding "first cardgroup" screen by conditionally rendering a welcome banner above the form. The HomePage `else` branch and the `/cards/new` "no cardgroups" priority both target this URL — and so does `OnboardingForm`'s success redirect, since the user has just finished filling in `displayName` and the natural next step is to create their first cardgroup. Without the query parameter, the page renders only the form — same behaviour as before. Driving the difference from the URL keeps the welcome surface statelessly bookmarkable / sharable and avoids a separate `/welcome` route whose only difference would be the copy.
+
+### Bare-shell routes (no `AppShell`)
+
+The root layout in `app/layout.tsx` short-circuits `AppShell` for routes that own the entire viewport without nav chrome. The current bypass set is `/login` and `/onboarding` — `/login` because the sign-in screen owns the viewport, `/onboarding` because the user has no `displayName` yet so a header showing their email next to an empty name slot would surface the very state the page is asking them to fix. Both routes render their own `<main>` landmark — see [`rsc-error-handling/pages-bypassing-appshell-must-render-main.md`](./rsc-error-handling/pages-bypassing-appshell-must-render-main.md).
 
 ### Sign-in page layout (`/login`)
 
-`/login` bypasses `AppShell` (root layout short-circuits when `pathname === "/login"`) and owns the entire viewport. The page uses a split-screen shell:
+`/login` uses a split-screen shell:
 
 ```tsx
 <main data-testid="login-grid" className="relative grid h-svh lg:grid-cols-2">
@@ -116,5 +131,5 @@ Three rules apply to any future page that adopts this shell (e.g. `/signup`, `/r
 
 1. **`h-svh`, not `h-screen` or `min-h-screen`.** `h-screen` resolves to `100vh`, which on Safari mobile includes the address-bar height that collapses on scroll — a non-scrolling full-viewport page measured against `100vh` ends up taller than the visible area and the bottom content is cut off. `h-svh` (small viewport height) is the always-visible height and is the correct unit for a fixed-viewport login shell. Use `min-h-svh` only when the content can grow taller than the viewport.
 2. **Brand panel hidden below `lg` with `max-lg:hidden`.** The left column hides below `lg`; the right column is always visible. This keeps the mobile experience a single-column form (no wasted vertical space for branding) while letting desktop carry the full-bleed brand panel.
-3. **`<main>` landmark required.** Because `AppShell` is bypassed, the page is the only place a `<main>` landmark can be emitted — see [`docs/frontend/rsc-error-handling/pages-bypassing-appshell-must-render-main.md`](./rsc-error-handling/pages-bypassing-appshell-must-render-main.md).
+3. **`<main>` landmark required.** Same as every bare-shell route — see "Bare-shell routes" above.
 
