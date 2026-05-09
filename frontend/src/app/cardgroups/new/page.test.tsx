@@ -106,6 +106,19 @@ describe("<NewCardgroupPage> (client)", () => {
     expect(backLink).toHaveAttribute("href", "/cardgroups");
   });
 
+  it("welcome mode renders the welcome H1 and hides Back / 'New cardgroup'", () => {
+    render(
+      <MockedProvider mocks={[]}>
+        <NewCardgroupClient showWelcome returnTo={null} />
+      </MockedProvider>,
+    );
+    expect(
+      screen.getByRole("heading", { level: 1, name: /welcome.*first cardgroup/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /back/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /^new cardgroup$/i })).not.toBeInTheDocument();
+  });
+
   it("submitting a valid name triggers the CreateCardgroup mutation", async () => {
     const user = userEvent.setup();
     const mutationCalled = vi.fn();

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation } from "@apollo/client/react";
+import { Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CARDGROUPS_DEFAULT_VARS, CreateCardgroupMutation } from "@/app/cardgroups/queries";
@@ -97,23 +98,31 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
 
   return (
     <main className="p-8">
-      {showWelcome && (
-        <div className="mb-8 rounded-lg border border-border bg-card p-6">
-          <h2 className="mb-2 text-lg font-semibold">
-            Welcome! Let's create your first cardgroup.
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            A cardgroup holds the cards you want to study together. You can always add more cards
-            later.
-          </p>
+      {showWelcome ? (
+        <section
+          aria-labelledby="welcome-heading"
+          className="mb-8 rounded-2xl border border-brand-tint-border bg-brand-tint p-6 sm:p-8"
+        >
+          <div className="flex items-start gap-4">
+            <Sparkles aria-hidden className="mt-1 h-6 w-6 shrink-0 text-brand-primary" />
+            <div>
+              <h1 id="welcome-heading" className="text-lg font-semibold tracking-tight">
+                Welcome! Let's create your first cardgroup.
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                A cardgroup holds the cards you study together &mdash; you can add more anytime.
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : (
+        <div className="mb-6 flex items-center gap-4">
+          <Link href="/cardgroups" className="text-sm text-muted-foreground hover:underline">
+            &larr; Back
+          </Link>
+          <h1 className="text-2xl font-semibold">New cardgroup</h1>
         </div>
       )}
-      <div className="mb-6 flex items-center gap-4">
-        <Link href="/cardgroups" className="text-sm text-muted-foreground hover:underline">
-          &larr; Back
-        </Link>
-        <h1 className="text-2xl font-semibold">New cardgroup</h1>
-      </div>
       <CardgroupForm
         mode="create"
         defaultValues={{ name: "" }}
