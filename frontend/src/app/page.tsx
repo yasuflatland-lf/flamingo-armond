@@ -30,7 +30,11 @@ export default async function HomePage() {
     if (isUnauthenticatedGraphQLError(err)) {
       redirect("/login");
     }
-    console.error("[home] gqlFetch failed:", err);
+    console.error(
+      "[home] gqlFetch failed:",
+      err instanceof Error ? err.name : "unknown",
+      err instanceof Error ? err.message : String(err),
+    );
     throw err;
   }
 

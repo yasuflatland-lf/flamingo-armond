@@ -51,11 +51,11 @@ describe("<LogoDrawer>", () => {
     expect(logoLink).toHaveAttribute("href", "/");
   });
 
-  it("no hamburger-style 'Open menu' trigger exists — the new logo-driven drawer trigger replaces the prior hamburger trigger", () => {
+  it("no button with aria-label 'Open menu' exists — the drawer trigger uses 'Open navigation menu'", () => {
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
-    // The prior hamburger trigger used aria-label "Open menu". The logo-driven
-    // drawer must not carry that label — it uses "Open navigation menu" instead.
+    // The drawer trigger button uses aria-label "Open navigation menu"; "Open menu"
+    // must not appear, so a stray duplicate trigger isn't introduced.
     expect(screen.queryByRole("button", { name: /open menu/i })).toBeNull();
   });
 
