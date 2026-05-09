@@ -223,13 +223,15 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	if err != nil {
 		return eris.Wrap(err, "run: db config")
 	}
-	retryCfg, err := notion.RetryConfigFromEnv()
+	notionEnv, missingNotionEnv, err := notionsync.OptionalConfigFromEnv()
 	if err != nil {
 		return err
 	}
-	notionEnv, err := notionsync.ConfigFromEnv()
-	if err != nil {
-		return err
+	notionSyncDisabled := len(missingNotionEnv) > 0
+	if notionSyncDisabled {
+		slog.WarnContext(ctx, "notion sync: disabled, missing env vars",
+			"missing_vars", missingNotionEnv,
+		)
 	}
 	if err := database.Migrate(dbCfg.URL); err != nil {
 		return eris.Wrap(err, "run: migrate")
@@ -261,13 +263,19 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	adminUserUC := usecase.NewAdminUser(userRepo, roleRepo, authSvc)
 	adminRoleUC := usecase.NewAdminRole(roleRepo, authSvc)
 	lastViewedCardgroupUC := usecase.NewLastViewedCardgroup(userRepo)
-	retryCfg.Logger = logger
-	notionFetcher := notion.NewFetcher(notionEnv.NotionToken, retryCfg)
-	notionSyncUC := usecase.NewNotionSyncUsecase(notionFetcher, cardgroupRepo, cardRepo, db.GORM, logger)
-
 	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, dictionaryUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC)
 	pingHandler := ping.New(pingRecordRepo, pingToken)
-	notionSyncHandler := notionsync.New(notionSyncUC, notionEnv.HandlerConfig)
+	var notionSyncHandler *notionsync.Handler
+	if !notionSyncDisabled {
+		retryCfg, err := notion.RetryConfigFromEnv()
+		if err != nil {
+			return err
+		}
+		retryCfg.Logger = logger
+		notionFetcher := notion.NewFetcher(notionEnv.NotionToken, retryCfg)
+		notionSyncUC := usecase.NewNotionSyncUsecase(notionFetcher, cardgroupRepo, cardRepo, db.GORM, logger)
+		notionSyncHandler = notionsync.New(notionSyncUC, notionEnv.HandlerConfig)
+	}
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
 	// telemetry.Init for the full ordering invariant.
