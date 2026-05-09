@@ -22,7 +22,7 @@ function UserRow({ edge }: { edge: Edge }) {
   return (
     <li
       key={user.id}
-      className="flex items-start gap-4 rounded-md border border-border px-4 py-3"
+      className="flex items-start gap-4 rounded-md border border-border px-4 py-3 hover:bg-accent transition-colors"
       data-testid={`admin-user-row-${user.id}`}
     >
       {/* Avatar */}
