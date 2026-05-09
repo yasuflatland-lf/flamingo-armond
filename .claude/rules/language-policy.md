@@ -29,6 +29,10 @@ Cross-doc references should be Markdown anchor links — `[\`docs/foo.md\` § "S
 
 GitHub's slug rules for the anchor portion: lowercase the heading, replace spaces with hyphens, drop backticks, **keep underscores as-is**. So `## Bootstrap admin via \`SUPER_USER_EMAILS\`` slugs to `#bootstrap-admin-via-super_user_emails` (underscore preserved). Symbols other than `_` and `-` are dropped, not transliterated. When in doubt, render the doc on github.com once and copy the anchor from the heading's hover-link.
 
+### Anchor links to index files silently drop the anchor portion
+
+When a large doc is split into chapter files and an index file lists them, an anchor link of the form `index.md#some-section-heading` whose heading now lives in `chapters/some-section.md` silently resolves to the index top — GitHub drops the unmatched anchor rather than returning a 404. The link looks correct in source but lands at the wrong place with no warning. Always link to the **chapter file** (`chapters/some-section.md`), not the index with an anchor. See [`docs/doc-organization.md` § "Anchor links must point at the chapter file, not the index"](../../docs/doc-organization.md#anchor-links-must-point-at-the-chapter-file-not-the-index).
+
 ## Verification
 
 Run before committing — both should print nothing:
