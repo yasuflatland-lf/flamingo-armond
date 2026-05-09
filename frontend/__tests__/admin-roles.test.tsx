@@ -110,7 +110,7 @@ describe("AdminRolesPage (page-level SSR seed)", () => {
   });
 
   // -------------------------------------------------------------------------
-  // 2. Empty seed: zero roles — no role rows, but the add-role control exists
+  // 2. Empty seed: zero roles — no role rows, but the New role CTA exists
   // -------------------------------------------------------------------------
 
   it("renders no role rows when gqlFetch returns an empty list", async () => {
@@ -122,11 +122,11 @@ describe("AdminRolesPage (page-level SSR seed)", () => {
     // No role-name spans
     expect(screen.queryAllByTestId("admin-role-name")).toHaveLength(0);
 
-    // The list container itself is still rendered (contains the add-role row)
+    // The list container itself is still rendered.
     expect(screen.getByTestId("admin-roles-list")).toBeInTheDocument();
 
-    // The "Add role" button is always present
-    expect(screen.getByRole("button", { name: /add role/i })).toBeInTheDocument();
+    // The top-right "New role" CTA is always present.
+    expect(screen.getByTestId("admin-roles-new-btn")).toBeInTheDocument();
   });
 
   // -------------------------------------------------------------------------
