@@ -184,6 +184,101 @@ func TestNotionSyncUsecase_DuplicateFrontLastWins(t *testing.T) {
 	}
 }
 
+func TestNotionSyncUsecase_DuplicateFrontSamePageLastWins(t *testing.T) {
+	t.Parallel()
+
+	// Two duplicates inside a single page: the second occurrence wins, the
+	// first is reported as a parse error whose Line points at the discarded
+	// (earlier) row.
+	fetcher := &stubNotionFetcher{pages: []notion.Page{
+		{ID: "page-1", Text: "apple " + uniqueBack(1) + "\napple " + uniqueBack(2) + "\n"},
+	}}
+	cardgroups := &mockNotionCardgroupRepo{cg: &domain.Cardgroup{ID: "cg-target"}}
+	cards := &mockNotionCardRepo{upsertResult: repository.UpsertManyTxResult{Inserted: 1}}
+	tx, _ := dictTxRunner()
+	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, nil)
+
+	out, err := uc.Sync(context.Background(), SyncFromNotionInput{
+		PageIDs:       []string{"page-1"},
+		OwnerID:       "owner-1",
+		CardgroupName: "English",
+	})
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if len(out.Parsed) != 1 {
+		t.Fatalf("Parsed len = %d, want 1 (later occurrence wins)", len(out.Parsed))
+	}
+	if out.Parsed[0].Back != uniqueBack(2) {
+		t.Fatalf("kept Back = %q, want %q (the later occurrence)", out.Parsed[0].Back, uniqueBack(2))
+	}
+	if len(out.ParseErrors) != 1 {
+		t.Fatalf("ParseErrors len = %d, want 1", len(out.ParseErrors))
+	}
+	// The retained row is on line 2; the discarded (earlier) row is line 1.
+	// dedupeParsedRows MUST anchor the error to the *discarded* row's line.
+	if out.ParseErrors[0].Line != 1 {
+		t.Fatalf("ParseErrors[0].Line = %d, want 1 (the discarded row's line)", out.ParseErrors[0].Line)
+	}
+}
+
+func TestNotionSyncUsecase_InputValidation(t *testing.T) {
+	t.Parallel()
+
+	// Each case proves a specific failure branch in Sync's input-validation
+	// preamble. All must surface as ErrNotionSyncInvalidInput so the handler
+	// can map them to a 4xx response.
+	t.Run("empty page ids", func(t *testing.T) {
+		t.Parallel()
+		uc := newValidationUsecase()
+		_, err := uc.Sync(context.Background(), SyncFromNotionInput{
+			PageIDs:       []string{"", "  "},
+			OwnerID:       "owner-1",
+			CardgroupName: "English",
+		})
+		if !errors.Is(err, ErrNotionSyncInvalidInput) {
+			t.Fatalf("err = %v, want ErrNotionSyncInvalidInput", err)
+		}
+	})
+
+	t.Run("empty owner", func(t *testing.T) {
+		t.Parallel()
+		uc := newValidationUsecase()
+		_, err := uc.Sync(context.Background(), SyncFromNotionInput{
+			PageIDs:       []string{"page-1"},
+			OwnerID:       "  ",
+			CardgroupName: "English",
+		})
+		if !errors.Is(err, ErrNotionSyncInvalidInput) {
+			t.Fatalf("err = %v, want ErrNotionSyncInvalidInput", err)
+		}
+	})
+
+	t.Run("empty cardgroup name", func(t *testing.T) {
+		t.Parallel()
+		uc := newValidationUsecase()
+		_, err := uc.Sync(context.Background(), SyncFromNotionInput{
+			PageIDs:       []string{"page-1"},
+			OwnerID:       "owner-1",
+			CardgroupName: " ",
+		})
+		if !errors.Is(err, ErrNotionSyncInvalidInput) {
+			t.Fatalf("err = %v, want ErrNotionSyncInvalidInput", err)
+		}
+	})
+}
+
+func newValidationUsecase() *NotionSyncUsecase {
+	tx, _ := dictTxRunner()
+	return NewNotionSyncUsecaseWithTx(
+		&stubNotionFetcher{},
+		&mockNotionCardgroupRepo{},
+		&mockNotionCardRepo{},
+		tx,
+		nil,
+	)
+}
+
 func TestNotionSyncUsecase_FetchErrorSkipsPersistence(t *testing.T) {
 	t.Parallel()
 
