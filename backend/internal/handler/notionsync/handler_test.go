@@ -157,6 +157,8 @@ func TestHandlerErrorMapping(t *testing.T) {
 		{name: "retry elapsed", err: errors.Join(notion.ErrRetryElapsed, errors.New("boom")), want: http.StatusGatewayTimeout},
 		{name: "retry attempts", err: errors.Join(notion.ErrRetryAttempts, errors.New("boom")), want: http.StatusGatewayTimeout},
 		{name: "context", err: context.DeadlineExceeded, want: http.StatusGatewayTimeout},
+		{name: "invalid input", err: errors.Join(usecase.ErrNotionSyncInvalidInput, errors.New("boom")), want: http.StatusUnprocessableEntity},
+		{name: "parse", err: errors.Join(usecase.ErrNotionSyncParse, errors.New("boom")), want: http.StatusBadGateway},
 		{name: "persist", err: errors.Join(usecase.ErrNotionSyncPersist, errors.New("boom")), want: http.StatusInternalServerError},
 	}
 	for _, tc := range cases {
