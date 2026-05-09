@@ -198,16 +198,6 @@ func (r *cardRepo) ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, car
 	return fronts, nil
 }
 
-// escapeLike escapes the three Postgres LIKE metacharacters so user-supplied
-// text is treated as a literal substring. Order matters: escape '\' first,
-// otherwise the second pass would re-escape the already-escaped sequences.
-func escapeLike(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `%`, `\%`)
-	s = strings.ReplaceAll(s, `_`, `\_`)
-	return s
-}
-
 // FindPageByCardgroup returns a window of cards for a cardgroup ordered by
 // (orderField, id) so cursors stay deterministic. Forward paging uses `after`
 // + `first`; backward paging uses `before` + `last`. totalCount reflects every
@@ -231,9 +221,9 @@ func (r *cardRepo) FindPageByCardgroup(
 	base := r.db.WithContext(ctx).Model(&gormCard{}).Where("cardgroup_id = ?", cardgroupID)
 
 	// Non-nil search is guaranteed by the usecase to be non-empty and trimmed.
-	// escapeLike guards against LIKE metacharacter injection.
+	// escapeLikePattern guards against LIKE metacharacter injection.
 	if search != nil {
-		pattern := "%" + escapeLike(*search) + "%"
+		pattern := "%" + escapeLikePattern(*search) + "%"
 		base = base.Where("(front ILIKE ? OR back ILIKE ?)", pattern, pattern)
 	}
 
