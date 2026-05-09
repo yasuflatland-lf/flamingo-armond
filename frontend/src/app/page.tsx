@@ -3,6 +3,7 @@ import { MeWithLastViewedQuery } from "@/app/queries";
 import type { MeWithLastViewedQuery as MeWithLastViewedQueryType } from "@/generated/graphql";
 import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
+import { isUserOnboarded } from "@/lib/auth/onboarding";
 import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -32,6 +33,8 @@ export default async function HomePage() {
     console.error("[home] gqlFetch failed:", err);
     throw err;
   }
+
+  if (!isUserOnboarded(data.me)) redirect("/onboarding");
 
   const lastViewedId = data.me?.lastViewedCardgroup?.id ?? null;
   if (lastViewedId) {
