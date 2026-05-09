@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { LogoutButton } from "@/app/_components/logout-button";
-import { SidebarToggle } from "@/components/nav/sidebar-toggle";
 import {
   Sidebar,
   SidebarContent,
@@ -67,7 +66,7 @@ function resolveActiveItem(pathname: string): ActiveItem {
 
 export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
   const pathname = usePathname();
-  const { state, toggleSidebar, setOpen, isMobile } = useSidebar();
+  const { state, setOpen, isMobile } = useSidebar();
 
   // Hover-flyout close timer. Use useRef (not useState) to avoid an async update
   // dropping a pointerenter that arrives in the same frame as the timeout fires
@@ -129,11 +128,10 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
       onPointerLeave={handlePointerLeave}
     >
       <SidebarHeader>
-        <div className="flex h-8 items-center gap-2 px-2">
+        <div className="flex h-8 items-center px-2">
           <Link href="/" aria-label="Flamingo home" className="shrink-0 text-lg leading-none">
             🦩
           </Link>
-          <SidebarToggle expanded={state === "expanded"} onToggle={toggleSidebar} />
         </div>
       </SidebarHeader>
 
