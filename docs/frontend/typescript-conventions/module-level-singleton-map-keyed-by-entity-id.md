@@ -1,6 +1,6 @@
 # Module-level singleton `Map` keyed by entity id requires a non-empty-string guard at the entry point
 
-> Part of [`.claude/rules/frontend-typescript-conventions.md`](../frontend-typescript-conventions.md). See the index for related rules.
+> Part of [`docs/frontend/typescript-conventions.md`](../typescript-conventions.md). See the index for related rules.
 
 A module-level `Map<string, T>` (e.g. a pending-timer registry keyed by entity id) gives `""` an equal claim to be a valid key as any UUID. Two callers that independently pass `""` — a "stub id" code path, a short-circuit branch, a future caller that skips id resolution — collide silently: the second call's `cancelPending("")` cancels the first's timer, the first entry's `commitDelete` is never invoked, the cache stays in the optimistically-removed state, and the server never receives the DELETE.
 

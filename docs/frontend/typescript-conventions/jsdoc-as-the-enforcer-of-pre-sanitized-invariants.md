@@ -1,6 +1,6 @@
 # JSDoc as the enforcer of "pre-sanitized" invariants when branded types are not used
 
-> Part of [`.claude/rules/frontend-typescript-conventions.md`](../frontend-typescript-conventions.md). See the index for related rules.
+> Part of [`docs/frontend/typescript-conventions.md`](../typescript-conventions.md). See the index for related rules.
 
 When a function or component accepts a value that must have crossed a security boundary before being passed (e.g. "this path has been validated as an internal path"), and the project style does not use branded/nominal types, a load-bearing JSDoc comment is the only compile-time signal available. The comment must:
 

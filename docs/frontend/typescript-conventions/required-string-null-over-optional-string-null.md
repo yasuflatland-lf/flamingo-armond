@@ -1,6 +1,6 @@
 # Required `string | null` over optional `?: string | null` for security-relevant or caller-deliberate props
 
-> Part of [`.claude/rules/frontend-typescript-conventions.md`](../frontend-typescript-conventions.md). See the index for related rules.
+> Part of [`docs/frontend/typescript-conventions.md`](../typescript-conventions.md). See the index for related rules.
 
 `prop?: string | null` and `prop: string | null` are not interchangeable. The optional form (`?`) collapses three distinct caller states into two observable outcomes — callers may omit the prop entirely, which is indistinguishable at runtime from an explicit `null` and means the type system does not force the caller to acknowledge the prop's existence. When a prop has security implications (e.g. a redirect destination, a sanitized user-supplied value) or when the calling component must make an explicit choice (pass a value or acknowledge absence), use the required form:
 

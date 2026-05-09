@@ -238,7 +238,7 @@ describe("scheduleDelete", () => {
       expect(failedA).not.toHaveBeenCalled();
       // Instead, a console.warn with discriminating { id, err } keys is emitted
       // so operators get a triage signal without a user-visible banner.
-      // Per .claude/rules/frontend-typescript-conventions.md § "expect.objectContaining
+      // Per docs/frontend/typescript-conventions.md § "expect.objectContaining
       // is not enough — add a discriminating key": include both `id` and `err`.
       expect(warnSpy).toHaveBeenCalledWith(
         "[undo-delete] prior pending delete commit failed on re-schedule",

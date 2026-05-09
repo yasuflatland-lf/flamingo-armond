@@ -1,6 +1,6 @@
 # Positive allowlist over negative exclusion in discriminated-union narrowing
 
-> Part of [`.claude/rules/frontend-typescript-conventions.md`](../frontend-typescript-conventions.md). See the index for related rules.
+> Part of [`docs/frontend/typescript-conventions.md`](../typescript-conventions.md). See the index for related rules.
 
 Given a discriminated union with `kind` tags, two narrowing styles are syntactically valid but semantically opposite:
 

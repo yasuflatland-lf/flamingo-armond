@@ -29,7 +29,7 @@ export interface SwipeableRowProps {
    * Accessible label for the delete action button revealed on half-swipe.
    * Required (`string | null`) — pass `null` to accept the default "Delete"
    * label, or a contextual string (e.g. "Delete card") to override it.
-   * See `.claude/rules/frontend-typescript-conventions.md` § "Required
+   * See `docs/frontend/typescript-conventions.md` § "Required
    * `string | null` over optional `?: string | null`".
    */
   ariaLabel: string | null;

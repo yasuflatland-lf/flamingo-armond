@@ -1,6 +1,6 @@
 # Re-throw inside TanStack Form `useForm.onSubmit` to keep `isSubmitSuccessful` correct
 
-> Part of [`.claude/rules/frontend-typescript-conventions.md`](../frontend-typescript-conventions.md). See the index for related rules.
+> Part of [`docs/frontend/typescript-conventions.md`](../typescript-conventions.md). See the index for related rules.
 
 When a parent passes a `submit` callback to a form component, swallowing a rejection inside `useForm.onSubmit` without re-throwing collapses two error states: TanStack Form sees the `onSubmit` as resolved-success and updates `isSubmitSuccessful = true`, even though the underlying mutation failed. Re-throw after logging:
 

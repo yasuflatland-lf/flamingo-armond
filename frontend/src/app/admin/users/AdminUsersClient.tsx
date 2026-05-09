@@ -169,7 +169,7 @@ export function AdminUsersClient() {
       .catch((err) => {
         // Structured warn for operator triage: name + request context only.
         // err.message is omitted — backend messages may carry user-authored content.
-        // See .claude/rules/frontend-typescript-conventions.md § "expect.objectContaining".
+        // See docs/frontend/typescript-conventions.md § "expect.objectContaining".
         console.warn("[admin-users] fetchMore failed", {
           name: err instanceof Error ? err.name : "unknown",
           searchQuery: searchQueryRef.current,

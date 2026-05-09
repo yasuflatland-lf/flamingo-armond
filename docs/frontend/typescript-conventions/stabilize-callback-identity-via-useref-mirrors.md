@@ -1,6 +1,6 @@
 # Stabilize callback identity via `useRef` mirrors when the callback reads frequently-changing state
 
-> Part of [`.claude/rules/frontend-typescript-conventions.md`](../frontend-typescript-conventions.md). See the index for related rules.
+> Part of [`docs/frontend/typescript-conventions.md`](../typescript-conventions.md). See the index for related rules.
 
 A `useCallback` whose body reads from a stateful value listed in its dep array gets a fresh identity every time that value changes. When the callback flows down to a child that subscribes to it (e.g. a global keydown listener, an IntersectionObserver, a memoized child component), the subscription is torn down and rebuilt on every state change. The fix is to mirror the state into a ref, list the ref-owning effect as the only dep on the value, and have the callback read `ref.current`:
 

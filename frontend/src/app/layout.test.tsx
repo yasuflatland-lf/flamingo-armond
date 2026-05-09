@@ -261,7 +261,7 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
   //   - emit console.warn with "[layout] me query unexpectedly failed"
   //   - include a structured payload with a discriminating key (user_id) so
   //     the assertion cannot be satisfied by a bare Error instance — per
-  //     .claude/rules/frontend-typescript-conventions.md "expect.objectContaining
+  //     docs/frontend/typescript-conventions.md "expect.objectContaining
   //     ({ message }) is not enough"
   //   - NOT include email or display_name in the payload (PII protection) — per
   //     .claude/rules/error-wrapping.md "Assert PII absence on log lines that

@@ -1,6 +1,6 @@
 # `as string` cast on regex captures under `noUncheckedIndexedAccess`
 
-> Part of [`.claude/rules/frontend-typescript-conventions.md`](../frontend-typescript-conventions.md). See the index for related rules.
+> Part of [`docs/frontend/typescript-conventions.md`](../typescript-conventions.md). See the index for related rules.
 
 The frontend tsconfig enables `noUncheckedIndexedAccess`, which widens `RegExpExecArray[number]` to `string | undefined`. For a capture group the regex makes mandatory (i.e. the regex cannot match without producing that capture), the soundest pattern is `const id = match[1] as string;` paired with a comment naming the invariant the cast relies on:
 

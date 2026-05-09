@@ -1,6 +1,6 @@
 # `next/dynamic({ ssr: false })` over a `useMounted` hook for hydration-sensitive client-only components
 
-> Part of [`.claude/rules/frontend-typescript-conventions.md`](../frontend-typescript-conventions.md). See the index for related rules.
+> Part of [`docs/frontend/typescript-conventions.md`](../typescript-conventions.md). See the index for related rules.
 
 A component that wraps a client-only library (`@react-spring/web`, `@use-gesture/react`, libraries that touch `window` at module scope, animation libraries that paint on first frame) needs a way to skip server-side rendering without a hydration mismatch. The historic shape was `useMounted` — a `useState(false)` plus `useEffect(() => setMounted(true), [])` that gates the client-only render branch. The recommended shape is `dynamic(() => import("./animated-card").then((m) => m.AnimatedCard), { ssr: false })`: the dynamic import handles the SSR skip at the module-loading boundary, eliminating the double render and the `useMounted` state entirely.
 

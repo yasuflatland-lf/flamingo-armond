@@ -1,6 +1,6 @@
 # `router.replace` / `router.push` must propagate preserved query params explicitly
 
-> Part of [`.claude/rules/frontend-typescript-conventions.md`](../frontend-typescript-conventions.md). See the index for related rules.
+> Part of [`docs/frontend/typescript-conventions.md`](../typescript-conventions.md). See the index for related rules.
 
 When code rewrites the URL via `router.replace` or `router.push` from inside a flow that already received user-controlled query params (e.g. `?return=`, `?next=`, `?welcome=1`), the rewrite must explicitly carry those params forward. A naive `router.replace(\`/cards/new?cardgroup=${id}\`)` from a picker handler drops every other param the user arrived with — including the `?return=` that was supposed to control post-create navigation. The user's intent is silently lost; there is no log, no redirect-to-default, no error. The next post-create step then routes the user somewhere they did not ask for.
 

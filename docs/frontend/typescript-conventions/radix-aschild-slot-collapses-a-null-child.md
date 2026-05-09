@@ -1,6 +1,6 @@
 # Radix `asChild` Slot collapses a `null` child into an empty wrapper — gate at the parent
 
-> Part of [`.claude/rules/frontend-typescript-conventions.md`](../frontend-typescript-conventions.md). See the index for related rules.
+> Part of [`docs/frontend/typescript-conventions.md`](../typescript-conventions.md). See the index for related rules.
 
 Radix UI primitives that accept `asChild` (e.g. `<Sheet>`, `<SidebarMenuButton>`, `<TooltipTrigger>`, `<SheetClose>`) forward props to the rendered child via the Radix `Slot` component. When the child component returns `null` (e.g. a self-suppressing `<HeaderSignInLink>` that returns `null` on `/login`), `Slot` renders nothing — but the **wrapping** Radix container (`<SidebarFooter>`, the `<nav>` block, the `<SidebarMenuItem>`) is still mounted, leaving an empty rectangle in the layout with the wrapper's padding, border, and ARIA semantics intact. There is no DOM-level signal that the slot collapsed; CSS-only review misses it because the empty container is a 1-pixel-tall gap.
 

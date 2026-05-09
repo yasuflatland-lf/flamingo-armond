@@ -1,6 +1,6 @@
 # Re-scheduling a module-level singleton entry: commit prior immediately; warn-only on prior failure
 
-> Part of [`.claude/rules/frontend-typescript-conventions.md`](../frontend-typescript-conventions.md). See the index for related rules.
+> Part of [`docs/frontend/typescript-conventions.md`](../typescript-conventions.md). See the index for related rules.
 
 When the same entity id is re-scheduled on a module-level pending registry (e.g. a fast double-swipe-to-delete on the same row triggers `scheduleDelete` twice for the same card id), naively calling `cancelPending(id)` discards the prior entry without invoking its `commitDelete`. The optimistic cache removal is now permanent — but the server never received the DELETE. Equally bad: routing the prior commit's rejection to `onCommitFailed` shows a user-facing "Could not delete. Please try again." banner for an item already gone from view. The user has no actionable retry path; the banner is misleading.
 

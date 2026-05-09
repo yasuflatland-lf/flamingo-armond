@@ -1,6 +1,6 @@
 # Audit collapsed helpers for branches that lose all side effects
 
-> Part of [`.claude/rules/frontend-typescript-conventions.md`](../frontend-typescript-conventions.md). See the index for related rules.
+> Part of [`docs/frontend/typescript-conventions.md`](../typescript-conventions.md). See the index for related rules.
 
 When a refactor inlines a multi-purpose helper into a single call site and drops one of the helper's responsibilities at the same time, the surviving guard can leave a branch with no observable effect at all. The original helper combined two side effects under one shared guard:
 

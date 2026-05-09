@@ -1,6 +1,6 @@
 # TanStack Form `_handleSubmit` re-throws — chain `.catch()` on `form.handleSubmit()`
 
-> Part of [`.claude/rules/frontend-typescript-conventions.md`](../frontend-typescript-conventions.md). See the index for related rules.
+> Part of [`docs/frontend/typescript-conventions.md`](../typescript-conventions.md). See the index for related rules.
 
 `@tanstack/form-core` v1.x's `_handleSubmit` wraps the user-supplied `onSubmit` in a `try { ... } catch (err) { ...done(); throw err; }` block. The re-throw is necessary for `formState.isSubmitSuccessful` to remain `false` when the submission fails. The typical JSX call shape `void form.handleSubmit()` discards the resulting rejected promise and produces a browser "Uncaught (in promise)" warning.
 

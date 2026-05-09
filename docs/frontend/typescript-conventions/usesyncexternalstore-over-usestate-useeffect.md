@@ -1,6 +1,6 @@
 # `useSyncExternalStore` over `useState + useEffect` for browser-store subscriptions
 
-> Part of [`.claude/rules/frontend-typescript-conventions.md`](../frontend-typescript-conventions.md). See the index for related rules.
+> Part of [`docs/frontend/typescript-conventions.md`](../typescript-conventions.md). See the index for related rules.
 
 A hook that subscribes to an external browser store (`matchMedia`, `localStorage`, `navigator.onLine`, `document.visibilityState`, `BroadcastChannel`, etc.) and surfaces its current value to React components has two common encodings: (a) `useState` seeded with a lazy initializer plus a `useEffect` that subscribes and re-`setState` on change, or (b) `useSyncExternalStore` with `subscribe` / `getSnapshot` / `getServerSnapshot` callbacks. React's docs explicitly list (b) as the right primitive for this case; the codebase enforces (b) for every browser-store hook.
 

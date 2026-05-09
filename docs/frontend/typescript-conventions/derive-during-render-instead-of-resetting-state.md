@@ -1,6 +1,6 @@
 # Derive during render instead of resetting state via a `useEffect` keyed on the trigger
 
-> Part of [`.claude/rules/frontend-typescript-conventions.md`](../frontend-typescript-conventions.md). See the index for related rules.
+> Part of [`docs/frontend/typescript-conventions.md`](../typescript-conventions.md). See the index for related rules.
 
 When a piece of derived state depends on a snapshot of an input that may drift (e.g. "the user has not edited the payload since the last validation"), the obvious shape is a `useEffect([input])` that nulls every dependent piece of state when the input changes. The cleaner shape is to capture the snapshot the input had when the derivation last ran, and compare it to the current input during render:
 

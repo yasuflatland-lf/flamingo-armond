@@ -1,6 +1,6 @@
 # Radix `AlertDialogAction` closes the dialog synchronously — call `e.preventDefault()` to keep it open on failure
 
-> Part of [`.claude/rules/frontend-typescript-conventions.md`](../frontend-typescript-conventions.md). See the index for related rules.
+> Part of [`docs/frontend/typescript-conventions.md`](../typescript-conventions.md). See the index for related rules.
 
 Radix UI's `AlertDialogAction` calls `onOpenChange(false)` synchronously as soon as its `onClick` handler resolves, regardless of whether the action succeeded or failed. For a confirm action that may fail and must keep the dialog mounted (e.g. an overwrite mutation that returns a typed `BAD_USER_INPUT`), this means a failed action still closes the dialog and the user loses any inline error message.
 

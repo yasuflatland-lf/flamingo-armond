@@ -1257,7 +1257,7 @@ describe("<CardsClient>", () => {
 
     // fetchMore failure emits a structured warn for operator triage.
     // The `endCursor` key discriminates against a bare Error regression.
-    // See .claude/rules/frontend-typescript-conventions.md
+    // See docs/frontend/typescript-conventions.md
     // § "expect.objectContaining({ message }) is not enough".
     expect(consoleWarnSpy).toHaveBeenCalledWith(
       "[cards-client] fetchMore failed",
