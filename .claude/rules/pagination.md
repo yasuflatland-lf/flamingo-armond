@@ -20,7 +20,7 @@ Paginated lists use Relay-style Connection types, not bare `[T!]!`. New paginate
 
 When migrating an existing flat list to a Connection type, keep the old field with `@deprecated(reason: "Use <newField>")` until all clients have moved over. Removing the old field in the same change breaks any unmigrated consumer.
 
-## Server-side design — detailed cases (on-demand)
+## Server-side design (on-demand)
 
 - [Cursor encoding](../../docs/pagination/cursor-encoding.md)
 - [Tuple `(orderField, id)` comparison](../../docs/pagination/tuple-order-id-comparison.md)

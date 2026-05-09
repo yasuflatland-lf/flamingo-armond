@@ -174,8 +174,8 @@ describe("<NewCardgroupPage> (client)", () => {
     // The cache has NO pre-seeded MyCardgroupsConnection entry — MockedProvider
     // calls the production update callback, which builds a minimal connection.
     // Per docs/backend/library-gotchas/inline-copy-of-production-logic-in-tests.md,
-    // we do NOT re-implement the update logic here;
-    // the mutation callback in new-cardgroup-client.tsx is the sole implementation.
+    // we do NOT re-implement the update logic here; the mutation callback in
+    // new-cardgroup-client.tsx is the sole implementation.
     const user = userEvent.setup();
     mockPush.mockClear();
 

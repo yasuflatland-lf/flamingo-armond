@@ -18,7 +18,7 @@ The backend uses [`github.com/rotisserie/eris`](https://github.com/rotisserie/er
 
 Sentinels used today: `repository.ErrNotFound`, and domain-level sentinels such as `domain.ErrCardgroupNameRequired` / `domain.ErrCardgroupNameTooLong`. New sentinels are allowed when (a) callers need to branch on identity, and (b) a string-equality match is fragile. Keep sentinels as plain `errors.New` so `errors.Is` works without going through eris's chain walk.
 
-## Sentinels — detailed
+## Sentinels — detailed cases (on-demand)
 
 - [Layered sentinels via `errors.Join`](../../docs/backend/error-wrapping/layered-sentinels-via-errors-join.md)
 - [Postgres FK violation classification (`23503`)](../../docs/backend/error-wrapping/postgres-fk-violation-23503.md)
@@ -26,14 +26,14 @@ Sentinels used today: `repository.ErrNotFound`, and domain-level sentinels such 
 - [Standalone sentinels: not every new sentinel joins `ErrNotFound`](../../docs/backend/error-wrapping/standalone-sentinels-not-every-joins-errnotfound.md)
 - [Two-tier `gqlerr` API: generic open helper + domain-specific typed wrapper](../../docs/backend/error-wrapping/two-tier-gqlerr-api.md)
 
-## Logging — detailed
+## Logging — detailed cases (on-demand)
 
 - [Logging: `LogError` / `LogWarn` helpers](../../docs/backend/error-wrapping/logging-error-warn-helpers.md)
 - [Defensive `eris.Wrap` at log sites that consume narrow interfaces](../../docs/backend/error-wrapping/defensive-eris-wrap-at-log-sites.md)
 - [Test the `error_chain` shape, not just its presence](../../docs/backend/error-wrapping/test-error-chain-shape-not-presence.md)
 - [Assert PII absence on log lines that carry `user_id`](../../docs/backend/error-wrapping/assert-pii-absence-on-log-lines.md)
 
-## Background
+## Background (on-demand)
 
 - [Why `eris` over alternatives](../../docs/backend/error-wrapping/why-eris-over-alternatives.md)
 - [What `error_chain` looks like](../../docs/backend/error-wrapping/what-error-chain-looks-like.md)

@@ -122,7 +122,8 @@ export function CardsClient({
   }, [searchInput]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  // docs/pagination/intersection-observer-in-flight-guard.md: in-flight guard MUST be useRef<boolean>, not useState.
+  // In-flight guard MUST be useRef<boolean>, not useState — see
+  // docs/pagination/intersection-observer-in-flight-guard.md.
   const fetchingRef = useRef(false);
 
   // When the active search query changes, any in-flight fetchMore from the

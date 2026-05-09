@@ -76,7 +76,8 @@ export function AdminUsersClient() {
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  // docs/pagination/intersection-observer-in-flight-guard.md: in-flight guard MUST be useRef<boolean>, not useState.
+  // In-flight guard MUST be useRef<boolean>, not useState — see
+  // docs/pagination/intersection-observer-in-flight-guard.md.
   const fetchingRef = useRef(false);
 
   // Debounce: update searchQuery 300ms after the last keystroke.

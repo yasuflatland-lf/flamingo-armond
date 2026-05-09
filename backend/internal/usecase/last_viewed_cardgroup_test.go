@@ -226,10 +226,11 @@ func TestLastViewedCardgroup_EmptySub_Unauthenticated(t *testing.T) {
 
 // TestLastViewedCardgroup_SentinelOrderingMatters guards the
 // "always check more specific sentinel before the general one" rule from
-// docs/backend/error-wrapping/layered-sentinels-via-errors-join.md. ErrCardgroupNotFound is errors.Join'd with
-// ErrNotFound, so errors.Is matches both. The usecase must branch on the
-// specific sentinel first — verified here by sending the joined sentinel and
-// asserting we receive BAD_USER_INPUT (cardgroupId) and not INTERNAL.
+// docs/backend/error-wrapping/layered-sentinels-via-errors-join.md.
+// ErrCardgroupNotFound is errors.Join'd with ErrNotFound, so errors.Is matches
+// both. The usecase must branch on the specific sentinel first — verified here
+// by sending the joined sentinel and asserting we receive BAD_USER_INPUT
+// (cardgroupId) and not INTERNAL.
 func TestLastViewedCardgroup_SentinelOrderingMatters(t *testing.T) {
 	t.Parallel()
 

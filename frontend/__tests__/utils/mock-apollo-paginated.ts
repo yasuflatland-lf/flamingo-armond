@@ -12,9 +12,10 @@
  *    `"No more mocked responses for the query: <Op>"` via `console.warn`.
  *    `installApolloMockLeakSpy` captures those warnings so the caller can
  *    assert no leaks occurred — applying the "Spy on console.warn for
- *    MockedProvider leaks" rule from `docs/pagination/capture-mockedprovider-warn-leaks.md`. Failure
- *    requires an explicit call to `assertNoLeaks()`; the spy alone does not
- *    fail the test.
+ *    MockedProvider leaks" rule from
+ *    `docs/pagination/capture-mockedprovider-warn-leaks.md`. Failure requires
+ *    an explicit call to `assertNoLeaks()`; the spy alone does not fail the
+ *    test.
  *
  * Canonical usage:
  *

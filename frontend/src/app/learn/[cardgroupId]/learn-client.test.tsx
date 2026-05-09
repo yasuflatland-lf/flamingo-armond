@@ -262,9 +262,10 @@ describe("<LearnClient>", () => {
 
   describe("handleSwipe resolved-without-data branch", () => {
     // Forwarding spy: do NOT call `mockImplementation(() => {})` here. Per
-    // docs/pagination/capture-mockedprovider-warn-leaks.md § "Spy stacking": this spy is the OUTER spy (installed after
-    // the file-wide leak spy) and must forward every `console.warn` call through
-    // to the underlying leak spy so MockedProvider leaks are still recorded.
+    // docs/pagination/capture-mockedprovider-warn-leaks.md § "Spy stacking",
+    // this spy is the OUTER spy (installed after the file-wide leak spy) and
+    // must forward every `console.warn` call through to the underlying leak
+    // spy so MockedProvider leaks are still recorded.
     let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
@@ -376,9 +377,10 @@ function makePersistMock(cardgroupId: string, onCalled?: () => void) {
 
 describe("<LearnClient> persist-last-viewed path", () => {
   // Forwarding spy: do NOT call `mockImplementation(() => {})` here. Per
-  // docs/pagination/capture-mockedprovider-warn-leaks.md § "Spy stacking": this spy is the OUTER spy (installed after
-  // the file-wide leak spy) and must forward every `console.warn` call through
-  // to the underlying leak spy so MockedProvider leaks are still recorded.
+  // docs/pagination/capture-mockedprovider-warn-leaks.md § "Spy stacking",
+  // this spy is the OUTER spy (installed after the file-wide leak spy) and
+  // must forward every `console.warn` call through to the underlying leak spy
+  // so MockedProvider leaks are still recorded.
   // Tests that expect a `[learn] setLastViewedCardgroup failed` warn assert
   // it explicitly via `toHaveBeenCalledWith` below. LIFO teardown is preserved
   // automatically: this describe-scoped `afterEach` runs before the file-wide

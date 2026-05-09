@@ -43,7 +43,8 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  // docs/pagination/intersection-observer-in-flight-guard.md: in-flight guard MUST be useRef<boolean>, not useState.
+  // In-flight guard MUST be useRef<boolean>, not useState — see
+  // docs/pagination/intersection-observer-in-flight-guard.md.
   const fetchingRef = useRef(false);
   // Strict Mode double-mount safety: only write the SSR seed into the cache once.
   const seededRef = useRef(false);
