@@ -48,6 +48,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Nullable filter fields: normalize `nil` / empty / whitespace at the usecase boundary](../../docs/backend/library-gotchas/nullable-filter-normalize-at-usecase.md)
 - [Repository lookup methods scoped by tenant ID require a cross-tenant negative test](../../docs/backend/library-gotchas/repository-cross-tenant-negative-test.md)
 - [GORM rejects unconditional `Delete` — use `Where("1 = 1")` to opt out](../../docs/backend/library-gotchas/gorm-rejects-unconditional-delete.md)
+- [Postgres advisory lock for race-safe ensure-by-name when no UNIQUE constraint exists](../../docs/backend/library-gotchas/postgres-advisory-lock-for-ensure-by-name.md)
 - [`subtle.ConstantTimeCompare` leaks token length — pair with a rate limiter](../../docs/backend/library-gotchas/subtle-constanttimecompare-length-leak.md)
 - [slog context enrichment must precede the log call that announces the enrichment](../../docs/backend/library-gotchas/slog-context-enrichment-precedes-log.md)
 - [Constructor panics are the right tool for "non-empty config requires non-nil deps"](../../docs/backend/library-gotchas/constructor-panics-for-non-empty-config.md)
