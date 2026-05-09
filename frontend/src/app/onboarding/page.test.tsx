@@ -189,53 +189,39 @@ describe("OnboardingPage — onboarding gate", () => {
 // JSX tree helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Recursively search a React element tree for an element whose `type` is the
- * given HTML tag string (e.g. "main") and return it.
- */
-function findElementByType(node: unknown, tag: string): unknown | null {
+/** Recursively walk a React element tree and return the first node that satisfies `predicate`. */
+function findElement(
+  node: unknown,
+  predicate: (el: Record<string, unknown>) => boolean,
+): unknown | null {
   if (node == null || typeof node !== "object") return null;
   const el = node as Record<string, unknown>;
-  if ("type" in el && el.type === tag) return el;
+  if (predicate(el)) return el;
   if ("props" in el && el.props != null) {
     const children = (el.props as Record<string, unknown>).children;
     if (Array.isArray(children)) {
       for (const child of children) {
-        const found = findElementByType(child, tag);
+        const found = findElement(child, predicate);
         if (found) return found;
       }
     } else if (children != null) {
-      return findElementByType(children, tag);
+      return findElement(children, predicate);
     }
   }
   return null;
 }
 
-/**
- * Recursively search a React element tree for a node whose `type` display name
- * matches `componentName` and return it.
- */
+function findElementByType(node: unknown, tag: string): unknown | null {
+  return findElement(node, (el) => "type" in el && el.type === tag);
+}
+
 function findElementByDisplayName(node: unknown, componentName: string): unknown | null {
-  if (node == null || typeof node !== "object") return null;
-  const el = node as Record<string, unknown>;
-  if (
-    "type" in el &&
-    "props" in el &&
-    typeof el.type === "function" &&
-    (el.type as { name?: string; displayName?: string }).name === componentName
-  ) {
-    return el;
-  }
-  if ("props" in el && el.props != null) {
-    const children = (el.props as Record<string, unknown>).children;
-    if (Array.isArray(children)) {
-      for (const child of children) {
-        const found = findElementByDisplayName(child, componentName);
-        if (found) return found;
-      }
-    } else if (children != null) {
-      return findElementByDisplayName(children, componentName);
-    }
-  }
-  return null;
+  return findElement(
+    node,
+    (el) =>
+      "type" in el &&
+      "props" in el &&
+      typeof el.type === "function" &&
+      (el.type as { name?: string }).name === componentName,
+  );
 }

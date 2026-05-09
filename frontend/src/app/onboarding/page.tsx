@@ -38,7 +38,6 @@ export default async function OnboardingPage() {
     throw err;
   }
 
-  // Already-onboarded users should not re-enter the onboarding flow.
   if (isUserOnboarded(data.me)) redirect("/");
 
   // This page bypasses AppShell, so it renders its own <main> landmark.
