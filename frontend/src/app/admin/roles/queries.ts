@@ -11,11 +11,6 @@ export { AdminRoleFieldsFragment, AdminRolesQuery } from "@/app/admin/users/quer
 // backend/internal/usecase/admin_user.go.
 export const SYSTEM_ROLE_NAMES: ReadonlySet<string> = new Set(["admin", "general"]);
 
-/** Returns true when a role name is in the protected system set. */
-export function isSystemRoleName(name: string): boolean {
-  return SYSTEM_ROLE_NAMES.has(name);
-}
-
 export const AdminRoleQuery = graphql(`
   query AdminRole($id: ID!) {
     role(id: $id) {

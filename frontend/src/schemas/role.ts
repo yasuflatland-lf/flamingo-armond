@@ -6,7 +6,7 @@ import { graphemeCount } from "./grapheme";
 // clusters, and the [a-z0-9_-] character set. The transform runs before
 // the refinements so the length and pattern checks operate on the same
 // canonical form the server will see.
-const roleNameSchema = z
+export const roleNameSchema = z
   .string()
   .transform((s) => s.trim().toLowerCase())
   .refine((s) => graphemeCount(s) >= 1, { message: "name is required" })
@@ -17,13 +17,11 @@ const roleNameSchema = z
     message: "name must contain only lowercase letters, digits, '_' or '-'",
   });
 
-export const newRoleSchema = z.object({
+// Single object schema serves both create and edit flows: the rules are
+// identical (the server applies the same `validateRoleName` for createRole
+// and updateRole), so a parallel "update" schema would be a duplicate.
+export const roleSchema = z.object({
   name: roleNameSchema,
 });
 
-export const updateRoleSchema = z.object({
-  name: roleNameSchema,
-});
-
-export type NewRoleValues = z.infer<typeof newRoleSchema>;
-export type UpdateRoleValues = z.infer<typeof updateRoleSchema>;
+export type RoleValues = z.infer<typeof roleSchema>;
