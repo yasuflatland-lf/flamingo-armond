@@ -308,7 +308,7 @@
     - name: Parse SUPER_USER_EMAILS from backend/.env.local
       ansible.builtin.set_fact:
         _super_user_emails: >-
-          {{ (_backend_env_for_seed.content | b64decode).split('\n')
+          {{ (_backend_env_for_seed.content | b64decode).splitlines()
              | select('match', '^SUPER_USER_EMAILS=')
              | map('regex_replace', '^SUPER_USER_EMAILS=', '')
              | list | first | default('')
