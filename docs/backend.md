@@ -60,16 +60,18 @@ These values target a public API on Render. Revisit if the threat model or deplo
 | `DB_MAX_CONN_LIFETIME` | no | `30m` | Maximum lifetime of a pooled connection |
 | `DB_MAX_CONN_IDLE_TIME` | no | `5m` | Maximum idle time before a connection is evicted |
 | `PING_TOKEN` | yes | — | Bearer token for `POST /internal/ping`. Server refuses to start if empty. |
-| `NOTION_TOKEN` | yes | — | Notion integration token used by the internal Notion sync job. |
-| `NOTION_PAGE_IDS` | yes | — | Comma-separated Notion page IDs to fetch. Empty entries are ignored. |
-| `NOTION_TARGET_OWNER_ID` | yes | — | Existing `public.users.id`/Supabase auth user UUID that owns the synced cardgroup. Required because cardgroups are user-owned in the current schema. |
-| `NOTION_TARGET_CARDGROUP_NAME` | yes | — | Destination cardgroup name. The backend finds or creates this cardgroup for `NOTION_TARGET_OWNER_ID`. |
-| `NOTION_SYNC_TOKEN` | yes | — | Bearer token for `POST /internal/notion-sync`. Server refuses to start if empty. |
+| `NOTION_TOKEN` | no\* | — | Notion integration token used by the internal Notion sync job. |
+| `NOTION_PAGE_IDS` | no\* | — | Comma-separated Notion page IDs to fetch. Empty entries are ignored. |
+| `NOTION_TARGET_OWNER_ID` | no\* | — | Existing `public.users.id`/Supabase auth user UUID that owns the synced cardgroup. Required because cardgroups are user-owned in the current schema. |
+| `NOTION_TARGET_CARDGROUP_NAME` | no\* | — | Destination cardgroup name. The backend finds or creates this cardgroup for `NOTION_TARGET_OWNER_ID`. |
+| `NOTION_SYNC_TOKEN` | no\* | — | Bearer token for `POST /internal/notion-sync`. |
 | `NOTION_MAX_ATTEMPTS` | no | `5` | Retry attempt cap for Notion 429/5xx responses. Must be positive when set. |
 | `NOTION_MAX_ELAPSED` | no | `2m` | Maximum cumulative Notion retry wait per request. Must be a positive Go duration when set. |
 | `SUPER_USER_EMAILS` | no | *(empty)* | Comma-separated trusted email addresses promoted to `admin` on first authenticated request. See `docs/backend-auth.md` § "Bootstrap admin". |
 
-`PORT`, `SHUTDOWN_TIMEOUT`, `SWIPE_NEXT_BATCH_SIZE`, `NOTION_MAX_ATTEMPTS`, `NOTION_MAX_ELAPSED`, and `SUPER_USER_EMAILS` are optional with safe defaults. The three `SUPABASE_JWT_*` variables, `SUPABASE_DB_URL`, `PING_TOKEN`, and the required `NOTION_*` sync variables are all required — the server refuses to start if any is missing (fail-fast via `ConfigFromEnv` or inline check in `run()`).
+`PORT`, `SHUTDOWN_TIMEOUT`, `SWIPE_NEXT_BATCH_SIZE`, `NOTION_MAX_ATTEMPTS`, `NOTION_MAX_ELAPSED`, and `SUPER_USER_EMAILS` are optional with safe defaults. The three `SUPABASE_JWT_*` variables, `SUPABASE_DB_URL`, and `PING_TOKEN` are strictly required — the server refuses to start if any is missing.
+
+\* **Optional as a group.** When any of the five `NOTION_*` sync vars (`NOTION_TOKEN`, `NOTION_PAGE_IDS`, `NOTION_TARGET_OWNER_ID`, `NOTION_TARGET_CARDGROUP_NAME`, `NOTION_SYNC_TOKEN`) is absent or whitespace-only, the `POST /internal/notion-sync` route is disabled and the server still starts — a single `WARN` log line is emitted listing the missing var names (via `OptionalConfigFromEnv` in `run()`). The exception: when the group is otherwise present, `NOTION_PAGE_IDS` must contain at least one non-whitespace ID — a comma/whitespace-only value fails startup.
 
 ## Testing patterns
 

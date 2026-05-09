@@ -34,6 +34,6 @@ The workflow declares `concurrency: group: notion-sync, cancel-in-progress: fals
 
 The backend fetches every configured page, renders supported blocks to plain text, parses the existing text dictionary format, then upserts cards into the destination cardgroup. Existing FSRS state is preserved because updates only overwrite `back` and `updated_at`. Cards whose `front` no longer appears in Notion are deleted.
 
-If Notion returns `429` or `5xx`, the backend follows the `Retry-After` header (with an exponential-backoff fallback capped at 5 seconds when the header is absent). If retry attempts exceed `NOTION_MAX_ATTEMPTS` or cumulative wait exceeds `NOTION_MAX_ELAPSED`, the endpoint returns `504`. Other Notion fetch failures return `502`.
+If Notion returns `429` or `5xx`, the backend follows the `Retry-After` header (with an exponential-backoff fallback capped at 5 seconds when the header is absent). If retry attempts exceed `NOTION_MAX_ATTEMPTS`, cumulative wait exceeds `NOTION_MAX_ELAPSED`, or the request context is cancelled or times out (`context.Canceled` / `context.DeadlineExceeded`), the endpoint returns `504`. Other Notion fetch failures return `502`.
 
 Concurrent triggers from GitHub Actions (cron + workflow_dispatch) are serialized via the workflow's concurrency group, so only one sync runs at a time on that path.
