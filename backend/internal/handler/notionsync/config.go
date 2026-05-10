@@ -38,11 +38,9 @@ var varOrder = []string{
 func OptionalConfigFromEnv() (cfg EnvConfig, missing []string, err error) {
 	vals := make(map[string]string, len(varOrder))
 	for _, key := range varOrder {
-		vals[key] = strings.TrimSpace(os.Getenv(key))
-	}
-
-	for _, key := range varOrder {
-		if vals[key] == "" {
+		v := strings.TrimSpace(os.Getenv(key))
+		vals[key] = v
+		if v == "" {
 			missing = append(missing, key)
 		}
 	}
@@ -84,8 +82,7 @@ func ConfigFromEnv() (EnvConfig, error) {
 	return cfg, nil
 }
 
-// splitCSV splits raw on commas, trims surrounding whitespace from each part,
-// and drops empty parts. Used by ConfigFromEnv for NOTION_PAGE_IDS.
+// splitCSV splits raw on commas, trims each part, and drops empty entries.
 func splitCSV(raw string) []string {
 	parts := strings.Split(raw, ",")
 	out := make([]string, 0, len(parts))
