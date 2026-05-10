@@ -99,9 +99,9 @@ func retryDelay(res *http.Response, attempt int) time.Duration {
 				}
 			}
 		}
-	}
-	if res != nil && res.StatusCode == http.StatusTooManyRequests {
-		return time.Second
+		if res.StatusCode == http.StatusTooManyRequests {
+			return time.Second
+		}
 	}
 	d := time.Duration(1<<(attempt-1)) * time.Second
 	if d > 5*time.Second {

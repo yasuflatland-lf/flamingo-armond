@@ -48,9 +48,6 @@ func (f *APIClientFetcher) FetchPages(ctx context.Context, pageIDs []string) ([]
 	if len(pageIDs) == 0 {
 		return []Page{}, nil
 	}
-	if f == nil || f.pages == nil || f.blocks == nil {
-		return nil, eris.New("notion: fetcher dependencies are not configured")
-	}
 
 	out := make([]Page, 0, len(pageIDs))
 	for _, rawID := range pageIDs {
@@ -115,16 +112,17 @@ func titlePropertyText(prop notionapi.Property) string {
 	if prop == nil {
 		return ""
 	}
-	title, ok := prop.(*notionapi.TitleProperty)
-	if !ok {
-		if v, ok := prop.(notionapi.TitleProperty); ok {
-			title = &v
-		} else {
-			return ""
-		}
+	var richText []notionapi.RichText
+	switch p := prop.(type) {
+	case *notionapi.TitleProperty:
+		richText = p.Title
+	case notionapi.TitleProperty:
+		richText = p.Title
+	default:
+		return ""
 	}
 	var b strings.Builder
-	for _, rt := range title.Title {
+	for _, rt := range richText {
 		b.WriteString(rt.PlainText)
 	}
 	return strings.TrimSpace(b.String())
