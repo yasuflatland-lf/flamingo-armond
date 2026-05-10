@@ -32,6 +32,47 @@ See [Operational setup](#operational-setup) below for the `make` targets that po
 
 The workflow declares `concurrency: group: notion-sync, cancel-in-progress: false`, so overlapping triggers from cron and `workflow_dispatch` are serialized: a second trigger queues until the first completes rather than running in parallel.
 
+## Local testing
+
+Use this section to run the Notion sync against your local Supabase instance without touching any production environment.
+
+### Prerequisites
+
+- Local Supabase is running (`make supabase-start`).
+- You have logged in to the local app at least once via `make dev-frontend` so your developer account's row exists in `auth.users` locally.
+- The root `.env` file is populated with the keys listed below.
+
+### Required keys in root `.env`
+
+| Key | Purpose |
+|---|---|
+| `NOTION_TOKEN` | Notion integration token (shared with prod). Same workspace as production by default. |
+| `NOTION_PAGE_IDS` | Comma-separated list of Notion page UUIDs to sync (shared with prod). |
+| `NOTION_LOCAL_TARGET_OWNER_EMAIL` | Email of the local Supabase user who will own the synced cardgroup. Resolved to UUID at setup. |
+| `NOTION_LOCAL_TARGET_CARDGROUP_NAME` | Name of the cardgroup that holds locally-synced cards. Kept distinct from prod by convention so a misconfigured `SUPABASE_DB_URL` cannot delete prod data. |
+| `NOTION_LOCAL_SYNC_TOKEN` | Bearer token used by the local backend to authenticate the `/internal/notion-sync` POST. Local-only; not pushed to Render. |
+
+### Quickstart
+
+```bash
+make notion-local-setup    # one-time
+make dev-backend           # in another terminal
+make notion-local-run      # repeat as needed
+```
+
+`make notion-local-setup` resolves `NOTION_LOCAL_TARGET_OWNER_EMAIL` to a Supabase UUID, writes the derived `NOTION_*` keys into `backend/.env.local`, and validates connectivity to the local database. `make dev-backend` starts the backend on `:1323` with those env vars loaded. `make notion-local-run` fires a single authenticated POST to `/internal/notion-sync` and streams the backend log output until the sync completes.
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `make notion-local-setup` fails with "log into local app first" | Run `make dev-frontend`, sign in via Google OAuth, then re-run `make notion-local-setup`. |
+| `make notion-local-run` prints "Backend not reachable on :1323" | Start the backend in another terminal with `make dev-backend`, then re-run. |
+| Backend logs show "notion sync: disabled" | Check `backend/.env.local` for the 7 `NOTION_*` keys. Re-run `make notion-local-setup` if missing, then restart the backend. |
+| psql probe fails with connection refused | Run `make supabase-start` and wait until the local Supabase stack reports healthy. |
+
+For the production sync flow, see [Operational setup](#operational-setup) below.
+
 ## Operational setup
 
 All NOTION_* values are stored in the root `.env` file (gitignored). The Makefile provides three targets that read from that file and push values to the appropriate destinations.
