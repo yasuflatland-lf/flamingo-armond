@@ -160,7 +160,7 @@ func TestNotionSyncUsecase_DuplicateFrontLastWins(t *testing.T) {
 	}}
 	cardgroups := &mockNotionCardgroupRepo{cg: &domain.Cardgroup{ID: "cg-target"}}
 	cards := &mockNotionCardRepo{upsertResult: repository.UpsertManyTxResult{Inserted: 1}}
-	tx, _ := dictTxRunner()
+	tx, txCalls := dictTxRunner()
 	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, nil)
 
 	out, err := uc.Sync(context.Background(), SyncFromNotionInput{
@@ -183,6 +183,16 @@ func TestNotionSyncUsecase_DuplicateFrontLastWins(t *testing.T) {
 	if len(cards.upserted) != 1 || cards.upserted[0].Back != uniqueBack(2) {
 		t.Fatalf("upserted = %+v, want latest back", cards.upserted)
 	}
+	// Partial success (rows>0, parseErrs>0): persistence must still run.
+	if cardgroups.calls != 1 {
+		t.Fatalf("EnsureByName calls = %d, want 1", cardgroups.calls)
+	}
+	if cards.upsertCalls != 1 {
+		t.Fatalf("upsertCalls = %d, want 1", cards.upsertCalls)
+	}
+	if *txCalls != 1 {
+		t.Fatalf("txCalls = %d, want 1", *txCalls)
+	}
 }
 
 func TestNotionSyncUsecase_DuplicateFrontSamePageLastWins(t *testing.T) {
@@ -196,7 +206,7 @@ func TestNotionSyncUsecase_DuplicateFrontSamePageLastWins(t *testing.T) {
 	}}
 	cardgroups := &mockNotionCardgroupRepo{cg: &domain.Cardgroup{ID: "cg-target"}}
 	cards := &mockNotionCardRepo{upsertResult: repository.UpsertManyTxResult{Inserted: 1}}
-	tx, _ := dictTxRunner()
+	tx, txCalls := dictTxRunner()
 	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, nil)
 
 	out, err := uc.Sync(context.Background(), SyncFromNotionInput{
@@ -220,6 +230,16 @@ func TestNotionSyncUsecase_DuplicateFrontSamePageLastWins(t *testing.T) {
 	// dedupeParsedRows MUST anchor the error to the *discarded* row's line.
 	if out.ParseErrors[0].Line != 1 {
 		t.Fatalf("ParseErrors[0].Line = %d, want 1 (the discarded row's line)", out.ParseErrors[0].Line)
+	}
+	// Partial success (rows>0, parseErrs>0): persistence must still run.
+	if cardgroups.calls != 1 {
+		t.Fatalf("EnsureByName calls = %d, want 1", cardgroups.calls)
+	}
+	if cards.upsertCalls != 1 {
+		t.Fatalf("upsertCalls = %d, want 1", cards.upsertCalls)
+	}
+	if *txCalls != 1 {
+		t.Fatalf("txCalls = %d, want 1", *txCalls)
 	}
 }
 
