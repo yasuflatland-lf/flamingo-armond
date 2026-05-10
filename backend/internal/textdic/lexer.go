@@ -75,17 +75,21 @@ func (l *lexer) isJapanese(r rune) bool {
 	return unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Han, r) || (r >= 0x3000 && r <= 0x303F) || (r >= 0xFF00 && r <= 0xFFEF)
 }
 
-// canStartDefinition widens the definition dispatch gate for ASCII
-// bracket-openers commonly used before Japanese definitions. Once
-// lexDefinition starts, it already accepts every non-newline rune.
+// canStartDefinition reports whether a rune can open a DEFINITION token:
+// any Japanese-script rune or the ASCII openers `(` and `[`, which
+// dictionaries use to prefix or bracket Japanese definitions. Once
+// lexDefinition starts, it consumes every non-newline rune.
 func (l *lexer) canStartDefinition(r rune) bool {
 	return l.isJapanese(r) || r == '(' || r == '['
 }
 
-// Lex implements the yyLexer interface. It returns 0 on EOF, NEWLINE on a
-// line terminator, WORD on an ASCII headword run, and DEFINITION on a
-// Japanese-script run. Read failures other than io.EOF and unrecognised
-// runes are surfaced via l.Error so they appear in the validation errors.
+// Lex implements the yyLexer interface. It returns 0 on EOF (or after
+// consuming a malformed line that ended at EOF), NEWLINE on a line
+// terminator (including after recovering from an unrecognised rune),
+// WORD on an ASCII headword run, and DEFINITION on a Japanese-script
+// or ASCII-bracket-opener (`(`/`[`) run. Read failures other than
+// io.EOF and unrecognised runes are recorded via l.Error so they
+// surface as validation errors.
 func (l *lexer) Lex(lval *yySymType) int {
 	r, err := l.skipWhiteSpace()
 	if err == io.EOF {
@@ -177,10 +181,16 @@ func (l *lexer) recoverToNewline() int {
 	for {
 		r, _, err := l.input.ReadRune()
 		if err != nil {
+			if err != io.EOF {
+				l.Error("read: " + err.Error())
+			}
 			return 0
 		}
 		if l.isNewLine(r) {
 			if r == '\r' {
+				// Consume the `\n` of a `\r\n` pair. If the `\n` is missing or
+				// ReadRune returns io.EOF, the next Lex call will see EOF and
+				// return 0 cleanly, so ignoring the error here is safe.
 				l.input.ReadRune() //nolint:errcheck
 			}
 			l.tokenLine = l.lineNo

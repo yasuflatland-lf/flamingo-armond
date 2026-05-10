@@ -403,8 +403,62 @@ func TestProcess_LineWithOnlyParenBackIsRejected(t *testing.T) {
 	if words[0].Front != "fine" {
 		t.Errorf("words[0].Front: got %q want %q", words[0].Front, "fine")
 	}
-	if len(errs) == 0 {
-		t.Errorf("expected at least one validation error for the headword-less row")
+	if !hasValidationError(errs, 1, "syntax error") {
+		t.Errorf("expected syntax error on line 1 for the headword-less row, got %+v", errs)
+	}
+}
+
+func TestProcess_LineWithOnlyBracketBackIsRejected(t *testing.T) {
+	t.Parallel()
+
+	// Symmetric counterpart to TestProcess_LineWithOnlyParenBackIsRejected:
+	// `[` and `(` both go through canStartDefinition, so a line that starts
+	// with `[` also lacks a WORD token and must be rejected.
+	input := "[bracket] only\n" +
+		"fine " + defCat + "\n"
+
+	words, errs, err := textdic.Process(input)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	if len(words) != 1 {
+		t.Fatalf("expected 1 word after recovery, got %d (%+v)", len(words), words)
+	}
+	if words[0].Front != "fine" {
+		t.Errorf("words[0].Front: got %q want %q", words[0].Front, "fine")
+	}
+	if !hasValidationError(errs, 1, "syntax error") {
+		t.Errorf("expected syntax error on line 1 for the headword-less row, got %+v", errs)
+	}
+}
+
+func TestProcess_IdeographicSpaceBeforeBracketSplits(t *testing.T) {
+	t.Parallel()
+
+	// U+3000 (ideographic space) is treated as whitespace by IsWhitespace, so
+	// lexWord must split at "breadwinner<U+3000>(" just as it splits at the
+	// regular space variant tested in TestProcess_BackStartingWithHalfWidthParen.
+	wantBack := "(" + jp(0x5BB6, 0x5EAD) + ")"
+	input := "breadwinner" + jp(0x3000) + wantBack + "\n"
+
+	words, errs, err := textdic.Process(input)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	if len(errs) != 0 {
+		t.Fatalf("expected no validation errors, got %+v", errs)
+	}
+	if len(words) != 1 {
+		t.Fatalf("expected 1 word, got %d (%+v)", len(words), words)
+	}
+	if words[0].Front != "breadwinner" {
+		t.Errorf("Front: got %q want %q", words[0].Front, "breadwinner")
+	}
+	if words[0].Back != wantBack {
+		t.Errorf("Back: got %q want %q", words[0].Back, wantBack)
+	}
+	if words[0].Line != 1 {
+		t.Errorf("Line: got %d want 1", words[0].Line)
 	}
 }
 
