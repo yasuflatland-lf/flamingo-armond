@@ -74,9 +74,70 @@ A top-level play variable named `rescue` produces an Ansible WARNING because the
 
 `default(omit)` is designed for module *argument* processing: when a variable evaluates to `omit`, Ansible removes the corresponding argument from the module call. That contract does not extend to dict values constructed inside `set_fact`. In some Ansible versions, using `default(omit)` as a dict value silently drops the key; in others it retains `None`; in others the behavior depends on whether the source variable was undefined vs. empty. To keep behavior predictable across Ansible versions, use `default(None)` inside `set_fact` dict literals so the key is always present with a `null` value.
 
+### Single source-of-truth `set_fact` for dual-destination secrets
+
+When the same secret must be written identically to two or more destinations (e.g. a server env-var store and a CI provider secret store), calling `lookup('env', ...)` independently in each writer is structurally fragile: an env-var change between task executions, or operator confusion about which source is canonical, causes the destinations to drift silently. Capture the value once into a `set_fact` early in the play, mark `no_log: true`, and reference that fact in every writer. This makes the "same value" invariant structural rather than convention-based.
+
+```yaml
+- name: Capture NOTION_SYNC_TOKEN for dual-destination write
+  ansible.builtin.set_fact:
+    notion_sync_token: "{{ lookup('env', 'NOTION_SYNC_TOKEN') }}"
+  no_log: true
+  tags: [notion, notion-secrets, postapply]
+```
+
+Use `value: "{{ notion_sync_token }}"` in both the Render env-var loop and the `gh secret set` task. A single capture point guarantees bearer-auth integrity across both consumers.
+
+### Accumulator preflight for multi-key validation
+
+A per-iteration `ansible.builtin.fail` inside a preflight loop reports only the FIRST missing env var, forcing the operator into a fix-and-rerun cycle for each key. Prefer the accumulator pattern: collect all missing keys into a `set_fact` list and fail once with the full set. Reset the accumulator before the loop to ensure idempotency on re-entry.
+
+```yaml
+- name: Reset missing-key accumulator
+  ansible.builtin.set_fact:
+    _missing_keys: []
+
+- name: Collect missing keys
+  ansible.builtin.set_fact:
+    _missing_keys: "{{ _missing_keys | default([]) + [item] }}"
+  when: (lookup('env', item) | default('')) | trim | length == 0
+  loop: [KEY_A, KEY_B, KEY_C]
+
+- name: Fail if any required keys are missing
+  ansible.builtin.fail:
+    msg: "Missing required env vars: {{ _missing_keys | join(', ') }}"
+  when: (_missing_keys | default([])) | length > 0
+```
+
+Net cost: +1 task over the per-iteration form. Net benefit: fresh-setup operators see the full missing set in one cycle.
+
 ### Lexicographic ISO 8601 enables string-based archive enumeration
 
 Timestamps written in `YYYY-MM-DDTHH:MM:SSZ` format (fixed-width, sub-seconds truncated, always suffixed `Z`) are lexicographically sortable. String comparison (`>=`) produces the same order as chronological comparison, which means archive files can be enumerated and filtered by run using a plain Jinja string test rather than a date parser. The `postapply.yml` phase uses this property to collect all archive files belonging to the current run by comparing each file's embedded `teardown_at` against the `teardown_started_at` fact set at the beginning of preflight. Deviating from this format (e.g. sub-second precision, offset notation) breaks the string-ordering invariant.
+
+## Ansible tag and fact hygiene
+
+The patterns in this section are pitfalls — structural mistakes that produce silent wrong behavior rather than loud failures. Each was discovered during the Notion-sync wiring.
+
+### Tag inheritance silently drops on first explicit `tags:` add
+
+A task with no `tags:` line inherits ALL invocation tags: it runs under any `--tags X`. Adding `tags: [notion]` REPLACES that inheritance — the task now ONLY runs under `--tags notion`, silently dropping reachability under `--tags postapply`. This caused cascading regressions during Notion-sync implementation: a previously-untagged Render env reconciliation block was scoped to `[notion, notion-secrets]`, breaking `make setup-prod-postapply`.
+
+**Rule:** when adding tags to a task that previously had none, also include every tag that previously reached it via inheritance — typically the phase tag (`postapply`, `teardown`, etc.) for the file.
+
+### Producer tag-set must contain the union of all consumer tag-sets
+
+If a `set_fact` task carries tags `[A, B]` but a downstream task that references `{{ that_fact }}` carries tags `[A, C]`, then running `--tags C` reaches the consumer with the fact undefined. This causes a Jinja2 evaluation failure — or worse, a silent empty-string write when the consuming task has a `default('')` guard. The same applies to preflight tasks: if the preflight tags don't cover every entry path that reaches a writer, missing-required-value checks silently no-op.
+
+**Rule:** every preflight task and `set_fact` producer must carry the UNION of every downstream consumer's tag set. For Notion sync, that union is `[preflight, notion-preflight, notion, notion-secrets, postapply]` on all three preflight tasks.
+
+### `when: (item.value | length) > 0` masks silent empty-write no-ops
+
+A loop that writes env vars and guards with `when: length > 0` to skip empty values seems defensive, but in combination with a preflight whose tag set does not cover all entry paths (see above), missing required values become silent no-ops instead of fast failures. Every `when: length > 0` guard in a writer must be paired with a preflight whose tag set covers every entry path that reaches that writer.
+
+### `gh secret set` always reports `changed_when: rc == 0`
+
+GitHub's `gh secret set` API has no diff semantic — it always overwrites and returns `0` on success. A `changed_when: _result.rc == 0` guard therefore reports `changed` on every successful run, even when the value is identical. This is consistent with the existing `PING_TOKEN` / `RENDER_PING_URL` convention in this repo, but operators reviewing playbook output should not interpret repeated `changed` as evidence of actual state change; it is an API limitation, not a drift indicator.
 
 ## Test infrastructure
 
