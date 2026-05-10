@@ -130,6 +130,13 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 	// nothing to persist. Surface this as ErrNotionSyncParse (HTTP 422) rather
 	// than silently succeeding with an empty upsert.
 	if len(rows) == 0 && len(parseErrs) > 0 {
+		if u.logger != nil {
+			u.logger.WarnContext(ctx, "notion sync: all rows failed to parse",
+				"parse_error_count", len(parseErrs),
+				"first_error_line", parseErrs[0].Line,
+				"first_error_message", parseErrs[0].Message,
+			)
+		}
 		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncParse, "all rows failed to parse")
 	}
 	if len(rows) > dictionaryParsedRowCap {
