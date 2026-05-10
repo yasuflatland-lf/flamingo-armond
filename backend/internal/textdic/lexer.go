@@ -147,7 +147,6 @@ func (l *lexer) lexWord(lval *yySymType) int {
 	var b strings.Builder
 	l.input.UnreadRune()
 	var prev rune
-	havePrev := false
 	for {
 		r, _, err := l.input.ReadRune()
 		if err != nil {
@@ -156,13 +155,12 @@ func (l *lexer) lexWord(lval *yySymType) int {
 			}
 			break
 		}
-		if l.isJapanese(r) || l.isNewLine(r) || ((r == '(' || r == '[') && havePrev && l.IsWhitespace(prev)) {
+		if l.isJapanese(r) || l.isNewLine(r) || ((r == '(' || r == '[') && l.IsWhitespace(prev)) {
 			l.input.UnreadRune()
 			break
 		}
 		b.WriteRune(r)
 		prev = r
-		havePrev = true
 	}
 	lval.str = strings.TrimRightFunc(b.String(), unicode.IsSpace)
 	lval.line = l.lineNo

@@ -202,34 +202,9 @@ func lexAll(t *testing.T, l *lexer) []tokenRecord {
 		// which is fine. Strip trailing Unicode spaces to match lexRun behaviour.
 		out = append(out, tokenRecord{
 			tok:  tok,
-			str:  trimRight(lval.str),
+			str:  strings.TrimRightFunc(lval.str, unicode.IsSpace),
 			line: lval.line,
 		})
 	}
 	return out
-}
-
-func trimRight(s string) string {
-	end := len(s)
-	for end > 0 {
-		r, size := lastRune(s[:end])
-		if !unicode.IsSpace(r) {
-			break
-		}
-		end -= size
-	}
-	return s[:end]
-}
-
-func lastRune(s string) (rune, int) {
-	if len(s) == 0 {
-		return 0, 0
-	}
-	// Walk backwards to find the start of the last UTF-8 sequence.
-	i := len(s) - 1
-	for i > 0 && s[i]&0xC0 == 0x80 {
-		i--
-	}
-	r := []rune(s[i:])[0]
-	return r, len(s) - i
 }
