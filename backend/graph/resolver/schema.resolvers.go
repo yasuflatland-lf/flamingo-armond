@@ -154,6 +154,8 @@ func (r *mutationResolver) UpsertDictionary(ctx context.Context, input model.Ups
 		errs = append(errs, &model.DictionaryValidationError{
 			Line:    e.Line,
 			Message: e.Message,
+			Front:   nilIfEmpty(e.Front),
+			Back:    nilIfEmpty(e.Back),
 		})
 	}
 	return &model.UpsertDictionaryPayload{

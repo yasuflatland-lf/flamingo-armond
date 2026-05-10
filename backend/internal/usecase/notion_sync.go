@@ -245,6 +245,8 @@ func dedupeParsedRows(rows []ParsedRow, errs []DictionaryValidationError) ([]Par
 			errs = append(errs, DictionaryValidationError{
 				Line:    row.Line,
 				Message: "duplicate front in Notion pages (later occurrence wins)",
+				Front:   row.Front,
+				Back:    row.Back,
 			})
 			continue
 		}
