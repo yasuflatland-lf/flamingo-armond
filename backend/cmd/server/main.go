@@ -336,10 +336,13 @@ func main() {
 	logger := slog.New(logging.NewContextHandler(slog.NewJSONHandler(os.Stderr, nil), internalmw.RequestIDFromContext))
 	slog.SetDefault(logger)
 
-	// Load .env.local for local dev. godotenv.Load does not override
-	// process-supplied env, so production (Render) keeps its platform-injected
-	// values. Missing file is expected outside local dev and is not an error.
-	_ = godotenv.Load(".env.local")
+	// Load .env.local for local dev. Overload (not Load) so .env.local wins
+	// over inherited shell env: mise auto-exports the root .env (production
+	// template, with empty placeholders for keys like NOTION_TARGET_OWNER_ID),
+	// which would otherwise mask the local-dev values written by
+	// `make notion-local-setup`. Production (Render) is unaffected because
+	// .env.local is gitignored and never deployed.
+	_ = godotenv.Overload(".env.local")
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
