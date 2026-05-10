@@ -3,6 +3,7 @@
 package textdic
 
 import (
+	"strings"
 	"testing"
 	"unicode"
 )
@@ -96,6 +97,90 @@ func TestLexer_PeekDoesNotAdvanceCursor(t *testing.T) {
 	}
 }
 
+func TestLexer_UnrecognizedCharEmitsNewlineForRecovery(t *testing.T) {
+	t.Parallel()
+
+	l := newLexer("@broken\nword " + lexDefDog + "\n")
+
+	var lval yySymType
+	if tok := l.Lex(&lval); tok != NEWLINE {
+		t.Fatalf("first token: got %d want NEWLINE", tok)
+	}
+	if l.lineNo != 2 {
+		t.Errorf("lineNo after recovery newline: got %d want 2", l.lineNo)
+	}
+	if len(l.errors) != 1 {
+		t.Fatalf("expected 1 lexer error, got %d (%+v)", len(l.errors), l.errors)
+	}
+	if pe, ok := l.errors[0].(parseError); !ok {
+		t.Fatalf("lexer error type: got %T want parseError", l.errors[0])
+	} else {
+		if pe.Line != 1 {
+			t.Errorf("error line: got %d want 1", pe.Line)
+		}
+		if !strings.Contains(pe.Message, "unrecognized character '@'") {
+			t.Errorf("error message: got %q want unrecognized '@'", pe.Message)
+		}
+	}
+
+	if tok := l.Lex(&lval); tok != WORD {
+		t.Fatalf("second token: got %d want WORD", tok)
+	}
+	if lval.str != "word" {
+		t.Errorf("WORD str: got %q want %q", lval.str, "word")
+	}
+	if lval.line != 2 {
+		t.Errorf("WORD line: got %d want 2", lval.line)
+	}
+	if tok := l.Lex(&lval); tok != DEFINITION {
+		t.Fatalf("third token: got %d want DEFINITION", tok)
+	}
+	if lval.str != lexDefDog {
+		t.Errorf("DEFINITION str: got %q want %q", lval.str, lexDefDog)
+	}
+}
+
+func TestLexer_WordStopsAtWhitespaceBeforeDefinitionParen(t *testing.T) {
+	t.Parallel()
+
+	l := newLexer("primary breadwinner (" + lexDefDog + ")\n")
+
+	var lval yySymType
+	if tok := l.Lex(&lval); tok != WORD {
+		t.Fatalf("first token: got %d want WORD", tok)
+	}
+	if lval.str != "primary breadwinner" {
+		t.Errorf("WORD str: got %q want %q", lval.str, "primary breadwinner")
+	}
+	if tok := l.Lex(&lval); tok != DEFINITION {
+		t.Fatalf("second token: got %d want DEFINITION", tok)
+	}
+	wantDefinition := "(" + lexDefDog + ")"
+	if lval.str != wantDefinition {
+		t.Errorf("DEFINITION str: got %q want %q", lval.str, wantDefinition)
+	}
+}
+
+func TestLexer_WordKeepsEmbeddedParenWithoutLeadingSpace(t *testing.T) {
+	t.Parallel()
+
+	l := newLexer("take(s) " + lexDefDog + "\n")
+
+	var lval yySymType
+	if tok := l.Lex(&lval); tok != WORD {
+		t.Fatalf("first token: got %d want WORD", tok)
+	}
+	if lval.str != "take(s)" {
+		t.Errorf("WORD str: got %q want %q", lval.str, "take(s)")
+	}
+	if tok := l.Lex(&lval); tok != DEFINITION {
+		t.Fatalf("second token: got %d want DEFINITION", tok)
+	}
+	if lval.str != lexDefDog {
+		t.Errorf("DEFINITION str: got %q want %q", lval.str, lexDefDog)
+	}
+}
+
 // tokenRecord is a minimal snapshot of one lexed token for comparison.
 type tokenRecord struct {
 	tok  int
@@ -117,34 +202,9 @@ func lexAll(t *testing.T, l *lexer) []tokenRecord {
 		// which is fine. Strip trailing Unicode spaces to match lexRun behaviour.
 		out = append(out, tokenRecord{
 			tok:  tok,
-			str:  trimRight(lval.str),
+			str:  strings.TrimRightFunc(lval.str, unicode.IsSpace),
 			line: lval.line,
 		})
 	}
 	return out
-}
-
-func trimRight(s string) string {
-	end := len(s)
-	for end > 0 {
-		r, size := lastRune(s[:end])
-		if !unicode.IsSpace(r) {
-			break
-		}
-		end -= size
-	}
-	return s[:end]
-}
-
-func lastRune(s string) (rune, int) {
-	if len(s) == 0 {
-		return 0, 0
-	}
-	// Walk backwards to find the start of the last UTF-8 sequence.
-	i := len(s) - 1
-	for i > 0 && s[i]&0xC0 == 0x80 {
-		i--
-	}
-	r := []rune(s[i:])[0]
-	return r, len(s) - i
 }
