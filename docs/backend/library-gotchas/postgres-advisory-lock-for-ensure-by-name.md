@@ -34,4 +34,4 @@ A `UNIQUE(owner_id, name)` constraint would be simpler. The reason `cardgroups` 
 
 ## Cross-aggregate use
 
-The same pattern works for any `Ensure-by-natural-key` repository method on a table without a matching UNIQUE constraint. Two arguments are enough up to a 64-bit composite key; for wider keys, concatenate the parts before hashing: `pg_advisory_xact_lock(hashtextextended(? || ':' || ?, 0))`. The separator must not appear in any value, or use a length-prefix scheme to avoid collisions like `('ab', 'cd')` vs `('a', 'bcd')`.
+The same pattern works for any `Ensure-by-natural-key` repository method on a table without a matching UNIQUE constraint. Two arguments are enough for a composite key.
