@@ -94,11 +94,9 @@
       Preflight should have caught this -- run `make setup-prod-preflight`.
   when: (vercel_token | length) == 0
 
-- name: Verify required NOTION_* env vars are present in root .env
-  ansible.builtin.fail:
-    msg: |
-      Missing required NOTION_* env var: {{ item }}.
-      Set it in root .env and re-run.
+- name: Collect missing required NOTION_* env vars
+  ansible.builtin.set_fact:
+    _missing_notion_keys: "{{ _missing_notion_keys | default([]) + [item] }}"
   when: (lookup('env', item) | default('')) | trim | length == 0
   loop:
     - NOTION_TOKEN
@@ -106,6 +104,16 @@
     - NOTION_TARGET_OWNER_ID
     - NOTION_TARGET_CARDGROUP_NAME
     - NOTION_SYNC_TOKEN
+  tags: [preflight, notion-preflight, notion]
+
+- name: Fail if any required NOTION_* env vars are missing
+  ansible.builtin.fail:
+    msg: |
+      Missing required NOTION_* env vars in root .env:
+        {{ _missing_notion_keys | join(', ') }}
+
+      Set all of the above in the root .env file and re-run.
+  when: (_missing_notion_keys | default([])) | length > 0
   tags: [preflight, notion-preflight, notion]
 
 # ---------------------------------------------------------------------------
@@ -231,8 +239,14 @@
 # only the keys we own). The endpoint requires the key to exist; the
 # rescue calls out the Blueprint-sync prerequisite if 404 fires.
 # ---------------------------------------------------------------------------
+- name: Capture NOTION_SYNC_TOKEN for dual-destination write
+  ansible.builtin.set_fact:
+    notion_sync_token: "{{ lookup('env', 'NOTION_SYNC_TOKEN') }}"
+  no_log: true
+  tags: [notion, notion-secrets, postapply]
+
 - name: Reconcile dynamic Render env vars from state
-  tags: [notion, notion-secrets]
+  tags: [notion, notion-secrets, postapply]
   block:
     - name: "PUT /v1/services/{{ render_service_id }}/env-vars/{{ item.key }}"
       ansible.builtin.uri:
@@ -268,7 +282,7 @@
         - key: NOTION_TARGET_CARDGROUP_NAME
           value: "{{ lookup('env', 'NOTION_TARGET_CARDGROUP_NAME') | default('') }}"
         - key: NOTION_SYNC_TOKEN
-          value: "{{ lookup('env', 'NOTION_SYNC_TOKEN') | default('') }}"
+          value: "{{ notion_sync_token }}"
         - key: NOTION_MAX_ATTEMPTS
           value: "{{ lookup('env', 'NOTION_MAX_ATTEMPTS') | default('5') }}"
         - key: NOTION_MAX_ELAPSED
@@ -463,7 +477,7 @@
 - name: Register NOTION_SYNC_TOKEN as GitHub Actions secret
   ansible.builtin.shell:
     cmd: gh secret set NOTION_SYNC_TOKEN --repo {{ repo }}
-    stdin: "{{ lookup('env', 'NOTION_SYNC_TOKEN') }}"
+    stdin: "{{ notion_sync_token }}"
     stdin_add_newline: false
   register: _gh_notion_token_result
   no_log: true
