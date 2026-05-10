@@ -49,6 +49,7 @@ Use this section to run the Notion sync against your local Supabase instance wit
 | `NOTION_TOKEN` | Notion integration token (shared with prod). Same workspace as production by default. |
 | `NOTION_PAGE_IDS` | Comma-separated list of Notion page UUIDs to sync (shared with prod). |
 | `NOTION_LOCAL_TARGET_OWNER_EMAIL` | Email of the local Supabase user who will own the synced cardgroup. Resolved to UUID at setup. |
+| `SUPABASE_DB_URL` | Local Supabase Postgres connection string (e.g. `postgresql://postgres:postgres@127.0.0.1:54322/postgres`). Run `supabase status` to confirm. Used to resolve the owner email to its UUID. |
 | `NOTION_LOCAL_TARGET_CARDGROUP_NAME` | Name of the cardgroup that holds locally-synced cards. Kept distinct from prod by convention so a misconfigured `SUPABASE_DB_URL` cannot delete prod data. |
 | `NOTION_LOCAL_SYNC_TOKEN` | Bearer token used by the local backend to authenticate the `/internal/notion-sync` POST. Local-only; not pushed to Render. |
 

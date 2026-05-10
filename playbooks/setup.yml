@@ -305,10 +305,22 @@
       failed_when: _notion_missing_keys | length > 0
       tags: [notion-local, never]
 
-    - name: Check backend/.env.local ownership for notion-local writes
-      ansible.builtin.debug:
-        msg: "notion-local: backend/.env.local is user-owned (no managed-by marker) -- skipping NOTION_* writes."
+    - name: Fail if backend/.env.local is user-owned — notion-local cannot write
+      ansible.builtin.fail:
+        msg: |
+          notion-local: backend/.env.local exists but is not managed by this playbook
+          (the `# managed-by: sync-env` marker line is missing).
+          To let notion-local-setup write NOTION_* keys: back up the file, delete it,
+          run `make sync-env` to reseed it, then retry `make notion-local-setup`.
       when: env_ownership[repo_root + '/backend/.env.local'] == 'user-owned'
+      tags: [notion-local, never]
+
+    - name: Fail if backend/.env.local is missing — notion-local cannot create it
+      ansible.builtin.fail:
+        msg: |
+          notion-local: backend/.env.local does not exist.
+          Run `make sync-env` first to seed the file, then retry `make notion-local-setup`.
+      when: env_ownership[repo_root + '/backend/.env.local'] == 'missing'
       tags: [notion-local, never]
 
     - name: Probe local Supabase readiness for notion-local
