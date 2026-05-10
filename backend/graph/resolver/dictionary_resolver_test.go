@@ -225,8 +225,10 @@ func newUpsertDictSrv(dictUC usecase.DictionaryUsecase) *handler.Server {
 // upsertDictionaryMutation returns a JSON-encoded GraphQL mutation body for
 // upsertDictionary. Both arguments are embedded literally so the caller must
 // escape them if needed; for test use the values are always safe ASCII/base64.
+// The errors selection set includes front and back so resolver mapping of those
+// optional fields can be asserted.
 func upsertDictionaryMutation(cardgroupID, payload string) string {
-	return `{"query":"mutation { upsertDictionary(input: { cardgroupId: \"` + cardgroupID + `\", payload: \"` + payload + `\" }) { inserted updated errors { line message } } }"}`
+	return `{"query":"mutation { upsertDictionary(input: { cardgroupId: \"` + cardgroupID + `\", payload: \"` + payload + `\" }) { inserted updated errors { line message front back } } }"}`
 }
 
 // TestUpsertDictionary_ResolverHappyPath drives the full GraphQL transport with
@@ -277,6 +279,67 @@ func TestUpsertDictionary_ResolverHappyPath(t *testing.T) {
 	}
 	if msg, _ := firstErr["message"].(string); msg != "duplicate" {
 		t.Fatalf("expected errors[0].message=%q, got %q", "duplicate", msg)
+	}
+	// A syntax-level error has no parsed front/back — the resolver must leave
+	// both fields as null (i.e. the key is absent or nil in the JSON map).
+	if v, present := firstErr["front"]; present && v != nil {
+		t.Fatalf("expected errors[0].front=null for syntax error, got %v", v)
+	}
+	if v, present := firstErr["back"]; present && v != nil {
+		t.Fatalf("expected errors[0].back=null for syntax error, got %v", v)
+	}
+}
+
+// TestUpsertDictionary_ResolverMapsValidationErrorFrontBack verifies that when
+// the DictionaryUsecase returns a DictionaryValidationError with non-empty
+// Front and Back (the duplicate-front dedup path), the resolver maps them to
+// non-nil *string pointers and the GraphQL response carries the values.
+func TestUpsertDictionary_ResolverMapsValidationErrorFrontBack(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockDictionaryUsecase{
+		returnOut: usecase.UpsertDictionaryOutput{
+			Inserted: 0,
+			Updated:  1,
+			Errors: []usecase.DictionaryValidationError{
+				{
+					Line:    3,
+					Message: "duplicate front in payload (later occurrence wins)",
+					Front:   "apple",
+					Back:    "fruit",
+				},
+			},
+		},
+	}
+	srv := newUpsertDictSrv(mock)
+	payload := base64.StdEncoding.EncodeToString([]byte("apple fruit"))
+	resp := gqlRequest(t, srv, authedCtx("u1"), upsertDictionaryMutation("cg-1", payload))
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected top-level errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	result, _ := data["upsertDictionary"].(map[string]any)
+	if result == nil {
+		t.Fatalf("expected data.upsertDictionary, got nil; response: %v", resp)
+	}
+
+	errs, _ := result["errors"].([]any)
+	if len(errs) != 1 {
+		t.Fatalf("expected 1 error entry, got %d: %v", len(errs), errs)
+	}
+	entry, _ := errs[0].(map[string]any)
+	if line, _ := entry["line"].(float64); int(line) != 3 {
+		t.Fatalf("expected errors[0].line=3, got %v", entry["line"])
+	}
+	// front and back must be present and non-nil for a parsed duplicate row.
+	front, _ := entry["front"].(string)
+	if front != "apple" {
+		t.Fatalf("expected errors[0].front=%q, got %v", "apple", entry["front"])
+	}
+	back, _ := entry["back"].(string)
+	if back != "fruit" {
+		t.Fatalf("expected errors[0].back=%q, got %v", "fruit", entry["back"])
 	}
 }
 
