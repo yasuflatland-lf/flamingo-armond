@@ -425,6 +425,18 @@ func TestDictionaryUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
 	if len(out.Errors) != 2 {
 		t.Fatalf("expected exactly 2 parse errors, got %d: %+v", len(out.Errors), out.Errors)
 	}
+	// Syntax-error entries must NOT carry Front or Back — the textdic parser
+	// does not emit field values for malformed rows, and the usecase must not
+	// populate them either. This locks in the contract that powers the
+	// omitempty / nil-pointer behaviour downstream in the resolver layer.
+	for i, e := range out.Errors {
+		if e.Front != "" {
+			t.Fatalf("syntax-error Errors[%d].Front = %q, want empty", i, e.Front)
+		}
+		if e.Back != "" {
+			t.Fatalf("syntax-error Errors[%d].Back = %q, want empty", i, e.Back)
+		}
+	}
 	// The repo must have been called exactly once with the 1 surviving card.
 	if repo.upsertCalls != 1 {
 		t.Fatalf("expected 1 UpsertManyTx call, got %d", repo.upsertCalls)

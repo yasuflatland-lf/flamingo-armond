@@ -146,6 +146,76 @@ func TestHandlerSuccess(t *testing.T) {
 	}
 }
 
+func TestHandlerSuccess_ParseErrorsJSONShape(t *testing.T) {
+	t.Parallel()
+
+	uc := &stubSyncUsecase{out: usecase.SyncFromNotionOutput{
+		CardgroupID: "cg-1",
+		ParseErrors: []usecase.DictionaryValidationError{
+			{Line: 2, Message: "duplicate front in Notion pages (later occurrence wins)", Front: "apple", Back: "fruit"},
+			{Line: 3, Message: "syntax error: unexpected ..."},
+		},
+	}}
+	h := New(uc, Config{Token: "secret"})
+	req := httptest.NewRequest(http.MethodPost, "/internal/notion-sync", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	e := echo.New()
+	c := e.NewContext(req, rec)
+
+	if err := h.Handle(c); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+
+	rawErrs, ok := body["parseErrors"]
+	if !ok {
+		t.Fatal("parseErrors key missing from response body")
+	}
+
+	var parseErrors []map[string]any
+	if err := json.Unmarshal(rawErrs, &parseErrors); err != nil {
+		t.Fatalf("decode parseErrors: %v", err)
+	}
+	if len(parseErrors) != 2 {
+		t.Fatalf("parseErrors len = %d, want 2", len(parseErrors))
+	}
+
+	// Entry 0: all four fields must be present with correct values.
+	e0 := parseErrors[0]
+	if e0["line"] != float64(2) {
+		t.Fatalf("parseErrors[0].line = %v, want 2", e0["line"])
+	}
+	if e0["message"] != "duplicate front in Notion pages (later occurrence wins)" {
+		t.Fatalf("parseErrors[0].message = %v", e0["message"])
+	}
+	if e0["front"] != "apple" {
+		t.Fatalf("parseErrors[0].front = %v, want apple", e0["front"])
+	}
+	if e0["back"] != "fruit" {
+		t.Fatalf("parseErrors[0].back = %v, want fruit", e0["back"])
+	}
+
+	// Entry 1: front and back must be absent (omitempty drops zero-value strings).
+	e1 := parseErrors[1]
+	if e1["line"] != float64(3) {
+		t.Fatalf("parseErrors[1].line = %v, want 3", e1["line"])
+	}
+	if _, ok := e1["front"]; ok {
+		t.Fatal("parseErrors[1] must not have front key (omitempty), but it is present")
+	}
+	if _, ok := e1["back"]; ok {
+		t.Fatal("parseErrors[1] must not have back key (omitempty), but it is present")
+	}
+}
+
 func TestHandlerErrorMapping(t *testing.T) {
 	t.Parallel()
 
