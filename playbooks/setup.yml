@@ -346,6 +346,10 @@
       when: not (_notion_owner_email | regex_search('^[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}$'))
       tags: [notion-local, never]
 
+    # psql interpolates `:'var'` only for queries read from stdin or `-f`,
+    # never for queries passed via `-c`. Pipe the SQL through stdin so the
+    # email is bound as a quoted literal (psql escapes it) instead of being
+    # string-concatenated into the query.
     - name: Resolve NOTION_LOCAL_TARGET_OWNER_EMAIL to a UUID in auth.users
       ansible.builtin.command:
         argv:
@@ -357,8 +361,7 @@
           - "email={{ _notion_root_kv['NOTION_LOCAL_TARGET_OWNER_EMAIL'] | trim('\"') | trim }}"
           - -t
           - -A
-          - -c
-          - "SELECT id FROM auth.users WHERE lower(email) = lower(:'email')"
+        stdin: "SELECT id FROM auth.users WHERE lower(email) = lower(:'email');"
       register: _notion_owner_uuid_result
       changed_when: false
       tags: [notion-local, never]
