@@ -30,10 +30,12 @@ import (
 	"backend/internal/auth"
 	"backend/internal/database"
 	"backend/internal/domain/service"
+	"backend/internal/handler/notionsync"
 	"backend/internal/handler/ping"
 	"backend/internal/loader"
 	"backend/internal/logging"
 	internalmw "backend/internal/middleware"
+	"backend/internal/notion"
 	"backend/internal/repository"
 	"backend/internal/telemetry"
 	"backend/internal/usecase"
@@ -67,6 +69,7 @@ func newRouter(
 	cardgroupRepo repository.CardgroupRepository,
 	cardRepo repository.CardRepository,
 	pingHandler *ping.Handler,
+	notionSyncHandler *notionsync.Handler,
 	swipeRecordRepo ...repository.SwipeRecordRepository,
 ) *echo.Echo {
 	e := echo.New()
@@ -87,6 +90,9 @@ func newRouter(
 	})
 
 	e.POST("/internal/ping", pingHandler.Handle, pingHandler.RateLimiter())
+	if notionSyncHandler != nil {
+		e.POST("/internal/notion-sync", notionSyncHandler.Handle)
+	}
 
 	gqlSrv := newGraphQLServer(resolvers)
 	// Wrap only the GraphQL POST handler with otelhttp so the HTTP layer
@@ -217,6 +223,16 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	if err != nil {
 		return eris.Wrap(err, "run: db config")
 	}
+	notionEnv, missingNotionEnv, err := notionsync.OptionalConfigFromEnv()
+	if err != nil {
+		return err
+	}
+	notionSyncDisabled := len(missingNotionEnv) > 0
+	if notionSyncDisabled {
+		slog.WarnContext(ctx, "notion sync: disabled, missing env vars",
+			"missing_vars", missingNotionEnv,
+		)
+	}
 	if err := database.Migrate(dbCfg.URL); err != nil {
 		return eris.Wrap(err, "run: migrate")
 	}
@@ -247,13 +263,23 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	adminUserUC := usecase.NewAdminUser(userRepo, roleRepo, authSvc)
 	adminRoleUC := usecase.NewAdminRole(roleRepo, authSvc)
 	lastViewedCardgroupUC := usecase.NewLastViewedCardgroup(userRepo)
-
 	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, dictionaryUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC)
 	pingHandler := ping.New(pingRecordRepo, pingToken)
+	var notionSyncHandler *notionsync.Handler
+	if !notionSyncDisabled {
+		retryCfg, err := notion.RetryConfigFromEnv()
+		if err != nil {
+			return err
+		}
+		retryCfg.Logger = logger
+		notionFetcher := notion.NewFetcher(notionEnv.NotionToken, retryCfg)
+		notionSyncUC := usecase.NewNotionSyncUsecase(notionFetcher, cardgroupRepo, cardRepo, db.GORM, logger)
+		notionSyncHandler = notionsync.New(notionSyncUC, notionEnv.HandlerConfig)
+	}
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
 	// telemetry.Init for the full ordering invariant.
-	e := newRouter(resolvers, authMW, promoter, userRepo, roleRepo, cardgroupRepo, cardRepo, pingHandler, swipeRecordRepo)
+	e := newRouter(resolvers, authMW, promoter, userRepo, roleRepo, cardgroupRepo, cardRepo, pingHandler, notionSyncHandler, swipeRecordRepo)
 	e.Logger = logger
 
 	port := os.Getenv("PORT")

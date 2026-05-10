@@ -316,19 +316,6 @@ func userCursorWhere(createdAtAsc, idAsc bool, cursor gormUser) (string, []any) 
 	return clauseSQL, []any{cursor.CreatedAt, cursor.CreatedAt, cursor.ID}
 }
 
-// escapeLikePattern escapes the ILIKE meta-characters `%` and `_` so a
-// user-supplied search term containing them matches literally. The default
-// LIKE/ILIKE escape character is backslash; the backslash itself is escaped
-// first so we do not double-escape characters injected by this function.
-func escapeLikePattern(s string) string {
-	r := strings.NewReplacer(
-		`\`, `\\`,
-		`%`, `\%`,
-		`_`, `\_`,
-	)
-	return r.Replace(s)
-}
-
 func userToDomain(g gormUser) *domain.User {
 	return &domain.User{
 		ID:                    g.ID,

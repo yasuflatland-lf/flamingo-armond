@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -75,6 +76,30 @@ func TestCardgroupRepository_FindByOwner_ScopedToOwner(t *testing.T) {
 	ids2 := cardgroupIDSet(result2)
 	require.Contains(t, ids2, cg2.ID, "owner2 should see their own group")
 	require.NotContains(t, ids2, cg1.ID, "owner2 should not see owner1's group")
+}
+
+func TestCardgroupRepository_FindByName_ScopedToOwner(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerA := insertAuthUser(t, ctx)
+	ownerB := insertAuthUser(t, ctx)
+	repo := repository.NewCardgroupRepository(testDB.GORM)
+
+	cgA := newCardgroup(ownerA, "Shared Name")
+	cgB := newCardgroup(ownerB, "Shared Name")
+	require.NoError(t, repo.Create(ctx, cgA))
+	require.NoError(t, repo.Create(ctx, cgB))
+
+	gotA, err := repo.FindByName(ctx, ownerA, "Shared Name")
+	require.NoError(t, err)
+	require.Equal(t, cgA.ID, gotA.ID)
+
+	gotB, err := repo.FindByName(ctx, ownerB, "Shared Name")
+	require.NoError(t, err)
+	require.Equal(t, cgB.ID, gotB.ID)
+
+	_, err = repo.FindByName(ctx, ownerA, "Missing")
+	require.ErrorIs(t, err, repository.ErrNotFound)
 }
 
 func cardgroupIDSet(cgs []*domain.Cardgroup) map[string]struct{} {
@@ -277,6 +302,100 @@ func TestCardgroupRepository_NameLengthCheckRejectsTooLong(t *testing.T) {
 	require.Error(t, err, "DB CHECK constraint should reject a 101-char name")
 }
 
+func TestCardgroupRepository_EnsureByName_Existing(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardgroupRepository(testDB.GORM)
+
+	existing := newCardgroup(ownerID, "Ensure Existing")
+	require.NoError(t, repo.Create(ctx, existing))
+
+	got, err := repo.EnsureByName(ctx, ownerID, existing.Name)
+	require.NoError(t, err)
+	require.Equal(t, existing.ID, got.ID)
+
+	rows := countCardgroupsByOwnerAndName(t, ctx, ownerID, existing.Name)
+	require.Equal(t, int64(1), rows)
+}
+
+func TestCardgroupRepository_EnsureByName_Create(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardgroupRepository(testDB.GORM)
+
+	got, err := repo.EnsureByName(ctx, ownerID, "Ensure Create")
+	require.NoError(t, err)
+	require.Equal(t, ownerID, got.OwnerID)
+	require.Equal(t, "Ensure Create", got.Name)
+	require.NotEmpty(t, got.ID)
+
+	found, err := repo.FindByName(ctx, ownerID, "Ensure Create")
+	require.NoError(t, err)
+	require.Equal(t, got.ID, found.ID)
+}
+
+// TestCardgroupRepository_EnsureByName_WhitespaceContract pins the current
+// contract that EnsureByName matches name verbatim: leading/trailing whitespace
+// produces a distinct row from the trimmed value. Trimming is the caller's
+// responsibility (the NotionSyncUsecase trims at its boundary). A future
+// caller that bypasses that trim must either trim itself or this contract
+// must change deliberately, not by accident.
+func TestCardgroupRepository_EnsureByName_WhitespaceContract(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardgroupRepository(testDB.GORM)
+
+	base := "Whitespace " + uuid.NewString()
+	trimmed, err := repo.EnsureByName(ctx, ownerID, base)
+	require.NoError(t, err)
+
+	leadingSpace, err := repo.EnsureByName(ctx, ownerID, " "+base)
+	require.NoError(t, err)
+	require.NotEqual(t, trimmed.ID, leadingSpace.ID,
+		"EnsureByName must NOT trim — leading-space name produces a distinct row")
+
+	trailingSpace, err := repo.EnsureByName(ctx, ownerID, base+" ")
+	require.NoError(t, err)
+	require.NotEqual(t, trimmed.ID, trailingSpace.ID,
+		"EnsureByName must NOT trim — trailing-space name produces a distinct row")
+	require.NotEqual(t, leadingSpace.ID, trailingSpace.ID)
+}
+
+func TestCardgroupRepository_EnsureByName_DuplicateRace(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	ownerID := insertAuthUser(t, ctx)
+	repo := repository.NewCardgroupRepository(testDB.GORM)
+	name := "Ensure Race " + uuid.NewString()
+
+	const workers = 2
+	results := make([]*domain.Cardgroup, workers)
+	errs := make([]error, workers)
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func(i int) {
+			defer wg.Done()
+			results[i], errs[i] = repo.EnsureByName(ctx, ownerID, name)
+		}(i)
+	}
+	wg.Wait()
+
+	for _, err := range errs {
+		require.NoError(t, err)
+	}
+	require.NotNil(t, results[0])
+	require.NotNil(t, results[1])
+	require.Equal(t, results[0].ID, results[1].ID)
+
+	rows := countCardgroupsByOwnerAndName(t, ctx, ownerID, name)
+	require.Equal(t, int64(1), rows)
+}
+
 // ---------------------------------------------------------------------------
 // FindPageByOwner / CountByOwner integration tests
 // ---------------------------------------------------------------------------
@@ -300,6 +419,17 @@ func insertNamedCardgroups(t *testing.T, ctx context.Context, ownerID string, na
 		cgs[i] = cg
 	}
 	return cgs
+}
+
+func countCardgroupsByOwnerAndName(t *testing.T, ctx context.Context, ownerID, name string) int64 {
+	t.Helper()
+	var count int64
+	err := testDB.GORM.WithContext(ctx).
+		Model(&domain.Cardgroup{}).
+		Where("owner_id = ? AND name = ?", ownerID, name).
+		Count(&count).Error
+	require.NoError(t, err)
+	return count
 }
 
 // cardgroupNameSet builds a set of names from a slice for membership checks.

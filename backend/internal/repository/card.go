@@ -86,6 +86,7 @@ type CardRepository interface {
 	FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error)
 	FindByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error)
+	ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, cardgroupID string) ([]string, error)
 	FindPageByCardgroup(
 		ctx context.Context,
 		cardgroupID string,
@@ -113,6 +114,16 @@ type CardRepository interface {
 	// slice GORM v2 omits the `WHERE id IN (?)` clause altogether, which would
 	// convert this `Delete` into an unbounded mass delete — far worse than a slow scan.
 	DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID string, ids []string) (int64, error)
+	// DeleteByCardgroupAndFrontsTx hard-deletes cards by the scoped
+	// (cardgroup_id, front) natural key. Scoping is by cardgroup_id only —
+	// callers must verify the cardgroup is reachable by the calling owner
+	// before invoking this method (NotionSyncUsecase is the canonical caller).
+	//
+	// Empty fronts short-circuits to (0, nil) without touching the DB. With an
+	// empty slice GORM v2 omits the `WHERE front IN (?)` clause altogether,
+	// which would convert this `Delete` into a delete-all-cards-in-cardgroup.
+	// See `.claude/rules/go-library-gotchas.md` § GORM empty IN.
+	DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error)
 	// UpsertManyTx upserts cards by (cardgroup_id, front). Existing rows have
 	// their `back` and `updated_at` columns overwritten; new rows are inserted
 	// using the FSRS state values supplied on each domain.Card. Returns the
@@ -175,14 +186,16 @@ func (r *cardRepo) FindByCardgroup(ctx context.Context, cardgroupID string) ([]*
 	return out, nil
 }
 
-// escapeLike escapes the three Postgres LIKE metacharacters so user-supplied
-// text is treated as a literal substring. Order matters: escape '\' first,
-// otherwise the second pass would re-escape the already-escaped sequences.
-func escapeLike(s string) string {
-	s = strings.ReplaceAll(s, `\`, `\\`)
-	s = strings.ReplaceAll(s, `%`, `\%`)
-	s = strings.ReplaceAll(s, `_`, `\_`)
-	return s
+func (r *cardRepo) ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, cardgroupID string) ([]string, error) {
+	var fronts []string
+	if err := tx.WithContext(ctx).
+		Model(&gormCard{}).
+		Where("cardgroup_id = ?", cardgroupID).
+		Order("front ASC").
+		Pluck("front", &fronts).Error; err != nil {
+		return nil, eris.Wrap(err, "repository: list card fronts by cardgroup")
+	}
+	return fronts, nil
 }
 
 // FindPageByCardgroup returns a window of cards for a cardgroup ordered by
@@ -208,9 +221,9 @@ func (r *cardRepo) FindPageByCardgroup(
 	base := r.db.WithContext(ctx).Model(&gormCard{}).Where("cardgroup_id = ?", cardgroupID)
 
 	// Non-nil search is guaranteed by the usecase to be non-empty and trimmed.
-	// escapeLike guards against LIKE metacharacter injection.
+	// escapeLikePattern guards against LIKE metacharacter injection.
 	if search != nil {
-		pattern := "%" + escapeLike(*search) + "%"
+		pattern := "%" + escapeLikePattern(*search) + "%"
 		base = base.Where("(front ILIKE ? OR back ILIKE ?)", pattern, pattern)
 	}
 
@@ -559,6 +572,19 @@ func (r *cardRepo) DeleteByIDsTx(ctx context.Context, tx *gorm.DB, ownerID strin
 		Delete(&gormCard{})
 	if res.Error != nil {
 		return 0, eris.Wrap(res.Error, "repository: bulk delete cards")
+	}
+	return res.RowsAffected, nil
+}
+
+func (r *cardRepo) DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error) {
+	if len(fronts) == 0 {
+		return 0, nil
+	}
+	res := tx.WithContext(ctx).
+		Where("cardgroup_id = ? AND front IN ?", cardgroupID, fronts).
+		Delete(&gormCard{})
+	if res.Error != nil {
+		return 0, eris.Wrap(res.Error, "repository: delete cards by cardgroup and fronts")
 	}
 	return res.RowsAffected, nil
 }

@@ -108,6 +108,9 @@ type countingCardRepo struct {
 func (r *countingCardgroupRepo) FindByID(_ context.Context, _ string) (*domain.Cardgroup, error) {
 	panic("countingCardgroupRepo.FindByID not configured")
 }
+func (r *countingCardgroupRepo) FindByName(_ context.Context, _, _ string) (*domain.Cardgroup, error) {
+	panic("countingCardgroupRepo.FindByName not configured")
+}
 func (r *countingCardgroupRepo) FindByOwner(_ context.Context, _ string) ([]*domain.Cardgroup, error) {
 	panic("countingCardgroupRepo.FindByOwner not configured")
 }
@@ -119,6 +122,9 @@ func (r *countingCardgroupRepo) FindByIDs(ctx context.Context, ids []string) (ma
 }
 func (r *countingCardgroupRepo) Create(_ context.Context, _ *domain.Cardgroup) error {
 	panic("countingCardgroupRepo.Create not configured")
+}
+func (r *countingCardgroupRepo) EnsureByName(_ context.Context, _, _ string) (*domain.Cardgroup, error) {
+	panic("countingCardgroupRepo.EnsureByName not configured")
 }
 func (r *countingCardgroupRepo) Update(_ context.Context, _ string, _ repository.CardgroupUpdate) (*domain.Cardgroup, error) {
 	panic("countingCardgroupRepo.Update not configured")
@@ -164,6 +170,9 @@ func (r *countingCardRepo) FindByIDs(ctx context.Context, ids []string) (map[str
 func (r *countingCardRepo) FindByCardgroup(_ context.Context, _ string) ([]*domain.Card, error) {
 	panic("countingCardRepo.FindByCardgroup not configured")
 }
+func (r *countingCardRepo) ListFrontsByCardgroupTx(_ context.Context, _ *gorm.DB, _ string) ([]string, error) {
+	panic("countingCardRepo.ListFrontsByCardgroupTx not configured")
+}
 func (r *countingCardRepo) FindPageByCardgroup(
 	_ context.Context, _ string,
 	_, _ *repository.CardCursor,
@@ -190,6 +199,9 @@ func (r *countingCardRepo) Delete(_ context.Context, _ string) error {
 }
 func (r *countingCardRepo) DeleteByIDsTx(_ context.Context, _ *gorm.DB, _ string, _ []string) (int64, error) {
 	panic("countingCardRepo.DeleteByIDsTx not configured")
+}
+func (r *countingCardRepo) DeleteByCardgroupAndFrontsTx(_ context.Context, _ *gorm.DB, _ string, _ []string) (int64, error) {
+	panic("countingCardRepo.DeleteByCardgroupAndFrontsTx not configured")
 }
 func (r *countingCardRepo) UpsertManyTx(_ context.Context, _ *gorm.DB, _ []*domain.Card) (repository.UpsertManyTxResult, error) {
 	panic("countingCardRepo.UpsertManyTx not configured")
