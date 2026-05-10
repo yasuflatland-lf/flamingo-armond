@@ -2,11 +2,11 @@ package repository
 
 import "strings"
 
-// likeEscaper escapes the three LIKE/ILIKE meta-characters (\, %, _) so a
+// likeEscaper escapes the three LIKE/ILIKE meta-characters (\, _, %) so a
 // user-supplied substring can be embedded inside an outer "%...%" pattern
-// safely. Backslash is listed first: escaping it before the other two
-// prevents the later replacements from re-escaping sequences this pass
-// already emitted.
+// safely. Backslash is listed first so it wins the first-match comparison at
+// any position that starts with \, preventing double-escaping of the sequences
+// this pass emits.
 //
 // Reference: .claude/rules/go-library-gotchas.md "GORM LIKE / ILIKE
 // requires escaping %, _, \ in user input".
