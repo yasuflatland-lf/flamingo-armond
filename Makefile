@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen codegen-yacc test clean clean-frontend clean-backend doctor db-reset setup-prod setup-prod-preflight setup-prod-postapply teardown-prod teardown-prod-preflight seed-admin
+.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen codegen-yacc test clean clean-frontend clean-backend doctor db-reset setup-prod setup-prod-preflight setup-prod-postapply teardown-prod teardown-prod-preflight seed-admin sync-notion-secrets sync-notion-preflight
 
 # Most env / Supabase targets dispatch to the playbook below; tags select the subset.
 ANSIBLE := ansible-playbook -i playbooks/inventory.local playbooks/setup.yml
@@ -106,6 +106,12 @@ setup-prod-preflight: mise-install ## Verify tokens and GitHub App installations
 
 setup-prod-postapply: mise-install ## Trigger first Render deploy + smoke tests (re-runnable from .state.yml)
 	@$(ANSIBLE_PROD) --tags postapply
+
+sync-notion-secrets: mise-install ## Sync NOTION_* to Render env + GHA secrets (idempotent)
+	@$(ANSIBLE_PROD) --tags notion
+
+sync-notion-preflight: mise-install ## Verify root .env has all required NOTION_* without writing
+	@$(ANSIBLE_PROD) --tags notion-preflight
 
 teardown-prod: mise-install ## DESTRUCTIVE: tear down the production environment created by setup-prod
 	@$(ANSIBLE_TEARDOWN)
