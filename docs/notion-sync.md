@@ -74,7 +74,7 @@ Pushes all seven NOTION_* keys to the Render service's environment variables, an
 make setup-prod-postapply
 ```
 
-Runs the complete post-`terraform apply` setup, which includes `sync-notion-secrets` automatically. Use this after provisioning or re-provisioning the production environment. The playbook lives at `playbooks/setup-prod/postapply.yml`.
+Runs the complete production post-provisioning Ansible phase, which includes `sync-notion-secrets` automatically. Use this after provisioning or re-provisioning the production environment. The playbook lives at `playbooks/setup-prod/postapply.yml`.
 
 ### Verifying after setup
 
