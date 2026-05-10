@@ -177,6 +177,237 @@ func TestProcess_MalformedRows(t *testing.T) {
 	}
 }
 
+func TestProcess_RecoversFromUnrecognizedLine(t *testing.T) {
+	t.Parallel()
+
+	input := "good " + defDog + "\n" +
+		"@broken\n" +
+		"fine " + defCat + "\n"
+
+	words, errs, err := textdic.Process(input)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	if len(words) != 2 {
+		t.Fatalf("expected 2 words after recovery, got %d (%+v)", len(words), words)
+	}
+	if words[0].Front != "good" {
+		t.Errorf("words[0].Front: got %q want %q", words[0].Front, "good")
+	}
+	if words[1].Front != "fine" {
+		t.Errorf("words[1].Front: got %q want %q", words[1].Front, "fine")
+	}
+	if !hasValidationError(errs, 2, "unrecognized character '@'") {
+		t.Errorf("expected unrecognized-character error on line 2, got %+v", errs)
+	}
+}
+
+func TestProcess_RecoversFromUnrecognizedLineWithCRLF(t *testing.T) {
+	t.Parallel()
+
+	input := "good " + defDog + "\r\n" +
+		"@broken\r\n" +
+		"fine " + defCat + "\r\n"
+
+	words, errs, err := textdic.Process(input)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	if len(words) != 2 {
+		t.Fatalf("expected 2 words after recovery, got %d (%+v)", len(words), words)
+	}
+	if words[0].Line != 1 {
+		t.Errorf("words[0].Line: got %d want 1", words[0].Line)
+	}
+	if words[1].Line != 3 {
+		t.Errorf("words[1].Line: got %d want 3", words[1].Line)
+	}
+	if !hasValidationError(errs, 2, "unrecognized character '@'") {
+		t.Errorf("expected unrecognized-character error on line 2, got %+v", errs)
+	}
+}
+
+func TestProcess_RecoversWhenFirstLineHasUnrecognizedChar(t *testing.T) {
+	t.Parallel()
+
+	input := "@broken\n" +
+		"good " + defDog + "\n"
+
+	words, errs, err := textdic.Process(input)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	if len(words) != 1 {
+		t.Fatalf("expected 1 word after recovery, got %d (%+v)", len(words), words)
+	}
+	if words[0].Front != "good" {
+		t.Errorf("words[0].Front: got %q want %q", words[0].Front, "good")
+	}
+	if !hasValidationError(errs, 1, "unrecognized character '@'") {
+		t.Errorf("expected unrecognized-character error on line 1, got %+v", errs)
+	}
+}
+
+func TestProcess_RecoversFromMultipleUnrecognizedChars(t *testing.T) {
+	t.Parallel()
+
+	input := "a " + defDog + "\n" +
+		"@broken\n" +
+		"c " + defCat + "\n" +
+		"{broken\n" +
+		"e " + defBird + "\n"
+
+	words, errs, err := textdic.Process(input)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	if len(words) != 3 {
+		t.Fatalf("expected 3 words after recovery, got %d (%+v)", len(words), words)
+	}
+	for i, want := range []string{"a", "c", "e"} {
+		if words[i].Front != want {
+			t.Errorf("words[%d].Front: got %q want %q", i, words[i].Front, want)
+		}
+	}
+	if !hasValidationError(errs, 2, "unrecognized character '@'") {
+		t.Errorf("expected unrecognized-character error on line 2, got %+v", errs)
+	}
+	if !hasValidationError(errs, 4, "unrecognized character '{'") {
+		t.Errorf("expected unrecognized-character error on line 4, got %+v", errs)
+	}
+}
+
+func TestProcess_UnrecognizedCharAtEOFWithoutNewline(t *testing.T) {
+	t.Parallel()
+
+	input := "good " + defDog + "\n" +
+		"@"
+
+	words, errs, err := textdic.Process(input)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	if len(words) != 1 {
+		t.Fatalf("expected 1 word before EOF error, got %d (%+v)", len(words), words)
+	}
+	if words[0].Front != "good" {
+		t.Errorf("words[0].Front: got %q want %q", words[0].Front, "good")
+	}
+	if !hasValidationError(errs, 2, "unrecognized character '@'") {
+		t.Errorf("expected unrecognized-character error on line 2, got %+v", errs)
+	}
+}
+
+func TestProcess_BackStartingWithHalfWidthParen(t *testing.T) {
+	t.Parallel()
+
+	wantBack := "(" + jp(0x5BB6, 0x5EAD, 0x306E) + ")" + jp(0x5927, 0x9ED2, 0x67F1)
+	input := "primary breadwinner " + wantBack + "\n"
+
+	words, errs, err := textdic.Process(input)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	if len(errs) != 0 {
+		t.Fatalf("expected no validation errors, got %+v", errs)
+	}
+	if len(words) != 1 {
+		t.Fatalf("expected 1 word, got %d (%+v)", len(words), words)
+	}
+	if words[0].Front != "primary breadwinner" {
+		t.Errorf("Front: got %q want %q", words[0].Front, "primary breadwinner")
+	}
+	if words[0].Back != wantBack {
+		t.Errorf("Back: got %q want %q", words[0].Back, wantBack)
+	}
+}
+
+func TestProcess_BackStartingWithHalfWidthBracket(t *testing.T) {
+	t.Parallel()
+
+	wantBack := "[" + jp(0x52D5, 0x8A5E) + "] " + jp(0x53D6, 0x308A, 0x6271, 0x3046)
+	input := "transitive " + wantBack + "\n"
+
+	words, errs, err := textdic.Process(input)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	if len(errs) != 0 {
+		t.Fatalf("expected no validation errors, got %+v", errs)
+	}
+	if len(words) != 1 {
+		t.Fatalf("expected 1 word, got %d (%+v)", len(words), words)
+	}
+	if words[0].Front != "transitive" {
+		t.Errorf("Front: got %q want %q", words[0].Front, "transitive")
+	}
+	if words[0].Back != wantBack {
+		t.Errorf("Back: got %q want %q", words[0].Back, wantBack)
+	}
+}
+
+func TestProcess_BackWithEmbeddedParensStillWorks(t *testing.T) {
+	t.Parallel()
+
+	wantBack := defDog + "(test)"
+	input := "ritual " + wantBack + "\n"
+
+	words, errs, err := textdic.Process(input)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	if len(errs) != 0 {
+		t.Fatalf("expected no validation errors, got %+v", errs)
+	}
+	if len(words) != 1 {
+		t.Fatalf("expected 1 word, got %d (%+v)", len(words), words)
+	}
+	if words[0].Back != wantBack {
+		t.Errorf("Back: got %q want %q", words[0].Back, wantBack)
+	}
+}
+
+func TestProcess_FrontWithEmbeddedParenStillWorks(t *testing.T) {
+	t.Parallel()
+
+	input := "take(s) " + defDog + "\n"
+
+	words, errs, err := textdic.Process(input)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	if len(errs) != 0 {
+		t.Fatalf("expected no validation errors, got %+v", errs)
+	}
+	if len(words) != 1 {
+		t.Fatalf("expected 1 word, got %d (%+v)", len(words), words)
+	}
+	if words[0].Front != "take(s)" {
+		t.Errorf("Front: got %q want %q", words[0].Front, "take(s)")
+	}
+}
+
+func TestProcess_LineWithOnlyParenBackIsRejected(t *testing.T) {
+	t.Parallel()
+
+	input := "(comment) only\n" +
+		"fine " + defCat + "\n"
+
+	words, errs, err := textdic.Process(input)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	if len(words) != 1 {
+		t.Fatalf("expected 1 word after recovery, got %d (%+v)", len(words), words)
+	}
+	if words[0].Front != "fine" {
+		t.Errorf("words[0].Front: got %q want %q", words[0].Front, "fine")
+	}
+	if len(errs) == 0 {
+		t.Errorf("expected at least one validation error for the headword-less row")
+	}
+}
+
 func TestProcess_MultipleEntries(t *testing.T) {
 	t.Parallel()
 
@@ -356,4 +587,13 @@ func TestProcess_Concurrent(t *testing.T) {
 	for e := range errCh {
 		t.Errorf("goroutine reported error: %v", e)
 	}
+}
+
+func hasValidationError(errs []textdic.ValidationError, line int, contains string) bool {
+	for _, e := range errs {
+		if e.Line == line && strings.Contains(e.Message, contains) {
+			return true
+		}
+	}
+	return false
 }

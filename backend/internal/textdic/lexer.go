@@ -75,6 +75,13 @@ func (l *lexer) isJapanese(r rune) bool {
 	return unicode.Is(unicode.Hiragana, r) || unicode.Is(unicode.Katakana, r) || unicode.Is(unicode.Han, r) || (r >= 0x3000 && r <= 0x303F) || (r >= 0xFF00 && r <= 0xFFEF)
 }
 
+// canStartDefinition widens the definition dispatch gate for ASCII
+// bracket-openers commonly used before Japanese definitions. Once
+// lexDefinition starts, it already accepts every non-newline rune.
+func (l *lexer) canStartDefinition(r rune) bool {
+	return l.isJapanese(r) || r == '(' || r == '['
+}
+
 // Lex implements the yyLexer interface. It returns 0 on EOF, NEWLINE on a
 // line terminator, WORD on an ASCII headword run, and DEFINITION on a
 // Japanese-script run. Read failures other than io.EOF and unrecognised
@@ -100,11 +107,11 @@ func (l *lexer) Lex(lval *yySymType) int {
 	if l.isEnglishAndWhitespace(r) {
 		return l.lexWord(lval)
 	}
-	if l.isJapanese(r) {
+	if l.canStartDefinition(r) {
 		return l.lexDefinition(lval)
 	}
 	l.Error(fmt.Sprintf("unrecognized character %q", r))
-	return 0
+	return l.recoverToNewline()
 }
 
 // lexRun reads runes until stop returns true (or EOF) and returns the
@@ -133,7 +140,27 @@ func (l *lexer) lexRun(stop func(rune) bool) string {
 }
 
 func (l *lexer) lexWord(lval *yySymType) int {
-	lval.str = l.lexRun(func(r rune) bool { return l.isJapanese(r) || l.isNewLine(r) })
+	var b strings.Builder
+	l.input.UnreadRune()
+	var prev rune
+	havePrev := false
+	for {
+		r, _, err := l.input.ReadRune()
+		if err != nil {
+			if err != io.EOF {
+				l.Error("read: " + err.Error())
+			}
+			break
+		}
+		if l.isJapanese(r) || l.isNewLine(r) || ((r == '(' || r == '[') && havePrev && l.IsWhitespace(prev)) {
+			l.input.UnreadRune()
+			break
+		}
+		b.WriteRune(r)
+		prev = r
+		havePrev = true
+	}
+	lval.str = strings.TrimRightFunc(b.String(), unicode.IsSpace)
 	lval.line = l.lineNo
 	return WORD
 }
@@ -142,6 +169,25 @@ func (l *lexer) lexDefinition(lval *yySymType) int {
 	lval.str = l.lexRun(l.isNewLine)
 	lval.line = l.lineNo
 	return DEFINITION
+}
+
+// recoverToNewline consumes the rest of a malformed line and emits NEWLINE
+// so the parser's error recovery can resume on the following line.
+func (l *lexer) recoverToNewline() int {
+	for {
+		r, _, err := l.input.ReadRune()
+		if err != nil {
+			return 0
+		}
+		if l.isNewLine(r) {
+			if r == '\r' {
+				l.input.ReadRune() //nolint:errcheck
+			}
+			l.tokenLine = l.lineNo
+			l.lineNo++
+			return NEWLINE
+		}
+	}
 }
 
 // skipWhiteSpace advances past intra-line whitespace, leaving newline
