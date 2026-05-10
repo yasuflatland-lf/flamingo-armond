@@ -3,14 +3,20 @@ set -euo pipefail
 
 ENV_FILE="backend/.env.local"
 
-TOKEN=$(grep '^NOTION_SYNC_TOKEN=' "$ENV_FILE" | cut -d= -f2- || true)
-if [ -z "${TOKEN:-}" ]; then
-  echo "NOTION_SYNC_TOKEN not found in $ENV_FILE." >&2
+if [ ! -f "$ENV_FILE" ]; then
+  echo "$ENV_FILE not found." >&2
   echo "Run 'make notion-local-setup' first." >&2
   exit 1
 fi
 
-PORT=$(grep '^PORT=' "$ENV_FILE" | cut -d= -f2- || true)
+TOKEN=$(grep '^NOTION_SYNC_TOKEN=' "$ENV_FILE" | cut -d= -f2- | tr -d '[:space:]')
+if [ -z "${TOKEN:-}" ]; then
+  echo "NOTION_SYNC_TOKEN not set in $ENV_FILE." >&2
+  echo "Run 'make notion-local-setup' first." >&2
+  exit 1
+fi
+
+PORT=$(grep '^PORT=' "$ENV_FILE" | cut -d= -f2- | tr -d '[:space:]' || true)
 PORT=${PORT:-1323}
 URL="http://localhost:${PORT}/internal/notion-sync"
 

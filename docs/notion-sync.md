@@ -60,7 +60,7 @@ make dev-backend           # in another terminal
 make notion-local-run      # repeat as needed
 ```
 
-`make notion-local-setup` resolves `NOTION_LOCAL_TARGET_OWNER_EMAIL` to a Supabase UUID, writes the derived `NOTION_*` keys into `backend/.env.local`, and validates connectivity to the local database. `make dev-backend` starts the backend on `:1323` with those env vars loaded. `make notion-local-run` fires a single authenticated POST to `/internal/notion-sync` and streams the backend log output until the sync completes.
+`make notion-local-setup` validates that the required keys are present in root `.env`, probes local Supabase connectivity, resolves `NOTION_LOCAL_TARGET_OWNER_EMAIL` to a UUID, then writes 7 `NOTION_*` keys into `backend/.env.local`. `make dev-backend` starts the backend on `:1323` with those env vars loaded. `make notion-local-run` fires a single authenticated POST to `/internal/notion-sync` and prints the HTTP response body. Backend progress logs appear in the terminal where `make dev-backend` is running.
 
 ### Troubleshooting
 

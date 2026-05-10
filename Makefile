@@ -116,7 +116,7 @@ sync-notion-preflight: mise-install ## Verify root .env has all required NOTION_
 notion-local-setup: mise-install ## Write NOTION_* to backend/.env.local from root .env (run once, or after editing NOTION_LOCAL_*)
 	@$(ANSIBLE) --tags notion-local
 
-notion-local-run: ## Trigger local /internal/notion-sync (requires `make dev-backend` running in another terminal)
+notion-local-run: mise-install ## Trigger local /internal/notion-sync (requires `make dev-backend` running in another terminal)
 	@scripts/notion-local-run.sh
 
 teardown-prod: mise-install ## DESTRUCTIVE: tear down the production environment created by setup-prod

@@ -94,7 +94,7 @@
       loop: "{{ seed_files }}"
       loop_control:
         label: "{{ item.target | basename }}"
-      tags: [sync-env]
+      tags: [sync-env, notion-local]
 
     - name: Read first line of existing env files (for marker check)
       ansible.builtin.slurp:
@@ -104,7 +104,7 @@
       loop_control:
         label: "{{ item.item.target | basename }}"
       when: item.stat.exists
-      tags: [sync-env]
+      tags: [sync-env, notion-local]
 
     # Build a dict: target path -> "managed" | "user-owned" | "missing".
     # rejectattr drops skipped slurp results (files that did not exist).
@@ -118,7 +118,7 @@
       loop: "{{ env_file_stat.results }}"
       loop_control:
         label: "{{ item.item.target | basename }}"
-      tags: [sync-env]
+      tags: [sync-env, notion-local]
 
     # --- Seed missing files from .example (prepend the marker line) ---
     # mode 0600: .env holds OAuth secrets; the .env.local files match the same
@@ -241,10 +241,23 @@
     # resolves the target user email to a UUID, then upserts 7 NOTION_* keys
     # into backend/.env.local. Skip marker check matches the PING_TOKEN pattern.
     # Tagged `never` so `make sync-env` and `make setup` do not run this block.
+    #
+    # notion-local block: tag set [notion-local, never] keeps these tasks out of
+    # `make sync-env` and `make setup` (the `never` tag); explicit `--tags notion-local`
+    # (i.e. `make notion-local-setup`) overrides it.
     - name: Stat root .env for notion-local
       ansible.builtin.stat:
         path: "{{ repo_root }}/.env"
       register: _notion_root_env_stat
+      tags: [notion-local, never]
+
+    - name: Fail if root .env is missing for notion-local
+      ansible.builtin.fail:
+        msg: |
+          notion-local: root .env not found at {{ repo_root }}/.env.
+          Create it from .env.example and set NOTION_LOCAL_* + NOTION_TOKEN + NOTION_PAGE_IDS,
+          then re-run `make notion-local-setup`.
+      when: not _notion_root_env_stat.stat.exists
       tags: [notion-local, never]
 
     - name: Read root .env for notion-local
@@ -270,7 +283,7 @@
         msg: |
           notion-local: the following required keys are missing or empty in .env:
           {{ _notion_missing_keys | join(', ') }}
-          Set them in .env and re-run `make notion-local`.
+          Set them in .env and re-run `make notion-local-setup`.
       vars:
         _required_keys:
           - NOTION_LOCAL_TARGET_OWNER_EMAIL
@@ -278,6 +291,7 @@
           - NOTION_LOCAL_SYNC_TOKEN
           - NOTION_TOKEN
           - NOTION_PAGE_IDS
+          - SUPABASE_DB_URL
         _notion_missing_keys: >-
           {{ _required_keys | reject('in', _notion_root_kv | default({}))
              | list
@@ -315,7 +329,7 @@
       ansible.builtin.fail:
         msg: |
           notion-local: local Supabase is not ready.
-          Run `make supabase-start` first, then retry `make notion-local`.
+          Run `make supabase-start` first, then retry `make notion-local-setup`.
       when:
         - env_ownership[repo_root + '/backend/.env.local'] != 'user-owned'
         - _notion_root_env_raw is not skipped
@@ -343,12 +357,12 @@
           - "{{ (_notion_root_kv | default({})).get('SUPABASE_DB_URL', '') | trim('\"') }}"
           - -v
           - "ON_ERROR_STOP=1"
+          - -v
+          - "email={{ (_notion_root_kv | default({})).get('NOTION_LOCAL_TARGET_OWNER_EMAIL', '') | trim('\"') | trim }}"
           - -t
           - -A
           - -c
-          - >-
-            SELECT id FROM auth.users
-            WHERE lower(email) = lower('{{ (_notion_root_kv | default({})).get('NOTION_LOCAL_TARGET_OWNER_EMAIL', '') | trim('"') | trim | replace("'", "''") }}')
+          - "SELECT id FROM auth.users WHERE lower(email) = lower(:'email')"
       register: _notion_owner_uuid_result
       changed_when: false
       when:
