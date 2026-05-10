@@ -316,9 +316,9 @@ type DictionaryValidationError {
   line: Int!
   """Human-readable, English error message."""
   message: String!
-  """Front of the row when the error refers to a parsed row (e.g. duplicate front). Null when the parser rejected the line before extracting front/back."""
+  """Front term of the row, present only when the error refers to a fully parsed row (e.g. a duplicate front). Absent (null) for syntax errors, where front/back were never extracted."""
   front: String
-  """Back of the row, populated under the same conditions as `front`."""
+  """Back definition of the row. Null for syntax errors; non-null whenever `front` is non-null."""
   back: String
 }
 
