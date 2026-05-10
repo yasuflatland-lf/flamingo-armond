@@ -28,6 +28,7 @@ func TestRetryAfterRoundTripperRetries429ThenSucceeds(t *testing.T) {
 	client := &http.Client{Transport: NewRetryAfterRoundTripper(RetryConfig{
 		MaxAttempts: 3,
 		MaxElapsed:  5 * time.Second,
+		Transport:   srv.Client().Transport,
 		Sleep: func(_ context.Context, d time.Duration) error {
 			slept = append(slept, d)
 			return nil
@@ -62,6 +63,7 @@ func TestRetryAfterRoundTripperStopsAtMaxElapsed(t *testing.T) {
 	client := &http.Client{Transport: NewRetryAfterRoundTripper(RetryConfig{
 		MaxAttempts: 3,
 		MaxElapsed:  time.Second,
+		Transport:   srv.Client().Transport,
 		Sleep: func(_ context.Context, _ time.Duration) error {
 			t.Fatal("sleep must not run when max elapsed is exceeded")
 			return nil
@@ -87,6 +89,7 @@ func TestRetryAfterRoundTripperStopsAtMaxAttempts(t *testing.T) {
 	client := &http.Client{Transport: NewRetryAfterRoundTripper(RetryConfig{
 		MaxAttempts: 2,
 		MaxElapsed:  5 * time.Second,
+		Transport:   srv.Client().Transport,
 		Sleep: func(_ context.Context, _ time.Duration) error {
 			return nil
 		},
@@ -118,6 +121,7 @@ func TestRetryAfterRoundTripperRetries5xxWithFallback(t *testing.T) {
 	client := &http.Client{Transport: NewRetryAfterRoundTripper(RetryConfig{
 		MaxAttempts: 2,
 		MaxElapsed:  5 * time.Second,
+		Transport:   srv.Client().Transport,
 		Sleep: func(_ context.Context, d time.Duration) error {
 			slept = append(slept, d)
 			return nil
