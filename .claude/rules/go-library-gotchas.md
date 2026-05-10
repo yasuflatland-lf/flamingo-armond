@@ -54,6 +54,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Constructor panics are the right tool for "non-empty config requires non-nil deps"](../../docs/backend/library-gotchas/constructor-panics-for-non-empty-config.md)
 - [Go `map` is a reference type — copy in the constructor when accepting one](../../docs/backend/library-gotchas/go-map-reference-copy-in-constructor.md)
 - [`json:",omitempty"` controls marshal output, never the decode path](../../docs/backend/library-gotchas/json-omitempty-marshal-only.md)
+- [Extending a JSON-marshaled struct: tag all fields, not just the new ones](../../docs/backend/library-gotchas/json-tag-asymmetry-on-struct-extension.md)
 - [Echo middleware factory: build the no-op decision once, not per-request](../../docs/backend/library-gotchas/echo-middleware-factory-once-at-construction.md)
 - [Derived flags drift; read the source of truth instead](../../docs/backend/library-gotchas/derived-flags-drift.md)
 - [`slog.NewJSONHandler` renders attrs as JSON keys, not `key=value` pairs](../../docs/backend/library-gotchas/slog-jsonhandler-shape.md)

@@ -180,6 +180,13 @@ func TestNotionSyncUsecase_DuplicateFrontLastWins(t *testing.T) {
 	if len(out.ParseErrors) != 1 {
 		t.Fatalf("ParseErrors len = %d, want duplicate warning", len(out.ParseErrors))
 	}
+	pe := out.ParseErrors[0]
+	if pe.Front != "apple" {
+		t.Fatalf("ParseErrors[0].Front = %q, want %q", pe.Front, "apple")
+	}
+	if pe.Back != uniqueBack(1) {
+		t.Fatalf("ParseErrors[0].Back = %q, want %q (the dropped row's back)", pe.Back, uniqueBack(1))
+	}
 	if len(cards.upserted) != 1 || cards.upserted[0].Back != uniqueBack(2) {
 		t.Fatalf("upserted = %+v, want latest back", cards.upserted)
 	}
@@ -230,6 +237,13 @@ func TestNotionSyncUsecase_DuplicateFrontSamePageLastWins(t *testing.T) {
 	// dedupeParsedRows MUST anchor the error to the *discarded* row's line.
 	if out.ParseErrors[0].Line != 1 {
 		t.Fatalf("ParseErrors[0].Line = %d, want 1 (the discarded row's line)", out.ParseErrors[0].Line)
+	}
+	pe2 := out.ParseErrors[0]
+	if pe2.Front != "apple" {
+		t.Fatalf("ParseErrors[0].Front = %q, want %q", pe2.Front, "apple")
+	}
+	if pe2.Back != uniqueBack(1) {
+		t.Fatalf("ParseErrors[0].Back = %q, want %q (the dropped row's back)", pe2.Back, uniqueBack(1))
 	}
 	// Partial success (rows>0, parseErrs>0): persistence must still run.
 	if cardgroups.calls != 1 {

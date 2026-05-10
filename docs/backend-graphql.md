@@ -294,6 +294,12 @@ The admin check sits **before** base64 validation deliberately: a non-admin call
 
 **`DictionaryValidationResult` is a resolver-enforced product type.** The schema returns `valid` + `parsedWords` + `errors` as a flat product. The `validateDictionary` resolver enforces the invariant `valid = (len(errors) == 0 && len(parsedWords) > 0)` — conflicting states (e.g. `valid: true` with non-empty `errors`) are representable in the type but never emitted. Any new producer of this result must compute `Valid` the same way; do not let callers set `Valid: true` directly.
 
+**Empty-string → nil-pointer mapping at the resolver boundary.** When a usecase struct field is `Front string` (zero value `""`) and the GraphQL model is `Front *string` (nullable in schema), the resolver must map `e.Front == ""` to `nil` rather than `&e.Front`. Use the existing `nilIfEmpty(s string) *string` helper in `backend/graph/resolver/helpers.go` (already used for `StartCursor`/`EndCursor`) — do not inline the pointer-copy pattern at each mapping site. The struct-literal form with `nilIfEmpty` is shorter, avoids per-iteration variable shadowing, and reads consistently with the other resolver sites that use the same helper.
+
+**Schema docstrings describe result semantics, not parser mechanics.** A docstring like `"""Null when the parser rejected the line before extracting front/back"""` ties the documentation to a specific implementation path. Prefer result-oriented phrasing: `"""Absent (null) for syntax errors, where front/back were never extracted"""`. Result-oriented docstrings stay accurate when the implementation evolves; mechanism-oriented docstrings rot as soon as the code path changes.
+
+**Dedupe is asymmetric: `upsertDictionary` dedupes, `validateDictionary` does not.** `upsertDictionary` runs dedup and surfaces dropped rows as `DictionaryValidationError` entries with `Front`/`Back` populated. `validateDictionary` runs `textdic.Process` directly and surfaces only parser-level syntax errors — those entries never carry `Front`/`Back`. The resolver mapping site for `validateDictionary` (in `backend/graph/resolver/schema.resolvers.go`) therefore deliberately omits `nilIfEmpty(e.Front)` calls; there is nothing to map. If a future change adds dedup to `validateDictionary`, the resolver mapping site must be updated symmetrically with `upsertDictionary`.
+
 ## Backend hardening
 
 Five operational guardrails surround the `/query` endpoint: DataLoader
