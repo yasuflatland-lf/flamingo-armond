@@ -47,8 +47,10 @@ type UpsertDictionaryInput struct {
 // resolver layer can reshape it into the GraphQL model without importing the
 // textdic package directly.
 type DictionaryValidationError struct {
-	Line    int
-	Message string
+	Line    int    `json:"line"`
+	Message string `json:"message"`
+	Front   string `json:"front,omitempty"`
+	Back    string `json:"back,omitempty"`
 }
 
 // UpsertDictionaryOutput is the result returned to the caller. Inserted +

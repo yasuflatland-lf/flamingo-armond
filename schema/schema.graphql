@@ -316,6 +316,10 @@ type DictionaryValidationError {
   line: Int!
   """Human-readable, English error message."""
   message: String!
+  """Front of the row when the error refers to a parsed row (e.g. duplicate front). Null when the parser rejected the line before extracting front/back."""
+  front: String
+  """Back of the row, populated under the same conditions as `front`."""
+  back: String
 }
 
 """
