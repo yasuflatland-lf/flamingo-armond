@@ -435,9 +435,10 @@ func TestProcess_LineWithOnlyBracketBackIsRejected(t *testing.T) {
 func TestProcess_IdeographicSpaceBeforeBracketSplits(t *testing.T) {
 	t.Parallel()
 
-	// U+3000 (ideographic space) is treated as whitespace by IsWhitespace, so
-	// lexWord must split at "breadwinner<U+3000>(" just as it splits at the
-	// regular space variant tested in TestProcess_BackStartingWithHalfWidthParen.
+	// U+3000 (ideographic space) is classified as Japanese via isJapanese(r),
+	// so lexWord stops when it encounters U+3000. skipWhiteSpace consumes the
+	// U+3000 as whitespace, then canStartDefinition('(') recognizes the start
+	// of the definition. Front/back split is preserved across ideographic-space.
 	wantBack := "(" + jp(0x5BB6, 0x5EAD) + ")"
 	input := "breadwinner" + jp(0x3000) + wantBack + "\n"
 
