@@ -439,15 +439,10 @@
 #                        Must match the NOTION_SYNC_TOKEN Render env var so
 #                        the GitHub Actions workflow can authenticate.
 # ---------------------------------------------------------------------------
-- name: Compute NOTION_SYNC_URL from backend_url
-  ansible.builtin.set_fact:
-    notion_sync_url: "{{ backend_url }}/internal/notion-sync"
-  tags: [notion, notion-secrets, postapply]
-
 - name: Register NOTION_SYNC_URL as GitHub Actions secret
   ansible.builtin.shell:
     cmd: gh secret set NOTION_SYNC_URL --repo {{ repo }}
-    stdin: "{{ notion_sync_url }}"
+    stdin: "{{ backend_url }}/internal/notion-sync"
     stdin_add_newline: false
   register: _gh_notion_url_result
   no_log: true
