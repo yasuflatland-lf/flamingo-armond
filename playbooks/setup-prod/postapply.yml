@@ -442,7 +442,7 @@
 - name: Compute NOTION_SYNC_URL from backend_url
   ansible.builtin.set_fact:
     notion_sync_url: "{{ backend_url }}/internal/notion-sync"
-  tags: [notion, notion-secrets]
+  tags: [notion, notion-secrets, postapply]
 
 - name: Register NOTION_SYNC_URL as GitHub Actions secret
   ansible.builtin.shell:
@@ -453,7 +453,7 @@
   no_log: true
   failed_when: false
   changed_when: _gh_notion_url_result.rc == 0
-  tags: [notion, notion-secrets]
+  tags: [notion, notion-secrets, postapply]
 
 - name: Fail with remediation if NOTION_SYNC_URL secret set failed
   ansible.builtin.fail:
@@ -472,12 +472,12 @@
 
       Then retry: make sync-notion-secrets
   when: _gh_notion_url_result.rc != 0
-  tags: [notion, notion-secrets]
+  tags: [notion, notion-secrets, postapply]
 
 - name: Confirm NOTION_SYNC_URL GitHub secret registered
   ansible.builtin.debug:
     msg: "NOTION_SYNC_URL registered as a GitHub Actions secret in {{ repo }}."
-  tags: [notion, notion-secrets]
+  tags: [notion, notion-secrets, postapply]
 
 - name: Register NOTION_SYNC_TOKEN as GitHub Actions secret
   ansible.builtin.shell:
@@ -488,7 +488,7 @@
   no_log: true
   failed_when: false
   changed_when: _gh_notion_token_result.rc == 0
-  tags: [notion, notion-secrets]
+  tags: [notion, notion-secrets, postapply]
 
 - name: Fail with remediation if NOTION_SYNC_TOKEN secret set failed
   ansible.builtin.fail:
@@ -507,12 +507,12 @@
 
       Then retry: make sync-notion-secrets
   when: _gh_notion_token_result.rc != 0
-  tags: [notion, notion-secrets]
+  tags: [notion, notion-secrets, postapply]
 
 - name: Confirm NOTION_SYNC_TOKEN GitHub secret registered
   ansible.builtin.debug:
     msg: "NOTION_SYNC_TOKEN registered as a GitHub Actions secret in {{ repo }}."
-  tags: [notion, notion-secrets]
+  tags: [notion, notion-secrets, postapply]
 
 # Wrapped in block/rescue because the inner task carries `no_log: true`
 # (the request URL embeds render_service_id and the Bearer header carries
