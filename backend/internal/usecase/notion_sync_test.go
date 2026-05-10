@@ -280,6 +280,38 @@ func newValidationUsecase() *NotionSyncUsecase {
 	)
 }
 
+func TestNotionSyncUsecase_SoftParseFailure(t *testing.T) {
+	t.Parallel()
+
+	// Page text where every line is malformed (bare WORD, no definition).
+	// textdic.Process returns err == nil with len(words) == 0 and len(errs) > 0,
+	// so Sync must surface ErrNotionSyncParse (HTTP 422) rather than silently
+	// succeeding with an empty persist.
+	fetcher := &stubNotionFetcher{pages: []notion.Page{
+		{ID: "page-1", Text: "orphan\n"},
+	}}
+	cardgroups := &mockNotionCardgroupRepo{}
+	cards := &mockNotionCardRepo{}
+	tx, txCalls := dictTxRunner()
+	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, nil)
+
+	_, err := uc.Sync(context.Background(), SyncFromNotionInput{
+		PageIDs:       []string{"page-1"},
+		OwnerID:       "owner-1",
+		CardgroupName: "English",
+	})
+	if !errors.Is(err, ErrNotionSyncParse) {
+		t.Fatalf("err = %v, want ErrNotionSyncParse", err)
+	}
+	// Persistence must be skipped entirely when all rows fail to parse.
+	if cardgroups.calls != 0 {
+		t.Fatalf("EnsureByName calls = %d, want 0 (persistence must be skipped)", cardgroups.calls)
+	}
+	if cards.upsertCalls != 0 || *txCalls != 0 {
+		t.Fatalf("persistence ran: upserts=%d tx=%d, want all zero", cards.upsertCalls, *txCalls)
+	}
+}
+
 func TestNotionSyncUsecase_FetchErrorSkipsPersistence(t *testing.T) {
 	t.Parallel()
 

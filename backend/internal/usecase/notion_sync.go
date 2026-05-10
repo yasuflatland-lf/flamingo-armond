@@ -126,6 +126,12 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 	if err != nil {
 		return SyncFromNotionOutput{}, eris.Wrap(errors.Join(ErrNotionSyncParse, err), "parse pages")
 	}
+	// Soft parse failure: every input line was rejected by the parser, leaving
+	// nothing to persist. Surface this as ErrNotionSyncParse (HTTP 422) rather
+	// than silently succeeding with an empty upsert.
+	if len(rows) == 0 && len(parseErrs) > 0 {
+		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncParse, "all rows failed to parse")
+	}
 	if len(rows) > dictionaryParsedRowCap {
 		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "parsed rows exceed cap")
 	}
