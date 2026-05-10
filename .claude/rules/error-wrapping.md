@@ -25,6 +25,7 @@ Sentinels used today: `repository.ErrNotFound`, and domain-level sentinels such 
 - [Postgres unique-violation classification (`23505`)](../../docs/backend/error-wrapping/postgres-unique-violation-23505.md)
 - [Standalone sentinels: not every new sentinel joins `ErrNotFound`](../../docs/backend/error-wrapping/standalone-sentinels-not-every-joins-errnotfound.md)
 - [Two-tier `gqlerr` API: generic open helper + domain-specific typed wrapper](../../docs/backend/error-wrapping/two-tier-gqlerr-api.md)
+- [Two-tier env config API: optional reader + strict wrapper](../../docs/backend/error-wrapping/two-tier-optional-strict-env-config.md)
 
 ## Logging — detailed cases (on-demand)
 
@@ -32,6 +33,7 @@ Sentinels used today: `repository.ErrNotFound`, and domain-level sentinels such 
 - [Defensive `eris.Wrap` at log sites that consume narrow interfaces](../../docs/backend/error-wrapping/defensive-eris-wrap-at-log-sites.md)
 - [Test the `error_chain` shape, not just its presence](../../docs/backend/error-wrapping/test-error-chain-shape-not-presence.md)
 - [Assert PII absence on log lines that carry `user_id`](../../docs/backend/error-wrapping/assert-pii-absence-on-log-lines.md)
+- [Parser-derived error messages must not leak into log fields — line + count only](../../docs/backend/error-wrapping/parser-derived-log-fields-pii-risk.md)
 
 ## Background (on-demand)
 
