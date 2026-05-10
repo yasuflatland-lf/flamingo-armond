@@ -88,6 +88,32 @@ When the same secret must be written identically to two or more destinations (e.
 
 Use `value: "{{ notion_sync_token }}"` in both the Render env-var loop and the `gh secret set` task. A single capture point guarantees bearer-auth integrity across both consumers.
 
+### `[<tag>, never]` keeps a block out of default runs but `--tags <tag>` opts in
+
+The `never` tag tells Ansible to skip the task on any tag-less invocation. Pairing `never` with a feature tag — e.g. `tags: [notion-local, never]` — keeps the block out of `make setup` / `make sync-env` (which run with no `--tags`), while an explicit `make notion-local-setup` (which passes `--tags notion-local`) still reaches it. This is the right shape for an opt-in flow that shares a play with the default flow but must not run by default. Without `never`, Ansible runs every task on a tag-less invocation regardless of `tags:`. See `playbooks/setup.yml` for the notion-local block; the same pattern applies to seed-admin (`tags: [seed-admin, never]`).
+
+### `psql -v name=value` + `:'name'` for parameterized SQL
+
+Building SQL by interpolating user-controlled values (e.g. an email from `.env`) into the query string is unsafe even when the value is escaped, because every escape layer (Jinja → shell → psql) has its own rules and the composition is fragile. `psql` accepts named variables via `-v name=value` and substitutes them with `:'name'` (single-quoted, escaped) inside the SQL — structurally analogous to a prepared statement.
+
+```yaml
+- name: Look up auth.users.id by email (parameterized)
+  ansible.builtin.command:
+    argv:
+      - psql
+      - "{{ db_url }}"
+      - -v
+      - "ON_ERROR_STOP=1"
+      - -v
+      - "email={{ email_value | trim }}"
+      - -t
+      - -A
+      - -c
+      - "SELECT id FROM auth.users WHERE lower(email) = lower(:'email')"
+```
+
+Any upstream regex / format validation on the email is an early-fail UX guard, not a security guard — the `:'email'` substitution is what keeps the call safe regardless of what made it past the validator.
+
 ### Accumulator preflight for multi-key validation
 
 A per-iteration `ansible.builtin.fail` inside a preflight loop reports only the FIRST missing env var, forcing the operator into a fix-and-rerun cycle for each key. Prefer the accumulator pattern: collect all missing keys into a `set_fact` list and fail once with the full set. Reset the accumulator before the loop to ensure idempotency on re-entry.
@@ -129,11 +155,19 @@ A task with no `tags:` line inherits ALL invocation tags: it runs under any `--t
 
 If a `set_fact` task carries tags `[A, B]` but a downstream task that references `{{ that_fact }}` carries tags `[A, C]`, then running `--tags C` reaches the consumer with the fact undefined. This causes a Jinja2 evaluation failure — or worse, a silent empty-string write when the consuming task has a `default('')` guard. The same applies to preflight tasks: if the preflight tags don't cover every entry path that reaches a writer, missing-required-value checks silently no-op.
 
-**Rule:** every preflight task and `set_fact` producer must carry the UNION of every downstream consumer's tag set. For Notion sync, that union is `[preflight, notion-preflight, notion, notion-secrets, postapply]` on all three preflight tasks.
+**Rule:** every preflight task and `set_fact` producer must carry the UNION of every downstream consumer's tag set. For Notion sync, that union is `[preflight, notion-preflight, notion, notion-secrets, postapply]` on all three preflight tasks. The same union rule applies to ownership-detection set_facts shared across flows: when `notion-local` reads `env_ownership[...]` to decide whether to skip a managed file, the upstream stat / slurp / set_fact tasks that build `env_ownership` must carry `[sync-env, notion-local]`, or the consumer evaluates an undefined dict and fails (or worse, silently no-ops behind a `default({})`).
 
 ### `when: (item.value | length) > 0` masks silent empty-write no-ops
 
 A loop that writes env vars and guards with `when: length > 0` to skip empty values seems defensive, but in combination with a preflight whose tag set does not cover all entry paths (see above), missing required values become silent no-ops instead of fast failures. Every `when: length > 0` guard in a writer must be paired with a preflight whose tag set covers every entry path that reaches that writer.
+
+### `debug` for a should-halt condition is invisible at default verbosity
+
+`make` invokes `ansible-playbook` without `-v`, so `debug:` task output is suppressed unless an operator passes `-vv` manually. Using `debug: msg: "skipping because …"` to announce a condition that should actually stop the play is a silent regression vector: the play continues past the "skip" with downstream tasks operating on undefined or stale facts, and the operator sees no warning. For any condition that should halt the flow (missing required file, ownership marker absent, ambiguous resolution result), use `ansible.builtin.fail:` with an actionable `msg:`. Reserve `debug:` for diagnostic values an operator would only consult under `-vv`.
+
+### `lineinfile: create: false` is a silent no-op when the target is missing
+
+`ansible.builtin.lineinfile` with `create: false` does nothing when the target file does not exist — no error, no warning, just `ok` in the play recap. This is the desired behavior when intentionally refusing to create a file (e.g. when the parent flow expects an upstream task to seed it), but it requires an upstream existence guard to convert "file missing" from a silent skip into an explicit fail. The notion-local block guards with two upstream `fail:` tasks before the writer loop: one for `env_ownership[...] == 'missing'` and one for `'user-owned'`. Without those guards, a fresh checkout that has not run `make sync-env` yet would print "wrote NOTION_* keys" while writing nothing.
 
 ### `gh secret set` always reports `changed_when: rc == 0`
 

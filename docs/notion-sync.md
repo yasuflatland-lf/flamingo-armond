@@ -53,6 +53,15 @@ Use this section to run the Notion sync against your local Supabase instance wit
 | `NOTION_LOCAL_TARGET_CARDGROUP_NAME` | Name of the cardgroup that holds locally-synced cards. Kept distinct from prod by convention so a misconfigured `SUPABASE_DB_URL` cannot delete prod data. |
 | `NOTION_LOCAL_SYNC_TOKEN` | Bearer token used by the local backend to authenticate the `/internal/notion-sync` POST. Local-only; not pushed to Render. |
 
+#### Hybrid env model: shared vs. local-only keys
+
+The local-testing keys split into two groups by design:
+
+- **Shared with prod** — `NOTION_TOKEN` and `NOTION_PAGE_IDS` are read from the same root `.env` keys that the production flow uses. There is no `NOTION_LOCAL_TOKEN`; the same Notion integration token authenticates against the same Notion workspace in both flows.
+- **Local-only** — `NOTION_LOCAL_TARGET_OWNER_EMAIL`, `NOTION_LOCAL_TARGET_CARDGROUP_NAME`, `NOTION_LOCAL_SYNC_TOKEN`, and `SUPABASE_DB_URL` exist solely to point the backend at the local Supabase instance and a local owner/cardgroup. The production sync push (`make sync-notion-secrets`) does not read these — it pushes the prod-specific keys (`NOTION_TARGET_OWNER_ID`, `NOTION_TARGET_CARDGROUP_NAME`, `NOTION_SYNC_TOKEN`) listed in [§ "Required keys in root `.env`"](#required-keys-in-root-env-1) below, and ignores any `NOTION_LOCAL_*` entry.
+
+The `NOTION_LOCAL_*` prefix is the boundary marker: anything under it is consumed only by `make notion-local-setup` and is rewritten into the prod-equivalent key name (e.g. `NOTION_LOCAL_SYNC_TOKEN` → `NOTION_SYNC_TOKEN`) inside `backend/.env.local`. Keeping the cardgroup name distinct from prod by convention also means a misconfigured `SUPABASE_DB_URL` cannot delete prod data.
+
 ### Quickstart
 
 ```bash
