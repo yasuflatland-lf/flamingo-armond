@@ -84,7 +84,7 @@ func (h *Handler) handleError(c *echo.Context, err error) error {
 		return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": "invalid input"})
 	case errors.Is(err, usecase.ErrNotionSyncParse):
 		slog.WarnContext(ctx, "notion sync: parse error", "err", err)
-		return c.JSON(http.StatusBadGateway, map[string]string{"error": "notion parse error"})
+		return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": "notion parse error"})
 	case errors.Is(err, usecase.ErrNotionSyncPersist):
 		slog.ErrorContext(ctx, "notion sync: persist failed", "err", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "persist error"})
