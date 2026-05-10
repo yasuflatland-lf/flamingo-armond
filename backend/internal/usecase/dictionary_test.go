@@ -592,6 +592,12 @@ func TestDictionaryUsecase_DuplicateFrontDeduplicatedAndSurfaced(t *testing.T) {
 	if len(out.Errors) != 1 {
 		t.Fatalf("expected exactly 1 duplicate error, got %d: %+v", len(out.Errors), out.Errors)
 	}
+	if got := out.Errors[0].Front; got != "apple" {
+		t.Fatalf("Errors[0].Front = %q, want %q (the duplicate row's front)", got, "apple")
+	}
+	if got := out.Errors[0].Back; got != fruitBack {
+		t.Fatalf("Errors[0].Back = %q, want %q (the dropped row's back)", got, fruitBack)
+	}
 	if len(repo.captured) != 1 {
 		t.Fatalf("expected 1 card sent to repo, got %d", len(repo.captured))
 	}
