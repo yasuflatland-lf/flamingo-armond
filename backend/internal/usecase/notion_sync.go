@@ -134,7 +134,6 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 			u.logger.WarnContext(ctx, "notion sync: all rows failed to parse",
 				"parse_error_count", len(parseErrs),
 				"first_error_line", parseErrs[0].Line,
-				"first_error_message", parseErrs[0].Message,
 			)
 		}
 		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncParse, "all rows failed to parse")
