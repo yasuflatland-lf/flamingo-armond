@@ -151,10 +151,19 @@ func (r *mutationResolver) UpsertDictionary(ctx context.Context, input model.Ups
 	}
 	errs := make([]*model.DictionaryValidationError, 0, len(out.Errors))
 	for _, e := range out.Errors {
-		errs = append(errs, &model.DictionaryValidationError{
+		me := &model.DictionaryValidationError{
 			Line:    e.Line,
 			Message: e.Message,
-		})
+		}
+		if e.Front != "" {
+			f := e.Front
+			me.Front = &f
+		}
+		if e.Back != "" {
+			b := e.Back
+			me.Back = &b
+		}
+		errs = append(errs, me)
 	}
 	return &model.UpsertDictionaryPayload{
 		Inserted: int(out.Inserted),

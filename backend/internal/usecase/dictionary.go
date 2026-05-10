@@ -167,6 +167,8 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 			mappedErrs = append(mappedErrs, DictionaryValidationError{
 				Line:    w.Line,
 				Message: "duplicate front in payload (later occurrence wins)",
+				Front:   w.Front,
+				Back:    w.Back,
 			})
 			continue
 		}
