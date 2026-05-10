@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen codegen-yacc test clean clean-frontend clean-backend doctor db-reset setup-prod setup-prod-preflight setup-prod-postapply teardown-prod teardown-prod-preflight seed-admin sync-notion-secrets sync-notion-preflight
+.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen codegen-yacc test clean clean-frontend clean-backend doctor db-reset setup-prod setup-prod-preflight setup-prod-postapply teardown-prod teardown-prod-preflight seed-admin sync-notion-secrets sync-notion-preflight notion-local-setup notion-local-run
 
 # Most env / Supabase targets dispatch to the playbook below; tags select the subset.
 ANSIBLE := ansible-playbook -i playbooks/inventory.local playbooks/setup.yml
@@ -112,6 +112,12 @@ sync-notion-secrets: mise-install ## Sync NOTION_* to Render env + GHA secrets (
 
 sync-notion-preflight: mise-install ## Verify root .env has all required NOTION_* without writing
 	@$(ANSIBLE_PROD) --tags notion-preflight
+
+notion-local-setup: mise-install ## Write NOTION_* to backend/.env.local from root .env (run once, or after editing NOTION_LOCAL_*)
+	@$(ANSIBLE) --tags notion-local
+
+notion-local-run: ## Trigger local /internal/notion-sync (requires `make dev-backend` running in another terminal)
+	@scripts/notion-local-run.sh
 
 teardown-prod: mise-install ## DESTRUCTIVE: tear down the production environment created by setup-prod
 	@$(ANSIBLE_TEARDOWN)
