@@ -94,6 +94,11 @@
       Preflight should have caught this -- run `make setup-prod-preflight`.
   when: (vercel_token | length) == 0
 
+- name: Reset NOTION_* missing-key accumulator
+  ansible.builtin.set_fact:
+    _missing_notion_keys: []
+  tags: [preflight, notion-preflight, notion, notion-secrets, postapply]
+
 - name: Collect missing required NOTION_* env vars
   ansible.builtin.set_fact:
     _missing_notion_keys: "{{ _missing_notion_keys | default([]) + [item] }}"
@@ -104,7 +109,7 @@
     - NOTION_TARGET_OWNER_ID
     - NOTION_TARGET_CARDGROUP_NAME
     - NOTION_SYNC_TOKEN
-  tags: [preflight, notion-preflight, notion]
+  tags: [preflight, notion-preflight, notion, notion-secrets, postapply]
 
 - name: Fail if any required NOTION_* env vars are missing
   ansible.builtin.fail:
@@ -114,7 +119,7 @@
 
       Set all of the above in the root .env file and re-run.
   when: (_missing_notion_keys | default([])) | length > 0
-  tags: [preflight, notion-preflight, notion]
+  tags: [preflight, notion-preflight, notion, notion-secrets, postapply]
 
 # ---------------------------------------------------------------------------
 # Precheck: Blueprint Manual Sync has been run for the current render.yaml.
