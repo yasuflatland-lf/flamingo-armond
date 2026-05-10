@@ -113,7 +113,7 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 	if cardgroupName == "" {
 		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "cardgroup name is required")
 	}
-	if u == nil || u.fetcher == nil || u.cardgroupRepo == nil || u.cardRepo == nil || u.tx == nil {
+	if u.fetcher == nil || u.cardgroupRepo == nil || u.cardRepo == nil || u.tx == nil {
 		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "dependencies are not configured")
 	}
 
@@ -212,8 +212,8 @@ func normalizePageIDs(ids []string) []string {
 }
 
 func parseNotionPages(pages []notion.Page) ([]ParsedRow, []DictionaryValidationError, error) {
-	rows := make([]ParsedRow, 0)
-	errs := make([]DictionaryValidationError, 0)
+	rows := make([]ParsedRow, 0, len(pages))
+	errs := make([]DictionaryValidationError, 0, len(pages))
 	for _, page := range pages {
 		words, parseErrs, err := textdic.Process(page.Text)
 		if err != nil {
@@ -270,7 +270,7 @@ func cardsFromParsedRows(cardgroupID string, rows []ParsedRow) []*domain.Card {
 }
 
 func frontsToDelete(current []string, notionFronts map[string]struct{}) []string {
-	deleteFronts := make([]string, 0)
+	deleteFronts := make([]string, 0, len(current))
 	for _, front := range current {
 		if _, ok := notionFronts[front]; !ok {
 			deleteFronts = append(deleteFronts, front)
