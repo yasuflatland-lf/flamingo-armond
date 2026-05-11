@@ -23,7 +23,7 @@ export function SwipeProgressOverlay({ direction, progress }: Props) {
     <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
       <div
         className={cn(
-          "rounded-md border px-5 py-3 text-sm font-semibold uppercase tracking-wide shadow-sm transition-opacity",
+          "rounded-xl border-2 px-10 py-6 text-2xl font-semibold uppercase tracking-wide shadow-sm transition-opacity",
           hint.className,
         )}
         style={{ opacity: 0.25 + clamped * 0.75 }}
