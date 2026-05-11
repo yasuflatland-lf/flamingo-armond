@@ -1,4 +1,4 @@
-# goyacc lexer: recover via NEWLINE to enable `error NEWLINE` grammar rules
+# goyacc lexer: recover via NEWLINE for `error NEWLINE`; use explicit skip productions for lone rows
 
 > Part of the [Go library gotchas](../../../.claude/rules/go-library-gotchas.md) rules.
 
@@ -10,11 +10,22 @@
 entries: error NEWLINE { /* discard bad line */ }
 ```
 
-This rule is unreachable from lexer-level failures unless the lexer emits `NEWLINE` after skipping the bad input. Returning `0` (EOF) from the lexer's error path aborts the whole parse — every line after the first bad rune is dropped.
+This rule is only about lexer-level failures. It is reached when the lexer emits `NEWLINE` after skipping the bad input. Returning `0` (EOF) from the lexer's error path aborts the whole parse — every line after the first bad rune is dropped.
+
+If a grammar wants to ignore a structurally valid lone front-only or back-only row, model that with explicit productions such as:
+
+```yacc
+entry: WORD { /* record skip */ }
+     | DEFINITION { /* record skip */ }
+```
+
+That kind of skip is a parser decision, not recovery from bad input. It should emit a validation message and continue without relying on `error NEWLINE`.
 
 ## Why
 
 Emitting `NEWLINE` after consuming up to and including the next line terminator lets the parser's existing `error NEWLINE` recovery fire. Only the bad line is discarded; subsequent lines parse normally and their `ValidationError` entries accumulate alongside any well-formed results.
+
+Explicit skip productions should not use the recovery path. They are for expected-but-unwanted rows that still parse cleanly at the token level.
 
 ## Pattern
 
