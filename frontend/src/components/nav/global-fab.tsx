@@ -6,9 +6,10 @@ import { resolveFabAction } from "./fab-action";
 
 // Hidden on /login (anonymous-only), /admin (different audience),
 // /cards/new + /cardgroups/new (FAB target — would loop),
-// and /profile (FAB action does not apply to profile editing).
-// /learn/:id is intentionally visible so users can add cards while studying.
-const HIDDEN_PATH_RE = /^\/(login|admin|cards\/new|cardgroups\/new|profile)(\/|$)/;
+// /profile (FAB action does not apply), and /learn (LearnAddCardFloating
+// renders the Add affordance in the header line / top-right to avoid
+// spatial conflict with LearnActionBar).
+const HIDDEN_PATH_RE = /^\/(login|admin|cards\/new|cardgroups\/new|profile|learn)(\/|$)/;
 
 export function GlobalFAB() {
   const pathname = usePathname();
