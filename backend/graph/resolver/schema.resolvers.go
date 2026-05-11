@@ -16,7 +16,6 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"log/slog"
 
 	"github.com/rotisserie/eris"
 )
@@ -155,22 +154,6 @@ func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.HandleSw
 		return nil, err
 	}
 	return toSwipeResponseModel(ctx, out), nil
-}
-
-// dictionaryKindOrPanic enforces the "UNKNOWN never escapes the server" contract
-// documented on the GraphQL DictionaryValidationKind enum. The caller-side cast is
-// total at the type level, but a missed Kind assignment in a future construction
-// site would silently emit "UNKNOWN" / "" to the wire. Crash loud instead:
-// the gqlgen recover middleware will return a 500 to the client and the structured
-// log captures the construction context.
-func dictionaryKindOrPanic(ctx context.Context, raw string) model.DictionaryValidationKind {
-	if raw == "" || raw == string(model.DictionaryValidationKindUnknown) {
-		slog.ErrorContext(ctx, "dictionary: UNKNOWN/empty Kind escaped to resolver — programmer bug",
-			"raw", raw,
-		)
-		panic(eris.Errorf("dictionary: UNKNOWN/empty Kind escaped to resolver: %q", raw))
-	}
-	return model.DictionaryValidationKind(raw)
 }
 
 // UpsertDictionary is the resolver for the upsertDictionary field.

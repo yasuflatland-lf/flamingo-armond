@@ -8,6 +8,8 @@ import (
 	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/usecase"
+
+	"github.com/rotisserie/eris"
 )
 
 // Helpers live in a separate file so `gqlgen generate` does not strip them
@@ -231,6 +233,22 @@ func nilIfEmpty(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// dictionaryKindOrPanic enforces the "UNKNOWN never escapes the server" contract
+// documented on the GraphQL DictionaryValidationKind enum. The caller-side cast is
+// total at the type level, but a missed Kind assignment in a future construction
+// site would silently emit "UNKNOWN" / "" to the wire. Crash loud instead:
+// the gqlgen recover middleware will return a 500 to the client and the structured
+// log captures the construction context.
+func dictionaryKindOrPanic(ctx context.Context, raw string) model.DictionaryValidationKind {
+	if raw == "" || raw == string(model.DictionaryValidationKindUnknown) {
+		slog.ErrorContext(ctx, "dictionary: UNKNOWN/empty Kind escaped to resolver — programmer bug",
+			"raw", raw,
+		)
+		panic(eris.Errorf("dictionary: UNKNOWN/empty Kind escaped to resolver: %q", raw))
+	}
+	return model.DictionaryValidationKind(raw)
 }
 
 // toFSRSOverride collects the nine optional FSRS pointer fields from
