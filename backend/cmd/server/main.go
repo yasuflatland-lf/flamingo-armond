@@ -30,6 +30,7 @@ import (
 	"backend/internal/auth"
 	"backend/internal/database"
 	"backend/internal/domain/service"
+	"backend/internal/gqlerr"
 	"backend/internal/handler/notionsync"
 	"backend/internal/handler/ping"
 	"backend/internal/loader"
@@ -46,7 +47,15 @@ const defaultShutdownTimeout = 25 * time.Second
 func newGraphQLServer(r *resolver.Resolver) *handler.Server {
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.Options{})
-	srv.AddTransport(transport.POST{})
+	srv.AddTransport(transport.POST{
+		ResponseHeaders: http.Header{
+			"Content-Type": []string{"application/graphql-response+json; charset=utf-8"},
+		},
+	})
+
+	srv.SetRecoverFunc(func(ctx context.Context, err any) error {
+		return gqlerr.Internal(ctx, eris.Errorf("graphql: panic recovered: %v", err))
+	})
 
 	srv.Use(extension.FixedComplexityLimit(100))
 
