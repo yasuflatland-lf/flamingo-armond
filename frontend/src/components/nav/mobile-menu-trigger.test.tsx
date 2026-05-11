@@ -13,4 +13,15 @@ describe("<MobileMenuTrigger>", () => {
     );
     expect(screen.getByRole("button", { name: "Open menu" })).toBeInTheDocument();
   });
+
+  it("S-M2: icon svg is hidden from assistive technology", () => {
+    const { container } = render(
+      <Sheet>
+        <MobileMenuTrigger />
+      </Sheet>,
+    );
+    const svg = container.querySelector("svg");
+    expect(svg).not.toBeNull();
+    expect(svg).toHaveAttribute("aria-hidden", "true");
+  });
 });

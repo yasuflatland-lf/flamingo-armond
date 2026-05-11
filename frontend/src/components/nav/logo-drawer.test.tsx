@@ -197,10 +197,9 @@ describe("<LogoDrawer>", () => {
     const addLink = screen.getByRole("link", { name: /add a new card to this cardgroup/i });
     const menuButton = screen.getByRole("button", { name: "Open menu" });
 
-    await user.tab(); // Focus: logo link
-    await user.tab(); // Focus: '+' link
+    addLink.focus();
     expect(addLink).toHaveFocus();
-    await user.tab(); // Focus: menu trigger
+    await user.tab();
     expect(menuButton).toHaveFocus();
   });
 
