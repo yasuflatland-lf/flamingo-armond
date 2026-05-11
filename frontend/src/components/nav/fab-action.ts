@@ -54,20 +54,12 @@ export function resolveFabAction(pathname: string): FabAction | null {
   // to /edit at the page level, so they are not handled here.
   const editMatch = CARDGROUP_EDIT_RE.exec(pathname);
   if (editMatch) {
-    // usePathname() delivers a percent-encoded pathname. Decode the captured segment
-    // so cardWithGroup's encodeURIComponent encodes it exactly once.
-    // safeDecodePathSegment returns null for malformed %XX sequences; fall through to
-    // the generic card action rather than propagating a bad href.
     const rawId = safeDecodePathSegment(editMatch[1] as string);
     if (rawId !== null) return cardWithGroup(rawId);
   }
 
   const learnMatch = LEARN_RE.exec(pathname);
   if (learnMatch) {
-    // usePathname() delivers a percent-encoded pathname. Decode the captured segment
-    // so cardWithGroup's encodeURIComponent encodes it exactly once.
-    // safeDecodePathSegment returns null for malformed %XX sequences; fall through to
-    // the generic card action rather than propagating a bad href.
     const rawId = safeDecodePathSegment(learnMatch[1] as string);
     if (rawId !== null) return cardWithGroup(rawId, { withReturnToLearn: true });
   }

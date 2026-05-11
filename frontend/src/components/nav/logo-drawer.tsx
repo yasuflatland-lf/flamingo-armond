@@ -23,11 +23,8 @@ const NAV_LINK_CLASS =
 export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
   const pathname = usePathname();
   const learnMatch = pathname.match(/^\/learn\/([^/]+)$/);
-  // learnMatch[1] is always defined when the regex matched (capture group 1 is required).
-  // safeDecodePathSegment normalises a percent-encoded segment so the downstream
-  // encodeURIComponent re-encodes it once, matching LearnAddCardFloating's PC href.
-  // Returns null on URIError (malformed %XX), which the conditional JSX below already
-  // handles by skipping the '+' link — safe even from layout.tsx's shell.
+  // null on malformed %XX — conditional JSX below skips the '+' link rather than
+  // propagating a URIError that would escape layout.tsx's error boundary.
   const learnCardgroupId =
     user && learnMatch ? safeDecodePathSegment(learnMatch[1] as string) : null;
 
