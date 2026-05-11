@@ -141,6 +141,8 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 				u.logger.InfoContext(ctx, "notion sync: skip-only payload, no persistence",
 					"skipped_count", len(parseErrs),
 					"first_line", parseErrs[0].Line,
+					"first_kind", parseErrs[0].Kind,
+					"first_snippet", parseErrs[0].Snippet,
 				)
 			}
 			return SyncFromNotionOutput{ParseErrors: parseErrs}, nil
@@ -149,6 +151,8 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 			u.logger.WarnContext(ctx, "notion sync: all rows failed to parse",
 				"parse_error_count", len(parseErrs),
 				"first_error_line", parseErrs[0].Line,
+				"first_error_kind", parseErrs[0].Kind,
+				"first_error_snippet", parseErrs[0].Snippet,
 			)
 		}
 		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncParse, "all rows failed to parse")
@@ -211,12 +215,16 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 
 // allDictionaryErrorsSkipped reports whether every error in errs originated
 // from a grammar skip production (lone front / lone back). The check uses the
-// structural Skipped field rather than substring-matching Message, so future
+// structural Kind field rather than substring-matching Message, so future
 // changes to the human-readable text do not silently flip skip-only payloads
-// over to the hard-failure branch.
+// over to the hard-failure branch. "unrecognized" is treated as a hard failure
+// and falls into the default branch.
 func allDictionaryErrorsSkipped(errs []DictionaryValidationError) bool {
 	for _, e := range errs {
-		if !e.Skipped {
+		switch e.Kind {
+		case "front_only", "back_only":
+			continue
+		default:
 			return false
 		}
 	}
@@ -268,7 +276,12 @@ func parseNotionPages(ctx context.Context, logger *slog.Logger, pages []notion.P
 			})
 		}
 		for _, e := range parseErrs {
-			errs = append(errs, DictionaryValidationError{Line: e.Line, Message: e.Message, Skipped: e.Skipped})
+			errs = append(errs, DictionaryValidationError{
+				Line:    e.Line,
+				Message: e.Message,
+				Kind:    e.Kind.String(),
+				Snippet: e.Snippet,
+			})
 		}
 	}
 	return rows, errs, nil
@@ -285,6 +298,7 @@ func dedupeParsedRows(rows []ParsedRow, errs []DictionaryValidationError) ([]Par
 			errs = append(errs, DictionaryValidationError{
 				Line:    row.Line,
 				Message: "duplicate front in Notion pages (later occurrence wins)",
+				Kind:    "duplicate",
 				Front:   row.Front,
 				Back:    row.Back,
 			})

@@ -339,9 +339,20 @@ type DictionaryValidationError implements UserError {
   line: Int!
   """Human-readable, English error message."""
   message: String!
-  """Front term of the row, present only when the error refers to a fully parsed row (e.g. a duplicate front). Absent (null) for syntax errors, where front/back were never extracted."""
+  """Classifier for the parse event: "" for payload-level / hard errors,
+     "front_only" / "back_only" / "unrecognized" for grammar-recovered
+     diagnostics, "duplicate" for dedupe warnings. Callers branch on this
+     instead of substring-matching message."""
+  kind: String!
+  """Parser-extracted snippet: the WORD token value for front_only skips,
+     the DEFINITION token value for back_only skips, the recovered line
+     content for unrecognized characters. Null otherwise."""
+  snippet: String
+  """Dedupe-duplicate: the front term of the dropped row. Null for all
+     other kinds."""
   front: String
-  """Back definition of the row. Null for syntax errors; non-null whenever `front` is non-null."""
+  """Dedupe-duplicate: the back text of the dropped row. Null for all
+     other kinds."""
   back: String
 }
 

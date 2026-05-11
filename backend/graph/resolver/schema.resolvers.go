@@ -170,6 +170,8 @@ func (r *mutationResolver) UpsertDictionary(ctx context.Context, input model.Ups
 		errs = append(errs, &model.DictionaryValidationError{
 			Line:    e.Line,
 			Message: e.Message,
+			Kind:    e.Kind,
+			Snippet: nilIfEmpty(e.Snippet),
 			Front:   nilIfEmpty(e.Front),
 			Back:    nilIfEmpty(e.Back),
 		})
@@ -369,7 +371,12 @@ func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.Vali
 	}
 	validationErrs := make([]*model.DictionaryValidationError, 0, len(errs))
 	for _, e := range errs {
-		validationErrs = append(validationErrs, &model.DictionaryValidationError{Line: e.Line, Message: e.Message})
+		validationErrs = append(validationErrs, &model.DictionaryValidationError{
+			Line:    e.Line,
+			Message: e.Message,
+			Kind:    e.Kind.String(),
+			Snippet: nilIfEmpty(e.Snippet),
+		})
 	}
 	// Product-type invariant: valid <=> no errors AND >=1 parsed word. See schema.graphql DictionaryValidationResult docstring.
 	return &model.DictionaryValidationResult{

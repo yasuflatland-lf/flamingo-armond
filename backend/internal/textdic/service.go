@@ -26,19 +26,47 @@ type ParsedWord struct {
 	Line  int
 }
 
+// SkipKind classifies the reason a dictionary entry was skipped or rejected.
+// SkipKindNone represents a hard lexer/parser error; the remaining values are
+// soft skips where the entry is malformed but recoverable.
+type SkipKind uint8
+
+const (
+	SkipKindNone         SkipKind = iota // hard lexer/parser error
+	SkipKindFrontOnly                    // lone WORD: definition absent
+	SkipKindBackOnly                     // lone DEFINITION: front absent
+	SkipKindUnrecognized                 // unrecognized character
+)
+
+// String returns the wire-format name for a SkipKind. SkipKindNone returns
+// "" (empty) because hard errors carry no "kind" value on the GraphQL wire.
+func (k SkipKind) String() string {
+	switch k {
+	case SkipKindFrontOnly:
+		return "front_only"
+	case SkipKindBackOnly:
+		return "back_only"
+	case SkipKindUnrecognized:
+		return "unrecognized"
+	default:
+		return ""
+	}
+}
+
 // ValidationError is the public, line-scoped error type. Line == 0
 // indicates an error not tied to a specific line (e.g. payload-size).
 // Only Process constructs values of this type within the package.
 //
-// Skipped is true when the parser intentionally skipped the entry via a
-// grammar skip production (lone front, lone back). Message remains the
-// UI-facing description; Skipped is the structural classifier callers use
-// to distinguish a soft skip from a hard lexer/parser failure without
-// substring-matching the message.
+// Kind classifies the error: SkipKindNone means a hard lexer/parser failure;
+// other values represent soft skips (lone front, lone back, unrecognized
+// character). Snippet carries the raw token text that triggered the skip
+// (empty for hard errors and payload-level errors). Message is the
+// UI-facing description.
 type ValidationError struct {
 	Line    int
 	Message string
-	Skipped bool
+	Kind    SkipKind
+	Snippet string
 }
 
 // Process parses a plain-text dictionary payload.
@@ -65,10 +93,10 @@ func Process(input string) (words []ParsedWord, errs []ValidationError, err erro
 	}()
 
 	if len(input) > maxPayloadBytes {
-		return []ParsedWord{}, []ValidationError{{Line: 0, Message: fmt.Sprintf("payload exceeds %d bytes", maxPayloadBytes)}}, nil
+		return []ParsedWord{}, []ValidationError{{Line: 0, Message: fmt.Sprintf("payload exceeds %d bytes", maxPayloadBytes), Kind: SkipKindNone, Snippet: ""}}, nil
 	}
 	if len(input) == 0 {
-		return []ParsedWord{}, []ValidationError{{Line: 1, Message: "empty payload"}}, nil
+		return []ParsedWord{}, []ValidationError{{Line: 1, Message: "empty payload", Kind: SkipKindNone, Snippet: ""}}, nil
 	}
 
 	nodes, rawErrs := runParse(newLexer(input))
@@ -84,10 +112,10 @@ func Process(input string) (words []ParsedWord, errs []ValidationError, err erro
 	errs = make([]ValidationError, 0, len(rawErrs))
 	for _, e := range rawErrs {
 		if pe, ok := e.(parseError); ok {
-			errs = append(errs, ValidationError{Line: pe.Line, Message: pe.Message, Skipped: pe.Skipped})
+			errs = append(errs, ValidationError{Line: pe.Line, Message: pe.Message, Kind: pe.Kind, Snippet: pe.Snippet})
 			continue
 		}
-		errs = append(errs, ValidationError{Line: 0, Message: e.Error()})
+		errs = append(errs, ValidationError{Line: 0, Message: e.Error(), Kind: SkipKindNone, Snippet: ""})
 	}
 	return words, errs, nil
 }
