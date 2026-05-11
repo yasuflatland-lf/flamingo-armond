@@ -1,8 +1,10 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -545,5 +547,66 @@ func TestNotionSyncUsecase_ListFrontsError(t *testing.T) {
 	// Delete must not have been reached after the list failure.
 	if cards.deleteCalls != 0 {
 		t.Fatalf("delete calls = %d, want 0 (must not be reached after list error)", cards.deleteCalls)
+	}
+}
+
+// TestNotionSyncUsecase_SkipOnlyLogFields verifies that the skip-only branch
+// emits an InfoContext log record whose structured fields include first_line,
+// first_kind, and first_snippet, pinned to the known values for a lone-front
+// input ("apple\n" → line 1, kind "front_only", snippet "apple").
+//
+// Not parallel: injects a logger directly into the usecase, so it does not
+// mutate the global slog default.
+func TestNotionSyncUsecase_SkipOnlyLogFields(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	fetcher := &stubNotionFetcher{pages: []notion.Page{
+		{ID: "page-1", Text: "apple\n"},
+	}}
+	cardgroups := &mockNotionCardgroupRepo{}
+	cards := &mockNotionCardRepo{}
+	tx, txCalls := dictTxRunner()
+	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, logger)
+
+	out, err := uc.Sync(context.Background(), SyncFromNotionInput{
+		PageIDs:       []string{"page-1"},
+		OwnerID:       "owner-1",
+		CardgroupName: "English",
+	})
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if len(out.ParseErrors) != 1 {
+		t.Fatalf("ParseErrors len = %d, want 1", len(out.ParseErrors))
+	}
+	// Skip-only: persistence must be bypassed.
+	if cardgroups.calls != 0 || cards.upsertCalls != 0 || *txCalls != 0 {
+		t.Fatalf("persistence ran: cardgroups=%d upserts=%d tx=%d, want all zero",
+			cardgroups.calls, cards.upsertCalls, *txCalls)
+	}
+
+	records := decodeJSONRecords(t, buf.Bytes())
+	var skipRec map[string]any
+	for _, rec := range records {
+		if rec["msg"] == "notion sync: skip-only payload, no persistence" {
+			skipRec = rec
+			break
+		}
+	}
+	if skipRec == nil {
+		t.Fatalf("no InfoContext record with msg %q found in log output:\n%s",
+			"notion sync: skip-only payload, no persistence", buf.String())
+	}
+
+	// first_line: JSON numbers decode as float64 in map[string]any.
+	if fl, ok := skipRec["first_line"].(float64); !ok || int(fl) != 1 {
+		t.Errorf("first_line = %v (%T), want 1", skipRec["first_line"], skipRec["first_line"])
+	}
+	if skipRec["first_kind"] != "front_only" {
+		t.Errorf("first_kind = %v, want %q", skipRec["first_kind"], "front_only")
+	}
+	if skipRec["first_snippet"] != "apple" {
+		t.Errorf("first_snippet = %v, want %q", skipRec["first_snippet"], "apple")
 	}
 }
