@@ -23,6 +23,6 @@ describe("<MobileMenuTrigger>", () => {
     const svg = container.querySelector("svg");
     expect(svg).not.toBeNull();
     // lucide-react sets class names like "lucide lucide-settings"
-    expect(svg?.getAttribute("class") ?? "").toMatch(/lucide/);
+    expect(svg?.getAttribute("class") ?? "").toMatch(/lucide-settings/);
   });
 });
