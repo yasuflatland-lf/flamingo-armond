@@ -1,0 +1,32 @@
+alpha りんご
+orphan-a
+beta 犬
+猫
+gamma 猫
+「引用」
+delta 鳥
+（注釈）
+epsilon 魚
+stray-front-10
+zeta 本
+『補足』
+eta りんご
+lambda-front
+theta 犬
+【ラベル】
+iota 猫
+front-only-after-streak
+kappa 鳥
+〔注〕
+alpha りんご
+mu 魚
+orphan-b
+nu 本
+〈メモ〉
+xi りんご
+omicron 犬
+stray-front-28
+pi 猫
+（備考）
+rho 鳥
+sigma 魚

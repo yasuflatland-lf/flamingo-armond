@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/debug"
+
+	"github.com/rotisserie/eris"
 )
 
 // maxPayloadBytes caps the parser at 1 MiB. Beyond this, Process returns
@@ -27,9 +29,16 @@ type ParsedWord struct {
 // ValidationError is the public, line-scoped error type. Line == 0
 // indicates an error not tied to a specific line (e.g. payload-size).
 // Only Process constructs values of this type within the package.
+//
+// Skipped is true when the parser intentionally skipped the entry via a
+// grammar skip production (lone front, lone back). Message remains the
+// UI-facing description; Skipped is the structural classifier callers use
+// to distinguish a soft skip from a hard lexer/parser failure without
+// substring-matching the message.
 type ValidationError struct {
 	Line    int
 	Message string
+	Skipped bool
 }
 
 // Process parses a plain-text dictionary payload.
@@ -51,7 +60,7 @@ func Process(input string) (words []ParsedWord, errs []ValidationError, err erro
 			if rt, ok := r.(runtime.Error); ok {
 				panic(rt)
 			}
-			err = fmt.Errorf("textdic: parser panic: %v\n%s", r, debug.Stack())
+			err = eris.Errorf("textdic: parser panic: %v\n%s", r, debug.Stack())
 		}
 	}()
 
@@ -75,7 +84,7 @@ func Process(input string) (words []ParsedWord, errs []ValidationError, err erro
 	errs = make([]ValidationError, 0, len(rawErrs))
 	for _, e := range rawErrs {
 		if pe, ok := e.(parseError); ok {
-			errs = append(errs, ValidationError{Line: pe.Line, Message: pe.Message})
+			errs = append(errs, ValidationError{Line: pe.Line, Message: pe.Message, Skipped: pe.Skipped})
 			continue
 		}
 		errs = append(errs, ValidationError{Line: 0, Message: e.Error()})

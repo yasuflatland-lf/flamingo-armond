@@ -3,6 +3,7 @@
 package textdic_test
 
 import (
+	_ "embed"
 	"strings"
 	"sync"
 	"testing"
@@ -25,6 +26,9 @@ var (
 	defFish  = jp(0x9B5A)                 // han "fish"
 	defBook  = jp(0x672C)                 // han "book"
 )
+
+//go:embed testdata/notion_dict_repro.txt
+var notionDictRepro string
 
 func TestProcess_HappyPath(t *testing.T) {
 	t.Parallel()
@@ -387,7 +391,7 @@ func TestProcess_FrontWithEmbeddedParenStillWorks(t *testing.T) {
 	}
 }
 
-func TestProcess_LineWithOnlyParenBackIsRejected(t *testing.T) {
+func TestProcess_LineWithOnlyParenBackIsSkipped(t *testing.T) {
 	t.Parallel()
 
 	input := "(comment) only\n" +
@@ -403,17 +407,17 @@ func TestProcess_LineWithOnlyParenBackIsRejected(t *testing.T) {
 	if words[0].Front != "fine" {
 		t.Errorf("words[0].Front: got %q want %q", words[0].Front, "fine")
 	}
-	if !hasValidationError(errs, 1, "syntax error") {
-		t.Errorf("expected syntax error on line 1 for the headword-less row, got %+v", errs)
+	if !hasValidationError(errs, 1, "skipped: back-only line (no front)") {
+		t.Errorf("expected skipped back-only line on line 1, got %+v", errs)
 	}
 }
 
-func TestProcess_LineWithOnlyBracketBackIsRejected(t *testing.T) {
+func TestProcess_LineWithOnlyBracketBackIsSkipped(t *testing.T) {
 	t.Parallel()
 
-	// Symmetric counterpart to TestProcess_LineWithOnlyParenBackIsRejected:
+	// Symmetric counterpart to TestProcess_LineWithOnlyParenBackIsSkipped:
 	// `[` and `(` both go through canStartDefinition, so a line that starts
-	// with `[` also lacks a WORD token and must be rejected.
+	// with `[` also lacks a WORD token and must be skipped.
 	input := "[bracket] only\n" +
 		"fine " + defCat + "\n"
 
@@ -427,8 +431,8 @@ func TestProcess_LineWithOnlyBracketBackIsRejected(t *testing.T) {
 	if words[0].Front != "fine" {
 		t.Errorf("words[0].Front: got %q want %q", words[0].Front, "fine")
 	}
-	if !hasValidationError(errs, 1, "syntax error") {
-		t.Errorf("expected syntax error on line 1 for the headword-less row, got %+v", errs)
+	if !hasValidationError(errs, 1, "skipped: back-only line (no front)") {
+		t.Errorf("expected skipped back-only line on line 1, got %+v", errs)
 	}
 }
 
@@ -498,6 +502,69 @@ func TestProcess_MultipleEntries(t *testing.T) {
 	for i, w := range want {
 		if words[i] != w {
 			t.Errorf("words[%d]: got %+v want %+v", i, words[i], w)
+		}
+	}
+}
+
+func TestProcess_NotionDictRepro(t *testing.T) {
+	t.Parallel()
+
+	words, errs, err := textdic.Process(notionDictRepro)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+
+	wantWords := []textdic.ParsedWord{
+		{Front: "alpha", Back: defRingo, Line: 1},
+		{Front: "beta", Back: defDog, Line: 3},
+		{Front: "gamma", Back: defCat, Line: 5},
+		{Front: "delta", Back: defBird, Line: 7},
+		{Front: "epsilon", Back: defFish, Line: 9},
+		{Front: "zeta", Back: defBook, Line: 11},
+		{Front: "eta", Back: defRingo, Line: 13},
+		{Front: "theta", Back: defDog, Line: 15},
+		{Front: "iota", Back: defCat, Line: 17},
+		{Front: "kappa", Back: defBird, Line: 19},
+		{Front: "alpha", Back: defRingo, Line: 21},
+		{Front: "mu", Back: defFish, Line: 22},
+		{Front: "nu", Back: defBook, Line: 24},
+		{Front: "xi", Back: defRingo, Line: 26},
+		{Front: "omicron", Back: defDog, Line: 27},
+		{Front: "pi", Back: defCat, Line: 29},
+		{Front: "rho", Back: defBird, Line: 31},
+		{Front: "sigma", Back: defFish, Line: 32},
+	}
+	if len(words) != len(wantWords) {
+		t.Fatalf("expected %d parsed words, got %d (%+v)", len(wantWords), len(words), words)
+	}
+	for i, want := range wantWords {
+		if words[i] != want {
+			t.Errorf("words[%d]: got %+v want %+v", i, words[i], want)
+		}
+	}
+
+	wantErrs := []textdic.ValidationError{
+		{Line: 2, Message: "skipped: front-only line (no definition)", Skipped: true},
+		{Line: 4, Message: "skipped: back-only line (no front)", Skipped: true},
+		{Line: 6, Message: "skipped: back-only line (no front)", Skipped: true},
+		{Line: 8, Message: "skipped: back-only line (no front)", Skipped: true},
+		{Line: 10, Message: "skipped: front-only line (no definition)", Skipped: true},
+		{Line: 12, Message: "skipped: back-only line (no front)", Skipped: true},
+		{Line: 14, Message: "skipped: front-only line (no definition)", Skipped: true},
+		{Line: 16, Message: "skipped: back-only line (no front)", Skipped: true},
+		{Line: 18, Message: "skipped: front-only line (no definition)", Skipped: true},
+		{Line: 20, Message: "skipped: back-only line (no front)", Skipped: true},
+		{Line: 23, Message: "skipped: front-only line (no definition)", Skipped: true},
+		{Line: 25, Message: "skipped: back-only line (no front)", Skipped: true},
+		{Line: 28, Message: "skipped: front-only line (no definition)", Skipped: true},
+		{Line: 30, Message: "skipped: back-only line (no front)", Skipped: true},
+	}
+	if len(errs) != len(wantErrs) {
+		t.Fatalf("expected %d validation errors, got %d (%+v)", len(wantErrs), len(errs), errs)
+	}
+	for i, want := range wantErrs {
+		if errs[i] != want {
+			t.Errorf("errs[%d]: got %+v want %+v", i, errs[i], want)
 		}
 	}
 }
@@ -576,12 +643,12 @@ func TestProcess_InvalidUTF8(t *testing.T) {
 	}
 }
 
-func TestProcess_SyntaxErrorOnLine2(t *testing.T) {
+func TestProcess_SkippedFrontOnlyLineOnLine2(t *testing.T) {
 	t.Parallel()
 
-	// Line 1 is well-formed; line 2 is malformed (bare WORD with no
-	// DEFINITION). The grammar should report the syntax error against
-	// line 2, not against line 1 (the previous default).
+	// Line 1 is well-formed; line 2 is a lone WORD. The grammar should
+	// report the skip against line 2, not against line 1 (the previous
+	// default).
 	input := "apple " + defRingo + "\n" +
 		"orphan\n"
 
@@ -593,16 +660,29 @@ func TestProcess_SyntaxErrorOnLine2(t *testing.T) {
 		t.Fatalf("expected at least one validation error for the malformed row")
 	}
 
-	// At least one syntax-style error must point at line 2.
-	var sawLine2 bool
-	for _, e := range errs {
-		if e.Line == 2 {
-			sawLine2 = true
-			break
-		}
+	if !hasValidationError(errs, 2, "skipped: front-only line (no definition)") {
+		t.Errorf("expected a skipped front-only line on line 2, got %+v", errs)
 	}
-	if !sawLine2 {
-		t.Errorf("expected a validation error on line 2, got %+v", errs)
+}
+
+func TestProcess_LoneFrontAtEOFWithoutTrailingNewline(t *testing.T) {
+	t.Parallel()
+
+	// Input "orphan" — a lone WORD at EOF without a trailing newline. The
+	// grammar's `entry: WORD` skip production records exactly one validation
+	// error tagged Skipped=true on line 1.
+	_, errs, err := textdic.Process("orphan")
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	if len(errs) != 1 {
+		t.Fatalf("expected exactly 1 validation error, got %d (%+v)", len(errs), errs)
+	}
+	if errs[0].Line != 1 {
+		t.Errorf("Line: got %d want 1", errs[0].Line)
+	}
+	if !errs[0].Skipped {
+		t.Errorf("Skipped: got false, want true (lone-front entry must be tagged as skipped)")
 	}
 }
 

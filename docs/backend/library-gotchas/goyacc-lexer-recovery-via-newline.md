@@ -1,4 +1,4 @@
-# goyacc lexer: recover via NEWLINE to enable `error NEWLINE` grammar rules
+# goyacc lexer: recover via NEWLINE for `error NEWLINE`; use explicit skip productions for lone rows
 
 > Part of the [Go library gotchas](../../../.claude/rules/go-library-gotchas.md) rules.
 
@@ -10,11 +10,26 @@
 entries: error NEWLINE { /* discard bad line */ }
 ```
 
-This rule is unreachable from lexer-level failures unless the lexer emits `NEWLINE` after skipping the bad input. Returning `0` (EOF) from the lexer's error path aborts the whole parse — every line after the first bad rune is dropped.
+`error NEWLINE` is the general goyacc hook for any parse-error recovery — the LALR stack enters error mode whenever the parser encounters a token it cannot shift or reduce in the current state. That includes both parser-level syntax errors (unexpected token sequence) and lexer-level unrecognised characters (the lexer emits the special `error` token after calling `yyerror`). The `yyerrflag = 3` counter decrements with each accepted token; the parser stays silent until it counts down to zero, so multiple tokens on the same bad line are consumed without redundant error messages.
 
-## Why
+In the `textdic` grammar, all parser-level "expected this, got that" cases the design cares about — a lone WORD without a paired DEFINITION, and a lone DEFINITION without a preceding WORD — are handled by explicit skip productions:
+
+```yacc
+entry: WORD { /* record skip */ }
+     | DEFINITION { /* record skip */ }
+```
+
+Those productions match cleanly at the token level and emit a validation message before continuing. Because they are explicit alternatives, the parser never enters error-recovery mode for them. As a result, `error NEWLINE` in this grammar now only runs for lexer-level unrecognised characters: input that the lexer cannot tokenise at all and must skip to the next line terminator.
+
+The distinction matters: explicit skip productions are for expected-but-unwanted rows; `error NEWLINE` is the last-resort recovery for input the parser cannot make sense of even after the lexer has done its best.
+
+For the Notion sync behaviour that depends on this grammar design, see [`docs/notion-sync.md` § "Behavior"](../../notion-sync.md#behavior).
+
+## Why `error NEWLINE`
 
 Emitting `NEWLINE` after consuming up to and including the next line terminator lets the parser's existing `error NEWLINE` recovery fire. Only the bad line is discarded; subsequent lines parse normally and their `ValidationError` entries accumulate alongside any well-formed results.
+
+Returning `0` (EOF) from the lexer's error path instead aborts the whole parse — every line after the first bad rune is dropped. That is the wrong default for a batch parser that should surface as many diagnostics as possible in one pass.
 
 ## Pattern
 

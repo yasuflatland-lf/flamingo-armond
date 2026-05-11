@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"reflect"
 	"strings"
 	"time"
 
@@ -122,14 +123,28 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 		return SyncFromNotionOutput{}, eris.Wrap(errors.Join(ErrNotionSyncFetch, err), "fetch pages")
 	}
 
-	rows, parseErrs, err := parseNotionPages(pages)
+	rows, parseErrs, err := parseNotionPages(ctx, u.logger, pages)
 	if err != nil {
 		return SyncFromNotionOutput{}, eris.Wrap(errors.Join(ErrNotionSyncParse, err), "parse pages")
 	}
-	// Soft parse failure: every input line was rejected by the parser, leaving
-	// nothing to persist. Surface this as ErrNotionSyncParse (HTTP 422) rather
-	// than silently succeeding with an empty upsert.
+	// Soft skip-only input: every non-blank line was intentionally skipped by
+	// the grammar. Report the skipped rows, but do not persist an empty sync
+	// that would delete existing cards from the target cardgroup.
+	//
+	// This short-circuit MUST run before dedupeParsedRows: dedupe appends
+	// non-skip "duplicate front" warnings to parseErrs, which would make
+	// allDictionaryErrorsSkipped return false for a skip-only payload that
+	// happens to also have duplicates added later in the pipeline.
 	if len(rows) == 0 && len(parseErrs) > 0 {
+		if allDictionaryErrorsSkipped(parseErrs) {
+			if u.logger != nil {
+				u.logger.InfoContext(ctx, "notion sync: skip-only payload, no persistence",
+					"skipped_count", len(parseErrs),
+					"first_line", parseErrs[0].Line,
+				)
+			}
+			return SyncFromNotionOutput{ParseErrors: parseErrs}, nil
+		}
 		if u.logger != nil {
 			u.logger.WarnContext(ctx, "notion sync: all rows failed to parse",
 				"parse_error_count", len(parseErrs),
@@ -194,6 +209,20 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 	return out, nil
 }
 
+// allDictionaryErrorsSkipped reports whether every error in errs originated
+// from a grammar skip production (lone front / lone back). The check uses the
+// structural Skipped field rather than substring-matching Message, so future
+// changes to the human-readable text do not silently flip skip-only payloads
+// over to the hard-failure branch.
+func allDictionaryErrorsSkipped(errs []DictionaryValidationError) bool {
+	for _, e := range errs {
+		if !e.Skipped {
+			return false
+		}
+	}
+	return len(errs) > 0
+}
+
 func normalizePageIDs(ids []string) []string {
 	out := make([]string, 0, len(ids))
 	seen := make(map[string]struct{}, len(ids))
@@ -211,12 +240,23 @@ func normalizePageIDs(ids []string) []string {
 	return out
 }
 
-func parseNotionPages(pages []notion.Page) ([]ParsedRow, []DictionaryValidationError, error) {
+func parseNotionPages(ctx context.Context, logger *slog.Logger, pages []notion.Page) ([]ParsedRow, []DictionaryValidationError, error) {
 	rows := make([]ParsedRow, 0, len(pages))
 	errs := make([]DictionaryValidationError, 0, len(pages))
-	for _, page := range pages {
+	for i, page := range pages {
 		words, parseErrs, err := textdic.Process(page.Text)
 		if err != nil {
+			// Earlier pages' parsed rows are about to be dropped on the caller
+			// side (the function returns nil rows). Log the failing page so
+			// operators can locate the breakage; the caller maps err into
+			// ErrNotionSyncParse.
+			if logger != nil {
+				logger.ErrorContext(ctx, "notion sync: page parse failed",
+					"page_index", i,
+					"page_id", page.ID,
+					"error_name", reflect.TypeOf(err).String(),
+				)
+			}
 			return nil, nil, err
 		}
 		for _, word := range words {
@@ -228,7 +268,7 @@ func parseNotionPages(pages []notion.Page) ([]ParsedRow, []DictionaryValidationE
 			})
 		}
 		for _, e := range parseErrs {
-			errs = append(errs, DictionaryValidationError{Line: e.Line, Message: e.Message})
+			errs = append(errs, DictionaryValidationError{Line: e.Line, Message: e.Message, Skipped: e.Skipped})
 		}
 	}
 	return rows, errs, nil

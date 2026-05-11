@@ -13,9 +13,8 @@ func TestGrammar_ErrorRecoveryStaysInBounds(t *testing.T) {
 	t.Parallel()
 
 	// A bare WORD line ("orphan") is malformed (no DEFINITION). The grammar
-	// rule `entries : error NEWLINE` discards the offending entry and
-	// resumes parsing on the next line; subsequent lines must still parse
-	// with correct line numbers.
+	// now skips it explicitly and resumes parsing on the next line;
+	// subsequent lines must still parse with correct line numbers.
 	input := "alpha " + defDog + "\n" +
 		"orphan\n" +
 		"beta " + defCat + "\n" +
@@ -55,9 +54,9 @@ func TestGrammar_ErrorRecoveryStaysInBounds(t *testing.T) {
 		t.Errorf("malformed row should not yield a word, got %+v", words)
 	}
 
-	// The malformed row must surface as a validation error.
-	if len(errs) == 0 {
-		t.Errorf("expected at least one validation error for the malformed row")
+	// The malformed row must surface as a skipped validation error.
+	if !hasValidationError(errs, 2, "skipped: front-only line (no definition)") {
+		t.Errorf("expected skipped front-only line on line 2, got %+v", errs)
 	}
 }
 

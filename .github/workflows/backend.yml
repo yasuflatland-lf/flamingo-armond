@@ -43,6 +43,11 @@ jobs:
           go tool gqlgen generate
           git diff --exit-code -- graph/resolver/*.resolvers.go
 
+      - name: Verify goyacc artifacts
+        run: |
+          go tool goyacc -v /dev/null -o internal/textdic/parser.go -p yy internal/textdic/grammar.y
+          git diff --exit-code -- internal/textdic/parser.go
+
       - name: Verify no fmt.Errorf("%w") remains
         run: |
           if grep -rnE 'fmt\.Errorf\([^)]*%w' internal cmd | grep -v _test.go; then
