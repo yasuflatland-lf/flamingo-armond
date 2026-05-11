@@ -294,6 +294,14 @@ extend type Mutation {
   handleSwipe(input: HandleSwipeInput!): SwipeResponse!
 }
 
+"""
+Interface for typed business errors surfaced as `data` (Apollo "Errors as data"
+pattern). Implementors expose a `message: String!` and may add typed fields.
+"""
+interface UserError {
+  message: String!
+}
+
 """Base64-encoded dictionary text payload submitted for validation."""
 input ValidateDictionaryInput {
   """Base64-encoded text payload (standard alphabet, with padding). One front/back pair per line."""
@@ -311,7 +319,7 @@ type ParsedWord {
 }
 
 """Per-line validation error produced while parsing a dictionary payload."""
-type DictionaryValidationError {
+type DictionaryValidationError implements UserError {
   """1-based line number where the error was detected, or 0 when the error applies to the payload as a whole (e.g. oversized or empty payload)."""
   line: Int!
   """Human-readable, English error message."""
