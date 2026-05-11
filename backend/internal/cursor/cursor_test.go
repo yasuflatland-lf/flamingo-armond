@@ -20,7 +20,6 @@ func TestEncode_RoundTrip(t *testing.T) {
 		"",
 	}
 	for _, id := range ids {
-		id := id
 		t.Run(id, func(t *testing.T) {
 			t.Parallel()
 
@@ -96,7 +95,6 @@ func TestDecode_MalformedV1_ReturnsError(t *testing.T) {
 		"v1:\x00\x01", // non-printable bytes
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c, func(t *testing.T) {
 			t.Parallel()
 			_, err := cursor.Decode(c)

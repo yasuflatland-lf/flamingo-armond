@@ -183,12 +183,8 @@ func TestResolver_CreateCard_PartialFSRS_BadUserInput(t *testing.T) {
 	// cardRepo.Create must NOT be reached; validation fails before persistence.
 	srv := newCardSrv(&cardMockRepo{}, cgRepo, cardFakeTx())
 
-	// Only stability is provided; the other eight FSRS fields are absent.
-	// This triggers ErrFSRSOverridePartial -> BAD_USER_INPUT on "input.fsrs".
-	// createCard returns a union; the selection set must use fragments. The
-	// happy path is unreachable here (validation rejects the partial override
-	// before the resolver returns), so a minimal `... on CreateCardSuccess`
-	// fragment suffices to keep the query well-formed.
+	// Only stability is provided; the other eight FSRS fields are absent —
+	// ErrFSRSOverridePartial -> BAD_USER_INPUT on "input.fsrs".
 	mutation := map[string]any{
 		"query": `mutation($input: NewCardInput!) {
 			createCard(input: $input) { __typename ... on CreateCardSuccess { card { id } } }

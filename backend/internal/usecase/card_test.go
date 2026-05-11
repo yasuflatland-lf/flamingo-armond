@@ -187,7 +187,6 @@ func TestCardUsecase_Create(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			cardRepo := &mockCardRepository{}
@@ -553,7 +552,6 @@ func TestCardUsecase_ListCardsByCardgroupConnection_ResolveCursorHydratesDueFiel
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			cardRepo := &mockCardRepository{
@@ -865,7 +863,6 @@ func TestCardUsecase_ListCardsByCardgroupConnection_SearchPassthrough(t *testing
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

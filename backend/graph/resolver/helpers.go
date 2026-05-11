@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"backend/graph/model"
+	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/usecase"
 )
@@ -151,15 +152,15 @@ func toCardConnectionModel(out *usecase.CardConnectionOutput) *model.CardConnect
 	}
 	edges := make([]*model.CardEdge, len(out.Cards))
 	for i, c := range out.Cards {
-		edges[i] = &model.CardEdge{Cursor: EncodeCursor(c.ID), Node: toCardModel(c)}
+		edges[i] = &model.CardEdge{Cursor: cursor.Encode(c.ID), Node: toCardModel(c)}
 	}
 	var startCur, endCur *string
 	if out.StartCur != "" {
-		s := EncodeCursor(out.StartCur)
+		s := cursor.Encode(out.StartCur)
 		startCur = &s
 	}
 	if out.EndCur != "" {
-		e := EncodeCursor(out.EndCur)
+		e := cursor.Encode(out.EndCur)
 		endCur = &e
 	}
 	return &model.CardConnection{
@@ -182,15 +183,15 @@ func toCardgroupConnectionModel(out *usecase.CardgroupConnectionOutput) *model.C
 	}
 	edges := make([]*model.CardgroupEdge, len(out.Cardgroups))
 	for i, cg := range out.Cardgroups {
-		edges[i] = &model.CardgroupEdge{Cursor: EncodeCursor(cg.ID), Node: toCardgroupModel(cg)}
+		edges[i] = &model.CardgroupEdge{Cursor: cursor.Encode(cg.ID), Node: toCardgroupModel(cg)}
 	}
 	var startCur, endCur *string
 	if out.StartCur != "" {
-		s := EncodeCursor(out.StartCur)
+		s := cursor.Encode(out.StartCur)
 		startCur = &s
 	}
 	if out.EndCur != "" {
-		e := EncodeCursor(out.EndCur)
+		e := cursor.Encode(out.EndCur)
 		endCur = &e
 	}
 	return &model.CardgroupConnection{
