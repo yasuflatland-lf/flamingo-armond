@@ -74,7 +74,10 @@ vi.mock("@/lib/use-reduced-motion", () => ({
 // LearnActionBar mock — exposes the onRate callback and disabled state for testing.
 // ---------------------------------------------------------------------------
 vi.mock("@/components/learn/learn-action-bar", () => ({
-  LearnActionBar: (props: { onRate: (d: "left" | "down" | "right") => void; disabled: boolean }) => (
+  LearnActionBar: (props: {
+    onRate: (d: "left" | "down" | "right") => void;
+    disabled: boolean;
+  }) => (
     <div data-testid="learn-action-bar" data-disabled={String(props.disabled)}>
       <button type="button" onClick={() => props.onRate("left")} disabled={props.disabled}>
         Rate as Again
