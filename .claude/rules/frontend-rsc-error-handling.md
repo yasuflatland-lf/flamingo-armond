@@ -31,17 +31,19 @@ This is why `app/<route>/error.tsx` cannot rescue layout-level throws — the sa
 
 ## Structurally parse GraphQL `extensions.code` — never substring-match the message
 
-`gqlFetch` (`frontend/src/lib/apollo/server.ts`) throws a single message-shaped error when the backend returns GraphQL errors:
+`gqlFetch` (`frontend/src/lib/apollo/server.ts`) handles two distinct response shapes depending on whether `json.data` is present:
 
-```
-Error("GraphQL errors: " + JSON.stringify(json.errors))
-```
+1. **No data** (`json.errors` set AND `json.data == null`) — throws an error:
+   ```
+   Error("GraphQL errors: " + JSON.stringify(json.errors))
+   ```
+   i.e. the literal prefix `GraphQL errors: ` followed by the JSON-stringified `errors` array as returned by the backend. Each entry has the standard `{ message, path, extensions: { code, ... } }` shape.
 
-i.e. the literal prefix `GraphQL errors: ` followed by the JSON-stringified `errors` array as returned by the backend. Each entry has the standard `{ message, path, extensions: { code, ... } }` shape.
+2. **Partial response** (`json.errors` set AND `json.data != null`, per GraphQL over HTTP §5.2) — returns `json.data` and emits a console warning. **Exception**: if any error has `extensions.code` of `UNAUTHENTICATED` or `FORBIDDEN`, the error is re-thrown to preserve the auth-redirect contract — callers using `isUnauthenticatedGraphQLError` or `isForbiddenGraphQLError` continue to work correctly.
 
-Code that needs to branch on a specific code (e.g. swallowing `UNAUTHENTICATED` in the Header, or distinguishing `UNAUTHENTICATED` from a real failure on a HomePage redirect) MUST parse the JSON and read `extensions.code`, not substring-match the message. Substring matches conflate a real `UNAUTHENTICATED` extension with any error whose message text happens to contain the word, including user-supplied input echoed by the backend, future telemetry strings, or stack-trace fragments.
+Code that needs to branch on a specific error code (e.g. swallowing `UNAUTHENTICATED` in the Header, or distinguishing `UNAUTHENTICATED` from a real failure on a HomePage redirect) MUST parse the JSON and read `extensions.code`, not substring-match the message. Substring matches conflate a real `UNAUTHENTICATED` extension with any error whose message text happens to contain the word, including user-supplied input echoed by the backend, future telemetry strings, or stack-trace fragments.
 
-Use the shared helper `isUnauthenticatedGraphQLError` from `@/lib/apollo/graphql-errors` — do **not** re-inline the JSON-parse logic at each call site. Lifting it to one module ensures every consumer applies the same `prefix.startsWith` check, the same JSON shape assumption, and the same `try/catch` for malformed payloads. Today's call sites: `frontend/src/components/nav/global-header.tsx`, `frontend/src/app/page.tsx`, and `frontend/src/app/cards/new/page.tsx`.
+Use the shared helper `isUnauthenticatedGraphQLError` from `@/lib/apollo/graphql-errors` — do **not** re-inline the JSON-parse logic at each call site. Lifting it to one module ensures every consumer applies the same `prefix.startsWith` check, the same JSON shape assumption, and the same `try/catch` for malformed payloads. The same structural check also runs inside `gqlFetch` for partial-response auth errors, ensuring consistent classification. Today's call sites: `frontend/src/components/nav/global-header.tsx`, `frontend/src/app/page.tsx`, and `frontend/src/app/cards/new/page.tsx`.
 
 ```ts
 import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
@@ -58,6 +60,7 @@ The older `redirectIfUnauthenticated` helper (in `frontend/src/lib/apollo/server
 
 ## Detailed cases (on-demand)
 
+- [Partial-response errors in `gqlFetch`: auth codes re-throw, others return data + warn](../../docs/frontend/rsc-error-handling/partial-response-gqlfetch.md)
 - [Use `CombinedGraphQLErrors.is(err)` — never `instanceof CombinedGraphQLErrors`](../../docs/frontend/rsc-error-handling/combinedgraphqlerrors-is-over-instanceof.md)
 - [`getBackendErrorBanner` deliberately skips field-level `BAD_USER_INPUT` — use `getBackendFieldErrors` first](../../docs/frontend/rsc-error-handling/getbackenderrorbanner-skips-field-level.md)
 - [Structural error parsers must `console.warn` (not silently `continue`) when the shape narrows wrong](../../docs/frontend/rsc-error-handling/structural-error-parsers-warn-on-shape-narrow.md)
