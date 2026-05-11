@@ -94,7 +94,7 @@
       loop: "{{ seed_files }}"
       loop_control:
         label: "{{ item.target | basename }}"
-      tags: [sync-env]
+      tags: [sync-env, notion-local]
 
     - name: Read first line of existing env files (for marker check)
       ansible.builtin.slurp:
@@ -104,7 +104,7 @@
       loop_control:
         label: "{{ item.item.target | basename }}"
       when: item.stat.exists
-      tags: [sync-env]
+      tags: [sync-env, notion-local]
 
     # Build a dict: target path -> "managed" | "user-owned" | "missing".
     # rejectattr drops skipped slurp results (files that did not exist).
@@ -118,7 +118,7 @@
       loop: "{{ env_file_stat.results }}"
       loop_control:
         label: "{{ item.item.target | basename }}"
-      tags: [sync-env]
+      tags: [sync-env, notion-local]
 
     # --- Seed missing files from .example (prepend the marker line) ---
     # mode 0600: .env holds OAuth secrets; the .env.local files match the same
@@ -235,6 +235,183 @@
         - (ping_token_current | default('')) | length == 0
         - ping_token_generated is succeeded
       tags: [sync-env]
+
+    # --- Notion local-testing wire-up (--tags notion-local only) ---
+    # The [notion-local, never] tag set keeps this block out of `make setup` /
+    # `make sync-env`; explicit `--tags notion-local` (i.e. `make notion-local-setup`)
+    # overrides `never`. Reads root .env, validates Supabase, resolves the target
+    # user email to a UUID, then upserts 7 NOTION_* keys into backend/.env.local.
+    - name: Stat root .env for notion-local
+      ansible.builtin.stat:
+        path: "{{ repo_root }}/.env"
+      register: _notion_root_env_stat
+      tags: [notion-local, never]
+
+    - name: Fail if root .env is missing for notion-local
+      ansible.builtin.fail:
+        msg: |
+          notion-local: root .env not found at {{ repo_root }}/.env.
+          Create it from .env.example and set NOTION_LOCAL_* + NOTION_TOKEN + NOTION_PAGE_IDS,
+          then re-run `make notion-local-setup`.
+      when: not _notion_root_env_stat.stat.exists
+      tags: [notion-local, never]
+
+    - name: Fail if backend/.env.local is user-owned — notion-local cannot write
+      ansible.builtin.fail:
+        msg: |
+          notion-local: backend/.env.local exists but is not managed by this playbook
+          (the `# managed-by: sync-env` marker line is missing).
+          To let notion-local-setup write NOTION_* keys: back up the file, delete it,
+          run `make sync-env` to reseed it, then retry `make notion-local-setup`.
+      when: env_ownership[repo_root + '/backend/.env.local'] == 'user-owned'
+      tags: [notion-local, never]
+
+    - name: Fail if backend/.env.local is missing — notion-local cannot create it
+      ansible.builtin.fail:
+        msg: |
+          notion-local: backend/.env.local does not exist.
+          Run `make sync-env` first to seed the file, then retry `make notion-local-setup`.
+      when: env_ownership[repo_root + '/backend/.env.local'] == 'missing'
+      tags: [notion-local, never]
+
+    - name: Read root .env for notion-local
+      ansible.builtin.slurp:
+        src: "{{ repo_root }}/.env"
+      register: _notion_root_env_raw
+      tags: [notion-local, never]
+
+    - name: Parse root .env into a dict for notion-local
+      ansible.builtin.set_fact:
+        _notion_root_kv: >-
+          {{ dict((_notion_root_env_raw.content | b64decode).splitlines()
+             | reject('match', '^\\s*#')
+             | reject('match', '^\\s*$')
+             | select('match', '^[A-Z0-9_]+=')
+             | map('split', '=', 1)) }}
+      tags: [notion-local, never]
+
+    - name: Reset notion-local missing-key accumulator
+      ansible.builtin.set_fact:
+        _notion_missing_keys: []
+      tags: [notion-local, never]
+
+    - name: Collect missing or empty notion-local keys
+      ansible.builtin.set_fact:
+        _notion_missing_keys: "{{ _notion_missing_keys + [item] }}"
+      when: (_notion_root_kv.get(item, '') | trim('"') | trim) | length == 0
+      loop:
+        - NOTION_LOCAL_TARGET_OWNER_EMAIL
+        - NOTION_LOCAL_TARGET_CARDGROUP_NAME
+        - NOTION_LOCAL_SYNC_TOKEN
+        - NOTION_TOKEN
+        - NOTION_PAGE_IDS
+        - SUPABASE_DB_URL
+      tags: [notion-local, never]
+
+    - name: Fail if any required notion-local keys are missing or empty
+      ansible.builtin.fail:
+        msg: |
+          notion-local: the following required keys are missing or empty in .env:
+          {{ _notion_missing_keys | join(', ') }}
+          Set them in .env and re-run `make notion-local-setup`.
+      when: _notion_missing_keys | length > 0
+      tags: [notion-local, never]
+
+    - name: Probe local Supabase readiness for notion-local
+      ansible.builtin.command:
+        argv:
+          - pg_isready
+          - -d
+          - "{{ _notion_root_kv['SUPABASE_DB_URL'] | trim('\"') }}"
+      register: _notion_pg_ready
+      changed_when: false
+      failed_when: false
+      tags: [notion-local, never]
+
+    - name: Fail if local Supabase is not accepting connections
+      ansible.builtin.fail:
+        msg: |
+          notion-local: local Supabase is not ready.
+          Run `make supabase-start` first, then retry `make notion-local-setup`.
+      when: _notion_pg_ready.rc != 0
+      tags: [notion-local, never]
+
+    - name: Validate NOTION_LOCAL_TARGET_OWNER_EMAIL matches a basic email pattern
+      ansible.builtin.fail:
+        msg: |
+          notion-local: NOTION_LOCAL_TARGET_OWNER_EMAIL does not look like a valid email address.
+          Value: {{ _notion_owner_email }}
+      vars:
+        _notion_owner_email: "{{ _notion_root_kv['NOTION_LOCAL_TARGET_OWNER_EMAIL'] | trim('\"') | trim }}"
+      when: not (_notion_owner_email | regex_search('^[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}$'))
+      tags: [notion-local, never]
+
+    # psql interpolates `:'var'` only for queries read from stdin or `-f`,
+    # never for queries passed via `-c`. Pipe the SQL through stdin so the
+    # email is bound as a quoted literal (psql escapes it) instead of being
+    # string-concatenated into the query.
+    - name: Resolve NOTION_LOCAL_TARGET_OWNER_EMAIL to a UUID in auth.users
+      ansible.builtin.command:
+        argv:
+          - psql
+          - "{{ _notion_root_kv['SUPABASE_DB_URL'] | trim('\"') }}"
+          - -v
+          - "ON_ERROR_STOP=1"
+          - -v
+          - "email={{ _notion_root_kv['NOTION_LOCAL_TARGET_OWNER_EMAIL'] | trim('\"') | trim }}"
+          - -t
+          - -A
+        stdin: "SELECT id FROM auth.users WHERE lower(email) = lower(:'email');"
+      register: _notion_owner_uuid_result
+      changed_when: false
+      tags: [notion-local, never]
+
+    - name: Fail if email not found in auth.users (user has not signed in yet)
+      ansible.builtin.fail:
+        msg: |
+          notion-local: no auth.users row for {{ _notion_root_kv['NOTION_LOCAL_TARGET_OWNER_EMAIL'] | trim('"') }}.
+          Log into the local app first via `make dev-frontend`, then retry.
+      when: (_notion_owner_uuid_result.stdout | trim) | length == 0
+      tags: [notion-local, never]
+
+    - name: Fail if duplicate email rows found in auth.users
+      ansible.builtin.fail:
+        msg: |
+          notion-local: duplicate email in local auth.users; manual review required.
+          Email: {{ _notion_root_kv['NOTION_LOCAL_TARGET_OWNER_EMAIL'] | trim('"') }}
+      when: (_notion_owner_uuid_result.stdout | trim).split('\n') | length > 1
+      tags: [notion-local, never]
+
+    - name: Store resolved owner UUID for notion-local
+      ansible.builtin.set_fact:
+        _notion_owner_uuid: "{{ _notion_owner_uuid_result.stdout | trim }}"
+      tags: [notion-local, never]
+
+    - name: Upsert NOTION_* keys into backend/.env.local
+      ansible.builtin.lineinfile:
+        path: "{{ repo_root }}/backend/.env.local"
+        regexp: "^{{ item.tgt }}="
+        line: "{{ item.tgt }}={{ item.value }}"
+        create: false
+        mode: "0600"
+      loop:
+        - { tgt: NOTION_TOKEN,                 value: "{{ _notion_root_kv['NOTION_TOKEN'] | trim('\"') }}" }
+        - { tgt: NOTION_PAGE_IDS,              value: "{{ _notion_root_kv['NOTION_PAGE_IDS'] | trim('\"') }}" }
+        - { tgt: NOTION_TARGET_OWNER_ID,       value: "{{ _notion_owner_uuid }}" }
+        - { tgt: NOTION_TARGET_CARDGROUP_NAME, value: "{{ _notion_root_kv['NOTION_LOCAL_TARGET_CARDGROUP_NAME'] | trim('\"') }}" }
+        - { tgt: NOTION_SYNC_TOKEN,            value: "{{ _notion_root_kv['NOTION_LOCAL_SYNC_TOKEN'] | trim('\"') }}" }
+        - { tgt: NOTION_MAX_ATTEMPTS,          value: "{{ _notion_root_kv.get('NOTION_MAX_ATTEMPTS', '5') | trim('\"') }}" }
+        - { tgt: NOTION_MAX_ELAPSED,           value: "{{ _notion_root_kv.get('NOTION_MAX_ELAPSED', '2m') | trim('\"') }}" }
+      loop_control:
+        label: "{{ item.tgt }}"
+      tags: [notion-local, never]
+
+    - name: Confirm notion-local setup complete
+      ansible.builtin.debug:
+        msg: >-
+          Wrote 7 NOTION_* keys. Restart backend (`make dev-backend`) to apply,
+          then run `make notion-local-run`.
+      tags: [notion-local, never]
 
     # --- Google OAuth credentials check (root .env) ---
     # stat-then-slurp: a missing .env produces stat.exists=false (clean path),

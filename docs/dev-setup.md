@@ -82,6 +82,12 @@ mise resolves tool config hierarchically. Three scopes coexist without conflict:
 
 Backend CI sets `working_directory: backend` and sees only Go. Frontend CI runs from the repo root — NOT `working_directory: frontend` — because Node and pnpm are declared in the root `.tool-versions`.
 
+## `mise` exports `.env` into the shell
+
+`mise.toml` declares `_.file = [".env"]`, so activating mise (via `mise install` or any `mise exec` invocation) exports every key in root `.env` into the process environment. Make targets that depend on `mise install` therefore inherit a fully populated `.env` automatically — including `ansible-playbook` invocations, where `lookup('env', 'KEY')` reads the same values without any `vars_files` directive.
+
+Practical consequence: when adding new required env vars consumed by a playbook (e.g. `NOTION_TOKEN`), set them in root `.env` and the playbook will see them on the next `make` invocation. No additional dotenv loader is needed.
+
 ## Why mise-managed pnpm, not global pnpm or Corepack
 
 The `[tools]` entries in `.tool-versions` are the single source of truth for pnpm in local dev and GitHub Actions. mise downloads the exact pinned version on demand, so every contributor and every CI runner uses the same pnpm — no drift, no "works on my machine". The `packageManager` field in root `package.json` is kept aligned and is **load-bearing for Vercel and for pnpm itself**: Vercel does not run mise and reads this field to install the matching pnpm on its build image, and pnpm 10 uses it as a self-consistency check that refuses execution when the declared and running versions disagree. Treat the two pins as one unit — bump them together.

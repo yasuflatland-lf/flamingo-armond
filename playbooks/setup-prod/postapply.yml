@@ -31,11 +31,13 @@
   ansible.builtin.stat:
     path: "{{ state_file }}"
   register: _state_stat
+  tags: [notion]
 
 - name: Load state file (postapply)
   ansible.builtin.include_vars:
     file: "{{ state_file }}"
   when: _state_stat.stat.exists
+  tags: [notion]
 
 - name: Assert state has the keys postapply needs
   ansible.builtin.assert:
@@ -62,11 +64,13 @@
       If the state file appears corrupt, restore from the most recent backup:
         cp "$(ls -1t {{ state_file }}.*~ 2>/dev/null | head -1)" {{ state_file }}
     success_msg: "State file looks good for postapply."
+  tags: [notion]
 
 - name: Read RENDER_API_KEY from the environment
   ansible.builtin.set_fact:
     render_api_key: "{{ lookup('env', 'RENDER_API_KEY') }}"
   no_log: true
+  tags: [notion]
 
 - name: Fail fast if RENDER_API_KEY is empty
   ansible.builtin.fail:
@@ -75,6 +79,7 @@
       Preflight should have caught this -- run `make setup-prod-preflight`
       and confirm `.env` (or your shell) exports a valid Render API key.
   when: (render_api_key | length) == 0
+  tags: [notion]
 
 
 - name: Read VERCEL_API_TOKEN from the environment
@@ -88,6 +93,33 @@
       VERCEL_API_TOKEN is not set in the environment.
       Preflight should have caught this -- run `make setup-prod-preflight`.
   when: (vercel_token | length) == 0
+
+- name: Reset NOTION_* missing-key accumulator
+  ansible.builtin.set_fact:
+    _missing_notion_keys: []
+  tags: [preflight, notion-preflight, notion, notion-secrets, postapply]
+
+- name: Collect missing required NOTION_* env vars
+  ansible.builtin.set_fact:
+    _missing_notion_keys: "{{ _missing_notion_keys | default([]) + [item] }}"
+  when: (lookup('env', item) | default('')) | trim | length == 0
+  loop:
+    - NOTION_TOKEN
+    - NOTION_PAGE_IDS
+    - NOTION_TARGET_OWNER_ID
+    - NOTION_TARGET_CARDGROUP_NAME
+    - NOTION_SYNC_TOKEN
+  tags: [preflight, notion-preflight, notion, notion-secrets, postapply]
+
+- name: Fail if any required NOTION_* env vars are missing
+  ansible.builtin.fail:
+    msg: |
+      Missing required NOTION_* env vars in root .env:
+        {{ _missing_notion_keys | join(', ') }}
+
+      Set all of the above in the root .env file and re-run.
+  when: (_missing_notion_keys | default([])) | length > 0
+  tags: [preflight, notion-preflight, notion, notion-secrets, postapply]
 
 # ---------------------------------------------------------------------------
 # Precheck: Blueprint Manual Sync has been run for the current render.yaml.
@@ -212,7 +244,14 @@
 # only the keys we own). The endpoint requires the key to exist; the
 # rescue calls out the Blueprint-sync prerequisite if 404 fires.
 # ---------------------------------------------------------------------------
+- name: Capture NOTION_SYNC_TOKEN for dual-destination write
+  ansible.builtin.set_fact:
+    notion_sync_token: "{{ lookup('env', 'NOTION_SYNC_TOKEN') }}"
+  no_log: true
+  tags: [notion, notion-secrets, postapply]
+
 - name: Reconcile dynamic Render env vars from state
+  tags: [notion, notion-secrets, postapply]
   block:
     - name: "PUT /v1/services/{{ render_service_id }}/env-vars/{{ item.key }}"
       ansible.builtin.uri:
@@ -239,6 +278,20 @@
           value: "{{ ping_token }}"
         - key: SUPER_USER_EMAILS
           value: "{{ lookup('env', 'SUPER_USER_EMAILS') | default('') }}"
+        - key: NOTION_TOKEN
+          value: "{{ lookup('env', 'NOTION_TOKEN') | default('') }}"
+        - key: NOTION_PAGE_IDS
+          value: "{{ lookup('env', 'NOTION_PAGE_IDS') | default('') }}"
+        - key: NOTION_TARGET_OWNER_ID
+          value: "{{ lookup('env', 'NOTION_TARGET_OWNER_ID') | default('') }}"
+        - key: NOTION_TARGET_CARDGROUP_NAME
+          value: "{{ lookup('env', 'NOTION_TARGET_CARDGROUP_NAME') | default('') }}"
+        - key: NOTION_SYNC_TOKEN
+          value: "{{ notion_sync_token }}"
+        - key: NOTION_MAX_ATTEMPTS
+          value: "{{ lookup('env', 'NOTION_MAX_ATTEMPTS') | default('5') }}"
+        - key: NOTION_MAX_ELAPSED
+          value: "{{ lookup('env', 'NOTION_MAX_ELAPSED') | default('2m') }}"
       loop_control:
         label: "{{ item.key }}"
   rescue:
@@ -376,6 +429,85 @@
 - name: Confirm VERCEL_PING_URL GitHub secret registered
   ansible.builtin.debug:
     msg: "VERCEL_PING_URL registered as a GitHub Actions secret in {{ repo }}."
+
+# ---------------------------------------------------------------------------
+# Register Notion sync GitHub Actions secrets.
+#
+# Two secrets are pushed idempotently:
+#   NOTION_SYNC_URL   -- the Render backend base URL plus /internal/notion-sync.
+#   NOTION_SYNC_TOKEN -- the bearer token for POST /internal/notion-sync.
+#                        Must match the NOTION_SYNC_TOKEN Render env var so
+#                        the GitHub Actions workflow can authenticate.
+# ---------------------------------------------------------------------------
+- name: Register NOTION_SYNC_URL as GitHub Actions secret
+  ansible.builtin.shell:
+    cmd: gh secret set NOTION_SYNC_URL --repo {{ repo }}
+    stdin: "{{ backend_url }}/internal/notion-sync"
+    stdin_add_newline: false
+  register: _gh_notion_url_result
+  no_log: true
+  failed_when: false
+  changed_when: _gh_notion_url_result.rc == 0
+  tags: [notion, notion-secrets, postapply]
+
+- name: Fail with remediation if NOTION_SYNC_URL secret set failed
+  ansible.builtin.fail:
+    msg: |
+      gh secret set NOTION_SYNC_URL failed (rc={{ _gh_notion_url_result.rc }}).
+
+      gh diagnostic:
+        stderr: {{ _gh_notion_url_result.stderr | default('(none)') }}
+        stdout: {{ _gh_notion_url_result.stdout | default('(none)') }}
+
+      Common causes:
+        - gh CLI lost the `repo` write scope. Re-run:
+            gh auth refresh -s repo
+        - GitHub API rate limit. Wait a minute and retry.
+        - `repo` var is wrong / repo not found. Verify {{ repo }} is correct.
+
+      Then retry: make sync-notion-secrets
+  when: _gh_notion_url_result.rc != 0
+  tags: [notion, notion-secrets, postapply]
+
+- name: Confirm NOTION_SYNC_URL GitHub secret registered
+  ansible.builtin.debug:
+    msg: "NOTION_SYNC_URL registered as a GitHub Actions secret in {{ repo }}."
+  tags: [notion, notion-secrets, postapply]
+
+- name: Register NOTION_SYNC_TOKEN as GitHub Actions secret
+  ansible.builtin.shell:
+    cmd: gh secret set NOTION_SYNC_TOKEN --repo {{ repo }}
+    stdin: "{{ notion_sync_token }}"
+    stdin_add_newline: false
+  register: _gh_notion_token_result
+  no_log: true
+  failed_when: false
+  changed_when: _gh_notion_token_result.rc == 0
+  tags: [notion, notion-secrets, postapply]
+
+- name: Fail with remediation if NOTION_SYNC_TOKEN secret set failed
+  ansible.builtin.fail:
+    msg: |
+      gh secret set NOTION_SYNC_TOKEN failed (rc={{ _gh_notion_token_result.rc }}).
+
+      gh diagnostic:
+        stderr: {{ _gh_notion_token_result.stderr | default('(none)') }}
+        stdout: {{ _gh_notion_token_result.stdout | default('(none)') }}
+
+      Common causes:
+        - gh CLI lost the `repo` write scope. Re-run:
+            gh auth refresh -s repo
+        - GitHub API rate limit. Wait a minute and retry.
+        - `repo` var is wrong / repo not found. Verify {{ repo }} is correct.
+
+      Then retry: make sync-notion-secrets
+  when: _gh_notion_token_result.rc != 0
+  tags: [notion, notion-secrets, postapply]
+
+- name: Confirm NOTION_SYNC_TOKEN GitHub secret registered
+  ansible.builtin.debug:
+    msg: "NOTION_SYNC_TOKEN registered as a GitHub Actions secret in {{ repo }}."
+  tags: [notion, notion-secrets, postapply]
 
 # Wrapped in block/rescue because the inner task carries `no_log: true`
 # (the request URL embeds render_service_id and the Bearer header carries
