@@ -346,6 +346,43 @@ func TestNotionSyncUsecase_SoftParseFailure(t *testing.T) {
 	}
 }
 
+func TestNotionSyncUsecase_MixedSkipAndLexerErrorIsNotSkipOnly(t *testing.T) {
+	t.Parallel()
+
+	// "orphan\n@\n" produces zero parsed rows, one skip (line 1: lone front),
+	// and one lexer-level failure (line 2: '@'). The skip-only short-circuit
+	// MUST NOT fire because not every error is a skip — the call must surface
+	// ErrNotionSyncParse and skip persistence.
+	fetcher := &stubNotionFetcher{pages: []notion.Page{
+		{ID: "page-1", Text: "orphan\n@\n"},
+	}}
+	cardgroups := &mockNotionCardgroupRepo{}
+	cards := &mockNotionCardRepo{}
+	tx, txCalls := dictTxRunner()
+	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, nil)
+
+	_, err := uc.Sync(context.Background(), SyncFromNotionInput{
+		PageIDs:       []string{"page-1"},
+		OwnerID:       "owner-1",
+		CardgroupName: "English",
+	})
+	if !errors.Is(err, ErrNotionSyncParse) {
+		t.Fatalf("err = %v, want ErrNotionSyncParse (mixed skip + lexer error is not skip-only)", err)
+	}
+	// Persistence must be skipped entirely: no cardgroup creation, no repo
+	// calls, no tx open.
+	if cardgroups.calls != 0 {
+		t.Fatalf("EnsureByName calls = %d, want 0 (persistence must be skipped)", cardgroups.calls)
+	}
+	if cards.upsertCalls != 0 || cards.listCalls != 0 || cards.deleteCalls != 0 {
+		t.Fatalf("card repo calls (upsert=%d list=%d delete=%d), want all zero",
+			cards.upsertCalls, cards.listCalls, cards.deleteCalls)
+	}
+	if *txCalls != 0 {
+		t.Fatalf("tx calls = %d, want 0", *txCalls)
+	}
+}
+
 func TestNotionSyncUsecase_LoneFrontDoesNotOverwriteExistingBack(t *testing.T) {
 	t.Parallel()
 
