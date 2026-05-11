@@ -39,7 +39,7 @@ The inner log adds `page_index` and `page_id`, which are enough to retrieve the 
 
 ## What to log (and what not to)
 
-Log `page_index`, `page_id`, and `error_name` (the Go type of the error, e.g. `*errors.errorString`). Do **not** log `error.Error()` or any field derived from user content: the error message may contain parser-echoed tokens, which are user-controlled input. See [`parser-derived-log-fields-pii-risk.md`](parser-derived-log-fields-pii-risk.md) for the full rule.
+Log `page_index`, `page_id`, and `error_name` (the Go type of the error, e.g. `*errors.errorString`). Do **not** log `error.Error()` or any field derived from user content: the error message may contain parser-echoed tokens, which are user-controlled input.
 
 ## When the pattern applies
 
