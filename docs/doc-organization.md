@@ -56,6 +56,16 @@ When a large rule file is split into chapters and an index file is created to li
 
 This extends the rule in [`.claude/rules/language-policy.md` § "Markdown anchor links over bare-text references"](../.claude/rules/language-policy.md#markdown-anchor-links-over-bare-text-references).
 
+### Describe code locations by structure, not line number
+
+Doc references to source lines (`see lines 22–28`, `the throw at line 81`) rot every time the file is edited. The reader following the doc lands in the wrong place silently — GitHub will not warn that the cited line range no longer reflects the cited content. Phrase locations structurally:
+
+- Name the function: "the `hasAuthError` helper".
+- Cite the guard or branch: "after the `if (json.data != null)` guard".
+- Reference the surrounding section: "near the top of the `if (json.errors)` block".
+
+Each of these survives line shifts. Line numbers belong in commit messages or diff comments, not in committed docs.
+
 ### Inline `§ "above"` / `§ "below"` references rot on split
 
 When a single rule file is split into chapters, prose references like "§ section above" or "see the rule below" become meaningless — the referenced section now lives in a sibling file, not the same document. Two compliant postures:

@@ -20,13 +20,6 @@ const (
 	CodeCancelled       Code = "CANCELLED"
 )
 
-// BadUserInputReason is the sub-discriminator emitted under extensions.reason
-// for BAD_USER_INPUT errors that carry a typed payload. Frontend handlers branch
-// on the value of reason rather than the human-readable message.
-type BadUserInputReason string
-
-const ReasonCardDuplicateFront BadUserInputReason = "CARD_DUPLICATE_FRONT"
-
 func Unauthenticated() *gqlerror.Error {
 	return &gqlerror.Error{
 		Message: "unauthenticated",
@@ -57,6 +50,10 @@ func BadUserInput(field, message string) *gqlerror.Error {
 // payload needs to be structurally parsed by the frontend (e.g. to surface an
 // existing duplicate entity). For plain field validation messages, BadUserInput
 // is sufficient.
+//
+// Current callers: none. Retained as a primitive for future structured
+// BAD_USER_INPUT shapes; the previous caller BadUserInputCardDuplicateFront
+// was removed when CardDuplicateFrontError moved to the CreateCardResult union.
 func BadUserInputWithExtensions(field, message string, extra map[string]any) *gqlerror.Error {
 	ext := map[string]any{
 		"code":  string(CodeBadUserInput),
@@ -69,20 +66,6 @@ func BadUserInputWithExtensions(field, message string, extra map[string]any) *gq
 		ext[k] = v
 	}
 	return &gqlerror.Error{Message: message, Extensions: ext}
-}
-
-// BadUserInputCardDuplicateFront returns the BAD_USER_INPUT envelope used when
-// a card insert collides with the (cardgroup_id, front) unique index. The
-// frontend's tryGetDuplicateCardInfo helper parses the (reason, existingCardId,
-// existingBack) extension trio.
-func BadUserInputCardDuplicateFront(existingCardID, existingBack string) *gqlerror.Error {
-	return BadUserInputWithExtensions("front",
-		"card with same front exists in this cardgroup",
-		map[string]any{
-			"reason":         string(ReasonCardDuplicateFront),
-			"existingCardId": existingCardID,
-			"existingBack":   existingBack,
-		})
 }
 
 // Internal logs err at ERROR level and returns a generic INTERNAL gqlerror. The

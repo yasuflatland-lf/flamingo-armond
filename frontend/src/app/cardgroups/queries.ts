@@ -132,13 +132,21 @@ export const CardsByCardgroupQuery = graphql(`
 export const CreateCardMutation = graphql(`
   mutation CreateCard($input: NewCardInput!) {
     createCard(input: $input) {
-      card {
-        id
-        front
-        back
-        due
-        state
-        cardgroupId
+      __typename
+      ... on CreateCardSuccess {
+        card {
+          id
+          front
+          back
+          due
+          state
+          cardgroupId
+        }
+      }
+      ... on CardDuplicateFrontError {
+        message
+        existingCardId
+        existingBack
       }
     }
   }

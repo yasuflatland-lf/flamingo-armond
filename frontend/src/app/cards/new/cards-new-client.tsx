@@ -20,7 +20,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
-import { tryGetDuplicateCardInfo } from "@/lib/apollo/graphql-errors";
 import { sanitizeReturnTo } from "@/lib/sanitize-return-to";
 
 type Cardgroup = {
@@ -181,29 +180,26 @@ export default function CardsNewClient({
   async function handleCreate(values: { front: string; back: string }) {
     if (!currentId) return;
     try {
-      await createCard({
+      const result = await createCard({
         variables: {
           input: { cardgroupId: currentId, front: values.front, back: values.back },
         },
       });
-      markCreationSucceeded();
-    } catch (err) {
-      // Duplicate-front is routine validation, not a failure operators should
-      // be paged for: open the overwrite dialog, set `duplicate` state, and skip
-      // the [cards-new-client] console.error log. CardForm's banner stays empty
-      // because the duplicate-front error is a field-level BAD_USER_INPUT and
-      // getBackendErrorBanner returns undefined for that shape; any inline
-      // front-field message is shadowed by the dialog that overlays the form.
-      const dupe = tryGetDuplicateCardInfo(err);
-      if (dupe) {
+      // createCard returns a union: branch on __typename for routine validation
+      // (CardDuplicateFrontError) rather than catching a thrown gqlerror — thrown
+      // errors are reserved for real failures (auth, network, internal).
+      const payload = result.data?.createCard;
+      if (payload?.__typename === "CardDuplicateFrontError") {
         setDuplicate({
-          existingCardId: dupe.existingCardId,
-          existingBack: dupe.existingBack,
+          existingCardId: payload.existingCardId,
+          existingBack: payload.existingBack,
           attemptedFront: values.front,
           attemptedBack: values.back,
         });
         return;
       }
+      markCreationSucceeded();
+    } catch (err) {
       console.error("[cards-new-client] create card rejection", {
         message: err instanceof Error ? err.message : String(err),
         err,

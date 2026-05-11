@@ -66,3 +66,6 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Test stubs `t.Fatalf` on exhausted fixture access, never panic](../../docs/backend/library-gotchas/test-stub-fatal-on-exhausted-fixture.md)
 - [Optional feature: pass `nil` handler and let the router skip route registration](../../docs/backend/library-gotchas/optional-feature-nil-handler-skip-route.md)
 - [goyacc lexer: recover via NEWLINE to enable `error NEWLINE` grammar rules](../../docs/backend/library-gotchas/goyacc-lexer-recovery-via-newline.md)
+- [gqlgen `transport.POST` response headers must be set at construction time](../../docs/backend/library-gotchas/gqlgen-transport-post-response-headers.md)
+- [Panic value format: `%T %v` vs `%T`-only — PII trade-off](../../docs/backend/library-gotchas/panic-value-format-pii-tradeoff.md)
+- [XOR-invariant outcome structs for mutually-exclusive results](../../docs/backend/library-gotchas/xor-invariant-outcome-struct.md)

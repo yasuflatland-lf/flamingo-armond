@@ -13,6 +13,7 @@ import (
 	"github.com/rotisserie/eris"
 
 	"backend/internal/auth"
+	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
 	"backend/internal/repository"
@@ -408,27 +409,33 @@ func resolveCardgroupPageSize(first, last *int) (int, int, error) {
 	return 0, clamp(*last), nil
 }
 
-// resolveCardgroupCursor decodes a cursor ID into a
-// *repository.CardgroupCursor with the column required by the active
-// orderBy populated. Returns BAD_USER_INPUT when the cursor cardgroup
-// cannot be found OR when it belongs to another owner — the latter would
-// otherwise leak existence of cardgroups outside the caller's tenant.
+// resolveCardgroupCursor decodes an opaque cursor string into a
+// *repository.CardgroupCursor with the column required by the active orderBy
+// populated. The cursor may be a v1 envelope ("v1:" + base64) or a legacy
+// bare UUID; both are accepted during the backward-compatibility window.
+// Returns BAD_USER_INPUT when the cursor cannot be decoded, the cardgroup
+// cannot be found, or the cardgroup belongs to another owner — the latter
+// would otherwise leak existence of cardgroups outside the caller's tenant.
 //
 // The cross-tenant check runs even when orderBy is ID (no extra column to
-// hydrate). Without it, an attacker could probe for the existence of
-// foreign cardgroups by paging past a guessed cursor and observing whether
-// any rows come back.
+// hydrate). Without it, an attacker could probe for the existence of foreign
+// cardgroups by paging past a guessed cursor and observing whether any rows
+// come back.
 func (u *CardgroupUsecase) resolveCardgroupCursor(
 	ctx context.Context,
-	cursorID *string,
+	cursorStr *string,
 	ownerID string,
 	orderBy repository.CardgroupOrderBy,
 	field string,
 ) (*repository.CardgroupCursor, error) {
-	if cursorID == nil || *cursorID == "" {
+	if cursorStr == nil || *cursorStr == "" {
 		return nil, nil
 	}
-	cg, err := u.repo.FindByID(ctx, *cursorID)
+	id, err := cursor.Decode(*cursorStr)
+	if err != nil {
+		return nil, gqlerr.BadUserInput(field, "invalid cursor")
+	}
+	cg, err := u.repo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, gqlerr.BadUserInput(field, "cursor not found")
@@ -439,7 +446,7 @@ func (u *CardgroupUsecase) resolveCardgroupCursor(
 		return nil, gqlerr.BadUserInput(field, "cursor not found")
 	}
 
-	c := &repository.CardgroupCursor{ID: *cursorID}
+	c := &repository.CardgroupCursor{ID: id}
 	switch orderBy {
 	case repository.CardgroupOrderByID:
 		// No extra column needed; ownership-check above is the gate.

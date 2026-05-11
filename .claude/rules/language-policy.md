@@ -23,6 +23,8 @@ When a doc references a GraphQL mutation name, a Go function name, an env-var na
 
 **The same rule applies to CLI subcommands.** A doc that references `supabase db remote sql` looks plausible to any reviewer who has not run the command — only running `supabase db remote --help` reveals that the subcommand does not exist. Before committing any CLI invocation in a doc or playbook, verify the subcommand exists by running the tool's help (`<cmd> --help` or `<cmd> <subcmd> --help`). Do not rely on a sibling doc or issue body that uses the same invocation: the prior doc may have contained the same typo.
 
+**The same rule applies after a refactor deletes a Go type or function.** A doc that uses the deleted symbol as a worked example looks self-consistent until a reader greps the source and finds nothing. After landing a refactor that removes a type or function, run `grep -rn <DeletedSymbol> docs/` across the whole doc tree — not just the docs adjacent to the changed code — because worked examples hide in seemingly unrelated rule files that teach an adjacent pattern. If the example is load-bearing for the doc's thesis, rewrite it with a current symbol; if the reference was incidental, drop it entirely rather than leaving a pointer to a symbol that no longer exists.
+
 ## Markdown anchor links over bare-text references
 
 Cross-doc references should be Markdown anchor links — `[\`docs/foo.md\` § "Section title"](foo.md#section-title)` — not bare text — `See \`docs/foo.md\` § "Section title"`. The anchor link is rot-loud: a heading rename breaks the anchor and a CI link-checker catches it. A bare-text reference is rot-silent: the heading can drift arbitrarily and nothing complains until a reader tries to follow it.

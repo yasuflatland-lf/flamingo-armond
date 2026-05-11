@@ -214,42 +214,6 @@ func TestIsCode_Forbidden(t *testing.T) {
 	}
 }
 
-func TestBadUserInputCardDuplicateFront(t *testing.T) {
-	t.Parallel()
-
-	existingID := "card-uuid-123"
-	existingBack := "the answer"
-
-	got := gqlerr.BadUserInputCardDuplicateFront(existingID, existingBack)
-
-	want := gqlerr.BadUserInputWithExtensions("front",
-		"card with same front exists in this cardgroup",
-		map[string]any{
-			"reason":         string(gqlerr.ReasonCardDuplicateFront),
-			"existingCardId": existingID,
-			"existingBack":   existingBack,
-		})
-
-	if got.Message != want.Message {
-		t.Errorf("Message = %q, want %q", got.Message, want.Message)
-	}
-	if code := extString(t, got, "code"); code != "BAD_USER_INPUT" {
-		t.Errorf("Extensions[code] = %q, want %q", code, "BAD_USER_INPUT")
-	}
-	if field := extString(t, got, "field"); field != "front" {
-		t.Errorf("Extensions[field] = %q, want %q", field, "front")
-	}
-	if reason := extString(t, got, "reason"); reason != "CARD_DUPLICATE_FRONT" {
-		t.Errorf("Extensions[reason] = %q, want %q", reason, "CARD_DUPLICATE_FRONT")
-	}
-	if id := extString(t, got, "existingCardId"); id != existingID {
-		t.Errorf("Extensions[existingCardId] = %q, want %q", id, existingID)
-	}
-	if back := extString(t, got, "existingBack"); back != existingBack {
-		t.Errorf("Extensions[existingBack] = %q, want %q", back, existingBack)
-	}
-}
-
 func TestInternal_VariadicAttrs(t *testing.T) {
 	// Not parallel: mutates the global slog default.
 	var buf bytes.Buffer

@@ -1,7 +1,11 @@
 package resolver
 
 import (
+	"context"
+	"log/slog"
+
 	"backend/graph/model"
+	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/usecase"
 )
@@ -45,10 +49,15 @@ func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 	}
 }
 
-func toCardgroupModels(cgs []*domain.Cardgroup) []*model.Cardgroup {
-	out := make([]*model.Cardgroup, len(cgs))
-	for i, cg := range cgs {
-		out[i] = toCardgroupModel(cg)
+func toCardgroupModels(ctx context.Context, cgs []*domain.Cardgroup) []*model.Cardgroup {
+	out := make([]*model.Cardgroup, 0, len(cgs))
+	for _, cg := range cgs {
+		cgm := toCardgroupModel(cg)
+		if cgm == nil {
+			slog.WarnContext(ctx, "toCardgroupModels: skipping nil entry")
+			continue
+		}
+		out = append(out, cgm)
 	}
 	return out
 }
@@ -76,10 +85,15 @@ func toCardModel(card *domain.Card) *model.Card {
 	}
 }
 
-func toCardModels(cards []*domain.Card) []*model.Card {
-	out := make([]*model.Card, len(cards))
-	for i, card := range cards {
-		out[i] = toCardModel(card)
+func toCardModels(ctx context.Context, cards []*domain.Card) []*model.Card {
+	out := make([]*model.Card, 0, len(cards))
+	for _, card := range cards {
+		cm := toCardModel(card)
+		if cm == nil {
+			slog.WarnContext(ctx, "toCardModels: skipping nil entry")
+			continue
+		}
+		out = append(out, cm)
 	}
 	return out
 }
@@ -113,12 +127,12 @@ func toUsecaseSortOrder(d *model.SortOrder) *usecase.SortOrder {
 	return &v
 }
 
-func toSwipeResponseModel(out *usecase.SwipeOutput) *model.SwipeResponse {
+func toSwipeResponseModel(ctx context.Context, out *usecase.SwipeOutput) *model.SwipeResponse {
 	if out == nil {
 		return nil
 	}
 	return &model.SwipeResponse{
-		NextCards:       toCardModels(out.NextCards),
+		NextCards:       toCardModels(ctx, out.NextCards),
 		PerformanceMode: out.PerformanceMode,
 		Metrics: &model.PerformanceMetrics{
 			SuccessRate:   out.Metrics.SuccessRate,
@@ -131,44 +145,62 @@ func toSwipeResponseModel(out *usecase.SwipeOutput) *model.SwipeResponse {
 	}
 }
 
-// toCardConnectionModel emits cursors as bare card UUIDs (no base64).
+// toCardConnectionModel emits cursors as opaque v1 envelopes ("v1:" + base64(uuid)).
 func toCardConnectionModel(out *usecase.CardConnectionOutput) *model.CardConnection {
 	if out == nil {
 		return &model.CardConnection{Edges: []*model.CardEdge{}, PageInfo: &model.PageInfo{}}
 	}
 	edges := make([]*model.CardEdge, len(out.Cards))
 	for i, c := range out.Cards {
-		edges[i] = &model.CardEdge{Cursor: c.ID, Node: toCardModel(c)}
+		edges[i] = &model.CardEdge{Cursor: cursor.Encode(c.ID), Node: toCardModel(c)}
+	}
+	var startCur, endCur *string
+	if out.StartCur != "" {
+		s := cursor.Encode(out.StartCur)
+		startCur = &s
+	}
+	if out.EndCur != "" {
+		e := cursor.Encode(out.EndCur)
+		endCur = &e
 	}
 	return &model.CardConnection{
 		Edges: edges,
 		PageInfo: &model.PageInfo{
 			HasNextPage:     out.HasNext,
 			HasPreviousPage: out.HasPrev,
-			StartCursor:     nilIfEmpty(out.StartCur),
-			EndCursor:       nilIfEmpty(out.EndCur),
+			StartCursor:     startCur,
+			EndCursor:       endCur,
 		},
 		TotalCount: int(out.TotalCount),
 	}
 }
 
-// toCardgroupConnectionModel emits cursors as bare cardgroup UUIDs (no
-// base64). Mirrors toCardConnectionModel for the cardgroup aggregate.
+// toCardgroupConnectionModel emits cursors as opaque v1 envelopes ("v1:" + base64(uuid)).
+// Mirrors toCardConnectionModel for the cardgroup aggregate.
 func toCardgroupConnectionModel(out *usecase.CardgroupConnectionOutput) *model.CardgroupConnection {
 	if out == nil {
 		return &model.CardgroupConnection{Edges: []*model.CardgroupEdge{}, PageInfo: &model.PageInfo{}}
 	}
 	edges := make([]*model.CardgroupEdge, len(out.Cardgroups))
 	for i, cg := range out.Cardgroups {
-		edges[i] = &model.CardgroupEdge{Cursor: cg.ID, Node: toCardgroupModel(cg)}
+		edges[i] = &model.CardgroupEdge{Cursor: cursor.Encode(cg.ID), Node: toCardgroupModel(cg)}
+	}
+	var startCur, endCur *string
+	if out.StartCur != "" {
+		s := cursor.Encode(out.StartCur)
+		startCur = &s
+	}
+	if out.EndCur != "" {
+		e := cursor.Encode(out.EndCur)
+		endCur = &e
 	}
 	return &model.CardgroupConnection{
 		Edges: edges,
 		PageInfo: &model.PageInfo{
 			HasNextPage:     out.HasNext,
 			HasPreviousPage: out.HasPrev,
-			StartCursor:     nilIfEmpty(out.StartCur),
-			EndCursor:       nilIfEmpty(out.EndCur),
+			StartCursor:     startCur,
+			EndCursor:       endCur,
 		},
 		TotalCount: int(out.TotalCount),
 	}
@@ -181,10 +213,15 @@ func toRoleModel(r *domain.Role) *model.Role {
 	return &model.Role{ID: r.ID, Name: r.Name}
 }
 
-func toRoleModels(roles []*domain.Role) []*model.Role {
-	out := make([]*model.Role, len(roles))
-	for i, r := range roles {
-		out[i] = toRoleModel(r)
+func toRoleModels(ctx context.Context, roles []*domain.Role) []*model.Role {
+	out := make([]*model.Role, 0, len(roles))
+	for _, r := range roles {
+		rm := toRoleModel(r)
+		if rm == nil {
+			slog.WarnContext(ctx, "toRoleModels: skipping nil entry")
+			continue
+		}
+		out = append(out, rm)
 	}
 	return out
 }

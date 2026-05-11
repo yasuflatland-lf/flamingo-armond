@@ -74,6 +74,8 @@ function makeCreateMock(args: {
   cardgroupId?: string;
   cardId?: string;
   onCalled?: () => void;
+  /** When set, returns the `CardDuplicateFrontError` union variant as data. */
+  duplicate?: { existingCardId: string; existingBack: string };
   errors?: GraphQLError[];
   networkError?: Error;
 }): MockedResponse {
@@ -83,6 +85,7 @@ function makeCreateMock(args: {
     cardgroupId = CG_ID,
     cardId = "card-new-1",
     onCalled,
+    duplicate,
     errors,
     networkError,
   } = args;
@@ -105,10 +108,22 @@ function makeCreateMock(args: {
       if (errors) {
         return { errors };
       }
+      if (duplicate) {
+        return {
+          data: {
+            createCard: {
+              __typename: "CardDuplicateFrontError" as const,
+              message: "A card with this front already exists in this cardgroup",
+              existingCardId: duplicate.existingCardId,
+              existingBack: duplicate.existingBack,
+            },
+          },
+        };
+      }
       return {
         data: {
           createCard: {
-            __typename: "CreateCardPayload" as const,
+            __typename: "CreateCardSuccess" as const,
             card: {
               __typename: "Card" as const,
               id: cardId,
@@ -123,28 +138,6 @@ function makeCreateMock(args: {
       };
     },
   };
-}
-
-/**
- * Build a GraphQLError carrying the BAD_USER_INPUT + CARD_DUPLICATE_FRONT
- * extensions shape that the backend returns when (cardgroup_id, front)
- * collides on insert. MockedProvider serves this via the `errors:` field; the
- * Apollo client wraps the resulting response into a CombinedGraphQLErrors
- * rejection so `tryGetDuplicateCardInfo(err)` matches.
- */
-function makeDuplicateFrontError(args: {
-  existingCardId: string;
-  existingBack: string;
-}): GraphQLError {
-  return new GraphQLError("card with same front exists in this cardgroup", {
-    extensions: {
-      code: "BAD_USER_INPUT",
-      field: "front",
-      reason: "CARD_DUPLICATE_FRONT",
-      existingCardId: args.existingCardId,
-      existingBack: args.existingBack,
-    },
-  });
 }
 
 function makeUpdateMock(args: {
@@ -464,18 +457,16 @@ describe("<CardsNewClient> — navigate-on-success", () => {
 });
 
 describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
-  it("shows duplicate dialog with side-by-side comparison when create returns CARD_DUPLICATE_FRONT", async () => {
+  it("shows duplicate dialog with side-by-side comparison when create returns CardDuplicateFrontError", async () => {
     renderClient({
       mocks: [
         makeCreateMock({
           front: "apple",
           back: "new back text",
-          errors: [
-            makeDuplicateFrontError({
-              existingCardId: "existing-id",
-              existingBack: "existing back text",
-            }),
-          ],
+          duplicate: {
+            existingCardId: "existing-id",
+            existingBack: "existing back text",
+          },
         }),
       ],
     });
@@ -507,12 +498,10 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
         makeCreateMock({
           front: "apple",
           back: "new back text",
-          errors: [
-            makeDuplicateFrontError({
-              existingCardId: "existing-id",
-              existingBack: "existing back text",
-            }),
-          ],
+          duplicate: {
+            existingCardId: "existing-id",
+            existingBack: "existing back text",
+          },
         }),
         // Second MockedResponse entry consumed by the overwrite click.
         makeUpdateMock({
@@ -551,12 +540,10 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
         makeCreateMock({
           front: "apple",
           back: "new back text",
-          errors: [
-            makeDuplicateFrontError({
-              existingCardId: "existing-id",
-              existingBack: "existing back text",
-            }),
-          ],
+          duplicate: {
+            existingCardId: "existing-id",
+            existingBack: "existing back text",
+          },
         }),
         // No updateCard mock — the leak spy in afterEach would catch a stray call.
       ],
@@ -585,12 +572,10 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
         makeCreateMock({
           front: "apple",
           back: "new back text",
-          errors: [
-            makeDuplicateFrontError({
-              existingCardId: "existing-id",
-              existingBack: "existing back text",
-            }),
-          ],
+          duplicate: {
+            existingCardId: "existing-id",
+            existingBack: "existing back text",
+          },
         }),
         makeUpdateMock({
           id: "existing-id",
@@ -639,12 +624,10 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
         makeCreateMock({
           front: "apple",
           back: "new back text",
-          errors: [
-            makeDuplicateFrontError({
-              existingCardId: "existing-id",
-              existingBack: "existing back text",
-            }),
-          ],
+          duplicate: {
+            existingCardId: "existing-id",
+            existingBack: "existing back text",
+          },
         }),
         makeUpdateMock({
           id: "existing-id",

@@ -10,6 +10,7 @@ import (
 
 	"backend/graph/generated"
 	"backend/graph/resolver"
+	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/repository"
 	"backend/internal/usecase"
@@ -123,9 +124,12 @@ func TestResolver_MyCardgroupsConnection_Authenticated_DelegatesToUsecase(t *tes
 	if len(edges) != 2 {
 		t.Fatalf("expected 2 edges (third row trimmed), got %d", len(edges))
 	}
+	wantCursorCG1 := cursor.Encode("cg1")
+	wantCursorCG2 := cursor.Encode("cg2")
+
 	first, _ := edges[0].(map[string]any)
-	if first["cursor"] != "cg1" {
-		t.Fatalf("expected first edge cursor=cg1, got %v", first["cursor"])
+	if first["cursor"] != wantCursorCG1 {
+		t.Fatalf("expected first edge cursor=%q, got %v", wantCursorCG1, first["cursor"])
 	}
 	node, _ := first["node"].(map[string]any)
 	if node["name"] != "Alpha" {
@@ -139,11 +143,11 @@ func TestResolver_MyCardgroupsConnection_Authenticated_DelegatesToUsecase(t *tes
 	if pageInfo["hasPreviousPage"] != false {
 		t.Fatalf("expected hasPreviousPage=false on page 1, got %v", pageInfo["hasPreviousPage"])
 	}
-	if pageInfo["startCursor"] != "cg1" {
-		t.Fatalf("expected startCursor=cg1, got %v", pageInfo["startCursor"])
+	if pageInfo["startCursor"] != wantCursorCG1 {
+		t.Fatalf("expected startCursor=%q, got %v", wantCursorCG1, pageInfo["startCursor"])
 	}
-	if pageInfo["endCursor"] != "cg2" {
-		t.Fatalf("expected endCursor=cg2, got %v", pageInfo["endCursor"])
+	if pageInfo["endCursor"] != wantCursorCG2 {
+		t.Fatalf("expected endCursor=%q, got %v", wantCursorCG2, pageInfo["endCursor"])
 	}
 }
 

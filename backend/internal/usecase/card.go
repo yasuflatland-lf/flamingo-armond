@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"backend/internal/auth"
+	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
 	"backend/internal/repository"
@@ -81,6 +82,25 @@ type CreateCardInput struct {
 	// FSRS, when non-nil, overrides the new-card FSRS state. All nine fields
 	// must be specified together (see domain.NewFSRSStateFromInput).
 	FSRS *domain.FSRSStateOverride
+}
+
+// CreateCardOutcome is the usecase-level result returned by Create. Exactly one
+// of Card or Duplicate is non-nil. The duplicate-front case is surfaced as a
+// typed value (not an `error`) so the resolver can map it to a GraphQL union
+// variant ("errors as data") instead of a top-level gqlerror.
+type CreateCardOutcome struct {
+	// Card is the newly persisted card on the happy path. Non-nil iff Duplicate is nil.
+	Card *domain.Card
+	// Duplicate carries the existing card's identity when the (cardgroup_id, front)
+	// unique index is violated. Non-nil iff Card is nil.
+	Duplicate *DuplicateCardInfo
+}
+
+// DuplicateCardInfo identifies the existing card that collided with a create
+// attempt on the (cardgroup_id, front) unique index.
+type DuplicateCardInfo struct {
+	ExistingID   string
+	ExistingBack string
 }
 
 type UpdateCardInput struct {
@@ -170,13 +190,18 @@ func (u *CardUsecase) CardsByCardgroup(ctx context.Context, cardgroupID string) 
 	return cards, nil
 }
 
-func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (*domain.Card, error) {
+// Create persists a new card and returns a CreateCardOutcome that signals the
+// duplicate-front case as data (via outcome.Duplicate) rather than as an error.
+// Real failures — unauthenticated caller, validation, infrastructure — are still
+// returned as the second return value so the resolver layer can convert them to
+// top-level gqlerrors.
+func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCardOutcome, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
-		return nil, gqlerr.Unauthenticated()
+		return CreateCardOutcome{}, gqlerr.Unauthenticated()
 	}
 	if err := u.authorizeCardgroup(ctx, in.CardgroupID, user.Sub, true); err != nil {
-		return nil, err
+		return CreateCardOutcome{}, err
 	}
 
 	front := strings.TrimSpace(in.Front)
@@ -184,7 +209,7 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (*domain.C
 	now := time.Now().UTC()
 	id, err := uuidV7()
 	if err != nil {
-		return nil, gqlerr.Internal(ctx, err)
+		return CreateCardOutcome{}, gqlerr.Internal(ctx, err)
 	}
 
 	override := domain.FSRSStateOverride{}
@@ -193,7 +218,7 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (*domain.C
 	}
 	fsrsState, err := domain.NewFSRSStateFromInput(override, now)
 	if err != nil {
-		return nil, translateFSRSErr(ctx, err)
+		return CreateCardOutcome{}, translateFSRSErr(ctx, err)
 	}
 
 	card := &domain.Card{
@@ -206,7 +231,7 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (*domain.C
 		UpdatedAt:   now,
 	}
 	if err := card.Validate(); err != nil {
-		return nil, translateCardErr(ctx, err)
+		return CreateCardOutcome{}, translateCardErr(ctx, err)
 	}
 	if err := u.cardRepo.Create(ctx, card); err != nil {
 		if errors.Is(err, repository.ErrCardDuplicateFront) {
@@ -216,16 +241,19 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (*domain.C
 				// between the failed INSERT and this SELECT) or fail for an unrelated DB
 				// reason. Either way, surface as Internal so the client can retry; the
 				// duplicate is recoverable input, but a failed re-lookup is not.
-				return nil, gqlerr.Internal(ctx,
+				return CreateCardOutcome{}, gqlerr.Internal(ctx,
 					eris.Wrap(lookupErr, "usecase: lookup duplicate card after 23505"),
 					slog.String("cardgroup_id", in.CardgroupID),
 				)
 			}
-			return nil, gqlerr.BadUserInputCardDuplicateFront(existing.ID, existing.Back)
+			return CreateCardOutcome{Duplicate: &DuplicateCardInfo{
+				ExistingID:   existing.ID,
+				ExistingBack: existing.Back,
+			}}, nil
 		}
-		return nil, gqlerr.Internal(ctx, err)
+		return CreateCardOutcome{}, gqlerr.Internal(ctx, err)
 	}
-	return card, nil
+	return CreateCardOutcome{Card: card}, nil
 }
 
 func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput) (*domain.Card, error) {
@@ -433,24 +461,31 @@ func resolvePageSize(first, last *int) (int, int, error) {
 	return 0, clamp(*last), nil
 }
 
-// resolveCursor decodes a cursor ID into a *repository.CardCursor with the
-// field needed for the active orderBy populated. Returns BAD_USER_INPUT when
-// the cursor card cannot be found or belongs to a different cardgroup.
+// resolveCursor decodes an opaque cursor string into a *repository.CardCursor
+// with the field needed for the active orderBy populated. The cursor may be a
+// v1 envelope ("v1:" + base64) or a legacy bare UUID; both are accepted during
+// the backward-compatibility window. Returns BAD_USER_INPUT when the cursor
+// cannot be decoded, the card cannot be found, or the card belongs to a
+// different cardgroup.
 func (u *CardUsecase) resolveCursor(
 	ctx context.Context,
-	cursorID *string,
+	cursorStr *string,
 	cardgroupID string,
 	orderBy repository.CardOrderBy,
 	field string,
 ) (*repository.CardCursor, error) {
-	if cursorID == nil || *cursorID == "" {
+	if cursorStr == nil || *cursorStr == "" {
 		return nil, nil
 	}
-	c := &repository.CardCursor{ID: *cursorID}
+	id, err := cursor.Decode(*cursorStr)
+	if err != nil {
+		return nil, gqlerr.BadUserInput(field, "invalid cursor")
+	}
+	c := &repository.CardCursor{ID: id}
 	if orderBy == repository.CardOrderByID {
 		return c, nil
 	}
-	card, err := u.cardRepo.FindByID(ctx, *cursorID)
+	card, err := u.cardRepo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, gqlerr.BadUserInput(field, "cursor not found")

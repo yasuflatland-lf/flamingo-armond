@@ -21,7 +21,10 @@ export async function gqlFetch<TResult, TVars>(
   } = await supabase.auth.getSession();
   if (sessionErr) throw sessionErr;
 
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/graphql-response+json, application/json;q=0.9",
+  };
   if (session?.access_token) {
     headers.authorization = `Bearer ${session.access_token}`;
   }
@@ -43,7 +46,26 @@ export async function gqlFetch<TResult, TVars>(
     throw new Error(`GraphQL HTTP ${res.status} ${res.statusText}: ${body}`);
   }
   const json = (await res.json()) as { data?: TResult; errors?: unknown };
-  if (json.errors) throw new Error(`GraphQL errors: ${JSON.stringify(json.errors)}`);
+  if (json.errors) {
+    if (json.data != null) {
+      // Partial response (GraphQL over HTTP §5.2): data arrived alongside errors.
+      // Auth errors must still throw so RSC callers can redirect — silently returning
+      // data would swallow the signal. Check before warn so auth re-throws never emit
+      // a false-positive operator alert on clock-skew UNAUTHENTICATED events.
+      const hasAuthError =
+        Array.isArray(json.errors) &&
+        json.errors.some((e: { extensions?: { code?: unknown } }) => {
+          const code = e?.extensions?.code;
+          return code === "UNAUTHENTICATED" || code === "FORBIDDEN";
+        });
+      if (hasAuthError) {
+        throw new Error(`GraphQL errors: ${JSON.stringify(json.errors)}`);
+      }
+      console.warn("[gqlFetch] partial response with errors:", JSON.stringify(json.errors));
+      return json.data;
+    }
+    throw new Error(`GraphQL errors: ${JSON.stringify(json.errors)}`);
+  }
   if (!json.data) throw new Error("GraphQL response missing data");
   return json.data;
 }

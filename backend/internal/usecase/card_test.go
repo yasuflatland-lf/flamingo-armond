@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/rotisserie/eris"
-	"github.com/vektah/gqlparser/v2/gqlerror"
 	"gorm.io/gorm"
 
 	"backend/internal/domain"
@@ -188,7 +187,6 @@ func TestCardUsecase_Create(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			cardRepo := &mockCardRepository{}
@@ -207,17 +205,17 @@ func TestCardUsecase_Create(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got == nil || got.CardgroupID != tc.wantCreatedID {
-				t.Fatalf("unexpected card: %+v", got)
+			if got.Card == nil || got.Card.CardgroupID != tc.wantCreatedID {
+				t.Fatalf("unexpected outcome: %+v", got)
 			}
 			if cardRepo.capturedCreate == nil {
 				t.Fatal("expected repo.Create call")
 			}
-			if got.Front != "front" || got.Back != "back" {
-				t.Fatalf("expected trimmed text, got front=%q back=%q", got.Front, got.Back)
+			if got.Card.Front != "front" || got.Card.Back != "back" {
+				t.Fatalf("expected trimmed text, got front=%q back=%q", got.Card.Front, got.Card.Back)
 			}
-			if got.FSRS.State != domain.FSRSStateNew || got.FSRS.Stability != 2.5 || got.FSRS.Difficulty != 5.0 {
-				t.Fatalf("unexpected FSRS defaults: %+v", got.FSRS)
+			if got.Card.FSRS.State != domain.FSRSStateNew || got.Card.FSRS.Stability != 2.5 || got.Card.FSRS.Difficulty != 5.0 {
+				t.Fatalf("unexpected FSRS defaults: %+v", got.Card.FSRS)
 			}
 		})
 	}
@@ -554,7 +552,6 @@ func TestCardUsecase_ListCardsByCardgroupConnection_ResolveCursorHydratesDueFiel
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			cardRepo := &mockCardRepository{
@@ -590,6 +587,49 @@ func TestCardUsecase_ListCardsByCardgroupConnection_ResolveCursorHydratesDueFiel
 	}
 }
 
+// TestCardUsecase_ResolveCursor_MalformedV1_ReturnsBadUserInput verifies that
+// a "v1:" envelope with an invalid base64 payload is rejected with
+// BAD_USER_INPUT. The cursor decode failure must not surface as INTERNAL.
+func TestCardUsecase_ResolveCursor_MalformedV1_ReturnsBadUserInput(t *testing.T) {
+	t.Parallel()
+
+	uc := NewCardUsecase(nil, &mockCardRepository{},
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+	)
+	malformed := "v1:!!!not-base64!!!"
+	_, err := uc.resolveCursor(
+		context.Background(),
+		&malformed, "cg1", repository.CardOrderByID, "after",
+	)
+	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+}
+
+// TestCardUsecase_ResolveCursor_V1EncodedID verifies that a v1 encoded cursor
+// decodes to the raw ID and proceeds without error for the ID-only orderBy
+// (no DB lookup required for CardOrderByID).
+func TestCardUsecase_ResolveCursor_V1EncodedID(t *testing.T) {
+	t.Parallel()
+
+	uc := NewCardUsecase(nil, &mockCardRepository{},
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+	)
+	// "v1:" + base64.RawURLEncoding.EncodeToString([]byte("card-abc")) == "v1:Y2FyZC1hYmM"
+	encoded := "v1:Y2FyZC1hYmM"
+	c, err := uc.resolveCursor(
+		context.Background(),
+		&encoded, "cg1", repository.CardOrderByID, "after",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error for v1 encoded cursor: %v", err)
+	}
+	if c == nil {
+		t.Fatal("expected non-nil cursor, got nil")
+	}
+	if c.ID != "card-abc" {
+		t.Fatalf("expected decoded ID=card-abc, got %q", c.ID)
+	}
+}
+
 // decodeJSONRecords parses newline-delimited JSON log lines from buf.
 func decodeJSONRecords(t *testing.T, data []byte) []map[string]any {
 	t.Helper()
@@ -607,6 +647,11 @@ func decodeJSONRecords(t *testing.T, data []byte) []map[string]any {
 	return records
 }
 
+// TestCardUsecase_Create_Duplicate verifies that the (cardgroup_id, front)
+// unique-index collision is surfaced via outcome.Duplicate as a typed value,
+// not as a gqlerror. The usecase now returns the existing card's identity as
+// data so the resolver can map it to the GraphQL `CardDuplicateFrontError`
+// union variant.
 func TestCardUsecase_Create_Duplicate(t *testing.T) {
 	t.Parallel()
 
@@ -619,25 +664,21 @@ func TestCardUsecase_Create_Duplicate(t *testing.T) {
 	uc := NewCardUsecase(nil, cardRepo, cgRepo)
 
 	// Submit with surrounding whitespace to regression-guard the TrimSpace contract.
-	_, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "  hello  ", Back: "world"})
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	got, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "  hello  ", Back: "world"})
+	if err != nil {
+		t.Fatalf("expected nil error (duplicate is data, not error), got %v", err)
 	}
-
-	assertGQLErr(t, err, string(gqlerr.CodeBadUserInput), "front")
-
-	gqlErr, ok := err.(*gqlerror.Error)
-	if !ok {
-		t.Fatalf("expected *gqlerror.Error, got %T", err)
+	if got.Card != nil {
+		t.Fatalf("expected outcome.Card to be nil on duplicate, got %+v", got.Card)
 	}
-	if got, _ := gqlErr.Extensions["reason"].(string); got != "CARD_DUPLICATE_FRONT" {
-		t.Fatalf("expected extensions.reason=%q, got %q", "CARD_DUPLICATE_FRONT", got)
+	if got.Duplicate == nil {
+		t.Fatal("expected outcome.Duplicate to be non-nil on duplicate-front collision")
 	}
-	if got, _ := gqlErr.Extensions["existingCardId"].(string); got != "fixture-id" {
-		t.Fatalf("expected extensions.existingCardId=%q, got %q", "fixture-id", got)
+	if got.Duplicate.ExistingID != "fixture-id" {
+		t.Errorf("expected outcome.Duplicate.ExistingID=%q, got %q", "fixture-id", got.Duplicate.ExistingID)
 	}
-	if got, _ := gqlErr.Extensions["existingBack"].(string); got != "fixture-back" {
-		t.Fatalf("expected extensions.existingBack=%q, got %q", "fixture-back", got)
+	if got.Duplicate.ExistingBack != "fixture-back" {
+		t.Errorf("expected outcome.Duplicate.ExistingBack=%q, got %q", "fixture-back", got.Duplicate.ExistingBack)
 	}
 
 	// Verify FindByCardgroupAndFront was called with the trimmed front and correct cardgroupID.
@@ -822,7 +863,6 @@ func TestCardUsecase_ListCardsByCardgroupConnection_SearchPassthrough(t *testing
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

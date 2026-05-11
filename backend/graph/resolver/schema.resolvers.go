@@ -85,8 +85,13 @@ func (r *mutationResolver) DeleteCardgroup(ctx context.Context, id string) (bool
 }
 
 // CreateCard is the resolver for the createCard field.
-func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCardInput) (*model.CreateCardPayload, error) {
-	card, err := r.CardUC.Create(ctx, usecase.CreateCardInput{
+//
+// Returns a union: `model.CreateCardSuccess` on the happy path, or
+// `model.CardDuplicateFrontError` when the (cardgroup_id, front) unique index
+// is violated. The duplicate case is "errors as data" — the second return
+// value is reserved for real errors (auth, validation, internal).
+func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCardInput) (model.CreateCardResult, error) {
+	outcome, err := r.CardUC.Create(ctx, usecase.CreateCardInput{
 		CardgroupID: input.CardgroupID,
 		Front:       input.Front,
 		Back:        input.Back,
@@ -95,7 +100,18 @@ func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCardIn
 	if err != nil {
 		return nil, err
 	}
-	return &model.CreateCardPayload{Card: toCardModel(card)}, nil
+	if outcome.Duplicate != nil {
+		return model.CardDuplicateFrontError{
+			Message:        "A card with this front already exists in this cardgroup",
+			ExistingCardID: outcome.Duplicate.ExistingID,
+			ExistingBack:   outcome.Duplicate.ExistingBack,
+		}, nil
+	}
+	if outcome.Card == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: CreateCardOutcome has no variant set"))
+	}
+	return model.CreateCardSuccess{Card: toCardModel(outcome.Card)}, nil
 }
 
 // UpdateCard is the resolver for the updateCard field.
@@ -137,7 +153,7 @@ func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.HandleSw
 	if err != nil {
 		return nil, err
 	}
-	return toSwipeResponseModel(out), nil
+	return toSwipeResponseModel(ctx, out), nil
 }
 
 // UpsertDictionary is the resolver for the upsertDictionary field.
@@ -250,7 +266,7 @@ func (r *queryResolver) MyCardgroups(ctx context.Context) ([]*model.Cardgroup, e
 	if err != nil {
 		return nil, err
 	}
-	return toCardgroupModels(cgs), nil
+	return toCardgroupModels(ctx, cgs), nil
 }
 
 // Cardgroup is the resolver for the cardgroup field.
@@ -294,7 +310,7 @@ func (r *queryResolver) CardsByCardgroup(ctx context.Context, cardgroupID string
 	if err != nil {
 		return nil, err
 	}
-	return toCardModels(cards), nil
+	return toCardModels(ctx, cards), nil
 }
 
 // CardsByCardgroupConnection is the resolver for the cardsByCardgroupConnection field.
@@ -403,7 +419,7 @@ func (r *queryResolver) Roles(ctx context.Context) ([]*model.Role, error) {
 	if err != nil {
 		return nil, err
 	}
-	return toRoleModels(roles), nil
+	return toRoleModels(ctx, roles), nil
 }
 
 // Role is the resolver for the role field.
@@ -453,7 +469,7 @@ func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Rol
 		}
 		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "resolver: user roles"))
 	}
-	return toRoleModels(roles), nil
+	return toRoleModels(ctx, roles), nil
 }
 
 // LastViewedCardgroup is the resolver for the lastViewedCardgroup field.

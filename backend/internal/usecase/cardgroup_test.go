@@ -1393,3 +1393,47 @@ func TestTranslateCardgroupNameErr_DefaultArm(t *testing.T) {
 	err := translateCardgroupNameErr(context.Background(), errors.New("surprise"))
 	assertGQLErr(t, err, "INTERNAL", "")
 }
+
+// TestResolveCardgroupCursor_MalformedV1_ReturnsBadUserInput verifies that a
+// "v1:" envelope with an invalid base64 payload is rejected with BAD_USER_INPUT
+// rather than INTERNAL. The cursor package marks the error as a decode failure;
+// the usecase must map it to the correct GraphQL code.
+func TestResolveCardgroupCursor_MalformedV1_ReturnsBadUserInput(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockCardgroupRepository{}
+	uc := NewCardgroupUsecase(repo)
+
+	malformed := "v1:!!!not-base64!!!"
+	_, err := uc.resolveCardgroupCursor(
+		context.Background(),
+		&malformed, "u1", repository.CardgroupOrderByID, "after",
+	)
+	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+}
+
+// TestResolveCardgroupCursor_V1EncodedID verifies backward-compat: a v1
+// encoded cursor decodes to the raw ID and the DB lookup proceeds with that ID.
+func TestResolveCardgroupCursor_V1EncodedID(t *testing.T) {
+	t.Parallel()
+
+	cg := &domain.Cardgroup{ID: "cg-cursor", OwnerID: "u1", Name: "X"}
+	repo := &mockCardgroupRepository{findResult: cg}
+	uc := NewCardgroupUsecase(repo)
+
+	// Encode the raw ID into the v1 envelope the way the resolver would.
+	encoded := "v1:Y2ctY3Vyc29y" // base64.RawURLEncoding.EncodeToString([]byte("cg-cursor"))
+	c, err := uc.resolveCardgroupCursor(
+		context.Background(),
+		&encoded, "u1", repository.CardgroupOrderByID, "after",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error for v1 encoded cursor: %v", err)
+	}
+	if c == nil {
+		t.Fatal("expected non-nil cursor, got nil")
+	}
+	if c.ID != "cg-cursor" {
+		t.Fatalf("expected decoded ID=cg-cursor, got %q", c.ID)
+	}
+}
