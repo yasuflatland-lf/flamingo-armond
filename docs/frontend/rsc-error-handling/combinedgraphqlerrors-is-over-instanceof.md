@@ -14,4 +14,4 @@ if (err instanceof CombinedGraphQLErrors) { ... }
 if (CombinedGraphQLErrors.is(err)) { ... }
 ```
 
-**How to apply:** grep for `instanceof CombinedGraphQLErrors` before any merge; every hit is a bug. The lint rule does not catch this automatically — it must be verified in code review. Reference: `frontend/src/lib/apollo/graphql-errors.ts` (`tryGetDuplicateCardInfo`).
+**How to apply:** grep for `instanceof CombinedGraphQLErrors` before any merge; every hit is a bug. The lint rule does not catch this automatically — it must be verified in code review. Reference: `frontend/src/lib/apollo/errors.ts` (`getBackendFieldErrors`, `getBackendErrorBanner`, `classifyQueryError`) — all three use `CombinedGraphQLErrors.is(err)` as the canonical guard.
