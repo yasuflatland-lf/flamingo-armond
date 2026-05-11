@@ -5,7 +5,7 @@
 [![codecov backend](https://codecov.io/gh/yasuflatland-lf/flamingo-armond/branch/main/graph/badge.svg?flag=backend)](https://codecov.io/gh/yasuflatland-lf/flamingo-armond)
 [![codecov frontend](https://codecov.io/gh/yasuflatland-lf/flamingo-armond/branch/main/graph/badge.svg?flag=frontend)](https://codecov.io/gh/yasuflatland-lf/flamingo-armond)
 
-🦩 Swiping Flashcard app — a Go (Echo) backend, a Next.js 16 frontend, and a shared GraphQL schema, with Supabase for Postgres + Auth.
+🦩 Swiping Flashcard app — a Go (Echo) backend, a Next.js 16 frontend, and a shared GraphQL schema, with Supabase for Postgres + Auth, and optional Notion page sync that imports cards from Notion pages on a 6-hourly schedule.
 
 ## Architecture
 
@@ -20,6 +20,8 @@ Production deployment uses three external services. Create accounts before runni
 - **Vercel** — hosts the Next.js frontend: https://vercel.com
 
 Local development does not require any of these — `make setup` boots a local Supabase via Docker. Provider tokens and the env-var matrix live in `docs/deployment.md`.
+
+**Notion sync (optional)** — set up a Notion integration token and page IDs to enable automated card imports. See `docs/notion-sync.md` for the full env-var matrix, local testing workflow, and production operational runbook.
 
 ## Quick Start
 
@@ -80,6 +82,10 @@ make setup-prod-postapply   # re-run first Render deploy + smoke tests from .sta
 | `make codegen` | Regenerate GraphQL bindings on both sides from `schema/*.graphql` |
 | `make test` | Run backend Go tests (race + coverage) and frontend Vitest suite |
 | `make setup-prod` | Guided production bring-up across Supabase + Render + Vercel (see § "Setup For Production") |
+| `make notion-local-setup` | Write `NOTION_*` keys into `backend/.env.local` from root `.env` (one-time, Notion sync) |
+| `make notion-local-run` | Fire a single authenticated POST to local `/internal/notion-sync` |
+| `make sync-notion-preflight` | Verify root `.env` contains all required `NOTION_*` keys (read-only) |
+| `make sync-notion-secrets` | Push `NOTION_*` keys to Render env and GitHub Actions secrets |
 
 `make dev-backend` / `make dev-frontend` are foreground processes — run them in separate terminals. `make codegen` is required after editing `schema/*.graphql` (generated outputs are gitignored). `make test` mirrors CI.
 
@@ -94,3 +100,16 @@ docs/               L2 architecture & topic docs
 ```
 
 Project-wide guidance for AI assistants lives in `CLAUDE.md`.
+
+## Further reading
+
+| Document | Contents |
+|---|---|
+| `docs/notion-sync.md` | Notion page sync — env vars, local testing, GitHub Actions setup, operational runbook |
+| `docs/deployment.md` | Production deployment checklist and full env-var matrix |
+| `docs/dev-setup.md` | Local development setup details (OAuth, tool versions, Supabase CLI) |
+| `docs/backend.md` | Backend runtime notes (Echo v5, GORM, graceful shutdown, env vars) |
+| `docs/frontend.md` | Frontend notes (commands, routing, Apollo cache patterns) |
+| `docs/ci.md` | CI configuration and workflow reference |
+| `docs/observability.md` | Logging and structured error reporting |
+| `docs/e2e.md` | End-to-end test setup and conventions |

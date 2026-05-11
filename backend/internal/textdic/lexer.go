@@ -83,13 +83,13 @@ func (l *lexer) canStartDefinition(r rune) bool {
 	return l.isJapanese(r) || r == '(' || r == '['
 }
 
-// Lex implements the yyLexer interface. It returns 0 on EOF (or after
-// consuming a malformed line that ended at EOF), NEWLINE on a line
-// terminator (including after recovering from an unrecognised rune),
-// WORD on an ASCII headword run, and DEFINITION on a Japanese-script
-// or ASCII-bracket-opener (`(`/`[`) run. Read failures other than
-// io.EOF and unrecognised runes are recorded via l.Error so they
-// surface as validation errors.
+// Lex implements the yyLexer interface. It returns 0 on EOF, NEWLINE on a
+// line terminator (including after recovering from an unrecognised rune,
+// even when the malformed line ended at EOF — see recoverLineForUnrecognized),
+// WORD on an ASCII headword run, and DEFINITION on a Japanese-script or
+// ASCII-bracket-opener (`(`/`[`) run. Read failures other than io.EOF and
+// unrecognised runes are recorded via l.Error so they surface as validation
+// errors.
 func (l *lexer) Lex(lval *yySymType) int {
 	r, err := l.skipWhiteSpace()
 	if err == io.EOF {
@@ -114,8 +114,16 @@ func (l *lexer) Lex(lval *yySymType) int {
 	if l.canStartDefinition(r) {
 		return l.lexDefinition(lval)
 	}
-	l.Error(fmt.Sprintf("unrecognized character %q", r))
-	return l.recoverToNewline()
+	// Capture the unrecognized rune plus the rest of the malformed line so
+	// callers can surface a meaningful snippet in the ValidationError.
+	snippet, tok := l.recoverLineForUnrecognized(r)
+	l.errors = append(l.errors, parseError{
+		Line:    l.tokenLine,
+		Message: fmt.Sprintf("unrecognized character %q", r),
+		Kind:    SkipKindUnrecognized,
+		Snippet: snippet,
+	})
+	return tok // always NEWLINE (recovery always emits NEWLINE; EOF case is handled by the next Lex call)
 }
 
 // lexRun reads runes until stop returns true (or EOF) and returns the
@@ -173,16 +181,27 @@ func (l *lexer) lexDefinition(lval *yySymType) int {
 	return DEFINITION
 }
 
-// recoverToNewline consumes the rest of a malformed line and emits NEWLINE
-// so the parser's error recovery can resume on the following line.
-func (l *lexer) recoverToNewline() int {
+// recoverLineForUnrecognized captures first plus every subsequent rune on the
+// malformed line (up to but not including the terminating newline or EOF) and
+// returns the snippet text together with the appropriate token: NEWLINE when a
+// line terminator is found, and NEWLINE again at EOF so the grammar's
+// `error NEWLINE` recovery rule can fire even when the malformed line is the
+// last in the payload (no trailing newline). The next Lex call will return 0
+// at EOF on its own. The returned snippet does NOT include the trailing
+// newline character.
+func (l *lexer) recoverLineForUnrecognized(first rune) (string, int) {
+	var b strings.Builder
+	b.WriteRune(first)
 	for {
 		r, _, err := l.input.ReadRune()
 		if err != nil {
 			if err != io.EOF {
 				l.Error("read: " + err.Error())
 			}
-			return 0
+			// EOF: do not advance lineNo — there is no subsequent token to attribute and
+			// the next Lex returns 0 cleanly. If a future diagnostic is emitted between
+			// recovery and EOF detection, revisit this invariant.
+			return b.String(), NEWLINE
 		}
 		if l.isNewLine(r) {
 			if r == '\r' {
@@ -193,8 +212,9 @@ func (l *lexer) recoverToNewline() int {
 			}
 			l.tokenLine = l.lineNo
 			l.lineNo++
-			return NEWLINE
+			return b.String(), NEWLINE
 		}
+		b.WriteRune(r)
 	}
 }
 
@@ -212,10 +232,11 @@ func (l *lexer) skipWhiteSpace() (rune, error) {
 // Error records a structured error from the lexer. tokenLine reflects the
 // start of the most recently emitted token, which is the right line to
 // blame; lineNo may have advanced past any line terminator already.
+// The signature is unchanged (required by the yyLexer interface).
 func (l *lexer) Error(e string) {
 	line := l.tokenLine
 	if line < 1 {
 		line = l.lineNo
 	}
-	l.errors = append(l.errors, parseError{Line: line, Message: e})
+	l.errors = append(l.errors, parseError{Line: line, Message: e, Kind: SkipKindHard, Snippet: ""})
 }

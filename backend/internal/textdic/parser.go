@@ -23,22 +23,26 @@ type node struct {
 
 // parseError is the structured error produced by the lexer and the
 // goyacc-generated parser. Line is the 1-based source line at which the
-// error was detected. Skipped is true when the grammar's skip productions
-// recorded the entry (lone front / lone back); Message remains the human-
-// readable description and is preserved for the UI, while Skipped is the
-// structural classifier that downstream code uses to distinguish a soft
-// skip from a hard lexer/parser failure.
+// error was detected. Kind classifies the error: SkipKindHard means a hard
+// lexer/parser failure, while SkipKindFrontOnly, SkipKindBackOnly, and
+// SkipKindUnrecognized represent soft skips recorded by grammar productions
+// or the lexer. Message is the human-readable description preserved for UI.
+// Snippet carries the raw source text that triggered the diagnostic — the
+// WORD token value for SkipKindFrontOnly, the DEFINITION token value for
+// SkipKindBackOnly, and the recovered malformed line (not a single token)
+// for SkipKindUnrecognized. Empty for hard errors.
 type parseError struct {
 	Line    int
 	Message string
-	Skipped bool
+	Kind    SkipKind
+	Snippet string
 }
 
 func (e parseError) Error() string {
 	return fmt.Sprintf("%d:%s", e.Line, e.Message)
 }
 
-//line internal/textdic/grammar.y:40
+//line internal/textdic/grammar.y:44
 type yySymType struct {
 	yys   int
 	str   string
@@ -66,7 +70,7 @@ const yyEofCode = 1
 const yyErrCode = 2
 const yyInitialStackSize = 16
 
-//line internal/textdic/grammar.y:73
+//line internal/textdic/grammar.y:77
 
 // The goyacc-generated parser uses package-level state (yyParserImpl,
 // currentParser), so concurrent calls must be serialised. parserExecMutex
@@ -116,8 +120,8 @@ func (yyrcvr *yyParserImpl) setNodes(nodes []node) {
 // grammar's skip productions, so currentParser (and therefore p) is non-nil
 // at the call site — runParse holds parserExecMutex and assigns currentParser
 // before yyNewParser().Parse runs.
-func (p *parserWrapper) recordSkip(line int, message string) {
-	p.errors = append(p.errors, parseError{Line: line, Message: message, Skipped: true})
+func (p *parserWrapper) recordSkip(line int, kind SkipKind, snippet string, message string) {
+	p.errors = append(p.errors, parseError{Line: line, Message: message, Kind: kind, Snippet: snippet})
 }
 
 // Error is the goyacc error callback. tokenLine reflects the line at which
@@ -135,7 +139,7 @@ func (yyrcvr *yyParserImpl) Error(s string) {
 			line = lx.lineNo
 		}
 	}
-	currentParser.errors = append(currentParser.errors, parseError{Line: line, Message: s})
+	currentParser.errors = append(currentParser.errors, parseError{Line: line, Message: s, Kind: SkipKindHard, Snippet: ""})
 }
 
 //line yacctab:1
@@ -532,14 +536,14 @@ yydefault:
 
 	case 1:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line internal/textdic/grammar.y:57
+//line internal/textdic/grammar.y:61
 		{
 			yyVAL.nodes = yyDollar[1].nodes
 			yyrcvr.setNodes(yyDollar[1].nodes)
 		}
 	case 2:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line internal/textdic/grammar.y:61
+//line internal/textdic/grammar.y:65
 		{
 			if yyDollar[2].node.Word != "" {
 				yyVAL.nodes = append(yyDollar[1].nodes, yyDollar[2].node)
@@ -549,7 +553,7 @@ yydefault:
 		}
 	case 3:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line internal/textdic/grammar.y:62
+//line internal/textdic/grammar.y:66
 		{
 			if yyDollar[1].node.Word != "" {
 				yyVAL.nodes = []node{yyDollar[1].node}
@@ -559,32 +563,32 @@ yydefault:
 		}
 	case 4:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line internal/textdic/grammar.y:63
+//line internal/textdic/grammar.y:67
 		{
 		}
 	case 5:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line internal/textdic/grammar.y:67
+//line internal/textdic/grammar.y:71
 		{
 			yyVAL.node = node{Word: yyDollar[1].str, Definition: yyDollar[2].str, Line: yyDollar[1].line}
 		}
 	case 6:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line internal/textdic/grammar.y:68
+//line internal/textdic/grammar.y:72
 		{
 			yyVAL.node = node{}
-			currentParser.recordSkip(yyDollar[1].line, "skipped: front-only line (no definition)")
+			currentParser.recordSkip(yyDollar[1].line, SkipKindFrontOnly, yyDollar[1].str, "skipped: front-only line (no definition)")
 		}
 	case 7:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line internal/textdic/grammar.y:69
+//line internal/textdic/grammar.y:73
 		{
 			yyVAL.node = node{}
-			currentParser.recordSkip(yyDollar[1].line, "skipped: back-only line (no front)")
+			currentParser.recordSkip(yyDollar[1].line, SkipKindBackOnly, yyDollar[1].str, "skipped: back-only line (no front)")
 		}
 	case 8:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line internal/textdic/grammar.y:70
+//line internal/textdic/grammar.y:74
 		{
 			yyVAL.node = node{}
 		}

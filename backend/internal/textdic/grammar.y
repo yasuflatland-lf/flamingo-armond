@@ -20,15 +20,19 @@ type node struct {
 
 // parseError is the structured error produced by the lexer and the
 // goyacc-generated parser. Line is the 1-based source line at which the
-// error was detected. Skipped is true when the grammar's skip productions
-// recorded the entry (lone front / lone back); Message remains the human-
-// readable description and is preserved for the UI, while Skipped is the
-// structural classifier that downstream code uses to distinguish a soft
-// skip from a hard lexer/parser failure.
+// error was detected. Kind classifies the error: SkipKindHard means a hard
+// lexer/parser failure, while SkipKindFrontOnly, SkipKindBackOnly, and
+// SkipKindUnrecognized represent soft skips recorded by grammar productions
+// or the lexer. Message is the human-readable description preserved for UI.
+// Snippet carries the raw source text that triggered the diagnostic — the
+// WORD token value for SkipKindFrontOnly, the DEFINITION token value for
+// SkipKindBackOnly, and the recovered malformed line (not a single token)
+// for SkipKindUnrecognized. Empty for hard errors.
 type parseError struct {
 	Line    int
 	Message string
-	Skipped bool
+	Kind    SkipKind
+	Snippet string
 }
 
 func (e parseError) Error() string {
@@ -65,8 +69,8 @@ entries
 
 entry
 	: WORD DEFINITION { $$ = node{Word: $1, Definition: $2, Line: yyDollar[1].line} }
-	| WORD { $$ = node{}; currentParser.recordSkip(yyDollar[1].line, "skipped: front-only line (no definition)") }
-	| DEFINITION { $$ = node{}; currentParser.recordSkip(yyDollar[1].line, "skipped: back-only line (no front)") }
+	| WORD { $$ = node{}; currentParser.recordSkip(yyDollar[1].line, SkipKindFrontOnly, yyDollar[1].str, "skipped: front-only line (no definition)") }
+	| DEFINITION { $$ = node{}; currentParser.recordSkip(yyDollar[1].line, SkipKindBackOnly, yyDollar[1].str, "skipped: back-only line (no front)") }
 	| NEWLINE { $$ = node{} } // Blank line: skip without producing a node.
 	;
 
@@ -120,8 +124,8 @@ func (yyrcvr *yyParserImpl) setNodes(nodes []node) {
 // grammar's skip productions, so currentParser (and therefore p) is non-nil
 // at the call site — runParse holds parserExecMutex and assigns currentParser
 // before yyNewParser().Parse runs.
-func (p *parserWrapper) recordSkip(line int, message string) {
-	p.errors = append(p.errors, parseError{Line: line, Message: message, Skipped: true})
+func (p *parserWrapper) recordSkip(line int, kind SkipKind, snippet string, message string) {
+	p.errors = append(p.errors, parseError{Line: line, Message: message, Kind: kind, Snippet: snippet})
 }
 
 // Error is the goyacc error callback. tokenLine reflects the line at which
@@ -139,5 +143,5 @@ func (yyrcvr *yyParserImpl) Error(s string) {
 			line = lx.lineNo
 		}
 	}
-	currentParser.errors = append(currentParser.errors, parseError{Line: line, Message: s})
+	currentParser.errors = append(currentParser.errors, parseError{Line: line, Message: s, Kind: SkipKindHard, Snippet: ""})
 }

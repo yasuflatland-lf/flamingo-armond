@@ -25,6 +25,18 @@ var (
 	defBird  = jp(0x9CE5)                 // han "bird"
 	defFish  = jp(0x9B5A)                 // han "fish"
 	defBook  = jp(0x672C)                 // han "book"
+
+	// Snippet fragments that appear in notion_dict_repro.txt skip rows.
+	snipInyou   = jp(0x300C, 0x5F15, 0x7528, 0x300D)         // quotation wrapped in corner brackets
+	snipChushak = jp(0xFF08, 0x6CE8, 0x91C8, 0xFF09)         // annotation in parentheses
+	snipHosoku  = jp(0x300E, 0x88DC, 0x8DB3, 0x300F)         // supplement in double-corner brackets
+	snipLabel   = jp(0x3010, 0x30E9, 0x30D9, 0x30EB, 0x3011) // label in square brackets
+	snipChu     = jp(0x3014, 0x6CE8, 0x3015)                 // note in tortoise-shell brackets
+	snipMemo    = jp(0x3008, 0x30E1, 0x30E2, 0x3009)         // memo in angle brackets
+	snipBiko    = jp(0xFF08, 0x5099, 0x8003, 0xFF09)         // remarks in parentheses
+
+	// hiragana is used as back-only test input in TestProcess_SnippetExtraction.
+	hiragana = jp(0x3072, 0x3089, 0x304C, 0x306A) // hiragana script
 )
 
 //go:embed testdata/notion_dict_repro.txt
@@ -77,6 +89,13 @@ func TestProcess_EmptyPayload(t *testing.T) {
 	if errs[0].Message != "empty payload" {
 		t.Errorf("Message: got %q want %q", errs[0].Message, "empty payload")
 	}
+	// Payload-level errors are hard errors with an empty snippet.
+	if errs[0].Kind != textdic.SkipKindHard {
+		t.Errorf("Kind: got %v want SkipKindHard", errs[0].Kind)
+	}
+	if errs[0].Snippet != "" {
+		t.Errorf("Snippet: got %q want empty (payload-level error has no snippet)", errs[0].Snippet)
+	}
 }
 
 func TestProcess_OversizedPayload(t *testing.T) {
@@ -97,6 +116,13 @@ func TestProcess_OversizedPayload(t *testing.T) {
 	}
 	if !strings.Contains(errs[0].Message, "payload exceeds") {
 		t.Errorf("expected message to mention 'payload exceeds', got %q", errs[0].Message)
+	}
+	// Payload-level errors are hard errors with an empty snippet.
+	if errs[0].Kind != textdic.SkipKindHard {
+		t.Errorf("Kind: got %v want SkipKindHard", errs[0].Kind)
+	}
+	if errs[0].Snippet != "" {
+		t.Errorf("Snippet: got %q want empty (payload-level error has no snippet)", errs[0].Snippet)
 	}
 }
 
@@ -543,28 +569,41 @@ func TestProcess_NotionDictRepro(t *testing.T) {
 		}
 	}
 
-	wantErrs := []textdic.ValidationError{
-		{Line: 2, Message: "skipped: front-only line (no definition)", Skipped: true},
-		{Line: 4, Message: "skipped: back-only line (no front)", Skipped: true},
-		{Line: 6, Message: "skipped: back-only line (no front)", Skipped: true},
-		{Line: 8, Message: "skipped: back-only line (no front)", Skipped: true},
-		{Line: 10, Message: "skipped: front-only line (no definition)", Skipped: true},
-		{Line: 12, Message: "skipped: back-only line (no front)", Skipped: true},
-		{Line: 14, Message: "skipped: front-only line (no definition)", Skipped: true},
-		{Line: 16, Message: "skipped: back-only line (no front)", Skipped: true},
-		{Line: 18, Message: "skipped: front-only line (no definition)", Skipped: true},
-		{Line: 20, Message: "skipped: back-only line (no front)", Skipped: true},
-		{Line: 23, Message: "skipped: front-only line (no definition)", Skipped: true},
-		{Line: 25, Message: "skipped: back-only line (no front)", Skipped: true},
-		{Line: 28, Message: "skipped: front-only line (no definition)", Skipped: true},
-		{Line: 30, Message: "skipped: back-only line (no front)", Skipped: true},
+	// Assert Line, Message, Kind, and Snippet for every skip row in the repro
+	// fixture. Snippet values are derived from rune code points so the source
+	// stays ASCII (per the language policy); see the snip* vars at the top of
+	// this file for the mapping.
+	type wantErr struct {
+		line    int
+		message string
+		kind    textdic.SkipKind
+		snippet string
+	}
+	wantErrs := []wantErr{
+		{2, "skipped: front-only line (no definition)", textdic.SkipKindFrontOnly, "orphan-a"},
+		{4, "skipped: back-only line (no front)", textdic.SkipKindBackOnly, defCat},
+		{6, "skipped: back-only line (no front)", textdic.SkipKindBackOnly, snipInyou},
+		{8, "skipped: back-only line (no front)", textdic.SkipKindBackOnly, snipChushak},
+		{10, "skipped: front-only line (no definition)", textdic.SkipKindFrontOnly, "stray-front-10"},
+		{12, "skipped: back-only line (no front)", textdic.SkipKindBackOnly, snipHosoku},
+		{14, "skipped: front-only line (no definition)", textdic.SkipKindFrontOnly, "lambda-front"},
+		{16, "skipped: back-only line (no front)", textdic.SkipKindBackOnly, snipLabel},
+		{18, "skipped: front-only line (no definition)", textdic.SkipKindFrontOnly, "front-only-after-streak"},
+		{20, "skipped: back-only line (no front)", textdic.SkipKindBackOnly, snipChu},
+		{23, "skipped: front-only line (no definition)", textdic.SkipKindFrontOnly, "orphan-b"},
+		{25, "skipped: back-only line (no front)", textdic.SkipKindBackOnly, snipMemo},
+		{28, "skipped: front-only line (no definition)", textdic.SkipKindFrontOnly, "stray-front-28"},
+		{30, "skipped: back-only line (no front)", textdic.SkipKindBackOnly, snipBiko},
 	}
 	if len(errs) != len(wantErrs) {
 		t.Fatalf("expected %d validation errors, got %d (%+v)", len(wantErrs), len(errs), errs)
 	}
 	for i, want := range wantErrs {
-		if errs[i] != want {
-			t.Errorf("errs[%d]: got %+v want %+v", i, errs[i], want)
+		got := errs[i]
+		if got.Line != want.line || got.Message != want.message || got.Kind != want.kind || got.Snippet != want.snippet {
+			t.Errorf("errs[%d]: got {Line:%d Message:%q Kind:%v Snippet:%q} want {Line:%d Message:%q Kind:%v Snippet:%q}",
+				i, got.Line, got.Message, got.Kind, got.Snippet,
+				want.line, want.message, want.kind, want.snippet)
 		}
 	}
 }
@@ -670,7 +709,7 @@ func TestProcess_LoneFrontAtEOFWithoutTrailingNewline(t *testing.T) {
 
 	// Input "orphan" — a lone WORD at EOF without a trailing newline. The
 	// grammar's `entry: WORD` skip production records exactly one validation
-	// error tagged Skipped=true on line 1.
+	// error with Kind == SkipKindFrontOnly on line 1.
 	_, errs, err := textdic.Process("orphan")
 	if err != nil {
 		t.Fatalf("unexpected fatal error: %v", err)
@@ -681,8 +720,8 @@ func TestProcess_LoneFrontAtEOFWithoutTrailingNewline(t *testing.T) {
 	if errs[0].Line != 1 {
 		t.Errorf("Line: got %d want 1", errs[0].Line)
 	}
-	if !errs[0].Skipped {
-		t.Errorf("Skipped: got false, want true (lone-front entry must be tagged as skipped)")
+	if errs[0].Kind != textdic.SkipKindFrontOnly {
+		t.Errorf("Kind: got %v, want SkipKindFrontOnly (lone-front entry must be tagged as front-only skip)", errs[0].Kind)
 	}
 }
 
@@ -721,6 +760,88 @@ func TestProcess_Concurrent(t *testing.T) {
 	close(errCh)
 	for e := range errCh {
 		t.Errorf("goroutine reported error: %v", e)
+	}
+}
+
+// TestProcess_SnippetExtraction verifies that the Snippet field of a
+// ValidationError carries the exact raw text of the token or line that
+// triggered the skip, across all four SkipKind values.
+func TestProcess_SnippetExtraction(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name     string
+		input    string
+		wantKind textdic.SkipKind
+		wantLine int
+		wantSnip string
+	}{
+		// A lone ASCII WORD with no following DEFINITION is a front-only skip.
+		// Snippet is the trimmed WORD token value.
+		{"front-only", "orphan\n", textdic.SkipKindFrontOnly, 1, "orphan"},
+		// A lone DEFINITION token (hiragana) with no preceding WORD is a
+		// back-only skip. Snippet is the full DEFINITION text including
+		// multibyte runes, confirming UTF-8 pass-through.
+		{"back-only", hiragana + "\n", textdic.SkipKindBackOnly, 1, hiragana},
+		// A line starting with an unrecognized character is tagged Unrecognized.
+		// Snippet holds the full malformed line text (up to the newline).
+		{"unrecognized", "@broken line\n", textdic.SkipKindUnrecognized, 1, "@broken line"},
+		// Same as above but without a trailing newline — the lexer returns
+		// NEWLINE at EOF so the grammar's "error NEWLINE" rule fires cleanly.
+		// Exactly 1 UNRECOGNIZED error is produced; the old spurious "syntax
+		// error: unexpected $end" HARD error must no longer appear.
+		{"unrecognized-eof", "@broken no nl", textdic.SkipKindUnrecognized, 1, "@broken no nl"},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, errs, err := textdic.Process(tc.input)
+			if err != nil {
+				t.Fatalf("unexpected fatal error: %v", err)
+			}
+			if len(errs) == 0 {
+				t.Fatalf("expected at least one validation error, got none")
+			}
+			// The unrecognized-eof case must produce exactly 1 error (no
+			// spurious second "syntax error: unexpected $end" entry).
+			if tc.name == "unrecognized-eof" && len(errs) != 1 {
+				t.Fatalf("unrecognized-eof: expected exactly 1 validation error, got %d: %+v", len(errs), errs)
+			}
+			got := errs[0]
+			if got.Line != tc.wantLine {
+				t.Errorf("Line: got %d want %d", got.Line, tc.wantLine)
+			}
+			if got.Kind != tc.wantKind {
+				t.Errorf("Kind: got %v want %v", got.Kind, tc.wantKind)
+			}
+			if got.Snippet != tc.wantSnip {
+				t.Errorf("Snippet: got %q want %q", got.Snippet, tc.wantSnip)
+			}
+		})
+	}
+}
+
+func TestSkipKindString(t *testing.T) {
+	cases := []struct {
+		kind textdic.SkipKind
+		want string
+	}{
+		{textdic.SkipKindUnknown, "UNKNOWN"},
+		{textdic.SkipKindHard, "HARD"},
+		{textdic.SkipKindFrontOnly, "FRONT_ONLY"},
+		{textdic.SkipKindBackOnly, "BACK_ONLY"},
+		{textdic.SkipKindUnrecognized, "UNRECOGNIZED"},
+	}
+	for _, c := range cases {
+		if got := c.kind.String(); got != c.want {
+			t.Errorf("SkipKind(%d).String() = %q, want %q", c.kind, got, c.want)
+		}
+	}
+	// Defensive: any future SkipKind value not in the switch falls through to UNKNOWN.
+	if got := textdic.SkipKind(99).String(); got != "UNKNOWN" {
+		t.Errorf("SkipKind(99).String() = %q, want fallback %q", got, "UNKNOWN")
 	}
 }
 

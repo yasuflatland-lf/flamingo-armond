@@ -13,7 +13,7 @@ if allDictionaryErrorsSkipped(parseErrs) {
 }
 rows, parseErrs = dedupeParsedRows(rows, parseErrs)  // may append non-skip warnings
 
-// Bad — dedupe runs first and adds "duplicate front" warnings (Skipped: false).
+// Bad — dedupe runs first and adds "duplicate front" warnings (Kind: "DUPLICATE").
 // allDictionaryErrorsSkipped then returns false for a genuinely skip-only payload.
 rows, parseErrs = dedupeParsedRows(rows, parseErrs)
 if allDictionaryErrorsSkipped(parseErrs) { ... }
@@ -23,7 +23,7 @@ Reference: `backend/internal/usecase/notion_sync.go` — `Sync` method, the skip
 
 ## Why this matters
 
-`dedupeParsedRows` appends "duplicate front" validation entries (`Skipped: false`) to `parseErrs` as a side effect of deduplication. If the skip-only classifier runs after `dedupeParsedRows`, a payload that contained only lone-front/lone-back lines (all `Skipped: true`) will also contain the duplicate warnings (all `Skipped: false`), making `allDictionaryErrorsSkipped` return `false` and falling through to the hard-failure branch — which deletes existing cards rather than preserving them.
+`dedupeParsedRows` appends "duplicate front" validation entries (`Kind: "DUPLICATE"`) to `parseErrs` as a side effect of deduplication. If the skip-only classifier runs after `dedupeParsedRows`, a payload that contained only lone-front/lone-back lines (all `Kind: "FRONT_ONLY"` or `"BACK_ONLY"`) will also contain the duplicate warnings, making `allDictionaryErrorsSkipped` return `false` and falling through to the hard-failure branch — which deletes existing cards rather than preserving them.
 
 ## Generalisation
 

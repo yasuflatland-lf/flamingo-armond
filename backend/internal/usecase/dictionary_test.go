@@ -369,8 +369,8 @@ func TestDictionaryUsecase_PayloadOverCapBadInput(t *testing.T) {
 // surrounding well-formed rows survive because the production resumes on the
 // next NEWLINE. Lone-WORD / lone-DEFINITION lines do not hit this recovery
 // path any more — they are matched by explicit `entry: WORD` / `entry:
-// DEFINITION` skip productions and surface as Skipped=true entries without
-// disturbing the accumulator.
+// DEFINITION` skip productions and surface as "FRONT_ONLY" / "BACK_ONLY"
+// entries without disturbing the accumulator.
 func TestDictionaryUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
 	t.Parallel()
 
@@ -434,8 +434,8 @@ func TestDictionaryUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
 // TestDictionaryUsecase_ValidSkipValidMixedPayload covers the GraphQL
 // upsertDictionary path with a payload that interleaves a valid row, a lone
 // front (skip), and another valid row. The two valid rows must be persisted
-// (Inserted == 2), the lone front surfaces as Errors[0] with Skipped == true
-// and an empty Front field, and no skip-only short-circuit fires.
+// (Inserted == 2), the lone front surfaces as Errors[0] with Kind ==
+// "FRONT_ONLY" and an empty Front field, and no skip-only short-circuit fires.
 func TestDictionaryUsecase_ValidSkipValidMixedPayload(t *testing.T) {
 	t.Parallel()
 
@@ -470,11 +470,14 @@ func TestDictionaryUsecase_ValidSkipValidMixedPayload(t *testing.T) {
 	if len(out.Errors) != 1 {
 		t.Fatalf("expected exactly 1 parse error, got %d: %+v", len(out.Errors), out.Errors)
 	}
-	if !out.Errors[0].Skipped {
-		t.Fatalf("Errors[0].Skipped = false, want true (lone front must be flagged as skipped)")
+	if got := out.Errors[0].Kind; got != DictErrKindFrontOnly {
+		t.Fatalf("Errors[0].Kind = %q, want %q (lone front must be tagged as FRONT_ONLY)", got, DictErrKindFrontOnly)
+	}
+	if got := out.Errors[0].Snippet; got != "orphan" {
+		t.Fatalf("Errors[0].Snippet = %q, want %q (parser must capture the WORD token text)", got, "orphan")
 	}
 	if out.Errors[0].Front != "" {
-		t.Fatalf("Errors[0].Front = %q, want empty (skip errors do not carry token text)", out.Errors[0].Front)
+		t.Fatalf("Errors[0].Front = %q, want empty (skip errors do not carry dedupe token text)", out.Errors[0].Front)
 	}
 	if repo.upsertCalls != 1 {
 		t.Fatalf("expected 1 UpsertManyTx call (valid rows must still persist), got %d", repo.upsertCalls)
@@ -518,6 +521,12 @@ func TestDictionaryUsecase_SkippedLoneFrontDoesNotReachRepository(t *testing.T) 
 	}
 	if out.Errors[0].Message != "skipped: front-only line (no definition)" {
 		t.Fatalf("Errors[0].Message = %q, want skipped front-only line", out.Errors[0].Message)
+	}
+	if got := out.Errors[0].Kind; got != DictErrKindFrontOnly {
+		t.Fatalf("Errors[0].Kind = %q, want %q (lone front must be tagged as FRONT_ONLY)", got, DictErrKindFrontOnly)
+	}
+	if got := out.Errors[0].Snippet; got != "existing-front" {
+		t.Fatalf("Errors[0].Snippet = %q, want %q (parser must capture the WORD token text)", got, "existing-front")
 	}
 	if out.Errors[0].Front != "" || out.Errors[0].Back != "" {
 		t.Fatalf("Errors[0] carried fields: %+v, want empty Front/Back", out.Errors[0])
@@ -652,7 +661,7 @@ func TestDictionaryUsecase_BadBase64BadInput(t *testing.T) {
 // TestDictionaryUsecase_DuplicateFrontDeduplicatedAndSurfaced verifies that
 // when the payload contains two lines with the same front, the later occurrence
 // wins (last-write-wins dedup) and the dropped earlier row surfaces as a
-// DictionaryValidationError with a "duplicate" message. Exactly one card
+// DictionaryValidationError with a "DUPLICATE" message. Exactly one card
 // reaches the repository and its Back matches the last occurrence.
 //
 // Note: this test depends on usecase-level deduplication logic. If that logic
@@ -688,11 +697,19 @@ func TestDictionaryUsecase_DuplicateFrontDeduplicatedAndSurfaced(t *testing.T) {
 	if len(out.Errors) != 1 {
 		t.Fatalf("expected exactly 1 duplicate error, got %d: %+v", len(out.Errors), out.Errors)
 	}
+	if got := out.Errors[0].Kind; got != DictErrKindDuplicate {
+		t.Fatalf("Errors[0].Kind = %q, want %q (dropped duplicate must be tagged as DUPLICATE)", got, DictErrKindDuplicate)
+	}
 	if got := out.Errors[0].Front; got != "apple" {
 		t.Fatalf("Errors[0].Front = %q, want %q (the duplicate row's front)", got, "apple")
 	}
 	if got := out.Errors[0].Back; got != fruitBack {
 		t.Fatalf("Errors[0].Back = %q, want %q (the dropped row's back)", got, fruitBack)
+	}
+	// The dedupe path leaves Snippet empty by contract: the duplicate error
+	// carries Front + Back, not a raw snippet.
+	if got := out.Errors[0].Snippet; got != "" {
+		t.Fatalf("Errors[0].Snippet = %q, want empty (dedupe error does not carry a snippet)", got)
 	}
 	if len(repo.captured) != 1 {
 		t.Fatalf("expected 1 card sent to repo, got %d", len(repo.captured))

@@ -33,7 +33,6 @@ Sentinels used today: `repository.ErrNotFound`, and domain-level sentinels such 
 - [Defensive `eris.Wrap` at log sites that consume narrow interfaces](../../docs/backend/error-wrapping/defensive-eris-wrap-at-log-sites.md)
 - [Test the `error_chain` shape, not just its presence](../../docs/backend/error-wrapping/test-error-chain-shape-not-presence.md)
 - [Assert PII absence on log lines that carry `user_id`](../../docs/backend/error-wrapping/assert-pii-absence-on-log-lines.md)
-- [Parser-derived error messages must not leak into log fields — line + count only](../../docs/backend/error-wrapping/parser-derived-log-fields-pii-risk.md)
 - [Log a structured event when a batch item fails and earlier work will be dropped](../../docs/backend/error-wrapping/log-structured-event-when-batch-item-fails.md)
 
 ## Errors as data — detailed cases (on-demand)

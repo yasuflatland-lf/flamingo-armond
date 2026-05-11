@@ -43,21 +43,37 @@ type UpsertDictionaryInput struct {
 	Payload     string // standard base64-encoded plain-text dictionary
 }
 
+// DictionaryErrorKind is the wire-aligned classifier for DictionaryValidationError.Kind.
+// Values mirror the GraphQL DictionaryValidationKind enum literals exactly, so the
+// resolver can cast string(e.Kind) → model.DictionaryValidationKind without translation.
+//
+// Callers MUST branch on these constants in switches; never substring-match Message.
+type DictionaryErrorKind string
+
+const (
+	DictErrKindUnknown      DictionaryErrorKind = "UNKNOWN" // programming-error sentinel
+	DictErrKindHard         DictionaryErrorKind = "HARD"
+	DictErrKindFrontOnly    DictionaryErrorKind = "FRONT_ONLY"
+	DictErrKindBackOnly     DictionaryErrorKind = "BACK_ONLY"
+	DictErrKindUnrecognized DictionaryErrorKind = "UNRECOGNIZED"
+	DictErrKindDuplicate    DictionaryErrorKind = "DUPLICATE"
+)
+
 // DictionaryValidationError mirrors textdic.ValidationError so callers in the
 // resolver layer can reshape it into the GraphQL model without importing the
 // textdic package directly.
 //
-// Skipped is the structural classifier propagated from textdic.ValidationError:
-// true for entries that the grammar's skip productions intentionally dropped
-// (lone front / lone back), false for lexer or parser failures. Callers MUST
-// branch on Skipped rather than substring-matching Message; Message stays as
-// the UI-facing description.
+// Kind distinguishes payload-level / hard errors, grammar-recovered skips, and
+// dedupe warnings. Snippet carries parser-extracted text. Front / Back are
+// populated only for dedupe duplicates. Callers MUST branch on Kind rather than
+// substring-matching Message; Message stays as the UI-facing description.
 type DictionaryValidationError struct {
-	Line    int    `json:"line"`
-	Message string `json:"message"`
-	Front   string `json:"front,omitempty"`
-	Back    string `json:"back,omitempty"`
-	Skipped bool   `json:"-"`
+	Line    int                 `json:"line"`
+	Message string              `json:"message"`
+	Kind    DictionaryErrorKind `json:"kind"`
+	Snippet string              `json:"snippet,omitempty"` // parser-cut content
+	Front   string              `json:"front,omitempty"`   // dedupe-only
+	Back    string              `json:"back,omitempty"`    // dedupe-only
 }
 
 // UpsertDictionaryOutput is the result returned to the caller. Inserted +
@@ -157,7 +173,12 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 
 	mappedErrs := make([]DictionaryValidationError, 0, len(parseErrs))
 	for _, e := range parseErrs {
-		mappedErrs = append(mappedErrs, DictionaryValidationError{Line: e.Line, Message: e.Message, Skipped: e.Skipped})
+		mappedErrs = append(mappedErrs, DictionaryValidationError{
+			Line:    e.Line,
+			Message: e.Message,
+			Kind:    DictionaryErrorKind(e.Kind.String()),
+			Snippet: e.Snippet,
+		})
 	}
 
 	// Deduplicate parsed words by front within this payload. Postgres error 21000
@@ -174,6 +195,7 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 			mappedErrs = append(mappedErrs, DictionaryValidationError{
 				Line:    w.Line,
 				Message: "duplicate front in payload (later occurrence wins)",
+				Kind:    DictErrKindDuplicate,
 				Front:   w.Front,
 				Back:    w.Back,
 			})

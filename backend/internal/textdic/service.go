@@ -26,19 +26,55 @@ type ParsedWord struct {
 	Line  int
 }
 
+// SkipKind classifies a single textdic parser diagnostic.
+//
+// The zero value (SkipKindUnknown) is reserved as a programming-error sentinel:
+// any ValidationError or parseError whose Kind is left unset by construction
+// indicates a missed call site. Real construction must always set Kind
+// explicitly (Hard, FrontOnly, BackOnly, or Unrecognized).
+type SkipKind uint8
+
+const (
+	SkipKindUnknown      SkipKind = iota // zero value — programming bug if observed
+	SkipKindHard                         // payload-level / lexer-parser hard error
+	SkipKindFrontOnly                    // lone WORD: definition absent
+	SkipKindBackOnly                     // lone DEFINITION: front absent
+	SkipKindUnrecognized                 // unrecognized character
+)
+
+// String returns the wire-aligned string representation, matching the
+// GraphQL DictionaryValidationKind enum literals.
+func (k SkipKind) String() string {
+	switch k {
+	case SkipKindHard:
+		return "HARD"
+	case SkipKindFrontOnly:
+		return "FRONT_ONLY"
+	case SkipKindBackOnly:
+		return "BACK_ONLY"
+	case SkipKindUnrecognized:
+		return "UNRECOGNIZED"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 // ValidationError is the public, line-scoped error type. Line == 0
 // indicates an error not tied to a specific line (e.g. payload-size).
 // Only Process constructs values of this type within the package.
 //
-// Skipped is true when the parser intentionally skipped the entry via a
-// grammar skip production (lone front, lone back). Message remains the
-// UI-facing description; Skipped is the structural classifier callers use
-// to distinguish a soft skip from a hard lexer/parser failure without
-// substring-matching the message.
+// Kind classifies the error: SkipKindHard means a hard lexer/parser failure;
+// other values represent soft skips (lone front, lone back, unrecognized
+// character). Snippet carries the raw source text that triggered the
+// diagnostic — the WORD token value for SkipKindFrontOnly, the DEFINITION
+// token value for SkipKindBackOnly, and the recovered malformed line (not a
+// single token) for SkipKindUnrecognized. Empty for hard errors and
+// payload-level errors. Message is the UI-facing description.
 type ValidationError struct {
 	Line    int
 	Message string
-	Skipped bool
+	Kind    SkipKind
+	Snippet string
 }
 
 // Process parses a plain-text dictionary payload.
@@ -65,10 +101,10 @@ func Process(input string) (words []ParsedWord, errs []ValidationError, err erro
 	}()
 
 	if len(input) > maxPayloadBytes {
-		return []ParsedWord{}, []ValidationError{{Line: 0, Message: fmt.Sprintf("payload exceeds %d bytes", maxPayloadBytes)}}, nil
+		return []ParsedWord{}, []ValidationError{{Line: 0, Message: fmt.Sprintf("payload exceeds %d bytes", maxPayloadBytes), Kind: SkipKindHard, Snippet: ""}}, nil
 	}
 	if len(input) == 0 {
-		return []ParsedWord{}, []ValidationError{{Line: 1, Message: "empty payload"}}, nil
+		return []ParsedWord{}, []ValidationError{{Line: 1, Message: "empty payload", Kind: SkipKindHard, Snippet: ""}}, nil
 	}
 
 	nodes, rawErrs := runParse(newLexer(input))
@@ -84,10 +120,10 @@ func Process(input string) (words []ParsedWord, errs []ValidationError, err erro
 	errs = make([]ValidationError, 0, len(rawErrs))
 	for _, e := range rawErrs {
 		if pe, ok := e.(parseError); ok {
-			errs = append(errs, ValidationError{Line: pe.Line, Message: pe.Message, Skipped: pe.Skipped})
+			errs = append(errs, ValidationError{Line: pe.Line, Message: pe.Message, Kind: pe.Kind, Snippet: pe.Snippet})
 			continue
 		}
-		errs = append(errs, ValidationError{Line: 0, Message: e.Error()})
+		errs = append(errs, ValidationError{Line: 0, Message: e.Error(), Kind: SkipKindHard, Snippet: ""})
 	}
 	return words, errs, nil
 }
