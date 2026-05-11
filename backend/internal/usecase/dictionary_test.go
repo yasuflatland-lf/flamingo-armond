@@ -392,7 +392,7 @@ func TestDictionaryUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
 	payload := base64.StdEncoding.EncodeToString([]byte(b.String()))
 
 	// All three valid rows should survive the lexer errors.
-	repo := &mockDictCardRepo{inserted: 3, updated: 0}
+	repo := &mockDictCardRepo{inserted: 3}
 	authChk := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
 	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx)
@@ -452,7 +452,7 @@ func TestDictionaryUsecase_ValidSkipValidMixedPayload(t *testing.T) {
 	b.WriteString("\n")
 	payload := base64.StdEncoding.EncodeToString([]byte(b.String()))
 
-	repo := &mockDictCardRepo{inserted: 2, updated: 0}
+	repo := &mockDictCardRepo{inserted: 2}
 	authChk := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
 	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx)
