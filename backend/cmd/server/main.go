@@ -45,6 +45,17 @@ import (
 
 const defaultShutdownTimeout = 25 * time.Second
 
+// recoverFromPanic converts a recovered panic value into a gqlerr.Internal,
+// capturing the goroutine stack at the recovery point to preserve panic origin.
+// Both newGraphQLServer and tests share this function so recovery behaviour stays
+// in sync.
+func recoverFromPanic(ctx context.Context, err any) error {
+	stack := debug.Stack()
+	return gqlerr.Internal(ctx,
+		eris.Errorf("graphql: panic recovered (%T)\n%s", err, stack),
+	)
+}
+
 func newGraphQLServer(r *resolver.Resolver) *handler.Server {
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.Options{})
@@ -54,12 +65,7 @@ func newGraphQLServer(r *resolver.Resolver) *handler.Server {
 		},
 	})
 
-	srv.SetRecoverFunc(func(ctx context.Context, err any) error {
-		stack := debug.Stack()
-		return gqlerr.Internal(ctx,
-			eris.Errorf("graphql: panic recovered (%T)\n%s", err, stack),
-		)
-	})
+	srv.SetRecoverFunc(recoverFromPanic)
 
 	srv.Use(extension.FixedComplexityLimit(100))
 

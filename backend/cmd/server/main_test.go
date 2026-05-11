@@ -18,7 +18,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -45,7 +44,6 @@ import (
 	"backend/internal/database"
 	"backend/internal/domain"
 	"backend/internal/domain/service"
-	"backend/internal/gqlerr"
 	"backend/internal/handler/ping"
 	"backend/internal/logging"
 	"backend/internal/repository"
@@ -2194,10 +2192,11 @@ func (p *panicResolverRoot) Mutation() generated.MutationResolver   { return p.i
 func (p *panicResolverRoot) Query() generated.QueryResolver         { return panicQueryResolver{} }
 func (p *panicResolverRoot) User() generated.UserResolver           { return p.inner.User() }
 
-// newPanicGraphQLServer builds a gqlgen handler.Server using the same
-// transport, complexity limit, and SetRecoverFunc configuration as
-// newGraphQLServer, but wires panicResolverRoot so that { health } panics.
-// It is used exclusively by TestGraphQL_PanicRecovery_ReturnsINTERNAL.
+// newPanicGraphQLServer builds a gqlgen handler.Server wired with
+// panicResolverRoot so that { health } panics. The server uses the shared
+// recoverFromPanic helper (same as newGraphQLServer) so recovery behaviour
+// stays in sync with production. Used exclusively by
+// TestGraphQL_PanicRecovery_ReturnsINTERNAL.
 func newPanicGraphQLServer() *handler.Server {
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: newPanicResolverRoot()}))
 	srv.AddTransport(transport.Options{})
@@ -2206,12 +2205,7 @@ func newPanicGraphQLServer() *handler.Server {
 			"Content-Type": []string{"application/graphql-response+json; charset=utf-8"},
 		},
 	})
-	srv.SetRecoverFunc(func(ctx context.Context, err any) error {
-		stack := debug.Stack()
-		return gqlerr.Internal(ctx,
-			eris.Errorf("graphql: panic recovered (%T)\n%s", err, stack),
-		)
-	})
+	srv.SetRecoverFunc(recoverFromPanic)
 	return srv
 }
 
