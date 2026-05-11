@@ -45,11 +45,15 @@ test("swipes easy cards and advances through the deck", async ({ page }) => {
   const activeCard = page.locator('[data-testid="swipe-card"][tabindex="0"]');
   await expect(activeCard).toHaveAccessibleName(new RegExp(`^Flashcard: learn-${runId}-`));
 
+  // The rating buttons moved out of the swipe card into LearnActionBar
+  // (sticky bar below the deck), so click at page scope, not inside activeCard.
+  const easyButton = page.getByRole("button", { name: "Rate as Easy" });
+
   const seen: string[] = [];
   for (let i = 0; i < 3; i += 1) {
     const before = await activeCard.getAttribute("aria-label");
     if (before) seen.push(before);
-    await activeCard.getByRole("button", { name: "Easy" }).click();
+    await easyButton.click();
     await expect(activeCard).not.toHaveAttribute("aria-label", before ?? "");
   }
 
