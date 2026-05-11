@@ -22,7 +22,10 @@ const NAV_LINK_CLASS =
 export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
   const pathname = usePathname();
   const learnMatch = pathname.match(/^\/learn\/([^/]+)$/);
-  const learnCardgroupId = user && learnMatch ? learnMatch[1] : null;
+  // learnMatch[1] is always defined when the regex matched (capture group 1 is required).
+  // decodeURIComponent normalises the segment to a raw value so the downstream
+  // encodeURIComponent in the href matches LearnAddCardFloating's PC behaviour.
+  const learnCardgroupId = user && learnMatch ? decodeURIComponent(learnMatch[1] as string) : null;
 
   return (
     <Sheet>

@@ -200,25 +200,29 @@ describe("<LogoDrawer>", () => {
     ).toBeTruthy();
   });
 
-  it("S-L4: cardgroupId with special characters is URL-encoded in the href", () => {
+  it("S-L4: cardgroupId with special characters round-trips to single-encoded href (matches LearnAddCardFloating)", () => {
+    // usePathname returns the percent-encoded pathname as delivered by the browser.
+    // The component decodes the segment, then the JSX re-encodes once via
+    // encodeURIComponent, producing a href identical to what LearnAddCardFloating
+    // generates from a decoded `cardgroupId` prop.
     mockUsePathname.mockReturnValue("/learn/abc%26evil");
-    // usePathname returns the raw pathname segment from Next; for a route param
-    // containing '&' the runtime delivers it already-encoded. The regex extracts
-    // the encoded value, then encodeURIComponent in the component re-encodes
-    // the percent sign. Verify the final href value.
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
     const addLink = screen.getByRole("link", { name: /add a new card to this cardgroup/i });
-    // Component should encodeURIComponent(extracted), and extracted is "abc%26evil".
-    // encodeURIComponent("abc%26evil") === "abc%2526evil"
     expect(addLink).toHaveAttribute(
       "href",
-      "/cards/new?cardgroup=abc%2526evil&return=/learn/abc%2526evil",
+      "/cards/new?cardgroup=abc%26evil&return=/learn/abc%26evil",
     );
   });
 
   it("S-L5: anonymous user on /learn/:id does not see the '+' link", () => {
     mockUsePathname.mockReturnValue("/learn/abc-123");
     render(<LogoDrawer user={null} isAdmin={false} />);
+    expect(screen.queryByRole("link", { name: /add a new card to this cardgroup/i })).toBeNull();
+  });
+
+  it("S-L6: regex rejects /learn/:id sub-routes — '+' link is absent on /learn/abc-123/edit", () => {
+    mockUsePathname.mockReturnValue("/learn/abc-123/edit");
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
     expect(screen.queryByRole("link", { name: /add a new card to this cardgroup/i })).toBeNull();
   });
 });
