@@ -20,10 +20,15 @@ type node struct {
 
 // parseError is the structured error produced by the lexer and the
 // goyacc-generated parser. Line is the 1-based source line at which the
-// error was detected.
+// error was detected. Skipped is true when the grammar's skip productions
+// recorded the entry (lone front / lone back); Message remains the human-
+// readable description and is preserved for the UI, while Skipped is the
+// structural classifier that downstream code uses to distinguish a soft
+// skip from a hard lexer/parser failure.
 type parseError struct {
 	Line    int
 	Message string
+	Skipped bool
 }
 
 func (e parseError) Error() string {
@@ -111,11 +116,12 @@ func (yyrcvr *yyParserImpl) setNodes(nodes []node) {
 	}
 }
 
+// recordSkip is only invoked via currentParser.recordSkip(...) from the
+// grammar's skip productions, so currentParser (and therefore p) is non-nil
+// at the call site — runParse holds parserExecMutex and assigns currentParser
+// before yyNewParser().Parse runs.
 func (p *parserWrapper) recordSkip(line int, message string) {
-	if p == nil {
-		return
-	}
-	p.errors = append(p.errors, parseError{Line: line, Message: message})
+	p.errors = append(p.errors, parseError{Line: line, Message: message, Skipped: true})
 }
 
 // Error is the goyacc error callback. tokenLine reflects the line at which

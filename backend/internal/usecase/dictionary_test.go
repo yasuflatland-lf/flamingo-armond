@@ -362,9 +362,15 @@ func TestDictionaryUsecase_PayloadOverCapBadInput(t *testing.T) {
 
 // TestDictionaryUsecase_BadRowsSurfaceAsErrors covers the partial-failure
 // shape where lexer-level junk is reported as parse errors, but valid rows
-// before and after the junk still reach the repository. Skip productions now
-// handle lone front/back lines separately; this test pins the remaining
-// `entries: error NEWLINE` recovery path.
+// before and after the junk still reach the repository.
+//
+// Lexer-level junk (e.g. '@') still triggers the `entries: error NEWLINE`
+// production, which discards the partial parse state at the error point; the
+// surrounding well-formed rows survive because the production resumes on the
+// next NEWLINE. Lone-WORD / lone-DEFINITION lines do not hit this recovery
+// path any more — they are matched by explicit `entry: WORD` / `entry:
+// DEFINITION` skip productions and surface as Skipped=true entries without
+// disturbing the accumulator.
 func TestDictionaryUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
 	t.Parallel()
 
@@ -422,6 +428,59 @@ func TestDictionaryUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
 	}
 	if len(repo.captured) != 3 {
 		t.Fatalf("expected 3 captured cards, got %d", len(repo.captured))
+	}
+}
+
+// TestDictionaryUsecase_ValidSkipValidMixedPayload covers the GraphQL
+// upsertDictionary path with a payload that interleaves a valid row, a lone
+// front (skip), and another valid row. The two valid rows must be persisted
+// (Inserted == 2), the lone front surfaces as Errors[0] with Skipped == true
+// and an empty Front field, and no skip-only short-circuit fires.
+func TestDictionaryUsecase_ValidSkipValidMixedPayload(t *testing.T) {
+	t.Parallel()
+
+	// buildPayload writes "front<space>back\n" per pair, matching the lexer's
+	// WORD<whitespace>DEFINITION grammar. Build the raw text directly because
+	// the middle row "orphan" carries no back.
+	var b strings.Builder
+	b.WriteString("apple ")
+	b.WriteString(uniqueBack(1))
+	b.WriteString("\n")
+	b.WriteString("orphan\n") // lone front: grammar's WORD skip production fires
+	b.WriteString("dog ")
+	b.WriteString(uniqueBack(2))
+	b.WriteString("\n")
+	payload := base64.StdEncoding.EncodeToString([]byte(b.String()))
+
+	repo := &mockDictCardRepo{inserted: 2, updated: 0}
+	authChk := &mockAdminChecker{isAdmin: true}
+	tx, _ := dictTxRunner()
+	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx)
+
+	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
+		CardgroupID: "cg-target",
+		Payload:     payload,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Inserted != 2 {
+		t.Fatalf("Inserted = %d, want 2", out.Inserted)
+	}
+	if len(out.Errors) != 1 {
+		t.Fatalf("expected exactly 1 parse error, got %d: %+v", len(out.Errors), out.Errors)
+	}
+	if !out.Errors[0].Skipped {
+		t.Fatalf("Errors[0].Skipped = false, want true (lone front must be flagged as skipped)")
+	}
+	if out.Errors[0].Front != "" {
+		t.Fatalf("Errors[0].Front = %q, want empty (skip errors do not carry token text)", out.Errors[0].Front)
+	}
+	if repo.upsertCalls != 1 {
+		t.Fatalf("expected 1 UpsertManyTx call (valid rows must still persist), got %d", repo.upsertCalls)
+	}
+	if len(repo.captured) != 2 {
+		t.Fatalf("expected 2 captured cards, got %d", len(repo.captured))
 	}
 }
 

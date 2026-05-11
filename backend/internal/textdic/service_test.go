@@ -544,20 +544,20 @@ func TestProcess_NotionDictRepro(t *testing.T) {
 	}
 
 	wantErrs := []textdic.ValidationError{
-		{Line: 2, Message: "skipped: front-only line (no definition)"},
-		{Line: 4, Message: "skipped: back-only line (no front)"},
-		{Line: 6, Message: "skipped: back-only line (no front)"},
-		{Line: 8, Message: "skipped: back-only line (no front)"},
-		{Line: 10, Message: "skipped: front-only line (no definition)"},
-		{Line: 12, Message: "skipped: back-only line (no front)"},
-		{Line: 14, Message: "skipped: front-only line (no definition)"},
-		{Line: 16, Message: "skipped: back-only line (no front)"},
-		{Line: 18, Message: "skipped: front-only line (no definition)"},
-		{Line: 20, Message: "skipped: back-only line (no front)"},
-		{Line: 23, Message: "skipped: front-only line (no definition)"},
-		{Line: 25, Message: "skipped: back-only line (no front)"},
-		{Line: 28, Message: "skipped: front-only line (no definition)"},
-		{Line: 30, Message: "skipped: back-only line (no front)"},
+		{Line: 2, Message: "skipped: front-only line (no definition)", Skipped: true},
+		{Line: 4, Message: "skipped: back-only line (no front)", Skipped: true},
+		{Line: 6, Message: "skipped: back-only line (no front)", Skipped: true},
+		{Line: 8, Message: "skipped: back-only line (no front)", Skipped: true},
+		{Line: 10, Message: "skipped: front-only line (no definition)", Skipped: true},
+		{Line: 12, Message: "skipped: back-only line (no front)", Skipped: true},
+		{Line: 14, Message: "skipped: front-only line (no definition)", Skipped: true},
+		{Line: 16, Message: "skipped: back-only line (no front)", Skipped: true},
+		{Line: 18, Message: "skipped: front-only line (no definition)", Skipped: true},
+		{Line: 20, Message: "skipped: back-only line (no front)", Skipped: true},
+		{Line: 23, Message: "skipped: front-only line (no definition)", Skipped: true},
+		{Line: 25, Message: "skipped: back-only line (no front)", Skipped: true},
+		{Line: 28, Message: "skipped: front-only line (no definition)", Skipped: true},
+		{Line: 30, Message: "skipped: back-only line (no front)", Skipped: true},
 	}
 	if len(errs) != len(wantErrs) {
 		t.Fatalf("expected %d validation errors, got %d (%+v)", len(wantErrs), len(errs), errs)
@@ -662,6 +662,27 @@ func TestProcess_SkippedFrontOnlyLineOnLine2(t *testing.T) {
 
 	if !hasValidationError(errs, 2, "skipped: front-only line (no definition)") {
 		t.Errorf("expected a skipped front-only line on line 2, got %+v", errs)
+	}
+}
+
+func TestProcess_LoneFrontAtEOFWithoutTrailingNewline(t *testing.T) {
+	t.Parallel()
+
+	// Input "orphan" — a lone WORD at EOF without a trailing newline. The
+	// grammar's `entry: WORD` skip production records exactly one validation
+	// error tagged Skipped=true on line 1.
+	_, errs, err := textdic.Process("orphan")
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	if len(errs) != 1 {
+		t.Fatalf("expected exactly 1 validation error, got %d (%+v)", len(errs), errs)
+	}
+	if errs[0].Line != 1 {
+		t.Errorf("Line: got %d want 1", errs[0].Line)
+	}
+	if !errs[0].Skipped {
+		t.Errorf("Skipped: got false, want true (lone-front entry must be tagged as skipped)")
 	}
 }
 
