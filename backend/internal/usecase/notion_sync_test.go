@@ -553,7 +553,7 @@ func TestNotionSyncUsecase_ListFrontsError(t *testing.T) {
 // TestNotionSyncUsecase_SkipOnlyLogFields verifies that the skip-only branch
 // emits an InfoContext log record whose structured fields include first_line,
 // first_kind, and first_snippet, pinned to the known values for a lone-front
-// input ("apple\n" → line 1, kind "front_only", snippet "apple").
+// input ("apple\n" → line 1, kind "FRONT_ONLY", snippet "apple").
 //
 // Not parallel: injects a logger directly into the usecase, so it does not
 // mutate the global slog default.
@@ -603,8 +603,8 @@ func TestNotionSyncUsecase_SkipOnlyLogFields(t *testing.T) {
 	if fl, ok := skipRec["first_line"].(float64); !ok || int(fl) != 1 {
 		t.Errorf("first_line = %v (%T), want 1", skipRec["first_line"], skipRec["first_line"])
 	}
-	if skipRec["first_kind"] != string(DictErrKindFrontOnly) {
-		t.Errorf("first_kind = %v, want %q", skipRec["first_kind"], DictErrKindFrontOnly)
+	if skipRec["first_kind"] != "FRONT_ONLY" {
+		t.Errorf("first_kind = %v, want %q", skipRec["first_kind"], "FRONT_ONLY")
 	}
 	if skipRec["first_snippet"] != "apple" {
 		t.Errorf("first_snippet = %v, want %q", skipRec["first_snippet"], "apple")
@@ -729,8 +729,8 @@ func TestNotionSyncUsecase_WarnBranchLogFields(t *testing.T) {
 	if v, ok := warnRec["first_error_line"].(float64); !ok || int(v) != 1 {
 		t.Errorf("first_error_line = %v (%T), want 1", warnRec["first_error_line"], warnRec["first_error_line"])
 	}
-	if warnRec["first_error_kind"] != string(DictErrKindUnrecognized) {
-		t.Errorf("first_error_kind = %v, want %q", warnRec["first_error_kind"], DictErrKindUnrecognized)
+	if warnRec["first_error_kind"] != "UNRECOGNIZED" {
+		t.Errorf("first_error_kind = %v, want %q", warnRec["first_error_kind"], "UNRECOGNIZED")
 	}
 	if warnRec["first_error_snippet"] != "@broken" {
 		t.Errorf("first_error_snippet = %v, want %q", warnRec["first_error_snippet"], "@broken")
