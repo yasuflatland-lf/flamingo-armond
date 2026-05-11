@@ -5,6 +5,7 @@ import { useApolloClient, useMutation } from "@apollo/client/react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HandleSwipeMutation, SetLastViewedCardgroupMutation } from "@/app/learn/queries";
+import { LearnActionBar } from "@/components/learn/learn-action-bar";
 import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
 import { LearnAddCardFloating } from "@/components/nav/learn-add-card-floating";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import type {
   LearnCardsByCardgroupQuery,
 } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { useReducedMotion } from "@/lib/use-reduced-motion";
 
 export type SwipeDirection = "left" | "right" | "down";
 type LearnCard = LearnCardsByCardgroupQuery["cardsByCardgroup"][number];
@@ -58,6 +60,7 @@ export function LearnClient({
   lastViewedCardgroupId,
 }: Props) {
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
+  const reducedMotion = useReducedMotion();
   const queueRef = useRef(queue);
   useEffect(() => {
     queueRef.current = queue;
@@ -183,6 +186,26 @@ export function LearnClient({
     [cardgroupId, handleSwipe],
   );
 
+  const handleRate = useCallback(
+    (direction: SwipeDirection) => {
+      const activeCard = queueRef.current[0];
+      if (!activeCard) return;
+
+      setSwipeDirection(direction);
+      setSwipeProgress(1);
+
+      if (reducedMotion) {
+        void onSwipe(activeCard, direction);
+        return;
+      }
+
+      window.setTimeout(() => {
+        void onSwipe(activeCard, direction);
+      }, 180);
+    },
+    [onSwipe, reducedMotion],
+  );
+
   return (
     <>
       <LearnAddCardFloating cardgroupId={cardgroupId} cardgroupName={cardgroupName} />
@@ -222,6 +245,7 @@ export function LearnClient({
               completedCount={completed}
             />
           </div>
+          <LearnActionBar onRate={handleRate} disabled={queue.length === 0} />
         </section>
       )}
     </>
