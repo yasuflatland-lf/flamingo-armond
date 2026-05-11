@@ -1,3 +1,5 @@
+import { safeDecodePathSegment } from "@/lib/safe-decode-path-segment";
+
 const CARDGROUP_EDIT_RE = /^\/cardgroups\/([^/]+)\/edit(\/|$)/;
 const LEARN_RE = /^\/learn\/([^/]+)$/;
 
@@ -51,10 +53,24 @@ export function resolveFabAction(pathname: string): FabAction | null {
   // list + settings). /cardgroups/:id and /cardgroups/:id/cards both redirect
   // to /edit at the page level, so they are not handled here.
   const editMatch = CARDGROUP_EDIT_RE.exec(pathname);
-  if (editMatch) return cardWithGroup(editMatch[1] as string);
+  if (editMatch) {
+    // usePathname() delivers a percent-encoded pathname. Decode the captured segment
+    // so cardWithGroup's encodeURIComponent encodes it exactly once.
+    // safeDecodePathSegment returns null for malformed %XX sequences; fall through to
+    // the generic card action rather than propagating a bad href.
+    const rawId = safeDecodePathSegment(editMatch[1] as string);
+    if (rawId !== null) return cardWithGroup(rawId);
+  }
 
   const learnMatch = LEARN_RE.exec(pathname);
-  if (learnMatch) return cardWithGroup(learnMatch[1] as string, { withReturnToLearn: true });
+  if (learnMatch) {
+    // usePathname() delivers a percent-encoded pathname. Decode the captured segment
+    // so cardWithGroup's encodeURIComponent encodes it exactly once.
+    // safeDecodePathSegment returns null for malformed %XX sequences; fall through to
+    // the generic card action rather than propagating a bad href.
+    const rawId = safeDecodePathSegment(learnMatch[1] as string);
+    if (rawId !== null) return cardWithGroup(rawId, { withReturnToLearn: true });
+  }
 
   return { kind: "card", href: "/cards/new", label: "Add new card" };
 }
