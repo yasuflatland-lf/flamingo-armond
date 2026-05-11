@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, User } from "lucide-react";
+import { BookOpen, Plus, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/app/_components/logout-button";
@@ -21,6 +21,8 @@ const NAV_LINK_CLASS =
 
 export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
   const pathname = usePathname();
+  const learnMatch = pathname.match(/^\/learn\/([^/]+)$/);
+  const learnCardgroupId = user && learnMatch ? learnMatch[1] : null;
 
   return (
     <Sheet>
@@ -31,7 +33,18 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
       >
         🦩
       </Link>
-      <MobileMenuTrigger />
+      <div className="flex items-center gap-1">
+        {learnCardgroupId && (
+          <Link
+            href={`/cards/new?cardgroup=${encodeURIComponent(learnCardgroupId)}&return=/learn/${encodeURIComponent(learnCardgroupId)}`}
+            aria-label="Add a new card to this cardgroup"
+            className="rounded-md p-2 hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <Plus className="h-5 w-5" aria-hidden="true" />
+          </Link>
+        )}
+        <MobileMenuTrigger />
+      </div>
 
       <SheetContent side="left" className="flex flex-col">
         <SheetHeader>

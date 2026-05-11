@@ -38,7 +38,7 @@ describe("<LogoDrawer>", () => {
     const user = userEvent.setup();
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
-    await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
+    await user.click(screen.getByRole("button", { name: "Open menu" }));
 
     expect(screen.getByRole("link", { name: /cardgroups/i })).toBeInTheDocument();
   });
@@ -51,19 +51,17 @@ describe("<LogoDrawer>", () => {
     expect(logoLink).toHaveAttribute("href", "/");
   });
 
-  it("no button with aria-label 'Open menu' exists — the drawer trigger uses 'Open navigation menu'", () => {
+  it("the drawer trigger button is labeled 'Open menu' (was 'Open navigation menu')", () => {
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
-
-    // The drawer trigger button uses aria-label "Open navigation menu"; "Open menu"
-    // must not appear, so a stray duplicate trigger isn't introduced.
-    expect(screen.queryByRole("button", { name: /open menu/i })).toBeNull();
+    expect(screen.getByRole("button", { name: "Open menu" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /open navigation menu/i })).toBeNull();
   });
 
   it("Settings link is not rendered in the drawer body", async () => {
     const user = userEvent.setup();
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
-    await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
+    await user.click(screen.getByRole("button", { name: "Open menu" }));
 
     expect(screen.queryByRole("link", { name: /settings/i })).toBeNull();
   });
@@ -72,7 +70,7 @@ describe("<LogoDrawer>", () => {
     const user = userEvent.setup();
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
-    await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
+    await user.click(screen.getByRole("button", { name: "Open menu" }));
 
     expect(screen.queryByRole("link", { name: /^users$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /^roles$/i })).not.toBeInTheDocument();
@@ -83,7 +81,7 @@ describe("<LogoDrawer>", () => {
     const user = userEvent.setup();
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={true} />);
 
-    await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
+    await user.click(screen.getByRole("button", { name: "Open menu" }));
 
     const usersLink = screen.getByRole("link", { name: /^users$/i });
     expect(usersLink).toBeInTheDocument();
@@ -102,7 +100,7 @@ describe("<LogoDrawer>", () => {
     const user = userEvent.setup();
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
-    await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
+    await user.click(screen.getByRole("button", { name: "Open menu" }));
 
     const bottomBlock = screen.getByTestId("bottom-block");
     const profileLink = within(bottomBlock).getByRole("link", { name: /profile/i });
@@ -115,7 +113,7 @@ describe("<LogoDrawer>", () => {
     mockUsePathname.mockReturnValue("/cardgroups");
     render(<LogoDrawer user={null} isAdmin={false} />);
 
-    await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
+    await user.click(screen.getByRole("button", { name: "Open menu" }));
 
     // Anonymous users see a Sign in CTA.
     expect(screen.getByRole("link", { name: /sign in/i })).toBeInTheDocument();
@@ -130,7 +128,7 @@ describe("<LogoDrawer>", () => {
     const user = userEvent.setup();
     render(<LogoDrawer user={null} isAdmin={false} />);
 
-    await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
+    await user.click(screen.getByRole("button", { name: "Open menu" }));
 
     expect(screen.queryByTestId("logout-button")).not.toBeInTheDocument();
   });
@@ -140,7 +138,7 @@ describe("<LogoDrawer>", () => {
     mockUsePathname.mockReturnValue("/login");
     render(<LogoDrawer user={null} isAdmin={false} />);
 
-    await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
+    await user.click(screen.getByRole("button", { name: "Open menu" }));
 
     // HeaderSignInLink self-suppresses on /login.
     expect(screen.queryByRole("link", { name: /sign in/i })).not.toBeInTheDocument();
@@ -150,7 +148,7 @@ describe("<LogoDrawer>", () => {
     const user = userEvent.setup();
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
-    await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
+    await user.click(screen.getByRole("button", { name: "Open menu" }));
 
     expect(screen.queryByText("user@example.com")).not.toBeInTheDocument();
   });
@@ -159,7 +157,7 @@ describe("<LogoDrawer>", () => {
     const user = userEvent.setup();
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
-    await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
+    await user.click(screen.getByRole("button", { name: "Open menu" }));
 
     expect(screen.getByTestId("logout-button")).toBeInTheDocument();
   });
@@ -168,7 +166,7 @@ describe("<LogoDrawer>", () => {
     const user = userEvent.setup();
     render(<LogoDrawer user={{ email: null }} isAdmin={false} />);
 
-    await user.click(screen.getByRole("button", { name: "Open navigation menu" }));
+    await user.click(screen.getByRole("button", { name: "Open menu" }));
 
     // Nav links are still present — the user is signed in.
     expect(screen.getByRole("link", { name: /cardgroups/i })).toBeInTheDocument();
@@ -176,5 +174,51 @@ describe("<LogoDrawer>", () => {
     expect(screen.queryByText(/@/)).not.toBeInTheDocument();
     // LogoutButton is still present.
     expect(screen.getByTestId("logout-button")).toBeInTheDocument();
+  });
+
+  it("S-L1: on /learn/:id the '+' link exists with the right href", () => {
+    mockUsePathname.mockReturnValue("/learn/abc-123");
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    const addLink = screen.getByRole("link", { name: /add a new card to this cardgroup/i });
+    expect(addLink).toHaveAttribute("href", "/cards/new?cardgroup=abc-123&return=/learn/abc-123");
+  });
+
+  it("S-L2: on a non-learn route the '+' link is not rendered", () => {
+    mockUsePathname.mockReturnValue("/cardgroups");
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    expect(screen.queryByRole("link", { name: /add a new card to this cardgroup/i })).toBeNull();
+  });
+
+  it("S-L3: on /learn/:id the '+' link comes before the menu trigger in DOM order", () => {
+    mockUsePathname.mockReturnValue("/learn/abc-123");
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    const addLink = screen.getByRole("link", { name: /add a new card to this cardgroup/i });
+    const menuButton = screen.getByRole("button", { name: "Open menu" });
+    // Node.DOCUMENT_POSITION_FOLLOWING = 4: menuButton follows addLink
+    expect(
+      addLink.compareDocumentPosition(menuButton) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("S-L4: cardgroupId with special characters is URL-encoded in the href", () => {
+    mockUsePathname.mockReturnValue("/learn/abc%26evil");
+    // usePathname returns the raw pathname segment from Next; for a route param
+    // containing '&' the runtime delivers it already-encoded. The regex extracts
+    // the encoded value, then encodeURIComponent in the component re-encodes
+    // the percent sign. Verify the final href value.
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    const addLink = screen.getByRole("link", { name: /add a new card to this cardgroup/i });
+    // Component should encodeURIComponent(extracted), and extracted is "abc%26evil".
+    // encodeURIComponent("abc%26evil") === "abc%2526evil"
+    expect(addLink).toHaveAttribute(
+      "href",
+      "/cards/new?cardgroup=abc%2526evil&return=/learn/abc%2526evil",
+    );
+  });
+
+  it("S-L5: anonymous user on /learn/:id does not see the '+' link", () => {
+    mockUsePathname.mockReturnValue("/learn/abc-123");
+    render(<LogoDrawer user={null} isAdmin={false} />);
+    expect(screen.queryByRole("link", { name: /add a new card to this cardgroup/i })).toBeNull();
   });
 });
