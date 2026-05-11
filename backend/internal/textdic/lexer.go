@@ -198,6 +198,9 @@ func (l *lexer) recoverLineForUnrecognized(first rune) (string, int) {
 			if err != io.EOF {
 				l.Error("read: " + err.Error())
 			}
+			// EOF: do not advance lineNo — there is no subsequent token to attribute and
+			// the next Lex returns 0 cleanly. If a future diagnostic is emitted between
+			// recovery and EOF detection, revisit this invariant.
 			return b.String(), NEWLINE
 		}
 		if l.isNewLine(r) {

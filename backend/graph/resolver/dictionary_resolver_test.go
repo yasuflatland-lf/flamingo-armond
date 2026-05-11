@@ -244,7 +244,7 @@ func TestUpsertDictionary_ResolverHappyPath(t *testing.T) {
 			Inserted: 7,
 			Updated:  3,
 			Errors: []usecase.DictionaryValidationError{
-				{Line: 5, Message: "duplicate"},
+				{Line: 5, Message: "duplicate", Kind: usecase.DictErrKindHard},
 			},
 		},
 	}
@@ -305,6 +305,7 @@ func TestUpsertDictionary_ResolverMapsValidationErrorFrontBack(t *testing.T) {
 				{
 					Line:    3,
 					Message: "duplicate front in payload (later occurrence wins)",
+					Kind:    usecase.DictErrKindDuplicate,
 					Front:   "apple",
 					Back:    "fruit",
 				},
@@ -367,8 +368,9 @@ func TestUpsertDictionary_ResolverPropagatesForbidden(t *testing.T) {
 // validateDictionary resolver maps the kind and snippet fields from the
 // usecase output to the GraphQL response wire shape. A lone-front payload
 // ("orphan" with no back) must produce an error whose kind is "FRONT_ONLY"
-// and whose snippet is the WORD token text. The snippet field for a hard
-// payload-level error (empty payload) must be null.
+// and whose snippet is the WORD token text (see
+// TestUpsertDictionary_ResolverKindHardSnippetNull for the HARD/null-snippet
+// pair).
 func TestValidateDictionary_ResolverKindAndSnippet(t *testing.T) {
 	t.Parallel()
 

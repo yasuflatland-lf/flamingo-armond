@@ -823,6 +823,28 @@ func TestProcess_SnippetExtraction(t *testing.T) {
 	}
 }
 
+func TestSkipKindString(t *testing.T) {
+	cases := []struct {
+		kind textdic.SkipKind
+		want string
+	}{
+		{textdic.SkipKindUnknown, "UNKNOWN"},
+		{textdic.SkipKindHard, "HARD"},
+		{textdic.SkipKindFrontOnly, "FRONT_ONLY"},
+		{textdic.SkipKindBackOnly, "BACK_ONLY"},
+		{textdic.SkipKindUnrecognized, "UNRECOGNIZED"},
+	}
+	for _, c := range cases {
+		if got := c.kind.String(); got != c.want {
+			t.Errorf("SkipKind(%d).String() = %q, want %q", c.kind, got, c.want)
+		}
+	}
+	// Defensive: any future SkipKind value not in the switch falls through to UNKNOWN.
+	if got := textdic.SkipKind(99).String(); got != "UNKNOWN" {
+		t.Errorf("SkipKind(99).String() = %q, want fallback %q", got, "UNKNOWN")
+	}
+}
+
 func hasValidationError(errs []textdic.ValidationError, line int, contains string) bool {
 	for _, e := range errs {
 		if e.Line == line && strings.Contains(e.Message, contains) {

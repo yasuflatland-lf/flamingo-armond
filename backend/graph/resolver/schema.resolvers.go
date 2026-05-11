@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"log/slog"
 
 	"github.com/rotisserie/eris"
 )
@@ -156,6 +157,22 @@ func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.HandleSw
 	return toSwipeResponseModel(ctx, out), nil
 }
 
+// dictionaryKindOrPanic enforces the "UNKNOWN never escapes the server" contract
+// documented on the GraphQL DictionaryValidationKind enum. The caller-side cast is
+// total at the type level, but a missed Kind assignment in a future construction
+// site would silently emit "UNKNOWN" / "" to the wire. Crash loud instead:
+// the gqlgen recover middleware will return a 500 to the client and the structured
+// log captures the construction context.
+func dictionaryKindOrPanic(ctx context.Context, raw string) model.DictionaryValidationKind {
+	if raw == "" || raw == string(model.DictionaryValidationKindUnknown) {
+		slog.ErrorContext(ctx, "dictionary: UNKNOWN/empty Kind escaped to resolver — programmer bug",
+			"raw", raw,
+		)
+		panic(eris.Errorf("dictionary: UNKNOWN/empty Kind escaped to resolver: %q", raw))
+	}
+	return model.DictionaryValidationKind(raw)
+}
+
 // UpsertDictionary is the resolver for the upsertDictionary field.
 func (r *mutationResolver) UpsertDictionary(ctx context.Context, input model.UpsertDictionaryInput) (*model.UpsertDictionaryPayload, error) {
 	out, err := r.DictionaryUC.Upsert(ctx, usecase.UpsertDictionaryInput{
@@ -170,7 +187,7 @@ func (r *mutationResolver) UpsertDictionary(ctx context.Context, input model.Ups
 		errs = append(errs, &model.DictionaryValidationError{
 			Line:    e.Line,
 			Message: e.Message,
-			Kind:    model.DictionaryValidationKind(e.Kind), // e.Kind is usecase.DictionaryErrorKind (string-named)
+			Kind:    dictionaryKindOrPanic(ctx, string(e.Kind)),
 			Snippet: nilIfEmpty(e.Snippet),
 			Front:   nilIfEmpty(e.Front),
 			Back:    nilIfEmpty(e.Back),
@@ -374,7 +391,7 @@ func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.Vali
 		validationErrs = append(validationErrs, &model.DictionaryValidationError{
 			Line:    e.Line,
 			Message: e.Message,
-			Kind:    model.DictionaryValidationKind(e.Kind.String()), // e.Kind is textdic.SkipKind (uint8)
+			Kind:    dictionaryKindOrPanic(ctx, e.Kind.String()),
 			Snippet: nilIfEmpty(e.Snippet),
 		})
 	}
