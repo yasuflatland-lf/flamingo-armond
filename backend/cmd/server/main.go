@@ -51,8 +51,10 @@ const defaultShutdownTimeout = 25 * time.Second
 // in sync.
 func recoverFromPanic(ctx context.Context, err any) error {
 	stack := debug.Stack()
+	// Panic value lands in the structured log only; the wire response remains the
+	// fixed gqlerr.Internal generic message (verified in gqlerr/errors.go).
 	return gqlerr.Internal(ctx,
-		eris.Errorf("graphql: panic recovered (%T)\n%s", err, stack),
+		eris.Errorf("graphql: panic recovered (%T %v)\n%s", err, err, stack),
 	)
 }
 
