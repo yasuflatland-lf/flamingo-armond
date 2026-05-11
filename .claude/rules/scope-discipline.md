@@ -24,3 +24,12 @@ Statements about GCP, Vercel, Supabase, GitHub, or any other vendor's behavior m
 - Repo-local config that *is* the source of truth (e.g. `iam.tf` for our GCP IAM, but only for our config — never for vendor behavior).
 
 A confident-sounding wrong answer about platform behavior costs more downstream than a hedged "I haven't verified this" answer up front.
+
+The same principle applies to **library behavior disputes** between agents or between agent and reviewer. When two
+agents disagree on what a library does (e.g. whether `usePathname()` returns a decoded or percent-encoded string),
+resolve the disagreement by consulting a primary source — read the installed package source, run the code, or fetch
+the official changelog — on the same edit. Do not settle the dispute by majority vote or by deferring to whichever
+side sounds more confident. Two concrete cases from this codebase:
+
+- `usePathname` encoded vs decoded — settled by reading installed `next@16.2.4` source: `new URL(canonicalUrl, ...).pathname` preserves reserved characters as `%XX`. The "decoded" reading of the docs was misleading; the primary source was the installed code, not a summary.
+- `pointer-events-none` vestigial vs load-bearing — settled by reasoning about `sticky`'s overflow-overlay semantics: the dead-zone cost is invisible (no interactive element sits under the safe-area padding zone), while removing `pointer-events-none` blocks scroll gestures near the bar in overflow viewports. The primary source was the CSS spec behavior, confirmed by the layout constraints.
