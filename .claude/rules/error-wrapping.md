@@ -36,6 +36,10 @@ Sentinels used today: `repository.ErrNotFound`, and domain-level sentinels such 
 - [Parser-derived error messages must not leak into log fields — line + count only](../../docs/backend/error-wrapping/parser-derived-log-fields-pii-risk.md)
 - [Log a structured event when a batch item fails and earlier work will be dropped](../../docs/backend/error-wrapping/log-structured-event-when-batch-item-fails.md)
 
+## Errors as data — detailed cases (on-demand)
+
+- [Result Union: "errors as data" pattern — when to use `CreateCardResult`-style unions over `BadUserInputWithExtensions`](../../docs/backend/error-wrapping/result-union-errors-as-data.md)
+
 ## Conversion boundaries — detailed cases (on-demand)
 
 - [Typed classifier field over string-prefix matching at conversion boundaries](../../docs/backend/error-wrapping/typed-classifier-over-string-prefix.md)
