@@ -274,6 +274,36 @@ expect(desktopHref).toBe(mobileHref);
 Reference: `frontend/src/components/nav/logo-drawer.tsx` (mobile `+` link, decodes from `usePathname()`) and
 `frontend/src/components/nav/learn-add-card-floating.tsx` (PC ghost icon, receives decoded `cardgroupId` prop).
 
+### Add `vi.mock` for every new child component at the top of the test file
+
+`vi.mock` calls are hoisted to the top of the module by Vite before any import executes. This means mock factory functions run before the module graph resolves — but it also means a `vi.mock` added inside a `describe` block or after the first import silently has no effect if the call is not physically at the top of the file.
+
+When a component under test gains a new child component (e.g. `LearnClient` now renders `LearnActionBar`), the mock for that child **must be added at the top of the test file alongside the existing `vi.mock` calls**, not inside `beforeEach` or a nested `describe`. Missing this produces a jsdom environment crash or a partial render that silently omits the child's DOM output, making state-assertion tests appear to pass on no-op renders.
+
+The pattern for a child component that has a stateful prop the integration test needs to inspect:
+
+```ts
+vi.mock("@/components/learn/learn-action-bar", () => ({
+  LearnActionBar: (props: { onRate: (d: "left" | "down" | "right") => void; disabled: boolean }) => (
+    <div data-testid="learn-action-bar" data-disabled={String(props.disabled)}>
+      <button type="button" onClick={() => props.onRate("left")} disabled={props.disabled}>
+        Rate as Again
+      </button>
+      {/* ... */}
+    </div>
+  ),
+}));
+```
+
+The `data-disabled={String(props.disabled)}` attribute exposes the structural disabled state without relying on CSS classes or the HTML `disabled` attribute — both of which may be absent when the disabled state is implemented via pointer-events or opacity only. Assertions then read:
+
+```ts
+expect(screen.getByTestId("learn-action-bar")).toHaveAttribute("data-disabled", "false");
+expect(screen.getByTestId("learn-action-bar")).toHaveAttribute("data-disabled", "true");
+```
+
+Reference: `frontend/src/app/learn/[cardgroupId]/learn-client.test.tsx` — `LearnActionBar` mock at the top alongside the `SwipeCardStack` mock.
+
 ### Grep `frontend/` not `frontend/src/` when deleting a component
 
 A plan that says "delete component `X`" must locate every reference to `X` across the **whole** `frontend/` tree, not just `frontend/src/`. Tests live in two locations: co-located under `frontend/src/**/<file>.test.tsx` AND top-level under `frontend/__tests__/**/*.test.tsx` (see [the narrow / broad split contract](#the-narrow--broad-split-is-a-contract)). A `grep -r X frontend/src/` reports zero hits while a stale top-level test still imports the deleted component, the file fails at run time, and CI catches the gap only after the cleanup commit lands.

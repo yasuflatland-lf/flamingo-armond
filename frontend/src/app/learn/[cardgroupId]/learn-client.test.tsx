@@ -71,6 +71,28 @@ vi.mock("@/lib/use-reduced-motion", () => ({
 }));
 
 // ---------------------------------------------------------------------------
+// LearnActionBar mock — exposes the onRate callback and disabled state for testing.
+// ---------------------------------------------------------------------------
+vi.mock("@/components/learn/learn-action-bar", () => ({
+  LearnActionBar: (props: {
+    onRate: (d: "left" | "down" | "right") => void;
+    disabled: boolean;
+  }) => (
+    <div data-testid="learn-action-bar" data-disabled={String(props.disabled)}>
+      <button type="button" onClick={() => props.onRate("left")} disabled={props.disabled}>
+        Rate as Again
+      </button>
+      <button type="button" onClick={() => props.onRate("down")} disabled={props.disabled}>
+        Rate as Hard
+      </button>
+      <button type="button" onClick={() => props.onRate("right")} disabled={props.disabled}>
+        Rate as Easy
+      </button>
+    </div>
+  ),
+}));
+
+// ---------------------------------------------------------------------------
 // File-wide MockedProvider leak spy.
 //
 // Installed as the OUTERMOST `console.warn` spy (top-level `beforeEach` runs
@@ -543,6 +565,27 @@ describe("<LearnClient> persist-last-viewed path", () => {
 
     const persistBlock = source.slice(persistStart, persistCatchIdx);
     expect(persistBlock).not.toContain("optimisticResponse");
+  });
+});
+
+describe("<LearnClient> LearnActionBar integration", () => {
+  it("renders LearnActionBar when cards exist", () => {
+    renderLearnClient([]);
+    expect(screen.getByTestId("learn-action-bar")).toBeInTheDocument();
+  });
+
+  it("disables LearnActionBar when the session queue empties", async () => {
+    const user = userEvent.setup();
+    const swipe = makeSwipeMock(4, []);
+    renderLearnClient([swipe.mock]);
+
+    expect(screen.getByTestId("learn-action-bar")).toHaveAttribute("data-disabled", "false");
+
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("learn-action-bar")).toHaveAttribute("data-disabled", "true");
+    });
   });
 });
 
