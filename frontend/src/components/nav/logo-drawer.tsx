@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/app/_components/logout-button";
 import { MobileMenuTrigger } from "@/components/nav/mobile-menu-trigger";
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { safeDecodePathSegment } from "@/lib/safe-decode-path-segment";
 import { HeaderSignInLink } from "./header-sign-in-link";
 import { ADMIN_NAV_ITEMS } from "./nav-items";
 
@@ -23,9 +24,12 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
   const pathname = usePathname();
   const learnMatch = pathname.match(/^\/learn\/([^/]+)$/);
   // learnMatch[1] is always defined when the regex matched (capture group 1 is required).
-  // decodeURIComponent normalises the segment to a raw value so the downstream
-  // encodeURIComponent in the href matches LearnAddCardFloating's PC behaviour.
-  const learnCardgroupId = user && learnMatch ? decodeURIComponent(learnMatch[1] as string) : null;
+  // safeDecodePathSegment normalises a percent-encoded segment so the downstream
+  // encodeURIComponent re-encodes it once, matching LearnAddCardFloating's PC href.
+  // Returns null on URIError (malformed %XX), which the conditional JSX below already
+  // handles by skipping the '+' link — safe even from layout.tsx's shell.
+  const learnCardgroupId =
+    user && learnMatch ? safeDecodePathSegment(learnMatch[1] as string) : null;
 
   return (
     <Sheet>

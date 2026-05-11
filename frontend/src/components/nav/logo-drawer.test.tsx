@@ -225,4 +225,12 @@ describe("<LogoDrawer>", () => {
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
     expect(screen.queryByRole("link", { name: /add a new card to this cardgroup/i })).toBeNull();
   });
+
+  it("S-L7: malformed percent-escape in /learn/:id does not crash — '+' link is absent", () => {
+    // safeDecodePathSegment returns null for malformed %XX sequences; the conditional
+    // JSX skips the '+' link rather than throwing URIError and crashing the layout shell.
+    mockUsePathname.mockReturnValue("/learn/abc%XX");
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    expect(screen.queryByRole("link", { name: /add a new card to this cardgroup/i })).toBeNull();
+  });
 });
