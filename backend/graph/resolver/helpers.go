@@ -46,9 +46,11 @@ func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 }
 
 func toCardgroupModels(cgs []*domain.Cardgroup) []*model.Cardgroup {
-	out := make([]*model.Cardgroup, len(cgs))
-	for i, cg := range cgs {
-		out[i] = toCardgroupModel(cg)
+	out := make([]*model.Cardgroup, 0, len(cgs))
+	for _, cg := range cgs {
+		if cgm := toCardgroupModel(cg); cgm != nil {
+			out = append(out, cgm)
+		}
 	}
 	return out
 }
@@ -77,9 +79,11 @@ func toCardModel(card *domain.Card) *model.Card {
 }
 
 func toCardModels(cards []*domain.Card) []*model.Card {
-	out := make([]*model.Card, len(cards))
-	for i, card := range cards {
-		out[i] = toCardModel(card)
+	out := make([]*model.Card, 0, len(cards))
+	for _, card := range cards {
+		if cm := toCardModel(card); cm != nil {
+			out = append(out, cm)
+		}
 	}
 	return out
 }
@@ -182,9 +186,11 @@ func toRoleModel(r *domain.Role) *model.Role {
 }
 
 func toRoleModels(roles []*domain.Role) []*model.Role {
-	out := make([]*model.Role, len(roles))
-	for i, r := range roles {
-		out[i] = toRoleModel(r)
+	out := make([]*model.Role, 0, len(roles))
+	for _, r := range roles {
+		if rm := toRoleModel(r); rm != nil {
+			out = append(out, rm)
+		}
 	}
 	return out
 }
