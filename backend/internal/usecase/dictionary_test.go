@@ -470,8 +470,8 @@ func TestDictionaryUsecase_ValidSkipValidMixedPayload(t *testing.T) {
 	if len(out.Errors) != 1 {
 		t.Fatalf("expected exactly 1 parse error, got %d: %+v", len(out.Errors), out.Errors)
 	}
-	if got := out.Errors[0].Kind; got != "front_only" {
-		t.Fatalf("Errors[0].Kind = %q, want %q (lone front must be tagged as front_only)", got, "front_only")
+	if got := out.Errors[0].Kind; got != DictErrKindFrontOnly {
+		t.Fatalf("Errors[0].Kind = %q, want %q (lone front must be tagged as front_only)", got, DictErrKindFrontOnly)
 	}
 	if got := out.Errors[0].Snippet; got != "orphan" {
 		t.Fatalf("Errors[0].Snippet = %q, want %q (parser must capture the WORD token text)", got, "orphan")
@@ -522,8 +522,8 @@ func TestDictionaryUsecase_SkippedLoneFrontDoesNotReachRepository(t *testing.T) 
 	if out.Errors[0].Message != "skipped: front-only line (no definition)" {
 		t.Fatalf("Errors[0].Message = %q, want skipped front-only line", out.Errors[0].Message)
 	}
-	if got := out.Errors[0].Kind; got != "front_only" {
-		t.Fatalf("Errors[0].Kind = %q, want %q (lone front must be tagged as front_only)", got, "front_only")
+	if got := out.Errors[0].Kind; got != DictErrKindFrontOnly {
+		t.Fatalf("Errors[0].Kind = %q, want %q (lone front must be tagged as front_only)", got, DictErrKindFrontOnly)
 	}
 	if got := out.Errors[0].Snippet; got != "existing-front" {
 		t.Fatalf("Errors[0].Snippet = %q, want %q (parser must capture the WORD token text)", got, "existing-front")
@@ -697,14 +697,19 @@ func TestDictionaryUsecase_DuplicateFrontDeduplicatedAndSurfaced(t *testing.T) {
 	if len(out.Errors) != 1 {
 		t.Fatalf("expected exactly 1 duplicate error, got %d: %+v", len(out.Errors), out.Errors)
 	}
-	if got := out.Errors[0].Kind; got != "duplicate" {
-		t.Fatalf("Errors[0].Kind = %q, want %q (dropped duplicate must be tagged as duplicate)", got, "duplicate")
+	if got := out.Errors[0].Kind; got != DictErrKindDuplicate {
+		t.Fatalf("Errors[0].Kind = %q, want %q (dropped duplicate must be tagged as duplicate)", got, DictErrKindDuplicate)
 	}
 	if got := out.Errors[0].Front; got != "apple" {
 		t.Fatalf("Errors[0].Front = %q, want %q (the duplicate row's front)", got, "apple")
 	}
 	if got := out.Errors[0].Back; got != fruitBack {
 		t.Fatalf("Errors[0].Back = %q, want %q (the dropped row's back)", got, fruitBack)
+	}
+	// The dedupe path leaves Snippet empty by contract: the duplicate error
+	// carries Front + Back, not a raw snippet.
+	if got := out.Errors[0].Snippet; got != "" {
+		t.Fatalf("Errors[0].Snippet = %q, want empty (dedupe error does not carry a snippet)", got)
 	}
 	if len(repo.captured) != 1 {
 		t.Fatalf("expected 1 card sent to repo, got %d", len(repo.captured))

@@ -31,7 +31,7 @@ var (
 	snipChushak = jp(0xFF08, 0x6CE8, 0x91C8, 0xFF09)         // annotation in parentheses
 	snipHosoku  = jp(0x300E, 0x88DC, 0x8DB3, 0x300F)         // supplement in double-corner brackets
 	snipLabel   = jp(0x3010, 0x30E9, 0x30D9, 0x30EB, 0x3011) // label in square brackets
-	snipChu     = jp(0x3014, 0x6CE8, 0x3015)                 // note in angle brackets
+	snipChu     = jp(0x3014, 0x6CE8, 0x3015)                 // note in tortoise-shell brackets
 	snipMemo    = jp(0x3008, 0x30E1, 0x30E2, 0x3009)         // memo in angle brackets
 	snipBiko    = jp(0xFF08, 0x5099, 0x8003, 0xFF09)         // remarks in parentheses
 
@@ -89,6 +89,13 @@ func TestProcess_EmptyPayload(t *testing.T) {
 	if errs[0].Message != "empty payload" {
 		t.Errorf("Message: got %q want %q", errs[0].Message, "empty payload")
 	}
+	// Payload-level errors are hard errors with an empty snippet.
+	if errs[0].Kind != textdic.SkipKindHard {
+		t.Errorf("Kind: got %v want SkipKindHard", errs[0].Kind)
+	}
+	if errs[0].Snippet != "" {
+		t.Errorf("Snippet: got %q want empty (payload-level error has no snippet)", errs[0].Snippet)
+	}
 }
 
 func TestProcess_OversizedPayload(t *testing.T) {
@@ -109,6 +116,13 @@ func TestProcess_OversizedPayload(t *testing.T) {
 	}
 	if !strings.Contains(errs[0].Message, "payload exceeds") {
 		t.Errorf("expected message to mention 'payload exceeds', got %q", errs[0].Message)
+	}
+	// Payload-level errors are hard errors with an empty snippet.
+	if errs[0].Kind != textdic.SkipKindHard {
+		t.Errorf("Kind: got %v want SkipKindHard", errs[0].Kind)
+	}
+	if errs[0].Snippet != "" {
+		t.Errorf("Snippet: got %q want empty (payload-level error has no snippet)", errs[0].Snippet)
 	}
 }
 
@@ -772,8 +786,10 @@ func TestProcess_SnippetExtraction(t *testing.T) {
 		// A line starting with an unrecognized character is tagged Unrecognized.
 		// Snippet holds the full malformed line text (up to the newline).
 		{"unrecognized", "@broken line\n", textdic.SkipKindUnrecognized, 1, "@broken line"},
-		// Same as above but without a trailing newline — the lexer reaches EOF
-		// while recovering, so the snippet still captures the complete text.
+		// Same as above but without a trailing newline — the lexer returns
+		// NEWLINE at EOF so the grammar's "error NEWLINE" rule fires cleanly.
+		// Exactly 1 UNRECOGNIZED error is produced; the old spurious "syntax
+		// error: unexpected $end" HARD error must no longer appear.
 		{"unrecognized-eof", "@broken no nl", textdic.SkipKindUnrecognized, 1, "@broken no nl"},
 	}
 
@@ -787,6 +803,11 @@ func TestProcess_SnippetExtraction(t *testing.T) {
 			}
 			if len(errs) == 0 {
 				t.Fatalf("expected at least one validation error, got none")
+			}
+			// The unrecognized-eof case must produce exactly 1 error (no
+			// spurious second "syntax error: unexpected $end" entry).
+			if tc.name == "unrecognized-eof" && len(errs) != 1 {
+				t.Fatalf("unrecognized-eof: expected exactly 1 validation error, got %d: %+v", len(errs), errs)
 			}
 			got := errs[0]
 			if got.Line != tc.wantLine {

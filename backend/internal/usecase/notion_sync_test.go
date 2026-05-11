@@ -603,10 +603,136 @@ func TestNotionSyncUsecase_SkipOnlyLogFields(t *testing.T) {
 	if fl, ok := skipRec["first_line"].(float64); !ok || int(fl) != 1 {
 		t.Errorf("first_line = %v (%T), want 1", skipRec["first_line"], skipRec["first_line"])
 	}
-	if skipRec["first_kind"] != "front_only" {
-		t.Errorf("first_kind = %v, want %q", skipRec["first_kind"], "front_only")
+	if skipRec["first_kind"] != string(DictErrKindFrontOnly) {
+		t.Errorf("first_kind = %v, want %q", skipRec["first_kind"], DictErrKindFrontOnly)
 	}
 	if skipRec["first_snippet"] != "apple" {
 		t.Errorf("first_snippet = %v, want %q", skipRec["first_snippet"], "apple")
+	}
+}
+
+// TestAllDictionaryErrorsSkipped verifies the allDictionaryErrorsSkipped
+// predicate across the full domain of DictionaryErrorKind values.
+func TestAllDictionaryErrorsSkipped(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		input []DictionaryValidationError
+		want  bool
+	}{
+		{
+			name:  "empty slice",
+			input: []DictionaryValidationError{},
+			want:  false,
+		},
+		{
+			name:  "FRONT_ONLY only",
+			input: []DictionaryValidationError{{Kind: DictErrKindFrontOnly}},
+			want:  true,
+		},
+		{
+			name:  "BACK_ONLY only",
+			input: []DictionaryValidationError{{Kind: DictErrKindBackOnly}},
+			want:  true,
+		},
+		{
+			name:  "FRONT_ONLY and BACK_ONLY",
+			input: []DictionaryValidationError{{Kind: DictErrKindFrontOnly}, {Kind: DictErrKindBackOnly}},
+			want:  true,
+		},
+		{
+			name:  "FRONT_ONLY and UNRECOGNIZED",
+			input: []DictionaryValidationError{{Kind: DictErrKindFrontOnly}, {Kind: DictErrKindUnrecognized}},
+			want:  false,
+		},
+		{
+			name:  "FRONT_ONLY and HARD",
+			input: []DictionaryValidationError{{Kind: DictErrKindFrontOnly}, {Kind: DictErrKindHard}},
+			want:  false,
+		},
+		{
+			name:  "DUPLICATE only",
+			input: []DictionaryValidationError{{Kind: DictErrKindDuplicate}},
+			want:  false,
+		},
+		{
+			name:  "UNKNOWN only — programming-error sentinel is not a skip",
+			input: []DictionaryValidationError{{Kind: DictErrKindUnknown}},
+			want:  false,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := allDictionaryErrorsSkipped(tc.input); got != tc.want {
+				t.Errorf("allDictionaryErrorsSkipped(%v) = %v, want %v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestNotionSyncUsecase_WarnBranchLogFields verifies that the warn branch
+// (rows == 0, parseErrs > 0, not skip-only) emits a WarnContext log record
+// with structured fields anchored to the first error.
+//
+// Input "@broken\n" yields one UNRECOGNIZED parse error, which is not a
+// skip-only kind, so the warn branch fires and persistence is skipped.
+//
+// Not parallel: injects a logger directly into the usecase, so it does not
+// mutate the global slog default.
+func TestNotionSyncUsecase_WarnBranchLogFields(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	fetcher := &stubNotionFetcher{pages: []notion.Page{
+		{ID: "page-1", Text: "@broken\n"},
+	}}
+	cardgroups := &mockNotionCardgroupRepo{}
+	cards := &mockNotionCardRepo{}
+	tx, txCalls := dictTxRunner()
+	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, logger)
+
+	_, err := uc.Sync(context.Background(), SyncFromNotionInput{
+		PageIDs:       []string{"page-1"},
+		OwnerID:       "owner-1",
+		CardgroupName: "English",
+	})
+	if !errors.Is(err, ErrNotionSyncParse) {
+		t.Fatalf("expected ErrNotionSyncParse, got %v", err)
+	}
+	// Persistence must be bypassed.
+	if cardgroups.calls != 0 || cards.upsertCalls != 0 || *txCalls != 0 {
+		t.Fatalf("persistence ran: cardgroups=%d upserts=%d tx=%d, want all zero",
+			cardgroups.calls, cards.upsertCalls, *txCalls)
+	}
+
+	records := decodeJSONRecords(t, buf.Bytes())
+	var warnRec map[string]any
+	for _, rec := range records {
+		if rec["msg"] == "notion sync: all rows failed to parse" {
+			warnRec = rec
+			break
+		}
+	}
+	if warnRec == nil {
+		t.Fatalf("no WarnContext record with msg %q found in log output:\n%s",
+			"notion sync: all rows failed to parse", buf.String())
+	}
+
+	// parse_error_count: JSON numbers decode as float64 in map[string]any.
+	if v, ok := warnRec["parse_error_count"].(float64); !ok || int(v) != 1 {
+		t.Errorf("parse_error_count = %v (%T), want 1", warnRec["parse_error_count"], warnRec["parse_error_count"])
+	}
+	if v, ok := warnRec["first_error_line"].(float64); !ok || int(v) != 1 {
+		t.Errorf("first_error_line = %v (%T), want 1", warnRec["first_error_line"], warnRec["first_error_line"])
+	}
+	if warnRec["first_error_kind"] != string(DictErrKindUnrecognized) {
+		t.Errorf("first_error_kind = %v, want %q", warnRec["first_error_kind"], DictErrKindUnrecognized)
+	}
+	if warnRec["first_error_snippet"] != "@broken" {
+		t.Errorf("first_error_snippet = %v, want %q", warnRec["first_error_snippet"], "@broken")
 	}
 }
