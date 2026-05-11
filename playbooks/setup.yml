@@ -433,13 +433,12 @@
       tags: [notion-env-init, never]
 
     - name: Seed NOTION_* production placeholders into root .env (skips existing keys)
-      ansible.builtin.lineinfile:
-        path: "{{ repo_root }}/.env"
-        regexp: "^{{ item.key }}="
-        line: "{{ item.key }}={{ item.val }}"
-        insertafter: EOF
-        create: false
-        mode: "0600"
+      # grep -qE exits 0 when the key already exists (any value), so the append
+      # branch never runs for pre-existing keys, preserving operator-set values.
+      ansible.builtin.shell:
+        cmd: >-
+          grep -qE '^{{ item.key }}=' '{{ repo_root }}/.env' ||
+          echo '{{ item.key }}={{ item.val }}' >> '{{ repo_root }}/.env'
       loop:
         - { key: NOTION_TOKEN,                val: "" }
         - { key: NOTION_PAGE_IDS,             val: "" }
@@ -450,6 +449,7 @@
         - { key: NOTION_MAX_ELAPSED,          val: "2m" }
       loop_control:
         label: "{{ item.key }}"
+      changed_when: false
       tags: [notion-env-init, never]
 
     - name: Confirm notion-env-init complete
