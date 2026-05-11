@@ -110,15 +110,11 @@ describe("<LogoDrawer>", () => {
 
   it("anonymous user (user === null): drawer body shows a Sign in link but no nav items and no email", async () => {
     const user = userEvent.setup();
-    mockUsePathname.mockReturnValue("/cardgroups");
     render(<LogoDrawer user={null} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: "Open menu" }));
 
-    // Anonymous users see a Sign in CTA.
     expect(screen.getByRole("link", { name: /sign in/i })).toBeInTheDocument();
-
-    // No authenticated nav items.
     expect(screen.queryByRole("link", { name: /cardgroups/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /profile/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/@/)).not.toBeInTheDocument();
@@ -140,7 +136,6 @@ describe("<LogoDrawer>", () => {
 
     await user.click(screen.getByRole("button", { name: "Open menu" }));
 
-    // HeaderSignInLink self-suppresses on /login.
     expect(screen.queryByRole("link", { name: /sign in/i })).not.toBeInTheDocument();
   });
 
@@ -168,11 +163,8 @@ describe("<LogoDrawer>", () => {
 
     await user.click(screen.getByRole("button", { name: "Open menu" }));
 
-    // Nav links are still present — the user is signed in.
     expect(screen.getByRole("link", { name: /cardgroups/i })).toBeInTheDocument();
-    // No email text in the bottom block when email is null.
     expect(screen.queryByText(/@/)).not.toBeInTheDocument();
-    // LogoutButton is still present.
     expect(screen.getByTestId("logout-button")).toBeInTheDocument();
   });
 

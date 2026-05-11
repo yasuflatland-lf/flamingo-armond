@@ -70,5 +70,4 @@ describe("<LearnActionBar>", () => {
     await user.tab();
     expect(screen.getByRole("button", { name: "Rate as Easy" })).toHaveFocus();
   });
-
 });
