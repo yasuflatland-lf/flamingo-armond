@@ -46,11 +46,18 @@ type UpsertDictionaryInput struct {
 // DictionaryValidationError mirrors textdic.ValidationError so callers in the
 // resolver layer can reshape it into the GraphQL model without importing the
 // textdic package directly.
+//
+// Skipped is the structural classifier propagated from textdic.ValidationError:
+// true for entries that the grammar's skip productions intentionally dropped
+// (lone front / lone back), false for lexer or parser failures. Callers MUST
+// branch on Skipped rather than substring-matching Message; Message stays as
+// the UI-facing description.
 type DictionaryValidationError struct {
 	Line    int    `json:"line"`
 	Message string `json:"message"`
 	Front   string `json:"front,omitempty"`
 	Back    string `json:"back,omitempty"`
+	Skipped bool   `json:"-"`
 }
 
 // UpsertDictionaryOutput is the result returned to the caller. Inserted +
@@ -150,7 +157,7 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 
 	mappedErrs := make([]DictionaryValidationError, 0, len(parseErrs))
 	for _, e := range parseErrs {
-		mappedErrs = append(mappedErrs, DictionaryValidationError{Line: e.Line, Message: e.Message})
+		mappedErrs = append(mappedErrs, DictionaryValidationError{Line: e.Line, Message: e.Message, Skipped: e.Skipped})
 	}
 
 	// Deduplicate parsed words by front within this payload. Postgres error 21000
