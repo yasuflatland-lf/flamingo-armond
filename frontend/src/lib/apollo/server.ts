@@ -10,23 +10,6 @@ type GqlFetchInit<TVars> = {
   revalidate?: number | false;
 };
 
-/**
- * Returns true when the GraphQL errors array contains at least one entry with an
- * auth-related extension code (UNAUTHENTICATED or FORBIDDEN). Auth errors in a
- * partial response must still throw so RSC callers can redirect appropriately —
- * silently returning data would swallow the auth signal.
- *
- * Internal use only. Not exported — the public surface for inspecting thrown errors
- * is isUnauthenticatedGraphQLError / isForbiddenGraphQLError in graphql-errors.ts.
- */
-function hasAuthError(errors: unknown): boolean {
-  if (!Array.isArray(errors)) return false;
-  return errors.some((e: { extensions?: { code?: unknown } }) => {
-    const code = e?.extensions?.code;
-    return code === "UNAUTHENTICATED" || code === "FORBIDDEN";
-  });
-}
-
 export async function gqlFetch<TResult, TVars>(
   doc: TypedDocumentNode<TResult, TVars>,
   init: GqlFetchInit<TVars> = {},
@@ -65,16 +48,19 @@ export async function gqlFetch<TResult, TVars>(
   const json = (await res.json()) as { data?: TResult; errors?: unknown };
   if (json.errors) {
     if (json.data != null) {
-      // Partial response: data is present alongside errors (GraphQL over HTTP §5.2).
-      // Auth errors (UNAUTHENTICATED / FORBIDDEN) must still throw so that RSC callers
-      // using isUnauthenticatedGraphQLError / isForbiddenGraphQLError can redirect
-      // correctly — silently returning data would swallow the auth signal. Check first
-      // so the warn is never emitted for auth-code re-throws (avoids false-positive
-      // operator alerts on every clock-skew UNAUTHENTICATED event).
-      if (hasAuthError(json.errors)) {
+      // Partial response (GraphQL over HTTP §5.2): data arrived alongside errors.
+      // Auth errors must still throw so RSC callers can redirect — silently returning
+      // data would swallow the signal. Check before warn so auth re-throws never emit
+      // a false-positive operator alert on clock-skew UNAUTHENTICATED events.
+      const hasAuthError =
+        Array.isArray(json.errors) &&
+        json.errors.some((e: { extensions?: { code?: unknown } }) => {
+          const code = e?.extensions?.code;
+          return code === "UNAUTHENTICATED" || code === "FORBIDDEN";
+        });
+      if (hasAuthError) {
         throw new Error(`GraphQL errors: ${JSON.stringify(json.errors)}`);
       }
-      // Non-auth partial response: return data and warn for debuggability.
       console.warn("[gqlFetch] partial response with errors:", JSON.stringify(json.errors));
       return json.data;
     }

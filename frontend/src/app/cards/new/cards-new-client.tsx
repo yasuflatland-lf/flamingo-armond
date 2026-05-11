@@ -185,11 +185,9 @@ export default function CardsNewClient({
           input: { cardgroupId: currentId, front: values.front, back: values.back },
         },
       });
-      // The createCard mutation returns a union: CreateCardSuccess on the happy
-      // path or CardDuplicateFrontError when (cardgroup_id, front) collides.
-      // Duplicate-front is routine validation surfaced as data, so we branch on
-      // __typename rather than catching a thrown gqlerror — the latter is now
-      // reserved for real failures (auth, validation, internal).
+      // createCard returns a union: branch on __typename for routine validation
+      // (CardDuplicateFrontError) rather than catching a thrown gqlerror — thrown
+      // errors are reserved for real failures (auth, network, internal).
       const payload = result.data?.createCard;
       if (payload?.__typename === "CardDuplicateFrontError") {
         setDuplicate({

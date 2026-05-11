@@ -71,19 +71,7 @@ describe("gqlFetch", () => {
     expect(warnSpy.mock.calls[0]?.[0]).toBe("[gqlFetch] partial response with errors:");
   });
 
-  it("throws with GraphQL errors prefix when partial response contains UNAUTHENTICATED", async () => {
-    const errors = [{ message: "not authenticated", extensions: { code: "UNAUTHENTICATED" } }];
-    vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ data: { health: "partial" }, errors })),
-    );
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    await expect(gqlFetch(HealthQuery)).rejects.toThrow(
-      `GraphQL errors: ${JSON.stringify(errors)}`,
-    );
-  });
-
-  it("does not warn when partial response carries UNAUTHENTICATED (re-throws cleanly)", async () => {
+  it("throws and does not warn when partial response contains UNAUTHENTICATED", async () => {
     const errors = [{ message: "not authenticated", extensions: { code: "UNAUTHENTICATED" } }];
     vi.spyOn(global, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ data: { health: "partial" }, errors })),
@@ -96,7 +84,7 @@ describe("gqlFetch", () => {
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
-  it("does not warn when partial response carries FORBIDDEN (re-throws cleanly)", async () => {
+  it("throws and does not warn when partial response contains FORBIDDEN", async () => {
     const errors = [{ message: "access denied", extensions: { code: "FORBIDDEN" } }];
     vi.spyOn(global, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ data: { health: "partial" }, errors })),
@@ -107,18 +95,6 @@ describe("gqlFetch", () => {
       `GraphQL errors: ${JSON.stringify(errors)}`,
     );
     expect(warnSpy).not.toHaveBeenCalled();
-  });
-
-  it("throws with GraphQL errors prefix when partial response contains FORBIDDEN", async () => {
-    const errors = [{ message: "access denied", extensions: { code: "FORBIDDEN" } }];
-    vi.spyOn(global, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ data: { health: "partial" }, errors })),
-    );
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    await expect(gqlFetch(HealthQuery)).rejects.toThrow(
-      `GraphQL errors: ${JSON.stringify(errors)}`,
-    );
   });
 
   it("returns data and warns when partial response contains a non-auth business error code", async () => {
