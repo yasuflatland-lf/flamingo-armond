@@ -66,14 +66,16 @@ export async function gqlFetch<TResult, TVars>(
   if (json.errors) {
     if (json.data != null) {
       // Partial response: data is present alongside errors (GraphQL over HTTP §5.2).
-      // Return data so callers can use what the server provided; warn for debuggability.
-      // Exception: auth errors (UNAUTHENTICATED / FORBIDDEN) must still throw so that
-      // RSC callers using isUnauthenticatedGraphQLError / isForbiddenGraphQLError can
-      // redirect correctly — silently returning data would swallow the auth signal.
-      console.warn("[gqlFetch] partial response with errors:", JSON.stringify(json.errors));
+      // Auth errors (UNAUTHENTICATED / FORBIDDEN) must still throw so that RSC callers
+      // using isUnauthenticatedGraphQLError / isForbiddenGraphQLError can redirect
+      // correctly — silently returning data would swallow the auth signal. Check first
+      // so the warn is never emitted for auth-code re-throws (avoids false-positive
+      // operator alerts on every clock-skew UNAUTHENTICATED event).
       if (hasAuthError(json.errors)) {
         throw new Error(`GraphQL errors: ${JSON.stringify(json.errors)}`);
       }
+      // Non-auth partial response: return data and warn for debuggability.
+      console.warn("[gqlFetch] partial response with errors:", JSON.stringify(json.errors));
       return json.data;
     }
     throw new Error(`GraphQL errors: ${JSON.stringify(json.errors)}`);

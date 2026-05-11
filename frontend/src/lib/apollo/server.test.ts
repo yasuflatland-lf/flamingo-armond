@@ -83,6 +83,32 @@ describe("gqlFetch", () => {
     );
   });
 
+  it("does not warn when partial response carries UNAUTHENTICATED (re-throws cleanly)", async () => {
+    const errors = [{ message: "not authenticated", extensions: { code: "UNAUTHENTICATED" } }];
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: { health: "partial" }, errors })),
+    );
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await expect(gqlFetch(HealthQuery)).rejects.toThrow(
+      `GraphQL errors: ${JSON.stringify(errors)}`,
+    );
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not warn when partial response carries FORBIDDEN (re-throws cleanly)", async () => {
+    const errors = [{ message: "access denied", extensions: { code: "FORBIDDEN" } }];
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: { health: "partial" }, errors })),
+    );
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await expect(gqlFetch(HealthQuery)).rejects.toThrow(
+      `GraphQL errors: ${JSON.stringify(errors)}`,
+    );
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
   it("throws with GraphQL errors prefix when partial response contains FORBIDDEN", async () => {
     const errors = [{ message: "access denied", extensions: { code: "FORBIDDEN" } }];
     vi.spyOn(global, "fetch").mockResolvedValue(
