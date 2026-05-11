@@ -109,7 +109,7 @@ export function AnimatedCard({ card, isActive, onSwipe, onSwipeProgress }: Props
         scale,
       }}
     >
-      <CardContent card={card} isActive={isActive} onSwipe={onSwipe} />
+      <CardContent card={card} />
     </animated.article>
   );
 }
