@@ -49,11 +49,26 @@ describe("gqlFetch", () => {
     await expect(gqlFetch(HealthQuery)).rejects.toThrow(/HTTP 500.*boom/);
   });
 
-  it("throws when errors array is present", async () => {
+  it("throws when errors array is present and data is absent", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ errors: [{ message: "nope" }] })),
     );
     await expect(gqlFetch(HealthQuery)).rejects.toThrow(/GraphQL errors/);
+  });
+
+  it("returns data and warns when partial response has both errors and data", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ data: { health: "partial" }, errors: [{ message: "partial" }] }),
+      ),
+    );
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = await gqlFetch(HealthQuery);
+
+    expect(result.health).toBe("partial");
+    expect(warnSpy).toHaveBeenCalledOnce();
+    expect(warnSpy.mock.calls[0]?.[0]).toBe("[gqlFetch] partial response with errors:");
   });
 
   it("throws when data is missing", async () => {
@@ -128,6 +143,19 @@ describe("gqlFetch", () => {
     mockSessionError(authErr);
 
     await expect(gqlFetch(HealthQuery)).rejects.toThrow("auth down");
+  });
+
+  it("sends Accept: application/graphql-response+json header on every fetch", async () => {
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ data: { health: "ok" } })));
+
+    await gqlFetch(HealthQuery);
+
+    const init = fetchSpy.mock.calls[0]?.[1] as RequestInit & { headers?: Record<string, string> };
+    expect((init.headers as Record<string, string>).Accept).toContain(
+      "application/graphql-response+json",
+    );
   });
 
   it("injects a well-formed UUID v7 X-Request-ID header on every fetch", async () => {

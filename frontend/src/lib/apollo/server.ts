@@ -21,7 +21,10 @@ export async function gqlFetch<TResult, TVars>(
   } = await supabase.auth.getSession();
   if (sessionErr) throw sessionErr;
 
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/graphql-response+json, application/json;q=0.9",
+  };
   if (session?.access_token) {
     headers.authorization = `Bearer ${session.access_token}`;
   }
@@ -43,7 +46,15 @@ export async function gqlFetch<TResult, TVars>(
     throw new Error(`GraphQL HTTP ${res.status} ${res.statusText}: ${body}`);
   }
   const json = (await res.json()) as { data?: TResult; errors?: unknown };
-  if (json.errors) throw new Error(`GraphQL errors: ${JSON.stringify(json.errors)}`);
+  if (json.errors) {
+    if (json.data != null) {
+      // Partial response: data is present alongside errors (GraphQL over HTTP §5.2).
+      // Return data so callers can use what the server provided; warn for debuggability.
+      console.warn("[gqlFetch] partial response with errors:", JSON.stringify(json.errors));
+      return json.data;
+    }
+    throw new Error(`GraphQL errors: ${JSON.stringify(json.errors)}`);
+  }
   if (!json.data) throw new Error("GraphQL response missing data");
   return json.data;
 }
