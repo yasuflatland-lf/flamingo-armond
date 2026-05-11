@@ -1,6 +1,7 @@
 package resolver
 
 import (
+	"context"
 	"log/slog"
 
 	"backend/graph/model"
@@ -47,12 +48,12 @@ func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 	}
 }
 
-func toCardgroupModels(cgs []*domain.Cardgroup) []*model.Cardgroup {
+func toCardgroupModels(ctx context.Context, cgs []*domain.Cardgroup) []*model.Cardgroup {
 	out := make([]*model.Cardgroup, 0, len(cgs))
 	for _, cg := range cgs {
 		cgm := toCardgroupModel(cg)
 		if cgm == nil {
-			slog.Warn("toCardgroupModels: skipping nil entry")
+			slog.WarnContext(ctx, "toCardgroupModels: skipping nil entry")
 			continue
 		}
 		out = append(out, cgm)
@@ -83,12 +84,12 @@ func toCardModel(card *domain.Card) *model.Card {
 	}
 }
 
-func toCardModels(cards []*domain.Card) []*model.Card {
+func toCardModels(ctx context.Context, cards []*domain.Card) []*model.Card {
 	out := make([]*model.Card, 0, len(cards))
 	for _, card := range cards {
 		cm := toCardModel(card)
 		if cm == nil {
-			slog.Warn("toCardModels: skipping nil entry")
+			slog.WarnContext(ctx, "toCardModels: skipping nil entry")
 			continue
 		}
 		out = append(out, cm)
@@ -125,12 +126,12 @@ func toUsecaseSortOrder(d *model.SortOrder) *usecase.SortOrder {
 	return &v
 }
 
-func toSwipeResponseModel(out *usecase.SwipeOutput) *model.SwipeResponse {
+func toSwipeResponseModel(ctx context.Context, out *usecase.SwipeOutput) *model.SwipeResponse {
 	if out == nil {
 		return nil
 	}
 	return &model.SwipeResponse{
-		NextCards:       toCardModels(out.NextCards),
+		NextCards:       toCardModels(ctx, out.NextCards),
 		PerformanceMode: out.PerformanceMode,
 		Metrics: &model.PerformanceMetrics{
 			SuccessRate:   out.Metrics.SuccessRate,
@@ -211,12 +212,12 @@ func toRoleModel(r *domain.Role) *model.Role {
 	return &model.Role{ID: r.ID, Name: r.Name}
 }
 
-func toRoleModels(roles []*domain.Role) []*model.Role {
+func toRoleModels(ctx context.Context, roles []*domain.Role) []*model.Role {
 	out := make([]*model.Role, 0, len(roles))
 	for _, r := range roles {
 		rm := toRoleModel(r)
 		if rm == nil {
-			slog.Warn("toRoleModels: skipping nil entry")
+			slog.WarnContext(ctx, "toRoleModels: skipping nil entry")
 			continue
 		}
 		out = append(out, rm)

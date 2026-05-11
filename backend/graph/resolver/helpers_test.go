@@ -1,6 +1,7 @@
 package resolver
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -20,7 +21,7 @@ func TestToRoleModels_FiltersNil(t *testing.T) {
 	validRole := &domain.Role{ID: "r1", Name: "admin"}
 	roles := []*domain.Role{nil, validRole, nil}
 
-	result := toRoleModels(roles)
+	result := toRoleModels(context.Background(), roles)
 
 	assert.Len(t, result, 1)
 	if len(result) > 0 {
@@ -44,7 +45,7 @@ func TestToCardModels_FiltersNil(t *testing.T) {
 	}
 	cards := []*domain.Card{nil, validCard, nil}
 
-	result := toCardModels(cards)
+	result := toCardModels(context.Background(), cards)
 
 	assert.Len(t, result, 1)
 	if len(result) > 0 {
@@ -68,7 +69,7 @@ func TestToCardgroupModels_FiltersNil(t *testing.T) {
 	}
 	cardgroups := []*domain.Cardgroup{nil, validCardgroup, nil}
 
-	result := toCardgroupModels(cardgroups)
+	result := toCardgroupModels(context.Background(), cardgroups)
 
 	assert.Len(t, result, 1)
 	if len(result) > 0 {
@@ -83,7 +84,7 @@ func TestToRoleModels_AllNil(t *testing.T) {
 	t.Parallel()
 
 	roles := []*domain.Role{nil, nil, nil}
-	result := toRoleModels(roles)
+	result := toRoleModels(context.Background(), roles)
 
 	assert.Empty(t, result)
 }
@@ -93,7 +94,7 @@ func TestToRoleModels_Empty(t *testing.T) {
 	t.Parallel()
 
 	roles := []*domain.Role{}
-	result := toRoleModels(roles)
+	result := toRoleModels(context.Background(), roles)
 
 	assert.Empty(t, result)
 }

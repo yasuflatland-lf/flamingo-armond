@@ -153,7 +153,7 @@ func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.HandleSw
 	if err != nil {
 		return nil, err
 	}
-	return toSwipeResponseModel(out), nil
+	return toSwipeResponseModel(ctx, out), nil
 }
 
 // UpsertDictionary is the resolver for the upsertDictionary field.
@@ -266,7 +266,7 @@ func (r *queryResolver) MyCardgroups(ctx context.Context) ([]*model.Cardgroup, e
 	if err != nil {
 		return nil, err
 	}
-	return toCardgroupModels(cgs), nil
+	return toCardgroupModels(ctx, cgs), nil
 }
 
 // Cardgroup is the resolver for the cardgroup field.
@@ -310,7 +310,7 @@ func (r *queryResolver) CardsByCardgroup(ctx context.Context, cardgroupID string
 	if err != nil {
 		return nil, err
 	}
-	return toCardModels(cards), nil
+	return toCardModels(ctx, cards), nil
 }
 
 // CardsByCardgroupConnection is the resolver for the cardsByCardgroupConnection field.
@@ -419,7 +419,7 @@ func (r *queryResolver) Roles(ctx context.Context) ([]*model.Role, error) {
 	if err != nil {
 		return nil, err
 	}
-	return toRoleModels(roles), nil
+	return toRoleModels(ctx, roles), nil
 }
 
 // Role is the resolver for the role field.
@@ -469,7 +469,7 @@ func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Rol
 		}
 		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "resolver: user roles"))
 	}
-	return toRoleModels(roles), nil
+	return toRoleModels(ctx, roles), nil
 }
 
 // LastViewedCardgroup is the resolver for the lastViewedCardgroup field.
