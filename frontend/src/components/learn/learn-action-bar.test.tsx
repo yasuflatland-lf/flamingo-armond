@@ -66,4 +66,21 @@ describe("<LearnActionBar>", () => {
     await user.tab();
     expect(screen.getByRole("button", { name: "Rate as Easy" })).toHaveFocus();
   });
+
+  it("S-A1: outer container uses sticky positioning, not fixed", () => {
+    const { container } = render(<LearnActionBar onRate={vi.fn()} />);
+    const outer = container.firstElementChild as HTMLElement | null;
+    expect(outer).not.toBeNull();
+    expect(outer?.className).toContain("sticky");
+    expect(outer?.className).not.toContain("fixed");
+    expect(outer?.className).not.toContain("inset-x-0");
+  });
+
+  it("S-A2: outer container retains bottom-0 and centered horizontal flex", () => {
+    const { container } = render(<LearnActionBar onRate={vi.fn()} />);
+    const outer = container.firstElementChild as HTMLElement | null;
+    expect(outer).not.toBeNull();
+    expect(outer?.className).toContain("bottom-0");
+    expect(outer?.className).toContain("justify-center");
+  });
 });

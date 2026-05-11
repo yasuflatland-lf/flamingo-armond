@@ -38,7 +38,7 @@ const DIRECTIONS = [
 
 export function LearnActionBar({ onRate, disabled = false }: Props) {
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+    <div className="pointer-events-none sticky bottom-0 z-40 flex justify-center px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
       <div className="pointer-events-auto flex items-center gap-4">
         {DIRECTIONS.map(({ direction, label, Icon, shortcut, colorClass }) => (
           <div key={direction} className="flex flex-col items-center gap-1">
