@@ -168,6 +168,16 @@ if (outer === null) return;          // narrows type; toHaveClass never sees nul
 expect(outer).toHaveClass("sticky");
 ```
 
+### Do not assert CSS layout or visual class names in jsdom tests
+
+jsdom has no rendering engine. A class like `sticky`, `bottom-0`, `border-red-600`, or `justify-center` is never applied visually — it is only a string in the DOM. Asserting it tests nothing about user-observable behavior: the element is never sticky in a jsdom test, no color is ever shown, and no flex layout is ever computed.
+
+Tests that assert Tailwind utility names break on design changes (palette swaps, layout renames, CSS-custom-property migrations) with no corresponding behavioral regression, creating maintenance noise without safety benefit.
+
+**Delete** CSS layout and visual class assertions. The behavioral contracts they shadow — keyboard clickability, focus order, accessible names, callback invocation — are already covered by `userEvent` interaction tests and ARIA attribute checks.
+
+Exception: class names that control behavior-affecting DOM attributes (e.g., `pointer-events-none` as a layout mechanism) are still unsuitable for jsdom assertions because jsdom does not enforce hit-testing. Document those invariants in a comment on the component instead.
+
 ### Assert Lucide icons by specific class, not the generic `/lucide/` class
 
 Every Lucide icon receives a class like `lucide-settings`, `lucide-plus`, `lucide-rotate-ccw`, etc., in addition to the
@@ -183,6 +193,48 @@ expect(screen.getByRole("button", { ... })).toContainHTML("lucide");
 const icon = container.querySelector(".lucide-settings");
 expect(icon).toBeInTheDocument();
 ```
+
+Note: the specific `lucide-<name>` class is a library implementation detail — it can change if lucide-react renames its class scheme in a future major version, or if the icon is replaced with an equivalent one from another source. When the test goal is the **accessibility contract** (the icon must be decorative and hidden from assistive technology), assert the behavioral attribute instead:
+
+```ts
+// Behavioral: verifies the icon is hidden from screen readers regardless of which icon is used
+expect(container.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+```
+
+Reserve the specific-class assertion for cases where the exact icon identity matters for visual regression, and prefer a Playwright screenshot or Storybook snapshot for those cases.
+
+### Test keyboard tab order with `element.focus()` + single `user.tab()`, not DOM position
+
+`compareDocumentPosition` checks DOM tree position, which is not the same as keyboard tab order. A `tabindex` attribute can reverse tab order without changing DOM order, so a `compareDocumentPosition` assertion can pass while keyboard navigation is broken.
+
+Two patterns to avoid:
+
+**Pattern A — DOM position check (wrong):**
+```ts
+expect(
+  addLink.compareDocumentPosition(menuButton) & Node.DOCUMENT_POSITION_FOLLOWING,
+).toBeTruthy();
+```
+Passes even when `tabindex="-1"` on `addLink` makes it unreachable by keyboard.
+
+**Pattern B — counting tab stops (fragile):**
+```ts
+await user.tab(); // Focus: logo link
+await user.tab(); // Focus: '+' link
+expect(addLink).toHaveFocus();
+```
+Encodes the count of preceding focusable elements. A future change that inserts one focusable element before `addLink` silently breaks the assertion with no message pointing at the added element.
+
+**Correct pattern — anchor focus, then tab once:**
+```ts
+addLink.focus();           // anchor: no dependency on preceding elements
+expect(addLink).toHaveFocus();
+await user.tab();          // next tab stop
+expect(menuButton).toHaveFocus();
+```
+This tests the behavioral contract (tab from `addLink` lands on `menuButton`) without pinning how many other elements exist beforehand.
+
+Use `await user.tab()` from a fixed anchor any time you need to assert that one interactive element is reachable immediately after another in keyboard navigation order.
 
 ### Assert `disabled` state behaviorally, not just by attribute
 

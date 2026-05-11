@@ -59,14 +59,6 @@ describe("<LearnActionBar>", () => {
     expect(onRate).not.toHaveBeenCalled();
   });
 
-  it("applies direction-specific outline colors", () => {
-    render(<LearnActionBar onRate={vi.fn()} />);
-
-    expect(screen.getByRole("button", { name: "Rate as Again" })).toHaveClass("border-red-600");
-    expect(screen.getByRole("button", { name: "Rate as Hard" })).toHaveClass("border-sky-600");
-    expect(screen.getByRole("button", { name: "Rate as Easy" })).toHaveClass("border-emerald-600");
-  });
-
   it("keeps tab order as Again, Hard, Easy", async () => {
     const user = userEvent.setup();
     render(<LearnActionBar onRate={vi.fn()} />);
@@ -77,24 +69,5 @@ describe("<LearnActionBar>", () => {
     expect(screen.getByRole("button", { name: "Rate as Hard" })).toHaveFocus();
     await user.tab();
     expect(screen.getByRole("button", { name: "Rate as Easy" })).toHaveFocus();
-  });
-
-  it("S-A1: outer container uses sticky positioning, not fixed", () => {
-    const { container } = render(<LearnActionBar onRate={vi.fn()} />);
-    const outer = container.firstElementChild as HTMLElement | null;
-    expect(outer).not.toBeNull();
-    if (outer === null) return;
-    expect(outer).toHaveClass("sticky");
-    expect(outer).not.toHaveClass("fixed");
-    expect(outer).not.toHaveClass("inset-x-0");
-  });
-
-  it("S-A2: outer container retains bottom-0 and centered horizontal flex", () => {
-    const { container } = render(<LearnActionBar onRate={vi.fn()} />);
-    const outer = container.firstElementChild as HTMLElement | null;
-    expect(outer).not.toBeNull();
-    if (outer === null) return;
-    expect(outer).toHaveClass("bottom-0");
-    expect(outer).toHaveClass("justify-center");
   });
 });

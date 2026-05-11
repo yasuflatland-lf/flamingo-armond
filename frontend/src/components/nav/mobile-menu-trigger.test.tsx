@@ -14,7 +14,7 @@ describe("<MobileMenuTrigger>", () => {
     expect(screen.getByRole("button", { name: "Open menu" })).toBeInTheDocument();
   });
 
-  it("S-M2: renders a Settings (lucide) icon as svg", () => {
+  it("S-M2: icon svg is hidden from assistive technology", () => {
     const { container } = render(
       <Sheet>
         <MobileMenuTrigger />
@@ -22,7 +22,6 @@ describe("<MobileMenuTrigger>", () => {
     );
     const svg = container.querySelector("svg");
     expect(svg).not.toBeNull();
-    // lucide-react sets class names like "lucide lucide-settings"
-    expect(svg?.getAttribute("class") ?? "").toMatch(/lucide-settings/);
+    expect(svg).toHaveAttribute("aria-hidden", "true");
   });
 });
