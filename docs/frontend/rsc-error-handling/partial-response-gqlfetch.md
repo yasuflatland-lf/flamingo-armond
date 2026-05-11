@@ -16,7 +16,7 @@ Without the re-throw, a partial response carrying `UNAUTHENTICATED` would silent
 
 If `gqlFetch` returned `json.data` here, the caller would receive the `publicConfig` field and never see the `UNAUTHENTICATED` signal on `me`. The re-throw ensures the caller's error boundary activates and can redirect to login.
 
-Note: when `data` is `null`, the no-data throw branch fires first (line 79) and `hasAuthError` is never reached — the auth-code check is only relevant when `data != null`.
+Note: when `data` is absent (null or undefined), the `if (json.data != null)` guard is false, so execution falls through directly to the unconditional throw at the bottom of the `if (json.errors)` block. `hasAuthError` is never reached in the no-data case — the auth-code check is only relevant when `data != null`.
 
 The internal `hasAuthError` helper (lines 22–28) checks for auth codes before deciding which branch to take:
 
