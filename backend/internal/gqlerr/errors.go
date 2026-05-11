@@ -50,6 +50,10 @@ func BadUserInput(field, message string) *gqlerror.Error {
 // payload needs to be structurally parsed by the frontend (e.g. to surface an
 // existing duplicate entity). For plain field validation messages, BadUserInput
 // is sufficient.
+//
+// Current callers: none. Retained as a primitive for future structured
+// BAD_USER_INPUT shapes; the previous caller BadUserInputCardDuplicateFront
+// was removed when CardDuplicateFrontError moved to the CreateCardResult union.
 func BadUserInputWithExtensions(field, message string, extra map[string]any) *gqlerror.Error {
 	ext := map[string]any{
 		"code":  string(CodeBadUserInput),
