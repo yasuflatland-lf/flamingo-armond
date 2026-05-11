@@ -29,12 +29,14 @@ describe("<LearnAddCardFloating>", () => {
     expect(link).toHaveAttribute("aria-label", "Add a new card to My Vocabulary");
   });
 
-  it("S3: has 'hidden' class and no 'md:flex' — hidden on all screen sizes; mobile uses GlobalFAB, desktop shows no FAB on learn", () => {
+  it("S3: renders as a PC-only ghost-style icon button hidden below the md breakpoint", () => {
     render(<LearnAddCardFloating cardgroupId="abc-123" cardgroupName="Test Group" />);
     const link = screen.getByRole("link");
     // The Button renders with asChild, so the className lands on the <a> element.
-    expect(link.className).toContain("hidden");
-    expect(link.className).not.toContain("md:flex");
+    expect(link).toHaveClass("hidden", "md:inline-flex");
+    expect(link).toHaveClass("fixed", "top-4", "right-6", "rounded-md", "text-foreground");
+    expect(link.className).not.toContain("top-1");
+    expect(link.className).not.toContain("right-2");
   });
 
   it("S4: URL-encodes cardgroupId containing special characters — href uses percent-encoding, aria-label uses raw name", () => {

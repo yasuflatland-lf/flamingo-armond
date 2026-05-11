@@ -79,18 +79,17 @@ describe("<AppShell>", () => {
     });
   });
 
-  describe("S2 — no old-style hamburger trigger", () => {
-    it("does not contain a button with aria-label 'Open menu' (the previous hamburger trigger)", () => {
+  describe("S2 — mobile menu trigger is present with the Settings icon", () => {
+    it("contains a button with aria-label 'Open menu' (the Settings icon trigger)", () => {
       render(
         <AppShell user={SIGNED_IN_USER} isAdmin={false}>
           <div />
         </AppShell>,
       );
 
-      // The prior hamburger button used the label "Open menu". The logo-drawer
-      // trigger uses "Open navigation menu" instead, so this assertion guards
-      // against re-introducing the old trigger.
-      expect(screen.queryByRole("button", { name: /^open menu$/i })).toBeNull();
+      // The mobile menu trigger uses a Settings icon with aria-label "Open menu".
+      // This assertion guards that the trigger is always present in the mobile header.
+      expect(screen.getByRole("button", { name: /^open menu$/i })).toBeInTheDocument();
     });
   });
 
@@ -187,7 +186,7 @@ describe("<AppShell>", () => {
       );
 
       // Open the drawer so drawer links enter the DOM.
-      const drawerTrigger = screen.getByRole("button", { name: /open navigation menu/i });
+      const drawerTrigger = screen.getByRole("button", { name: /^open menu$/i });
       await user.click(drawerTrigger);
 
       // The drawer body must have all three admin sub-links (portaled into

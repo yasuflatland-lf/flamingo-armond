@@ -114,5 +114,51 @@ describe("resolveFabAction", () => {
         label: "Add new card",
       });
     });
+
+    it("decodes percent-encoded segment in /learn/:id — usePathname delivers %26, cardgroupId is raw &", () => {
+      // usePathname() returns percent-encoded pathnames. The function must decode
+      // the captured segment before passing it to cardWithGroup so the downstream
+      // encodeURIComponent encodes it exactly once.
+      const result = resolveFabAction("/learn/abc%26evil");
+      expect(result).toEqual({
+        kind: "card-with-group",
+        href: "/cards/new?cardgroup=abc%26evil&return=/learn/abc%26evil",
+        label: "Add new card",
+        cardgroupId: "abc&evil",
+      });
+    });
+
+    it("malformed percent-escape in /learn/:id falls through to generic card action", () => {
+      // A URIError from decodeURIComponent must not propagate — it should produce
+      // the same fallback as a non-matching path.
+      expect(resolveFabAction("/learn/abc%XX")).toEqual({
+        kind: "card",
+        href: "/cards/new",
+        label: "Add new card",
+      });
+    });
+
+    it("decodes percent-encoded segment in /cardgroups/:id/edit — usePathname delivers %26, cardgroupId is raw &", () => {
+      // usePathname() returns percent-encoded pathnames. The function must decode
+      // the captured segment before passing it to cardWithGroup so the downstream
+      // encodeURIComponent encodes it exactly once.
+      const result = resolveFabAction("/cardgroups/abc%26evil/edit");
+      expect(result).toEqual({
+        kind: "card-with-group",
+        href: "/cards/new?cardgroup=abc%26evil",
+        label: "Add new card",
+        cardgroupId: "abc&evil",
+      });
+    });
+
+    it("malformed percent-escape in /cardgroups/:id/edit falls through to generic card action", () => {
+      // A URIError from decodeURIComponent must not propagate — it should produce
+      // the same fallback as a non-matching path.
+      expect(resolveFabAction("/cardgroups/abc%XX/edit")).toEqual({
+        kind: "card",
+        href: "/cards/new",
+        label: "Add new card",
+      });
+    });
   });
 });

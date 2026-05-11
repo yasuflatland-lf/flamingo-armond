@@ -144,6 +144,84 @@ describe("SwipeCardStack — Session-complete count line", () => {
 
 **How to apply:** when a presentational component under `frontend/src/components/` adds a prop whose values branch the rendered output AND the parent at the integration site only passes a single value (or a narrow value range), add a co-located `<component>.test.tsx` next to the component covering every branch the prop can take. Use jsdom (the component renders DOM) and skip `MockedProvider` / `next/navigation` mocks unless the component actually uses them. Reference: `frontend/src/components/learn/swipe-card-stack.test.tsx` covering `completedCount` undefined / 0 / 1 / 2 branches that `LearnClient` integration tests cannot reach.
 
+### `toHaveClass(...)` is token-based — prefer it over `className.toContain(...)`
+
+`@testing-library/jest-dom`'s `toHaveClass("sticky")` checks whether the element's class list **contains that token**,
+whereas `className.toContain("sticky")` is a raw substring match that produces false positives: `"not-sticky"` passes
+a `toContain("sticky")` assertion.
+
+Always use `toHaveClass` and its negative form `not.toHaveClass`:
+
+```ts
+expect(outer).toHaveClass("sticky");
+expect(outer).not.toHaveClass("fixed");
+expect(outer).not.toHaveClass("inset-x-0");
+```
+
+When narrowing from `Element | null` after a `.not.toBeNull()` guard, TypeScript still treats the value as `Element | null`.
+Satisfy `toHaveClass`'s non-null requirement with an explicit guard rather than a non-null assertion:
+
+```ts
+const outer = container.firstElementChild as HTMLElement | null;
+expect(outer).not.toBeNull();
+if (outer === null) return;          // narrows type; toHaveClass never sees null
+expect(outer).toHaveClass("sticky");
+```
+
+### Assert Lucide icons by specific class, not the generic `/lucide/` class
+
+Every Lucide icon receives a class like `lucide-settings`, `lucide-plus`, `lucide-rotate-ccw`, etc., in addition to the
+generic `lucide` class that all icons share. When asserting that a specific icon is rendered, match against the
+specific class (e.g. `/lucide-settings/`) rather than `/lucide/` — otherwise any Lucide icon satisfies the assertion and
+an accidental icon swap is undetected:
+
+```ts
+// WRONG — passes for any Lucide icon, not just the settings icon
+expect(screen.getByRole("button", { ... })).toContainHTML("lucide");
+
+// CORRECT — fails if the icon is swapped for a different one
+const icon = container.querySelector(".lucide-settings");
+expect(icon).toBeInTheDocument();
+```
+
+### Assert `disabled` state behaviorally, not just by attribute
+
+`.toBeDisabled()` verifies the HTML `disabled` attribute but does not verify that a click is actually ignored.
+The behavioral contract is: "a click does not invoke the callback." Add `await user.click(btn)` followed by
+`expect(callback).not.toHaveBeenCalled()` so a future refactor from `<button disabled>` to a non-`<button>` element
+with a custom click handler is caught:
+
+```ts
+expect(btn).toBeDisabled();             // attribute check
+
+await user.click(btn);
+expect(onRate).not.toHaveBeenCalled();  // behavioral check
+```
+
+Reference: `frontend/src/components/learn/learn-action-bar.test.tsx` — the disabled test asserts both `.toBeDisabled()`
+and that `onRate` is not called after clicking all three buttons.
+
+### Mobile and PC entry points for the same action must produce matching hrefs
+
+When a feature has two surfaces that construct the same href (e.g. a mobile in-header button that decodes
+`usePathname()` and a desktop floating button that receives the already-decoded id as a prop), assert that the
+constructed URLs are identical for the same logical input. The mismatch is invisible for plain alphanumeric UUIDs
+but real for any special-character-bearing id:
+
+```ts
+// mobile path: decodes usePathname() → re-encodes at href construction
+const mobileHref = `/cards/new?cardgroup=${encodeURIComponent(rawId)}&return=/learn/${encodeURIComponent(rawId)}`;
+
+// desktop path: receives decoded prop → encodes at href construction
+const encodedId = encodeURIComponent(cardgroupId);
+const desktopHref = `/cards/new?cardgroup=${encodedId}&return=/learn/${encodedId}`;
+
+expect(desktopHref).toBe(mobileHref);
+```
+
+Reference: `frontend/src/components/nav/logo-drawer.tsx` (mobile `+` link, decodes from `usePathname()`) and
+`frontend/src/components/nav/learn-add-card-floating.tsx` (PC ghost icon, receives decoded `cardgroupId` prop).
+
 ### Grep `frontend/` not `frontend/src/` when deleting a component
 
 A plan that says "delete component `X`" must locate every reference to `X` across the **whole** `frontend/` tree, not just `frontend/src/`. Tests live in two locations: co-located under `frontend/src/**/<file>.test.tsx` AND top-level under `frontend/__tests__/**/*.test.tsx` (see [the narrow / broad split contract](#the-narrow--broad-split-is-a-contract)). A `grep -r X frontend/src/` reports zero hits while a stale top-level test still imports the deleted component, the file fails at run time, and CI catches the gap only after the cleanup commit lands.

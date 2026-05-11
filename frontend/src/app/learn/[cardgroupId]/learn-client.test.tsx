@@ -12,6 +12,8 @@ import {
 } from "../../../../__tests__/utils/mock-apollo-paginated";
 import { LearnClient } from "./learn-client";
 
+const reducedMotionState = vi.hoisted(() => ({ value: true }));
+
 // ---------------------------------------------------------------------------
 // SwipeCardStack mock — captures the `onCardSwiped` reference on every render
 // so the identity-stability test can assert the callback is not re-created
@@ -32,10 +34,12 @@ vi.mock("@/components/learn/swipe-card-stack", () => ({
     cards: { id: string; front: string; back: string }[];
     onCardSwiped: SwipeCardStackOnCardSwiped;
     completedCount?: number;
+    swipeDirection: "left" | "right" | "down" | null;
+    swipeProgress: number;
   }) => {
     capturedOnCardSwiped.push(props.onCardSwiped);
     // Render minimal UI so existing tests that assert on card text or swipe
-    // buttons continue to work. The `next/dynamic` AnimatedCard does not render
+    // progress continue to work. The `next/dynamic` AnimatedCard does not render
     // in jsdom (ssr:false), so the full SwipeCardStack cannot be used as-is.
     const activeCard = props.cards[0];
     if (!activeCard) {
@@ -54,18 +58,16 @@ vi.mock("@/components/learn/swipe-card-stack", () => ({
     return (
       <div>
         <p>{activeCard.front}</p>
-        <button type="button" onClick={() => props.onCardSwiped(activeCard as never, "left")}>
-          Again
-        </button>
-        <button type="button" onClick={() => props.onCardSwiped(activeCard as never, "down")}>
-          Hard
-        </button>
-        <button type="button" onClick={() => props.onCardSwiped(activeCard as never, "right")}>
-          Easy
-        </button>
+        {props.swipeDirection ? (
+          <p>{`Overlay ${props.swipeDirection} ${props.swipeProgress}`}</p>
+        ) : null}
       </div>
     );
   },
+}));
+
+vi.mock("@/lib/use-reduced-motion", () => ({
+  useReducedMotion: () => reducedMotionState.value,
 }));
 
 // ---------------------------------------------------------------------------
@@ -81,6 +83,8 @@ vi.mock("@/components/learn/swipe-card-stack", () => ({
 let leakSpy: ApolloMockLeakSpyResult;
 
 beforeEach(() => {
+  vi.useRealTimers();
+  reducedMotionState.value = true;
   leakSpy = installApolloMockLeakSpy({
     operationNames: ["HandleSwipe", "SetLastViewedCardgroup"],
   });
@@ -89,6 +93,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   leakSpy.assertNoLeaks();
   leakSpy.teardown();
 });
@@ -180,9 +185,9 @@ function makeSwipeMock(mode: 1 | 2 | 4, nextCards: (typeof CARD_1)[] = []) {
 
 describe("<LearnClient>", () => {
   it.each([
-    ["Again", 1],
-    ["Hard", 2],
-    ["Easy", 4],
+    ["Rate as Again", 1],
+    ["Rate as Hard", 2],
+    ["Rate as Easy", 4],
   ] as const)("maps %s to mode %d", async (label, mode) => {
     const user = userEvent.setup();
     const swipe = makeSwipeMock(mode);
@@ -200,7 +205,7 @@ describe("<LearnClient>", () => {
     const swipe = makeSwipeMock(4, [SERVER_CARD]);
     renderLearnClient([swipe.mock], [CARD_1, CARD_2]);
 
-    await user.click(screen.getByRole("button", { name: "Easy" }));
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
 
     expect(screen.queryByText("Hello")).not.toBeInTheDocument();
 
@@ -215,7 +220,7 @@ describe("<LearnClient>", () => {
     const swipe = makeSwipeMock(4, []);
     renderLearnClient([swipe.mock], [CARD_1]);
 
-    await user.click(screen.getByRole("button", { name: "Easy" }));
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
 
     await waitFor(() => {
       expect(screen.getByText("Session complete")).toBeInTheDocument();
@@ -237,7 +242,7 @@ describe("<LearnClient>", () => {
     };
     renderLearnClient([mock], [CARD_1]);
 
-    await user.click(screen.getByRole("button", { name: "Again" }));
+    await user.click(screen.getByRole("button", { name: "Rate as Again" }));
 
     await waitFor(() => {
       expect(screen.getByText("Hello")).toBeInTheDocument();
@@ -291,7 +296,7 @@ describe("<LearnClient>", () => {
       };
       renderLearnClient([mock], [CARD_1]);
 
-      await user.click(screen.getByRole("button", { name: "Easy" }));
+      await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
 
       await waitFor(() => {
         expect(consoleWarnSpy).toHaveBeenCalledWith(
@@ -341,6 +346,27 @@ describe("<LearnClient>", () => {
 
     const link = screen.getByRole("link", { name: `Add a new card to ${CG_NAME}` });
     expect(link).toHaveAccessibleName(`Add a new card to ${CG_NAME}`);
+  });
+
+  it("shows swipe progress before saving a clicked rating when motion is enabled", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    reducedMotionState.value = false;
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
+    const swipe = makeSwipeMock(1);
+    renderLearnClient([swipe.mock], [CARD_1]);
+
+    await user.click(screen.getByRole("button", { name: "Rate as Again" }));
+
+    expect(screen.getByText("Overlay left 1")).toBeInTheDocument();
+    expect(swipe.wasCalled()).toBe(false);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(180);
+    });
+
+    await waitFor(() => {
+      expect(swipe.wasCalled()).toBe(true);
+    });
   });
 });
 
