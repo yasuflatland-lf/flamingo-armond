@@ -107,6 +107,10 @@ func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCardIn
 			ExistingBack:   outcome.Duplicate.ExistingBack,
 		}, nil
 	}
+	if outcome.Card == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: CreateCardOutcome has no variant set"))
+	}
 	return model.CreateCardSuccess{Card: toCardModel(outcome.Card)}, nil
 }
 

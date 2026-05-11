@@ -1,6 +1,8 @@
 package resolver
 
 import (
+	"log/slog"
+
 	"backend/graph/model"
 	"backend/internal/domain"
 	"backend/internal/usecase"
@@ -48,9 +50,12 @@ func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 func toCardgroupModels(cgs []*domain.Cardgroup) []*model.Cardgroup {
 	out := make([]*model.Cardgroup, 0, len(cgs))
 	for _, cg := range cgs {
-		if cgm := toCardgroupModel(cg); cgm != nil {
-			out = append(out, cgm)
+		cgm := toCardgroupModel(cg)
+		if cgm == nil {
+			slog.Warn("toCardgroupModels: skipping nil entry")
+			continue
 		}
+		out = append(out, cgm)
 	}
 	return out
 }
@@ -81,9 +86,12 @@ func toCardModel(card *domain.Card) *model.Card {
 func toCardModels(cards []*domain.Card) []*model.Card {
 	out := make([]*model.Card, 0, len(cards))
 	for _, card := range cards {
-		if cm := toCardModel(card); cm != nil {
-			out = append(out, cm)
+		cm := toCardModel(card)
+		if cm == nil {
+			slog.Warn("toCardModels: skipping nil entry")
+			continue
 		}
+		out = append(out, cm)
 	}
 	return out
 }
@@ -206,9 +214,12 @@ func toRoleModel(r *domain.Role) *model.Role {
 func toRoleModels(roles []*domain.Role) []*model.Role {
 	out := make([]*model.Role, 0, len(roles))
 	for _, r := range roles {
-		if rm := toRoleModel(r); rm != nil {
-			out = append(out, rm)
+		rm := toRoleModel(r)
+		if rm == nil {
+			slog.Warn("toRoleModels: skipping nil entry")
+			continue
 		}
+		out = append(out, rm)
 	}
 	return out
 }

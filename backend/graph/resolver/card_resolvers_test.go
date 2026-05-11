@@ -69,6 +69,22 @@ func (m *cardMockCGRepo) FindByID(_ context.Context, _ string) (*domain.Cardgrou
 	return m.findResult, m.findErr
 }
 
+// duplicateCardMockRepo embeds cardMockRepo and overrides the two methods
+// exercised by the duplicate-front branch: Create returns ErrCardDuplicateFront
+// and FindByCardgroupAndFront returns the configured existing card.
+type duplicateCardMockRepo struct {
+	cardMockRepo
+	existingCard *domain.Card
+}
+
+func (m *duplicateCardMockRepo) Create(_ context.Context, _ *domain.Card) error {
+	return repository.ErrCardDuplicateFront
+}
+
+func (m *duplicateCardMockRepo) FindByCardgroupAndFront(_ context.Context, _, _ string) (*domain.Card, error) {
+	return m.existingCard, nil
+}
+
 // --- construction helpers ---
 
 // cardFakeTx returns a txRunner stub that executes fn with a nil *gorm.DB.
@@ -197,5 +213,76 @@ func TestResolver_CreateCard_PartialFSRS_BadUserInput(t *testing.T) {
 	field, _ := ext["field"].(string)
 	if field != "input.fsrs" {
 		t.Fatalf("expected extensions.field == \"input.fsrs\", got %q", field)
+	}
+}
+
+// TestResolver_CreateCard_DuplicateFront_ReturnsCardDuplicateFrontError verifies
+// that when the usecase returns a duplicate-front outcome, the resolver maps it
+// to the CardDuplicateFrontError union variant with the correct fields populated.
+func TestResolver_CreateCard_DuplicateFront_ReturnsCardDuplicateFrontError(t *testing.T) {
+	t.Parallel()
+
+	// cardgroup is owned by the authenticated user so authorization passes.
+	cgRepo := &cardMockCGRepo{
+		findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"},
+	}
+	// The mock repo causes Create to return ErrCardDuplicateFront and then
+	// FindByCardgroupAndFront to return the existing card identified by "ex-1".
+	cardRepo := &duplicateCardMockRepo{
+		existingCard: &domain.Card{
+			ID:          "ex-1",
+			CardgroupID: "cg1",
+			Front:       "Question",
+			Back:        "existing back",
+		},
+	}
+	srv := newCardSrv(cardRepo, cgRepo, cardFakeTx())
+
+	mutation := map[string]any{
+		"query": `mutation($input: NewCardInput!) {
+			createCard(input: $input) {
+				__typename
+				... on CardDuplicateFrontError {
+					message
+					existingCardId
+					existingBack
+				}
+			}
+		}`,
+		"variables": map[string]any{
+			"input": map[string]any{
+				"cardgroupId": "cg1",
+				"front":       "Question",
+				"back":        "Answer",
+			},
+		},
+	}
+	bodyBytes, _ := json.Marshal(mutation)
+	resp := gqlRequest(t, srv, authedCtx("u1"), string(bodyBytes))
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	result, _ := data["createCard"].(map[string]any)
+	if result == nil {
+		t.Fatalf("expected data.createCard, got nil; full response: %v", resp)
+	}
+
+	typeName, _ := result["__typename"].(string)
+	if typeName != "CardDuplicateFrontError" {
+		t.Fatalf("expected __typename=CardDuplicateFrontError, got %q", typeName)
+	}
+	existingCardID, _ := result["existingCardId"].(string)
+	if existingCardID != "ex-1" {
+		t.Fatalf("expected existingCardId=ex-1, got %q", existingCardID)
+	}
+	existingBack, _ := result["existingBack"].(string)
+	if existingBack != "existing back" {
+		t.Fatalf("expected existingBack=\"existing back\", got %q", existingBack)
+	}
+	message, _ := result["message"].(string)
+	if message == "" {
+		t.Fatalf("expected non-empty message, got empty string")
 	}
 }
