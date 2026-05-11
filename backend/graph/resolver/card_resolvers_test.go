@@ -169,9 +169,13 @@ func TestResolver_CreateCard_PartialFSRS_BadUserInput(t *testing.T) {
 
 	// Only stability is provided; the other eight FSRS fields are absent.
 	// This triggers ErrFSRSOverridePartial -> BAD_USER_INPUT on "input.fsrs".
+	// createCard returns a union; the selection set must use fragments. The
+	// happy path is unreachable here (validation rejects the partial override
+	// before the resolver returns), so a minimal `... on CreateCardSuccess`
+	// fragment suffices to keep the query well-formed.
 	mutation := map[string]any{
 		"query": `mutation($input: NewCardInput!) {
-			createCard(input: $input) { card { id } }
+			createCard(input: $input) { __typename ... on CreateCardSuccess { card { id } } }
 		}`,
 		"variables": map[string]any{
 			"input": map[string]any{

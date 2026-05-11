@@ -160,9 +160,20 @@ input UpdateCardInput {
   back: String
 }
 
-type CreateCardPayload {
+"""Typed business error returned by `createCard` when an existing card in the same cardgroup already has the same front."""
+type CardDuplicateFrontError implements UserError {
+  message: String!
+  existingCardId: ID!
+  existingBack: String!
+}
+
+"""Success result of `createCard`. Returned as the union variant when the card was created."""
+type CreateCardSuccess {
   card: Card!
 }
+
+"""Result of `createCard`. Either the created card, or a typed duplicate-front error returned as data."""
+union CreateCardResult = CreateCardSuccess | CardDuplicateFrontError
 
 type UpdateCardPayload {
   card: Card!
@@ -255,8 +266,12 @@ extend type Query {
 }
 
 extend type Mutation {
-  """Create a card in a cardgroup owned by the authenticated caller."""
-  createCard(input: NewCardInput!): CreateCardPayload!
+  """
+  Create a card in a cardgroup owned by the authenticated caller.
+  Returns a union: `CreateCardSuccess` for the happy path, or `CardDuplicateFrontError`
+  when a card with the same front already exists in the cardgroup (typed "error as data").
+  """
+  createCard(input: NewCardInput!): CreateCardResult!
   """Update a card. Non-owners receive UNAUTHENTICATED."""
   updateCard(id: ID!, input: UpdateCardInput!): UpdateCardPayload!
   """Delete a card. Non-owners receive UNAUTHENTICATED."""

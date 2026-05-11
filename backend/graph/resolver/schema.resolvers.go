@@ -85,8 +85,13 @@ func (r *mutationResolver) DeleteCardgroup(ctx context.Context, id string) (bool
 }
 
 // CreateCard is the resolver for the createCard field.
-func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCardInput) (*model.CreateCardPayload, error) {
-	card, err := r.CardUC.Create(ctx, usecase.CreateCardInput{
+//
+// Returns a union: `model.CreateCardSuccess` on the happy path, or
+// `model.CardDuplicateFrontError` when the (cardgroup_id, front) unique index
+// is violated. The duplicate case is "errors as data" — the second return
+// value is reserved for real errors (auth, validation, internal).
+func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCardInput) (model.CreateCardResult, error) {
+	outcome, err := r.CardUC.Create(ctx, usecase.CreateCardInput{
 		CardgroupID: input.CardgroupID,
 		Front:       input.Front,
 		Back:        input.Back,
@@ -95,7 +100,14 @@ func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCardIn
 	if err != nil {
 		return nil, err
 	}
-	return &model.CreateCardPayload{Card: toCardModel(card)}, nil
+	if outcome.Duplicate != nil {
+		return model.CardDuplicateFrontError{
+			Message:        "A card with this front already exists in this cardgroup",
+			ExistingCardID: outcome.Duplicate.ExistingID,
+			ExistingBack:   outcome.Duplicate.ExistingBack,
+		}, nil
+	}
+	return model.CreateCardSuccess{Card: toCardModel(outcome.Card)}, nil
 }
 
 // UpdateCard is the resolver for the updateCard field.

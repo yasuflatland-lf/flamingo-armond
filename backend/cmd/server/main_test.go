@@ -1110,9 +1110,21 @@ func createTestCardgroup(t *testing.T, srvURL, bearer, name string) string {
 
 func createTestCard(t *testing.T, srvURL, bearer, cardgroupID, front, back string) string {
 	t.Helper()
+	// createCard now returns the CreateCardResult union: CreateCardSuccess on
+	// the happy path, CardDuplicateFrontError when (cardgroup_id, front)
+	// collides. The selection set discriminates via __typename so this helper
+	// can assert success and surface the duplicate-front payload as a test failure.
 	gqlQuery := fmt.Sprintf(`mutation {
 		createCard(input: {cardgroupId: %s, front: %s, back: %s}) {
-			card { id front back cardgroupId state reps lapses stability difficulty }
+			__typename
+			... on CreateCardSuccess {
+				card { id front back cardgroupId state reps lapses stability difficulty }
+			}
+			... on CardDuplicateFrontError {
+				message
+				existingCardId
+				existingBack
+			}
 		}
 	}`, gqlStringLit(cardgroupID), gqlStringLit(front), gqlStringLit(back))
 	body, err := json.Marshal(map[string]string{"query": gqlQuery})
@@ -1125,6 +1137,9 @@ func createTestCard(t *testing.T, srvURL, bearer, cardgroupID, front, back strin
 	}
 	data, _ := resp["data"].(map[string]any)
 	payload, _ := data["createCard"].(map[string]any)
+	if typename, _ := payload["__typename"].(string); typename != "CreateCardSuccess" {
+		t.Fatalf("createCard: expected CreateCardSuccess, got %q; resp=%v", typename, resp)
+	}
 	card, _ := payload["card"].(map[string]any)
 	if card == nil {
 		t.Fatalf("createCard: expected card, got nil; resp=%v", resp)
@@ -1255,7 +1270,7 @@ func TestGraphQL_CreateCard_NonOwner_Unauthenticated(t *testing.T) {
 
 	subB := insertAuthUser(t, ctx)
 	tokB := f.sign(t, subB)
-	body := fmt.Sprintf(`{"query":"mutation { createCard(input: {cardgroupId: \"%s\", front: \"x\", back: \"y\"}) { card { id } } }"}`, cgID)
+	body := fmt.Sprintf(`{"query":"mutation { createCard(input: {cardgroupId: \"%s\", front: \"x\", back: \"y\"}) { __typename ... on CreateCardSuccess { card { id } } } }"}`, cgID)
 	resp := postGraphQL(t, ts.URL+"/query", body, tokB)
 
 	if code := gqlErrCode(resp); code != "UNAUTHENTICATED" {
@@ -1271,7 +1286,7 @@ func TestGraphQL_CreateCard_Validation(t *testing.T) {
 	tok := f.sign(t, sub)
 	cgID := createTestCardgroup(t, ts.URL, tok, "Validation")
 
-	body := fmt.Sprintf(`{"query":"mutation { createCard(input: {cardgroupId: \"%s\", front: \"\", back: \"y\"}) { card { id } } }"}`, cgID)
+	body := fmt.Sprintf(`{"query":"mutation { createCard(input: {cardgroupId: \"%s\", front: \"\", back: \"y\"}) { __typename ... on CreateCardSuccess { card { id } } } }"}`, cgID)
 	resp := postGraphQL(t, ts.URL+"/query", body, tok)
 
 	if code := gqlErrCode(resp); code != "BAD_USER_INPUT" {

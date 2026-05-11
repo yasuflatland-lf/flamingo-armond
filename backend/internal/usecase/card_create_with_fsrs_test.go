@@ -25,11 +25,14 @@ func TestCardUsecase_Create_FSRS_AllNilUsesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.FSRS.State != domain.FSRSStateNew {
-		t.Fatalf("expected default state=New, got %d", got.FSRS.State)
+	if got.Card == nil {
+		t.Fatalf("expected outcome.Card to be non-nil, got duplicate=%+v", got.Duplicate)
 	}
-	if got.FSRS.Stability != 2.5 || got.FSRS.Difficulty != 5.0 {
-		t.Fatalf("expected default stability=2.5, difficulty=5.0, got %+v", got.FSRS)
+	if got.Card.FSRS.State != domain.FSRSStateNew {
+		t.Fatalf("expected default state=New, got %d", got.Card.FSRS.State)
+	}
+	if got.Card.FSRS.Stability != 2.5 || got.Card.FSRS.Difficulty != 5.0 {
+		t.Fatalf("expected default stability=2.5, difficulty=5.0, got %+v", got.Card.FSRS)
 	}
 }
 
@@ -70,20 +73,23 @@ func TestCardUsecase_Create_FSRS_FullOverride(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !got.FSRS.Due.Equal(due) || !got.FSRS.LastReview.Equal(last) {
-		t.Fatalf("override timestamps not applied: %+v", got.FSRS)
+	if got.Card == nil {
+		t.Fatalf("expected outcome.Card to be non-nil, got duplicate=%+v", got.Duplicate)
 	}
-	if got.FSRS.Stability != stability || got.FSRS.Difficulty != difficulty {
-		t.Fatalf("override floats not applied: %+v", got.FSRS)
+	if !got.Card.FSRS.Due.Equal(due) || !got.Card.FSRS.LastReview.Equal(last) {
+		t.Fatalf("override timestamps not applied: %+v", got.Card.FSRS)
 	}
-	if got.FSRS.ElapsedDays != elapsed || got.FSRS.ScheduledDays != scheduled {
-		t.Fatalf("override day counters not applied: %+v", got.FSRS)
+	if got.Card.FSRS.Stability != stability || got.Card.FSRS.Difficulty != difficulty {
+		t.Fatalf("override floats not applied: %+v", got.Card.FSRS)
 	}
-	if got.FSRS.Reps != reps || got.FSRS.Lapses != lapses {
-		t.Fatalf("override rep/lapse counters not applied: %+v", got.FSRS)
+	if got.Card.FSRS.ElapsedDays != elapsed || got.Card.FSRS.ScheduledDays != scheduled {
+		t.Fatalf("override day counters not applied: %+v", got.Card.FSRS)
 	}
-	if got.FSRS.State != domain.FSRSStateReview {
-		t.Fatalf("override state not applied: got %d", got.FSRS.State)
+	if got.Card.FSRS.Reps != reps || got.Card.FSRS.Lapses != lapses {
+		t.Fatalf("override rep/lapse counters not applied: %+v", got.Card.FSRS)
+	}
+	if got.Card.FSRS.State != domain.FSRSStateReview {
+		t.Fatalf("override state not applied: got %d", got.Card.FSRS.State)
 	}
 	if cardRepo.capturedCreate == nil || cardRepo.capturedCreate.FSRS.Stability != stability {
 		t.Fatalf("repo did not receive overridden FSRS state: %+v", cardRepo.capturedCreate)
