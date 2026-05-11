@@ -589,6 +589,49 @@ func TestCardUsecase_ListCardsByCardgroupConnection_ResolveCursorHydratesDueFiel
 	}
 }
 
+// TestCardUsecase_ResolveCursor_MalformedV1_ReturnsBadUserInput verifies that
+// a "v1:" envelope with an invalid base64 payload is rejected with
+// BAD_USER_INPUT. The cursor decode failure must not surface as INTERNAL.
+func TestCardUsecase_ResolveCursor_MalformedV1_ReturnsBadUserInput(t *testing.T) {
+	t.Parallel()
+
+	uc := NewCardUsecase(nil, &mockCardRepository{},
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+	)
+	malformed := "v1:!!!not-base64!!!"
+	_, err := uc.resolveCursor(
+		context.Background(),
+		&malformed, "cg1", repository.CardOrderByID, "after",
+	)
+	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+}
+
+// TestCardUsecase_ResolveCursor_V1EncodedID verifies that a v1 encoded cursor
+// decodes to the raw ID and proceeds without error for the ID-only orderBy
+// (no DB lookup required for CardOrderByID).
+func TestCardUsecase_ResolveCursor_V1EncodedID(t *testing.T) {
+	t.Parallel()
+
+	uc := NewCardUsecase(nil, &mockCardRepository{},
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+	)
+	// "v1:" + base64.RawURLEncoding.EncodeToString([]byte("card-abc")) == "v1:Y2FyZC1hYmM"
+	encoded := "v1:Y2FyZC1hYmM"
+	c, err := uc.resolveCursor(
+		context.Background(),
+		&encoded, "cg1", repository.CardOrderByID, "after",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error for v1 encoded cursor: %v", err)
+	}
+	if c == nil {
+		t.Fatal("expected non-nil cursor, got nil")
+	}
+	if c.ID != "card-abc" {
+		t.Fatalf("expected decoded ID=card-abc, got %q", c.ID)
+	}
+}
+
 // decodeJSONRecords parses newline-delimited JSON log lines from buf.
 func decodeJSONRecords(t *testing.T, data []byte) []map[string]any {
 	t.Helper()

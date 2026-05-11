@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"backend/internal/auth"
+	"backend/internal/cursor"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
 	"backend/internal/repository"
@@ -460,24 +461,31 @@ func resolvePageSize(first, last *int) (int, int, error) {
 	return 0, clamp(*last), nil
 }
 
-// resolveCursor decodes a cursor ID into a *repository.CardCursor with the
-// field needed for the active orderBy populated. Returns BAD_USER_INPUT when
-// the cursor card cannot be found or belongs to a different cardgroup.
+// resolveCursor decodes an opaque cursor string into a *repository.CardCursor
+// with the field needed for the active orderBy populated. The cursor may be a
+// v1 envelope ("v1:" + base64) or a legacy bare UUID; both are accepted during
+// the backward-compatibility window. Returns BAD_USER_INPUT when the cursor
+// cannot be decoded, the card cannot be found, or the card belongs to a
+// different cardgroup.
 func (u *CardUsecase) resolveCursor(
 	ctx context.Context,
-	cursorID *string,
+	cursorStr *string,
 	cardgroupID string,
 	orderBy repository.CardOrderBy,
 	field string,
 ) (*repository.CardCursor, error) {
-	if cursorID == nil || *cursorID == "" {
+	if cursorStr == nil || *cursorStr == "" {
 		return nil, nil
 	}
-	c := &repository.CardCursor{ID: *cursorID}
+	id, err := cursor.Decode(*cursorStr)
+	if err != nil {
+		return nil, gqlerr.BadUserInput(field, "invalid cursor")
+	}
+	c := &repository.CardCursor{ID: id}
 	if orderBy == repository.CardOrderByID {
 		return c, nil
 	}
-	card, err := u.cardRepo.FindByID(ctx, *cursorID)
+	card, err := u.cardRepo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, gqlerr.BadUserInput(field, "cursor not found")

@@ -135,44 +135,62 @@ func toSwipeResponseModel(out *usecase.SwipeOutput) *model.SwipeResponse {
 	}
 }
 
-// toCardConnectionModel emits cursors as bare card UUIDs (no base64).
+// toCardConnectionModel emits cursors as opaque v1 envelopes ("v1:" + base64(uuid)).
 func toCardConnectionModel(out *usecase.CardConnectionOutput) *model.CardConnection {
 	if out == nil {
 		return &model.CardConnection{Edges: []*model.CardEdge{}, PageInfo: &model.PageInfo{}}
 	}
 	edges := make([]*model.CardEdge, len(out.Cards))
 	for i, c := range out.Cards {
-		edges[i] = &model.CardEdge{Cursor: c.ID, Node: toCardModel(c)}
+		edges[i] = &model.CardEdge{Cursor: EncodeCursor(c.ID), Node: toCardModel(c)}
+	}
+	var startCur, endCur *string
+	if out.StartCur != "" {
+		s := EncodeCursor(out.StartCur)
+		startCur = &s
+	}
+	if out.EndCur != "" {
+		e := EncodeCursor(out.EndCur)
+		endCur = &e
 	}
 	return &model.CardConnection{
 		Edges: edges,
 		PageInfo: &model.PageInfo{
 			HasNextPage:     out.HasNext,
 			HasPreviousPage: out.HasPrev,
-			StartCursor:     nilIfEmpty(out.StartCur),
-			EndCursor:       nilIfEmpty(out.EndCur),
+			StartCursor:     startCur,
+			EndCursor:       endCur,
 		},
 		TotalCount: int(out.TotalCount),
 	}
 }
 
-// toCardgroupConnectionModel emits cursors as bare cardgroup UUIDs (no
-// base64). Mirrors toCardConnectionModel for the cardgroup aggregate.
+// toCardgroupConnectionModel emits cursors as opaque v1 envelopes ("v1:" + base64(uuid)).
+// Mirrors toCardConnectionModel for the cardgroup aggregate.
 func toCardgroupConnectionModel(out *usecase.CardgroupConnectionOutput) *model.CardgroupConnection {
 	if out == nil {
 		return &model.CardgroupConnection{Edges: []*model.CardgroupEdge{}, PageInfo: &model.PageInfo{}}
 	}
 	edges := make([]*model.CardgroupEdge, len(out.Cardgroups))
 	for i, cg := range out.Cardgroups {
-		edges[i] = &model.CardgroupEdge{Cursor: cg.ID, Node: toCardgroupModel(cg)}
+		edges[i] = &model.CardgroupEdge{Cursor: EncodeCursor(cg.ID), Node: toCardgroupModel(cg)}
+	}
+	var startCur, endCur *string
+	if out.StartCur != "" {
+		s := EncodeCursor(out.StartCur)
+		startCur = &s
+	}
+	if out.EndCur != "" {
+		e := EncodeCursor(out.EndCur)
+		endCur = &e
 	}
 	return &model.CardgroupConnection{
 		Edges: edges,
 		PageInfo: &model.PageInfo{
 			HasNextPage:     out.HasNext,
 			HasPreviousPage: out.HasPrev,
-			StartCursor:     nilIfEmpty(out.StartCur),
-			EndCursor:       nilIfEmpty(out.EndCur),
+			StartCursor:     startCur,
+			EndCursor:       endCur,
 		},
 		TotalCount: int(out.TotalCount),
 	}
