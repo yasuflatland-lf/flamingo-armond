@@ -39,12 +39,24 @@ describe("<LearnActionBar>", () => {
     expect(onRate).toHaveBeenCalledWith(direction);
   });
 
-  it("disables all rating buttons", () => {
-    render(<LearnActionBar onRate={vi.fn()} disabled />);
+  it("disables all rating buttons and ignores clicks while disabled", async () => {
+    const user = userEvent.setup();
+    const onRate = vi.fn();
+    render(<LearnActionBar onRate={onRate} disabled />);
 
-    expect(screen.getByRole("button", { name: "Rate as Again" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Rate as Hard" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Rate as Easy" })).toBeDisabled();
+    const again = screen.getByRole("button", { name: "Rate as Again" });
+    const hard = screen.getByRole("button", { name: "Rate as Hard" });
+    const easy = screen.getByRole("button", { name: "Rate as Easy" });
+
+    expect(again).toBeDisabled();
+    expect(hard).toBeDisabled();
+    expect(easy).toBeDisabled();
+
+    await user.click(again);
+    await user.click(hard);
+    await user.click(easy);
+
+    expect(onRate).not.toHaveBeenCalled();
   });
 
   it("applies direction-specific outline colors", () => {
@@ -71,16 +83,18 @@ describe("<LearnActionBar>", () => {
     const { container } = render(<LearnActionBar onRate={vi.fn()} />);
     const outer = container.firstElementChild as HTMLElement | null;
     expect(outer).not.toBeNull();
-    expect(outer?.className).toContain("sticky");
-    expect(outer?.className).not.toContain("fixed");
-    expect(outer?.className).not.toContain("inset-x-0");
+    if (outer === null) return;
+    expect(outer).toHaveClass("sticky");
+    expect(outer).not.toHaveClass("fixed");
+    expect(outer).not.toHaveClass("inset-x-0");
   });
 
   it("S-A2: outer container retains bottom-0 and centered horizontal flex", () => {
     const { container } = render(<LearnActionBar onRate={vi.fn()} />);
     const outer = container.firstElementChild as HTMLElement | null;
     expect(outer).not.toBeNull();
-    expect(outer?.className).toContain("bottom-0");
-    expect(outer?.className).toContain("justify-center");
+    if (outer === null) return;
+    expect(outer).toHaveClass("bottom-0");
+    expect(outer).toHaveClass("justify-center");
   });
 });
