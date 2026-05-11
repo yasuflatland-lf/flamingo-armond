@@ -25,15 +25,11 @@ const ideographicSpace rune = 0x3000
 // lineNo points at the line the next rune will be read from, while
 // tokenLine records the line at which the most recently emitted token
 // began (used to attribute parser errors back to the offending source).
-// lastLineSnippet is a per-error scratch buffer holding the raw text of
-// the most recently recovered malformed line (populated by
-// recoverLineForUnrecognized).
 type lexer struct {
-	input           *strings.Reader
-	lineNo          int
-	tokenLine       int
-	errors          []error
-	lastLineSnippet string
+	input     *strings.Reader
+	lineNo    int
+	tokenLine int
+	errors    []error
 }
 
 func newLexer(input string) *lexer {
@@ -87,13 +83,13 @@ func (l *lexer) canStartDefinition(r rune) bool {
 	return l.isJapanese(r) || r == '(' || r == '['
 }
 
-// Lex implements the yyLexer interface. It returns 0 on EOF (or after
-// consuming a malformed line that ended at EOF), NEWLINE on a line
-// terminator (including after recovering from an unrecognised rune),
-// WORD on an ASCII headword run, and DEFINITION on a Japanese-script
-// or ASCII-bracket-opener (`(`/`[`) run. Read failures other than
-// io.EOF and unrecognised runes are recorded via l.Error so they
-// surface as validation errors.
+// Lex implements the yyLexer interface. It returns 0 on EOF, NEWLINE on a
+// line terminator (including after recovering from an unrecognised rune,
+// even when the malformed line ended at EOF — see recoverLineForUnrecognized),
+// WORD on an ASCII headword run, and DEFINITION on a Japanese-script or
+// ASCII-bracket-opener (`(`/`[`) run. Read failures other than io.EOF and
+// unrecognised runes are recorded via l.Error so they surface as validation
+// errors.
 func (l *lexer) Lex(lval *yySymType) int {
 	r, err := l.skipWhiteSpace()
 	if err == io.EOF {
@@ -127,7 +123,7 @@ func (l *lexer) Lex(lval *yySymType) int {
 		Kind:    SkipKindUnrecognized,
 		Snippet: snippet,
 	})
-	return tok // NEWLINE or 0
+	return tok // always NEWLINE (recovery always emits NEWLINE; EOF case is handled by the next Lex call)
 }
 
 // lexRun reads runes until stop returns true (or EOF) and returns the
@@ -188,9 +184,11 @@ func (l *lexer) lexDefinition(lval *yySymType) int {
 // recoverLineForUnrecognized captures first plus every subsequent rune on the
 // malformed line (up to but not including the terminating newline or EOF) and
 // returns the snippet text together with the appropriate token: NEWLINE when a
-// line terminator is found, 0 at EOF. The returned snippet does NOT include
-// the trailing newline character. lastLineSnippet is also updated as a side
-// effect.
+// line terminator is found, and NEWLINE again at EOF so the grammar's
+// `error NEWLINE` recovery rule can fire even when the malformed line is the
+// last in the payload (no trailing newline). The next Lex call will return 0
+// at EOF on its own. The returned snippet does NOT include the trailing
+// newline character.
 func (l *lexer) recoverLineForUnrecognized(first rune) (string, int) {
 	var b strings.Builder
 	b.WriteRune(first)
@@ -200,8 +198,7 @@ func (l *lexer) recoverLineForUnrecognized(first rune) (string, int) {
 			if err != io.EOF {
 				l.Error("read: " + err.Error())
 			}
-			l.lastLineSnippet = b.String()
-			return l.lastLineSnippet, 0
+			return b.String(), NEWLINE
 		}
 		if l.isNewLine(r) {
 			if r == '\r' {
@@ -212,38 +209,9 @@ func (l *lexer) recoverLineForUnrecognized(first rune) (string, int) {
 			}
 			l.tokenLine = l.lineNo
 			l.lineNo++
-			l.lastLineSnippet = b.String()
-			return l.lastLineSnippet, NEWLINE
+			return b.String(), NEWLINE
 		}
 		b.WriteRune(r)
-	}
-}
-
-// recoverToNewline consumes the rest of a malformed line and emits NEWLINE
-// so the parser's error recovery can resume on the following line. It is kept
-// for internal call sites that do not need the snippet (e.g. Error calls
-// that occur before recoverLineForUnrecognized). The snippet from the most
-// recently recovered line is available via lastLineSnippet.
-func (l *lexer) recoverToNewline() int {
-	for {
-		r, _, err := l.input.ReadRune()
-		if err != nil {
-			if err != io.EOF {
-				l.Error("read: " + err.Error())
-			}
-			return 0
-		}
-		if l.isNewLine(r) {
-			if r == '\r' {
-				// Consume the `\n` of a `\r\n` pair. If the `\n` is missing or
-				// ReadRune returns io.EOF, the next Lex call will see EOF and
-				// return 0 cleanly, so ignoring the error here is safe.
-				l.input.ReadRune() //nolint:errcheck
-			}
-			l.tokenLine = l.lineNo
-			l.lineNo++
-			return NEWLINE
-		}
 	}
 }
 
@@ -267,5 +235,5 @@ func (l *lexer) Error(e string) {
 	if line < 1 {
 		line = l.lineNo
 	}
-	l.errors = append(l.errors, parseError{Line: line, Message: e, Kind: SkipKindNone, Snippet: ""})
+	l.errors = append(l.errors, parseError{Line: line, Message: e, Kind: SkipKindHard, Snippet: ""})
 }

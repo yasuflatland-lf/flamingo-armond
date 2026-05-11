@@ -20,12 +20,14 @@ type node struct {
 
 // parseError is the structured error produced by the lexer and the
 // goyacc-generated parser. Line is the 1-based source line at which the
-// error was detected. Kind classifies the error: SkipKindNone means a hard
+// error was detected. Kind classifies the error: SkipKindHard means a hard
 // lexer/parser failure, while SkipKindFrontOnly, SkipKindBackOnly, and
 // SkipKindUnrecognized represent soft skips recorded by grammar productions
 // or the lexer. Message is the human-readable description preserved for UI.
-// Snippet carries the raw token text that triggered the skip (empty for hard
-// errors).
+// Snippet carries the raw source text that triggered the diagnostic — the
+// WORD token value for SkipKindFrontOnly, the DEFINITION token value for
+// SkipKindBackOnly, and the recovered malformed line (not a single token)
+// for SkipKindUnrecognized. Empty for hard errors.
 type parseError struct {
 	Line    int
 	Message string
@@ -141,5 +143,5 @@ func (yyrcvr *yyParserImpl) Error(s string) {
 			line = lx.lineNo
 		}
 	}
-	currentParser.errors = append(currentParser.errors, parseError{Line: line, Message: s, Kind: SkipKindNone, Snippet: ""})
+	currentParser.errors = append(currentParser.errors, parseError{Line: line, Message: s, Kind: SkipKindHard, Snippet: ""})
 }

@@ -170,7 +170,7 @@ func (r *mutationResolver) UpsertDictionary(ctx context.Context, input model.Ups
 		errs = append(errs, &model.DictionaryValidationError{
 			Line:    e.Line,
 			Message: e.Message,
-			Kind:    e.Kind,
+			Kind:    model.DictionaryValidationKind(e.Kind), // e.Kind is usecase.DictionaryErrorKind (string-named)
 			Snippet: nilIfEmpty(e.Snippet),
 			Front:   nilIfEmpty(e.Front),
 			Back:    nilIfEmpty(e.Back),
@@ -374,7 +374,7 @@ func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.Vali
 		validationErrs = append(validationErrs, &model.DictionaryValidationError{
 			Line:    e.Line,
 			Message: e.Message,
-			Kind:    e.Kind.String(),
+			Kind:    model.DictionaryValidationKind(e.Kind.String()), // e.Kind is textdic.SkipKind (uint8)
 			Snippet: nilIfEmpty(e.Snippet),
 		})
 	}

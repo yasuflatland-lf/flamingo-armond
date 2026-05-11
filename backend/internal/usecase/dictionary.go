@@ -43,22 +43,37 @@ type UpsertDictionaryInput struct {
 	Payload     string // standard base64-encoded plain-text dictionary
 }
 
+// DictionaryErrorKind is the wire-aligned classifier for DictionaryValidationError.Kind.
+// Values mirror the GraphQL DictionaryValidationKind enum literals exactly, so the
+// resolver can cast string(e.Kind) → model.DictionaryValidationKind without translation.
+//
+// Callers MUST branch on these constants in switches; never substring-match Message.
+type DictionaryErrorKind string
+
+const (
+	DictErrKindUnknown      DictionaryErrorKind = "UNKNOWN" // programming-error sentinel
+	DictErrKindHard         DictionaryErrorKind = "HARD"
+	DictErrKindFrontOnly    DictionaryErrorKind = "FRONT_ONLY"
+	DictErrKindBackOnly     DictionaryErrorKind = "BACK_ONLY"
+	DictErrKindUnrecognized DictionaryErrorKind = "UNRECOGNIZED"
+	DictErrKindDuplicate    DictionaryErrorKind = "DUPLICATE"
+)
+
 // DictionaryValidationError mirrors textdic.ValidationError so callers in the
 // resolver layer can reshape it into the GraphQL model without importing the
 // textdic package directly.
 //
-// Kind distinguishes payload-level / hard errors (""), grammar-recovered skips
-// ("front_only" / "back_only" / "unrecognized"), and dedupe warnings
-// ("duplicate"). Snippet carries parser-extracted text. Front / Back are
+// Kind distinguishes payload-level / hard errors, grammar-recovered skips, and
+// dedupe warnings. Snippet carries parser-extracted text. Front / Back are
 // populated only for dedupe duplicates. Callers MUST branch on Kind rather than
 // substring-matching Message; Message stays as the UI-facing description.
 type DictionaryValidationError struct {
-	Line    int    `json:"line"`
-	Message string `json:"message"`
-	Kind    string `json:"kind"`              // "" | "front_only" | "back_only" | "unrecognized" | "duplicate"
-	Snippet string `json:"snippet,omitempty"` // parser-cut content
-	Front   string `json:"front,omitempty"`   // dedupe-only
-	Back    string `json:"back,omitempty"`    // dedupe-only
+	Line    int                 `json:"line"`
+	Message string              `json:"message"`
+	Kind    DictionaryErrorKind `json:"kind"`
+	Snippet string              `json:"snippet,omitempty"` // parser-cut content
+	Front   string              `json:"front,omitempty"`   // dedupe-only
+	Back    string              `json:"back,omitempty"`    // dedupe-only
 }
 
 // UpsertDictionaryOutput is the result returned to the caller. Inserted +
@@ -161,7 +176,7 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 		mappedErrs = append(mappedErrs, DictionaryValidationError{
 			Line:    e.Line,
 			Message: e.Message,
-			Kind:    e.Kind.String(),
+			Kind:    DictionaryErrorKind(e.Kind.String()),
 			Snippet: e.Snippet,
 		})
 	}
@@ -180,7 +195,7 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 			mappedErrs = append(mappedErrs, DictionaryValidationError{
 				Line:    w.Line,
 				Message: "duplicate front in payload (later occurrence wins)",
-				Kind:    "duplicate",
+				Kind:    DictErrKindDuplicate,
 				Front:   w.Front,
 				Back:    w.Back,
 			})

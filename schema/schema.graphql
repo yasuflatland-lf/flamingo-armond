@@ -333,26 +333,34 @@ type ParsedWord {
   line: Int!
 }
 
-"""Per-line validation error produced while parsing a dictionary payload."""
+"""Classifier for a DictionaryValidationError. Closed enumeration; branch on this rather than substring-matching `message`."""
+enum DictionaryValidationKind {
+  """Programming-error sentinel. Never returned by a healthy server. If a client observes this, file a bug — the server should be panicking or asserting before this value escapes."""
+  UNKNOWN
+  """Hard error: payload-level (oversized / empty) or grammar/lexer error not recovered by skip productions."""
+  HARD
+  """Skipped: a lone WORD line with no DEFINITION attached. The dropped front term is in `snippet`."""
+  FRONT_ONLY
+  """Skipped: a lone DEFINITION line with no preceding front. The dropped back text is in `snippet`."""
+  BACK_ONLY
+  """Skipped: an unrecognized character was encountered. The recovered line content is in `snippet`."""
+  UNRECOGNIZED
+  """Post-parse dedupe: a duplicate row was dropped. The dropped row's `front` and `back` are populated."""
+  DUPLICATE
+}
+
 type DictionaryValidationError implements UserError {
   """1-based line number where the error was detected, or 0 when the error applies to the payload as a whole (e.g. oversized or empty payload)."""
   line: Int!
   """Human-readable, English error message."""
   message: String!
-  """Classifier for the parse event: "" for payload-level / hard errors,
-     "front_only" / "back_only" / "unrecognized" for grammar-recovered
-     diagnostics, "duplicate" for dedupe warnings. Callers branch on this
-     instead of substring-matching message."""
-  kind: String!
-  """Parser-extracted snippet: the WORD token value for front_only skips,
-     the DEFINITION token value for back_only skips, the recovered line
-     content for unrecognized characters. Null otherwise."""
+  """Closed classifier for the parse event."""
+  kind: DictionaryValidationKind!
+  """Parser-extracted snippet. Populated for FRONT_ONLY (the WORD token text), BACK_ONLY (the DEFINITION token text), and UNRECOGNIZED (the recovered malformed line). Null for HARD and DUPLICATE."""
   snippet: String
-  """Dedupe-duplicate: the front term of the dropped row. Null for all
-     other kinds."""
+  """Dedupe-duplicate only: the front term of the dropped row. Null for every other kind."""
   front: String
-  """Dedupe-duplicate: the back text of the dropped row. Null for all
-     other kinds."""
+  """Dedupe-duplicate only: the back text of the dropped row. Null for every other kind."""
   back: String
 }
 

@@ -214,15 +214,17 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 }
 
 // allDictionaryErrorsSkipped reports whether every error in errs originated
-// from a grammar skip production (lone front / lone back). The check uses the
-// structural Kind field rather than substring-matching Message, so future
-// changes to the human-readable text do not silently flip skip-only payloads
-// over to the hard-failure branch. "unrecognized" is treated as a hard failure
-// and falls into the default branch.
+// from a grammar skip production safe to drop silently (lone front / lone back).
+//
+// Only FRONT_ONLY and BACK_ONLY are considered "skipped" for the purposes of
+// the no-persistence short-circuit. UNRECOGNIZED is intentionally hard-failed
+// because it signals malformed payload the user likely didn't intend, and
+// silently dropping it would mask real corruption. DUPLICATE and HARD are
+// obviously hard. UNKNOWN indicates a bug and also falls into the hard branch.
 func allDictionaryErrorsSkipped(errs []DictionaryValidationError) bool {
 	for _, e := range errs {
 		switch e.Kind {
-		case "front_only", "back_only":
+		case DictErrKindFrontOnly, DictErrKindBackOnly:
 			continue
 		default:
 			return false
@@ -263,6 +265,7 @@ func parseNotionPages(ctx context.Context, logger *slog.Logger, pages []notion.P
 					"page_index", i,
 					"page_id", page.ID,
 					"error_name", reflect.TypeOf(err).String(),
+					"error", err.Error(),
 				)
 			}
 			return nil, nil, err
@@ -279,7 +282,7 @@ func parseNotionPages(ctx context.Context, logger *slog.Logger, pages []notion.P
 			errs = append(errs, DictionaryValidationError{
 				Line:    e.Line,
 				Message: e.Message,
-				Kind:    e.Kind.String(),
+				Kind:    DictionaryErrorKind(e.Kind.String()),
 				Snippet: e.Snippet,
 			})
 		}
@@ -298,7 +301,7 @@ func dedupeParsedRows(rows []ParsedRow, errs []DictionaryValidationError) ([]Par
 			errs = append(errs, DictionaryValidationError{
 				Line:    row.Line,
 				Message: "duplicate front in Notion pages (later occurrence wins)",
-				Kind:    "duplicate",
+				Kind:    DictErrKindDuplicate,
 				Front:   row.Front,
 				Back:    row.Back,
 			})
