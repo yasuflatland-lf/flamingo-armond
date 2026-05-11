@@ -70,3 +70,17 @@ services:
         sync: false
       - key: SUPER_USER_EMAILS
         sync: false
+      - key: NOTION_TOKEN
+        sync: false
+      - key: NOTION_PAGE_IDS
+        sync: false
+      - key: NOTION_TARGET_OWNER_ID
+        sync: false
+      - key: NOTION_TARGET_CARDGROUP_NAME
+        sync: false
+      - key: NOTION_SYNC_TOKEN
+        sync: false
+      - key: NOTION_MAX_ATTEMPTS
+        sync: false
+      - key: NOTION_MAX_ELAPSED
+        sync: false
