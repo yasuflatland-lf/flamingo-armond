@@ -126,10 +126,13 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 	if err != nil {
 		return SyncFromNotionOutput{}, eris.Wrap(errors.Join(ErrNotionSyncParse, err), "parse pages")
 	}
-	// Soft parse failure: every input line was rejected by the parser, leaving
-	// nothing to persist. Surface this as ErrNotionSyncParse (HTTP 422) rather
-	// than silently succeeding with an empty upsert.
+	// Soft skip-only input: every non-blank line was intentionally skipped by
+	// the grammar. Report the skipped rows, but do not persist an empty sync
+	// that would delete existing cards from the target cardgroup.
 	if len(rows) == 0 && len(parseErrs) > 0 {
+		if allDictionaryErrorsSkipped(parseErrs) {
+			return SyncFromNotionOutput{ParseErrors: parseErrs}, nil
+		}
 		if u.logger != nil {
 			u.logger.WarnContext(ctx, "notion sync: all rows failed to parse",
 				"parse_error_count", len(parseErrs),
@@ -192,6 +195,15 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 		)
 	}
 	return out, nil
+}
+
+func allDictionaryErrorsSkipped(errs []DictionaryValidationError) bool {
+	for _, e := range errs {
+		if !strings.HasPrefix(e.Message, "skipped:") {
+			return false
+		}
+	}
+	return len(errs) > 0
 }
 
 func normalizePageIDs(ids []string) []string {

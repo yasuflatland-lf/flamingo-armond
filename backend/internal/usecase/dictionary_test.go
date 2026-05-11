@@ -361,53 +361,36 @@ func TestDictionaryUsecase_PayloadOverCapBadInput(t *testing.T) {
 }
 
 // TestDictionaryUsecase_BadRowsSurfaceAsErrors covers the partial-failure
-// shape: valid rows interleaved with malformed lines (missing definition) must
-// not block the upsert — the usecase passes the parsed valid rows to the repo
-// and surfaces the parser errors in Output.Errors.
-//
-// Grammar behavior note: the LALR grammar's "error NEWLINE" recovery rule
-// drops the accumulated parse state up to the error point. Entries that
-// appear BEFORE a malformed row in the accumulation phase are discarded;
-// entries AFTER the last malformed row survive. Concretely, for the payload:
-//
-//	apple <def>\n         → discarded (before first error)
-//	malformed-1\n         → error recovery fires
-//	dog <def>\n           → discarded (before second error)
-//	malformed-2\n         → error recovery fires again
-//	cat <def>\n           → survives (after last error)
-//
-// Only "cat" is returned by the parser; the mock repo reflects this with
-// inserted: 1. This is the documented contract — callers should be aware
-// that malformed rows in the middle of the payload discard preceding entries.
+// shape where lexer-level junk is reported as parse errors, but valid rows
+// before and after the junk still reach the repository. Skip productions now
+// handle lone front/back lines separately; this test pins the remaining
+// `entries: error NEWLINE` recovery path.
 func TestDictionaryUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
 	t.Parallel()
 
-	// Build a payload with three valid rows interleaved with malformed lines
-	// (front-only — no DEFINITION token). The textdic grammar's "error
-	// NEWLINE" recovery rule discards the malformed lines and continues.
+	// Build a payload with three valid rows interleaved with lexer failures.
+	// The parser should report the junk lines and still preserve the valid
+	// rows on either side.
 	var b strings.Builder
 	b.WriteString("apple ")
 	b.WriteString(uniqueBack(1))
 	b.WriteString("\n")
-	b.WriteString("malformed-1\n") // no back
+	b.WriteString("@\n")
 	b.WriteString("dog ")
 	b.WriteString(uniqueBack(2))
 	b.WriteString("\n")
-	b.WriteString("malformed-2\n") // no back
+	b.WriteString("@\n")
 	b.WriteString("cat ")
 	b.WriteString(uniqueBack(3))
 	b.WriteString("\n")
 	payload := base64.StdEncoding.EncodeToString([]byte(b.String()))
 
-	// The LALR grammar returns only 1 parsed word ("cat") for this interleaved
-	// payload; the mock is configured to match.
-	repo := &mockDictCardRepo{inserted: 1, updated: 0}
+	// All three valid rows should survive the lexer errors.
+	repo := &mockDictCardRepo{inserted: 3, updated: 0}
 	authChk := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
 	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx)
 
-	// The only failure path here would be a panic; otherwise every assertion
-	// is on the returned struct.
 	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
@@ -415,34 +398,76 @@ func TestDictionaryUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if out.Inserted != 1 {
-		t.Fatalf("Inserted = %d, want 1", out.Inserted)
+	if out.Inserted != 3 {
+		t.Fatalf("Inserted = %d, want 3", out.Inserted)
 	}
 	if out.Updated != 0 {
 		t.Fatalf("Updated = %d, want 0", out.Updated)
 	}
-	// Exactly two malformed lines must surface as parse errors.
+	// Exactly two lexer failures must surface as parse errors.
 	if len(out.Errors) != 2 {
 		t.Fatalf("expected exactly 2 parse errors, got %d: %+v", len(out.Errors), out.Errors)
 	}
-	// Syntax-error entries must NOT carry Front or Back — the textdic parser
-	// does not emit field values for malformed rows, and the usecase must not
-	// populate them either. This locks in the contract that powers the
-	// omitempty / nil-pointer behaviour downstream in the resolver layer.
 	for i, e := range out.Errors {
 		if e.Front != "" {
-			t.Fatalf("syntax-error Errors[%d].Front = %q, want empty", i, e.Front)
+			t.Fatalf("lexer-error Errors[%d].Front = %q, want empty", i, e.Front)
 		}
 		if e.Back != "" {
-			t.Fatalf("syntax-error Errors[%d].Back = %q, want empty", i, e.Back)
+			t.Fatalf("lexer-error Errors[%d].Back = %q, want empty", i, e.Back)
 		}
 	}
-	// The repo must have been called exactly once with the 1 surviving card.
+	// The repo must have been called exactly once with the 3 surviving cards.
 	if repo.upsertCalls != 1 {
 		t.Fatalf("expected 1 UpsertManyTx call, got %d", repo.upsertCalls)
 	}
-	if len(repo.captured) != 1 {
-		t.Fatalf("expected 1 captured card (valid row after last error), got %d", len(repo.captured))
+	if len(repo.captured) != 3 {
+		t.Fatalf("expected 3 captured cards, got %d", len(repo.captured))
+	}
+}
+
+// TestDictionaryUsecase_SkippedLoneFrontDoesNotReachRepository pins the new
+// skip-production behavior: a lone front-only line is reported as a skipped
+// validation error and never becomes a card with an empty back.
+func TestDictionaryUsecase_SkippedLoneFrontDoesNotReachRepository(t *testing.T) {
+	t.Parallel()
+
+	payload := base64.StdEncoding.EncodeToString([]byte("existing-front\n"))
+
+	repo := &mockDictCardRepo{}
+	authChk := &mockAdminChecker{isAdmin: true}
+	tx, calls := dictTxRunner()
+	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx)
+
+	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
+		CardgroupID: "cg-target",
+		Payload:     payload,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Inserted != 0 {
+		t.Fatalf("Inserted = %d, want 0", out.Inserted)
+	}
+	if out.Updated != 0 {
+		t.Fatalf("Updated = %d, want 0", out.Updated)
+	}
+	if len(out.Errors) != 1 {
+		t.Fatalf("expected exactly 1 parse error, got %d: %+v", len(out.Errors), out.Errors)
+	}
+	if out.Errors[0].Line != 1 {
+		t.Fatalf("Errors[0].Line = %d, want 1", out.Errors[0].Line)
+	}
+	if out.Errors[0].Message != "skipped: front-only line (no definition)" {
+		t.Fatalf("Errors[0].Message = %q, want skipped front-only line", out.Errors[0].Message)
+	}
+	if out.Errors[0].Front != "" || out.Errors[0].Back != "" {
+		t.Fatalf("Errors[0] carried fields: %+v, want empty Front/Back", out.Errors[0])
+	}
+	if repo.upsertCalls != 0 {
+		t.Fatalf("expected 0 repo calls for skipped lone front, got %d", repo.upsertCalls)
+	}
+	if *calls != 0 {
+		t.Fatalf("expected 0 tx invocations for skipped lone front, got %d", *calls)
 	}
 }
 

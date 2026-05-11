@@ -44,8 +44,8 @@ func (e parseError) Error() string {
 %type<nodes> entries
 %type<nodes> start
 
-%right DEFINITION
 %right WORD
+%right DEFINITION
 
 %%
 start
@@ -60,6 +60,8 @@ entries
 
 entry
 	: WORD DEFINITION { $$ = node{Word: $1, Definition: $2, Line: yyDollar[1].line} }
+	| WORD { $$ = node{}; currentParser.recordSkip(yyDollar[1].line, "skipped: front-only line (no definition)") }
+	| DEFINITION { $$ = node{}; currentParser.recordSkip(yyDollar[1].line, "skipped: back-only line (no front)") }
 	| NEWLINE { $$ = node{} } // Blank line: skip without producing a node.
 	;
 
@@ -107,6 +109,13 @@ func (yyrcvr *yyParserImpl) setNodes(nodes []node) {
 	if currentParser != nil {
 		currentParser.nodes = nodes
 	}
+}
+
+func (p *parserWrapper) recordSkip(line int, message string) {
+	if p == nil {
+		return
+	}
+	p.errors = append(p.errors, parseError{Line: line, Message: message})
 }
 
 // Error is the goyacc error callback. tokenLine reflects the line at which
