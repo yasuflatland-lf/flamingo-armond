@@ -10,6 +10,23 @@ type GqlFetchInit<TVars> = {
   revalidate?: number | false;
 };
 
+/**
+ * Returns true when the GraphQL errors array contains at least one entry with an
+ * auth-related extension code (UNAUTHENTICATED or FORBIDDEN). Auth errors in a
+ * partial response must still throw so RSC callers can redirect appropriately —
+ * silently returning data would swallow the auth signal.
+ *
+ * Internal use only. Not exported — the public surface for inspecting thrown errors
+ * is isUnauthenticatedGraphQLError / isForbiddenGraphQLError in graphql-errors.ts.
+ */
+function hasAuthError(errors: unknown): boolean {
+  if (!Array.isArray(errors)) return false;
+  return errors.some((e: { extensions?: { code?: unknown } }) => {
+    const code = e?.extensions?.code;
+    return code === "UNAUTHENTICATED" || code === "FORBIDDEN";
+  });
+}
+
 export async function gqlFetch<TResult, TVars>(
   doc: TypedDocumentNode<TResult, TVars>,
   init: GqlFetchInit<TVars> = {},
@@ -50,7 +67,13 @@ export async function gqlFetch<TResult, TVars>(
     if (json.data != null) {
       // Partial response: data is present alongside errors (GraphQL over HTTP §5.2).
       // Return data so callers can use what the server provided; warn for debuggability.
+      // Exception: auth errors (UNAUTHENTICATED / FORBIDDEN) must still throw so that
+      // RSC callers using isUnauthenticatedGraphQLError / isForbiddenGraphQLError can
+      // redirect correctly — silently returning data would swallow the auth signal.
       console.warn("[gqlFetch] partial response with errors:", JSON.stringify(json.errors));
+      if (hasAuthError(json.errors)) {
+        throw new Error(`GraphQL errors: ${JSON.stringify(json.errors)}`);
+      }
       return json.data;
     }
     throw new Error(`GraphQL errors: ${JSON.stringify(json.errors)}`);

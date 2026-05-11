@@ -71,6 +71,44 @@ describe("gqlFetch", () => {
     expect(warnSpy.mock.calls[0]?.[0]).toBe("[gqlFetch] partial response with errors:");
   });
 
+  it("throws with GraphQL errors prefix when partial response contains UNAUTHENTICATED", async () => {
+    const errors = [{ message: "not authenticated", extensions: { code: "UNAUTHENTICATED" } }];
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: { health: "partial" }, errors })),
+    );
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await expect(gqlFetch(HealthQuery)).rejects.toThrow(
+      `GraphQL errors: ${JSON.stringify(errors)}`,
+    );
+  });
+
+  it("throws with GraphQL errors prefix when partial response contains FORBIDDEN", async () => {
+    const errors = [{ message: "access denied", extensions: { code: "FORBIDDEN" } }];
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: { health: "partial" }, errors })),
+    );
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await expect(gqlFetch(HealthQuery)).rejects.toThrow(
+      `GraphQL errors: ${JSON.stringify(errors)}`,
+    );
+  });
+
+  it("returns data and warns when partial response contains a non-auth business error code", async () => {
+    const errors = [{ message: "rate limit exceeded", extensions: { code: "RATE_LIMITED" } }];
+    vi.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: { health: "ok" }, errors })),
+    );
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = await gqlFetch(HealthQuery);
+
+    expect(result.health).toBe("ok");
+    expect(warnSpy).toHaveBeenCalledOnce();
+    expect(warnSpy.mock.calls[0]?.[0]).toBe("[gqlFetch] partial response with errors:");
+  });
+
   it("throws when data is missing", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue(new Response(JSON.stringify({})));
     await expect(gqlFetch(HealthQuery)).rejects.toThrow(/missing data/);
