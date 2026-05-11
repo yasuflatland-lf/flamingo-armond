@@ -189,15 +189,19 @@ describe("<LogoDrawer>", () => {
     expect(screen.queryByRole("link", { name: /add a new card to this cardgroup/i })).toBeNull();
   });
 
-  it("S-L3: on /learn/:id the '+' link comes before the menu trigger in DOM order", () => {
+  it("S-L3: on /learn/:id the '+' link receives keyboard focus before the menu trigger", async () => {
+    const user = userEvent.setup();
     mockUsePathname.mockReturnValue("/learn/abc-123");
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
     const addLink = screen.getByRole("link", { name: /add a new card to this cardgroup/i });
     const menuButton = screen.getByRole("button", { name: "Open menu" });
-    // Node.DOCUMENT_POSITION_FOLLOWING = 4: menuButton follows addLink
-    expect(
-      addLink.compareDocumentPosition(menuButton) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+
+    await user.tab(); // Focus: logo link
+    await user.tab(); // Focus: '+' link
+    expect(addLink).toHaveFocus();
+    await user.tab(); // Focus: menu trigger
+    expect(menuButton).toHaveFocus();
   });
 
   it("S-L4: cardgroupId with special characters round-trips to single-encoded href (matches LearnAddCardFloating)", () => {
