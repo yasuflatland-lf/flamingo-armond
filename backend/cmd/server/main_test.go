@@ -18,12 +18,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/99designs/gqlgen/graphql/handler"
+	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -35,11 +38,14 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"gorm.io/gorm"
 
+	"backend/graph/generated"
+	"backend/graph/model"
 	"backend/graph/resolver"
 	"backend/internal/auth"
 	"backend/internal/database"
 	"backend/internal/domain"
 	"backend/internal/domain/service"
+	"backend/internal/gqlerr"
 	"backend/internal/handler/ping"
 	"backend/internal/logging"
 	"backend/internal/repository"
@@ -2130,6 +2136,146 @@ func TestBootstrapSuperUserPromoter_NonEmptyEmailsHappyPath(t *testing.T) {
 		if rec["level"] == "WARN" {
 			t.Errorf("unexpected WARN log on happy path: %v", rec)
 		}
+	}
+}
+
+// panicQueryResolver is a minimal generated.QueryResolver whose Health method
+// panics. All other methods are stubs that return zero values. It is used by
+// TestGraphQL_PanicRecovery_ReturnsINTERNAL to drive the SetRecoverFunc path
+// without requiring a database or auth middleware.
+type panicQueryResolver struct{}
+
+func (panicQueryResolver) Health(_ context.Context) (string, error) {
+	panic("deliberate panic in Health resolver for panic-recovery test")
+}
+func (panicQueryResolver) Me(_ context.Context) (*model.User, error) { return nil, nil }
+func (panicQueryResolver) MyCardgroups(_ context.Context) ([]*model.Cardgroup, error) {
+	return nil, nil
+}
+func (panicQueryResolver) Cardgroup(_ context.Context, _ string) (*model.Cardgroup, error) {
+	return nil, nil
+}
+func (panicQueryResolver) MyCardgroupsConnection(_ context.Context, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.CardgroupOrderBy, _ *model.SortOrder) (*model.CardgroupConnection, error) {
+	return nil, nil
+}
+func (panicQueryResolver) Card(_ context.Context, _ string) (*model.Card, error) { return nil, nil }
+func (panicQueryResolver) CardsByCardgroup(_ context.Context, _ string) ([]*model.Card, error) {
+	return nil, nil
+}
+func (panicQueryResolver) CardsByCardgroupConnection(_ context.Context, _ string, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.CardOrderBy, _ *model.SortOrder) (*model.CardConnection, error) {
+	return nil, nil
+}
+func (panicQueryResolver) ValidateDictionary(_ context.Context, _ model.ValidateDictionaryInput) (*model.DictionaryValidationResult, error) {
+	return nil, nil
+}
+func (panicQueryResolver) Users(_ context.Context, _ *int, _ *string, _ *int, _ *string, _ *string) (*model.UserConnection, error) {
+	return nil, nil
+}
+func (panicQueryResolver) AdminUser(_ context.Context, _ string) (*model.User, error) {
+	return nil, nil
+}
+func (panicQueryResolver) Roles(_ context.Context) ([]*model.Role, error)        { return nil, nil }
+func (panicQueryResolver) Role(_ context.Context, _ string) (*model.Role, error) { return nil, nil }
+
+// panicResolverRoot is a generated.ResolverRoot whose Query resolver panics on
+// Health. All other sub-resolvers forward to the real resolver with nil deps
+// (which is safe because they are never called in the panic-recovery test).
+type panicResolverRoot struct {
+	inner *resolver.Resolver
+}
+
+func newPanicResolverRoot() *panicResolverRoot {
+	return &panicResolverRoot{inner: resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil)}
+}
+
+func (p *panicResolverRoot) Card() generated.CardResolver           { return p.inner.Card() }
+func (p *panicResolverRoot) Cardgroup() generated.CardgroupResolver { return p.inner.Cardgroup() }
+func (p *panicResolverRoot) Mutation() generated.MutationResolver   { return p.inner.Mutation() }
+func (p *panicResolverRoot) Query() generated.QueryResolver         { return panicQueryResolver{} }
+func (p *panicResolverRoot) User() generated.UserResolver           { return p.inner.User() }
+
+// newPanicGraphQLServer builds a gqlgen handler.Server using the same
+// transport, complexity limit, and SetRecoverFunc configuration as
+// newGraphQLServer, but wires panicResolverRoot so that { health } panics.
+// It is used exclusively by TestGraphQL_PanicRecovery_ReturnsINTERNAL.
+func newPanicGraphQLServer() *handler.Server {
+	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: newPanicResolverRoot()}))
+	srv.AddTransport(transport.Options{})
+	srv.AddTransport(transport.POST{
+		ResponseHeaders: http.Header{
+			"Content-Type": []string{"application/graphql-response+json; charset=utf-8"},
+		},
+	})
+	srv.SetRecoverFunc(func(ctx context.Context, err any) error {
+		stack := debug.Stack()
+		return gqlerr.Internal(ctx,
+			eris.Errorf("graphql: panic recovered (%T)\n%s", err, stack),
+		)
+	})
+	return srv
+}
+
+// TestGraphQL_PanicRecovery_ReturnsINTERNAL verifies that a resolver panic is
+// caught by SetRecoverFunc and returned to the client as a well-formed GraphQL
+// envelope with errors[0].extensions.code == "INTERNAL". The process must not
+// crash.
+//
+// Strategy: newPanicGraphQLServer wires a panicResolverRoot whose Health method
+// panics. The gqlgen handler's SetRecoverFunc must catch it and return an
+// INTERNAL error. The handler is used directly (no Echo auth layer) to keep the
+// fixture minimal — matching the newIntrospectionTestServer pattern.
+func TestGraphQL_PanicRecovery_ReturnsINTERNAL(t *testing.T) {
+	t.Parallel()
+
+	ts := httptest.NewServer(newPanicGraphQLServer())
+	t.Cleanup(ts.Close)
+
+	raw := postRaw(t, ts.URL, `{"query":"{ health }"}`)
+
+	var payload struct {
+		Data   map[string]any `json:"data"`
+		Errors []struct {
+			Message    string         `json:"message"`
+			Extensions map[string]any `json:"extensions"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("decode body: %v (body=%q)", err, raw)
+	}
+	if len(payload.Errors) == 0 {
+		t.Fatalf("expected errors from panic recovery, got none; body=%q", raw)
+	}
+	code, _ := payload.Errors[0].Extensions["code"].(string)
+	if code != "INTERNAL" {
+		t.Fatalf("expected extensions.code=INTERNAL, got %q; body=%q", code, raw)
+	}
+	msg := payload.Errors[0].Message
+	if msg == "" {
+		t.Fatalf("expected non-empty error message; body=%q", raw)
+	}
+}
+
+// TestGraphQL_ContentType_POST verifies that a GraphQL POST response carries
+// the Content-Type header set by the transport.POST ResponseHeaders override.
+func TestGraphQL_ContentType_POST(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/query", strings.NewReader(`{"query":"{ health }"}`))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer res.Body.Close()
+	_, _ = io.ReadAll(res.Body)
+
+	ct := res.Header.Get("Content-Type")
+	if !strings.Contains(ct, "application/graphql-response+json") {
+		t.Errorf("Content-Type = %q, want it to contain %q", ct, "application/graphql-response+json")
 	}
 }
 

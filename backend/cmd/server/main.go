@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strconv"
 	"syscall"
 	"time"
@@ -54,7 +55,10 @@ func newGraphQLServer(r *resolver.Resolver) *handler.Server {
 	})
 
 	srv.SetRecoverFunc(func(ctx context.Context, err any) error {
-		return gqlerr.Internal(ctx, eris.Errorf("graphql: panic recovered: %v", err))
+		stack := debug.Stack()
+		return gqlerr.Internal(ctx,
+			eris.Errorf("graphql: panic recovered (%T)\n%s", err, stack),
+		)
 	})
 
 	srv.Use(extension.FixedComplexityLimit(100))
