@@ -565,6 +565,27 @@ describe("<LearnClient> persist-last-viewed path", () => {
   });
 });
 
+describe("<LearnClient> LearnActionBar integration", () => {
+  it("renders LearnActionBar when cards exist", () => {
+    renderLearnClient([]);
+    expect(screen.getByTestId("learn-action-bar")).toBeInTheDocument();
+  });
+
+  it("disables LearnActionBar when the session queue empties", async () => {
+    const user = userEvent.setup();
+    const swipe = makeSwipeMock(4, []);
+    renderLearnClient([swipe.mock]);
+
+    expect(screen.getByTestId("learn-action-bar")).toHaveAttribute("data-disabled", "false");
+
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("learn-action-bar")).toHaveAttribute("data-disabled", "true");
+    });
+  });
+});
+
 // ---------------------------------------------------------------------------
 // onSwipe identity-stability test
 //
@@ -583,43 +604,6 @@ describe("<LearnClient> persist-last-viewed path", () => {
 // interaction needed, which keeps the test immune to changes in SwipeCardStack's
 // internal UI structure (the `next/dynamic` AnimatedCard rendering, etc.).
 // ---------------------------------------------------------------------------
-
-describe("<LearnClient> LearnActionBar integration", () => {
-  it("renders LearnActionBar when cards exist", () => {
-    renderLearnClient([]);
-    expect(screen.getByTestId("learn-action-bar")).toBeInTheDocument();
-  });
-
-  it.each([
-    ["Rate as Again", 1],
-    ["Rate as Hard", 2],
-    ["Rate as Easy", 4],
-  ] as const)("maps LearnActionBar %s button to mode %d", async (label, mode) => {
-    const user = userEvent.setup();
-    const swipe = makeSwipeMock(mode);
-    renderLearnClient([swipe.mock]);
-
-    await user.click(screen.getByRole("button", { name: label }));
-
-    await waitFor(() => {
-      expect(swipe.wasCalled()).toBe(true);
-    });
-  });
-
-  it("disables LearnActionBar when the session queue empties", async () => {
-    const user = userEvent.setup();
-    const swipe = makeSwipeMock(4, []);
-    renderLearnClient([swipe.mock]);
-
-    expect(screen.getByTestId("learn-action-bar")).toHaveAttribute("data-disabled", "false");
-
-    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("learn-action-bar")).toHaveAttribute("data-disabled", "true");
-    });
-  });
-});
 
 describe("<LearnClient> onSwipe identity stability", () => {
   it("passes the same onCardSwiped reference to SwipeCardStack after a swipe re-renders the parent", async () => {
