@@ -552,7 +552,7 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
 
     const user = userEvent.setup();
     const dialogTitle = await screen.findByText("Card already exists");
-    const dialogEl = dialogTitle.closest('[role="alertdialog"]');
+    const dialogEl = dialogTitle.closest<HTMLElement>('[role="alertdialog"]');
     const cancelBtn = within(dialogEl!).getByRole("button", { name: "Cancel" });
     await user.click(cancelBtn);
 
