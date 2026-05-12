@@ -4,9 +4,13 @@
 
 # Most env / Supabase targets dispatch to the playbook below; tags select the subset.
 ANSIBLE := ansible-playbook -i playbooks/inventory.local playbooks/setup.yml
+ANSIBLE_PROD := ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml
+ANSIBLE_TEARDOWN := ansible-playbook -i playbooks/inventory.local playbooks/teardown-prod.yml
 
 help: ## Show this help
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*?## "} /^##@/ {printf "\n\033[1m%s\033[0m\n", substr($$0, 5)} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+##@ Initial setup
 
 setup: notice-prereqs check-docker mise-install ## One-shot initial setup: pnpm + supabase + sync env + google check (via Ansible)
 	@$(ANSIBLE)
@@ -20,8 +24,34 @@ notice-prereqs: ## Up-front notice about manual prerequisites that run in parall
 	@echo "       section 'Manual prerequisites' -> Google OAuth client.)"
 	@echo ""
 
+check-docker: ## Verify the Docker daemon is reachable (required by supabase start)
+	@docker info >/dev/null 2>&1 || { echo "ERROR: Docker daemon not reachable. Start Docker Desktop, then re-run."; exit 1; }
+
+mise-install: ## Install pinned tools via mise (auto-trusts mise.toml; provisions Python + ansible-core)
+	@mise trust mise.toml >/dev/null 2>&1 || true
+	@mise install
+
+check-google-oauth: ## Verify Google OAuth credentials are set in root .env (warns if placeholder/missing)
+	@$(ANSIBLE) --tags google-check
+
+##@ Development
+
 install: ## Install pnpm workspace dependencies (Ansible-managed for change detection)
 	@$(ANSIBLE) --tags pnpm
+
+sync-env: ## Idempotently sync .env (root) + frontend/backend .env.local using marker-aware ownership
+	@$(ANSIBLE) --tags sync-env
+
+dev: ## Run preflight + backend + frontend via mprocs (requires Supabase up)
+	@mprocs
+
+dev-backend: ## Run the backend dev server on port 1323
+	cd backend && go run ./cmd/server
+
+dev-frontend: ## Run the frontend Next.js dev server
+	pnpm --filter frontend dev
+
+##@ Local Supabase
 
 supabase-start: ## Boot local Supabase (no-op if already running, via Ansible)
 	@$(ANSIBLE) --tags supabase
@@ -40,36 +70,17 @@ seed-admin: ## Grant admin role to EMAIL=<address> via local Supabase psql (idem
 	@if [ -z "$(EMAIL)" ]; then echo "ERROR: EMAIL is required, e.g. make seed-admin EMAIL=you@example.com"; exit 1; fi
 	@$(ANSIBLE) --tags seed-admin -e "admin_email=$(EMAIL)"
 
-sync-env: ## Idempotently sync .env (root) + frontend/backend .env.local using marker-aware ownership
-	@$(ANSIBLE) --tags sync-env
-
-check-google-oauth: ## Verify Google OAuth credentials are set in root .env (warns if placeholder/missing)
-	@$(ANSIBLE) --tags google-check
-
-check-docker: ## Verify the Docker daemon is reachable (required by supabase start)
-	@docker info >/dev/null 2>&1 || { echo "ERROR: Docker daemon not reachable. Start Docker Desktop, then re-run."; exit 1; }
-
-mise-install: ## Install pinned tools via mise (auto-trusts mise.toml; provisions Python + ansible-core)
-	@mise trust mise.toml >/dev/null 2>&1 || true
-	@mise install
-
-dev: ## Run preflight + backend + frontend via mprocs (requires Supabase up)
-	@mprocs
-
-dev-backend: ## Run the backend dev server on port 1323
-	cd backend && go run ./cmd/server
-
-dev-frontend: ## Run the frontend Next.js dev server
-	pnpm --filter frontend dev
+##@ Code generation
 
 codegen: ## Run gqlgen (backend) and graphql-codegen (frontend)
 	cd backend && go tool gqlgen generate
 	pnpm --filter frontend codegen
 
-.PHONY: codegen-yacc
 codegen-yacc: ## Regenerate the goyacc-driven dictionary parser
 	cd backend && go tool goyacc -o internal/textdic/parser.go -p yy internal/textdic/grammar.y
 	rm -f backend/y.output y.output
+
+##@ Test & clean
 
 test: ## Run backend go test and frontend vitest
 	cd backend && go test -race -covermode=atomic ./...
@@ -92,9 +103,7 @@ doctor: ## Show which processes hold dev ports 1323/3000 (does NOT kill; you dec
 	@echo ""
 	@echo "If a stale dev server is listed above, kill it manually: kill <PID>"
 
-# --- Production bring-up (manual runbook + verification) -------------------
-ANSIBLE_PROD := ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml
-ANSIBLE_TEARDOWN := ansible-playbook -i playbooks/inventory.local playbooks/teardown-prod.yml
+##@ Production
 
 setup-prod: mise-install ## Guided production bring-up: prereq check + dashboard handoff + smoke
 	@$(ANSIBLE_PROD)
@@ -107,11 +116,13 @@ setup-prod-preflight: mise-install ## Verify tokens and GitHub App installations
 setup-prod-postapply: mise-install ## Trigger first Render deploy + smoke tests (re-runnable from .state.yml)
 	@$(ANSIBLE_PROD) --tags postapply
 
-sync-notion-secrets: mise-install ## Sync NOTION_* to Render env + GHA secrets (idempotent)
-	@$(ANSIBLE_PROD) --tags notion
+teardown-prod: mise-install ## DESTRUCTIVE: tear down the production environment created by setup-prod
+	@$(ANSIBLE_TEARDOWN)
 
-sync-notion-preflight: mise-install ## Verify root .env has all required NOTION_* without writing
-	@$(ANSIBLE_PROD) --tags notion-preflight
+teardown-prod-preflight: mise-install ## Verify tokens and resolve IDs only (no destructive work)
+	@$(ANSIBLE_TEARDOWN) --tags preflight
+
+##@ Notion
 
 notion-env-init: mise-install ## Seed NOTION_* production placeholders into root .env (safe to re-run; never overwrites existing values)
 	@$(ANSIBLE) --tags notion-env-init
@@ -122,8 +133,8 @@ notion-local-setup: mise-install ## Write NOTION_* to backend/.env.local from ro
 notion-local-run: mise-install ## Trigger local /internal/notion-sync (requires `make dev-backend` running in another terminal)
 	@scripts/notion-local-run.sh
 
-teardown-prod: mise-install ## DESTRUCTIVE: tear down the production environment created by setup-prod
-	@$(ANSIBLE_TEARDOWN)
+sync-notion-secrets: mise-install ## Sync NOTION_* to Render env + GHA secrets (idempotent)
+	@$(ANSIBLE_PROD) --tags notion
 
-teardown-prod-preflight: mise-install ## Verify tokens and resolve IDs only (no destructive work)
-	@$(ANSIBLE_TEARDOWN) --tags preflight
+sync-notion-preflight: mise-install ## Verify root .env has all required NOTION_* without writing
+	@$(ANSIBLE_PROD) --tags notion-preflight
