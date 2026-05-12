@@ -23,7 +23,7 @@ import { LearnClient } from "./learn-client";
 // first card in the `cards` array — enough for LearnClient integration tests.
 //
 // swipeDirection / swipeProgress are NOT in the mock props because LearnClient
-// no longer owns overlay state (that responsibility moved to SwipeCardStack in T1).
+// no longer owns overlay state (SwipeCardStack owns it — see swipe-card-stack.tsx).
 //
 // capturedOnCardSwiped accumulates the onCardSwiped reference on every render
 // so the identity-stability test can assert it does not change across re-renders.
@@ -378,10 +378,9 @@ describe("<LearnClient>", () => {
     expect(link).toHaveAccessibleName(`Add a new card to ${CG_NAME}`);
   });
 
-  // The 180ms commit-delay and overlay-paint logic moved into SwipeCardStack (T1).
-  // LearnClient's handleRate now only calls swipeStackRef.current?.triggerSwipe()
-  // synchronously — no setTimeout, no swipeDirection/swipeProgress state.
-  // Timing behavior is covered by swipe-card-stack.test.tsx (T2b).
+  // The 180ms commit-delay and overlay-paint logic lives in SwipeCardStack, not LearnClient.
+  // LearnClient's handleRate only calls swipeStackRef.current?.triggerSwipe() — no setTimeout,
+  // no swipeDirection/swipeProgress state. Timing behavior is covered by swipe-card-stack.test.tsx.
   it("handleRate dispatches triggerSwipe exactly once per button click without async delay", async () => {
     const user = userEvent.setup();
     const swipe = makeSwipeMock(1);

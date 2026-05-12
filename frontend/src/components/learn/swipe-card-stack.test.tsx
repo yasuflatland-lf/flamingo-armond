@@ -101,6 +101,13 @@ describe("SwipeCardStack — Session-complete count line", () => {
 // ---------------------------------------------------------------------------
 
 describe("SwipeCardStack — keydown listener stability (activeCardRef)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("registers the keydown listener exactly once even after activeCard changes via rerender", () => {
     const addSpy = vi.spyOn(window, "addEventListener");
     const removeSpy = vi.spyOn(window, "removeEventListener");
@@ -130,7 +137,6 @@ describe("SwipeCardStack — keydown listener stability (activeCardRef)", () => 
   });
 
   it("fires onCardSwiped with the correct card after activeCard advances", () => {
-    vi.useFakeTimers({ shouldAdvanceTime: false });
     const onCardSwiped = vi.fn();
     const { rerender } = render(
       <SwipeCardStack cards={[cardA, cardB]} onCardSwiped={onCardSwiped} />,
@@ -150,8 +156,6 @@ describe("SwipeCardStack — keydown listener stability (activeCardRef)", () => 
     vi.runAllTimers();
     expect(onCardSwiped).toHaveBeenCalledTimes(2);
     expect(onCardSwiped).toHaveBeenNthCalledWith(2, cardB, "left");
-
-    vi.useRealTimers();
   });
 });
 
@@ -425,28 +429,30 @@ describe("SwipeCardStack — triggerSwipe with reduced motion", () => {
 // ---------------------------------------------------------------------------
 
 describe("SwipeCardStack — keyboard triggers all three directions", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it.each([
     ["ArrowLeft", "left"],
     ["ArrowRight", "right"],
     ["ArrowDown", "down"],
-  ] as const)(
-    "fires onCardSwiped with direction '%s' → '%s' when the key is pressed",
-    (key, expectedDirection) => {
-      vi.useFakeTimers({ shouldAdvanceTime: false });
-      const onCardSwiped = vi.fn();
+  ] as const)("fires onCardSwiped with direction '%s' → '%s' when the key is pressed", (key, expectedDirection) => {
+    const onCardSwiped = vi.fn();
 
-      render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} />);
+    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} />);
 
-      fireEvent.keyDown(document, { key });
-      act(() => {
-        vi.runAllTimers();
-      });
+    fireEvent.keyDown(document, { key });
+    act(() => {
+      vi.runAllTimers();
+    });
 
-      expect(onCardSwiped).toHaveBeenCalledTimes(1);
-      expect(onCardSwiped).toHaveBeenCalledWith(cardA, expectedDirection);
-      vi.useRealTimers();
-    },
-  );
+    expect(onCardSwiped).toHaveBeenCalledTimes(1);
+    expect(onCardSwiped).toHaveBeenCalledWith(cardA, expectedDirection);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -454,8 +460,14 @@ describe("SwipeCardStack — keyboard triggers all three directions", () => {
 // ---------------------------------------------------------------------------
 
 describe("SwipeCardStack — overlay state resets on active card change", () => {
-  it("clears swipeDirection and swipeProgress when active card advances", () => {
+  beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: false });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("clears swipeDirection and swipeProgress when active card advances", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
@@ -483,7 +495,5 @@ describe("SwipeCardStack — overlay state resets on active card change", () => 
     expect(screen.queryByText("Easy")).not.toBeInTheDocument();
     expect(screen.queryByText("Again")).not.toBeInTheDocument();
     expect(screen.queryByText("Hard")).not.toBeInTheDocument();
-
-    vi.useRealTimers();
   });
 });
