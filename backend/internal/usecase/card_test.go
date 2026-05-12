@@ -821,7 +821,6 @@ func TestCardUsecase_Create_DuplicateLookupRace_RowVanished(t *testing.T) {
 // strPtr returns a pointer to s. Helper used by search passthrough tests.
 func strPtr(s string) *string { return &s }
 
-// stubNotionWriter is an in-package test double for NotionWritebacker.
 type stubNotionWriter struct {
 	mu     sync.Mutex
 	calls  []notionWriteCall

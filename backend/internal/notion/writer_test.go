@@ -9,7 +9,6 @@ import (
 )
 
 type stubBlockAppendService struct {
-	t        *testing.T
 	response *notionapi.AppendBlockChildrenResponse
 	err      error
 	calls    []*notionapi.AppendBlockChildrenRequest
@@ -29,7 +28,6 @@ func TestWriterAppendParagraphHappyPath(t *testing.T) {
 	t.Parallel()
 
 	stub := &stubBlockAppendService{
-		t:        t,
 		response: &notionapi.AppendBlockChildrenResponse{},
 	}
 	w := NewWriterFromService(stub)
@@ -70,7 +68,6 @@ func TestWriterAppendParagraphErrorPath(t *testing.T) {
 
 	sentinel := errors.New("notion api down")
 	stub := &stubBlockAppendService{
-		t:   t,
 		err: sentinel,
 	}
 	w := NewWriterFromService(stub)
