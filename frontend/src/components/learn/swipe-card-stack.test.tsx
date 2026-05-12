@@ -186,7 +186,7 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     expect(onCardSwiped).toHaveBeenCalledWith(cardA, "right");
   });
 
-  it("calls onCardSwiped with 'like' direction via triggerSwipe", () => {
+  it("calls onCardSwiped with 'right' direction via triggerSwipe", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
@@ -201,6 +201,68 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
 
     expect(onCardSwiped).toHaveBeenCalledTimes(1);
     expect(onCardSwiped).toHaveBeenCalledWith(cardA, "right");
+  });
+
+  it("cancels the first pending commit when triggerSwipe is called again before it fires", () => {
+    const onCardSwiped = vi.fn();
+    const ref = createRef<SwipeCardStackHandle | null>();
+
+    render(<SwipeCardStack cards={[cardA, cardB]} onCardSwiped={onCardSwiped} ref={ref} />);
+
+    // First programmatic swipe — schedules a 180ms commit.
+    act(() => {
+      ref.current?.triggerSwipe("right");
+    });
+    // Advance 100ms — first commit not yet fired.
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(onCardSwiped).not.toHaveBeenCalled();
+
+    // Second swipe before the first fires — should cancel the first timer and
+    // schedule a new one for "left".
+    act(() => {
+      ref.current?.triggerSwipe("left");
+    });
+    // Advance another 180ms (280ms total from start).
+    act(() => {
+      vi.advanceTimersByTime(180);
+    });
+
+    // Only the second swipe should have committed, exactly once.
+    expect(onCardSwiped).toHaveBeenCalledTimes(1);
+    expect(onCardSwiped).toHaveBeenCalledWith(cardA, "left");
+  });
+
+  it("does not call onCardSwiped when unmount races a pending triggerSwipe timer", () => {
+    const onCardSwiped = vi.fn();
+    const ref = createRef<SwipeCardStackHandle | null>();
+
+    const { unmount } = render(
+      <SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />,
+    );
+
+    // Schedule a commit but do not advance past the delay yet.
+    act(() => {
+      ref.current?.triggerSwipe("right");
+    });
+    // Advance 100ms — commit is still pending.
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(onCardSwiped).not.toHaveBeenCalled();
+
+    // Unmount while the timer is still pending.
+    act(() => {
+      unmount();
+    });
+
+    // Advance well past the 180ms threshold — the timer must have been cleared.
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(onCardSwiped).not.toHaveBeenCalled();
   });
 
   it("shows overlay at progress=1 immediately after triggerSwipe before commit fires", () => {
@@ -286,6 +348,47 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
 });
 
 // ---------------------------------------------------------------------------
+// describe: gesture-driven overlay via SwipeCard callbacks
+// ---------------------------------------------------------------------------
+
+describe("SwipeCardStack — gesture-driven overlay via SwipeCard callbacks", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("shows the overlay when onSwipeProgress fires right/0.5 (pointer-down), hides it when progress resets", () => {
+    const onCardSwiped = vi.fn();
+
+    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} />);
+
+    const stub = screen.getByTestId("swipe-card-stub");
+
+    // Simulate drag start — the mock calls onSwipeProgress("right", 0.5).
+    act(() => {
+      fireEvent.pointerDown(stub);
+    });
+
+    // Overlay should show the "Easy" label at partial opacity.
+    expect(screen.getByText("Easy")).toBeInTheDocument();
+
+    // Simulate drag release — the mock calls onSwipeProgress(null, 0) then onSwipe.
+    // onSwipe goes through handleGestureCommit which clears the overlay immediately.
+    act(() => {
+      fireEvent.pointerUp(stub);
+    });
+
+    // onSwipe commits synchronously via handleGestureCommit, so overlay is gone.
+    expect(screen.queryByText("Easy")).not.toBeInTheDocument();
+    // The gesture commit fires onCardSwiped immediately (no delay for gesture path).
+    expect(onCardSwiped).toHaveBeenCalledTimes(1);
+    expect(onCardSwiped).toHaveBeenCalledWith(cardA, "right");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // describe: triggerSwipe with reduced motion
 // ---------------------------------------------------------------------------
 
@@ -315,6 +418,35 @@ describe("SwipeCardStack — triggerSwipe with reduced motion", () => {
     expect(onCardSwiped).toHaveBeenCalledTimes(1);
     expect(onCardSwiped).toHaveBeenCalledWith(cardA, "left");
   });
+});
+
+// ---------------------------------------------------------------------------
+// describe: keyboard direction coverage
+// ---------------------------------------------------------------------------
+
+describe("SwipeCardStack — keyboard triggers all three directions", () => {
+  it.each([
+    ["ArrowLeft", "left"],
+    ["ArrowRight", "right"],
+    ["ArrowDown", "down"],
+  ] as const)(
+    "fires onCardSwiped with direction '%s' → '%s' when the key is pressed",
+    (key, expectedDirection) => {
+      vi.useFakeTimers({ shouldAdvanceTime: false });
+      const onCardSwiped = vi.fn();
+
+      render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} />);
+
+      fireEvent.keyDown(document, { key });
+      act(() => {
+        vi.runAllTimers();
+      });
+
+      expect(onCardSwiped).toHaveBeenCalledTimes(1);
+      expect(onCardSwiped).toHaveBeenCalledWith(cardA, expectedDirection);
+      vi.useRealTimers();
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------
