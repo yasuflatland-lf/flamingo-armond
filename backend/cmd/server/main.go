@@ -282,7 +282,6 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	adminUserUC := usecase.NewAdminUser(userRepo, roleRepo, authSvc)
 	adminRoleUC := usecase.NewAdminRole(roleRepo, authSvc)
 	lastViewedCardgroupUC := usecase.NewLastViewedCardgroup(userRepo)
-	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, dictionaryUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC)
 	pingHandler := ping.New(pingRecordRepo, pingToken)
 	var notionSyncHandler *notionsync.Handler
 	if !notionSyncDisabled {
@@ -292,9 +291,12 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		}
 		retryCfg.Logger = logger
 		notionFetcher := notion.NewFetcher(notionEnv.NotionToken, retryCfg)
+		notionWriter := notion.NewWriter(notionEnv.NotionToken, retryCfg)
+		cardUC = cardUC.WithNotionWritebacker(notionWriter, notionEnv.HandlerConfig.PageIDs[0])
 		notionSyncUC := usecase.NewNotionSyncUsecase(notionFetcher, cardgroupRepo, cardRepo, db.GORM, logger)
 		notionSyncHandler = notionsync.New(notionSyncUC, notionEnv.HandlerConfig)
 	}
+	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, dictionaryUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC)
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
 	// telemetry.Init for the full ordering invariant.

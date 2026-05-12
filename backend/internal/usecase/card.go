@@ -42,6 +42,10 @@ type CardgroupRepositoryForCard interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
 }
 
+type NotionWritebacker interface {
+	AppendParagraph(ctx context.Context, pageID, text string) error
+}
+
 // txRunner is the function the usecase calls to run fn inside a database
 // transaction. NewCardUsecase binds it to db.WithContext(ctx).Transaction(fn);
 // NewCardUsecaseWithTx lets unit tests inject a stub that invokes fn with
@@ -52,6 +56,8 @@ type CardUsecase struct {
 	cardRepo      CardRepository
 	cardgroupRepo CardgroupRepositoryForCard
 	tx            txRunner
+	notionWriter  NotionWritebacker
+	notionPageID  string
 }
 
 func NewCardUsecase(db *gorm.DB, cardRepo CardRepository, cardgroupRepo CardgroupRepositoryForCard) *CardUsecase {
@@ -73,6 +79,12 @@ func NewCardUsecaseWithTx(
 	tx func(ctx context.Context, fn func(tx *gorm.DB) error) error,
 ) *CardUsecase {
 	return &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo, tx: tx}
+}
+
+func (u *CardUsecase) WithNotionWritebacker(w NotionWritebacker, pageID string) *CardUsecase {
+	u.notionWriter = w
+	u.notionPageID = pageID
+	return u
 }
 
 type CreateCardInput struct {
@@ -252,6 +264,20 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 			}}, nil
 		}
 		return CreateCardOutcome{}, gqlerr.Internal(ctx, err)
+	}
+	if u.notionWriter != nil && u.notionPageID != "" {
+		text := card.Front + " " + card.Back
+		cardID := card.ID
+		pageID := u.notionPageID
+		writer := u.notionWriter
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := writer.AppendParagraph(ctx, pageID, text); err != nil {
+				slog.WarnContext(ctx, "card create: notion writeback failed",
+					"card_id", cardID, "page_id", pageID, "err", err)
+			}
+		}()
 	}
 	return CreateCardOutcome{Card: card}, nil
 }

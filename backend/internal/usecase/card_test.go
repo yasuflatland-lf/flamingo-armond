@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -819,6 +820,143 @@ func TestCardUsecase_Create_DuplicateLookupRace_RowVanished(t *testing.T) {
 
 // strPtr returns a pointer to s. Helper used by search passthrough tests.
 func strPtr(s string) *string { return &s }
+
+type stubNotionWriter struct {
+	mu     sync.Mutex
+	calls  []notionWriteCall
+	err    error
+	called chan struct{}
+}
+
+type notionWriteCall struct{ PageID, Text string }
+
+func (s *stubNotionWriter) AppendParagraph(_ context.Context, pageID, text string) error {
+	s.mu.Lock()
+	s.calls = append(s.calls, notionWriteCall{pageID, text})
+	s.mu.Unlock()
+	if s.called != nil {
+		close(s.called)
+	}
+	return s.err
+}
+
+func TestCardUsecase_Create_triggersNotionWriteback(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubNotionWriter{called: make(chan struct{})}
+	cardRepo := &mockCardRepository{}
+	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
+	uc := NewCardUsecase(nil, cardRepo, cgRepo).WithNotionWritebacker(stub, "page-xyz")
+
+	got, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "front", Back: "back"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Card == nil {
+		t.Fatal("expected outcome.Card to be non-nil")
+	}
+
+	select {
+	case <-stub.called:
+	case <-time.After(2 * time.Second):
+		t.Fatal("notion writeback not invoked within timeout")
+	}
+
+	stub.mu.Lock()
+	calls := append([]notionWriteCall(nil), stub.calls...)
+	stub.mu.Unlock()
+
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 AppendParagraph call, got %d", len(calls))
+	}
+	if calls[0].PageID != "page-xyz" {
+		t.Errorf("expected PageID=%q, got %q", "page-xyz", calls[0].PageID)
+	}
+	if calls[0].Text != "front back" {
+		t.Errorf("expected Text=%q, got %q", "front back", calls[0].Text)
+	}
+}
+
+func TestCardUsecase_Create_duplicateDoesNotTriggerWriteback(t *testing.T) {
+	t.Parallel()
+
+	fixture := &domain.Card{ID: "existing-id", CardgroupID: "cg1", Front: "front", Back: "existing-back"}
+	stub := &stubNotionWriter{called: make(chan struct{})}
+	cardRepo := &mockCardRepository{
+		createErr:                     repository.ErrCardDuplicateFront,
+		findByCardgroupAndFrontResult: fixture,
+	}
+	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
+	uc := NewCardUsecase(nil, cardRepo, cgRepo).WithNotionWritebacker(stub, "page-xyz")
+
+	got, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "front", Back: "back"})
+	if err != nil {
+		t.Fatalf("expected nil error (duplicate is data), got %v", err)
+	}
+	if got.Duplicate == nil {
+		t.Fatal("expected outcome.Duplicate to be non-nil")
+	}
+	if got.Card != nil {
+		t.Fatalf("expected outcome.Card to be nil on duplicate, got %+v", got.Card)
+	}
+
+	select {
+	case <-stub.called:
+		t.Fatal("write-back should not be invoked for duplicates")
+	case <-time.After(50 * time.Millisecond):
+		// ok: no write-back observed
+	}
+
+	stub.mu.Lock()
+	n := len(stub.calls)
+	stub.mu.Unlock()
+
+	if n != 0 {
+		t.Fatalf("expected 0 AppendParagraph calls on duplicate, got %d", n)
+	}
+}
+
+func TestCardUsecase_Create_writebackErrorDoesNotAffectOutcome(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubNotionWriter{
+		err:    errors.New("notion: 500 internal"),
+		called: make(chan struct{}),
+	}
+	cardRepo := &mockCardRepository{}
+	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
+	uc := NewCardUsecase(nil, cardRepo, cgRepo).WithNotionWritebacker(stub, "page-xyz")
+
+	got, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "front", Back: "back"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Card == nil {
+		t.Fatal("expected outcome.Card to be non-nil even when writeback errors")
+	}
+
+	select {
+	case <-stub.called:
+	case <-time.After(2 * time.Second):
+		t.Fatal("notion writeback goroutine did not fire within timeout")
+	}
+}
+
+func TestCardUsecase_Create_noWritebackWhenNotConfigured(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &mockCardRepository{}
+	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
+	uc := NewCardUsecase(nil, cardRepo, cgRepo)
+
+	got, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "front", Back: "back"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Card == nil {
+		t.Fatal("expected outcome.Card to be non-nil")
+	}
+}
 
 // TestCardUsecase_ListCardsByCardgroupConnection_SearchPassthrough verifies that
 // the usecase normalizes the Search field before forwarding to the repository:

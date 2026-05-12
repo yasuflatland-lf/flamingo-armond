@@ -69,3 +69,5 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [gqlgen `transport.POST` response headers must be set at construction time](../../docs/backend/library-gotchas/gqlgen-transport-post-response-headers.md)
 - [Panic value format: `%T %v` vs `%T`-only — PII trade-off](../../docs/backend/library-gotchas/panic-value-format-pii-tradeoff.md)
 - [XOR-invariant outcome structs for mutually-exclusive results](../../docs/backend/library-gotchas/xor-invariant-outcome-struct.md)
+- [Fire-and-forget goroutine: detach context from request lifecycle](../../docs/backend/library-gotchas/fire-and-forget-goroutine-detached-context.md)
+- [Channel-based "never called" assertion via `select` + `time.After`](../../docs/backend/library-gotchas/channel-based-never-called-assertion.md)
