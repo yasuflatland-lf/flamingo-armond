@@ -222,7 +222,7 @@ export function LearnClient({
           </div>
         </section>
       ) : (
-        <section className="flex flex-1 flex-col">
+        <section className="flex min-h-0 flex-1 flex-col">
           {visibleError ? (
             <div
               className="mx-auto mb-4 w-full max-w-xl rounded-md bg-destructive/10 p-3 text-sm text-destructive"
@@ -232,7 +232,7 @@ export function LearnClient({
             </div>
           ) : null}
 
-          <div className="relative flex flex-1 items-center justify-center">
+          <div className="relative flex min-h-0 flex-1 items-center justify-center">
             <SwipeCardStack
               cards={queue}
               onCardSwiped={onSwipe}
