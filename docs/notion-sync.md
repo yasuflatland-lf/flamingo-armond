@@ -93,11 +93,14 @@ All NOTION_* values are stored in the root `.env` file (gitignored). The Makefil
 |---|---|---|
 | `NOTION_TOKEN` | yes | Notion integration token |
 | `NOTION_PAGE_IDS` | yes | Comma-separated page IDs |
-| `NOTION_TARGET_OWNER_ID` | yes | Supabase `auth.users.id` UUID for the destination owner |
+| `NOTION_TARGET_OWNER_EMAIL` | one of these two | Email of the destination account. `make sync-notion-secrets` resolves it to a UUID automatically via the production Supabase `auth.users` table. The account must have signed in to the production app at least once. |
+| `NOTION_TARGET_OWNER_ID` | one of these two | Manual fallback: UUID from `auth.users.id`. Set only when `NOTION_TARGET_OWNER_EMAIL` is blank. |
 | `NOTION_TARGET_CARDGROUP_NAME` | yes | Destination cardgroup name; created when absent |
 | `NOTION_SYNC_TOKEN` | yes | Shared bearer token — written to both Render env and the GHA secret (see note below) |
 | `NOTION_MAX_ATTEMPTS` | no | Defaults to `5` |
 | `NOTION_MAX_ELAPSED` | no | Defaults to `2m` |
+
+`NOTION_TARGET_OWNER_EMAIL` is preferred over `NOTION_TARGET_OWNER_ID` because it eliminates the manual UUID lookup step. When both are set, `NOTION_TARGET_OWNER_EMAIL` takes precedence and the UUID is resolved fresh each run.
 
 `NOTION_SYNC_TOKEN` is deliberately written to **two destinations with the same value**: the Render service env and the `NOTION_SYNC_TOKEN` GitHub Actions secret. This is what guarantees bearer-auth integrity — the backend validates the token in the incoming `Authorization: Bearer` header, and the GHA workflow supplies it as that same secret. If the two values drift, every sync request returns `401`.
 

@@ -106,7 +106,6 @@
   loop:
     - NOTION_TOKEN
     - NOTION_PAGE_IDS
-    - NOTION_TARGET_OWNER_ID
     - NOTION_TARGET_CARDGROUP_NAME
     - NOTION_SYNC_TOKEN
   tags: [preflight, notion-preflight, notion, notion-secrets, postapply]
@@ -120,6 +119,92 @@
       Set all of the above in the root .env file and re-run.
   when: (_missing_notion_keys | default([])) | length > 0
   tags: [preflight, notion-preflight, notion, notion-secrets, postapply]
+
+- name: Fail if neither NOTION_TARGET_OWNER_EMAIL nor NOTION_TARGET_OWNER_ID is set
+  ansible.builtin.fail:
+    msg: |
+      At least one of these must be set in root .env:
+        NOTION_TARGET_OWNER_EMAIL  (preferred) -- email of the destination account;
+                                                  resolved to UUID via production Supabase.
+        NOTION_TARGET_OWNER_ID     (fallback)  -- UUID from auth.users.id, set manually.
+
+      Set one of the above in root .env and re-run.
+  when: >-
+    ((lookup('env', 'NOTION_TARGET_OWNER_EMAIL') | default('')) | trim | length == 0) and
+    ((lookup('env', 'NOTION_TARGET_OWNER_ID')    | default('')) | trim | length == 0)
+  tags: [preflight, notion-preflight, notion, notion-secrets, postapply]
+
+# ---------------------------------------------------------------------------
+# Resolve NOTION_TARGET_OWNER_ID.
+#
+# Two paths are supported:
+#   1. NOTION_TARGET_OWNER_EMAIL (preferred) -- psql queries the production
+#      Supabase auth.users table using supabase_db_url from the state file,
+#      resolves the email to a UUID, and stores it as _notion_owner_id.
+#      The target account must have signed in to the production app at least
+#      once so the row exists.
+#   2. NOTION_TARGET_OWNER_ID (manual fallback) -- operator supplies the UUID
+#      directly in root .env; _notion_owner_id is set from that value.
+#
+# When NOTION_TARGET_OWNER_EMAIL is set it takes precedence; the fallback is
+# only used when the email key is absent or blank.
+# ---------------------------------------------------------------------------
+- name: Resolve NOTION_TARGET_OWNER_EMAIL to a UUID
+  when: (lookup('env', 'NOTION_TARGET_OWNER_EMAIL') | default('')) | trim | length > 0
+  tags: [notion, notion-secrets, postapply]
+  block:
+    - name: Validate NOTION_TARGET_OWNER_EMAIL format
+      ansible.builtin.fail:
+        msg: |
+          NOTION_TARGET_OWNER_EMAIL does not look like a valid email address:
+            {{ lookup('env', 'NOTION_TARGET_OWNER_EMAIL') | trim }}
+          Fix the value in root .env and re-run.
+      when: >-
+        not (lookup('env', 'NOTION_TARGET_OWNER_EMAIL') | trim
+             | regex_search('^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$'))
+
+    - name: Resolve NOTION_TARGET_OWNER_EMAIL to UUID in auth.users
+      # psql interpolates `:'var'` only for queries read from stdin or -f,
+      # never for queries passed via -c. Pipe the SQL through stdin so the
+      # email is bound as a quoted literal (psql escapes it) instead of being
+      # string-concatenated into the query.
+      ansible.builtin.command:
+        argv:
+          - psql
+          - "{{ supabase_db_url }}"
+          - -v
+          - "ON_ERROR_STOP=1"
+          - -v
+          - "email={{ lookup('env', 'NOTION_TARGET_OWNER_EMAIL') | trim }}"
+          - -t
+          - -A
+        stdin: "SELECT id FROM auth.users WHERE lower(email) = lower(:'email');"
+      register: _notion_owner_uuid_result
+      changed_when: false
+
+    - name: Fail if email not found in auth.users
+      ansible.builtin.fail:
+        msg: |
+          No auth.users row for {{ lookup('env', 'NOTION_TARGET_OWNER_EMAIL') }}.
+          The account must have signed in to the production app at least once before this step.
+      when: (_notion_owner_uuid_result.stdout | trim) | length == 0
+
+    - name: Fail if duplicate email rows found in auth.users
+      ansible.builtin.fail:
+        msg: |
+          Duplicate email in production auth.users; manual review required.
+          Email: {{ lookup('env', 'NOTION_TARGET_OWNER_EMAIL') }}
+      when: (_notion_owner_uuid_result.stdout | trim).split('\n') | length > 1
+
+    - name: Store resolved owner UUID from email
+      ansible.builtin.set_fact:
+        _notion_owner_id: "{{ _notion_owner_uuid_result.stdout | trim }}"
+
+- name: Use NOTION_TARGET_OWNER_ID when email resolution is skipped
+  ansible.builtin.set_fact:
+    _notion_owner_id: "{{ lookup('env', 'NOTION_TARGET_OWNER_ID') | default('') }}"
+  when: (lookup('env', 'NOTION_TARGET_OWNER_EMAIL') | default('')) | trim | length == 0
+  tags: [notion, notion-secrets, postapply]
 
 # ---------------------------------------------------------------------------
 # Precheck: Blueprint Manual Sync has been run for the current render.yaml.
@@ -283,7 +368,7 @@
         - key: NOTION_PAGE_IDS
           value: "{{ lookup('env', 'NOTION_PAGE_IDS') | default('') }}"
         - key: NOTION_TARGET_OWNER_ID
-          value: "{{ lookup('env', 'NOTION_TARGET_OWNER_ID') | default('') }}"
+          value: "{{ _notion_owner_id }}"
         - key: NOTION_TARGET_CARDGROUP_NAME
           value: "{{ lookup('env', 'NOTION_TARGET_CARDGROUP_NAME') | default('') }}"
         - key: NOTION_SYNC_TOKEN

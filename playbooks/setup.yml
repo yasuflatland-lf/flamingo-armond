@@ -413,6 +413,53 @@
           then run `make notion-local-run`.
       tags: [notion-local, never]
 
+    # --- Notion production env seed ---
+    # Adds NOTION_* production keys as blank placeholders to root .env when
+    # absent; never overwrites existing values. Run once before configuring
+    # production Notion sync for the first time (or after adding new NOTION_*
+    # keys to .env.example).
+    - name: Stat root .env for notion-env-init
+      ansible.builtin.stat:
+        path: "{{ repo_root }}/.env"
+      register: _notion_env_init_stat
+      tags: [notion-env-init, never]
+
+    - name: Fail if root .env is missing for notion-env-init
+      ansible.builtin.fail:
+        msg: |
+          notion-env-init: root .env not found at {{ repo_root }}/.env.
+          Run `make setup` first to seed it, then retry `make notion-env-init`.
+      when: not _notion_env_init_stat.stat.exists
+      tags: [notion-env-init, never]
+
+    - name: Seed NOTION_* production placeholders into root .env (skips existing keys)
+      # grep -qE exits 0 when the key already exists (any value), so the append
+      # branch never runs for pre-existing keys, preserving operator-set values.
+      ansible.builtin.shell:
+        cmd: >-
+          grep -qE '^{{ item.key }}=' '{{ repo_root }}/.env' ||
+          echo '{{ item.key }}={{ item.val }}' >> '{{ repo_root }}/.env'
+      loop:
+        - { key: NOTION_TOKEN,                val: "" }
+        - { key: NOTION_PAGE_IDS,             val: "" }
+        - { key: NOTION_TARGET_OWNER_EMAIL,   val: "" }
+        - { key: NOTION_TARGET_CARDGROUP_NAME, val: "" }
+        - { key: NOTION_SYNC_TOKEN,           val: "" }
+        - { key: NOTION_MAX_ATTEMPTS,         val: "5" }
+        - { key: NOTION_MAX_ELAPSED,          val: "2m" }
+      loop_control:
+        label: "{{ item.key }}"
+      changed_when: false
+      tags: [notion-env-init, never]
+
+    - name: Confirm notion-env-init complete
+      ansible.builtin.debug:
+        msg: >-
+          Seeded NOTION_* placeholders into .env.
+          Open .env and fill in: NOTION_TOKEN, NOTION_PAGE_IDS,
+          NOTION_TARGET_OWNER_EMAIL, NOTION_TARGET_CARDGROUP_NAME, NOTION_SYNC_TOKEN.
+      tags: [notion-env-init, never]
+
     # --- Google OAuth credentials check (root .env) ---
     # stat-then-slurp: a missing .env produces stat.exists=false (clean path),
     # and any slurp failure afterwards surfaces normally.
