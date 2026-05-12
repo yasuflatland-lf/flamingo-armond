@@ -51,11 +51,7 @@ type Props = {
   lastViewedCardgroupId: string | null;
 };
 
-export function LearnClient({
-  cardgroupId,
-  initialCards,
-  lastViewedCardgroupId,
-}: Props) {
+export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }: Props) {
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
   const reducedMotion = useReducedMotion();
   const queueRef = useRef(queue);
