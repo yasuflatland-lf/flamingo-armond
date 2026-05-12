@@ -3,9 +3,9 @@
 import { animated, useSpring } from "@react-spring/web";
 import { useDrag } from "@use-gesture/react";
 import { useCallback } from "react";
-import type { SwipeDirection } from "@/app/learn/[cardgroupId]/learn-client";
 import type { SwipeCardData } from "./swipe-card";
 import { CardContent } from "./swipe-card";
+import type { SwipeDirection } from "./types";
 
 type Props = {
   card: SwipeCardData;

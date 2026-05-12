@@ -1,8 +1,8 @@
 "use client";
 
 import { RotateCcw, Smile, Zap } from "lucide-react";
-import type { SwipeDirection } from "@/app/learn/[cardgroupId]/learn-client";
 import { cn } from "@/lib/utils";
+import type { SwipeDirection } from "./types";
 
 type Props = {
   onRate: (direction: SwipeDirection) => void;

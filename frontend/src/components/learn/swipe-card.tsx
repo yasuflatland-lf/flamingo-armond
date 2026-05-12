@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import type { SwipeDirection } from "@/app/learn/[cardgroupId]/learn-client";
+import type { SwipeDirection } from "./types";
 
 export type SwipeCardData = {
   id: string;

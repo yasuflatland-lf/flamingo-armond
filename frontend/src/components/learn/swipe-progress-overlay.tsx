@@ -1,7 +1,7 @@
 "use client";
 
-import type { SwipeDirection } from "@/app/learn/[cardgroupId]/learn-client";
 import { cn } from "@/lib/utils";
+import type { SwipeDirection } from "./types";
 
 const hints: Record<SwipeDirection, { label: string; className: string }> = {
   left: { label: "Again", className: "border-red-500 bg-red-500/10 text-red-700" },

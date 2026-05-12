@@ -8,6 +8,7 @@ import { HandleSwipeMutation, SetLastViewedCardgroupMutation } from "@/app/learn
 import { LearnActionBar } from "@/components/learn/learn-action-bar";
 import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
+import type { SwipeDirection } from "@/components/learn/types";
 import { LearnAddCardFloating } from "@/components/nav/learn-add-card-floating";
 import { Button } from "@/components/ui/button";
 import type {
@@ -16,7 +17,6 @@ import type {
 } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 
-export type SwipeDirection = "left" | "right" | "down";
 type LearnCard = LearnCardsByCardgroupQuery["cardsByCardgroup"][number];
 type PerformanceMetrics = HandleSwipeMutationType["handleSwipe"]["metrics"];
 
