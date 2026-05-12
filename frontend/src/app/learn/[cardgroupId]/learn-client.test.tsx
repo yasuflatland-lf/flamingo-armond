@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import { gql, InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { type RefObject, useImperativeHandle, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { SwipeCardData } from "@/components/learn/swipe-card";
+import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import { HandleSwipeDocument, SetLastViewedCardgroupDocument } from "@/generated/graphql";
 import {
   type ApolloMockLeakSpyResult,
@@ -30,15 +32,11 @@ type SwipeCardStackOnCardSwiped = Parameters<
   typeof import("@/components/learn/swipe-card-stack")["SwipeCardStack"]
 >[0]["onCardSwiped"];
 
-type SwipeCardStackHandle = {
-  triggerSwipe: (direction: "left" | "right" | "down") => void;
-};
-
 const capturedOnCardSwiped: SwipeCardStackOnCardSwiped[] = [];
 
 vi.mock("@/components/learn/swipe-card-stack", () => ({
   SwipeCardStack: (props: {
-    cards: { id: string; front: string; back: string }[];
+    cards: SwipeCardData[];
     onCardSwiped: SwipeCardStackOnCardSwiped;
     completedCount?: number;
     ref?: RefObject<SwipeCardStackHandle | null>;
@@ -598,6 +596,30 @@ describe("<LearnClient> LearnActionBar integration", () => {
       expect(screen.getByTestId("learn-action-bar")).toHaveAttribute("data-disabled", "true");
     });
   });
+
+  it("does not throw when handleRate fires with an empty queue (null activeCard guard)", async () => {
+    // Render with a single card, swipe it away, then click a rating button after
+    // the queue empties. `fireEvent.click` bypasses the disabled state that
+    // userEvent respects, so we can hit the underlying handler even though the
+    // button is visually disabled when the deck is empty.
+    // Verifies that the `queueRef.current[0]` null-guard inside handleRate keeps
+    // the call as a safe no-op rather than throwing.
+    const user = userEvent.setup();
+    const swipe = makeSwipeMock(4, []);
+    renderLearnClient([swipe.mock], [CARD_1]);
+
+    // Drain the queue: swipe the only card away.
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+    // Wait until the session-complete state is reached (queue empty).
+    await waitFor(() => {
+      expect(screen.getByTestId("learn-action-bar")).toHaveAttribute("data-disabled", "true");
+    });
+
+    // Use fireEvent to bypass the disabled attribute and invoke the handler directly.
+    const goodButton = screen.getByRole("button", { name: "Rate as Easy" });
+    expect(() => fireEvent.click(goodButton)).not.toThrow();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -606,11 +628,11 @@ describe("<LearnClient> LearnActionBar integration", () => {
 // Asserts that the `onSwipe` callback passed to SwipeCardStack as `onCardSwiped`
 // keeps the same reference across re-renders caused by queue state updates.
 //
-// Regression guard for commit f293612 which replaced `queue` in the
-// `useCallback` dependency array with a `queueRef`. Reverting that commit
-// (putting `queue` back as a dep) would cause `onSwipe` to be re-created on
-// every swipe and this test would fail: `capturedOnCardSwiped[0]` and
-// `capturedOnCardSwiped[1]` would be different function objects.
+// Regression guard: onSwipe must keep a stable callback identity across
+// re-renders caused by queue mutations. The implementation uses a `queueRef`
+// instead of putting `queue` in the useCallback dep array, so the callback
+// is created once. If a future change adds `queue` to the deps, every swipe
+// would mint a fresh function and this assertion would fail.
 //
 // The SwipeCardStack module mock at the top of this file captures the
 // `onCardSwiped` reference on every render into `capturedOnCardSwiped`. The
@@ -672,9 +694,9 @@ describe("<LearnClient> onSwipe identity stability", () => {
     const secondRef = capturedOnCardSwiped[capturedOnCardSwiped.length - 1];
 
     // The core assertion: onSwipe must be the same function object across
-    // re-renders. If `queue` were in the useCallback dep array (the pre-f293612
-    // state), every queue state update would produce a new function and this
-    // assertion would fail.
+    // re-renders. If `queue` were in the useCallback dep array (instead of the
+    // queueRef pattern), every queue state update would produce a new function
+    // and this assertion would fail.
     expect(Object.is(firstRef, secondRef)).toBe(true);
   });
 });
