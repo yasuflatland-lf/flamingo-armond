@@ -58,16 +58,17 @@ describe("resolveFabAction", () => {
   });
 
   describe("returns generic card action for /learn paths (GlobalFAB is hidden on /learn by its own guard)", () => {
-    it.each([["/learn"], ["/learn/abc-123"], ["/learn/abc-123/"]])(
-      "returns generic card action for %s",
-      (pathname) => {
-        expect(resolveFabAction(pathname)).toEqual({
-          kind: "card",
-          href: "/cards/new",
-          label: "Add new card",
-        });
-      },
-    );
+    it.each([
+      ["/learn"],
+      ["/learn/abc-123"],
+      ["/learn/abc-123/"],
+    ])("returns generic card action for %s", (pathname) => {
+      expect(resolveFabAction(pathname)).toEqual({
+        kind: "card",
+        href: "/cards/new",
+        label: "Add new card",
+      });
+    });
   });
 
   describe("is shadowed externally by GlobalFAB's hidden-path guard for /cardgroups/new", () => {
