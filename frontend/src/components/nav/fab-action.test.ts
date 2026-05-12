@@ -57,23 +57,17 @@ describe("resolveFabAction", () => {
     });
   });
 
-  describe("creates a card with cardgroup pre-selected and return param on /learn/:id", () => {
-    it("returns card-with-group action with return param for /learn/abc-123", () => {
-      expect(resolveFabAction("/learn/abc-123")).toEqual({
-        kind: "card-with-group",
-        href: "/cards/new?cardgroup=abc-123&return=/learn/abc-123",
-        label: "Add new card",
-        cardgroupId: "abc-123",
-      });
-    });
-
-    it("falls through to generic card action for /learn (no id segment)", () => {
-      expect(resolveFabAction("/learn")).toEqual({
-        kind: "card",
-        href: "/cards/new",
-        label: "Add new card",
-      });
-    });
+  describe("returns generic card action for /learn paths (GlobalFAB is hidden on /learn by its own guard)", () => {
+    it.each([["/learn"], ["/learn/abc-123"], ["/learn/abc-123/"]])(
+      "returns generic card action for %s",
+      (pathname) => {
+        expect(resolveFabAction(pathname)).toEqual({
+          kind: "card",
+          href: "/cards/new",
+          label: "Add new card",
+        });
+      },
+    );
   });
 
   describe("is shadowed externally by GlobalFAB's hidden-path guard for /cardgroups/new", () => {
@@ -94,47 +88,6 @@ describe("resolveFabAction", () => {
         href: "/cards/new?cardgroup=abc%26evil",
         label: "Add new card",
         cardgroupId: "abc&evil",
-      });
-    });
-
-    it("encodes & in id for /learn/:id branch — href has both query param and return path encoded, cardgroupId is raw", () => {
-      const result = resolveFabAction("/learn/abc&evil");
-      expect(result).toEqual({
-        kind: "card-with-group",
-        href: "/cards/new?cardgroup=abc%26evil&return=/learn/abc%26evil",
-        label: "Add new card",
-        cardgroupId: "abc&evil",
-      });
-    });
-
-    it("/learn/abc/extra (extra segment) does NOT match LEARN_RE and falls through to the generic card action", () => {
-      expect(resolveFabAction("/learn/abc/extra")).toEqual({
-        kind: "card",
-        href: "/cards/new",
-        label: "Add new card",
-      });
-    });
-
-    it("decodes percent-encoded segment in /learn/:id — usePathname delivers %26, cardgroupId is raw &", () => {
-      // usePathname() returns percent-encoded pathnames. The function must decode
-      // the captured segment before passing it to cardWithGroup so the downstream
-      // encodeURIComponent encodes it exactly once.
-      const result = resolveFabAction("/learn/abc%26evil");
-      expect(result).toEqual({
-        kind: "card-with-group",
-        href: "/cards/new?cardgroup=abc%26evil&return=/learn/abc%26evil",
-        label: "Add new card",
-        cardgroupId: "abc&evil",
-      });
-    });
-
-    it("malformed percent-escape in /learn/:id falls through to generic card action", () => {
-      // A URIError from decodeURIComponent must not propagate — it should produce
-      // the same fallback as a non-matching path.
-      expect(resolveFabAction("/learn/abc%XX")).toEqual({
-        kind: "card",
-        href: "/cards/new",
-        label: "Add new card",
       });
     });
 

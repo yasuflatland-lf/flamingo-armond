@@ -7,7 +7,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HandleSwipeMutation, SetLastViewedCardgroupMutation } from "@/app/learn/queries";
 import { LearnActionBar } from "@/components/learn/learn-action-bar";
 import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
-import { LearnAddCardFloating } from "@/components/nav/learn-add-card-floating";
 import { Button } from "@/components/ui/button";
 import type {
   HandleSwipeMutation as HandleSwipeMutationType,
@@ -47,7 +46,6 @@ function withTypename(card: LearnCard): LearnCard & { __typename: "Card" } {
 
 type Props = {
   cardgroupId: string;
-  cardgroupName: string;
   initialCards: LearnCard[];
   /** The id of the user's `lastViewedCardgroup` at server-render time. */
   lastViewedCardgroupId: string | null;
@@ -55,7 +53,6 @@ type Props = {
 
 export function LearnClient({
   cardgroupId,
-  cardgroupName,
   initialCards,
   lastViewedCardgroupId,
 }: Props) {
@@ -208,7 +205,6 @@ export function LearnClient({
 
   return (
     <>
-      <LearnAddCardFloating cardgroupId={cardgroupId} cardgroupName={cardgroupName} />
       {initialCards.length === 0 ? (
         <section className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-md rounded-lg border border-dashed border-border p-8 text-center">

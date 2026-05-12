@@ -57,7 +57,6 @@ export default async function LearnPage({ params }: { params: Promise<{ cardgrou
       <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col p-4">
         <LearnClient
           cardgroupId={cardgroupId}
-          cardgroupName={cardgroupData.cardgroup.name}
           initialCards={cards}
           lastViewedCardgroupId={lastViewedCardgroupId}
         />
