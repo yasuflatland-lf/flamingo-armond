@@ -882,7 +882,7 @@ func TestCardUsecase_Create_duplicateDoesNotTriggerWriteback(t *testing.T) {
 	t.Parallel()
 
 	fixture := &domain.Card{ID: "existing-id", CardgroupID: "cg1", Front: "front", Back: "existing-back"}
-	stub := &stubNotionWriter{}
+	stub := &stubNotionWriter{called: make(chan struct{})}
 	cardRepo := &mockCardRepository{
 		createErr:                     repository.ErrCardDuplicateFront,
 		findByCardgroupAndFrontResult: fixture,
@@ -901,9 +901,12 @@ func TestCardUsecase_Create_duplicateDoesNotTriggerWriteback(t *testing.T) {
 		t.Fatalf("expected outcome.Card to be nil on duplicate, got %+v", got.Card)
 	}
 
-	// No goroutine should have been launched; give any accidental goroutine a
-	// moment to fire before asserting.
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-stub.called:
+		t.Fatal("write-back should not be invoked for duplicates")
+	case <-time.After(50 * time.Millisecond):
+		// ok: no write-back observed
+	}
 
 	stub.mu.Lock()
 	n := len(stub.calls)
