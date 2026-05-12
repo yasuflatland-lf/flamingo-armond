@@ -4,6 +4,7 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
+import { type RefObject, useImperativeHandle, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HandleSwipeDocument, SetLastViewedCardgroupDocument } from "@/generated/graphql";
 import {
@@ -12,20 +13,26 @@ import {
 } from "../../../../__tests__/utils/mock-apollo-paginated";
 import { LearnClient } from "./learn-client";
 
-const reducedMotionState = vi.hoisted(() => ({ value: true }));
-
 // ---------------------------------------------------------------------------
-// SwipeCardStack mock — captures the `onCardSwiped` reference on every render
-// so the identity-stability test can assert the callback is not re-created
-// after a swipe triggers a queue state update.
+// SwipeCardStack mock
 //
-// `vi.mock` is hoisted before imports by Vite, so the factory runs first.
-// The captured array is populated at render time and is cleared in `beforeEach`
-// so leakage between tests is impossible.
+// React 19 passes refs as plain props, so the mock accepts a `ref` prop and
+// wires it to useImperativeHandle. triggerSwipe calls onCardSwiped with the
+// first card in the `cards` array — enough for LearnClient integration tests.
+//
+// swipeDirection / swipeProgress are NOT in the mock props because LearnClient
+// no longer owns overlay state (that responsibility moved to SwipeCardStack in T1).
+//
+// capturedOnCardSwiped accumulates the onCardSwiped reference on every render
+// so the identity-stability test can assert it does not change across re-renders.
 // ---------------------------------------------------------------------------
 type SwipeCardStackOnCardSwiped = Parameters<
   typeof import("@/components/learn/swipe-card-stack")["SwipeCardStack"]
 >[0]["onCardSwiped"];
+
+type SwipeCardStackHandle = {
+  triggerSwipe: (direction: "left" | "right" | "down") => void;
+};
 
 const capturedOnCardSwiped: SwipeCardStackOnCardSwiped[] = [];
 
@@ -34,13 +41,20 @@ vi.mock("@/components/learn/swipe-card-stack", () => ({
     cards: { id: string; front: string; back: string }[];
     onCardSwiped: SwipeCardStackOnCardSwiped;
     completedCount?: number;
-    swipeDirection: "left" | "right" | "down" | null;
-    swipeProgress: number;
+    ref?: RefObject<SwipeCardStackHandle | null>;
   }) => {
     capturedOnCardSwiped.push(props.onCardSwiped);
-    // Render minimal UI so existing tests that assert on card text or swipe
-    // progress continue to work. The `next/dynamic` AnimatedCard does not render
-    // in jsdom (ssr:false), so the full SwipeCardStack cannot be used as-is.
+
+    const activeCardRef = useRef(props.cards[0] ?? null);
+    activeCardRef.current = props.cards[0] ?? null;
+
+    useImperativeHandle(props.ref, () => ({
+      triggerSwipe: (direction: "left" | "right" | "down") => {
+        const card = activeCardRef.current;
+        if (card) props.onCardSwiped(card, direction);
+      },
+    }));
+
     const activeCard = props.cards[0];
     if (!activeCard) {
       return (
@@ -58,16 +72,9 @@ vi.mock("@/components/learn/swipe-card-stack", () => ({
     return (
       <div>
         <p>{activeCard.front}</p>
-        {props.swipeDirection ? (
-          <p>{`Overlay ${props.swipeDirection} ${props.swipeProgress}`}</p>
-        ) : null}
       </div>
     );
   },
-}));
-
-vi.mock("@/lib/use-reduced-motion", () => ({
-  useReducedMotion: () => reducedMotionState.value,
 }));
 
 // ---------------------------------------------------------------------------
@@ -106,7 +113,6 @@ let leakSpy: ApolloMockLeakSpyResult;
 
 beforeEach(() => {
   vi.useRealTimers();
-  reducedMotionState.value = true;
   leakSpy = installApolloMockLeakSpy({
     operationNames: ["HandleSwipe", "SetLastViewedCardgroup"],
   });
@@ -206,6 +212,10 @@ function makeSwipeMock(mode: 1 | 2 | 4, nextCards: (typeof CARD_1)[] = []) {
 }
 
 describe("<LearnClient>", () => {
+  // handleRate delegates to swipeStackRef.current?.triggerSwipe(direction).
+  // The mock SwipeCardStack exposes triggerSwipe via useImperativeHandle and
+  // immediately calls onCardSwiped, which fires the mutation. No timer delay
+  // needed here — timing logic lives in SwipeCardStack, not LearnClient.
   it.each([
     ["Rate as Again", 1],
     ["Rate as Hard", 2],
@@ -370,22 +380,23 @@ describe("<LearnClient>", () => {
     expect(link).toHaveAccessibleName(`Add a new card to ${CG_NAME}`);
   });
 
-  it("shows swipe progress before saving a clicked rating when motion is enabled", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    reducedMotionState.value = false;
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
+  // The 180ms commit-delay and overlay-paint logic moved into SwipeCardStack (T1).
+  // LearnClient's handleRate now only calls swipeStackRef.current?.triggerSwipe()
+  // synchronously — no setTimeout, no swipeDirection/swipeProgress state.
+  // Timing behavior is covered by swipe-card-stack.test.tsx (T2b).
+  it("handleRate dispatches triggerSwipe exactly once per button click without async delay", async () => {
+    const user = userEvent.setup();
     const swipe = makeSwipeMock(1);
-    renderLearnClient([swipe.mock], [CARD_1]);
+    renderLearnClient([swipe.mock]);
 
-    await user.click(screen.getByRole("button", { name: "Rate as Again" }));
-
-    expect(screen.getByText("Overlay left 1")).toBeInTheDocument();
-    expect(swipe.wasCalled()).toBe(false);
-
+    // Wrap in act so the synchronous triggerSwipe → onCardSwiped → setQueue
+    // flush completes before we check interim state.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(180);
+      await user.click(screen.getByRole("button", { name: "Rate as Again" }));
     });
 
+    // The mutation must be dispatched — triggerSwipe was called, which fired
+    // onCardSwiped, which called onSwipe inside LearnClient.
     await waitFor(() => {
       expect(swipe.wasCalled()).toBe(true);
     });

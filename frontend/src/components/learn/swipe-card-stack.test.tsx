@@ -1,16 +1,74 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { createRef } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SwipeCardData } from "./swipe-card";
+import type { SwipeCardStackHandle } from "./swipe-card-stack";
 import { SwipeCardStack } from "./swipe-card-stack";
+
+// SwipeCard loads AnimatedCard via next/dynamic (ssr: false).
+// In jsdom the dynamic import always resolves to the loading fallback (null),
+// so we replace the whole module with a thin stub that exposes the same props
+// and lets tests call onSwipeProgress / onSwipe directly via data-testid.
+vi.mock("./swipe-card", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./swipe-card")>();
+  return {
+    ...actual,
+    SwipeCard: ({
+      card,
+      onSwipe,
+      onSwipeProgress,
+    }: {
+      card: SwipeCardData;
+      isActive: boolean;
+      onSwipe: (card: SwipeCardData, direction: "left" | "down" | "right") => void;
+      onSwipeProgress?: (direction: "left" | "down" | "right" | null, progress: number) => void;
+    }) => (
+      <div
+        data-testid="swipe-card-stub"
+        data-card-id={card.id}
+        // Attach helpers so tests can simulate gesture events.
+        onPointerDown={() => onSwipeProgress?.("right", 0.5)}
+        onPointerUp={() => {
+          onSwipeProgress?.(null, 0);
+          onSwipe(card, "right");
+        }}
+      >
+        {card.front}
+      </div>
+    ),
+  };
+});
+
+// Also mock useReducedMotion so tests can override it per-suite.
+vi.mock("@/lib/use-reduced-motion", () => ({
+  useReducedMotion: vi.fn(() => false),
+}));
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+const makeCard = (id: string): SwipeCardData => ({
+  id,
+  front: `front-${id}`,
+  back: `back-${id}`,
+  due: "2026-01-01",
+  state: 0,
+  cardgroupId: "cg-1",
+});
+
+const cardA = makeCard("card-a");
+const cardB = makeCard("card-b");
+
+// ---------------------------------------------------------------------------
+// describe: Session-complete count line
+// ---------------------------------------------------------------------------
 
 describe("SwipeCardStack — Session-complete count line", () => {
   const baseProps = {
     cards: [] as Parameters<typeof SwipeCardStack>[0]["cards"],
     onCardSwiped: vi.fn(),
-    onSwipeProgress: vi.fn(),
-    swipeDirection: null,
-    swipeProgress: 0,
   };
 
   it("renders Session-complete heading and no count line when completedCount is undefined", () => {
@@ -38,31 +96,18 @@ describe("SwipeCardStack — Session-complete count line", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// describe: keydown listener stability (activeCardRef)
+// ---------------------------------------------------------------------------
+
 describe("SwipeCardStack — keydown listener stability (activeCardRef)", () => {
-  const makeCard = (id: string): SwipeCardData => ({
-    id,
-    front: `front-${id}`,
-    back: `back-${id}`,
-    due: "2026-01-01",
-    state: 0,
-    cardgroupId: "cg-1",
-  });
-
-  const cardA = makeCard("card-a");
-  const cardB = makeCard("card-b");
-
   it("registers the keydown listener exactly once even after activeCard changes via rerender", () => {
     const addSpy = vi.spyOn(window, "addEventListener");
     const removeSpy = vi.spyOn(window, "removeEventListener");
 
     const onCardSwiped = vi.fn();
     const { rerender, unmount } = render(
-      <SwipeCardStack
-        cards={[cardA, cardB]}
-        onCardSwiped={onCardSwiped}
-        swipeDirection={null}
-        swipeProgress={0}
-      />,
+      <SwipeCardStack cards={[cardA, cardB]} onCardSwiped={onCardSwiped} />,
     );
 
     // Count only the "keydown" registrations from the initial render.
@@ -70,14 +115,7 @@ describe("SwipeCardStack — keydown listener stability (activeCardRef)", () => 
     expect(addedAfterMount).toBe(1);
 
     // Simulate the parent advancing the deck: cardA was swiped, now cardB is first.
-    rerender(
-      <SwipeCardStack
-        cards={[cardB]}
-        onCardSwiped={onCardSwiped}
-        swipeDirection={null}
-        swipeProgress={0}
-      />,
-    );
+    rerender(<SwipeCardStack cards={[cardB]} onCardSwiped={onCardSwiped} />);
 
     // The listener must NOT have been removed and re-added (triggerSwipe is stable
     // across activeCard changes because activeCardRef is used inside it).
@@ -92,34 +130,228 @@ describe("SwipeCardStack — keydown listener stability (activeCardRef)", () => 
   });
 
   it("fires onCardSwiped with the correct card after activeCard advances", () => {
+    vi.useFakeTimers({ shouldAdvanceTime: false });
     const onCardSwiped = vi.fn();
     const { rerender } = render(
-      <SwipeCardStack
-        cards={[cardA, cardB]}
-        onCardSwiped={onCardSwiped}
-        swipeDirection={null}
-        swipeProgress={0}
-      />,
+      <SwipeCardStack cards={[cardA, cardB]} onCardSwiped={onCardSwiped} />,
     );
 
-    // First ArrowLeft — activeCard is cardA.
+    // First ArrowLeft — activeCard is cardA. triggerSwipe sets a 180ms timeout.
     fireEvent.keyDown(document, { key: "ArrowLeft" });
+    vi.runAllTimers();
     expect(onCardSwiped).toHaveBeenCalledTimes(1);
     expect(onCardSwiped).toHaveBeenNthCalledWith(1, cardA, "left");
 
     // Simulate the parent advancing the deck after the first swipe.
-    rerender(
-      <SwipeCardStack
-        cards={[cardB]}
-        onCardSwiped={onCardSwiped}
-        swipeDirection={null}
-        swipeProgress={0}
-      />,
-    );
+    rerender(<SwipeCardStack cards={[cardB]} onCardSwiped={onCardSwiped} />);
 
     // Second ArrowLeft — activeCardRef must now point to cardB, not cardA.
     fireEvent.keyDown(document, { key: "ArrowLeft" });
+    vi.runAllTimers();
     expect(onCardSwiped).toHaveBeenCalledTimes(2);
     expect(onCardSwiped).toHaveBeenNthCalledWith(2, cardB, "left");
+
+    vi.useRealTimers();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// describe: triggerSwipe via imperative ref
+// ---------------------------------------------------------------------------
+
+describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("calls onCardSwiped with (activeCard, direction) after the commit delay", () => {
+    const onCardSwiped = vi.fn();
+    const ref = createRef<SwipeCardStackHandle | null>();
+
+    render(<SwipeCardStack cards={[cardA, cardB]} onCardSwiped={onCardSwiped} ref={ref} />);
+
+    act(() => {
+      ref.current?.triggerSwipe("right");
+    });
+    // Not fired yet — 180ms pending.
+    expect(onCardSwiped).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(onCardSwiped).toHaveBeenCalledTimes(1);
+    expect(onCardSwiped).toHaveBeenCalledWith(cardA, "right");
+  });
+
+  it("calls onCardSwiped with 'like' direction via triggerSwipe", () => {
+    const onCardSwiped = vi.fn();
+    const ref = createRef<SwipeCardStackHandle | null>();
+
+    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+
+    act(() => {
+      ref.current?.triggerSwipe("right");
+    });
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(onCardSwiped).toHaveBeenCalledTimes(1);
+    expect(onCardSwiped).toHaveBeenCalledWith(cardA, "right");
+  });
+
+  it("shows overlay at progress=1 immediately after triggerSwipe before commit fires", () => {
+    const onCardSwiped = vi.fn();
+    const ref = createRef<SwipeCardStackHandle | null>();
+
+    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+
+    act(() => {
+      ref.current?.triggerSwipe("right");
+    });
+
+    // Overlay label "Easy" should be visible at full opacity before the timeout.
+    expect(screen.getByText("Easy")).toBeInTheDocument();
+    // Commit has NOT fired yet.
+    expect(onCardSwiped).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(onCardSwiped).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows overlay with 'Again' label when triggerSwipe('left') is called", () => {
+    const onCardSwiped = vi.fn();
+    const ref = createRef<SwipeCardStackHandle | null>();
+
+    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+
+    act(() => {
+      ref.current?.triggerSwipe("left");
+    });
+
+    expect(screen.getByText("Again")).toBeInTheDocument();
+    expect(onCardSwiped).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(onCardSwiped).toHaveBeenCalledWith(cardA, "left");
+  });
+
+  it("is a no-op when there is no active card", () => {
+    const onCardSwiped = vi.fn();
+    const ref = createRef<SwipeCardStackHandle | null>();
+
+    render(<SwipeCardStack cards={[]} onCardSwiped={onCardSwiped} ref={ref} />);
+
+    act(() => {
+      // Must not throw even when the deck is empty.
+      ref.current?.triggerSwipe("right");
+    });
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(onCardSwiped).not.toHaveBeenCalled();
+  });
+
+  it("fires onCardSwiped after exactly 180ms in normal motion mode", () => {
+    const onCardSwiped = vi.fn();
+    const ref = createRef<SwipeCardStackHandle | null>();
+
+    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+
+    act(() => {
+      ref.current?.triggerSwipe("down");
+    });
+
+    // 179ms — not yet committed.
+    act(() => {
+      vi.advanceTimersByTime(179);
+    });
+    expect(onCardSwiped).not.toHaveBeenCalled();
+
+    // 1ms more — now committed.
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(onCardSwiped).toHaveBeenCalledTimes(1);
+    expect(onCardSwiped).toHaveBeenCalledWith(cardA, "down");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// describe: triggerSwipe with reduced motion
+// ---------------------------------------------------------------------------
+
+describe("SwipeCardStack — triggerSwipe with reduced motion", () => {
+  beforeEach(async () => {
+    const mod = await import("@/lib/use-reduced-motion");
+    vi.mocked(mod.useReducedMotion).mockReturnValue(true);
+  });
+  afterEach(async () => {
+    const mod = await import("@/lib/use-reduced-motion");
+    vi.mocked(mod.useReducedMotion).mockReturnValue(false);
+    vi.useRealTimers();
+  });
+
+  it("fires onCardSwiped synchronously (0ms) when reduced motion is active", () => {
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+    const onCardSwiped = vi.fn();
+    const ref = createRef<SwipeCardStackHandle | null>();
+
+    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+
+    act(() => {
+      ref.current?.triggerSwipe("left");
+    });
+
+    // With reduced motion, onCardSwiped fires immediately — no timer advance needed.
+    expect(onCardSwiped).toHaveBeenCalledTimes(1);
+    expect(onCardSwiped).toHaveBeenCalledWith(cardA, "left");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// describe: internal state reset after card change
+// ---------------------------------------------------------------------------
+
+describe("SwipeCardStack — overlay state resets on active card change", () => {
+  it("clears swipeDirection and swipeProgress when active card advances", () => {
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+    const onCardSwiped = vi.fn();
+    const ref = createRef<SwipeCardStackHandle | null>();
+
+    const { rerender } = render(
+      <SwipeCardStack cards={[cardA, cardB]} onCardSwiped={onCardSwiped} ref={ref} />,
+    );
+
+    // Trigger a swipe — overlay should show.
+    act(() => {
+      ref.current?.triggerSwipe("right");
+    });
+    expect(screen.getByText("Easy")).toBeInTheDocument();
+
+    // Advance timers so onCardSwiped fires; parent then re-renders with cardB first.
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    // Simulate parent removing the swiped card from the deck.
+    act(() => {
+      rerender(<SwipeCardStack cards={[cardB]} onCardSwiped={onCardSwiped} ref={ref} />);
+    });
+
+    // The overlay should have cleared — no direction label visible.
+    expect(screen.queryByText("Easy")).not.toBeInTheDocument();
+    expect(screen.queryByText("Again")).not.toBeInTheDocument();
+    expect(screen.queryByText("Hard")).not.toBeInTheDocument();
+
+    vi.useRealTimers();
   });
 });
