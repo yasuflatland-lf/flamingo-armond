@@ -247,7 +247,9 @@ describe("<LearnClient>", () => {
     await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Today's learning is complete" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Today's learning is complete" }),
+      ).toBeInTheDocument();
     });
     expect(screen.getByRole("link", { name: "Back to cardgroups" })).toHaveAttribute(
       "href",
@@ -340,7 +342,9 @@ describe("<LearnClient>", () => {
   it("renders the caught-up state when the initial due queue is empty", () => {
     renderLearnClient([], []);
 
-    expect(screen.getByRole("heading", { name: "Today's learning is complete" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Today's learning is complete" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to cardgroups" })).toHaveAttribute(
       "href",
       "/cardgroups",
@@ -558,7 +562,9 @@ describe("<LearnClient> LearnActionBar integration", () => {
     await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Today's learning is complete" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Today's learning is complete" }),
+      ).toBeInTheDocument();
     });
     expect(screen.queryByRole("button", { name: "Rate as Easy" })).not.toBeInTheDocument();
   });
