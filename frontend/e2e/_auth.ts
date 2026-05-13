@@ -133,20 +133,12 @@ export async function seedCardgroup({ ownerId, name }: SeedCardgroupInput) {
 
 export async function seedCards(cards: SeedCardInput[]) {
   if (cards.length === 0) return [];
-  const now = new Date().toISOString();
+  // FSRS scheduling state lives in user_card_fsrs and is created lazily on the
+  // first swipe; the cards row carries only content + ownership now.
   const rows = cards.map((card) => ({
     cardgroup_id: card.cardgroupId,
     front: card.front,
     back: card.back,
-    due: now,
-    stability: 2.5,
-    difficulty: 5,
-    elapsed_days: 0,
-    scheduled_days: 0,
-    reps: 0,
-    lapses: 0,
-    state: 0,
-    last_review: now,
   }));
 
   const { data, error } = await adminClient
