@@ -12,3 +12,20 @@ if _, hasEmail := rec0["email"]; hasEmail {
 ```
 
 Used in the `superuser_test.go` INFO and WARN cases — the policy in `auth/superuser.go` is "log `user_id` only", and the absence-tests are what hold that contract.
+
+## CLI output: extend the same rule to unstructured stdout/stderr
+
+The slog-scoped rule above targets structured JSON fields in the application server. The same intent applies to unstructured output from CLI tools:
+
+- Email addresses must not appear in `log.Printf` lines from CLI tools. Use `<redacted>` as the placeholder literal when an identifier must appear for diagnostic purposes.
+- Summary lines that indicate skipped or failed items must print counts, not the actual email values:
+  ```go
+  // CORRECT
+  log.Printf("skipped %d users (already seeded)", skippedCount)
+
+  // WRONG — exposes PII in terminal output and log files
+  log.Printf("skipped users: %v", emailList)
+  ```
+- `fmt.Printf` progress output follows the same rule: print row counts or UUID prefixes, never full email addresses.
+
+This is a separate concern from the structured-field absence test above — both rules must be satisfied independently. A CLI that omits email from its slog JSON but prints it via `log.Printf` still violates the redaction policy.
