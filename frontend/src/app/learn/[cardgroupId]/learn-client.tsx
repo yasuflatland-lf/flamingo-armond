@@ -7,7 +7,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HandleSwipeMutation, SetLastViewedCardgroupMutation } from "@/app/learn/queries";
 import { LearnActionBar } from "@/components/learn/learn-action-bar";
 import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
-import { LearnAddCardFloating } from "@/components/nav/learn-add-card-floating";
 import { Button } from "@/components/ui/button";
 import type {
   HandleSwipeMutation as HandleSwipeMutationType,
@@ -47,18 +46,12 @@ function withTypename(card: LearnCard): LearnCard & { __typename: "Card" } {
 
 type Props = {
   cardgroupId: string;
-  cardgroupName: string;
   initialCards: LearnCard[];
   /** The id of the user's `lastViewedCardgroup` at server-render time. */
   lastViewedCardgroupId: string | null;
 };
 
-export function LearnClient({
-  cardgroupId,
-  cardgroupName,
-  initialCards,
-  lastViewedCardgroupId,
-}: Props) {
+export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }: Props) {
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
   const reducedMotion = useReducedMotion();
   const queueRef = useRef(queue);
@@ -208,7 +201,6 @@ export function LearnClient({
 
   return (
     <>
-      <LearnAddCardFloating cardgroupId={cardgroupId} cardgroupName={cardgroupName} />
       {initialCards.length === 0 ? (
         <section className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-md rounded-lg border border-dashed border-border p-8 text-center">
@@ -222,17 +214,22 @@ export function LearnClient({
           </div>
         </section>
       ) : (
-        <section className="flex flex-1 flex-col">
+        <section className="grid min-h-0 flex-1 grid-rows-[auto_1fr_auto] gap-3">
           {visibleError ? (
             <div
-              className="mx-auto mb-4 w-full max-w-xl rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+              className="mx-auto w-full max-w-xl rounded-md bg-destructive/10 p-3 text-sm text-destructive"
               role="alert"
             >
               {visibleError}
             </div>
-          ) : null}
+          ) : (
+            // Placeholder so the card stays in the 1fr row and the action bar in
+            // the trailing auto row when the banner is absent. Without it, grid
+            // auto-flow would assign the action bar to the 1fr row.
+            <div aria-hidden="true" />
+          )}
 
-          <div className="relative flex min-h-[560px] flex-1 items-center justify-center sm:min-h-[620px]">
+          <div className="relative flex min-h-0 items-center justify-center overflow-hidden">
             <SwipeCardStack
               cards={queue}
               onCardSwiped={onSwipe}

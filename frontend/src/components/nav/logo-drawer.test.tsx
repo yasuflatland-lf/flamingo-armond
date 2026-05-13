@@ -195,11 +195,10 @@ describe("<LogoDrawer>", () => {
     expect(menuButton).toHaveFocus();
   });
 
-  it("S-L4: cardgroupId with special characters round-trips to single-encoded href (matches LearnAddCardFloating)", () => {
+  it("S-L4: cardgroupId with special characters round-trips to single-encoded href", () => {
     // usePathname returns the percent-encoded pathname as delivered by the browser.
     // The component decodes the segment, then the JSX re-encodes once via
-    // encodeURIComponent, producing a href identical to what LearnAddCardFloating
-    // generates from a decoded `cardgroupId` prop.
+    // encodeURIComponent so the final href is correctly single-encoded.
     mockUsePathname.mockReturnValue("/learn/abc%26evil");
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
     const addLink = screen.getByRole("link", { name: /add a new card to this cardgroup/i });

@@ -1,7 +1,6 @@
 import { safeDecodePathSegment } from "@/lib/safe-decode-path-segment";
 
 const CARDGROUP_EDIT_RE = /^\/cardgroups\/([^/]+)\/edit(\/|$)/;
-const LEARN_RE = /^\/learn\/([^/]+)$/;
 
 export type FabAction =
   | { kind: "cardgroup"; href: "/cardgroups/new"; label: "Add new cardgroup" }
@@ -24,15 +23,14 @@ export type FabAction =
  * regex. `href` is URL-encoded, `cardgroupId` stays raw — see the JSDoc on
  * the union variant for the contract callers must observe.
  */
-function cardWithGroup(
-  rawId: string,
-  options: { withReturnToLearn?: boolean } = {},
-): Extract<FabAction, { kind: "card-with-group" }> {
+function cardWithGroup(rawId: string): Extract<FabAction, { kind: "card-with-group" }> {
   const encodedId = encodeURIComponent(rawId);
-  const href = options.withReturnToLearn
-    ? `/cards/new?cardgroup=${encodedId}&return=/learn/${encodedId}`
-    : `/cards/new?cardgroup=${encodedId}`;
-  return { kind: "card-with-group", href, label: "Add new card", cardgroupId: rawId };
+  return {
+    kind: "card-with-group",
+    href: `/cards/new?cardgroup=${encodedId}`,
+    label: "Add new card",
+    cardgroupId: rawId,
+  };
 }
 
 /**
@@ -56,12 +54,6 @@ export function resolveFabAction(pathname: string): FabAction | null {
   if (editMatch) {
     const rawId = safeDecodePathSegment(editMatch[1] as string);
     if (rawId !== null) return cardWithGroup(rawId);
-  }
-
-  const learnMatch = LEARN_RE.exec(pathname);
-  if (learnMatch) {
-    const rawId = safeDecodePathSegment(learnMatch[1] as string);
-    if (rawId !== null) return cardWithGroup(rawId, { withReturnToLearn: true });
   }
 
   return { kind: "card", href: "/cards/new", label: "Add new card" };

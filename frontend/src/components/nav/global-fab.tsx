@@ -6,9 +6,8 @@ import { resolveFabAction } from "./fab-action";
 
 // Hidden on /login (anonymous-only), /admin (different audience),
 // /cards/new + /cardgroups/new (FAB target — would loop),
-// /profile (FAB action does not apply), and /learn (LearnAddCardFloating
-// renders the Add affordance in the header line / top-right to avoid
-// spatial conflict with LearnActionBar).
+// /profile (FAB action does not apply), and /learn (the LearnActionBar
+// owns the primary interaction surface; no FAB needed there).
 const HIDDEN_PATH_RE = /^\/(login|admin|cards\/new|cardgroups\/new|profile|learn)(\/|$)/;
 
 export function GlobalFAB() {

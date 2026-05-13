@@ -1,0 +1,75 @@
+---
+# Grant the admin role to every address listed in SUPER_USER_EMAILS against
+# the production Supabase database.  Invoked via `make seed-admin-prod`.
+#
+# Reads:  .setup-prod.state.yml (supabase_db_url)
+#         SUPER_USER_EMAILS environment variable (comma-separated list)
+# Writes: public.user_roles (idempotent: ON CONFLICT DO NOTHING)
+#
+# Safe to re-run at any time.  Addresses not yet registered in auth.users
+# are silently skipped; re-running after first login grants the role.
+
+- name: Stat state file (seed-admin-prod)
+  ansible.builtin.stat:
+    path: "{{ state_file }}"
+  register: _seed_prod_state_stat
+
+- name: Load state file (seed-admin-prod)
+  ansible.builtin.include_vars:
+    file: "{{ state_file }}"
+  when: _seed_prod_state_stat.stat.exists
+
+- name: Assert supabase_db_url is present
+  ansible.builtin.assert:
+    that:
+      - _seed_prod_state_stat.stat.exists
+      - supabase_db_url is defined and (supabase_db_url | length) > 0
+    fail_msg: |
+      State file is missing or lacks supabase_db_url.
+      Run the Supabase phase first:
+        ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags supabase
+
+- name: Parse SUPER_USER_EMAILS from environment
+  ansible.builtin.set_fact:
+    _seed_prod_emails: >-
+      {{ (lookup('env', 'SUPER_USER_EMAILS') | default(''))
+         | split(',')
+         | map('trim')
+         | reject('equalto', '')
+         | list }}
+
+- name: Skip when SUPER_USER_EMAILS is empty
+  ansible.builtin.debug:
+    msg: "seed-admin-prod: SUPER_USER_EMAILS is not set in the environment -- skipping."
+  when: (_seed_prod_emails | length) == 0
+
+- name: Grant admin role to each address in production (idempotent)
+  ansible.builtin.command:
+    argv:
+      - psql
+      - "{{ supabase_db_url }}"
+      - -v
+      - "ON_ERROR_STOP=1"
+      - -c
+      - >-
+        INSERT INTO public.user_roles (user_id, role_id)
+        SELECT u.id, r.id FROM auth.users u, public.roles r
+        WHERE u.email = '{{ item | replace("'", "''") }}' AND r.name = 'admin'
+        ON CONFLICT DO NOTHING;
+  register: _seed_prod_results
+  changed_when: "'INSERT 0 1' in _seed_prod_results.stdout"
+  loop: "{{ _seed_prod_emails }}"
+  loop_control:
+    label: "{{ item }}"
+  when: (_seed_prod_emails | length) > 0
+
+- name: Report outcome per address
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'OK: granted admin role to ' + item.item
+         if 'INSERT 0 1' in (item.stdout | default(''))
+         else 'no-op (not yet signed in or already admin): ' + item.item }}
+  loop: "{{ _seed_prod_results.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: (_seed_prod_emails | length) > 0
