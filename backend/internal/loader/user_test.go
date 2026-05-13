@@ -170,6 +170,9 @@ func (r *countingCardRepo) FindByIDs(ctx context.Context, ids []string) (map[str
 func (r *countingCardRepo) FindByCardgroup(_ context.Context, _ string) ([]*domain.Card, error) {
 	panic("countingCardRepo.FindByCardgroup not configured")
 }
+func (r *countingCardRepo) FindDueCards(_ context.Context, _ string, _ time.Time, _ int) ([]*domain.Card, error) {
+	panic("countingCardRepo.FindDueCards not configured")
+}
 func (r *countingCardRepo) ListFrontsByCardgroupTx(_ context.Context, _ *gorm.DB, _ string) ([]string, error) {
 	panic("countingCardRepo.ListFrontsByCardgroupTx not configured")
 }
