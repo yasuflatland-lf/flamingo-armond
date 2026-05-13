@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -56,6 +57,15 @@ func NewLearnUsecase(
 	if maxLimit <= 0 {
 		maxLimit = maxLearnNextDueLimit
 	}
+	if cardRepo == nil {
+		panic("LearnUsecase: cardRepo must not be nil")
+	}
+	if cardgroupRepo == nil {
+		panic("LearnUsecase: cardgroupRepo must not be nil")
+	}
+	if defaultLimit > maxLimit {
+		panic(fmt.Sprintf("LearnUsecase: defaultLimit (%d) must not exceed maxLimit (%d)", defaultLimit, maxLimit))
+	}
 	return &LearnUsecase{
 		cardRepo:      cardRepo,
 		cardgroupRepo: cardgroupRepo,
@@ -66,6 +76,8 @@ func NewLearnUsecase(
 	}
 }
 
+// NextDueCards returns up to limit due cards (clamped to [1, maxLimit]; now must be UTC).
+// Returns Unauthenticated when the caller does not own the cardgroup, BadUserInput when the cardgroup is missing.
 func (u *LearnUsecase) NextDueCards(ctx context.Context, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
