@@ -25,7 +25,6 @@ type Card struct {
 	CardgroupID string
 	Front       string
 	Back        string
-	FSRS        FSRSState
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
