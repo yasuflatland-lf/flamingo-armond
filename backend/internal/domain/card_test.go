@@ -20,7 +20,6 @@ func TestCardShape(t *testing.T) {
 		"CardgroupID": reflect.TypeOf(""),
 		"Front":       reflect.TypeOf(""),
 		"Back":        reflect.TypeOf(""),
-		"FSRS":        reflect.TypeOf(FSRSState{}),
 		"CreatedAt":   reflect.TypeOf(time.Time{}),
 		"UpdatedAt":   reflect.TypeOf(time.Time{}),
 	}
@@ -30,6 +29,8 @@ func TestCardShape(t *testing.T) {
 		require.Equal(t, typ, field.Type, "Card.%s type mismatch", name)
 		require.Empty(t, field.Tag, "Card.%s should not have struct tags", name)
 	}
+	_, ok := cardType.FieldByName("FSRS")
+	require.False(t, ok, "Card must not embed per-user FSRS state")
 }
 
 func TestCardValidate(t *testing.T) {

@@ -22,7 +22,6 @@ func newCard(cardgroupID, front, back string) *domain.Card {
 		CardgroupID: cardgroupID,
 		Front:       front,
 		Back:        back,
-		FSRS:        domain.NewFSRSStateForNewCard(now),
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
