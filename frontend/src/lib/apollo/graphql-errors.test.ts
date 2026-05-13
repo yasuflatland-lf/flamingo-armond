@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { isUnauthenticatedGraphQLError } from "./graphql-errors";
+import { isForbiddenGraphQLError, isUnauthenticatedGraphQLError } from "./graphql-errors";
 
 const PREFIX = "GraphQL errors: ";
 
@@ -58,5 +58,34 @@ describe("isUnauthenticatedGraphQLError", () => {
       { message: "another error" },
     ]);
     expect(isUnauthenticatedGraphQLError(err)).toBe(true);
+  });
+});
+
+describe("isForbiddenGraphQLError", () => {
+  test("non-Error value returns false", () => {
+    expect(isForbiddenGraphQLError(null)).toBe(false);
+    expect(isForbiddenGraphQLError("some string")).toBe(false);
+  });
+
+  test("Error with wrong prefix returns false", () => {
+    expect(isForbiddenGraphQLError(new Error("FORBIDDEN"))).toBe(false);
+  });
+
+  test("Error with UNAUTHENTICATED code (not FORBIDDEN) returns false", () => {
+    const err = makeErr([{ extensions: { code: "UNAUTHENTICATED" } }]);
+    expect(isForbiddenGraphQLError(err)).toBe(false);
+  });
+
+  test("Error with FORBIDDEN code returns true", () => {
+    const err = makeErr([{ extensions: { code: "FORBIDDEN" } }]);
+    expect(isForbiddenGraphQLError(err)).toBe(true);
+  });
+
+  test("mixed errors array with at least one FORBIDDEN returns true", () => {
+    const err = makeErr([
+      { extensions: { code: "UNAUTHENTICATED" } },
+      { extensions: { code: "FORBIDDEN" } },
+    ]);
+    expect(isForbiddenGraphQLError(err)).toBe(true);
   });
 });

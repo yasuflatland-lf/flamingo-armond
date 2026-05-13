@@ -182,37 +182,35 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
     swipeStackRef.current?.triggerSwipe(direction);
   }, []);
 
-  return (
-    <>
-      {queue.length === 0 ? (
-        <AllCaughtUp />
-      ) : (
-        <section className="grid min-h-0 flex-1 grid-rows-[auto_1fr_auto] gap-3">
-          {visibleError ? (
-            <div
-              className="mx-auto w-full max-w-xl rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-              role="alert"
-            >
-              {visibleError}
-            </div>
-          ) : (
-            // Placeholder so the card stays in the 1fr row and the action bar in
-            // the trailing auto row when the banner is absent. Without it, grid
-            // auto-flow would assign the action bar to the 1fr row.
-            <div aria-hidden="true" />
-          )}
+  if (queue.length === 0) {
+    return <AllCaughtUp />;
+  }
 
-          <div className="relative flex min-h-0 items-center justify-center overflow-hidden">
-            <SwipeCardStack
-              ref={swipeStackRef}
-              cards={queue}
-              onCardSwiped={onSwipe}
-              completedCount={completed}
-            />
-          </div>
-          <LearnActionBar onRate={handleRate} disabled={queue.length === 0} />
-        </section>
+  return (
+    <section className="grid min-h-0 flex-1 grid-rows-[auto_1fr_auto] gap-3">
+      {visibleError ? (
+        <div
+          className="mx-auto w-full max-w-xl rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+          role="alert"
+        >
+          {visibleError}
+        </div>
+      ) : (
+        // Placeholder so the card stays in the 1fr row and the action bar in
+        // the trailing auto row when the banner is absent. Without it, grid
+        // auto-flow would assign the action bar to the 1fr row.
+        <div aria-hidden="true" />
       )}
-    </>
+
+      <div className="relative flex min-h-0 items-center justify-center overflow-hidden">
+        <SwipeCardStack
+          ref={swipeStackRef}
+          cards={queue}
+          onCardSwiped={onSwipe}
+          completedCount={completed}
+        />
+      </div>
+      <LearnActionBar onRate={handleRate} disabled={queue.length === 0} />
+    </section>
   );
 }

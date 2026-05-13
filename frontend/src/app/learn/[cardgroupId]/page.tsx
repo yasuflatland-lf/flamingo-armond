@@ -52,7 +52,7 @@ export default async function LearnPage({ params }: { params: Promise<{ cardgrou
 
   if (!cardgroupData.cardgroup) redirect("/cardgroups");
 
-  const cards = cardsData.learnNextDueCards ?? [];
+  const cards = cardsData.learnNextDueCards;
   const lastViewedCardgroupId = meData.me?.lastViewedCardgroup?.id ?? null;
 
   return (
