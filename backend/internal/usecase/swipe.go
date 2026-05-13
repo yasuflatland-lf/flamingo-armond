@@ -148,10 +148,11 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 			return err
 		}
 		nextCards, err = u.cardRepo.FindDueCardsTx(ctx, tx, in.CardgroupID, now, u.nextBatchSize)
-		if err == nil {
-			nextCards = u.ordering.Apply(nextCards, u.randSource())
+		if err != nil {
+			return err
 		}
-		return err
+		nextCards = u.ordering.Apply(nextCards, u.randSource())
+		return nil
 	})
 	if err != nil {
 		var ge *gqlerror.Error
