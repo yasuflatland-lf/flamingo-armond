@@ -74,11 +74,8 @@ type CardUsecase struct {
 	notionPageID  string
 }
 
-func NewCardUsecase(db *gorm.DB, cardRepo CardRepository, cardgroupRepo CardgroupRepositoryForCard, userCardFSRSRepo ...UserCardFSRSRepositoryForCard) *CardUsecase {
-	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo}
-	if len(userCardFSRSRepo) > 0 {
-		uc.userFSRSRepo = userCardFSRSRepo[0]
-	}
+func NewCardUsecase(db *gorm.DB, cardRepo CardRepository, cardgroupRepo CardgroupRepositoryForCard, userCardFSRSRepo UserCardFSRSRepositoryForCard) *CardUsecase {
+	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo, userFSRSRepo: userCardFSRSRepo}
 	if db != nil {
 		uc.tx = func(ctx context.Context, fn func(tx *gorm.DB) error) error {
 			return db.WithContext(ctx).Transaction(fn)
@@ -94,13 +91,9 @@ func NewCardUsecaseWithTx(
 	cardRepo CardRepository,
 	cardgroupRepo CardgroupRepositoryForCard,
 	tx func(ctx context.Context, fn func(tx *gorm.DB) error) error,
-	userCardFSRSRepo ...UserCardFSRSRepositoryForCard,
+	userCardFSRSRepo UserCardFSRSRepositoryForCard,
 ) *CardUsecase {
-	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo, tx: tx}
-	if len(userCardFSRSRepo) > 0 {
-		uc.userFSRSRepo = userCardFSRSRepo[0]
-	}
-	return uc
+	return &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo, tx: tx, userFSRSRepo: userCardFSRSRepo}
 }
 
 func (u *CardUsecase) WithNotionWritebacker(w NotionWritebacker, pageID string) *CardUsecase {
@@ -533,7 +526,9 @@ func (u *CardUsecase) resolveCursor(
 	switch orderBy {
 	case repository.CardOrderByDue:
 		due := card.CreatedAt
-		if user := auth.UserFrom(ctx); user != nil && u.userFSRSRepo != nil {
+		if u.userFSRSRepo == nil {
+			slog.WarnContext(ctx, "card: resolveCursor: falling back to createdAt for OrderByDue because userFSRSRepo is nil or not configured")
+		} else if user := auth.UserFrom(ctx); user != nil {
 			byCardID, err := u.userFSRSRepo.FindByUserAndCardIDs(ctx, user.Sub, []string{id})
 			if err != nil {
 				return nil, gqlerr.Internal(ctx, err)
@@ -606,7 +601,7 @@ func (u *CardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, erro
 	}
 
 	if u.tx == nil {
-		return 0, gqlerr.Internal(ctx, errors.New("usecase: tx runner not configured"))
+		return 0, gqlerr.Internal(ctx, eris.New("usecase: tx runner not configured"))
 	}
 	var deleted int64
 	err := u.tx(ctx, func(tx *gorm.DB) error {

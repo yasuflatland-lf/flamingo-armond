@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/rotisserie/eris"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 	"gorm.io/gorm"
 
@@ -38,6 +39,7 @@ type SwipeRecordRepoForSwipe interface {
 type UserCardFSRSRepoForSwipe interface {
 	UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.UserCardFSRS) error
 	FindByUserAndCardIDs(ctx context.Context, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
+	FindByUserAndCardIDsTx(ctx context.Context, tx *gorm.DB, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
 }
 
 type SwipeUsecase struct {
@@ -71,7 +73,7 @@ func NewSwipeUsecase(
 	swipeRepo SwipeRecordRepoForSwipe,
 	scheduler *service.FSRSScheduler,
 	nextBatchSize int,
-	userCardFSRSRepo ...UserCardFSRSRepoForSwipe,
+	userCardFSRSRepo UserCardFSRSRepoForSwipe,
 ) *SwipeUsecase {
 	if scheduler == nil {
 		scheduler = service.NewFSRSScheduler()
@@ -83,7 +85,7 @@ func NewSwipeUsecase(
 		cardRepo:      cardRepo,
 		cardgroupRepo: cardgroupRepo,
 		swipeRepo:     swipeRepo,
-		userFSRSRepo:  firstUserCardFSRSRepo(userCardFSRSRepo),
+		userFSRSRepo:  userCardFSRSRepo,
 		scheduler:     scheduler,
 		ordering:      service.NewOrderingPolicy(),
 		randSource: func() *rand.Rand {
@@ -106,18 +108,11 @@ func NewSwipeUsecaseWithTx(
 	scheduler *service.FSRSScheduler,
 	nextBatchSize int,
 	tx txRunner,
-	userCardFSRSRepo ...UserCardFSRSRepoForSwipe,
+	userCardFSRSRepo UserCardFSRSRepoForSwipe,
 ) *SwipeUsecase {
-	uc := NewSwipeUsecase(nil, cardRepo, cardgroupRepo, swipeRepo, scheduler, nextBatchSize, userCardFSRSRepo...)
+	uc := NewSwipeUsecase(nil, cardRepo, cardgroupRepo, swipeRepo, scheduler, nextBatchSize, userCardFSRSRepo)
 	uc.tx = tx
 	return uc
-}
-
-func firstUserCardFSRSRepo(repos []UserCardFSRSRepoForSwipe) UserCardFSRSRepoForSwipe {
-	if len(repos) == 0 {
-		return nil
-	}
-	return repos[0]
 }
 
 func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*SwipeOutput, error) {
@@ -136,10 +131,10 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 	var nextCards []*domain.Card
 	var now time.Time
 	if u.tx == nil {
-		return nil, gqlerr.Internal(ctx, errors.New("swipe usecase: transaction runner is not configured"))
+		return nil, gqlerr.Internal(ctx, eris.New("swipe usecase: transaction runner is not configured"))
 	}
 	if u.userFSRSRepo == nil {
-		return nil, gqlerr.Internal(ctx, errors.New("swipe usecase: user card fsrs repository is not configured"))
+		return nil, gqlerr.Internal(ctx, eris.New("swipe usecase: user card fsrs repository is not configured"))
 	}
 	err = u.tx(ctx, func(tx *gorm.DB) error {
 		card, err := u.cardRepo.FindByIDTx(ctx, tx, in.CardID)
@@ -154,7 +149,7 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 		}
 
 		now = time.Now().UTC()
-		byCardID, err := u.userFSRSRepo.FindByUserAndCardIDs(ctx, user.Sub, []string{card.ID})
+		byCardID, err := u.userFSRSRepo.FindByUserAndCardIDsTx(ctx, tx, user.Sub, []string{card.ID})
 		if err != nil {
 			return err
 		}
