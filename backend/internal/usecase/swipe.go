@@ -155,8 +155,7 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 		return nil
 	})
 	if err != nil {
-		var ge *gqlerror.Error
-		if errors.As(err, &ge) {
+		if ge, ok := errors.AsType[*gqlerror.Error](err); ok {
 			return nil, ge
 		}
 		return nil, gqlerr.Internal(ctx, err)
