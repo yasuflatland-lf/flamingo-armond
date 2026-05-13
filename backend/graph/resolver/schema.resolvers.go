@@ -50,7 +50,7 @@ func (r *cardResolver) UserCardState(ctx context.Context, obj *model.Card) (*mod
 		return nil, gqlerr.Internal(ctx, err)
 	}
 	if ucs == nil {
-		ucs = domain.NewUserCardFSRSForNewCard(user.Sub, obj.ID, time.Now().UTC())
+		ucs = domain.NewUserCardFSRSForNewCard(user.Sub, obj.ID, obj.CreatedAt)
 	}
 	return toModelUserCardState(ucs), nil
 }
