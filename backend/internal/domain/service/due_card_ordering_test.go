@@ -73,6 +73,20 @@ func TestOrderingPolicyApplyShufflesSameDueRun(t *testing.T) {
 	require.GreaterOrEqual(t, len(seen), 2)
 }
 
+func TestOrderingPolicyApplyNilRandSkipsShuffleButStillSorts(t *testing.T) {
+	t.Parallel()
+
+	due := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
+	cards := []*domain.Card{
+		testOrderingCard("b", due.Add(time.Hour)),
+		testOrderingCard("a", due),
+	}
+
+	got := NewOrderingPolicy().Apply(cards, nil)
+
+	require.Equal(t, []string{"a", "b"}, cardIDs(got))
+}
+
 func testOrderingCard(id string, due time.Time) *domain.Card {
 	return &domain.Card{
 		ID:   id,

@@ -232,6 +232,20 @@ func TestResolver_LearnNextDueCards_ReturnsDueCards(t *testing.T) {
 	}
 }
 
+func TestResolver_LearnNextDueCards_Anonymous(t *testing.T) {
+	t.Parallel()
+
+	srv := newLearnSrv(&cardMockRepo{}, &cardMockCGRepo{})
+
+	body := `{"query":"query { learnNextDueCards(cardgroupId: \"cg1\") { id } }"}`
+	resp := gqlRequest(t, srv, context.Background(), body)
+
+	code := errCode(t, resp)
+	if code != "UNAUTHENTICATED" {
+		t.Fatalf("expected UNAUTHENTICATED, got %q", code)
+	}
+}
+
 func TestResolver_LearnNextDueCards_EmptyListIsNormal(t *testing.T) {
 	t.Parallel()
 

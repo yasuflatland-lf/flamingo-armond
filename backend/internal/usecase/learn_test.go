@@ -171,6 +171,24 @@ func TestLearnUsecaseNextDueCardsRepoError(t *testing.T) {
 	assertGQLErr(t, err, "INTERNAL", "")
 }
 
+func TestLearnUsecaseNextDueCardsCardgroupRepoInternalError(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
+	uc := NewLearnUsecase(
+		&mockLearnCardRepo{},
+		&mockLearnCardgroupRepo{err: errors.New("db down")},
+		service.NewOrderingPolicy(),
+		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
+		20,
+		100,
+	)
+
+	_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", now, 5)
+
+	assertGQLErr(t, err, "INTERNAL", "")
+}
+
 func learnCard(id string, due time.Time) *domain.Card {
 	return &domain.Card{
 		ID:   id,
