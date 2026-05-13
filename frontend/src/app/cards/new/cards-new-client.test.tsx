@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -406,14 +406,32 @@ describe("<CardsNewClient> — navigate-on-success", () => {
     });
   });
 
-  it('renders a "Done" link to /cardgroups/<currentId>/cards when currentId is set', () => {
+  it("renders a Cancel button when currentId is set", () => {
     renderClient({ initialCardgroupId: CG_ID });
 
-    const done = screen.getByRole("link", { name: /done/i });
-    expect(done).toHaveAttribute("href", `/cardgroups/${CG_ID}/cards`);
+    expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
   });
 
-  it('does NOT render the "Done" link when currentId is null', () => {
+  it("Cancel button navigates to /cardgroups/<currentId>/cards when no ?return= is present", async () => {
+    const user = userEvent.setup();
+    renderClient({ initialCardgroupId: CG_ID });
+
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(mockPush).toHaveBeenCalledWith(`/cardgroups/${CG_ID}/cards`);
+  });
+
+  it("Cancel button navigates to the sanitized ?return= path when present", async () => {
+    mockSearchParamsValue = "return=/cardgroups/cg-9/cards";
+    const user = userEvent.setup();
+    renderClient({ initialCardgroupId: CG_ID });
+
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(mockPush).toHaveBeenCalledWith("/cardgroups/cg-9/cards");
+  });
+
+  it("does NOT render a Cancel button when currentId is null", () => {
     renderClient({
       initialCardgroupId: null,
       // forcePickerOpen would render the picker which queries MyCardgroups; keep
@@ -421,7 +439,7 @@ describe("<CardsNewClient> — navigate-on-success", () => {
       forcePickerOpen: false,
     });
 
-    expect(screen.queryByRole("link", { name: /done/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /cancel/i })).not.toBeInTheDocument();
   });
 
   it("uses URL cardgroup id (not initialCardgroupId) for setLastViewed and router.push after picker switch", async () => {
@@ -552,7 +570,9 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
     await fillAndSubmit("apple", "new back text");
 
     const user = userEvent.setup();
-    const cancelBtn = await screen.findByRole("button", { name: "Cancel" });
+    const dialogTitle = await screen.findByText("Card already exists");
+    const dialogEl = dialogTitle.closest<HTMLElement>('[role="alertdialog"]');
+    const cancelBtn = within(dialogEl!).getByRole("button", { name: "Cancel" });
     await user.click(cancelBtn);
 
     // Dialog closes.

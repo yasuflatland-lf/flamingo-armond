@@ -193,7 +193,7 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
   }
 
   return (
-    <div className="relative h-[520px] w-full max-w-xl sm:h-[580px]">
+    <div className="relative h-full max-h-[520px] w-full max-w-xl sm:max-h-[580px]">
       {cards.slice(0, 3).map((card, index) => (
         <div
           key={card.id}

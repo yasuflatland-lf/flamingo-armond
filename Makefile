@@ -1,6 +1,12 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen codegen-yacc test clean clean-frontend clean-backend doctor db-reset setup-prod setup-prod-preflight setup-prod-postapply teardown-prod teardown-prod-preflight seed-admin sync-notion-secrets sync-notion-preflight notion-env-init notion-local-setup notion-local-run
+.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen codegen-yacc test clean clean-frontend clean-backend doctor db-reset setup-prod setup-prod-preflight setup-prod-postapply teardown-prod teardown-prod-preflight seed-admin seed-admin-prod sync-notion-secrets sync-notion-preflight notion-env-init notion-local-setup notion-local-run
+
+# Ensure every ansible-playbook invocation picks up playbooks/ansible.cfg.
+# Ansible does not search the inventory directory for ansible.cfg — it walks
+# ANSIBLE_CONFIG, then CWD, then $HOME — so without this export the [colors]
+# overrides for FAILED-RETRYING and similar are silently dropped.
+export ANSIBLE_CONFIG := playbooks/ansible.cfg
 
 # Most env / Supabase targets dispatch to the playbook below; tags select the subset.
 ANSIBLE := ansible-playbook -i playbooks/inventory.local playbooks/setup.yml
@@ -115,6 +121,9 @@ setup-prod-preflight: mise-install ## Verify tokens and GitHub App installations
 
 setup-prod-postapply: mise-install ## Trigger first Render deploy + smoke tests (re-runnable from .state.yml)
 	@$(ANSIBLE_PROD) --tags postapply
+
+seed-admin-prod: mise-install ## Grant admin role to SUPER_USER_EMAILS in production DB (idempotent; re-runnable)
+	@$(ANSIBLE_PROD) --tags seed-admin-prod
 
 teardown-prod: mise-install ## DESTRUCTIVE: tear down the production environment created by setup-prod
 	@$(ANSIBLE_TEARDOWN)

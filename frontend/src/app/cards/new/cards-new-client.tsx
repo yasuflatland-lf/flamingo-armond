@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation } from "@apollo/client/react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { CreateCardMutation, UpdateCardMutation } from "@/app/cardgroups/queries";
@@ -275,20 +274,10 @@ export default function CardsNewClient({
           submitLabel="Add card"
           submitting={creating}
           error={createError}
+          onCancel={() => router.push(returnTo ?? `/cardgroups/${currentId}/cards`)}
         />
       ) : (
         <p className="text-sm text-muted-foreground">Select a cardgroup above to add a card.</p>
-      )}
-
-      {currentId != null && (
-        <div className="flex justify-end pt-4 border-t">
-          <Link
-            href={`/cardgroups/${currentId}/cards`}
-            className="text-sm text-muted-foreground hover:underline"
-          >
-            Done
-          </Link>
-        </div>
       )}
 
       {duplicate !== null && (

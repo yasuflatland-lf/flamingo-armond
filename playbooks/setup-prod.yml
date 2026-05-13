@@ -11,14 +11,16 @@
 #   ansible-playbook playbooks/setup-prod.yml --tags vercel
 #   ansible-playbook playbooks/setup-prod.yml --tags loopback
 #   ansible-playbook playbooks/setup-prod.yml --tags postapply
+#   ansible-playbook playbooks/setup-prod.yml --tags seed-admin-prod
 #
 # Tag map:
-#   preflight  -> Phase 1  (pre-bring-up token/app scanner)
-#   supabase   -> Phase 2  (runbook Step 1: Supabase project create)
-#   render     -> Phase 3  (runbook Step 2: Render web service)
-#   vercel     -> Phase 4  (runbook Step 3: Vercel project import)
-#   loopback   -> Phase 5  (runbook Step 4: Supabase loopback env wiring)
-#   postapply  -> Phase 6  (post-bring-up deploy kick + smoke)
+#   preflight       -> Phase 1  (pre-bring-up token/app scanner)
+#   supabase        -> Phase 2  (runbook Step 1: Supabase project create)
+#   render          -> Phase 3  (runbook Step 2: Render web service)
+#   vercel          -> Phase 4  (runbook Step 3: Vercel project import)
+#   loopback        -> Phase 5  (runbook Step 4: Supabase loopback env wiring)
+#   postapply       -> Phase 6  (post-bring-up deploy kick + smoke)
+#   seed-admin-prod -> one-shot admin promotion from SUPER_USER_EMAILS (re-runnable)
 #
 # supabase.yml is imported twice with different `step` vars so that
 # --tags supabase runs only Phase 2 and --tags loopback runs only Phase 5.
@@ -63,3 +65,7 @@
     - name: Phase 6 - Render deploy kick + smoke
       ansible.builtin.import_tasks: setup-prod/postapply.yml
       tags: [postapply]
+
+    - name: Seed admin role from SUPER_USER_EMAILS in production DB
+      ansible.builtin.import_tasks: setup-prod/seed-admin-prod.yml
+      tags: [seed-admin-prod, never]
