@@ -2,6 +2,7 @@ package service
 
 import (
 	"math/rand"
+	"strings"
 	"testing"
 	"time"
 
@@ -103,9 +104,9 @@ func cardIDs(cards []*domain.Card) []string {
 }
 
 func key(cards []*domain.Card) string {
-	out := ""
+	var sb strings.Builder
 	for _, card := range cards {
-		out += card.ID
+		sb.WriteString(card.ID)
 	}
-	return out
+	return sb.String()
 }

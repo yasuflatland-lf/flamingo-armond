@@ -261,9 +261,9 @@ func TestResolver_LearnNextDueCards_EmptyListIsNormal(t *testing.T) {
 		t.Fatalf("unexpected errors: %v", resp["errors"])
 	}
 	data, _ := resp["data"].(map[string]any)
-	cards, ok := data["learnNextDueCards"].([]any)
-	if !ok || len(cards) != 0 {
-		t.Fatalf("expected empty card list, got %T %v", data["learnNextDueCards"], data["learnNextDueCards"])
+	cards, _ := data["learnNextDueCards"].([]any)
+	if len(cards) != 0 {
+		t.Fatalf("expected empty card list, got %v", data["learnNextDueCards"])
 	}
 }
 

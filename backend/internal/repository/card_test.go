@@ -544,7 +544,6 @@ func TestCardRepo_Create_OtherUniqueViolationNotMisclassified(t *testing.T) {
 	require.Equal(t, "23505", pgErr.Code)
 }
 
-// ptr returns a pointer to s. Convenience helper for search test cases.
 func strPtr(s string) *string { return &s }
 
 // TestCardRepo_FindPageByCardgroup_Search verifies the search filter:
