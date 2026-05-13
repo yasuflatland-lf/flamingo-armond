@@ -412,6 +412,25 @@ describe("<CardsNewClient> — navigate-on-success", () => {
     expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
   });
 
+  it("Cancel button navigates to /cardgroups/<currentId>/cards when no ?return= is present", async () => {
+    const user = userEvent.setup();
+    renderClient({ initialCardgroupId: CG_ID });
+
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(mockPush).toHaveBeenCalledWith(`/cardgroups/${CG_ID}/cards`);
+  });
+
+  it("Cancel button navigates to the sanitized ?return= path when present", async () => {
+    mockSearchParamsValue = "return=/cardgroups/cg-9/cards";
+    const user = userEvent.setup();
+    renderClient({ initialCardgroupId: CG_ID });
+
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(mockPush).toHaveBeenCalledWith("/cardgroups/cg-9/cards");
+  });
+
   it("does NOT render a Cancel button when currentId is null", () => {
     renderClient({
       initialCardgroupId: null,
