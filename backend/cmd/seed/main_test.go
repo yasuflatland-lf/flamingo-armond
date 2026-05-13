@@ -487,5 +487,5 @@ func TestImport_SkipsCascade(t *testing.T) {
 	var fsrsCount int
 	err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM public.user_card_fsrs`).Scan(&fsrsCount)
 	require.NoError(t, err)
-	assert.Equal(t, 0, fsrsCount, "fsrs rows should be skipped (card not inserted + user skipped)")
+	assert.Equal(t, 0, fsrsCount, "fsrs row for unknown user skipped by user guard; fsrs row for known user skipped by skippedCards guard (card never inserted)")
 }

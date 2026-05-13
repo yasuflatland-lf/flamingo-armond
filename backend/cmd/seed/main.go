@@ -384,7 +384,7 @@ func runImport(dbURL, inPath string) (retErr error) {
 	fmt.Printf("import complete: %d cardgroups, %d cards, %d fsrs rows inserted/updated\n",
 		cgInserted, cardInserted, fsrsInserted)
 	if len(skippedEmails) > 0 {
-		fmt.Printf("skipped users (not found in target db): %v\n", skippedEmails)
+		fmt.Printf("skipped %d users not found in target db\n", len(skippedEmails))
 	}
 	return nil
 }
