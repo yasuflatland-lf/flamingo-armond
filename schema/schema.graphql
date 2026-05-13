@@ -248,9 +248,10 @@ extend type Query {
   """All cards in a cardgroup owned by the authenticated caller."""
   cardsByCardgroup(cardgroupId: ID!): [Card!]! @deprecated(reason: "Use cardsByCardgroupConnection")
   """
-  Next due cards for the learn flow. Returns only cards whose due timestamp is
-  now or earlier; cards sharing the same due timestamp may be shuffled per session.
-  Empty list means the cardgroup is all caught up.
+  Next batch of cards due for review in this cardgroup, ordered by due-date with
+  same-due ties shuffled per session. Returns an empty list when all cards are caught up.
+  Limit defaults to 20 (clamped to 100). Returns UNAUTHENTICATED if the caller does not own
+  the cardgroup; BAD_USER_INPUT if the cardgroup does not exist.
   """
   learnNextDueCards(cardgroupId: ID!, limit: Int = 20): [Card!]!
   """
