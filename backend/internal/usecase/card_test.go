@@ -156,6 +156,10 @@ func (m *mockUserCardFSRSRepository) FindByUserAndCardIDs(_ context.Context, _ s
 	return out, nil
 }
 
+func (m *mockUserCardFSRSRepository) FindByUserAndCardIDsTx(_ context.Context, _ *gorm.DB, _ string, ids []string) (map[string]*domain.UserCardFSRS, error) {
+	return m.FindByUserAndCardIDs(context.Background(), "", ids)
+}
+
 func (m *mockUserCardFSRSRepository) UpsertTx(_ context.Context, _ *gorm.DB, u *domain.UserCardFSRS) error {
 	if m.upsertErr != nil {
 		return m.upsertErr
@@ -230,7 +234,7 @@ func TestCardUsecase_Create(t *testing.T) {
 			t.Parallel()
 			cardRepo := &mockCardRepository{}
 			cgRepo := &mockCardgroupRepoForCard{findResult: tc.cardgroup, findErr: tc.cardgroupErr}
-			uc := NewCardUsecase(nil, cardRepo, cgRepo)
+			uc := NewCardUsecase(nil, cardRepo, cgRepo, nil)
 
 			got, err := uc.Create(tc.ctx, tc.input)
 
@@ -271,6 +275,7 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 		t.Parallel()
 		uc := NewCardUsecase(nil, &mockCardRepository{findResult: existing},
 			&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+			nil,
 		)
 		_, err := uc.Update(authedCtx("u2"), "card1", UpdateCardInput{Front: ptr("new")})
 		assertGQLErr(t, err, "UNAUTHENTICATED", "")
@@ -285,6 +290,7 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 		}
 		uc := NewCardUsecase(nil, cardRepo,
 			&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+			nil,
 		)
 		got, err := uc.Update(authedCtx("u1"), "card1", UpdateCardInput{Front: ptr(" new front ")})
 		if err != nil {
@@ -307,6 +313,7 @@ func TestCardUsecase_Delete_NotFoundMasksExistence(t *testing.T) {
 
 	uc := NewCardUsecase(nil, &mockCardRepository{findErr: repository.ErrNotFound},
 		&mockCardgroupRepoForCard{},
+		nil,
 	)
 
 	err := uc.Delete(authedCtx("u1"), "missing")
@@ -320,6 +327,7 @@ func TestCardUsecase_CardsByCardgroup(t *testing.T) {
 	cardRepo := &mockCardRepository{findByCardgroupRows: want}
 	uc := NewCardUsecase(nil, cardRepo,
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		nil,
 	)
 
 	got, err := uc.CardsByCardgroup(authedCtx("u1"), "cg1")
@@ -336,6 +344,7 @@ func TestCardUsecase_Card_NotFoundReturnsNil(t *testing.T) {
 
 	uc := NewCardUsecase(nil, &mockCardRepository{findErr: repository.ErrNotFound},
 		&mockCardgroupRepoForCard{},
+		nil,
 	)
 
 	got, err := uc.Card(authedCtx("u1"), "missing")
@@ -352,6 +361,7 @@ func TestCardUsecase_RepoErrorsBecomeInternal(t *testing.T) {
 
 	uc := NewCardUsecase(nil, &mockCardRepository{findErr: errors.New("db died")},
 		&mockCardgroupRepoForCard{},
+		nil,
 	)
 	_, err := uc.Card(authedCtx("u1"), "card1")
 	assertGQLErr(t, err, "INTERNAL", "")
@@ -359,7 +369,7 @@ func TestCardUsecase_RepoErrorsBecomeInternal(t *testing.T) {
 
 func TestCardUsecase_ListCardsByCardgroupConnection_Anonymous(t *testing.T) {
 	t.Parallel()
-	uc := NewCardUsecase(nil, &mockCardRepository{}, &mockCardgroupRepoForCard{})
+	uc := NewCardUsecase(nil, &mockCardRepository{}, &mockCardgroupRepoForCard{}, nil)
 	_, err := uc.ListCardsByCardgroupConnection(anonCtx(), CardConnectionInput{CardgroupID: "cg1"})
 	assertGQLErr(t, err, "UNAUTHENTICATED", "")
 }
@@ -368,6 +378,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_NonOwner(t *testing.T) {
 	t.Parallel()
 	uc := NewCardUsecase(nil, &mockCardRepository{},
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		nil,
 	)
 	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u2"), CardConnectionInput{CardgroupID: "cg1"})
 	assertGQLErr(t, err, "UNAUTHENTICATED", "")
@@ -377,6 +388,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_InvalidOrderBy(t *testing.T)
 	t.Parallel()
 	uc := NewCardUsecase(nil, &mockCardRepository{},
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		nil,
 	)
 	bad := CardOrderBy("STABILITY")
 	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
@@ -390,6 +402,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_BothFirstAndLast(t *testing.
 	t.Parallel()
 	uc := NewCardUsecase(nil, &mockCardRepository{},
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		nil,
 	)
 	first := 5
 	last := 5
@@ -412,6 +425,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_DefaultsAndPaging(t *testing
 	cardRepo := &mockCardRepository{findPageRows: rows, findPageTotal: 50}
 	uc := NewCardUsecase(nil, cardRepo,
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		nil,
 	)
 
 	out, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
@@ -467,6 +481,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_CursorCrossCardgroup(t *test
 		}
 		uc := NewCardUsecase(nil, cardRepo,
 			&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+			nil,
 		)
 		_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
 			CardgroupID: "cg1",
@@ -484,6 +499,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_CursorCrossCardgroup(t *test
 		}
 		uc := NewCardUsecase(nil, cardRepo,
 			&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+			nil,
 		)
 		_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
 			CardgroupID: "cg1",
@@ -510,6 +526,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_BackwardPaging(t *testing.T)
 	cardRepo := &mockCardRepository{findPageRows: rows, findPageTotal: 10}
 	uc := NewCardUsecase(nil, cardRepo,
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		nil,
 	)
 
 	out, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
@@ -639,6 +656,7 @@ func TestCardUsecase_ResolveCursor_MalformedV1_ReturnsBadUserInput(t *testing.T)
 
 	uc := NewCardUsecase(nil, &mockCardRepository{},
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		nil,
 	)
 	malformed := "v1:!!!not-base64!!!"
 	_, err := uc.resolveCursor(
@@ -656,6 +674,7 @@ func TestCardUsecase_ResolveCursor_V1EncodedID(t *testing.T) {
 
 	uc := NewCardUsecase(nil, &mockCardRepository{},
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		nil,
 	)
 	// "v1:" + base64.RawURLEncoding.EncodeToString([]byte("card-abc")) == "v1:Y2FyZC1hYmM"
 	encoded := "v1:Y2FyZC1hYmM"
@@ -705,7 +724,7 @@ func TestCardUsecase_Create_Duplicate(t *testing.T) {
 		findByCardgroupAndFrontResult: fixture,
 	}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
-	uc := NewCardUsecase(nil, cardRepo, cgRepo)
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil)
 
 	// Submit with surrounding whitespace to regression-guard the TrimSpace contract.
 	got, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "  hello  ", Back: "world"})
@@ -755,7 +774,7 @@ func TestCardUsecase_Create_DuplicateLookupRace(t *testing.T) {
 		findByCardgroupAndFrontErr: eris.New("db: connection reset"),
 	}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: wantCardgroupID, OwnerID: "u1"}}
-	uc := NewCardUsecase(nil, cardRepo, cgRepo)
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil)
 
 	_, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: wantCardgroupID, Front: "hello", Back: "world"})
 	if err == nil {
@@ -817,7 +836,7 @@ func TestCardUsecase_Create_DuplicateLookupRace_RowVanished(t *testing.T) {
 		findByCardgroupAndFrontErr: repository.ErrNotFound,
 	}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: wantCardgroupID, OwnerID: "u1"}}
-	uc := NewCardUsecase(nil, cardRepo, cgRepo)
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil)
 
 	_, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: wantCardgroupID, Front: "hello", Back: "world"})
 	if err == nil {
@@ -889,7 +908,7 @@ func TestCardUsecase_Create_triggersNotionWriteback(t *testing.T) {
 	stub := &stubNotionWriter{called: make(chan struct{})}
 	cardRepo := &mockCardRepository{}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
-	uc := NewCardUsecase(nil, cardRepo, cgRepo).WithNotionWritebacker(stub, "page-xyz")
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil).WithNotionWritebacker(stub, "page-xyz")
 
 	got, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "front", Back: "back"})
 	if err != nil {
@@ -930,7 +949,7 @@ func TestCardUsecase_Create_duplicateDoesNotTriggerWriteback(t *testing.T) {
 		findByCardgroupAndFrontResult: fixture,
 	}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
-	uc := NewCardUsecase(nil, cardRepo, cgRepo).WithNotionWritebacker(stub, "page-xyz")
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil).WithNotionWritebacker(stub, "page-xyz")
 
 	got, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "front", Back: "back"})
 	if err != nil {
@@ -968,7 +987,7 @@ func TestCardUsecase_Create_writebackErrorDoesNotAffectOutcome(t *testing.T) {
 	}
 	cardRepo := &mockCardRepository{}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
-	uc := NewCardUsecase(nil, cardRepo, cgRepo).WithNotionWritebacker(stub, "page-xyz")
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil).WithNotionWritebacker(stub, "page-xyz")
 
 	got, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "front", Back: "back"})
 	if err != nil {
@@ -990,7 +1009,7 @@ func TestCardUsecase_Create_noWritebackWhenNotConfigured(t *testing.T) {
 
 	cardRepo := &mockCardRepository{}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
-	uc := NewCardUsecase(nil, cardRepo, cgRepo)
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil)
 
 	got, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "front", Back: "back"})
 	if err != nil {
@@ -1054,7 +1073,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_SearchPassthrough(t *testing
 			cgRepo := &mockCardgroupRepoForCard{
 				findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"},
 			}
-			uc := NewCardUsecase(nil, cardRepo, cgRepo)
+			uc := NewCardUsecase(nil, cardRepo, cgRepo, nil)
 
 			_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
 				CardgroupID: "cg1",

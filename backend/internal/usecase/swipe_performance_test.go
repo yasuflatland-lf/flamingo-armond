@@ -5,10 +5,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 
 	"backend/internal/domain"
 	"backend/internal/domain/service"
+	"backend/internal/gqlerr"
 )
 
 type mockSwipeRecordRepoForSwipe struct {
@@ -204,5 +206,49 @@ func performanceSwipe(rating domain.Rating, reviewedAt time.Time, difficulty flo
 			ScheduledDays: 1,
 			State:         domain.FSRSStateReview,
 		},
+	}
+}
+
+func TestSwipeUsecase_HandleSwipe_PropagatesUpsertError(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &mockCardRepository{
+		findResult: &domain.Card{
+			ID:          "card-1",
+			CardgroupID: "cg-1",
+		},
+		findDueRows: []*domain.Card{},
+	}
+	cardgroupRepo := &mockCardgroupRepoForCard{
+		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+	}
+	swipeRepo := &mockSwipeRecordRepoForSwipe{}
+	upsertErr := eris.New("storage: simulated upsert failure")
+	userFSRSRepo := &mockUserCardFSRSRepository{
+		byCardID:  map[string]*domain.UserCardFSRS{},
+		upsertErr: upsertErr,
+	}
+	tx, _ := fakeTxRunner()
+	uc := NewSwipeUsecaseWithTx(
+		cardRepo,
+		cardgroupRepo,
+		swipeRepo,
+		service.NewFSRSScheduler(),
+		10,
+		tx,
+		userFSRSRepo,
+	)
+
+	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+		CardID:      "card-1",
+		CardgroupID: "cg-1",
+		Mode:        int(domain.RatingEasy),
+	})
+
+	if err == nil {
+		t.Fatal("expected error from UpsertTx, got nil")
+	}
+	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
+		t.Fatalf("expected INTERNAL gql error, got %v", err)
 	}
 }
