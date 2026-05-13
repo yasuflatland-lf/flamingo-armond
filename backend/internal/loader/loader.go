@@ -11,6 +11,13 @@ import (
 	"backend/internal/repository"
 )
 
+// userCardFSRSReader is the narrow interface the loader needs from the
+// UserCardFSRS repository. The loader only calls FindByUserAndCardIDs; it
+// never calls UpsertTx, so only that method is listed here.
+type userCardFSRSReader interface {
+	FindByUserAndCardIDs(ctx context.Context, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
+}
+
 type contextKey struct{}
 
 type Loaders struct {
@@ -43,15 +50,12 @@ func NewWithUserCardFSRS(
 	cardgroupRepo repository.CardgroupRepository,
 	cardRepo repository.CardRepository,
 	swipeRecordRepo repository.SwipeRecordRepository,
-	userCardFSRSRepo repository.UserCardFSRSRepository,
+	userCardFSRSRepo userCardFSRSReader,
 	viewer string,
 ) *Loaders {
-	var loaders *Loaders
-	if swipeRecordRepo != nil {
-		loaders = New(userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo)
-	} else {
-		loaders = New(userRepo, roleRepo, cardgroupRepo, cardRepo)
-	}
+	// New tolerates a nil SwipeRecordRepository inside the variadic slot, so
+	// forward unconditionally; the nil-check lives there.
+	loaders := New(userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo)
 	if userCardFSRSRepo != nil && viewer != "" {
 		loaders.UserCardFSRS = dataloader.NewBatchedLoader(userCardFSRSBatchFunc(userCardFSRSRepo, viewer))
 	}
@@ -76,7 +80,7 @@ func MiddlewareWithUserCardFSRS(
 	cardgroupRepo repository.CardgroupRepository,
 	cardRepo repository.CardRepository,
 	swipeRecordRepo repository.SwipeRecordRepository,
-	userCardFSRSRepo repository.UserCardFSRSRepository,
+	userCardFSRSRepo userCardFSRSReader,
 ) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {

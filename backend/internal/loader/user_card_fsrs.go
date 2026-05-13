@@ -6,10 +6,9 @@ import (
 	"github.com/graph-gophers/dataloader/v7"
 
 	"backend/internal/domain"
-	"backend/internal/repository"
 )
 
-func userCardFSRSBatchFunc(repo repository.UserCardFSRSRepository, viewer string) dataloader.BatchFunc[string, *domain.UserCardFSRS] {
+func userCardFSRSBatchFunc(repo userCardFSRSReader, viewer string) dataloader.BatchFunc[string, *domain.UserCardFSRS] {
 	return func(ctx context.Context, keys []string) []*dataloader.Result[*domain.UserCardFSRS] {
 		out := make([]*dataloader.Result[*domain.UserCardFSRS], len(keys))
 		if len(keys) == 0 {
