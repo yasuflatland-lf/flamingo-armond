@@ -71,8 +71,7 @@ func main() {
 	importIn := importCmd.String("in", "dump.json", "input file path")
 
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: seed <dump|import> [flags]")
-		os.Exit(1)
+		log.Fatal("usage: seed <dump|import> [flags]")
 	}
 
 	switch os.Args[1] {
@@ -91,8 +90,7 @@ func main() {
 			log.Fatal(eris.ToString(err, true))
 		}
 	default:
-		fmt.Fprintf(os.Stderr, "unknown subcommand %q\n", os.Args[1])
-		os.Exit(1)
+		log.Fatalf("unknown subcommand %q", os.Args[1])
 	}
 }
 
@@ -203,7 +201,7 @@ func runDump(dbURL, outPath string) error {
 	return nil
 }
 
-func runImport(dbURL, inPath string) error {
+func runImport(dbURL, inPath string) (retErr error) {
 	data, err := os.ReadFile(inPath)
 	if err != nil {
 		return eris.Wrapf(err, "seed: read dump file %s", inPath)
@@ -263,10 +261,10 @@ func runImport(dbURL, inPath string) error {
 
 	tx, err := db.Begin()
 	if err != nil {
-		return eris.Wrap(err, "seed: begin transaction")
+		return eris.Wrap(err, "seed: begin tx")
 	}
 	defer func() {
-		if err != nil {
+		if retErr != nil {
 			_ = tx.Rollback()
 		}
 	}()
