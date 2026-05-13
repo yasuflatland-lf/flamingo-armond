@@ -77,9 +77,6 @@ func (m *mockCardRepository) FindByIDs(_ context.Context, _ []string) (map[strin
 func (m *mockCardRepository) FindByCardgroup(_ context.Context, _ string) ([]*domain.Card, error) {
 	return m.findByCardgroupRows, m.findByCardgroupErr
 }
-func (m *mockCardRepository) FindDueCards(_ context.Context, _ string, _ time.Time, _ int) ([]*domain.Card, error) {
-	return m.findDueRows, m.findDueErr
-}
 func (m *mockCardRepository) DeleteByIDsTx(_ context.Context, _ *gorm.DB, ownerID string, ids []string) (int64, error) {
 	m.deleteByIDsCalls++
 	m.capturedDeleteOwn = ownerID

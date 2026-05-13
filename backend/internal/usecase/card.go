@@ -22,7 +22,6 @@ type CardRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Card, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error)
 	FindByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error)
-	FindDueCards(ctx context.Context, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
 	FindPageByCardgroup(
 		ctx context.Context,
 		cardgroupID string,
