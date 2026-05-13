@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend codegen codegen-yacc test clean clean-frontend clean-backend doctor db-reset setup-prod setup-prod-preflight setup-prod-postapply teardown-prod teardown-prod-preflight seed-admin seed-admin-prod sync-notion-secrets sync-notion-preflight notion-env-init notion-local-setup notion-local-run
+.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend dump-data import-data codegen codegen-yacc test clean clean-frontend clean-backend doctor db-reset setup-prod setup-prod-preflight setup-prod-postapply teardown-prod teardown-prod-preflight seed-admin seed-admin-prod sync-notion-secrets sync-notion-preflight notion-env-init notion-local-setup notion-local-run
 
 # Ensure every ansible-playbook invocation picks up playbooks/ansible.cfg.
 # Ansible does not search the inventory directory for ansible.cfg — it walks
@@ -56,6 +56,14 @@ dev-backend: ## Run the backend dev server on port 1323
 
 dev-frontend: ## Run the frontend Next.js dev server
 	pnpm --filter frontend dev
+
+dump-data: ## Dump cardgroups/cards/user_card_fsrs to JSON (DB_URL=  DUMP_OUT=dump.json)
+	@if [ -z "$(DB_URL)" ]; then echo "ERROR: DB_URL is required, e.g. make dump-data DB_URL=postgres://..."; exit 1; fi
+	cd backend && go run ./cmd/seed dump --db-url "$(DB_URL)" $(if $(DUMP_OUT),--out "$(DUMP_OUT)")
+
+import-data: ## Import from JSON dump (DB_URL=  DUMP_IN=dump.json)
+	@if [ -z "$(DB_URL)" ]; then echo "ERROR: DB_URL is required, e.g. make import-data DB_URL=postgres://..."; exit 1; fi
+	cd backend && go run ./cmd/seed import --db-url "$(DB_URL)" $(if $(DUMP_IN),--in "$(DUMP_IN)")
 
 ##@ Local Supabase
 

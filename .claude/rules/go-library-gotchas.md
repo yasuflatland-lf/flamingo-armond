@@ -79,3 +79,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Transactional read-modify-write must use the `tx` handle, not `r.db`](../../docs/backend/library-gotchas/gorm-tx-read-modify-write.md)
 - [Int-typed domain enums need `IsValid()` on DB reconstitution](../../docs/backend/library-gotchas/gorm-enum-cast-isvalid.md)
 - [GraphQL resolver: synthesized domain values must be deterministic](../../docs/backend/library-gotchas/graphql-resolver-stable-synthesis.md)
+- [Raw SQL CLI: `sql.Open("pgx", dbURL)` + pgx stdlib, not GORM; validate DSN before Open; auth.users needs superuser DSN](../../docs/backend/library-gotchas/raw-sql-cli-pgx-stdlib.md)
+- [`*sql.Rows`: explicit `rows.Close()` after loop in addition to `defer rows.Close()`](../../docs/backend/library-gotchas/sql-rows-explicit-close.md)
+- [Named return `(retErr error)` for deferred `tx.Rollback` — local `err` can be shadowed](../../docs/backend/library-gotchas/named-return-deferred-rollback.md)
+- [Sensitive file output: use `0o600`, not `0o644`, for files containing PII](../../docs/backend/library-gotchas/sensitive-file-permissions-0o600.md)
