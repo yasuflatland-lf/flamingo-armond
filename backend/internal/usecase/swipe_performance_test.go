@@ -74,7 +74,6 @@ func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
 				findResult: &domain.Card{
 					ID:          "card-1",
 					CardgroupID: "cg-1",
-					FSRS:        domain.NewFSRSStateForNewCard(base),
 				},
 				findDueRows: []*domain.Card{{ID: "next-1", CardgroupID: "cg-1"}},
 			}
@@ -126,6 +125,58 @@ func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
 				t.Fatalf("unexpected next cards: %+v", got.NextCards)
 			}
 		})
+	}
+}
+
+func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &mockCardRepository{
+		findResult: &domain.Card{
+			ID:          "card-1",
+			CardgroupID: "cg-1",
+		},
+		findDueRows: []*domain.Card{{ID: "next-1", CardgroupID: "cg-1"}},
+	}
+	cardgroupRepo := &mockCardgroupRepoForCard{
+		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+	}
+	swipeRepo := &mockSwipeRecordRepoForSwipe{}
+	userFSRSRepo := &mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}}
+	tx, _ := fakeTxRunner()
+	uc := NewSwipeUsecaseWithTx(
+		cardRepo,
+		cardgroupRepo,
+		swipeRepo,
+		service.NewFSRSScheduler(),
+		10,
+		tx,
+		userFSRSRepo,
+	)
+
+	got, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+		CardID:      "card-1",
+		CardgroupID: "cg-1",
+		Mode:        int(domain.RatingEasy),
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if userFSRSRepo.upserted == nil {
+		t.Fatal("expected per-user FSRS row to be upserted")
+	}
+	if userFSRSRepo.upserted.UserID != "user-1" || userFSRSRepo.upserted.CardID != "card-1" {
+		t.Fatalf("unexpected upserted identity: %+v", userFSRSRepo.upserted)
+	}
+	if userFSRSRepo.upserted.State.Reps != 1 {
+		t.Fatalf("expected first swipe to produce reps=1, got %+v", userFSRSRepo.upserted.State)
+	}
+	if swipeRepo.created == nil || swipeRepo.created.StateAfter != userFSRSRepo.upserted.State {
+		t.Fatalf("swipe snapshot must match upserted user state, swipe=%+v ucs=%+v", swipeRepo.created, userFSRSRepo.upserted)
+	}
+	if len(got.NextCards) != 1 || got.NextCards[0].ID != "next-1" {
+		t.Fatalf("unexpected next cards: %+v", got.NextCards)
 	}
 }
 
