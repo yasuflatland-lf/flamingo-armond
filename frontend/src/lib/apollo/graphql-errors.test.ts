@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { isUnauthenticatedGraphQLError } from "./graphql-errors";
 
 const PREFIX = "GraphQL errors: ";
@@ -24,6 +24,16 @@ describe("isUnauthenticatedGraphQLError", () => {
   test("Error with correct prefix but malformed JSON returns false", () => {
     expect(isUnauthenticatedGraphQLError(new Error(`${PREFIX}not-json`))).toBe(false);
     expect(isUnauthenticatedGraphQLError(new Error(`${PREFIX}{unclosed`))).toBe(false);
+  });
+
+  test("malformed JSON logs console.warn with error name", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const result = isUnauthenticatedGraphQLError(new Error(`${PREFIX}not-json`));
+    expect(result).toBe(false);
+    expect(warnSpy).toHaveBeenCalledWith("[graphql-errors] failed to parse GraphQL error message", {
+      name: "SyntaxError",
+    });
+    warnSpy.mockRestore();
   });
 
   test("Error with correct prefix + valid JSON but no UNAUTHENTICATED code returns false", () => {

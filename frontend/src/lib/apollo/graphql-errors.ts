@@ -10,7 +10,10 @@ function parseGqlErrors(err: unknown): Array<{ extensions?: { code?: string } }>
   try {
     const parsed = JSON.parse(err.message.slice(prefix.length));
     return Array.isArray(parsed) ? parsed : null;
-  } catch {
+  } catch (e) {
+    console.warn("[graphql-errors] failed to parse GraphQL error message", {
+      name: e instanceof Error ? e.name : "unknown",
+    });
     return null;
   }
 }
