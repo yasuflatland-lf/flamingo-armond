@@ -45,8 +45,6 @@ type mockCardRepository struct {
 	findPageErr   error
 	findDueRows   []*domain.Card
 	findDueErr    error
-	updateFSRSErr error
-	capturedFSRS  domain.FSRSState
 	// captured arguments from the most recent FindPageByCardgroup call.
 	capturedFindPage struct {
 		cardgroupID string
@@ -96,16 +94,9 @@ func (m *mockCardRepository) Update(_ context.Context, _ string, patch repositor
 	m.capturedPatch = patch
 	return m.updateResult, m.updateErr
 }
-func (m *mockCardRepository) UpdateFSRSStateTx(_ context.Context, _ *gorm.DB, _ string, state domain.FSRSState) error {
-	m.capturedFSRS = state
-	return m.updateFSRSErr
-}
 func (m *mockCardRepository) Delete(_ context.Context, _ string) error {
 	m.deleteCalled = true
 	return m.deleteErr
-}
-func (m *mockCardRepository) FindDueCardsTx(_ context.Context, _ *gorm.DB, _ string, _ time.Time, _ int) ([]*domain.Card, error) {
-	return m.findDueRows, m.findDueErr
 }
 func (m *mockCardRepository) FindDueCardsForUser(_ context.Context, _ string, _ string, _ time.Time, _ int) ([]*domain.Card, error) {
 	return m.findDueRows, m.findDueErr
@@ -274,7 +265,6 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 		CardgroupID: "cg1",
 		Front:       "old front",
 		Back:        "old back",
-		FSRS:        domain.NewFSRSStateForNewCard(time.Now()),
 	}
 
 	t.Run("non owner", func(t *testing.T) {

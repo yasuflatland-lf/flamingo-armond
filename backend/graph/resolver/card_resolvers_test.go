@@ -40,10 +40,6 @@ func (m *cardMockRepo) FindByIDs(_ context.Context, _ []string) (map[string]*dom
 func (m *cardMockRepo) FindByCardgroup(_ context.Context, _ string) ([]*domain.Card, error) {
 	return nil, nil
 }
-func (m *cardMockRepo) FindDueCards(_ context.Context, _ string, _ time.Time, limit int) ([]*domain.Card, error) {
-	m.findDueLimit = limit
-	return m.findDueRows, m.findDueErr
-}
 func (m *cardMockRepo) FindDueCardsForUser(_ context.Context, _ string, _ string, _ time.Time, limit int) ([]*domain.Card, error) {
 	m.findDueLimit = limit
 	return m.findDueRows, m.findDueErr
@@ -218,7 +214,6 @@ func TestResolver_LearnNextDueCards_ReturnsDueCards(t *testing.T) {
 				CardgroupID: "cg1",
 				Front:       "front",
 				Back:        "back",
-				FSRS:        domain.FSRSState{Due: time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)},
 			},
 		},
 	}

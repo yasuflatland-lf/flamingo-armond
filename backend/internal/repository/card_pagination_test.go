@@ -396,7 +396,6 @@ func TestCardRepo_FindPageByCardgroup_Search_WithAfter(t *testing.T) {
 		c := newCard(cg.ID, front, "back")
 		c.CreatedAt = now.Add(time.Duration(i) * time.Hour)
 		c.UpdatedAt = c.CreatedAt
-		c.FSRS.Due = c.CreatedAt
 		require.NoError(t, repo.Create(ctx, c))
 		matching[i] = c
 	}
@@ -408,7 +407,6 @@ func TestCardRepo_FindPageByCardgroup_Search_WithAfter(t *testing.T) {
 		c := newCard(cg.ID, front, "back")
 		c.CreatedAt = now.Add(time.Duration(3+i) * time.Hour)
 		c.UpdatedAt = c.CreatedAt
-		c.FSRS.Due = c.CreatedAt
 		require.NoError(t, repo.Create(ctx, c))
 		nonMatching[i] = c
 	}
