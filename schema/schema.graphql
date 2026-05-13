@@ -248,6 +248,12 @@ extend type Query {
   """All cards in a cardgroup owned by the authenticated caller."""
   cardsByCardgroup(cardgroupId: ID!): [Card!]! @deprecated(reason: "Use cardsByCardgroupConnection")
   """
+  Next due cards for the learn flow. Returns only cards whose due timestamp is
+  now or earlier; cards sharing the same due timestamp may be shuffled per session.
+  Empty list means the cardgroup is all caught up.
+  """
+  learnNextDueCards(cardgroupId: ID!, limit: Int = 20): [Card!]!
+  """
   Paginated cards in a cardgroup. Forward pagination uses (first, after); backward uses (last, before).
   Cursor is the card UUID. Default page size is 20; max is 100.
   Optional case-insensitive substring search on front OR back (ILIKE partial match).

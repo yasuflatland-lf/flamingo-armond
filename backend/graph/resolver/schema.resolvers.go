@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"time"
 
 	"github.com/rotisserie/eris"
 )
@@ -315,6 +316,19 @@ func (r *queryResolver) CardsByCardgroup(ctx context.Context, cardgroupID string
 	return toCardModels(ctx, cards), nil
 }
 
+// LearnNextDueCards is the resolver for the learnNextDueCards field.
+func (r *queryResolver) LearnNextDueCards(ctx context.Context, cardgroupID string, limit *int) ([]*model.Card, error) {
+	n := 0
+	if limit != nil {
+		n = *limit
+	}
+	cards, err := r.LearnUC.NextDueCards(ctx, cardgroupID, time.Now().UTC(), n)
+	if err != nil {
+		return nil, err
+	}
+	return toCardModels(ctx, cards), nil
+}
+
 // CardsByCardgroupConnection is the resolver for the cardsByCardgroupConnection field.
 func (r *queryResolver) CardsByCardgroupConnection(ctx context.Context, cardgroupID string, first *int, after *string, last *int, before *string, search *string, orderBy *model.CardOrderBy, orderDirection *model.SortOrder) (*model.CardConnection, error) {
 	out, err := r.CardUC.ListCardsByCardgroupConnection(ctx, usecase.CardConnectionInput{
@@ -342,7 +356,6 @@ func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.Vali
 
 	isAdmin, err := r.AuthSvc.IsAdmin(ctx, caller.Sub)
 	if err != nil {
-		// Map client-driven cancellation to a typed CANCELLED error; map other failures to INTERNAL.
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, gqlerr.Cancelled(ctx, err)
 		}
@@ -378,7 +391,6 @@ func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.Vali
 			Snippet: nilIfEmpty(e.Snippet),
 		})
 	}
-	// Product-type invariant: valid <=> no errors AND >=1 parsed word. See schema.graphql DictionaryValidationResult docstring.
 	return &model.DictionaryValidationResult{
 		Valid:       len(errs) == 0 && len(words) > 0,
 		ParsedWords: parsed,
@@ -439,11 +451,6 @@ func (r *queryResolver) Role(ctx context.Context, id string) (*model.Role, error
 }
 
 // Roles is the resolver for the roles field.
-//
-// Admin gate: only the user themselves (self-introspection via me { roles })
-// or an admin caller may read another user's role membership. Returning an
-// empty slice for unauthorised callers would still leak the existence of the
-// field, so we surface FORBIDDEN explicitly.
 func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Role, error) {
 	caller := auth.UserFrom(ctx)
 	if caller == nil || caller.Sub == "" {
@@ -480,15 +487,6 @@ func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Rol
 }
 
 // LastViewedCardgroup is the resolver for the lastViewedCardgroup field.
-//
-// LastViewedCardgroup hydrates obj.LastViewedCardgroup.ID — parked there by
-// toUserModel — into a full Cardgroup via the per-request DataLoader.
-//
-// Returns nil when the parked ID is empty (the User had no last_viewed at fetch
-// time) or when the DataLoader returns repository.ErrNotFound — the latter
-// covers an ON DELETE SET NULL cascade that lands between the parent user
-// fetch and this field resolver. Other DataLoader errors map to gqlerr.Internal
-// (or gqlerr.Cancelled for ctx-cancellation, per .claude/rules/error-wrapping.md).
 func (r *userResolver) LastViewedCardgroup(ctx context.Context, obj *model.User) (*model.Cardgroup, error) {
 	if obj.LastViewedCardgroup == nil || obj.LastViewedCardgroup.ID == "" {
 		return nil, nil
@@ -499,8 +497,6 @@ func (r *userResolver) LastViewedCardgroup(ctx context.Context, obj *model.User)
 	}
 	cg, err := loaders.Cardgroup.Load(ctx, obj.LastViewedCardgroup.ID)()
 	if err != nil {
-		// A SET NULL cascade between toUserModel and this resolver leaves the
-		// ID dangling; treat as "no last viewed cardgroup" rather than INTERNAL.
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, nil
 		}
