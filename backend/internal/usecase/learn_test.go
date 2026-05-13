@@ -189,6 +189,30 @@ func TestLearnUsecaseNextDueCardsCardgroupRepoInternalError(t *testing.T) {
 	assertGQLErr(t, err, "INTERNAL", "")
 }
 
+func TestNewLearnUsecase_PanicsOnInvalidDeps(t *testing.T) {
+	t.Parallel()
+	cardRepo := &mockLearnCardRepo{}
+	cgRepo := &mockLearnCardgroupRepo{}
+	t.Run("nil cardRepo", func(t *testing.T) {
+		t.Parallel()
+		require.Panics(t, func() {
+			NewLearnUsecase(nil, cgRepo, nil, nil, 20, 100)
+		})
+	})
+	t.Run("nil cardgroupRepo", func(t *testing.T) {
+		t.Parallel()
+		require.Panics(t, func() {
+			NewLearnUsecase(cardRepo, nil, nil, nil, 20, 100)
+		})
+	})
+	t.Run("defaultLimit greater than maxLimit", func(t *testing.T) {
+		t.Parallel()
+		require.Panics(t, func() {
+			NewLearnUsecase(cardRepo, cgRepo, nil, nil, 30, 20)
+		})
+	})
+}
+
 func learnCard(id string, due time.Time) *domain.Card {
 	return &domain.Card{
 		ID:   id,

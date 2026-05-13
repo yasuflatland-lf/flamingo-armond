@@ -241,6 +241,7 @@ func TestCardRepository_FindDueCards_OrderedScopedAndLimited(t *testing.T) {
 	got, err = repo.FindDueCards(ctx, cg1.ID, now, 10)
 	require.NoError(t, err)
 	require.Equal(t, []string{earlierDue.ID, laterDue.ID, dueNow.ID}, repoCardIDs(got))
+	require.NotContains(t, repoCardIDs(got), otherGroup.ID, "FindDueCards must not leak cards from another cardgroup")
 
 	empty, err := repo.FindDueCards(ctx, cg1.ID, now, 0)
 	require.NoError(t, err)
