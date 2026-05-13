@@ -48,7 +48,7 @@ The URL `?cardgroup=<id>` is the **single source of truth** for the chip + form 
 
 `/login` (when hit by an already-signed-in user) follows the same single-decision-point rule: it redirects to `/`, never directly to `/cardgroups` or `/learn/...`, for the same reason the OAuth callback does.
 
-The legacy "render `/` with health check inline" pattern is replaced by `/api/healthz` — see "Route Handler conventions" below. External monitors that polled `/` must move to `/api/healthz`.
+The legacy "render `/` with health check inline" pattern is replaced by two distinct probes — see "Route Handler conventions" below. `/api/ping` is a thin liveness probe (Vercel edge reachability only, always 200) for warm-keep cron jobs; `/api/healthz` is a deep readiness probe (frontend → backend GraphQL `health`, 503 when the backend is down) for uptime monitors. External monitors that polled `/` must move to one of these — typically `/api/healthz` for alerting, `/api/ping` for warm-up that must not page on a backend outage.
 
 The admin entry surfaces (desktop rail admin items / `AdminPill`, mobile drawer admin section) are the only UI affordances for entering `/admin`. All render only when `gqlFetch(HeaderMeQuery)` returns a role named `"admin"`. The `/admin/layout.tsx` server-side gate is the enforcement boundary — nav visibility is a UI hint, not security. See `.claude/rules/frontend-rsc-error-handling.md` for the failure-mode contract that lets the shell degrade silently when the role lookup fails.
 

@@ -337,7 +337,7 @@ The workflow file `.github/workflows/readiness-ping.yml` triggers on a 15-minute
 
 | Secret | Purpose |
 |---|---|
-| `VERCEL_PING_URL` | Frontend base URL to warm; the workflow GETs this URL to prevent Vercel cold starts. |
+| `VERCEL_PING_URL` | Frontend base URL with scheme (e.g. `https://flamingo-armond.vercel.app`). The workflow appends `/api/ping` automatically — do **not** include the path in the secret value. |
 | `RENDER_PING_URL` | Backend base URL with scheme (e.g. `https://flamingo-backend.onrender.com`). The workflow appends `/internal/ping` automatically — do **not** include the path in the secret value. |
 | `PING_TOKEN` | Bearer token for the POST request; must match the `PING_TOKEN` env var on the Render service. |
 
