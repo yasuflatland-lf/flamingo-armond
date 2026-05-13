@@ -32,6 +32,7 @@ func (gormUserCardFSRS) TableName() string { return "user_card_fsrs" }
 type UserCardFSRSRepository interface {
 	UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.UserCardFSRS) error
 	FindByUserAndCardIDs(ctx context.Context, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
+	FindByUserAndCardIDsTx(ctx context.Context, tx *gorm.DB, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
 }
 
 type userCardFSRSRepo struct{ db *gorm.DB }
@@ -71,9 +72,29 @@ func (r *userCardFSRSRepo) FindByUserAndCardIDs(ctx context.Context, userID stri
 		Find(&rows).Error; err != nil {
 		return nil, eris.Wrap(err, "repository: find user card fsrs by user and card ids")
 	}
+	return rowsToUserCardFSRSMap(rows)
+}
+
+func (r *userCardFSRSRepo) FindByUserAndCardIDsTx(ctx context.Context, tx *gorm.DB, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error) {
+	if len(cardIDs) == 0 {
+		return nil, nil
+	}
+	var rows []gormUserCardFSRS
+	if err := tx.WithContext(ctx).
+		Where("user_id = ? AND card_id IN ?", userID, cardIDs).
+		Find(&rows).Error; err != nil {
+		return nil, eris.Wrap(err, "repository: FindByUserAndCardIDsTx")
+	}
+	return rowsToUserCardFSRSMap(rows)
+}
+
+func rowsToUserCardFSRSMap(rows []gormUserCardFSRS) (map[string]*domain.UserCardFSRS, error) {
 	out := make(map[string]*domain.UserCardFSRS, len(rows))
 	for i := range rows {
-		ucs := userCardFSRSToDomain(rows[i])
+		ucs, err := userCardFSRSToDomain(rows[i])
+		if err != nil {
+			return nil, err
+		}
 		out[ucs.CardID] = ucs
 	}
 	return out, nil
@@ -97,7 +118,11 @@ func userCardFSRSToRow(u *domain.UserCardFSRS) *gormUserCardFSRS {
 	}
 }
 
-func userCardFSRSToDomain(row gormUserCardFSRS) *domain.UserCardFSRS {
+func userCardFSRSToDomain(row gormUserCardFSRS) (*domain.UserCardFSRS, error) {
+	state := domain.FSRSCardState(row.State)
+	if !state.IsValid() {
+		return nil, eris.Errorf("repository: invalid FSRSCardState value %d for card %s", row.State, row.CardID)
+	}
 	return &domain.UserCardFSRS{
 		UserID: row.UserID,
 		CardID: row.CardID,
@@ -109,10 +134,10 @@ func userCardFSRSToDomain(row gormUserCardFSRS) *domain.UserCardFSRS {
 			ScheduledDays: row.ScheduledDays,
 			Reps:          row.Reps,
 			Lapses:        row.Lapses,
-			State:         domain.FSRSCardState(row.State),
+			State:         state,
 			LastReview:    row.LastReview,
 		},
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
-	}
+	}, nil
 }
