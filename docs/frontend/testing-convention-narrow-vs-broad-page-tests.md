@@ -326,3 +326,65 @@ grep -rn "ModeBadge" frontend/ --include="*.ts" --include="*.tsx"
 2. For each, decide whether the asserted behaviour still exists somewhere (in the replacement component, in the layout that hosts it, in a route-level test). If yes, ensure a new test in that location covers the same branch.
 3. For each behaviour that no longer exists, the deletion is correct — but say so in the commit message so reviewers can verify intent rather than guess.
 
+### Fake timer hygiene: use `beforeEach` / `afterEach` for setup and teardown
+
+Inline calls to `vi.useFakeTimers()` inside a single `it(...)` block are leak-prone. If that test throws before reaching `vi.useRealTimers()`, every subsequent test in the file inherits the fake clock — `userEvent` interactions hang (their internal `setTimeout(0)` never fires), `MockedProvider` async resolution stalls, and the suite times out with no stack pointing at the offending test.
+
+The safer pattern installs and tears down fake timers in `beforeEach` / `afterEach` so cleanup is unconditional:
+
+```ts
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+afterEach(() => {
+  vi.useRealTimers();
+  // Place vi.useRealTimers() before other teardown so subsequent afterEach
+  // hooks (e.g. restoreAllMocks) run on real time.
+});
+```
+
+This applies to any file that touches fake timers — or *might* touch them after a refactor. The `afterEach` guard is cheap to add preemptively and prevents silent time-pollution across the whole suite.
+
+Note: `vi.useFakeTimers()` / `vi.useRealTimers()` is complementary to — not a replacement for — the `vi.spyOn` + `vi.restoreAllMocks()` pair documented in the [`vi.spyOn` section above](#vispyon-requires-virestoreallmocks-in-aftereach). Run both pairs when a file uses both spies and timers.
+
+### ref-as-prop mock strategy for React 19 components
+
+React 19 adopts the `ref`-as-prop pattern: components that expose an imperative handle declare `ref?: RefObject<H | null>` in their props interface rather than using `forwardRef`. Mocking such a component in Vitest requires `useImperativeHandle` inside the mock factory so the test can exercise the handle's methods:
+
+```ts
+import { useImperativeHandle } from "react";
+import type { RefObject } from "react";
+
+vi.mock("@/components/learn/swipe-card-stack", () => ({
+  default: vi.fn(
+    (props: { ref?: RefObject<SwipeCardStackHandle | null>; /* other props */ }) => {
+      useImperativeHandle(props.ref, () => ({
+        triggerSwipe: triggerSwipeSpy,
+      }));
+      return <div data-testid="swipe-card-stack-stub" />;
+    },
+  ),
+}));
+```
+
+In the test body, create the ref with `createRef<H>()` from `@testing-library/react` (re-exported from React) and pass it as a prop:
+
+```ts
+import { createRef } from "react";
+
+it("calls triggerSwipe on the handle", async () => {
+  const ref = createRef<SwipeCardStackHandle>();
+  render(<ParentComponent swipeRef={ref} />);
+  // Interact with parent, then assert on the handle
+  expect(triggerSwipeSpy).toHaveBeenCalledWith("right");
+});
+```
+
+Key constraints:
+
+- `useImperativeHandle` must be called unconditionally inside the mock factory function — calling it conditionally (e.g. `if (props.ref)`) violates React's rules of hooks and causes a test-environment warning.
+- The `spy` variable (`triggerSwipeSpy` above) must be declared at module scope so it is stable across renders and accessible in assertions.
+- The mock factory's `props` type annotation must include `ref?: RefObject<H | null>` explicitly; without it TypeScript infers `props` as `{}` and the `useImperativeHandle` call cannot reference `props.ref`.
+
+Reference: `frontend/src/app/learn/[cardgroupId]/learn-client.test.tsx` mocking `swipe-card-stack` with a `triggerSwipe` spy exposed via `useImperativeHandle`.
+

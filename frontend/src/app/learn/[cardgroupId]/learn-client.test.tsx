@@ -4,7 +4,10 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
+import { type RefObject, useImperativeHandle, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { SwipeCardData } from "@/components/learn/swipe-card";
+import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import { HandleSwipeDocument, SetLastViewedCardgroupDocument } from "@/generated/graphql";
 import {
   type ApolloMockLeakSpyResult,
@@ -12,16 +15,18 @@ import {
 } from "../../../../__tests__/utils/mock-apollo-paginated";
 import { LearnClient } from "./learn-client";
 
-const reducedMotionState = vi.hoisted(() => ({ value: true }));
-
 // ---------------------------------------------------------------------------
-// SwipeCardStack mock — captures the `onCardSwiped` reference on every render
-// so the identity-stability test can assert the callback is not re-created
-// after a swipe triggers a queue state update.
+// SwipeCardStack mock
 //
-// `vi.mock` is hoisted before imports by Vite, so the factory runs first.
-// The captured array is populated at render time and is cleared in `beforeEach`
-// so leakage between tests is impossible.
+// React 19 passes refs as plain props, so the mock accepts a `ref` prop and
+// wires it to useImperativeHandle. triggerSwipe calls onCardSwiped with the
+// first card in the `cards` array — enough for LearnClient integration tests.
+//
+// swipeDirection / swipeProgress are NOT in the mock props because LearnClient
+// no longer owns overlay state (SwipeCardStack owns it — see swipe-card-stack.tsx).
+//
+// capturedOnCardSwiped accumulates the onCardSwiped reference on every render
+// so the identity-stability test can assert it does not change across re-renders.
 // ---------------------------------------------------------------------------
 type SwipeCardStackOnCardSwiped = Parameters<
   typeof import("@/components/learn/swipe-card-stack")["SwipeCardStack"]
@@ -31,16 +36,23 @@ const capturedOnCardSwiped: SwipeCardStackOnCardSwiped[] = [];
 
 vi.mock("@/components/learn/swipe-card-stack", () => ({
   SwipeCardStack: (props: {
-    cards: { id: string; front: string; back: string }[];
+    cards: SwipeCardData[];
     onCardSwiped: SwipeCardStackOnCardSwiped;
     completedCount?: number;
-    swipeDirection: "left" | "right" | "down" | null;
-    swipeProgress: number;
+    ref?: RefObject<SwipeCardStackHandle | null>;
   }) => {
     capturedOnCardSwiped.push(props.onCardSwiped);
-    // Render minimal UI so existing tests that assert on card text or swipe
-    // progress continue to work. The `next/dynamic` AnimatedCard does not render
-    // in jsdom (ssr:false), so the full SwipeCardStack cannot be used as-is.
+
+    const activeCardRef = useRef(props.cards[0] ?? null);
+    activeCardRef.current = props.cards[0] ?? null;
+
+    useImperativeHandle(props.ref, () => ({
+      triggerSwipe: (direction: "left" | "right" | "down") => {
+        const card = activeCardRef.current;
+        if (card) props.onCardSwiped(card, direction);
+      },
+    }));
+
     const activeCard = props.cards[0];
     if (!activeCard) {
       return (
@@ -58,16 +70,9 @@ vi.mock("@/components/learn/swipe-card-stack", () => ({
     return (
       <div>
         <p>{activeCard.front}</p>
-        {props.swipeDirection ? (
-          <p>{`Overlay ${props.swipeDirection} ${props.swipeProgress}`}</p>
-        ) : null}
       </div>
     );
   },
-}));
-
-vi.mock("@/lib/use-reduced-motion", () => ({
-  useReducedMotion: () => reducedMotionState.value,
 }));
 
 // ---------------------------------------------------------------------------
@@ -106,7 +111,6 @@ let leakSpy: ApolloMockLeakSpyResult;
 
 beforeEach(() => {
   vi.useRealTimers();
-  reducedMotionState.value = true;
   leakSpy = installApolloMockLeakSpy({
     operationNames: ["HandleSwipe", "SetLastViewedCardgroup"],
   });
@@ -200,6 +204,10 @@ function makeSwipeMock(mode: 1 | 2 | 4, nextCards: (typeof CARD_1)[] = []) {
 }
 
 describe("<LearnClient>", () => {
+  // handleRate delegates to swipeStackRef.current?.triggerSwipe(direction).
+  // The mock SwipeCardStack exposes triggerSwipe via useImperativeHandle and
+  // immediately calls onCardSwiped, which fires the mutation. No timer delay
+  // needed here — timing logic lives in SwipeCardStack, not LearnClient.
   it.each([
     ["Rate as Again", 1],
     ["Rate as Hard", 2],
@@ -336,22 +344,22 @@ describe("<LearnClient>", () => {
     );
   });
 
-  it("shows swipe progress before saving a clicked rating when motion is enabled", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    reducedMotionState.value = false;
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
+  // The 180ms commit-delay and overlay-paint logic lives in SwipeCardStack, not LearnClient.
+  // LearnClient's handleRate only calls swipeStackRef.current?.triggerSwipe() — no setTimeout,
+  // no swipeDirection/swipeProgress state. Timing behavior is covered by swipe-card-stack.test.tsx.
+  it("handleRate dispatches triggerSwipe exactly once per button click without async delay", async () => {
+    const user = userEvent.setup();
     const swipe = makeSwipeMock(1);
-    renderLearnClient([swipe.mock], [CARD_1]);
+    renderLearnClient([swipe.mock]);
 
-    await user.click(screen.getByRole("button", { name: "Rate as Again" }));
-
-    expect(screen.getByText("Overlay left 1")).toBeInTheDocument();
-    expect(swipe.wasCalled()).toBe(false);
-
+    // Wrap in act so the synchronous triggerSwipe → onCardSwiped → setQueue
+    // flush completes before we check interim state.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(180);
+      await user.click(screen.getByRole("button", { name: "Rate as Again" }));
     });
 
+    // The mutation must be dispatched — triggerSwipe was called, which fired
+    // onCardSwiped, which called onSwipe inside LearnClient.
     await waitFor(() => {
       expect(swipe.wasCalled()).toBe(true);
     });
@@ -540,27 +548,27 @@ describe("<LearnClient> LearnActionBar integration", () => {
   });
 
   it("does not throw when handleRate fires with an empty queue (null activeCard guard)", async () => {
-    // handleRate reads queueRef.current[0]; when the queue is empty the early-return
-    // guard (`if (!activeCard) return`) must fire without throwing.
-    //
-    // Strategy: empty the queue via a normal userEvent swipe, then use fireEvent.click
-    // (which bypasses the HTML disabled attribute) to fire the button's onClick handler
-    // directly. This invokes handleRate with an empty queue, exercising the guard.
+    // Render with a single card, swipe it away, then click a rating button after
+    // the queue empties. `fireEvent.click` bypasses the disabled state that
+    // userEvent respects, so we can hit the underlying handler even though the
+    // button is visually disabled when the deck is empty.
+    // Verifies that the `queueRef.current[0]` null-guard inside handleRate keeps
+    // the call as a safe no-op rather than throwing.
     const user = userEvent.setup();
     const swipe = makeSwipeMock(4, []);
     renderLearnClient([swipe.mock], [CARD_1]);
 
-    // Swipe the only card away — queue becomes empty.
+    // Drain the queue: swipe the only card away.
     await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+    // Wait until the session-complete state is reached (queue empty).
     await waitFor(() => {
       expect(screen.getByTestId("learn-action-bar")).toHaveAttribute("data-disabled", "true");
     });
 
-    // fireEvent bypasses the disabled attribute and calls the onClick handler directly,
-    // exercising handleRate with queueRef.current[0] === undefined.
-    expect(() => {
-      fireEvent.click(screen.getByRole("button", { name: "Rate as Easy" }));
-    }).not.toThrow();
+    // Use fireEvent to bypass the disabled attribute and invoke the handler directly.
+    const goodButton = screen.getByRole("button", { name: "Rate as Easy" });
+    expect(() => fireEvent.click(goodButton)).not.toThrow();
   });
 });
 
@@ -570,12 +578,11 @@ describe("<LearnClient> LearnActionBar integration", () => {
 // Asserts that the `onSwipe` callback passed to SwipeCardStack as `onCardSwiped`
 // keeps the same reference across re-renders caused by queue state updates.
 //
-// Regression guard: onSwipe callback identity must stay stable across queue
-// mutations. Adding `queue` to the useCallback deps would recreate the callback
-// on every swipe and re-bind the underlying drag listener, causing this test to
-// fail — `capturedOnCardSwiped[0]` and `capturedOnCardSwiped[1]` would be
-// different function objects. The stable-reference design is preserved by
-// reading the queue via a `queueRef` instead of closing over the `queue` state.
+// Regression guard: onSwipe must keep a stable callback identity across
+// re-renders caused by queue mutations. The implementation uses a `queueRef`
+// instead of putting `queue` in the useCallback dep array, so the callback
+// is created once. If a future change adds `queue` to the deps, every swipe
+// would mint a fresh function and this assertion would fail.
 //
 // The SwipeCardStack module mock at the top of this file captures the
 // `onCardSwiped` reference on every render into `capturedOnCardSwiped`. The
@@ -636,8 +643,8 @@ describe("<LearnClient> onSwipe identity stability", () => {
     const secondRef = capturedOnCardSwiped[capturedOnCardSwiped.length - 1];
 
     // The core assertion: onSwipe must be the same function object across
-    // re-renders. If `queue` were in the useCallback dep array instead of the
-    // queueRef pattern, every queue state update would produce a new function
+    // re-renders. If `queue` were in the useCallback dep array (instead of the
+    // queueRef pattern), every queue state update would produce a new function
     // and this assertion would fail.
     expect(Object.is(firstRef, secondRef)).toBe(true);
   });

@@ -6,16 +6,16 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HandleSwipeMutation, SetLastViewedCardgroupMutation } from "@/app/learn/queries";
 import { LearnActionBar } from "@/components/learn/learn-action-bar";
+import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
+import type { SwipeDirection } from "@/components/learn/types";
 import { Button } from "@/components/ui/button";
 import type {
   HandleSwipeMutation as HandleSwipeMutationType,
   LearnCardsByCardgroupQuery,
 } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
-import { useReducedMotion } from "@/lib/use-reduced-motion";
 
-export type SwipeDirection = "left" | "right" | "down";
 type LearnCard = LearnCardsByCardgroupQuery["cardsByCardgroup"][number];
 type PerformanceMetrics = HandleSwipeMutationType["handleSwipe"]["metrics"];
 
@@ -53,15 +53,13 @@ type Props = {
 
 export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }: Props) {
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
-  const reducedMotion = useReducedMotion();
   const queueRef = useRef(queue);
   useEffect(() => {
     queueRef.current = queue;
   }, [queue]);
   const [completed, setCompleted] = useState(0);
-  const [swipeDirection, setSwipeDirection] = useState<SwipeDirection | null>(null);
-  const [swipeProgress, setSwipeProgress] = useState(0);
   const [localError, setLocalError] = useState<string | null>(null);
+  const swipeStackRef = useRef<SwipeCardStackHandle | null>(null);
 
   const [handleSwipe, { error }] = useMutation(HandleSwipeMutation);
   const backendError = useMemo(() => getBackendErrorBanner(error), [error]);
@@ -127,8 +125,6 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
     async (card: LearnCard, direction: SwipeDirection) => {
       const mode = modeFromDirection(direction);
       setLocalError(null);
-      setSwipeDirection(null);
-      setSwipeProgress(0);
       setQueue((current) => current.filter((candidate) => candidate.id !== card.id));
       setCompleted((current) => current + 1);
 
@@ -179,25 +175,13 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
     [cardgroupId, handleSwipe],
   );
 
-  const handleRate = useCallback(
-    (direction: SwipeDirection) => {
-      const activeCard = queueRef.current[0];
-      if (!activeCard) return;
-
-      setSwipeDirection(direction);
-      setSwipeProgress(1);
-
-      if (reducedMotion) {
-        void onSwipe(activeCard, direction);
-        return;
-      }
-
-      window.setTimeout(() => {
-        void onSwipe(activeCard, direction);
-      }, 180);
-    },
-    [onSwipe, reducedMotion],
-  );
+  // SwipeCardStack owns the overlay paint + commit-delay timing internally,
+  // so handleRate only needs to forward the direction through the imperative
+  // handle. Keeping handleRate stable across renders preserves React.memo
+  // bailouts on LearnActionBar.
+  const handleRate = useCallback((direction: SwipeDirection) => {
+    swipeStackRef.current?.triggerSwipe(direction);
+  }, []);
 
   return (
     <>
@@ -231,14 +215,9 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
 
           <div className="relative flex min-h-0 items-center justify-center overflow-hidden">
             <SwipeCardStack
+              ref={swipeStackRef}
               cards={queue}
               onCardSwiped={onSwipe}
-              onSwipeProgress={(direction, progress) => {
-                setSwipeDirection(direction);
-                setSwipeProgress(progress);
-              }}
-              swipeDirection={swipeDirection}
-              swipeProgress={swipeProgress}
               completedCount={completed}
             />
           </div>
