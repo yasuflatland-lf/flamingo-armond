@@ -3,7 +3,9 @@ package resolver_test
 import (
 	"context"
 	"encoding/json"
+	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
@@ -12,6 +14,7 @@ import (
 	"backend/graph/generated"
 	"backend/graph/resolver"
 	"backend/internal/domain"
+	"backend/internal/domain/service"
 	"backend/internal/repository"
 	"backend/internal/usecase"
 )
@@ -23,6 +26,9 @@ import (
 type cardMockRepo struct {
 	deleteByIDsResult int64
 	deleteByIDsErr    error
+	findDueRows       []*domain.Card
+	findDueErr        error
+	findDueLimit      int
 }
 
 func (m *cardMockRepo) FindByID(_ context.Context, _ string) (*domain.Card, error) {
@@ -33,6 +39,10 @@ func (m *cardMockRepo) FindByIDs(_ context.Context, _ []string) (map[string]*dom
 }
 func (m *cardMockRepo) FindByCardgroup(_ context.Context, _ string) ([]*domain.Card, error) {
 	return nil, nil
+}
+func (m *cardMockRepo) FindDueCards(_ context.Context, _ string, _ time.Time, limit int) ([]*domain.Card, error) {
+	m.findDueLimit = limit
+	return m.findDueRows, m.findDueErr
 }
 func (m *cardMockRepo) FindPageByCardgroup(
 	_ context.Context,
@@ -104,7 +114,22 @@ func newCardSrv(
 	tx func(context.Context, func(*gorm.DB) error) error,
 ) *handler.Server {
 	cardUC := usecase.NewCardUsecaseWithTx(cardRepo, cgRepo, tx)
-	r := resolver.NewResolver(nil, nil, cardUC, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(nil, nil, cardUC, nil, nil, nil, nil, nil, nil, nil)
+	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
+	srv.AddTransport(transport.POST{})
+	return srv
+}
+
+func newLearnSrv(cardRepo *cardMockRepo, cgRepo *cardMockCGRepo) *handler.Server {
+	learnUC := usecase.NewLearnUsecase(
+		cardRepo,
+		cgRepo,
+		service.NewOrderingPolicy(),
+		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
+		20,
+		100,
+	)
+	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, learnUC)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -165,6 +190,80 @@ func TestResolver_DeleteCards_Anonymous(t *testing.T) {
 	code := errCode(t, resp)
 	if code != "UNAUTHENTICATED" {
 		t.Fatalf("expected UNAUTHENTICATED, got %q", code)
+	}
+}
+
+func TestResolver_LearnNextDueCards_ReturnsDueCards(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &cardMockRepo{
+		findDueRows: []*domain.Card{
+			{
+				ID:          "c1",
+				CardgroupID: "cg1",
+				Front:       "front",
+				Back:        "back",
+				FSRS:        domain.FSRSState{Due: time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)},
+			},
+		},
+	}
+	srv := newLearnSrv(
+		cardRepo,
+		&cardMockCGRepo{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+	)
+
+	body := `{"query":"query($cardgroupId: ID!, $limit: Int!) { learnNextDueCards(cardgroupId: $cardgroupId, limit: $limit) { id front back cardgroupId } }","variables":{"cardgroupId":"cg1","limit":5}}`
+	resp := gqlRequest(t, srv, authedCtx("u1"), body)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	cards, ok := data["learnNextDueCards"].([]any)
+	if !ok || len(cards) != 1 {
+		t.Fatalf("expected one card, got %T %v", data["learnNextDueCards"], data["learnNextDueCards"])
+	}
+	card, _ := cards[0].(map[string]any)
+	if card["id"] != "c1" || card["front"] != "front" {
+		t.Fatalf("unexpected card payload: %v", card)
+	}
+	if cardRepo.findDueLimit != 5 {
+		t.Fatalf("expected limit 5, got %d", cardRepo.findDueLimit)
+	}
+}
+
+func TestResolver_LearnNextDueCards_Anonymous(t *testing.T) {
+	t.Parallel()
+
+	srv := newLearnSrv(&cardMockRepo{}, &cardMockCGRepo{})
+
+	body := `{"query":"query { learnNextDueCards(cardgroupId: \"cg1\") { id } }"}`
+	resp := gqlRequest(t, srv, context.Background(), body)
+
+	code := errCode(t, resp)
+	if code != "UNAUTHENTICATED" {
+		t.Fatalf("expected UNAUTHENTICATED, got %q", code)
+	}
+}
+
+func TestResolver_LearnNextDueCards_EmptyListIsNormal(t *testing.T) {
+	t.Parallel()
+
+	srv := newLearnSrv(
+		&cardMockRepo{findDueRows: []*domain.Card{}},
+		&cardMockCGRepo{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+	)
+
+	body := `{"query":"query { learnNextDueCards(cardgroupId: \"cg1\") { id } }"}`
+	resp := gqlRequest(t, srv, authedCtx("u1"), body)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	cards, _ := data["learnNextDueCards"].([]any)
+	if len(cards) != 0 {
+		t.Fatalf("expected empty card list, got %v", data["learnNextDueCards"])
 	}
 }
 

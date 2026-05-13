@@ -77,7 +77,7 @@ func (m *mockRoleByUserIDRepo) ListByUserIDs(_ context.Context, ids []string) (m
 // AdminUserUsecase. Other usecase fields are nil — only admin-user resolvers
 // are exercised here.
 func newAdminUserSrv(adminUC usecase.AdminUserUsecase) *handler.Server {
-	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, adminUC, nil, nil)
+	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, adminUC, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -89,7 +89,7 @@ func newAdminUserSrv(adminUC usecase.AdminUserUsecase) *handler.Server {
 // the caller is reading another user's roles.
 func newAdminUserSrvWithAuth(adminUC usecase.AdminUserUsecase, isAdmin bool) *handler.Server {
 	roleRepo := &mockUserRoleRepository{isAdmin: isAdmin}
-	r := resolver.NewResolver(nil, nil, nil, nil, auth.NewService(roleRepo), nil, adminUC, nil, nil)
+	r := resolver.NewResolver(nil, nil, nil, nil, auth.NewService(roleRepo), nil, adminUC, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -409,7 +409,7 @@ func TestAdminUserResolver_Roles_SelfIntrospection_Allowed(t *testing.T) {
 	// isAdmin=false models a non-admin caller; the self-introspection branch
 	// must skip the IsAdmin check entirely.
 	roleRepo := &mockUserRoleRepository{isAdmin: false}
-	r := resolver.NewResolver(uc, nil, nil, nil, auth.NewService(roleRepo), nil, &mockAdminUserUsecase{}, nil, nil)
+	r := resolver.NewResolver(uc, nil, nil, nil, auth.NewService(roleRepo), nil, &mockAdminUserUsecase{}, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 

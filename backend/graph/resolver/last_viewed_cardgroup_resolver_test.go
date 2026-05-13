@@ -39,7 +39,7 @@ func (m *mockLastViewedCardgroupUsecase) Set(_ context.Context, cardgroupID stri
 // LastViewedCardgroupUsecase. Other usecase fields are nil — only the
 // last-viewed-cardgroup paths are exercised here.
 func newLastViewedSrv(uc usecase.LastViewedCardgroupUsecase) *handler.Server {
-	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, uc)
+	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, uc, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -163,7 +163,7 @@ func TestUserLastViewedCardgroup_NilFieldResolvesNull(t *testing.T) {
 		findResult: &domain.User{ID: "u-1", DisplayName: &dn}, // LastViewedCardgroupID nil
 	}
 	uc := usecase.NewUserUsecase(userMock)
-	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 
@@ -204,7 +204,7 @@ func TestUserLastViewedCardgroup_PopulatedResolvesViaDataLoader(t *testing.T) {
 		},
 	}
 	uc := usecase.NewUserUsecase(userMock)
-	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 
@@ -255,7 +255,7 @@ func TestUserLastViewedCardgroup_LoadersNilReturnsInternal(t *testing.T) {
 		},
 	}
 	uc := usecase.NewUserUsecase(userMock)
-	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 
@@ -285,7 +285,7 @@ func TestUserLastViewedCardgroup_ContextCancelledReturnsCancelled(t *testing.T) 
 		},
 	}
 	uc := usecase.NewUserUsecase(userMock)
-	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 
@@ -327,7 +327,7 @@ func TestUserLastViewedCardgroup_GenericLoaderErrorReturnsInternal(t *testing.T)
 		},
 	}
 	uc := usecase.NewUserUsecase(userMock)
-	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 
@@ -376,7 +376,7 @@ func TestUserLastViewedCardgroup_DanglingIDResolvesNull(t *testing.T) {
 		},
 	}
 	uc := usecase.NewUserUsecase(userMock)
-	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 

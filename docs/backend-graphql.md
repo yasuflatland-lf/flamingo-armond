@@ -300,6 +300,25 @@ The admin check sits **before** base64 validation deliberately: a non-admin call
 
 **Schema docstrings describe result semantics, not parser mechanics.** A docstring like `"""Null when the parser rejected the line before extracting front/back"""` ties the documentation to a specific implementation path. Prefer result-oriented phrasing: `"""Absent (null) for syntax errors, where front/back were never extracted"""`. Result-oriented docstrings stay accurate when the implementation evolves; mechanism-oriented docstrings rot as soon as the code path changes.
 
+**Schema descriptions document error semantics as a client contract.** When a query or mutation can return well-known error codes, declare them in the field description so client implementors do not have to read the resolver source to discover the failure modes. `learnNextDueCards` is the canonical example:
+
+```graphql
+"""
+Next batch of cards due for review in this cardgroup, ordered by due-date with
+same-due ties shuffled per session. Returns an empty list when all cards are caught up.
+Limit defaults to 20 (clamped to 100). Returns UNAUTHENTICATED if the caller does not own
+the cardgroup; BAD_USER_INPUT if the cardgroup does not exist.
+"""
+learnNextDueCards(cardgroupId: ID!, limit: Int = 20): [Card!]!
+```
+
+The description is the contract, not a comment. It covers: normal return shape
+(empty list for caught-up state), clamping behaviour, and the two error codes the
+caller must handle. Keep descriptions result-oriented (what the client observes)
+rather than implementation-oriented (what the resolver calls). Do not list error
+codes only in the resolver body — that surface is invisible to client code-generators
+and frontend teams reading the schema.
+
 **Dedupe is asymmetric: `upsertDictionary` dedupes, `validateDictionary` does not.** `upsertDictionary` runs dedup and surfaces dropped rows as `DictionaryValidationError` entries with `Front`/`Back` populated. `validateDictionary` runs `textdic.Process` directly and surfaces only parser-level syntax errors — those entries never carry `Front`/`Back`. The resolver mapping site for `validateDictionary` (in `backend/graph/resolver/schema.resolvers.go`) therefore deliberately omits `nilIfEmpty(e.Front)` calls; there is nothing to map. If a future change adds dedup to `validateDictionary`, the resolver mapping site must be updated symmetrically with `upsertDictionary`.
 
 ## Backend hardening

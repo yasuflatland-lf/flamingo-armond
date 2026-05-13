@@ -9,6 +9,7 @@ type Resolver struct {
 	UserUC                *usecase.UserUsecase
 	CardgroupUC           *usecase.CardgroupUsecase
 	CardUC                *usecase.CardUsecase
+	LearnUC               *usecase.LearnUsecase
 	SwipeUC               *usecase.SwipeUsecase
 	AuthSvc               *auth.Service
 	DictionaryUC          usecase.DictionaryUsecase
@@ -29,6 +30,7 @@ func NewResolver(
 	adminUserUC usecase.AdminUserUsecase,
 	adminRoleUC usecase.AdminRoleUsecase,
 	lastViewedCardgroupUC usecase.LastViewedCardgroupUsecase,
+	learnUC *usecase.LearnUsecase,
 ) *Resolver {
 	return &Resolver{
 		UserUC:                user,
@@ -40,5 +42,6 @@ func NewResolver(
 		AdminUserUC:           adminUserUC,
 		AdminRoleUC:           adminRoleUC,
 		LastViewedCardgroupUC: lastViewedCardgroupUC,
+		LearnUC:               learnUC,
 	}
 }

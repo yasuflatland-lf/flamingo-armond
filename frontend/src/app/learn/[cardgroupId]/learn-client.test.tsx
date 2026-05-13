@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { gql, InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { type RefObject, useImperativeHandle, useRef } from "react";
@@ -239,7 +239,7 @@ describe("<LearnClient>", () => {
     expect(screen.queryByText("Bye")).not.toBeInTheDocument();
   });
 
-  it("renders the Session-complete count line after the queue empties", async () => {
+  it("renders the caught-up state after the queue empties", async () => {
     const user = userEvent.setup();
     const swipe = makeSwipeMock(4, []);
     renderLearnClient([swipe.mock], [CARD_1]);
@@ -247,9 +247,14 @@ describe("<LearnClient>", () => {
     await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Session complete")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Today's learning is complete" }),
+      ).toBeInTheDocument();
     });
-    expect(screen.getByText("You reviewed 1 card in this batch.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to cardgroups" })).toHaveAttribute(
+      "href",
+      "/cardgroups",
+    );
   });
 
   it("rolls back the card and shows an error when handleSwipe fails", async () => {
@@ -334,13 +339,15 @@ describe("<LearnClient>", () => {
     });
   });
 
-  it("renders an empty-card state with a manage cards link", () => {
+  it("renders the caught-up state when the initial due queue is empty", () => {
     renderLearnClient([], []);
 
-    expect(screen.getByText("No cards to learn")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Manage cards" })).toHaveAttribute(
+    expect(
+      screen.getByRole("heading", { name: "Today's learning is complete" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to cardgroups" })).toHaveAttribute(
       "href",
-      `/cardgroups/${CG_ID}/cards`,
+      "/cardgroups",
     );
   });
 
@@ -533,7 +540,7 @@ describe("<LearnClient> LearnActionBar integration", () => {
     expect(screen.getByTestId("learn-action-bar")).toBeInTheDocument();
   });
 
-  it("disables LearnActionBar when the session queue empties", async () => {
+  it("removes LearnActionBar when the session queue empties", async () => {
     const user = userEvent.setup();
     const swipe = makeSwipeMock(4, []);
     renderLearnClient([swipe.mock]);
@@ -543,32 +550,23 @@ describe("<LearnClient> LearnActionBar integration", () => {
     await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("learn-action-bar")).toHaveAttribute("data-disabled", "true");
+      expect(screen.queryByTestId("learn-action-bar")).not.toBeInTheDocument();
     });
   });
 
-  it("does not throw when handleRate fires with an empty queue (null activeCard guard)", async () => {
-    // Render with a single card, swipe it away, then click a rating button after
-    // the queue empties. `fireEvent.click` bypasses the disabled state that
-    // userEvent respects, so we can hit the underlying handler even though the
-    // button is visually disabled when the deck is empty.
-    // Verifies that the `queueRef.current[0]` null-guard inside handleRate keeps
-    // the call as a safe no-op rather than throwing.
+  it("does not render rating buttons once the caught-up state is reached", async () => {
     const user = userEvent.setup();
     const swipe = makeSwipeMock(4, []);
     renderLearnClient([swipe.mock], [CARD_1]);
 
-    // Drain the queue: swipe the only card away.
     await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
 
-    // Wait until the session-complete state is reached (queue empty).
     await waitFor(() => {
-      expect(screen.getByTestId("learn-action-bar")).toHaveAttribute("data-disabled", "true");
+      expect(
+        screen.getByRole("heading", { name: "Today's learning is complete" }),
+      ).toBeInTheDocument();
     });
-
-    // Use fireEvent to bypass the disabled attribute and invoke the handler directly.
-    const goodButton = screen.getByRole("button", { name: "Rate as Easy" });
-    expect(() => fireEvent.click(goodButton)).not.toThrow();
+    expect(screen.queryByRole("button", { name: "Rate as Easy" })).not.toBeInTheDocument();
   });
 });
 

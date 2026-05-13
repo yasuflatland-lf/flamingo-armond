@@ -30,7 +30,7 @@ func (m *mockUserRoleRepository) HasRole(_ context.Context, _, _ string) (bool, 
 // newDictOnlySrv builds a server with only AuthSvc wired; only the
 // validateDictionary resolver is exercised here.
 func newDictOnlySrv(roleRepo repository.UserRoleRepository) *handler.Server {
-	r := resolver.NewResolver(nil, nil, nil, nil, auth.NewService(roleRepo), nil, nil, nil, nil)
+	r := resolver.NewResolver(nil, nil, nil, nil, auth.NewService(roleRepo), nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -216,7 +216,7 @@ func (m *mockDictionaryUsecase) Upsert(_ context.Context, _ usecase.UpsertDictio
 // wired. AuthSvc is not needed for the upsertDictionary resolver because the
 // usecase mock already encapsulates auth logic.
 func newUpsertDictSrv(dictUC usecase.DictionaryUsecase) *handler.Server {
-	r := resolver.NewResolver(nil, nil, nil, nil, nil, dictUC, nil, nil, nil)
+	r := resolver.NewResolver(nil, nil, nil, nil, nil, dictUC, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv

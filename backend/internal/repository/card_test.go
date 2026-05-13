@@ -211,6 +211,43 @@ func TestCardRepository_FindDueCardsTx_OrderedAndScoped(t *testing.T) {
 	require.Equal(t, later.ID, due[1].ID)
 }
 
+func TestCardRepository_FindDueCards_OrderedScopedAndLimited(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg1 := insertCardgroup(t, ctx, ownerID)
+	cg2 := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	dueNow := newCard(cg1.ID, "due-now", "back")
+	dueNow.FSRS.Due = now
+	laterDue := newCard(cg1.ID, "later-due", "back")
+	laterDue.FSRS.Due = now.Add(-time.Hour)
+	earlierDue := newCard(cg1.ID, "earlier-due", "back")
+	earlierDue.FSRS.Due = now.Add(-2 * time.Hour)
+	future := newCard(cg1.ID, "future", "back")
+	future.FSRS.Due = now.Add(time.Hour)
+	otherGroup := newCard(cg2.ID, "other-group", "back")
+	otherGroup.FSRS.Due = now.Add(-3 * time.Hour)
+	for _, card := range []*domain.Card{dueNow, laterDue, earlierDue, future, otherGroup} {
+		require.NoError(t, repo.Create(ctx, card))
+	}
+
+	got, err := repo.FindDueCards(ctx, cg1.ID, now, 2)
+	require.NoError(t, err)
+	require.Equal(t, []string{earlierDue.ID, laterDue.ID}, repoCardIDs(got))
+
+	got, err = repo.FindDueCards(ctx, cg1.ID, now, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{earlierDue.ID, laterDue.ID, dueNow.ID}, repoCardIDs(got))
+	require.NotContains(t, repoCardIDs(got), otherGroup.ID, "FindDueCards must not leak cards from another cardgroup")
+
+	empty, err := repo.FindDueCards(ctx, cg1.ID, now, 0)
+	require.NoError(t, err)
+	require.Empty(t, empty)
+}
+
 func TestCardRepo_Create_DuplicateFront(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -232,6 +269,14 @@ func TestCardRepo_Create_DuplicateFront(t *testing.T) {
 	if errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("ErrCardDuplicateFront must not match ErrNotFound, got %v", err)
 	}
+}
+
+func repoCardIDs(cards []*domain.Card) []string {
+	out := make([]string, len(cards))
+	for i, card := range cards {
+		out[i] = card.ID
+	}
+	return out
 }
 
 func TestCardRepo_FindByCardgroupAndFront(t *testing.T) {
@@ -499,7 +544,6 @@ func TestCardRepo_Create_OtherUniqueViolationNotMisclassified(t *testing.T) {
 	require.Equal(t, "23505", pgErr.Code)
 }
 
-// ptr returns a pointer to s. Convenience helper for search test cases.
 func strPtr(s string) *string { return &s }
 
 // TestCardRepo_FindPageByCardgroup_Search verifies the search filter:

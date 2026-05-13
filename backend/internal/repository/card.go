@@ -96,6 +96,7 @@ type CardRepository interface {
 		dir SortOrder,
 		search *string,
 	) (cards []*domain.Card, totalCount int64, err error)
+	FindDueCards(ctx context.Context, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
 	FindDueCardsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
 	Create(ctx context.Context, card *domain.Card) error
 	// FindByCardgroupAndFront returns the card identified by the (cardgroup_id,
@@ -351,12 +352,20 @@ func cursorFieldValue(orderBy CardOrderBy, c *CardCursor) (any, error) {
 	return nil, eris.Errorf("cursor missing %s column", orderBy)
 }
 
+func (r *cardRepo) FindDueCards(ctx context.Context, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
+	return findDueCardsOn(r.db.WithContext(ctx), cardgroupID, now, limit)
+}
+
 func (r *cardRepo) FindDueCardsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
+	return findDueCardsOn(tx.WithContext(ctx), cardgroupID, now, limit)
+}
+
+func findDueCardsOn(db *gorm.DB, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
 	if limit <= 0 {
 		return []*domain.Card{}, nil
 	}
 	var rows []gormCard
-	if err := tx.WithContext(ctx).
+	if err := db.
 		Where("cardgroup_id = ? AND due <= ?", cardgroupID, now).
 		Order("due ASC, id ASC").
 		Limit(limit).
