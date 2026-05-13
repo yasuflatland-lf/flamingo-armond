@@ -78,7 +78,7 @@ describe("LearnPage", () => {
         cardgroup: { id: "cg-1", name: "Spanish", updatedAt: "2026-04-30T00:00:00Z" },
       } as never)
       .mockResolvedValueOnce({
-        cardsByCardgroup: [
+        learnNextDueCards: [
           {
             id: "c-1",
             front: "Hello",
@@ -99,5 +99,27 @@ describe("LearnPage", () => {
 
     // Format: cardgroupId:initialCards.length:lastViewedCardgroupId
     expect(screen.getByTestId("learn-client")).toHaveTextContent("cg-1:1:cg-old");
+  });
+
+  it("server-renders an empty due batch into LearnClient", async () => {
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(
+      makeSupabaseMock({ id: "user-1" }) as never,
+    );
+    vi.mocked(gqlFetch)
+      .mockResolvedValueOnce({
+        cardgroup: { id: "cg-1", name: "Spanish", updatedAt: "2026-04-30T00:00:00Z" },
+      } as never)
+      .mockResolvedValueOnce({
+        learnNextDueCards: [],
+      } as never)
+      .mockResolvedValueOnce({
+        me: { id: "user-1", lastViewedCardgroup: null },
+        myCardgroups: [],
+      } as never);
+
+    const jsx = await LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) });
+    render(jsx);
+
+    expect(screen.getByTestId("learn-client")).toHaveTextContent("cg-1:0:null");
   });
 });

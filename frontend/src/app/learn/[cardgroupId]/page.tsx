@@ -3,14 +3,14 @@ import { CardgroupQuery } from "@/app/cardgroups/queries";
 import { MeWithLastViewedQuery } from "@/app/queries";
 import type {
   CardgroupQuery as CardgroupQueryType,
-  LearnCardsByCardgroupQuery as LearnCardsByCardgroupQueryType,
+  LearnNextDueCardsQuery as LearnNextDueCardsQueryType,
   MeWithLastViewedQuery as MeWithLastViewedQueryType,
 } from "@/generated/graphql";
 import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { LearnCardsByCardgroupQuery } from "../queries";
+import { LearnNextDueCardsQuery } from "../queries";
 import { LearnClient } from "./learn-client";
 
 export default async function LearnPage({ params }: { params: Promise<{ cardgroupId: string }> }) {
@@ -30,13 +30,16 @@ export default async function LearnPage({ params }: { params: Promise<{ cardgrou
   const { cardgroupId } = await params;
 
   let cardgroupData: CardgroupQueryType;
-  let cardsData: LearnCardsByCardgroupQueryType;
+  let cardsData: LearnNextDueCardsQueryType;
   let meData: MeWithLastViewedQueryType;
 
   try {
     [cardgroupData, cardsData, meData] = await Promise.all([
       gqlFetch(CardgroupQuery, { variables: { id: cardgroupId }, revalidate: 0 }),
-      gqlFetch(LearnCardsByCardgroupQuery, { variables: { cardgroupId }, revalidate: 0 }),
+      gqlFetch(LearnNextDueCardsQuery, {
+        variables: { cardgroupId, limit: 20 },
+        revalidate: 0,
+      }),
       gqlFetch(MeWithLastViewedQuery, { revalidate: 0 }),
     ]);
   } catch (err) {
@@ -49,7 +52,7 @@ export default async function LearnPage({ params }: { params: Promise<{ cardgrou
 
   if (!cardgroupData.cardgroup) redirect("/cardgroups");
 
-  const cards = cardsData.cardsByCardgroup ?? [];
+  const cards = cardsData.learnNextDueCards ?? [];
   const lastViewedCardgroupId = meData.me?.lastViewedCardgroup?.id ?? null;
 
   return (

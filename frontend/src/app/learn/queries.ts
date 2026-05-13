@@ -1,8 +1,8 @@
 import { graphql } from "@/generated";
 
-export const LearnCardsByCardgroupQuery = graphql(`
-  query LearnCardsByCardgroup($cardgroupId: ID!) {
-    cardsByCardgroup(cardgroupId: $cardgroupId) {
+export const LearnNextDueCardsQuery = graphql(`
+  query LearnNextDueCards($cardgroupId: ID!, $limit: Int = 20) {
+    learnNextDueCards(cardgroupId: $cardgroupId, limit: $limit) {
       id
       front
       back

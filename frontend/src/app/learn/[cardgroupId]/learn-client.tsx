@@ -2,21 +2,20 @@
 
 import { gql } from "@apollo/client";
 import { useApolloClient, useMutation } from "@apollo/client/react";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HandleSwipeMutation, SetLastViewedCardgroupMutation } from "@/app/learn/queries";
+import { AllCaughtUp } from "@/components/learn/all-caught-up";
 import { LearnActionBar } from "@/components/learn/learn-action-bar";
 import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
 import type { SwipeDirection } from "@/components/learn/types";
-import { Button } from "@/components/ui/button";
 import type {
   HandleSwipeMutation as HandleSwipeMutationType,
-  LearnCardsByCardgroupQuery,
+  LearnNextDueCardsQuery,
 } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 
-type LearnCard = LearnCardsByCardgroupQuery["cardsByCardgroup"][number];
+type LearnCard = LearnNextDueCardsQuery["learnNextDueCards"][number];
 type PerformanceMetrics = HandleSwipeMutationType["handleSwipe"]["metrics"];
 
 const DEFAULT_METRICS: PerformanceMetrics = {
@@ -185,18 +184,8 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
 
   return (
     <>
-      {initialCards.length === 0 ? (
-        <section className="flex flex-1 items-center justify-center">
-          <div className="w-full max-w-md rounded-lg border border-dashed border-border p-8 text-center">
-            <h1 className="mb-2 text-xl font-semibold">No cards to learn</h1>
-            <p className="mb-6 text-sm text-muted-foreground">
-              Add cards to this cardgroup before starting a learning session.
-            </p>
-            <Button asChild variant="brand">
-              <Link href={`/cardgroups/${cardgroupId}/cards`}>Manage cards</Link>
-            </Button>
-          </div>
-        </section>
+      {queue.length === 0 ? (
+        <AllCaughtUp />
       ) : (
         <section className="grid min-h-0 flex-1 grid-rows-[auto_1fr_auto] gap-3">
           {visibleError ? (
