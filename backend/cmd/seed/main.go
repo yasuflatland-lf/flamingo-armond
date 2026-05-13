@@ -95,11 +95,18 @@ func main() {
 }
 
 func runDump(dbURL, outPath string) error {
+	if dbURL == "" {
+		return eris.New("seed: --db-url is required")
+	}
 	db, err := sql.Open("pgx", dbURL)
 	if err != nil {
 		return eris.Wrap(err, "seed: open db")
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("seed: db.Close: %v", err)
+		}
+	}()
 
 	if err := db.Ping(); err != nil {
 		return eris.Wrap(err, "seed: ping db")
@@ -121,6 +128,7 @@ func runDump(dbURL, outPath string) error {
 	if err := cgRows.Err(); err != nil {
 		return eris.Wrap(err, "seed: iterate cardgroup rows")
 	}
+	cgRows.Close()
 
 	var cards []CardEntry
 	cardRows, err := db.Query(`SELECT id, cardgroup_id, front, back, created_at, updated_at FROM public.cards`)
@@ -138,6 +146,7 @@ func runDump(dbURL, outPath string) error {
 	if err := cardRows.Err(); err != nil {
 		return eris.Wrap(err, "seed: iterate card rows")
 	}
+	cardRows.Close()
 
 	var fsrsEntries []FSRSEntry
 	fsrsRows, err := db.Query(`SELECT user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, elapsed_days, scheduled_days, created_at, updated_at FROM public.user_card_fsrs`)
@@ -155,6 +164,7 @@ func runDump(dbURL, outPath string) error {
 	if err := fsrsRows.Err(); err != nil {
 		return eris.Wrap(err, "seed: iterate user_card_fsrs rows")
 	}
+	fsrsRows.Close()
 
 	uuidSet := make(map[string]struct{})
 	for _, cg := range cardgroups {
@@ -192,7 +202,7 @@ func runDump(dbURL, outPath string) error {
 		return eris.Wrap(err, "seed: marshal dump file")
 	}
 
-	if err := os.WriteFile(outPath, data, 0o644); err != nil {
+	if err := os.WriteFile(outPath, data, 0o600); err != nil {
 		return eris.Wrapf(err, "seed: write dump file %s", outPath)
 	}
 
@@ -216,11 +226,18 @@ func runImport(dbURL, inPath string) (retErr error) {
 		return eris.Errorf("seed: unsupported dump version %d (expected 1)", df.Version)
 	}
 
+	if dbURL == "" {
+		return eris.New("seed: --db-url is required")
+	}
 	db, err := sql.Open("pgx", dbURL)
 	if err != nil {
 		return eris.Wrap(err, "seed: open db")
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("seed: db.Close: %v", err)
+		}
+	}()
 
 	if err := db.Ping(); err != nil {
 		return eris.Wrap(err, "seed: ping db")
@@ -234,13 +251,13 @@ func runImport(dbURL, inPath string) (retErr error) {
 		var targetID string
 		err := db.QueryRow(`SELECT id FROM auth.users WHERE email = $1`, u.Email).Scan(&targetID)
 		if err == sql.ErrNoRows {
-			log.Printf("seed: user not found for email %s (source uuid %s), skipping", u.Email, u.SourceUUID)
+			log.Printf("seed: user not found for email <redacted> (source uuid %s), skipping", u.SourceUUID)
 			skipped[u.SourceUUID] = struct{}{}
 			skippedEmails = append(skippedEmails, u.Email)
 			continue
 		}
 		if err != nil {
-			return eris.Wrapf(err, "seed: query auth.users for email %s", u.Email)
+			return eris.Wrapf(err, "seed: query auth.users for uuid %s", u.SourceUUID)
 		}
 		uuidMap[u.SourceUUID] = targetID
 	}
@@ -265,7 +282,9 @@ func runImport(dbURL, inPath string) (retErr error) {
 	}
 	defer func() {
 		if retErr != nil {
-			_ = tx.Rollback()
+			if rbErr := tx.Rollback(); rbErr != nil {
+				log.Printf("seed: tx.Rollback failed: %v (original error: %v)", rbErr, retErr)
+			}
 		}
 	}()
 
@@ -276,7 +295,9 @@ func runImport(dbURL, inPath string) (retErr error) {
 		}
 		targetOwnerID, ok := uuidMap[cg.OwnerID]
 		if !ok {
-			targetOwnerID = cg.OwnerID
+			log.Printf("seed: cardgroup %s has owner_id %s not in uuidMap; skipping", cg.ID, cg.OwnerID)
+			skippedCGs[cg.ID] = struct{}{}
+			continue
 		}
 		_, err = tx.Exec(`
 			INSERT INTO public.cardgroups (id, owner_id, name, created_at, updated_at)
@@ -322,9 +343,13 @@ func runImport(dbURL, inPath string) (retErr error) {
 		if _, skip := skipped[f.UserID]; skip {
 			continue
 		}
+		if _, skip := skippedCards[f.CardID]; skip {
+			continue
+		}
 		targetUserID, ok := uuidMap[f.UserID]
 		if !ok {
-			targetUserID = f.UserID
+			log.Printf("seed: fsrs entry user_id %s not in uuidMap; skipping", f.UserID)
+			continue
 		}
 		_, err = tx.Exec(`
 			INSERT INTO public.user_card_fsrs

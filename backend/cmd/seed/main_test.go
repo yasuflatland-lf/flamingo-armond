@@ -341,3 +341,151 @@ func TestImport_RemapsOwnerID(t *testing.T) {
 	assert.Equal(t, targetID, ownerID, "owner_id should be remapped to the target UUID")
 	assert.NotEqual(t, sourceID, ownerID, "owner_id must not remain as the source UUID")
 }
+
+func TestImport_InvalidJSON(t *testing.T) {
+	tmpFile := t.TempDir() + "/dump.json"
+	err := os.WriteFile(tmpFile, []byte("{not valid json"), 0o644)
+	require.NoError(t, err)
+
+	err = runImport(testDBURL, tmpFile)
+	require.Error(t, err)
+}
+
+func TestImport_VersionMismatch(t *testing.T) {
+	for _, version := range []int{0, 2, 99} {
+		df := DumpFile{Version: version, DumpedAt: time.Now().UTC()}
+		data, err := json.MarshalIndent(df, "", "  ")
+		require.NoError(t, err)
+
+		tmpFile := t.TempDir() + "/dump.json"
+		err = os.WriteFile(tmpFile, data, 0o644)
+		require.NoError(t, err)
+
+		err = runImport(testDBURL, tmpFile)
+		require.Error(t, err)
+	}
+}
+
+func TestImport_RemapsFSRSUserID(t *testing.T) {
+	pool := openPool(t)
+	cleanTables(t, pool)
+
+	ctx := context.Background()
+	sourceID := uuid.New().String()
+	targetID := uuid.New().String()
+	cgID := uuid.New().String()
+	cardID := uuid.New().String()
+	now := time.Now().UTC()
+
+	insertAuthUser(t, pool, targetID, "fsrs-remap@example.com")
+
+	df := DumpFile{
+		Version:  1,
+		DumpedAt: now,
+		UserMap:  []UserEntry{{SourceUUID: sourceID, Email: "fsrs-remap@example.com"}},
+		Cardgroups: []CGEntry{{
+			ID: cgID, OwnerID: sourceID, Name: "FSRS Remap Group",
+			CreatedAt: now, UpdatedAt: now,
+		}},
+		Cards: []CardEntry{{
+			ID: cardID, CardgroupID: cgID, Front: "Q", Back: "A",
+			CreatedAt: now, UpdatedAt: now,
+		}},
+		UserCardFSRS: []FSRSEntry{{
+			UserID: sourceID, CardID: cardID, State: 0,
+			Due: now, Stability: 1.0, Difficulty: 5.0,
+			Reps: 0, Lapses: 0, LastReview: now,
+			ElapsedDays: 0, ScheduledDays: 0,
+			CreatedAt: now, UpdatedAt: now,
+		}},
+	}
+
+	data, err := json.MarshalIndent(df, "", "  ")
+	require.NoError(t, err)
+	tmpFile := t.TempDir() + "/dump.json"
+	err = os.WriteFile(tmpFile, data, 0o644)
+	require.NoError(t, err)
+
+	err = runImport(testDBURL, tmpFile)
+	require.NoError(t, err)
+
+	var fsrsUserID string
+	err = pool.QueryRow(ctx,
+		`SELECT user_id FROM public.user_card_fsrs WHERE card_id = $1`, cardID).Scan(&fsrsUserID)
+	require.NoError(t, err, "fsrs row should have been inserted")
+	assert.Equal(t, targetID, fsrsUserID, "user_id should be remapped to target UUID")
+	assert.NotEqual(t, sourceID, fsrsUserID)
+}
+
+func TestImport_SkipsCascade(t *testing.T) {
+	pool := openPool(t)
+	cleanTables(t, pool)
+
+	unknownUserID := uuid.New().String()
+	knownUserID := uuid.New().String()
+	knownTargetID := uuid.New().String()
+	cgID := uuid.New().String()
+	cardID := uuid.New().String()
+	now := time.Now().UTC()
+
+	insertAuthUser(t, pool, knownTargetID, "known@example.com")
+
+	df := DumpFile{
+		Version:  1,
+		DumpedAt: now,
+		UserMap: []UserEntry{
+			{SourceUUID: unknownUserID, Email: "unknown@example.com"},
+			{SourceUUID: knownUserID, Email: "known@example.com"},
+		},
+		Cardgroups: []CGEntry{{
+			ID: cgID, OwnerID: unknownUserID, Name: "Skipped Group",
+			CreatedAt: now, UpdatedAt: now,
+		}},
+		Cards: []CardEntry{{
+			ID: cardID, CardgroupID: cgID, Front: "Q", Back: "A",
+			CreatedAt: now, UpdatedAt: now,
+		}},
+		UserCardFSRS: []FSRSEntry{
+			{
+				UserID: unknownUserID, CardID: cardID, State: 0,
+				Due: now, Stability: 1.0, Difficulty: 5.0,
+				Reps: 0, Lapses: 0, LastReview: now,
+				ElapsedDays: 0, ScheduledDays: 0,
+				CreatedAt: now, UpdatedAt: now,
+			},
+			{
+				UserID: knownUserID, CardID: cardID, State: 0,
+				Due: now, Stability: 1.0, Difficulty: 5.0,
+				Reps: 0, Lapses: 0, LastReview: now,
+				ElapsedDays: 0, ScheduledDays: 0,
+				CreatedAt: now, UpdatedAt: now,
+			},
+		},
+	}
+
+	data, err := json.MarshalIndent(df, "", "  ")
+	require.NoError(t, err)
+	tmpFile := t.TempDir() + "/dump.json"
+	err = os.WriteFile(tmpFile, data, 0o644)
+	require.NoError(t, err)
+
+	err = runImport(testDBURL, tmpFile)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	var cgCount int
+	err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM public.cardgroups`).Scan(&cgCount)
+	require.NoError(t, err)
+	assert.Equal(t, 0, cgCount, "cardgroup owned by unknown user should be skipped")
+
+	var cardCount int
+	err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM public.cards`).Scan(&cardCount)
+	require.NoError(t, err)
+	assert.Equal(t, 0, cardCount, "card in skipped cardgroup should be cascaded-skipped")
+
+	var fsrsCount int
+	err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM public.user_card_fsrs`).Scan(&fsrsCount)
+	require.NoError(t, err)
+	assert.Equal(t, 0, fsrsCount, "fsrs rows should be skipped (card not inserted + user skipped)")
+}

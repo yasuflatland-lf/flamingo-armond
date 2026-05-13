@@ -58,10 +58,12 @@ dev-frontend: ## Run the frontend Next.js dev server
 	pnpm --filter frontend dev
 
 dump-data: ## Dump cardgroups/cards/user_card_fsrs to JSON (DB_URL=  DUMP_OUT=dump.json)
-	cd backend && go run ./cmd/seed dump --db-url "$(DB_URL)" --out "$(DUMP_OUT)"
+	@if [ -z "$(DB_URL)" ]; then echo "ERROR: DB_URL is required, e.g. make dump-data DB_URL=postgres://..."; exit 1; fi
+	cd backend && go run ./cmd/seed dump --db-url "$(DB_URL)" $(if $(DUMP_OUT),--out "$(DUMP_OUT)")
 
 import-data: ## Import from JSON dump (DB_URL=  DUMP_IN=dump.json)
-	cd backend && go run ./cmd/seed import --db-url "$(DB_URL)" --in "$(DUMP_IN)"
+	@if [ -z "$(DB_URL)" ]; then echo "ERROR: DB_URL is required, e.g. make import-data DB_URL=postgres://..."; exit 1; fi
+	cd backend && go run ./cmd/seed import --db-url "$(DB_URL)" $(if $(DUMP_IN),--in "$(DUMP_IN)")
 
 ##@ Local Supabase
 
