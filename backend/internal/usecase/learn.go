@@ -20,7 +20,6 @@ const (
 )
 
 type CardRepoForLearn interface {
-	FindDueCards(ctx context.Context, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
 	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
 }
 
