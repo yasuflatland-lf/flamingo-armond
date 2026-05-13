@@ -44,6 +44,7 @@ import (
 	"backend/internal/database"
 	"backend/internal/domain"
 	"backend/internal/domain/service"
+	"backend/internal/gqlerr"
 	"backend/internal/handler/ping"
 	"backend/internal/logging"
 	"backend/internal/repository"
@@ -2193,7 +2194,7 @@ func (p *panicResolverRoot) User() generated.UserResolver           { return p.i
 
 // newPanicGraphQLServer builds a gqlgen handler.Server wired with
 // panicResolverRoot so that { health } panics. The server uses the shared
-// recoverFromPanic helper (same as newGraphQLServer) so recovery behaviour
+// gqlerr.RecoverFunc (same as newGraphQLServer) so recovery behaviour
 // stays in sync with production. Used exclusively by
 // TestGraphQL_PanicRecovery_ReturnsINTERNAL.
 func newPanicGraphQLServer() *handler.Server {
@@ -2204,7 +2205,7 @@ func newPanicGraphQLServer() *handler.Server {
 			"Content-Type": []string{"application/graphql-response+json; charset=utf-8"},
 		},
 	})
-	srv.SetRecoverFunc(recoverFromPanic)
+	srv.SetRecoverFunc(gqlerr.RecoverFunc)
 	return srv
 }
 
