@@ -245,7 +245,7 @@ func runImport(dbURL, inPath string) (retErr error) {
 
 	uuidMap := make(map[string]string)
 	skipped := make(map[string]struct{})
-	var skippedEmails []string
+	skippedUserCount := 0
 
 	for _, u := range df.UserMap {
 		var targetID string
@@ -253,7 +253,7 @@ func runImport(dbURL, inPath string) (retErr error) {
 		if err == sql.ErrNoRows {
 			log.Printf("seed: user not found for email <redacted> (source uuid %s), skipping", u.SourceUUID)
 			skipped[u.SourceUUID] = struct{}{}
-			skippedEmails = append(skippedEmails, u.Email)
+			skippedUserCount++
 			continue
 		}
 		if err != nil {
@@ -383,8 +383,8 @@ func runImport(dbURL, inPath string) (retErr error) {
 
 	fmt.Printf("import complete: %d cardgroups, %d cards, %d fsrs rows inserted/updated\n",
 		cgInserted, cardInserted, fsrsInserted)
-	if len(skippedEmails) > 0 {
-		fmt.Printf("skipped %d users not found in target db\n", len(skippedEmails))
+	if skippedUserCount > 0 {
+		fmt.Printf("skipped %d users not found in target db\n", skippedUserCount)
 	}
 	return nil
 }

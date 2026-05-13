@@ -130,6 +130,15 @@ func cleanTables(t *testing.T, pool *pgxpool.Pool) {
 	require.NoError(t, err)
 }
 
+func countRows(t *testing.T, pool *pgxpool.Pool, table string) int {
+	t.Helper()
+	var n int
+	err := pool.QueryRow(context.Background(),
+		`SELECT COUNT(*) FROM `+table).Scan(&n)
+	require.NoError(t, err)
+	return n
+}
+
 func TestDump_WritesValidJSON(t *testing.T) {
 	pool := openPool(t)
 	cleanTables(t, pool)
@@ -215,13 +224,9 @@ func TestImport_Idempotent(t *testing.T) {
 	err = runImport(testDBURL, tmpFile)
 	require.NoError(t, err)
 
-	var cgCount, cardCount, fsrsCount int
-	err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM public.cardgroups`).Scan(&cgCount)
-	require.NoError(t, err)
-	err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM public.cards`).Scan(&cardCount)
-	require.NoError(t, err)
-	err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM public.user_card_fsrs`).Scan(&fsrsCount)
-	require.NoError(t, err)
+	cgCount := countRows(t, pool, "public.cardgroups")
+	cardCount := countRows(t, pool, "public.cards")
+	fsrsCount := countRows(t, pool, "public.user_card_fsrs")
 
 	assert.Equal(t, 1, cgCount)
 	assert.Equal(t, 1, cardCount)
@@ -230,17 +235,9 @@ func TestImport_Idempotent(t *testing.T) {
 	err = runImport(testDBURL, tmpFile)
 	require.NoError(t, err)
 
-	var cgCount2, cardCount2, fsrsCount2 int
-	err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM public.cardgroups`).Scan(&cgCount2)
-	require.NoError(t, err)
-	err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM public.cards`).Scan(&cardCount2)
-	require.NoError(t, err)
-	err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM public.user_card_fsrs`).Scan(&fsrsCount2)
-	require.NoError(t, err)
-
-	assert.Equal(t, cgCount, cgCount2)
-	assert.Equal(t, cardCount, cardCount2)
-	assert.Equal(t, fsrsCount, fsrsCount2)
+	assert.Equal(t, cgCount, countRows(t, pool, "public.cardgroups"))
+	assert.Equal(t, cardCount, countRows(t, pool, "public.cards"))
+	assert.Equal(t, fsrsCount, countRows(t, pool, "public.user_card_fsrs"))
 }
 
 func TestImport_SkipsUnknownEmail(t *testing.T) {
@@ -472,20 +469,7 @@ func TestImport_SkipsCascade(t *testing.T) {
 	err = runImport(testDBURL, tmpFile)
 	require.NoError(t, err)
 
-	ctx := context.Background()
-
-	var cgCount int
-	err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM public.cardgroups`).Scan(&cgCount)
-	require.NoError(t, err)
-	assert.Equal(t, 0, cgCount, "cardgroup owned by unknown user should be skipped")
-
-	var cardCount int
-	err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM public.cards`).Scan(&cardCount)
-	require.NoError(t, err)
-	assert.Equal(t, 0, cardCount, "card in skipped cardgroup should be cascaded-skipped")
-
-	var fsrsCount int
-	err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM public.user_card_fsrs`).Scan(&fsrsCount)
-	require.NoError(t, err)
-	assert.Equal(t, 0, fsrsCount, "fsrs row for unknown user skipped by user guard; fsrs row for known user skipped by skippedCards guard (card never inserted)")
+	assert.Equal(t, 0, countRows(t, pool, "public.cardgroups"), "cardgroup owned by unknown user should be skipped")
+	assert.Equal(t, 0, countRows(t, pool, "public.cards"), "card in skipped cardgroup should be cascaded-skipped")
+	assert.Equal(t, 0, countRows(t, pool, "public.user_card_fsrs"), "fsrs row for unknown user skipped by user guard; fsrs row for known user skipped by skippedCards guard (card never inserted)")
 }
