@@ -320,7 +320,6 @@ func cardsFromParsedRows(cardgroupID string, rows []ParsedRow) []*domain.Card {
 			CardgroupID: cardgroupID,
 			Front:       row.Front,
 			Back:        row.Back,
-			FSRS:        domain.NewFSRSStateForNewCard(now),
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		})

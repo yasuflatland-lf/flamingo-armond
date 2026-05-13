@@ -147,7 +147,7 @@ func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil), nil, nil, nil, nil, ping.New(nil, "test-token"), nil))
+	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil), nil, nil, nil, nil, nil, ping.New(nil, "test-token"), nil))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -526,13 +526,14 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	roleRepo := repository.NewRoleRepository(db.GORM)
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	cardRepo := repository.NewCardRepository(db.GORM)
+	userCardFSRSRepo := repository.NewUserCardFSRSRepository(db.GORM)
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	userUC := usecase.NewUserUsecase(userRepo)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)
-	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo)
-	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10)
+	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo)
+	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10, userCardFSRSRepo)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
-	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil), userRepo, roleRepo, cardgroupRepo, cardRepo, ping.New(pingRecordRepo, "test-token"), nil, swipeRecordRepo)
+	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil), userRepo, roleRepo, cardgroupRepo, cardRepo, userCardFSRSRepo, ping.New(pingRecordRepo, "test-token"), nil, swipeRecordRepo)
 
 	ts := httptest.NewServer(e)
 	t.Cleanup(ts.Close)
@@ -1122,7 +1123,7 @@ func createTestCard(t *testing.T, srvURL, bearer, cardgroupID, front, back strin
 		createCard(input: {cardgroupId: %s, front: %s, back: %s}) {
 			__typename
 			... on CreateCardSuccess {
-				card { id front back cardgroupId state reps lapses stability difficulty }
+				card { id front back cardgroupId }
 			}
 			... on CardDuplicateFrontError {
 				message
@@ -1157,9 +1158,6 @@ func createTestCard(t *testing.T, srvURL, bearer, cardgroupID, front, back strin
 	}
 	if card["front"] != front || card["back"] != back {
 		t.Fatalf("createCard text mismatch: %v", card)
-	}
-	if card["state"] != float64(0) || card["reps"] != float64(0) || card["lapses"] != float64(0) {
-		t.Fatalf("createCard FSRS counters mismatch: %v", card)
 	}
 	return id
 }
@@ -1655,13 +1653,13 @@ func TestGraphQL_HandleSwipe_HappyPath(t *testing.T) {
 	if swipeCount != 1 {
 		t.Fatalf("swipe_records count=%d, want 1", swipeCount)
 	}
-	cardRepo := repository.NewCardRepository(db.GORM)
-	updated, err := cardRepo.FindByID(ctx, firstID)
+	userCardFSRSRepo := repository.NewUserCardFSRSRepository(db.GORM)
+	stateRows, err := userCardFSRSRepo.FindByUserAndCardIDs(ctx, sub, []string{firstID})
 	if err != nil {
-		t.Fatalf("find swiped card: %v", err)
+		t.Fatalf("find swiped user_card_fsrs: %v", err)
 	}
-	if updated.FSRS.Reps != 1 {
-		t.Fatalf("reps=%d, want 1", updated.FSRS.Reps)
+	if stateRows[firstID] == nil || stateRows[firstID].State.Reps != 1 {
+		t.Fatalf("user_card_fsrs reps=%v, want 1", stateRows[firstID])
 	}
 }
 
@@ -1758,10 +1756,7 @@ func TestHandleSwipe_RollsBackWhenSwipeRecordInsertFails(t *testing.T) {
 
 	cardRepo := repository.NewCardRepository(db.GORM)
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
-	before, err := cardRepo.FindByID(ctx, cardID)
-	if err != nil {
-		t.Fatalf("find before: %v", err)
-	}
+	userCardFSRSRepo := repository.NewUserCardFSRSRepository(db.GORM)
 	uc := usecase.NewSwipeUsecase(
 		db.GORM,
 		cardRepo,
@@ -1769,9 +1764,10 @@ func TestHandleSwipe_RollsBackWhenSwipeRecordInsertFails(t *testing.T) {
 		failingSwipeRepo{err: errors.New("forced swipe insert failure")},
 		service.NewFSRSScheduler(),
 		10,
+		userCardFSRSRepo,
 	)
 
-	_, err = uc.HandleSwipe(auth.ContextWithUser(ctx, &auth.AuthUser{Sub: sub}), usecase.HandleSwipeInput{
+	_, err := uc.HandleSwipe(auth.ContextWithUser(ctx, &auth.AuthUser{Sub: sub}), usecase.HandleSwipeInput{
 		CardID:      cardID,
 		CardgroupID: cgID,
 		Mode:        4,
@@ -1779,12 +1775,12 @@ func TestHandleSwipe_RollsBackWhenSwipeRecordInsertFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected forced error, got nil")
 	}
-	after, err := cardRepo.FindByID(ctx, cardID)
+	stateRows, err := userCardFSRSRepo.FindByUserAndCardIDs(ctx, sub, []string{cardID})
 	if err != nil {
-		t.Fatalf("find after: %v", err)
+		t.Fatalf("find user_card_fsrs after: %v", err)
 	}
-	if after.FSRS.Reps != before.FSRS.Reps || !after.FSRS.Due.Equal(before.FSRS.Due) {
-		t.Fatalf("FSRS state changed despite rollback: before=%+v after=%+v", before.FSRS, after.FSRS)
+	if len(stateRows) != 0 {
+		t.Fatalf("user_card_fsrs row created despite rollback: %+v", stateRows)
 	}
 	var swipeCount int64
 	if err := db.GORM.WithContext(ctx).Table("swipe_records").Where("card_id = ?", cardID).Count(&swipeCount).Error; err != nil {

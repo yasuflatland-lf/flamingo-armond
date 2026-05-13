@@ -19,13 +19,15 @@ type mockLearnCardRepo struct {
 	err  error
 
 	cardgroupID string
+	userID      string
 	now         time.Time
 	limit       int
 	calls       int
 }
 
-func (m *mockLearnCardRepo) FindDueCards(_ context.Context, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
+func (m *mockLearnCardRepo) FindDueCardsForUser(_ context.Context, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
 	m.calls++
+	m.userID = userID
 	m.cardgroupID = cardgroupID
 	m.now = now
 	m.limit = limit
@@ -45,9 +47,9 @@ func TestLearnUsecaseNextDueCards(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
-	earlier := learnCard("earlier", now.Add(-time.Hour))
-	later := learnCard("later", now)
-	cardRepo := &mockLearnCardRepo{rows: []*domain.Card{later, earlier}}
+	first := learnCard("repo-first", now.Add(time.Hour))
+	second := learnCard("repo-second", now.Add(-time.Hour))
+	cardRepo := &mockLearnCardRepo{rows: []*domain.Card{first, second}}
 	uc := NewLearnUsecase(
 		cardRepo,
 		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
@@ -61,10 +63,11 @@ func TestLearnUsecaseNextDueCards(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, 1, cardRepo.calls)
+	require.Equal(t, "u-1", cardRepo.userID)
 	require.Equal(t, "cg-1", cardRepo.cardgroupID)
 	require.Equal(t, now, cardRepo.now)
 	require.Equal(t, 5, cardRepo.limit)
-	require.Equal(t, []string{"earlier", "later"}, learnCardIDs(got))
+	require.Equal(t, []string{"repo-first", "repo-second"}, learnCardIDs(got))
 }
 
 func TestLearnUsecaseNextDueCardsAuthAndCardgroupErrors(t *testing.T) {
@@ -213,10 +216,9 @@ func TestNewLearnUsecase_PanicsOnInvalidDeps(t *testing.T) {
 	})
 }
 
-func learnCard(id string, due time.Time) *domain.Card {
+func learnCard(id string, _ time.Time) *domain.Card {
 	return &domain.Card{
-		ID:   id,
-		FSRS: domain.FSRSState{Due: due},
+		ID: id,
 	}
 }
 

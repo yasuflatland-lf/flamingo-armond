@@ -189,17 +189,11 @@ func TestDictionaryUsecase_AdminAllInserts(t *testing.T) {
 	if len(repo.captured) != n {
 		t.Fatalf("expected %d captured cards, got %d", n, len(repo.captured))
 	}
-	// All cards must target the requested cardgroup and carry the default
-	// FSRS state (state=New, stability=2.5).
+	// Dictionary imports are content-only. Per-user FSRS rows are created
+	// lazily on first swipe, outside the dictionary upsert path.
 	for i, c := range repo.captured {
 		if c.CardgroupID != "cg-target" {
 			t.Fatalf("captured[%d] CardgroupID=%q, want cg-target", i, c.CardgroupID)
-		}
-		if c.FSRS.State != domain.FSRSStateNew {
-			t.Fatalf("captured[%d] FSRS.State=%d, want New", i, c.FSRS.State)
-		}
-		if c.FSRS.Stability != 2.5 {
-			t.Fatalf("captured[%d] FSRS.Stability=%v, want 2.5", i, c.FSRS.Stability)
 		}
 	}
 }

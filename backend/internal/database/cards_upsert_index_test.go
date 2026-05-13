@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/rotisserie/eris"
@@ -88,7 +87,7 @@ func indexExists(t *testing.T, ctx context.Context, sqlDB *sql.DB, indexName str
 func insertCardForUpsertTest(ctx context.Context, sqlDB *sql.DB, cardgroupID, front string) (string, error) {
 	id := uuid.NewString()
 	if _, err := sqlDB.ExecContext(ctx, insertCardSQL(),
-		id, cardgroupID, front, "Back", time.Now().UTC()); err != nil {
+		id, cardgroupID, front, "Back"); err != nil {
 		return "", eris.Wrap(err, "test: insert card")
 	}
 	return id, nil

@@ -104,14 +104,8 @@ extend type Mutation {
   deleteCardgroup(id: ID!): Boolean!
 }
 
-"""A flashcard with read-only FSRS scheduling state."""
-type Card {
-  id: ID!
-  front: String!
-  back: String!
-  cardgroupId: ID!
-  """The parent cardgroup. Resolved via the per-request Cardgroup DataLoader."""
-  cardgroup: Cardgroup!
+"""Per-user FSRS scheduling state for a single card."""
+type UserCardState {
   due: Time!
   stability: Float!
   difficulty: Float!
@@ -119,38 +113,34 @@ type Card {
   reps: Int!
   lapses: Int!
   lastReview: Time!
+  elapsedDays: Int!
+  scheduledDays: Int!
+}
+
+"""A flashcard with viewer-specific FSRS scheduling state."""
+type Card {
+  id: ID!
+  front: String!
+  back: String!
+  cardgroupId: ID!
+  """The parent cardgroup. Resolved via the per-request Cardgroup DataLoader."""
+  cardgroup: Cardgroup!
+  """
+  Viewer's per-user FSRS state. For cards the viewer has not reviewed,
+  resolves to a synthesized new-card state.
+  """
+  userCardState: UserCardState!
   createdAt: Time!
   updatedAt: Time!
 }
 
-"""
-Input for creating a new card.
-Optional FSRS overrides — pass either all nine or none. Mixing null + non-null is rejected with BAD_USER_INPUT.
-"""
+"""Input for creating a new card."""
 input NewCardInput {
   cardgroupId: ID!
   """1-500 grapheme clusters (length measured after trimming surrounding whitespace)."""
   front: String!
   """1-500 grapheme clusters (length measured after trimming surrounding whitespace)."""
   back: String!
-  """Optional FSRS override: scheduled due timestamp."""
-  due: Time
-  """Optional FSRS override: memory stability value."""
-  stability: Float
-  """Optional FSRS override: item difficulty value."""
-  difficulty: Float
-  """Optional FSRS override: days elapsed since last review."""
-  elapsedDays: Int
-  """Optional FSRS override: days scheduled until next review."""
-  scheduledDays: Int
-  """Optional FSRS override: total number of reviews."""
-  reps: Int
-  """Optional FSRS override: total number of lapses."""
-  lapses: Int
-  """Optional FSRS override: card state (0=New, 1=Learning, 2=Review, 3=Relearning)."""
-  state: Int
-  """Optional FSRS override: timestamp of the last review."""
-  lastReview: Time
 }
 
 input UpdateCardInput {
@@ -185,7 +175,7 @@ enum SortOrder {
   DESC
 }
 
-"""Field to order Cards by in paginated queries."""
+"""Field to order Cards by in paginated queries. DUE uses the viewer's due state."""
 enum CardOrderBy {
   ID
   CREATED_AT

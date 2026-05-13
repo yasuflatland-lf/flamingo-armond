@@ -20,7 +20,7 @@ const (
 )
 
 type CardRepoForLearn interface {
-	FindDueCards(ctx context.Context, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
+	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
 }
 
 type CardgroupRepoForLearn interface {
@@ -94,7 +94,7 @@ func (u *LearnUsecase) NextDueCards(ctx context.Context, cardgroupID string, now
 		return nil, gqlerr.Unauthenticated()
 	}
 	limit = u.clampLimit(limit)
-	cards, err := u.cardRepo.FindDueCards(ctx, cardgroupID, now, limit)
+	cards, err := u.cardRepo.FindDueCardsForUser(ctx, user.Sub, cardgroupID, now, limit)
 	if err != nil {
 		return nil, gqlerr.Internal(ctx, err)
 	}

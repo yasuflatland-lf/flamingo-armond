@@ -218,7 +218,6 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 			CardgroupID: input.CardgroupID,
 			Front:       w.Front,
 			Back:        w.Back,
-			FSRS:        domain.NewFSRSStateForNewCard(now),
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		}

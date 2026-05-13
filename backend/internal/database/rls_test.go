@@ -62,9 +62,9 @@ func TestRLSPolicies_AuthenticatedRole(t *testing.T) {
 		assertCount(t, queryCountAs(t, ctx, authPool, fx.adminUser, `SELECT count(*) FROM public.cards WHERE id = $1`, fx.cardB), 1)
 
 		assertRows(t, execOKAs(t, ctx, authPool, fx.userA, insertCardSQL(),
-			uuid.NewString(), fx.groupA, "RLS own card", "Back", time.Now().UTC()), 1)
+			uuid.NewString(), fx.groupA, "RLS own card", "Back"), 1)
 		execDeniedAs(t, ctx, authPool, fx.userA, insertCardSQL(),
-			uuid.NewString(), fx.groupB, "RLS blocked card", "Back", time.Now().UTC())
+			uuid.NewString(), fx.groupB, "RLS blocked card", "Back")
 	})
 
 	t.Run("swipe_records", func(t *testing.T) {
@@ -78,6 +78,25 @@ func TestRLSPolicies_AuthenticatedRole(t *testing.T) {
 			fx.userB, fx.cardA, time.Now().UTC())
 		execDeniedAs(t, ctx, authPool, fx.adminUser, insertSwipeSQL(),
 			fx.userB, fx.cardB, time.Now().UTC())
+	})
+
+	t.Run("user_card_fsrs", func(t *testing.T) {
+		insertRLSUserCardFSRS(t, ctx, sqlDBForTest(t, db), fx.userA, fx.cardA)
+		insertRLSUserCardFSRS(t, ctx, sqlDBForTest(t, db), fx.userB, fx.cardB)
+
+		// User A can read their own rows.
+		assertCount(t, queryCountAs(t, ctx, authPool, fx.userA, `SELECT count(*) FROM public.user_card_fsrs WHERE user_id = $1`, fx.userA), 1)
+		// User A cannot read User B's rows.
+		assertCount(t, queryCountAs(t, ctx, authPool, fx.userA, `SELECT count(*) FROM public.user_card_fsrs WHERE user_id = $1`, fx.userB), 0)
+		// Admin can read any user's rows.
+		assertCount(t, queryCountAs(t, ctx, authPool, fx.adminUser, `SELECT count(*) FROM public.user_card_fsrs WHERE user_id = $1`, fx.userB), 1)
+
+		// User A can insert a row for themselves.
+		assertRows(t, execOKAs(t, ctx, authPool, fx.userA, insertUserCardFSRSSQL(),
+			fx.userA, fx.cardB, time.Now().UTC()), 1)
+		// User A cannot insert a row with a different user_id.
+		execDeniedAs(t, ctx, authPool, fx.userA, insertUserCardFSRSSQL(),
+			fx.userB, fx.cardA, time.Now().UTC())
 	})
 
 	t.Run("roles", func(t *testing.T) {
@@ -178,7 +197,7 @@ func insertRLSCardgroup(t *testing.T, ctx context.Context, sqlDB *sql.DB, ownerI
 func insertRLSCard(t *testing.T, ctx context.Context, sqlDB *sql.DB, cardgroupID, front string) string {
 	t.Helper()
 	id := uuid.NewString()
-	if _, err := sqlDB.ExecContext(ctx, insertCardSQL(), id, cardgroupID, front, "Back", time.Now().UTC()); err != nil {
+	if _, err := sqlDB.ExecContext(ctx, insertCardSQL(), id, cardgroupID, front, "Back"); err != nil {
 		t.Fatalf("insert card: %v", err)
 	}
 	return id
@@ -311,11 +330,8 @@ func uniqueName(prefix string) string {
 
 func insertCardSQL() string {
 	return `
-        INSERT INTO public.cards (
-            id, cardgroup_id, front, back, due, stability, difficulty,
-            elapsed_days, scheduled_days, reps, lapses, state, last_review
-        )
-        VALUES ($1, $2, $3, $4, $5, 2.5, 5.0, 0, 0, 0, 0, 0, $5)
+        INSERT INTO public.cards (id, cardgroup_id, front, back)
+        VALUES ($1, $2, $3, $4)
     `
 }
 
@@ -326,5 +342,24 @@ func insertSwipeSQL() string {
             elapsed_days, scheduled_days, reps, lapses, state, last_review
         )
         VALUES ($1, $2, 3, $3, $3, 2.5, 5.0, 0, 0, 0, 0, 0, $3)
+    `
+}
+
+func insertRLSUserCardFSRS(t *testing.T, ctx context.Context, sqlDB *sql.DB, userID, cardID string) {
+	t.Helper()
+	if _, err := sqlDB.ExecContext(ctx, insertUserCardFSRSSQL(),
+		userID, cardID, time.Now().UTC()); err != nil {
+		t.Fatalf("insert user_card_fsrs: %v", err)
+	}
+}
+
+func insertUserCardFSRSSQL() string {
+	return `
+        INSERT INTO public.user_card_fsrs (
+            user_id, card_id, state, due, stability, difficulty,
+            reps, lapses, last_review, elapsed_days, scheduled_days
+        )
+        VALUES ($1, $2, 0, $3, 2.5, 5.0, 0, 0, $3, 0, 0)
+        ON CONFLICT (user_id, card_id) DO NOTHING
     `
 }

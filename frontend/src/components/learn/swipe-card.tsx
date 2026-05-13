@@ -7,8 +7,10 @@ export type SwipeCardData = {
   id: string;
   front: string;
   back: string;
-  due: string;
-  state: number;
+  userCardState: {
+    due: string;
+    state: number;
+  };
   cardgroupId: string;
 };
 

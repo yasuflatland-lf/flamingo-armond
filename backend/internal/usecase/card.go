@@ -31,6 +31,15 @@ type CardRepository interface {
 		dir repository.SortOrder,
 		search *string,
 	) ([]*domain.Card, int64, error)
+	FindPageByCardgroupForUser(
+		ctx context.Context,
+		userID, cardgroupID string,
+		after, before *repository.CardCursor,
+		first, last int,
+		orderBy repository.CardOrderBy,
+		dir repository.SortOrder,
+		search *string,
+	) ([]*domain.Card, int64, error)
 	Create(ctx context.Context, card *domain.Card) error
 	FindByCardgroupAndFront(ctx context.Context, cardgroupID, front string) (*domain.Card, error)
 	Update(ctx context.Context, id string, patch repository.CardUpdate) (*domain.Card, error)
@@ -40,6 +49,10 @@ type CardRepository interface {
 
 type CardgroupRepositoryForCard interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
+}
+
+type UserCardFSRSRepositoryForCard interface {
+	FindByUserAndCardIDs(ctx context.Context, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
 }
 
 type NotionWritebacker interface {
@@ -55,13 +68,14 @@ type txRunner func(ctx context.Context, fn func(tx *gorm.DB) error) error
 type CardUsecase struct {
 	cardRepo      CardRepository
 	cardgroupRepo CardgroupRepositoryForCard
+	userFSRSRepo  UserCardFSRSRepositoryForCard
 	tx            txRunner
 	notionWriter  NotionWritebacker
 	notionPageID  string
 }
 
-func NewCardUsecase(db *gorm.DB, cardRepo CardRepository, cardgroupRepo CardgroupRepositoryForCard) *CardUsecase {
-	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo}
+func NewCardUsecase(db *gorm.DB, cardRepo CardRepository, cardgroupRepo CardgroupRepositoryForCard, userCardFSRSRepo UserCardFSRSRepositoryForCard) *CardUsecase {
+	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo, userFSRSRepo: userCardFSRSRepo}
 	if db != nil {
 		uc.tx = func(ctx context.Context, fn func(tx *gorm.DB) error) error {
 			return db.WithContext(ctx).Transaction(fn)
@@ -77,8 +91,9 @@ func NewCardUsecaseWithTx(
 	cardRepo CardRepository,
 	cardgroupRepo CardgroupRepositoryForCard,
 	tx func(ctx context.Context, fn func(tx *gorm.DB) error) error,
+	userCardFSRSRepo UserCardFSRSRepositoryForCard,
 ) *CardUsecase {
-	return &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo, tx: tx}
+	return &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo, tx: tx, userFSRSRepo: userCardFSRSRepo}
 }
 
 func (u *CardUsecase) WithNotionWritebacker(w NotionWritebacker, pageID string) *CardUsecase {
@@ -91,9 +106,6 @@ type CreateCardInput struct {
 	CardgroupID string
 	Front       string
 	Back        string
-	// FSRS, when non-nil, overrides the new-card FSRS state. All nine fields
-	// must be specified together (see domain.NewFSRSStateFromInput).
-	FSRS *domain.FSRSStateOverride
 }
 
 // CreateCardOutcome is the usecase-level result returned by Create. Exactly one
@@ -224,21 +236,11 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 		return CreateCardOutcome{}, gqlerr.Internal(ctx, err)
 	}
 
-	override := domain.FSRSStateOverride{}
-	if in.FSRS != nil {
-		override = *in.FSRS
-	}
-	fsrsState, err := domain.NewFSRSStateFromInput(override, now)
-	if err != nil {
-		return CreateCardOutcome{}, translateFSRSErr(ctx, err)
-	}
-
 	card := &domain.Card{
 		ID:          id,
 		CardgroupID: in.CardgroupID,
 		Front:       front,
 		Back:        back,
-		FSRS:        fsrsState,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -398,8 +400,8 @@ func (u *CardUsecase) ListCardsByCardgroupConnection(
 		wantLast++
 	}
 
-	cards, total, err := u.cardRepo.FindPageByCardgroup(
-		ctx, in.CardgroupID, after, before, wantFirst, wantLast, orderBy, dir, search,
+	cards, total, err := u.cardRepo.FindPageByCardgroupForUser(
+		ctx, user.Sub, in.CardgroupID, after, before, wantFirst, wantLast, orderBy, dir, search,
 	)
 	if err != nil {
 		return nil, gqlerr.Internal(ctx, err)
@@ -523,7 +525,18 @@ func (u *CardUsecase) resolveCursor(
 	}
 	switch orderBy {
 	case repository.CardOrderByDue:
-		due := card.FSRS.Due
+		due := card.CreatedAt
+		if u.userFSRSRepo == nil {
+			slog.WarnContext(ctx, "card: resolveCursor: falling back to createdAt for OrderByDue because userFSRSRepo is nil or not configured")
+		} else if user := auth.UserFrom(ctx); user != nil {
+			byCardID, err := u.userFSRSRepo.FindByUserAndCardIDs(ctx, user.Sub, []string{id})
+			if err != nil {
+				return nil, gqlerr.Internal(ctx, err)
+			}
+			if ucs := byCardID[id]; ucs != nil {
+				due = ucs.State.Due
+			}
+		}
 		c.Due = &due
 	case repository.CardOrderByCreatedAt:
 		ca := card.CreatedAt
@@ -569,20 +582,6 @@ func translateCardErr(ctx context.Context, err error) error {
 	}
 }
 
-// translateFSRSErr maps domain-level FSRS override sentinels to GraphQL
-// BAD_USER_INPUT errors with the appropriate field hint. Unknown errors are
-// surfaced as INTERNAL after being scrubbed by gqlerr.Internal.
-func translateFSRSErr(ctx context.Context, err error) error {
-	switch {
-	case errors.Is(err, domain.ErrFSRSOverridePartial):
-		return gqlerr.BadUserInput("input.fsrs", "all FSRS override fields must be provided together (or none)")
-	case errors.Is(err, domain.ErrFSRSOverrideStateInvalid):
-		return gqlerr.BadUserInput("input.state", "state must be 0..3")
-	default:
-		return gqlerr.Internal(ctx, err)
-	}
-}
-
 // BulkDelete removes the cards in `ids` whose cardgroup is owned by the
 // authenticated caller. Ownership is enforced exclusively by the SQL subselect
 // in DeleteByIDsTx (one DELETE scoped to cardgroups owned by the caller);
@@ -602,7 +601,7 @@ func (u *CardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, erro
 	}
 
 	if u.tx == nil {
-		return 0, gqlerr.Internal(ctx, errors.New("usecase: tx runner not configured"))
+		return 0, gqlerr.Internal(ctx, eris.New("usecase: tx runner not configured"))
 	}
 	var deleted int64
 	err := u.tx(ctx, func(tx *gorm.DB) error {

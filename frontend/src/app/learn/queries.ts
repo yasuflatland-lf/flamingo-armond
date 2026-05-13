@@ -6,8 +6,10 @@ export const LearnNextDueCardsQuery = graphql(`
       id
       front
       back
-      due
-      state
+      userCardState {
+        due
+        state
+      }
       cardgroupId
     }
   }
@@ -20,8 +22,10 @@ export const HandleSwipeMutation = graphql(`
         id
         front
         back
-        due
-        state
+        userCardState {
+          due
+          state
+        }
         cardgroupId
       }
       performanceMode

@@ -83,8 +83,10 @@ describe("LearnPage", () => {
             id: "c-1",
             front: "Hello",
             back: "Hola",
-            due: "2026-04-30T00:00:00Z",
-            state: 0,
+            userCardState: {
+              due: "2026-04-30T00:00:00Z",
+              state: 0,
+            },
             cardgroupId: "cg-1",
           },
         ],

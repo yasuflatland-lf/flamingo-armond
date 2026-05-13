@@ -87,6 +87,7 @@ func newRouter(
 	roleRepo repository.RoleRepository,
 	cardgroupRepo repository.CardgroupRepository,
 	cardRepo repository.CardRepository,
+	userCardFSRSRepo repository.UserCardFSRSRepository,
 	pingHandler *ping.Handler,
 	notionSyncHandler *notionsync.Handler,
 	swipeRecordRepo ...repository.SwipeRecordRepository,
@@ -132,7 +133,11 @@ func newRouter(
 			return r.Method + " " + r.URL.Path
 		}),
 	)
-	q := e.Group("/query", authMW, promoter.Middleware(), loader.Middleware(userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo...))
+	var swipeRepo repository.SwipeRecordRepository
+	if len(swipeRecordRepo) > 0 {
+		swipeRepo = swipeRecordRepo[0]
+	}
+	q := e.Group("/query", authMW, promoter.Middleware(), loader.MiddlewareWithUserCardFSRS(userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRepo, userCardFSRSRepo))
 	q.POST("", echo.WrapHandler(otelGQLHandler))
 	e.GET("/playground", echo.WrapHandler(playground.Handler("GraphQL", "/query")))
 
@@ -264,6 +269,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	roleRepo := repository.NewRoleRepository(db.GORM)
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	cardRepo := repository.NewCardRepository(db.GORM)
+	userCardFSRSRepo := repository.NewUserCardFSRSRepository(db.GORM)
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
@@ -276,9 +282,9 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	userUC := usecase.NewUserUsecase(userRepo)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)
-	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo)
+	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo)
 	learnUC := usecase.NewLearnUsecase(cardRepo, cardgroupRepo, service.NewOrderingPolicy(), nil, 0, 0)
-	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), swipeNextBatchSize(logger))
+	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), swipeNextBatchSize(logger), userCardFSRSRepo)
 	dictionaryUC := usecase.NewDictionaryUsecase(authSvc, cardRepo, db.GORM)
 	adminUserUC := usecase.NewAdminUser(userRepo, roleRepo, authSvc)
 	adminRoleUC := usecase.NewAdminRole(roleRepo, authSvc)
@@ -301,7 +307,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
 	// telemetry.Init for the full ordering invariant.
-	e := newRouter(resolvers, authMW, promoter, userRepo, roleRepo, cardgroupRepo, cardRepo, pingHandler, notionSyncHandler, swipeRecordRepo)
+	e := newRouter(resolvers, authMW, promoter, userRepo, roleRepo, cardgroupRepo, cardRepo, userCardFSRSRepo, pingHandler, notionSyncHandler, swipeRecordRepo)
 	e.Logger = logger
 
 	port := os.Getenv("PORT")

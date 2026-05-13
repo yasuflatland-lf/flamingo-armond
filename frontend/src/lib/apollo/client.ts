@@ -13,7 +13,11 @@ const httpLink = new HttpLink({
 
 export function makeClient() {
   return new ApolloClient({
-    cache: new InMemoryCache(),
+    cache: new InMemoryCache({
+      typePolicies: {
+        UserCardState: { keyFields: false },
+      },
+    }),
     link: from([requestIdLink, authLink, makeApqLink(), httpLink]),
   });
 }
