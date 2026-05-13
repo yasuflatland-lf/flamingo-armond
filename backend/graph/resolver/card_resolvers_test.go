@@ -114,7 +114,7 @@ func newCardSrv(
 	tx func(context.Context, func(*gorm.DB) error) error,
 ) *handler.Server {
 	cardUC := usecase.NewCardUsecaseWithTx(cardRepo, cgRepo, tx)
-	r := resolver.NewResolver(nil, nil, cardUC, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(nil, nil, cardUC, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv

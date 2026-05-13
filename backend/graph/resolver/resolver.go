@@ -30,9 +30,9 @@ func NewResolver(
 	adminUserUC usecase.AdminUserUsecase,
 	adminRoleUC usecase.AdminRoleUsecase,
 	lastViewedCardgroupUC usecase.LastViewedCardgroupUsecase,
-	learnUC ...*usecase.LearnUsecase,
+	learnUC *usecase.LearnUsecase,
 ) *Resolver {
-	r := &Resolver{
+	return &Resolver{
 		UserUC:                user,
 		CardgroupUC:           cardgroupUC,
 		CardUC:                cardUC,
@@ -42,9 +42,6 @@ func NewResolver(
 		AdminUserUC:           adminUserUC,
 		AdminRoleUC:           adminRoleUC,
 		LastViewedCardgroupUC: lastViewedCardgroupUC,
+		LearnUC:               learnUC,
 	}
-	if len(learnUC) > 0 {
-		r.LearnUC = learnUC[0]
-	}
-	return r
 }

@@ -76,7 +76,7 @@ func (m *mockCardgroupRepoForResolver) Delete(_ context.Context, _ string) error
 // CardgroupUsecase wired to the supplied mock repository.
 func newCardgroupSrv(repo usecase.CardgroupRepository) *handler.Server {
 	cgUC := usecase.NewCardgroupUsecase(repo)
-	r := resolver.NewResolver(nil, cgUC, nil, nil, nil, nil, nil, nil, nil)
+	r := resolver.NewResolver(nil, cgUC, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
