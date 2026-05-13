@@ -96,8 +96,6 @@ type CardRepository interface {
 		dir SortOrder,
 		search *string,
 	) (cards []*domain.Card, totalCount int64, err error)
-	FindDueCards(ctx context.Context, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
-	FindDueCardsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
 	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
 	FindDueCardsForUserTx(ctx context.Context, tx *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
 	Create(ctx context.Context, card *domain.Card) error
@@ -376,14 +374,6 @@ func cursorFieldValue(orderBy CardOrderBy, c *CardCursor) (any, error) {
 		}
 	}
 	return nil, eris.Errorf("cursor missing %s column", orderBy)
-}
-
-func (r *cardRepo) FindDueCards(ctx context.Context, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
-	return findDueCardsOn(r.db.WithContext(ctx), "", cardgroupID, now, limit)
-}
-
-func (r *cardRepo) FindDueCardsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
-	return findDueCardsOn(tx.WithContext(ctx), "", cardgroupID, now, limit)
 }
 
 func (r *cardRepo) FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
