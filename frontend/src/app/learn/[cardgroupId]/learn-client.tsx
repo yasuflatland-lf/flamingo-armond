@@ -214,17 +214,22 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
           </div>
         </section>
       ) : (
-        <section className="flex min-h-0 flex-1 flex-col">
+        <section className="grid min-h-0 flex-1 grid-rows-[auto_1fr_auto] gap-3">
           {visibleError ? (
             <div
-              className="mx-auto mb-4 w-full max-w-xl rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+              className="mx-auto w-full max-w-xl rounded-md bg-destructive/10 p-3 text-sm text-destructive"
               role="alert"
             >
               {visibleError}
             </div>
-          ) : null}
+          ) : (
+            // Placeholder so the card stays in the 1fr row and the action bar in
+            // the trailing auto row when the banner is absent. Without it, grid
+            // auto-flow would assign the action bar to the 1fr row.
+            <div aria-hidden="true" />
+          )}
 
-          <div className="relative flex min-h-0 flex-1 items-center justify-center">
+          <div className="relative flex min-h-0 items-center justify-center overflow-hidden">
             <SwipeCardStack
               cards={queue}
               onCardSwiped={onSwipe}
