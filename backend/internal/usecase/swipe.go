@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"math/rand"
 	"time"
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
@@ -40,6 +41,8 @@ type SwipeUsecase struct {
 	cardgroupRepo CardgroupRepoForSwipe
 	swipeRepo     SwipeRecordRepoForSwipe
 	scheduler     *service.FSRSScheduler
+	ordering      *service.OrderingPolicy
+	randSource    func() *rand.Rand
 	tx            txRunner
 	nextBatchSize int
 }
@@ -75,6 +78,10 @@ func NewSwipeUsecase(
 		cardgroupRepo: cardgroupRepo,
 		swipeRepo:     swipeRepo,
 		scheduler:     scheduler,
+		ordering:      service.NewOrderingPolicy(),
+		randSource: func() *rand.Rand {
+			return rand.New(rand.NewSource(time.Now().UnixNano()))
+		},
 		nextBatchSize: nextBatchSize,
 	}
 	if db != nil {
@@ -141,6 +148,9 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 			return err
 		}
 		nextCards, err = u.cardRepo.FindDueCardsTx(ctx, tx, in.CardgroupID, now, u.nextBatchSize)
+		if err == nil {
+			nextCards = u.ordering.Apply(nextCards, u.randSource())
+		}
 		return err
 	})
 	if err != nil {
