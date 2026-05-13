@@ -15,6 +15,11 @@ const (
 	FSRSStateRelearning
 )
 
+// IsValid reports whether the state is a recognised FSRSCardState constant.
+func (s FSRSCardState) IsValid() bool {
+	return s >= FSRSStateNew && s <= FSRSStateRelearning
+}
+
 // FSRSState is an immutable value object. Repository code persists it as a
 // flat column block, but domain consumers treat it as one scheduling state.
 type FSRSState struct {

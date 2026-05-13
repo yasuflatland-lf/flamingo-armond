@@ -12,6 +12,9 @@ type UserCardFSRS struct {
 }
 
 func NewUserCardFSRSForNewCard(userID, cardID string, now time.Time) *UserCardFSRS {
+	if userID == "" || cardID == "" {
+		panic("user_card_fsrs: userID and cardID must not be empty")
+	}
 	return &UserCardFSRS{
 		UserID:    userID,
 		CardID:    cardID,
