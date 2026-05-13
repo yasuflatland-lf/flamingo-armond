@@ -14,10 +14,12 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Ping Vercel frontend
+        env:
+          VERCEL_PING_URL: ${{ secrets.VERCEL_PING_URL }}
         run: |
           curl -fsS --retry 3 --retry-delay 5 --retry-all-errors --max-time 30 \
             -o /dev/null -w "frontend status=%{http_code} time=%{time_total}s\n" \
-            "${{ secrets.VERCEL_PING_URL }}"
+            "$VERCEL_PING_URL/api/ping"
       - name: Ping Render backend (writes to Supabase)
         run: |
           curl -fsS --retry 3 --retry-delay 5 --retry-all-errors --max-time 60 \
