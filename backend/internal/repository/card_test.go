@@ -52,9 +52,6 @@ func TestCardRepository_CRUD(t *testing.T) {
 	require.Equal(t, cg.ID, got.CardgroupID)
 	require.Equal(t, "front", got.Front)
 	require.Equal(t, "back", got.Back)
-	require.Equal(t, domain.FSRSStateNew, got.FSRS.State)
-	require.Equal(t, 2.5, got.FSRS.Stability)
-	require.Equal(t, 5.0, got.FSRS.Difficulty)
 
 	time.Sleep(5 * time.Millisecond)
 	front := "updated front"
@@ -117,17 +114,17 @@ func TestCardRepository_FindByIDs(t *testing.T) {
 	require.Empty(t, empty)
 }
 
-func TestCardRepository_TxFSRSMethods(t *testing.T) {
+func TestCardRepository_FindDueCardsForUserTx_UsesPerUserFSRSRows(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
 	cg := insertCardgroup(t, ctx, ownerID)
 	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	now := time.Now().UTC().Truncate(time.Microsecond)
 
 	dueCard := newCard(cg.ID, "due", "back")
-	dueCard.FSRS.Due = time.Now().UTC().Add(-time.Hour)
 	futureCard := newCard(cg.ID, "future", "back")
-	futureCard.FSRS.Due = time.Now().UTC().Add(time.Hour)
 	require.NoError(t, repo.Create(ctx, dueCard))
 	require.NoError(t, repo.Create(ctx, futureCard))
 
@@ -136,25 +133,17 @@ func TestCardRepository_TxFSRSMethods(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, dueCard.ID, got.ID)
 
-		state := got.FSRS
-		state.Due = time.Now().UTC().Add(24 * time.Hour)
-		state.Reps = 1
-		require.NoError(t, repo.UpdateFSRSStateTx(ctx, tx, got.ID, state))
+		state := domain.NewUserCardFSRSForNewCard(ownerID, futureCard.ID, now)
+		state.State.Due = now.Add(24 * time.Hour)
+		state.State.Reps = 1
+		require.NoError(t, ucsRepo.UpsertTx(ctx, tx, state))
 
-		due, err := repo.FindDueCardsTx(ctx, tx, cg.ID, time.Now().UTC(), 10)
+		due, err := repo.FindDueCardsForUserTx(ctx, tx, ownerID, cg.ID, now, 10)
 		require.NoError(t, err)
-		for _, card := range due {
-			require.NotEqual(t, dueCard.ID, card.ID)
-			require.NotEqual(t, futureCard.ID, card.ID)
-		}
+		require.Equal(t, []string{dueCard.ID}, repoCardIDs(due))
 		return nil
 	})
 	require.NoError(t, err)
-
-	updated, err := repo.FindByID(ctx, dueCard.ID)
-	require.NoError(t, err)
-	require.Equal(t, 1, updated.FSRS.Reps)
-	require.True(t, updated.FSRS.Due.After(time.Now().UTC()))
 }
 
 func TestCardRepository_FindByIDTx_LocksRowForUpdate(t *testing.T) {
@@ -187,22 +176,34 @@ func TestCardRepository_FindDueCardsTx_OrderedAndScoped(t *testing.T) {
 	cg1 := insertCardgroup(t, ctx, ownerID)
 	cg2 := insertCardgroup(t, ctx, ownerID)
 	repo := repository.NewCardRepository(testDB.GORM)
-	now := time.Now().UTC()
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	now := time.Now().UTC().Truncate(time.Microsecond)
 
 	later := newCard(cg1.ID, "later", "back")
-	later.FSRS.Due = now.Add(-time.Hour)
 	earlier := newCard(cg1.ID, "earlier", "back")
-	earlier.FSRS.Due = now.Add(-2 * time.Hour)
 	otherGroup := newCard(cg2.ID, "other", "back")
-	otherGroup.FSRS.Due = now.Add(-3 * time.Hour)
 	for _, card := range []*domain.Card{later, earlier, otherGroup} {
 		require.NoError(t, repo.Create(ctx, card))
 	}
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for card, due := range map[*domain.Card]time.Time{
+			later:      now.Add(-time.Hour),
+			earlier:    now.Add(-2 * time.Hour),
+			otherGroup: now.Add(-3 * time.Hour),
+		} {
+			state := domain.NewUserCardFSRSForNewCard(ownerID, card.ID, now)
+			state.State.Due = due
+			if err := ucsRepo.UpsertTx(ctx, tx, state); err != nil {
+				return err
+			}
+		}
+		return nil
+	}))
 
 	var due []*domain.Card
 	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var err error
-		due, err = repo.FindDueCardsTx(ctx, tx, cg1.ID, now, 10)
+		due, err = repo.FindDueCardsForUserTx(ctx, tx, ownerID, cg1.ID, now, 10)
 		return err
 	})
 	require.NoError(t, err)
@@ -218,32 +219,44 @@ func TestCardRepository_FindDueCards_OrderedScopedAndLimited(t *testing.T) {
 	cg1 := insertCardgroup(t, ctx, ownerID)
 	cg2 := insertCardgroup(t, ctx, ownerID)
 	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
 	now := time.Now().UTC().Truncate(time.Microsecond)
 
 	dueNow := newCard(cg1.ID, "due-now", "back")
-	dueNow.FSRS.Due = now
 	laterDue := newCard(cg1.ID, "later-due", "back")
-	laterDue.FSRS.Due = now.Add(-time.Hour)
 	earlierDue := newCard(cg1.ID, "earlier-due", "back")
-	earlierDue.FSRS.Due = now.Add(-2 * time.Hour)
 	future := newCard(cg1.ID, "future", "back")
-	future.FSRS.Due = now.Add(time.Hour)
 	otherGroup := newCard(cg2.ID, "other-group", "back")
-	otherGroup.FSRS.Due = now.Add(-3 * time.Hour)
 	for _, card := range []*domain.Card{dueNow, laterDue, earlierDue, future, otherGroup} {
 		require.NoError(t, repo.Create(ctx, card))
 	}
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for card, due := range map[*domain.Card]time.Time{
+			dueNow:     now,
+			laterDue:   now.Add(-time.Hour),
+			earlierDue: now.Add(-2 * time.Hour),
+			future:     now.Add(time.Hour),
+			otherGroup: now.Add(-3 * time.Hour),
+		} {
+			state := domain.NewUserCardFSRSForNewCard(ownerID, card.ID, now)
+			state.State.Due = due
+			if err := ucsRepo.UpsertTx(ctx, tx, state); err != nil {
+				return err
+			}
+		}
+		return nil
+	}))
 
-	got, err := repo.FindDueCards(ctx, cg1.ID, now, 2)
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg1.ID, now, 2)
 	require.NoError(t, err)
 	require.Equal(t, []string{earlierDue.ID, laterDue.ID}, repoCardIDs(got))
 
-	got, err = repo.FindDueCards(ctx, cg1.ID, now, 10)
+	got, err = repo.FindDueCardsForUser(ctx, ownerID, cg1.ID, now, 10)
 	require.NoError(t, err)
 	require.Equal(t, []string{earlierDue.ID, laterDue.ID, dueNow.ID}, repoCardIDs(got))
 	require.NotContains(t, repoCardIDs(got), otherGroup.ID, "FindDueCards must not leak cards from another cardgroup")
 
-	empty, err := repo.FindDueCards(ctx, cg1.ID, now, 0)
+	empty, err := repo.FindDueCardsForUser(ctx, ownerID, cg1.ID, now, 0)
 	require.NoError(t, err)
 	require.Empty(t, empty)
 }

@@ -62,9 +62,9 @@ func TestRLSPolicies_AuthenticatedRole(t *testing.T) {
 		assertCount(t, queryCountAs(t, ctx, authPool, fx.adminUser, `SELECT count(*) FROM public.cards WHERE id = $1`, fx.cardB), 1)
 
 		assertRows(t, execOKAs(t, ctx, authPool, fx.userA, insertCardSQL(),
-			uuid.NewString(), fx.groupA, "RLS own card", "Back", time.Now().UTC()), 1)
+			uuid.NewString(), fx.groupA, "RLS own card", "Back"), 1)
 		execDeniedAs(t, ctx, authPool, fx.userA, insertCardSQL(),
-			uuid.NewString(), fx.groupB, "RLS blocked card", "Back", time.Now().UTC())
+			uuid.NewString(), fx.groupB, "RLS blocked card", "Back")
 	})
 
 	t.Run("swipe_records", func(t *testing.T) {
@@ -178,7 +178,7 @@ func insertRLSCardgroup(t *testing.T, ctx context.Context, sqlDB *sql.DB, ownerI
 func insertRLSCard(t *testing.T, ctx context.Context, sqlDB *sql.DB, cardgroupID, front string) string {
 	t.Helper()
 	id := uuid.NewString()
-	if _, err := sqlDB.ExecContext(ctx, insertCardSQL(), id, cardgroupID, front, "Back", time.Now().UTC()); err != nil {
+	if _, err := sqlDB.ExecContext(ctx, insertCardSQL(), id, cardgroupID, front, "Back"); err != nil {
 		t.Fatalf("insert card: %v", err)
 	}
 	return id
@@ -311,11 +311,8 @@ func uniqueName(prefix string) string {
 
 func insertCardSQL() string {
 	return `
-        INSERT INTO public.cards (
-            id, cardgroup_id, front, back, due, stability, difficulty,
-            elapsed_days, scheduled_days, reps, lapses, state, last_review
-        )
-        VALUES ($1, $2, $3, $4, $5, 2.5, 5.0, 0, 0, 0, 0, 0, $5)
+        INSERT INTO public.cards (id, cardgroup_id, front, back)
+        VALUES ($1, $2, $3, $4)
     `
 }
 

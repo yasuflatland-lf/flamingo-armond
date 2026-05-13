@@ -19,6 +19,7 @@ type mockLearnCardRepo struct {
 	err  error
 
 	cardgroupID string
+	userID      string
 	now         time.Time
 	limit       int
 	calls       int
@@ -26,6 +27,15 @@ type mockLearnCardRepo struct {
 
 func (m *mockLearnCardRepo) FindDueCards(_ context.Context, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
 	m.calls++
+	m.cardgroupID = cardgroupID
+	m.now = now
+	m.limit = limit
+	return m.rows, m.err
+}
+
+func (m *mockLearnCardRepo) FindDueCardsForUser(_ context.Context, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
+	m.calls++
+	m.userID = userID
 	m.cardgroupID = cardgroupID
 	m.now = now
 	m.limit = limit
@@ -61,6 +71,7 @@ func TestLearnUsecaseNextDueCards(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, 1, cardRepo.calls)
+	require.Equal(t, "u-1", cardRepo.userID)
 	require.Equal(t, "cg-1", cardRepo.cardgroupID)
 	require.Equal(t, now, cardRepo.now)
 	require.Equal(t, 5, cardRepo.limit)

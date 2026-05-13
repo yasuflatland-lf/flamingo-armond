@@ -23,8 +23,10 @@ export const CardsByCardgroupConnectionQuery = graphql(`
           id
           front
           back
-          due
-          state
+          userCardState {
+            due
+            state
+          }
           cardgroupId
         }
       }

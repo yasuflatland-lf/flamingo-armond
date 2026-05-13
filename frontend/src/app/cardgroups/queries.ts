@@ -120,8 +120,10 @@ export const CardsByCardgroupQuery = graphql(`
       id
       front
       back
-      due
-      state
+      userCardState {
+        due
+        state
+      }
       cardgroupId
     }
   }
@@ -138,8 +140,10 @@ export const CreateCardMutation = graphql(`
           id
           front
           back
-          due
-          state
+          userCardState {
+            due
+            state
+          }
           cardgroupId
         }
       }
@@ -159,8 +163,10 @@ export const UpdateCardMutation = graphql(`
         id
         front
         back
-        due
-        state
+        userCardState {
+          due
+          state
+        }
         cardgroupId
       }
     }

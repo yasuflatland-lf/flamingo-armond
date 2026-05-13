@@ -82,6 +82,11 @@ func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
 				findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
 			}
 			swipeRepo := &mockSwipeRecordRepoForSwipe{recent: append([]*domain.SwipeRecord(nil), tc.recent...)}
+			userFSRSRepo := &mockUserCardFSRSRepository{
+				byCardID: map[string]*domain.UserCardFSRS{
+					"card-1": domain.NewUserCardFSRSForNewCard("user-1", "card-1", base),
+				},
+			}
 			tx, _ := fakeTxRunner()
 			uc := NewSwipeUsecaseWithTx(
 				cardRepo,
@@ -90,6 +95,7 @@ func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
 				service.NewFSRSScheduler(),
 				10,
 				tx,
+				userFSRSRepo,
 			)
 
 			got, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{

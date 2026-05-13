@@ -7,14 +7,14 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 
 	"backend/internal/domain"
 	"backend/internal/repository"
 )
 
 // insertCards creates n cards with deterministic Front values ("front-0".."front-n-1").
-// CreatedAt is staggered so insertion order matches creation order. Due is set
-// to now+i*hour so DUE-ordered tests have a clear ASC sequence.
+// CreatedAt is staggered so insertion order matches creation order.
 func insertCards(t *testing.T, ctx context.Context, repo repository.CardRepository, cgID string, n int) []*domain.Card {
 	t.Helper()
 	now := time.Now().UTC()
@@ -24,7 +24,6 @@ func insertCards(t *testing.T, ctx context.Context, repo repository.CardReposito
 		// Stagger timestamps by 1 hour so ordering is unambiguous.
 		c.CreatedAt = now.Add(time.Duration(i) * time.Hour)
 		c.UpdatedAt = c.CreatedAt
-		c.FSRS.Due = now.Add(time.Duration(i) * time.Hour)
 		require.NoError(t, repo.Create(ctx, c))
 		cards[i] = c
 	}
@@ -151,12 +150,27 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue(t *testing.T) {
 	ownerID := insertAuthUser(t, ctx)
 	cg := insertCardgroup(t, ctx, ownerID)
 	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
 
 	cards := insertCards(t, ctx, repo, cg.ID, 3)
-	// insertCards staggers Due by +1h per index, so cards[0] is earliest.
+	dueValues := []time.Time{
+		cards[0].CreatedAt,
+		cards[1].CreatedAt,
+		cards[2].CreatedAt,
+	}
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for i, card := range cards {
+			state := domain.NewUserCardFSRSForNewCard(ownerID, card.ID, dueValues[i])
+			state.State.Due = dueValues[i]
+			if err := ucsRepo.UpsertTx(ctx, tx, state); err != nil {
+				return err
+			}
+		}
+		return nil
+	}))
 
-	got, total, err := repo.FindPageByCardgroup(
-		ctx, cg.ID, nil, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc, nil,
+	got, total, err := repo.FindPageByCardgroupForUser(
+		ctx, ownerID, cg.ID, nil, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), total)
@@ -167,10 +181,10 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue(t *testing.T) {
 	// Advance via cursor populated with the second card's Due value.
 	cursor := &repository.CardCursor{
 		ID:  cards[1].ID,
-		Due: &cards[1].FSRS.Due,
+		Due: &dueValues[1],
 	}
-	got, _, err = repo.FindPageByCardgroup(
-		ctx, cg.ID, cursor, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc, nil,
+	got, _, err = repo.FindPageByCardgroupForUser(
+		ctx, ownerID, cg.ID, cursor, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Len(t, got, 1)
@@ -242,14 +256,14 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue(t *tes
 	ownerID := insertAuthUser(t, ctx)
 	cg := insertCardgroup(t, ctx, ownerID)
 	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
 
-	now := time.Now().UTC()
+	now := time.Now().UTC().Truncate(time.Microsecond)
 	cards := make([]*domain.Card, 3)
 	for i := 0; i < 3; i++ {
 		c := newCard(cg.ID, fmt.Sprintf("front-%d", i), "back")
 		c.CreatedAt = now
 		c.UpdatedAt = now
-		c.FSRS.Due = now
 		require.NoError(t, repo.Create(ctx, c))
 		cards[i] = c
 	}
@@ -262,10 +276,20 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue(t *tes
 
 	// (due, id) lexicographic sort — all dues equal so order is by ID.
 	sorted := sortByID(cards)
-	dueT := sorted[0].FSRS.Due
+	dueT := now
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, card := range cards {
+			state := domain.NewUserCardFSRSForNewCard(ownerID, card.ID, now)
+			state.State.Due = dueT
+			if err := ucsRepo.UpsertTx(ctx, tx, state); err != nil {
+				return err
+			}
+		}
+		return nil
+	}))
 
-	page1, total, err := repo.FindPageByCardgroup(
-		ctx, cg.ID, nil, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc, nil,
+	page1, total, err := repo.FindPageByCardgroupForUser(
+		ctx, ownerID, cg.ID, nil, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), total)
@@ -277,8 +301,8 @@ func TestCardRepository_FindPageByCardgroup_OrderByDue_TieBreakOnEqualDue(t *tes
 		ID:  page1[1].ID,
 		Due: &dueT,
 	}
-	page2, _, err := repo.FindPageByCardgroup(
-		ctx, cg.ID, cursor, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc, nil,
+	page2, _, err := repo.FindPageByCardgroupForUser(
+		ctx, ownerID, cg.ID, cursor, nil, 2, 0, repository.CardOrderByDue, repository.SortAsc, nil,
 	)
 	require.NoError(t, err)
 	require.Len(t, page2, 1, "third card should appear exactly once")

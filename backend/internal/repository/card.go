@@ -57,21 +57,12 @@ type CardCursor struct {
 const pageCap = 101
 
 type gormCard struct {
-	ID            string    `gorm:"column:id;primaryKey;type:uuid"`
-	CardgroupID   string    `gorm:"column:cardgroup_id"`
-	Front         string    `gorm:"column:front"`
-	Back          string    `gorm:"column:back"`
-	Due           time.Time `gorm:"column:due"`
-	Stability     float64   `gorm:"column:stability"`
-	Difficulty    float64   `gorm:"column:difficulty"`
-	ElapsedDays   int       `gorm:"column:elapsed_days"`
-	ScheduledDays int       `gorm:"column:scheduled_days"`
-	Reps          int       `gorm:"column:reps"`
-	Lapses        int       `gorm:"column:lapses"`
-	State         int       `gorm:"column:state"`
-	LastReview    time.Time `gorm:"column:last_review"`
-	CreatedAt     time.Time `gorm:"column:created_at"`
-	UpdatedAt     time.Time `gorm:"column:updated_at"`
+	ID          string    `gorm:"column:id;primaryKey;type:uuid"`
+	CardgroupID string    `gorm:"column:cardgroup_id"`
+	Front       string    `gorm:"column:front"`
+	Back        string    `gorm:"column:back"`
+	CreatedAt   time.Time `gorm:"column:created_at"`
+	UpdatedAt   time.Time `gorm:"column:updated_at"`
 }
 
 func (gormCard) TableName() string { return "cards" }
@@ -96,14 +87,24 @@ type CardRepository interface {
 		dir SortOrder,
 		search *string,
 	) (cards []*domain.Card, totalCount int64, err error)
+	FindPageByCardgroupForUser(
+		ctx context.Context,
+		userID, cardgroupID string,
+		after, before *CardCursor,
+		first, last int,
+		orderBy CardOrderBy,
+		dir SortOrder,
+		search *string,
+	) (cards []*domain.Card, totalCount int64, err error)
 	FindDueCards(ctx context.Context, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
 	FindDueCardsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
+	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
+	FindDueCardsForUserTx(ctx context.Context, tx *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
 	Create(ctx context.Context, card *domain.Card) error
 	// FindByCardgroupAndFront returns the card identified by the (cardgroup_id,
 	// front) unique key, or ErrNotFound when no such row exists. The front value
 	// is matched exactly; trimming is the caller's responsibility.
 	FindByCardgroupAndFront(ctx context.Context, cardgroupID, front string) (*domain.Card, error)
-	UpdateFSRSStateTx(ctx context.Context, tx *gorm.DB, id string, state domain.FSRSState) error
 	Update(ctx context.Context, id string, patch CardUpdate) (*domain.Card, error)
 	Delete(ctx context.Context, id string) error
 	// DeleteByIDsTx hard-deletes the cards whose ids are in the list AND whose
@@ -126,8 +127,7 @@ type CardRepository interface {
 	// See `.claude/rules/go-library-gotchas.md` § GORM empty IN.
 	DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error)
 	// UpsertManyTx upserts cards by (cardgroup_id, front). Existing rows have
-	// their `back` and `updated_at` columns overwritten; new rows are inserted
-	// using the FSRS state values supplied on each domain.Card. Returns the
+	// their `back` and `updated_at` columns overwritten. Returns the
 	// per-row split between Inserted and Updated. Empty input is a no-op.
 	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (UpsertManyTxResult, error)
 }
@@ -215,17 +215,30 @@ func (r *cardRepo) FindPageByCardgroup(
 	dir SortOrder,
 	search *string,
 ) ([]*domain.Card, int64, error) {
+	return r.FindPageByCardgroupForUser(ctx, "", cardgroupID, after, before, first, last, orderBy, dir, search)
+}
+
+func (r *cardRepo) FindPageByCardgroupForUser(
+	ctx context.Context,
+	userID, cardgroupID string,
+	after, before *CardCursor,
+	first, last int,
+	orderBy CardOrderBy,
+	dir SortOrder,
+	search *string,
+) ([]*domain.Card, int64, error) {
+	userID = coalesceUserIDForJoin(userID)
 	first = clampPageSize(first)
 	last = clampPageSize(last)
 
 	// Base query scoped to the cardgroup.
-	base := r.db.WithContext(ctx).Model(&gormCard{}).Where("cardgroup_id = ?", cardgroupID)
+	base := r.db.WithContext(ctx).Model(&gormCard{}).Where("cards.cardgroup_id = ?", cardgroupID)
 
 	// Non-nil search is guaranteed by the usecase to be non-empty and trimmed.
 	// escapeLikePattern guards against LIKE metacharacter injection.
 	if search != nil {
 		pattern := "%" + escapeLikePattern(*search) + "%"
-		base = base.Where("(front ILIKE ? OR back ILIKE ?)", pattern, pattern)
+		base = base.Where("(cards.front ILIKE ? OR cards.back ILIKE ?)", pattern, pattern)
 	}
 
 	// totalCount comes from a separate COUNT(*) scoped to the cardgroup (and
@@ -254,6 +267,13 @@ func (r *cardRepo) FindPageByCardgroup(
 	}
 
 	q := base
+	if orderBy == CardOrderByDue {
+		q = q.Select("cards.*").
+			Joins("LEFT JOIN user_card_fsrs ucs ON ucs.user_id = ? AND ucs.card_id = cards.id", userID).
+			Order(orderClause(orderBy, effectiveDir))
+	} else {
+		q = q.Order(orderClause(orderBy, effectiveDir))
+	}
 
 	if cursor != nil {
 		clauseStr, args, err := cursorWhere(orderBy, effectiveDir, cursor)
@@ -263,7 +283,7 @@ func (r *cardRepo) FindPageByCardgroup(
 		q = q.Where(clauseStr, args...)
 	}
 
-	q = q.Order(orderClause(orderBy, effectiveDir)).Limit(limit)
+	q = q.Limit(limit)
 
 	var rows []gormCard
 	if err := q.Find(&rows).Error; err != nil {
@@ -305,9 +325,12 @@ func invertDir(d SortOrder) SortOrder {
 func orderClause(orderBy CardOrderBy, dir SortOrder) string {
 	d := string(dir)
 	if orderBy == CardOrderByID {
-		return "id " + d
+		return "cards.id " + d
 	}
-	return string(orderBy) + " " + d + ", id " + d
+	if orderBy == CardOrderByDue {
+		return "COALESCE(ucs.due, cards.created_at) " + d + ", cards.id " + d
+	}
+	return "cards." + string(orderBy) + " " + d + ", cards.id " + d
 }
 
 // cursorWhere builds the tuple-comparison WHERE for the supplied cursor and
@@ -319,15 +342,18 @@ func cursorWhere(orderBy CardOrderBy, dir SortOrder, c *CardCursor) (string, []a
 		op = "<"
 	}
 	if orderBy == CardOrderByID {
-		return "id " + op + " ?", []any{c.ID}, nil
+		return "cards.id " + op + " ?", []any{c.ID}, nil
 	}
-	field := string(orderBy)
+	field := "cards." + string(orderBy)
+	if orderBy == CardOrderByDue {
+		field = "COALESCE(ucs.due, cards.created_at)"
+	}
 	val, err := cursorFieldValue(orderBy, c)
 	if err != nil {
 		return "", nil, err
 	}
 	// Tuple compare: (field, id) op (val, c.ID).
-	return "(" + field + " " + op + " ? OR (" + field + " = ? AND id " + op + " ?))",
+	return "(" + field + " " + op + " ? OR (" + field + " = ? AND cards.id " + op + " ?))",
 		[]any{val, val, c.ID}, nil
 }
 
@@ -353,21 +379,33 @@ func cursorFieldValue(orderBy CardOrderBy, c *CardCursor) (any, error) {
 }
 
 func (r *cardRepo) FindDueCards(ctx context.Context, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
-	return findDueCardsOn(r.db.WithContext(ctx), cardgroupID, now, limit)
+	return findDueCardsOn(r.db.WithContext(ctx), "", cardgroupID, now, limit)
 }
 
 func (r *cardRepo) FindDueCardsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
-	return findDueCardsOn(tx.WithContext(ctx), cardgroupID, now, limit)
+	return findDueCardsOn(tx.WithContext(ctx), "", cardgroupID, now, limit)
 }
 
-func findDueCardsOn(db *gorm.DB, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
+func (r *cardRepo) FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
+	return findDueCardsOn(r.db.WithContext(ctx), userID, cardgroupID, now, limit)
+}
+
+func (r *cardRepo) FindDueCardsForUserTx(ctx context.Context, tx *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
+	return findDueCardsOn(tx.WithContext(ctx), userID, cardgroupID, now, limit)
+}
+
+func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
+	userID = coalesceUserIDForJoin(userID)
 	if limit <= 0 {
 		return []*domain.Card{}, nil
 	}
 	var rows []gormCard
 	if err := db.
-		Where("cardgroup_id = ? AND due <= ?", cardgroupID, now).
-		Order("due ASC, id ASC").
+		Model(&gormCard{}).
+		Select("cards.*").
+		Joins("LEFT JOIN user_card_fsrs ucs ON ucs.user_id = ? AND ucs.card_id = cards.id", userID).
+		Where("cards.cardgroup_id = ? AND (ucs.due IS NULL OR ucs.due <= ?)", cardgroupID, now).
+		Order("COALESCE(ucs.due, cards.created_at) ASC, cards.id ASC").
 		Limit(limit).
 		Find(&rows).Error; err != nil {
 		return nil, eris.Wrap(err, "repository: find due cards")
@@ -377,6 +415,13 @@ func findDueCardsOn(db *gorm.DB, cardgroupID string, now time.Time, limit int) (
 		out[i] = cardToDomain(rows[i])
 	}
 	return out, nil
+}
+
+func coalesceUserIDForJoin(userID string) string {
+	if strings.TrimSpace(userID) == "" {
+		return "00000000-0000-0000-0000-000000000000"
+	}
+	return userID
 }
 
 func (r *cardRepo) Create(ctx context.Context, card *domain.Card) error {
@@ -403,28 +448,6 @@ func (r *cardRepo) FindByCardgroupAndFront(ctx context.Context, cardgroupID, fro
 		return nil, eris.Wrap(err, "repository: find card by cardgroup and front")
 	}
 	return cardToDomain(row), nil
-}
-
-func (r *cardRepo) UpdateFSRSStateTx(ctx context.Context, tx *gorm.DB, id string, state domain.FSRSState) error {
-	updates := map[string]any{
-		"due":            state.Due,
-		"stability":      state.Stability,
-		"difficulty":     state.Difficulty,
-		"elapsed_days":   state.ElapsedDays,
-		"scheduled_days": state.ScheduledDays,
-		"reps":           state.Reps,
-		"lapses":         state.Lapses,
-		"state":          int(state.State),
-		"last_review":    state.LastReview,
-	}
-	res := tx.WithContext(ctx).Model(&gormCard{}).Where("id = ?", id).Updates(updates)
-	if res.Error != nil {
-		return eris.Wrap(res.Error, "repository: update card fsrs state")
-	}
-	if res.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
 }
 
 func (r *cardRepo) Update(ctx context.Context, id string, patch CardUpdate) (*domain.Card, error) {
@@ -468,8 +491,7 @@ type UpsertManyTxResult struct {
 }
 
 // UpsertManyTx upserts cards by (cardgroup_id, front). Existing rows have
-// `back` and `updated_at` overwritten; new rows are inserted with the supplied
-// FSRS state values. The conflict key requires the unique index
+// `back` and `updated_at` overwritten. The conflict key requires the unique index
 // `uq_cards_cardgroup_front` (migration 20260503000000).
 //
 // Counts are derived per-row from the PostgreSQL system column `xmax`. A
@@ -499,18 +521,16 @@ func (r *cardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domai
 		}
 	}
 
-	// Build a single multi-row INSERT. Each card contributes 15 placeholders
+	// Build a single multi-row INSERT. Each card contributes 6 placeholders
 	// matching the column list below.
-	const columns = `(id, cardgroup_id, front, back, due, stability, difficulty,
-                    elapsed_days, scheduled_days, reps, lapses, state, last_review,
-                    created_at, updated_at)`
-	const rowPH = "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	const columns = `(id, cardgroup_id, front, back, created_at, updated_at)`
+	const rowPH = "(?, ?, ?, ?, ?, ?)"
 
 	var sb strings.Builder
 	sb.WriteString("INSERT INTO cards ")
 	sb.WriteString(columns)
 	sb.WriteString(" VALUES ")
-	args := make([]any, 0, len(cards)*15)
+	args := make([]any, 0, len(cards)*6)
 	for i, c := range cards {
 		if i > 0 {
 			sb.WriteString(", ")
@@ -521,15 +541,6 @@ func (r *cardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domai
 			c.CardgroupID,
 			c.Front,
 			c.Back,
-			c.FSRS.Due,
-			c.FSRS.Stability,
-			c.FSRS.Difficulty,
-			c.FSRS.ElapsedDays,
-			c.FSRS.ScheduledDays,
-			c.FSRS.Reps,
-			c.FSRS.Lapses,
-			int(c.FSRS.State),
-			c.FSRS.LastReview,
 			c.CreatedAt,
 			c.UpdatedAt,
 		)
@@ -600,21 +611,12 @@ func (r *cardRepo) DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB
 
 func cardToRow(card *domain.Card) *gormCard {
 	return &gormCard{
-		ID:            card.ID,
-		CardgroupID:   card.CardgroupID,
-		Front:         card.Front,
-		Back:          card.Back,
-		Due:           card.FSRS.Due,
-		Stability:     card.FSRS.Stability,
-		Difficulty:    card.FSRS.Difficulty,
-		ElapsedDays:   card.FSRS.ElapsedDays,
-		ScheduledDays: card.FSRS.ScheduledDays,
-		Reps:          card.FSRS.Reps,
-		Lapses:        card.FSRS.Lapses,
-		State:         int(card.FSRS.State),
-		LastReview:    card.FSRS.LastReview,
-		CreatedAt:     card.CreatedAt,
-		UpdatedAt:     card.UpdatedAt,
+		ID:          card.ID,
+		CardgroupID: card.CardgroupID,
+		Front:       card.Front,
+		Back:        card.Back,
+		CreatedAt:   card.CreatedAt,
+		UpdatedAt:   card.UpdatedAt,
 	}
 }
 
@@ -624,18 +626,7 @@ func cardToDomain(row gormCard) *domain.Card {
 		CardgroupID: row.CardgroupID,
 		Front:       row.Front,
 		Back:        row.Back,
-		FSRS: domain.FSRSState{
-			Due:           row.Due,
-			Stability:     row.Stability,
-			Difficulty:    row.Difficulty,
-			ElapsedDays:   row.ElapsedDays,
-			ScheduledDays: row.ScheduledDays,
-			Reps:          row.Reps,
-			Lapses:        row.Lapses,
-			State:         domain.FSRSCardState(row.State),
-			LastReview:    row.LastReview,
-		},
-		CreatedAt: row.CreatedAt,
-		UpdatedAt: row.UpdatedAt,
+		CreatedAt:   row.CreatedAt,
+		UpdatedAt:   row.UpdatedAt,
 	}
 }

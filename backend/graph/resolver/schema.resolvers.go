@@ -8,6 +8,7 @@ import (
 	"backend/graph/generated"
 	"backend/graph/model"
 	"backend/internal/auth"
+	"backend/internal/domain"
 	"backend/internal/gqlerr"
 	"backend/internal/loader"
 	"backend/internal/repository"
@@ -32,6 +33,26 @@ func (r *cardResolver) Cardgroup(ctx context.Context, obj *model.Card) (*model.C
 		return nil, gqlerr.Internal(ctx, err)
 	}
 	return toCardgroupModel(cg), nil
+}
+
+// UserCardState is the resolver for the userCardState field.
+func (r *cardResolver) UserCardState(ctx context.Context, obj *model.Card) (*model.UserCardState, error) {
+	user := auth.UserFrom(ctx)
+	if user == nil {
+		return nil, gqlerr.Unauthenticated()
+	}
+	loaders := loader.For(ctx)
+	if loaders == nil || loaders.UserCardFSRS == nil {
+		return nil, gqlerr.Internal(ctx, eris.New("loader: user card fsrs loader not installed for /query"))
+	}
+	ucs, err := loaders.UserCardFSRS.Load(ctx, obj.ID)()
+	if err != nil {
+		return nil, gqlerr.Internal(ctx, err)
+	}
+	if ucs == nil {
+		ucs = domain.NewUserCardFSRSForNewCard(user.Sub, obj.ID, time.Now().UTC())
+	}
+	return toModelUserCardState(ucs), nil
 }
 
 // Owner is the resolver for the owner field.
@@ -96,7 +117,6 @@ func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCardIn
 		CardgroupID: input.CardgroupID,
 		Front:       input.Front,
 		Back:        input.Back,
-		FSRS:        toFSRSOverride(input),
 	})
 	if err != nil {
 		return nil, err

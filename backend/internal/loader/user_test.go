@@ -173,6 +173,9 @@ func (r *countingCardRepo) FindByCardgroup(_ context.Context, _ string) ([]*doma
 func (r *countingCardRepo) FindDueCards(_ context.Context, _ string, _ time.Time, _ int) ([]*domain.Card, error) {
 	panic("countingCardRepo.FindDueCards not configured")
 }
+func (r *countingCardRepo) FindDueCardsForUser(_ context.Context, _, _ string, _ time.Time, _ int) ([]*domain.Card, error) {
+	panic("countingCardRepo.FindDueCardsForUser not configured")
+}
 func (r *countingCardRepo) ListFrontsByCardgroupTx(_ context.Context, _ *gorm.DB, _ string) ([]string, error) {
 	panic("countingCardRepo.ListFrontsByCardgroupTx not configured")
 }
@@ -185,14 +188,23 @@ func (r *countingCardRepo) FindPageByCardgroup(
 ) ([]*domain.Card, int64, error) {
 	panic("countingCardRepo.FindPageByCardgroup not configured")
 }
+func (r *countingCardRepo) FindPageByCardgroupForUser(
+	_ context.Context, _, _ string,
+	_, _ *repository.CardCursor,
+	_, _ int,
+	_ repository.CardOrderBy, _ repository.SortOrder,
+	_ *string,
+) ([]*domain.Card, int64, error) {
+	panic("countingCardRepo.FindPageByCardgroupForUser not configured")
+}
 func (r *countingCardRepo) FindDueCardsTx(_ context.Context, _ *gorm.DB, _ string, _ time.Time, _ int) ([]*domain.Card, error) {
 	panic("countingCardRepo.FindDueCardsTx not configured")
 }
+func (r *countingCardRepo) FindDueCardsForUserTx(_ context.Context, _ *gorm.DB, _, _ string, _ time.Time, _ int) ([]*domain.Card, error) {
+	panic("countingCardRepo.FindDueCardsForUserTx not configured")
+}
 func (r *countingCardRepo) Create(_ context.Context, _ *domain.Card) error {
 	panic("countingCardRepo.Create not configured")
-}
-func (r *countingCardRepo) UpdateFSRSStateTx(_ context.Context, _ *gorm.DB, _ string, _ domain.FSRSState) error {
-	panic("countingCardRepo.UpdateFSRSStateTx not configured")
 }
 func (r *countingCardRepo) Update(_ context.Context, _ string, _ repository.CardUpdate) (*domain.Card, error) {
 	panic("countingCardRepo.Update not configured")

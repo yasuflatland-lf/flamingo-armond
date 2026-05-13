@@ -6,6 +6,7 @@ import (
 	"github.com/graph-gophers/dataloader/v7"
 	"github.com/labstack/echo/v5"
 
+	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
 )
@@ -19,6 +20,7 @@ type Loaders struct {
 	Cardgroup    *dataloader.Loader[string, *domain.Cardgroup]
 	Card         *dataloader.Loader[string, *domain.Card]
 	SwipeRecord  *dataloader.Loader[string, *domain.SwipeRecord]
+	UserCardFSRS *dataloader.Loader[string, *domain.UserCardFSRS]
 }
 
 func New(userRepo repository.UserRepository, roleRepo repository.RoleRepository, cardgroupRepo repository.CardgroupRepository, cardRepo repository.CardRepository, swipeRecordRepo ...repository.SwipeRecordRepository) *Loaders {
@@ -35,12 +37,56 @@ func New(userRepo repository.UserRepository, roleRepo repository.RoleRepository,
 	return loaders
 }
 
+func NewWithUserCardFSRS(
+	userRepo repository.UserRepository,
+	roleRepo repository.RoleRepository,
+	cardgroupRepo repository.CardgroupRepository,
+	cardRepo repository.CardRepository,
+	swipeRecordRepo repository.SwipeRecordRepository,
+	userCardFSRSRepo repository.UserCardFSRSRepository,
+	viewer string,
+) *Loaders {
+	var loaders *Loaders
+	if swipeRecordRepo != nil {
+		loaders = New(userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo)
+	} else {
+		loaders = New(userRepo, roleRepo, cardgroupRepo, cardRepo)
+	}
+	if userCardFSRSRepo != nil && viewer != "" {
+		loaders.UserCardFSRS = dataloader.NewBatchedLoader(userCardFSRSBatchFunc(userCardFSRSRepo, viewer))
+	}
+	return loaders
+}
+
 // Middleware installs a fresh Loaders per request so batching and caching do
 // not bleed across requests.
 func Middleware(userRepo repository.UserRepository, roleRepo repository.RoleRepository, cardgroupRepo repository.CardgroupRepository, cardRepo repository.CardRepository, swipeRecordRepo ...repository.SwipeRecordRepository) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
 			ctx := context.WithValue(c.Request().Context(), contextKey{}, New(userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo...))
+			c.SetRequest(c.Request().WithContext(ctx))
+			return next(c)
+		}
+	}
+}
+
+func MiddlewareWithUserCardFSRS(
+	userRepo repository.UserRepository,
+	roleRepo repository.RoleRepository,
+	cardgroupRepo repository.CardgroupRepository,
+	cardRepo repository.CardRepository,
+	swipeRecordRepo repository.SwipeRecordRepository,
+	userCardFSRSRepo repository.UserCardFSRSRepository,
+) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			viewer := ""
+			if user := auth.UserFrom(c.Request().Context()); user != nil {
+				viewer = user.Sub
+			}
+			ctx := context.WithValue(c.Request().Context(), contextKey{}, NewWithUserCardFSRS(
+				userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo, userCardFSRSRepo, viewer,
+			))
 			c.SetRequest(c.Request().WithContext(ctx))
 			return next(c)
 		}

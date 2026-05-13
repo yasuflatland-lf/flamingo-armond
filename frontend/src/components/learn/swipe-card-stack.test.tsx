@@ -53,8 +53,10 @@ const makeCard = (id: string): SwipeCardData => ({
   id,
   front: `front-${id}`,
   back: `back-${id}`,
-  due: "2026-01-01",
-  state: 0,
+  userCardState: {
+    due: "2026-01-01",
+    state: 0,
+  },
   cardgroupId: "cg-1",
 });
 

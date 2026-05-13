@@ -23,8 +23,7 @@ const (
 
 type CardRepoForSwipe interface {
 	FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
-	UpdateFSRSStateTx(ctx context.Context, tx *gorm.DB, id string, state domain.FSRSState) error
-	FindDueCardsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
+	FindDueCardsForUserTx(ctx context.Context, tx *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
 }
 
 type CardgroupRepoForSwipe interface {
@@ -36,10 +35,16 @@ type SwipeRecordRepoForSwipe interface {
 	ListRecentByUser(ctx context.Context, userID string, limit int) ([]*domain.SwipeRecord, error)
 }
 
+type UserCardFSRSRepoForSwipe interface {
+	UpsertTx(ctx context.Context, tx *gorm.DB, u *domain.UserCardFSRS) error
+	FindByUserAndCardIDs(ctx context.Context, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
+}
+
 type SwipeUsecase struct {
 	cardRepo      CardRepoForSwipe
 	cardgroupRepo CardgroupRepoForSwipe
 	swipeRepo     SwipeRecordRepoForSwipe
+	userFSRSRepo  UserCardFSRSRepoForSwipe
 	scheduler     *service.FSRSScheduler
 	ordering      *service.OrderingPolicy
 	randSource    func() *rand.Rand
@@ -66,6 +71,7 @@ func NewSwipeUsecase(
 	swipeRepo SwipeRecordRepoForSwipe,
 	scheduler *service.FSRSScheduler,
 	nextBatchSize int,
+	userCardFSRSRepo ...UserCardFSRSRepoForSwipe,
 ) *SwipeUsecase {
 	if scheduler == nil {
 		scheduler = service.NewFSRSScheduler()
@@ -77,6 +83,7 @@ func NewSwipeUsecase(
 		cardRepo:      cardRepo,
 		cardgroupRepo: cardgroupRepo,
 		swipeRepo:     swipeRepo,
+		userFSRSRepo:  firstUserCardFSRSRepo(userCardFSRSRepo),
 		scheduler:     scheduler,
 		ordering:      service.NewOrderingPolicy(),
 		randSource: func() *rand.Rand {
@@ -99,10 +106,18 @@ func NewSwipeUsecaseWithTx(
 	scheduler *service.FSRSScheduler,
 	nextBatchSize int,
 	tx txRunner,
+	userCardFSRSRepo ...UserCardFSRSRepoForSwipe,
 ) *SwipeUsecase {
-	uc := NewSwipeUsecase(nil, cardRepo, cardgroupRepo, swipeRepo, scheduler, nextBatchSize)
+	uc := NewSwipeUsecase(nil, cardRepo, cardgroupRepo, swipeRepo, scheduler, nextBatchSize, userCardFSRSRepo...)
 	uc.tx = tx
 	return uc
+}
+
+func firstUserCardFSRSRepo(repos []UserCardFSRSRepoForSwipe) UserCardFSRSRepoForSwipe {
+	if len(repos) == 0 {
+		return nil
+	}
+	return repos[0]
 }
 
 func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*SwipeOutput, error) {
@@ -123,6 +138,9 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 	if u.tx == nil {
 		return nil, gqlerr.Internal(ctx, errors.New("swipe usecase: transaction runner is not configured"))
 	}
+	if u.userFSRSRepo == nil {
+		return nil, gqlerr.Internal(ctx, errors.New("swipe usecase: user card fsrs repository is not configured"))
+	}
 	err = u.tx(ctx, func(tx *gorm.DB) error {
 		card, err := u.cardRepo.FindByIDTx(ctx, tx, in.CardID)
 		if err != nil {
@@ -136,8 +154,22 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 		}
 
 		now = time.Now().UTC()
-		newState := u.scheduler.Apply(card.FSRS, rating, now)
-		if err := u.cardRepo.UpdateFSRSStateTx(ctx, tx, card.ID, newState); err != nil {
+		byCardID, err := u.userFSRSRepo.FindByUserAndCardIDs(ctx, user.Sub, []string{card.ID})
+		if err != nil {
+			return err
+		}
+		current := byCardID[card.ID]
+		if current == nil {
+			current = domain.NewUserCardFSRSForNewCard(user.Sub, card.ID, now)
+		}
+		newState := u.scheduler.Apply(current.State, rating, now)
+		if err := u.userFSRSRepo.UpsertTx(ctx, tx, &domain.UserCardFSRS{
+			UserID:    user.Sub,
+			CardID:    card.ID,
+			State:     newState,
+			CreatedAt: current.CreatedAt,
+			UpdatedAt: now,
+		}); err != nil {
 			return err
 		}
 		sr, err := domain.NewSwipeRecord(user.Sub, card.ID, rating, now, newState)
@@ -147,7 +179,7 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 		if err := u.swipeRepo.CreateTx(ctx, tx, sr); err != nil {
 			return err
 		}
-		nextCards, err = u.cardRepo.FindDueCardsTx(ctx, tx, in.CardgroupID, now, u.nextBatchSize)
+		nextCards, err = u.cardRepo.FindDueCardsForUserTx(ctx, tx, user.Sub, in.CardgroupID, now, u.nextBatchSize)
 		if err != nil {
 			return err
 		}

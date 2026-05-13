@@ -93,13 +93,18 @@ import { CardsClient } from "./cards-client";
 const CG_ID = "cg-1";
 const PAGE_SIZE = 20;
 
+const userCardState = (due: string, state: number) => ({
+  __typename: "UserCardState" as const,
+  due,
+  state,
+});
+
 const CARD_1 = {
   __typename: "Card" as const,
   id: "c-1",
   front: "Hello",
   back: "Hola",
-  due: "2024-06-15",
-  state: 0,
+  userCardState: userCardState("2024-06-15", 0),
   cardgroupId: CG_ID,
 };
 
@@ -108,8 +113,7 @@ const CARD_2 = {
   id: "c-2",
   front: "Bye",
   back: "Adios",
-  due: "2024-06-15",
-  state: 0,
+  userCardState: userCardState("2024-06-15", 0),
   cardgroupId: CG_ID,
 };
 
@@ -892,8 +896,7 @@ describe("<CardsClient>", () => {
       id: "c-apple-1",
       front: "apple",
       back: "ringo",
-      due: "2024-06-15",
-      state: 0,
+      userCardState: userCardState("2024-06-15", 0),
       cardgroupId: CG_ID,
     };
     const APPLE_2 = {
@@ -901,8 +904,7 @@ describe("<CardsClient>", () => {
       id: "c-apple-2",
       front: "apple pie",
       back: "torta",
-      due: "2024-06-15",
-      state: 0,
+      userCardState: userCardState("2024-06-15", 0),
       cardgroupId: CG_ID,
     };
 
@@ -986,8 +988,7 @@ describe("<CardsClient>", () => {
       id: "c-apple-1",
       front: "apple",
       back: "ringo",
-      due: "2024-06-15",
-      state: 0,
+      userCardState: userCardState("2024-06-15", 0),
       cardgroupId: CG_ID,
     };
     const APPLE_2 = {
@@ -995,8 +996,7 @@ describe("<CardsClient>", () => {
       id: "c-apple-2",
       front: "apple pie",
       back: "torta",
-      due: "2024-06-15",
-      state: 0,
+      userCardState: userCardState("2024-06-15", 0),
       cardgroupId: CG_ID,
     };
 

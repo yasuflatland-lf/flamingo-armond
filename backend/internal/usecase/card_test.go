@@ -107,6 +107,12 @@ func (m *mockCardRepository) Delete(_ context.Context, _ string) error {
 func (m *mockCardRepository) FindDueCardsTx(_ context.Context, _ *gorm.DB, _ string, _ time.Time, _ int) ([]*domain.Card, error) {
 	return m.findDueRows, m.findDueErr
 }
+func (m *mockCardRepository) FindDueCardsForUser(_ context.Context, _ string, _ string, _ time.Time, _ int) ([]*domain.Card, error) {
+	return m.findDueRows, m.findDueErr
+}
+func (m *mockCardRepository) FindDueCardsForUserTx(_ context.Context, _ *gorm.DB, _ string, _ string, _ time.Time, _ int) ([]*domain.Card, error) {
+	return m.findDueRows, m.findDueErr
+}
 func (m *mockCardRepository) FindPageByCardgroup(
 	_ context.Context,
 	cardgroupID string,
@@ -125,6 +131,47 @@ func (m *mockCardRepository) FindPageByCardgroup(
 	m.capturedFindPage.dir = dir
 	m.capturedFindPage.search = search
 	return m.findPageRows, m.findPageTotal, m.findPageErr
+}
+func (m *mockCardRepository) FindPageByCardgroupForUser(
+	_ context.Context,
+	_ string,
+	cardgroupID string,
+	after, before *repository.CardCursor,
+	first, last int,
+	orderBy repository.CardOrderBy,
+	dir repository.SortOrder,
+	search *string,
+) ([]*domain.Card, int64, error) {
+	return m.FindPageByCardgroup(context.Background(), cardgroupID, after, before, first, last, orderBy, dir, search)
+}
+
+type mockUserCardFSRSRepository struct {
+	byCardID  map[string]*domain.UserCardFSRS
+	findErr   error
+	upserted  *domain.UserCardFSRS
+	upsertErr error
+}
+
+func (m *mockUserCardFSRSRepository) FindByUserAndCardIDs(_ context.Context, _ string, ids []string) (map[string]*domain.UserCardFSRS, error) {
+	if m.findErr != nil {
+		return nil, m.findErr
+	}
+	out := make(map[string]*domain.UserCardFSRS, len(ids))
+	for _, id := range ids {
+		if ucs := m.byCardID[id]; ucs != nil {
+			out[id] = ucs
+		}
+	}
+	return out, nil
+}
+
+func (m *mockUserCardFSRSRepository) UpsertTx(_ context.Context, _ *gorm.DB, u *domain.UserCardFSRS) error {
+	if m.upsertErr != nil {
+		return m.upsertErr
+	}
+	cp := *u
+	m.upserted = &cp
+	return nil
 }
 
 type mockCardgroupRepoForCard struct {
@@ -214,9 +261,6 @@ func TestCardUsecase_Create(t *testing.T) {
 			}
 			if got.Card.Front != "front" || got.Card.Back != "back" {
 				t.Fatalf("expected trimmed text, got front=%q back=%q", got.Card.Front, got.Card.Back)
-			}
-			if got.Card.FSRS.State != domain.FSRSStateNew || got.Card.FSRS.Stability != 2.5 || got.Card.FSRS.Difficulty != 5.0 {
-				t.Fatalf("unexpected FSRS defaults: %+v", got.Card.FSRS)
 			}
 		})
 	}
@@ -559,13 +603,22 @@ func TestCardUsecase_ListCardsByCardgroupConnection_ResolveCursorHydratesDueFiel
 				findResult: &domain.Card{
 					ID:          "c-1",
 					CardgroupID: "cg1",
-					FSRS:        domain.FSRSState{Due: dueT},
 					CreatedAt:   createdT,
 					UpdatedAt:   updatedT,
 				},
 			}
+			userFSRSRepo := &mockUserCardFSRSRepository{
+				byCardID: map[string]*domain.UserCardFSRS{
+					"c-1": {
+						UserID: "u1",
+						CardID: "c-1",
+						State:  domain.FSRSState{Due: dueT},
+					},
+				},
+			}
 			uc := NewCardUsecase(nil, cardRepo,
 				&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+				userFSRSRepo,
 			)
 			_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
 				CardgroupID: "cg1",

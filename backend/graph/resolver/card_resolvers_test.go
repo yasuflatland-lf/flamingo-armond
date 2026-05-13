@@ -44,9 +44,24 @@ func (m *cardMockRepo) FindDueCards(_ context.Context, _ string, _ time.Time, li
 	m.findDueLimit = limit
 	return m.findDueRows, m.findDueErr
 }
+func (m *cardMockRepo) FindDueCardsForUser(_ context.Context, _ string, _ string, _ time.Time, limit int) ([]*domain.Card, error) {
+	m.findDueLimit = limit
+	return m.findDueRows, m.findDueErr
+}
 func (m *cardMockRepo) FindPageByCardgroup(
 	_ context.Context,
 	_ string,
+	_, _ *repository.CardCursor,
+	_, _ int,
+	_ repository.CardOrderBy,
+	_ repository.SortOrder,
+	_ *string,
+) ([]*domain.Card, int64, error) {
+	return nil, 0, nil
+}
+func (m *cardMockRepo) FindPageByCardgroupForUser(
+	_ context.Context,
+	_, _ string,
 	_, _ *repository.CardCursor,
 	_, _ int,
 	_ repository.CardOrderBy,
@@ -264,50 +279,6 @@ func TestResolver_LearnNextDueCards_EmptyListIsNormal(t *testing.T) {
 	cards, _ := data["learnNextDueCards"].([]any)
 	if len(cards) != 0 {
 		t.Fatalf("expected empty card list, got %v", data["learnNextDueCards"])
-	}
-}
-
-// TestResolver_CreateCard_PartialFSRS_BadUserInput verifies that passing only
-// some FSRS override fields surfaces errors[0].extensions.code ==
-// "BAD_USER_INPUT" with extensions.field == "input.fsrs". The cardgroup
-// ownership check is satisfied, so the error originates solely from the
-// partial-override validation inside the usecase.
-func TestResolver_CreateCard_PartialFSRS_BadUserInput(t *testing.T) {
-	t.Parallel()
-
-	// The cardgroup is owned by the authenticated user so auth passes.
-	cgRepo := &cardMockCGRepo{
-		findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"},
-	}
-	// cardRepo.Create must NOT be reached; validation fails before persistence.
-	srv := newCardSrv(&cardMockRepo{}, cgRepo, cardFakeTx())
-
-	// Only stability is provided; the other eight FSRS fields are absent —
-	// ErrFSRSOverridePartial -> BAD_USER_INPUT on "input.fsrs".
-	mutation := map[string]any{
-		"query": `mutation($input: NewCardInput!) {
-			createCard(input: $input) { __typename ... on CreateCardSuccess { card { id } } }
-		}`,
-		"variables": map[string]any{
-			"input": map[string]any{
-				"cardgroupId": "cg1",
-				"front":       "Question",
-				"back":        "Answer",
-				"stability":   7.5,
-			},
-		},
-	}
-	bodyBytes, _ := json.Marshal(mutation)
-	resp := gqlRequest(t, srv, authedCtx("u1"), string(bodyBytes))
-
-	ext := errExtensions(t, resp)
-	code, _ := ext["code"].(string)
-	if code != "BAD_USER_INPUT" {
-		t.Fatalf("expected BAD_USER_INPUT, got %q", code)
-	}
-	field, _ := ext["field"].(string)
-	if field != "input.fsrs" {
-		t.Fatalf("expected extensions.field == \"input.fsrs\", got %q", field)
 	}
 }
 

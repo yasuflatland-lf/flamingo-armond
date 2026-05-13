@@ -75,15 +75,25 @@ func toCardModel(card *domain.Card) *model.Card {
 		Front:       card.Front,
 		Back:        card.Back,
 		CardgroupID: card.CardgroupID,
-		Due:         card.FSRS.Due,
-		Stability:   card.FSRS.Stability,
-		Difficulty:  card.FSRS.Difficulty,
-		State:       int(card.FSRS.State),
-		Reps:        card.FSRS.Reps,
-		Lapses:      card.FSRS.Lapses,
-		LastReview:  card.FSRS.LastReview,
 		CreatedAt:   card.CreatedAt,
 		UpdatedAt:   card.UpdatedAt,
+	}
+}
+
+func toModelUserCardState(ucs *domain.UserCardFSRS) *model.UserCardState {
+	if ucs == nil {
+		return nil
+	}
+	return &model.UserCardState{
+		Due:           ucs.State.Due,
+		Stability:     ucs.State.Stability,
+		Difficulty:    ucs.State.Difficulty,
+		State:         int(ucs.State.State),
+		Reps:          ucs.State.Reps,
+		Lapses:        ucs.State.Lapses,
+		LastReview:    ucs.State.LastReview,
+		ElapsedDays:   ucs.State.ElapsedDays,
+		ScheduledDays: ucs.State.ScheduledDays,
 	}
 }
 
@@ -249,26 +259,4 @@ func dictionaryKindOrPanic(ctx context.Context, raw string) model.DictionaryVali
 		panic(eris.Errorf("dictionary: UNKNOWN/empty Kind escaped to resolver: %q", raw))
 	}
 	return model.DictionaryValidationKind(raw)
-}
-
-// toFSRSOverride collects the nine optional FSRS pointer fields from
-// model.NewCardInput into a domain.FSRSStateOverride. Returns nil when every
-// field is nil so the usecase can take the default-FSRS branch.
-func toFSRSOverride(in model.NewCardInput) *domain.FSRSStateOverride {
-	if in.Due == nil && in.Stability == nil && in.Difficulty == nil &&
-		in.ElapsedDays == nil && in.ScheduledDays == nil && in.Reps == nil &&
-		in.Lapses == nil && in.State == nil && in.LastReview == nil {
-		return nil
-	}
-	return &domain.FSRSStateOverride{
-		Due:           in.Due,
-		Stability:     in.Stability,
-		Difficulty:    in.Difficulty,
-		ElapsedDays:   in.ElapsedDays,
-		ScheduledDays: in.ScheduledDays,
-		Reps:          in.Reps,
-		Lapses:        in.Lapses,
-		State:         in.State,
-		LastReview:    in.LastReview,
-	}
 }

@@ -39,8 +39,11 @@ type Card = {
   id: string;
   front: string;
   back: string;
-  due: string;
-  state: number;
+  userCardState: {
+    __typename: "UserCardState";
+    due: string;
+    state: number;
+  };
   cardgroupId: string;
 };
 
@@ -50,8 +53,11 @@ function makeCard(i: number): Card {
     id: `c-${i}`,
     front: `front-${i}`,
     back: `back-${i}`,
-    due: "2024-06-15",
-    state: 0,
+    userCardState: {
+      __typename: "UserCardState",
+      due: "2024-06-15",
+      state: 0,
+    },
     cardgroupId: CG_ID,
   };
 }

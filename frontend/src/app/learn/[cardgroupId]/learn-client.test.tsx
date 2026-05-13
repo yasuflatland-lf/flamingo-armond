@@ -126,13 +126,18 @@ afterEach(() => {
 
 const CG_ID = "cg-1";
 
+const userCardState = (due: string, state: number) => ({
+  __typename: "UserCardState" as const,
+  due,
+  state,
+});
+
 const CARD_1 = {
   __typename: "Card" as const,
   id: "c-1",
   front: "Hello",
   back: "Hola",
-  due: "2026-04-30T00:00:00Z",
-  state: 0,
+  userCardState: userCardState("2026-04-30T00:00:00Z", 0),
   cardgroupId: CG_ID,
 };
 
@@ -141,8 +146,7 @@ const CARD_2 = {
   id: "c-2",
   front: "Bye",
   back: "Adios",
-  due: "2026-04-30T00:00:00Z",
-  state: 0,
+  userCardState: userCardState("2026-04-30T00:00:00Z", 0),
   cardgroupId: CG_ID,
 };
 
@@ -151,8 +155,7 @@ const SERVER_CARD = {
   id: "c-3",
   front: "Server next",
   back: "Siguiente",
-  due: "2026-04-30T00:00:00Z",
-  state: 1,
+  userCardState: userCardState("2026-04-30T00:00:00Z", 1),
   cardgroupId: CG_ID,
 };
 
