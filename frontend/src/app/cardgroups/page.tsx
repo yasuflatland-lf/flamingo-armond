@@ -51,6 +51,10 @@ export async function CardgroupsContent() {
       revalidate: 0,
     });
     initialConnection = data.myCardgroupsConnection;
+    if (!initialConnection) {
+      console.error("[cardgroups] myCardgroupsConnection is null — partial response from backend");
+      throw new Error("myCardgroupsConnection missing from cardgroups data");
+    }
   } catch (err) {
     // Structural parse per .claude/rules/frontend-rsc-error-handling.md §
     // "Structurally parse GraphQL extensions.code — never substring-match".
