@@ -54,5 +54,5 @@ hard error does not need its own struct field — keep that inline.
 tested by `TestServerConfigFromEnv` in `backend/cmd/server/main_test.go`.
 
 **Sister rules:**
-- [Extract startup helpers to make branch coverage testable without a live server](extract-startup-helpers-for-branch-coverage.md)
+- [Testable startup helpers — anti-pattern of inline test copies and the extract-helper fix](testable-startup-helpers.md)
 - [`t.Setenv` vs `os.Setenv` in tests](tsetenv-vs-os-setenv.md)
