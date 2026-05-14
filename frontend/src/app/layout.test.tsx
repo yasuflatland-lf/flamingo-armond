@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   getMockGetClaimsSpy,
-  mockSupabaseServerClient,
+  mockCreateSupabaseServerClient,
   resetMockSupabase,
   setMockSupabaseClaims,
   setMockSupabaseClaimsDataNull,
@@ -15,7 +15,7 @@ import {
 // ---------------------------------------------------------------------------
 
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => Promise.resolve(mockSupabaseServerClient()),
+  createSupabaseServerClient: mockCreateSupabaseServerClient,
 }));
 
 // AppShell, Providers, and GlobalFAB are opaque to this test — we do not need
@@ -155,6 +155,9 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
 
     expect(consoleErrorSpy).not.toHaveBeenCalled();
     expect(consoleWarnSpy).not.toHaveBeenCalled();
+    // The layout reached createSupabaseServerClient() (auth check is required
+    // for non-bypass routes) but must short-circuit before getClaims().
+    expect(mockCreateSupabaseServerClient).toHaveBeenCalled();
     expect(getMockGetClaimsSpy()).not.toHaveBeenCalled();
     expect(props.user).toBeNull();
     expect(props.isAdmin).toBe(false);
@@ -175,6 +178,9 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
       transportError.name,
       transportError.message,
     );
+    // The layout reached createSupabaseServerClient() (auth check is required
+    // for non-bypass routes) but must short-circuit before getClaims().
+    expect(mockCreateSupabaseServerClient).toHaveBeenCalled();
     expect(getMockGetClaimsSpy()).not.toHaveBeenCalled();
     expect(props.user).toBeNull();
     expect(props.isAdmin).toBe(false);
@@ -250,6 +256,11 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
       }),
     );
 
+    // Exactly-one assertion: silently picking `mock.calls[0][1]` without first
+    // asserting call-count would let a regression that emits a second warn
+    // slip through. The PII-absence check below must inspect the single
+    // intended warn payload, not the first of many.
+    expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
     // PII absence: email and display_name must NOT appear in the warn payload.
     const warnPayload = consoleWarnSpy.mock.calls[0][1] as Record<string, unknown>;
     expect(Object.keys(warnPayload)).not.toContain("email");
@@ -294,6 +305,10 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
       }),
     );
 
+    // Exactly-one assertion: silently picking `mock.calls[0][1]` without first
+    // asserting call-count would let a regression that emits a second warn
+    // slip through.
+    expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
     // PII absence: email and display_name must NOT appear in the warn payload.
     const warnPayload = consoleWarnSpy.mock.calls[0][1] as Record<string, unknown>;
     expect(Object.keys(warnPayload)).not.toContain("email");
@@ -315,6 +330,9 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
 
     expect(consoleErrorSpy).not.toHaveBeenCalled();
     expect(consoleWarnSpy).not.toHaveBeenCalled();
+    // The layout reached createSupabaseServerClient() (auth check is required
+    // for non-bypass routes) but must short-circuit before getClaims().
+    expect(mockCreateSupabaseServerClient).toHaveBeenCalled();
     expect(getMockGetClaimsSpy()).not.toHaveBeenCalled();
     expect(props.user).toBeNull();
     expect(props.isAdmin).toBe(false);
@@ -335,7 +353,13 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
     expect(consoleErrorSpy).not.toHaveBeenCalled();
     expect(consoleWarnSpy).not.toHaveBeenCalled();
     // The /login bypass short-circuits before reaching the supabase client at
-    // all; the spy returned here is a freshly-materialised uncalled placeholder.
+    // all. Asserting on `mockCreateSupabaseServerClient` is the load-bearing
+    // check: `getMockGetClaimsSpy()` lazily materialises an uncalled spy when
+    // the layout short-circuits before invoking the factory, so its
+    // `not.toHaveBeenCalled` assertion is trivially satisfied; only the
+    // factory-call assertion catches a regression where the layout starts
+    // calling supabase on /login.
+    expect(mockCreateSupabaseServerClient).not.toHaveBeenCalled();
     expect(getMockGetClaimsSpy()).not.toHaveBeenCalled();
   });
 });

@@ -19,12 +19,23 @@
  *   - AdminLayout admin-role gate
  */
 
+// The mock-supabase import must precede the `vi.mock("@/lib/supabase/server", ...)`
+// factory below: the factory references `mockCreateSupabaseServerClient`, and
+// Vitest's hoisting of `vi.mock` produces a TDZ error if the binding is
+// imported later in source order than the factory that references it.
+import {
+  mockCreateSupabaseServerClient,
+  resetMockSupabase,
+  setMockSupabaseUser,
+  setMockSupabaseUserError,
+} from "./utils/mock-supabase";
+
 // ---------------------------------------------------------------------------
 // Module mocks — hoisted by Vitest before imports
 // ---------------------------------------------------------------------------
 
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => Promise.resolve(mockSupabaseServerClient()),
+  createSupabaseServerClient: mockCreateSupabaseServerClient,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -61,12 +72,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DictionaryImportClient } from "@/app/admin/dictionary/dictionary-client";
 import AdminDictionaryPage from "@/app/admin/dictionary/page";
 import { MyCardgroupsDocument } from "@/generated/graphql";
-import {
-  mockSupabaseServerClient,
-  resetMockSupabase,
-  setMockSupabaseUser,
-  setMockSupabaseUserError,
-} from "./utils/mock-supabase";
 
 // ---------------------------------------------------------------------------
 // Fixtures

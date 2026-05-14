@@ -66,8 +66,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       console.warn("[layout] getClaims() returned null data without error", {
         user_id: user.id,
       });
+    } else if (claimsData.claims == null) {
+      // Fourth return shape that is not in the SDK's current TS types but is
+      // forward-compatibility / mock-robustness defence: `{ data: { claims:
+      // null }, error: null }`. The optional chain `.claims?.app_metadata` used
+      // to silently degrade through this case; an explicit narrowing surfaces
+      // it via a warn so an operator can correlate with future SDK type drift.
+      console.warn("[layout] getClaims() returned data without claims", {
+        user_id: user.id,
+      });
     } else {
-      isAdmin = claimsData.claims?.app_metadata?.role === "admin";
+      isAdmin = claimsData.claims.app_metadata?.role === "admin";
     }
   }
 

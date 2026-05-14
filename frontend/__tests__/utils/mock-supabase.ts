@@ -25,14 +25,14 @@ import { vi } from "vitest";
  * ```ts
  * import {
  *   getMockGetClaimsSpy,
- *   mockSupabaseServerClient,
+ *   mockCreateSupabaseServerClient,
  *   resetMockSupabase,
  *   setMockSupabaseUser,
  *   setMockSupabaseClaims,
  * } from "./utils/mock-supabase";
  *
  * vi.mock("@/lib/supabase/server", () => ({
- *   createSupabaseServerClient: () => Promise.resolve(mockSupabaseServerClient()),
+ *   createSupabaseServerClient: mockCreateSupabaseServerClient,
  * }));
  *
  * beforeEach(() => {
@@ -158,14 +158,48 @@ export function setMockSupabaseClaimsDataNull(): void {
  * If no factory invocation has occurred yet (e.g. the layout short-circuited
  * before calling `createSupabaseServerClient()` on the /login bypass branch),
  * a fresh uncalled spy is materialised so the typical `not.toHaveBeenCalled()`
- * assertion remains meaningful: the property under test is "getClaims was never
- * invoked", and an uninvoked factory trivially satisfies it.
+ * assertion remains meaningful. NOTE: that lazy-materialisation makes the
+ * `not.toHaveBeenCalled()` assertion trivially true even when the layout
+ * short-circuits before reaching supabase at all. To catch a regression where
+ * the layout starts calling `createSupabaseServerClient()` on a bypass branch,
+ * also assert on `mockCreateSupabaseServerClient` (see below).
  */
 export function getMockGetClaimsSpy(): ReturnType<typeof vi.fn<() => Promise<GetClaimsResult>>> {
   if (latestGetClaimsSpy == null) {
     latestGetClaimsSpy = vi.fn<() => Promise<GetClaimsResult>>();
   }
   return latestGetClaimsSpy;
+}
+
+/**
+ * Spy for the `createSupabaseServerClient` factory call itself. Test files
+ * wire this into their `vi.mock("@/lib/supabase/server", ...)` factory so the
+ * factory invocation is observable:
+ *
+ * ```ts
+ * vi.mock("@/lib/supabase/server", () => ({
+ *   createSupabaseServerClient: mockCreateSupabaseServerClient,
+ * }));
+ * ```
+ *
+ * This complements `getMockGetClaimsSpy()` for bypass-branch assertions: a
+ * layout that short-circuits before reaching supabase will leave both
+ * `mockCreateSupabaseServerClient` and `getClaims` uncalled. The `getClaims`
+ * spy is lazily materialised by `getMockGetClaimsSpy()` and so `not.toHaveBeenCalled`
+ * on it alone cannot distinguish "short-circuited" from "called but no
+ * getClaims" — `mockCreateSupabaseServerClient` does.
+ */
+export const mockCreateSupabaseServerClient = vi.fn(() =>
+  Promise.resolve(mockSupabaseServerClient()),
+);
+
+/**
+ * Return the `vi.fn()` spy for the `createSupabaseServerClient` factory call.
+ * Tests assert call counts on this to catch regressions where a layout that is
+ * supposed to short-circuit (e.g. on `/login`) starts invoking supabase.
+ */
+export function getMockCreateSupabaseServerClientSpy(): typeof mockCreateSupabaseServerClient {
+  return mockCreateSupabaseServerClient;
 }
 
 /**
@@ -178,6 +212,7 @@ export function resetMockSupabase(): void {
   state.claimsError = null;
   state.claimsDataNull = false;
   latestGetClaimsSpy = null;
+  mockCreateSupabaseServerClient.mockClear();
 }
 
 /**
