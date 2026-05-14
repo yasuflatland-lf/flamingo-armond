@@ -17,7 +17,8 @@ import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
 } from "../../../../__tests__/utils/mock-apollo-paginated";
-import { LearnClient } from "./learn-client";
+import { LEARN_PAGE_LIMIT } from "@/app/learn/queries";
+import { LearnClient, PREFETCH_THRESHOLD as PRODUCTION_PREFETCH_THRESHOLD } from "./learn-client";
 
 // ---------------------------------------------------------------------------
 // SwipeCardStack mock
@@ -31,12 +32,17 @@ import { LearnClient } from "./learn-client";
 //
 // capturedOnCardSwiped accumulates the onCardSwiped reference on every render
 // so the identity-stability test can assert it does not change across re-renders.
+//
+// capturedCardSnapshots accumulates the full `cards` array on every render so
+// dedup tests can assert the exact queue contents without swipe-exhausting the
+// stack. Reset in beforeEach alongside capturedOnCardSwiped.
 // ---------------------------------------------------------------------------
 type SwipeCardStackOnCardSwiped = Parameters<
   typeof import("@/components/learn/swipe-card-stack")["SwipeCardStack"]
 >[0]["onCardSwiped"];
 
 const capturedOnCardSwiped: SwipeCardStackOnCardSwiped[] = [];
+const capturedCardSnapshots: SwipeCardData[][] = [];
 
 vi.mock("@/components/learn/swipe-card-stack", () => ({
   SwipeCardStack: (props: {
@@ -46,6 +52,7 @@ vi.mock("@/components/learn/swipe-card-stack", () => ({
     ref?: RefObject<SwipeCardStackHandle | null>;
   }) => {
     capturedOnCardSwiped.push(props.onCardSwiped);
+    capturedCardSnapshots.push([...props.cards]);
 
     const activeCardRef = useRef(props.cards[0] ?? null);
     activeCardRef.current = props.cards[0] ?? null;
@@ -118,8 +125,9 @@ beforeEach(() => {
   leakSpy = installApolloMockLeakSpy({
     operationNames: ["HandleSwipe", "SetLastViewedCardgroup", "LearnNextDueCards"],
   });
-  // Reset the captured onCardSwiped array so tests do not bleed into each other.
+  // Reset the captured arrays so tests do not bleed into each other.
   capturedOnCardSwiped.length = 0;
+  capturedCardSnapshots.length = 0;
 });
 
 afterEach(() => {
@@ -194,7 +202,7 @@ function makeDefaultPrefetchMocks(count = 4) {
   return Array.from({ length: count }, () => ({
     request: {
       query: LearnNextDueCardsDocument,
-      variables: { cardgroupId: CG_ID, limit: 20 },
+      variables: { cardgroupId: CG_ID, limit: LEARN_PAGE_LIMIT },
     },
     result: { data: { learnNextDueCards: [] } },
   }));
@@ -715,8 +723,9 @@ describe("<LearnClient> onSwipe identity stability", () => {
 // `operationNames` so unmatched prefetch requests are surfaced.
 // ---------------------------------------------------------------------------
 
-const PREFETCH_THRESHOLD = 5;
-const PREFETCH_LIMIT = 20;
+// PREFETCH_THRESHOLD and LEARN_PAGE_LIMIT are imported from production source
+// so tests stay in sync with the actual constants without manual duplication.
+const PREFETCH_THRESHOLD = PRODUCTION_PREFETCH_THRESHOLD;
 
 /** Build a queue of `n` cards with deterministic ids (`q-1` … `q-n`). */
 function makeQueue(n: number, idPrefix = "q") {
@@ -747,7 +756,7 @@ function makePrefetchMock(cards: PrefetchCard[], opts?: { delay?: number }) {
   } = {
     request: {
       query: LearnNextDueCardsDocument,
-      variables: { cardgroupId: CG_ID, limit: PREFETCH_LIMIT },
+      variables: { cardgroupId: CG_ID, limit: LEARN_PAGE_LIMIT },
     },
     result: () => {
       calls += 1;
@@ -825,7 +834,6 @@ describe("<LearnClient> queue prefetch", () => {
   });
 
   it("dedups prefetched cards against the existing queue by id", async () => {
-    const user = userEvent.setup();
     const initial = makeQueue(PREFETCH_THRESHOLD); // q-1 .. q-5
     // Prefetch returns one duplicate (q-3, id "q-3") and one new card (id "p-unique").
     // Only the new card should be appended — q-3 must not appear twice.
@@ -840,62 +848,43 @@ describe("<LearnClient> queue prefetch", () => {
     };
     const prefetch = makePrefetchMock([duplicate, freshCard]);
 
-    // After the swipe, the server returns q-2..q-5 + p-unique = 5 cards
-    // (still at threshold), triggering a second prefetch. Provide an empty
-    // mock to satisfy it — the dedup assertion is on the first prefetch merge.
-    const prefetchNoop = makePrefetchMock([]);
+    // After prefetch merges, the queue becomes q-1..q-5 + p-unique = 6 cards,
+    // which is above threshold, so no second prefetch fires. No noop needed.
 
-    const swipeMocks = [
-      // Swipe q-1 right
-      {
-        request: {
-          query: HandleSwipeDocument,
-          variables: { input: { cardId: "q-1", cardgroupId: CG_ID, mode: 4 } },
-        },
-        result: {
-          data: {
-            handleSwipe: {
-              __typename: "SwipeResponse" as const,
-              // Authoritative server next-cards: q-2..q-5 + p-unique (deduped).
-              nextCards: [...initial.slice(1), freshCard],
-              performanceMode: 0,
-              metrics: DEFAULT_METRICS,
-            },
-          },
-        },
-      },
-    ];
-
-    renderLearnClient([prefetch.mock, ...swipeMocks, prefetchNoop.mock], initial, {
+    renderLearnClient([prefetch.mock], initial, {
       skipDefaultPrefetchMocks: true,
     });
 
-    // Wait for first prefetch to resolve and merge the queue.
+    // Wait for the first prefetch to resolve and the merged queue to render.
+    // capturedCardSnapshots records the full `cards` array on every render, so
+    // we can assert the exact queue contents without swipe-exhausting the stack.
     await waitFor(() => {
       expect(prefetch.callCount()).toBe(1);
     });
 
-    // q-1 is still the active (top) card.
-    expect(screen.getByText("Front 1")).toBeInTheDocument();
-
-    // Dedup assertion: the mock renders only the top card.
-    // Absence of "Front 3" here is because q-3 is not top — that is expected.
-    // The critical check is that q-3 was NOT duplicated: swipe q-1 and confirm
-    // the queue is q-2..q-5 + p-unique with no extra q-3 entry.
-    expect(screen.queryAllByText("Front 3").length).toBe(0);
-
-    // Swipe q-1 right; server reconciles to q-2..q-5 + p-unique.
-    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
-
+    // After merging, the queue must have exactly 6 entries: q-1..q-5 + p-unique.
+    // We wait for a snapshot that reflects the post-merge state (length === 6).
     await waitFor(() => {
-      // q-2 is now the active (top) card.
-      expect(screen.getByText("Front 2")).toBeInTheDocument();
+      const latest = capturedCardSnapshots.at(-1);
+      expect(latest).toBeDefined();
+      expect(latest?.length).toBe(6);
     });
 
-    // q-3 is still not the top card — no duplicate entry was created.
-    expect(screen.queryAllByText("Front 3").length).toBe(0);
-    // p-unique is now in the queue but not yet the top card.
-    expect(screen.queryByText("Prefetched New")).not.toBeInTheDocument();
+    const mergedCards = capturedCardSnapshots.at(-1)!;
+    const mergedIds = mergedCards.map((c) => c.id);
+
+    // All original cards are present.
+    expect(mergedIds).toContain("q-1");
+    expect(mergedIds).toContain("q-2");
+    expect(mergedIds).toContain("q-3");
+    expect(mergedIds).toContain("q-4");
+    expect(mergedIds).toContain("q-5");
+    // The fresh prefetched card is appended exactly once.
+    expect(mergedIds).toContain("p-unique");
+    // The duplicate (q-3) was not added a second time — id appears exactly once.
+    expect(mergedIds.filter((id) => id === "q-3").length).toBe(1);
+    // p-unique appears exactly once — no accidental duplication.
+    expect(mergedIds.filter((id) => id === "p-unique").length).toBe(1);
   });
 
   it("does not prefetch when queue is above threshold", async () => {
@@ -928,7 +917,7 @@ describe("<LearnClient> queue prefetch", () => {
     const failingMock = {
       request: {
         query: LearnNextDueCardsDocument,
-        variables: { cardgroupId: CG_ID, limit: PREFETCH_LIMIT },
+        variables: { cardgroupId: CG_ID, limit: LEARN_PAGE_LIMIT },
       },
       error: new Error("network failure"),
     };

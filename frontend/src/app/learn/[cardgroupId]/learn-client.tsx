@@ -28,7 +28,7 @@ type PerformanceMetrics = HandleSwipeMutationType["handleSwipe"]["metrics"];
  * the background prefetch effect fires another `LearnNextDueCards` request
  * to keep the swipe queue full ahead of the user.
  */
-const PREFETCH_THRESHOLD = 5;
+export const PREFETCH_THRESHOLD = 5;
 
 const DEFAULT_METRICS: PerformanceMetrics = {
   __typename: "PerformanceMetrics",
