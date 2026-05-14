@@ -122,7 +122,7 @@ afterEach(() => {
 });
 ```
 
-Reference: `frontend/src/components/nav/global-header.test.tsx`. This applies to any test file that calls `vi.spyOn(...)` on a global (`console`, `Date`, `crypto`) or a module export.
+Reference: `frontend/src/app/layout.test.tsx` (lines 125–139). This applies to any test file that calls `vi.spyOn(...)` on a global (`console`, `Date`, `crypto`) or a module export.
 
 ### `vi.useRealTimers()` in `afterEach` is a defensive guard for fake-timer leaks
 
@@ -180,9 +180,9 @@ const action = resolveFabAction(pathname);
 if (action === null) return null;
 ```
 
-**Why:** pure logic + jsdom is wasted overhead — every test pays for the DOM environment to assert a string-in-string-out result. Node tests are faster (no jsdom bootstrap), clearer (no `vi.mock` of `next/navigation`), and the production code gets a forcing function to keep the helper React-free. The same testability-extraction principle is documented for the backend in [`docs/backend/library-gotchas/extract-startup-helpers-for-branch-coverage.md`](../backend/library-gotchas/extract-startup-helpers-for-branch-coverage.md).
+**Why:** pure logic + jsdom is wasted overhead — every test pays for the DOM environment to assert a string-in-string-out result. Node tests are faster (no jsdom bootstrap), clearer (no `vi.mock` of `next/navigation`), and the production code gets a forcing function to keep the helper React-free. The same testability-extraction principle is documented for the backend in [`docs/backend/library-gotchas/testable-startup-helpers.md`](../backend/library-gotchas/testable-startup-helpers.md).
 
-**How to apply:** when a client component's render function or hook callback contains branching logic that depends only on its arguments (not on React state, refs, or router objects), lift that logic into a sibling `.ts` file with no React or Next.js imports, and write its tests under `// @vitest-environment node`. The component imports the helper and calls it. Reference: `frontend/src/components/nav/fab-action.ts` consumed by `global-fab.tsx` and `header-add-card-link.tsx`; the test file `fab-action.test.ts` runs under the node environment while the component tests stay on jsdom.
+**How to apply:** when a client component's render function or hook callback contains branching logic that depends only on its arguments (not on React state, refs, or router objects), lift that logic into a sibling `.ts` file with no React or Next.js imports, and write its tests under `// @vitest-environment node`. The component imports the helper and calls it. Reference: `frontend/src/components/nav/fab-action.ts` consumed by `global-fab.tsx`; the test file `fab-action.test.ts` runs under the node environment while the component tests stay on jsdom.
 
 ### Co-located component-level test for prop-guard branches the integration path cannot reach
 
@@ -391,11 +391,13 @@ grep -rn "ModeBadge" frontend/ --include="*.ts" --include="*.tsx"
 
 **How to apply:** before `git rm`-ing a component file, grep the whole `frontend/` directory (not just `frontend/src/`). The same rule extends to any cross-tree symbol: the GraphQL `graphql()` document discovery scans `frontend/src/**` but Playwright specs under `frontend/e2e/` reference page paths and component selectors, and `frontend/playwright.config.ts` may reference paths that contain the removed component name in a comment or fixture.
 
-**Coverage migration is a separate audit step from import cleanup.** When a component is being deleted because its responsibilities have moved to a replacement (e.g. `GlobalHeader` → `AppShell` + `GlobalRail` + `LogoDrawer`), the `<deleted>.test.tsx` file is usually deleted alongside the component — but the assertions inside that test file may have been the only coverage for behaviour that now lives in a different component or in the parent layout. Deleting the test file without re-homing those assertions silently drops coverage for branches the replacement implementation can also fail. Before deleting `<deleted>.test.tsx`:
+**Coverage migration is a separate audit step from import cleanup.** When a component is being deleted because its responsibilities have moved to a replacement (e.g. a nav component split across `AppShell`, `GlobalRail`, and `LogoDrawer`), the `<deleted>.test.tsx` file is usually deleted alongside the component — but the assertions inside that test file may have been the only coverage for behaviour that now lives in a different component or in the parent layout. Deleting the test file without re-homing those assertions silently drops coverage for branches the replacement implementation can also fail. Before deleting `<deleted>.test.tsx`:
 
 1. List every `it(...)` / `test(...)` inside it.
 2. For each, decide whether the asserted behaviour still exists somewhere (in the replacement component, in the layout that hosts it, in a route-level test). If yes, ensure a new test in that location covers the same branch.
 3. For each behaviour that no longer exists, the deletion is correct — but say so in the commit message so reviewers can verify intent rather than guess.
+
+**Worked example: header auth degradation branches.** When the header auth logic moved into `app/layout.tsx`, the old `global-header.test.tsx` suite was deleted alongside the deleted component — but eight branches asserting that the root layout degrades silently on `getUser()` failure / `gqlFetch` `UNAUTHENTICATED` / `me`-fetch failure went with it. Those branches still exist in the replacement implementation and can still fail, so the audit step is to re-home them. The fix was `app/layout.test.tsx` (`frontend/src/app/layout.test.tsx`), which re-asserts every branch against the post-refactor implementation. Without that re-homing the branches would have stayed silently uncovered until a regression surfaced in production.
 
 ### Fake timer hygiene: use `beforeEach` / `afterEach` for setup and teardown
 

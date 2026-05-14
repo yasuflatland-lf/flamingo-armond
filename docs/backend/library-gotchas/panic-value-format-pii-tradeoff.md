@@ -16,8 +16,8 @@ that was processing user input. Two format choices exist when wrapping that valu
 `gqlerr.Internal` fixes the client-visible message regardless of what error is wrapped:
 
 ```go
-// backend/cmd/server/main.go
-func recoverFromPanic(ctx context.Context, err any) error {
+// backend/internal/gqlerr/recover.go  (wired via srv.SetRecoverFunc(gqlerr.RecoverFunc))
+func RecoverFunc(ctx context.Context, err any) error {
     stack := debug.Stack()
     return gqlerr.Internal(ctx,
         eris.Errorf("graphql: panic recovered (%T %v)\n%s", err, err, stack),

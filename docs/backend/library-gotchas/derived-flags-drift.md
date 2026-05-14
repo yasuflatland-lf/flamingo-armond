@@ -2,14 +2,21 @@
 
 > Part of the [Go library gotchas](../../../.claude/rules/go-library-gotchas.md) rules.
 
-A `passthrough bool` field on a struct that is "kept in sync with `len(emails) == 0`" introduces two states that the type system does not enforce to agree. Any future constructor variant, copy, or mutation path that sets one and forgets the other produces a struct whose hot-path branch disagrees with its data. The fix is to delete the cache and read the source of truth at the decision point:
+A field that mirrors a property already derivable from another field on the same struct introduces two states the type system does not enforce to agree. Any future constructor variant, copy, or mutation path that updates one and forgets the other yields a struct whose hot-path branch disagrees with its own data.
 
 ```go
-// AVOID: derived flag duplicates state already in p.emails.
-type SuperUserPromoter struct { emails map[string]struct{}; passthrough bool /* derived */ }
+// AVOID: `enabled` is fully determined by `len(items)`, but the compiler does
+// not enforce that the two stay in sync across all constructors.
+type Filter struct {
+    items   map[string]struct{}
+    enabled bool // derived from len(items) > 0
+}
 
 // PREFER: compute on read; impossible to drift.
-if len(p.emails) == 0 { /* pass-through branch */ }
+type Filter struct {
+    items map[string]struct{}
+}
+func (f *Filter) Enabled() bool { return len(f.items) > 0 }
 ```
 
-The rule generalises to any field that is fully determined by another field on the same struct: prefer recomputation unless profiling shows the read is hot enough to matter. For an Echo middleware factory `Middleware()` that runs once per process (not per request), the cost is rounding-error.
+Prefer recomputation unless profiling shows the read is hot enough to matter. For middleware factories or constructors that run once per process (not per request), the cost is rounding-error and not worth the drift risk.

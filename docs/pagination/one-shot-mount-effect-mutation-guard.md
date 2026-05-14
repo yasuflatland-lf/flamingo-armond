@@ -17,4 +17,4 @@ useEffect(() => {
 
 Two non-obvious points: (1) the SSR-seeded "current server value" lets the effect skip the network entirely when nothing changed — keep that prop, do not collapse the check to "always fire once"; (2) the mutation should run via the imperative `client.mutate(...)` (not `useMutation`) so the cache update runs regardless of caller render state and the effect's dependency surface stays narrow. Reference: `frontend/src/app/learn/[cardgroupId]/learn-client.tsx` persisting `lastViewedCardgroup`.
 
-The [drop `optimisticResponse` rule](drop-optimistic-response-typed-errors.md) applies here too: a mutation that can plausibly return `BAD_USER_INPUT` (e.g. cardgroup deleted between page render and the effect firing) should not carry an optimistic write.
+The rule to drop `optimisticResponse` for mutations with typed GraphQL errors applies here too (documented in the [Frontend cache patterns](../../.claude/rules/pagination.md#frontend-cache-patterns) section): a mutation that can plausibly return `BAD_USER_INPUT` (e.g. cardgroup deleted between page render and the effect firing) should not carry an optimistic write.

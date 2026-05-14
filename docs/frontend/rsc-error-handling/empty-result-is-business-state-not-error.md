@@ -44,4 +44,4 @@ return <section>...</section>;
 
 The RSC (`page.tsx`) passes `cardsData.learnNextDueCards` directly to the client component without guarding against zero-length. The empty check lives exactly once in `LearnClient`, which owns the transition from "cards available" to "session complete."
 
-See [`docs/frontend/rsc-error-handling/partial-response-gqlfetch.md`](partial-response-gqlfetch.md) for the `gqlFetch` error contract (what actually constitutes a thrown error) and [`docs/pagination/totalcount-via-separate-count.md`](../../pagination/totalcount-via-separate-count.md) for the related case of an empty Connection in paginated queries.
+See [`docs/frontend/rsc-error-handling/partial-response-gqlfetch.md`](partial-response-gqlfetch.md) for the `gqlFetch` error contract (what actually constitutes a thrown error) and [`.claude/rules/pagination.md` § "Server-side design"](../../../.claude/rules/pagination.md#server-side-design) for the related case of an empty Connection in paginated queries (where `totalCount` returns via a separate `COUNT(*)`).

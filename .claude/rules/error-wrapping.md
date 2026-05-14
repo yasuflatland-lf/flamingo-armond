@@ -20,12 +20,10 @@ Sentinels used today: `repository.ErrNotFound`, and domain-level sentinels such 
 
 ## Sentinels — detailed cases (on-demand)
 
-- [Layered sentinels via `errors.Join`](../../docs/backend/error-wrapping/layered-sentinels-via-errors-join.md)
+- [Sentinel layering: when to join with `errors.Join` and when to keep standalone](../../docs/backend/error-wrapping/sentinel-layering.md)
 - [Postgres FK violation classification (`23503`)](../../docs/backend/error-wrapping/postgres-fk-violation-23503.md)
 - [Postgres unique-violation classification (`23505`)](../../docs/backend/error-wrapping/postgres-unique-violation-23505.md)
-- [Standalone sentinels: not every new sentinel joins `ErrNotFound`](../../docs/backend/error-wrapping/standalone-sentinels-not-every-joins-errnotfound.md)
-- [Two-tier `gqlerr` API: generic open helper + domain-specific typed wrapper](../../docs/backend/error-wrapping/two-tier-gqlerr-api.md)
-- [Two-tier env config API: optional reader + strict wrapper](../../docs/backend/error-wrapping/two-tier-optional-strict-env-config.md)
+- [Two-tier API pattern: open primitive + strict/typed wrapper (`gqlerr`, env-config)](../../docs/backend/error-wrapping/two-tier-api-pattern.md)
 
 ## Logging — detailed cases (on-demand)
 
@@ -44,7 +42,8 @@ Sentinels used today: `repository.ErrNotFound`, and domain-level sentinels such 
 - [Typed classifier field over string-prefix matching at conversion boundaries](../../docs/backend/error-wrapping/typed-classifier-over-string-prefix.md)
 - [Classifier check must run before any pipeline step that appends to the classified slice](../../docs/backend/error-wrapping/classifier-check-ordering-before-pipeline-mutation.md)
 
-## Background (on-demand)
+## Background
 
-- [Why `eris` over alternatives](../../docs/backend/error-wrapping/why-eris-over-alternatives.md)
+`eris` is preferred over the common alternatives because: `fmt.Errorf("%w")` carries no stack trace and only a string context; `pkg/errors` has had no upstream activity since its January 2020 v0.9.1 tag and lacks the structured JSON chain serialization this codebase relies on for the `error_chain` log attribute; `cockroachdb/errors` is heavier and pulls in many transitive deps, so revisit only when multi-service error portability or first-class Sentry SDK integration becomes a hard requirement; `joomcode/errorx` is focused on typed-error hierarchies, less aligned with our wrap-and-log need.
+
 - [What `error_chain` looks like](../../docs/backend/error-wrapping/what-error-chain-looks-like.md)

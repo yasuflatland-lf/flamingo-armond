@@ -20,17 +20,20 @@
 
 ### RSC UNAUTHENTICATED redirect pattern
 
-`gqlFetch` throws when the backend returns GraphQL errors. RSC pages wrap the call in `try/catch` and use `redirectIfUnauthenticated(err, target)` from `@/lib/apollo/server-redirect`:
+`gqlFetch` throws when the backend returns GraphQL errors. RSC pages wrap the call in `try/catch` and use `isUnauthenticatedGraphQLError(err)` from `@/lib/apollo/graphql-errors` to branch on the result:
 
 ```ts
+import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
+
 try {
   data = await gqlFetch(MyQuery, { variables, revalidate: 0 });
 } catch (err) {
-  redirectIfUnauthenticated(err, "/login"); // never returns
+  if (isUnauthenticatedGraphQLError(err)) redirect("/login");
+  throw err;
 }
 ```
 
-The helper string-matches `UNAUTHENTICATED` in the error message and calls `redirect(target)`; all other errors are rethrown to the nearest error boundary. Two redirect targets are in use: `/login` for session-expired or no-session cases (checked before `gqlFetch` via `supabase.auth.getUser()`), and `/cardgroups` for cross-user-access on inner pages. See [Backend error-code contract](#backend-error-code-contract) for why these two cases both surface as `UNAUTHENTICATED`.
+The helper structurally parses `extensions.code` in the GraphQL error payload and returns `true` only for `UNAUTHENTICATED`; all other errors are rethrown to the nearest error boundary. Two redirect targets are in use: `/login` for session-expired or no-session cases (checked before `gqlFetch` via `supabase.auth.getUser()`), and `/cardgroups` for cross-user-access on inner pages. See [Backend error-code contract](#backend-error-code-contract) for why these two cases both surface as `UNAUTHENTICATED`.
 
 ### Unified admin layout: server-side gate + sidebar
 
@@ -46,7 +49,7 @@ Both unauthenticated and non-admin paths redirect to `/` (not `/login`). Sending
 
 Per-page `getUser()` checks under `admin/dictionary/page.tsx` and `admin/users/page.tsx` are intentionally retained as **defence in depth**. The layout gate is the primary; the per-page check is the belt-and-braces guard against a future refactor that accidentally renders an admin page outside the layout.
 
-The string-match approach (`msg.includes("UNAUTHENTICATED")`) follows the existing `redirectIfUnauthenticated` shape rather than a structured-error type. Replacing it with a typed error envelope is a separate concern; do not introduce a one-off classifier inside the admin layout.
+The string-match approach (`msg.includes("UNAUTHENTICATED")`) in the admin layout folds `UNAUTHENTICATED` and `FORBIDDEN` into the same `redirect("/")` branch — a deliberate simplification for the gate layer. Replacing it with a typed error envelope is a separate concern; do not introduce a one-off classifier inside the admin layout.
 
 There is no `app/admin/page.tsx` — direct hits on `/admin` (no sub-route) return Next's 404. This is a deliberate accepted tradeoff: every internal entry point links to a specific `/admin/<sub>` route (e.g. the rail's three admin items each link directly to `/admin/users`, `/admin/roles`, `/admin/dictionary`), so a redirect-shim page would have no callers. The two preconditions for keeping `/admin` as a 404: (a) every internal caller links to a specific sub-route (verify with `grep -rn "\"/admin\"\|'/admin'" frontend/src/`); (b) no operator runbook instructs a human to type `/admin` as the entry. If either condition is added later, restore `app/admin/page.tsx` as a server-side `redirect("/admin/users")` shim — the layout gate above runs before the shim, so security posture is unchanged.
 
@@ -86,13 +89,15 @@ The fallback to `toMessage(err)` ensures the user is never shown a silent failur
 
 ### RSC FORBIDDEN redirect pattern
 
-Admin-only pages (e.g. `/admin/users`, `/admin/users/[id]`) must explicitly handle the `FORBIDDEN` code in their RSC `try/catch`. Unlike `UNAUTHENTICATED` (where `redirectIfUnauthenticated` covers it), an unhandled `FORBIDDEN` rethrows to the nearest error boundary and Next.js renders a 500 — wrong UX for "you are signed in but lack the role". RSC pages call `redirect("/")` (or `/admin` if the user might still belong somewhere) on `FORBIDDEN`:
+Admin-only pages (e.g. `/admin/users`, `/admin/users/[id]`) must explicitly handle the `FORBIDDEN` code in their RSC `try/catch`. Unlike `UNAUTHENTICATED` (where `isUnauthenticatedGraphQLError` from `@/lib/apollo/graphql-errors` covers it), an unhandled `FORBIDDEN` rethrows to the nearest error boundary and Next.js renders a 500 — wrong UX for "you are signed in but lack the role". RSC pages call `redirect("/")` (or `/admin` if the user might still belong somewhere) on `FORBIDDEN`:
 
 ```ts
+import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
+
 try {
   data = await gqlFetch(AdminUsersQuery, { variables, revalidate: 0 });
 } catch (err) {
-  redirectIfUnauthenticated(err, "/login");
+  if (isUnauthenticatedGraphQLError(err)) redirect("/login");
   if (isForbidden(err)) redirect("/");
   throw err;
 }
@@ -102,7 +107,7 @@ Pair the SSR redirect with a **client-side classifier** for mid-session role rev
 
 ### Mutations that can return `FORBIDDEN` should not use `optimisticResponse`
 
-When a mutation can plausibly return `FORBIDDEN` or `BAD_USER_INPUT` (admin role assignment, self-demotion, etc.), drop `optimisticResponse` entirely. Apollo v3.x rolls back optimistic writes on network errors but not consistently on typed GraphQL errors, so the cache holds the optimistic write while the server has rejected the change. See [`docs/pagination/drop-optimistic-response-typed-errors.md`](../pagination/drop-optimistic-response-typed-errors.md) for the full rule.
+When a mutation can plausibly return `FORBIDDEN` or `BAD_USER_INPUT` (admin role assignment, self-demotion, etc.), drop `optimisticResponse` entirely. Apollo v3.x rolls back optimistic writes on network errors but not consistently on typed GraphQL errors, so the cache holds the optimistic write while the server has rejected the change. See [`.claude/rules/pagination.md` § "Frontend cache patterns"](../../.claude/rules/pagination.md#frontend-cache-patterns) for the full rule.
 
 ### Zod schema convention
 

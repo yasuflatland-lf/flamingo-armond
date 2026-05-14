@@ -25,17 +25,15 @@ describe("<ListingPageShell>", () => {
     expect(screen.getByText("Manage users and their roles.")).toBeInTheDocument();
   });
 
-  it("does not render a description paragraph when description is omitted", () => {
+  it("does not render a description block when description is omitted", () => {
     const { container } = render(
       <ListingPageShell title="Users">
         <div />
       </ListingPageShell>,
     );
 
-    // The header row holds the title + (optional) description in the same div.
-    // When description is omitted, no <p> sibling should appear.
-    const paragraphs = container.querySelectorAll("p");
-    expect(paragraphs.length).toBe(0);
+    const descriptions = container.querySelectorAll(".text-muted-foreground");
+    expect(descriptions.length).toBe(0);
   });
 
   it("renders primaryActions in the trailing edge of the header row", () => {
