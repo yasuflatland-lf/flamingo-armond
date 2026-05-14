@@ -41,7 +41,7 @@ export function ListingPageShell({
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-          {description != null && <p className="text-muted-foreground">{description}</p>}
+          {description != null && <div className="text-muted-foreground">{description}</div>}
         </div>
         {primaryActions != null && <div className="flex items-center gap-2">{primaryActions}</div>}
       </div>
