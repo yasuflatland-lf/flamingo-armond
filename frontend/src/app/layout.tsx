@@ -52,14 +52,22 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     if (claimsError != null) {
       // getClaims failures are non-fatal: the Supabase session is valid but
       // the JWT could not be validated locally (e.g. key rotation gap, cold
-      // Lambda without a cached JWKS). Degrade to isAdmin=false and warn so
-      // the operator can correlate with JWT key rotation events.
+      // serverless instance without a cached JWKS). Degrade to isAdmin=false
+      // and warn so the operator can correlate with JWT key rotation events.
       console.warn("[layout] getClaims() failed", {
         user_id: user.id,
         error_name: claimsError.name,
       });
+    } else if (claimsData == null) {
+      // Third return shape from the SDK: `{ data: null, error: null }` — the
+      // TOCTOU race window where the session vanished between getUser() and
+      // getClaims(). Degrade to isAdmin=false and warn so the operator can
+      // correlate with session-revocation or sign-out events.
+      console.warn("[layout] getClaims() returned null data without error", {
+        user_id: user.id,
+      });
     } else {
-      isAdmin = claimsData?.claims?.app_metadata?.role === "admin";
+      isAdmin = claimsData.claims?.app_metadata?.role === "admin";
     }
   }
 

@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
+  getMockGetClaimsSpy,
   mockSupabaseServerClient,
   resetMockSupabase,
   setMockSupabaseClaims,
+  setMockSupabaseClaimsDataNull,
   setMockSupabaseClaimsError,
   setMockSupabaseUser,
   setMockSupabaseUserError,
@@ -153,6 +155,7 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
 
     expect(consoleErrorSpy).not.toHaveBeenCalled();
     expect(consoleWarnSpy).not.toHaveBeenCalled();
+    expect(getMockGetClaimsSpy()).not.toHaveBeenCalled();
     expect(props.user).toBeNull();
     expect(props.isAdmin).toBe(false);
   });
@@ -172,6 +175,7 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
       transportError.name,
       transportError.message,
     );
+    expect(getMockGetClaimsSpy()).not.toHaveBeenCalled();
     expect(props.user).toBeNull();
     expect(props.isAdmin).toBe(false);
   });
@@ -219,6 +223,42 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
     const props = await renderLayoutAndGetShellProps();
 
     expect(props.isAdmin).toBe(false);
+  });
+
+  // Case 6b: Authenticated user but getClaims returns the SDK's third return
+  // shape `{ data: null, error: null }` — the TOCTOU race window where the
+  // session vanished between getUser() and getClaims(). The layout must:
+  //   - emit console.warn with "[layout] getClaims() returned null data without error"
+  //   - include a structured payload with a discriminating key (user_id)
+  //   - NOT include email or display_name in the payload (PII protection)
+  //   - degrade to isAdmin=false without throwing
+  //   - still pass user.email to AppShell (shellUser only degrades on a real
+  //     getUser() failure, not on a null-data getClaims response)
+  test("authenticated user + getClaims returns { data: null, error: null }: console.warn with PII-free payload, isAdmin=false, shellUser intact", async () => {
+    const userId = "u-6b";
+    setMockSupabaseUser({ id: userId, email: "toctou@example.com" });
+    setMockSupabaseClaimsDataNull();
+
+    const props = await renderLayoutAndGetShellProps();
+
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "[layout] getClaims() returned null data without error",
+      expect.objectContaining({
+        user_id: userId,
+      }),
+    );
+
+    // PII absence: email and display_name must NOT appear in the warn payload.
+    const warnPayload = consoleWarnSpy.mock.calls[0][1] as Record<string, unknown>;
+    expect(Object.keys(warnPayload)).not.toContain("email");
+    expect(Object.keys(warnPayload)).not.toContain("display_name");
+
+    expect(props.isAdmin).toBe(false);
+    // user.email is still wired to AppShell — only the admin flag degrades when
+    // getClaims returns the null-data race shape.
+    expect(props.user).toEqual({ email: "toctou@example.com" });
   });
 
   // Case 7: Authenticated user but getClaims returns an error.
@@ -275,6 +315,7 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
 
     expect(consoleErrorSpy).not.toHaveBeenCalled();
     expect(consoleWarnSpy).not.toHaveBeenCalled();
+    expect(getMockGetClaimsSpy()).not.toHaveBeenCalled();
     expect(props.user).toBeNull();
     expect(props.isAdmin).toBe(false);
   });
@@ -293,5 +334,8 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
     expect(appShellProps).toBeNull();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
     expect(consoleWarnSpy).not.toHaveBeenCalled();
+    // The /login bypass short-circuits before reaching the supabase client at
+    // all; the spy returned here is a freshly-materialised uncalled placeholder.
+    expect(getMockGetClaimsSpy()).not.toHaveBeenCalled();
   });
 });
