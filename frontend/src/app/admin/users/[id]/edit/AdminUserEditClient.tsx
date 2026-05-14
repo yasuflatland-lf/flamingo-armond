@@ -224,6 +224,10 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
         {/* Role multi-select */}
         <section className="space-y-3">
           <h2 className="text-sm font-medium">Roles</h2>
+          <p className="text-xs text-muted-foreground">
+            Role changes take effect at the user&apos;s next sign-in or token refresh (within one
+            hour).
+          </p>
           {allRoles.length === 0 ? (
             <p className="text-sm text-muted-foreground">No roles available.</p>
           ) : (
