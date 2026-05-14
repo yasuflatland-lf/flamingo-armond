@@ -9,8 +9,6 @@ import { CardgroupsSkeleton } from "./_components/cardgroups-skeleton";
 import CardgroupsClient from "./cardgroups-client";
 import { CARDGROUPS_DEFAULT_VARS, MyCardgroupsConnectionQuery } from "./queries";
 
-type CardgroupConnection = MyCardgroupsConnectionQueryType["myCardgroupsConnection"];
-
 export default async function CardgroupsPage() {
   // Auth check runs OUTSIDE the Suspense boundary so a stale session redirects
   // to /login before any streaming starts. If the redirect ran from within the
@@ -44,17 +42,12 @@ export default async function CardgroupsPage() {
  * test verifies the Suspense boundary and skeleton fallback separately.
  */
 export async function CardgroupsContent() {
-  let initialConnection: CardgroupConnection | null = null;
+  let data: MyCardgroupsConnectionQueryType;
   try {
-    const data = await gqlFetch(MyCardgroupsConnectionQuery, {
+    data = await gqlFetch(MyCardgroupsConnectionQuery, {
       variables: CARDGROUPS_DEFAULT_VARS,
       revalidate: 0,
     });
-    initialConnection = data.myCardgroupsConnection;
-    if (!initialConnection) {
-      console.error("[cardgroups] myCardgroupsConnection is null — partial response from backend");
-      throw new Error("myCardgroupsConnection missing from cardgroups data");
-    }
   } catch (err) {
     // Structural parse per .claude/rules/frontend-rsc-error-handling.md §
     // "Structurally parse GraphQL extensions.code — never substring-match".
@@ -63,6 +56,12 @@ export async function CardgroupsContent() {
       name: err instanceof Error ? err.name : "unknown",
     });
     throw err;
+  }
+
+  const initialConnection = data.myCardgroupsConnection;
+  if (!initialConnection) {
+    console.error("[cardgroups] myCardgroupsConnection is null — partial response from backend");
+    throw new Error("myCardgroupsConnection missing from cardgroups data");
   }
 
   return <CardgroupsClient initialConnection={initialConnection} />;
