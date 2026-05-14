@@ -3,8 +3,9 @@
  *
  * The Supabase server client is consumed by Next.js server components and route
  * handlers via `const supabase = await createSupabaseServerClient()` followed by
- * `await supabase.auth.getUser()`. This util produces a stub with the same
- * shape, plus state knobs the test controls per case.
+ * `await supabase.auth.getUser()` and `await supabase.auth.getClaims()`. This
+ * util produces a stub with the same shape, plus state knobs the test controls
+ * per case.
  *
  * IMPORTANT: `vi.mock` must be invoked at the **top of each test file** because
  * Vitest hoists `vi.mock` calls above imports. This util therefore exports only
@@ -18,6 +19,7 @@
  *   mockSupabaseServerClient,
  *   resetMockSupabase,
  *   setMockSupabaseUser,
+ *   setMockSupabaseClaims,
  * } from "./utils/mock-supabase";
  *
  * vi.mock("@/lib/supabase/server", () => ({
@@ -27,11 +29,13 @@
  * beforeEach(() => {
  *   resetMockSupabase();
  *   setMockSupabaseUser({ id: "u-1", email: "u1@test" });
+ *   setMockSupabaseClaims({ app_metadata: { role: "admin" } });
  * });
  * ```
  *
  * Logged-out request: `setMockSupabaseUser(null)`.
  * Auth transport error: `setMockSupabaseUserError(new Error("boom"))`.
+ * Claims error: `setMockSupabaseClaimsError(new Error("boom"))`.
  */
 
 export type MockSupabaseUser = {
@@ -39,9 +43,16 @@ export type MockSupabaseUser = {
   email?: string;
 };
 
+export type MockSupabaseClaims = {
+  app_metadata?: { role?: string; [key: string]: unknown };
+  [key: string]: unknown;
+};
+
 type MockSupabaseState = {
   user: MockSupabaseUser | null;
   error: Error | null;
+  claims: MockSupabaseClaims | null;
+  claimsError: Error | null;
 };
 
 // Module-scoped state. `resetMockSupabase` is the canonical way to clear it
@@ -49,6 +60,8 @@ type MockSupabaseState = {
 const state: MockSupabaseState = {
   user: null,
   error: null,
+  claims: null,
+  claimsError: null,
 };
 
 /**
@@ -73,11 +86,30 @@ export function setMockSupabaseUserError(err: Error): void {
 }
 
 /**
- * Reset to a clean slate (logged out, no error). Intended for `beforeEach`.
+ * Set the claims that the next `supabase.auth.getClaims()` call will return.
+ * Pass `null` to simulate a missing or empty claims result (the default after reset).
+ */
+export function setMockSupabaseClaims(claims: MockSupabaseClaims | null): void {
+  state.claims = claims;
+  state.claimsError = null;
+}
+
+/**
+ * Inject an error into the next `supabase.auth.getClaims()` call.
+ * Only `state.claimsError` is set; `state.claims` is left unchanged.
+ */
+export function setMockSupabaseClaimsError(err: Error): void {
+  state.claimsError = err;
+}
+
+/**
+ * Reset to a clean slate (logged out, no errors, no claims). Intended for `beforeEach`.
  */
 export function resetMockSupabase(): void {
   state.user = null;
   state.error = null;
+  state.claims = null;
+  state.claimsError = null;
 }
 
 /**
@@ -91,6 +123,10 @@ export type MockSupabaseServerClient = {
       data: { user: MockSupabaseUser | null };
       error: Error | null;
     }>;
+    getClaims: () => Promise<{
+      data: { claims: MockSupabaseClaims | null };
+      error: Error | null;
+    }>;
   };
 };
 
@@ -98,7 +134,8 @@ export type MockSupabaseServerClient = {
  * Factory for the mocked server client. Call this from inside a test file's
  * `vi.mock("@/lib/supabase/server", ...)` factory. Each invocation reads the
  * current module-scoped state, so mutations via `setMockSupabaseUser` /
- * `setMockSupabaseUserError` between renders are honoured.
+ * `setMockSupabaseUserError` / `setMockSupabaseClaims` / `setMockSupabaseClaimsError`
+ * between renders are honoured.
  */
 export function mockSupabaseServerClient(): MockSupabaseServerClient {
   return {
@@ -107,6 +144,11 @@ export function mockSupabaseServerClient(): MockSupabaseServerClient {
         Promise.resolve({
           data: { user: state.user },
           error: state.error,
+        }),
+      getClaims: () =>
+        Promise.resolve({
+          data: { claims: state.claims },
+          error: state.claimsError,
         }),
     },
   };
