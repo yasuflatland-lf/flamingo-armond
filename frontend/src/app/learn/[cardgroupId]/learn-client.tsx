@@ -5,6 +5,7 @@ import { useApolloClient, useMutation } from "@apollo/client/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   HandleSwipeMutation,
+  LEARN_PAGE_LIMIT,
   LearnNextDueCardsQuery as LearnNextDueCardsDocument,
   SetLastViewedCardgroupMutation,
 } from "@/app/learn/queries";
@@ -123,7 +124,7 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
       })
       .catch((err) => {
         // err.message is omitted — backend messages may echo user-authored content.
-        // See docs/frontend/rsc-error-handling/substring-matching-sdk-error-strings.md.
+        // See docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
         console.warn("[learn] setLastViewedCardgroup failed", {
           cardgroupId,
           name: err instanceof Error ? err.name : "unknown",
@@ -149,6 +150,17 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
   //   current queue. The warn payload omits err.message — backend messages
   //   may carry user-authored content. See
   //   docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
+  // isMountedRef guards against calling `setQueue` on an unmounted component
+  // when a prefetch resolves after unmount. The cleanup sets it to false; the
+  // setup sets it back to true so React 18 StrictMode double-mount works correctly.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const prefetchInFlightRef = useRef(false);
   useEffect(() => {
     if (queue.length === 0 || queue.length > PREFETCH_THRESHOLD) return;
@@ -157,10 +169,11 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
     client
       .query({
         query: LearnNextDueCardsDocument,
-        variables: { cardgroupId, limit: 20 },
+        variables: { cardgroupId, limit: LEARN_PAGE_LIMIT },
         fetchPolicy: "network-only",
       })
       .then((result) => {
+        if (!isMountedRef.current) return;
         const incoming = result.data?.learnNextDueCards ?? [];
         if (incoming.length === 0) return;
         setQueue((current) => {

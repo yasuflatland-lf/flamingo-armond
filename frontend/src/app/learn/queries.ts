@@ -1,5 +1,8 @@
 import { graphql } from "@/generated";
 
+/** Number of cards requested per prefetch and SSR load. */
+export const LEARN_PAGE_LIMIT = 20;
+
 export const LearnNextDueCardsQuery = graphql(`
   query LearnNextDueCards($cardgroupId: ID!, $limit: Int = 20) {
     learnNextDueCards(cardgroupId: $cardgroupId, limit: $limit) {
