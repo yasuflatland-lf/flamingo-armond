@@ -21,17 +21,6 @@ export const CARDGROUPS_DEFAULT_VARS: MyCardgroupsConnectionQueryVariables = {
   search: null,
 };
 
-/** @deprecated Use MyCardgroupsConnectionQuery */
-export const MyCardgroupsQuery = graphql(`
-  query MyCardgroups {
-    myCardgroups {
-      id
-      name
-      updatedAt
-    }
-  }
-`);
-
 export const MyCardgroupsConnectionQuery = graphql(`
   query MyCardgroupsConnection(
     $first: Int
