@@ -77,7 +77,7 @@ func newRouter(
 	userCardFSRSRepo repository.UserCardFSRSRepository,
 	pingHandler *ping.Handler,
 	notionSyncHandler *notionsync.Handler,
-	swipeRecordRepo ...repository.SwipeRecordRepository,
+	swipeRecordRepo repository.SwipeRecordRepository,
 ) *echo.Echo {
 	e := echo.New()
 	e.Use(middleware.RequestLogger())
@@ -120,11 +120,7 @@ func newRouter(
 			return r.Method + " " + r.URL.Path
 		}),
 	)
-	var swipeRepo repository.SwipeRecordRepository
-	if len(swipeRecordRepo) > 0 {
-		swipeRepo = swipeRecordRepo[0]
-	}
-	q := e.Group("/query", authMW, promoter.Middleware(), loader.MiddlewareWithUserCardFSRS(userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRepo, userCardFSRSRepo))
+	q := e.Group("/query", authMW, promoter.Middleware(), loader.MiddlewareWithUserCardFSRS(userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo, userCardFSRSRepo))
 	q.POST("", echo.WrapHandler(otelGQLHandler))
 	e.GET("/playground", echo.WrapHandler(playground.Handler("GraphQL", "/query")))
 
