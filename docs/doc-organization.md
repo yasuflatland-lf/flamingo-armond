@@ -46,6 +46,8 @@ A rule belongs in **on-demand** (`docs/`) when 4 or more of:
 - [Section title](../../docs/<destination>/<chapter>.md)
 ```
 
+When a topic-area heading already exists (e.g. `## Server-side design`) and you are inlining a handful of stubs underneath it, do **not** add a sibling `## Server-side design (on-demand)` for the pointer list — the two headings collide on the topic and produce two anchor slugs (`server-side-design` and `server-side-design-on-demand`) that fragment incoming links. Use a single `##` heading for the topic and put the pointer list under a `### Further reading (on-demand)` subsection inside it. A doc-cleanup pass that inlined stubs first produced the duplicate-heading shape before being normalized to the single-heading + subsection form now used in `pagination.md`.
+
 **Tier 3 — move entirely**: files where no section meets the auto-load criteria. Move all content to `docs/` and replace the `.claude/rules/` file with a 4-line pointer stub.
 
 ## Splitting a large rule file into chapters
@@ -89,6 +91,18 @@ grep -rn "<bare-filename-stem>" --include="*.md" --include="*.ts" --include="*.t
 ```
 
 Missing the bare-filename sweep leaves stale section references in test-file prose (e.g. `"per frontend-rsc-error-handling.md § \"Redact ...\""`) that point at sections which no longer exist in the parent file because they moved to a chapter.
+
+### Grep the directory you are purging, not only its outside callers
+
+When deleting a stub from `docs/<area>/`, run the cross-reference grep **inside** `docs/<area>/` as well as outside it. A sweep that only checks "incoming from elsewhere" misses sibling chapter files in the same directory that link to the deleted stub — they are co-located, so a grep scoped to "every other doc" silently excludes them. A doc-cleanup pass declared a stub safe to delete after the outside-only grep returned empty, and two sibling chapters in the same directory were still linking to it; the broken anchors only surfaced in a separate verification pass. Run `grep -rn "<deleted-filename-stem>" docs/<area>/` in addition to the repo-wide sweep before removing.
+
+### Anchor regexes drop variant filename forms
+
+A regex like `global-header\.tsx` matches the production file but not `global-header.test.tsx` — the `.test.` infix breaks the anchor. When sweeping for stale references to a deleted source file, use a **substring** grep on the filename stem (`grep -rn "global-header"`), not a `\.tsx`-anchored regex. The same gotcha applies to `*.stories.tsx`, `*.spec.ts`, and any file family that decorates the stem with an infix before the extension. A code-drift sweep originally anchored on the production extension and missed the stale reference in the matching test file; the substring form caught it on a follow-up pass.
+
+## Prose enumerations override plan headings during execution
+
+A plan document under `.claude/plans/` that says "Phase 4a: inline 13 stubs" but whose prose body lists fifteen filenames is internally inconsistent — the heading and the prose disagree on the count. When executing such a phase, the **prose list** is authoritative because it names the specific files; the heading count is a summary written from memory and rots first. Before acting on a phase, reconcile the count by `wc -l` on the prose bullet list or by greppping the named files, and proceed against that count. Treating the heading number as authoritative produces silent under- or over-execution. Worked example: a doc-cleanup phase headed "13 stubs" listed fifteen files in the prose; the inline pass that trusted the prose count completed correctly, while a count-by-heading would have left two stubs behind.
 
 ## Parallel agent safety for doc splits
 
