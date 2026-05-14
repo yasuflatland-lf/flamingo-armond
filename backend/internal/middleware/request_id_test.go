@@ -12,21 +12,6 @@ import (
 	mw "backend/internal/middleware"
 )
 
-func noopHandler(c *echo.Context) error { return nil }
-
-func applyMiddleware(t *testing.T, req *http.Request) *httptest.ResponseRecorder {
-	t.Helper()
-	e := echo.New()
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	handler := mw.RequestID()(noopHandler)
-	if err := handler(c); err != nil {
-		t.Fatalf("middleware returned unexpected error: %v", err)
-	}
-	return rec
-}
-
 func TestRequestID_EmptyHeader(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	e := echo.New()
