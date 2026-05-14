@@ -17,9 +17,9 @@
 --   The function returns the canonical Supabase shape { "claims": <claims> };
 --   GoTrue merges these claims into the access token.
 --
--- The function fails closed on a malformed event (missing user_id or claims)
--- by raising an exception, so a corrupt payload cannot silently mint a token
--- with NULL user lookup or destroyed claims.
+-- The function fails closed on a malformed event (missing user_id, or missing
+-- or null claims) by raising an exception, so a corrupt payload cannot
+-- silently mint a token with NULL user lookup or destroyed claims.
 --
 -- STABLE: reads tables, must not be IMMUTABLE.
 -- SECURITY DEFINER: function executes as owner so supabase_auth_admin can
@@ -46,6 +46,8 @@ DECLARE
     new_claims jsonb;
 BEGIN
     IF event->>'user_id' IS NULL OR event->'claims' IS NULL THEN
+        RAISE LOG 'custom_access_token_hook: rejecting malformed event (user_id present=%, claims present=%)',
+            (event ? 'user_id'), (event ? 'claims');
         RAISE EXCEPTION 'custom_access_token_hook: malformed event (user_id and claims are required)';
     END IF;
 
