@@ -61,6 +61,7 @@ Use `isUnauthenticatedGraphQLError` for all code paths — including simple redi
 ## Detailed cases (on-demand)
 
 - [Partial-response errors in `gqlFetch`: auth codes re-throw, others return data + warn](../../docs/frontend/rsc-error-handling/partial-response-gqlfetch.md)
+- [Schema non-null does not protect against partial-response null-bubble — guard at the consumer](../../docs/frontend/rsc-error-handling/partial-response-non-null-bubble-guard.md)
 - [Use `CombinedGraphQLErrors.is(err)` — never `instanceof CombinedGraphQLErrors`](../../docs/frontend/rsc-error-handling/combinedgraphqlerrors-is-over-instanceof.md)
 - [`getBackendErrorBanner` deliberately skips field-level `BAD_USER_INPUT` — use `getBackendFieldErrors` first](../../docs/frontend/rsc-error-handling/getbackenderrorbanner-skips-field-level.md)
 - [Structural error parsers must `console.warn` (not silently `continue`) when the shape narrows wrong](../../docs/frontend/rsc-error-handling/structural-error-parsers-warn-on-shape-narrow.md)
