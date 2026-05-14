@@ -115,9 +115,9 @@ describe("LearnPage — AuthSessionMissingError filter", () => {
     authMissing.name = "AuthSessionMissingError";
     setMockSupabaseUserError(authMissing);
 
-    await expect(
-      LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) }),
-    ).rejects.toThrow("REDIRECT:/login");
+    await expect(LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) })).rejects.toThrow(
+      "REDIRECT:/login",
+    );
 
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
@@ -138,10 +138,9 @@ describe("LearnPage — AuthSessionMissingError filter", () => {
     });
 
     // PII-redacted payload: only `name` is logged inside an object, never `message`.
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      "[learn] getUser() failed:",
-      { name: fakeError.name },
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith("[learn] getUser() failed:", {
+      name: fakeError.name,
+    });
     // Assert that `message` (which may carry user-supplied content) is absent.
     expect(consoleErrorSpy).not.toHaveBeenCalledWith(
       expect.anything(),
@@ -157,9 +156,9 @@ describe("LearnPage — AuthSessionMissingError filter", () => {
     staleErr.name = "AuthApiError";
     setMockSupabaseUserError(staleErr);
 
-    await expect(
-      LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) }),
-    ).rejects.toThrow("REDIRECT:/login");
+    await expect(LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) })).rejects.toThrow(
+      "REDIRECT:/login",
+    );
 
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });

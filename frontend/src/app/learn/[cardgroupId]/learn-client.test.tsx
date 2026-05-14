@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { type RefObject, useImperativeHandle, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LEARN_PAGE_LIMIT } from "@/app/learn/queries";
 import type { SwipeCardData } from "@/components/learn/swipe-card";
 import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import {
@@ -17,7 +18,6 @@ import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
 } from "../../../../__tests__/utils/mock-apollo-paginated";
-import { LEARN_PAGE_LIMIT } from "@/app/learn/queries";
 import { LearnClient, PREFETCH_THRESHOLD } from "./learn-client";
 
 // ---------------------------------------------------------------------------
@@ -864,7 +864,8 @@ describe("<LearnClient> queue prefetch", () => {
       expect(latest?.length).toBe(6);
     });
 
-    const mergedCards = capturedCardSnapshots.at(-1)!;
+    const mergedCards = capturedCardSnapshots.at(-1);
+    if (!mergedCards) throw new Error("capturedCardSnapshots is empty after waitFor");
     const mergedIds = mergedCards.map((c) => c.id);
 
     // All original cards are present.

@@ -110,10 +110,9 @@ describe("CardgroupsPage — AuthSessionMissingError filter", () => {
     });
 
     // PII-redacted payload: only `name` is logged inside an object, never `message`.
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      "[cardgroups] getUser() failed:",
-      { name: fakeError.name },
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith("[cardgroups] getUser() failed:", {
+      name: fakeError.name,
+    });
     // Assert that `message` (which may carry user-supplied content) is absent.
     expect(consoleErrorSpy).not.toHaveBeenCalledWith(
       expect.anything(),

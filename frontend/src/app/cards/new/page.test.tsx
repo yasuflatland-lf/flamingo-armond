@@ -123,10 +123,9 @@ describe("CardsNewPage — auth branches", () => {
 
     expect(redirect).not.toHaveBeenCalled();
     // PII-redacted payload: only `name` is logged inside an object, never `message`.
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      "[cards-new] getUser() failed:",
-      { name: transportError.name },
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith("[cards-new] getUser() failed:", {
+      name: transportError.name,
+    });
     // Assert that `message` (which may carry user-supplied content) is absent.
     expect(consoleErrorSpy).not.toHaveBeenCalledWith(
       expect.anything(),
@@ -253,7 +252,15 @@ describe("CardsNewPage — cardgroup resolution", () => {
     );
 
     const jsx = await CardsNewContent({ cardgroupParam: "cg-2" });
-    const props = (jsx as { props: { initialCardgroupId: string | null; forcePickerOpen: boolean; myCardgroups: Cardgroup[] } }).props;
+    const props = (
+      jsx as {
+        props: {
+          initialCardgroupId: string | null;
+          forcePickerOpen: boolean;
+          myCardgroups: Cardgroup[];
+        };
+      }
+    ).props;
 
     expect(props.initialCardgroupId).toBe("cg-2");
     expect(props.forcePickerOpen).toBe(false);
@@ -270,7 +277,9 @@ describe("CardsNewPage — cardgroup resolution", () => {
 
     // "evil-id" is not in myCardgroups → ownership check fails → branch 2 kicks in
     const jsx = await CardsNewContent({ cardgroupParam: "evil-id" });
-    const props = (jsx as { props: { initialCardgroupId: string | null; forcePickerOpen: boolean } }).props;
+    const props = (
+      jsx as { props: { initialCardgroupId: string | null; forcePickerOpen: boolean } }
+    ).props;
 
     expect(props.initialCardgroupId).toBe("cg-1");
     expect(props.forcePickerOpen).toBe(false);
@@ -285,7 +294,9 @@ describe("CardsNewPage — cardgroup resolution", () => {
     );
 
     const jsx = await CardsNewContent({ cardgroupParam: undefined });
-    const props = (jsx as { props: { initialCardgroupId: string | null; forcePickerOpen: boolean } }).props;
+    const props = (
+      jsx as { props: { initialCardgroupId: string | null; forcePickerOpen: boolean } }
+    ).props;
 
     expect(props.initialCardgroupId).toBe("cg-1");
     expect(props.forcePickerOpen).toBe(false);
@@ -300,7 +311,9 @@ describe("CardsNewPage — cardgroup resolution", () => {
     );
 
     const jsx = await CardsNewContent({ cardgroupParam: undefined });
-    const props = (jsx as { props: { initialCardgroupId: string | null; forcePickerOpen: boolean } }).props;
+    const props = (
+      jsx as { props: { initialCardgroupId: string | null; forcePickerOpen: boolean } }
+    ).props;
 
     // lastViewed "cg-other" is not in myCardgroups → falls to branch 3
     expect(props.initialCardgroupId).toBeNull();
@@ -316,7 +329,15 @@ describe("CardsNewPage — cardgroup resolution", () => {
     );
 
     const jsx = await CardsNewContent({ cardgroupParam: undefined });
-    const props = (jsx as { props: { initialCardgroupId: string | null; forcePickerOpen: boolean; myCardgroups: Cardgroup[] } }).props;
+    const props = (
+      jsx as {
+        props: {
+          initialCardgroupId: string | null;
+          forcePickerOpen: boolean;
+          myCardgroups: Cardgroup[];
+        };
+      }
+    ).props;
 
     expect(props.initialCardgroupId).toBeNull();
     expect(props.forcePickerOpen).toBe(true);

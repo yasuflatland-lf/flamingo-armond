@@ -64,10 +64,9 @@ vi.mock("@/app/cardgroups/cardgroups-client", () => ({
 // ---------------------------------------------------------------------------
 
 import { redirect } from "next/navigation";
-import CardgroupsPage from "@/app/cardgroups/page";
+import CardgroupsPage, { CardgroupsContent } from "@/app/cardgroups/page";
 import { gqlFetch } from "@/lib/apollo/server";
 import { makeCardgroup } from "./fixtures/cardgroups";
-import { adminUserFixture, generalUserFixture } from "./fixtures/users";
 import {
   mockSupabaseServerClient,
   resetMockSupabase,
@@ -127,14 +126,15 @@ afterEach(() => {
 
 describe("CardgroupsPage", () => {
   it("renders both cardgroup names and their links when the user is logged in", async () => {
-    setMockSupabaseUser({ id: adminUserFixture.id });
-
+    // Auth gate lives in CardgroupsPage; data fetch lives in CardgroupsContent.
+    // Call CardgroupsContent directly so the test is not blocked by the Suspense
+    // boundary that CardgroupsPage now returns.
     const cg1 = makeCardgroup({ id: "cardgroup-001", name: "Spanish Vocab" });
     const cg2 = makeCardgroup({ id: "cardgroup-002", name: "Japanese Kanji" });
 
     mockGqlFetch(makeConnection([cg1, cg2]));
 
-    const tree = await CardgroupsPage();
+    const tree = await CardgroupsContent();
     render(tree as React.ReactElement);
 
     expect(screen.getByText("Spanish Vocab")).toBeInTheDocument();
@@ -144,11 +144,12 @@ describe("CardgroupsPage", () => {
   });
 
   it("renders the empty-state hint when the user has no cardgroups", async () => {
-    setMockSupabaseUser({ id: generalUserFixture.id });
-
+    // Auth gate lives in CardgroupsPage; data fetch lives in CardgroupsContent.
+    // Call CardgroupsContent directly so the test is not blocked by the Suspense
+    // boundary that CardgroupsPage now returns.
     mockGqlFetch(makeConnection([]));
 
-    const tree = await CardgroupsPage();
+    const tree = await CardgroupsContent();
     render(tree as React.ReactElement);
 
     expect(screen.getByTestId("empty-connection")).toBeInTheDocument();
@@ -168,12 +169,12 @@ describe("CardgroupsPage", () => {
   });
 
   it("rethrows a non-auth gqlFetch error so the error boundary handles it", async () => {
-    setMockSupabaseUser({ id: generalUserFixture.id });
-
+    // gqlFetch is called inside CardgroupsContent (not in the outer CardgroupsPage
+    // shell which only runs the auth check and returns a Suspense boundary).
     const networkErr = new Error("network failure");
     mockGqlFetchError(networkErr);
 
-    await expect(CardgroupsPage()).rejects.toBe(networkErr);
+    await expect(CardgroupsContent()).rejects.toBe(networkErr);
 
     expect(redirect).not.toHaveBeenCalled();
   });
