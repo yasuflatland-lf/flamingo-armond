@@ -2,4 +2,14 @@
 
 > Part of the [Go library gotchas](../../../.claude/rules/go-library-gotchas.md) rules.
 
-The production logger in `backend/cmd/server/main.go` is `slog.NewJSONHandler(os.Stderr, ...)`. A call site that writes `logger.Info("super-user bootstrap enabled", "email_count", n)` therefore lands in the log stream as `{"msg":"super-user bootstrap enabled","email_count":3}`, **not** the `slog.NewTextHandler` shape `msg="super-user bootstrap enabled" email_count=3` that test stubs and quick-reproduce snippets often print. Operator-facing docs that quote a log line for grep instructions must quote the JSON shape — instructing an operator to grep for `email_count=N` against a JSON-handler stream produces zero matches. The failure mode that exposed this rule: a runbook said "look for `email_count=3`" while production emitted `"email_count":3`, and the operator gave up after `grep` returned nothing. The rule applies symmetrically to any future operator runbook that embeds a log-line excerpt — match the rendering of whichever handler the relevant `main()` constructs.
+`slog.NewJSONHandler` renders structured attributes as JSON object keys; `slog.NewTextHandler` renders them as `key=value` pairs. The two shapes are not interchangeable in any artifact that quotes a log line verbatim — operator runbooks, grep instructions, alert rules, log-pipeline parsers, or test fixtures. A call site like:
+
+```go
+logger.Info("event happened", "count", 3)
+```
+
+emits `{"msg":"event happened","count":3}` under a JSON handler and `msg="event happened" count=3` under a text handler. A runbook that instructs an operator to `grep count=3` against a JSON-handler stream returns zero matches; the inverse fails symmetrically.
+
+Before quoting a log line in any operator-facing doc, check which handler the relevant `main()` constructs and match that rendering. Quick-reproduce snippets and test stubs often default to the text handler even when production runs the JSON handler, so do not copy a log-line excerpt from a local repro into a production runbook without re-rendering it.
+
+**Sister rule:** [Log output assertions: always read the buffer or the assertion is dead code](slog-buffer-assertions-must-be-checked.md) — the test-side counterpart for verifying what was actually logged.
