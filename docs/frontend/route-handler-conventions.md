@@ -5,7 +5,7 @@
 Route Handlers under `frontend/src/app/api/**/route.ts` follow the same per-route layout as pages:
 
 - `route.ts` for the handler.
-- `queries.ts` (sibling) for any `graphql()` tagged template the handler uses. Mirror the page-level convention (`app/cardgroups/queries.ts`, `app/_components/queries.ts`); do **not** inline the document into `route.ts`. Shared queries live next to their consumer, not in a global `lib/` bag.
+- `queries.ts` (sibling) for any `graphql()` tagged template the handler uses. Mirror the page-level convention (`app/cardgroups/queries.ts`, `app/cards/new/queries.ts`); do **not** inline the document into `route.ts`. Shared queries live next to their consumer, not in a global `lib/` bag.
 - `route.test.ts` (sibling) for unit coverage.
 
 ### Discriminated-union response shape

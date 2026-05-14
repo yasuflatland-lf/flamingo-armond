@@ -5,11 +5,10 @@
 When an RSC has already determined `user == null` from `supabase.auth.getUser()`, do not issue any GraphQL query that requires `Authorization`. The backend will return `UNAUTHENTICATED`, the call site has to special-case the error, and the warn log fills with expected-and-uninteresting noise. Gate the call:
 
 ```ts
-let isAdmin = false;
+let data = null;
 if (user) {
   try {
-    const meData = await gqlFetch(HeaderMeQuery, { revalidate: 0 });
-    isAdmin = meData.me?.roles.some((r) => r.name === "admin") ?? false;
+    data = await gqlFetch(SomeAuthRequiredQuery, { revalidate: 0 });
   } catch (err) { /* ... */ }
 }
 ```
