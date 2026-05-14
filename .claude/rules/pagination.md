@@ -30,7 +30,7 @@ When migrating an existing flat list to a Connection type, keep the old field wi
 - **Three layers of enums kept in sync.** `model.CardOrderBy` (gqlgen schema strings), `usecase.CardOrderBy` (typed enum, same string values), `repository.CardOrderBy` (snake_case column names). The resolver translates model → usecase; the usecase translates usecase → repository. Each layer stays free of dependencies on the others — duplication is intentional.
 - **`cursorFieldValue` errors on missing column.** A silent zero-value fallback (`time.Time{}`) would generate a wrong-but-valid SQL predicate and quietly skip rows. The usecase hydrates the column required by the active `orderBy` before calling the repository; a missing column is a caller bug — surface it as `gqlerr.Internal`.
 
-## Server-side design (on-demand)
+### Further reading (on-demand)
 
 - [Cursor encoding](../../docs/pagination/cursor-encoding.md)
 - [Cursor cross-aggregate validation → `BAD_USER_INPUT`](../../docs/pagination/cursor-cross-aggregate-validation.md)
@@ -45,7 +45,7 @@ When migrating an existing flat list to a Connection type, keep the old field wi
 - **Drop `optimisticResponse` for mutations that can fail with typed GraphQL errors.** `@apollo/client` v3.x rolls back optimistic writes on **network** errors but not consistently on typed GraphQL errors (`FORBIDDEN`, `BAD_USER_INPUT`, etc.). For a mutation that can plausibly return one of those — e.g. a role assignment that fails authorization, or a self-demotion blocked by a server-side guard — the optimistic write persists and the cache lies until the next mount. Default posture: drop `optimisticResponse` and pay one round-trip of latency. Alternative when latency is measurable: manual rollback in the catch branch via `cache.evict({ id: ... })` + `cache.gc()`. Never leave a typed-error-capable mutation with `optimisticResponse` and no rollback.
 - **Pick one data-loading mode per component.** A component that accepts both an SSR-prop variant (`{ initial: T }`) and a query-id variant (`{ id: string; query }`) ends up with `useState(props.initial ?? "")` or similar — the state initializes once before the query resolves and stays at the empty default. The two modes are not interchangeable. Decide at the call site (RSC seed vs. client-driven fetch) and keep the component single-mode. If both modes are needed at different routes, write two thin wrappers around a shared presentational component instead of branching inside.
 
-## Frontend cache patterns (on-demand)
+### Further reading (on-demand)
 
 - [Variables shape MUST match between SSR seed and client cache reads](../../docs/pagination/variables-shape-must-match.md)
 - [Migrating a flat list to a Connection: write to BOTH cached shapes during the deprecation window](../../docs/pagination/migrating-flat-list-to-connection.md)
@@ -57,7 +57,7 @@ When migrating an existing flat list to a Connection type, keep the old field wi
 - **`fetchMoreError != null` halts the IO loop.** Without an error halt gate, the IO keeps firing on the same failed cursor and loops invisibly with only `console.error` noise. Set state to a banner string in the `fetchMore` `.catch`, render a Retry button that clears the state and re-invokes the request, and short-circuit the IO `useEffect` while the error is set.
 - **`NetworkStatus.fetchMore`, not magic number.** Always import the named `NetworkStatus` enum from `@apollo/client`. Magic numbers silently rot if Apollo renumbers (vanishingly rare, but the named import costs nothing).
 
-## Frontend pagination UX (on-demand)
+### Further reading (on-demand)
 
 - [IntersectionObserver in-flight guard via `useRef<boolean>`](../../docs/pagination/intersection-observer-in-flight-guard.md)
 - [One-shot mount-effect mutation guard via `useRef<string | null>`](../../docs/pagination/one-shot-mount-effect-mutation-guard.md)
