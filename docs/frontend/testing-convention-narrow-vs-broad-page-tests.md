@@ -63,7 +63,7 @@ render(await CardgroupDetailPage({ params: Promise.resolve({ id: "cg-1" }) }));
 
 Pre-15 patterns that pass `{ params: { id } }` directly will not type-check or will misbehave at runtime.
 
-`createSupabaseServerClient` is server-only, so RSC tests must stub it. The repo has no MSW; the canonical pattern is a per-test `vi.mock("@/lib/supabase/server", ...)` factory backed by the shared `mockSupabaseServerClient()` helper, with per-case `setMockSupabaseUser(...)` calls in `beforeEach`. The `server-only` import is also stubbed at the Vitest config level (`vitest.config.ts`) so any module that pulls it in transitively does not crash the test runner.
+`createSupabaseServerClient` is server-only, so RSC tests must stub it. The repo has no MSW; the canonical pattern is a per-test `vi.mock("@/lib/supabase/server", ...)` factory backed by the shared `mockCreateSupabaseServerClient` spy, with per-case `setMockSupabaseUser(...)` calls in `beforeEach`. The `server-only` import is also stubbed at the Vitest config level (`vitest.config.ts`) so any module that pulls it in transitively does not crash the test runner.
 
 ### Assert queue contents via prop capture, not via rendered text
 
