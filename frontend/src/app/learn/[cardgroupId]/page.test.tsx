@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
 import { Suspense } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   mockSupabaseServerClient,
   resetMockSupabase,
   setMockSupabaseUser,
+  setMockSupabaseUserError,
 } from "../../../../__tests__/utils/mock-supabase";
 
 vi.mock("next/navigation", () => ({
@@ -98,6 +99,96 @@ function getSuspenseChild(jsx: unknown): {
   };
 }
 
+// ---------------------------------------------------------------------------
+// AuthSessionMissingError filter — .claude/rules/frontend-rsc-error-handling.md
+// § "AuthSessionMissingError is the no session signal"
+// ---------------------------------------------------------------------------
+
+describe("LearnPage — AuthSessionMissingError filter", () => {
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    resetMockSupabase();
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("redirects to /login on AuthSessionMissingError without calling console.error", async () => {
+    // AuthSessionMissingError is the normal anonymous-visitor signal; it must NOT
+    // be treated as a real failure (no console.error, just redirect).
+    const authMissing = new Error("Auth session missing!");
+    authMissing.name = "AuthSessionMissingError";
+    setMockSupabaseUserError(authMissing);
+
+    await expect(
+      LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) }),
+    ).rejects.toThrow("REDIRECT:/login");
+
+    // The filter must NOT log a console.error for the expected anonymous path.
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it("calls console.error and rethrows when getUser returns a non-AuthSessionMissingError", async () => {
+    // Any error other than AuthSessionMissingError is a real auth failure and
+    // must bubble up so the error boundary handles it.
+    const fakeError = new Error("something broke");
+    fakeError.name = "AuthApiError";
+    setMockSupabaseUserError(fakeError);
+
+    await expect(
+      LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) }),
+    ).rejects.toMatchObject({
+      name: fakeError.name,
+      message: fakeError.message,
+    });
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[learn] getUser() failed:",
+      fakeError.name,
+      fakeError.message,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LearnContent — non-UNAUTHENTICATED gqlFetch error rethrow with PII redaction
+// ---------------------------------------------------------------------------
+
+describe("LearnPage — LearnContent gqlFetch error branches", () => {
+  beforeEach(() => {
+    resetMockSupabase();
+    setMockSupabaseUser({ id: "user-1" });
+  });
+
+  it("rethrows non-auth gqlFetch errors and logs PII-redacted payload", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      vi.mocked(gqlFetch).mockRejectedValue(new Error("Network unreachable"));
+
+      const jsx = await LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) });
+      const { childType, childProps } = getSuspenseChild(jsx);
+
+      await expect(childType(childProps)).rejects.toThrow("Network unreachable");
+
+      // PII-redacted payload: only `name` is logged, never `message`.
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[learn] gqlFetch batch failed:",
+        expect.objectContaining({ name: expect.any(String) }),
+      );
+      // Assert that `message` (which may carry user-supplied content) is absent.
+      expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ message: expect.anything() }),
+      );
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+});
+
 describe("LearnPage", () => {
   beforeEach(() => {
     resetMockSupabase();
@@ -125,7 +216,7 @@ describe("LearnPage", () => {
     expect(gqlFetch).not.toHaveBeenCalled();
   });
 
-  it("redirects to /cardgroups when the GraphQL batch returns UNAUTHENTICATED", async () => {
+  it("redirects to /login when the GraphQL batch returns UNAUTHENTICATED", async () => {
     vi.mocked(gqlFetch).mockRejectedValue(
       new Error(`GraphQL errors: ${JSON.stringify([{ extensions: { code: "UNAUTHENTICATED" } }])}`),
     );
@@ -133,7 +224,7 @@ describe("LearnPage", () => {
     const jsx = await LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) });
     const { childType, childProps } = getSuspenseChild(jsx);
 
-    await expect(childType(childProps)).rejects.toThrow("REDIRECT:/cardgroups");
+    await expect(childType(childProps)).rejects.toThrow("REDIRECT:/login");
   });
 
   it("redirects to /cardgroups when the cardgroup is not found", async () => {

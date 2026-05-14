@@ -11,7 +11,7 @@ import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { LearnNextDueCardsQuery } from "../queries";
+import { LEARN_PAGE_LIMIT, LearnNextDueCardsQuery } from "../queries";
 import { LearnSkeleton } from "./_components/learn-skeleton";
 import { LearnClient } from "./learn-client";
 
@@ -59,16 +59,18 @@ async function LearnContent({ cardgroupId }: { cardgroupId: string }) {
     [cardgroupData, cardsData, meData] = await Promise.all([
       gqlFetch(CardgroupQuery, { variables: { id: cardgroupId }, revalidate: 0 }),
       gqlFetch(LearnNextDueCardsQuery, {
-        variables: { cardgroupId, limit: 20 },
+        variables: { cardgroupId, limit: LEARN_PAGE_LIMIT },
         revalidate: 0,
       }),
       gqlFetch(MeWithLastViewedQuery, { revalidate: 0 }),
     ]);
   } catch (err) {
     if (isUnauthenticatedGraphQLError(err)) {
-      redirect("/cardgroups");
+      redirect("/login");
     }
-    console.error("[learn] gqlFetch batch failed:", err);
+    console.error("[learn] gqlFetch batch failed:", {
+      name: err instanceof Error ? err.name : "unknown",
+    });
     throw err;
   }
 
