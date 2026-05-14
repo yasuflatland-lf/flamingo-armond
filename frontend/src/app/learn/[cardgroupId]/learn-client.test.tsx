@@ -18,7 +18,7 @@ import {
   installApolloMockLeakSpy,
 } from "../../../../__tests__/utils/mock-apollo-paginated";
 import { LEARN_PAGE_LIMIT } from "@/app/learn/queries";
-import { LearnClient, PREFETCH_THRESHOLD as PRODUCTION_PREFETCH_THRESHOLD } from "./learn-client";
+import { LearnClient, PREFETCH_THRESHOLD } from "./learn-client";
 
 // ---------------------------------------------------------------------------
 // SwipeCardStack mock
@@ -428,8 +428,6 @@ describe("<LearnClient>", () => {
       await user.click(screen.getByRole("button", { name: "Rate as Again" }));
     });
 
-    // The mutation must be dispatched — triggerSwipe was called, which fired
-    // onCardSwiped, which called onSwipe inside LearnClient.
     await waitFor(() => {
       expect(swipe.wasCalled()).toBe(true);
     });
@@ -722,10 +720,6 @@ describe("<LearnClient> onSwipe identity stability", () => {
 // installs its OWN leak spy that includes "LearnNextDueCards" in
 // `operationNames` so unmatched prefetch requests are surfaced.
 // ---------------------------------------------------------------------------
-
-// PREFETCH_THRESHOLD and LEARN_PAGE_LIMIT are imported from production source
-// so tests stay in sync with the actual constants without manual duplication.
-const PREFETCH_THRESHOLD = PRODUCTION_PREFETCH_THRESHOLD;
 
 /** Build a queue of `n` cards with deterministic ids (`q-1` … `q-n`). */
 function makeQueue(n: number, idPrefix = "q") {

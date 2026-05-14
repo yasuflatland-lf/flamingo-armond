@@ -45,12 +45,8 @@ import { gqlFetch } from "@/lib/apollo/server";
 import { LearnSkeleton } from "./_components/learn-skeleton";
 import LearnPage from "./page";
 
-/**
- * Recursively search a React element tree for a node whose type matches
- * `predicate`. Returns the matching element, or null. Used to introspect the
- * page output without depending on RTL's ability to render async server
- * components inside `<Suspense>`.
- */
+// RTL cannot render async RSCs inside <Suspense>, so we walk the JSX tree
+// directly to introspect the page structure without triggering data fetches.
 type ReactElementLike = {
   type: unknown;
   props: Record<string, unknown>;
@@ -78,12 +74,8 @@ function findElement(
   return null;
 }
 
-/**
- * Locate the `<Suspense>` element inside the page output and return both its
- * child (the async `<LearnContent />` element) and its fallback. Throws if no
- * Suspense boundary is found — that case indicates a regression of the
- * streaming structure the route is meant to provide.
- */
+// Extracts the <Suspense> child and fallback from the page JSX tree.
+// Throws if no boundary is found — that would indicate a streaming regression.
 function getSuspenseChild(jsx: unknown): {
   childType: (props: { cardgroupId: string }) => Promise<React.ReactNode>;
   childProps: { cardgroupId: string };
@@ -127,7 +119,6 @@ describe("LearnPage — AuthSessionMissingError filter", () => {
       LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) }),
     ).rejects.toThrow("REDIRECT:/login");
 
-    // The filter must NOT log a console.error for the expected anonymous path.
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
@@ -170,7 +161,6 @@ describe("LearnPage — AuthSessionMissingError filter", () => {
       LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) }),
     ).rejects.toThrow("REDIRECT:/login");
 
-    // Stale-session is ignorable — must not log an error.
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 });

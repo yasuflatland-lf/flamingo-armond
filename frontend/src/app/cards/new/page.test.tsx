@@ -25,9 +25,31 @@ vi.mock("@/lib/apollo/server", () => ({
   gqlFetch: vi.fn(),
 }));
 
+// Stub CardsNewClient — it is a "use client" component that requires an
+// ApolloProvider. The RSC page test only needs to verify props are forwarded
+// correctly; the client component has its own dedicated test file.
+vi.mock("./cards-new-client", () => ({
+  default: ({
+    initialCardgroupId,
+    forcePickerOpen,
+    myCardgroups,
+  }: {
+    initialCardgroupId: string | null;
+    forcePickerOpen: boolean;
+    myCardgroups: { id: string; name: string }[];
+  }) => (
+    <div
+      data-testid="cards-new-client"
+      data-initial-cardgroup-id={initialCardgroupId ?? ""}
+      data-force-picker-open={String(forcePickerOpen)}
+      data-cardgroups-count={myCardgroups.length}
+    />
+  ),
+}));
+
 import { redirect } from "next/navigation";
 import { CardsNewSkeleton } from "@/app/cards/new/_components/cards-new-skeleton";
-import CardsNewPage from "@/app/cards/new/page";
+import CardsNewPage, { CardsNewContent } from "@/app/cards/new/page";
 import { gqlFetch } from "@/lib/apollo/server";
 
 // ---------------------------------------------------------------------------
@@ -44,104 +66,6 @@ function makeBootstrapData(opts: { myCardgroups: Cardgroup[]; lastViewedId?: str
     },
     myCardgroups: opts.myCardgroups,
   };
-}
-
-type CardsNewClientProps = {
-  initialCardgroupId: string | null;
-  forcePickerOpen: boolean;
-  myCardgroups: Cardgroup[];
-};
-
-/**
- * Recursively search a React element tree for a node whose `type` display name
- * matches `componentName` and return its props.
- */
-function findElementProps(node: unknown, componentName: string): CardsNewClientProps | null {
-  if (node == null || typeof node !== "object") return null;
-  const el = node as Record<string, unknown>;
-  // React element: { type, props, ... }
-  if (
-    "type" in el &&
-    "props" in el &&
-    typeof el.type === "function" &&
-    (el.type as { name?: string; displayName?: string }).name === componentName
-  ) {
-    return el.props as CardsNewClientProps;
-  }
-  // Recurse into props.children
-  if ("props" in el && el.props != null) {
-    const children = (el.props as Record<string, unknown>).children;
-    if (Array.isArray(children)) {
-      for (const child of children) {
-        const found = findElementProps(child, componentName);
-        if (found) return found;
-      }
-    } else if (children != null) {
-      return findElementProps(children, componentName);
-    }
-  }
-  return null;
-}
-
-/**
- * Locate a React element by its component function name. Used to descend into
- * the async `CardsNewContent` server component, whose children are not
- * reachable via `findElementProps` alone (the tree carries the function
- * reference, not its evaluated output).
- */
-function findElement(
-  node: unknown,
-  componentName: string,
-): { type: (props: unknown) => unknown; props: Record<string, unknown> } | null {
-  if (node == null || typeof node !== "object") return null;
-  const el = node as Record<string, unknown>;
-  if (
-    "type" in el &&
-    "props" in el &&
-    typeof el.type === "function" &&
-    (el.type as { name?: string }).name === componentName
-  ) {
-    return el as { type: (props: unknown) => unknown; props: Record<string, unknown> };
-  }
-  if ("props" in el && el.props != null) {
-    const children = (el.props as Record<string, unknown>).children;
-    if (Array.isArray(children)) {
-      for (const child of children) {
-        const found = findElement(child, componentName);
-        if (found) return found;
-      }
-    } else if (children != null) {
-      return findElement(children, componentName);
-    }
-  }
-  return null;
-}
-
-/**
- * Call the page component with the given searchParams, descend into the
- * async `CardsNewContent` server component, then traverse the resulting tree
- * to find the `<CardsNewClient>` element and return its props.
- */
-async function renderPage(searchParams: Record<string, string> = {}) {
-  const result = await CardsNewPage({ searchParams: Promise.resolve(searchParams) });
-  const contentEl = findElement(result, "CardsNewContent");
-  if (!contentEl) {
-    throw new Error(
-      "CardsNewContent element not found in the page output — page may have redirected",
-    );
-  }
-  // CardsNewContent is an async server component — invoke it with its props
-  // to obtain the resolved subtree that contains <CardsNewClient>.
-  const contentResult = await (contentEl.type as (props: unknown) => Promise<unknown>)(
-    contentEl.props,
-  );
-  const props = findElementProps(contentResult, "CardsNewClient");
-  if (!props) {
-    throw new Error(
-      "CardsNewClient element not found in the CardsNewContent output — content may have redirected",
-    );
-  }
-  return props;
 }
 
 // ---------------------------------------------------------------------------
@@ -284,7 +208,9 @@ describe("CardsNewPage — gqlFetch error branches", () => {
       new Error(`GraphQL errors: ${JSON.stringify([{ extensions: { code: "UNAUTHENTICATED" } }])}`),
     );
 
-    await expect(renderPage({})).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
+    await expect(CardsNewContent({ cardgroupParam: undefined })).rejects.toThrow(
+      `${REDIRECT_PREFIX}/login`,
+    );
 
     expect(redirect).toHaveBeenCalledWith("/login");
   });
@@ -293,7 +219,7 @@ describe("CardsNewPage — gqlFetch error branches", () => {
     const otherErr = new Error("GraphQL HTTP 500");
     vi.mocked(gqlFetch).mockRejectedValueOnce(otherErr);
 
-    await expect(renderPage({})).rejects.toBe(otherErr);
+    await expect(CardsNewContent({ cardgroupParam: undefined })).rejects.toBe(otherErr);
 
     expect(redirect).not.toHaveBeenCalled();
 
@@ -315,10 +241,6 @@ describe("CardsNewPage — gqlFetch error branches", () => {
 // ---------------------------------------------------------------------------
 
 describe("CardsNewPage — cardgroup resolution", () => {
-  beforeEach(() => {
-    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
-  });
-
   test("branch 1: ?cardgroup owned by user → initialCardgroupId=that id, forcePickerOpen=false", async () => {
     vi.mocked(gqlFetch).mockResolvedValueOnce(
       makeBootstrapData({
@@ -330,7 +252,8 @@ describe("CardsNewPage — cardgroup resolution", () => {
       }) as never,
     );
 
-    const props = await renderPage({ cardgroup: "cg-2" });
+    const jsx = await CardsNewContent({ cardgroupParam: "cg-2" });
+    const props = (jsx as { props: { initialCardgroupId: string | null; forcePickerOpen: boolean; myCardgroups: Cardgroup[] } }).props;
 
     expect(props.initialCardgroupId).toBe("cg-2");
     expect(props.forcePickerOpen).toBe(false);
@@ -346,7 +269,8 @@ describe("CardsNewPage — cardgroup resolution", () => {
     );
 
     // "evil-id" is not in myCardgroups → ownership check fails → branch 2 kicks in
-    const props = await renderPage({ cardgroup: "evil-id" });
+    const jsx = await CardsNewContent({ cardgroupParam: "evil-id" });
+    const props = (jsx as { props: { initialCardgroupId: string | null; forcePickerOpen: boolean } }).props;
 
     expect(props.initialCardgroupId).toBe("cg-1");
     expect(props.forcePickerOpen).toBe(false);
@@ -360,7 +284,8 @@ describe("CardsNewPage — cardgroup resolution", () => {
       }) as never,
     );
 
-    const props = await renderPage({});
+    const jsx = await CardsNewContent({ cardgroupParam: undefined });
+    const props = (jsx as { props: { initialCardgroupId: string | null; forcePickerOpen: boolean } }).props;
 
     expect(props.initialCardgroupId).toBe("cg-1");
     expect(props.forcePickerOpen).toBe(false);
@@ -374,7 +299,8 @@ describe("CardsNewPage — cardgroup resolution", () => {
       }) as never,
     );
 
-    const props = await renderPage({});
+    const jsx = await CardsNewContent({ cardgroupParam: undefined });
+    const props = (jsx as { props: { initialCardgroupId: string | null; forcePickerOpen: boolean } }).props;
 
     // lastViewed "cg-other" is not in myCardgroups → falls to branch 3
     expect(props.initialCardgroupId).toBeNull();
@@ -389,7 +315,8 @@ describe("CardsNewPage — cardgroup resolution", () => {
       }) as never,
     );
 
-    const props = await renderPage({});
+    const jsx = await CardsNewContent({ cardgroupParam: undefined });
+    const props = (jsx as { props: { initialCardgroupId: string | null; forcePickerOpen: boolean; myCardgroups: Cardgroup[] } }).props;
 
     expect(props.initialCardgroupId).toBeNull();
     expect(props.forcePickerOpen).toBe(true);
@@ -404,7 +331,9 @@ describe("CardsNewPage — cardgroup resolution", () => {
       }) as never,
     );
 
-    await expect(renderPage({})).rejects.toThrow(`${REDIRECT_PREFIX}/cardgroups/new?welcome=1`);
+    await expect(CardsNewContent({ cardgroupParam: undefined })).rejects.toThrow(
+      `${REDIRECT_PREFIX}/cardgroups/new?welcome=1`,
+    );
 
     expect(redirect).toHaveBeenCalledWith("/cardgroups/new?welcome=1");
   });

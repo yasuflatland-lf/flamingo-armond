@@ -12,13 +12,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 export function CardsNewSkeleton() {
   return (
     <section className="space-y-6" aria-busy="true" aria-label="Loading new card form">
-      {/* Cardgroup chip row: label + chip rectangle. */}
       <div className="flex items-center gap-3">
         <Skeleton className="h-4 w-20" />
         <Skeleton className="h-8 w-40" />
       </div>
 
-      {/* Form area: Front / Back labeled inputs, then the action button row. */}
       <div className="space-y-3">
         <div className="space-y-1">
           <Skeleton className="h-4 w-12" />

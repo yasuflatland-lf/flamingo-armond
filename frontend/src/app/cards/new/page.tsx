@@ -14,26 +14,22 @@ interface CardsNewPageProps {
 }
 
 export default async function CardsNewPage({ searchParams }: CardsNewPageProps) {
-  // --- Auth ---
+  // Auth check runs OUTSIDE the Suspense boundary so a stale session redirects
+  // to /login before any streaming starts. If the redirect ran from within the
+  // suspended subtree, the skeleton would flash before the navigation.
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
     error: authErr,
   } = await supabase.auth.getUser();
-
   // AuthSessionMissingError = anonymous request; stale session = deleted user
   // with a still-valid JWT. Both are handled by redirecting to /login.
-  // Auth runs OUTSIDE the Suspense boundary so the redirect fires before any
-  // streaming begins — Next.js cannot redirect mid-stream.
   if (authErr && !isIgnorableAuthError(authErr)) {
     console.error("[cards-new] getUser() failed:", { name: authErr.name });
     throw authErr;
   }
   if (!user || isStaleSessionError(authErr)) redirect("/login");
 
-  // The ?cardgroup= param is part of the URL contract — resolve it before the
-  // Suspense boundary so `CardsNewContent` receives a plain string and the
-  // suspended subtree does not need to await a Promise just to read it.
   const { cardgroup: cardgroupParam } = await searchParams;
 
   return (
@@ -47,12 +43,14 @@ export default async function CardsNewPage({ searchParams }: CardsNewPageProps) 
 }
 
 /**
- * Data-dependent subtree streamed inside the `<Suspense>` boundary. Auth has
- * already passed at this point; this component only loads the bootstrap data
- * needed to hydrate `<CardsNewClient>` and handles the post-auth redirect
- * cases (GraphQL UNAUTHENTICATED, no cardgroups → onboarding).
+ * Inner async server component that performs the GraphQL fetch. Extracted from
+ * `CardsNewPage` so the route shell can stream while the bootstrap query resolves.
+ *
+ * Exported as a named export (not the default) so the RSC test can invoke it
+ * directly without going through React's Suspense renderer; the outer page
+ * test verifies the Suspense boundary and skeleton fallback separately.
  */
-async function CardsNewContent({ cardgroupParam }: { cardgroupParam: string | undefined }) {
+export async function CardsNewContent({ cardgroupParam }: { cardgroupParam: string | undefined }) {
   let bootstrapData: CardsNewBootstrapQueryType;
   try {
     bootstrapData = await gqlFetch(CardsNewBootstrapQuery, { revalidate: 0 });
@@ -69,7 +67,6 @@ async function CardsNewContent({ cardgroupParam }: { cardgroupParam: string | un
   const myCardgroups = bootstrapData.myCardgroups;
   const lastViewedId = bootstrapData.me?.lastViewedCardgroup?.id ?? null;
 
-  // --- Resolve cardgroup ---
   // Build a quick-lookup set for ownership checks.
   const ownedIds = new Set(myCardgroups.map((cg) => cg.id));
 
@@ -85,8 +82,7 @@ async function CardsNewContent({ cardgroupParam }: { cardgroupParam: string | un
     resolvedCardgroupId = lastViewedId;
     forcePickerOpen = false;
   } else if (myCardgroups.length > 0) {
-    // Priority 3: user has cardgroups but none is pre-selected — render the chip
-    // in an undetermined state and force the picker open so the user can choose.
+    // Priority 3: user has cardgroups but none is pre-selected — force picker open.
     resolvedCardgroupId = null;
     forcePickerOpen = true;
   } else {

@@ -9,7 +9,6 @@ import {
   setMockSupabaseUserError,
 } from "../../../__tests__/utils/mock-supabase";
 
-// Mock next/navigation before importing the page
 vi.mock("next/navigation", () => ({
   redirect: vi.fn((url: string) => {
     throw new Error(`REDIRECT:${url}`);
@@ -22,7 +21,6 @@ vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: () => Promise.resolve(mockSupabaseServerClient()),
 }));
 
-// Mock gqlFetch
 vi.mock("@/lib/apollo/server", () => ({
   gqlFetch: vi.fn(),
 }));
@@ -76,11 +74,6 @@ function makeConnection(items: { id: string; name: string; updatedAt: string }[]
   };
 }
 
-// ---------------------------------------------------------------------------
-// AuthSessionMissingError filter — .claude/rules/frontend-rsc-error-handling.md
-// § "AuthSessionMissingError is the no session signal"
-// ---------------------------------------------------------------------------
-
 describe("CardgroupsPage — AuthSessionMissingError filter", () => {
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
@@ -94,17 +87,13 @@ describe("CardgroupsPage — AuthSessionMissingError filter", () => {
   });
 
   it("redirects to /login on AuthSessionMissingError without calling console.error or gqlFetch", async () => {
-    // AuthSessionMissingError is the normal anonymous-visitor signal; it must NOT
-    // be treated as a real failure (no console.error, no gqlFetch, just redirect).
     const authMissing = new Error("Auth session missing!");
     authMissing.name = "AuthSessionMissingError";
     setMockSupabaseUserError(authMissing);
 
     await expect(CardgroupsPage()).rejects.toThrow("REDIRECT:/login");
 
-    // The filter must NOT log a console.error for the expected anonymous path.
     expect(consoleErrorSpy).not.toHaveBeenCalled();
-    // gqlFetch must not be called when there is no authenticated user.
     expect(vi.mocked(gqlFetch)).not.toHaveBeenCalled();
   });
 
@@ -142,9 +131,7 @@ describe("CardgroupsPage — AuthSessionMissingError filter", () => {
 
     await expect(CardgroupsPage()).rejects.toThrow("REDIRECT:/login");
 
-    // Stale-session is ignorable — must not log an error.
     expect(consoleErrorSpy).not.toHaveBeenCalled();
-    // gqlFetch must not be called when the session is stale.
     expect(vi.mocked(gqlFetch)).not.toHaveBeenCalled();
   });
 });
