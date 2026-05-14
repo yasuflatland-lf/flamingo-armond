@@ -306,7 +306,7 @@ func (r *queryResolver) MyCardgroupsConnection(ctx context.Context, first *int, 
 	if err != nil {
 		return nil, err
 	}
-	return toCardgroupConnectionModel(out), nil
+	return toCardgroupConnectionModel(ctx, out), nil
 }
 
 // Card is the resolver for the card field.
@@ -346,7 +346,7 @@ func (r *queryResolver) CardsByCardgroupConnection(ctx context.Context, cardgrou
 	if err != nil {
 		return nil, err
 	}
-	return toCardConnectionModel(out), nil
+	return toCardConnectionModel(ctx, out), nil
 }
 
 // ValidateDictionary is the resolver for the validateDictionary field.

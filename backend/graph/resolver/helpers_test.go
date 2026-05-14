@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"backend/internal/domain"
 	"backend/internal/usecase"
@@ -94,7 +95,7 @@ func TestToCardConnectionModel_Cursors(t *testing.T) {
 		HasPrev:  false,
 	}
 
-	conn := toCardConnectionModel(out)
+	conn := toCardConnectionModel(context.Background(), out)
 
 	assert.Len(t, conn.Edges, 2)
 	for i, edge := range conn.Edges {
@@ -121,7 +122,7 @@ func TestToCardConnectionModel_EmptyCursors(t *testing.T) {
 		EndCur:   "",
 	}
 
-	conn := toCardConnectionModel(out)
+	conn := toCardConnectionModel(context.Background(), out)
 
 	assert.Nil(t, conn.PageInfo.StartCursor, "pageInfo.startCursor should be nil for empty StartCur")
 	assert.Nil(t, conn.PageInfo.EndCursor, "pageInfo.endCursor should be nil for empty EndCur")
@@ -146,7 +147,7 @@ func TestToCardgroupConnectionModel_Cursors(t *testing.T) {
 		HasPrev:    false,
 	}
 
-	conn := toCardgroupConnectionModel(out)
+	conn := toCardgroupConnectionModel(context.Background(), out)
 
 	assert.Len(t, conn.Edges, 2)
 	for i, edge := range conn.Edges {
@@ -173,7 +174,7 @@ func TestToCardgroupConnectionModel_EmptyCursors(t *testing.T) {
 		EndCur:     "",
 	}
 
-	conn := toCardgroupConnectionModel(out)
+	conn := toCardgroupConnectionModel(context.Background(), out)
 
 	assert.Nil(t, conn.PageInfo.StartCursor, "pageInfo.startCursor should be nil for empty StartCur")
 	assert.Nil(t, conn.PageInfo.EndCursor, "pageInfo.endCursor should be nil for empty EndCur")
@@ -196,13 +197,12 @@ func TestToCardConnectionModel_FiltersNilNodes(t *testing.T) {
 		TotalCount: 1,
 	}
 
-	conn := toCardConnectionModel(out)
+	conn := toCardConnectionModel(context.Background(), out)
 
-	assert.Len(t, conn.Edges, 1, "expected 1 edge after nil filter")
-	if len(conn.Edges) > 0 {
-		assert.NotNil(t, conn.Edges[0].Node, "edge.Node must be non-nil to satisfy schema constraint")
-		assert.Equal(t, "c1", conn.Edges[0].Node.ID)
-	}
+	require.Len(t, conn.Edges, 1, "expected 1 edge after nil filter")
+	assert.NotNil(t, conn.Edges[0].Node, "edge.Node must be non-nil to satisfy schema constraint")
+	assert.Equal(t, "c1", conn.Edges[0].Node.ID)
+	assert.Equal(t, 1, conn.TotalCount, "TotalCount should pass through from output")
 }
 
 // TestToCardgroupConnectionModel_FiltersNilNodes verifies that toCardgroupConnectionModel
@@ -218,11 +218,10 @@ func TestToCardgroupConnectionModel_FiltersNilNodes(t *testing.T) {
 		TotalCount: 1,
 	}
 
-	conn := toCardgroupConnectionModel(out)
+	conn := toCardgroupConnectionModel(context.Background(), out)
 
-	assert.Len(t, conn.Edges, 1, "expected 1 edge after nil filter")
-	if len(conn.Edges) > 0 {
-		assert.NotNil(t, conn.Edges[0].Node, "edge.Node must be non-nil to satisfy schema constraint")
-		assert.Equal(t, "cg1", conn.Edges[0].Node.ID)
-	}
+	require.Len(t, conn.Edges, 1, "expected 1 edge after nil filter")
+	assert.NotNil(t, conn.Edges[0].Node, "edge.Node must be non-nil to satisfy schema constraint")
+	assert.Equal(t, "cg1", conn.Edges[0].Node.ID)
+	assert.Equal(t, 1, conn.TotalCount, "TotalCount should pass through from output")
 }
