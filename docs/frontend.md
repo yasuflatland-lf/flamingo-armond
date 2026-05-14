@@ -22,4 +22,4 @@
 - [Gotchas encountered](frontend/gotchas-encountered.md) — Cross-cutting Next.js, Apollo, Vitest, Biome, and bundler pitfalls accumulated during development.
 - [Automatic Persisted Queries](frontend/automatic-persisted-queries.md) — Browser link-chain order, native WebCrypto sha256, `useGETForHashedQueries: false` rationale, and link-chain test gotchas.
 - [Testing convention: narrow vs broad page tests](frontend/testing-convention-narrow-vs-broad-page-tests.md) — Narrow vs broad test naming contract, shared utilities, RSC test pattern, Apollo v4 migration notes.
-- [Delayed-DELETE undo toast, SwipeableRow, and useReducedMotion](frontend/delayed-delete-undo-toast-swipeablerow-and-usereducedmotion.md) — Pointer to `docs/frontend-undo-toast.md` plus a coverage-migration cautionary tale.
+- [Delayed-DELETE undo toast, SwipeableRow, and useReducedMotion](frontend-undo-toast.md) — Sonner snackbar undo pattern, mobile swipe-to-delete row component, and the `useReducedMotion` JS hook.

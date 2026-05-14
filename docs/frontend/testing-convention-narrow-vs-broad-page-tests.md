@@ -397,6 +397,8 @@ grep -rn "ModeBadge" frontend/ --include="*.ts" --include="*.tsx"
 2. For each, decide whether the asserted behaviour still exists somewhere (in the replacement component, in the layout that hosts it, in a route-level test). If yes, ensure a new test in that location covers the same branch.
 3. For each behaviour that no longer exists, the deletion is correct — but say so in the commit message so reviewers can verify intent rather than guess.
 
+**Worked example: header auth degradation branches.** When the header auth logic moved into `app/layout.tsx`, the old `global-header.test.tsx` suite was deleted alongside the deleted component — but eight branches asserting that the root layout degrades silently on `getUser()` failure / `gqlFetch` `UNAUTHENTICATED` / `me`-fetch failure went with it. Those branches still exist in the replacement implementation and can still fail, so the audit step is to re-home them. The fix was `app/layout.test.tsx` (`frontend/src/app/layout.test.tsx`), which re-asserts every branch against the post-refactor implementation. Without that re-homing the branches would have stayed silently uncovered until a regression surfaced in production.
+
 ### Fake timer hygiene: use `beforeEach` / `afterEach` for setup and teardown
 
 Inline calls to `vi.useFakeTimers()` inside a single `it(...)` block are leak-prone. If that test throws before reaching `vi.useRealTimers()`, every subsequent test in the file inherits the fake clock — `userEvent` interactions hang (their internal `setTimeout(0)` never fires), `MockedProvider` async resolution stalls, and the suite times out with no stack pointing at the offending test.
