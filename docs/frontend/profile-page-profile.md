@@ -107,7 +107,7 @@ Pair the SSR redirect with a **client-side classifier** for mid-session role rev
 
 ### Mutations that can return `FORBIDDEN` should not use `optimisticResponse`
 
-When a mutation can plausibly return `FORBIDDEN` or `BAD_USER_INPUT` (admin role assignment, self-demotion, etc.), drop `optimisticResponse` entirely. Apollo v3.x rolls back optimistic writes on network errors but not consistently on typed GraphQL errors, so the cache holds the optimistic write while the server has rejected the change. See [`docs/pagination/drop-optimistic-response-typed-errors.md`](../pagination/drop-optimistic-response-typed-errors.md) for the full rule.
+When a mutation can plausibly return `FORBIDDEN` or `BAD_USER_INPUT` (admin role assignment, self-demotion, etc.), drop `optimisticResponse` entirely. Apollo v3.x rolls back optimistic writes on network errors but not consistently on typed GraphQL errors, so the cache holds the optimistic write while the server has rejected the change. See [`.claude/rules/pagination.md` § "Frontend cache patterns"](../../.claude/rules/pagination.md#frontend-cache-patterns) for the full rule.
 
 ### Zod schema convention
 
