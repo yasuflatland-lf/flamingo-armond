@@ -187,6 +187,80 @@ describe("<NewCardgroupPage> (client)", () => {
     expect(result?.myCardgroupsConnection.totalCount).toBe(1);
   });
 
+  it("writes the new cardgroup into the existing MyCardgroupsConnection cache", async () => {
+    // This test exercises the warm-cache branch in new-cardgroup-client.tsx's
+    // useMutation update() callback: when readQuery returns an existing
+    // Connection the callback prepends the new edge and increments totalCount.
+    // The production update() callback is the sole implementation — we do NOT
+    // re-inline the update logic here.
+    const user = userEvent.setup();
+    mockPush.mockClear();
+
+    const EXISTING_CARDGROUP = {
+      __typename: "Cardgroup" as const,
+      id: "cg-existing-1",
+      name: "Existing Group",
+      updatedAt: "2026-01-01T00:00:00Z",
+    };
+
+    // Warm cache: pre-seed the MyCardgroupsConnection with one existing entry
+    // so the update() callback takes the warm-cache branch.
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+      data: {
+        myCardgroupsConnection: {
+          __typename: "CardgroupConnection" as const,
+          edges: [
+            {
+              __typename: "CardgroupEdge" as const,
+              cursor: EXISTING_CARDGROUP.id,
+              node: EXISTING_CARDGROUP,
+            },
+          ],
+          pageInfo: {
+            __typename: "PageInfo" as const,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            startCursor: EXISTING_CARDGROUP.id,
+            endCursor: EXISTING_CARDGROUP.id,
+          },
+          totalCount: 1,
+        },
+      },
+    });
+
+    renderPage([makeCreateMock("Warm Cache Group")], undefined, cache);
+
+    await user.type(screen.getByRole("textbox"), "Warm Cache Group");
+    await user.click(screen.getByRole("button", { name: /create/i }));
+
+    // Wait for navigation — signals the mutation + update() callback completed.
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith(`/cardgroups/${CREATED_CARDGROUP.id}`);
+    });
+
+    // The production warm-cache branch in update() must have prepended the new
+    // edge and bumped totalCount.
+    const result = cache.readQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+    });
+    expect(result?.myCardgroupsConnection.edges).toHaveLength(2);
+    // Newest entry is prepended at index 0.
+    expect(result?.myCardgroupsConnection.edges[0]).toMatchObject({
+      cursor: CREATED_CARDGROUP.id,
+      node: { id: CREATED_CARDGROUP.id, name: "Warm Cache Group" },
+    });
+    // Pre-seeded entry is shifted to index 1.
+    expect(result?.myCardgroupsConnection.edges[1]).toMatchObject({
+      cursor: EXISTING_CARDGROUP.id,
+      node: { id: EXISTING_CARDGROUP.id },
+    });
+    expect(result?.myCardgroupsConnection.totalCount).toBe(2);
+  });
+
   it("BAD_USER_INPUT on field 'name' shows inline error", async () => {
     const user = userEvent.setup();
 

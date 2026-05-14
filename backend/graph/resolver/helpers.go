@@ -145,13 +145,19 @@ func toSwipeResponseModel(ctx context.Context, out *usecase.SwipeOutput) *model.
 }
 
 // toCardConnectionModel emits cursors as opaque v1 envelopes ("v1:" + base64(uuid)).
+// Nil entries in out.Cards are skipped to satisfy the schema's non-null node: Card! constraint.
 func toCardConnectionModel(out *usecase.CardConnectionOutput) *model.CardConnection {
 	if out == nil {
 		return &model.CardConnection{Edges: []*model.CardEdge{}, PageInfo: &model.PageInfo{}}
 	}
-	edges := make([]*model.CardEdge, len(out.Cards))
-	for i, c := range out.Cards {
-		edges[i] = &model.CardEdge{Cursor: cursor.Encode(c.ID), Node: toCardModel(c)}
+	edges := make([]*model.CardEdge, 0, len(out.Cards))
+	for _, c := range out.Cards {
+		cm := toCardModel(c)
+		if cm == nil {
+			slog.Warn("toCardConnectionModel: skipping nil entry")
+			continue
+		}
+		edges = append(edges, &model.CardEdge{Cursor: cursor.Encode(c.ID), Node: cm})
 	}
 	var startCur, endCur *string
 	if out.StartCur != "" {
@@ -176,13 +182,19 @@ func toCardConnectionModel(out *usecase.CardConnectionOutput) *model.CardConnect
 
 // toCardgroupConnectionModel emits cursors as opaque v1 envelopes ("v1:" + base64(uuid)).
 // Mirrors toCardConnectionModel for the cardgroup aggregate.
+// Nil entries in out.Cardgroups are skipped to satisfy the schema's non-null node: Cardgroup! constraint.
 func toCardgroupConnectionModel(out *usecase.CardgroupConnectionOutput) *model.CardgroupConnection {
 	if out == nil {
 		return &model.CardgroupConnection{Edges: []*model.CardgroupEdge{}, PageInfo: &model.PageInfo{}}
 	}
-	edges := make([]*model.CardgroupEdge, len(out.Cardgroups))
-	for i, cg := range out.Cardgroups {
-		edges[i] = &model.CardgroupEdge{Cursor: cursor.Encode(cg.ID), Node: toCardgroupModel(cg)}
+	edges := make([]*model.CardgroupEdge, 0, len(out.Cardgroups))
+	for _, cg := range out.Cardgroups {
+		cgm := toCardgroupModel(cg)
+		if cgm == nil {
+			slog.Warn("toCardgroupConnectionModel: skipping nil entry")
+			continue
+		}
+		edges = append(edges, &model.CardgroupEdge{Cursor: cursor.Encode(cg.ID), Node: cgm})
 	}
 	var startCur, endCur *string
 	if out.StartCur != "" {

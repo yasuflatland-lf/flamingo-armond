@@ -178,3 +178,51 @@ func TestToCardgroupConnectionModel_EmptyCursors(t *testing.T) {
 	assert.Nil(t, conn.PageInfo.StartCursor, "pageInfo.startCursor should be nil for empty StartCur")
 	assert.Nil(t, conn.PageInfo.EndCursor, "pageInfo.endCursor should be nil for empty EndCur")
 }
+
+// ---------------------------------------------------------------------------
+// FiltersNil tests for Connection helpers
+// ---------------------------------------------------------------------------
+
+// TestToCardConnectionModel_FiltersNilNodes verifies that toCardConnectionModel
+// skips nil domain.Card entries and only emits edges with non-nil nodes.
+// This is critical because the schema declares node: Card! (non-null) on
+// CardEdge, so a nil node would violate the schema contract.
+func TestToCardConnectionModel_FiltersNilNodes(t *testing.T) {
+	t.Parallel()
+
+	validCard := &domain.Card{ID: "c1", Front: "Q", Back: "A", CardgroupID: "cg1"}
+	out := &usecase.CardConnectionOutput{
+		Cards:      []*domain.Card{nil, validCard, nil},
+		TotalCount: 1,
+	}
+
+	conn := toCardConnectionModel(out)
+
+	assert.Len(t, conn.Edges, 1, "expected 1 edge after nil filter")
+	if len(conn.Edges) > 0 {
+		assert.NotNil(t, conn.Edges[0].Node, "edge.Node must be non-nil to satisfy schema constraint")
+		assert.Equal(t, "c1", conn.Edges[0].Node.ID)
+	}
+}
+
+// TestToCardgroupConnectionModel_FiltersNilNodes verifies that toCardgroupConnectionModel
+// skips nil domain.Cardgroup entries and only emits edges with non-nil nodes.
+// This is critical because the schema declares node: Cardgroup! (non-null) on
+// CardgroupEdge, so a nil node would violate the schema contract.
+func TestToCardgroupConnectionModel_FiltersNilNodes(t *testing.T) {
+	t.Parallel()
+
+	validCG := &domain.Cardgroup{ID: "cg1", Name: "valid", OwnerID: "u1"}
+	out := &usecase.CardgroupConnectionOutput{
+		Cardgroups: []*domain.Cardgroup{nil, validCG, nil},
+		TotalCount: 1,
+	}
+
+	conn := toCardgroupConnectionModel(out)
+
+	assert.Len(t, conn.Edges, 1, "expected 1 edge after nil filter")
+	if len(conn.Edges) > 0 {
+		assert.NotNil(t, conn.Edges[0].Node, "edge.Node must be non-nil to satisfy schema constraint")
+		assert.Equal(t, "cg1", conn.Edges[0].Node.ID)
+	}
+}

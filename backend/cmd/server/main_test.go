@@ -1232,6 +1232,9 @@ func TestGraphQL_CreateCardgroup_Then_MyCardgroupsConnection(t *testing.T) {
 	if cg["ownerId"] != sub {
 		t.Fatalf("expected ownerId=%q, got %v", sub, cg["ownerId"])
 	}
+	if got := conn["totalCount"].(float64); got != 1 {
+		t.Fatalf("expected totalCount=1, got %v", got)
+	}
 }
 
 func TestGraphQL_CreateCard_NonOwner_Unauthenticated(t *testing.T) {
@@ -1294,6 +1297,9 @@ func TestGraphQL_MyCardgroupsConnection_DoesNotLeakOtherUsers(t *testing.T) {
 	if len(listB) != 0 {
 		t.Fatalf("expected B to see 0 cardgroups, got %d", len(listB))
 	}
+	if got := connB["totalCount"].(float64); got != 0 {
+		t.Fatalf("expected B totalCount=0 before creating any cardgroup, got %v", got)
+	}
 
 	// B creates one; now B sees exactly one and A still sees exactly one.
 	createTestCardgroup(t, ts.URL, tokB, "B's group")
@@ -1304,12 +1310,18 @@ func TestGraphQL_MyCardgroupsConnection_DoesNotLeakOtherUsers(t *testing.T) {
 	if len(listB2) != 1 {
 		t.Fatalf("expected B to see 1 cardgroup, got %d", len(listB2))
 	}
+	if got := connB2["totalCount"].(float64); got != 1 {
+		t.Fatalf("expected B totalCount=1 after creating one cardgroup, got %v", got)
+	}
 
 	respA2 := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroupsConnection(first: 100) { edges { node { id } } totalCount } }"}`, tokA)
 	connA2, _ := respA2["data"].(map[string]any)["myCardgroupsConnection"].(map[string]any)
 	listA2, _ := connA2["edges"].([]any)
 	if len(listA2) != 1 {
 		t.Fatalf("expected A to still see 1 cardgroup, got %d", len(listA2))
+	}
+	if got := connA2["totalCount"].(float64); got != 1 {
+		t.Fatalf("expected A totalCount=1 (unaffected by B's create), got %v", got)
 	}
 }
 
@@ -1388,6 +1400,9 @@ func TestGraphQL_DeleteCardgroup_NonOwner_Unauthenticated(t *testing.T) {
 	if !found {
 		t.Fatalf("cardgroup %q was deleted by a non-owner; still expected in myCardgroupsConnection", cgID)
 	}
+	if got := connList["totalCount"].(float64); got != 1 {
+		t.Fatalf("expected totalCount=1 after failed non-owner delete, got %v", got)
+	}
 }
 
 func TestGraphQL_Cardgroup_NonOwner_Unauthenticated(t *testing.T) {
@@ -1426,6 +1441,9 @@ func TestGraphQL_Cardgroup_OwnerLoaderResolves(t *testing.T) {
 	list, _ := conn["edges"].([]any)
 	if len(list) == 0 {
 		t.Fatalf("expected at least one cardgroup; resp=%v", resp)
+	}
+	if got := conn["totalCount"].(float64); got != 1 {
+		t.Fatalf("expected totalCount=1, got %v", got)
 	}
 	for i, item := range list {
 		cg, _ := item.(map[string]any)["node"].(map[string]any)
@@ -1469,6 +1487,9 @@ func TestGraphQL_Cardgroup_OwnerLoader_NoNPlus1(t *testing.T) {
 	list, _ := conn["edges"].([]any)
 	if len(list) != n {
 		t.Fatalf("expected %d cardgroups, got %d", n, len(list))
+	}
+	if got := conn["totalCount"].(float64); got != float64(n) {
+		t.Fatalf("expected totalCount=%d, got %v", n, got)
 	}
 	for i, item := range list {
 		cg, _ := item.(map[string]any)["node"].(map[string]any)
