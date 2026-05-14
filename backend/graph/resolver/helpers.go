@@ -144,6 +144,16 @@ func toSwipeResponseModel(ctx context.Context, out *usecase.SwipeOutput) *model.
 	}
 }
 
+// encodeCursor returns nil for an empty ID (no cursor available) and a pointer
+// to the v1 opaque envelope otherwise.
+func encodeCursor(id string) *string {
+	if id == "" {
+		return nil
+	}
+	s := cursor.Encode(id)
+	return &s
+}
+
 // toCardConnectionModel emits cursors as opaque v1 envelopes ("v1:" + base64(uuid)).
 // Nil entries in out.Cards are skipped to satisfy the schema's non-null node: Card! constraint.
 func toCardConnectionModel(ctx context.Context, out *usecase.CardConnectionOutput) *model.CardConnection {
@@ -159,22 +169,13 @@ func toCardConnectionModel(ctx context.Context, out *usecase.CardConnectionOutpu
 		}
 		edges = append(edges, &model.CardEdge{Cursor: cursor.Encode(c.ID), Node: cm})
 	}
-	var startCur, endCur *string
-	if out.StartCur != "" {
-		s := cursor.Encode(out.StartCur)
-		startCur = &s
-	}
-	if out.EndCur != "" {
-		e := cursor.Encode(out.EndCur)
-		endCur = &e
-	}
 	return &model.CardConnection{
 		Edges: edges,
 		PageInfo: &model.PageInfo{
 			HasNextPage:     out.HasNext,
 			HasPreviousPage: out.HasPrev,
-			StartCursor:     startCur,
-			EndCursor:       endCur,
+			StartCursor:     encodeCursor(out.StartCur),
+			EndCursor:       encodeCursor(out.EndCur),
 		},
 		TotalCount: int(out.TotalCount),
 	}
@@ -196,22 +197,13 @@ func toCardgroupConnectionModel(ctx context.Context, out *usecase.CardgroupConne
 		}
 		edges = append(edges, &model.CardgroupEdge{Cursor: cursor.Encode(cg.ID), Node: cgm})
 	}
-	var startCur, endCur *string
-	if out.StartCur != "" {
-		s := cursor.Encode(out.StartCur)
-		startCur = &s
-	}
-	if out.EndCur != "" {
-		e := cursor.Encode(out.EndCur)
-		endCur = &e
-	}
 	return &model.CardgroupConnection{
 		Edges: edges,
 		PageInfo: &model.PageInfo{
 			HasNextPage:     out.HasNext,
 			HasPreviousPage: out.HasPrev,
-			StartCursor:     startCur,
-			EndCursor:       endCur,
+			StartCursor:     encodeCursor(out.StartCur),
+			EndCursor:       encodeCursor(out.EndCur),
 		},
 		TotalCount: int(out.TotalCount),
 	}
