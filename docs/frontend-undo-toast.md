@@ -28,7 +28,7 @@ The module also exports `flushPendingDeletes(): Promise<void>` and the test-only
 
 **Caller responsibility — sequencing:**
 
-1. Apply the optimistic Apollo cache update (remove the edge, decrement `totalCount`) using `readQuery + writeQuery`. See [`docs/frontend.md` § "Connection delete"](frontend.md#connection-delete) for the cache pattern.
+1. Apply the optimistic Apollo cache update (remove the edge, decrement `totalCount`) using `readQuery + writeQuery`. See [`docs/pagination/connection-delete.md` § "Connection delete"](../pagination/connection-delete.md) for the cache pattern.
 2. Call `scheduleDelete(...)` with the rollback and commit closures. The helper does not touch the cache itself.
 3. On Undo click, `optimisticRollback` is invoked to restore the snapshot.
 4. On timer elapse, `commitDelete()` runs. Rejection triggers `optimisticRollback` then `onCommitFailed`.
