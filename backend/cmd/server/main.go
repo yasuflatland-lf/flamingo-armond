@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime/debug"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -45,15 +43,30 @@ import (
 
 const defaultShutdownTimeout = 25 * time.Second
 
-// recoverFromPanic converts a recovered panic value into a gqlerr.Internal,
-// capturing the goroutine stack at the recovery point to preserve panic origin.
-// Both newGraphQLServer and tests share this function so recovery behaviour stays
-// in sync.
-func recoverFromPanic(ctx context.Context, err any) error {
-	stack := debug.Stack()
-	return gqlerr.Internal(ctx,
-		eris.Errorf("graphql: panic recovered (%T %v)\n%s", err, err, stack),
-	)
+type serverConfig struct {
+	shutdownTimeout time.Duration
+}
+
+// serverConfigFromEnv builds a serverConfig from environment variables.
+// SHUTDOWN_TIMEOUT accepts any value accepted by time.ParseDuration; invalid
+// or non-positive values fall back to defaultShutdownTimeout with a WARN log.
+func serverConfigFromEnv(logger *slog.Logger) serverConfig {
+	shutdownDur := defaultShutdownTimeout
+	if v := os.Getenv("SHUTDOWN_TIMEOUT"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			logger.Warn("invalid SHUTDOWN_TIMEOUT, using default",
+				"value", v, "err", err, "default", defaultShutdownTimeout.String())
+		} else if d <= 0 {
+			logger.Warn("non-positive SHUTDOWN_TIMEOUT, using default",
+				"value", v, "default", defaultShutdownTimeout.String())
+		} else {
+			shutdownDur = d
+		}
+	}
+	return serverConfig{
+		shutdownTimeout: shutdownDur,
+	}
 }
 
 func newGraphQLServer(r *resolver.Resolver) *handler.Server {
@@ -65,7 +78,7 @@ func newGraphQLServer(r *resolver.Resolver) *handler.Server {
 		},
 	})
 
-	srv.SetRecoverFunc(recoverFromPanic)
+	srv.SetRecoverFunc(gqlerr.RecoverFunc)
 
 	srv.Use(extension.FixedComplexityLimit(100))
 
@@ -90,7 +103,7 @@ func newRouter(
 	userCardFSRSRepo repository.UserCardFSRSRepository,
 	pingHandler *ping.Handler,
 	notionSyncHandler *notionsync.Handler,
-	swipeRecordRepo ...repository.SwipeRecordRepository,
+	swipeRecordRepo repository.SwipeRecordRepository,
 ) *echo.Echo {
 	e := echo.New()
 	e.Use(middleware.RequestLogger())
@@ -133,47 +146,11 @@ func newRouter(
 			return r.Method + " " + r.URL.Path
 		}),
 	)
-	var swipeRepo repository.SwipeRecordRepository
-	if len(swipeRecordRepo) > 0 {
-		swipeRepo = swipeRecordRepo[0]
-	}
-	q := e.Group("/query", authMW, promoter.Middleware(), loader.MiddlewareWithUserCardFSRS(userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRepo, userCardFSRSRepo))
+	q := e.Group("/query", authMW, promoter.Middleware(), loader.MiddlewareWithUserCardFSRS(userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo, userCardFSRSRepo))
 	q.POST("", echo.WrapHandler(otelGQLHandler))
 	e.GET("/playground", echo.WrapHandler(playground.Handler("GraphQL", "/query")))
 
 	return e
-}
-
-func swipeNextBatchSize(logger *slog.Logger) int {
-	v := os.Getenv("SWIPE_NEXT_BATCH_SIZE")
-	if v == "" {
-		return 10
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil || n <= 0 {
-		logger.Warn("invalid SWIPE_NEXT_BATCH_SIZE, using default", "value", v, "default", 10)
-		return 10
-	}
-	return n
-}
-
-func shutdownTimeout(logger *slog.Logger) time.Duration {
-	v := os.Getenv("SHUTDOWN_TIMEOUT")
-	if v == "" {
-		return defaultShutdownTimeout
-	}
-	d, err := time.ParseDuration(v)
-	if err != nil {
-		logger.Warn("invalid SHUTDOWN_TIMEOUT, using default",
-			"value", v, "err", err, "default", defaultShutdownTimeout.String())
-		return defaultShutdownTimeout
-	}
-	if d <= 0 {
-		logger.Warn("non-positive SHUTDOWN_TIMEOUT, using default",
-			"value", v, "default", defaultShutdownTimeout.String())
-		return defaultShutdownTimeout
-	}
-	return d
 }
 
 // bootstrapSuperUserPromoter constructs the SuperUserPromoter and emits the
@@ -224,6 +201,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	if err != nil {
 		return eris.Wrap(err, "run: telemetry init")
 	}
+	srvCfg := serverConfigFromEnv(logger)
 
 	pingToken := os.Getenv("PING_TOKEN")
 	if pingToken == "" {
@@ -284,7 +262,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo)
 	learnUC := usecase.NewLearnUsecase(cardRepo, cardgroupRepo, service.NewOrderingPolicy(), nil, 0, 0)
-	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), swipeNextBatchSize(logger), userCardFSRSRepo)
+	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), usecase.SwipeNextBatchSize(logger), userCardFSRSRepo)
 	dictionaryUC := usecase.NewDictionaryUsecase(authSvc, cardRepo, db.GORM)
 	adminUserUC := usecase.NewAdminUser(userRepo, roleRepo, authSvc)
 	adminRoleUC := usecase.NewAdminRole(roleRepo, authSvc)
@@ -335,7 +313,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	g.Go(func() error {
 		<-gctx.Done()
-		timeout := shutdownTimeout(logger)
+		timeout := srvCfg.shutdownTimeout
 		logger.Info("shutdown signal received", "timeout", timeout.String())
 		sctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()

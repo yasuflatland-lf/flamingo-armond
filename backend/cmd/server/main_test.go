@@ -44,6 +44,7 @@ import (
 	"backend/internal/database"
 	"backend/internal/domain"
 	"backend/internal/domain/service"
+	"backend/internal/gqlerr"
 	"backend/internal/handler/ping"
 	"backend/internal/logging"
 	"backend/internal/repository"
@@ -147,7 +148,7 @@ func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil), nil, nil, nil, nil, nil, ping.New(nil, "test-token"), nil))
+	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil), nil, nil, nil, nil, nil, ping.New(nil, "test-token"), nil, nil))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -2193,7 +2194,7 @@ func (p *panicResolverRoot) User() generated.UserResolver           { return p.i
 
 // newPanicGraphQLServer builds a gqlgen handler.Server wired with
 // panicResolverRoot so that { health } panics. The server uses the shared
-// recoverFromPanic helper (same as newGraphQLServer) so recovery behaviour
+// gqlerr.RecoverFunc (same as newGraphQLServer) so recovery behaviour
 // stays in sync with production. Used exclusively by
 // TestGraphQL_PanicRecovery_ReturnsINTERNAL.
 func newPanicGraphQLServer() *handler.Server {
@@ -2204,7 +2205,7 @@ func newPanicGraphQLServer() *handler.Server {
 			"Content-Type": []string{"application/graphql-response+json; charset=utf-8"},
 		},
 	})
-	srv.SetRecoverFunc(recoverFromPanic)
+	srv.SetRecoverFunc(gqlerr.RecoverFunc)
 	return srv
 }
 
@@ -2297,5 +2298,37 @@ func TestBootstrapSuperUserPromoter_NoWarnWhenAdminExists(t *testing.T) {
 	records := decodeLogRecords(t, &buf)
 	if len(records) != 0 {
 		t.Errorf("expected no log output when admin already exists, got: %s", buf.String())
+	}
+}
+
+func TestServerConfigFromEnv(t *testing.T) {
+	cases := []struct {
+		name    string
+		env     string
+		want    time.Duration
+		wantLog string
+	}{
+		{"empty uses default", "", defaultShutdownTimeout, ""},
+		{"valid positive", "5s", 5 * time.Second, ""},
+		{"invalid string uses default", "bad", defaultShutdownTimeout, "invalid SHUTDOWN_TIMEOUT"},
+		{"zero uses default", "0s", defaultShutdownTimeout, "non-positive SHUTDOWN_TIMEOUT"},
+		{"negative uses default", "-1s", defaultShutdownTimeout, "non-positive SHUTDOWN_TIMEOUT"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("SHUTDOWN_TIMEOUT", tc.env)
+			var buf bytes.Buffer
+			logger := slog.New(slog.NewJSONHandler(&buf, nil))
+			cfg := serverConfigFromEnv(logger)
+			if cfg.shutdownTimeout != tc.want {
+				t.Errorf("shutdownTimeout = %v, want %v", cfg.shutdownTimeout, tc.want)
+			}
+			if tc.wantLog != "" && !strings.Contains(buf.String(), tc.wantLog) {
+				t.Errorf("expected log to contain %q, got %q", tc.wantLog, buf.String())
+			}
+			if tc.wantLog == "" && buf.Len() > 0 {
+				t.Errorf("expected no log output, got %q", buf.String())
+			}
+		})
 	}
 }

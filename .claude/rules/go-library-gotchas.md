@@ -83,3 +83,8 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [`*sql.Rows`: explicit `rows.Close()` after loop in addition to `defer rows.Close()`](../../docs/backend/library-gotchas/sql-rows-explicit-close.md)
 - [Named return `(retErr error)` for deferred `tx.Rollback` — local `err` can be shadowed](../../docs/backend/library-gotchas/named-return-deferred-rollback.md)
 - [Sensitive file output: use `0o600`, not `0o644`, for files containing PII](../../docs/backend/library-gotchas/sensitive-file-permissions-0o600.md)
+- [`t.Parallel()` + `slog.SetDefault()` mutation is a data race — capture `prev` and restore in `t.Cleanup`](../../docs/backend/library-gotchas/tparallel-slog-setdefault-race.md)
+- [Unexported types must not have exported fields](../../docs/backend/library-gotchas/unexported-type-exported-fields.md)
+- [Consolidate env-var reads into a typed config struct + factory (`serverConfig` pattern)](../../docs/backend/library-gotchas/server-config-typed-env-struct.md)
+- [`t.Setenv` vs `os.Setenv` in tests — `t.Setenv` auto-restores; `os.Setenv` leaks](../../docs/backend/library-gotchas/tsetenv-vs-os-setenv.md)
+- [Log output assertions: always read the buffer or the assertion is dead code](../../docs/backend/library-gotchas/slog-buffer-assertions-must-be-checked.md)

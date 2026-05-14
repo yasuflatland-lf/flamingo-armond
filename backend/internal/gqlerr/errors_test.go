@@ -285,3 +285,31 @@ func TestCancelled(t *testing.T) {
 		t.Errorf("Extensions[code] = %q, want %q", code, "CANCELLED")
 	}
 }
+
+func TestRecoverFunc(t *testing.T) {
+	// Not parallel: mutates the global slog default.
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	ctx := context.Background()
+	raw := gqlerr.RecoverFunc(ctx, "deliberate panic")
+
+	if raw == nil {
+		t.Fatal("RecoverFunc returned nil")
+	}
+	got, ok := raw.(*gqlerror.Error)
+	if !ok {
+		t.Fatalf("RecoverFunc returned %T, want *gqlerror.Error", raw)
+	}
+	if code := extString(t, got, "code"); code != "INTERNAL" {
+		t.Errorf("extensions.code = %q, want INTERNAL", code)
+	}
+	if got.Message != "internal server error" {
+		t.Errorf("Message = %q, want %q", got.Message, "internal server error")
+	}
+	if !strings.Contains(buf.String(), "graphql: panic recovered") {
+		t.Errorf("expected log to contain panic message, got %q", buf.String())
+	}
+}

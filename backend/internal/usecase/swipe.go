@@ -3,7 +3,10 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"math/rand"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -21,6 +24,22 @@ const (
 	defaultSwipeNextBatchSize   = 10
 	swipePerformanceSampleLimit = 100
 )
+
+// SwipeNextBatchSize reads SWIPE_NEXT_BATCH_SIZE from the environment and
+// returns it as an int. Returns defaultSwipeNextBatchSize when the variable is
+// absent, non-numeric, or non-positive.
+func SwipeNextBatchSize(logger *slog.Logger) int {
+	v := os.Getenv("SWIPE_NEXT_BATCH_SIZE")
+	if v == "" {
+		return defaultSwipeNextBatchSize
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		logger.Warn("invalid SWIPE_NEXT_BATCH_SIZE, using default", "value", v, "default", defaultSwipeNextBatchSize)
+		return defaultSwipeNextBatchSize
+	}
+	return n
+}
 
 type CardRepoForSwipe interface {
 	FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
