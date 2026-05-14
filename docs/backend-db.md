@@ -89,7 +89,7 @@ The flip side is that the conflict key MUST be unique within the input batch. If
 - **`ON DELETE SET NULL`, not `CASCADE`** — when a cardgroup is deleted, the only meaning of `last_viewed_cardgroup_id` is "where to land you next" (presentation state). `CASCADE` would delete the user, which is absurd; `SET NULL` lets the HomePage redirect fall through to the next branch (cardgroups list, or onboarding).
 - **`CREATE INDEX ... (last_viewed_cardgroup_id)`** — without an index, the cascading `SET NULL` on cardgroup delete forces a full users table scan. The index is on the dependent side, not the parent. Postgres does not auto-index the FK side; this is a known foot-gun on cascading deletes.
 
-The existing `users` UPDATE RLS policy keys on `auth.uid() = id`, so the new column inherits the same row-level constraint without a policy edit. `backend/internal/repository/rls_user_test.go` covers cross-user UPDATE rejection on this column explicitly.
+The existing `users` UPDATE RLS policy keys on `auth.uid() = id`, so the new column inherits the same row-level constraint without a policy edit. `backend/internal/repository/last_viewed_cardgroup_test.go` (`TestRLS_SetLastViewedCardgroup_AuthenticatedRoleBlocksCrossUserUpdate`) covers cross-user UPDATE rejection on this column explicitly.
 
 ### Startup order
 
