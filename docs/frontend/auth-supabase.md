@@ -24,6 +24,26 @@ Backend JWT verification is enabled. Without a Supabase session, only unauthenti
 
 The `matcher` must also explicitly exclude `/api/:path*` and `/auth/callback`. Without the `/api` exclusion, every Apollo browser POST to `/api/graphql` triggers a full Supabase token-refresh round-trip in middleware, adding latency per GraphQL call. Without the `/auth/callback` exclusion, middleware cookie writes race against the route handler's own `exchangeCodeForSession` and can corrupt the new session.
 
+### `isAdmin` is read from the JWT claim, not from a GraphQL query
+
+The root layout (`frontend/src/app/layout.tsx`) computes the `isAdmin` flag forwarded to `AppShell` from `claims.app_metadata?.role === "admin"` returned by `supabase.auth.getClaims()`. The claim is emitted at JWT mint time by the Supabase Custom Access Token Hook, which joins `public.user_roles` server-side — see [`docs/backend/custom-access-token-hook.md`](../backend/custom-access-token-hook.md). The frontend therefore reads the role from the cookie-side JWT (no network round-trip) and skips a GraphQL `me` query on every RSC navigation.
+
+This is a deliberate split: the **layout** reads the JWT claim as a UI hint to decide nav visibility, and `frontend/src/app/admin/layout.tsx` enforces the gate with a `me`-query role check. A stale or missing JWT claim hides the admin rail but never grants access. See the failure-mode contract in [`.claude/rules/frontend-rsc-error-handling.md`](../../.claude/rules/frontend-rsc-error-handling.md) for the degraded-shell rule, and [`docs/frontend/rsc-error-handling/getclaims-three-way-return.md`](rsc-error-handling/getclaims-three-way-return.md) for the three-way return shape of `getClaims()`.
+
+### Role-change propagation copy: bound by token refresh, not a hardcoded interval
+
+Role changes take effect when the user's JWT is re-minted — at sign-in or at the next token refresh. The refresh cadence is the `jwt_expiry` value in `supabase/config.toml` and the Supabase dashboard, which is operator-tunable (default `3600`). UI copy that informs a user (or an admin editing a user) about the propagation delay MUST NOT hardcode the time bound:
+
+```tsx
+// Correct — durable phrasing.
+<p>Role changes take effect at the user's next sign-in or token refresh.</p>
+
+// Incorrect — couples copy to a config value.
+<p>Role changes take effect within one hour.</p>
+```
+
+Reference: `frontend/src/app/admin/users/[id]/edit/AdminUserEditClient.tsx` (the role-multiselect helper text).
+
 ### Gotchas
 
 - **`src/middleware.ts`, not `frontend/middleware.ts`**: Next.js with `src/` layout expects middleware under `src/`.

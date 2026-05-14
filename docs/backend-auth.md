@@ -175,3 +175,7 @@ Authorization rules implemented at the usecase level need tests at **both** the 
 
 `echo.WrapHandler` (v5) converts a `http.Handler` into an `echo.HandlerFunc` that always returns `nil`. gqlgen's `handler.Server` is an `http.Handler`: it writes GraphQL errors into the response body as `{"errors":[...]}` with HTTP 200, and only ever writes a 5xx for catastrophic transport failures. Because `WrapHandler` returns `nil`, Echo's central error pipeline never sees these, which is fine: the GraphQL error is already transported in-band. Do **not** wrap gqlgen with a custom adapter that translates non-2xx into `echo.NewHTTPError` — that would cause a double write on the already-committed `ResponseWriter`.
 
+### Custom access token hook
+
+The Supabase Custom Access Token Hook (`public.custom_access_token_hook`) joins `public.user_roles` at JWT mint time and emits `app_metadata.role = "admin"` into the access token. The frontend root layout reads this via `supabase.auth.getClaims()` and forwards `isAdmin` to `AppShell` without a GraphQL round-trip. See [`docs/backend/custom-access-token-hook.md`](backend/custom-access-token-hook.md) for the design decisions (join-at-mint vs sync-trigger, fail-closed on malformed events, stale-claim removal, canonical return shape, DROP-auto-revoke, operator precondition for the down migration). The consumer side is documented in [`docs/frontend/auth-supabase.md`](frontend/auth-supabase.md).
+
