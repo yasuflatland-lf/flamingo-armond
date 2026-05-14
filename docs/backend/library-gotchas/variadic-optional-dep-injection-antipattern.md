@@ -58,9 +58,18 @@ resolvers := resolver.NewResolver(
 )
 ```
 
+**The same rule applies to wiring functions, not just constructors.** A function
+like `newRouter` that accepts dependencies to pass into middleware or handlers must
+declare every required dep as a named positional parameter. Using a variadic last
+argument for the final repo (e.g. `swipeRecordRepo ...repository.SwipeRecordRepository`)
+produces the same nil-deref hazard at the first request that touches that path
+rather than surfacing at the call site.
+
 **Reference:** `backend/graph/resolver/resolver.go` — `NewResolver` accepts
 `learnUC *usecase.LearnUsecase` as a required positional parameter; the comment
 "Tests may pass nil for unused dependencies; do not pass nil from production
-wiring" documents the nil-explicit contract.
+wiring" documents the nil-explicit contract. `backend/cmd/server/main.go` —
+`newRouter` accepts `swipeRecordRepo repository.SwipeRecordRepository` as a
+required positional parameter.
 
 **Sister rule:** [`constructor-panics-for-non-empty-config.md`](constructor-panics-for-non-empty-config.md) — when a dependency is always required (no OFF branch), panic at construction rather than deferring the nil deref to runtime.
