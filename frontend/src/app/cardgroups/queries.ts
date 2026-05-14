@@ -112,23 +112,6 @@ export const DeleteCardgroupMutation = graphql(`
   }
 `);
 
-// Card queries
-
-export const CardsByCardgroupQuery = graphql(`
-  query CardsByCardgroup($cardgroupId: ID!) {
-    cardsByCardgroup(cardgroupId: $cardgroupId) {
-      id
-      front
-      back
-      userCardState {
-        due
-        state
-      }
-      cardgroupId
-    }
-  }
-`);
-
 // Card mutations
 
 export const CreateCardMutation = graphql(`
