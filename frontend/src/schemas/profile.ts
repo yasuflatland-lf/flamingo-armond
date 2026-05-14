@@ -27,5 +27,3 @@ export const updateProfileSchema = z.object({
   displayName,
   bio,
 });
-
-export type UpdateProfileFormValues = z.infer<typeof updateProfileSchema>;
