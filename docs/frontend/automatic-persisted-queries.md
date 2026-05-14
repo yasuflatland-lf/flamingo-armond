@@ -2,7 +2,7 @@
 
 > Part of [`docs/frontend.md`](../frontend.md). See the index for related chapters.
 
-Wire format and POST-only rationale live in `docs/observability.md`. Frontend-only implementation notes follow.
+Wire format, POST-only rationale, and the `useGETForHashedQueries: false` token-leak decision live in [`docs/observability.md` § "Automatic Persisted Queries"](../observability.md#automatic-persisted-queries). Frontend-only implementation notes follow.
 
 The browser-side Apollo Client chain is:
 
@@ -19,10 +19,6 @@ Order matters:
 ### sha256 via native WebCrypto
 
 `frontend/src/lib/apollo/sha256.ts` wraps `crypto.subtle.digest('SHA-256', ...)` and is shared with the APQ link. We intentionally do **not** add the `crypto-hash` npm dependency — native WebCrypto is available in every modern browser and in Node 19+ (which covers Next.js RSC).
-
-### `useGETForHashedQueries: false`
-
-The Apollo docs allow switching hash-only requests to GET with the query string. We deliberately keep POST because the Supabase access token travels in the `Authorization` header today; if we ever move to query-param auth, this default would leak the token into server access logs. (See `docs/observability.md` for the full rationale.)
 
 ### Apollo link chain test gotchas
 
