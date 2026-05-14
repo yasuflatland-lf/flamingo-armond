@@ -182,7 +182,7 @@ if (action === null) return null;
 
 **Why:** pure logic + jsdom is wasted overhead — every test pays for the DOM environment to assert a string-in-string-out result. Node tests are faster (no jsdom bootstrap), clearer (no `vi.mock` of `next/navigation`), and the production code gets a forcing function to keep the helper React-free. The same testability-extraction principle is documented for the backend in [`docs/backend/library-gotchas/testable-startup-helpers.md`](../backend/library-gotchas/testable-startup-helpers.md).
 
-**How to apply:** when a client component's render function or hook callback contains branching logic that depends only on its arguments (not on React state, refs, or router objects), lift that logic into a sibling `.ts` file with no React or Next.js imports, and write its tests under `// @vitest-environment node`. The component imports the helper and calls it. Reference: `frontend/src/components/nav/fab-action.ts` consumed by `global-fab.tsx` and `header-add-card-link.tsx`; the test file `fab-action.test.ts` runs under the node environment while the component tests stay on jsdom.
+**How to apply:** when a client component's render function or hook callback contains branching logic that depends only on its arguments (not on React state, refs, or router objects), lift that logic into a sibling `.ts` file with no React or Next.js imports, and write its tests under `// @vitest-environment node`. The component imports the helper and calls it. Reference: `frontend/src/components/nav/fab-action.ts` consumed by `global-fab.tsx`; the test file `fab-action.test.ts` runs under the node environment while the component tests stay on jsdom.
 
 ### Co-located component-level test for prop-guard branches the integration path cannot reach
 
