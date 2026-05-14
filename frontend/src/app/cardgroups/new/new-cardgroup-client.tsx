@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CARDGROUPS_DEFAULT_VARS, CreateCardgroupMutation } from "@/app/cardgroups/queries";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
-import { MyCardgroupsConnectionDocument, MyCardgroupsDocument } from "@/generated/graphql";
+import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
 
 interface NewCardgroupClientProps {
   showWelcome?: boolean;
@@ -22,15 +22,7 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
       if (!data?.createCardgroup?.cardgroup) return;
       const created = data.createCardgroup.cardgroup;
 
-      // Update the deprecated flat list cache (still consumed by the cardgroup
-      // picker sheet and a few other call sites).
-      const existing = cache.readQuery({ query: MyCardgroupsDocument });
-      cache.writeQuery({
-        query: MyCardgroupsDocument,
-        data: { myCardgroups: [created, ...(existing?.myCardgroups ?? [])] },
-      });
-
-      // Also update the Connection cache so the /cardgroups listing page
+      // Update the Connection cache so the /cardgroups listing page
       // shows the new entry without a refetch when the user returns there.
       // cache.modify is forbidden — use readQuery + writeQuery so cold-cache
       // entries are also handled correctly. See

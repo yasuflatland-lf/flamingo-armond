@@ -8,11 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CARDGROUPS_DEFAULT_VARS } from "@/app/cardgroups/queries";
-import {
-  CreateCardgroupDocument,
-  MyCardgroupsConnectionDocument,
-  MyCardgroupsDocument,
-} from "@/generated/graphql";
+import { CreateCardgroupDocument, MyCardgroupsConnectionDocument } from "@/generated/graphql";
 import { sanitizeReturnTo } from "@/lib/sanitize-return-to";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { NewCardgroupClient } from "./new-cardgroup-client";
@@ -149,38 +145,6 @@ describe("<NewCardgroupPage> (client)", () => {
     expect(mockRefresh).toHaveBeenCalledOnce();
   });
 
-  it("on success writes the new cardgroup into the MyCardgroups cache", async () => {
-    const user = userEvent.setup();
-    mockPush.mockClear();
-
-    // Use a real InMemoryCache so the update(cache, { data }) block in
-    // new-cardgroup-client.tsx can perform a readQuery/writeQuery round-trip.
-    const cache = new InMemoryCache();
-    cache.writeQuery({
-      query: MyCardgroupsDocument,
-      data: { myCardgroups: [] },
-    });
-
-    renderPage([makeCreateMock("My New Group")], undefined, cache);
-
-    await user.type(screen.getByRole("textbox"), "My New Group");
-    await user.click(screen.getByRole("button", { name: /create/i }));
-
-    // Wait for the mutation to complete (navigation is the observable signal).
-    await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith(`/cardgroups/${CREATED_CARDGROUP.id}`);
-    });
-
-    // The cache update callback must have prepended the new cardgroup.
-    const result = cache.readQuery({ query: MyCardgroupsDocument });
-    expect(result?.myCardgroups).toHaveLength(1);
-    expect(result?.myCardgroups[0]).toMatchObject({
-      id: CREATED_CARDGROUP.id,
-      name: CREATED_CARDGROUP.name,
-      updatedAt: CREATED_CARDGROUP.updatedAt,
-    });
-  });
-
   it("seeds the new cardgroup into a cold MyCardgroupsConnection cache via production update callback", async () => {
     // This test exercises the cold-cache `else` branch in
     // new-cardgroup-client.tsx's useMutation update() callback.
@@ -192,15 +156,9 @@ describe("<NewCardgroupPage> (client)", () => {
     const user = userEvent.setup();
     mockPush.mockClear();
 
-    // Cold cache: no MyCardgroupsConnection pre-seed, but MyCardgroupsDocument
-    // must be pre-seeded because the update callback also writes the flat list.
+    // Cold cache: deliberately no pre-seeded MyCardgroupsConnectionDocument —
+    // this exercises the cold-cache else-branch.
     const cache = new InMemoryCache();
-    cache.writeQuery({
-      query: MyCardgroupsDocument,
-      data: { myCardgroups: [] },
-    });
-    // Deliberately do NOT seed MyCardgroupsConnectionDocument — this is the
-    // cold-cache branch.
 
     renderPage([makeCreateMock("Cold Cache Group")], undefined, cache);
 
