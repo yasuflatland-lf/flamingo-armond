@@ -2,7 +2,7 @@
 
 > Part of the [error wrapping convention](../../../.claude/rules/error-wrapping.md) rules.
 
-When introducing a more specific sentinel alongside an existing general one, the question is whether the new sentinel **refines** the general case (in which case `errors.Join` keeps every existing caller working) or **inverts** it (in which case joining would lie to any caller branching on the general sentinel). The two sections below cover both halves of the rule.
+When introducing a more specific sentinel alongside an existing general one, ask whether the new sentinel **refines** the general case (join with `errors.Join` so every existing caller keeps working) or **inverts** it (keep standalone — joining would lie to any caller branching on the general sentinel).
 
 ## When to join with `errors.Join`
 

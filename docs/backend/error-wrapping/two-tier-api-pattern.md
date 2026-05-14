@@ -2,7 +2,7 @@
 
 > Part of the [error wrapping convention](../../../.claude/rules/error-wrapping.md) rules.
 
-Several places in the backend expose a shared shape: an **open, general-purpose primitive** that any caller can use for new or one-off cases, paired with a **strict or typed wrapper** that bakes the conventional decision (a specific error message, a fixed extension key, an all-or-nothing contract) into one place. The wrapper exists so the call site is compile-checked and so the convention lives in exactly one location; the primitive exists so new variants do not have to extend the wrapper before they can be expressed. The two worked examples below show the pattern in two unrelated subsystems.
+Several places in the backend expose a shared shape: an **open, general-purpose primitive** for one-off cases, paired with a **strict or typed wrapper** that bakes the conventional decision (a specific error message, a fixed extension key, an all-or-nothing contract) into one place. The wrapper compile-checks the call site and keeps the convention in exactly one location; the primitive lets new variants land without extending the wrapper first. The two worked examples below show the pattern in two unrelated subsystems.
 
 ## Worked example: `gqlerr` open helper + typed wrapper
 
