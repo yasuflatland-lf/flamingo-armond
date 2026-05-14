@@ -45,7 +45,11 @@ export default async function HomePage() {
     redirect(`/learn/${lastViewedId}`);
   }
 
-  if ((data.myCardgroupsConnection?.totalCount ?? 0) > 0) {
+  if (!data.myCardgroupsConnection) {
+    console.error("[home] myCardgroupsConnection is null — partial response from backend");
+    throw new Error("myCardgroupsConnection missing from root redirect data");
+  }
+  if (data.myCardgroupsConnection.totalCount > 0) {
     redirect("/cardgroups");
   }
 

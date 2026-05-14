@@ -74,7 +74,13 @@ export function DictionaryImportClient() {
 
   const [runUpsert, { loading: upserting }] = useMutation(UpsertDictionaryMutation);
 
-  const cardgroups = cardgroupsData?.myCardgroupsConnection?.edges?.map((e) => e.node) ?? [];
+  const rawConnection = cardgroupsData?.myCardgroupsConnection;
+  if (cardgroupsData && rawConnection === null) {
+    console.warn(
+      "[admin/dictionary] myCardgroupsConnection is null in server response (partial-response null-bubble)",
+    );
+  }
+  const cardgroups = rawConnection?.edges?.map((e) => e.node) ?? [];
   const cardgroupsErrorBanner = getBackendErrorBanner(cardgroupsError);
 
   async function handleValidate() {

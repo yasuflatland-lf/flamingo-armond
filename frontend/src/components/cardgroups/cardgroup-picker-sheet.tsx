@@ -51,7 +51,13 @@ export default function CardgroupPickerSheet({
     fetchPolicy: "cache-and-network",
   });
 
-  const cardgroups = data?.myCardgroupsConnection?.edges?.map((e) => e.node) ?? [];
+  const rawConnection = data?.myCardgroupsConnection;
+  if (data && rawConnection === null) {
+    console.warn(
+      "[cardgroup-picker-sheet] myCardgroupsConnection is null in server response (partial-response null-bubble)",
+    );
+  }
+  const cardgroups = rawConnection?.edges?.map((e) => e.node) ?? [];
 
   function handleSelect(id: string) {
     onSelect(id);
