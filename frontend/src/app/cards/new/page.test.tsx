@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   mockSupabaseServerClient,
@@ -25,6 +26,7 @@ vi.mock("@/lib/apollo/server", () => ({
 }));
 
 import { redirect } from "next/navigation";
+import { CardsNewSkeleton } from "@/app/cards/new/_components/cards-new-skeleton";
 import CardsNewPage from "@/app/cards/new/page";
 import { gqlFetch } from "@/lib/apollo/server";
 
@@ -82,15 +84,61 @@ function findElementProps(node: unknown, componentName: string): CardsNewClientP
 }
 
 /**
- * Call the page component with the given searchParams, then traverse the
- * returned JSX tree to find the <CardsNewClient> element and return its props.
+ * Locate a React element by its component function name. Used to descend into
+ * the async `CardsNewContent` server component, whose children are not
+ * reachable via `findElementProps` alone (the tree carries the function
+ * reference, not its evaluated output).
+ */
+function findElement(
+  node: unknown,
+  componentName: string,
+): { type: (props: unknown) => unknown; props: Record<string, unknown> } | null {
+  if (node == null || typeof node !== "object") return null;
+  const el = node as Record<string, unknown>;
+  if (
+    "type" in el &&
+    "props" in el &&
+    typeof el.type === "function" &&
+    (el.type as { name?: string }).name === componentName
+  ) {
+    return el as { type: (props: unknown) => unknown; props: Record<string, unknown> };
+  }
+  if ("props" in el && el.props != null) {
+    const children = (el.props as Record<string, unknown>).children;
+    if (Array.isArray(children)) {
+      for (const child of children) {
+        const found = findElement(child, componentName);
+        if (found) return found;
+      }
+    } else if (children != null) {
+      return findElement(children, componentName);
+    }
+  }
+  return null;
+}
+
+/**
+ * Call the page component with the given searchParams, descend into the
+ * async `CardsNewContent` server component, then traverse the resulting tree
+ * to find the `<CardsNewClient>` element and return its props.
  */
 async function renderPage(searchParams: Record<string, string> = {}) {
   const result = await CardsNewPage({ searchParams: Promise.resolve(searchParams) });
-  const props = findElementProps(result, "CardsNewClient");
+  const contentEl = findElement(result, "CardsNewContent");
+  if (!contentEl) {
+    throw new Error(
+      "CardsNewContent element not found in the page output — page may have redirected",
+    );
+  }
+  // CardsNewContent is an async server component — invoke it with its props
+  // to obtain the resolved subtree that contains <CardsNewClient>.
+  const contentResult = await (contentEl.type as (props: unknown) => Promise<unknown>)(
+    contentEl.props,
+  );
+  const props = findElementProps(contentResult, "CardsNewClient");
   if (!props) {
     throw new Error(
-      "CardsNewClient element not found in the page output — page may have redirected",
+      "CardsNewClient element not found in the CardsNewContent output — content may have redirected",
     );
   }
   return props;
@@ -159,6 +207,47 @@ describe("CardsNewPage — auth branches", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Suspense boundary
+// ---------------------------------------------------------------------------
+
+describe("CardsNewPage — Suspense boundary", () => {
+  beforeEach(() => {
+    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
+  });
+
+  test("wraps the data-dependent subtree in <Suspense fallback={<CardsNewSkeleton />}>", async () => {
+    // gqlFetch is unused here because we only inspect the synchronous JSX tree
+    // returned by the page (we do not invoke CardsNewContent).
+    const result = await CardsNewPage({ searchParams: Promise.resolve({}) });
+
+    // Find the Suspense element in the tree.
+    const findSuspense = (node: unknown): Record<string, unknown> | null => {
+      if (node == null || typeof node !== "object") return null;
+      const el = node as Record<string, unknown>;
+      if ("type" in el && el.type === Suspense) return el;
+      if ("props" in el && el.props != null) {
+        const children = (el.props as Record<string, unknown>).children;
+        if (Array.isArray(children)) {
+          for (const child of children) {
+            const found = findSuspense(child);
+            if (found) return found;
+          }
+        } else if (children != null) {
+          return findSuspense(children);
+        }
+      }
+      return null;
+    };
+
+    const suspenseEl = findSuspense(result);
+    expect(suspenseEl).not.toBeNull();
+    const fallback = (suspenseEl?.props as { fallback?: { type?: unknown } }).fallback;
+    expect(fallback).toBeDefined();
+    expect((fallback as { type?: unknown }).type).toBe(CardsNewSkeleton);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // gqlFetch error branches
 // ---------------------------------------------------------------------------
 
@@ -172,9 +261,7 @@ describe("CardsNewPage — gqlFetch error branches", () => {
       new Error(`GraphQL errors: ${JSON.stringify([{ extensions: { code: "UNAUTHENTICATED" } }])}`),
     );
 
-    await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
-      `${REDIRECT_PREFIX}/login`,
-    );
+    await expect(renderPage({})).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
 
     expect(redirect).toHaveBeenCalledWith("/login");
   });
@@ -183,7 +270,7 @@ describe("CardsNewPage — gqlFetch error branches", () => {
     const otherErr = new Error("GraphQL HTTP 500");
     vi.mocked(gqlFetch).mockRejectedValueOnce(otherErr);
 
-    await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toBe(otherErr);
+    await expect(renderPage({})).rejects.toBe(otherErr);
 
     expect(redirect).not.toHaveBeenCalled();
   });
@@ -283,9 +370,7 @@ describe("CardsNewPage — cardgroup resolution", () => {
       }) as never,
     );
 
-    await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
-      `${REDIRECT_PREFIX}/cardgroups/new?welcome=1`,
-    );
+    await expect(renderPage({})).rejects.toThrow(`${REDIRECT_PREFIX}/cardgroups/new?welcome=1`);
 
     expect(redirect).toHaveBeenCalledWith("/cardgroups/new?welcome=1");
   });
