@@ -1233,35 +1233,6 @@ func TestGraphQL_CreateCardgroup_Then_MyCardgroups(t *testing.T) {
 	}
 }
 
-func TestGraphQL_CreateCard_Then_CardsByCardgroup(t *testing.T) {
-	f := newJWTFixture(t)
-	ts, _ := newGraphQLTestServer(t, f)
-	ctx := context.Background()
-	sub := insertAuthUser(t, ctx)
-	tok := f.sign(t, sub)
-
-	cgID := createTestCardgroup(t, ts.URL, tok, "Cards")
-	cardID := createTestCard(t, ts.URL, tok, cgID, "front", "back")
-
-	body := fmt.Sprintf(`{"query":"{ cardsByCardgroup(cardgroupId: \"%s\") { id front back cardgroup { id name } } }"}`, cgID)
-	resp := postGraphQL(t, ts.URL+"/query", body, tok)
-	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
-		t.Fatalf("cardsByCardgroup errors: %v", errs)
-	}
-	list, _ := resp["data"].(map[string]any)["cardsByCardgroup"].([]any)
-	if len(list) != 1 {
-		t.Fatalf("expected 1 card, got %d; resp=%v", len(list), resp)
-	}
-	card, _ := list[0].(map[string]any)
-	if card["id"] != cardID {
-		t.Fatalf("card id=%v, want %q", card["id"], cardID)
-	}
-	cg, _ := card["cardgroup"].(map[string]any)
-	if cg == nil || cg["id"] != cgID || cg["name"] != "Cards" {
-		t.Fatalf("cardgroup resolver returned %v", cg)
-	}
-}
-
 func TestGraphQL_CreateCard_NonOwner_Unauthenticated(t *testing.T) {
 	f := newJWTFixture(t)
 	ts, _ := newGraphQLTestServer(t, f)
@@ -2154,9 +2125,6 @@ func (panicQueryResolver) MyCardgroupsConnection(_ context.Context, _ *int, _ *s
 	return nil, nil
 }
 func (panicQueryResolver) Card(_ context.Context, _ string) (*model.Card, error) { return nil, nil }
-func (panicQueryResolver) CardsByCardgroup(_ context.Context, _ string) ([]*model.Card, error) {
-	return nil, nil
-}
 func (panicQueryResolver) LearnNextDueCards(_ context.Context, _ string, _ *int) ([]*model.Card, error) {
 	return nil, nil
 }

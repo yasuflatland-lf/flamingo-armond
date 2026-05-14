@@ -235,8 +235,6 @@ type CardgroupConnection {
 extend type Query {
   """Single card by ID. Returns UNAUTHENTICATED for non-owners (existence is not leaked)."""
   card(id: ID!): Card
-  """All cards in a cardgroup owned by the authenticated caller."""
-  cardsByCardgroup(cardgroupId: ID!): [Card!]! @deprecated(reason: "Use cardsByCardgroupConnection")
   """
   Next batch of cards due for review in this cardgroup, ordered by due-date with
   same-due ties shuffled per session. Returns an empty list when all cards are caught up.

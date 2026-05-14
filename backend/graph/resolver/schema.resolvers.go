@@ -327,15 +327,6 @@ func (r *queryResolver) Card(ctx context.Context, id string) (*model.Card, error
 	return toCardModel(card), nil
 }
 
-// CardsByCardgroup is the resolver for the cardsByCardgroup field.
-func (r *queryResolver) CardsByCardgroup(ctx context.Context, cardgroupID string) ([]*model.Card, error) {
-	cards, err := r.CardUC.CardsByCardgroup(ctx, cardgroupID)
-	if err != nil {
-		return nil, err
-	}
-	return toCardModels(ctx, cards), nil
-}
-
 // LearnNextDueCards is the resolver for the learnNextDueCards field.
 func (r *queryResolver) LearnNextDueCards(ctx context.Context, cardgroupID string, limit *int) ([]*model.Card, error) {
 	n := 0

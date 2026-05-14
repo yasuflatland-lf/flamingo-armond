@@ -32,7 +32,7 @@ func TestToRoleModels_FiltersNil(t *testing.T) {
 
 // TestToCardModels_FiltersNil verifies that toCardModels skips nil domain.Card
 // values and returns only non-nil results. This is critical because
-// Query.cardsByCardgroup declares [Card!]!, so a nil entry would violate
+// card list fields declare [Card!]!, so a nil entry would violate
 // the schema.
 func TestToCardModels_FiltersNil(t *testing.T) {
 	t.Parallel()
