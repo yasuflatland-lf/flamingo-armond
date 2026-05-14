@@ -5,7 +5,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  MyCardgroupsDocument,
+  MyCardgroupsConnectionDocument,
   UpsertDictionaryDocument,
   ValidateDictionaryDocument,
 } from "@/generated/graphql";
@@ -74,10 +74,24 @@ const PAYLOAD_TEXT_EDITED = "apple\tthe fruit\nbanana\ta yellow fruit";
 const PAYLOAD_ENCODED_EDITED = encodePayload(PAYLOAD_TEXT_EDITED);
 
 const CARDGROUPS_MOCK = {
-  request: { query: MyCardgroupsDocument },
+  request: { query: MyCardgroupsConnectionDocument, variables: { first: 100 } },
   result: {
     data: {
-      myCardgroups: [CG_1, CG_2],
+      myCardgroupsConnection: {
+        __typename: "CardgroupConnection" as const,
+        edges: [
+          { __typename: "CardgroupEdge" as const, cursor: "cursor-abc", node: CG_1 },
+          { __typename: "CardgroupEdge" as const, cursor: "cursor-def", node: CG_2 },
+        ],
+        pageInfo: {
+          __typename: "PageInfo" as const,
+          hasNextPage: false,
+          hasPreviousPage: false,
+          startCursor: "cursor-abc",
+          endCursor: "cursor-def",
+        },
+        totalCount: 2,
+      },
     },
   },
 };
@@ -117,7 +131,7 @@ let leakSpy: ApolloMockLeakSpyResult;
 
 beforeEach(() => {
   leakSpy = installApolloMockLeakSpy({
-    operationNames: ["ValidateDictionary", "UpsertDictionary", "MyCardgroups"],
+    operationNames: ["ValidateDictionary", "UpsertDictionary", "MyCardgroupsConnection"],
   });
 });
 

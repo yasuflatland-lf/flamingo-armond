@@ -6,7 +6,7 @@ import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DictionaryImportClient } from "@/app/admin/dictionary/dictionary-client";
 import {
-  MyCardgroupsDocument,
+  MyCardgroupsConnectionDocument,
   UpsertDictionaryDocument,
   ValidateDictionaryDocument,
 } from "@/generated/graphql";
@@ -23,19 +23,34 @@ const ENCODED_PAYLOAD = encodePayload(PAYLOAD_TEXT);
 
 const CARDGROUPS_MOCK = {
   request: {
-    query: MyCardgroupsDocument,
-    variables: {},
+    query: MyCardgroupsConnectionDocument,
+    variables: { first: 100 },
   },
   result: {
     data: {
-      myCardgroups: [
-        {
-          __typename: "Cardgroup",
-          id: "cg-1",
-          name: "My Cards",
-          updatedAt: "2024-01-01T00:00:00Z",
+      myCardgroupsConnection: {
+        __typename: "CardgroupConnection",
+        edges: [
+          {
+            __typename: "CardgroupEdge",
+            cursor: "cursor-1",
+            node: {
+              __typename: "Cardgroup",
+              id: "cg-1",
+              name: "My Cards",
+              updatedAt: "2024-01-01T00:00:00Z",
+            },
+          },
+        ],
+        pageInfo: {
+          __typename: "PageInfo",
+          hasNextPage: false,
+          hasPreviousPage: false,
+          startCursor: "cursor-1",
+          endCursor: "cursor-1",
         },
-      ],
+        totalCount: 1,
+      },
     },
   },
 };

@@ -71,7 +71,7 @@ import { redirect } from "next/navigation";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DictionaryImportClient } from "@/app/admin/dictionary/dictionary-client";
 import AdminDictionaryPage from "@/app/admin/dictionary/page";
-import { MyCardgroupsDocument } from "@/generated/graphql";
+import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -79,37 +79,67 @@ import { MyCardgroupsDocument } from "@/generated/graphql";
 
 const CARDGROUPS_MOCK = {
   request: {
-    query: MyCardgroupsDocument,
-    variables: {},
+    query: MyCardgroupsConnectionDocument,
+    variables: { first: 100 },
   },
   result: {
     data: {
-      myCardgroups: [
-        {
-          __typename: "Cardgroup",
-          id: "cg-100",
-          name: "Vocab Set A",
-          updatedAt: "2026-01-01T00:00:00Z",
+      myCardgroupsConnection: {
+        __typename: "CardgroupConnection",
+        edges: [
+          {
+            __typename: "CardgroupEdge",
+            cursor: "cursor-100",
+            node: {
+              __typename: "Cardgroup",
+              id: "cg-100",
+              name: "Vocab Set A",
+              updatedAt: "2026-01-01T00:00:00Z",
+            },
+          },
+          {
+            __typename: "CardgroupEdge",
+            cursor: "cursor-200",
+            node: {
+              __typename: "Cardgroup",
+              id: "cg-200",
+              name: "Grammar Notes",
+              updatedAt: "2026-01-02T00:00:00Z",
+            },
+          },
+        ],
+        pageInfo: {
+          __typename: "PageInfo",
+          hasNextPage: false,
+          hasPreviousPage: false,
+          startCursor: "cursor-100",
+          endCursor: "cursor-200",
         },
-        {
-          __typename: "Cardgroup",
-          id: "cg-200",
-          name: "Grammar Notes",
-          updatedAt: "2026-01-02T00:00:00Z",
-        },
-      ],
+        totalCount: 2,
+      },
     },
   },
 };
 
 const EMPTY_CARDGROUPS_MOCK = {
   request: {
-    query: MyCardgroupsDocument,
-    variables: {},
+    query: MyCardgroupsConnectionDocument,
+    variables: { first: 100 },
   },
   result: {
     data: {
-      myCardgroups: [],
+      myCardgroupsConnection: {
+        __typename: "CardgroupConnection",
+        edges: [],
+        pageInfo: {
+          __typename: "PageInfo",
+          hasNextPage: false,
+          hasPreviousPage: false,
+          startCursor: null,
+          endCursor: null,
+        },
+        totalCount: 0,
+      },
     },
   },
 };
