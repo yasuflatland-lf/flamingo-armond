@@ -43,6 +43,29 @@ import (
 
 const defaultShutdownTimeout = 25 * time.Second
 
+type serverConfig struct {
+	ShutdownTimeout time.Duration
+}
+
+func serverConfigFromEnv(logger *slog.Logger) serverConfig {
+	shutdownDur := defaultShutdownTimeout
+	if v := os.Getenv("SHUTDOWN_TIMEOUT"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			logger.Warn("invalid SHUTDOWN_TIMEOUT, using default",
+				"value", v, "err", err, "default", defaultShutdownTimeout.String())
+		} else if d <= 0 {
+			logger.Warn("non-positive SHUTDOWN_TIMEOUT, using default",
+				"value", v, "default", defaultShutdownTimeout.String())
+		} else {
+			shutdownDur = d
+		}
+	}
+	return serverConfig{
+		ShutdownTimeout: shutdownDur,
+	}
+}
+
 func newGraphQLServer(r *resolver.Resolver) *handler.Server {
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.Options{})
@@ -127,25 +150,6 @@ func newRouter(
 	return e
 }
 
-func shutdownTimeout(logger *slog.Logger) time.Duration {
-	v := os.Getenv("SHUTDOWN_TIMEOUT")
-	if v == "" {
-		return defaultShutdownTimeout
-	}
-	d, err := time.ParseDuration(v)
-	if err != nil {
-		logger.Warn("invalid SHUTDOWN_TIMEOUT, using default",
-			"value", v, "err", err, "default", defaultShutdownTimeout.String())
-		return defaultShutdownTimeout
-	}
-	if d <= 0 {
-		logger.Warn("non-positive SHUTDOWN_TIMEOUT, using default",
-			"value", v, "default", defaultShutdownTimeout.String())
-		return defaultShutdownTimeout
-	}
-	return d
-}
-
 // bootstrapSuperUserPromoter constructs the SuperUserPromoter and emits the
 // startup INFO/WARN logs for the super-user bootstrap path. Extracted so its
 // branching logic can be unit-tested without spinning up the full run() server.
@@ -194,6 +198,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	if err != nil {
 		return eris.Wrap(err, "run: telemetry init")
 	}
+	srvCfg := serverConfigFromEnv(logger)
 
 	pingToken := os.Getenv("PING_TOKEN")
 	if pingToken == "" {
@@ -305,7 +310,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	g.Go(func() error {
 		<-gctx.Done()
-		timeout := shutdownTimeout(logger)
+		timeout := srvCfg.ShutdownTimeout
 		logger.Info("shutdown signal received", "timeout", timeout.String())
 		sctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
