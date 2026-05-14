@@ -1,13 +1,23 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+// The mock-supabase import must precede the `vi.mock("@/lib/supabase/server", ...)`
+// factory below: the factory references `mockCreateSupabaseServerClient`, and
+// Vitest's hoisting of `vi.mock` produces a TDZ error if the binding is
+// imported later in source order than the factory that references it.
+import {
+  mockCreateSupabaseServerClient,
+  resetMockSupabase,
+  setMockSupabaseUser,
+  setMockSupabaseUserError,
+} from "./utils/mock-supabase";
 
 // ---------------------------------------------------------------------------
 // Module mocks — hoisted by Vitest before imports
 // ---------------------------------------------------------------------------
 
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => Promise.resolve(mockSupabaseServerClient()),
+  createSupabaseServerClient: mockCreateSupabaseServerClient,
 }));
 
 vi.mock("@/lib/apollo/server", () => ({
@@ -67,12 +77,6 @@ import { redirect } from "next/navigation";
 import CardgroupsPage, { CardgroupsContent } from "@/app/cardgroups/page";
 import { gqlFetch } from "@/lib/apollo/server";
 import { makeCardgroup } from "./fixtures/cardgroups";
-import {
-  mockSupabaseServerClient,
-  resetMockSupabase,
-  setMockSupabaseUser,
-  setMockSupabaseUserError,
-} from "./utils/mock-supabase";
 
 // ---------------------------------------------------------------------------
 // Helpers

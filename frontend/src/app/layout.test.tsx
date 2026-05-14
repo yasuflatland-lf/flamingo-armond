@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  mockSupabaseServerClient,
+  getMockGetClaimsSpy,
+  mockCreateSupabaseServerClient,
   resetMockSupabase,
+  setMockSupabaseClaims,
+  setMockSupabaseClaimsDataNull,
+  setMockSupabaseClaimsError,
   setMockSupabaseUser,
   setMockSupabaseUserError,
 } from "../../__tests__/utils/mock-supabase";
@@ -11,11 +15,7 @@ import {
 // ---------------------------------------------------------------------------
 
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => Promise.resolve(mockSupabaseServerClient()),
-}));
-
-vi.mock("@/lib/apollo/server", () => ({
-  gqlFetch: vi.fn(),
+  createSupabaseServerClient: mockCreateSupabaseServerClient,
 }));
 
 // AppShell, Providers, and GlobalFAB are opaque to this test — we do not need
@@ -55,19 +55,6 @@ vi.mock("next/headers", () => ({
 // ---------------------------------------------------------------------------
 
 import RootLayout from "@/app/layout";
-import { gqlFetch } from "@/lib/apollo/server";
-
-// ---------------------------------------------------------------------------
-// Helper: build the UNAUTHENTICATED error exactly as gqlFetch throws it.
-// The `isUnauthenticatedGraphQLError` helper checks for the prefix
-// "GraphQL errors: " followed by a JSON array with at least one entry whose
-// extensions.code equals "UNAUTHENTICATED".
-// ---------------------------------------------------------------------------
-
-function makeUnauthenticatedError(): Error {
-  const errors = [{ extensions: { code: "UNAUTHENTICATED" } }];
-  return new Error(`GraphQL errors: ${JSON.stringify(errors)}`);
-}
 
 // ---------------------------------------------------------------------------
 // Helper: traverse the React element tree returned by RootLayout and find
@@ -157,69 +144,66 @@ afterEach(() => {
 
 describe("RootLayout — error handling and AppShell prop wiring", () => {
   // Case 1: AuthSessionMissingError is the normal anonymous-request signal.
-  // The layout must NOT call gqlFetch, must NOT emit console.error, and must
+  // The layout must NOT call getClaims, must NOT emit console.error, and must
   // pass user=null / isAdmin=false to AppShell.
-  test("AuthSessionMissingError: no gqlFetch call, no console output, AppShell gets user=null isAdmin=false", async () => {
+  test("AuthSessionMissingError: no getClaims call, no console output, AppShell gets user=null isAdmin=false", async () => {
     const noSession = new Error("Auth session missing!");
     noSession.name = "AuthSessionMissingError";
     setMockSupabaseUserError(noSession);
 
     const props = await renderLayoutAndGetShellProps();
 
-    expect(gqlFetch).not.toHaveBeenCalled();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
     expect(consoleWarnSpy).not.toHaveBeenCalled();
+    // The layout reached createSupabaseServerClient() (auth check is required
+    // for non-bypass routes) but must short-circuit before getClaims().
+    expect(mockCreateSupabaseServerClient).toHaveBeenCalled();
+    expect(getMockGetClaimsSpy()).not.toHaveBeenCalled();
     expect(props.user).toBeNull();
     expect(props.isAdmin).toBe(false);
   });
 
   // Case 2: A non-AuthSessionMissingError from getUser() (e.g. a transport
   // failure) must be logged with the [layout] prefix and degrade gracefully —
-  // AppShell receives a null user and false isAdmin, no gqlFetch is called.
-  test("non-AuthSessionMissingError from getUser: console.error with [layout] prefix, degraded shell, no gqlFetch", async () => {
+  // AppShell receives a null user and false isAdmin, no getClaims is called.
+  test("non-AuthSessionMissingError from getUser: console.error with [layout] prefix, degraded shell, no getClaims", async () => {
     const transportError = new Error("network failure");
     transportError.name = "FetchError";
     setMockSupabaseUserError(transportError);
 
     const props = await renderLayoutAndGetShellProps();
 
-    expect(gqlFetch).not.toHaveBeenCalled();
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "[layout] getUser() failed:",
       transportError.name,
       transportError.message,
     );
+    // The layout reached createSupabaseServerClient() (auth check is required
+    // for non-bypass routes) but must short-circuit before getClaims().
+    expect(mockCreateSupabaseServerClient).toHaveBeenCalled();
+    expect(getMockGetClaimsSpy()).not.toHaveBeenCalled();
     expect(props.user).toBeNull();
     expect(props.isAdmin).toBe(false);
   });
 
-  // Case 3: Authenticated user whose me query returns an admin role.
+  // Case 3: Authenticated user whose claims contain app_metadata.role === "admin".
   // AppShell must receive user.email and isAdmin=true.
-  // gqlFetch must be called with { revalidate: 0 }.
-  test("authenticated user + admin role: AppShell gets user.email and isAdmin=true, gqlFetch called with revalidate:0", async () => {
+  test("authenticated user + admin role in claims: AppShell gets user.email and isAdmin=true", async () => {
     setMockSupabaseUser({ id: "u-3", email: "admin@example.com" });
-    vi.mocked(gqlFetch).mockResolvedValueOnce({
-      me: { roles: [{ name: "admin" }] },
-    } as never);
+    setMockSupabaseClaims({ app_metadata: { role: "admin" } });
 
     const props = await renderLayoutAndGetShellProps();
 
-    // gqlFetch must be called with { revalidate: 0 } — never with the default
-    // cache heuristic — because me data depends on the current user's auth token.
-    expect(gqlFetch).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ revalidate: 0 }),
-    );
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
     expect(props.user).toEqual({ email: "admin@example.com" });
     expect(props.isAdmin).toBe(true);
   });
 
-  // Case 4: Authenticated user whose me query returns a non-admin role.
-  test("authenticated user + non-admin role: isAdmin=false", async () => {
+  // Case 4: Authenticated user whose claims contain a non-admin role.
+  test("authenticated user + non-admin role in claims: isAdmin=false", async () => {
     setMockSupabaseUser({ id: "u-4", email: "member@example.com" });
-    vi.mocked(gqlFetch).mockResolvedValueOnce({
-      me: { roles: [{ name: "member" }] },
-    } as never);
+    setMockSupabaseClaims({ app_metadata: { role: "member" } });
 
     const props = await renderLayoutAndGetShellProps();
 
@@ -227,38 +211,70 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
     expect(props.user).toEqual({ email: "member@example.com" });
   });
 
-  // Case 5: Authenticated user whose me query returns empty roles.
-  test("authenticated user + empty roles array: isAdmin=false", async () => {
+  // Case 5: Authenticated user whose claims have app_metadata.role absent.
+  test("authenticated user + claims with role missing: isAdmin=false", async () => {
     setMockSupabaseUser({ id: "u-5", email: "new@example.com" });
-    vi.mocked(gqlFetch).mockResolvedValueOnce({
-      me: { roles: [] },
-    } as never);
+    setMockSupabaseClaims({ app_metadata: {} });
 
     const props = await renderLayoutAndGetShellProps();
 
     expect(props.isAdmin).toBe(false);
   });
 
-  // Case 6: Authenticated user but gqlFetch rejects with UNAUTHENTICATED.
-  // Expected race during clock skew / JWKS rotation — must degrade SILENTLY
-  // (no console.warn, no console.error), isAdmin=false.
-  test("authenticated user + UNAUTHENTICATED from gqlFetch: silent degradation, isAdmin=false, no console output", async () => {
-    setMockSupabaseUser({ id: "u-6", email: "user@example.com" });
-    vi.mocked(gqlFetch).mockRejectedValueOnce(makeUnauthenticatedError());
+  // Case 6: Authenticated user whose claims have app_metadata absent entirely.
+  test("authenticated user + claims with app_metadata absent: isAdmin=false", async () => {
+    setMockSupabaseUser({ id: "u-6a", email: "bare@example.com" });
+    setMockSupabaseClaims({});
 
     const props = await renderLayoutAndGetShellProps();
 
-    // UNAUTHENTICATED is a known race — must not surface to the operator log.
-    expect(consoleWarnSpy).not.toHaveBeenCalled();
+    expect(props.isAdmin).toBe(false);
+  });
+
+  // Case 6b: Authenticated user but getClaims returns the SDK's third return
+  // shape `{ data: null, error: null }` — the TOCTOU race window where the
+  // session vanished between getUser() and getClaims(). The layout must:
+  //   - emit console.warn with "[layout] getClaims() returned null data without error"
+  //   - include a structured payload with a discriminating key (user_id)
+  //   - NOT include email or display_name in the payload (PII protection)
+  //   - degrade to isAdmin=false without throwing
+  //   - still pass user.email to AppShell (shellUser only degrades on a real
+  //     getUser() failure, not on a null-data getClaims response)
+  test("authenticated user + getClaims returns { data: null, error: null }: console.warn with PII-free payload, isAdmin=false, shellUser intact", async () => {
+    const userId = "u-6b";
+    setMockSupabaseUser({ id: userId, email: "toctou@example.com" });
+    setMockSupabaseClaimsDataNull();
+
+    const props = await renderLayoutAndGetShellProps();
+
     expect(consoleErrorSpy).not.toHaveBeenCalled();
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "[layout] getClaims() returned null data without error",
+      expect.objectContaining({
+        user_id: userId,
+      }),
+    );
+
+    // Exactly-one assertion: silently picking `mock.calls[0][1]` without first
+    // asserting call-count would let a regression that emits a second warn
+    // slip through. The PII-absence check below must inspect the single
+    // intended warn payload, not the first of many.
+    expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
+    // PII absence: email and display_name must NOT appear in the warn payload.
+    const warnPayload = consoleWarnSpy.mock.calls[0][1] as Record<string, unknown>;
+    expect(Object.keys(warnPayload)).not.toContain("email");
+    expect(Object.keys(warnPayload)).not.toContain("display_name");
+
     expect(props.isAdmin).toBe(false);
-    // user.email is still available even when the me query fails.
-    expect(props.user).toEqual({ email: "user@example.com" });
+    // user.email is still wired to AppShell — only the admin flag degrades when
+    // getClaims returns the null-data race shape.
+    expect(props.user).toEqual({ email: "toctou@example.com" });
   });
 
-  // Case 7: Authenticated user but gqlFetch rejects with an unexpected error
-  // (not UNAUTHENTICATED). The layout must:
-  //   - emit console.warn with "[layout] me query unexpectedly failed"
+  // Case 7: Authenticated user but getClaims returns an error.
+  // The layout must:
+  //   - emit console.warn with "[layout] getClaims() failed"
   //   - include a structured payload with a discriminating key (user_id) so
   //     the assertion cannot be satisfied by a bare Error instance — per
   //     docs/frontend/typescript-conventions.md "expect.objectContaining
@@ -266,10 +282,13 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
   //   - NOT include email or display_name in the payload (PII protection) — per
   //     docs/backend/error-wrapping/assert-pii-absence-on-log-lines.md
   //   - degrade to isAdmin=false without throwing
-  test("authenticated user + unexpected gqlFetch error: console.warn with discriminating payload, PII absent, isAdmin=false", async () => {
+  //   - still pass user.email to AppShell (only the admin flag is degraded)
+  test("authenticated user + getClaims error: console.warn with discriminating payload, PII absent, isAdmin=false", async () => {
     const userId = "u-7";
     setMockSupabaseUser({ id: userId, email: "private@example.com" });
-    vi.mocked(gqlFetch).mockRejectedValueOnce(new Error("transport boom"));
+    const claimsErr = new Error("JWKS fetch failed");
+    claimsErr.name = "JWKSFetchError";
+    setMockSupabaseClaimsError(claimsErr);
 
     const props = await renderLayoutAndGetShellProps();
 
@@ -277,7 +296,7 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
 
     // The warn must be called with the exact [layout] scope prefix.
     expect(consoleWarnSpy).toHaveBeenCalledWith(
-      "[layout] me query unexpectedly failed",
+      "[layout] getClaims() failed",
       // `user_id` is a discriminating own-property key that Error.prototype
       // does not carry — it distinguishes the intended structured log object
       // from a plain Error regression.
@@ -286,6 +305,10 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
       }),
     );
 
+    // Exactly-one assertion: silently picking `mock.calls[0][1]` without first
+    // asserting call-count would let a regression that emits a second warn
+    // slip through.
+    expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
     // PII absence: email and display_name must NOT appear in the warn payload.
     const warnPayload = consoleWarnSpy.mock.calls[0][1] as Record<string, unknown>;
     expect(Object.keys(warnPayload)).not.toContain("email");
@@ -293,21 +316,24 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
 
     expect(props.isAdmin).toBe(false);
     // user.email is still wired to AppShell — the shell is not degraded when
-    // only the me query fails.
+    // only the claims lookup fails.
     expect(props.user).toEqual({ email: "private@example.com" });
   });
 
   // Case 8: Anonymous user — user is null with no error (e.g. a clean
-  // signed-out state). The layout must short-circuit the me query and pass
+  // signed-out state). The layout must short-circuit getClaims and pass
   // null / false to AppShell.
-  test("anonymous user (user=null, no error): no gqlFetch call, AppShell gets user=null isAdmin=false", async () => {
+  test("anonymous user (user=null, no error): no getClaims call, AppShell gets user=null isAdmin=false", async () => {
     setMockSupabaseUser(null); // explicit for readability; also the default after reset
 
     const props = await renderLayoutAndGetShellProps();
 
-    expect(gqlFetch).not.toHaveBeenCalled();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
     expect(consoleWarnSpy).not.toHaveBeenCalled();
+    // The layout reached createSupabaseServerClient() (auth check is required
+    // for non-bypass routes) but must short-circuit before getClaims().
+    expect(mockCreateSupabaseServerClient).toHaveBeenCalled();
+    expect(getMockGetClaimsSpy()).not.toHaveBeenCalled();
     expect(props.user).toBeNull();
     expect(props.isAdmin).toBe(false);
   });
@@ -317,15 +343,23 @@ describe("RootLayout — error handling and AppShell prop wiring", () => {
   // returned tree must NOT contain an AppShell element. The supabase server
   // client mock would still be invocable, but the layout must short-circuit
   // before reaching it.
-  test("/login: layout renders bare children without AppShell, no Supabase or gqlFetch calls", async () => {
+  test("/login: layout renders bare children without AppShell, no Supabase calls", async () => {
     mockGetHeader.mockImplementation((name) => (name === "x-pathname" ? "/login" : null));
 
     const tree = await RootLayout({ children: <div data-testid="login-children" /> });
     const appShellProps = findElementProps(tree, "AppShell");
 
     expect(appShellProps).toBeNull();
-    expect(gqlFetch).not.toHaveBeenCalled();
     expect(consoleErrorSpy).not.toHaveBeenCalled();
     expect(consoleWarnSpy).not.toHaveBeenCalled();
+    // The /login bypass short-circuits before reaching the supabase client at
+    // all. Asserting on `mockCreateSupabaseServerClient` is the load-bearing
+    // check: `getMockGetClaimsSpy()` lazily materialises an uncalled spy when
+    // the layout short-circuits before invoking the factory, so its
+    // `not.toHaveBeenCalled` assertion is trivially satisfied; only the
+    // factory-call assertion catches a regression where the layout starts
+    // calling supabase on /login.
+    expect(mockCreateSupabaseServerClient).not.toHaveBeenCalled();
+    expect(getMockGetClaimsSpy()).not.toHaveBeenCalled();
   });
 });

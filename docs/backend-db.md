@@ -67,6 +67,8 @@ $$;
 - `REVOKE ALL FROM PUBLIC` then narrow `GRANT EXECUTE` — without revoking from `PUBLIC`, anonymous PostgREST callers (`anon` role) could invoke the helper as an oracle to enumerate role assignments. The grant is intentionally limited to the Supabase-managed `authenticated` role.
 - `DO $$ ... IF EXISTS pg_roles ... GRANT END $$` portability guard — plain PostgreSQL does not include Supabase-managed roles (`authenticated`, `anon`, `service_role`) by default. Wrapping role-specific GRANTs in this conditional `DO` block keeps the migration applicable outside Supabase. Testcontainers create a minimal `authenticated` role fixture so RLS behavior can be exercised directly. The Go backend connects as the table owner and bypasses RLS, so the GRANT path is used only by direct PostgREST / Edge callers in production.
 
+The same recipe applies to functions invoked by Supabase GoTrue at JWT mint time (the Custom Access Token Hook). See [`docs/backend/custom-access-token-hook.md`](backend/custom-access-token-hook.md) for the hook-specific design decisions — join-at-mint over sync-trigger, fail-closed on malformed events, stale-claim removal, canonical return shape, and the down-migration operator precondition.
+
 ### Postgres upsert: prerequisite UNIQUE / EXCLUSION constraint
 
 `INSERT ... ON CONFLICT (cols) ...` requires the column set to be backed by a UNIQUE constraint, UNIQUE INDEX, or EXCLUSION constraint. Plain (non-unique) indexes and CHECK constraints do not satisfy the requirement — Postgres rejects the statement with SQLSTATE `42P10` "there is no unique or exclusion constraint matching the ON CONFLICT specification". This is checked at planning time, so the failure surfaces immediately, not on a colliding row.

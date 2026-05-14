@@ -23,7 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CardsByCardgroupConnectionDocument } from "@/generated/graphql";
 import { cardsConnectionFixture, cardsFixture } from "./fixtures/cardgroups";
 import {
-  mockSupabaseServerClient,
+  mockCreateSupabaseServerClient,
   resetMockSupabase,
   setMockSupabaseUser,
   setMockSupabaseUserError,
@@ -60,7 +60,7 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => Promise.resolve(mockSupabaseServerClient()),
+  createSupabaseServerClient: mockCreateSupabaseServerClient,
 }));
 
 vi.mock("@/lib/apollo/server", () => ({

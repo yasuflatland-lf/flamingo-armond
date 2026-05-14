@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
-  mockSupabaseServerClient,
+  mockCreateSupabaseServerClient,
   resetMockSupabase,
   setMockSupabaseUser,
   setMockSupabaseUserError,
@@ -18,7 +18,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => Promise.resolve(mockSupabaseServerClient()),
+  createSupabaseServerClient: mockCreateSupabaseServerClient,
 }));
 
 vi.mock("@/lib/apollo/server", () => ({

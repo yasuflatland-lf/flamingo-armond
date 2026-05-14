@@ -4,10 +4,7 @@ import type { ReactNode } from "react";
 import { AppShell } from "@/components/nav/app-shell";
 import { GlobalFAB } from "@/components/nav/global-fab";
 import { Toaster } from "@/components/ui/sonner";
-import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
-import { gqlFetch } from "@/lib/apollo/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { HeaderMeQuery } from "./_components/queries";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -46,23 +43,40 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     console.error("[layout] getUser() failed:", error.name, error.message);
   }
 
-  // Skip the GraphQL me-query when the user is anonymous: the backend would
-  // return UNAUTHENTICATED and the warn log would fill with expected noise.
+  // Skip the getClaims call when the user is anonymous: no session means no
+  // JWT to inspect. The /admin layout redirects on actual navigation, so the
+  // header degrades to isAdmin=false for anonymous visitors without noise.
   let isAdmin = false;
   if (user && !getUserFailed) {
-    try {
-      const meData = await gqlFetch(HeaderMeQuery, { revalidate: 0 });
-      isAdmin = meData.me?.roles.some((r) => r.name === "admin") ?? false;
-    } catch (err) {
-      // Expected race: Supabase session valid but GraphQL token rejected
-      // (clock skew, JWKS rotation gap). The /admin layout redirects on
-      // actual navigation, so the header degrades silently here.
-      if (!isUnauthenticatedGraphQLError(err)) {
-        console.warn("[layout] me query unexpectedly failed", {
-          error_message: err instanceof Error ? err.message : String(err),
-          user_id: user.id,
-        });
-      }
+    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+    if (claimsError != null) {
+      // getClaims failures are non-fatal: the Supabase session is valid but
+      // the JWT could not be validated locally (e.g. key rotation gap, cold
+      // serverless instance without a cached JWKS). Degrade to isAdmin=false
+      // and warn so the operator can correlate with JWT key rotation events.
+      console.warn("[layout] getClaims() failed", {
+        user_id: user.id,
+        error_name: claimsError.name,
+      });
+    } else if (claimsData == null) {
+      // Third return shape from the SDK: `{ data: null, error: null }` — the
+      // TOCTOU race window where the session vanished between getUser() and
+      // getClaims(). Degrade to isAdmin=false and warn so the operator can
+      // correlate with session-revocation or sign-out events.
+      console.warn("[layout] getClaims() returned null data without error", {
+        user_id: user.id,
+      });
+    } else if (claimsData.claims == null) {
+      // Fourth return shape that is not in the SDK's current TS types but is
+      // forward-compatibility / mock-robustness defence: `{ data: { claims:
+      // null }, error: null }`. The optional chain `.claims?.app_metadata` used
+      // to silently degrade through this case; an explicit narrowing surfaces
+      // it via a warn so an operator can correlate with future SDK type drift.
+      console.warn("[layout] getClaims() returned data without claims", {
+        user_id: user.id,
+      });
+    } else {
+      isAdmin = claimsData.claims.app_metadata?.role === "admin";
     }
   }
 

@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { Suspense } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  mockSupabaseServerClient,
+  mockCreateSupabaseServerClient,
   resetMockSupabase,
   setMockSupabaseUser,
   setMockSupabaseUserError,
@@ -18,7 +18,7 @@ vi.mock("next/navigation", () => ({
 // Mock createSupabaseServerClient using the shared utility so per-test state is
 // driven via setMockSupabaseUser / setMockSupabaseUserError.
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => Promise.resolve(mockSupabaseServerClient()),
+  createSupabaseServerClient: mockCreateSupabaseServerClient,
 }));
 
 vi.mock("@/lib/apollo/server", () => ({
