@@ -212,8 +212,24 @@ describe("CardgroupsContent", () => {
   });
 
   it("rethrows non-auth errors so the error boundary handles them", async () => {
-    vi.mocked(gqlFetch).mockRejectedValue(new Error("Network unreachable"));
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      vi.mocked(gqlFetch).mockRejectedValue(new Error("Network unreachable"));
 
-    await expect(CardgroupsContent()).rejects.toThrow("Network unreachable");
+      await expect(CardgroupsContent()).rejects.toThrow("Network unreachable");
+
+      // PII-redacted payload: only `name` is logged, never `message`.
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[cardgroups] gqlFetch failed:",
+        expect.objectContaining({ name: expect.any(String) }),
+      );
+      // Assert that `message` (which may carry user-supplied content) is absent.
+      expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ message: expect.anything() }),
+      );
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
   });
 });

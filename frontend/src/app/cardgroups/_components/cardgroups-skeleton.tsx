@@ -2,18 +2,8 @@ import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * Loading-state placeholder for the /cardgroups listing route. Shape mirrors
- * the `<CardgroupsClient>` layout — header (via ListingPageShell), toolbar
- * row, and a vertical stack of cardgroup row rectangles — so the page layout
- * does not shift when the streamed content arrives (CLS minimization).
- *
- * Used by both `loading.tsx` (route-segment navigation fallback) and the
- * in-page `<Suspense>` boundary that wraps the GraphQL fetch.
- *
- * Renders inside the same `ListingPageShell` the resolved page uses, so the
- * header / toolbar geometry is identical between the loading and resolved
- * states. The `primaryActions` and `toolbar` slots are filled with skeleton
- * primitives sized to the real CTA button and search input respectively.
+ * Loading placeholder for the /cardgroups listing route. Mirrors the resolved
+ * page layout to prevent CLS while the GraphQL fetch streams in.
  */
 export function CardgroupsSkeleton() {
   return (

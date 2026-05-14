@@ -55,11 +55,9 @@ export async function CardgroupsContent() {
     // Structural parse per .claude/rules/frontend-rsc-error-handling.md §
     // "Structurally parse GraphQL extensions.code — never substring-match".
     if (isUnauthenticatedGraphQLError(err)) redirect("/login");
-    console.error(
-      "[cardgroups] gqlFetch failed:",
-      err instanceof Error ? err.name : "unknown",
-      err instanceof Error ? err.message : String(err),
-    );
+    console.error("[cardgroups] gqlFetch failed:", {
+      name: err instanceof Error ? err.name : "unknown",
+    });
     throw err;
   }
 

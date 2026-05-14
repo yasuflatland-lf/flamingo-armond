@@ -273,6 +273,17 @@ describe("CardsNewPage — gqlFetch error branches", () => {
     await expect(renderPage({})).rejects.toBe(otherErr);
 
     expect(redirect).not.toHaveBeenCalled();
+
+    // PII-redacted payload: only `name` is logged, never `message`.
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[cards-new] gqlFetch failed:",
+      expect.objectContaining({ name: expect.any(String) }),
+    );
+    // Assert that `message` (which may carry user-supplied content) is absent.
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: expect.anything() }),
+    );
   });
 });
 

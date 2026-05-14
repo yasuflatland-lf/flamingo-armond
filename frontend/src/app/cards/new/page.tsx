@@ -60,7 +60,9 @@ async function CardsNewContent({ cardgroupParam }: { cardgroupParam: string | un
     if (isUnauthenticatedGraphQLError(err)) {
       redirect("/login");
     }
-    console.error("[cards-new] gqlFetch failed:", err);
+    console.error("[cards-new] gqlFetch failed:", {
+      name: err instanceof Error ? err.name : "unknown",
+    });
     throw err;
   }
 
