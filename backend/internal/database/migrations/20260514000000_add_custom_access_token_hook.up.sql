@@ -14,9 +14,12 @@
 --
 -- Contract (Supabase Custom Access Token Hook):
 --   event jsonb has shape { "user_id": uuid, "claims": jsonb, ... }.
---   The function MUST return the modified event with the "claims" object
---   updated in place — every other claim the auth service prepared must be
---   preserved.
+--   The function returns the canonical Supabase shape { "claims": <claims> };
+--   GoTrue merges these claims into the access token.
+--
+-- The function fails closed on a malformed event (missing user_id or claims)
+-- by raising an exception, so a corrupt payload cannot silently mint a token
+-- with NULL user lookup or destroyed claims.
 --
 -- STABLE: reads tables, must not be IMMUTABLE.
 -- SECURITY DEFINER: function executes as owner so supabase_auth_admin can
@@ -42,6 +45,10 @@ DECLARE
     is_admin_user boolean;
     new_claims jsonb;
 BEGIN
+    IF event->>'user_id' IS NULL OR event->'claims' IS NULL THEN
+        RAISE EXCEPTION 'custom_access_token_hook: malformed event (user_id and claims are required)';
+    END IF;
+
     uid := (event->>'user_id')::uuid;
     original_claims := event->'claims';
     app_metadata := COALESCE(original_claims->'app_metadata', '{}'::jsonb);
@@ -63,7 +70,7 @@ BEGIN
     END IF;
 
     new_claims := jsonb_set(original_claims, '{app_metadata}', app_metadata, true);
-    RETURN jsonb_set(event, '{claims}', new_claims, true);
+    RETURN jsonb_build_object('claims', new_claims);
 END;
 $$;
 

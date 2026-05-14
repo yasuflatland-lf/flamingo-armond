@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -71,7 +72,7 @@ func appMetadataFromClaims(t *testing.T, claims map[string]any) map[string]any {
 func TestCustomAccessTokenHook_AdminUserGetsRoleClaim(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)
-	defer db.Close()
+	t.Cleanup(func() { db.Close() })
 
 	userID := insertAuthUserForAdmin(t, ctx, db)
 	sqlDB := sqlDBForTest(t, db)
@@ -106,7 +107,7 @@ func TestCustomAccessTokenHook_AdminUserGetsRoleClaim(t *testing.T) {
 func TestCustomAccessTokenHook_NonAdminUserOmitsRoleClaim(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)
-	defer db.Close()
+	t.Cleanup(func() { db.Close() })
 
 	userID := insertAuthUserForAdmin(t, ctx, db)
 	sqlDB := sqlDBForTest(t, db)
@@ -128,7 +129,7 @@ func TestCustomAccessTokenHook_NonAdminUserOmitsRoleClaim(t *testing.T) {
 func TestCustomAccessTokenHook_PreservesOtherClaims(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)
-	defer db.Close()
+	t.Cleanup(func() { db.Close() })
 
 	userID := insertAuthUserForAdmin(t, ctx, db)
 	sqlDB := sqlDBForTest(t, db)
@@ -172,7 +173,7 @@ func TestCustomAccessTokenHook_PreservesOtherClaims(t *testing.T) {
 func TestCustomAccessTokenHook_RemovesStaleRoleForNonAdmin(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)
-	defer db.Close()
+	t.Cleanup(func() { db.Close() })
 
 	userID := insertAuthUserForAdmin(t, ctx, db)
 	sqlDB := sqlDBForTest(t, db)
@@ -187,5 +188,57 @@ func TestCustomAccessTokenHook_RemovesStaleRoleForNonAdmin(t *testing.T) {
 
 	if _, present := meta["role"]; present {
 		t.Fatalf("app_metadata.role should be cleared for non-admin user, got: %v", meta)
+	}
+}
+
+// callCustomAccessTokenHookRaw invokes public.custom_access_token_hook(event)
+// with a raw JSON payload and returns the resulting JSON bytes and the SQL
+// error (if any). Unlike callCustomAccessTokenHook, it does not t.Fatal on
+// SQL failure — malformed-event tests need to assert on the error.
+func callCustomAccessTokenHookRaw(t *testing.T, ctx context.Context, sqlDB *sql.DB, eventJSON []byte) ([]byte, error) {
+	t.Helper()
+	var resultJSON []byte
+	err := sqlDB.QueryRowContext(ctx,
+		`SELECT public.custom_access_token_hook($1::jsonb)`, eventJSON).Scan(&resultJSON)
+	return resultJSON, err
+}
+
+// TestCustomAccessTokenHook_RejectsEventWithoutUserId verifies that the
+// function raises an exception when the event payload omits the user_id key.
+// The guard runs before any DB read, so no user fixture is required.
+func TestCustomAccessTokenHook_RejectsEventWithoutUserId(t *testing.T) {
+	ctx := context.Background()
+	db := openMigratedDB(t)
+	t.Cleanup(func() { db.Close() })
+
+	sqlDB := sqlDBForTest(t, db)
+
+	eventJSON := []byte(`{"claims": {}}`)
+	_, err := callCustomAccessTokenHookRaw(t, ctx, sqlDB, eventJSON)
+	if err == nil {
+		t.Fatalf("expected error for event without user_id, got nil")
+	}
+	if !strings.Contains(err.Error(), "malformed event") {
+		t.Fatalf("expected error to mention \"malformed event\", got: %v", err)
+	}
+}
+
+// TestCustomAccessTokenHook_RejectsEventWithoutClaims verifies that the
+// function raises an exception when the event payload omits the claims key.
+// The guard runs before any DB read, so no user fixture is required.
+func TestCustomAccessTokenHook_RejectsEventWithoutClaims(t *testing.T) {
+	ctx := context.Background()
+	db := openMigratedDB(t)
+	t.Cleanup(func() { db.Close() })
+
+	sqlDB := sqlDBForTest(t, db)
+
+	eventJSON := []byte(`{"user_id": "00000000-0000-0000-0000-000000000000"}`)
+	_, err := callCustomAccessTokenHookRaw(t, ctx, sqlDB, eventJSON)
+	if err == nil {
+		t.Fatalf("expected error for event without claims, got nil")
+	}
+	if !strings.Contains(err.Error(), "malformed event") {
+		t.Fatalf("expected error to mention \"malformed event\", got: %v", err)
 	}
 }
