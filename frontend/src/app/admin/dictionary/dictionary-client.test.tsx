@@ -579,9 +579,7 @@ describe("<DictionaryImportClient>", () => {
       renderClient([nullConnectionMock]);
 
       await waitFor(() => {
-        expect(consoleWarnSpy).toHaveBeenCalledWith(
-          expect.stringContaining("[admin/dictionary]"),
-        );
+        expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining("[admin/dictionary]"));
       });
     } finally {
       consoleWarnSpy.mockRestore();

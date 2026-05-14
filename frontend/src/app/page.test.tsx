@@ -169,9 +169,7 @@ describe("HomePage (root redirect)", () => {
     await expect(HomePage()).rejects.toThrow(
       /myCardgroupsConnection missing from root redirect data/,
     );
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[home]"),
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("[home]"));
   });
 
   test("onboarded user with no lastViewed and no cardgroups → /cardgroups/new?welcome=1", async () => {

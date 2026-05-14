@@ -51,4 +51,3 @@ export const userWithoutRolesFixture: User = {
   avatarUrl: null,
   roles: [],
 };
-

@@ -258,9 +258,7 @@ describe("CardsNewPage — gqlFetch error branches", () => {
     await expect(CardsNewContent({ cardgroupParam: undefined })).rejects.toThrow(
       /myCardgroupsConnection missing from bootstrap data/,
     );
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[cards-new]"),
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("[cards-new]"));
   });
 });
 
