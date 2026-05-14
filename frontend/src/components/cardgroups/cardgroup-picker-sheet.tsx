@@ -3,7 +3,6 @@
 import { useQuery } from "@apollo/client/react";
 import { Check, Plus } from "lucide-react";
 import Link from "next/link";
-import { MyCardgroupsQuery } from "@/app/cardgroups/queries";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -12,6 +11,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -45,10 +45,13 @@ export default function CardgroupPickerSheet({
   onSelect,
   createReturnTo,
 }: Props): React.ReactElement {
-  const { data, loading, error, refetch } = useQuery(MyCardgroupsQuery, {
+  const { data, loading, error, refetch } = useQuery(MyCardgroupsConnectionDocument, {
+    variables: { first: 100 },
     skip: !open,
     fetchPolicy: "cache-and-network",
   });
+
+  const cardgroups = data?.myCardgroupsConnection?.edges?.map((e) => e.node) ?? [];
 
   function handleSelect(id: string) {
     onSelect(id);
@@ -92,13 +95,13 @@ export default function CardgroupPickerSheet({
 
         {!loading && !error && data && (
           <>
-            {data.myCardgroups.length === 0 ? (
+            {cardgroups.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
                 You don&apos;t have any cardgroups yet.
               </p>
             ) : (
               <ul className="space-y-1">
-                {data.myCardgroups.map((cg) => {
+                {cardgroups.map((cg) => {
                   const isSelected = cg.id === selectedId;
                   return (
                     <li key={cg.id}>
