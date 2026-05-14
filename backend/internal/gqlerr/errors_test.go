@@ -309,4 +309,7 @@ func TestRecoverFunc(t *testing.T) {
 	if got.Message != "internal server error" {
 		t.Errorf("Message = %q, want %q", got.Message, "internal server error")
 	}
+	if !strings.Contains(buf.String(), "graphql: panic recovered") {
+		t.Errorf("expected log to contain panic message, got %q", buf.String())
+	}
 }

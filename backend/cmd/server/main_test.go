@@ -2300,3 +2300,35 @@ func TestBootstrapSuperUserPromoter_NoWarnWhenAdminExists(t *testing.T) {
 		t.Errorf("expected no log output when admin already exists, got: %s", buf.String())
 	}
 }
+
+func TestServerConfigFromEnv(t *testing.T) {
+	cases := []struct {
+		name    string
+		env     string
+		want    time.Duration
+		wantLog string
+	}{
+		{"empty uses default", "", defaultShutdownTimeout, ""},
+		{"valid positive", "5s", 5 * time.Second, ""},
+		{"invalid string uses default", "bad", defaultShutdownTimeout, "invalid SHUTDOWN_TIMEOUT"},
+		{"zero uses default", "0s", defaultShutdownTimeout, "non-positive SHUTDOWN_TIMEOUT"},
+		{"negative uses default", "-1s", defaultShutdownTimeout, "non-positive SHUTDOWN_TIMEOUT"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("SHUTDOWN_TIMEOUT", tc.env)
+			var buf bytes.Buffer
+			logger := slog.New(slog.NewJSONHandler(&buf, nil))
+			cfg := serverConfigFromEnv(logger)
+			if cfg.shutdownTimeout != tc.want {
+				t.Errorf("shutdownTimeout = %v, want %v", cfg.shutdownTimeout, tc.want)
+			}
+			if tc.wantLog != "" && !strings.Contains(buf.String(), tc.wantLog) {
+				t.Errorf("expected log to contain %q, got %q", tc.wantLog, buf.String())
+			}
+			if tc.wantLog == "" && buf.Len() > 0 {
+				t.Errorf("expected no log output, got %q", buf.String())
+			}
+		})
+	}
+}

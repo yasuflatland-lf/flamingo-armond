@@ -44,9 +44,12 @@ import (
 const defaultShutdownTimeout = 25 * time.Second
 
 type serverConfig struct {
-	ShutdownTimeout time.Duration
+	shutdownTimeout time.Duration
 }
 
+// serverConfigFromEnv builds a serverConfig from environment variables.
+// SHUTDOWN_TIMEOUT accepts any value accepted by time.ParseDuration; invalid
+// or non-positive values fall back to defaultShutdownTimeout with a WARN log.
 func serverConfigFromEnv(logger *slog.Logger) serverConfig {
 	shutdownDur := defaultShutdownTimeout
 	if v := os.Getenv("SHUTDOWN_TIMEOUT"); v != "" {
@@ -62,7 +65,7 @@ func serverConfigFromEnv(logger *slog.Logger) serverConfig {
 		}
 	}
 	return serverConfig{
-		ShutdownTimeout: shutdownDur,
+		shutdownTimeout: shutdownDur,
 	}
 }
 
@@ -310,7 +313,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 
 	g.Go(func() error {
 		<-gctx.Done()
-		timeout := srvCfg.ShutdownTimeout
+		timeout := srvCfg.shutdownTimeout
 		logger.Info("shutdown signal received", "timeout", timeout.String())
 		sctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
