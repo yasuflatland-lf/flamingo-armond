@@ -74,3 +74,6 @@ The older `redirectIfUnauthenticated` helper (in `frontend/src/lib/apollo/server
 - [Mid-session UNAUTHENTICATED in a client component: degraded banner with `<Link href="/login">`, not `redirect()`](../../docs/frontend/rsc-error-handling/mid-session-unauthenticated-degraded-banner.md)
 - [Redact `err.message` from structured `console` payloads when the upstream may carry user content](../../docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md)
 - [Empty result is a business state, not an error — render an empty-state UI, never throw](../../docs/frontend/rsc-error-handling/empty-result-is-business-state-not-error.md)
+- [Auth check runs outside the Suspense boundary — data fetch runs inside](../../docs/frontend/rsc-error-handling/auth-outside-suspense-boundary.md)
+- [GraphQL UNAUTHENTICATED must redirect to `/login`, not to an auth-required route](../../docs/frontend/rsc-error-handling/unauthenticated-redirect-target-must-be-login.md)
+- [Apollo `client.query()` is not cancelled on unmount — guard `setState` with `isMountedRef`](../../docs/frontend/rsc-error-handling/apollo-client-query-unmount-guard.md)

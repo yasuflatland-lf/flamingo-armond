@@ -24,6 +24,35 @@ Putting a flow-detail assertion in a broad-named file (e.g. a role-checkbox togg
 
 A page can host **both** a co-located `<page>.test.tsx` (next to the source under `src/app/...`) and a `__tests__/<page>.test.tsx` (broad scope) file. The co-located test focuses on the page's local refactor surface (e.g. stubbing the client component); the `__tests__/` file mounts the full tree end-to-end. Coverage between the two MUST be deconflicted manually — the author of any new broad test must read both before adding assertions, otherwise duplicate redirect / auth-gate cases accumulate across the two files.
 
+### Suspense refactor: test the `Content` component directly, not the outer `Page`
+
+When a route is refactored to use `loading.tsx` + `<Suspense>`, the outer `page.tsx` default export becomes a thin shell that returns a `<Suspense>` element — it no longer calls `gqlFetch` directly. Broad-page tests that were previously mounted via `render(await Page())` and asserted on gqlFetch-driven content will fail because the element tree now contains a suspended `<Content />` child that Vitest's renderer cannot resolve synchronously.
+
+The correct pattern after a Suspense refactor is two test groups:
+
+1. **Outer shell test** — calls `await Page()` and asserts that the element is a `<Suspense>` whose `fallback` is the skeleton and whose `children` is the `Content` component reference. No gqlFetch mock required.
+2. **Content tests** — call `await Content()` directly (using the named export added for this purpose) and render the result. These test all data-layer branches: empty state, populated state, UNAUTHENTICATED redirect, non-auth error rethrow.
+
+```ts
+import CardgroupsPage, { CardgroupsContent } from "./page";
+
+it("returns a <Suspense> boundary with <CardgroupsSkeleton /> as fallback", async () => {
+  const jsx = await CardgroupsPage();
+  expect(jsx.type).toBe(Suspense);
+  expect(jsx.props.fallback.type).toBe(CardgroupsSkeleton);
+  expect(jsx.props.children.type).toBe(CardgroupsContent);
+});
+
+it("passes connection edges to CardgroupsClient", async () => {
+  vi.mocked(gqlFetch).mockResolvedValue(makeConnection([{ id: "cg-1", name: "Spanish Vocab" }]) as never);
+  const jsx = await CardgroupsContent();
+  render(jsx);
+  expect(screen.getByText("Spanish Vocab")).toBeInTheDocument();
+});
+```
+
+Pages that co-locate a `page.test.tsx` next to the source file (rather than under `frontend/__tests__/`) use the same split. See [`auth-outside-suspense-boundary.md`](./rsc-error-handling/auth-outside-suspense-boundary.md) for why `CardgroupsContent` is exported as a named export rather than inlined.
+
 ### RSC test rendering pattern
 
 Tests for Next.js 15+ async server components render by `await`ing the page function and passing its element tree to `render(...)`. The page params argument is `Promise<{...}>`, not a plain object:
@@ -35,6 +64,48 @@ render(await CardgroupDetailPage({ params: Promise.resolve({ id: "cg-1" }) }));
 Pre-15 patterns that pass `{ params: { id } }` directly will not type-check or will misbehave at runtime.
 
 `createSupabaseServerClient` is server-only, so RSC tests must stub it. The repo has no MSW; the canonical pattern is a per-test `vi.mock("@/lib/supabase/server", ...)` factory backed by the shared `mockSupabaseServerClient()` helper, with per-case `setMockSupabaseUser(...)` calls in `beforeEach`. The `server-only` import is also stubbed at the Vitest config level (`vitest.config.ts`) so any module that pulls it in transitively does not crash the test runner.
+
+### Assert queue contents via prop capture, not via rendered text
+
+A mock component that renders only the top item of a list (e.g. `SwipeCardStack` rendering only the active card) hides everything below the surface. Asserting `screen.queryAllByText("duplicate-front")` can detect a duplicate at position 0 but not at position 3 — the duplicate is in the queue but not rendered.
+
+The solution is to accumulate every `cards` prop snapshot passed to the mock in a module-level array, then assert on the array directly:
+
+```ts
+// Declared at module scope (outside describe), reset in beforeEach.
+const capturedCardSnapshots: SwipeCardData[][] = [];
+
+vi.mock("@/components/learn/swipe-card-stack", () => ({
+  SwipeCardStack: (props: { cards: SwipeCardData[]; /* ... */ }) => {
+    capturedCardSnapshots.push([...props.cards]);  // snapshot every render
+    // render only the active card (top of queue)
+    const activeCard = props.cards[0];
+    if (!activeCard) return <div><p>Session complete</p></div>;
+    return <div><p>{activeCard.front}</p></div>;
+  },
+}));
+
+beforeEach(() => {
+  capturedCardSnapshots.length = 0;  // reset — do not bleed across tests
+});
+```
+
+The dedup test then waits for the expected queue length in the snapshot array and asserts on card ids directly, without touching the rendered DOM:
+
+```ts
+await waitFor(() => {
+  const latest = capturedCardSnapshots.at(-1);
+  expect(latest?.length).toBe(6);  // 5 originals + 1 prefetched unique
+});
+
+const mergedIds = capturedCardSnapshots.at(-1)!.map((c) => c.id);
+// The duplicate was not added a second time.
+expect(mergedIds.filter((id) => id === "q-3").length).toBe(1);
+// The fresh card is present exactly once.
+expect(mergedIds.filter((id) => id === "p-unique").length).toBe(1);
+```
+
+**Why not `screen.findAllByText`:** the mock renders only the top card's text, so `queryAllByText` and `findAllByText` are blind to any duplicate at position 1+. The capture array is the only way to assert on the full queue contents without swipe-exhausting the stack card-by-card. Reference: `frontend/src/app/learn/[cardgroupId]/learn-client.test.tsx` — `capturedCardSnapshots` used by the prefetch dedup test.
 
 ### `vi.spyOn` requires `vi.restoreAllMocks()` in `afterEach`
 
