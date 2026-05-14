@@ -10,22 +10,21 @@ import (
 
 // callCustomAccessTokenHook invokes public.custom_access_token_hook(event)
 // against the supplied connection and returns the resulting JSON decoded
-// into a map. The test fails fatally on any SQL or JSON error.
+// into a map. The test fails fatally on any SQL or JSON error. For tests
+// that need to assert on the SQL error itself, use callCustomAccessTokenHookRaw.
 func callCustomAccessTokenHook(t *testing.T, ctx context.Context, sqlDB *sql.DB, userID string, claims map[string]any) map[string]any {
 	t.Helper()
 
-	event := map[string]any{
+	eventJSON, err := json.Marshal(map[string]any{
 		"user_id": userID,
 		"claims":  claims,
-	}
-	eventJSON, err := json.Marshal(event)
+	})
 	if err != nil {
 		t.Fatalf("marshal event: %v", err)
 	}
 
-	var resultJSON []byte
-	if err := sqlDB.QueryRowContext(ctx,
-		`SELECT public.custom_access_token_hook($1::jsonb)`, eventJSON).Scan(&resultJSON); err != nil {
+	resultJSON, err := callCustomAccessTokenHookRaw(t, ctx, sqlDB, eventJSON)
+	if err != nil {
 		t.Fatalf("query custom_access_token_hook: %v", err)
 	}
 

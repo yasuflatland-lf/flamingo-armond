@@ -43,7 +43,6 @@ DECLARE
     original_claims jsonb;
     app_metadata jsonb;
     is_admin_user boolean;
-    new_claims jsonb;
 BEGIN
     IF event->>'user_id' IS NULL OR event->'claims' IS NULL THEN
         RAISE LOG 'custom_access_token_hook: rejecting malformed event (user_id present=%, claims present=%)',
@@ -71,8 +70,10 @@ BEGIN
         app_metadata := app_metadata - 'role';
     END IF;
 
-    new_claims := jsonb_set(original_claims, '{app_metadata}', app_metadata, true);
-    RETURN jsonb_build_object('claims', new_claims);
+    RETURN jsonb_build_object(
+        'claims',
+        jsonb_set(original_claims, '{app_metadata}', app_metadata, true)
+    );
 END;
 $$;
 
