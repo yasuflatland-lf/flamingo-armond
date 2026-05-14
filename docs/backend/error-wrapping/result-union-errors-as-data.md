@@ -12,7 +12,7 @@ GraphQL union rather than as top-level `gqlerror` entries. The live example is
 | Situation | Preferred approach |
 |---|---|
 | Frontend needs typed, structured data to drive UX (e.g. "overwrite existing card?" dialog showing `existingBack`) | Result Union (`CreateCardResult`) |
-| Plain field-validation failure where the frontend treats all cases uniformly (e.g. "front is required") | `BadUserInputWithExtensions` (see [`two-tier-gqlerr-api.md`](./two-tier-gqlerr-api.md)) |
+| Plain field-validation failure where the frontend treats all cases uniformly (e.g. "front is required") | `BadUserInputWithExtensions` (see [`two-tier-api-pattern.md`](./two-tier-api-pattern.md)) |
 
 The discriminator question: does the client need the variant's payload to make
 a meaningful UX decision? If yes, encode the outcome in the schema — the codegen
@@ -134,7 +134,7 @@ if (payload?.__typename === "CardDuplicateFrontError") {
 ```
 
 The `extensions.code` / `extensions.reason` approach (described in
-[`two-tier-gqlerr-api.md`](./two-tier-gqlerr-api.md)) is not needed when the
+[`two-tier-api-pattern.md`](./two-tier-api-pattern.md)) is not needed when the
 discriminator comes directly from the schema. Do not add extension-code parsing
 helpers for cases already expressed as union variants — codegen provides the
 type safety those helpers tried to recover by hand.
