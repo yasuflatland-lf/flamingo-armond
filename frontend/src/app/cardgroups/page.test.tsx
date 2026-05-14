@@ -108,9 +108,9 @@ describe("CardgroupsPage — AuthSessionMissingError filter", () => {
     expect(vi.mocked(gqlFetch)).not.toHaveBeenCalled();
   });
 
-  it("calls console.error and rethrows when getUser returns a non-AuthSessionMissingError", async () => {
-    // Any error other than AuthSessionMissingError is a real auth failure and
-    // must bubble up so the error boundary handles it.
+  it("calls console.error and rethrows when getUser returns a non-ignorable error", async () => {
+    // Any error other than AuthSessionMissingError / stale-session is a real auth
+    // failure and must bubble up so the error boundary handles it.
     const fakeError = new Error("something broke");
     fakeError.name = "NetworkAuthError";
     setMockSupabaseUserError(fakeError);
@@ -120,13 +120,32 @@ describe("CardgroupsPage — AuthSessionMissingError filter", () => {
       message: fakeError.message,
     });
 
-    // Discriminating key: the second argument is the error name (string), not an
-    // Error instance — per rules § "expect.objectContaining".
+    // PII-redacted payload: only `name` is logged inside an object, never `message`.
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "[cardgroups] getUser() failed:",
-      fakeError.name,
-      fakeError.message,
+      { name: fakeError.name },
     );
+    // Assert that `message` (which may carry user-supplied content) is absent.
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: expect.anything() }),
+    );
+  });
+
+  it("redirects to /login on stale-session (deleted user) auth error", async () => {
+    // isStaleSessionError: name === "AuthApiError" AND message includes "does not exist".
+    // isIgnorableAuthError returns true for stale-session, so it does NOT throw;
+    // the subsequent `isStaleSessionError(authErr)` check redirects to /login.
+    const staleErr = new Error("User from sub claim does not exist");
+    staleErr.name = "AuthApiError";
+    setMockSupabaseUserError(staleErr);
+
+    await expect(CardgroupsPage()).rejects.toThrow("REDIRECT:/login");
+
+    // Stale-session is ignorable — must not log an error.
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    // gqlFetch must not be called when the session is stale.
+    expect(vi.mocked(gqlFetch)).not.toHaveBeenCalled();
   });
 });
 

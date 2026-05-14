@@ -190,7 +190,7 @@ describe("CardsNewPage — auth branches", () => {
     expect(gqlFetch).not.toHaveBeenCalled();
   });
 
-  test("non-AuthSessionMissingError → console.error + rethrow", async () => {
+  test("non-ignorable auth error → console.error (PII-redacted) + rethrow", async () => {
     const transportError = new Error("network failure");
     transportError.name = "FetchError";
     setMockSupabaseUserError(transportError);
@@ -198,11 +198,34 @@ describe("CardsNewPage — auth branches", () => {
     await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toBe(transportError);
 
     expect(redirect).not.toHaveBeenCalled();
+    // PII-redacted payload: only `name` is logged inside an object, never `message`.
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[cards-new]"),
-      transportError.name,
-      transportError.message,
+      "[cards-new] getUser() failed:",
+      { name: transportError.name },
     );
+    // Assert that `message` (which may carry user-supplied content) is absent.
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: expect.anything() }),
+    );
+  });
+
+  test("stale-session (deleted user) auth error → redirect /login, no console.error", async () => {
+    // isStaleSessionError: name === "AuthApiError" AND message includes "does not exist".
+    // isIgnorableAuthError returns true for stale-session, so it does NOT throw;
+    // the subsequent `isStaleSessionError(authErr)` check redirects to /login.
+    const staleErr = new Error("User from sub claim does not exist");
+    staleErr.name = "AuthApiError";
+    setMockSupabaseUserError(staleErr);
+
+    await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
+      `${REDIRECT_PREFIX}/login`,
+    );
+
+    expect(redirect).toHaveBeenCalledWith("/login");
+    // Stale-session is ignorable — must not log an error.
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    expect(gqlFetch).not.toHaveBeenCalled();
   });
 });
 

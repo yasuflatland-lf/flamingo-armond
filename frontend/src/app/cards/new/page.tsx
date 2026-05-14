@@ -26,7 +26,7 @@ export default async function CardsNewPage({ searchParams }: CardsNewPageProps) 
   // Auth runs OUTSIDE the Suspense boundary so the redirect fires before any
   // streaming begins — Next.js cannot redirect mid-stream.
   if (authErr && !isIgnorableAuthError(authErr)) {
-    console.error("[cards-new] getUser() failed:", authErr.name, authErr.message);
+    console.error("[cards-new] getUser() failed:", { name: authErr.name });
     throw authErr;
   }
   if (!user || isStaleSessionError(authErr)) redirect("/login");

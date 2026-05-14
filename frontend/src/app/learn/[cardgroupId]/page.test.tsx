@@ -131,9 +131,10 @@ describe("LearnPage — AuthSessionMissingError filter", () => {
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 
-  it("calls console.error and rethrows when getUser returns a non-AuthSessionMissingError", async () => {
-    // Any error other than AuthSessionMissingError is a real auth failure and
-    // must bubble up so the error boundary handles it.
+  it("calls console.error (PII-redacted) and rethrows when getUser returns a non-ignorable error", async () => {
+    // An AuthApiError whose message does NOT include "does not exist" is not a
+    // stale-session error, so isIgnorableAuthError returns false and it must
+    // bubble up so the error boundary handles it.
     const fakeError = new Error("something broke");
     fakeError.name = "AuthApiError";
     setMockSupabaseUserError(fakeError);
@@ -145,11 +146,32 @@ describe("LearnPage — AuthSessionMissingError filter", () => {
       message: fakeError.message,
     });
 
+    // PII-redacted payload: only `name` is logged inside an object, never `message`.
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "[learn] getUser() failed:",
-      fakeError.name,
-      fakeError.message,
+      { name: fakeError.name },
     );
+    // Assert that `message` (which may carry user-supplied content) is absent.
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: expect.anything() }),
+    );
+  });
+
+  it("redirects to /login on stale-session (deleted user) auth error", async () => {
+    // isStaleSessionError: name === "AuthApiError" AND message includes "does not exist".
+    // isIgnorableAuthError returns true for stale-session, so it does NOT throw;
+    // the subsequent `isStaleSessionError(authErr)` check redirects to /login.
+    const staleErr = new Error("User from sub claim does not exist");
+    staleErr.name = "AuthApiError";
+    setMockSupabaseUserError(staleErr);
+
+    await expect(
+      LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) }),
+    ).rejects.toThrow("REDIRECT:/login");
+
+    // Stale-session is ignorable — must not log an error.
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 });
 

@@ -23,7 +23,7 @@ export default async function CardgroupsPage() {
   // AuthSessionMissingError = anonymous request; stale session = deleted user
   // with a still-valid JWT. Both are handled by redirecting to /login.
   if (authErr && !isIgnorableAuthError(authErr)) {
-    console.error("[cardgroups] getUser() failed:", authErr.name, authErr.message);
+    console.error("[cardgroups] getUser() failed:", { name: authErr.name });
     throw authErr;
   }
   if (!user || isStaleSessionError(authErr)) redirect("/login");
