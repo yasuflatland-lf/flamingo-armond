@@ -20,19 +20,17 @@ import (
 )
 
 type mockCardRepository struct {
-	findResult          *domain.Card
-	findErr             error
-	findByIDsResult     map[string]*domain.Card
-	findByIDsErr        error
-	findByCardgroupRows []*domain.Card
-	findByCardgroupErr  error
-	createErr           error
-	capturedCreate      *domain.Card
-	updateResult        *domain.Card
-	updateErr           error
-	capturedPatch       repository.CardUpdate
-	deleteErr           error
-	deleteCalled        bool
+	findResult      *domain.Card
+	findErr         error
+	findByIDsResult map[string]*domain.Card
+	findByIDsErr    error
+	createErr       error
+	capturedCreate  *domain.Card
+	updateResult    *domain.Card
+	updateErr       error
+	capturedPatch   repository.CardUpdate
+	deleteErr       error
+	deleteCalled    bool
 
 	deleteByIDsResult int64
 	deleteByIDsErr    error
@@ -71,9 +69,6 @@ func (m *mockCardRepository) FindByIDTx(_ context.Context, _ *gorm.DB, _ string)
 }
 func (m *mockCardRepository) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Card, error) {
 	return m.findByIDsResult, m.findByIDsErr
-}
-func (m *mockCardRepository) FindByCardgroup(_ context.Context, _ string) ([]*domain.Card, error) {
-	return m.findByCardgroupRows, m.findByCardgroupErr
 }
 func (m *mockCardRepository) DeleteByIDsTx(_ context.Context, _ *gorm.DB, ownerID string, ids []string) (int64, error) {
 	m.deleteByIDsCalls++
@@ -318,25 +313,6 @@ func TestCardUsecase_Delete_NotFoundMasksExistence(t *testing.T) {
 
 	err := uc.Delete(authedCtx("u1"), "missing")
 	assertGQLErr(t, err, "UNAUTHENTICATED", "")
-}
-
-func TestCardUsecase_CardsByCardgroup(t *testing.T) {
-	t.Parallel()
-
-	want := []*domain.Card{{ID: "c1", CardgroupID: "cg1"}, {ID: "c2", CardgroupID: "cg1"}}
-	cardRepo := &mockCardRepository{findByCardgroupRows: want}
-	uc := NewCardUsecase(nil, cardRepo,
-		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
-		nil,
-	)
-
-	got, err := uc.CardsByCardgroup(authedCtx("u1"), "cg1")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("got %d cards, want 2", len(got))
-	}
 }
 
 func TestCardUsecase_Card_NotFoundReturnsNil(t *testing.T) {

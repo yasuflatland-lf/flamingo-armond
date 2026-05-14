@@ -51,19 +51,6 @@ func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 	}
 }
 
-func toCardgroupModels(ctx context.Context, cgs []*domain.Cardgroup) []*model.Cardgroup {
-	out := make([]*model.Cardgroup, 0, len(cgs))
-	for _, cg := range cgs {
-		cgm := toCardgroupModel(cg)
-		if cgm == nil {
-			slog.WarnContext(ctx, "toCardgroupModels: skipping nil entry")
-			continue
-		}
-		out = append(out, cgm)
-	}
-	return out
-}
-
 // toCardModel leaves Cardgroup nil; cardResolver.Cardgroup populates it lazily
 // via the per-request Cardgroup DataLoader.
 func toCardModel(card *domain.Card) *model.Card {

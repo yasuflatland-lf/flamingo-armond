@@ -75,8 +75,6 @@ type UpdateCardgroupPayload {
 }
 
 extend type Query {
-  """All cardgroups owned by the authenticated caller. Ordered by updated_at desc."""
-  myCardgroups: [Cardgroup!]! @deprecated(reason: "Use myCardgroupsConnection")
   """Single cardgroup by ID. Returns UNAUTHENTICATED for non-owners (existence is not leaked)."""
   cardgroup(id: ID!): Cardgroup
   """

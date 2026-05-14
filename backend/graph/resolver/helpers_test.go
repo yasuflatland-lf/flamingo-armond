@@ -55,30 +55,6 @@ func TestToCardModels_FiltersNil(t *testing.T) {
 	}
 }
 
-// TestToCardgroupModels_FiltersNil verifies that toCardgroupModels skips nil
-// domain.Cardgroup values and returns only non-nil results. This is critical
-// because Query.myCardgroups declares [Cardgroup!]!, so a nil entry would
-// violate the schema.
-func TestToCardgroupModels_FiltersNil(t *testing.T) {
-	t.Parallel()
-
-	validCardgroup := &domain.Cardgroup{
-		ID:      "cg1",
-		Name:    "Spanish Vocab",
-		OwnerID: "u1",
-	}
-	cardgroups := []*domain.Cardgroup{nil, validCardgroup, nil}
-
-	result := toCardgroupModels(context.Background(), cardgroups)
-
-	assert.Len(t, result, 1)
-	if len(result) > 0 {
-		assert.Equal(t, "cg1", result[0].ID)
-		assert.Equal(t, "Spanish Vocab", result[0].Name)
-		assert.Equal(t, "u1", result[0].OwnerID)
-	}
-}
-
 // TestToRoleModels_AllNil verifies the edge case where all input roles are nil.
 func TestToRoleModels_AllNil(t *testing.T) {
 	t.Parallel()

@@ -21,7 +21,6 @@ import (
 type CardRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Card, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error)
-	FindByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error)
 	FindPageByCardgroup(
 		ctx context.Context,
 		cardgroupID string,
@@ -197,21 +196,6 @@ func (u *CardUsecase) Card(ctx context.Context, id string) (*domain.Card, error)
 		return nil, err
 	}
 	return card, nil
-}
-
-func (u *CardUsecase) CardsByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error) {
-	user := auth.UserFrom(ctx)
-	if user == nil {
-		return nil, gqlerr.Unauthenticated()
-	}
-	if err := u.authorizeCardgroup(ctx, cardgroupID, user.Sub, true); err != nil {
-		return nil, err
-	}
-	cards, err := u.cardRepo.FindByCardgroup(ctx, cardgroupID)
-	if err != nil {
-		return nil, gqlerr.Internal(ctx, err)
-	}
-	return cards, nil
 }
 
 // Create persists a new card and returns a CreateCardOutcome that signals the

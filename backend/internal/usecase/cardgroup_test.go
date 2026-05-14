@@ -24,10 +24,6 @@ type mockCardgroupRepository struct {
 	// by the cross-orderBy cursor-hydration tests).
 	findByIDFn func(id string) (*domain.Cardgroup, error)
 
-	// FindByOwner
-	findByOwnerResult []*domain.Cardgroup
-	findByOwnerErr    error
-
 	// Create
 	createErr      error
 	capturedCreate *domain.Cardgroup
@@ -76,10 +72,6 @@ func (m *mockCardgroupRepository) FindByID(_ context.Context, id string) (*domai
 		return m.findByIDFn(id)
 	}
 	return m.findResult, m.findErr
-}
-
-func (m *mockCardgroupRepository) FindByOwner(_ context.Context, _ string) ([]*domain.Cardgroup, error) {
-	return m.findByOwnerResult, m.findByOwnerErr
 }
 
 func (m *mockCardgroupRepository) Create(_ context.Context, cg *domain.Cardgroup) error {
@@ -134,53 +126,6 @@ func (m *mockCardgroupRepository) CountByOwner(_ context.Context, ownerID string
 // cgAuthedCtx is a convenience wrapper for cardgroup tests.
 func cgAuthedCtx(sub string) context.Context {
 	return auth.ContextWithUser(context.Background(), &auth.AuthUser{Sub: sub})
-}
-
-// --- MyCardgroups tests ---
-
-func TestCardgroupUsecase_MyCardgroups_Anonymous(t *testing.T) {
-	t.Parallel()
-	repo := &mockCardgroupRepository{}
-	uc := NewCardgroupUsecase(repo)
-
-	_, err := uc.MyCardgroups(anonCtx())
-
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	assertGQLErr(t, err, "UNAUTHENTICATED", "")
-}
-
-func TestCardgroupUsecase_MyCardgroups_AuthenticatedReturnsRepoResult(t *testing.T) {
-	t.Parallel()
-	cgs := []*domain.Cardgroup{
-		{ID: "cg1", OwnerID: "user-1", Name: "Alpha"},
-		{ID: "cg2", OwnerID: "user-1", Name: "Beta"},
-	}
-	repo := &mockCardgroupRepository{findByOwnerResult: cgs}
-	uc := NewCardgroupUsecase(repo)
-
-	got, err := uc.MyCardgroups(cgAuthedCtx("user-1"))
-
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("expected 2 cardgroups, got %d", len(got))
-	}
-}
-
-func TestCardgroupUsecase_MyCardgroups_RepoError(t *testing.T) {
-	t.Parallel()
-	repo := &mockCardgroupRepository{findByOwnerErr: errors.New("db died")}
-	uc := NewCardgroupUsecase(repo)
-
-	_, err := uc.MyCardgroups(cgAuthedCtx("user-1"))
-
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	assertGQLErr(t, err, "INTERNAL", "")
 }
 
 // --- Cardgroup tests ---

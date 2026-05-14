@@ -37,9 +37,6 @@ func (m *cardMockRepo) FindByID(_ context.Context, _ string) (*domain.Card, erro
 func (m *cardMockRepo) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Card, error) {
 	return nil, nil
 }
-func (m *cardMockRepo) FindByCardgroup(_ context.Context, _ string) ([]*domain.Card, error) {
-	return nil, nil
-}
 func (m *cardMockRepo) FindDueCardsForUser(_ context.Context, _ string, _ string, _ time.Time, limit int) ([]*domain.Card, error) {
 	m.findDueLimit = limit
 	return m.findDueRows, m.findDueErr

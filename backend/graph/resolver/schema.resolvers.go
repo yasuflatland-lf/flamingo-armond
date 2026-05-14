@@ -283,15 +283,6 @@ func (r *queryResolver) Me(ctx context.Context) (*model.User, error) {
 	return toUserModel(user), nil
 }
 
-// MyCardgroups is the resolver for the myCardgroups field.
-func (r *queryResolver) MyCardgroups(ctx context.Context) ([]*model.Cardgroup, error) {
-	cgs, err := r.CardgroupUC.MyCardgroups(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return toCardgroupModels(ctx, cgs), nil
-}
-
 // Cardgroup is the resolver for the cardgroup field.
 func (r *queryResolver) Cardgroup(ctx context.Context, id string) (*model.Cardgroup, error) {
 	cg, err := r.CardgroupUC.Cardgroup(ctx, id)

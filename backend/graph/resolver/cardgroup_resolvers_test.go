@@ -40,10 +40,6 @@ func (m *mockCardgroupRepoForResolver) FindByID(_ context.Context, _ string) (*d
 	return m.findByIDResult, m.findByIDErr
 }
 
-func (m *mockCardgroupRepoForResolver) FindByOwner(_ context.Context, _ string) ([]*domain.Cardgroup, error) {
-	return nil, nil
-}
-
 func (m *mockCardgroupRepoForResolver) FindPageByOwner(
 	_ context.Context,
 	_ string,
