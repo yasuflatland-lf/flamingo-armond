@@ -122,7 +122,7 @@ afterEach(() => {
 });
 ```
 
-Reference: `frontend/src/components/nav/global-header.test.tsx`. This applies to any test file that calls `vi.spyOn(...)` on a global (`console`, `Date`, `crypto`) or a module export.
+Reference: `frontend/src/app/layout.test.tsx` (lines 125–139). This applies to any test file that calls `vi.spyOn(...)` on a global (`console`, `Date`, `crypto`) or a module export.
 
 ### `vi.useRealTimers()` in `afterEach` is a defensive guard for fake-timer leaks
 
