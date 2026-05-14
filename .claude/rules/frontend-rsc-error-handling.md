@@ -19,7 +19,7 @@ The filter is keyed on `error.name` (string), not on `instanceof` — Supabase's
 
 ## Header (root layout) MUST degrade on failure, never throw
 
-The header component (`GlobalHeader` in `frontend/src/components/nav/global-header.tsx`) lives in `app/layout.tsx`, so anything it throws escapes every route segment's `error.tsx` and surfaces as `app/global-error.tsx` (or Next's default 500 page). Throwing for a failed `me` fetch turns one stale role lookup into a site-wide 500. The Header is the **display layer** and must:
+The `AppShell` component (`frontend/src/components/nav/app-shell.tsx`) is mounted in `app/layout.tsx`, so anything it throws escapes every route segment's `error.tsx` and surfaces as `app/global-error.tsx` (or Next's default 500 page). The degradation logic (auth check, `isAdmin` resolution, `console.error`/`console.warn` logging) lives in `app/layout.tsx` itself, which passes `user` and `isAdmin` down to `AppShell`. Throwing for a failed `me` fetch turns one stale role lookup into a site-wide 500. The layout + shell combination is the **display layer** and must:
 
 1. Render a degraded shell (logo only) when `getUser()` fails for a reason other than `AuthSessionMissingError`.
 2. Skip the GraphQL `me` call entirely when `user == null` — anonymous users do not have roles to load, and the call would spam `UNAUTHENTICATED` into the warn log (see "Skip auth-requiring GraphQL calls" below).
@@ -43,7 +43,7 @@ This is why `app/<route>/error.tsx` cannot rescue layout-level throws — the sa
 
 Code that needs to branch on a specific error code (e.g. swallowing `UNAUTHENTICATED` in the Header, or distinguishing `UNAUTHENTICATED` from a real failure on a HomePage redirect) MUST parse the JSON and read `extensions.code`, not substring-match the message. Substring matches conflate a real `UNAUTHENTICATED` extension with any error whose message text happens to contain the word, including user-supplied input echoed by the backend, future telemetry strings, or stack-trace fragments.
 
-Use the shared helper `isUnauthenticatedGraphQLError` from `@/lib/apollo/graphql-errors` — do **not** re-inline the JSON-parse logic at each call site. Lifting it to one module ensures every consumer applies the same `prefix.startsWith` check, the same JSON shape assumption, and the same `try/catch` for malformed payloads. The same structural check also runs inside `gqlFetch` for partial-response auth errors, ensuring consistent classification. Today's call sites: `frontend/src/components/nav/global-header.tsx`, `frontend/src/app/page.tsx`, and `frontend/src/app/cards/new/page.tsx`.
+Use the shared helper `isUnauthenticatedGraphQLError` from `@/lib/apollo/graphql-errors` — do **not** re-inline the JSON-parse logic at each call site. Lifting it to one module ensures every consumer applies the same `prefix.startsWith` check, the same JSON shape assumption, and the same `try/catch` for malformed payloads. The same structural check also runs inside `gqlFetch` for partial-response auth errors, ensuring consistent classification. Today's call sites include `frontend/src/app/page.tsx`, `frontend/src/app/cards/new/page.tsx`, `frontend/src/app/cardgroups/page.tsx`, `frontend/src/app/profile/page.tsx`, and several others — run `grep -rln 'isUnauthenticatedGraphQLError' frontend/src/` to get the current list.
 
 ```ts
 import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
