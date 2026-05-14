@@ -106,3 +106,4 @@ supabase/.temp/
 # Teardown event records from production bring-up.
 /.setup-prod-archive/
 .playwright-mcp/
+*~
