@@ -3,7 +3,12 @@
 import { gql } from "@apollo/client";
 import { useApolloClient, useMutation } from "@apollo/client/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { HandleSwipeMutation, SetLastViewedCardgroupMutation } from "@/app/learn/queries";
+import {
+  HandleSwipeMutation,
+  LEARN_PAGE_LIMIT,
+  LearnNextDueCardsQuery as LearnNextDueCardsDocument,
+  SetLastViewedCardgroupMutation,
+} from "@/app/learn/queries";
 import { AllCaughtUp } from "@/components/learn/all-caught-up";
 import { LearnActionBar } from "@/components/learn/learn-action-bar";
 import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
@@ -17,6 +22,13 @@ import { getBackendErrorBanner } from "@/lib/apollo/errors";
 
 type LearnCard = LearnNextDueCardsQuery["learnNextDueCards"][number];
 type PerformanceMetrics = HandleSwipeMutationType["handleSwipe"]["metrics"];
+
+/**
+ * When `queue.length` falls to this value (or below) and is still non-zero,
+ * the background prefetch effect fires another `LearnNextDueCards` request
+ * to keep the swipe queue full ahead of the user.
+ */
+export const PREFETCH_THRESHOLD = 5;
 
 const DEFAULT_METRICS: PerformanceMetrics = {
   __typename: "PerformanceMetrics",
@@ -112,13 +124,79 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
       })
       .catch((err) => {
         // err.message is omitted — backend messages may echo user-authored content.
-        // See docs/frontend/rsc-error-handling/substring-matching-sdk-error-strings.md.
+        // See docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
         console.warn("[learn] setLastViewedCardgroup failed", {
           cardgroupId,
           name: err instanceof Error ? err.name : "unknown",
         });
       });
   }, [cardgroupId, lastViewedCardgroupId, client]);
+
+  // Background prefetch: when the queue drops to PREFETCH_THRESHOLD or below
+  // (but is non-empty — an empty queue means the user has finished), fetch
+  // the next batch of due cards via a side-channel `client.query` and merge
+  // them onto the tail by id. The effect re-fires whenever `queue.length`
+  // changes, so a successful handleSwipe response that shrinks the queue
+  // triggers another prefetch attempt naturally.
+  //
+  // - fetchPolicy: "network-only" prevents stale data from the Apollo cache.
+  // - prefetchInFlightRef guards against double-firing while the previous
+  //   request is still pending. Reset in `finally` so a failed attempt does
+  //   not block the next threshold crossing.
+  // - handleSwipe.nextCards remains the authoritative replace (FSRS-scheduled
+  //   from the server). The natural re-fire on the next queue.length change
+  //   re-evaluates whether we still need a prefetch.
+  // - Failures are silent (console.warn only) so learning can continue on the
+  //   current queue. The warn payload omits err.message — backend messages
+  //   may carry user-authored content. See
+  //   docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
+  // isMountedRef guards against calling `setQueue` on an unmounted component
+  // when a prefetch resolves after unmount. The cleanup sets it to false; the
+  // setup sets it back to true so React 18 StrictMode double-mount works correctly.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const prefetchInFlightRef = useRef(false);
+  useEffect(() => {
+    if (queue.length === 0 || queue.length > PREFETCH_THRESHOLD) return;
+    if (prefetchInFlightRef.current) return;
+    prefetchInFlightRef.current = true;
+    client
+      .query({
+        query: LearnNextDueCardsDocument,
+        variables: { cardgroupId, limit: LEARN_PAGE_LIMIT },
+        fetchPolicy: "network-only",
+      })
+      .then((result) => {
+        if (!isMountedRef.current) return;
+        const incoming = result.data?.learnNextDueCards ?? [];
+        if (incoming.length === 0) return;
+        setQueue((current) => {
+          const seen = new Set(current.map((c) => c.id));
+          const merged = [...current];
+          for (const card of incoming) {
+            if (!seen.has(card.id)) merged.push(card);
+          }
+          return merged;
+        });
+      })
+      .catch((err) => {
+        // err.message is omitted — backend messages may echo user-authored content.
+        // See docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
+        console.warn("[learn] prefetch failed", {
+          cardgroupId,
+          name: err instanceof Error ? err.name : "unknown",
+        });
+      })
+      .finally(() => {
+        prefetchInFlightRef.current = false;
+      });
+  }, [queue.length, cardgroupId, client]);
 
   const onSwipe = useCallback(
     async (card: LearnCard, direction: SwipeDirection) => {

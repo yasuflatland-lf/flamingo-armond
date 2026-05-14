@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   mockSupabaseServerClient,
@@ -24,8 +25,31 @@ vi.mock("@/lib/apollo/server", () => ({
   gqlFetch: vi.fn(),
 }));
 
+// Stub CardsNewClient — it is a "use client" component that requires an
+// ApolloProvider. The RSC page test only needs to verify props are forwarded
+// correctly; the client component has its own dedicated test file.
+vi.mock("./cards-new-client", () => ({
+  default: ({
+    initialCardgroupId,
+    forcePickerOpen,
+    myCardgroups,
+  }: {
+    initialCardgroupId: string | null;
+    forcePickerOpen: boolean;
+    myCardgroups: { id: string; name: string }[];
+  }) => (
+    <div
+      data-testid="cards-new-client"
+      data-initial-cardgroup-id={initialCardgroupId ?? ""}
+      data-force-picker-open={String(forcePickerOpen)}
+      data-cardgroups-count={myCardgroups.length}
+    />
+  ),
+}));
+
 import { redirect } from "next/navigation";
-import CardsNewPage from "@/app/cards/new/page";
+import { CardsNewSkeleton } from "@/app/cards/new/_components/cards-new-skeleton";
+import CardsNewPage, { CardsNewContent } from "@/app/cards/new/page";
 import { gqlFetch } from "@/lib/apollo/server";
 
 // ---------------------------------------------------------------------------
@@ -42,58 +66,6 @@ function makeBootstrapData(opts: { myCardgroups: Cardgroup[]; lastViewedId?: str
     },
     myCardgroups: opts.myCardgroups,
   };
-}
-
-type CardsNewClientProps = {
-  initialCardgroupId: string | null;
-  forcePickerOpen: boolean;
-  myCardgroups: Cardgroup[];
-};
-
-/**
- * Recursively search a React element tree for a node whose `type` display name
- * matches `componentName` and return its props.
- */
-function findElementProps(node: unknown, componentName: string): CardsNewClientProps | null {
-  if (node == null || typeof node !== "object") return null;
-  const el = node as Record<string, unknown>;
-  // React element: { type, props, ... }
-  if (
-    "type" in el &&
-    "props" in el &&
-    typeof el.type === "function" &&
-    (el.type as { name?: string; displayName?: string }).name === componentName
-  ) {
-    return el.props as CardsNewClientProps;
-  }
-  // Recurse into props.children
-  if ("props" in el && el.props != null) {
-    const children = (el.props as Record<string, unknown>).children;
-    if (Array.isArray(children)) {
-      for (const child of children) {
-        const found = findElementProps(child, componentName);
-        if (found) return found;
-      }
-    } else if (children != null) {
-      return findElementProps(children, componentName);
-    }
-  }
-  return null;
-}
-
-/**
- * Call the page component with the given searchParams, then traverse the
- * returned JSX tree to find the <CardsNewClient> element and return its props.
- */
-async function renderPage(searchParams: Record<string, string> = {}) {
-  const result = await CardsNewPage({ searchParams: Promise.resolve(searchParams) });
-  const props = findElementProps(result, "CardsNewClient");
-  if (!props) {
-    throw new Error(
-      "CardsNewClient element not found in the page output — page may have redirected",
-    );
-  }
-  return props;
 }
 
 // ---------------------------------------------------------------------------
@@ -142,7 +114,7 @@ describe("CardsNewPage — auth branches", () => {
     expect(gqlFetch).not.toHaveBeenCalled();
   });
 
-  test("non-AuthSessionMissingError → console.error + rethrow", async () => {
+  test("non-ignorable auth error → console.error (PII-redacted) + rethrow", async () => {
     const transportError = new Error("network failure");
     transportError.name = "FetchError";
     setMockSupabaseUserError(transportError);
@@ -150,11 +122,74 @@ describe("CardsNewPage — auth branches", () => {
     await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toBe(transportError);
 
     expect(redirect).not.toHaveBeenCalled();
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[cards-new]"),
-      transportError.name,
-      transportError.message,
+    // PII-redacted payload: only `name` is logged inside an object, never `message`.
+    expect(consoleErrorSpy).toHaveBeenCalledWith("[cards-new] getUser() failed:", {
+      name: transportError.name,
+    });
+    // Assert that `message` (which may carry user-supplied content) is absent.
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: expect.anything() }),
     );
+  });
+
+  test("stale-session (deleted user) auth error → redirect /login, no console.error", async () => {
+    // isStaleSessionError: name === "AuthApiError" AND message includes "does not exist".
+    // isIgnorableAuthError returns true for stale-session, so it does NOT throw;
+    // the subsequent `isStaleSessionError(authErr)` check redirects to /login.
+    const staleErr = new Error("User from sub claim does not exist");
+    staleErr.name = "AuthApiError";
+    setMockSupabaseUserError(staleErr);
+
+    await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
+      `${REDIRECT_PREFIX}/login`,
+    );
+
+    expect(redirect).toHaveBeenCalledWith("/login");
+    // Stale-session is ignorable — must not log an error.
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    expect(gqlFetch).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suspense boundary
+// ---------------------------------------------------------------------------
+
+describe("CardsNewPage — Suspense boundary", () => {
+  beforeEach(() => {
+    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
+  });
+
+  test("wraps the data-dependent subtree in <Suspense fallback={<CardsNewSkeleton />}>", async () => {
+    // gqlFetch is unused here because we only inspect the synchronous JSX tree
+    // returned by the page (we do not invoke CardsNewContent).
+    const result = await CardsNewPage({ searchParams: Promise.resolve({}) });
+
+    // Find the Suspense element in the tree.
+    const findSuspense = (node: unknown): Record<string, unknown> | null => {
+      if (node == null || typeof node !== "object") return null;
+      const el = node as Record<string, unknown>;
+      if ("type" in el && el.type === Suspense) return el;
+      if ("props" in el && el.props != null) {
+        const children = (el.props as Record<string, unknown>).children;
+        if (Array.isArray(children)) {
+          for (const child of children) {
+            const found = findSuspense(child);
+            if (found) return found;
+          }
+        } else if (children != null) {
+          return findSuspense(children);
+        }
+      }
+      return null;
+    };
+
+    const suspenseEl = findSuspense(result);
+    expect(suspenseEl).not.toBeNull();
+    const fallback = (suspenseEl?.props as { fallback?: { type?: unknown } }).fallback;
+    expect(fallback).toBeDefined();
+    expect((fallback as { type?: unknown }).type).toBe(CardsNewSkeleton);
   });
 });
 
@@ -172,7 +207,7 @@ describe("CardsNewPage — gqlFetch error branches", () => {
       new Error(`GraphQL errors: ${JSON.stringify([{ extensions: { code: "UNAUTHENTICATED" } }])}`),
     );
 
-    await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
+    await expect(CardsNewContent({ cardgroupParam: undefined })).rejects.toThrow(
       `${REDIRECT_PREFIX}/login`,
     );
 
@@ -183,9 +218,20 @@ describe("CardsNewPage — gqlFetch error branches", () => {
     const otherErr = new Error("GraphQL HTTP 500");
     vi.mocked(gqlFetch).mockRejectedValueOnce(otherErr);
 
-    await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toBe(otherErr);
+    await expect(CardsNewContent({ cardgroupParam: undefined })).rejects.toBe(otherErr);
 
     expect(redirect).not.toHaveBeenCalled();
+
+    // PII-redacted payload: only `name` is logged, never `message`.
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[cards-new] gqlFetch failed:",
+      expect.objectContaining({ name: expect.any(String) }),
+    );
+    // Assert that `message` (which may carry user-supplied content) is absent.
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: expect.anything() }),
+    );
   });
 });
 
@@ -194,10 +240,6 @@ describe("CardsNewPage — gqlFetch error branches", () => {
 // ---------------------------------------------------------------------------
 
 describe("CardsNewPage — cardgroup resolution", () => {
-  beforeEach(() => {
-    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
-  });
-
   test("branch 1: ?cardgroup owned by user → initialCardgroupId=that id, forcePickerOpen=false", async () => {
     vi.mocked(gqlFetch).mockResolvedValueOnce(
       makeBootstrapData({
@@ -209,7 +251,16 @@ describe("CardsNewPage — cardgroup resolution", () => {
       }) as never,
     );
 
-    const props = await renderPage({ cardgroup: "cg-2" });
+    const jsx = await CardsNewContent({ cardgroupParam: "cg-2" });
+    const props = (
+      jsx as {
+        props: {
+          initialCardgroupId: string | null;
+          forcePickerOpen: boolean;
+          myCardgroups: Cardgroup[];
+        };
+      }
+    ).props;
 
     expect(props.initialCardgroupId).toBe("cg-2");
     expect(props.forcePickerOpen).toBe(false);
@@ -225,7 +276,10 @@ describe("CardsNewPage — cardgroup resolution", () => {
     );
 
     // "evil-id" is not in myCardgroups → ownership check fails → branch 2 kicks in
-    const props = await renderPage({ cardgroup: "evil-id" });
+    const jsx = await CardsNewContent({ cardgroupParam: "evil-id" });
+    const props = (
+      jsx as { props: { initialCardgroupId: string | null; forcePickerOpen: boolean } }
+    ).props;
 
     expect(props.initialCardgroupId).toBe("cg-1");
     expect(props.forcePickerOpen).toBe(false);
@@ -239,7 +293,10 @@ describe("CardsNewPage — cardgroup resolution", () => {
       }) as never,
     );
 
-    const props = await renderPage({});
+    const jsx = await CardsNewContent({ cardgroupParam: undefined });
+    const props = (
+      jsx as { props: { initialCardgroupId: string | null; forcePickerOpen: boolean } }
+    ).props;
 
     expect(props.initialCardgroupId).toBe("cg-1");
     expect(props.forcePickerOpen).toBe(false);
@@ -253,7 +310,10 @@ describe("CardsNewPage — cardgroup resolution", () => {
       }) as never,
     );
 
-    const props = await renderPage({});
+    const jsx = await CardsNewContent({ cardgroupParam: undefined });
+    const props = (
+      jsx as { props: { initialCardgroupId: string | null; forcePickerOpen: boolean } }
+    ).props;
 
     // lastViewed "cg-other" is not in myCardgroups → falls to branch 3
     expect(props.initialCardgroupId).toBeNull();
@@ -268,7 +328,16 @@ describe("CardsNewPage — cardgroup resolution", () => {
       }) as never,
     );
 
-    const props = await renderPage({});
+    const jsx = await CardsNewContent({ cardgroupParam: undefined });
+    const props = (
+      jsx as {
+        props: {
+          initialCardgroupId: string | null;
+          forcePickerOpen: boolean;
+          myCardgroups: Cardgroup[];
+        };
+      }
+    ).props;
 
     expect(props.initialCardgroupId).toBeNull();
     expect(props.forcePickerOpen).toBe(true);
@@ -283,7 +352,7 @@ describe("CardsNewPage — cardgroup resolution", () => {
       }) as never,
     );
 
-    await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
+    await expect(CardsNewContent({ cardgroupParam: undefined })).rejects.toThrow(
       `${REDIRECT_PREFIX}/cardgroups/new?welcome=1`,
     );
 

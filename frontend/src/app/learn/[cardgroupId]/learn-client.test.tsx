@@ -6,14 +6,19 @@ import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { type RefObject, useImperativeHandle, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LEARN_PAGE_LIMIT } from "@/app/learn/queries";
 import type { SwipeCardData } from "@/components/learn/swipe-card";
 import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
-import { HandleSwipeDocument, SetLastViewedCardgroupDocument } from "@/generated/graphql";
+import {
+  HandleSwipeDocument,
+  LearnNextDueCardsDocument,
+  SetLastViewedCardgroupDocument,
+} from "@/generated/graphql";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
 } from "../../../../__tests__/utils/mock-apollo-paginated";
-import { LearnClient } from "./learn-client";
+import { LearnClient, PREFETCH_THRESHOLD } from "./learn-client";
 
 // ---------------------------------------------------------------------------
 // SwipeCardStack mock
@@ -27,12 +32,17 @@ import { LearnClient } from "./learn-client";
 //
 // capturedOnCardSwiped accumulates the onCardSwiped reference on every render
 // so the identity-stability test can assert it does not change across re-renders.
+//
+// capturedCardSnapshots accumulates the full `cards` array on every render so
+// dedup tests can assert the exact queue contents without swipe-exhausting the
+// stack. Reset in beforeEach alongside capturedOnCardSwiped.
 // ---------------------------------------------------------------------------
 type SwipeCardStackOnCardSwiped = Parameters<
   typeof import("@/components/learn/swipe-card-stack")["SwipeCardStack"]
 >[0]["onCardSwiped"];
 
 const capturedOnCardSwiped: SwipeCardStackOnCardSwiped[] = [];
+const capturedCardSnapshots: SwipeCardData[][] = [];
 
 vi.mock("@/components/learn/swipe-card-stack", () => ({
   SwipeCardStack: (props: {
@@ -42,6 +52,7 @@ vi.mock("@/components/learn/swipe-card-stack", () => ({
     ref?: RefObject<SwipeCardStackHandle | null>;
   }) => {
     capturedOnCardSwiped.push(props.onCardSwiped);
+    capturedCardSnapshots.push([...props.cards]);
 
     const activeCardRef = useRef(props.cards[0] ?? null);
     activeCardRef.current = props.cards[0] ?? null;
@@ -112,10 +123,11 @@ let leakSpy: ApolloMockLeakSpyResult;
 beforeEach(() => {
   vi.useRealTimers();
   leakSpy = installApolloMockLeakSpy({
-    operationNames: ["HandleSwipe", "SetLastViewedCardgroup"],
+    operationNames: ["HandleSwipe", "SetLastViewedCardgroup", "LearnNextDueCards"],
   });
-  // Reset the captured onCardSwiped array so tests do not bleed into each other.
+  // Reset the captured arrays so tests do not bleed into each other.
   capturedOnCardSwiped.length = 0;
+  capturedCardSnapshots.length = 0;
 });
 
 afterEach(() => {
@@ -169,12 +181,60 @@ const DEFAULT_METRICS = {
   reviewCount: 1,
 };
 
-function renderLearnClient(mocks: unknown[], initialCards = [CARD_1]) {
+/**
+ * Default `LearnNextDueCards` mocks returning `[]`.
+ *
+ * The background prefetch effect in `LearnClient` fires `LearnNextDueCards`
+ * whenever `queue.length` is between 1 and `PREFETCH_THRESHOLD` inclusive.
+ * Tests outside the dedicated `queue prefetch` describe do not exercise the
+ * prefetch behaviour intentionally, but they DO render queues short enough to
+ * trigger the effect — without these no-op mocks, the file-wide leak spy
+ * (which now includes `LearnNextDueCards` in `operationNames`) would record
+ * an unmatched-mock warning and fail the test.
+ *
+ * The effect can re-fire after each `queue.length` transition (initial mount,
+ * post-swipe optimistic shrink, server reconciliation), and `MockedProvider`
+ * consumes each mock entry once. Returning a generous count of empty-result
+ * entries covers every reasonable test without requiring per-test bookkeeping;
+ * leftover entries that are never matched produce no warning.
+ */
+function makeDefaultPrefetchMocks(count = 4) {
+  return Array.from({ length: count }, () => ({
+    request: {
+      query: LearnNextDueCardsDocument,
+      variables: { cardgroupId: CG_ID, limit: LEARN_PAGE_LIMIT },
+    },
+    result: { data: { learnNextDueCards: [] } },
+  }));
+}
+
+type RenderLearnClientOptions = {
+  /**
+   * When `true`, do NOT append default `LearnNextDueCards` no-op mocks. Used
+   * by the dedicated `queue prefetch` describe block, whose tests supply their
+   * own prefetch mocks and rely on unmatched-request leak detection to assert
+   * the effect did or did not fire.
+   */
+  skipDefaultPrefetchMocks?: boolean;
+};
+
+function renderLearnClient(
+  mocks: unknown[],
+  initialCards = [CARD_1],
+  options: RenderLearnClientOptions = {},
+) {
   // Pass `lastViewedCardgroupId === CG_ID` so the persist-last-viewed effect
   // short-circuits before issuing a mutation; that mutation is exercised in
   // its own test below and would otherwise need a mock entry in every case.
+  //
+  // Append default no-op `LearnNextDueCards` mocks so the prefetch effect is
+  // satisfied for any test whose initial queue length is 1..PREFETCH_THRESHOLD.
+  // See `makeDefaultPrefetchMocks` JSDoc for rationale.
+  const mergedMocks = options.skipDefaultPrefetchMocks
+    ? mocks
+    : [...mocks, ...makeDefaultPrefetchMocks()];
   render(
-    <MockedProvider mocks={mocks as never}>
+    <MockedProvider mocks={mergedMocks as never}>
       <LearnClient cardgroupId={CG_ID} initialCards={initialCards} lastViewedCardgroupId={CG_ID} />
     </MockedProvider>,
   );
@@ -368,8 +428,6 @@ describe("<LearnClient>", () => {
       await user.click(screen.getByRole("button", { name: "Rate as Again" }));
     });
 
-    // The mutation must be dispatched — triggerSwipe was called, which fired
-    // onCardSwiped, which called onSwipe inside LearnClient.
     await waitFor(() => {
       expect(swipe.wasCalled()).toBe(true);
     });
@@ -430,7 +488,9 @@ describe("<LearnClient> persist-last-viewed path", () => {
   it("fires SetLastViewedCardgroup mutation when ids differ", async () => {
     const mutationCalled = vi.fn();
     render(
-      <MockedProvider mocks={[makePersistMock(CG_ID, mutationCalled)]}>
+      <MockedProvider
+        mocks={[makePersistMock(CG_ID, mutationCalled), ...makeDefaultPrefetchMocks()]}
+      >
         <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
       </MockedProvider>,
     );
@@ -444,7 +504,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
     const cache = new InMemoryCache();
 
     render(
-      <MockedProvider mocks={[makePersistMock(CG_ID)]} cache={cache}>
+      <MockedProvider mocks={[makePersistMock(CG_ID), ...makeDefaultPrefetchMocks()]} cache={cache}>
         <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
       </MockedProvider>,
     );
@@ -485,7 +545,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
     ],
   ] as const)("swallows %s from the persist mutation without throwing", async (_, mockEntry) => {
     render(
-      <MockedProvider mocks={[mockEntry]}>
+      <MockedProvider mocks={[mockEntry, ...makeDefaultPrefetchMocks()]}>
         <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
       </MockedProvider>,
     );
@@ -612,7 +672,7 @@ describe("<LearnClient> onSwipe identity stability", () => {
     };
 
     render(
-      <MockedProvider mocks={[swipeMock]}>
+      <MockedProvider mocks={[swipeMock, ...makeDefaultPrefetchMocks()]}>
         <LearnClient
           cardgroupId={CG_ID}
           initialCards={[CARD_1, CARD_2]}
@@ -648,5 +708,275 @@ describe("<LearnClient> onSwipe identity stability", () => {
     // queueRef pattern), every queue state update would produce a new function
     // and this assertion would fail.
     expect(Object.is(firstRef, secondRef)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Background prefetch
+//
+// LearnClient runs a background prefetch of LearnNextDueCards when the queue
+// length drops to PREFETCH_THRESHOLD (5) or below. The fetched cards are
+// merged into the existing queue with id-based dedup. This describe block
+// installs its OWN leak spy that includes "LearnNextDueCards" in
+// `operationNames` so unmatched prefetch requests are surfaced.
+// ---------------------------------------------------------------------------
+
+/** Build a queue of `n` cards with deterministic ids (`q-1` … `q-n`). */
+function makeQueue(n: number, idPrefix = "q") {
+  return Array.from({ length: n }, (_, i) => ({
+    __typename: "Card" as const,
+    id: `${idPrefix}-${i + 1}`,
+    front: `Front ${i + 1}`,
+    back: `Back ${i + 1}`,
+    userCardState: userCardState("2026-04-30T00:00:00Z", 0),
+    cardgroupId: CG_ID,
+  }));
+}
+
+type PrefetchCard = ReturnType<typeof makeQueue>[number];
+
+/**
+ * Builds a LearnNextDueCards mock that returns `cards` and tracks call count.
+ * Optional `delay` (ms) holds the response open, allowing tests to fire the
+ * effect multiple times before the first response resolves — used to verify
+ * the in-flight guard prevents concurrent prefetch requests.
+ */
+function makePrefetchMock(cards: PrefetchCard[], opts?: { delay?: number }) {
+  let calls = 0;
+  const mock: {
+    request: { query: typeof LearnNextDueCardsDocument; variables: object };
+    result: () => { data: { learnNextDueCards: PrefetchCard[] } };
+    delay?: number;
+  } = {
+    request: {
+      query: LearnNextDueCardsDocument,
+      variables: { cardgroupId: CG_ID, limit: LEARN_PAGE_LIMIT },
+    },
+    result: () => {
+      calls += 1;
+      return { data: { learnNextDueCards: cards } };
+    },
+  };
+  if (opts?.delay !== undefined) {
+    mock.delay = opts.delay;
+  }
+  return { mock, callCount: () => calls };
+}
+
+describe("<LearnClient> queue prefetch", () => {
+  // The file-wide `leakSpy` (initialized at top of file) already covers
+  // `LearnNextDueCards`, `HandleSwipe`, and `SetLastViewedCardgroup`. A
+  // describe-scoped spy is unnecessary and would shadow the outer spy.
+
+  it("fires prefetch query once when initial queue is at threshold", async () => {
+    const initial = makeQueue(PREFETCH_THRESHOLD); // q-1 .. q-5
+    const incoming = makeQueue(2, "p"); // p-1, p-2
+    const prefetch = makePrefetchMock(incoming);
+
+    renderLearnClient([prefetch.mock], initial, { skipDefaultPrefetchMocks: true });
+
+    await waitFor(() => {
+      expect(prefetch.callCount()).toBe(1);
+    });
+    // Merged queue should now contain the original five plus two prefetched
+    // cards. The active card (top of queue) is unchanged.
+    await waitFor(() => {
+      expect(screen.getByText("Front 1")).toBeInTheDocument();
+    });
+  });
+
+  it("does not double-fire while a prefetch is in flight", async () => {
+    const initial = makeQueue(PREFETCH_THRESHOLD); // 5 cards — at threshold
+    const incoming = makeQueue(0, "p");
+    // Hold the response open long enough for a re-render to fire the effect
+    // again before the in-flight ref clears in `finally`.
+    const prefetch = makePrefetchMock(incoming, { delay: 50 });
+    // The first card's swipe will fire HandleSwipe — provide a mock that
+    // returns nextCards: [] so the post-swipe queue is just the leftover four.
+    const swipe = {
+      request: {
+        query: HandleSwipeDocument,
+        variables: { input: { cardId: "q-1", cardgroupId: CG_ID, mode: 4 } },
+      },
+      result: {
+        data: {
+          handleSwipe: {
+            __typename: "SwipeResponse" as const,
+            nextCards: initial.slice(1),
+            performanceMode: 0,
+            metrics: DEFAULT_METRICS,
+          },
+        },
+      },
+    };
+
+    const user = userEvent.setup();
+    renderLearnClient([prefetch.mock, swipe], initial, { skipDefaultPrefetchMocks: true });
+
+    // Trigger a swipe while the prefetch is in flight. The optimistic queue
+    // shrinks to 4, which crosses the threshold again and would re-fire the
+    // effect if the in-flight guard were absent.
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+    // Wait long enough for the delayed prefetch to resolve.
+    await waitFor(
+      () => {
+        expect(prefetch.callCount()).toBe(1);
+      },
+      { timeout: 1000 },
+    );
+  });
+
+  it("dedups prefetched cards against the existing queue by id", async () => {
+    const initial = makeQueue(PREFETCH_THRESHOLD); // q-1 .. q-5
+    // Prefetch returns one duplicate (q-3, id "q-3") and one new card (id "p-unique").
+    // Only the new card should be appended — q-3 must not appear twice.
+    const duplicate = initial[2] as PrefetchCard; // q-3, front "Front 3"
+    const freshCard: PrefetchCard = {
+      __typename: "Card" as const,
+      id: "p-unique",
+      front: "Prefetched New",
+      back: "Prefetched Back",
+      userCardState: userCardState("2026-04-30T00:00:00Z", 0),
+      cardgroupId: CG_ID,
+    };
+    const prefetch = makePrefetchMock([duplicate, freshCard]);
+
+    // After prefetch merges, the queue becomes q-1..q-5 + p-unique = 6 cards,
+    // which is above threshold, so no second prefetch fires. No noop needed.
+
+    renderLearnClient([prefetch.mock], initial, {
+      skipDefaultPrefetchMocks: true,
+    });
+
+    // Wait for the first prefetch to resolve and the merged queue to render.
+    // capturedCardSnapshots records the full `cards` array on every render, so
+    // we can assert the exact queue contents without swipe-exhausting the stack.
+    await waitFor(() => {
+      expect(prefetch.callCount()).toBe(1);
+    });
+
+    // After merging, the queue must have exactly 6 entries: q-1..q-5 + p-unique.
+    // We wait for a snapshot that reflects the post-merge state (length === 6).
+    await waitFor(() => {
+      const latest = capturedCardSnapshots.at(-1);
+      expect(latest).toBeDefined();
+      expect(latest?.length).toBe(6);
+    });
+
+    const mergedCards = capturedCardSnapshots.at(-1);
+    if (!mergedCards) throw new Error("capturedCardSnapshots is empty after waitFor");
+    const mergedIds = mergedCards.map((c) => c.id);
+
+    // All original cards are present.
+    expect(mergedIds).toContain("q-1");
+    expect(mergedIds).toContain("q-2");
+    expect(mergedIds).toContain("q-3");
+    expect(mergedIds).toContain("q-4");
+    expect(mergedIds).toContain("q-5");
+    // The fresh prefetched card is appended exactly once.
+    expect(mergedIds).toContain("p-unique");
+    // The duplicate (q-3) was not added a second time — id appears exactly once.
+    expect(mergedIds.filter((id) => id === "q-3").length).toBe(1);
+    // p-unique appears exactly once — no accidental duplication.
+    expect(mergedIds.filter((id) => id === "p-unique").length).toBe(1);
+  });
+
+  it("does not prefetch when queue is above threshold", async () => {
+    const initial = makeQueue(PREFETCH_THRESHOLD + 5); // 10 cards — above
+    // Provide NO prefetch mock; if the effect fires anyway, the leak spy will
+    // record an unmatched-request warning and `assertNoLeaks` will fail.
+    renderLearnClient([], initial, { skipDefaultPrefetchMocks: true });
+
+    // Give effects a tick to settle.
+    await waitFor(() => {
+      expect(screen.getByText("Front 1")).toBeInTheDocument();
+    });
+  });
+
+  it("does not prefetch when queue is empty", async () => {
+    // Empty queue — the user has finished. Effect must short-circuit before
+    // dispatching a prefetch. No mock supplied: the leak spy enforces this.
+    renderLearnClient([], [], { skipDefaultPrefetchMocks: true });
+
+    expect(
+      screen.getByRole("heading", { name: "Today's learning is complete" }),
+    ).toBeInTheDocument();
+  });
+
+  it("warns and re-allows prefetch after a failed attempt", async () => {
+    // First mock: an error response. After it rejects, the in-flight ref must
+    // clear inside `finally`, so a subsequent threshold crossing can dispatch
+    // a fresh prefetch (covered by the second mock).
+    const initial = makeQueue(PREFETCH_THRESHOLD);
+    const failingMock = {
+      request: {
+        query: LearnNextDueCardsDocument,
+        variables: { cardgroupId: CG_ID, limit: LEARN_PAGE_LIMIT },
+      },
+      error: new Error("network failure"),
+    };
+    const swipe = {
+      request: {
+        query: HandleSwipeDocument,
+        variables: { input: { cardId: "q-1", cardgroupId: CG_ID, mode: 4 } },
+      },
+      result: {
+        data: {
+          handleSwipe: {
+            __typename: "SwipeResponse" as const,
+            nextCards: initial.slice(1),
+            performanceMode: 0,
+            metrics: DEFAULT_METRICS,
+          },
+        },
+      },
+    };
+    // Second prefetch attempt after the swipe shrinks the queue to 4.
+    const recovery = makePrefetchMock(makeQueue(1, "r"));
+
+    // Forwarding spy — does NOT call mockImplementation so the outer leak spy
+    // still sees calls.
+    const consoleWarnSpy = vi.spyOn(console, "warn");
+
+    try {
+      const user = userEvent.setup();
+      renderLearnClient([failingMock, swipe, recovery.mock], initial, {
+        skipDefaultPrefetchMocks: true,
+      });
+
+      // Wait for the first prefetch to fail and emit the warn.
+      await waitFor(() => {
+        const warnCall = consoleWarnSpy.mock.calls.find(
+          (call) => call[0] === "[learn] prefetch failed",
+        );
+        expect(warnCall).toBeDefined();
+      });
+
+      // Queue is unchanged — original card 1 is still active.
+      expect(screen.getByText("Front 1")).toBeInTheDocument();
+
+      // PII redaction contract — docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
+      const warnCall = consoleWarnSpy.mock.calls.find(
+        (call) => call[0] === "[learn] prefetch failed",
+      );
+      expect(warnCall).toBeDefined();
+      const payload = warnCall?.[1] as Record<string, unknown>;
+      expect(payload).toMatchObject({
+        cardgroupId: CG_ID,
+        name: expect.any(String),
+      });
+      expect(payload).not.toHaveProperty("message");
+
+      // Trigger a swipe to shrink queue to 4 (still ≤ threshold) — the in-flight
+      // ref must have reset, so the recovery mock is consumed.
+      await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+      await waitFor(() => {
+        expect(recovery.callCount()).toBe(1);
+      });
+    } finally {
+      consoleWarnSpy.mockRestore();
+    }
   });
 });
