@@ -115,27 +115,6 @@ export const cardsFixture: Card[] = [
 // ---------------------------------------------------------------------------
 
 /**
- * Builds an ad-hoc Card by merging caller-supplied overrides onto a baseline.
- * Supply `id` and `cardgroupId` in overrides to target a specific cardgroup.
- */
-export function makeCard(overrides: Partial<Card> = {}): Card {
-  const id = overrides.id ?? "card-custom-1";
-  const cardgroupId = overrides.cardgroupId ?? "cardgroup-001";
-  return {
-    __typename: "Card",
-    id,
-    front: `front-${id}`,
-    back: `back-${id}`,
-    cardgroupId,
-    cardgroup: cardgroupFixture,
-    createdAt: "2026-01-15T00:00:00Z",
-    updatedAt: "2026-01-15T00:00:00Z",
-    userCardState: userCardState("2026-02-01T00:00:00Z"),
-    ...overrides,
-  };
-}
-
-/**
  * Builds an ad-hoc Cardgroup by merging caller-supplied overrides onto the
  * baseline fixture.
  */
