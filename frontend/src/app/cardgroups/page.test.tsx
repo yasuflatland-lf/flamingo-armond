@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
+import { Suspense } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  mockSupabaseServerClient,
+  resetMockSupabase,
+  setMockSupabaseUser,
+  setMockSupabaseUserError,
+} from "../../../__tests__/utils/mock-supabase";
 
 // Mock next/navigation before importing the page
 vi.mock("next/navigation", () => ({
@@ -9,9 +16,10 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-// Mock createSupabaseServerClient
+// Mock createSupabaseServerClient using the shared utility so per-test state is
+// driven via setMockSupabaseUser / setMockSupabaseUserError.
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: vi.fn(),
+  createSupabaseServerClient: () => Promise.resolve(mockSupabaseServerClient()),
 }));
 
 // Mock gqlFetch
@@ -44,19 +52,8 @@ vi.mock("./cardgroups-client", () => ({
 }));
 
 import { gqlFetch } from "@/lib/apollo/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import CardgroupsPage from "./page";
-
-function makeSupabaseMock(user: { id: string } | null) {
-  return {
-    auth: {
-      getUser: vi.fn().mockResolvedValue({
-        data: { user },
-        error: null,
-      }),
-    },
-  };
-}
+import { CardgroupsSkeleton } from "./_components/cardgroups-skeleton";
+import CardgroupsPage, { CardgroupsContent } from "./page";
 
 function makeConnection(items: { id: string; name: string; updatedAt: string }[] = []) {
   return {
@@ -88,6 +85,7 @@ describe("CardgroupsPage — AuthSessionMissingError filter", () => {
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    resetMockSupabase();
     consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
@@ -98,14 +96,9 @@ describe("CardgroupsPage — AuthSessionMissingError filter", () => {
   it("redirects to /login on AuthSessionMissingError without calling console.error or gqlFetch", async () => {
     // AuthSessionMissingError is the normal anonymous-visitor signal; it must NOT
     // be treated as a real failure (no console.error, no gqlFetch, just redirect).
-    vi.mocked(createSupabaseServerClient).mockResolvedValue({
-      auth: {
-        getUser: vi.fn().mockResolvedValue({
-          data: { user: null },
-          error: { name: "AuthSessionMissingError", message: "Auth session missing!" },
-        }),
-      },
-    } as never);
+    const authMissing = new Error("Auth session missing!");
+    authMissing.name = "AuthSessionMissingError";
+    setMockSupabaseUserError(authMissing);
 
     await expect(CardgroupsPage()).rejects.toThrow("REDIRECT:/login");
 
@@ -118,15 +111,9 @@ describe("CardgroupsPage — AuthSessionMissingError filter", () => {
   it("calls console.error and rethrows when getUser returns a non-AuthSessionMissingError", async () => {
     // Any error other than AuthSessionMissingError is a real auth failure and
     // must bubble up so the error boundary handles it.
-    const fakeError = { name: "NetworkAuthError", message: "something broke" };
-    vi.mocked(createSupabaseServerClient).mockResolvedValue({
-      auth: {
-        getUser: vi.fn().mockResolvedValue({
-          data: { user: null },
-          error: fakeError,
-        }),
-      },
-    } as never);
+    const fakeError = new Error("something broke");
+    fakeError.name = "NetworkAuthError";
+    setMockSupabaseUserError(fakeError);
 
     await expect(CardgroupsPage()).rejects.toMatchObject({
       name: fakeError.name,
@@ -143,23 +130,42 @@ describe("CardgroupsPage — AuthSessionMissingError filter", () => {
   });
 });
 
-describe("CardgroupsPage", () => {
+describe("CardgroupsPage — outer auth + Suspense shell", () => {
   beforeEach(() => {
-    vi.mocked(createSupabaseServerClient).mockResolvedValue(
-      makeSupabaseMock({ id: "user-1" }) as never,
-    );
+    resetMockSupabase();
+    setMockSupabaseUser({ id: "user-1" });
   });
 
   it("redirects to /login when no user is authenticated", async () => {
-    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
+    setMockSupabaseUser(null);
 
     await expect(CardgroupsPage()).rejects.toThrow("REDIRECT:/login");
   });
 
+  it("returns a <Suspense> boundary with <CardgroupsSkeleton /> as fallback", async () => {
+    // The route shell must stream: outer page returns a Suspense element whose
+    // fallback is the cardgroups skeleton, so navigations show the skeleton
+    // immediately while the GraphQL fetch resolves inside CardgroupsContent.
+    const jsx = await CardgroupsPage();
+
+    expect(jsx.type).toBe(Suspense);
+    expect(jsx.props.fallback.type).toBe(CardgroupsSkeleton);
+    expect(jsx.props.children.type).toBe(CardgroupsContent);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CardgroupsContent — inner async server component that performs the gqlFetch.
+// Tested directly (not through Suspense) because vitest's renderer cannot
+// resolve the suspended subtree synchronously and React Server Components
+// expose this seam by design.
+// ---------------------------------------------------------------------------
+
+describe("CardgroupsContent", () => {
   it("renders CardgroupsClient with empty connection when myCardgroupsConnection is empty", async () => {
     vi.mocked(gqlFetch).mockResolvedValue(makeConnection([]) as never);
 
-    const jsx = await CardgroupsPage();
+    const jsx = await CardgroupsContent();
     render(jsx);
 
     expect(screen.getByTestId("cardgroups-client")).toBeInTheDocument();
@@ -174,7 +180,7 @@ describe("CardgroupsPage", () => {
       ]) as never,
     );
 
-    const jsx = await CardgroupsPage();
+    const jsx = await CardgroupsContent();
     render(jsx);
 
     expect(screen.getByText("Spanish Vocab")).toBeInTheDocument();
@@ -188,7 +194,7 @@ describe("CardgroupsPage", () => {
       ]) as never,
     );
 
-    const jsx = await CardgroupsPage();
+    const jsx = await CardgroupsContent();
     render(jsx);
 
     expect(screen.getByTestId("cardgroups-client")).toBeInTheDocument();
@@ -202,24 +208,12 @@ describe("CardgroupsPage", () => {
       ),
     );
 
-    await expect(CardgroupsPage()).rejects.toThrow("REDIRECT:/login");
+    await expect(CardgroupsContent()).rejects.toThrow("REDIRECT:/login");
   });
 
   it("rethrows non-auth errors so the error boundary handles them", async () => {
     vi.mocked(gqlFetch).mockRejectedValue(new Error("Network unreachable"));
 
-    await expect(CardgroupsPage()).rejects.toThrow("Network unreachable");
-  });
-
-  it("redirects to /login when gqlFetch throws an UNAUTHENTICATED error (structural parse)", async () => {
-    // isUnauthenticatedGraphQLError parses extensions.code structurally — no
-    // substring matching. This test verifies the structural redirect path works.
-    vi.mocked(gqlFetch).mockRejectedValue(
-      new Error(
-        'GraphQL errors: [{"message":"Unauthenticated","extensions":{"code":"UNAUTHENTICATED"}}]',
-      ),
-    );
-
-    await expect(CardgroupsPage()).rejects.toThrow("REDIRECT:/login");
+    await expect(CardgroupsContent()).rejects.toThrow("Network unreachable");
   });
 });
