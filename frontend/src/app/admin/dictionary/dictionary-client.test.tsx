@@ -563,6 +563,31 @@ describe("<DictionaryImportClient>", () => {
     expect(screen.getByText("the fruit")).toBeInTheDocument();
   });
 
+  // S15: Null myCardgroupsConnection in the server response emits a console.warn
+  it("S15: warns when myCardgroupsConnection arrives null from the server", async () => {
+    const nullConnectionMock = {
+      request: { query: MyCardgroupsConnectionDocument, variables: { first: 100 } },
+      result: {
+        data: {
+          myCardgroupsConnection: null,
+        },
+      },
+    };
+
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      renderClient([nullConnectionMock]);
+
+      await waitFor(() => {
+        expect(consoleWarnSpy).toHaveBeenCalledWith(
+          expect.stringContaining("[admin/dictionary]"),
+        );
+      });
+    } finally {
+      consoleWarnSpy.mockRestore();
+    }
+  });
+
   // S14: Second call to ValidateDictionary with a different payload
   //      verifies the mock variables match the encoded payload bytes exactly.
   it("S14: second validate call with a larger payload re-enables Import", async () => {

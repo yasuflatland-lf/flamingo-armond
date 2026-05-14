@@ -248,6 +248,20 @@ describe("CardsNewPage — gqlFetch error branches", () => {
       expect.objectContaining({ message: expect.anything() }),
     );
   });
+
+  test("throws when myCardgroupsConnection is null in the bootstrap response", async () => {
+    vi.mocked(gqlFetch).mockResolvedValueOnce({
+      me: { id: "u-1", lastViewedCardgroup: null },
+      myCardgroupsConnection: null,
+    } as never);
+
+    await expect(CardsNewContent({ cardgroupParam: undefined })).rejects.toThrow(
+      /myCardgroupsConnection missing from bootstrap data/,
+    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[cards-new]"),
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

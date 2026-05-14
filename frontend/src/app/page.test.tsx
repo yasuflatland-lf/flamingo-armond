@@ -159,6 +159,21 @@ describe("HomePage (root redirect)", () => {
     expect(redirect).toHaveBeenCalledWith("/onboarding");
   });
 
+  test("throws when myCardgroupsConnection is null in the GraphQL response", async () => {
+    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
+    vi.mocked(gqlFetch).mockResolvedValueOnce({
+      me: { id: "u-1", displayName: "Alice", lastViewedCardgroup: null },
+      myCardgroupsConnection: null,
+    } as never);
+
+    await expect(HomePage()).rejects.toThrow(
+      /myCardgroupsConnection missing from root redirect data/,
+    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[home]"),
+    );
+  });
+
   test("onboarded user with no lastViewed and no cardgroups → /cardgroups/new?welcome=1", async () => {
     setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
     vi.mocked(gqlFetch).mockResolvedValueOnce({

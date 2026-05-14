@@ -342,6 +342,31 @@ describe("<CardgroupPickerSheet>", () => {
     expect(link.getAttribute("href")).toContain("%2Fcards%2Fnew");
   });
 
+  // S14: Null myCardgroupsConnection in the server response emits a console.warn
+  it("warns when myCardgroupsConnection arrives null from the server", async () => {
+    const nullConnectionMock: MockedResponse = {
+      request: { query: MyCardgroupsConnectionDocument, variables: { first: 100 } },
+      result: {
+        data: {
+          myCardgroupsConnection: null,
+        },
+      },
+    };
+
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      renderSheet({ mocks: [nullConnectionMock] });
+
+      await waitFor(() => {
+        expect(consoleWarnSpy).toHaveBeenCalledWith(
+          expect.stringContaining("[cardgroup-picker-sheet]"),
+        );
+      });
+    } finally {
+      consoleWarnSpy.mockRestore();
+    }
+  });
+
   // S11: clicking the inline create link calls onOpenChange(false).
   it("calls onOpenChange(false) when the inline create link is clicked", async () => {
     const user = userEvent.setup();
