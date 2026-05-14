@@ -14,9 +14,14 @@ export const CardsNewBootstrapQuery = graphql(`
         id
       }
     }
-    myCardgroups {
-      id
-      name
+    myCardgroupsConnection(first: 100) {
+      edges {
+        node {
+          id
+          name
+        }
+      }
+      totalCount
     }
   }
 `);

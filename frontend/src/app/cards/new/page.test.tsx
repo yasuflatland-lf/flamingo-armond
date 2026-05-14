@@ -64,7 +64,22 @@ function makeBootstrapData(opts: { myCardgroups: Cardgroup[]; lastViewedId?: str
       id: "u-1",
       lastViewedCardgroup: opts.lastViewedId ? { id: opts.lastViewedId } : null,
     },
-    myCardgroups: opts.myCardgroups,
+    myCardgroupsConnection: {
+      __typename: "CardgroupConnection" as const,
+      edges: opts.myCardgroups.map((cg) => ({
+        __typename: "CardgroupEdge" as const,
+        cursor: cg.id,
+        node: cg,
+      })),
+      pageInfo: {
+        __typename: "PageInfo" as const,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        startCursor: null,
+        endCursor: null,
+      },
+      totalCount: opts.myCardgroups.length,
+    },
   };
 }
 

@@ -440,7 +440,7 @@ describe("<CardsNewClient> — navigate-on-success", () => {
   it("does NOT render a Cancel button when currentId is null", () => {
     renderClient({
       initialCardgroupId: null,
-      // forcePickerOpen would render the picker which queries MyCardgroups; keep
+      // forcePickerOpen would render the picker which queries myCardgroupsConnection; keep
       // it closed here so MockedProvider does not need an extra mock.
       forcePickerOpen: false,
     });

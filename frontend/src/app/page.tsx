@@ -45,7 +45,7 @@ export default async function HomePage() {
     redirect(`/learn/${lastViewedId}`);
   }
 
-  if (data.myCardgroups.length > 0) {
+  if ((data.myCardgroupsConnection?.totalCount ?? 0) > 0) {
     redirect("/cardgroups");
   }
 

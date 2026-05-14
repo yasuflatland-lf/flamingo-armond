@@ -64,7 +64,7 @@ export async function CardsNewContent({ cardgroupParam }: { cardgroupParam: stri
     throw err;
   }
 
-  const myCardgroups = bootstrapData.myCardgroups;
+  const myCardgroups = bootstrapData.myCardgroupsConnection?.edges?.map((e) => e.node) ?? [];
   const lastViewedId = bootstrapData.me?.lastViewedCardgroup?.id ?? null;
 
   // Build a quick-lookup set for ownership checks.

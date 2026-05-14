@@ -244,7 +244,7 @@ describe("LearnPage", () => {
       .mockResolvedValueOnce({ learnNextDueCards: [] } as never)
       .mockResolvedValueOnce({
         me: { id: "user-1", lastViewedCardgroup: null },
-        myCardgroups: [],
+        myCardgroupsConnection: { __typename: "CardgroupConnection", totalCount: 0 },
       } as never);
 
     const jsx = await LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) });
@@ -274,7 +274,7 @@ describe("LearnPage", () => {
       } as never)
       .mockResolvedValueOnce({
         me: { id: "user-1", lastViewedCardgroup: { id: "cg-old" } },
-        myCardgroups: [],
+        myCardgroupsConnection: { __typename: "CardgroupConnection", totalCount: 0 },
       } as never);
 
     const jsx = await LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) });
@@ -296,7 +296,7 @@ describe("LearnPage", () => {
       } as never)
       .mockResolvedValueOnce({
         me: { id: "user-1", lastViewedCardgroup: null },
-        myCardgroups: [],
+        myCardgroupsConnection: { __typename: "CardgroupConnection", totalCount: 0 },
       } as never);
 
     const jsx = await LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) });
