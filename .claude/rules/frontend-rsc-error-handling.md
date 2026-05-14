@@ -56,7 +56,7 @@ try {
 }
 ```
 
-The older `redirectIfUnauthenticated` helper (in `frontend/src/lib/apollo/server-redirect.ts`) still uses a substring match and is grandfathered for legacy redirect-only sites where both sides converge on the same `/login` target. **New** code paths — silent swallow vs. warn vs. redirect, anything that branches finer than "redirect on auth failure" — MUST use the structural helper.
+Use `isUnauthenticatedGraphQLError` for all code paths — including simple redirect-only cases — as it performs a structural `extensions.code` check rather than substring matching and avoids false positives from user-supplied content or stack traces.
 
 ## Detailed cases (on-demand)
 
