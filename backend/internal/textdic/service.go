@@ -120,7 +120,15 @@ func Process(input string) (words []ParsedWord, errs []ValidationError, err erro
 	errs = make([]ValidationError, 0, len(rawErrs))
 	for _, e := range rawErrs {
 		if pe, ok := e.(parseError); ok {
-			errs = append(errs, ValidationError{Line: pe.Line, Message: pe.Message, Kind: pe.Kind, Snippet: pe.Snippet})
+			// Direct struct conversion: parseError (internal, defined in
+			// grammar.y) and ValidationError (exported, defined here) share
+			// the same fields in the same order — Line, Message, Kind,
+			// Snippet — so Go allows T(v) conversion without copying field
+			// by field. If grammar.y ever adds or reorders a field, this
+			// conversion stops compiling, which is the signal to revisit
+			// the public wire type intentionally rather than letting the
+			// two structs drift silently.
+			errs = append(errs, ValidationError(pe))
 			continue
 		}
 		errs = append(errs, ValidationError{Line: 0, Message: e.Error(), Kind: SkipKindHard, Snippet: ""})
