@@ -454,8 +454,34 @@ func newJWTFixture(t *testing.T) *jwtFixture {
 		t.Fatalf("generate ecdsa key: %v", err)
 	}
 	kid := "test-kid"
-	xB64 := base64.RawURLEncoding.EncodeToString(priv.PublicKey.X.Bytes())
-	yB64 := base64.RawURLEncoding.EncodeToString(priv.PublicKey.Y.Bytes())
+	// Build a JWKS entry for the test JWKS endpoint. The handler below serves
+	// these as JSON Web Keys per RFC 7517/7518: an "EC" key on curve "P-256"
+	// is described by the base64url-encoded x and y coordinates of its public
+	// point (RFC 7518 §6.2.1).
+	//
+	// Go 1.26 deprecated direct access to ecdsa.PublicKey.X / Y because:
+	//   1. *big.Int handles are mutable — callers could overwrite the raw
+	//      coordinates and produce an invalid key.
+	//   2. *big.Int operations are not constant-time, so reading the
+	//      coordinates with .Bytes() leaks timing information on shared
+	//      buffers.
+	//
+	// (*ecdsa.PublicKey).Bytes (added in Go 1.25) returns the SEC1
+	// uncompressed encoding:
+	//
+	//   pub = 0x04 || X (32 bytes, big-endian) || Y (32 bytes, big-endian)
+	//
+	// For P-256 that is exactly 65 bytes, so pub[1:33] is X and pub[33:] is Y.
+	// Unlike (*big.Int).Bytes(), .Bytes() always pads to the curve byte length
+	// (32 for P-256), which is what JWKS requires — the previous code path
+	// could emit a 31-byte coordinate when X or Y happened to have a leading
+	// zero, yielding a JWKS entry that some parsers reject.
+	pub, err := priv.PublicKey.Bytes()
+	if err != nil {
+		t.Fatalf("public key bytes: %v", err)
+	}
+	xB64 := base64.RawURLEncoding.EncodeToString(pub[1:33])
+	yB64 := base64.RawURLEncoding.EncodeToString(pub[33:])
 	jwks := map[string]any{"keys": []map[string]any{{
 		"kty": "EC", "crv": "P-256", "alg": "ES256",
 		"kid": kid, "x": xB64, "y": yB64, "use": "sig",
