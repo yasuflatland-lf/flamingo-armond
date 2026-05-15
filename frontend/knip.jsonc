@@ -1,0 +1,8 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  // `@graphql-typed-document-node/core` is consumed only via `import type { ... }`
+  // inside graphql-codegen output under `src/generated/`. knip does not trace
+  // type-only imports through generated files, so it falsely reports the package
+  // as unused. Removing it breaks the generated TypedDocumentNode declarations.
+  "ignoreDependencies": ["@graphql-typed-document-node/core"]
+}

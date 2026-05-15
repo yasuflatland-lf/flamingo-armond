@@ -6,7 +6,7 @@ import { graphemeCount } from "./grapheme";
 // clusters, and the [a-z0-9_-] character set. The transform runs before
 // the refinements so the length and pattern checks operate on the same
 // canonical form the server will see.
-export const roleNameSchema = z
+const roleNameSchema = z
   .string()
   .transform((s) => s.trim().toLowerCase())
   .refine((s) => graphemeCount(s) >= 1, { message: "name is required" })

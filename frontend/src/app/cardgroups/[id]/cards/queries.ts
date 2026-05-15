@@ -2,7 +2,7 @@ import { graphql } from "@/generated";
 import type { CardsByCardgroupConnectionQueryVariables } from "@/generated/graphql";
 
 /** Default page size for the cards-by-cardgroup connection. Must stay in sync between SSR seed and client useQuery/cache reads. */
-export const CARDS_PAGE_SIZE = 20;
+const CARDS_PAGE_SIZE = 20;
 
 export const CardsByCardgroupConnectionQuery = graphql(`
   query CardsByCardgroupConnection(
