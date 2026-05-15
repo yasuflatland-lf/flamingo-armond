@@ -18,20 +18,6 @@ export const adminRoleFixture: Role = {
   name: "admin",
 };
 
-/** Default role assigned to regular authenticated users. */
-export const generalRoleFixture: Role = {
-  __typename: "Role",
-  id: "role-general",
-  name: "general",
-};
-
-/** A non-system editor role used for multi-select and CRUD tests. */
-export const editorRoleFixture: Role = {
-  __typename: "Role",
-  id: "role-editor",
-  name: "editor",
-};
-
 // ---------------------------------------------------------------------------
 // User fixtures
 // ---------------------------------------------------------------------------
@@ -53,7 +39,7 @@ export const generalUserFixture: User = {
   displayName: "General User",
   bio: null,
   avatarUrl: null,
-  roles: [generalRoleFixture],
+  roles: [{ __typename: "Role", id: "role-general", name: "general" }],
 };
 
 /** A user with no roles at all — exercises the "no role" edge-case path. */
@@ -65,26 +51,3 @@ export const userWithoutRolesFixture: User = {
   avatarUrl: null,
   roles: [],
 };
-
-// ---------------------------------------------------------------------------
-// Factory
-// ---------------------------------------------------------------------------
-
-/**
- * Builds an ad-hoc User by merging caller-supplied overrides onto a baseline.
- *
- * The baseline ID is "user-custom-1"; supply `id` in overrides to
- * differentiate multiple instances in the same test.
- */
-export function makeUser(overrides: Partial<User> = {}): User {
-  const id = overrides.id ?? "user-custom-1";
-  return {
-    __typename: "User",
-    id,
-    displayName: `User ${id}`,
-    bio: null,
-    avatarUrl: null,
-    roles: [],
-    ...overrides,
-  };
-}

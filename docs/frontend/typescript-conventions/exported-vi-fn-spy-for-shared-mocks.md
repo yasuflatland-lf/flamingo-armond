@@ -6,7 +6,9 @@ A shared module-mock util (e.g. `frontend/__tests__/utils/mock-supabase.ts`) let
 
 ```ts
 // In mock-supabase.ts — naive.
-export function mockSupabaseServerClient() {
+// Note: this internal factory builds the mock client shape.
+// Only mockCreateSupabaseServerClient (shown below) is exported for test vi.mock usage.
+function mockSupabaseServerClientFactory() {
   return {
     auth: {
       getClaims: () => Promise.resolve({ data: { claims: state.claims }, error: null }),

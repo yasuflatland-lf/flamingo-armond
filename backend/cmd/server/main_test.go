@@ -1203,7 +1203,7 @@ func gqlErrMessage(resp map[string]any) string {
 	return message
 }
 
-func TestGraphQL_CreateCardgroup_Then_MyCardgroups(t *testing.T) {
+func TestGraphQL_CreateCardgroup_Then_MyCardgroupsConnection(t *testing.T) {
 	f := newJWTFixture(t)
 	ts, _ := newGraphQLTestServer(t, f)
 	ctx := context.Background()
@@ -1212,16 +1212,17 @@ func TestGraphQL_CreateCardgroup_Then_MyCardgroups(t *testing.T) {
 
 	cgID := createTestCardgroup(t, ts.URL, tok, "Vocab 1")
 
-	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroups { id name ownerId } }"}`, tok)
+	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroupsConnection(first: 100) { edges { node { id name ownerId } } totalCount } }"}`, tok)
 	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
-		t.Fatalf("myCardgroups errors: %v", errs)
+		t.Fatalf("myCardgroupsConnection errors: %v", errs)
 	}
 	data, _ := resp["data"].(map[string]any)
-	list, _ := data["myCardgroups"].([]any)
-	if len(list) != 1 {
-		t.Fatalf("expected 1 cardgroup, got %d; resp=%v", len(list), resp)
+	conn, _ := data["myCardgroupsConnection"].(map[string]any)
+	edges, _ := conn["edges"].([]any)
+	if len(edges) != 1 {
+		t.Fatalf("expected 1 cardgroup, got %d; resp=%v", len(edges), resp)
 	}
-	cg, _ := list[0].(map[string]any)
+	cg, _ := edges[0].(map[string]any)["node"].(map[string]any)
 	if cg["id"] != cgID {
 		t.Fatalf("expected id=%q, got %v", cgID, cg["id"])
 	}
@@ -1231,34 +1232,8 @@ func TestGraphQL_CreateCardgroup_Then_MyCardgroups(t *testing.T) {
 	if cg["ownerId"] != sub {
 		t.Fatalf("expected ownerId=%q, got %v", sub, cg["ownerId"])
 	}
-}
-
-func TestGraphQL_CreateCard_Then_CardsByCardgroup(t *testing.T) {
-	f := newJWTFixture(t)
-	ts, _ := newGraphQLTestServer(t, f)
-	ctx := context.Background()
-	sub := insertAuthUser(t, ctx)
-	tok := f.sign(t, sub)
-
-	cgID := createTestCardgroup(t, ts.URL, tok, "Cards")
-	cardID := createTestCard(t, ts.URL, tok, cgID, "front", "back")
-
-	body := fmt.Sprintf(`{"query":"{ cardsByCardgroup(cardgroupId: \"%s\") { id front back cardgroup { id name } } }"}`, cgID)
-	resp := postGraphQL(t, ts.URL+"/query", body, tok)
-	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
-		t.Fatalf("cardsByCardgroup errors: %v", errs)
-	}
-	list, _ := resp["data"].(map[string]any)["cardsByCardgroup"].([]any)
-	if len(list) != 1 {
-		t.Fatalf("expected 1 card, got %d; resp=%v", len(list), resp)
-	}
-	card, _ := list[0].(map[string]any)
-	if card["id"] != cardID {
-		t.Fatalf("card id=%v, want %q", card["id"], cardID)
-	}
-	cg, _ := card["cardgroup"].(map[string]any)
-	if cg == nil || cg["id"] != cgID || cg["name"] != "Cards" {
-		t.Fatalf("cardgroup resolver returned %v", cg)
+	if got := conn["totalCount"].(float64); got != 1 {
+		t.Fatalf("expected totalCount=1, got %v", got)
 	}
 }
 
@@ -1300,7 +1275,7 @@ func TestGraphQL_CreateCard_Validation(t *testing.T) {
 	}
 }
 
-func TestGraphQL_MyCardgroups_DoesNotLeakOtherUsers(t *testing.T) {
+func TestGraphQL_MyCardgroupsConnection_DoesNotLeakOtherUsers(t *testing.T) {
 	f := newJWTFixture(t)
 	ts, _ := newGraphQLTestServer(t, f)
 	ctx := context.Background()
@@ -1313,28 +1288,40 @@ func TestGraphQL_MyCardgroups_DoesNotLeakOtherUsers(t *testing.T) {
 	tokB := f.sign(t, subB)
 
 	// B sees zero cardgroups before creating any.
-	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroups { id } }"}`, tokB)
+	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroupsConnection(first: 100) { edges { node { id } } totalCount } }"}`, tokB)
 	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
-		t.Fatalf("myCardgroups (B, empty) errors: %v", errs)
+		t.Fatalf("myCardgroupsConnection (B, empty) errors: %v", errs)
 	}
-	listB, _ := resp["data"].(map[string]any)["myCardgroups"].([]any)
+	connB, _ := resp["data"].(map[string]any)["myCardgroupsConnection"].(map[string]any)
+	listB, _ := connB["edges"].([]any)
 	if len(listB) != 0 {
 		t.Fatalf("expected B to see 0 cardgroups, got %d", len(listB))
+	}
+	if got := connB["totalCount"].(float64); got != 0 {
+		t.Fatalf("expected B totalCount=0 before creating any cardgroup, got %v", got)
 	}
 
 	// B creates one; now B sees exactly one and A still sees exactly one.
 	createTestCardgroup(t, ts.URL, tokB, "B's group")
 
-	respB2 := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroups { id } }"}`, tokB)
-	listB2, _ := respB2["data"].(map[string]any)["myCardgroups"].([]any)
+	respB2 := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroupsConnection(first: 100) { edges { node { id } } totalCount } }"}`, tokB)
+	connB2, _ := respB2["data"].(map[string]any)["myCardgroupsConnection"].(map[string]any)
+	listB2, _ := connB2["edges"].([]any)
 	if len(listB2) != 1 {
 		t.Fatalf("expected B to see 1 cardgroup, got %d", len(listB2))
 	}
+	if got := connB2["totalCount"].(float64); got != 1 {
+		t.Fatalf("expected B totalCount=1 after creating one cardgroup, got %v", got)
+	}
 
-	respA2 := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroups { id } }"}`, tokA)
-	listA2, _ := respA2["data"].(map[string]any)["myCardgroups"].([]any)
+	respA2 := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroupsConnection(first: 100) { edges { node { id } } totalCount } }"}`, tokA)
+	connA2, _ := respA2["data"].(map[string]any)["myCardgroupsConnection"].(map[string]any)
+	listA2, _ := connA2["edges"].([]any)
 	if len(listA2) != 1 {
 		t.Fatalf("expected A to still see 1 cardgroup, got %d", len(listA2))
+	}
+	if got := connA2["totalCount"].(float64); got != 1 {
+		t.Fatalf("expected A totalCount=1 (unaffected by B's create), got %v", got)
 	}
 }
 
@@ -1395,21 +1382,26 @@ func TestGraphQL_DeleteCardgroup_NonOwner_Unauthenticated(t *testing.T) {
 	}
 
 	// Verify side-effect: the cardgroup must still exist in user A's list.
-	listResp := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroups { id } }"}`, tokA)
+	listResp := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroupsConnection(first: 100) { edges { node { id } } totalCount } }"}`, tokA)
 	if errs, ok := listResp["errors"].([]any); ok && len(errs) > 0 {
-		t.Fatalf("myCardgroups re-fetch errors: %v", errs)
+		t.Fatalf("myCardgroupsConnection re-fetch errors: %v", errs)
 	}
-	list, _ := listResp["data"].(map[string]any)["myCardgroups"].([]any)
+	connList, _ := listResp["data"].(map[string]any)["myCardgroupsConnection"].(map[string]any)
+	list, _ := connList["edges"].([]any)
 	found := false
 	for _, item := range list {
-		cg, _ := item.(map[string]any)
+		edge, _ := item.(map[string]any)
+		cg, _ := edge["node"].(map[string]any)
 		if cg["id"] == cgID {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("cardgroup %q was deleted by a non-owner; still expected in myCardgroups", cgID)
+		t.Fatalf("cardgroup %q was deleted by a non-owner; still expected in myCardgroupsConnection", cgID)
+	}
+	if got := connList["totalCount"].(float64); got != 1 {
+		t.Fatalf("expected totalCount=1 after failed non-owner delete, got %v", got)
 	}
 }
 
@@ -1441,16 +1433,20 @@ func TestGraphQL_Cardgroup_OwnerLoaderResolves(t *testing.T) {
 
 	createTestCardgroup(t, ts.URL, tok, "Loader Test")
 
-	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroups { id name owner { id displayName } } }"}`, tok)
+	resp := postGraphQL(t, ts.URL+"/query", `{"query":"{ myCardgroupsConnection(first: 100) { edges { node { id name owner { id displayName } } } totalCount } }"}`, tok)
 	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
-		t.Fatalf("myCardgroups with owner errors: %v", errs)
+		t.Fatalf("myCardgroupsConnection with owner errors: %v", errs)
 	}
-	list, _ := resp["data"].(map[string]any)["myCardgroups"].([]any)
+	conn, _ := resp["data"].(map[string]any)["myCardgroupsConnection"].(map[string]any)
+	list, _ := conn["edges"].([]any)
 	if len(list) == 0 {
 		t.Fatalf("expected at least one cardgroup; resp=%v", resp)
 	}
+	if got := conn["totalCount"].(float64); got != 1 {
+		t.Fatalf("expected totalCount=1, got %v", got)
+	}
 	for i, item := range list {
-		cg, _ := item.(map[string]any)
+		cg, _ := item.(map[string]any)["node"].(map[string]any)
 		owner, _ := cg["owner"].(map[string]any)
 		if owner == nil {
 			t.Fatalf("cardgroup[%d]: owner is nil; cg=%v", i, cg)
@@ -1483,16 +1479,20 @@ func TestGraphQL_Cardgroup_OwnerLoader_NoNPlus1(t *testing.T) {
 	}
 
 	resp := postGraphQL(t, ts.URL+"/query",
-		`{"query":"query BatchOwner { myCardgroups { id owner { id displayName } } }"}`, tok)
+		`{"query":"query BatchOwner { myCardgroupsConnection(first: 100) { edges { node { id owner { id displayName } } } totalCount } }"}`, tok)
 	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
-		t.Fatalf("myCardgroups batch errors: %v", errs)
+		t.Fatalf("myCardgroupsConnection batch errors: %v", errs)
 	}
-	list, _ := resp["data"].(map[string]any)["myCardgroups"].([]any)
+	conn, _ := resp["data"].(map[string]any)["myCardgroupsConnection"].(map[string]any)
+	list, _ := conn["edges"].([]any)
 	if len(list) != n {
 		t.Fatalf("expected %d cardgroups, got %d", n, len(list))
 	}
+	if got := conn["totalCount"].(float64); got != float64(n) {
+		t.Fatalf("expected totalCount=%d, got %v", n, got)
+	}
 	for i, item := range list {
-		cg, _ := item.(map[string]any)
+		cg, _ := item.(map[string]any)["node"].(map[string]any)
 		owner, _ := cg["owner"].(map[string]any)
 		if owner == nil {
 			t.Fatalf("cardgroup[%d]: owner is nil", i)
@@ -2144,9 +2144,6 @@ func (panicQueryResolver) Health(_ context.Context) (string, error) {
 	panic("deliberate panic in Health resolver for panic-recovery test")
 }
 func (panicQueryResolver) Me(_ context.Context) (*model.User, error) { return nil, nil }
-func (panicQueryResolver) MyCardgroups(_ context.Context) ([]*model.Cardgroup, error) {
-	return nil, nil
-}
 func (panicQueryResolver) Cardgroup(_ context.Context, _ string) (*model.Cardgroup, error) {
 	return nil, nil
 }
@@ -2154,9 +2151,6 @@ func (panicQueryResolver) MyCardgroupsConnection(_ context.Context, _ *int, _ *s
 	return nil, nil
 }
 func (panicQueryResolver) Card(_ context.Context, _ string) (*model.Card, error) { return nil, nil }
-func (panicQueryResolver) CardsByCardgroup(_ context.Context, _ string) ([]*model.Card, error) {
-	return nil, nil
-}
 func (panicQueryResolver) LearnNextDueCards(_ context.Context, _ string, _ *int) ([]*model.Card, error) {
 	return nil, nil
 }

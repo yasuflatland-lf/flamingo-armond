@@ -7,7 +7,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import {
-  AdminDictionaryCardgroupsQuery,
+  AdminDictionaryCardgroupsConnectionQuery,
   UpsertDictionaryMutation,
   ValidateDictionaryQuery,
 } from "./queries";
@@ -66,7 +66,7 @@ export function DictionaryImportClient() {
     data: cardgroupsData,
     loading: cardgroupsLoading,
     error: cardgroupsError,
-  } = useQuery(AdminDictionaryCardgroupsQuery);
+  } = useQuery(AdminDictionaryCardgroupsConnectionQuery, { variables: { first: 100 } });
 
   const [runValidate, { loading: validating }] = useLazyQuery(ValidateDictionaryQuery, {
     fetchPolicy: "no-cache",
@@ -74,7 +74,13 @@ export function DictionaryImportClient() {
 
   const [runUpsert, { loading: upserting }] = useMutation(UpsertDictionaryMutation);
 
-  const cardgroups = cardgroupsData?.myCardgroups ?? [];
+  const rawConnection = cardgroupsData?.myCardgroupsConnection;
+  if (cardgroupsData && rawConnection === null) {
+    console.warn(
+      "[admin/dictionary] myCardgroupsConnection is null in server response (partial-response null-bubble)",
+    );
+  }
+  const cardgroups = rawConnection?.edges?.map((e) => e.node) ?? [];
   const cardgroupsErrorBanner = getBackendErrorBanner(cardgroupsError);
 
   async function handleValidate() {

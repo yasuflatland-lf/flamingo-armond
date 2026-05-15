@@ -11,13 +11,13 @@ import { vi } from "vitest";
  *
  * IMPORTANT: `vi.mock` must be invoked at the **top of each test file** because
  * Vitest hoists `vi.mock` calls above imports. This util therefore exports only
- * the factory (`mockSupabaseServerClient`) and the state setters; tests wire
+ * `mockCreateSupabaseServerClient` and the state setters; tests wire
  * the mock themselves.
  *
  * The `getClaims` callable is exposed as a `vi.fn()` spy so tests can assert
  * call counts (e.g. `expect(getMockGetClaimsSpy()).not.toHaveBeenCalled()` for
  * cases where the layout must short-circuit before reaching the JWT lookup).
- * Each call to `mockSupabaseServerClient()` installs a fresh spy; the latest
+ * Each call to `mockCreateSupabaseServerClient()` installs a fresh spy; the latest
  * one is accessible via `getMockGetClaimsSpy()`.
  *
  * Canonical usage in a test file:
@@ -81,7 +81,7 @@ const state: MockSupabaseState = {
 };
 
 /**
- * Spy installed on the most recent `mockSupabaseServerClient()` invocation's
+ * Spy installed on the most recent `mockCreateSupabaseServerClient()` invocation's
  * `getClaims`. Tests assert call counts (e.g. "must not be called on the
  * /login bypass branch") via `getMockGetClaimsSpy()`.
  *
@@ -151,7 +151,7 @@ export function setMockSupabaseClaimsDataNull(): void {
 
 /**
  * Return the `vi.fn()` spy attached to the most recent
- * `mockSupabaseServerClient()` invocation's `getClaims`. Tests use this to
+ * `mockCreateSupabaseServerClient()` invocation's `getClaims`. Tests use this to
  * assert call counts — e.g. `expect(getMockGetClaimsSpy()).not.toHaveBeenCalled()`
  * for cases where the layout must short-circuit before reaching the JWT lookup.
  *
@@ -194,15 +194,6 @@ export const mockCreateSupabaseServerClient = vi.fn(() =>
 );
 
 /**
- * Return the `vi.fn()` spy for the `createSupabaseServerClient` factory call.
- * Tests assert call counts on this to catch regressions where a layout that is
- * supposed to short-circuit (e.g. on `/login`) starts invoking supabase.
- */
-export function getMockCreateSupabaseServerClientSpy(): typeof mockCreateSupabaseServerClient {
-  return mockCreateSupabaseServerClient;
-}
-
-/**
  * Reset to a clean slate (logged out, no errors, no claims). Intended for `beforeEach`.
  */
 export function resetMockSupabase(): void {
@@ -220,7 +211,7 @@ export function resetMockSupabase(): void {
  * surface that pages actually call is implemented; widen the type as new
  * surfaces are exercised by tests.
  */
-export type MockSupabaseServerClient = {
+type MockSupabaseServerClient = {
   auth: {
     getUser: () => Promise<{
       data: { user: MockSupabaseUser | null };
@@ -237,10 +228,10 @@ export type MockSupabaseServerClient = {
  * `setMockSupabaseUserError` / `setMockSupabaseClaims` / `setMockSupabaseClaimsError` /
  * `setMockSupabaseClaimsDataNull` between renders are honoured.
  *
- * The `getClaims` callable is a fresh `vi.fn()` per invocation; the latest spy
+ * The `getClaims` callable is a fresh `vi.fn()` per factory call; the latest spy
  * is exposed via `getMockGetClaimsSpy()` for call-count assertions.
  */
-export function mockSupabaseServerClient(): MockSupabaseServerClient {
+function mockSupabaseServerClient(): MockSupabaseServerClient {
   const getClaimsSpy = vi.fn<() => Promise<GetClaimsResult>>(() =>
     Promise.resolve(
       state.claimsDataNull

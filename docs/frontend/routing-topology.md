@@ -23,7 +23,7 @@ HomePage (/)
 ├─ no Supabase session            → /login
 ├─ !isUserOnboarded(me)           → /onboarding          (highest signed-in priority)
 ├─ me.lastViewedCardgroup != null → /learn/{id}
-├─ myCardgroups.length > 0        → /cardgroups
+├─ myCardgroupsConnection.totalCount > 0 → /cardgroups
 └─ else                           → /cardgroups/new?welcome=1
 ```
 
@@ -39,10 +39,10 @@ The OAuth callback at `/auth/callback` defaults its post-exchange redirect to `/
 
 The global "+ Card" CTA lands on `/cards/new` (the FAB does **not** carry `?cardgroup=...` — the route owns the resolution). The page resolves the cardgroup id in this order:
 
-1. `searchParams.cardgroup` — accepted only if the id appears in the user's `myCardgroups` list. A non-owned id silently falls through (no `BAD_USER_INPUT` surface) so a stale URL after sharing or revoke does not 500.
+1. `searchParams.cardgroup` — accepted only if the id appears in the user's `myCardgroupsConnection` edges. A non-owned id silently falls through (no `BAD_USER_INPUT` surface) so a stale URL after sharing or revoke does not 500.
 2. `me.lastViewedCardgroup.id` — same ownership check (defensive; the FK already cascades).
 3. User has cardgroups but neither (1) nor (2) resolved → render the chip in undetermined state and **force the picker open** so the user explicitly chooses.
-4. `myCardgroups.length === 0` → `redirect("/cardgroups/new?welcome=1")` — the same target as HomePage's "no cardgroups yet" branch.
+4. `myCardgroupsConnection.totalCount === 0` → `redirect("/cardgroups/new?welcome=1")` — the same target as HomePage's "no cardgroups yet" branch.
 
 The URL `?cardgroup=<id>` is the **single source of truth** for the chip + form pair: the picker calls `router.replace("/cards/new?cardgroup=<newId>", { scroll: false })`, and chip / form re-render against the new URL. No client-side state holds a duplicate "selected cardgroup" — eliminates the chip-vs-form drift class of bugs.
 
@@ -50,7 +50,7 @@ The URL `?cardgroup=<id>` is the **single source of truth** for the chip + form 
 
 The legacy "render `/` with health check inline" pattern is replaced by two distinct probes — see "Route Handler conventions" below. `/api/ping` is a thin liveness probe (Vercel edge reachability only, always 200) for warm-keep cron jobs; `/api/healthz` is a deep readiness probe (frontend → backend GraphQL `health`, 503 when the backend is down) for uptime monitors. External monitors that polled `/` must move to one of these — typically `/api/healthz` for alerting, `/api/ping` for warm-up that must not page on a backend outage.
 
-The admin entry surfaces (desktop rail admin items / `AdminPill`, mobile drawer admin section) are the only UI affordances for entering `/admin`. The root layout reads `claims.app_metadata.role` from `supabase.auth.getClaims()` and forwards `isAdmin = role === "admin"` to `AppShell`. The claim is emitted by a Postgres custom access token hook that joins `public.user_roles` at token mint time. `frontend/src/app/admin/layout.tsx` is the enforcement boundary — nav visibility is a UI hint, not security. See `.claude/rules/frontend-rsc-error-handling.md` for the failure-mode contract that lets the shell degrade silently when the role lookup fails.
+The admin entry surfaces (desktop rail admin items, mobile drawer admin section) are the only UI affordances for entering `/admin`. The root layout reads `claims.app_metadata.role` from `supabase.auth.getClaims()` and forwards `isAdmin = role === "admin"` to `AppShell`. The claim is emitted by a Postgres custom access token hook that joins `public.user_roles` at token mint time. `frontend/src/app/admin/layout.tsx` is the enforcement boundary — nav visibility is a UI hint, not security. See `.claude/rules/frontend-rsc-error-handling.md` for the failure-mode contract that lets the shell degrade silently when the role lookup fails.
 
 ### Global navigation primitives
 
@@ -61,8 +61,6 @@ The shell components live under `frontend/src/components/nav/` and compose into 
 - `LogoDrawer` — Client; mobile-only. The 🦩 logo is a plain `<Link href="/">`; the `MobileMenuTrigger` is a separate adjacent button that opens a Radix `Sheet`. The drawer body groups (1) primary nav (Cardgroups, Settings, admin items), (2) Profile + sign-out below an `<hr>`.
 - `SidebarToggle` / `MobileMenuTrigger` — Client atoms. The logo is split from the toggle on both surfaces: tapping 🦩 always navigates home; the adjacent button always opens/closes the nav. Conflating "go home" and "expand the rail" onto one element is a design-systems anti-pattern — a tap on the logo would either do the wrong thing for half the user's intents or silently change behaviour based on collapsed/expanded state.
 - `GlobalFAB` — Client; floats bottom-right with the coral `--brand-primary` background. Hidden on `/login`, `/learn/*`, `/admin/*`, `/cards/new`, `/cardgroups/new`, `/profile` — i.e. routes that are anonymous-only, full-bleed UI, a different audience, or the FAB's own destination (would loop). Bare-shell routes (e.g. `/onboarding`) get FAB suppression for free because they bypass `AppShell` entirely. Hide list lives in one regex (`HIDDEN_PATH_RE`) inside `global-fab.tsx`; there is no allow-list. The FAB also wraps its button in an `md:hidden` container so the desktop `+ Card` CTA is the **single** add-card affordance at `>= md` — see "Breakpoint-exclusive primary action" below. The FAB does NOT pre-pend `?cardgroup=...` — `/cards/new` owns the 4-priority resolution; passing the id from the FAB would create two truths.
-- `AdminPill` — RSC; tinted entry chip into `/admin/*`. Rendered only when the role lookup returns `"admin"`. Tint comes from the `--brand-tint*` family so the admin-section tint in the drawer and the pill are visually linked.
-
 #### Breakpoint-exclusive primary action
 
 When two surfaces would render the same primary CTA at the same time (here: the desktop header `+ Card` button and the mobile `GlobalFAB`), make them **mutually exclusive by Tailwind class** (`md:hidden` on the FAB, `hidden md:flex` would go on a desktop-only nav element) rather than by a JS `useMediaQuery` hook. Two reasons: (1) SSR and CSR render the same markup, so there is no hydration flash where both affordances briefly appear; (2) no React re-render fires on viewport change — the browser handles the transition in CSS. Reach for `useMediaQuery` only when the *content* (not just visibility) differs across breakpoints, which is rare.
@@ -84,7 +82,7 @@ The FAB's "do not show this control" rule has two distinct flavours: (a) static 
 
 ### Cardgroup chip + picker primitives
 
-`CardgroupChip` (client) and `CardgroupPickerSheet` (client) live under `frontend/src/components/cardgroups/`. The chip is a short pill with the current cardgroup name + `ChevronDown`; tapping it opens the picker. The picker is a shadcn `Sheet` rendered with `side="bottom"` on all viewport sizes (the original plan considered a desktop `Dialog` variant via `useMediaQuery`, but a bottom sheet works on both and avoids dragging in a media-query hook just for one component). It is backed by `MyCardgroupsQuery` via `useQuery`. Two consumers exist today: `/cards/new` (chip + form pair, single source of truth in URL) and any future page that needs cardgroup-scoped writes from a non-cardgroup-scoped route.
+`CardgroupChip` (client) and `CardgroupPickerSheet` (client) live under `frontend/src/components/cardgroups/`. The chip is a short pill with the current cardgroup name + `ChevronDown`; tapping it opens the picker. The picker is a shadcn `Sheet` rendered with `side="bottom"` on all viewport sizes (the original plan considered a desktop `Dialog` variant via `useMediaQuery`, but a bottom sheet works on both and avoids dragging in a media-query hook just for one component). It is backed by `MyCardgroupsConnectionQuery` via `useQuery`. Two consumers exist today: `/cards/new` (chip + form pair, single source of truth in URL) and any future page that needs cardgroup-scoped writes from a non-cardgroup-scoped route.
 
 The chip truncates names to `max-w-[12ch] sm:max-w-[20ch]`; long names show as ellipsis-on-mobile and the full name appears in the picker. There is no tooltip — tapping the chip already reveals the full list.
 
@@ -104,7 +102,7 @@ The asymmetry reflects the information hierarchy: the header "+ Card" button and
 `globals.css` defines five brand tokens (`--brand-primary`, `--brand-primary-foreground`, `--brand-tint`, `--brand-tint-border`, `--brand-tint-foreground`). The product palette is intentionally narrow:
 
 - `--brand-primary` (coral `#FE7F70` via OKLCH) — primary CTAs only: `+ Card` FAB, the `+ Card` desktop nav button, and primary form Save buttons. Not for body text, links, or hover states.
-- `--brand-tint*` — low-volume brand-identity surfaces: (1) the sign-in brand panel (`/login` left column), (2) admin entry surfaces (`AdminPill`, the drawer admin section). The tint signals "this surface carries product identity or marks a context switch" without competing with a primary CTA. Use `bg-brand-tint` for the panel background, `text-brand-tint-foreground` for headings, and `text-brand-tint-foreground/80` for secondary copy on that background.
+- `--brand-tint*` — low-volume brand-identity surfaces: (1) the sign-in brand panel (`/login` left column), (2) admin entry surfaces (rail admin items, the drawer admin section). The tint signals "this surface carries product identity or marks a context switch" without competing with a primary CTA. Use `bg-brand-tint` for the panel background, `text-brand-tint-foreground` for headings, and `text-brand-tint-foreground/80` for secondary copy on that background.
 
 Every other surface uses shadcn's slate-based defaults (`--primary`, `--secondary`, `--accent`). New components should only reach for the brand tokens when they fall into one of the categories above — adding a fourth use site for `--brand-tint*` or a second category for `--brand-primary` dilutes the signal, so reviewers should push back unless the new surface is clearly identity-bearing or a primary CTA.
 

@@ -23,7 +23,6 @@ import (
 // FindByIDs is intentionally omitted; it is used only by the loader layer.
 type CardgroupRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
-	FindByOwner(ctx context.Context, ownerID string) ([]*domain.Cardgroup, error)
 	FindPageByOwner(
 		ctx context.Context,
 		ownerID string,
@@ -80,19 +79,6 @@ type CardgroupUsecase struct{ repo CardgroupRepository }
 // NewCardgroupUsecase constructs a CardgroupUsecase backed by the given repository.
 func NewCardgroupUsecase(repo CardgroupRepository) *CardgroupUsecase {
 	return &CardgroupUsecase{repo: repo}
-}
-
-// MyCardgroups returns all cardgroups owned by the authenticated caller.
-func (u *CardgroupUsecase) MyCardgroups(ctx context.Context) ([]*domain.Cardgroup, error) {
-	user := auth.UserFrom(ctx)
-	if user == nil {
-		return nil, gqlerr.Unauthenticated()
-	}
-	cgs, err := u.repo.FindByOwner(ctx, user.Sub)
-	if err != nil {
-		return nil, gqlerr.Internal(ctx, err)
-	}
-	return cgs, nil
 }
 
 // Cardgroup returns a single cardgroup by id. Non-owners receive UNAUTHENTICATED

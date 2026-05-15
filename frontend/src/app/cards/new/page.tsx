@@ -64,7 +64,12 @@ export async function CardsNewContent({ cardgroupParam }: { cardgroupParam: stri
     throw err;
   }
 
-  const myCardgroups = bootstrapData.myCardgroups;
+  const conn = bootstrapData.myCardgroupsConnection;
+  if (!conn) {
+    console.error("[cards-new] myCardgroupsConnection is null — partial response from backend");
+    throw new Error("myCardgroupsConnection missing from bootstrap data");
+  }
+  const myCardgroups = conn.edges.map((e) => e.node);
   const lastViewedId = bootstrapData.me?.lastViewedCardgroup?.id ?? null;
 
   // Build a quick-lookup set for ownership checks.

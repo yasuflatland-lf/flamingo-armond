@@ -7,11 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CARDGROUPS_DEFAULT_VARS } from "@/app/cardgroups/queries";
-import {
-  DeleteCardgroupDocument,
-  MyCardgroupsConnectionDocument,
-  MyCardgroupsDocument,
-} from "@/generated/graphql";
+import { DeleteCardgroupDocument, MyCardgroupsConnectionDocument } from "@/generated/graphql";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
@@ -176,11 +172,6 @@ describe("<DeleteCardgroupButton>", () => {
         },
       },
     });
-    cache.writeQuery({
-      query: MyCardgroupsDocument,
-      data: { myCardgroups: [cg1, cg2] },
-    });
-
     const mocks: MockedResponse[] = [
       makeDeleteMock({ id: CG_ID }, { data: { deleteCardgroup: true } }),
     ];
@@ -204,10 +195,6 @@ describe("<DeleteCardgroupButton>", () => {
     expect(conn?.myCardgroupsConnection.edges[0]?.node).not.toBeNull();
     expect(conn?.myCardgroupsConnection.edges[0]?.node.id).toBe("cg-2");
     expect(conn?.myCardgroupsConnection.totalCount).toBe(1);
-
-    const flat = cache.readQuery({ query: MyCardgroupsDocument });
-    expect(flat?.myCardgroups).toHaveLength(1);
-    expect(flat?.myCardgroups[0]?.id).toBe("cg-2");
   });
 
   it("UNAUTHENTICATED error keeps the dialog open and shows a banner", async () => {

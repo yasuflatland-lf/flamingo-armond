@@ -1,21 +1,14 @@
 /**
- * Shared helpers for testing Relay-style Connection pagination with
- * `MockedProvider`. Two facts drive these helpers:
+ * Helpers for asserting MockedProvider leak warnings in Apollo pagination tests.
  *
- * 1. `MockedProvider` matches mocks by `(query, variables)` tuple and consumes
- *    each mock entry **once**. Therefore each `fetchMore` invocation needs its
- *    OWN mock entry whose variables include the cursor (`after` or `before`).
- *    Reusing a single mock entry for two page transitions silently returns
- *    `undefined` on the second call and the test passes on a stale cache.
- *
- * 2. When MockedProvider cannot match a request, it logs
- *    `"No more mocked responses for the query: <Op>"` via `console.warn`.
- *    `installApolloMockLeakSpy` captures those warnings so the caller can
- *    assert no leaks occurred — applying the "Spy on console.warn for
- *    MockedProvider leaks" rule from
- *    `docs/pagination/capture-mockedprovider-warn-leaks.md`. Failure requires
- *    an explicit call to `assertNoLeaks()`; the spy alone does not fail the
- *    test.
+ * When MockedProvider cannot match a request, it logs
+ * `"No more mocked responses for the query: <Op>"` via `console.warn`.
+ * `installApolloMockLeakSpy` captures those warnings so the caller can
+ * assert no leaks occurred — applying the "Spy on console.warn for
+ * MockedProvider leaks" rule from
+ * `docs/pagination/capture-mockedprovider-warn-leaks.md`. Failure requires
+ * an explicit call to `assertNoLeaks()`; the spy alone does not fail the
+ * test.
  *
  * Canonical usage:
  *
@@ -25,103 +18,10 @@
  *   leak.assertNoLeaks();
  *   leak.teardown();
  * });
- *
- * const mocks = buildPaginatedMocks({
- *   query: CardsByCardgroupConnectionDocument,
- *   initialVariables: { cardgroupId, first: 20 },
- *   pages: [
- *     { result: { data: page1Data }, nextVariables: { cardgroupId, first: 20, after: "c-20" } },
- *     { result: { data: page2Data } },
- *   ],
- * });
  * ```
- *
- * The first entry of `pages` is the response to the initial query; each
- * subsequent entry is one `fetchMore` page transition. Each entry's
- * `nextVariables` (when present) becomes the `request.variables` of the NEXT
- * mock entry — i.e. the variables Apollo issues on the next `fetchMore`.
- * `buildPaginatedMocks` throws synchronously when a non-terminal page is
- * missing `nextVariables`.
  */
 
-import type { DocumentNode, OperationVariables, TypedDocumentNode } from "@apollo/client";
-import type { MockedResponse } from "@apollo/client/testing";
 import { vi } from "vitest";
-
-/**
- * One page in a paginated fixture.
- *
- * - `result` — the response MockedProvider should return for this page. Either
- *   `{ data }` or `{ errors }` (or both). May be a function, mirroring
- *   `MockedResponse["result"]`.
- * - `nextVariables` — the variables MockedProvider should expect on the NEXT
- *   fetchMore call. Omit on the terminal page (no further fetchMore).
- * - `delay` — optional artificial latency, useful for in-flight-guard tests.
- */
-export type PaginatedPage<TData, TVariables extends OperationVariables> = {
-  result: MockedResponse<TData, TVariables>["result"];
-  nextVariables?: TVariables;
-  delay?: number;
-};
-
-export type BuildPaginatedMocksOptions<TData, TVariables extends OperationVariables> = {
-  query: DocumentNode | TypedDocumentNode<TData, TVariables>;
-  initialVariables: TVariables;
-  pages: PaginatedPage<TData, TVariables>[];
-};
-
-/**
- * Build a `MockedResponse[]` for a paginated query. The first page uses
- * `initialVariables`; each subsequent page uses the previous page's
- * `nextVariables`. A page without `nextVariables` is treated as terminal —
- * no further mocks are emitted.
- *
- * Throws synchronously if a non-terminal page is missing `nextVariables`,
- * which is almost always a fixture-construction bug (a fetchMore without a
- * cursor variables object would never match).
- */
-export function buildPaginatedMocks<TData, TVariables extends OperationVariables>(
-  opts: BuildPaginatedMocksOptions<TData, TVariables>,
-): MockedResponse<TData, TVariables>[] {
-  const { query, initialVariables, pages } = opts;
-  if (pages.length === 0) {
-    return [];
-  }
-
-  const mocks: MockedResponse<TData, TVariables>[] = [];
-  let currentVariables: TVariables = initialVariables;
-
-  for (const [i, page] of pages.entries()) {
-    const isTerminal = i === pages.length - 1;
-
-    const entry: MockedResponse<TData, TVariables> = {
-      request: { query, variables: currentVariables },
-      result: page.result,
-    };
-    if (page.delay !== undefined) {
-      entry.delay = page.delay;
-    }
-    mocks.push(entry);
-
-    if (!isTerminal) {
-      if (!page.nextVariables) {
-        throw new Error(
-          `buildPaginatedMocks: page[${i}] is non-terminal but has no nextVariables; ` +
-            "every fetchMore needs the cursor variables of the next request.",
-        );
-      }
-      currentVariables = page.nextVariables;
-    }
-  }
-
-  return mocks;
-}
-
-/**
- * The exact substring MockedProvider logs for an unmatched request.
- * Exposed for tests that want to assert their own targeted match logic.
- */
-export const APOLLO_MOCK_LEAK_NEEDLE = "No more mocked responses for the query";
 
 export type ApolloMockLeakSpyOptions = {
   /**
@@ -183,8 +83,9 @@ export function installApolloMockLeakSpy(
   };
 
   const isLeak = (args: unknown[]): boolean =>
-    args.some((a) => typeof a === "string" && a.includes(APOLLO_MOCK_LEAK_NEEDLE)) &&
-    matchesOperation(args);
+    args.some(
+      (a) => typeof a === "string" && a.includes("No more mocked responses for the query"),
+    ) && matchesOperation(args);
 
   const getLeakedCalls = (): unknown[][] =>
     spy.mock.calls.filter((args) => isLeak(args as unknown[])) as unknown[][];

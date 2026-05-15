@@ -5,7 +5,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MyCardgroupsConnectionDocument, MyCardgroupsDocument } from "@/generated/graphql";
+import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
@@ -568,10 +568,6 @@ describe("<CardgroupsClient> connection cache update (readQuery + writeQuery)", 
       query: MyCardgroupsConnectionDocument,
       variables: CARDGROUPS_DEFAULT_VARS,
       data: { myCardgroupsConnection: makeConnection([CG_1, CG_2]) },
-    });
-    cache.writeQuery({
-      query: MyCardgroupsDocument,
-      data: { myCardgroups: [CG_1, CG_2] },
     });
 
     const NEW_CG = {

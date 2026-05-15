@@ -64,7 +64,22 @@ function makeBootstrapData(opts: { myCardgroups: Cardgroup[]; lastViewedId?: str
       id: "u-1",
       lastViewedCardgroup: opts.lastViewedId ? { id: opts.lastViewedId } : null,
     },
-    myCardgroups: opts.myCardgroups,
+    myCardgroupsConnection: {
+      __typename: "CardgroupConnection" as const,
+      edges: opts.myCardgroups.map((cg) => ({
+        __typename: "CardgroupEdge" as const,
+        cursor: cg.id,
+        node: cg,
+      })),
+      pageInfo: {
+        __typename: "PageInfo" as const,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        startCursor: null,
+        endCursor: null,
+      },
+      totalCount: opts.myCardgroups.length,
+    },
   };
 }
 
@@ -232,6 +247,18 @@ describe("CardsNewPage — gqlFetch error branches", () => {
       expect.anything(),
       expect.objectContaining({ message: expect.anything() }),
     );
+  });
+
+  test("throws when myCardgroupsConnection is null in the bootstrap response", async () => {
+    vi.mocked(gqlFetch).mockResolvedValueOnce({
+      me: { id: "u-1", lastViewedCardgroup: null },
+      myCardgroupsConnection: null,
+    } as never);
+
+    await expect(CardsNewContent({ cardgroupParam: undefined })).rejects.toThrow(
+      /myCardgroupsConnection missing from bootstrap data/,
+    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("[cards-new]"));
   });
 });
 

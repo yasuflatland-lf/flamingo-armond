@@ -237,4 +237,23 @@ describe("CardgroupsContent", () => {
       consoleErrorSpy.mockRestore();
     }
   });
+
+  it("throws when myCardgroupsConnection is null in the cardgroups response", async () => {
+    // Simulate a partial GraphQL response where myCardgroupsConnection is null.
+    vi.mocked(gqlFetch).mockResolvedValue({ myCardgroupsConnection: null } as never);
+
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(CardgroupsContent()).rejects.toThrow(
+        /myCardgroupsConnection missing from cardgroups data/,
+      );
+
+      // The null-guard emits a single-argument console.error with the [cardgroups] prefix.
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "[cardgroups] myCardgroupsConnection is null — partial response from backend",
+      );
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
 });

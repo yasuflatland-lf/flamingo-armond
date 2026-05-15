@@ -31,13 +31,43 @@ update(cache, { data }) {
 }
 ```
 
-**Create — prepend into a list query** via `readQuery → writeQuery`:
+**Create — prepend into a Connection query** via `readQuery → writeQuery`:
 
 ```ts
-const existing = cache.readQuery({ query: MyCardgroupsDocument });
+const existing = cache.readQuery({
+  query: MyCardgroupsConnectionDocument,
+  variables: CARDGROUPS_DEFAULT_VARS,
+});
+const newEdge = {
+  __typename: "CardgroupEdge" as const,
+  cursor: created.id,
+  node: created,
+};
 cache.writeQuery({
-  query: MyCardgroupsDocument,
-  data: { myCardgroups: [data.createCardgroup.cardgroup, ...(existing?.myCardgroups ?? [])] },
+  query: MyCardgroupsConnectionDocument,
+  variables: CARDGROUPS_DEFAULT_VARS,
+  data: {
+    myCardgroupsConnection: existing
+      ? {
+          ...existing.myCardgroupsConnection,
+          edges: [newEdge, ...existing.myCardgroupsConnection.edges],
+          totalCount: existing.myCardgroupsConnection.totalCount + 1,
+        }
+      : {
+          // Cold cache: build a minimal connection so the listing page renders
+          // the new edge immediately when the user lands there.
+          __typename: "CardgroupConnection" as const,
+          edges: [newEdge],
+          pageInfo: {
+            __typename: "PageInfo" as const,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            startCursor: created.id,
+            endCursor: created.id,
+          },
+          totalCount: 1,
+        },
+  },
 });
 ```
 

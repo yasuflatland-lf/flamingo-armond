@@ -21,17 +21,6 @@ export const CARDGROUPS_DEFAULT_VARS: MyCardgroupsConnectionQueryVariables = {
   search: null,
 };
 
-/** @deprecated Use MyCardgroupsConnectionQuery */
-export const MyCardgroupsQuery = graphql(`
-  query MyCardgroups {
-    myCardgroups {
-      id
-      name
-      updatedAt
-    }
-  }
-`);
-
 export const MyCardgroupsConnectionQuery = graphql(`
   query MyCardgroupsConnection(
     $first: Int
@@ -109,23 +98,6 @@ export const UpdateCardgroupMutation = graphql(`
 export const DeleteCardgroupMutation = graphql(`
   mutation DeleteCardgroup($id: ID!) {
     deleteCardgroup(id: $id)
-  }
-`);
-
-// Card queries
-
-export const CardsByCardgroupQuery = graphql(`
-  query CardsByCardgroup($cardgroupId: ID!) {
-    cardsByCardgroup(cardgroupId: $cardgroupId) {
-      id
-      front
-      back
-      userCardState {
-        due
-        state
-      }
-      cardgroupId
-    }
   }
 `);
 

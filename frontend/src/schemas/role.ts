@@ -23,5 +23,3 @@ export const roleNameSchema = z
 export const roleSchema = z.object({
   name: roleNameSchema,
 });
-
-export type RoleValues = z.infer<typeof roleSchema>;

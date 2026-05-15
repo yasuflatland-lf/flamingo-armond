@@ -23,6 +23,3 @@ export const updateCardSchema = z.object({
   front: cardSideSchema("front"),
   back: cardSideSchema("back"),
 });
-
-export type NewCardValues = z.infer<typeof newCardSchema>;
-export type UpdateCardValues = z.infer<typeof updateCardSchema>;

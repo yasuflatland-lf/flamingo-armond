@@ -11,6 +11,10 @@
 
 ![Production architecture](docs/images/architecture.png)
 
+**Live site:** Scan the QR code below to visit the deployed app.
+
+![Site QR code](docs/images/site_qrcode.png)
+
 ## Pre-conditions
 
 Production deployment uses three external services. Create accounts before running `make setup-prod` — free tiers cover everything this repo provisions:
@@ -107,6 +111,7 @@ Project-wide guidance for AI assistants lives in `CLAUDE.md`.
 |---|---|
 | `docs/notion-sync.md` | Notion page sync — env vars, local testing, GitHub Actions setup, operational runbook |
 | `docs/deployment.md` | Production deployment checklist and full env-var matrix |
+| `docs/doc-organization.md` | L1/L2/L3 tier conventions and doc-split rules |
 | `docs/dev-setup.md` | Local development setup details (OAuth, tool versions, Supabase CLI) |
 | `docs/backend.md` | Backend runtime notes (Echo v5, GORM, graceful shutdown, env vars) |
 | `docs/frontend.md` | Frontend notes (commands, routing, Apollo cache patterns) |

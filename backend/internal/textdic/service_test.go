@@ -108,7 +108,7 @@ func TestProcess_OversizedPayload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected fatal error: %v", err)
 	}
-	if words != nil && len(words) != 0 {
+	if len(words) != 0 {
 		t.Errorf("expected no words, got %d", len(words))
 	}
 	if len(errs) != 1 {

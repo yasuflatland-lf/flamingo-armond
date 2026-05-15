@@ -1,8 +1,8 @@
 import { graphql } from "@/generated";
 
-// Re-export the existing cardgroups query so the cardgroup selector shares
-// the same document and Apollo cache key as the main cardgroups page.
-export { MyCardgroupsQuery as AdminDictionaryCardgroupsQuery } from "@/app/cardgroups/queries";
+// Re-export the Connection query so the cardgroup selector shares the same
+// document and Apollo cache key as the main cardgroups page.
+export { MyCardgroupsConnectionQuery as AdminDictionaryCardgroupsConnectionQuery } from "@/app/cardgroups/queries";
 
 export const ValidateDictionaryQuery = graphql(`
   query ValidateDictionary($input: ValidateDictionaryInput!) {

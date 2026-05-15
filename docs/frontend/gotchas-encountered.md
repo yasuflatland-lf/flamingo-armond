@@ -12,6 +12,8 @@
 
 **Biome 2 — Tailwind 4 directive parsing**: Without `css.parser.tailwindDirectives: true` in `biome.json`, directives like `@theme`, `@custom-variant`, and `@import "tw-animate-css"` can trigger false-positive lint errors. Add the flag whenever Tailwind 4 CSS is in scope.
 
+**Biome 2 — pure-deletion diffs can trip the collapse-short-exports rule.** Biome's formatter collapses an export block onto a single line when it has few enough members. A pure-deletion PR that removes some exports from a file without touching the formatting can push the remaining block below the collapse threshold, causing the previously-passing file to now fail `biome check`. Run `pnpm biome check --write frontend/src/` after any deletion that touches a multi-export file (UI primitive barrels are the common case — `frontend/src/components/ui/dialog.tsx`, `frontend/src/components/ui/sheet.tsx`). The fix is mechanical — let Biome rewrite the block — but the failure surfaces on CI rather than in the deletion diff, so it is easy to miss locally if `biome check` is not part of the pre-commit step.
+
 **Biome 2 — glob pattern change from v1**: `files.ignore` is replaced by `files.includes` with `!` negation patterns. Prefer `"!.next"` over `"!.next/**"` — the latter can silently fail to exclude the directory in some Biome 2 versions.
 
 **Next.js `Metadata` type import**: `Metadata` (and `MetadataRoute`, `Viewport`, etc.) must be imported from `"next"`, not `"react"`. `ReactNode` stays in `"react"`. The two are easy to conflate when working in the App Router.

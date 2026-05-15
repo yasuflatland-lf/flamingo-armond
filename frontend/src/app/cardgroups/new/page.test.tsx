@@ -8,11 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CARDGROUPS_DEFAULT_VARS } from "@/app/cardgroups/queries";
-import {
-  CreateCardgroupDocument,
-  MyCardgroupsConnectionDocument,
-  MyCardgroupsDocument,
-} from "@/generated/graphql";
+import { CreateCardgroupDocument, MyCardgroupsConnectionDocument } from "@/generated/graphql";
 import { sanitizeReturnTo } from "@/lib/sanitize-return-to";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { NewCardgroupClient } from "./new-cardgroup-client";
@@ -149,38 +145,6 @@ describe("<NewCardgroupPage> (client)", () => {
     expect(mockRefresh).toHaveBeenCalledOnce();
   });
 
-  it("on success writes the new cardgroup into the MyCardgroups cache", async () => {
-    const user = userEvent.setup();
-    mockPush.mockClear();
-
-    // Use a real InMemoryCache so the update(cache, { data }) block in
-    // new-cardgroup-client.tsx can perform a readQuery/writeQuery round-trip.
-    const cache = new InMemoryCache();
-    cache.writeQuery({
-      query: MyCardgroupsDocument,
-      data: { myCardgroups: [] },
-    });
-
-    renderPage([makeCreateMock("My New Group")], undefined, cache);
-
-    await user.type(screen.getByRole("textbox"), "My New Group");
-    await user.click(screen.getByRole("button", { name: /create/i }));
-
-    // Wait for the mutation to complete (navigation is the observable signal).
-    await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith(`/cardgroups/${CREATED_CARDGROUP.id}`);
-    });
-
-    // The cache update callback must have prepended the new cardgroup.
-    const result = cache.readQuery({ query: MyCardgroupsDocument });
-    expect(result?.myCardgroups).toHaveLength(1);
-    expect(result?.myCardgroups[0]).toMatchObject({
-      id: CREATED_CARDGROUP.id,
-      name: CREATED_CARDGROUP.name,
-      updatedAt: CREATED_CARDGROUP.updatedAt,
-    });
-  });
-
   it("seeds the new cardgroup into a cold MyCardgroupsConnection cache via production update callback", async () => {
     // This test exercises the cold-cache `else` branch in
     // new-cardgroup-client.tsx's useMutation update() callback.
@@ -192,15 +156,9 @@ describe("<NewCardgroupPage> (client)", () => {
     const user = userEvent.setup();
     mockPush.mockClear();
 
-    // Cold cache: no MyCardgroupsConnection pre-seed, but MyCardgroupsDocument
-    // must be pre-seeded because the update callback also writes the flat list.
+    // Cold cache: deliberately no pre-seeded MyCardgroupsConnectionDocument —
+    // this exercises the cold-cache else-branch.
     const cache = new InMemoryCache();
-    cache.writeQuery({
-      query: MyCardgroupsDocument,
-      data: { myCardgroups: [] },
-    });
-    // Deliberately do NOT seed MyCardgroupsConnectionDocument — this is the
-    // cold-cache branch.
 
     renderPage([makeCreateMock("Cold Cache Group")], undefined, cache);
 
@@ -227,6 +185,80 @@ describe("<NewCardgroupPage> (client)", () => {
     });
     expect(result?.myCardgroupsConnection.pageInfo.hasNextPage).toBe(false);
     expect(result?.myCardgroupsConnection.totalCount).toBe(1);
+  });
+
+  it("writes the new cardgroup into the existing MyCardgroupsConnection cache", async () => {
+    // This test exercises the warm-cache branch in new-cardgroup-client.tsx's
+    // useMutation update() callback: when readQuery returns an existing
+    // Connection the callback prepends the new edge and increments totalCount.
+    // The production update() callback is the sole implementation — we do NOT
+    // re-inline the update logic here.
+    const user = userEvent.setup();
+    mockPush.mockClear();
+
+    const EXISTING_CARDGROUP = {
+      __typename: "Cardgroup" as const,
+      id: "cg-existing-1",
+      name: "Existing Group",
+      updatedAt: "2026-01-01T00:00:00Z",
+    };
+
+    // Warm cache: pre-seed the MyCardgroupsConnection with one existing entry
+    // so the update() callback takes the warm-cache branch.
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+      data: {
+        myCardgroupsConnection: {
+          __typename: "CardgroupConnection" as const,
+          edges: [
+            {
+              __typename: "CardgroupEdge" as const,
+              cursor: EXISTING_CARDGROUP.id,
+              node: EXISTING_CARDGROUP,
+            },
+          ],
+          pageInfo: {
+            __typename: "PageInfo" as const,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            startCursor: EXISTING_CARDGROUP.id,
+            endCursor: EXISTING_CARDGROUP.id,
+          },
+          totalCount: 1,
+        },
+      },
+    });
+
+    renderPage([makeCreateMock("Warm Cache Group")], undefined, cache);
+
+    await user.type(screen.getByRole("textbox"), "Warm Cache Group");
+    await user.click(screen.getByRole("button", { name: /create/i }));
+
+    // Wait for navigation — signals the mutation + update() callback completed.
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith(`/cardgroups/${CREATED_CARDGROUP.id}`);
+    });
+
+    // The production warm-cache branch in update() must have prepended the new
+    // edge and bumped totalCount.
+    const result = cache.readQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+    });
+    expect(result?.myCardgroupsConnection.edges).toHaveLength(2);
+    // Newest entry is prepended at index 0.
+    expect(result?.myCardgroupsConnection.edges[0]).toMatchObject({
+      cursor: CREATED_CARDGROUP.id,
+      node: { id: CREATED_CARDGROUP.id, name: "Warm Cache Group" },
+    });
+    // Pre-seeded entry is shifted to index 1.
+    expect(result?.myCardgroupsConnection.edges[1]).toMatchObject({
+      cursor: EXISTING_CARDGROUP.id,
+      node: { id: EXISTING_CARDGROUP.id },
+    });
+    expect(result?.myCardgroupsConnection.totalCount).toBe(2);
   });
 
   it("BAD_USER_INPUT on field 'name' shows inline error", async () => {

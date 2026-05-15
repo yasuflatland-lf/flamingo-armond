@@ -97,18 +97,40 @@ describe("HomePage (root redirect)", () => {
     setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
     vi.mocked(gqlFetch).mockResolvedValueOnce({
       me: { id: "u-1", displayName: "Alice", lastViewedCardgroup: { id: "cg-42" } },
-      myCardgroups: [{ id: "cg-42" }],
+      myCardgroupsConnection: {
+        __typename: "CardgroupConnection",
+        totalCount: 1,
+        edges: [],
+        pageInfo: {
+          __typename: "PageInfo",
+          hasNextPage: false,
+          hasPreviousPage: false,
+          startCursor: null,
+          endCursor: null,
+        },
+      },
     } as never);
 
     await expect(HomePage()).rejects.toThrow(`${REDIRECT_PREFIX}/learn/cg-42`);
     expect(redirect).toHaveBeenCalledWith("/learn/cg-42");
   });
 
-  test("user with no lastViewedCardgroup but >=1 myCardgroups → /cardgroups", async () => {
+  test("user with no lastViewedCardgroup but >=1 myCardgroupsConnection.totalCount → /cardgroups", async () => {
     setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
     vi.mocked(gqlFetch).mockResolvedValueOnce({
       me: { id: "u-1", displayName: "Alice", lastViewedCardgroup: null },
-      myCardgroups: [{ id: "cg-1" }],
+      myCardgroupsConnection: {
+        __typename: "CardgroupConnection",
+        totalCount: 1,
+        edges: [],
+        pageInfo: {
+          __typename: "PageInfo",
+          hasNextPage: false,
+          hasPreviousPage: false,
+          startCursor: null,
+          endCursor: null,
+        },
+      },
     } as never);
 
     await expect(HomePage()).rejects.toThrow(`${REDIRECT_PREFIX}/cardgroups`);
@@ -119,18 +141,53 @@ describe("HomePage (root redirect)", () => {
     setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
     vi.mocked(gqlFetch).mockResolvedValueOnce({
       me: { id: "u-1", displayName: null, lastViewedCardgroup: null },
-      myCardgroups: [],
+      myCardgroupsConnection: {
+        __typename: "CardgroupConnection",
+        totalCount: 0,
+        edges: [],
+        pageInfo: {
+          __typename: "PageInfo",
+          hasNextPage: false,
+          hasPreviousPage: false,
+          startCursor: null,
+          endCursor: null,
+        },
+      },
     } as never);
 
     await expect(HomePage()).rejects.toThrow(`${REDIRECT_PREFIX}/onboarding`);
     expect(redirect).toHaveBeenCalledWith("/onboarding");
   });
 
+  test("throws when myCardgroupsConnection is null in the GraphQL response", async () => {
+    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
+    vi.mocked(gqlFetch).mockResolvedValueOnce({
+      me: { id: "u-1", displayName: "Alice", lastViewedCardgroup: null },
+      myCardgroupsConnection: null,
+    } as never);
+
+    await expect(HomePage()).rejects.toThrow(
+      /myCardgroupsConnection missing from root redirect data/,
+    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("[home]"));
+  });
+
   test("onboarded user with no lastViewed and no cardgroups → /cardgroups/new?welcome=1", async () => {
     setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
     vi.mocked(gqlFetch).mockResolvedValueOnce({
       me: { id: "u-1", displayName: "Alice", lastViewedCardgroup: null },
-      myCardgroups: [],
+      myCardgroupsConnection: {
+        __typename: "CardgroupConnection",
+        totalCount: 0,
+        edges: [],
+        pageInfo: {
+          __typename: "PageInfo",
+          hasNextPage: false,
+          hasPreviousPage: false,
+          startCursor: null,
+          endCursor: null,
+        },
+      },
     } as never);
 
     await expect(HomePage()).rejects.toThrow(`${REDIRECT_PREFIX}/cardgroups/new?welcome=1`);

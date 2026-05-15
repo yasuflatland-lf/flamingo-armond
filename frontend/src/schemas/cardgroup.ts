@@ -17,6 +17,3 @@ export const newCardgroupSchema = z.object({
 export const updateCardgroupSchema = z.object({
   name: cardgroupNameSchema,
 });
-
-export type NewCardgroupValues = z.infer<typeof newCardgroupSchema>;
-export type UpdateCardgroupValues = z.infer<typeof updateCardgroupSchema>;

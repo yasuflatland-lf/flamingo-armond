@@ -76,6 +76,11 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   // the client useQuery — any mismatch silently splits the cache.
   // The seededRef guard is synchronous, so it survives Strict Mode's
   // double-invoke without producing a second write.
+  if (!seededRef.current && initialConnection === null) {
+    console.warn(
+      "[cardgroups-client] initialConnection is null — SSR seed skipped; useQuery will fetch fresh",
+    );
+  }
   if (!seededRef.current && initialConnection != null) {
     seededRef.current = true;
     apollo.writeQuery({

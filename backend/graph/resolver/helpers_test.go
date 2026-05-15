@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"backend/internal/domain"
 	"backend/internal/usecase"
@@ -32,7 +33,7 @@ func TestToRoleModels_FiltersNil(t *testing.T) {
 
 // TestToCardModels_FiltersNil verifies that toCardModels skips nil domain.Card
 // values and returns only non-nil results. This is critical because
-// Query.cardsByCardgroup declares [Card!]!, so a nil entry would violate
+// card list fields declare [Card!]!, so a nil entry would violate
 // the schema.
 func TestToCardModels_FiltersNil(t *testing.T) {
 	t.Parallel()
@@ -52,30 +53,6 @@ func TestToCardModels_FiltersNil(t *testing.T) {
 		assert.Equal(t, "c1", result[0].ID)
 		assert.Equal(t, "Q", result[0].Front)
 		assert.Equal(t, "A", result[0].Back)
-	}
-}
-
-// TestToCardgroupModels_FiltersNil verifies that toCardgroupModels skips nil
-// domain.Cardgroup values and returns only non-nil results. This is critical
-// because Query.myCardgroups declares [Cardgroup!]!, so a nil entry would
-// violate the schema.
-func TestToCardgroupModels_FiltersNil(t *testing.T) {
-	t.Parallel()
-
-	validCardgroup := &domain.Cardgroup{
-		ID:      "cg1",
-		Name:    "Spanish Vocab",
-		OwnerID: "u1",
-	}
-	cardgroups := []*domain.Cardgroup{nil, validCardgroup, nil}
-
-	result := toCardgroupModels(context.Background(), cardgroups)
-
-	assert.Len(t, result, 1)
-	if len(result) > 0 {
-		assert.Equal(t, "cg1", result[0].ID)
-		assert.Equal(t, "Spanish Vocab", result[0].Name)
-		assert.Equal(t, "u1", result[0].OwnerID)
 	}
 }
 
@@ -118,7 +95,7 @@ func TestToCardConnectionModel_Cursors(t *testing.T) {
 		HasPrev:  false,
 	}
 
-	conn := toCardConnectionModel(out)
+	conn := toCardConnectionModel(context.Background(), out)
 
 	assert.Len(t, conn.Edges, 2)
 	for i, edge := range conn.Edges {
@@ -145,7 +122,7 @@ func TestToCardConnectionModel_EmptyCursors(t *testing.T) {
 		EndCur:   "",
 	}
 
-	conn := toCardConnectionModel(out)
+	conn := toCardConnectionModel(context.Background(), out)
 
 	assert.Nil(t, conn.PageInfo.StartCursor, "pageInfo.startCursor should be nil for empty StartCur")
 	assert.Nil(t, conn.PageInfo.EndCursor, "pageInfo.endCursor should be nil for empty EndCur")
@@ -170,7 +147,7 @@ func TestToCardgroupConnectionModel_Cursors(t *testing.T) {
 		HasPrev:    false,
 	}
 
-	conn := toCardgroupConnectionModel(out)
+	conn := toCardgroupConnectionModel(context.Background(), out)
 
 	assert.Len(t, conn.Edges, 2)
 	for i, edge := range conn.Edges {
@@ -197,8 +174,54 @@ func TestToCardgroupConnectionModel_EmptyCursors(t *testing.T) {
 		EndCur:     "",
 	}
 
-	conn := toCardgroupConnectionModel(out)
+	conn := toCardgroupConnectionModel(context.Background(), out)
 
 	assert.Nil(t, conn.PageInfo.StartCursor, "pageInfo.startCursor should be nil for empty StartCur")
 	assert.Nil(t, conn.PageInfo.EndCursor, "pageInfo.endCursor should be nil for empty EndCur")
+}
+
+// ---------------------------------------------------------------------------
+// FiltersNil tests for Connection helpers
+// ---------------------------------------------------------------------------
+
+// TestToCardConnectionModel_FiltersNilNodes verifies that toCardConnectionModel
+// skips nil domain.Card entries and only emits edges with non-nil nodes.
+// This is critical because the schema declares node: Card! (non-null) on
+// CardEdge, so a nil node would violate the schema contract.
+func TestToCardConnectionModel_FiltersNilNodes(t *testing.T) {
+	t.Parallel()
+
+	validCard := &domain.Card{ID: "c1", Front: "Q", Back: "A", CardgroupID: "cg1"}
+	out := &usecase.CardConnectionOutput{
+		Cards:      []*domain.Card{nil, validCard, nil},
+		TotalCount: 1,
+	}
+
+	conn := toCardConnectionModel(context.Background(), out)
+
+	require.Len(t, conn.Edges, 1, "expected 1 edge after nil filter")
+	assert.NotNil(t, conn.Edges[0].Node, "edge.Node must be non-nil to satisfy schema constraint")
+	assert.Equal(t, "c1", conn.Edges[0].Node.ID)
+	assert.Equal(t, 1, conn.TotalCount, "TotalCount should pass through from output")
+}
+
+// TestToCardgroupConnectionModel_FiltersNilNodes verifies that toCardgroupConnectionModel
+// skips nil domain.Cardgroup entries and only emits edges with non-nil nodes.
+// This is critical because the schema declares node: Cardgroup! (non-null) on
+// CardgroupEdge, so a nil node would violate the schema contract.
+func TestToCardgroupConnectionModel_FiltersNilNodes(t *testing.T) {
+	t.Parallel()
+
+	validCG := &domain.Cardgroup{ID: "cg1", Name: "valid", OwnerID: "u1"}
+	out := &usecase.CardgroupConnectionOutput{
+		Cardgroups: []*domain.Cardgroup{nil, validCG, nil},
+		TotalCount: 1,
+	}
+
+	conn := toCardgroupConnectionModel(context.Background(), out)
+
+	require.Len(t, conn.Edges, 1, "expected 1 edge after nil filter")
+	assert.NotNil(t, conn.Edges[0].Node, "edge.Node must be non-nil to satisfy schema constraint")
+	assert.Equal(t, "cg1", conn.Edges[0].Node.ID)
+	assert.Equal(t, 1, conn.TotalCount, "TotalCount should pass through from output")
 }

@@ -16,7 +16,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { MyCardgroupsConnectionDocument, MyCardgroupsDocument } from "@/generated/graphql";
+import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 
 type Props = {
@@ -49,16 +49,6 @@ export function DeleteCardgroupButton({ id, name }: Props) {
                 ),
                 totalCount: Math.max(0, existingConnection.myCardgroupsConnection.totalCount - 1),
               },
-            },
-          });
-        }
-
-        const existingFlat = cache.readQuery({ query: MyCardgroupsDocument });
-        if (existingFlat) {
-          cache.writeQuery({
-            query: MyCardgroupsDocument,
-            data: {
-              myCardgroups: existingFlat.myCardgroups.filter((cg) => cg.id !== id),
             },
           });
         }

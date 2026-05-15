@@ -25,7 +25,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MyCardgroupsConnectionDocument, MyCardgroupsDocument } from "@/generated/graphql";
+import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 
 type Props = {
@@ -65,16 +65,6 @@ export function CardgroupHeader({ cardgroup, totalCount }: Props) {
                 ),
                 totalCount: Math.max(0, existingConnection.myCardgroupsConnection.totalCount - 1),
               },
-            },
-          });
-        }
-
-        const existingFlat = cache.readQuery({ query: MyCardgroupsDocument });
-        if (existingFlat) {
-          cache.writeQuery({
-            query: MyCardgroupsDocument,
-            data: {
-              myCardgroups: existingFlat.myCardgroups.filter((cg) => cg.id !== cardgroup.id),
             },
           });
         }

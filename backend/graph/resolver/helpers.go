@@ -51,19 +51,6 @@ func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
 	}
 }
 
-func toCardgroupModels(ctx context.Context, cgs []*domain.Cardgroup) []*model.Cardgroup {
-	out := make([]*model.Cardgroup, 0, len(cgs))
-	for _, cg := range cgs {
-		cgm := toCardgroupModel(cg)
-		if cgm == nil {
-			slog.WarnContext(ctx, "toCardgroupModels: skipping nil entry")
-			continue
-		}
-		out = append(out, cgm)
-	}
-	return out
-}
-
 // toCardModel leaves Cardgroup nil; cardResolver.Cardgroup populates it lazily
 // via the per-request Cardgroup DataLoader.
 func toCardModel(card *domain.Card) *model.Card {
@@ -157,31 +144,38 @@ func toSwipeResponseModel(ctx context.Context, out *usecase.SwipeOutput) *model.
 	}
 }
 
+// encodeCursor returns nil for an empty ID (no cursor available) and a pointer
+// to the v1 opaque envelope otherwise.
+func encodeCursor(id string) *string {
+	if id == "" {
+		return nil
+	}
+	s := cursor.Encode(id)
+	return &s
+}
+
 // toCardConnectionModel emits cursors as opaque v1 envelopes ("v1:" + base64(uuid)).
-func toCardConnectionModel(out *usecase.CardConnectionOutput) *model.CardConnection {
+// Nil entries in out.Cards are skipped to satisfy the schema's non-null node: Card! constraint.
+func toCardConnectionModel(ctx context.Context, out *usecase.CardConnectionOutput) *model.CardConnection {
 	if out == nil {
 		return &model.CardConnection{Edges: []*model.CardEdge{}, PageInfo: &model.PageInfo{}}
 	}
-	edges := make([]*model.CardEdge, len(out.Cards))
-	for i, c := range out.Cards {
-		edges[i] = &model.CardEdge{Cursor: cursor.Encode(c.ID), Node: toCardModel(c)}
-	}
-	var startCur, endCur *string
-	if out.StartCur != "" {
-		s := cursor.Encode(out.StartCur)
-		startCur = &s
-	}
-	if out.EndCur != "" {
-		e := cursor.Encode(out.EndCur)
-		endCur = &e
+	edges := make([]*model.CardEdge, 0, len(out.Cards))
+	for _, c := range out.Cards {
+		cm := toCardModel(c)
+		if cm == nil {
+			slog.WarnContext(ctx, "toCardConnectionModel: skipping nil entry")
+			continue
+		}
+		edges = append(edges, &model.CardEdge{Cursor: cursor.Encode(c.ID), Node: cm})
 	}
 	return &model.CardConnection{
 		Edges: edges,
 		PageInfo: &model.PageInfo{
 			HasNextPage:     out.HasNext,
 			HasPreviousPage: out.HasPrev,
-			StartCursor:     startCur,
-			EndCursor:       endCur,
+			StartCursor:     encodeCursor(out.StartCur),
+			EndCursor:       encodeCursor(out.EndCur),
 		},
 		TotalCount: int(out.TotalCount),
 	}
@@ -189,30 +183,27 @@ func toCardConnectionModel(out *usecase.CardConnectionOutput) *model.CardConnect
 
 // toCardgroupConnectionModel emits cursors as opaque v1 envelopes ("v1:" + base64(uuid)).
 // Mirrors toCardConnectionModel for the cardgroup aggregate.
-func toCardgroupConnectionModel(out *usecase.CardgroupConnectionOutput) *model.CardgroupConnection {
+// Nil entries in out.Cardgroups are skipped to satisfy the schema's non-null node: Cardgroup! constraint.
+func toCardgroupConnectionModel(ctx context.Context, out *usecase.CardgroupConnectionOutput) *model.CardgroupConnection {
 	if out == nil {
 		return &model.CardgroupConnection{Edges: []*model.CardgroupEdge{}, PageInfo: &model.PageInfo{}}
 	}
-	edges := make([]*model.CardgroupEdge, len(out.Cardgroups))
-	for i, cg := range out.Cardgroups {
-		edges[i] = &model.CardgroupEdge{Cursor: cursor.Encode(cg.ID), Node: toCardgroupModel(cg)}
-	}
-	var startCur, endCur *string
-	if out.StartCur != "" {
-		s := cursor.Encode(out.StartCur)
-		startCur = &s
-	}
-	if out.EndCur != "" {
-		e := cursor.Encode(out.EndCur)
-		endCur = &e
+	edges := make([]*model.CardgroupEdge, 0, len(out.Cardgroups))
+	for _, cg := range out.Cardgroups {
+		cgm := toCardgroupModel(cg)
+		if cgm == nil {
+			slog.WarnContext(ctx, "toCardgroupConnectionModel: skipping nil entry")
+			continue
+		}
+		edges = append(edges, &model.CardgroupEdge{Cursor: cursor.Encode(cg.ID), Node: cgm})
 	}
 	return &model.CardgroupConnection{
 		Edges: edges,
 		PageInfo: &model.PageInfo{
 			HasNextPage:     out.HasNext,
 			HasPreviousPage: out.HasPrev,
-			StartCursor:     startCur,
-			EndCursor:       endCur,
+			StartCursor:     encodeCursor(out.StartCur),
+			EndCursor:       encodeCursor(out.EndCur),
 		},
 		TotalCount: int(out.TotalCount),
 	}

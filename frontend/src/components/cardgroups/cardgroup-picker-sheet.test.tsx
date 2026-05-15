@@ -3,22 +3,20 @@
  * Tests for <CardgroupPickerSheet>.
  *
  * The component renders a Radix Sheet (portal-based) that queries
- * MyCardgroupsQuery via Apollo useQuery, skipping the query while closed.
- * Tests use MockedProvider from @apollo/client/testing.
+ * MyCardgroupsConnectionQuery via Apollo useQuery, skipping the query while
+ * closed. Tests use MockedProvider from @apollo/client/testing.
  *
- * Leak-spy note: MyCardgroups is not a paginated Connection (flat list), so
- * the leak-guard rule in
- * docs/pagination/capture-mockedprovider-warn-leaks.md does not strictly
- * apply. The spirit of the rule still applies — a duplicate fetch would
- * silently pass with stale data. installApolloMockLeakSpy is used for all
- * tests with a MockedProvider.
+ * Leak-spy note: MyCardgroupsConnection is a paginated Connection, so the
+ * leak-guard rule in docs/pagination/capture-mockedprovider-warn-leaks.md
+ * applies. installApolloMockLeakSpy is used for all tests with a
+ * MockedProvider.
  */
 import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MyCardgroupsDocument } from "@/generated/graphql";
+import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
@@ -58,11 +56,32 @@ const CG_3 = {
   updatedAt: "2026-01-03T00:00:00Z",
 };
 
+function makeConnectionData(cardgroups: (typeof CG_1)[]) {
+  return {
+    myCardgroupsConnection: {
+      __typename: "CardgroupConnection" as const,
+      edges: cardgroups.map((cg) => ({
+        __typename: "CardgroupEdge" as const,
+        cursor: cg.id,
+        node: cg,
+      })),
+      pageInfo: {
+        __typename: "PageInfo" as const,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        startCursor: cardgroups[0]?.id ?? null,
+        endCursor: cardgroups[cardgroups.length - 1]?.id ?? null,
+      },
+      totalCount: cardgroups.length,
+    },
+  };
+}
+
 function baseMocks(cardgroups: (typeof CG_1)[]): MockedResponse[] {
   return [
     {
-      request: { query: MyCardgroupsDocument },
-      result: { data: { myCardgroups: cardgroups } },
+      request: { query: MyCardgroupsConnectionDocument, variables: { first: 100 } },
+      result: { data: makeConnectionData(cardgroups) },
     },
   ];
 }
@@ -109,7 +128,7 @@ function renderSheet({
 let leakSpy: ApolloMockLeakSpyResult;
 
 beforeEach(() => {
-  leakSpy = installApolloMockLeakSpy({ operationNames: ["MyCardgroups"] });
+  leakSpy = installApolloMockLeakSpy({ operationNames: ["MyCardgroupsConnection"] });
 });
 
 afterEach(() => {
@@ -135,9 +154,9 @@ describe("<CardgroupPickerSheet>", () => {
     renderSheet({
       mocks: [
         {
-          request: { query: MyCardgroupsDocument },
+          request: { query: MyCardgroupsConnectionDocument, variables: { first: 100 } },
           delay: Infinity,
-          result: { data: { myCardgroups: [] } },
+          result: { data: makeConnectionData([]) },
         },
       ],
     });
@@ -151,7 +170,7 @@ describe("<CardgroupPickerSheet>", () => {
   // S3: error state shows a message and a Retry button.
   it("shows error message and Retry button when the query fails", async () => {
     const errorMock: MockedResponse = {
-      request: { query: MyCardgroupsDocument },
+      request: { query: MyCardgroupsConnectionDocument, variables: { first: 100 } },
       error: new Error("network failure"),
     };
 
@@ -169,12 +188,12 @@ describe("<CardgroupPickerSheet>", () => {
     // MockedProvider consumes entries in order; the refetch consumes the second.
     const retryMocks: MockedResponse[] = [
       {
-        request: { query: MyCardgroupsDocument },
+        request: { query: MyCardgroupsConnectionDocument, variables: { first: 100 } },
         error: new Error("network failure"),
       },
       {
-        request: { query: MyCardgroupsDocument },
-        result: { data: { myCardgroups: [CG_1, CG_2] } },
+        request: { query: MyCardgroupsConnectionDocument, variables: { first: 100 } },
+        result: { data: makeConnectionData([CG_1, CG_2]) },
       },
     ];
 
@@ -200,11 +219,11 @@ describe("<CardgroupPickerSheet>", () => {
     // Two mock entries that both error: initial load fails, refetch also fails.
     const doubleErrorMocks: MockedResponse[] = [
       {
-        request: { query: MyCardgroupsDocument },
+        request: { query: MyCardgroupsConnectionDocument, variables: { first: 100 } },
         error: new Error("network failure"),
       },
       {
-        request: { query: MyCardgroupsDocument },
+        request: { query: MyCardgroupsConnectionDocument, variables: { first: 100 } },
         error: new Error("still down"),
       },
     ];
@@ -280,7 +299,7 @@ describe("<CardgroupPickerSheet>", () => {
   });
 
   // S7: empty state — no cardgroups shows friendly text; the standalone CTA is gone.
-  it("shows empty-state copy and the inline create link when myCardgroups is empty", async () => {
+  it("shows empty-state copy and the inline create link when the connection is empty", async () => {
     renderSheet({ mocks: baseMocks([]) });
 
     expect(await screen.findByText(/don't have any cardgroups yet/i)).toBeInTheDocument();
@@ -300,7 +319,7 @@ describe("<CardgroupPickerSheet>", () => {
   });
 
   // S9: "Create new cardgroup…" link is present even when there are existing cardgroups.
-  it("shows the inline create link when myCardgroups is non-empty", async () => {
+  it("shows the inline create link when the connection is non-empty", async () => {
     renderSheet({ mocks: baseMocks([CG_1, CG_2]) });
 
     await screen.findByText("Spanish Vocab");
@@ -321,6 +340,31 @@ describe("<CardgroupPickerSheet>", () => {
     );
     // Explicit suffix check per spec: createReturnTo="/cards/new" → %2Fcards%2Fnew
     expect(link.getAttribute("href")).toContain("%2Fcards%2Fnew");
+  });
+
+  // S14: Null myCardgroupsConnection in the server response emits a console.warn
+  it("warns when myCardgroupsConnection arrives null from the server", async () => {
+    const nullConnectionMock: MockedResponse = {
+      request: { query: MyCardgroupsConnectionDocument, variables: { first: 100 } },
+      result: {
+        data: {
+          myCardgroupsConnection: null,
+        },
+      },
+    };
+
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      renderSheet({ mocks: [nullConnectionMock] });
+
+      await waitFor(() => {
+        expect(consoleWarnSpy).toHaveBeenCalledWith(
+          expect.stringContaining("[cardgroup-picker-sheet]"),
+        );
+      });
+    } finally {
+      consoleWarnSpy.mockRestore();
+    }
   });
 
   // S11: clicking the inline create link calls onOpenChange(false).

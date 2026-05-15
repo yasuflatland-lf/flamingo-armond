@@ -6,7 +6,7 @@ The "is this user onboarded?" question is asked twice — once by HomePage (to d
 
 ## Why HomePage owns the gate
 
-HomePage is the canonical post-sign-in landing — the OAuth callback, an already-signed-in `/login` hit, and the bare URL `/` all converge there. Branching on onboarding state at `/auth/callback` instead would create a second decision point that has to repeat the `lastViewedCardgroup` lookup, the `myCardgroups.length` check, and the predicate itself. Two decision points means two places that can drift, and the second place has no shell affordance to surface the drift to a developer — a returning user would silently land on the wrong screen depending on which entry they used.
+HomePage is the canonical post-sign-in landing — the OAuth callback, an already-signed-in `/login` hit, and the bare URL `/` all converge there. Branching on onboarding state at `/auth/callback` instead would create a second decision point that has to repeat the `lastViewedCardgroup` lookup, the `myCardgroupsConnection.totalCount` check, and the predicate itself. Two decision points means two places that can drift, and the second place has no shell affordance to surface the drift to a developer — a returning user would silently land on the wrong screen depending on which entry they used.
 
 Putting the gate at HomePage and defaulting `/auth/callback`'s post-exchange redirect to `/` (not `/cardgroups`) makes the redirect chain a single ordered walk. See [`routing-topology.md` § "HomePage redirect chain"](./routing-topology.md#homepage-redirect-chain) for the full chain.
 

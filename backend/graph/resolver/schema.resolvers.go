@@ -283,15 +283,6 @@ func (r *queryResolver) Me(ctx context.Context) (*model.User, error) {
 	return toUserModel(user), nil
 }
 
-// MyCardgroups is the resolver for the myCardgroups field.
-func (r *queryResolver) MyCardgroups(ctx context.Context) ([]*model.Cardgroup, error) {
-	cgs, err := r.CardgroupUC.MyCardgroups(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return toCardgroupModels(ctx, cgs), nil
-}
-
 // Cardgroup is the resolver for the cardgroup field.
 func (r *queryResolver) Cardgroup(ctx context.Context, id string) (*model.Cardgroup, error) {
 	cg, err := r.CardgroupUC.Cardgroup(ctx, id)
@@ -315,7 +306,7 @@ func (r *queryResolver) MyCardgroupsConnection(ctx context.Context, first *int, 
 	if err != nil {
 		return nil, err
 	}
-	return toCardgroupConnectionModel(out), nil
+	return toCardgroupConnectionModel(ctx, out), nil
 }
 
 // Card is the resolver for the card field.
@@ -325,15 +316,6 @@ func (r *queryResolver) Card(ctx context.Context, id string) (*model.Card, error
 		return nil, err
 	}
 	return toCardModel(card), nil
-}
-
-// CardsByCardgroup is the resolver for the cardsByCardgroup field.
-func (r *queryResolver) CardsByCardgroup(ctx context.Context, cardgroupID string) ([]*model.Card, error) {
-	cards, err := r.CardUC.CardsByCardgroup(ctx, cardgroupID)
-	if err != nil {
-		return nil, err
-	}
-	return toCardModels(ctx, cards), nil
 }
 
 // LearnNextDueCards is the resolver for the learnNextDueCards field.
@@ -364,7 +346,7 @@ func (r *queryResolver) CardsByCardgroupConnection(ctx context.Context, cardgrou
 	if err != nil {
 		return nil, err
 	}
-	return toCardConnectionModel(out), nil
+	return toCardConnectionModel(ctx, out), nil
 }
 
 // ValidateDictionary is the resolver for the validateDictionary field.
