@@ -127,6 +127,22 @@ This applies to any shell command in a step, not only `git` pathspecs. When a st
 
 **Chained `grep` exit-code masking.** `if grep -X | grep -Y` only checks the exit code of the last `grep`. A missing-path error on the first `grep` is masked — the pipeline returns 0 and the lint step appears to pass. Prefer running each `grep` independently or use `pipefail` (`set -o pipefail`) when piping.
 
+## "No imports of X in Y" CI gates: scope the grep to the import-path string literal
+
+A grep gate that enforces "package X must not be imported under directory Y" must match the **import-path string literal**, not a substring of the package name. The literal form survives both new doc-only `*.go` files in the target tree (e.g. comments referencing the forbidden package) and any future identifier collision (a struct or variable that happens to embed the package name). The substring form produces permanent false positives that must be repeatedly waived.
+
+```bash
+# Wrong — matches the package name in any comment, identifier, or doc string.
+if grep -rln 'gqlerr' internal/usecase --include='*.go' --exclude='*_test.go'; then ...
+
+# Right — matches only the actual import declaration string literal.
+if grep -rln '"backend/internal/gqlerr"' internal/usecase --include='*.go' --exclude='*_test.go'; then ...
+```
+
+The same principle applies to any "no use of X under Y" gate that targets a structural Go construct: anchor the regex on the syntactic form (`"` for import paths, `func ... ` for function declarations, etc.) rather than the bare identifier.
+
+The `extensions.code` literal gate (`grep -rnE '"code"\s*:\s*"(...)"'`) in `.github/workflows/backend.yml` is the same pattern applied to a different syntactic shape — it matches the JSON map literal, not the string `"code"` in arbitrary positions. Both gates are line-oriented; multi-line constructions or values assembled via `fmt.Sprintf` slip through. The grep is a fast first defense, not a substitute for code review.
+
 ## Git pathspec under `working-directory:` is cwd-relative
 
 The `test` job declares `defaults.run.working-directory: backend`, so every `run:` step starts with cwd in `backend/`. When a step invokes `git diff -- <pathspec>`, the pathspec is resolved relative to the shell cwd, **not** the repository root. Writing `git diff -- backend/graph/resolver/*.resolvers.go` would be interpreted as `backend/backend/graph/...`, which matches nothing; `git diff --exit-code` then returns 0 and the check silently passes regardless of actual drift.

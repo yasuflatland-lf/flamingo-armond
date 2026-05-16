@@ -358,6 +358,19 @@ type DictionaryValidationError implements UserError {
 }
 
 """
+Generic input-validation failure intended for use as a UserError variant in a future outcome union — not yet a member of any union in this schema.
+Mapped from `*usecase.ValidationError` via `gqlerr.FromUsecaseError`.
+Also surfaced via `errors` array with `extensions.code = "BAD_USER_INPUT"` and
+`extensions.field` for mutations that have not yet been promoted to a result union.
+"""
+type InputValidationError implements UserError {
+  """The input field that failed validation. Matches the GraphQL input field name (camelCase)."""
+  field: String!
+  """Human-readable, English error message."""
+  message: String!
+}
+
+"""
 Result of validating a dictionary payload. The resolver enforces the
 invariant valid = (len(errors) == 0 && len(parsedWords) > 0); conflicting
 states are representable but never emitted.

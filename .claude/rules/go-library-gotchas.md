@@ -88,3 +88,4 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Consolidate env-var reads into a typed config struct + factory (`serverConfig` pattern)](../../docs/backend/library-gotchas/server-config-typed-env-struct.md)
 - [`t.Setenv` vs `os.Setenv` in tests — `t.Setenv` auto-restores; `os.Setenv` leaks](../../docs/backend/library-gotchas/tsetenv-vs-os-setenv.md)
 - [Log output assertions: always read the buffer or the assertion is dead code](../../docs/backend/library-gotchas/slog-buffer-assertions-must-be-checked.md)
+- [`errors.AsType[T error]` — Go 1.26 generic narrowing helper that scopes the captured value to the `if` block](../../docs/backend/library-gotchas/errors-astype-generic-helper.md)
