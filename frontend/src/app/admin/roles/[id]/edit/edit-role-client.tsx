@@ -14,6 +14,27 @@ type Props = {
   role: RoleForEdit;
 };
 
+// Lift GraphQL extension codes from an arbitrary Apollo / network error for
+// the warn payload. We do NOT trust err.message — backend messages may echo
+// user input — but extensions.code is a fixed enum from the server's
+// resolver layer and safe to log. The shape check is permissive: if the
+// underlying transport surfaces graphQLErrors as a property on the Error,
+// pluck them; otherwise return an empty list. We deliberately do not
+// reuse parseGqlErrors here — that helper is keyed on the literal
+// "GraphQL errors: " message prefix, which not every transport produces.
+function liftGraphQLCodes(err: unknown): string[] {
+  if (err == null || typeof err !== "object") return [];
+  const maybe = (err as { graphQLErrors?: unknown }).graphQLErrors;
+  if (!Array.isArray(maybe)) return [];
+  const codes: string[] = [];
+  for (const entry of maybe) {
+    const code = (entry as { extensions?: { code?: unknown } } | null | undefined)
+      ?.extensions?.code;
+    if (typeof code === "string") codes.push(code);
+  }
+  return codes;
+}
+
 export function EditRoleClient({ role }: Props) {
   const router = useRouter();
   const readOnly = SYSTEM_ROLE_NAMES.has(role.name);
@@ -22,6 +43,20 @@ export function EditRoleClient({ role }: Props) {
   // Cleared on each new submission attempt.
   const [systemRoleError, setSystemRoleError] = useState<string | null>(null);
 
+  // Semantically distinct from systemRoleError: this surfaces a degraded
+  // "Something went wrong" banner when the server returns a __typename the
+  // client was not regenerated against, or null payload from a partial-
+  // response null bubble. Separating these states keeps the typed-error
+  // banner pinned to the actual typed error.
+  const [unexpectedPayloadError, setUnexpectedPayloadError] = useState<string | null>(null);
+
+  // Mid-session auth failures. Cleared on each new submission attempt so a
+  // retry after re-login does not show a stale banner.
+  // Per .claude/rules/frontend-rsc-error-handling.md § "Mid-session
+  // UNAUTHENTICATED in a client component: degraded banner with
+  // <Link href=\"/login\">, not redirect()".
+  const [authError, setAuthError] = useState<"unauthenticated" | "forbidden" | null>(null);
+
   // No optimisticResponse: CannotModifySystemRoleError is a typed union variant
   // and Apollo v3.x does not roll back optimistic writes on typed GraphQL errors
   // — see docs/pagination/drop-optimistic-response-typed-errors.md.
@@ -29,15 +64,28 @@ export function EditRoleClient({ role }: Props) {
 
   async function handleSubmit(values: { name: string }) {
     setSystemRoleError(null);
+    setUnexpectedPayloadError(null);
+    setAuthError(null);
     // Mirror the backend `validateRoleName` normalization — see new-role-client.tsx.
     const name = values.name.trim().toLowerCase();
-    // Mid-session auth failures surface via RoleForm's banner; no redirect, per
-    // .claude/rules/frontend-rsc-error-handling.md § "Mid-session UNAUTHENTICATED in a client component".
+    // Mid-session auth failures surface via a dedicated banner with a
+    // sign-in link; no redirect, per the rule referenced above.
     const result = await updateRole({ variables: { id: role.id, name } }).catch((err) => {
+      const codes = liftGraphQLCodes(err);
+      if (codes.includes("UNAUTHENTICATED")) {
+        setAuthError("unauthenticated");
+        return null;
+      }
+      if (codes.includes("FORBIDDEN")) {
+        setAuthError("forbidden");
+        return null;
+      }
       // err.message is omitted — backend messages may echo user input.
+      // codes is safe to log (fixed enum of GraphQL extension codes).
       console.warn("[admin/roles/:id/edit] updateRole rejected", {
         roleId: role.id,
         name: err instanceof Error ? err.name : "unknown",
+        codes,
       });
       return null;
     });
@@ -59,11 +107,12 @@ export function EditRoleClient({ role }: Props) {
     }
     // Unknown variant: null payload, partial-response null bubble, or a future union
     // variant the client was not regenerated against. Warn loudly and show a degraded
-    // banner — do not silently fall through into success-path code.
+    // banner — do not silently fall through into success-path code. Routed through a
+    // distinct state from setSystemRoleError so the typed-error banner stays semantic.
     console.warn("[admin/roles/:id/edit] unexpected updateRole payload", {
       typename,
     });
-    setSystemRoleError("Something went wrong. Please try again.");
+    setUnexpectedPayloadError("Something went wrong. Please try again.");
   }
 
   return (
@@ -80,6 +129,24 @@ export function EditRoleClient({ role }: Props) {
         </div>
       ) : null}
 
+      {authError ? (
+        <div
+          role="alert"
+          data-testid="admin-role-edit-auth-error"
+          className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          <span>
+            {authError === "unauthenticated"
+              ? "Your session has expired. "
+              : "You do not have permission. "}
+          </span>
+          <Link href="/login" className="underline">
+            Sign in again
+          </Link>
+          .
+        </div>
+      ) : null}
+
       {systemRoleError ? (
         <div
           role="alert"
@@ -87,6 +154,16 @@ export function EditRoleClient({ role }: Props) {
           className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
         >
           {systemRoleError}
+        </div>
+      ) : null}
+
+      {unexpectedPayloadError ? (
+        <div
+          role="alert"
+          data-testid="admin-role-edit-unexpected-payload-error"
+          className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          {unexpectedPayloadError}
         </div>
       ) : null}
 

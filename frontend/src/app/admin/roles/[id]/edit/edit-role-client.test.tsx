@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -175,9 +175,13 @@ describe("EditRoleClient", () => {
       expect(mockPush).not.toHaveBeenCalled();
       expect(mockRefresh).not.toHaveBeenCalled();
 
-      // No typed-error banner.
+      // No typed-error banner, no auth banner, no unexpected-payload banner.
       expect(
         screen.queryByTestId("admin-role-edit-system-role-error"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId("admin-role-edit-auth-error")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("admin-role-edit-unexpected-payload-error"),
       ).not.toBeInTheDocument();
 
       // Warn payload MUST NOT include err.message — backend messages may echo user input.
@@ -187,10 +191,118 @@ describe("EditRoleClient", () => {
         expect.objectContaining({ message: expect.anything() }),
       );
       // Warn payload MUST include err.name — proves production code logs name, not message.
+      // Per fix I19, it MUST also include a `codes` array (empty for a network-only
+      // failure with no GraphQL errors attached).
       expect(warnSpy).toHaveBeenCalledWith(
         expect.any(String),
-        expect.objectContaining({ name: "Error" }),
+        expect.objectContaining({ name: "Error", codes: [] }),
       );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("unauthenticated transport rejection — shows login link banner, no navigation", async () => {
+    const user = userEvent.setup();
+    mockPush.mockClear();
+    mockRefresh.mockClear();
+
+    // Match the Apollo runtime shape: an Error with a graphQLErrors array
+    // carrying the extension code. liftGraphQLCodes reads err.graphQLErrors
+    // directly — it does NOT use the "GraphQL errors: " prefix that gqlFetch
+    // produces, which is the SSR-only shape. Using the runtime shape here
+    // ensures the test exercises the production code path for useMutation.
+    const authError = Object.assign(new Error("transport"), {
+      graphQLErrors: [{ extensions: { code: "UNAUTHENTICATED" } }],
+    });
+    const mocks = [
+      {
+        request: {
+          query: AdminUpdateRoleDocument,
+          variables: { id: CUSTOM_ROLE.id, name: "reviewer" },
+        },
+        error: authError,
+      },
+    ];
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      render(
+        <MockedProvider mocks={mocks}>
+          <EditRoleClient role={CUSTOM_ROLE} />
+        </MockedProvider>,
+      );
+
+      const input = screen.getByRole("textbox");
+      await user.clear(input);
+      await user.type(input, "Reviewer");
+      await user.click(screen.getByRole("button", { name: /save/i }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("admin-role-edit-auth-error")).toBeInTheDocument();
+      });
+
+      const banner = screen.getByTestId("admin-role-edit-auth-error");
+      expect(banner).toHaveTextContent(/session has expired/i);
+      // Banner contains a sign-in link pointing at /login (the next/link mock
+      // renders it as a plain <a>).
+      const signIn = within(banner).getByRole("link", { name: /sign in again/i });
+      expect(signIn).toHaveAttribute("href", "/login");
+
+      // No router navigation: this is a mid-session degraded banner, not a redirect.
+      expect(mockPush).not.toHaveBeenCalled();
+      expect(mockRefresh).not.toHaveBeenCalled();
+      // Generic transport-rejection warn must NOT fire — the auth branch returns early.
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("forbidden transport rejection — shows login link banner, no navigation", async () => {
+    const user = userEvent.setup();
+    mockPush.mockClear();
+    mockRefresh.mockClear();
+
+    // Apollo runtime shape — same reasoning as the UNAUTHENTICATED test above.
+    const forbiddenError = Object.assign(new Error("transport"), {
+      graphQLErrors: [{ extensions: { code: "FORBIDDEN" } }],
+    });
+    const mocks = [
+      {
+        request: {
+          query: AdminUpdateRoleDocument,
+          variables: { id: CUSTOM_ROLE.id, name: "reviewer" },
+        },
+        error: forbiddenError,
+      },
+    ];
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      render(
+        <MockedProvider mocks={mocks}>
+          <EditRoleClient role={CUSTOM_ROLE} />
+        </MockedProvider>,
+      );
+
+      const input = screen.getByRole("textbox");
+      await user.clear(input);
+      await user.type(input, "Reviewer");
+      await user.click(screen.getByRole("button", { name: /save/i }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("admin-role-edit-auth-error")).toBeInTheDocument();
+      });
+
+      const banner = screen.getByTestId("admin-role-edit-auth-error");
+      expect(banner).toHaveTextContent(/do not have permission/i);
+      const signIn = within(banner).getByRole("link", { name: /sign in again/i });
+      expect(signIn).toHaveAttribute("href", "/login");
+
+      expect(mockPush).not.toHaveBeenCalled();
+      expect(mockRefresh).not.toHaveBeenCalled();
+      expect(warnSpy).not.toHaveBeenCalled();
     } finally {
       warnSpy.mockRestore();
     }
@@ -232,11 +344,19 @@ describe("EditRoleClient", () => {
 
       await waitFor(() => expect(warnSpy).toHaveBeenCalled());
 
-      // Degraded banner is shown.
-      expect(screen.getByTestId("admin-role-edit-system-role-error")).toBeInTheDocument();
-      expect(screen.getByTestId("admin-role-edit-system-role-error")).toHaveTextContent(
-        /something went wrong/i,
-      );
+      // Degraded banner is shown on the dedicated unexpected-payload state,
+      // NOT on the typed-error state (which is reserved for
+      // CannotModifySystemRoleError per fix I18).
+      expect(
+        screen.getByTestId("admin-role-edit-unexpected-payload-error"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId("admin-role-edit-unexpected-payload-error"),
+      ).toHaveTextContent(/something went wrong/i);
+      // Typed-error banner MUST NOT fire for an unknown __typename.
+      expect(
+        screen.queryByTestId("admin-role-edit-system-role-error"),
+      ).not.toBeInTheDocument();
 
       // No navigation — this is not a success variant.
       expect(mockPush).not.toHaveBeenCalled();
@@ -284,11 +404,17 @@ describe("EditRoleClient", () => {
 
       await waitFor(() => expect(warnSpy).toHaveBeenCalled());
 
-      // Degraded banner is shown.
-      expect(screen.getByTestId("admin-role-edit-system-role-error")).toBeInTheDocument();
-      expect(screen.getByTestId("admin-role-edit-system-role-error")).toHaveTextContent(
-        /something went wrong/i,
-      );
+      // Degraded banner is shown on the dedicated unexpected-payload state
+      // per fix I18 — typed-error state stays clean.
+      expect(
+        screen.getByTestId("admin-role-edit-unexpected-payload-error"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId("admin-role-edit-unexpected-payload-error"),
+      ).toHaveTextContent(/something went wrong/i);
+      expect(
+        screen.queryByTestId("admin-role-edit-system-role-error"),
+      ).not.toBeInTheDocument();
 
       // No navigation.
       expect(mockPush).not.toHaveBeenCalled();
