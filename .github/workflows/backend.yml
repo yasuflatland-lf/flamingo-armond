@@ -103,9 +103,11 @@ jobs:
       - name: Schema-lint outcome-union enforcement
         working-directory: backend
         run: |
-          if ! go run ./cmd/schema-lint; then
-            echo "::error::See docs/backend/error-wrapping/outcome-union-enforcement.md for the promotion guide."
-            exit 1
+          go run ./cmd/schema-lint
+          rc=$?
+          if [ $rc -ne 0 ]; then
+            echo "::error::Schema-lint failed with exit $rc. See docs/backend/error-wrapping/outcome-union-enforcement.md for the promotion guide (exit 1 = violation/drift; exit 2 = walker/config error)."
+            exit $rc
           fi
 
       - name: Build
