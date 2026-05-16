@@ -182,6 +182,36 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 	}
 }
 
+// TestSwipeUsecase_HandleSwipe_NonOwner_Unauthenticated verifies that
+// HandleSwipe rejects a caller whose user ID does not match the cardgroup
+// OwnerID.  authorizeCardgroup returns gqlerr.Unauthenticated() for a
+// non-owner, so the expected code is "UNAUTHENTICATED".
+func TestSwipeUsecase_HandleSwipe_NonOwner_Unauthenticated(t *testing.T) {
+	t.Parallel()
+
+	cardgroupRepo := &mockCardgroupRepoForCard{
+		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-2"},
+	}
+	tx, _ := fakeTxRunner()
+	uc := NewSwipeUsecaseWithTx(
+		&mockCardRepository{},
+		cardgroupRepo,
+		&mockSwipeRecordRepoForSwipe{},
+		service.NewFSRSScheduler(),
+		10,
+		tx,
+		&mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}},
+	)
+
+	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+		CardID:      "card-1",
+		CardgroupID: "cg-1",
+		Mode:        int(domain.RatingEasy),
+	})
+
+	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+}
+
 func performanceSwipes(now time.Time, successes, failures int, difficulty float64) []*domain.SwipeRecord {
 	swipes := make([]*domain.SwipeRecord, 0, successes+failures)
 	for i := 0; i < successes; i++ {
