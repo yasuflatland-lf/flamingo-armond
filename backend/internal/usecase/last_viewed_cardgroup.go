@@ -20,28 +20,34 @@ type LastViewedCardgroupUsecase interface {
 	Set(ctx context.Context, cardgroupID string) (*domain.User, error)
 }
 
-// lastViewedCardgroupRepo is the narrow repository surface consumed by
-// LastViewedCardgroupUsecase. Declared package-private so test doubles can
-// implement only the two methods this usecase exercises.
 type lastViewedCardgroupRepo interface {
-	SetLastViewedCardgroup(ctx context.Context, userID, cardgroupID string) error
+	UpsertLastViewedCardgroup(ctx context.Context, userID, cardgroupID string) error
+}
+
+type userPreferenceRefetchRepo interface {
 	FindByID(ctx context.Context, id string) (*domain.User, error)
 }
 
 type lastViewedCardgroupUsecase struct {
-	users lastViewedCardgroupRepo
+	prefs lastViewedCardgroupRepo
+	users userPreferenceRefetchRepo
 }
 
 // NewLastViewedCardgroup is the production constructor. Tests should prefer
-// NewLastViewedCardgroupWithDeps to inject a narrow stub.
-func NewLastViewedCardgroup(users repository.UserRepository) LastViewedCardgroupUsecase {
-	return &lastViewedCardgroupUsecase{users: users}
+// NewLastViewedCardgroupWithDeps to inject narrow stubs.
+func NewLastViewedCardgroup(
+	prefs repository.UserPreferenceRepository,
+	users repository.UserRepository,
+) LastViewedCardgroupUsecase {
+	return &lastViewedCardgroupUsecase{prefs: prefs, users: users}
 }
 
-// NewLastViewedCardgroupWithDeps accepts the narrow interface for tests;
-// production code must use NewLastViewedCardgroup.
-func NewLastViewedCardgroupWithDeps(users lastViewedCardgroupRepo) LastViewedCardgroupUsecase {
-	return &lastViewedCardgroupUsecase{users: users}
+// NewLastViewedCardgroupWithDeps accepts narrow interfaces for tests.
+func NewLastViewedCardgroupWithDeps(
+	prefs lastViewedCardgroupRepo,
+	users userPreferenceRefetchRepo,
+) LastViewedCardgroupUsecase {
+	return &lastViewedCardgroupUsecase{prefs: prefs, users: users}
 }
 
 // Set records cardgroupID as the caller's most recently viewed cardgroup and
@@ -63,7 +69,7 @@ func (u *lastViewedCardgroupUsecase) Set(ctx context.Context, cardgroupID string
 		return nil, gqlerr.Unauthenticated()
 	}
 
-	if err := u.users.SetLastViewedCardgroup(ctx, caller.Sub, cardgroupID); err != nil {
+	if err := u.prefs.UpsertLastViewedCardgroup(ctx, caller.Sub, cardgroupID); err != nil {
 		switch {
 		case errors.Is(err, repository.ErrCardgroupNotFound):
 			return nil, gqlerr.BadUserInput("cardgroupId", "cardgroup not found or not owned")

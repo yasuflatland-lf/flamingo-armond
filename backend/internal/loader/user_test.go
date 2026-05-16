@@ -267,6 +267,38 @@ func (r *countingRepo) SetLastViewedCardgroup(_ context.Context, _, _ string) er
 	panic("countingRepo.SetLastViewedCardgroup not configured")
 }
 
+// countingUserPreferenceRepo is a minimal test double for
+// userPreferenceReader. Tests that do not exercise the UserPreference loader
+// use emptyUserPreferenceRepo() so the stub is always a no-op.
+type countingUserPreferenceRepo struct {
+	findByUserIDs func(ctx context.Context, userIDs []string) ([]*domain.UserPreference, error)
+}
+
+func (r *countingUserPreferenceRepo) FindByUserIDs(ctx context.Context, userIDs []string) ([]*domain.UserPreference, error) {
+	if r.findByUserIDs == nil {
+		panic("countingUserPreferenceRepo.FindByUserIDs not configured")
+	}
+	return r.findByUserIDs(ctx, userIDs)
+}
+
+// FindByUserID is needed to satisfy repository.UserPreferenceRepository.
+func (r *countingUserPreferenceRepo) FindByUserID(_ context.Context, _ string) (*domain.UserPreference, error) {
+	panic("countingUserPreferenceRepo.FindByUserID not configured")
+}
+
+// UpsertLastViewedCardgroup is needed to satisfy repository.UserPreferenceRepository.
+func (r *countingUserPreferenceRepo) UpsertLastViewedCardgroup(_ context.Context, _, _ string) error {
+	panic("countingUserPreferenceRepo.UpsertLastViewedCardgroup not configured")
+}
+
+func emptyUserPreferenceRepo() *countingUserPreferenceRepo {
+	return &countingUserPreferenceRepo{
+		findByUserIDs: func(_ context.Context, _ []string) ([]*domain.UserPreference, error) {
+			return []*domain.UserPreference{}, nil
+		},
+	}
+}
+
 // loadAll concurrently loads all ids through l and returns aligned results/errors.
 func loadAll(ctx context.Context, l *loader.Loaders, ids []string) ([]*domain.User, []error) {
 	results := make([]*domain.User, len(ids))
@@ -300,7 +332,7 @@ func TestUserLoader_BatchesNCallsIntoOne(t *testing.T) {
 	}
 
 	ids := []string{"a", "b", "c", "d", "e"}
-	results, errs := loadAll(context.Background(), loader.New(repo, emptyRoleRepo(), emptyCardgroupRepo(), emptyCardRepo()), ids)
+	results, errs := loadAll(context.Background(), loader.New(repo, emptyRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo()), ids)
 
 	for i, err := range errs {
 		if err != nil {
@@ -335,7 +367,7 @@ func TestUserLoader_PartialNotFound(t *testing.T) {
 	}
 
 	ids := []string{"present-1", "missing", "present-2"}
-	results, errs := loadAll(context.Background(), loader.New(repo, emptyRoleRepo(), emptyCardgroupRepo(), emptyCardRepo()), ids)
+	results, errs := loadAll(context.Background(), loader.New(repo, emptyRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo()), ids)
 
 	if errs[0] != nil {
 		t.Fatalf("present-1: unexpected error: %v", errs[0])
@@ -368,7 +400,7 @@ func TestUserLoader_BatchFuncError(t *testing.T) {
 	}
 
 	ids := []string{"x", "y", "z"}
-	_, errs := loadAll(context.Background(), loader.New(repo, emptyRoleRepo(), emptyCardgroupRepo(), emptyCardRepo()), ids)
+	_, errs := loadAll(context.Background(), loader.New(repo, emptyRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo()), ids)
 
 	for i, err := range errs {
 		if !errors.Is(err, wantErr) {
@@ -397,7 +429,7 @@ func TestRoleLoader_BatchesNCallsIntoOne(t *testing.T) {
 		},
 	}
 
-	l := loader.New(userRepo, roleRepo, emptyCardgroupRepo(), emptyCardRepo())
+	l := loader.New(userRepo, roleRepo, emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo())
 	ids := []string{"r1", "r2", "r3"}
 	var wg sync.WaitGroup
 	for _, id := range ids {
@@ -440,7 +472,7 @@ func TestMiddleware_For_Roundtrip(t *testing.T) {
 		got = loader.For(c.Request().Context())
 		return nil
 	}
-	if err := loader.Middleware(repo, emptyRoleRepo(), emptyCardgroupRepo(), emptyCardRepo())(handler)(c); err != nil {
+	if err := loader.Middleware(repo, emptyRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo())(handler)(c); err != nil {
 		t.Fatalf("middleware: %v", err)
 	}
 	if got == nil {

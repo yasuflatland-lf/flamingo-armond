@@ -60,7 +60,7 @@ func TestCardgroupLoader_BatchesNCallsIntoOne(t *testing.T) {
 		},
 	}
 
-	results, errs := loadAllCardgroups(context.Background(), loader.New(emptyUser, emptyRoleRepo(), cgRepo, emptyCardRepo()), ids)
+	results, errs := loadAllCardgroups(context.Background(), loader.New(emptyUser, emptyRoleRepo(), cgRepo, emptyCardRepo(), emptyUserPreferenceRepo()), ids)
 
 	for i, err := range errs {
 		if err != nil {
@@ -104,7 +104,7 @@ func TestCardgroupLoader_PartialNotFound(t *testing.T) {
 	}
 
 	ids := []string{"present-1", "missing", "present-2"}
-	results, errs := loadAllCardgroups(context.Background(), loader.New(emptyUser, emptyRoleRepo(), cgRepo, emptyCardRepo()), ids)
+	results, errs := loadAllCardgroups(context.Background(), loader.New(emptyUser, emptyRoleRepo(), cgRepo, emptyCardRepo(), emptyUserPreferenceRepo()), ids)
 
 	if errs[0] != nil {
 		t.Fatalf("present-1: unexpected error: %v", errs[0])
@@ -143,7 +143,7 @@ func TestCardgroupLoader_BatchFuncError(t *testing.T) {
 	}
 
 	ids := []string{"x", "y", "z"}
-	_, errs := loadAllCardgroups(context.Background(), loader.New(emptyUser, emptyRoleRepo(), cgRepo, emptyCardRepo()), ids)
+	_, errs := loadAllCardgroups(context.Background(), loader.New(emptyUser, emptyRoleRepo(), cgRepo, emptyCardRepo(), emptyUserPreferenceRepo()), ids)
 
 	for i, err := range errs {
 		if !errors.Is(err, wantErr) {

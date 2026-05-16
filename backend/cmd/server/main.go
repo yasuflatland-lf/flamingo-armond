@@ -100,6 +100,7 @@ func newRouter(
 	roleRepo repository.RoleRepository,
 	cardgroupRepo repository.CardgroupRepository,
 	cardRepo repository.CardRepository,
+	userPreferenceRepo repository.UserPreferenceRepository,
 	userCardFSRSRepo repository.UserCardFSRSRepository,
 	pingHandler *ping.Handler,
 	notionSyncHandler *notionsync.Handler,
@@ -146,7 +147,7 @@ func newRouter(
 			return r.Method + " " + r.URL.Path
 		}),
 	)
-	q := e.Group("/query", authMW, promoter.Middleware(), loader.MiddlewareWithUserCardFSRS(userRepo, roleRepo, cardgroupRepo, cardRepo, swipeRecordRepo, userCardFSRSRepo))
+	q := e.Group("/query", authMW, promoter.Middleware(), loader.MiddlewareWithUserCardFSRS(userRepo, roleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, swipeRecordRepo, userCardFSRSRepo))
 	q.POST("", echo.WrapHandler(otelGQLHandler))
 	e.GET("/playground", echo.WrapHandler(playground.Handler("GraphQL", "/query")))
 
@@ -251,6 +252,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
+	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
 	authSvc := auth.NewService(userRoleRepo)
 
 	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, roleRepo, os.Getenv("SUPER_USER_EMAILS"))
@@ -266,7 +268,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	dictionaryUC := usecase.NewDictionaryUsecase(authSvc, cardRepo, db.GORM)
 	adminUserUC := usecase.NewAdminUser(userRepo, roleRepo, authSvc)
 	adminRoleUC := usecase.NewAdminRole(roleRepo, authSvc)
-	lastViewedCardgroupUC := usecase.NewLastViewedCardgroup(userRepo)
+	lastViewedCardgroupUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo)
 	pingHandler := ping.New(pingRecordRepo, pingToken)
 	var notionSyncHandler *notionsync.Handler
 	if !notionSyncDisabled {
@@ -285,7 +287,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
 	// telemetry.Init for the full ordering invariant.
-	e := newRouter(resolvers, authMW, promoter, userRepo, roleRepo, cardgroupRepo, cardRepo, userCardFSRSRepo, pingHandler, notionSyncHandler, swipeRecordRepo)
+	e := newRouter(resolvers, authMW, promoter, userRepo, roleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo, pingHandler, notionSyncHandler, swipeRecordRepo)
 	e.Logger = logger
 
 	port := os.Getenv("PORT")

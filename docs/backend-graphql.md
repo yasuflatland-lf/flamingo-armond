@@ -234,16 +234,18 @@ When `DeleteByIDsTx` processes fewer ids than were requested (foreign-owned ids 
 
 ### `setLastViewedCardgroup` and `User.lastViewedCardgroup`
 
-Records the cardgroup a returning user most recently studied so `/` (HomePage RSC) can land them directly on `/learn/[id]` next visit. Two surface elements:
+Records the cardgroup a returning user most recently studied so `/` (HomePage RSC) can land them directly on `/learn/[id]` next visit. The value lives on the `UserPreference` sibling aggregate, not on `User` itself — see [`docs/backend/library-gotchas/sibling-aggregate-extraction.md`](backend/library-gotchas/sibling-aggregate-extraction.md) for the extraction rationale. Two surface elements:
 
-- **Field** `User.lastViewedCardgroup: Cardgroup` — nullable; resolves through the existing Cardgroup DataLoader, so listing N users does not fan out into N round-trips.
-- **Mutation** `setLastViewedCardgroup(cardgroupId: ID!): User!` — idempotent; the repository emits a single `UPDATE users SET last_viewed_cardgroup_id = ? WHERE id = ? AND EXISTS (SELECT 1 FROM cardgroups WHERE id = ? AND owner_id = ?)`. The ownership check lives inside the same statement to avoid a TOCTOU window between a `FindByID` and an `UPDATE`.
+- **Field** `User.lastViewedCardgroup: Cardgroup` — nullable; resolved by a two-step DataLoader chain (`UserPreferenceLoader` → `CardgroupLoader`) so listing N users issues two batched queries total, not 2N. See [`docs/backend/library-gotchas/dataloader-two-step-chain.md`](backend/library-gotchas/dataloader-two-step-chain.md).
+- **Mutation** `setLastViewedCardgroup(cardgroupId: ID!): User!` — idempotent; the `UserPreferenceRepository` emits a single ownership-checked UPSERT (`INSERT ... SELECT ... WHERE EXISTS (SELECT 1 FROM cardgroups WHERE id = ? AND owner_id = ?) ON CONFLICT (user_id) DO UPDATE ...`). The ownership predicate sits inside the same statement to avoid a TOCTOU window between a `FindByID` and the write. See [`docs/backend/library-gotchas/ownership-checked-upsert-where-exists.md`](backend/library-gotchas/ownership-checked-upsert-where-exists.md).
+
+The mutation return type stays `User!` for backward compatibility with frontend consumers; the field resolver hydrates `lastViewedCardgroup` through the new chain.
 
 #### Existence-oracle prevention via collapsed `BAD_USER_INPUT`
 
 "Cardgroup does not exist" and "cardgroup exists but is owned by another user" both surface as the same `BAD_USER_INPUT` on the `cardgroupId` field — never `UNAUTHENTICATED`, never a separate "not found" code. A distinguishable response would let an attacker brute-force cardgroup UUIDs to enumerate which IDs exist on the platform. The repository returns `errors.Join(ErrCardgroupNotFound, ErrNotFound)` for both cases (the `RowsAffected == 0` branch cannot tell them apart by design); the usecase translates the specific sentinel to `gqlerr.BadUserInput("cardgroupId", "cardgroup not found or not owned")`. This mirrors the same posture the `cardgroup(id:)` query takes — see [Authorization at the usecase layer](#authorization-at-the-usecase-layer) — and the [cross-aggregate cursor validation rule](pagination/cursor-cross-aggregate-validation.md).
 
-The new sentinel `repository.ErrCardgroupNotFound` follows the `errors.Join(specific, general)` "missing"-sentinel convention from `.claude/rules/error-wrapping.md`: callers branching on the general `ErrNotFound` continue to work without modification, and the usecase can match the specific sentinel first to attach the per-field message.
+The sentinel `repository.ErrCardgroupNotFound` lives in `repository/user_preference.go` (the aggregate that owns the FK), not in `repository/user.go`. It follows the `errors.Join(specific, general)` "missing"-sentinel convention from `.claude/rules/error-wrapping.md`: callers branching on the general `ErrNotFound` continue to work without modification, and the usecase can match the specific sentinel first to attach the per-field message.
 
 ### Adaptive learning performance mode
 

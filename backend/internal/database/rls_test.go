@@ -15,6 +15,7 @@ import (
 type rlsFixture struct {
 	userA     string
 	userB     string
+	userC     string // fresh user with no user_preferences row; used for INSERT-own tests
 	adminUser string
 	groupA    string
 	groupB    string
@@ -99,6 +100,39 @@ func TestRLSPolicies_AuthenticatedRole(t *testing.T) {
 			fx.userB, fx.cardA, time.Now().UTC())
 	})
 
+	t.Run("user_preferences", func(t *testing.T) {
+		insertRLSUserPreferences(t, ctx, sqlDBForTest(t, db), fx.userA)
+		insertRLSUserPreferences(t, ctx, sqlDBForTest(t, db), fx.userB)
+
+		// SELECT-own: User A can read their own row.
+		assertCount(t, queryCountAs(t, ctx, authPool, fx.userA, `SELECT count(*) FROM public.user_preferences WHERE user_id = $1`, fx.userA), 1)
+		// SELECT-other denied: User A cannot read User B's row.
+		assertCount(t, queryCountAs(t, ctx, authPool, fx.userA, `SELECT count(*) FROM public.user_preferences WHERE user_id = $1`, fx.userB), 0)
+		// SELECT-admin: admin can read any user's row.
+		assertCount(t, queryCountAs(t, ctx, authPool, fx.adminUser, `SELECT count(*) FROM public.user_preferences WHERE user_id = $1`, fx.userB), 1)
+
+		// INSERT-own: User C (no pre-existing row) can insert a row for themselves.
+		// userA/userB already have rows from the fixture setup above, so we use userC
+		// to avoid the ON CONFLICT DO NOTHING returning 0 rows affected.
+		assertRows(t, execOKAs(t, ctx, authPool, fx.userC, insertUserPreferencesSQL(), fx.userC), 1)
+		// INSERT-other denied: User C cannot insert a row with User A's user_id.
+		execDeniedAs(t, ctx, authPool, fx.userC, insertUserPreferencesSQL(), fx.userA)
+
+		// UPDATE-own: User A can update their own row.
+		assertRows(t, execOKAs(t, ctx, authPool, fx.userA,
+			`UPDATE public.user_preferences SET updated_at = now() WHERE user_id = $1`, fx.userA), 1)
+		// UPDATE-other denied: User A cannot update User B's row (0 rows affected).
+		assertRows(t, execOKAs(t, ctx, authPool, fx.userA,
+			`UPDATE public.user_preferences SET updated_at = now() WHERE user_id = $1`, fx.userB), 0)
+
+		// DELETE-own: User A can delete their own row.
+		assertRows(t, execOKAs(t, ctx, authPool, fx.userA,
+			`DELETE FROM public.user_preferences WHERE user_id = $1`, fx.userA), 1)
+		// DELETE-other denied: User A cannot delete User B's row (0 rows affected).
+		assertRows(t, execOKAs(t, ctx, authPool, fx.userA,
+			`DELETE FROM public.user_preferences WHERE user_id = $1`, fx.userB), 0)
+	})
+
 	t.Run("roles", func(t *testing.T) {
 		assertCount(t, queryCountAs(t, ctx, authPool, fx.userA, `SELECT count(*) FROM public.roles WHERE name = 'admin'`), 1)
 		execDeniedAs(t, ctx, authPool, fx.userA,
@@ -128,6 +162,7 @@ func createRLSFixture(t *testing.T, ctx context.Context, sqlDB *sql.DB) rlsFixtu
 	t.Helper()
 	userA := insertRLSAuthUser(t, ctx, sqlDB)
 	userB := insertRLSAuthUser(t, ctx, sqlDB)
+	userC := insertRLSAuthUser(t, ctx, sqlDB) // reserved for INSERT-own tests; no pre-inserted rows
 	adminUser := insertRLSAuthUser(t, ctx, sqlDB)
 
 	var adminRoleID string
@@ -164,6 +199,7 @@ func createRLSFixture(t *testing.T, ctx context.Context, sqlDB *sql.DB) rlsFixtu
 	return rlsFixture{
 		userA:     userA,
 		userB:     userB,
+		userC:     userC,
 		adminUser: adminUser,
 		groupA:    groupA,
 		groupB:    groupB,
@@ -361,5 +397,20 @@ func insertUserCardFSRSSQL() string {
         )
         VALUES ($1, $2, 0, $3, 2.5, 5.0, 0, 0, $3, 0, 0)
         ON CONFLICT (user_id, card_id) DO NOTHING
+    `
+}
+
+func insertRLSUserPreferences(t *testing.T, ctx context.Context, sqlDB *sql.DB, userID string) {
+	t.Helper()
+	if _, err := sqlDB.ExecContext(ctx, insertUserPreferencesSQL(), userID); err != nil {
+		t.Fatalf("insert user_preferences: %v", err)
+	}
+}
+
+func insertUserPreferencesSQL() string {
+	return `
+        INSERT INTO public.user_preferences (user_id)
+        VALUES ($1)
+        ON CONFLICT (user_id) DO NOTHING
     `
 }
