@@ -6,6 +6,7 @@ on:
     paths:
       - 'frontend/**'
       - 'schema/**'
+      - 'eslint.config.mjs'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - 'package.json'
@@ -16,6 +17,7 @@ on:
     paths:
       - 'frontend/**'
       - 'schema/**'
+      - 'eslint.config.mjs'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - 'package.json'
@@ -80,6 +82,9 @@ jobs:
             echo "Fix: git rm --cached frontend/next-env.d.ts (the file regenerates on every Next.js invocation)."
             exit 1
           fi
+
+      - name: Lint schema (graphql-eslint)
+        run: pnpm lint:schema
 
       - name: Biome check
         run: pnpm --filter frontend lint
