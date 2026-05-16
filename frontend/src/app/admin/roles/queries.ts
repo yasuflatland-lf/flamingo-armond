@@ -1,10 +1,5 @@
 import { graphql } from "@/generated";
 
-// AdminRoleFieldsFragment and AdminRolesQuery live in users/queries.ts; re-export
-// here so roles/ code does not import through users/. Mutation documents below
-// are only used by the roles page.
-export { AdminRoleFieldsFragment, AdminRolesQuery } from "@/app/admin/users/queries";
-
 // System role names protected by the backend AdminRole usecase: rename and
 // delete are blocked server-side, and the UI mirrors the guard so neither
 // affordance is offered. Kept in sync with isSystemRole in

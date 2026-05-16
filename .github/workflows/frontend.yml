@@ -84,6 +84,9 @@ jobs:
       - name: Biome check
         run: pnpm --filter frontend lint
 
+      - name: Knip (unused files / exports / dependencies)
+        run: pnpm --filter frontend knip
+
       - name: TypeScript typecheck
         run: pnpm --filter frontend typecheck
 

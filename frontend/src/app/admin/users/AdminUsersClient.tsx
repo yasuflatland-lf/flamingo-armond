@@ -6,11 +6,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useFragment } from "@/generated/fragment-masking";
-import { AdminUsersDocument, type AdminUsersQuery } from "@/generated/graphql";
+import type { AdminUsersQuery as AdminUsersQueryResult } from "@/generated/graphql";
 import { classifyQueryError, getBackendErrorBanner } from "@/lib/apollo/errors";
-import { ADMIN_USERS_PAGE_SIZE, AdminRoleFieldsFragment, AdminUserFieldsFragment } from "./queries";
+import {
+  ADMIN_USERS_PAGE_SIZE,
+  AdminRoleFieldsFragment,
+  AdminUserFieldsFragment,
+  AdminUsersQuery,
+} from "./queries";
 
-type Connection = AdminUsersQuery["users"];
+type Connection = AdminUsersQueryResult["users"];
 type Edge = Connection["edges"][number];
 
 function UserRow({ edge }: { edge: Edge }) {
@@ -105,7 +110,7 @@ export function AdminUsersClient() {
     networkStatus,
     error: queryError,
     refetch,
-  } = useQuery(AdminUsersDocument, {
+  } = useQuery(AdminUsersQuery, {
     variables: { first: ADMIN_USERS_PAGE_SIZE, search: searchQuery },
     fetchPolicy: "cache-first",
     notifyOnNetworkStatusChange: true,

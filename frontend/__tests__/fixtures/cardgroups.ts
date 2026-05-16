@@ -25,7 +25,7 @@ const userCardState = (due: string) => ({
 // ---------------------------------------------------------------------------
 
 /** A single cardgroup owned by the admin user fixture. */
-export const cardgroupFixture: Cardgroup = {
+const cardgroupFixture: Cardgroup = {
   __typename: "Cardgroup",
   id: "cardgroup-001",
   name: "Test Cardgroup",
