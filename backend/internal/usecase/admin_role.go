@@ -227,10 +227,11 @@ func (u *adminRoleUsecase) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// mapAdminRoleError translates the role-repository sentinel set into the
-// typed gqlerr surface. The notFoundField argument lets callers say "the id
-// in this request was bad" (Update / Delete / Get-from-Update) without
-// hardcoding a single field name.
+// mapAdminRoleError translates the role-repository sentinel set into
+// typed usecase errors (*ucerr.ValidationError / *ucerr.ForbiddenError)
+// for the resolver to wrap via gqlerr.FromUsecaseError. The notFoundField
+// argument lets callers say "the id in this request was bad" (Update /
+// Delete / Get-from-Update) without hardcoding a single field name.
 //
 // ErrRoleDuplicate always maps to field="name" — the duplicate condition is
 // always on the name column, regardless of which method surfaced it.

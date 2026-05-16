@@ -1,12 +1,12 @@
 // Package usecase re-exports the usecase-layer error types defined in the
 // internal sub-package backend/internal/usecase/ucerr.
 //
-// Keeping these types in a leaf sub-package preserves a one-way dependency:
-// gqlerr imports ucerr (to translate via gqlerr.FromUsecaseError), while ucerr
-// imports nothing from the resolver or transport layers. The parent usecase
-// package re-exports these as type aliases so resolvers and tests may write
-// either *usecase.ValidationError or *ucerr.ValidationError — they are the
-// same type, and errors.Is / errors.As succeed across both names.
+// This file re-exports the typed errors defined in ./ucerr as aliases so
+// callers can write *usecase.ValidationError interchangeably with
+// *ucerr.ValidationError. The CI gate at .github/workflows/backend.yml
+// forbids gqlerr imports in this package; placing the type definitions in
+// the ucerr sub-package keeps that boundary mechanical to maintain.
+// Aliases preserve errors.Is / errors.As behaviour across both names.
 package usecase
 
 import "backend/internal/usecase/ucerr"

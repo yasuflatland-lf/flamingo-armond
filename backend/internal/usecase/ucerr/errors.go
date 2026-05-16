@@ -1,7 +1,9 @@
-// Package ucerr holds the usecase-layer sentinel and structured error types.
-// It is intentionally a separate sub-package so that the gqlerr package can
-// import these types without creating an import cycle: gqlerr itself is
-// imported by the parent usecase package.
+// Package ucerr holds the usecase-layer sentinel and structured error types
+// that the resolver layer translates to wire-format GraphQL errors via
+// gqlerr.FromUsecaseError. The types live in a leaf sub-package so that
+// gqlerr can import them without acquiring a transitive dependency on the
+// parent usecase package; the parent re-exports them as type aliases for
+// caller ergonomics.
 package ucerr
 
 import "errors"

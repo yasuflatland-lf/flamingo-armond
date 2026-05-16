@@ -50,7 +50,7 @@ func TestUserUsecase_Me(t *testing.T) {
 		ctx        context.Context
 		findResult *domain.User
 		findErr    error
-		wantErr    string // expected typed-error class: "UNAUTHENTICATED" | "INTERNAL" | "" (no error)
+		wantErr    string // expected outcome label: "UNAUTHENTICATED" (sentinel) | "INTERNAL" (eris-wrapped chain) | "" (no error)
 		wantID     string
 	}{
 		{
@@ -131,8 +131,8 @@ func TestUserUsecase_UpdateUser(t *testing.T) {
 		input         UpdateUserInput
 		repoResult    *domain.User
 		repoErr       error
-		wantErrCode   string // expected typed-error class: "UNAUTHENTICATED" | "BAD_USER_INPUT" | "INTERNAL" | "" (no error)
-		wantErrField  string // non-empty = check extensions.field
+		wantErrCode   string // expected outcome label: "UNAUTHENTICATED" (sentinel) | "BAD_USER_INPUT" (*ucerr.ValidationError) | "INTERNAL" (eris-wrapped chain) | "" (no error)
+		wantErrField  string // non-empty = check *ucerr.ValidationError.Field
 		wantRepoName  *string
 		wantRepoBio   *string
 		checkBioIsNil bool
