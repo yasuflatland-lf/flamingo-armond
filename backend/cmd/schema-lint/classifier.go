@@ -253,10 +253,8 @@ func Classify(
 				if um, found := usecaseByKey[key]; found {
 					if um.EmitsTypedError {
 						emits = true
-						if usecaseTarget == "" {
-							usecaseTarget = c.Selector + "." + c.Method
-						}
-					} else if usecaseTarget == "" {
+					}
+					if usecaseTarget == "" {
 						usecaseTarget = c.Selector + "." + c.Method
 					}
 					break

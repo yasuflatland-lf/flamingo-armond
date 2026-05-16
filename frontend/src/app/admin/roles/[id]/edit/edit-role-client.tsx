@@ -91,9 +91,7 @@ export function EditRoleClient({ role }: Props) {
     });
     if (!result) return;
     const payload = result.data?.updateRole;
-    // Capture __typename before the narrowing chain so the else branch can read
-    // it without TypeScript narrowing the type to `never` at that point.
-    const typename = (payload as { __typename?: string } | null | undefined)?.__typename ?? null;
+    const typename = payload?.__typename ?? null;
     if (payload?.__typename === "CannotModifySystemRoleError") {
       // Domain invariant: system roles are immutable. Surface as a banner;
       // do not navigate and do not mutate the Apollo cache.
