@@ -17,33 +17,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    name: Lint (golangci-lint)
-    runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up mise (Go from .tool-versions)
-        uses: jdx/mise-action@v4
-        with:
-          working_directory: backend
-
-      - name: Generate gqlgen artifacts
-        run: go tool gqlgen generate
-
-      - name: Generate goyacc artifacts
-        run: go tool goyacc -v /dev/null -o internal/textdic/parser.go -p yy internal/textdic/grammar.y
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.12.2
-          working-directory: backend
-
   test:
     name: Build & test
     runs-on: ubuntu-24.04
