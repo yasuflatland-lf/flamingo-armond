@@ -36,6 +36,45 @@ func TestCardgroupShape(t *testing.T) {
 	}
 }
 
+func TestCardgroup_IsOwnedBy(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		owner  string
+		userID string
+		want   bool
+	}{
+		{
+			name:   "matching userID returns true",
+			owner:  "user-abc",
+			userID: "user-abc",
+			want:   true,
+		},
+		{
+			name:   "mismatching userID returns false",
+			owner:  "user-abc",
+			userID: "user-xyz",
+			want:   false,
+		},
+		{
+			name:   "empty userID always returns false",
+			owner:  "user-abc",
+			userID: "",
+			want:   false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cg := &Cardgroup{OwnerID: tc.owner}
+			require.Equal(t, tc.want, cg.IsOwnedBy(tc.userID))
+		})
+	}
+}
+
 func TestCardgroup_Validate(t *testing.T) {
 	t.Parallel()
 
@@ -44,9 +83,9 @@ func TestCardgroup_Validate(t *testing.T) {
 	const zwjEmoji = "👨‍👩‍👧‍👦"
 
 	cases := []struct {
-		name      string
-		input     string
-		wantErr   bool
+		name        string
+		input       string
+		wantErr     bool
 		sentinelErr error
 	}{
 		{

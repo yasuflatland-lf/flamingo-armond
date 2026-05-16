@@ -543,7 +543,7 @@ func (u *CardUsecase) authorizeCardgroup(ctx context.Context, id, userID string,
 		}
 		return gqlerr.Internal(ctx, err)
 	}
-	if cg.OwnerID != userID {
+	if !cg.IsOwnedBy(userID) {
 		return gqlerr.Unauthenticated()
 	}
 	return nil
