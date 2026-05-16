@@ -30,8 +30,8 @@ Sentinels used today: `repository.ErrNotFound`, and domain-level sentinels such 
 `backend/internal/usecase/` MUST NOT import `backend/internal/gqlerr`. New usecase code returns:
 
 - `ucerr.ErrUnauthenticated` (sentinel) for unauthenticated paths.
-- `&ucerr.ValidationError{Field, Message}` for field-level validation failures.
-- `&ucerr.ForbiddenError{Message}` for authorization failures.
+- `ucerr.NewValidationError(field, message)` for field-level validation failures.
+- `ucerr.NewForbiddenError(message)` for authorization failures.
 - `eris.Wrap(err, "usecase: <op>")` (or `eris.Errorf` / `eris.New`) for internal/chain errors.
 - `context.Canceled` / `context.DeadlineExceeded` passed through (no wrapping).
 
