@@ -41,7 +41,7 @@ func TestClassifyUserPreferenceCardgroupFKError_NilError(t *testing.T) {
 
 // TestClassifyUserPreferenceCardgroupFKError_LastViewedConstraint: a 23503
 // violation on a constraint name containing "last_viewed_cardgroup_id" must
-// map to ErrCardgroupNotFound and also satisfy the legacy ErrNotFound sentinel.
+// map to ErrCardgroupNotFound and also satisfy the generic ErrNotFound sentinel.
 func TestClassifyUserPreferenceCardgroupFKError_LastViewedConstraint(t *testing.T) {
 	t.Parallel()
 	pgErr := &pgconn.PgError{

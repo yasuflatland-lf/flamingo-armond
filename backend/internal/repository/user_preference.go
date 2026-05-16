@@ -92,13 +92,12 @@ func (r *userPreferenceRepo) FindByUserIDs(ctx context.Context, userIDs []string
 }
 
 // UpsertLastViewedCardgroup performs an ownership-checked UPSERT in a single
-// SQL statement. The INSERT fires only when a cardgroup row exists with
-// id = cardgroupID AND owner_id = userID. A missing or non-owned cardgroup
-// yields RowsAffected == 0 (the ON CONFLICT branch does not fire when the
-// SELECT returns no rows), which is reported as ErrCardgroupNotFound. A
-// concurrent deletion between the EXISTS evaluation and the write produces a
-// Postgres FK violation (23503), classified to the same sentinel by
-// classifyUserPreferenceCardgroupFKError.
+// SQL statement. A missing or non-owned cardgroup causes the
+// INSERT ... SELECT ... WHERE EXISTS to insert zero rows, yielding
+// RowsAffected == 0, which is reported as ErrCardgroupNotFound. A concurrent
+// DELETE on the cardgroup row between the EXISTS check and the actual insert
+// (TOCTOU race) raises Postgres FK violation 23503; the classifier maps it to
+// the same sentinel so both code paths converge.
 func (r *userPreferenceRepo) UpsertLastViewedCardgroup(ctx context.Context, userID, cardgroupID string) error {
 	sql := `INSERT INTO user_preferences (user_id, last_viewed_cardgroup_id, updated_at)
 SELECT ?, ?, now()

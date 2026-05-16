@@ -45,33 +45,6 @@ func newLastViewedSrv(uc usecase.LastViewedCardgroupUsecase) *handler.Server {
 	return srv
 }
 
-// ctxWithCardgroupLoader returns a context enriched with a loader.Loaders
-// whose Cardgroup loader is backed by an in-memory map. Used for tests that
-// exercise error branches on the Cardgroup loader but do not need a
-// UserPreference loader (the UserPreference field is left nil, meaning these
-// tests must also provide a UserPreference loader via ctxWithBothLoaders).
-//
-// The not-found case returns repository.ErrNotFound so the resolver can
-// branch on it and surface null instead of INTERNAL.
-func ctxWithCardgroupLoader(base context.Context, cgs map[string]*domain.Cardgroup) context.Context {
-	loaders := &loader.Loaders{
-		Cardgroup: dataloader.NewBatchedLoader(
-			func(ctx context.Context, keys []string) []*dataloader.Result[*domain.Cardgroup] {
-				out := make([]*dataloader.Result[*domain.Cardgroup], len(keys))
-				for i, k := range keys {
-					if cg, ok := cgs[k]; ok {
-						out[i] = &dataloader.Result[*domain.Cardgroup]{Data: cg}
-						continue
-					}
-					out[i] = &dataloader.Result[*domain.Cardgroup]{Error: repository.ErrNotFound}
-				}
-				return out
-			},
-		),
-	}
-	return loader.WithContext(base, loaders)
-}
-
 // ctxWithBothLoaders returns a context enriched with a loader.Loaders whose
 // UserPreference loader is backed by an in-memory map keyed by user_id and
 // whose Cardgroup loader is backed by an in-memory map keyed by cardgroup_id.

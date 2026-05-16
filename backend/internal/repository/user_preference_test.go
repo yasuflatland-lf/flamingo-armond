@@ -343,6 +343,53 @@ func TestUserPreferenceRepository_FindByUserIDs_EmptyInput(t *testing.T) {
 // FK ON DELETE SET NULL — cardgroup deletion
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// FK ON DELETE CASCADE — user deletion
+// ---------------------------------------------------------------------------
+
+// TestUserPreferenceRepository_OnDeleteUser_CascadesPreferenceRow verifies the
+// FK action declared in 20260516120000_extract_user_preferences.up.sql —
+// guards against accidental RESTRICT or SET NULL on
+// user_preferences.user_id REFERENCES public.users(id) ON DELETE CASCADE.
+//
+// When the owning user is deleted, the user_preferences row must be removed
+// automatically by the database:
+//   - RESTRICT would cause the auth.users DELETE to fail, breaking user
+//     account deletion and causing a service outage.
+//   - SET NULL would violate the PRIMARY KEY constraint on user_preferences.user_id
+//     (NOT NULL is implied by PRIMARY KEY), crashing the database operation.
+func TestUserPreferenceRepository_OnDeleteUser_CascadesPreferenceRow(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	userID := insertAuthUser(t, ctx)
+	cgID := insertCardgroupForUser(t, ctx, userID, "fk-cascade-user-cg")
+
+	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	if err := repo.UpsertLastViewedCardgroup(ctx, userID, cgID); err != nil {
+		t.Fatalf("UpsertLastViewedCardgroup: %v", err)
+	}
+
+	// Confirm the user_preferences row was written before triggering the cascade.
+	if !prefRowExists(t, ctx, userID) {
+		t.Fatal("expected user_preferences row to exist before user deletion")
+	}
+
+	// Delete from auth.users; the trigger cascades to public.users, which then
+	// cascades to user_preferences via the ON DELETE CASCADE FK.
+	sqlDB := sqlDBHandle(t)
+	if _, err := sqlDB.ExecContext(ctx,
+		`DELETE FROM auth.users WHERE id = $1`, userID); err != nil {
+		t.Fatalf("delete auth.users %q: %v", userID, err)
+	}
+
+	// The user_preferences row must be gone — RESTRICT would have made the
+	// DELETE above fail, and SET NULL is impossible on a PRIMARY KEY column.
+	if prefRowExists(t, ctx, userID) {
+		t.Fatal("user_preferences row still exists after user deletion: FK is not ON DELETE CASCADE")
+	}
+}
+
 // TestUserPreferenceRepository_OnDeleteCardgroup_SetsNull verifies the FK
 // action declared in 20260516120000_extract_user_preferences.up.sql —
 // guards against accidental CASCADE.

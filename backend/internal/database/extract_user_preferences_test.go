@@ -11,15 +11,6 @@ import (
 	"backend/internal/database"
 )
 
-// extractUserPreferencesVersion is the integer timestamp of the
-// 20260516120000_extract_user_preferences migration pair.
-const extractUserPreferencesVersion int = 20260516120000
-
-// predecessorOfExtractUserPreferences is the version of the last successfully
-// applied migration before 20260516120000. Used to recover from a dirty-state
-// after a failed up-migration during the roundtrip test.
-const predecessorOfExtractUserPreferences int = 20260514000000
-
 // tableExists reports whether a table with the given name exists in the
 // public schema.
 func tableExists(t *testing.T, ctx context.Context, sqlDB *sql.DB, tableName string) bool {
