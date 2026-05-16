@@ -39,6 +39,7 @@ Sentinels used today: `repository.ErrNotFound`, and domain-level sentinels such 
 
 ## Conversion boundaries — detailed cases (on-demand)
 
+- [`FromUsecaseError`: single conversion site for usecase → gqlerror](../../docs/backend/error-wrapping/from-usecase-error-conversion-site.md)
 - [Typed classifier field over string-prefix matching at conversion boundaries](../../docs/backend/error-wrapping/typed-classifier-over-string-prefix.md)
 - [Classifier check must run before any pipeline step that appends to the classified slice](../../docs/backend/error-wrapping/classifier-check-ordering-before-pipeline-mutation.md)
 
