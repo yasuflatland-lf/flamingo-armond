@@ -31,6 +31,8 @@ export function EditRoleClient({ role }: Props) {
     setSystemRoleError(null);
     // Mirror the backend `validateRoleName` normalization — see new-role-client.tsx.
     const name = values.name.trim().toLowerCase();
+    // Mid-session auth failures surface via RoleForm's banner; no redirect, per
+    // .claude/rules/frontend-rsc-error-handling.md § "Mid-session UNAUTHENTICATED in a client component".
     const result = await updateRole({ variables: { id: role.id, name } }).catch((err) => {
       // err.message is omitted — backend messages may echo user input.
       console.warn("[admin/roles/:id/edit] updateRole rejected", {

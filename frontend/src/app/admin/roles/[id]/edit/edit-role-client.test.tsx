@@ -140,6 +140,57 @@ describe("EditRoleClient", () => {
     expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
   });
 
+  it("transport rejection — no banner, no navigation, console.warn omits err.message", async () => {
+    const user = userEvent.setup();
+    mockPush.mockClear();
+    mockRefresh.mockClear();
+
+    const networkError = new Error("network down");
+    const mocks = [
+      {
+        request: {
+          query: AdminUpdateRoleDocument,
+          variables: { id: CUSTOM_ROLE.id, name: "reviewer" },
+        },
+        error: networkError,
+      },
+    ];
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      render(
+        <MockedProvider mocks={mocks}>
+          <EditRoleClient role={CUSTOM_ROLE} />
+        </MockedProvider>,
+      );
+
+      const input = screen.getByRole("textbox");
+      await user.clear(input);
+      await user.type(input, "Reviewer");
+      await user.click(screen.getByRole("button", { name: /save/i }));
+
+      await waitFor(() => expect(warnSpy).toHaveBeenCalled());
+
+      // No navigation on transport failure.
+      expect(mockPush).not.toHaveBeenCalled();
+      expect(mockRefresh).not.toHaveBeenCalled();
+
+      // No typed-error banner.
+      expect(
+        screen.queryByTestId("admin-role-edit-system-role-error"),
+      ).not.toBeInTheDocument();
+
+      // Warn payload MUST NOT include err.message — backend messages may echo user input.
+      // Per .claude/rules/frontend-rsc-error-handling.md § "Redact err.message from structured console payloads".
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ message: expect.anything() }),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it("renders the system-role banner for the general role", () => {
     render(
       <MockedProvider mocks={[]}>
