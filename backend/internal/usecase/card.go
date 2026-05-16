@@ -431,7 +431,7 @@ func resolveOrderBy(orderBy *CardOrderBy, dir *SortOrder) (repository.CardOrderB
 		case CardOrderByDue:
 			field = repository.CardOrderByDue
 		default:
-			return "", "", &ucerr.ValidationError{Field: "orderBy", Message: "invalid"}
+			return "", "", ucerr.NewValidationError("orderBy", "invalid")
 		}
 	}
 	d := repository.SortAsc
@@ -442,7 +442,7 @@ func resolveOrderBy(orderBy *CardOrderBy, dir *SortOrder) (repository.CardOrderB
 		case SortOrderDesc:
 			d = repository.SortDesc
 		default:
-			return "", "", &ucerr.ValidationError{Field: "orderDirection", Message: "invalid"}
+			return "", "", ucerr.NewValidationError("orderDirection", "invalid")
 		}
 	}
 	return field, d, nil
@@ -452,7 +452,7 @@ func resolveOrderBy(orderBy *CardOrderBy, dir *SortOrder) (repository.CardOrderB
 // both. Defaults first=defaultPageSize when neither is provided.
 func resolvePageSize(first, last *int) (int, int, error) {
 	if first != nil && last != nil {
-		return 0, 0, &ucerr.ValidationError{Field: "first", Message: "specify either first or last"}
+		return 0, 0, ucerr.NewValidationError("first", "specify either first or last")
 	}
 	if first == nil && last == nil {
 		return defaultPageSize, 0, nil
@@ -490,7 +490,7 @@ func (u *CardUsecase) resolveCursor(
 	}
 	id, err := cursor.Decode(*cursorStr)
 	if err != nil {
-		return nil, &ucerr.ValidationError{Field: field, Message: "invalid cursor"}
+		return nil, ucerr.NewValidationError(field, "invalid cursor")
 	}
 	c := &repository.CardCursor{ID: id}
 	if orderBy == repository.CardOrderByID {
@@ -499,12 +499,12 @@ func (u *CardUsecase) resolveCursor(
 	card, err := u.cardRepo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, &ucerr.ValidationError{Field: field, Message: "cursor not found"}
+			return nil, ucerr.NewValidationError(field, "cursor not found")
 		}
 		return nil, eris.Wrap(err, "usecase: resolve cursor: find by id")
 	}
 	if card.CardgroupID != cardgroupID {
-		return nil, &ucerr.ValidationError{Field: field, Message: "cursor not found"}
+		return nil, ucerr.NewValidationError(field, "cursor not found")
 	}
 	switch orderBy {
 	case repository.CardOrderByDue:
@@ -535,7 +535,7 @@ func (u *CardUsecase) authorizeCardgroup(ctx context.Context, id, userID string,
 	cg, err := u.cardgroupRepo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) && missingAsBadInput {
-			return &ucerr.ValidationError{Field: "cardgroupId", Message: "cardgroup not found"}
+			return ucerr.NewValidationError("cardgroupId", "cardgroup not found")
 		}
 		if errors.Is(err, repository.ErrNotFound) {
 			return ucerr.ErrUnauthenticated
@@ -551,15 +551,15 @@ func (u *CardUsecase) authorizeCardgroup(ctx context.Context, id, userID string,
 func translateCardErr(err error) error {
 	switch {
 	case errors.Is(err, domain.ErrCardCardgroupIDRequired):
-		return &ucerr.ValidationError{Field: "cardgroupId", Message: "cardgroupId is required"}
+		return ucerr.NewValidationError("cardgroupId", "cardgroupId is required")
 	case errors.Is(err, domain.ErrCardFrontRequired):
-		return &ucerr.ValidationError{Field: "front", Message: "front is required"}
+		return ucerr.NewValidationError("front", "front is required")
 	case errors.Is(err, domain.ErrCardFrontTooLong):
-		return &ucerr.ValidationError{Field: "front", Message: fmt.Sprintf("front must be at most %d characters", domain.CardTextMax)}
+		return ucerr.NewValidationError("front", fmt.Sprintf("front must be at most %d characters", domain.CardTextMax))
 	case errors.Is(err, domain.ErrCardBackRequired):
-		return &ucerr.ValidationError{Field: "back", Message: "back is required"}
+		return ucerr.NewValidationError("back", "back is required")
 	case errors.Is(err, domain.ErrCardBackTooLong):
-		return &ucerr.ValidationError{Field: "back", Message: fmt.Sprintf("back must be at most %d characters", domain.CardTextMax)}
+		return ucerr.NewValidationError("back", fmt.Sprintf("back must be at most %d characters", domain.CardTextMax))
 	default:
 		return eris.Wrap(err, "usecase: translate card err: unexpected domain error")
 	}
@@ -577,7 +577,7 @@ func (u *CardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, erro
 		return 0, ucerr.ErrUnauthenticated
 	}
 	if len(ids) > maxBulkDelete {
-		return 0, &ucerr.ValidationError{Field: "ids", Message: fmt.Sprintf("at most %d ids per call", maxBulkDelete)}
+		return 0, ucerr.NewValidationError("ids", fmt.Sprintf("at most %d ids per call", maxBulkDelete))
 	}
 	if len(ids) == 0 {
 		return 0, nil

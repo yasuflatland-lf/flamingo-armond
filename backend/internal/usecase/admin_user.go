@@ -163,7 +163,7 @@ func (u *adminUserUsecase) requireAdmin(ctx context.Context) (string, error) {
 		return "", eris.Wrap(err, "usecase: admin user: check admin")
 	}
 	if !isAdmin {
-		return "", &ucerr.ForbiddenError{Message: "admin only"}
+		return "", ucerr.NewForbiddenError("admin only")
 	}
 	return caller.Sub, nil
 }
@@ -188,22 +188,22 @@ func (u *adminUserUsecase) List(
 	}
 
 	if after != nil && before != nil {
-		return nil, &ucerr.ValidationError{Field: "after", Message: "after and before are mutually exclusive"}
+		return nil, ucerr.NewValidationError("after", "after and before are mutually exclusive")
 	}
 	if first != nil && *first > 0 && before != nil {
-		return nil, &ucerr.ValidationError{Field: "before", Message: "before requires last, not first"}
+		return nil, ucerr.NewValidationError("before", "before requires last, not first")
 	}
 	if last != nil && *last > 0 && after != nil {
-		return nil, &ucerr.ValidationError{Field: "after", Message: "after requires first, not last"}
+		return nil, ucerr.NewValidationError("after", "after requires first, not last")
 	}
 	// A cursor without its companion count is ambiguous: the server cannot
 	// determine page size or direction. Reject early so the repository is
 	// never called with an uninterpretable combination.
 	if before != nil && (first == nil || *first <= 0) && (last == nil || *last <= 0) {
-		return nil, &ucerr.ValidationError{Field: "before", Message: "before requires last"}
+		return nil, ucerr.NewValidationError("before", "before requires last")
 	}
 	if after != nil && (first == nil || *first <= 0) && (last == nil || *last <= 0) {
-		return nil, &ucerr.ValidationError{Field: "after", Message: "after requires first"}
+		return nil, ucerr.NewValidationError("after", "after requires first")
 	}
 
 	wantFirst, wantLast, err := resolveAdminPageSize(first, last)
@@ -229,7 +229,7 @@ func (u *adminUserUsecase) List(
 			if after == nil && before != nil {
 				field = "before"
 			}
-			return nil, &ucerr.ValidationError{Field: field, Message: "cursor not found"}
+			return nil, ucerr.NewValidationError(field, "cursor not found")
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, err
@@ -315,7 +315,7 @@ func (u *adminUserUsecase) Update(ctx context.Context, id string, input AdminUpd
 	user, err := u.users.Update(ctx, id, patch)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, &ucerr.ValidationError{Field: "id", Message: "user not found"}
+			return nil, ucerr.NewValidationError("id", "user not found")
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, err
@@ -365,7 +365,7 @@ func (u *adminUserUsecase) RevokeRole(ctx context.Context, userID, roleID string
 			return nil, eris.Wrap(err, "usecase: admin user revoke role: lookup role")
 		}
 		if role, ok := roles[roleID]; ok && role.Name == adminRoleName {
-			return nil, &ucerr.ForbiddenError{Message: "cannot revoke own admin role"}
+			return nil, ucerr.NewForbiddenError("cannot revoke own admin role")
 		}
 	}
 
@@ -383,11 +383,11 @@ func (u *adminUserUsecase) RevokeRole(ctx context.Context, userID, roleID string
 func mapRoleAssignmentError(err error, wrap string) error {
 	switch {
 	case errors.Is(err, repository.ErrUserNotFound):
-		return &ucerr.ValidationError{Field: "userId", Message: "user not found"}
+		return ucerr.NewValidationError("userId", "user not found")
 	case errors.Is(err, repository.ErrRoleNotFound):
-		return &ucerr.ValidationError{Field: "roleId", Message: "role not found"}
+		return ucerr.NewValidationError("roleId", "role not found")
 	case errors.Is(err, repository.ErrNotFound):
-		return &ucerr.ValidationError{Field: "userId", Message: "user or role not found"}
+		return ucerr.NewValidationError("userId", "user or role not found")
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return err
 	default:
@@ -422,17 +422,17 @@ func (u *adminUserUsecase) refetchUser(ctx context.Context, id, wrap string) (*d
 // the documented maximum keeps single-page admin queries simple.
 func resolveAdminPageSize(first, last *int) (int, int, error) {
 	if first != nil && last != nil {
-		return 0, 0, &ucerr.ValidationError{Field: "first", Message: "specify either first or last"}
+		return 0, 0, ucerr.NewValidationError("first", "specify either first or last")
 	}
 	if first == nil && last == nil {
 		return adminUserMaxPageSize, 0, nil
 	}
 	check := func(field string, v int) error {
 		if v < 0 {
-			return &ucerr.ValidationError{Field: field, Message: fmt.Sprintf("%s must be >= 0", field)}
+			return ucerr.NewValidationError(field, fmt.Sprintf("%s must be >= 0", field))
 		}
 		if v > adminUserMaxPageSize {
-			return &ucerr.ValidationError{Field: field, Message: fmt.Sprintf("%s must be <= %d", field, adminUserMaxPageSize)}
+			return ucerr.NewValidationError(field, fmt.Sprintf("%s must be <= %d", field, adminUserMaxPageSize))
 		}
 		return nil
 	}

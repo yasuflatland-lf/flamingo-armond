@@ -88,7 +88,7 @@ func (u *adminRoleUsecase) requireAdmin(ctx context.Context) error {
 		return eris.Wrap(err, "usecase: admin role: check admin")
 	}
 	if !isAdmin {
-		return &ucerr.ForbiddenError{Message: "admin only"}
+		return ucerr.NewForbiddenError("admin only")
 	}
 	return nil
 }
@@ -100,15 +100,13 @@ func validateRoleName(name string) (string, error) {
 	normalized := strings.ToLower(strings.TrimSpace(name))
 	n := uniseg.GraphemeClusterCount(normalized)
 	if n < roleNameMin {
-		return "", &ucerr.ValidationError{Field: "name", Message: "name is required"}
+		return "", ucerr.NewValidationError("name", "name is required")
 	}
 	if n > roleNameMax {
-		return "", &ucerr.ValidationError{Field: "name",
-			Message: fmt.Sprintf("name must be at most %d characters", roleNameMax)}
+		return "", ucerr.NewValidationError("name", fmt.Sprintf("name must be at most %d characters", roleNameMax))
 	}
 	if !roleNamePattern.MatchString(normalized) {
-		return "", &ucerr.ValidationError{Field: "name",
-			Message: "name must contain only lowercase letters, digits, '_' or '-'"}
+		return "", ucerr.NewValidationError("name", "name must contain only lowercase letters, digits, '_' or '-'")
 	}
 	return normalized, nil
 }
@@ -188,7 +186,7 @@ func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (*domain
 		return nil, mapAdminRoleError(err, "id", "usecase: admin role update: find")
 	}
 	if isSystemRole(existing.Name) {
-		return nil, &ucerr.ForbiddenError{Message: fmt.Sprintf("cannot rename system role %q", existing.Name)}
+		return nil, ucerr.NewForbiddenError(fmt.Sprintf("cannot rename system role %q", existing.Name))
 	}
 
 	role, err := u.roles.Update(ctx, id, normalized)
@@ -218,7 +216,7 @@ func (u *adminRoleUsecase) Delete(ctx context.Context, id string) error {
 		return mapAdminRoleError(err, "id", "usecase: admin role delete: find")
 	}
 	if isSystemRole(existing.Name) {
-		return &ucerr.ForbiddenError{Message: fmt.Sprintf("cannot delete system role %q", existing.Name)}
+		return ucerr.NewForbiddenError(fmt.Sprintf("cannot delete system role %q", existing.Name))
 	}
 
 	if err := u.roles.Delete(ctx, id); err != nil {
@@ -242,9 +240,9 @@ func (u *adminRoleUsecase) Delete(ctx context.Context, id string) error {
 func mapAdminRoleError(err error, notFoundField, wrap string) error {
 	switch {
 	case errors.Is(err, repository.ErrRoleNotFound):
-		return &ucerr.ValidationError{Field: notFoundField, Message: "role not found"}
+		return ucerr.NewValidationError(notFoundField, "role not found")
 	case errors.Is(err, repository.ErrRoleDuplicate):
-		return &ucerr.ValidationError{Field: "name", Message: "role name already exists"}
+		return ucerr.NewValidationError("name", "role name already exists")
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return err
 	default:

@@ -35,6 +35,8 @@ Sentinels used today: `repository.ErrNotFound`, and domain-level sentinels such 
 - `eris.Wrap(err, "usecase: <op>")` (or `eris.Errorf` / `eris.New`) for internal/chain errors.
 - `context.Canceled` / `context.DeadlineExceeded` passed through (no wrapping).
 
+Use `ucerr.NewValidationError(field, message)` and `ucerr.NewForbiddenError(message)` constructors — never the struct-literal forms `&ucerr.ValidationError{...}` / `&ucerr.ForbiddenError{...}` in production code. CI fails the build if struct literals appear in non-test files. The constructors enforce pointer-return semantics required by `errors.As`: a value-form literal `ucerr.ValidationError{...}` silently falls through to `gqlerr.FromUsecaseError`'s `Internal` branch because `errors.As` only matches the pointer receiver `*ucerr.ValidationError`. Test code is explicitly exempt — tests legitimately construct invalid error shapes to verify classifier coverage.
+
 The resolver wraps every usecase return error with `gqlerr.FromUsecaseError(ctx, err)` to translate to the wire form. Resolver-internal `gqlerr.*` calls remain unwrapped — they are already wire-format.
 
 CI enforces this boundary: `gqlerr` imports in `backend/internal/usecase/` (non-test files) cause a hard error in `.github/workflows/backend.yml`.

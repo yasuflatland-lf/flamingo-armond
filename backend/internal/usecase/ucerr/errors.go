@@ -38,3 +38,24 @@ type ForbiddenError struct {
 func (e *ForbiddenError) Error() string {
 	return "usecase: forbidden: " + e.Message
 }
+
+// NewValidationError returns a *ValidationError. The pointer return makes the
+// errors.As contract impossible to break by accident: a caller writing
+// ucerr.ValidationError{...} (value, no &) would silently fall through to
+// gqlerr's Internal branch because errors.As(err, &ve) only matches the
+// pointer form. field must be non-empty — an empty field produces
+// extensions.field == "" on the wire, which the frontend cannot render
+// against any input.
+func NewValidationError(field, message string) *ValidationError {
+	if field == "" {
+		panic("ucerr.NewValidationError: field must be non-empty")
+	}
+	return &ValidationError{Field: field, Message: message}
+}
+
+// NewForbiddenError returns a *ForbiddenError. Same pointer-return reason as
+// NewValidationError. Message is unchecked; empty messages are permitted
+// because the frontend has fallback copy.
+func NewForbiddenError(message string) *ForbiddenError {
+	return &ForbiddenError{Message: message}
+}

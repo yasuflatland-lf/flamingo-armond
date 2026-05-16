@@ -89,6 +89,16 @@ jobs:
             exit 1
           fi
 
+      - name: Forbid &ucerr.ValidationError / &ucerr.ForbiddenError struct literals outside ucerr and tests
+        working-directory: backend
+        run: |
+          if grep -rnE '&ucerr\.(ValidationError|ForbiddenError)\{' \
+              internal --include='*.go' --exclude='*_test.go' \
+              | grep -v 'internal/usecase/ucerr/errors\.go'; then
+            echo "::error::Use ucerr.NewValidationError / ucerr.NewForbiddenError instead of struct literals. See .claude/rules/error-wrapping.md."
+            exit 1
+          fi
+
       - name: Warn on resolver returning raw usecase error (AST upgrade tracked in #160)
         working-directory: backend
         run: |

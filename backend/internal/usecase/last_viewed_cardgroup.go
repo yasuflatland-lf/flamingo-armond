@@ -72,7 +72,7 @@ func (u *lastViewedCardgroupUsecase) Set(ctx context.Context, cardgroupID string
 	if err := u.prefs.UpsertLastViewedCardgroup(ctx, caller.Sub, cardgroupID); err != nil {
 		switch {
 		case errors.Is(err, repository.ErrCardgroupNotFound):
-			return nil, &ucerr.ValidationError{Field: "cardgroupId", Message: "cardgroup not found or not owned"}
+			return nil, ucerr.NewValidationError("cardgroupId", "cardgroup not found or not owned")
 		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 			return nil, err
 		default:
