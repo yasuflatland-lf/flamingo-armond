@@ -12,11 +12,17 @@
   "scripts": {
     "codegen": "make codegen",
     "dev:backend": "make dev-backend",
-    "dev:frontend": "make dev-frontend"
+    "dev:frontend": "make dev-frontend",
+    "lint:schema": "eslint --max-warnings=0 schema"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "sharp"
     ]
+  },
+  "devDependencies": {
+    "@graphql-eslint/eslint-plugin": "^4.4.0",
+    "eslint": "^10.4.0",
+    "graphql": "^16.13.2"
   }
 }
