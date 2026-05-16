@@ -93,7 +93,7 @@ jobs:
         working-directory: backend
         run: |
           if grep -rnE '&ucerr\.(ValidationError|ForbiddenError)\{' \
-              internal --include='*.go' --exclude='*_test.go' \
+              internal graph --include='*.go' --exclude='*_test.go' \
               | grep -v 'internal/usecase/ucerr/errors\.go'; then
             echo "::error::Use ucerr.NewValidationError / ucerr.NewForbiddenError instead of struct literals. See .claude/rules/error-wrapping.md."
             exit 1
@@ -103,7 +103,7 @@ jobs:
         working-directory: backend
         run: |
           miss=$(awk '
-            /:[a-zA-Z0-9_]+ := [a-z][a-zA-Z0-9_.]*\.([A-Z][a-zA-Z0-9_]*UC|[a-z][a-zA-Z0-9_]*Usecase)\./ { window = NR + 5; in_window = 1; next }
+            /:= r\.[A-Z][a-zA-Z0-9_]*(UC|Usecase)\./ { window = NR + 5; in_window = 1; next }
             in_window && NR <= window {
               if (/return .*, err($|[^a-zA-Z])/ && !/FromUsecaseError/) {
                 print FILENAME ":" NR ": " $0
