@@ -96,6 +96,12 @@ func TestFromUsecaseError(t *testing.T) {
 			wantMessage: "admin only",
 		},
 		{
+			name:        "eris-wrapped ForbiddenError returns FORBIDDEN (errors.As traversal)",
+			err:         eris.Wrap(&ucerr.ForbiddenError{Message: "admin only"}, "outer: cardgroup"),
+			wantCode:    gqlerr.CodeForbidden,
+			wantMessage: "admin only",
+		},
+		{
 			name:        "unknown error returns INTERNAL",
 			err:         errors.New("boom"),
 			wantCode:    gqlerr.CodeInternal,
@@ -151,5 +157,17 @@ func TestValidationErrorAliasIsTransparent(t *testing.T) {
 	out := gqlerr.FromUsecaseError(context.Background(), ve)
 	if !gqlerr.IsCode(out, gqlerr.CodeBadUserInput) {
 		t.Fatalf("expected BAD_USER_INPUT via usecase alias, got: %v", out)
+	}
+}
+
+func TestErrUnauthenticatedReexportIsTransparent(t *testing.T) {
+	// usecase.ErrUnauthenticated is a var re-export of ucerr.ErrUnauthenticated.
+	// Both point at the same underlying error value, so errors.Is succeeds for
+	// either name. FromUsecaseError must classify a usecase-named sentinel as
+	// UNAUTHENTICATED.
+	silenceLogger(t)
+	out := gqlerr.FromUsecaseError(context.Background(), usecase.ErrUnauthenticated)
+	if !gqlerr.IsCode(out, gqlerr.CodeUnauthenticated) {
+		t.Fatalf("expected UNAUTHENTICATED via usecase re-export, got: %v", out)
 	}
 }
