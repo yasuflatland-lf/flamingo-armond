@@ -10,9 +10,11 @@ Resolvers translate usecase errors into gqlerrors at the return statement:
 return result, gqlerr.FromUsecaseError(ctx, uc.DoSomething(ctx, input))
 ```
 
-A single conversion point keeps `gqlerr.*` out of the usecase layer entirely (enforced after [#158](https://github.com/yasuflatland-lf/flamingo-armond/issues/158) by a CI gate), centralises all `extensions.code` parity decisions, and lets reviewers reason about transport-shape choices in one file (`backend/internal/gqlerr/errors.go`) rather than hunting across every resolver.
+A single conversion point keeps `gqlerr.*` out of the usecase layer entirely (enforced after [#158](https://github.com/yasuflatland-lf/flamingo-armond/issues/158) by a CI gate), centralises all `extensions.code` parity decisions, and lets reviewers reason about transport-shape choices in one file (`backend/internal/gqlerr/from_usecase.go`) rather than hunting across every resolver.
 
 Before this helper existed, resolvers wrapped errors ad-hoc: some called `gqlerr.Internal`, some called `gqlerr.BadUserInput`, and a few called `gqlerr.Unauthenticated` — each with a slightly different context-passing convention. The helper makes the convention testable and the omission detectable.
+
+`FromUsecaseError` does not accept variadic `slog.Attr` — callers needing to attach triage context (e.g. an entity ID) to the INTERNAL log line should call `gqlerr.Internal(ctx, err, slog.String("...", ...))` directly rather than going through this helper.
 
 ## Branch order
 
@@ -33,7 +35,7 @@ Cancel is checked first because a cancelled context is observed before any appli
 | Domain invariants | `domain.ErrCardgroupNameRequired`, `domain.ErrCardgroupNameTooLong`, etc. (sentinels) | `Internal` (no structural match above) |
 | Repository miss | `repository.ErrNotFound` (sentinel) | `Internal` unless the usecase re-wraps it into a `ValidationError` |
 | Repository conflict | `ErrCardDuplicateFront` etc. (sentinels) | Resolver maps directly when the error is part of an outcome union |
-| Outcome union | `CardDuplicateFrontError` (Option B struct) | Resolver maps directly — **not** via `FromUsecaseError` (see below) |
+| Outcome union | `CardDuplicateFrontError` (union variant struct returned in CreateCardResult) | Resolver maps directly — **not** via `FromUsecaseError` (see below) |
 | Field-scoped validation | `*usecase.ValidationError` | `BadUserInput` |
 | Auth (identity missing) | `usecase.ErrUnauthenticated` (sentinel) | `Unauthenticated` |
 | Authz (permission denied) | `*usecase.ForbiddenError` | `NewForbidden` |
@@ -61,7 +63,7 @@ assert.Contains(t, ve.Message, "required")
 
 ## Logger source (out-of-scope deferral)
 
-`FromUsecaseError` inherits the logging behaviour of `gqlerr.Internal` and `gqlerr.Cancelled`, both of which currently call `slog.Default()`. Moving logger injection into the usecase layer (issue [#154](https://github.com/yasuflatland-lf/flamingo-armond/issues/154) audit item X-7) is intentionally out of scope here. When that work lands, the logger source changes inside the `gqlerr` package; the `FromUsecaseError` signature stays the same and all resolvers continue to call it unchanged.
+Logger DI inside the usecase layer is intentionally not addressed here. This helper inherits the `slog.Default()` behavior of `gqlerr.Internal` / `gqlerr.Cancelled` unchanged. When the usecase layer is later wired to accept an injected logger, the change lands inside the `gqlerr` package and the `FromUsecaseError` signature stays the same.
 
 ## Relationship to outcome unions
 
@@ -82,3 +84,7 @@ Two gates in `.github/workflows/backend.yml` enforce the conversion-site contrac
 2. **Hardcoded `extensions.code` literals outside `internal/gqlerr/`** — currently zero occurrences; any new literal fails the build immediately.
 
 Gate 1 ensures the usecase layer stays transport-agnostic. Gate 2 ensures all `extensions.code` decisions flow through `gqlerr.*` helpers, making the full set of codes greppable in one package.
+
+Note: Case 1's grep is line-oriented and the underlying `grep -rln '"backend/internal/gqlerr"'` pattern matches the import path string only — comment-text mentions of `gqlerr` do not trigger the warning.
+
+Note: Case 2 is also line-oriented; a multi-line map literal (`"code":` on one line, the literal on the next) or a literal assembled via `fmt.Sprintf` would not match. The primary defense against bypass is code review, not the grep itself.

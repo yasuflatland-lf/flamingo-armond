@@ -20,8 +20,8 @@ import (
 //   - anything else ⇒ Internal (logged via gqlerr.Internal).
 //
 // errors.Is and errors.As are used throughout, so callers may wrap the source
-// error with eris.Wrap without breaking classification. Logger DI inside
-// usecase is X-7 and intentionally out of scope here — this helper inherits
+// error with eris.Wrap without breaking classification. Logger DI inside the
+// usecase layer is intentionally out of scope here — this helper inherits
 // the slog.Default() behavior of gqlerr.Internal / gqlerr.Cancelled unchanged.
 func FromUsecaseError(ctx context.Context, err error) error {
 	if err == nil {
