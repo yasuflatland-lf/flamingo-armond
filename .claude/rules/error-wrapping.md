@@ -14,6 +14,8 @@ The backend uses [`github.com/rotisserie/eris`](https://github.com/rotisserie/er
 
 `fmt.Errorf("...: %w", err)` is **forbidden** in `backend/internal/` and `backend/cmd/`. CI fails the build if any such call sneaks back in (see `.github/workflows/backend.yml`).
 
+**Canonical layer prefix.** The `layer:` token at the start of every wrap message is the package name, not the function name — `usecase:`, `repository:`, `auth:`, `gqlerr:`. Inside `backend/internal/usecase/` the second segment is the file's module (`usecase: card: ...`, `usecase: admin role: ...`), followed by a verb and object phrase (`usecase: card: find by id`, `usecase: admin role: check admin`). The two-segment prefix lets `grep -n 'usecase: card:'` return every wrap from one file regardless of the surrounding function; it also gives [`assertInternalChain`](../../docs/backend/error-wrapping/test-error-chain-shape-not-presence.md) call sites a stable substring to pin against. Inverted forms (`card usecase: ...`) defeat the grep and break the assertion convention.
+
 ## Sentinels
 
 Sentinels used today: `repository.ErrNotFound`, and domain-level sentinels such as `domain.ErrCardgroupNameRequired` / `domain.ErrCardgroupNameTooLong`. New sentinels are allowed when (a) callers need to branch on identity, and (b) a string-equality match is fragile. Keep sentinels as plain `errors.New` so `errors.Is` works without going through eris's chain walk.
