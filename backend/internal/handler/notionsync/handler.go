@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v5"
+	"github.com/rotisserie/eris"
 
 	"backend/internal/logging"
 	"backend/internal/notion"
@@ -45,7 +46,7 @@ func New(uc SyncUsecase, cfg Config) *Handler {
 
 func (h *Handler) Handle(c *echo.Context) error {
 	if !validBearer(c.Request().Header.Get("Authorization"), h.config.Token) {
-		slog.WarnContext(c.Request().Context(), "notion sync: unauthorized",
+		h.logger.WarnContext(c.Request().Context(), "notion sync: unauthorized",
 			"remote_ip", c.RealIP(),
 		)
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
@@ -74,24 +75,26 @@ func validBearer(authHeader, expected string) bool {
 
 func (h *Handler) handleError(c *echo.Context, err error) error {
 	ctx := c.Request().Context()
+	remoteIP := slog.String("remote_ip", c.RealIP())
 	switch {
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded), errors.Is(err, notion.ErrRetryElapsed), errors.Is(err, notion.ErrRetryAttempts):
-		logging.LogWarn(ctx, h.logger, "notion sync: timeout", err)
+		logging.LogWarn(ctx, h.logger, "notion sync: timeout", err, remoteIP)
 		return c.JSON(http.StatusGatewayTimeout, map[string]string{"error": "notion sync timed out"})
 	case errors.Is(err, usecase.ErrNotionSyncFetch):
-		logging.LogWarn(ctx, h.logger, "notion sync: fetch failed", err)
+		logging.LogWarn(ctx, h.logger, "notion sync: fetch failed", err, remoteIP)
 		return c.JSON(http.StatusBadGateway, map[string]string{"error": "notion fetch failed"})
 	case errors.Is(err, usecase.ErrNotionSyncInvalidInput):
-		logging.LogWarn(ctx, h.logger, "notion sync: invalid input", err)
+		logging.LogWarn(ctx, h.logger, "notion sync: invalid input", err, remoteIP)
 		return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": "invalid input"})
 	case errors.Is(err, usecase.ErrNotionSyncParse):
-		logging.LogWarn(ctx, h.logger, "notion sync: parse error", err)
+		logging.LogWarn(ctx, h.logger, "notion sync: parse error", err, remoteIP)
 		return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": "notion parse error"})
 	case errors.Is(err, usecase.ErrNotionSyncPersist):
-		logging.LogError(ctx, h.logger, "notion sync: persist failed", err)
+		err = eris.Wrap(err, "notion sync: persist failed")
+		logging.LogError(ctx, h.logger, "notion sync: persist failed", err, remoteIP)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "persist error"})
 	default:
-		logging.LogError(ctx, h.logger, "notion sync: failed", err)
+		logging.LogError(ctx, h.logger, "notion sync: failed", err, remoteIP)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 	}
 }

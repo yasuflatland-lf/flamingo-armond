@@ -264,8 +264,11 @@ func TestHandlerErrorMapping(t *testing.T) {
 
 // captureHandlerLogger replaces the global slog default with a JSON logger
 // writing to buf for the duration of the test, then constructs a Handler that
-// picks up the new default. Must not be used with t.Parallel() because it
-// mutates global slog state.
+// picks up the new default.
+//
+// Must not be called from any test (or subtest) marked t.Parallel() because
+// it mutates global slog state. Run error_chain tests as top-level sequential
+// functions, not as subtests of a parallel table-driven test.
 func captureHandlerLogger(t *testing.T, buf *bytes.Buffer, uc SyncUsecase, cfg Config) *Handler {
 	t.Helper()
 	prev := slog.Default()
@@ -289,6 +292,43 @@ func decodeLogLinesNotionSync(t *testing.T, buf *bytes.Buffer) []map[string]any 
 		records = append(records, rec)
 	}
 	return records
+}
+
+// TestHandle_FetchError_AttachesErrorChain verifies that an ErrNotionSyncFetch
+// failure produces a WARN log with error_chain present. This is a representative
+// test for the LogWarn paths in handleError; the exact stack-depth assertion is
+// intentionally loose because the stub uses eris.Wrap and the handler does not
+// add a second wrap on warn paths.
+func TestHandle_FetchError_AttachesErrorChain(t *testing.T) {
+	// Not parallel: captureHandlerLogger mutates global slog default.
+	var buf bytes.Buffer
+	uc := &stubSyncUsecase{err: eris.Wrap(usecase.ErrNotionSyncFetch, "notion api: 503")}
+	h := captureHandlerLogger(t, &buf, uc, Config{Token: "secret"})
+
+	req := httptest.NewRequest(http.MethodPost, "/internal/notion-sync", strings.NewReader(""))
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	e := echo.New()
+	c := e.NewContext(req, rec)
+
+	if err := h.Handle(c); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", rec.Code)
+	}
+
+	records := decodeLogLinesNotionSync(t, &buf)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 log line, got %d: %s", len(records), buf.String())
+	}
+	r := records[0]
+	if r["level"] != "WARN" {
+		t.Errorf("expected level=WARN, got %v", r["level"])
+	}
+	if _, hasChain := r["error_chain"]; !hasChain {
+		t.Error("error_chain attribute must be present on WARN log for fetch failure")
+	}
 }
 
 // TestHandle_PersistError_AttachesErrorChain verifies that a persist failure
@@ -341,10 +381,16 @@ func TestHandle_PersistError_AttachesErrorChain(t *testing.T) {
 }
 
 // TestHandle_PersistError_StdlibSentinel_AttachesErrorChain verifies that even
-// when the stub returns the plain stdlib sentinel (ErrNotionSyncPersist via
-// errors.Join with a stdlib error), the production eris.Wrap at the log site
-// still produces a rich error_chain. This proves the wrap at the call site is
-// load-bearing, not just the stub's own chain.
+// when the stub returns a plain stdlib-joined error (no eris frames), the
+// eris.Wrap inside handleError's ErrNotionSyncPersist branch attaches a real
+// stack trace. This proves the handler-side wrap is load-bearing: without it
+// the chain would contain only an "external" entry and root.stack would be
+// absent.
+//
+// The strict root.stack assertion mirrors TestHandle_PersistError_AttachesErrorChain.
+// The difference is the input: this test uses errors.Join (no eris frames from
+// the caller); the other uses eris.Wrap from the caller. Both must produce a
+// non-empty root.stack because handleError always wraps the error before logging.
 func TestHandle_PersistError_StdlibSentinel_AttachesErrorChain(t *testing.T) {
 	// Not parallel: captureHandlerLogger mutates global slog default.
 	var buf bytes.Buffer
@@ -373,10 +419,17 @@ func TestHandle_PersistError_StdlibSentinel_AttachesErrorChain(t *testing.T) {
 	if r["level"] != "ERROR" {
 		t.Errorf("expected level=ERROR, got %v", r["level"])
 	}
-	// error_chain must be present even for stdlib-wrapped errors (eris.ToJSON
-	// emits the "external" key for chains without eris frames, which is still
-	// a JSON object — not nil).
-	if _, hasChain := r["error_chain"]; !hasChain {
-		t.Error("error_chain attribute must be present on ERROR log for persist failure")
+	chain, ok := r["error_chain"].(map[string]any)
+	if !ok {
+		t.Fatalf("error_chain is not a JSON object: %T", r["error_chain"])
+	}
+	// handleError wraps the stdlib error with eris.Wrap, so root must be
+	// present with a non-empty stack regardless of the caller's error type.
+	root, hasRoot := chain["root"].(map[string]any)
+	if !hasRoot {
+		t.Fatal("error_chain must have root entry — eris.Wrap in handleError should add a stack frame")
+	}
+	if stack, _ := root["stack"].([]any); len(stack) == 0 {
+		t.Error("error_chain.root.stack must contain at least one frame (handler-side eris.Wrap must be load-bearing)")
 	}
 }
