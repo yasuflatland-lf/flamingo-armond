@@ -1,15 +1,16 @@
-// Package ucerr holds the usecase-layer sentinel and structured error types.
-// It is intentionally a separate sub-package so that the gqlerr package can
-// import these types without creating an import cycle: gqlerr itself is
-// imported by the parent usecase package.
+// Package ucerr holds the usecase-layer sentinel and structured error types
+// that the resolver layer translates to wire-format GraphQL errors via
+// gqlerr.FromUsecaseError. The types live in a leaf sub-package so that
+// gqlerr can import them without acquiring a transitive dependency on the
+// parent usecase package; the parent re-exports them as type aliases (and a re-exported sentinel var) for
+// caller ergonomics.
 package ucerr
 
 import "errors"
 
 // ErrUnauthenticated signals an unauthenticated caller from a usecase method.
-// The resolver layer translates this into gqlerr.Unauthenticated() via
-// gqlerr.FromUsecaseError so the wire response carries
-// extensions.code = "UNAUTHENTICATED".
+// The resolver layer translates this via gqlerr.FromUsecaseError so the wire
+// response carries extensions.code = "UNAUTHENTICATED".
 var ErrUnauthenticated = errors.New("usecase: not authenticated")
 
 // ValidationError is the field-scoped, message-bearing validation failure
@@ -27,7 +28,8 @@ func (e *ValidationError) Error() string {
 }
 
 // ForbiddenError signals an authorized-but-not-permitted caller. The Message
-// is propagated to the FORBIDDEN gqlerror's user-facing message. Same
+// is propagated to the wire error's user-facing message field when
+// FromUsecaseError translates to extensions.code = "FORBIDDEN". Same
 // pointer-receiver discipline as ValidationError.
 type ForbiddenError struct {
 	Message string

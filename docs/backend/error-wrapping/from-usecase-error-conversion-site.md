@@ -61,6 +61,15 @@ assert.Contains(t, ve.Message, "required")
 
 `errors.As` traverses eris chain links, so wrapping at a layer boundary (`eris.Wrap(err, "usecase: ...")`) does not break the assertion. This decouples usecase tests from transport shape: they never import `gqlerr` or inspect `extensions.code`.
 
+## Asserting in resolver tests
+
+Resolver tests live one layer above the conversion site: they exercise the full resolver call, including the `FromUsecaseError(ctx, ...)` wrap, so the assertion target is the wire-format `extensions.code` string. The two halves of a resolver test therefore use different error vocabularies:
+
+- **Mock-side errors** (what the stubbed usecase returns) MUST be typed errors — `&ucerr.ForbiddenError{Message: "..."}`, `&ucerr.ValidationError{Field, Message}`, `ucerr.ErrUnauthenticated`. Returning a `*gqlerror.Error` directly from a mock bypasses the conversion site entirely and lands in the resolver as an already-wire-shaped error; `FromUsecaseError` does not recognise the `extensions.code` because the structural matches (`errors.As[*usecase.ValidationError]`, etc.) all fail, and the resolver classifies it as `INTERNAL`. Every `extensions.code` assertion downstream goes red.
+- **Assertion-side references** to wire-format constants — `gqlerr.CodeForbidden`, `gqlerr.CodeBadUserInput` — stay imported in the resolver test file. They live on the assertion side of the call, not the mock side, and reading them as constants (`string(gqlerr.CodeForbidden)`) is the canonical way to keep the test's expected code string in sync with the wire constant.
+
+The two imports (`backend/internal/gqlerr` for code constants, `backend/internal/usecase/ucerr` for mock construction) coexist in the same resolver test file by design — they cover the two ends of the resolver's translation step. A mechanical migration that strips `gqlerr` imports from resolver tests because "we removed gqlerr from usecase" breaks the assertion-side references; grep for `gqlerr.Code*` usage before removing the import.
+
 ## Logger source (out-of-scope deferral)
 
 Logger DI inside the usecase layer is intentionally not addressed here. This helper inherits the `slog.Default()` behavior of `gqlerr.Internal` / `gqlerr.Cancelled` unchanged. When the usecase layer is later wired to accept an injected logger, the change lands inside the `gqlerr` package and the `FromUsecaseError` signature stays the same.

@@ -82,10 +82,29 @@ jobs:
             exit 1
           fi
 
-      - name: Warn on gqlerr imports inside usecase (will be hard error after #158)
+      - name: Forbid gqlerr imports inside usecase
         run: |
           if grep -rln '"backend/internal/gqlerr"' internal/usecase --include='*.go' --exclude='*_test.go'; then
-            echo "::warning::gqlerr.* still referenced inside backend/internal/usecase. Migrate to *usecase.ValidationError / usecase.ErrUnauthenticated / *usecase.ForbiddenError. Tracking: #158"
+            echo "::error::gqlerr.* imports forbidden in backend/internal/usecase (non-test). Use ucerr.* types and let the resolver wrap via gqlerr.FromUsecaseError. See .claude/rules/error-wrapping.md."
+            exit 1
+          fi
+
+      - name: Warn on resolver returning raw usecase error (AST upgrade tracked in #160)
+        working-directory: backend
+        run: |
+          miss=$(awk '
+            /:= [a-z][a-zA-Z0-9_.]*\.[A-Z][a-zA-Z0-9_]*UC\./ { window = NR + 3; in_window = 1; next }
+            in_window && NR <= window {
+              if (/return .*, err($|[^a-zA-Z])/ && !/FromUsecaseError/) {
+                print FILENAME ":" NR ": " $0
+                in_window = 0
+              }
+            }
+            in_window && NR > window { in_window = 0 }
+          ' graph/resolver/schema.resolvers.go)
+          if [ -n "$miss" ]; then
+            echo "::warning::Resolver may pass through a usecase error without FromUsecaseError wrap (heuristic):"
+            echo "$miss"
           fi
 
       - name: Verify no hardcoded extensions.code literals outside gqlerr

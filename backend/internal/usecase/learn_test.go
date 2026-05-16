@@ -86,7 +86,7 @@ func TestLearnUsecaseNextDueCardsAuthAndCardgroupErrors(t *testing.T) {
 			100,
 		)
 		_, err := uc.NextDueCards(anonCtx(), "cg-1", now, 5)
-		assertGQLErr(t, err, "UNAUTHENTICATED", "")
+		assertUnauthenticated(t, err)
 	})
 
 	t.Run("missing cardgroup", func(t *testing.T) {
@@ -100,7 +100,7 @@ func TestLearnUsecaseNextDueCardsAuthAndCardgroupErrors(t *testing.T) {
 			100,
 		)
 		_, err := uc.NextDueCards(authedCtx("u-1"), "missing", now, 5)
-		assertGQLErr(t, err, "BAD_USER_INPUT", "cardgroupId")
+		assertValidationError(t, err, "cardgroupId", "")
 	})
 
 	t.Run("non owner", func(t *testing.T) {
@@ -114,7 +114,7 @@ func TestLearnUsecaseNextDueCardsAuthAndCardgroupErrors(t *testing.T) {
 			100,
 		)
 		_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", now, 5)
-		assertGQLErr(t, err, "UNAUTHENTICATED", "")
+		assertUnauthenticated(t, err)
 	})
 }
 
@@ -171,7 +171,7 @@ func TestLearnUsecaseNextDueCardsRepoError(t *testing.T) {
 
 	_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", now, 5)
 
-	assertGQLErr(t, err, "INTERNAL", "")
+	assertInternalChain(t, err, "usecase: find due cards for user")
 }
 
 func TestLearnUsecaseNextDueCardsCardgroupRepoInternalError(t *testing.T) {
@@ -189,7 +189,7 @@ func TestLearnUsecaseNextDueCardsCardgroupRepoInternalError(t *testing.T) {
 
 	_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", now, 5)
 
-	assertGQLErr(t, err, "INTERNAL", "")
+	assertInternalChain(t, err, "usecase: find cardgroup by id")
 }
 
 func TestNewLearnUsecase_PanicsOnInvalidDeps(t *testing.T) {

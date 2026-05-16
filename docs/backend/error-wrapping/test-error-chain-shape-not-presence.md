@@ -21,3 +21,12 @@ if root != nil {
 Test stubs that produce errors must also use `eris.New(...)` (not `errors.New(...)`) so the assertion exercises the same code path production hits. Pattern in `backend/internal/auth/superuser_test.go` (`M7_IsAdminError`, `M8_AssignToUserError`).
 
 **A single `eris.New` stub is not enough to prove production's `eris.Wrap` is load-bearing.** A test where the stub always returns an eris-wrapped error passes the `error_chain.root.stack` assertion whether or not production wraps the error — because the stub's own eris chain provides the root. Add a sibling test that stubs the *actual* stdlib sentinel (e.g. `repository.ErrNotFound`, a plain `errors.New` value) and still asserts the rich shape. Only that test will fail if someone removes the production `eris.Wrap` call at the log site. Reference: `backend/internal/usecase/card_test.go` (`TestCardUsecase_Create_DuplicateLookupRace_RowVanished`) — the documented race where the duplicate row vanishes before the follow-up SELECT returns `repository.ErrNotFound`, and the test proves that the usecase's `eris.Wrap(lookupErr, ...)` is what makes the chain rich.
+
+## Frame-substring assertions: pick a substring unique to one production wrap
+
+Tests that assert "the chain contains a frame whose message includes substring `S`" (e.g. `assertInternalChain(t, err, "usecase: lookup duplicate card after 23505")` in `backend/internal/usecase/helpers_test.go`) silently pass when `S` is too short to discriminate. Two failure modes:
+
+- **Empty substring (`""`).** `strings.Contains(frame, "")` is always `true`, so the assertion becomes "the chain is non-empty" — a strictly weaker check than the surrounding assertion that the error is non-nil.
+- **Substring that matches multiple production wraps.** `"usecase: card"` matches every wrap in `card.go`, so a test that intended to pin one call site silently passes for an error originating at a different one. The bug only surfaces when a code rename moves the matched site but the wrong site keeps emitting the substring.
+
+Pick the substring to match exactly one `eris.Wrap` / `eris.Errorf` call in the production package under test. Grep the production source for the proposed substring before committing the test; if it appears in more than one wrap message, lengthen it until it does not.

@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vektah/gqlparser/v2/gqlerror"
-
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
@@ -41,25 +39,6 @@ func anonCtx() context.Context {
 
 func ptr(s string) *string { return &s }
 
-// assertGQLErr asserts err is a *gqlerror.Error with the given extensions.code,
-// and (when field is non-empty) the given extensions.field.
-func assertGQLErr(t *testing.T, err error, code, field string) {
-	t.Helper()
-	var gqlErr *gqlerror.Error
-	if !errors.As(err, &gqlErr) {
-		t.Fatalf("expected *gqlerror.Error, got %T: %v", err, err)
-	}
-	if got, _ := gqlErr.Extensions["code"].(string); got != code {
-		t.Fatalf("expected extensions.code=%q, got %q", code, got)
-	}
-	if field == "" {
-		return
-	}
-	if got, _ := gqlErr.Extensions["field"].(string); got != field {
-		t.Fatalf("expected extensions.field=%q, got %q", field, got)
-	}
-}
-
 // --- Me tests ---
 
 func TestUserUsecase_Me(t *testing.T) {
@@ -71,7 +50,7 @@ func TestUserUsecase_Me(t *testing.T) {
 		ctx        context.Context
 		findResult *domain.User
 		findErr    error
-		wantErr    string // gqlerror extensions.code, empty = no error
+		wantErr    string // expected outcome label: "UNAUTHENTICATED" (sentinel) | "INTERNAL" (eris-wrapped chain) | "" (no error)
 		wantID     string
 	}{
 		{
@@ -111,7 +90,14 @@ func TestUserUsecase_Me(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				assertGQLErr(t, err, tc.wantErr, "")
+				switch tc.wantErr {
+				case "UNAUTHENTICATED":
+					assertUnauthenticated(t, err)
+				case "INTERNAL":
+					assertInternalChain(t, err, "usecase: Me: find user by ID")
+				default:
+					t.Fatalf("unhandled wantErr code %q in test", tc.wantErr)
+				}
 				return
 			}
 			if err != nil {
@@ -145,8 +131,8 @@ func TestUserUsecase_UpdateUser(t *testing.T) {
 		input         UpdateUserInput
 		repoResult    *domain.User
 		repoErr       error
-		wantErrCode   string // non-empty = expect gqlerror with this code
-		wantErrField  string // non-empty = check extensions.field
+		wantErrCode   string // expected outcome label: "UNAUTHENTICATED" (sentinel) | "BAD_USER_INPUT" (*ucerr.ValidationError) | "INTERNAL" (eris-wrapped chain) | "" (no error)
+		wantErrField  string // non-empty = check *ucerr.ValidationError.Field
 		wantRepoName  *string
 		wantRepoBio   *string
 		checkBioIsNil bool
@@ -283,7 +269,16 @@ func TestUserUsecase_UpdateUser(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				assertGQLErr(t, err, tc.wantErrCode, tc.wantErrField)
+				switch tc.wantErrCode {
+				case "UNAUTHENTICATED":
+					assertUnauthenticated(t, err)
+				case "BAD_USER_INPUT":
+					assertValidationError(t, err, tc.wantErrField, "")
+				case "INTERNAL":
+					assertInternalChain(t, err, "usecase: UpdateUser: update user")
+				default:
+					t.Fatalf("unhandled wantErrCode %q in test", tc.wantErrCode)
+				}
 				return
 			}
 

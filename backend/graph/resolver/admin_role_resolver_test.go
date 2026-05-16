@@ -12,6 +12,7 @@ import (
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
 	"backend/internal/usecase"
+	"backend/internal/usecase/ucerr"
 )
 
 // ---------------------------------------------------------------------------
@@ -95,7 +96,7 @@ func TestResolver_CreateRole_Forbidden(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockAdminRoleUsecase{
-		createErr: gqlerr.NewForbidden("admin only"),
+		createErr: &ucerr.ForbiddenError{Message: "admin only"},
 	}
 	srv := newAdminRoleSrv(mock)
 	resp := gqlRequest(t, srv, authedCtx("non-admin"), createRoleMutation)
@@ -116,7 +117,7 @@ func TestResolver_UpdateRole_BadInput(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockAdminRoleUsecase{
-		updateErr: gqlerr.BadUserInput("name", "name must contain only lowercase letters, digits, '_' or '-'"),
+		updateErr: &ucerr.ValidationError{Field: "name", Message: "name must contain only lowercase letters, digits, '_' or '-'"},
 	}
 	srv := newAdminRoleSrv(mock)
 	body := `{"query":"mutation { updateRole(id: \"r1\", name: \"INVALID NAME\") { id name } }"}`
@@ -168,7 +169,7 @@ func TestResolver_DeleteRole_Forbidden(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockAdminRoleUsecase{
-		deleteErr: gqlerr.NewForbidden("cannot delete system role 'admin'"),
+		deleteErr: &ucerr.ForbiddenError{Message: "cannot delete system role 'admin'"},
 	}
 	srv := newAdminRoleSrv(mock)
 	body := `{"query":"mutation { deleteRole(id: \"r-admin\") }"}`
@@ -260,7 +261,7 @@ func TestResolver_Roles_Forbidden(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockAdminRoleUsecase{
-		listErr: gqlerr.NewForbidden("admin only"),
+		listErr: &ucerr.ForbiddenError{Message: "admin only"},
 	}
 	srv := newAdminRoleSrv(mock)
 	resp := gqlRequest(t, srv, authedCtx("non-admin"), rolesQuery)

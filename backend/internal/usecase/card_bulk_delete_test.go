@@ -49,7 +49,7 @@ func TestCardUsecase_BulkDelete_Anonymous(t *testing.T) {
 	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx}
 
 	_, err := uc.BulkDelete(anonCtx(), []string{"c1", "c2"})
-	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+	assertUnauthenticated(t, err)
 	if cardRepo.deleteByIDsCalls != 0 {
 		t.Fatalf("expected 0 DeleteByIDsTx invocations on anonymous, got %d", cardRepo.deleteByIDsCalls)
 	}
@@ -60,7 +60,7 @@ func TestCardUsecase_BulkDelete_AnonymousWithEmptyIDs(t *testing.T) {
 	t.Parallel()
 	uc := &CardUsecase{cardRepo: &mockCardRepository{}, cardgroupRepo: &mockCardgroupRepoForCard{}}
 	_, err := uc.BulkDelete(anonCtx(), nil)
-	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+	assertUnauthenticated(t, err)
 }
 
 func TestCardUsecase_BulkDelete_AllOwn(t *testing.T) {
@@ -162,7 +162,7 @@ func TestCardUsecase_BulkDelete_RejectsTooManyIDs(t *testing.T) {
 	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx}
 
 	_, err := uc.BulkDelete(authedCtx("u1"), ids)
-	assertGQLErr(t, err, "BAD_USER_INPUT", "ids")
+	assertValidationError(t, err, "ids", "")
 	if *calls != 0 {
 		t.Fatalf("expected 0 tx invocations, got %d", *calls)
 	}

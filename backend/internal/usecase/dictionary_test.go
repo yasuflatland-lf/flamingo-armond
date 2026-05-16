@@ -286,7 +286,7 @@ func TestDictionaryUsecase_NonAdminForbidden(t *testing.T) {
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
-	assertGQLErr(t, err, "FORBIDDEN", "")
+	assertForbidden(t, err, "")
 	if auth.calls != 1 {
 		t.Fatalf("expected 1 IsAdmin call, got %d", auth.calls)
 	}
@@ -316,7 +316,7 @@ func TestDictionaryUsecase_AnonymousUnauthenticated(t *testing.T) {
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
-	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+	assertUnauthenticated(t, err)
 	if auth.calls != 0 {
 		t.Fatalf("expected 0 IsAdmin calls on anonymous, got %d", auth.calls)
 	}
@@ -345,7 +345,7 @@ func TestDictionaryUsecase_PayloadOverCapBadInput(t *testing.T) {
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
-	assertGQLErr(t, err, "BAD_USER_INPUT", "payload")
+	assertValidationError(t, err, "payload", "")
 	if repo.upsertCalls != 0 {
 		t.Fatalf("expected 0 repo calls on over-cap payload, got %d", repo.upsertCalls)
 	}
@@ -535,8 +535,8 @@ func TestDictionaryUsecase_SkippedLoneFrontDoesNotReachRepository(t *testing.T) 
 
 // TestDictionaryUsecase_AdminCheckerErrorBecomesInternal verifies that a
 // non-context-canceled error returned by IsAdmin maps to INTERNAL and never
-// reaches the repository. The eris chain captured by gqlerr.Internal is
-// observed only in logs; the test pins the error code returned to the caller.
+// reaches the repository. The eris chain is observed only in logs; the test
+// pins the wrap text returned to the caller.
 func TestDictionaryUsecase_AdminCheckerErrorBecomesInternal(t *testing.T) {
 	t.Parallel()
 
@@ -552,7 +552,7 @@ func TestDictionaryUsecase_AdminCheckerErrorBecomesInternal(t *testing.T) {
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
-	assertGQLErr(t, err, "INTERNAL", "")
+	assertInternalChain(t, err, "dictionary upsert: check admin")
 	if repo.upsertCalls != 0 {
 		t.Fatalf("expected 0 repo calls when admin check fails, got %d", repo.upsertCalls)
 	}
@@ -582,7 +582,7 @@ func TestDictionaryUsecase_RepoErrorBecomesInternal(t *testing.T) {
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
-	assertGQLErr(t, err, "INTERNAL", "")
+	assertInternalChain(t, err, "dictionary upsert: repo")
 	if repo.upsertCalls != 1 {
 		t.Fatalf("expected 1 UpsertManyTx call (repo was invoked), got %d", repo.upsertCalls)
 	}
@@ -605,7 +605,7 @@ func TestDictionaryUsecase_EmptyCardgroupIDBadInput(t *testing.T) {
 		CardgroupID: "",
 		Payload:     payload,
 	})
-	assertGQLErr(t, err, "BAD_USER_INPUT", "cardgroupId")
+	assertValidationError(t, err, "cardgroupId", "")
 	if repo.upsertCalls != 0 {
 		t.Fatalf("expected 0 repo calls on empty cardgroupId, got %d", repo.upsertCalls)
 	}
@@ -625,7 +625,7 @@ func TestDictionaryUsecase_EmptyPayloadBadInput(t *testing.T) {
 		CardgroupID: "cg-target",
 		Payload:     "",
 	})
-	assertGQLErr(t, err, "BAD_USER_INPUT", "payload")
+	assertValidationError(t, err, "payload", "")
 	if repo.upsertCalls != 0 {
 		t.Fatalf("expected 0 repo calls on empty payload, got %d", repo.upsertCalls)
 	}
@@ -646,7 +646,7 @@ func TestDictionaryUsecase_BadBase64BadInput(t *testing.T) {
 		CardgroupID: "cg-target",
 		Payload:     "not-valid-base64-!@#$",
 	})
-	assertGQLErr(t, err, "BAD_USER_INPUT", "payload")
+	assertValidationError(t, err, "payload", "")
 	if repo.upsertCalls != 0 {
 		t.Fatalf("expected 0 repo calls on bad base64, got %d", repo.upsertCalls)
 	}

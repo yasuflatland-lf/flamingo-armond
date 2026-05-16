@@ -49,7 +49,7 @@ func TestLastViewedCardgroup_Anonymous_Unauthenticated(t *testing.T) {
 	uc := NewLastViewedCardgroupWithDeps(prefs, users)
 
 	_, err := uc.Set(anonCtx(), "cg-1")
-	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+	assertUnauthenticated(t, err)
 	if prefs.called != 0 {
 		t.Fatalf("repository must not be called when caller is anonymous; got %d calls", prefs.called)
 	}
@@ -100,7 +100,7 @@ func TestLastViewedCardgroup_CardgroupNotFound_BadUserInput(t *testing.T) {
 	uc := NewLastViewedCardgroupWithDeps(prefs, users)
 
 	_, err := uc.Set(authedCtx("u-1"), "cg-foreign")
-	assertGQLErr(t, err, "BAD_USER_INPUT", "cardgroupId")
+	assertValidationError(t, err, "cardgroupId", "")
 	if users.calls != 0 {
 		t.Fatalf("FindByID must not be called after a sentinel error; got %d calls", users.calls)
 	}
@@ -117,7 +117,7 @@ func TestLastViewedCardgroup_LegacyErrNotFound_FallsThroughToInternal(t *testing
 	uc := NewLastViewedCardgroupWithDeps(prefs, users)
 
 	_, err := uc.Set(authedCtx("u-1"), "cg-1")
-	assertGQLErr(t, err, "INTERNAL", "")
+	assertInternalChain(t, err, "usecase: set last viewed cardgroup")
 }
 
 func TestLastViewedCardgroup_GenericRepoError_Internal(t *testing.T) {
@@ -128,7 +128,7 @@ func TestLastViewedCardgroup_GenericRepoError_Internal(t *testing.T) {
 	uc := NewLastViewedCardgroupWithDeps(prefs, users)
 
 	_, err := uc.Set(authedCtx("u-1"), "cg-1")
-	assertGQLErr(t, err, "INTERNAL", "")
+	assertInternalChain(t, err, "usecase: set last viewed cardgroup")
 }
 
 func TestLastViewedCardgroup_ContextCancelled_Cancelled(t *testing.T) {
@@ -139,7 +139,7 @@ func TestLastViewedCardgroup_ContextCancelled_Cancelled(t *testing.T) {
 	uc := NewLastViewedCardgroupWithDeps(prefs, users)
 
 	_, err := uc.Set(authedCtx("u-1"), "cg-1")
-	assertGQLErr(t, err, "CANCELLED", "")
+	assertCancelled(t, err)
 }
 
 // TestLastViewedCardgroup_RefetchUserMissing_Internal verifies that a user row
@@ -152,7 +152,7 @@ func TestLastViewedCardgroup_RefetchUserMissing_Internal(t *testing.T) {
 	uc := NewLastViewedCardgroupWithDeps(prefs, users)
 
 	_, err := uc.Set(authedCtx("u-1"), "cg-1")
-	assertGQLErr(t, err, "INTERNAL", "")
+	assertInternalChain(t, err, "usecase: last viewed cardgroup: refetch own user row")
 	if prefs.called != 1 {
 		t.Fatalf("UpsertLastViewedCardgroup must have been called once before the refetch failure; got %d", prefs.called)
 	}
@@ -166,7 +166,7 @@ func TestLastViewedCardgroup_RefetchContextCancelled_Cancelled(t *testing.T) {
 	uc := NewLastViewedCardgroupWithDeps(prefs, users)
 
 	_, err := uc.Set(authedCtx("u-1"), "cg-1")
-	assertGQLErr(t, err, "CANCELLED", "")
+	assertCancelled(t, err)
 }
 
 // TestLastViewedCardgroup_EmptySub_Unauthenticated verifies that an auth context
@@ -179,7 +179,7 @@ func TestLastViewedCardgroup_EmptySub_Unauthenticated(t *testing.T) {
 	uc := NewLastViewedCardgroupWithDeps(prefs, users)
 
 	_, err := uc.Set(authedCtx(""), "cg-1")
-	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+	assertUnauthenticated(t, err)
 	if prefs.called != 0 {
 		t.Fatalf("repository must not be called for empty sub; got %d calls", prefs.called)
 	}
@@ -200,5 +200,5 @@ func TestLastViewedCardgroup_SentinelOrderingMatters(t *testing.T) {
 	uc := NewLastViewedCardgroupWithDeps(prefs, users)
 
 	_, err := uc.Set(authedCtx("u-1"), "cg-1")
-	assertGQLErr(t, err, "BAD_USER_INPUT", "cardgroupId")
+	assertValidationError(t, err, "cardgroupId", "")
 }

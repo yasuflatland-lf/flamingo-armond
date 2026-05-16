@@ -249,7 +249,7 @@ func TestAdminUser_NonAdminForbidden(t *testing.T) {
 			uc, _, _ := buildAdminUC(users, roles, authChk)
 
 			err := tc.call(uc)
-			assertGQLErr(t, err, "FORBIDDEN", "")
+			assertForbidden(t, err, "")
 
 			if users.findCalls+users.updateCalls+users.listCalls != 0 {
 				t.Fatalf("expected no user repo calls, got find=%d update=%d list=%d",
@@ -417,7 +417,7 @@ func TestAdminUser_List_BadCursor_After(t *testing.T) {
 
 	stale := "00000000-0000-0000-0000-000000000000"
 	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, &stale, nil, nil)
-	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+	assertValidationError(t, err, "after", "")
 }
 
 // TestAdminUser_List_BadCursor_Before mirrors the after case but for the
@@ -431,7 +431,7 @@ func TestAdminUser_List_BadCursor_Before(t *testing.T) {
 
 	stale := "00000000-0000-0000-0000-000000000000"
 	_, err := uc.List(adminCallerCtx("admin-1"), nil, intPtr(5), nil, &stale, nil)
-	assertGQLErr(t, err, "BAD_USER_INPUT", "before")
+	assertValidationError(t, err, "before", "")
 }
 
 // TestAdminUser_List_BothFirstAndLast covers the mutual-exclusion check on
@@ -444,7 +444,7 @@ func TestAdminUser_List_BothFirstAndLast(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
 	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(5), intPtr(5), nil, nil, nil)
-	assertGQLErr(t, err, "BAD_USER_INPUT", "first")
+	assertValidationError(t, err, "first", "")
 	if users.listCalls != 0 {
 		t.Fatalf("expected no repo call, got %d", users.listCalls)
 	}
@@ -460,7 +460,7 @@ func TestAdminUser_List_FirstNegative(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
 	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(-1), nil, nil, nil, nil)
-	assertGQLErr(t, err, "BAD_USER_INPUT", "first")
+	assertValidationError(t, err, "first", "")
 }
 
 // TestAdminUser_List_FirstOverCap rejects values above the documented cap.
@@ -472,7 +472,7 @@ func TestAdminUser_List_FirstOverCap(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
 	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(adminUserMaxPageSize+1), nil, nil, nil, nil)
-	assertGQLErr(t, err, "BAD_USER_INPUT", "first")
+	assertValidationError(t, err, "first", "")
 }
 
 // TestAdminUser_List_AfterAndBeforeMutuallyExclusive verifies that supplying
@@ -487,7 +487,7 @@ func TestAdminUser_List_AfterAndBeforeMutuallyExclusive(t *testing.T) {
 	after := "u-a"
 	before := "u-b"
 	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, &after, &before, nil)
-	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+	assertValidationError(t, err, "after", "")
 	if users.listCalls != 0 {
 		t.Fatalf("expected no repo call on cross-cursor rejection, got %d", users.listCalls)
 	}
@@ -504,7 +504,7 @@ func TestAdminUser_List_FirstWithBefore(t *testing.T) {
 
 	before := "u-b"
 	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(5), nil, nil, &before, nil)
-	assertGQLErr(t, err, "BAD_USER_INPUT", "before")
+	assertValidationError(t, err, "before", "")
 	if users.listCalls != 0 {
 		t.Fatalf("expected no repo call, got %d", users.listCalls)
 	}
@@ -521,7 +521,7 @@ func TestAdminUser_List_LastWithAfter(t *testing.T) {
 
 	after := "u-a"
 	_, err := uc.List(adminCallerCtx("admin-1"), nil, intPtr(5), &after, nil, nil)
-	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+	assertValidationError(t, err, "after", "")
 	if users.listCalls != 0 {
 		t.Fatalf("expected no repo call, got %d", users.listCalls)
 	}
@@ -540,7 +540,7 @@ func TestAdminUser_List_BeforeWithoutLast(t *testing.T) {
 	before := "u-b"
 	// No first, no last — only before.
 	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, &before, nil)
-	assertGQLErr(t, err, "BAD_USER_INPUT", "before")
+	assertValidationError(t, err, "before", "")
 	if users.listCalls != 0 {
 		t.Fatalf("expected no repo call on before-without-last, got %d", users.listCalls)
 	}
@@ -559,7 +559,7 @@ func TestAdminUser_List_AfterWithoutFirst(t *testing.T) {
 	after := "u-a"
 	// No first, no last — only after.
 	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, &after, nil, nil)
-	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+	assertValidationError(t, err, "after", "")
 	if users.listCalls != 0 {
 		t.Fatalf("expected no repo call on after-without-first, got %d", users.listCalls)
 	}
@@ -672,7 +672,7 @@ func TestAdminUser_Update_DisplayNameEmpty(t *testing.T) {
 	_, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
 		DisplayName: ptr("   "),
 	})
-	assertGQLErr(t, err, "BAD_USER_INPUT", "displayName")
+	assertValidationError(t, err, "displayName", "")
 	if users.updateCalls != 0 {
 		t.Fatalf("expected no repo update on validation failure, got %d", users.updateCalls)
 	}
@@ -690,7 +690,7 @@ func TestAdminUser_Update_DisplayNameOverMax(t *testing.T) {
 	_, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
 		DisplayName: ptr(overMax),
 	})
-	assertGQLErr(t, err, "BAD_USER_INPUT", "displayName")
+	assertValidationError(t, err, "displayName", "")
 	if users.updateCalls != 0 {
 		t.Fatalf("expected no repo update on validation failure, got %d", users.updateCalls)
 	}
@@ -743,7 +743,7 @@ func TestAdminUser_AssignRole_UserNotFound_FieldUserId(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, roles, authChk)
 
 	_, err := uc.AssignRole(adminCallerCtx("admin-1"), "missing-user", "r-admin")
-	assertGQLErr(t, err, "BAD_USER_INPUT", "userId")
+	assertValidationError(t, err, "userId", "")
 }
 
 // TestAdminUser_AssignRole_RoleNotFound_FieldRoleId asserts that a missing
@@ -758,7 +758,7 @@ func TestAdminUser_AssignRole_RoleNotFound_FieldRoleId(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, roles, authChk)
 
 	_, err := uc.AssignRole(adminCallerCtx("admin-1"), "u-target", "missing-role")
-	assertGQLErr(t, err, "BAD_USER_INPUT", "roleId")
+	assertValidationError(t, err, "roleId", "")
 }
 
 // TestAdminUser_AssignRole_LegacyErrNotFound_FieldUserId covers the fallback
@@ -774,7 +774,7 @@ func TestAdminUser_AssignRole_LegacyErrNotFound_FieldUserId(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, roles, authChk)
 
 	_, err := uc.AssignRole(adminCallerCtx("admin-1"), "u-target", "r-admin")
-	assertGQLErr(t, err, "BAD_USER_INPUT", "userId")
+	assertValidationError(t, err, "userId", "")
 }
 
 // ---------------------------------------------------------------------------
@@ -827,7 +827,7 @@ func TestAdminUser_RevokeRole_SelfAdminForbidden(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, roles, authChk)
 
 	_, err := uc.RevokeRole(adminCallerCtx("admin-1"), "admin-1", "r-admin")
-	assertGQLErr(t, err, "FORBIDDEN", "")
+	assertForbidden(t, err, "")
 	if roles.revokeCalls != 0 {
 		t.Fatalf("expected 0 revoke calls on self-demotion, got %d", roles.revokeCalls)
 	}
@@ -877,7 +877,7 @@ func TestAdminUser_RevokeRole_UserNotFound_FieldUserId(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, roles, authChk)
 
 	_, err := uc.RevokeRole(adminCallerCtx("admin-1"), "missing-user", "r-some")
-	assertGQLErr(t, err, "BAD_USER_INPUT", "userId")
+	assertValidationError(t, err, "userId", "")
 }
 
 // TestAdminUser_RevokeRole_RoleNotFound_FieldRoleId asserts that a missing role
@@ -892,7 +892,7 @@ func TestAdminUser_RevokeRole_RoleNotFound_FieldRoleId(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, roles, authChk)
 
 	_, err := uc.RevokeRole(adminCallerCtx("admin-1"), "u-victim", "missing-role")
-	assertGQLErr(t, err, "BAD_USER_INPUT", "roleId")
+	assertValidationError(t, err, "roleId", "")
 }
 
 // ---------------------------------------------------------------------------
@@ -910,7 +910,7 @@ func TestAdminUser_List_CancelledFromAdminCheck(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
 	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil)
-	assertGQLErr(t, err, "CANCELLED", "")
+	assertCancelled(t, err)
 	if users.listCalls != 0 {
 		t.Fatalf("expected no repo call after cancellation, got %d", users.listCalls)
 	}
@@ -926,7 +926,7 @@ func TestAdminUser_List_CancelledFromRepo(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
 	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil)
-	assertGQLErr(t, err, "CANCELLED", "")
+	assertCancelled(t, err)
 }
 
 // TestAdminUser_Update_CancelledFromRepo covers cancellation surfacing through
@@ -941,7 +941,7 @@ func TestAdminUser_Update_CancelledFromRepo(t *testing.T) {
 	_, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
 		DisplayName: ptr("Alice"),
 	})
-	assertGQLErr(t, err, "CANCELLED", "")
+	assertCancelled(t, err)
 }
 
 // ---------------------------------------------------------------------------
@@ -959,7 +959,7 @@ func TestAdminUser_AnonymousUnauthenticated(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
 	_, err := uc.List(anonCtx(), nil, nil, nil, nil, nil)
-	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+	assertUnauthenticated(t, err)
 	if authChk.calls != 0 {
 		t.Fatalf("expected 0 IsAdmin calls for anonymous caller, got %d", authChk.calls)
 	}
@@ -975,7 +975,7 @@ func TestAdminUser_IsAdminInternalError(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
 	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil)
-	assertGQLErr(t, err, "INTERNAL", "")
+	assertInternalChain(t, err, "usecase: admin user: check admin")
 }
 
 // ---------------------------------------------------------------------------
@@ -995,7 +995,7 @@ func TestAdminUser_Update_NotFound(t *testing.T) {
 	_, err := uc.Update(adminCallerCtx("admin-1"), "missing-user", AdminUpdateUserInput{
 		DisplayName: ptr("Valid Name"),
 	})
-	assertGQLErr(t, err, "BAD_USER_INPUT", "id")
+	assertValidationError(t, err, "id", "")
 }
 
 // TestAdminUser_Update_BioOverMax verifies that a bio of 501 grapheme clusters
@@ -1012,7 +1012,7 @@ func TestAdminUser_Update_BioOverMax(t *testing.T) {
 	_, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
 		Bio: ptr(overMax),
 	})
-	assertGQLErr(t, err, "BAD_USER_INPUT", "bio")
+	assertValidationError(t, err, "bio", "")
 	if users.updateCalls != 0 {
 		t.Fatalf("expected no repo update on validation failure, got %d", users.updateCalls)
 	}
@@ -1028,5 +1028,5 @@ func TestAdminUser_Get_Cancelled(t *testing.T) {
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
 	_, err := uc.Get(adminCallerCtx("admin-1"), "u-target")
-	assertGQLErr(t, err, "CANCELLED", "")
+	assertCancelled(t, err)
 }

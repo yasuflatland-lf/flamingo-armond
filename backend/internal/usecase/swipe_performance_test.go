@@ -10,7 +10,6 @@ import (
 
 	"backend/internal/domain"
 	"backend/internal/domain/service"
-	"backend/internal/gqlerr"
 )
 
 type mockSwipeRecordRepoForSwipe struct {
@@ -184,8 +183,9 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 
 // TestSwipeUsecase_HandleSwipe_NonOwner_Unauthenticated verifies that
 // HandleSwipe rejects a caller whose user ID does not match the cardgroup
-// OwnerID.  authorizeCardgroup returns gqlerr.Unauthenticated() for a
-// non-owner, so the expected code is "UNAUTHENTICATED".
+// OwnerID.  authorizeCardgroup returns ucerr.ErrUnauthenticated for a
+// non-owner, which the resolver layer translates into UNAUTHENTICATED on
+// the wire.
 func TestSwipeUsecase_HandleSwipe_NonOwner_Unauthenticated(t *testing.T) {
 	t.Parallel()
 
@@ -209,7 +209,7 @@ func TestSwipeUsecase_HandleSwipe_NonOwner_Unauthenticated(t *testing.T) {
 		Mode:        int(domain.RatingEasy),
 	})
 
-	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+	assertUnauthenticated(t, err)
 }
 
 func performanceSwipes(now time.Time, successes, failures int, difficulty float64) []*domain.SwipeRecord {
@@ -278,7 +278,5 @@ func TestSwipeUsecase_HandleSwipe_PropagatesUpsertError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error from UpsertTx, got nil")
 	}
-	if !gqlerr.IsCode(err, gqlerr.CodeInternal) {
-		t.Fatalf("expected INTERNAL gql error, got %v", err)
-	}
+	assertInternalChain(t, err, "storage: simulated upsert failure")
 }

@@ -16,6 +16,7 @@ import (
 	"backend/internal/loader"
 	"backend/internal/repository"
 	"backend/internal/usecase"
+	"backend/internal/usecase/ucerr"
 )
 
 // mockLastViewedCardgroupUsecase stubs LastViewedCardgroupUsecase.
@@ -113,7 +114,7 @@ func TestSetLastViewedCardgroup_BadUserInput(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockLastViewedCardgroupUsecase{
-		setErr: gqlerr.BadUserInput("cardgroupId", "cardgroup not found or not owned"),
+		setErr: &ucerr.ValidationError{Field: "cardgroupId", Message: "cardgroup not found or not owned"},
 	}
 	srv := newLastViewedSrv(mock)
 	resp := gqlRequest(t, srv, authedCtx("u-1"), setLastViewedMutation)
@@ -134,7 +135,7 @@ func TestSetLastViewedCardgroup_Unauthenticated(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockLastViewedCardgroupUsecase{
-		setErr: gqlerr.Unauthenticated(),
+		setErr: ucerr.ErrUnauthenticated,
 	}
 	srv := newLastViewedSrv(mock)
 	resp := gqlRequest(t, srv, context.Background(), setLastViewedMutation)

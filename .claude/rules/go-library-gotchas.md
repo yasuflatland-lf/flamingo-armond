@@ -96,3 +96,4 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [`ON DELETE` FK action requires an integration test against a real database](../../docs/backend/library-gotchas/fk-action-integration-test.md)
 - [Migration down/up roundtrip test: prove the reverse path preserves data](../../docs/backend/library-gotchas/migration-down-up-roundtrip-test.md)
 - [RLS `INSERT-own` assertion on a PK-keyed table needs a fixture row that does not exist yet](../../docs/backend/library-gotchas/rls-insert-own-fresh-fixture-row.md)
+- [LSP stale-cache diagnostics during refactor — verify with `go build` before treating as real](../../docs/backend/library-gotchas/lsp-stale-cache-during-refactor.md)
