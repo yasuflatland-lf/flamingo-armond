@@ -81,15 +81,33 @@ The repository's two upsert call sites are deliberately asymmetric. `cards (card
 
 The flip side is that the conflict key MUST be unique within the input batch. If two rows in the same `INSERT ... VALUES (...), (...)` collide on the conflict target, Postgres raises SQLSTATE `21000` ("ON CONFLICT DO UPDATE command cannot affect row a second time") and aborts the whole statement — Postgres deliberately does not silently merge intra-batch duplicates because either-row-wins is non-deterministic. The application layer must dedup by conflict key before issuing the SQL; the dictionary usecase keeps the *last* occurrence and reports earlier ones as soft errors.
 
-### `users.last_viewed_cardgroup_id` — nullable FK with `ON DELETE SET NULL`
+### `user_preferences` — per-user UI continuity
 
-`users` carries a nullable `last_viewed_cardgroup_id uuid REFERENCES cardgroups(id) ON DELETE SET NULL` column to remember the cardgroup a returning user most recently studied. Three design choices are load-bearing:
+`public.user_preferences` is a sibling aggregate of `public.users`, keyed 1:1 by `user_id`. It carries presentation state that is **about** the user but not **part of** their identity (currently `last_viewed_cardgroup_id`; future fields like `theme`, `default_mode`, ... extend cleanly on this table). The extraction rationale and structural signals are documented in [`docs/backend/library-gotchas/sibling-aggregate-extraction.md`](backend/library-gotchas/sibling-aggregate-extraction.md).
 
-- **Nullable + default null** — every existing user row stays valid without a backfill; the migration is forward-only and the down half drops the column cleanly. A NOT NULL with a default would force an arbitrary cardgroup choice for users who have never visited `/learn`.
-- **`ON DELETE SET NULL`, not `CASCADE`** — when a cardgroup is deleted, the only meaning of `last_viewed_cardgroup_id` is "where to land you next" (presentation state). `CASCADE` would delete the user, which is absurd; `SET NULL` lets the HomePage redirect fall through to the next branch (cardgroups list, or onboarding).
-- **`CREATE INDEX ... (last_viewed_cardgroup_id)`** — without an index, the cascading `SET NULL` on cardgroup delete forces a full users table scan. The index is on the dependent side, not the parent. Postgres does not auto-index the FK side; this is a known foot-gun on cascading deletes.
+Schema (from `20260516120000_extract_user_preferences.up.sql`):
 
-The existing `users` UPDATE RLS policy keys on `auth.uid() = id`, so the new column inherits the same row-level constraint without a policy edit. `backend/internal/repository/last_viewed_cardgroup_test.go` (`TestRLS_SetLastViewedCardgroup_AuthenticatedRoleBlocksCrossUserUpdate`) covers cross-user UPDATE rejection on this column explicitly.
+```sql
+CREATE TABLE public.user_preferences (
+    user_id                  uuid PRIMARY KEY
+        REFERENCES public.users(id) ON DELETE CASCADE,
+    last_viewed_cardgroup_id uuid NULL
+        REFERENCES public.cardgroups(id) ON DELETE SET NULL,
+    updated_at               timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_user_preferences_last_viewed_cardgroup_id
+    ON public.user_preferences (last_viewed_cardgroup_id);
+```
+
+Four design choices are load-bearing:
+
+- **Lazy row creation via `INSERT ... ON CONFLICT (user_id) DO UPDATE`.** "Row exists = user has set a preference" is a clean semantic — no need for an `auth.users` trigger to seed empty rows, and future preference columns inherit "no row = all defaults" for free. The repository's UPSERT statement also carries an ownership predicate, see [Ownership-checked UPSERT](backend/library-gotchas/ownership-checked-upsert-where-exists.md).
+- **`user_id ... ON DELETE CASCADE`.** When the owning user is deleted, the preference row must follow — `RESTRICT` would block the user-account-deletion flow, and `SET NULL` is impossible on a `PRIMARY KEY` column. Verified by `TestUserPreferenceRepository_OnDeleteUser_CascadesPreferenceRow` (see [FK action integration test](backend/library-gotchas/fk-action-integration-test.md)).
+- **`last_viewed_cardgroup_id ... ON DELETE SET NULL`, not `CASCADE`.** When a cardgroup is deleted, the only meaning of `last_viewed_cardgroup_id` is "where to land you next" (presentation state). `CASCADE` would delete the preference row entirely — and on the next visit the HomePage redirect would miss the chance to fall through gracefully to the cardgroups list. `SET NULL` keeps the row and lets the resolver return `nil` for the field. Verified by `TestUserPreferenceRepository_OnDeleteCardgroup_SetsNull`.
+- **`CREATE INDEX ... (last_viewed_cardgroup_id)`.** Without an index, the cascading `SET NULL` on cardgroup delete forces a full preferences table scan. The index is on the dependent side, not the parent. Postgres does not auto-index the FK side; this is a known foot-gun on cascading deletes.
+
+RLS policies on `user_preferences` mirror the `users` shape (self-or-admin SELECT / INSERT / UPDATE / DELETE). The four policies are declared in the up migration and dropped implicitly by the down migration's `DROP TABLE`. The INSERT-own policy regression test reserves a fresh fixture user to avoid the `ON CONFLICT DO NOTHING` short-circuit — see [RLS `INSERT-own` assertion needs a fresh fixture row](backend/library-gotchas/rls-insert-own-fresh-fixture-row.md). The down/up migration roundtrip (including the NULL-pref edge case) is covered by `TestExtractUserPreferences_DownUpRoundtrip` and `TestExtractUserPreferences_NullPrefHandledByDown`; the general pattern lives in [Migration down/up roundtrip test](backend/library-gotchas/migration-down-up-roundtrip-test.md).
 
 ### Startup order
 
