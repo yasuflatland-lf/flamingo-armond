@@ -751,6 +751,32 @@ func TestAdminRole_Delete_RepoInternalError(t *testing.T) {
 	assertInternalChain(t, err, "usecase: admin role delete")
 }
 
+// Test 3: Update default-branch chain assertion.
+// TestAdminRole_Update_RepoInternalError surfaces a generic repository error
+// from the roles.Update call (anything other than the classified sentinels) as
+// INTERNAL with the eris chain attached. The pattern mirrors
+// TestAdminRole_Delete_RepoInternalError: requireAdmin OK, validateRoleName OK,
+// FindByID returns a non-system role, roles.Update returns a non-sentinel error.
+func TestAdminRole_Update_RepoInternalError(t *testing.T) {
+	t.Parallel()
+
+	roles := &mockAdminRoleRepoForCRUD{
+		findResult: &domain.Role{ID: "r-1", Name: "moderator"}, // non-system role
+		updateErr:  errors.New("boom: db blew up"),
+	}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _ := buildAdminRoleUC(roles, authChk)
+
+	outcome, err := uc.Update(authedCtx("admin-1"), "r-1", "reviewer")
+
+	// The outcome struct must be zero-value (no Role, no SystemRoleConflict).
+	if outcome.Role != nil || outcome.SystemRoleConflict != nil {
+		t.Fatalf("expected zero-value outcome, got %+v", outcome)
+	}
+	// The error must be non-nil and carry the "usecase: admin role update" wrap.
+	assertInternalChain(t, err, "usecase: admin role update")
+}
+
 // ---------------------------------------------------------------------------
 // Get
 // ---------------------------------------------------------------------------

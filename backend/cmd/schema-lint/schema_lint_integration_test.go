@@ -126,6 +126,43 @@ func TestIntegration_AllowlistReleaseValve(t *testing.T) {
 	}
 }
 
+// TestIntegration_LiveTree_NoAllowlistRot is a tripwire that asserts every
+// entry in the on-disk allowlist still corresponds to a bare-emit mutation in
+// the live tree. A future PR that promotes a mutation without removing the
+// allowlist entry will fail this test.
+func TestIntegration_LiveTree_NoAllowlistRot(t *testing.T) {
+	schemaPath, resolverPath, resolverStructPath, usecaseDir, allowlistPath := liveInputs(t)
+
+	al, err := LoadAllowlist(allowlistPath)
+	if err != nil {
+		t.Fatalf("LoadAllowlist: %v", err)
+	}
+
+	schemaMutations, err := SchemaWalk([]string{schemaPath})
+	if err != nil {
+		t.Fatalf("SchemaWalk: %v", err)
+	}
+	resolverResult, err := ResolverWalk(resolverPath)
+	if err != nil {
+		t.Fatalf("ResolverWalk: %v", err)
+	}
+	usecaseMethods, err := UsecaseWalk(usecaseDir)
+	if err != nil {
+		t.Fatalf("UsecaseWalk: %v", err)
+	}
+	fieldMap, err := LoadResolverFieldMap(resolverStructPath)
+	if err != nil {
+		t.Fatalf("LoadResolverFieldMap: %v", err)
+	}
+
+	cfg := ClassifierConfig{InterfaceToImpl: interfaceToImpl}
+	rotten := AllowlistRotEntries(schemaMutations, resolverResult, usecaseMethods, fieldMap, al, cfg)
+
+	if len(rotten) != 0 {
+		t.Errorf("allowlist rot detected; remove these stale entries from allowlist.txt: %v", rotten)
+	}
+}
+
 // TestIntegration_UpdateRole_NotInAllowlist_NotViolation verifies that the
 // pilot promotion (updateRole -> UpdateRoleResult) is reflected correctly:
 //   - "updateRole" must NOT appear in the on-disk allowlist.
