@@ -230,7 +230,7 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 		UpdatedAt:   now,
 	}
 	if err := card.Validate(); err != nil {
-		return CreateCardOutcome{}, translateCardErr(ctx, err)
+		return CreateCardOutcome{}, translateCardErr(err)
 	}
 	if err := u.cardRepo.Create(ctx, card); err != nil {
 		if errors.Is(err, repository.ErrCardDuplicateFront) {
@@ -296,7 +296,7 @@ func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 		candidate.Back = back
 	}
 	if err := candidate.Validate(); err != nil {
-		return nil, translateCardErr(ctx, err)
+		return nil, translateCardErr(err)
 	}
 
 	updated, err := u.cardRepo.Update(ctx, id, patch)
@@ -548,7 +548,7 @@ func (u *CardUsecase) authorizeCardgroup(ctx context.Context, id, userID string,
 	return nil
 }
 
-func translateCardErr(_ context.Context, err error) error {
+func translateCardErr(err error) error {
 	switch {
 	case errors.Is(err, domain.ErrCardCardgroupIDRequired):
 		return &ucerr.ValidationError{Field: "cardgroupId", Message: "cardgroupId is required"}

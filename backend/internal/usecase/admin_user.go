@@ -339,7 +339,7 @@ func (u *adminUserUsecase) AssignRole(ctx context.Context, userID, roleID string
 		return nil, err
 	}
 	if err := u.roles.AssignToUser(ctx, userID, roleID); err != nil {
-		return nil, mapRoleAssignmentError(ctx, err, "usecase: admin user assign role")
+		return nil, mapRoleAssignmentError(err, "usecase: admin user assign role")
 	}
 	return u.refetchUser(ctx, userID, "usecase: admin user assign role: refetch")
 }
@@ -370,7 +370,7 @@ func (u *adminUserUsecase) RevokeRole(ctx context.Context, userID, roleID string
 	}
 
 	if err := u.roles.RevokeFromUser(ctx, userID, roleID); err != nil {
-		return nil, mapRoleAssignmentError(ctx, err, "usecase: admin user revoke role")
+		return nil, mapRoleAssignmentError(err, "usecase: admin user revoke role")
 	}
 	return u.refetchUser(ctx, userID, "usecase: admin user revoke role: refetch")
 }
@@ -380,7 +380,7 @@ func (u *adminUserUsecase) RevokeRole(ctx context.Context, userID, roleID string
 // AssignRole and RevokeRole. Specific sentinels are matched before the legacy
 // ErrNotFound fallback because both ErrUserNotFound and ErrRoleNotFound also
 // satisfy errors.Is(_, ErrNotFound).
-func mapRoleAssignmentError(_ context.Context, err error, wrap string) error {
+func mapRoleAssignmentError(err error, wrap string) error {
 	switch {
 	case errors.Is(err, repository.ErrUserNotFound):
 		return &ucerr.ValidationError{Field: "userId", Message: "user not found"}
