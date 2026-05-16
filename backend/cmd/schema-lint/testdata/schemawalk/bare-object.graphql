@@ -1,0 +1,12 @@
+type Query {
+  health: String!
+}
+
+type Role {
+  id: ID!
+  name: String!
+}
+
+type Mutation {
+  updateRole(id: ID!, name: String!): Role!
+}

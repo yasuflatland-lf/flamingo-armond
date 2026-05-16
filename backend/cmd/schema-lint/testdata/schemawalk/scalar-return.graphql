@@ -1,0 +1,7 @@
+type Query {
+  health: String!
+}
+
+type Mutation {
+  deleteRole(id: ID!): Boolean!
+}

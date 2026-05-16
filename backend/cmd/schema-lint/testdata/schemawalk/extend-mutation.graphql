@@ -1,0 +1,26 @@
+type Query {
+  health: String!
+}
+
+type Role {
+  id: ID!
+  name: String!
+}
+
+type CreateRoleSuccess {
+  role: Role!
+}
+
+type CannotRenameSystemRole {
+  message: String!
+}
+
+union UpdateRoleResult = Role | CannotRenameSystemRole
+
+type Mutation {
+  createRole(name: String!): Role!
+}
+
+extend type Mutation {
+  updateRole(id: ID!, name: String!): UpdateRoleResult!
+}

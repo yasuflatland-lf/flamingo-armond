@@ -1,0 +1,17 @@
+type Query {
+  health: String!
+}
+
+type CreateCardSuccess {
+  cardId: ID!
+}
+
+type CardDuplicateFrontError {
+  message: String!
+}
+
+union CreateCardResult = CreateCardSuccess | CardDuplicateFrontError
+
+type Mutation {
+  createCard(front: String!, back: String!): CreateCardResult!
+}
