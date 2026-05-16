@@ -11,6 +11,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
+	"backend/internal/logging"
 	"backend/internal/notion"
 	"backend/internal/usecase"
 )
@@ -29,6 +30,7 @@ type Config struct {
 type Handler struct {
 	uc     SyncUsecase
 	config Config
+	logger *slog.Logger
 }
 
 func New(uc SyncUsecase, cfg Config) *Handler {
@@ -38,7 +40,7 @@ func New(uc SyncUsecase, cfg Config) *Handler {
 	if cfg.Token == "" {
 		panic("notionsync.New: token must not be empty")
 	}
-	return &Handler{uc: uc, config: cfg}
+	return &Handler{uc: uc, config: cfg, logger: slog.Default()}
 }
 
 func (h *Handler) Handle(c *echo.Context) error {
@@ -74,22 +76,22 @@ func (h *Handler) handleError(c *echo.Context, err error) error {
 	ctx := c.Request().Context()
 	switch {
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded), errors.Is(err, notion.ErrRetryElapsed), errors.Is(err, notion.ErrRetryAttempts):
-		slog.WarnContext(ctx, "notion sync: timeout", "err", err)
+		logging.LogWarn(ctx, h.logger, "notion sync: timeout", err)
 		return c.JSON(http.StatusGatewayTimeout, map[string]string{"error": "notion sync timed out"})
 	case errors.Is(err, usecase.ErrNotionSyncFetch):
-		slog.WarnContext(ctx, "notion sync: fetch failed", "err", err)
+		logging.LogWarn(ctx, h.logger, "notion sync: fetch failed", err)
 		return c.JSON(http.StatusBadGateway, map[string]string{"error": "notion fetch failed"})
 	case errors.Is(err, usecase.ErrNotionSyncInvalidInput):
-		slog.WarnContext(ctx, "notion sync: invalid input", "err", err)
+		logging.LogWarn(ctx, h.logger, "notion sync: invalid input", err)
 		return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": "invalid input"})
 	case errors.Is(err, usecase.ErrNotionSyncParse):
-		slog.WarnContext(ctx, "notion sync: parse error", "err", err)
+		logging.LogWarn(ctx, h.logger, "notion sync: parse error", err)
 		return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": "notion parse error"})
 	case errors.Is(err, usecase.ErrNotionSyncPersist):
-		slog.ErrorContext(ctx, "notion sync: persist failed", "err", err)
+		logging.LogError(ctx, h.logger, "notion sync: persist failed", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "persist error"})
 	default:
-		slog.ErrorContext(ctx, "notion sync: failed", "err", err)
+		logging.LogError(ctx, h.logger, "notion sync: failed", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 	}
 }
