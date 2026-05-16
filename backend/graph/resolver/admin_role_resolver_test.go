@@ -20,15 +20,15 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockAdminRoleUsecase struct {
-	listResult   []*domain.Role
-	listErr      error
-	getResult    *domain.Role
-	getErr       error
-	createResult *domain.Role
-	createErr    error
-	updateResult *domain.Role
-	updateErr    error
-	deleteErr    error
+	listResult    []*domain.Role
+	listErr       error
+	getResult     *domain.Role
+	getErr        error
+	createResult  *domain.Role
+	createErr     error
+	updateOutcome usecase.UpdateRoleOutcome
+	updateErr     error
+	deleteErr     error
 }
 
 func (m *mockAdminRoleUsecase) List(_ context.Context) ([]*domain.Role, error) {
@@ -40,8 +40,8 @@ func (m *mockAdminRoleUsecase) Get(_ context.Context, _ string) (*domain.Role, e
 func (m *mockAdminRoleUsecase) Create(_ context.Context, _ string) (*domain.Role, error) {
 	return m.createResult, m.createErr
 }
-func (m *mockAdminRoleUsecase) Update(_ context.Context, _, _ string) (*domain.Role, error) {
-	return m.updateResult, m.updateErr
+func (m *mockAdminRoleUsecase) Update(_ context.Context, _, _ string) (usecase.UpdateRoleOutcome, error) {
+	return m.updateOutcome, m.updateErr
 }
 func (m *mockAdminRoleUsecase) Delete(_ context.Context, _ string) error {
 	return m.deleteErr
@@ -111,6 +111,80 @@ func TestResolver_CreateRole_Forbidden(t *testing.T) {
 // Mutation.updateRole tests
 // ---------------------------------------------------------------------------
 
+// updateRoleMutation queries every variant of the UpdateRoleResult union so a
+// single mutation body covers both the success and system-role-conflict cases.
+const updateRoleMutation = `{"query":"mutation { updateRole(id: \"r1\", name: \"reviewer\") { __typename ... on UpdateRoleSuccess { role { id name } } ... on CannotModifySystemRoleError { message roleId roleName } } }"}`
+
+// TestResolver_UpdateRole_Success verifies that the happy-path outcome maps to
+// the UpdateRoleSuccess union variant carrying the renamed role.
+func TestResolver_UpdateRole_Success(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminRoleUsecase{
+		updateOutcome: usecase.UpdateRoleOutcome{
+			Role: &domain.Role{ID: "r1", Name: "reviewer"},
+		},
+	}
+	srv := newAdminRoleSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("admin"), updateRoleMutation)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["updateRole"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.updateRole, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "UpdateRoleSuccess" {
+		t.Fatalf("expected __typename=UpdateRoleSuccess, got %v", payload["__typename"])
+	}
+	role, _ := payload["role"].(map[string]any)
+	if role == nil || role["id"] != "r1" || role["name"] != "reviewer" {
+		t.Fatalf("expected role={id:r1 name:reviewer}, got %v", role)
+	}
+}
+
+// TestResolver_UpdateRole_SystemRoleConflict verifies that the system-role
+// refusal outcome maps to the CannotModifySystemRoleError union variant
+// (data, not an error) with the offending role's identity attached.
+func TestResolver_UpdateRole_SystemRoleConflict(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminRoleUsecase{
+		updateOutcome: usecase.UpdateRoleOutcome{
+			SystemRoleConflict: &usecase.SystemRoleConflictInfo{
+				ID:   "r-admin",
+				Name: "admin",
+			},
+		},
+	}
+	srv := newAdminRoleSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("admin"), updateRoleMutation)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["updateRole"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.updateRole, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "CannotModifySystemRoleError" {
+		t.Fatalf("expected __typename=CannotModifySystemRoleError, got %v", payload["__typename"])
+	}
+	if payload["roleId"] != "r-admin" {
+		t.Fatalf("expected roleId=r-admin, got %v", payload["roleId"])
+	}
+	if payload["roleName"] != "admin" {
+		t.Fatalf("expected roleName=admin, got %v", payload["roleName"])
+	}
+	msg, _ := payload["message"].(string)
+	if msg == "" {
+		t.Fatalf("expected non-empty message, got %q", msg)
+	}
+}
+
 // TestResolver_UpdateRole_BadInput verifies that BAD_USER_INPUT with
 // extensions.field="name" from the usecase propagates unchanged.
 func TestResolver_UpdateRole_BadInput(t *testing.T) {
@@ -120,7 +194,7 @@ func TestResolver_UpdateRole_BadInput(t *testing.T) {
 		updateErr: &ucerr.ValidationError{Field: "name", Message: "name must contain only lowercase letters, digits, '_' or '-'"},
 	}
 	srv := newAdminRoleSrv(mock)
-	body := `{"query":"mutation { updateRole(id: \"r1\", name: \"INVALID NAME\") { id name } }"}`
+	body := `{"query":"mutation { updateRole(id: \"r1\", name: \"INVALID NAME\") { __typename ... on UpdateRoleSuccess { role { id name } } ... on CannotModifySystemRoleError { message roleId roleName } } }"}`
 	resp := gqlRequest(t, srv, authedCtx("admin"), body)
 
 	code := errCode(t, resp)
@@ -133,6 +207,25 @@ func TestResolver_UpdateRole_BadInput(t *testing.T) {
 	field, _ := ext["field"].(string)
 	if field != "name" {
 		t.Fatalf("expected extensions.field=name, got %q; ext: %v", field, ext)
+	}
+}
+
+// TestResolver_UpdateRole_XORInvariantViolation covers the defensive guard
+// where the usecase returns an UpdateRoleOutcome with neither variant set.
+// This must surface as INTERNAL — the resolver refuses to render an
+// unselectable union value.
+func TestResolver_UpdateRole_XORInvariantViolation(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminRoleUsecase{
+		updateOutcome: usecase.UpdateRoleOutcome{}, // both variants nil
+	}
+	srv := newAdminRoleSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("admin"), updateRoleMutation)
+
+	code := errCode(t, resp)
+	if code != string(gqlerr.CodeInternal) {
+		t.Fatalf("expected INTERNAL_SERVER_ERROR, got %q; response: %v", code, resp)
 	}
 }
 

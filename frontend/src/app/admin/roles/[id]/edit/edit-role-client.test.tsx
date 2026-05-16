@@ -36,7 +36,7 @@ describe("EditRoleClient", () => {
     expect(screen.getByRole("link", { name: /cancel/i })).toHaveAttribute("href", "/admin/roles");
   });
 
-  it("submits update mutation and navigates on success", async () => {
+  it("UpdateRoleSuccess response — navigates and refreshes", async () => {
     const user = userEvent.setup();
     mockPush.mockClear();
     mockRefresh.mockClear();
@@ -54,7 +54,10 @@ describe("EditRoleClient", () => {
           mutationCalled();
           return {
             data: {
-              updateRole: { __typename: "Role" as const, id: CUSTOM_ROLE.id, name: "reviewer" },
+              updateRole: {
+                __typename: "UpdateRoleSuccess" as const,
+                role: { __typename: "Role" as const, id: CUSTOM_ROLE.id, name: "reviewer" },
+              },
             },
           };
         },
@@ -77,6 +80,52 @@ describe("EditRoleClient", () => {
     });
     expect(mockPush).toHaveBeenCalledWith("/admin/roles");
     expect(mockRefresh).toHaveBeenCalledOnce();
+  });
+
+  it("CannotModifySystemRoleError response — shows banner, no navigation, no cache mutation", async () => {
+    const user = userEvent.setup();
+    mockPush.mockClear();
+    mockRefresh.mockClear();
+
+    const mocks = [
+      {
+        request: {
+          query: AdminUpdateRoleDocument,
+          variables: { id: CUSTOM_ROLE.id, name: "reviewer" },
+        },
+        result: () => ({
+          data: {
+            updateRole: {
+              __typename: "CannotModifySystemRoleError" as const,
+              message: 'cannot rename system role "admin"',
+              roleId: CUSTOM_ROLE.id,
+              roleName: "admin",
+            },
+          },
+        }),
+      },
+    ];
+
+    render(
+      <MockedProvider mocks={mocks}>
+        <EditRoleClient role={CUSTOM_ROLE} />
+      </MockedProvider>,
+    );
+
+    const input = screen.getByRole("textbox");
+    await user.clear(input);
+    await user.type(input, "Reviewer");
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-role-edit-system-role-error")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("admin-role-edit-system-role-error")).toHaveTextContent(
+      'cannot rename system role "admin"',
+    );
+    // No navigation: the error variant is data, not a success.
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockRefresh).not.toHaveBeenCalled();
   });
 
   it("renders the system-role banner and disables submit when role is admin", () => {

@@ -36,7 +36,7 @@ type AdminRoleUsecase interface {
 	List(ctx context.Context) ([]*domain.Role, error)
 	Get(ctx context.Context, id string) (*domain.Role, error)
 	Create(ctx context.Context, name string) (*domain.Role, error)
-	Update(ctx context.Context, id, name string) (*domain.Role, error)
+	Update(ctx context.Context, id, name string) (UpdateRoleOutcome, error)
 	Delete(ctx context.Context, id string) error
 }
 
@@ -164,7 +164,40 @@ func (u *adminRoleUsecase) Create(ctx context.Context, name string) (*domain.Rol
 	return role, nil
 }
 
-// Update renames an existing role. System roles ("admin", "general") are
+// UpdateRoleOutcome is the result of admin_role.Update. Exactly one of Role
+// or SystemRoleConflict is non-nil: a successful rename returns the updated
+// Role, while a refusal to rename a system role ("admin", "general") returns
+// a populated SystemRoleConflict and a nil error.
+//
+// The system-role guard is a domain invariant of the Role aggregate, not an
+// authorisation failure: even an admin caller cannot rename "admin". Surfacing
+// the refusal as data (rather than as an error) lets the resolver map it to
+// the model.CannotModifySystemRoleError union variant, which carries the
+// offending role's id and name for client-side rendering without a second
+// fetch.
+//
+// Validation failures, unauthenticated callers, and repository errors stay in
+// the second return value (error) so the resolver wraps them via
+// gqlerr.FromUsecaseError into the wire-format GraphQL error.
+type UpdateRoleOutcome struct {
+	// Role is the renamed role on the happy path. Non-nil iff
+	// SystemRoleConflict is nil.
+	Role *domain.Role
+	// SystemRoleConflict carries the offending system role's identity when
+	// the rename was refused by the system-role guard. Non-nil iff Role is nil.
+	SystemRoleConflict *SystemRoleConflictInfo
+}
+
+// SystemRoleConflictInfo identifies the system role that an Update call
+// refused to rename.
+type SystemRoleConflictInfo struct {
+	ID   string
+	Name string
+}
+
+// Update renames an existing role and returns an UpdateRoleOutcome that
+// signals the system-role refusal as data (via outcome.SystemRoleConflict)
+// rather than as an error. System roles ("admin", "general") are
 // renaming-locked: renaming "admin" would break the auth.Service.IsAdmin
 // lookup that hardcodes the literal string, and renaming "general" would
 // break any deployment that relies on the literal name being present.
@@ -172,28 +205,31 @@ func (u *adminRoleUsecase) Create(ctx context.Context, name string) (*domain.Rol
 // TOCTOU: between FindByID and roles.Update another admin can delete the row;
 // the resulting ErrRoleNotFound is mapped back to BAD_USER_INPUT(field=id)
 // rather than INTERNAL.
-func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (*domain.Role, error) {
+func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (UpdateRoleOutcome, error) {
 	if err := u.requireAdmin(ctx); err != nil {
-		return nil, err
+		return UpdateRoleOutcome{}, err
 	}
 	normalized, err := validateRoleName(name)
 	if err != nil {
-		return nil, err
+		return UpdateRoleOutcome{}, err
 	}
 
 	existing, err := u.roles.FindByID(ctx, id)
 	if err != nil {
-		return nil, mapAdminRoleError(err, "id", "usecase: admin role update: find")
+		return UpdateRoleOutcome{}, mapAdminRoleError(err, "id", "usecase: admin role update: find")
 	}
 	if isSystemRole(existing.Name) {
-		return nil, ucerr.NewForbiddenError(fmt.Sprintf("cannot rename system role %q", existing.Name))
+		return UpdateRoleOutcome{SystemRoleConflict: &SystemRoleConflictInfo{
+			ID:   existing.ID,
+			Name: existing.Name,
+		}}, nil
 	}
 
 	role, err := u.roles.Update(ctx, id, normalized)
 	if err != nil {
-		return nil, mapAdminRoleError(err, "id", "usecase: admin role update")
+		return UpdateRoleOutcome{}, mapAdminRoleError(err, "id", "usecase: admin role update")
 	}
-	return role, nil
+	return UpdateRoleOutcome{Role: role}, nil
 }
 
 // Delete removes a role by id. System roles ("admin", "general") are

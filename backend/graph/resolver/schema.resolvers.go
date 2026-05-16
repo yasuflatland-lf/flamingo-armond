@@ -17,6 +17,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -244,12 +245,28 @@ func (r *mutationResolver) CreateRole(ctx context.Context, name string) (*model.
 }
 
 // UpdateRole is the resolver for the updateRole field.
-func (r *mutationResolver) UpdateRole(ctx context.Context, id string, name string) (*model.Role, error) {
-	role, err := r.AdminRoleUC.Update(ctx, id, name)
+//
+// Returns a union: `model.UpdateRoleSuccess` on the happy path, or
+// `model.CannotModifySystemRoleError` when the target role is a system role
+// ("admin", "general"). The system-role case is "errors as data" — the second
+// return value is reserved for real errors (auth, validation, internal).
+func (r *mutationResolver) UpdateRole(ctx context.Context, id string, name string) (model.UpdateRoleResult, error) {
+	outcome, err := r.AdminRoleUC.Update(ctx, id, name)
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	return toRoleModel(role), nil
+	if outcome.SystemRoleConflict != nil {
+		return model.CannotModifySystemRoleError{
+			Message:  fmt.Sprintf("cannot rename system role %q", outcome.SystemRoleConflict.Name),
+			RoleID:   outcome.SystemRoleConflict.ID,
+			RoleName: outcome.SystemRoleConflict.Name,
+		}, nil
+	}
+	if outcome.Role == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: UpdateRoleOutcome has no variant set"))
+	}
+	return model.UpdateRoleSuccess{Role: toRoleModel(outcome.Role)}, nil
 }
 
 // DeleteRole is the resolver for the deleteRole field.
