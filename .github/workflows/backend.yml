@@ -99,11 +99,11 @@ jobs:
             exit 1
           fi
 
-      - name: Warn on resolver returning raw usecase error (AST upgrade tracked in #160)
+      - name: Forbid resolver returning raw usecase error
         working-directory: backend
         run: |
           miss=$(awk '
-            /:= [a-z][a-zA-Z0-9_.]*\.[A-Z][a-zA-Z0-9_]*UC\./ { window = NR + 3; in_window = 1; next }
+            /:[a-zA-Z0-9_]+ := [a-z][a-zA-Z0-9_.]*\.([A-Z][a-zA-Z0-9_]*UC|[a-z][a-zA-Z0-9_]*Usecase)\./ { window = NR + 5; in_window = 1; next }
             in_window && NR <= window {
               if (/return .*, err($|[^a-zA-Z])/ && !/FromUsecaseError/) {
                 print FILENAME ":" NR ": " $0
@@ -113,8 +113,9 @@ jobs:
             in_window && NR > window { in_window = 0 }
           ' graph/resolver/schema.resolvers.go)
           if [ -n "$miss" ]; then
-            echo "::warning::Resolver may pass through a usecase error without FromUsecaseError wrap (heuristic):"
+            echo "::error::Resolver passes through a usecase error without FromUsecaseError wrap. Wrap every usecase call site with gqlerr.FromUsecaseError(ctx, err). See .claude/rules/error-wrapping.md."
             echo "$miss"
+            exit 1
           fi
 
       - name: Verify no hardcoded extensions.code literals outside gqlerr

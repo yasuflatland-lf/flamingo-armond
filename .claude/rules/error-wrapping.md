@@ -41,6 +41,15 @@ The resolver wraps every usecase return error with `gqlerr.FromUsecaseError(ctx,
 
 CI enforces this boundary: `gqlerr` imports in `backend/internal/usecase/` (non-test files) cause a hard error in `.github/workflows/backend.yml`.
 
+### Resolver-side usecase wrap is mandatory
+
+Every resolver method that returns an error originating from a usecase call
+MUST wrap it via `gqlerr.FromUsecaseError(ctx, err)`. Raw usecase errors
+escape with no `extensions.code`, breaking the GraphQL contract. CI fails the
+build if a resolver returns `err` from a usecase call without the wrap; the
+detection is grep-based today and pinned at single-file
+`schema.resolvers.go` (see [`docs/backend/error-wrapping/from-usecase-error-conversion-site.md`](../../docs/backend/error-wrapping/from-usecase-error-conversion-site.md)).
+
 ## Sentinels — detailed cases (on-demand)
 
 - [Sentinel layering: when to join with `errors.Join` and when to keep standalone](../../docs/backend/error-wrapping/sentinel-layering.md)
