@@ -33,7 +33,7 @@ type Cardgroup struct {
 
 // IsOwnedBy reports whether the cardgroup belongs to the user identified by userID.
 // Empty userID always returns false so callers do not need a redundant nil/empty guard.
-func (c *Cardgroup) IsOwnedBy(userID string) bool {
+func (c Cardgroup) IsOwnedBy(userID string) bool {
 	if userID == "" {
 		return false
 	}
