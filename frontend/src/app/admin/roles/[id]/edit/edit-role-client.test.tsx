@@ -186,6 +186,119 @@ describe("EditRoleClient", () => {
         expect.anything(),
         expect.objectContaining({ message: expect.anything() }),
       );
+      // Warn payload MUST include err.name — proves production code logs name, not message.
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ name: "Error" }),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("unexpected __typename — warns and shows degraded banner, no navigation", async () => {
+    const user = userEvent.setup();
+    mockPush.mockClear();
+    mockRefresh.mockClear();
+
+    const mocks = [
+      {
+        request: {
+          query: AdminUpdateRoleDocument,
+          variables: { id: CUSTOM_ROLE.id, name: "reviewer" },
+        },
+        result: () => ({
+          data: {
+            updateRole: {
+              __typename: "FutureVariantClientDidNotKnowAbout",
+            } as never,
+          },
+        }),
+      },
+    ];
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      render(
+        <MockedProvider mocks={mocks}>
+          <EditRoleClient role={CUSTOM_ROLE} />
+        </MockedProvider>,
+      );
+
+      const input = screen.getByRole("textbox");
+      await user.clear(input);
+      await user.type(input, "Reviewer");
+      await user.click(screen.getByRole("button", { name: /save/i }));
+
+      await waitFor(() => expect(warnSpy).toHaveBeenCalled());
+
+      // Degraded banner is shown.
+      expect(screen.getByTestId("admin-role-edit-system-role-error")).toBeInTheDocument();
+      expect(screen.getByTestId("admin-role-edit-system-role-error")).toHaveTextContent(
+        /something went wrong/i,
+      );
+
+      // No navigation — this is not a success variant.
+      expect(mockPush).not.toHaveBeenCalled();
+      expect(mockRefresh).not.toHaveBeenCalled();
+
+      // Warn payload includes the unexpected typename.
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("unexpected updateRole payload"),
+        expect.objectContaining({ typename: "FutureVariantClientDidNotKnowAbout" }),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("null updateRole payload (partial-response null bubble) — warns and shows banner", async () => {
+    const user = userEvent.setup();
+    mockPush.mockClear();
+    mockRefresh.mockClear();
+
+    const mocks = [
+      {
+        request: {
+          query: AdminUpdateRoleDocument,
+          variables: { id: CUSTOM_ROLE.id, name: "reviewer" },
+        },
+        result: () => ({
+          data: { updateRole: null as never },
+        }),
+      },
+    ];
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      render(
+        <MockedProvider mocks={mocks}>
+          <EditRoleClient role={CUSTOM_ROLE} />
+        </MockedProvider>,
+      );
+
+      const input = screen.getByRole("textbox");
+      await user.clear(input);
+      await user.type(input, "Reviewer");
+      await user.click(screen.getByRole("button", { name: /save/i }));
+
+      await waitFor(() => expect(warnSpy).toHaveBeenCalled());
+
+      // Degraded banner is shown.
+      expect(screen.getByTestId("admin-role-edit-system-role-error")).toBeInTheDocument();
+      expect(screen.getByTestId("admin-role-edit-system-role-error")).toHaveTextContent(
+        /something went wrong/i,
+      );
+
+      // No navigation.
+      expect(mockPush).not.toHaveBeenCalled();
+      expect(mockRefresh).not.toHaveBeenCalled();
+
+      // typename is null in the warn payload for a null bubble.
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("unexpected updateRole payload"),
+        expect.objectContaining({ typename: null }),
+      );
     } finally {
       warnSpy.mockRestore();
     }

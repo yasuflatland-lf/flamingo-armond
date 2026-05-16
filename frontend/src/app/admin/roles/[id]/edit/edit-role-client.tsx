@@ -43,17 +43,27 @@ export function EditRoleClient({ role }: Props) {
     });
     if (!result) return;
     const payload = result.data?.updateRole;
+    // Capture __typename before the narrowing chain so the else branch can read
+    // it without TypeScript narrowing the type to `never` at that point.
+    const typename = (payload as { __typename?: string } | null | undefined)?.__typename ?? null;
     if (payload?.__typename === "CannotModifySystemRoleError") {
       // Domain invariant: system roles are immutable. Surface as a banner;
       // do not navigate and do not mutate the Apollo cache.
       setSystemRoleError(payload.message);
       return;
     }
-    // payload.__typename === "UpdateRoleSuccess"
     if (payload?.__typename === "UpdateRoleSuccess") {
       router.push("/admin/roles");
       router.refresh();
+      return;
     }
+    // Unknown variant: null payload, partial-response null bubble, or a future union
+    // variant the client was not regenerated against. Warn loudly and show a degraded
+    // banner — do not silently fall through into success-path code.
+    console.warn("[admin/roles/:id/edit] unexpected updateRole payload", {
+      typename,
+    });
+    setSystemRoleError("Something went wrong. Please try again.");
   }
 
   return (
