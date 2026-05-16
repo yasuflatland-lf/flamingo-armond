@@ -73,7 +73,7 @@ detection is grep-based today and pinned at single-file
 
 - [`FromUsecaseError`: single conversion site for usecase → gqlerror](../../docs/backend/error-wrapping/from-usecase-error-conversion-site.md)
 - [Pointer-receiver discipline for typed errors used with `errors.As`](../../docs/backend/error-wrapping/pointer-receiver-for-errors-as.md)
-- [Alias-bridge sub-package for cycle-safe shared types (`usecase/ucerr`)](../../docs/backend/error-wrapping/alias-bridge-subpackage.md)
+- [Shared-kernel sub-package for cycle-safe shared types (`usecase/ucerr`)](../../docs/backend/error-wrapping/alias-bridge-subpackage.md)
 - [Typed classifier field over string-prefix matching at conversion boundaries](../../docs/backend/error-wrapping/typed-classifier-over-string-prefix.md)
 - [Classifier check must run before any pipeline step that appends to the classified slice](../../docs/backend/error-wrapping/classifier-check-ordering-before-pipeline-mutation.md)
 

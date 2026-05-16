@@ -48,3 +48,13 @@ func TestNewValidationError_ErrorsAsRoundTrip(t *testing.T) {
 	assert.Equal(t, "after", ve.Field)
 	assert.Equal(t, "cursor not found", ve.Message)
 }
+
+func TestNewForbiddenError_ErrorsAsRoundTrip(t *testing.T) {
+	t.Parallel()
+	orig := NewForbiddenError("only admin can demote")
+	wrapped := eris.Wrap(orig, "outer: forbidden")
+
+	var fe *ForbiddenError
+	require.True(t, errors.As(wrapped, &fe))
+	assert.Equal(t, "only admin can demote", fe.Message)
+}
