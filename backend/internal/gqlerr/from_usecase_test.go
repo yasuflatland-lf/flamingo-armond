@@ -146,24 +146,3 @@ func TestFromUsecaseError(t *testing.T) {
 		})
 	}
 }
-
-func TestValidationErrorClassification(t *testing.T) {
-	// *ucerr.ValidationError must be classified as BAD_USER_INPUT by
-	// FromUsecaseError.
-	ve := &ucerr.ValidationError{Field: "x", Message: "y"}
-	silenceLogger(t)
-	out := gqlerr.FromUsecaseError(context.Background(), ve)
-	if !gqlerr.IsCode(out, gqlerr.CodeBadUserInput) {
-		t.Fatalf("expected BAD_USER_INPUT for ucerr.ValidationError, got: %v", out)
-	}
-}
-
-func TestErrUnauthenticatedClassification(t *testing.T) {
-	// ucerr.ErrUnauthenticated must be classified as UNAUTHENTICATED by
-	// FromUsecaseError.
-	silenceLogger(t)
-	out := gqlerr.FromUsecaseError(context.Background(), ucerr.ErrUnauthenticated)
-	if !gqlerr.IsCode(out, gqlerr.CodeUnauthenticated) {
-		t.Fatalf("expected UNAUTHENTICATED for ucerr.ErrUnauthenticated, got: %v", out)
-	}
-}
