@@ -30,14 +30,25 @@ Sentinels used today: `repository.ErrNotFound`, and domain-level sentinels such 
 `backend/internal/usecase/` MUST NOT import `backend/internal/gqlerr`. New usecase code returns:
 
 - `ucerr.ErrUnauthenticated` (sentinel) for unauthenticated paths.
-- `&ucerr.ValidationError{Field, Message}` for field-level validation failures.
-- `&ucerr.ForbiddenError{Message}` for authorization failures.
+- `ucerr.NewValidationError(field, message)` for field-level validation failures.
+- `ucerr.NewForbiddenError(message)` for authorization failures.
 - `eris.Wrap(err, "usecase: <op>")` (or `eris.Errorf` / `eris.New`) for internal/chain errors.
 - `context.Canceled` / `context.DeadlineExceeded` passed through (no wrapping).
+
+Use `ucerr.NewValidationError(field, message)` and `ucerr.NewForbiddenError(message)` constructors — never the struct-literal forms `&ucerr.ValidationError{...}` / `&ucerr.ForbiddenError{...}` in production code. CI fails the build if struct literals appear in non-test files. The constructors are mandatory because `NewValidationError` panics on an empty `field` (an empty field produces `extensions.field == ""` on the wire, which the frontend cannot render). The compile-time guarantee is separate: because `Error()` is declared on the pointer receiver, the Go compiler rejects a bare `ucerr.ValidationError{...}` value where `error` is expected — there is no silent runtime fallthrough. The CI gate therefore enforces the empty-field invariant and canonical construction style, not a guard against a missing pointer. Test code is explicitly exempt — tests legitimately construct invalid error shapes to verify classifier coverage.
 
 The resolver wraps every usecase return error with `gqlerr.FromUsecaseError(ctx, err)` to translate to the wire form. Resolver-internal `gqlerr.*` calls remain unwrapped — they are already wire-format.
 
 CI enforces this boundary: `gqlerr` imports in `backend/internal/usecase/` (non-test files) cause a hard error in `.github/workflows/backend.yml`.
+
+### Resolver-side usecase wrap is mandatory
+
+Every resolver method that returns an error originating from a usecase call
+MUST wrap it via `gqlerr.FromUsecaseError(ctx, err)`. Raw usecase errors
+escape with no `extensions.code`, breaking the GraphQL contract. CI fails the
+build if a resolver returns `err` from a usecase call without the wrap; the
+detection is grep-based today and pinned at single-file
+`schema.resolvers.go` (see [`docs/backend/error-wrapping/from-usecase-error-conversion-site.md`](../../docs/backend/error-wrapping/from-usecase-error-conversion-site.md)).
 
 ## Sentinels — detailed cases (on-demand)
 
@@ -62,9 +73,10 @@ CI enforces this boundary: `gqlerr` imports in `backend/internal/usecase/` (non-
 
 - [`FromUsecaseError`: single conversion site for usecase → gqlerror](../../docs/backend/error-wrapping/from-usecase-error-conversion-site.md)
 - [Pointer-receiver discipline for typed errors used with `errors.As`](../../docs/backend/error-wrapping/pointer-receiver-for-errors-as.md)
-- [Alias-bridge sub-package for cycle-safe shared types (`usecase/ucerr`)](../../docs/backend/error-wrapping/alias-bridge-subpackage.md)
+- [Shared-kernel sub-package for cycle-safe shared types (`usecase/ucerr`)](../../docs/backend/error-wrapping/alias-bridge-subpackage.md)
 - [Typed classifier field over string-prefix matching at conversion boundaries](../../docs/backend/error-wrapping/typed-classifier-over-string-prefix.md)
 - [Classifier check must run before any pipeline step that appends to the classified slice](../../docs/backend/error-wrapping/classifier-check-ordering-before-pipeline-mutation.md)
+- [Redundant tests after alias-bridge deletion: cross-check existing table cases before retaining](../../docs/backend/error-wrapping/redundant-tests-after-alias-bridge-deletion.md)
 
 ## Background
 

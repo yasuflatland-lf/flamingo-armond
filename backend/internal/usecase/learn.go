@@ -88,7 +88,7 @@ func (u *LearnUsecase) NextDueCards(ctx context.Context, cardgroupID string, now
 	cg, err := u.cardgroupRepo.FindByID(ctx, cardgroupID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, &ucerr.ValidationError{Field: "cardgroupId", Message: "cardgroup not found"}
+			return nil, ucerr.NewValidationError("cardgroupId", "cardgroup not found")
 		}
 		return nil, eris.Wrap(err, "usecase: find cardgroup by id")
 	}

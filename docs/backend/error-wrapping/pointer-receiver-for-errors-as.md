@@ -59,3 +59,31 @@ The pointer-receiver discipline is silent when broken, so a unit test on the con
 ```
 
 When introducing a new typed error, add the pair of cases as part of the same change.
+
+## Constructor pairing: compile-time + runtime invariant
+
+A typed error whose `Error()` is on a pointer receiver provides two distinct protections that must not be conflated.
+
+**Compile-time.** Because `Error()` is defined on `*T`, the bare value form `T{...}` does **not** satisfy the `error` interface. The Go compiler rejects any site that tries to return or assign a `T{}` as an `error` — there is no silent runtime fallthrough; the failure is a build error.
+
+**Runtime panic (constructor invariant).** A constructor such as `NewValidationError` centralises enforcement of semantic invariants the type-system cannot express. For example, an empty `field` string on a `ValidationError` produces `extensions.field == ""` on the wire, which the frontend cannot render into a field-scoped message. The constructor panics rather than allowing that state to be constructed:
+
+```go
+// ucerr/validation.go
+func NewValidationError(field, message string) *ValidationError {
+    if field == "" {
+        panic("ucerr: NewValidationError: field must not be empty")
+    }
+    return &ValidationError{Field: field, Message: message}
+}
+```
+
+`NewForbiddenError` uses a pointer return for the same compile-time guarantee but carries no panic — an empty `message` is a degraded but renderable wire state, so the invariant is recoverable:
+
+```go
+func NewForbiddenError(message string) *ForbiddenError {
+    return &ForbiddenError{Message: message}
+}
+```
+
+**When to add a constructor.** Always pair a pointer-receiver typed error with a constructor when the type has one or more fields whose zero value is semantically invalid at the wire level. The constructor is the only enforcement point short of a linter; the compile-time guarantee alone does not prevent callers from passing an empty string.

@@ -89,13 +89,10 @@ func (u *UserUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (*doma
 func validateDisplayName(v string) error {
 	n := uniseg.GraphemeClusterCount(v)
 	if n < displayNameMin {
-		return &ucerr.ValidationError{Field: "displayName", Message: "displayName is required"}
+		return ucerr.NewValidationError("displayName", "displayName is required")
 	}
 	if n > displayNameMax {
-		return &ucerr.ValidationError{
-			Field:   "displayName",
-			Message: fmt.Sprintf("displayName must be at most %d characters", displayNameMax),
-		}
+		return ucerr.NewValidationError("displayName", fmt.Sprintf("displayName must be at most %d characters", displayNameMax))
 	}
 	return nil
 }
@@ -106,10 +103,7 @@ func validateBio(v *string) error {
 	}
 	n := uniseg.GraphemeClusterCount(*v)
 	if n > bioMax {
-		return &ucerr.ValidationError{
-			Field:   "bio",
-			Message: fmt.Sprintf("bio must be at most %d characters", bioMax),
-		}
+		return ucerr.NewValidationError("bio", fmt.Sprintf("bio must be at most %d characters", bioMax))
 	}
 	return nil
 }

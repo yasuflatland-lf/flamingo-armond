@@ -97,3 +97,9 @@ Gate 1 ensures the usecase layer stays transport-agnostic. Gate 2 ensures all `e
 Note: Case 1's grep is line-oriented and the underlying `grep -rln '"backend/internal/gqlerr"'` pattern matches the import path string only — comment-text mentions of `gqlerr` do not trigger the warning.
 
 Note: Case 2 is also line-oriented; a multi-line map literal (`"code":` on one line, the literal on the next) or a literal assembled via `fmt.Sprintf` would not match. The primary defense against bypass is code review, not the grep itself.
+
+## CI gate authoring checklist
+
+- **Trace the pattern against real call sites.** A regex-based gate must match at least one real call site in its target file. Before merging, run the pattern locally and verify it fires. Worked example: a resolver-wrap gate using `:[a-zA-Z0-9_]+ :=` was dead code because the colon in `x, err :=` is part of the `:=` token, not a separate prefix; the gate would have stayed warn-level forever without trace verification.
+- **Cover both return idioms.** Multi-return (`x, err := r.UC.Foo(...)`) and void-return (`if err := r.UC.Delete(...)`) both appear in resolvers. A gate that catches only one silently passes the other.
+- **Scope the grep across `internal/` and `graph/`.** Production code that calls usecase types lives in both directories. Restricting to `internal/` misses resolver files in `graph/`.

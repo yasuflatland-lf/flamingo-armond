@@ -140,7 +140,7 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 	}
 	rating, err := domain.RatingFromSwipeMode(in.Mode)
 	if err != nil {
-		return nil, &ucerr.ValidationError{Field: "mode", Message: err.Error()}
+		return nil, ucerr.NewValidationError("mode", err.Error())
 	}
 	if err := u.authorizeCardgroup(ctx, in.CardgroupID, user.Sub); err != nil {
 		return nil, err
@@ -158,12 +158,12 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 		card, err := u.cardRepo.FindByIDTx(ctx, tx, in.CardID)
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
-				return &ucerr.ValidationError{Field: "cardId", Message: "card not found"}
+				return ucerr.NewValidationError("cardId", "card not found")
 			}
 			return err
 		}
 		if card.CardgroupID != in.CardgroupID {
-			return &ucerr.ValidationError{Field: "cardId", Message: "card not found"}
+			return ucerr.NewValidationError("cardId", "card not found")
 		}
 
 		now = time.Now().UTC()
@@ -218,7 +218,7 @@ func (u *SwipeUsecase) authorizeCardgroup(ctx context.Context, cardgroupID, user
 	cg, err := u.cardgroupRepo.FindByID(ctx, cardgroupID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return &ucerr.ValidationError{Field: "cardgroupId", Message: "cardgroup not found"}
+			return ucerr.NewValidationError("cardgroupId", "cardgroup not found")
 		}
 		return eris.Wrap(err, "usecase: swipe: find cardgroup")
 	}

@@ -144,19 +144,19 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 		return UpsertDictionaryOutput{}, eris.Wrap(err, "usecase: dictionary upsert: check admin")
 	}
 	if !isAdmin {
-		return UpsertDictionaryOutput{}, &ucerr.ForbiddenError{Message: "admin role required"}
+		return UpsertDictionaryOutput{}, ucerr.NewForbiddenError("admin role required")
 	}
 
 	if input.CardgroupID == "" {
-		return UpsertDictionaryOutput{}, &ucerr.ValidationError{Field: "cardgroupId", Message: "cardgroupId is required"}
+		return UpsertDictionaryOutput{}, ucerr.NewValidationError("cardgroupId", "cardgroupId is required")
 	}
 
 	if input.Payload == "" {
-		return UpsertDictionaryOutput{}, &ucerr.ValidationError{Field: "payload", Message: "payload must not be empty"}
+		return UpsertDictionaryOutput{}, ucerr.NewValidationError("payload", "payload must not be empty")
 	}
 	decoded, err := base64.StdEncoding.DecodeString(input.Payload)
 	if err != nil {
-		return UpsertDictionaryOutput{}, &ucerr.ValidationError{Field: "payload", Message: "payload must be standard base64-encoded text"}
+		return UpsertDictionaryOutput{}, ucerr.NewValidationError("payload", "payload must be standard base64-encoded text")
 	}
 
 	words, parseErrs, perr := textdic.Process(string(decoded))
@@ -165,10 +165,7 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 	}
 
 	if len(words) > dictionaryParsedRowCap {
-		return UpsertDictionaryOutput{}, &ucerr.ValidationError{
-			Field:   "payload",
-			Message: "payload exceeds 5000 row cap",
-		}
+		return UpsertDictionaryOutput{}, ucerr.NewValidationError("payload", "payload exceeds 5000 row cap")
 	}
 
 	mappedErrs := make([]DictionaryValidationError, 0, len(parseErrs))

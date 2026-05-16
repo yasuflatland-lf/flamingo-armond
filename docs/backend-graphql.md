@@ -22,6 +22,8 @@ go tool gqlgen generate
 
 CI regenerates these artifacts before every build — they are intentionally **git-ignored**. Only hand-written resolver implementations under `backend/graph/resolver/*.resolvers.go` are committed. CI still fails the build if `go tool gqlgen generate` produces a diff against committed resolver stubs, so editing `schema/*.graphql` obliges you to regenerate locally and commit any new stub that appears under `backend/graph/resolver/`.
 
+When renaming a Go type that is referenced in `schema/*.graphql` doc-comments, update the schema source first and then re-run `go tool gqlgen generate`. gqlgen propagates schema doc-comments verbatim into `backend/graph/generated/generated.go` and `backend/graph/model/models_gen.go`, so stale type names in the schema become stale names in the generated code. Never hand-edit either generated file to fix this — the next regeneration will overwrite the edit.
+
 ### Resolver layout
 
 - `backend/graph/resolver/resolver.go` — hand-written root `Resolver` struct plus `NewResolver(user, cardgroupUC, cardUC, swipeUC, authSvc)` constructor. DI-only; gqlgen never rewrites this file. Production wiring in `cmd/server/main.go` calls `NewResolver`; tests may pass `nil` for unused dependencies but production callers must pass non-nil. Avoids partial struct-literal construction silently relying on a nil dep.

@@ -211,9 +211,9 @@ func (u *CardgroupUsecase) Delete(ctx context.Context, id string) error {
 func translateCardgroupNameErr(err error) error {
 	switch {
 	case errors.Is(err, domain.ErrCardgroupNameRequired):
-		return &ucerr.ValidationError{Field: "name", Message: "name is required"}
+		return ucerr.NewValidationError("name", "name is required")
 	case errors.Is(err, domain.ErrCardgroupNameTooLong):
-		return &ucerr.ValidationError{Field: "name", Message: fmt.Sprintf("name must be at most %d characters", domain.CardgroupNameMax)}
+		return ucerr.NewValidationError("name", fmt.Sprintf("name must be at most %d characters", domain.CardgroupNameMax))
 	default:
 		return eris.Wrap(err, "usecase: translate cardgroup name error")
 	}
@@ -240,19 +240,19 @@ func (u *CardgroupUsecase) ListCardgroupsByOwnerConnection(
 	// either contradictory or ambiguous. Reject before the repo is touched
 	// so the failure mode is observable rather than a silent page-1 reset.
 	if in.After != nil && in.Before != nil {
-		return nil, &ucerr.ValidationError{Field: "after", Message: "after and before are mutually exclusive"}
+		return nil, ucerr.NewValidationError("after", "after and before are mutually exclusive")
 	}
 	if in.First != nil && *in.First > 0 && in.Before != nil {
-		return nil, &ucerr.ValidationError{Field: "before", Message: "last must be > 0 when before is set (received first, not last)"}
+		return nil, ucerr.NewValidationError("before", "last must be > 0 when before is set (received first, not last)")
 	}
 	if in.Last != nil && *in.Last > 0 && in.After != nil {
-		return nil, &ucerr.ValidationError{Field: "after", Message: "first must be > 0 when after is set (received last, not first)"}
+		return nil, ucerr.NewValidationError("after", "first must be > 0 when after is set (received last, not first)")
 	}
 	if in.Before != nil && (in.First == nil || *in.First <= 0) && (in.Last == nil || *in.Last <= 0) {
-		return nil, &ucerr.ValidationError{Field: "before", Message: "last must be > 0 when before is set"}
+		return nil, ucerr.NewValidationError("before", "last must be > 0 when before is set")
 	}
 	if in.After != nil && (in.First == nil || *in.First <= 0) && (in.Last == nil || *in.Last <= 0) {
-		return nil, &ucerr.ValidationError{Field: "after", Message: "first must be > 0 when after is set"}
+		return nil, ucerr.NewValidationError("after", "first must be > 0 when after is set")
 	}
 
 	orderBy, dir, err := resolveCardgroupOrderBy(in.OrderBy, in.OrderDirection)
@@ -353,7 +353,7 @@ func resolveCardgroupOrderBy(
 		case CardgroupOrderByName:
 			field = repository.CardgroupOrderByName
 		default:
-			return "", "", &ucerr.ValidationError{Field: "orderBy", Message: "invalid"}
+			return "", "", ucerr.NewValidationError("orderBy", "invalid")
 		}
 	}
 	d := repository.SortDesc
@@ -364,7 +364,7 @@ func resolveCardgroupOrderBy(
 		case SortOrderDesc:
 			d = repository.SortDesc
 		default:
-			return "", "", &ucerr.ValidationError{Field: "orderDirection", Message: "invalid"}
+			return "", "", ucerr.NewValidationError("orderDirection", "invalid")
 		}
 	}
 	return field, d, nil
@@ -375,7 +375,7 @@ func resolveCardgroupOrderBy(
 // neither is provided, matching the schema's documented default.
 func resolveCardgroupPageSize(first, last *int) (int, int, error) {
 	if first != nil && last != nil {
-		return 0, 0, &ucerr.ValidationError{Field: "first", Message: "specify either first or last, not both"}
+		return 0, 0, ucerr.NewValidationError("first", "specify either first or last, not both")
 	}
 	if first == nil && last == nil {
 		return defaultPageSize, 0, nil
@@ -419,17 +419,17 @@ func (u *CardgroupUsecase) resolveCardgroupCursor(
 	}
 	id, err := cursor.Decode(*cursorStr)
 	if err != nil {
-		return nil, &ucerr.ValidationError{Field: field, Message: "invalid cursor"}
+		return nil, ucerr.NewValidationError(field, "invalid cursor")
 	}
 	cg, err := u.repo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, &ucerr.ValidationError{Field: field, Message: "cursor not found"}
+			return nil, ucerr.NewValidationError(field, "cursor not found")
 		}
 		return nil, eris.Wrap(err, "usecase: hydrate cardgroup cursor")
 	}
 	if !cg.IsOwnedBy(ownerID) {
-		return nil, &ucerr.ValidationError{Field: field, Message: "cursor not found"}
+		return nil, ucerr.NewValidationError(field, "cursor not found")
 	}
 
 	c := &repository.CardgroupCursor{ID: id}

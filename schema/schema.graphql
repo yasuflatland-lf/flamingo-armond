@@ -376,7 +376,7 @@ type DictionaryValidationError implements UserError {
 
 """
 Generic input-validation failure intended for use as a UserError variant in a future outcome union — not yet a member of any union in this schema.
-Mapped from `*usecase.ValidationError` via `gqlerr.FromUsecaseError`.
+Mapped from `*ucerr.ValidationError` via `gqlerr.FromUsecaseError`.
 Also surfaced via `errors` array with `extensions.code = "BAD_USER_INPUT"` and
 `extensions.field` for mutations that have not yet been promoted to a result union.
 """
