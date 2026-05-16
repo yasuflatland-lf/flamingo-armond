@@ -11,9 +11,9 @@ import (
 
 	"backend/internal/auth"
 	"backend/internal/domain"
-	"backend/internal/gqlerr"
 	"backend/internal/repository"
 	"backend/internal/textdic"
+	"backend/internal/usecase/ucerr"
 )
 
 // AdminChecker abstracts the admin-role check. Implemented by *auth.Service in
@@ -130,45 +130,45 @@ func NewDictionaryUsecaseWithTx(authSvc AdminChecker, cardRepo DictionaryCardRep
 func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryInput) (UpsertDictionaryOutput, error) {
 	caller := auth.UserFrom(ctx)
 	if caller == nil || caller.Sub == "" {
-		return UpsertDictionaryOutput{}, gqlerr.Unauthenticated()
+		return UpsertDictionaryOutput{}, ucerr.ErrUnauthenticated
 	}
 
 	if u.auth == nil {
-		return UpsertDictionaryOutput{}, gqlerr.Internal(ctx, eris.New("usecase: dictionary admin checker not configured"))
+		return UpsertDictionaryOutput{}, eris.New("usecase: dictionary admin checker not configured")
 	}
 	isAdmin, err := u.auth.IsAdmin(ctx, caller.Sub)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return UpsertDictionaryOutput{}, gqlerr.Cancelled(ctx, err)
+			return UpsertDictionaryOutput{}, err
 		}
-		return UpsertDictionaryOutput{}, gqlerr.Internal(ctx, eris.Wrap(err, "usecase: dictionary upsert: check admin"))
+		return UpsertDictionaryOutput{}, eris.Wrap(err, "usecase: dictionary upsert: check admin")
 	}
 	if !isAdmin {
-		return UpsertDictionaryOutput{}, gqlerr.NewForbidden("admin role required")
+		return UpsertDictionaryOutput{}, &ucerr.ForbiddenError{Message: "admin role required"}
 	}
 
 	if input.CardgroupID == "" {
-		return UpsertDictionaryOutput{}, gqlerr.BadUserInput("cardgroupId", "cardgroupId is required")
+		return UpsertDictionaryOutput{}, &ucerr.ValidationError{Field: "cardgroupId", Message: "cardgroupId is required"}
 	}
 
 	if input.Payload == "" {
-		return UpsertDictionaryOutput{}, gqlerr.BadUserInput("payload", "payload must not be empty")
+		return UpsertDictionaryOutput{}, &ucerr.ValidationError{Field: "payload", Message: "payload must not be empty"}
 	}
 	decoded, err := base64.StdEncoding.DecodeString(input.Payload)
 	if err != nil {
-		return UpsertDictionaryOutput{}, gqlerr.BadUserInput("payload", "payload must be standard base64-encoded text")
+		return UpsertDictionaryOutput{}, &ucerr.ValidationError{Field: "payload", Message: "payload must be standard base64-encoded text"}
 	}
 
 	words, parseErrs, perr := textdic.Process(string(decoded))
 	if perr != nil {
-		return UpsertDictionaryOutput{}, gqlerr.Internal(ctx, eris.Wrap(perr, "usecase: dictionary upsert: parse"))
+		return UpsertDictionaryOutput{}, eris.Wrap(perr, "usecase: dictionary upsert: parse")
 	}
 
 	if len(words) > dictionaryParsedRowCap {
-		return UpsertDictionaryOutput{}, gqlerr.BadUserInput(
-			"payload",
-			"payload exceeds 5000 row cap",
-		)
+		return UpsertDictionaryOutput{}, &ucerr.ValidationError{
+			Field:   "payload",
+			Message: "payload exceeds 5000 row cap",
+		}
 	}
 
 	mappedErrs := make([]DictionaryValidationError, 0, len(parseErrs))
@@ -225,7 +225,7 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 	}
 
 	if u.tx == nil {
-		return UpsertDictionaryOutput{}, gqlerr.Internal(ctx, eris.New("usecase: dictionary tx runner not configured"))
+		return UpsertDictionaryOutput{}, eris.New("usecase: dictionary tx runner not configured")
 	}
 
 	var result repository.UpsertManyTxResult
@@ -238,9 +238,9 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 		return nil
 	}); err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return UpsertDictionaryOutput{}, gqlerr.Cancelled(ctx, err)
+			return UpsertDictionaryOutput{}, err
 		}
-		return UpsertDictionaryOutput{}, gqlerr.Internal(ctx, err)
+		return UpsertDictionaryOutput{}, eris.Wrap(err, "usecase: dictionary upsert: tx")
 	}
 
 	return UpsertDictionaryOutput{

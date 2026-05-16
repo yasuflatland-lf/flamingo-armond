@@ -7,11 +7,13 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/rotisserie/eris"
+
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/domain/service"
-	"backend/internal/gqlerr"
 	"backend/internal/repository"
+	"backend/internal/usecase/ucerr"
 )
 
 const (
@@ -81,22 +83,22 @@ func NewLearnUsecase(
 func (u *LearnUsecase) NextDueCards(ctx context.Context, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
-		return nil, gqlerr.Unauthenticated()
+		return nil, ucerr.ErrUnauthenticated
 	}
 	cg, err := u.cardgroupRepo.FindByID(ctx, cardgroupID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, gqlerr.BadUserInput("cardgroupId", "cardgroup not found")
+			return nil, &ucerr.ValidationError{Field: "cardgroupId", Message: "cardgroup not found"}
 		}
-		return nil, gqlerr.Internal(ctx, err)
+		return nil, eris.Wrap(err, "usecase: find cardgroup by id")
 	}
 	if !cg.IsOwnedBy(user.Sub) {
-		return nil, gqlerr.Unauthenticated()
+		return nil, ucerr.ErrUnauthenticated
 	}
 	limit = u.clampLimit(limit)
 	cards, err := u.cardRepo.FindDueCardsForUser(ctx, user.Sub, cardgroupID, now, limit)
 	if err != nil {
-		return nil, gqlerr.Internal(ctx, err)
+		return nil, eris.Wrap(err, "usecase: find due cards for user")
 	}
 	return u.ordering.Apply(cards, u.randSource()), nil
 }

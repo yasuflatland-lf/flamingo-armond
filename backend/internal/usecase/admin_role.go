@@ -12,8 +12,8 @@ import (
 
 	"backend/internal/auth"
 	"backend/internal/domain"
-	"backend/internal/gqlerr"
 	"backend/internal/repository"
+	"backend/internal/usecase/ucerr"
 )
 
 // roleNameMin / roleNameMax bound the post-normalisation grapheme-cluster
@@ -75,20 +75,20 @@ func NewAdminRoleWithDeps(roles adminRoleRepoForCRUD, authSvc AdminChecker) Admi
 func (u *adminRoleUsecase) requireAdmin(ctx context.Context) error {
 	caller := auth.UserFrom(ctx)
 	if caller == nil || caller.Sub == "" {
-		return gqlerr.Unauthenticated()
+		return ucerr.ErrUnauthenticated
 	}
 	if u.auth == nil {
-		return gqlerr.Internal(ctx, eris.New("usecase: admin role: admin checker not configured"))
+		return eris.New("usecase: admin role: admin checker not configured")
 	}
 	isAdmin, err := u.auth.IsAdmin(ctx, caller.Sub)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return gqlerr.Cancelled(ctx, err)
+			return err
 		}
-		return gqlerr.Internal(ctx, eris.Wrap(err, "usecase: admin role: check admin"))
+		return eris.Wrap(err, "usecase: admin role: check admin")
 	}
 	if !isAdmin {
-		return gqlerr.NewForbidden("admin only")
+		return &ucerr.ForbiddenError{Message: "admin only"}
 	}
 	return nil
 }
@@ -100,15 +100,15 @@ func validateRoleName(name string) (string, error) {
 	normalized := strings.ToLower(strings.TrimSpace(name))
 	n := uniseg.GraphemeClusterCount(normalized)
 	if n < roleNameMin {
-		return "", gqlerr.BadUserInput("name", "name is required")
+		return "", &ucerr.ValidationError{Field: "name", Message: "name is required"}
 	}
 	if n > roleNameMax {
-		return "", gqlerr.BadUserInput("name",
-			fmt.Sprintf("name must be at most %d characters", roleNameMax))
+		return "", &ucerr.ValidationError{Field: "name",
+			Message: fmt.Sprintf("name must be at most %d characters", roleNameMax)}
 	}
 	if !roleNamePattern.MatchString(normalized) {
-		return "", gqlerr.BadUserInput("name",
-			"name must contain only lowercase letters, digits, '_' or '-'")
+		return "", &ucerr.ValidationError{Field: "name",
+			Message: "name must contain only lowercase letters, digits, '_' or '-'"}
 	}
 	return normalized, nil
 }
@@ -121,9 +121,9 @@ func (u *adminRoleUsecase) List(ctx context.Context) ([]*domain.Role, error) {
 	roles, err := u.roles.ListAll(ctx)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, gqlerr.Cancelled(ctx, err)
+			return nil, err
 		}
-		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "usecase: admin role list"))
+		return nil, eris.Wrap(err, "usecase: admin role list")
 	}
 	return roles, nil
 }
@@ -141,9 +141,9 @@ func (u *adminRoleUsecase) Get(ctx context.Context, id string) (*domain.Role, er
 			return nil, nil
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, gqlerr.Cancelled(ctx, err)
+			return nil, err
 		}
-		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "usecase: admin role get"))
+		return nil, eris.Wrap(err, "usecase: admin role get")
 	}
 	return role, nil
 }
@@ -161,7 +161,7 @@ func (u *adminRoleUsecase) Create(ctx context.Context, name string) (*domain.Rol
 	}
 	role, err := u.roles.Create(ctx, normalized)
 	if err != nil {
-		return nil, mapAdminRoleError(ctx, err, "name", "usecase: admin role create")
+		return nil, mapAdminRoleError(err, "name", "usecase: admin role create")
 	}
 	return role, nil
 }
@@ -185,15 +185,15 @@ func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (*domain
 
 	existing, err := u.roles.FindByID(ctx, id)
 	if err != nil {
-		return nil, mapAdminRoleError(ctx, err, "id", "usecase: admin role update: find")
+		return nil, mapAdminRoleError(err, "id", "usecase: admin role update: find")
 	}
 	if isSystemRole(existing.Name) {
-		return nil, gqlerr.NewForbidden(fmt.Sprintf("cannot rename system role %q", existing.Name))
+		return nil, &ucerr.ForbiddenError{Message: fmt.Sprintf("cannot rename system role %q", existing.Name)}
 	}
 
 	role, err := u.roles.Update(ctx, id, normalized)
 	if err != nil {
-		return nil, mapAdminRoleError(ctx, err, "id", "usecase: admin role update")
+		return nil, mapAdminRoleError(err, "id", "usecase: admin role update")
 	}
 	return role, nil
 }
@@ -215,14 +215,14 @@ func (u *adminRoleUsecase) Delete(ctx context.Context, id string) error {
 
 	existing, err := u.roles.FindByID(ctx, id)
 	if err != nil {
-		return mapAdminRoleError(ctx, err, "id", "usecase: admin role delete: find")
+		return mapAdminRoleError(err, "id", "usecase: admin role delete: find")
 	}
 	if isSystemRole(existing.Name) {
-		return gqlerr.NewForbidden(fmt.Sprintf("cannot delete system role %q", existing.Name))
+		return &ucerr.ForbiddenError{Message: fmt.Sprintf("cannot delete system role %q", existing.Name)}
 	}
 
 	if err := u.roles.Delete(ctx, id); err != nil {
-		return mapAdminRoleError(ctx, err, "id", "usecase: admin role delete")
+		return mapAdminRoleError(err, "id", "usecase: admin role delete")
 	}
 	return nil
 }
@@ -234,15 +234,15 @@ func (u *adminRoleUsecase) Delete(ctx context.Context, id string) error {
 //
 // ErrRoleDuplicate always maps to field="name" — the duplicate condition is
 // always on the name column, regardless of which method surfaced it.
-func mapAdminRoleError(ctx context.Context, err error, notFoundField, wrap string) error {
+func mapAdminRoleError(err error, notFoundField, wrap string) error {
 	switch {
 	case errors.Is(err, repository.ErrRoleNotFound):
-		return gqlerr.BadUserInput(notFoundField, "role not found")
+		return &ucerr.ValidationError{Field: notFoundField, Message: "role not found"}
 	case errors.Is(err, repository.ErrRoleDuplicate):
-		return gqlerr.BadUserInput("name", "role name already exists")
+		return &ucerr.ValidationError{Field: "name", Message: "role name already exists"}
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-		return gqlerr.Cancelled(ctx, err)
+		return err
 	default:
-		return gqlerr.Internal(ctx, eris.Wrap(err, wrap))
+		return eris.Wrap(err, wrap)
 	}
 }

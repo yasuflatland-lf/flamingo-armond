@@ -10,14 +10,13 @@ import (
 	"time"
 
 	"github.com/rotisserie/eris"
-	"github.com/vektah/gqlparser/v2/gqlerror"
 	"gorm.io/gorm"
 
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/domain/service"
-	"backend/internal/gqlerr"
 	"backend/internal/repository"
+	"backend/internal/usecase/ucerr"
 )
 
 const (
@@ -137,11 +136,11 @@ func NewSwipeUsecaseWithTx(
 func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*SwipeOutput, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
-		return nil, gqlerr.Unauthenticated()
+		return nil, ucerr.ErrUnauthenticated
 	}
 	rating, err := domain.RatingFromSwipeMode(in.Mode)
 	if err != nil {
-		return nil, gqlerr.BadUserInput("mode", err.Error())
+		return nil, &ucerr.ValidationError{Field: "mode", Message: err.Error()}
 	}
 	if err := u.authorizeCardgroup(ctx, in.CardgroupID, user.Sub); err != nil {
 		return nil, err
@@ -150,21 +149,21 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 	var nextCards []*domain.Card
 	var now time.Time
 	if u.tx == nil {
-		return nil, gqlerr.Internal(ctx, eris.New("swipe usecase: transaction runner is not configured"))
+		return nil, eris.New("swipe usecase: transaction runner is not configured")
 	}
 	if u.userFSRSRepo == nil {
-		return nil, gqlerr.Internal(ctx, eris.New("swipe usecase: user card fsrs repository is not configured"))
+		return nil, eris.New("swipe usecase: user card fsrs repository is not configured")
 	}
 	err = u.tx(ctx, func(tx *gorm.DB) error {
 		card, err := u.cardRepo.FindByIDTx(ctx, tx, in.CardID)
 		if err != nil {
 			if errors.Is(err, repository.ErrNotFound) {
-				return gqlerr.BadUserInput("cardId", "card not found")
+				return &ucerr.ValidationError{Field: "cardId", Message: "card not found"}
 			}
 			return err
 		}
 		if card.CardgroupID != in.CardgroupID {
-			return gqlerr.BadUserInput("cardId", "card not found")
+			return &ucerr.ValidationError{Field: "cardId", Message: "card not found"}
 		}
 
 		now = time.Now().UTC()
@@ -201,14 +200,11 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 		return nil
 	})
 	if err != nil {
-		if ge, ok := errors.AsType[*gqlerror.Error](err); ok {
-			return nil, ge
-		}
-		return nil, gqlerr.Internal(ctx, err)
+		return nil, err
 	}
 	recentSwipes, err := u.swipeRepo.ListRecentByUser(ctx, user.Sub, swipePerformanceSampleLimit)
 	if err != nil {
-		return nil, gqlerr.Internal(ctx, err)
+		return nil, eris.Wrap(err, "swipe usecase: list recent swipes")
 	}
 	metrics := service.ComputeMetrics(swipeRecordsByValue(recentSwipes), now)
 	return &SwipeOutput{
@@ -222,12 +218,12 @@ func (u *SwipeUsecase) authorizeCardgroup(ctx context.Context, cardgroupID, user
 	cg, err := u.cardgroupRepo.FindByID(ctx, cardgroupID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return gqlerr.BadUserInput("cardgroupId", "cardgroup not found")
+			return &ucerr.ValidationError{Field: "cardgroupId", Message: "cardgroup not found"}
 		}
-		return gqlerr.Internal(ctx, err)
+		return eris.Wrap(err, "swipe usecase: find cardgroup")
 	}
 	if !cg.IsOwnedBy(userID) {
-		return gqlerr.Unauthenticated()
+		return ucerr.ErrUnauthenticated
 	}
 	return nil
 }

@@ -8,8 +8,8 @@ import (
 
 	"backend/internal/auth"
 	"backend/internal/domain"
-	"backend/internal/gqlerr"
 	"backend/internal/repository"
+	"backend/internal/usecase/ucerr"
 )
 
 // LastViewedCardgroupUsecase records the cardgroup the authenticated caller
@@ -66,17 +66,17 @@ func NewLastViewedCardgroupWithDeps(
 func (u *lastViewedCardgroupUsecase) Set(ctx context.Context, cardgroupID string) (*domain.User, error) {
 	caller := auth.UserFrom(ctx)
 	if caller == nil || caller.Sub == "" {
-		return nil, gqlerr.Unauthenticated()
+		return nil, ucerr.ErrUnauthenticated
 	}
 
 	if err := u.prefs.UpsertLastViewedCardgroup(ctx, caller.Sub, cardgroupID); err != nil {
 		switch {
 		case errors.Is(err, repository.ErrCardgroupNotFound):
-			return nil, gqlerr.BadUserInput("cardgroupId", "cardgroup not found or not owned")
+			return nil, &ucerr.ValidationError{Field: "cardgroupId", Message: "cardgroup not found or not owned"}
 		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-			return nil, gqlerr.Cancelled(ctx, err)
+			return nil, err
 		default:
-			return nil, gqlerr.Internal(ctx, eris.Wrap(err, "usecase: set last viewed cardgroup"))
+			return nil, eris.Wrap(err, "usecase: set last viewed cardgroup")
 		}
 	}
 
@@ -87,9 +87,9 @@ func (u *lastViewedCardgroupUsecase) Set(ctx context.Context, cardgroupID string
 		// concurrently. Treated as INTERNAL like any other refetch failure,
 		// with the wrapped sentinel preserved for log correlation.
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, gqlerr.Cancelled(ctx, err)
+			return nil, err
 		}
-		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "usecase: set last viewed cardgroup: refetch"))
+		return nil, eris.Wrap(err, "usecase: set last viewed cardgroup: refetch")
 	}
 	return user, nil
 }

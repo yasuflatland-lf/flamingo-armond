@@ -9,7 +9,6 @@ import (
 
 	"backend/internal/auth"
 	"backend/internal/domain"
-	"backend/internal/gqlerr"
 	"backend/internal/repository"
 )
 
@@ -140,7 +139,7 @@ func TestCardgroupUsecase_Cardgroup_Anonymous(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+	assertUnauthenticated(t, err)
 }
 
 func TestCardgroupUsecase_Cardgroup_NotFound_ReturnsNilNoError(t *testing.T) {
@@ -185,9 +184,7 @@ func TestCardgroupUsecase_Cardgroup_NonOwnerGetsUnauthenticated(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if !gqlerr.IsCode(err, gqlerr.CodeUnauthenticated) {
-		t.Fatalf("expected UNAUTHENTICATED, got: %v", err)
-	}
+	assertUnauthenticated(t, err)
 }
 
 // --- Create tests ---
@@ -202,7 +199,7 @@ func TestCardgroupUsecase_Create_Anonymous(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+	assertUnauthenticated(t, err)
 }
 
 func TestCardgroupUsecase_Create_EmptyName_BadUserInput(t *testing.T) {
@@ -215,7 +212,7 @@ func TestCardgroupUsecase_Create_EmptyName_BadUserInput(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	assertGQLErr(t, err, "BAD_USER_INPUT", "name")
+	assertValidationError(t, err, "name", "")
 }
 
 func TestCardgroupUsecase_Create_TooLong_BadUserInput(t *testing.T) {
@@ -228,7 +225,7 @@ func TestCardgroupUsecase_Create_TooLong_BadUserInput(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	assertGQLErr(t, err, "BAD_USER_INPUT", "name")
+	assertValidationError(t, err, "name", "")
 }
 
 func TestCardgroupUsecase_Create_Trims(t *testing.T) {
@@ -288,7 +285,7 @@ func TestCardgroupUsecase_Update_Anonymous(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+	assertUnauthenticated(t, err)
 }
 
 func TestCardgroupUsecase_Update_NonOwner_Unauthenticated(t *testing.T) {
@@ -302,7 +299,7 @@ func TestCardgroupUsecase_Update_NonOwner_Unauthenticated(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+	assertUnauthenticated(t, err)
 }
 
 func TestCardgroupUsecase_Update_NotFound_Unauthenticated(t *testing.T) {
@@ -315,7 +312,7 @@ func TestCardgroupUsecase_Update_NotFound_Unauthenticated(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+	assertUnauthenticated(t, err)
 }
 
 func TestCardgroupUsecase_Update_NameChange_Success(t *testing.T) {
@@ -372,7 +369,7 @@ func TestCardgroupUsecase_Delete_Anonymous(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+	assertUnauthenticated(t, err)
 }
 
 func TestCardgroupUsecase_Delete_NonOwner_Unauthenticated(t *testing.T) {
@@ -386,7 +383,7 @@ func TestCardgroupUsecase_Delete_NonOwner_Unauthenticated(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+	assertUnauthenticated(t, err)
 	if repo.deleteCalled {
 		t.Fatal("expected repo.Delete NOT to be called for non-owner")
 	}
@@ -402,7 +399,7 @@ func TestCardgroupUsecase_Delete_NotFound_Unauthenticated(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+	assertUnauthenticated(t, err)
 }
 
 func TestCardgroupUsecase_Delete_Success(t *testing.T) {
@@ -439,7 +436,7 @@ func TestCardgroupUC_ConnectionGuards_AfterAndBefore(t *testing.T) {
 		Before: &before,
 	})
 
-	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+	assertValidationError(t, err, "after", "")
 }
 
 // TestCardgroupUC_ConnectionGuards_FirstAndBefore verifies that combining first
@@ -456,7 +453,7 @@ func TestCardgroupUC_ConnectionGuards_FirstAndBefore(t *testing.T) {
 		Before: &before,
 	})
 
-	assertGQLErr(t, err, "BAD_USER_INPUT", "before")
+	assertValidationError(t, err, "before", "")
 }
 
 // TestCardgroupUC_ConnectionGuards_LastAndAfter verifies that combining last
@@ -473,7 +470,7 @@ func TestCardgroupUC_ConnectionGuards_LastAndAfter(t *testing.T) {
 		After: &after,
 	})
 
-	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+	assertValidationError(t, err, "after", "")
 }
 
 // TestCardgroupUC_ConnectionGuards_BeforeAlone verifies that before without
@@ -488,7 +485,7 @@ func TestCardgroupUC_ConnectionGuards_BeforeAlone(t *testing.T) {
 		Before: &before,
 	})
 
-	assertGQLErr(t, err, "BAD_USER_INPUT", "before")
+	assertValidationError(t, err, "before", "")
 }
 
 // TestCardgroupUC_ConnectionGuards_AfterAlone verifies that after without a
@@ -503,7 +500,7 @@ func TestCardgroupUC_ConnectionGuards_AfterAlone(t *testing.T) {
 		After: &after,
 	})
 
-	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+	assertValidationError(t, err, "after", "")
 }
 
 // ---------------------------------------------------------------------------
@@ -528,7 +525,7 @@ func TestCardgroupUC_Connection_CursorFromOtherOwner_BadUserInput(t *testing.T) 
 		After: &after,
 	})
 
-	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+	assertValidationError(t, err, "after", "")
 }
 
 // ---------------------------------------------------------------------------
@@ -631,7 +628,7 @@ func TestCardgroupUC_Connection_Anonymous(t *testing.T) {
 
 	first := 10
 	_, err := uc.ListCardgroupsByOwnerConnection(anonCtx(), CardgroupConnectionInput{First: &first})
-	assertGQLErr(t, err, "UNAUTHENTICATED", "")
+	assertUnauthenticated(t, err)
 	if len(repo.findPageCalls) != 0 {
 		t.Fatalf("expected no FindPageByOwner calls for anon ctx, got %d", len(repo.findPageCalls))
 	}
@@ -650,7 +647,7 @@ func TestCardgroupUC_ConnectionGuards_FirstAndLast(t *testing.T) {
 		First: &first,
 		Last:  &last,
 	})
-	assertGQLErr(t, err, "BAD_USER_INPUT", "first")
+	assertValidationError(t, err, "first", "")
 }
 
 // TestCardgroupUC_Connection_FirstPage_AssertFirstPlusOne verifies that the
@@ -1088,7 +1085,7 @@ func TestCardgroupUC_Connection_CursorHydration_OrderByID_NotFound(t *testing.T)
 		After:   &after,
 		OrderBy: &ob,
 	})
-	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+	assertValidationError(t, err, "after", "")
 }
 
 // TestCardgroupUC_Connection_CursorHydration_OrderByID_RepoError verifies that
@@ -1108,7 +1105,7 @@ func TestCardgroupUC_Connection_CursorHydration_OrderByID_RepoError(t *testing.T
 		After:   &after,
 		OrderBy: &ob,
 	})
-	assertGQLErr(t, err, "INTERNAL", "")
+	assertInternalChain(t, err, "usecase: hydrate cardgroup cursor")
 }
 
 // TestCardgroupUC_Connection_CursorHydration_OrderByID_OtherOwner verifies that
@@ -1130,7 +1127,7 @@ func TestCardgroupUC_Connection_CursorHydration_OrderByID_OtherOwner(t *testing.
 		After:   &after,
 		OrderBy: &ob,
 	})
-	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+	assertValidationError(t, err, "after", "")
 }
 
 // TestCardgroupUC_Connection_CursorHydration_NotFound_BadUserInput verifies
@@ -1147,7 +1144,7 @@ func TestCardgroupUC_Connection_CursorHydration_NotFound_BadUserInput(t *testing
 		First: &first,
 		After: &after,
 	})
-	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+	assertValidationError(t, err, "after", "")
 }
 
 // TestCardgroupUC_Connection_CursorHydration_RepoError_Internal verifies that
@@ -1164,7 +1161,7 @@ func TestCardgroupUC_Connection_CursorHydration_RepoError_Internal(t *testing.T)
 		First: &first,
 		After: &after,
 	})
-	assertGQLErr(t, err, "INTERNAL", "")
+	assertInternalChain(t, err, "usecase: hydrate cardgroup cursor")
 }
 
 // TestCardgroupUC_Connection_FindPageRepoError_Internal verifies that an
@@ -1182,7 +1179,7 @@ func TestCardgroupUC_Connection_FindPageRepoError_Internal(t *testing.T) {
 	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("u1"), CardgroupConnectionInput{
 		First: &first,
 	})
-	assertGQLErr(t, err, "INTERNAL", "")
+	assertInternalChain(t, err, "usecase: find cardgroup page by owner")
 }
 
 // TestCardgroupUC_Connection_CountError_Internal verifies that a CountByOwner
@@ -1197,7 +1194,7 @@ func TestCardgroupUC_Connection_CountError_Internal(t *testing.T) {
 	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("u1"), CardgroupConnectionInput{
 		First: &first,
 	})
-	assertGQLErr(t, err, "INTERNAL", "")
+	assertInternalChain(t, err, "usecase: count cardgroups by owner")
 	if len(repo.findPageCalls) != 0 {
 		t.Fatalf("expected no FindPageByOwner call when CountByOwner fails, got %d",
 			len(repo.findPageCalls))
@@ -1217,7 +1214,7 @@ func TestResolveCardgroupOrderBy_InvalidOrderBy(t *testing.T) {
 
 	bogus := CardgroupOrderBy("BOGUS")
 	_, _, err := resolveCardgroupOrderBy(&bogus, nil)
-	assertGQLErr(t, err, "BAD_USER_INPUT", "orderBy")
+	assertValidationError(t, err, "orderBy", "")
 }
 
 // TestResolveCardgroupOrderBy_InvalidDirection hits the default arm of the
@@ -1227,7 +1224,7 @@ func TestResolveCardgroupOrderBy_InvalidDirection(t *testing.T) {
 
 	bogus := SortOrder("SIDEWAYS")
 	_, _, err := resolveCardgroupOrderBy(nil, &bogus)
-	assertGQLErr(t, err, "BAD_USER_INPUT", "orderDirection")
+	assertValidationError(t, err, "orderDirection", "")
 }
 
 // TestResolveCardgroupPageSize_LastClamp verifies that the "last only" branch
@@ -1308,7 +1305,7 @@ func TestResolveCardgroupCursor_OtherOwner_NonIDOrderBy(t *testing.T) {
 		context.Background(),
 		&id, "owner-b", repository.CardgroupOrderByName, "after",
 	)
-	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+	assertValidationError(t, err, "after", "")
 }
 
 // TestResolveCardgroupCursor_UnknownOrderBy hits the impossible default arm
@@ -1327,7 +1324,7 @@ func TestResolveCardgroupCursor_UnknownOrderBy(t *testing.T) {
 		context.Background(),
 		&id, "u1", repository.CardgroupOrderBy("not_a_real_column"), "after",
 	)
-	assertGQLErr(t, err, "INTERNAL", "")
+	assertInternalChain(t, err, "usecase: cardgroup unhandled orderBy")
 }
 
 // TestTranslateCardgroupNameErr_DefaultArm verifies the default switch arm
@@ -1335,8 +1332,8 @@ func TestResolveCardgroupCursor_UnknownOrderBy(t *testing.T) {
 func TestTranslateCardgroupNameErr_DefaultArm(t *testing.T) {
 	t.Parallel()
 
-	err := translateCardgroupNameErr(context.Background(), errors.New("surprise"))
-	assertGQLErr(t, err, "INTERNAL", "")
+	err := translateCardgroupNameErr(errors.New("surprise"))
+	assertInternalChain(t, err, "usecase: translate cardgroup name error")
 }
 
 // TestResolveCardgroupCursor_MalformedV1_ReturnsBadUserInput verifies that a
@@ -1354,7 +1351,7 @@ func TestResolveCardgroupCursor_MalformedV1_ReturnsBadUserInput(t *testing.T) {
 		context.Background(),
 		&malformed, "u1", repository.CardgroupOrderByID, "after",
 	)
-	assertGQLErr(t, err, "BAD_USER_INPUT", "after")
+	assertValidationError(t, err, "after", "")
 }
 
 // TestResolveCardgroupCursor_V1EncodedID verifies backward-compat: a v1

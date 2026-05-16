@@ -10,11 +10,12 @@ import (
 	"strings"
 
 	"github.com/rivo/uniseg"
+	"github.com/rotisserie/eris"
 
 	"backend/internal/auth"
 	"backend/internal/domain"
-	"backend/internal/gqlerr"
 	"backend/internal/repository"
+	"backend/internal/usecase/ucerr"
 )
 
 const (
@@ -41,7 +42,7 @@ func NewUserUsecase(repo UserRepository) *UserUsecase {
 func (u *UserUsecase) Me(ctx context.Context) (*domain.User, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
-		return nil, gqlerr.Unauthenticated()
+		return nil, ucerr.ErrUnauthenticated
 	}
 	appUser, err := u.repo.FindByID(ctx, user.Sub)
 	if err == nil {
@@ -53,7 +54,7 @@ func (u *UserUsecase) Me(ctx context.Context) (*domain.User, error) {
 			"user_id", user.Sub)
 		return &domain.User{ID: user.Sub}, nil
 	}
-	return nil, gqlerr.Internal(ctx, err)
+	return nil, eris.Wrap(err, "usecase: Me: find user by ID")
 }
 
 type UpdateUserInput struct {
@@ -64,7 +65,7 @@ type UpdateUserInput struct {
 func (u *UserUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (*domain.User, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
-		return nil, gqlerr.Unauthenticated()
+		return nil, ucerr.ErrUnauthenticated
 	}
 
 	name := strings.TrimSpace(in.DisplayName)
@@ -80,7 +81,7 @@ func (u *UserUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (*doma
 		Bio:         in.Bio,
 	})
 	if err != nil {
-		return nil, gqlerr.Internal(ctx, err)
+		return nil, eris.Wrap(err, "usecase: UpdateUser: update user")
 	}
 	return appUser, nil
 }
@@ -88,11 +89,13 @@ func (u *UserUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (*doma
 func validateDisplayName(v string) error {
 	n := uniseg.GraphemeClusterCount(v)
 	if n < displayNameMin {
-		return gqlerr.BadUserInput("displayName", "displayName is required")
+		return &ucerr.ValidationError{Field: "displayName", Message: "displayName is required"}
 	}
 	if n > displayNameMax {
-		return gqlerr.BadUserInput("displayName",
-			fmt.Sprintf("displayName must be at most %d characters", displayNameMax))
+		return &ucerr.ValidationError{
+			Field:   "displayName",
+			Message: fmt.Sprintf("displayName must be at most %d characters", displayNameMax),
+		}
 	}
 	return nil
 }
@@ -103,8 +106,10 @@ func validateBio(v *string) error {
 	}
 	n := uniseg.GraphemeClusterCount(*v)
 	if n > bioMax {
-		return gqlerr.BadUserInput("bio",
-			fmt.Sprintf("bio must be at most %d characters", bioMax))
+		return &ucerr.ValidationError{
+			Field:   "bio",
+			Message: fmt.Sprintf("bio must be at most %d characters", bioMax),
+		}
 	}
 	return nil
 }

@@ -15,8 +15,8 @@ import (
 	"backend/internal/auth"
 	"backend/internal/cursor"
 	"backend/internal/domain"
-	"backend/internal/gqlerr"
 	"backend/internal/repository"
+	"backend/internal/usecase/ucerr"
 )
 
 // CardgroupRepository is the consumer-driven interface used by CardgroupUsecase.
@@ -87,17 +87,17 @@ func NewCardgroupUsecase(repo CardgroupRepository) *CardgroupUsecase {
 func (u *CardgroupUsecase) Cardgroup(ctx context.Context, id string) (*domain.Cardgroup, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
-		return nil, gqlerr.Unauthenticated()
+		return nil, ucerr.ErrUnauthenticated
 	}
 	cg, err := u.repo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, nil
 		}
-		return nil, gqlerr.Internal(ctx, err)
+		return nil, eris.Wrap(err, "usecase: find cardgroup by id")
 	}
 	if !cg.IsOwnedBy(user.Sub) {
-		return nil, gqlerr.Unauthenticated()
+		return nil, ucerr.ErrUnauthenticated
 	}
 	return cg, nil
 }
@@ -109,18 +109,18 @@ type CreateCardgroupInput struct{ Name string }
 func (u *CardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) (*domain.Cardgroup, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
-		return nil, gqlerr.Unauthenticated()
+		return nil, ucerr.ErrUnauthenticated
 	}
 
 	trimmed := strings.TrimSpace(in.Name)
 	tmp := &domain.Cardgroup{Name: trimmed}
 	if err := tmp.Validate(); err != nil {
-		return nil, translateCardgroupNameErr(ctx, err)
+		return nil, translateCardgroupNameErr(err)
 	}
 
 	id, err := uuidV7()
 	if err != nil {
-		return nil, gqlerr.Internal(ctx, err)
+		return nil, eris.Wrap(err, "usecase: generate cardgroup uuid")
 	}
 
 	now := time.Now().UTC()
@@ -133,7 +133,7 @@ func (u *CardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 	}
 
 	if err := u.repo.Create(ctx, cg); err != nil {
-		return nil, gqlerr.Internal(ctx, err)
+		return nil, eris.Wrap(err, "usecase: create cardgroup")
 	}
 	return cg, nil
 }
@@ -148,18 +148,18 @@ type UpdateCardgroupInput struct{ Name *string }
 func (u *CardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardgroupInput) (*domain.Cardgroup, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
-		return nil, gqlerr.Unauthenticated()
+		return nil, ucerr.ErrUnauthenticated
 	}
 
 	existing, err := u.repo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, gqlerr.Unauthenticated()
+			return nil, ucerr.ErrUnauthenticated
 		}
-		return nil, gqlerr.Internal(ctx, err)
+		return nil, eris.Wrap(err, "usecase: find cardgroup for update")
 	}
 	if !existing.IsOwnedBy(user.Sub) {
-		return nil, gqlerr.Unauthenticated()
+		return nil, ucerr.ErrUnauthenticated
 	}
 
 	// Empty patch: no DB write, return current row.
@@ -170,12 +170,12 @@ func (u *CardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardg
 	trimmed := strings.TrimSpace(*in.Name)
 	tmp := &domain.Cardgroup{Name: trimmed}
 	if err := tmp.Validate(); err != nil {
-		return nil, translateCardgroupNameErr(ctx, err)
+		return nil, translateCardgroupNameErr(err)
 	}
 
 	updated, err := u.repo.Update(ctx, id, repository.CardgroupUpdate{Name: &trimmed})
 	if err != nil {
-		return nil, gqlerr.Internal(ctx, err)
+		return nil, eris.Wrap(err, "usecase: update cardgroup")
 	}
 	return updated, nil
 }
@@ -185,37 +185,37 @@ func (u *CardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardg
 func (u *CardgroupUsecase) Delete(ctx context.Context, id string) error {
 	user := auth.UserFrom(ctx)
 	if user == nil {
-		return gqlerr.Unauthenticated()
+		return ucerr.ErrUnauthenticated
 	}
 
 	existing, err := u.repo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return gqlerr.Unauthenticated()
+			return ucerr.ErrUnauthenticated
 		}
-		return gqlerr.Internal(ctx, err)
+		return eris.Wrap(err, "usecase: find cardgroup for delete")
 	}
 	if !existing.IsOwnedBy(user.Sub) {
-		return gqlerr.Unauthenticated()
+		return ucerr.ErrUnauthenticated
 	}
 
 	if err := u.repo.Delete(ctx, id); err != nil {
-		return gqlerr.Internal(ctx, err)
+		return eris.Wrap(err, "usecase: delete cardgroup")
 	}
 	return nil
 }
 
 // translateCardgroupNameErr maps domain sentinel errors from Cardgroup.Validate
-// to GraphQL-layer errors. Unexpected domain errors become INTERNAL. Callers
-// must guard against err == nil before invoking.
-func translateCardgroupNameErr(ctx context.Context, err error) error {
+// to usecase-layer typed errors. Unexpected domain errors are wrapped with eris.
+// Callers must guard against err == nil before invoking.
+func translateCardgroupNameErr(err error) error {
 	switch {
 	case errors.Is(err, domain.ErrCardgroupNameRequired):
-		return gqlerr.BadUserInput("name", "name is required")
+		return &ucerr.ValidationError{Field: "name", Message: "name is required"}
 	case errors.Is(err, domain.ErrCardgroupNameTooLong):
-		return gqlerr.BadUserInput("name", fmt.Sprintf("name must be at most %d characters", domain.CardgroupNameMax))
+		return &ucerr.ValidationError{Field: "name", Message: fmt.Sprintf("name must be at most %d characters", domain.CardgroupNameMax)}
 	default:
-		return gqlerr.Internal(ctx, err)
+		return eris.Wrap(err, "usecase: translate cardgroup name error")
 	}
 }
 
@@ -232,7 +232,7 @@ func (u *CardgroupUsecase) ListCardgroupsByOwnerConnection(
 ) (*CardgroupConnectionOutput, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
-		return nil, gqlerr.Unauthenticated()
+		return nil, ucerr.ErrUnauthenticated
 	}
 
 	// Five mixed-direction guards. The Relay spec pairs after with first
@@ -240,19 +240,19 @@ func (u *CardgroupUsecase) ListCardgroupsByOwnerConnection(
 	// either contradictory or ambiguous. Reject before the repo is touched
 	// so the failure mode is observable rather than a silent page-1 reset.
 	if in.After != nil && in.Before != nil {
-		return nil, gqlerr.BadUserInput("after", "after and before are mutually exclusive")
+		return nil, &ucerr.ValidationError{Field: "after", Message: "after and before are mutually exclusive"}
 	}
 	if in.First != nil && *in.First > 0 && in.Before != nil {
-		return nil, gqlerr.BadUserInput("before", "last must be > 0 when before is set (received first, not last)")
+		return nil, &ucerr.ValidationError{Field: "before", Message: "last must be > 0 when before is set (received first, not last)"}
 	}
 	if in.Last != nil && *in.Last > 0 && in.After != nil {
-		return nil, gqlerr.BadUserInput("after", "first must be > 0 when after is set (received last, not first)")
+		return nil, &ucerr.ValidationError{Field: "after", Message: "first must be > 0 when after is set (received last, not first)"}
 	}
 	if in.Before != nil && (in.First == nil || *in.First <= 0) && (in.Last == nil || *in.Last <= 0) {
-		return nil, gqlerr.BadUserInput("before", "last must be > 0 when before is set")
+		return nil, &ucerr.ValidationError{Field: "before", Message: "last must be > 0 when before is set"}
 	}
 	if in.After != nil && (in.First == nil || *in.First <= 0) && (in.Last == nil || *in.Last <= 0) {
-		return nil, gqlerr.BadUserInput("after", "first must be > 0 when after is set")
+		return nil, &ucerr.ValidationError{Field: "after", Message: "first must be > 0 when after is set"}
 	}
 
 	orderBy, dir, err := resolveCardgroupOrderBy(in.OrderBy, in.OrderDirection)
@@ -281,7 +281,7 @@ func (u *CardgroupUsecase) ListCardgroupsByOwnerConnection(
 	// well below 10k; revisit with a denormalised counter if the cap grows.
 	total, err := u.repo.CountByOwner(ctx, user.Sub, in.Search)
 	if err != nil {
-		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "usecase: count cardgroups by owner"))
+		return nil, eris.Wrap(err, "usecase: count cardgroups by owner")
 	}
 
 	// Request one extra row to detect whether another page exists. Trim
@@ -299,7 +299,7 @@ func (u *CardgroupUsecase) ListCardgroupsByOwnerConnection(
 		ctx, user.Sub, after, before, wantFirst, wantLast, orderBy, dir, in.Search,
 	)
 	if err != nil {
-		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "usecase: find cardgroup page by owner"))
+		return nil, eris.Wrap(err, "usecase: find cardgroup page by owner")
 	}
 
 	out := &CardgroupConnectionOutput{TotalCount: total}
@@ -353,7 +353,7 @@ func resolveCardgroupOrderBy(
 		case CardgroupOrderByName:
 			field = repository.CardgroupOrderByName
 		default:
-			return "", "", gqlerr.BadUserInput("orderBy", "invalid")
+			return "", "", &ucerr.ValidationError{Field: "orderBy", Message: "invalid"}
 		}
 	}
 	d := repository.SortDesc
@@ -364,7 +364,7 @@ func resolveCardgroupOrderBy(
 		case SortOrderDesc:
 			d = repository.SortDesc
 		default:
-			return "", "", gqlerr.BadUserInput("orderDirection", "invalid")
+			return "", "", &ucerr.ValidationError{Field: "orderDirection", Message: "invalid"}
 		}
 	}
 	return field, d, nil
@@ -375,7 +375,7 @@ func resolveCardgroupOrderBy(
 // neither is provided, matching the schema's documented default.
 func resolveCardgroupPageSize(first, last *int) (int, int, error) {
 	if first != nil && last != nil {
-		return 0, 0, gqlerr.BadUserInput("first", "specify either first or last, not both")
+		return 0, 0, &ucerr.ValidationError{Field: "first", Message: "specify either first or last, not both"}
 	}
 	if first == nil && last == nil {
 		return defaultPageSize, 0, nil
@@ -419,17 +419,17 @@ func (u *CardgroupUsecase) resolveCardgroupCursor(
 	}
 	id, err := cursor.Decode(*cursorStr)
 	if err != nil {
-		return nil, gqlerr.BadUserInput(field, "invalid cursor")
+		return nil, &ucerr.ValidationError{Field: field, Message: "invalid cursor"}
 	}
 	cg, err := u.repo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, gqlerr.BadUserInput(field, "cursor not found")
+			return nil, &ucerr.ValidationError{Field: field, Message: "cursor not found"}
 		}
-		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "usecase: hydrate cardgroup cursor"))
+		return nil, eris.Wrap(err, "usecase: hydrate cardgroup cursor")
 	}
 	if !cg.IsOwnedBy(ownerID) {
-		return nil, gqlerr.BadUserInput(field, "cursor not found")
+		return nil, &ucerr.ValidationError{Field: field, Message: "cursor not found"}
 	}
 
 	c := &repository.CardgroupCursor{ID: id}
@@ -446,13 +446,13 @@ func (u *CardgroupUsecase) resolveCardgroupCursor(
 		ua := cg.UpdatedAt
 		c.UpdatedAt = &ua
 	default:
-		return nil, gqlerr.Internal(ctx, eris.Errorf("usecase: cardgroup unhandled orderBy %q", orderBy))
+		return nil, eris.Errorf("usecase: cardgroup unhandled orderBy %q", orderBy)
 	}
 	return c, nil
 }
 
 // uuidV7 returns a new UUID v7 string, or an error if the OS entropy source
-// fails. The caller maps the error to gqlerr.Internal; the silent v4 fallback
+// fails. The caller wraps the error with eris; the silent v4 fallback
 // is removed because both v7 and v4 draw from the same entropy source.
 func uuidV7() (string, error) {
 	id, err := uuid.NewV7()

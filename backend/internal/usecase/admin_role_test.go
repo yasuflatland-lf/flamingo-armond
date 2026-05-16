@@ -176,7 +176,7 @@ func TestAdminRole_NonAdminForbidden(t *testing.T) {
 			uc, _ := buildAdminRoleUC(roles, authChk)
 
 			err := tc.call(uc)
-			assertGQLErr(t, err, "FORBIDDEN", "")
+			assertForbidden(t, err, "")
 
 			total := roles.findCalls + roles.createCalls + roles.updateCalls +
 				roles.deleteCalls + roles.listCalls
@@ -247,7 +247,7 @@ func TestAdminRole_Unauthenticated(t *testing.T) {
 			uc, _ := buildAdminRoleUC(roles, authChk)
 
 			err := tc.call(uc)
-			assertGQLErr(t, err, "UNAUTHENTICATED", "")
+			assertUnauthenticated(t, err)
 			if authChk.calls != 0 {
 				t.Fatalf("expected 0 IsAdmin calls for anonymous caller, got %d", authChk.calls)
 			}
@@ -292,7 +292,7 @@ func TestAdminRole_Create_DuplicateName(t *testing.T) {
 	uc, _ := buildAdminRoleUC(roles, authChk)
 
 	_, err := uc.Create(authedCtx("admin-1"), "moderator")
-	assertGQLErr(t, err, "BAD_USER_INPUT", "name")
+	assertValidationError(t, err, "name", "")
 }
 
 // TestAdminRole_Create_EmptyName rejects whitespace-only input before the
@@ -309,7 +309,7 @@ func TestAdminRole_Create_EmptyName(t *testing.T) {
 			uc, _ := buildAdminRoleUC(roles, authChk)
 
 			_, err := uc.Create(authedCtx("admin-1"), in)
-			assertGQLErr(t, err, "BAD_USER_INPUT", "name")
+			assertValidationError(t, err, "name", "")
 			if roles.createCalls != 0 {
 				t.Fatalf("expected no repo create on validation failure, got %d", roles.createCalls)
 			}
@@ -328,7 +328,7 @@ func TestAdminRole_Create_TooLong(t *testing.T) {
 
 	overMax := strings.Repeat("a", roleNameMax+1)
 	_, err := uc.Create(authedCtx("admin-1"), overMax)
-	assertGQLErr(t, err, "BAD_USER_INPUT", "name")
+	assertValidationError(t, err, "name", "")
 	if roles.createCalls != 0 {
 		t.Fatalf("expected no repo create on validation failure, got %d", roles.createCalls)
 	}
@@ -355,7 +355,7 @@ func TestAdminRole_Create_InvalidChars(t *testing.T) {
 			uc, _ := buildAdminRoleUC(roles, authChk)
 
 			_, err := uc.Create(authedCtx("admin-1"), in)
-			assertGQLErr(t, err, "BAD_USER_INPUT", "name")
+			assertValidationError(t, err, "name", "")
 			if roles.createCalls != 0 {
 				t.Fatalf("expected no repo create on validation failure, got %d", roles.createCalls)
 			}
@@ -373,7 +373,7 @@ func TestAdminRole_Create_ContextCanceled(t *testing.T) {
 	uc, _ := buildAdminRoleUC(roles, authChk)
 
 	_, err := uc.Create(authedCtx("admin-1"), "moderator")
-	assertGQLErr(t, err, "CANCELLED", "")
+	assertCancelled(t, err)
 }
 
 // TestAdminRole_Create_NormalizesBeforeUniqueCheck exercises the normalisation
@@ -443,7 +443,7 @@ func TestAdminRole_Create_DuplicateMatchesAfterNormalization(t *testing.T) {
 	uc, _ := buildAdminRoleUC(roles, authChk)
 
 	_, err := uc.Create(authedCtx("admin-1"), "Admin")
-	assertGQLErr(t, err, "BAD_USER_INPUT", "name")
+	assertValidationError(t, err, "name", "")
 	if roles.lastCreateName != "admin" {
 		t.Fatalf("repo create arg = %q, want %q (normalised before duplicate check)",
 			roles.lastCreateName, "admin")
@@ -514,7 +514,7 @@ func TestAdminRole_Update_RenameSystemRoleForbidden(t *testing.T) {
 
 			_, err := uc.Update(authedCtx("admin-1"), "r-x", "renamed")
 			if tc.want == "FORBIDDEN" {
-				assertGQLErr(t, err, "FORBIDDEN", "")
+				assertForbidden(t, err, "")
 				if roles.updateCalls != 0 {
 					t.Fatalf("expected 0 repo update calls on system-role guard, got %d",
 						roles.updateCalls)
@@ -542,7 +542,7 @@ func TestAdminRole_Update_NotFound(t *testing.T) {
 	uc, _ := buildAdminRoleUC(roles, authChk)
 
 	_, err := uc.Update(authedCtx("admin-1"), "missing", "moderator")
-	assertGQLErr(t, err, "BAD_USER_INPUT", "id")
+	assertValidationError(t, err, "id", "")
 	if roles.updateCalls != 0 {
 		t.Fatalf("expected 0 repo update calls, got %d", roles.updateCalls)
 	}
@@ -561,7 +561,7 @@ func TestAdminRole_Update_DuplicateOnRepo(t *testing.T) {
 	uc, _ := buildAdminRoleUC(roles, authChk)
 
 	_, err := uc.Update(authedCtx("admin-1"), "r-1", "reviewer")
-	assertGQLErr(t, err, "BAD_USER_INPUT", "name")
+	assertValidationError(t, err, "name", "")
 }
 
 // TestAdminRole_Update_EmptyName rejects whitespace-only input before the
@@ -575,7 +575,7 @@ func TestAdminRole_Update_EmptyName(t *testing.T) {
 	uc, _ := buildAdminRoleUC(roles, authChk)
 
 	_, err := uc.Update(authedCtx("admin-1"), "r-1", "   ")
-	assertGQLErr(t, err, "BAD_USER_INPUT", "name")
+	assertValidationError(t, err, "name", "")
 	if roles.findCalls != 0 || roles.updateCalls != 0 {
 		t.Fatalf("expected 0 repo calls on validation failure, got find=%d update=%d",
 			roles.findCalls, roles.updateCalls)
@@ -597,7 +597,7 @@ func TestAdminRole_Update_TOCTOUNotFound(t *testing.T) {
 	uc, _ := buildAdminRoleUC(roles, authChk)
 
 	_, err := uc.Update(authedCtx("admin-1"), "r-1", "reviewer")
-	assertGQLErr(t, err, "BAD_USER_INPUT", "id")
+	assertValidationError(t, err, "id", "")
 }
 
 // ---------------------------------------------------------------------------
@@ -656,7 +656,7 @@ func TestAdminRole_Delete_SystemRoleForbidden(t *testing.T) {
 
 			err := uc.Delete(authedCtx("admin-1"), "r-x")
 			if tc.want == "FORBIDDEN" {
-				assertGQLErr(t, err, "FORBIDDEN", "")
+				assertForbidden(t, err, "")
 				if roles.deleteCalls != 0 {
 					t.Fatalf("expected 0 repo delete calls on system-role guard, got %d",
 						roles.deleteCalls)
@@ -684,7 +684,7 @@ func TestAdminRole_Delete_NotFound(t *testing.T) {
 	uc, _ := buildAdminRoleUC(roles, authChk)
 
 	err := uc.Delete(authedCtx("admin-1"), "missing")
-	assertGQLErr(t, err, "BAD_USER_INPUT", "id")
+	assertValidationError(t, err, "id", "")
 	if roles.deleteCalls != 0 {
 		t.Fatalf("expected 0 repo delete calls, got %d", roles.deleteCalls)
 	}
@@ -705,7 +705,7 @@ func TestAdminRole_Delete_TOCTOUNotFound(t *testing.T) {
 	uc, _ := buildAdminRoleUC(roles, authChk)
 
 	err := uc.Delete(authedCtx("admin-1"), "r-1")
-	assertGQLErr(t, err, "BAD_USER_INPUT", "id")
+	assertValidationError(t, err, "id", "")
 }
 
 // TestAdminRole_Delete_RepoInternalError surfaces a generic repository error
@@ -722,7 +722,7 @@ func TestAdminRole_Delete_RepoInternalError(t *testing.T) {
 	uc, _ := buildAdminRoleUC(roles, authChk)
 
 	err := uc.Delete(authedCtx("admin-1"), "r-1")
-	assertGQLErr(t, err, "INTERNAL", "")
+	assertInternalChain(t, err, "usecase: admin role delete")
 }
 
 // ---------------------------------------------------------------------------
