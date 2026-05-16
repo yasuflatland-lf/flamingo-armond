@@ -11,10 +11,6 @@
 
 ![Production architecture](docs/images/architecture.png)
 
-**Live site:** Scan the QR code below to visit the deployed app.
-
-![Site QR code](docs/images/site_qrcode.png)
-
 ## Pre-conditions
 
 Production deployment uses three external services. Create accounts before running `make setup-prod` — free tiers cover everything this repo provisions:
