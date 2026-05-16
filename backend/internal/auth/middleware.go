@@ -16,7 +16,23 @@ import (
 
 const wwwAuthenticate = `Bearer realm="api"`
 
-// AuthMiddleware returns an error at construction if cfg is missing required fields,
+// AuthMiddleware returns an Echo middleware that validates JWT tokens issued by
+// Supabase against the provided JWKS endpoint.
+//
+// Authorization policy:
+//   - No Authorization header  -> passthrough (anonymous request).
+//   - Authorization header     -> validate; reject (401) on any failure.
+//
+// The passthrough behavior is load-bearing: the same /query endpoint serves
+// both anonymous (public homepage data) and authenticated requests. Per-field
+// authorization is enforced downstream in resolvers and usecases via
+// auth.UserFrom(ctx); a nil result there means "anonymous", a non-nil
+// result means "validated by this middleware".
+//
+// Tests: see middleware_test.go TestMiddleware_AnonymousPassthrough and
+// TestMiddleware_ValidJWT for the two main paths.
+//
+// Returns an error at construction if cfg is missing required fields,
 // because jwt.WithAudience("")/WithIssuer("") would silently match tokens with empty claims.
 func AuthMiddleware(kf keyfunc.Keyfunc, cfg Config) (echo.MiddlewareFunc, error) {
 	if err := cfg.Validate(); err != nil {
