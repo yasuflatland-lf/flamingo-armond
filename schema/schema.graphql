@@ -470,8 +470,7 @@ type CannotModifySystemRoleError implements UserError {
 
 """
 Result of `updateRole`. Either the updated role, or a typed
-CannotModifySystemRoleError describing the system-role guard. See
-docs/backend/error-wrapping/result-union-errors-as-data.md.
+CannotModifySystemRoleError describing the system-role guard.
 """
 union UpdateRoleResult = UpdateRoleSuccess | CannotModifySystemRoleError
 
@@ -532,8 +531,8 @@ extend type Mutation {
   """
   Rename a role. System roles are immutable — the call returns
   CannotModifySystemRoleError as a typed union variant in that case.
-  Validation failures (empty name, duplicate name) continue to surface as
-  InputValidationError via extensions.code = "BAD_USER_INPUT".
+  Validation failures (empty name, duplicate name) continue to surface
+  as a top-level GraphQL error with extensions.code = "BAD_USER_INPUT".
   """
   updateRole(id: ID!, name: String!): UpdateRoleResult!
   """Admin-only. Delete a role. The system role "admin" cannot be deleted (FORBIDDEN). Returns true on success."""

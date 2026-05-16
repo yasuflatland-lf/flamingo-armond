@@ -18,7 +18,7 @@ structure and reach the client as opaque `extensions.code` strings. Wrapping
 the return type in a union instead lets codegen produce typed variants the
 client can switch on safely.
 
-The lint runs in `.github/workflows/backend.yml` alongside the existing four
+The lint runs in `.github/workflows/backend.yml` alongside the existing
 error-handling gates (see [`.claude/rules/error-wrapping.md`](../../../.claude/rules/error-wrapping.md)).
 It is a stop-the-bleeding gate: existing mutations that predate the rule are
 frozen in an allowlist so the gate's introduction does not blast-radius across
@@ -69,7 +69,8 @@ The allowlist at `backend/cmd/schema-lint/allowlist.txt` follows the same
 philosophy as `rubocop --auto-gen-config` and `mypy --baseline`: existing
 violations are named and frozen at a known point; every new violation fails
 immediately. This lets the gate ship in `-mode=error` on day one without
-requiring a bulk promotion of all 17 pre-existing bare-return mutations.
+requiring a bulk promotion of the pre-existing bare-emit mutations frozen in
+the allowlist.
 
 Each promotion is one allowlist-line deletion paired with the full schema +
 usecase + resolver + frontend + regenerate change. Because promotion PRs touch
@@ -156,6 +157,6 @@ Never leave an unexplained allowlist entry.
 
 ## Back-links
 
-- [`result-union-errors-as-data.md`](result-union-errors-as-data.md) — pattern reference; `createCard` and `updateRole` are the canonical worked examples.
+- [`result-union-errors-as-data.md`](result-union-errors-as-data.md) — pattern reference; `createCard` is the canonical worked example; `updateRole` is a second precedent that follows the same shape.
 - [`.claude/rules/error-wrapping.md` § "Errors as data — detailed cases"](../../../.claude/rules/error-wrapping.md#errors-as-data--detailed-cases-on-demand) — rule layer this doc supports.
 - [`.claude/rules/scope-discipline.md`](../../../.claude/rules/scope-discipline.md) — allowlist-as-baseline rationale; per-mutation promotion as opportunistic follow-up.
