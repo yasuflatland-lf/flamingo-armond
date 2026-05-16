@@ -82,6 +82,21 @@ jobs:
             exit 1
           fi
 
+      - name: Warn on gqlerr imports inside usecase (will be hard error after #158)
+        run: |
+          if grep -rln 'gqlerr' internal/usecase --include='*.go' --exclude='*_test.go'; then
+            echo "::warning::gqlerr.* still referenced inside backend/internal/usecase. Migrate to *usecase.ValidationError / usecase.ErrUnauthenticated / *usecase.ForbiddenError. Tracking: #158"
+          fi
+
+      - name: Verify no hardcoded extensions.code literals outside gqlerr
+        run: |
+          if grep -rnE '"code"\s*:\s*"(UNAUTHENTICATED|BAD_USER_INPUT|FORBIDDEN|INTERNAL|CANCELLED)"' internal cmd graph --include='*.go' \
+              | grep -v 'internal/gqlerr/' \
+              | grep -v '_test.go'; then
+            echo "::error::Hardcoded extensions.code literal found outside gqlerr package. Use gqlerr.* helpers or gqlerr.FromUsecaseError instead."
+            exit 1
+          fi
+
       - name: Build
         run: go build ./...
 
