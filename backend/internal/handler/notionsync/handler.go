@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v5"
-	"github.com/rotisserie/eris"
 
 	"backend/internal/logging"
 	"backend/internal/notion"
@@ -90,7 +89,6 @@ func (h *Handler) handleError(c *echo.Context, err error) error {
 		logging.LogWarn(ctx, h.logger, "notion sync: parse error", err, remoteIP)
 		return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": "notion parse error"})
 	case errors.Is(err, usecase.ErrNotionSyncPersist):
-		err = eris.Wrap(err, "notion sync: persist failed")
 		logging.LogError(ctx, h.logger, "notion sync: persist failed", err, remoteIP)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "persist error"})
 	default:
