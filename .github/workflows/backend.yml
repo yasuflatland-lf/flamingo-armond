@@ -100,6 +100,14 @@ jobs:
             exit 1
           fi
 
+      - name: Schema-lint outcome-union enforcement
+        working-directory: backend
+        run: |
+          if ! go run ./cmd/schema-lint; then
+            echo "::error::See docs/backend/error-wrapping/outcome-union-enforcement.md for the promotion guide."
+            exit 1
+          fi
+
       - name: Build
         run: go build ./...
 
