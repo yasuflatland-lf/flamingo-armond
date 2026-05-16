@@ -18,6 +18,25 @@ The backend uses [`github.com/rotisserie/eris`](https://github.com/rotisserie/er
 
 Sentinels used today: `repository.ErrNotFound`, and domain-level sentinels such as `domain.ErrCardgroupNameRequired` / `domain.ErrCardgroupNameTooLong`. New sentinels are allowed when (a) callers need to branch on identity, and (b) a string-equality match is fragile. Keep sentinels as plain `errors.New` so `errors.Is` works without going through eris's chain walk.
 
+## Legacy primitives (resolver-only)
+
+`gqlerr.BadUserInput` / `Unauthenticated` / `NewForbidden` / `Internal` / `Cancelled` are wire-format constructors. They MUST be called only from:
+
+- The resolver layer (`backend/graph/resolver/`) — for resolver-internal errors such as auth pre-checks and DataLoader-nil guards.
+- `gqlerr.FromUsecaseError` (the single conversion site that translates usecase typed errors to the wire format).
+
+`backend/internal/usecase/` MUST NOT import `backend/internal/gqlerr`. New usecase code returns:
+
+- `ucerr.ErrUnauthenticated` (sentinel) for unauthenticated paths.
+- `&ucerr.ValidationError{Field, Message}` for field-level validation failures.
+- `&ucerr.ForbiddenError{Message}` for authorization failures.
+- `eris.Wrap(err, "usecase: <op>")` (or `eris.Errorf` / `eris.New`) for internal/chain errors.
+- `context.Canceled` / `context.DeadlineExceeded` passed through (no wrapping).
+
+The resolver wraps every usecase return error with `gqlerr.FromUsecaseError(ctx, err)` to translate to the wire form. Resolver-internal `gqlerr.*` calls remain unwrapped — they are already wire-format.
+
+CI enforces this boundary: `gqlerr` imports in `backend/internal/usecase/` (non-test files) cause a hard error in `.github/workflows/backend.yml`.
+
 ## Sentinels — detailed cases (on-demand)
 
 - [Sentinel layering: when to join with `errors.Join` and when to keep standalone](../../docs/backend/error-wrapping/sentinel-layering.md)
