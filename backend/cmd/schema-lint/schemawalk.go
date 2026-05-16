@@ -21,7 +21,9 @@ type MutationReturn struct {
 
 // SchemaWalk parses one or more GraphQL SDL files and returns one MutationReturn
 // per mutation field found on the Mutation type (including extend blocks).
-// If no Mutation type is defined, it returns an empty slice with no error.
+// If no Mutation type is defined, it returns an error: a schema with no
+// Mutation type is treated as degenerate (likely a truncated file or a wrong
+// -schema= flag) to prevent the lint from silently passing.
 func SchemaWalk(schemaPaths []string) ([]MutationReturn, error) {
 	sources := make([]*ast.Source, 0, len(schemaPaths))
 	for _, p := range schemaPaths {
@@ -39,7 +41,7 @@ func SchemaWalk(schemaPaths []string) ([]MutationReturn, error) {
 
 	mutation := schema.Mutation
 	if mutation == nil {
-		return nil, nil
+		return nil, eris.New("schemawalk: schema has no Mutation type (likely wrong schema path or truncated file)")
 	}
 
 	results := make([]MutationReturn, 0, len(mutation.Fields))

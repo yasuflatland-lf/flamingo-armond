@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -31,13 +32,13 @@ func TestClassify_SingleBareEmit_NoAllowlist_OneViolation(t *testing.T) {
 	resolver := ResolverWalkResult{
 		Mappings: []ResolverMapping{
 			{
-				MutationField:   "updateRole",
-				ResolverMethod:  "UpdateRole",
-				UsecaseSelector: "AdminRoleUC",
-				UsecaseMethod:   "Update",
+				MutationField:  "updateRole",
+				ResolverMethod: "UpdateRole",
+				UsecaseCalls: []UsecaseCall{
+					{Selector: "AdminRoleUC", Method: "Update"},
+				},
 			},
 		},
-		AdditionalCalls: map[string][]struct{ Selector, Method string }{},
 	}
 	usecase := []UsecaseMethod{
 		{ReceiverType: "*adminRoleUsecase", Method: "Update", EmitsTypedError: true},
@@ -74,13 +75,13 @@ func TestClassify_SingleBareEmit_InAllowlist_ZeroViolations(t *testing.T) {
 	resolver := ResolverWalkResult{
 		Mappings: []ResolverMapping{
 			{
-				MutationField:   "updateRole",
-				ResolverMethod:  "UpdateRole",
-				UsecaseSelector: "AdminRoleUC",
-				UsecaseMethod:   "Update",
+				MutationField:  "updateRole",
+				ResolverMethod: "UpdateRole",
+				UsecaseCalls: []UsecaseCall{
+					{Selector: "AdminRoleUC", Method: "Update"},
+				},
 			},
 		},
-		AdditionalCalls: map[string][]struct{ Selector, Method string }{},
 	}
 	usecase := []UsecaseMethod{
 		{ReceiverType: "*adminRoleUsecase", Method: "Update", EmitsTypedError: true},
@@ -107,13 +108,13 @@ func TestClassify_UnionReturn_ZeroViolations(t *testing.T) {
 	resolver := ResolverWalkResult{
 		Mappings: []ResolverMapping{
 			{
-				MutationField:   "createCard",
-				ResolverMethod:  "CreateCard",
-				UsecaseSelector: "CardUC",
-				UsecaseMethod:   "Create",
+				MutationField:  "createCard",
+				ResolverMethod: "CreateCard",
+				UsecaseCalls: []UsecaseCall{
+					{Selector: "CardUC", Method: "Create"},
+				},
 			},
 		},
-		AdditionalCalls: map[string][]struct{ Selector, Method string }{},
 	}
 	usecase := []UsecaseMethod{
 		{ReceiverType: "*cardUsecase", Method: "Create", EmitsTypedError: true},
@@ -140,13 +141,13 @@ func TestClassify_ListReturn_ZeroViolations(t *testing.T) {
 	resolver := ResolverWalkResult{
 		Mappings: []ResolverMapping{
 			{
-				MutationField:   "bulkCreateCards",
-				ResolverMethod:  "BulkCreateCards",
-				UsecaseSelector: "CardUC",
-				UsecaseMethod:   "BulkCreate",
+				MutationField:  "bulkCreateCards",
+				ResolverMethod: "BulkCreateCards",
+				UsecaseCalls: []UsecaseCall{
+					{Selector: "CardUC", Method: "BulkCreate"},
+				},
 			},
 		},
-		AdditionalCalls: map[string][]struct{ Selector, Method string }{},
 	}
 	usecase := []UsecaseMethod{
 		{ReceiverType: "*cardUsecase", Method: "BulkCreate", EmitsTypedError: true},
@@ -173,13 +174,13 @@ func TestClassify_ScalarReturn_ZeroViolations(t *testing.T) {
 	resolver := ResolverWalkResult{
 		Mappings: []ResolverMapping{
 			{
-				MutationField:   "deleteRole",
-				ResolverMethod:  "DeleteRole",
-				UsecaseSelector: "AdminRoleUC",
-				UsecaseMethod:   "Delete",
+				MutationField:  "deleteRole",
+				ResolverMethod: "DeleteRole",
+				UsecaseCalls: []UsecaseCall{
+					{Selector: "AdminRoleUC", Method: "Delete"},
+				},
 			},
 		},
-		AdditionalCalls: map[string][]struct{ Selector, Method string }{},
 	}
 	usecase := []UsecaseMethod{
 		{ReceiverType: "*adminRoleUsecase", Method: "Delete", EmitsTypedError: true},
@@ -206,13 +207,13 @@ func TestClassify_BareReturn_NoEmission_ZeroViolations(t *testing.T) {
 	resolver := ResolverWalkResult{
 		Mappings: []ResolverMapping{
 			{
-				MutationField:   "updateRole",
-				ResolverMethod:  "UpdateRole",
-				UsecaseSelector: "AdminRoleUC",
-				UsecaseMethod:   "Update",
+				MutationField:  "updateRole",
+				ResolverMethod: "UpdateRole",
+				UsecaseCalls: []UsecaseCall{
+					{Selector: "AdminRoleUC", Method: "Update"},
+				},
 			},
 		},
-		AdditionalCalls: map[string][]struct{ Selector, Method string }{},
 	}
 	usecase := []UsecaseMethod{
 		{ReceiverType: "*adminRoleUsecase", Method: "Update", EmitsTypedError: false},
@@ -237,8 +238,7 @@ func TestClassify_SchemaSideDrift_NoResolverMethod(t *testing.T) {
 		{Field: "updateRole", ReturnType: "Role!", IsBare: true},
 	}
 	resolver := ResolverWalkResult{
-		Mappings:        []ResolverMapping{}, // no matching resolver
-		AdditionalCalls: map[string][]struct{ Selector, Method string }{},
+		Mappings: []ResolverMapping{}, // no matching resolver
 	}
 	usecase := []UsecaseMethod{}
 	fieldMap := map[string]string{}
@@ -267,16 +267,16 @@ func TestClassify_ResolverSideDrift_NoMutationField(t *testing.T) {
 	resolver := ResolverWalkResult{
 		Mappings: []ResolverMapping{
 			{
-				MutationField:   "updateRole",
-				ResolverMethod:  "UpdateRole",
-				UsecaseSelector: "AdminRoleUC",
-				UsecaseMethod:   "Update",
+				MutationField:  "updateRole",
+				ResolverMethod: "UpdateRole",
+				UsecaseCalls: []UsecaseCall{
+					{Selector: "AdminRoleUC", Method: "Update"},
+				},
 			},
 		},
-		AdditionalCalls: map[string][]struct{ Selector, Method string }{},
 	}
 	usecase := []UsecaseMethod{}
-	fieldMap := map[string]string{}
+	fieldMap := map[string]string{"AdminRoleUC": "adminRoleUsecase"}
 	allowlist := makeAllowlist()
 
 	violations, drifts := Classify(schema, resolver, usecase, fieldMap, allowlist, noIfaceConfig())
@@ -305,15 +305,12 @@ func TestClassify_MultiCallResolver_EmissionORAggregation(t *testing.T) {
 	resolver := ResolverWalkResult{
 		Mappings: []ResolverMapping{
 			{
-				MutationField:   "handleSwipe",
-				ResolverMethod:  "HandleSwipe",
-				UsecaseSelector: "CardgroupUC",
-				UsecaseMethod:   "Get",
-			},
-		},
-		AdditionalCalls: map[string][]struct{ Selector, Method string }{
-			"HandleSwipe": {
-				{Selector: "CardUC", Method: "Create"},
+				MutationField:  "handleSwipe",
+				ResolverMethod: "HandleSwipe",
+				UsecaseCalls: []UsecaseCall{
+					{Selector: "CardgroupUC", Method: "Get"},
+					{Selector: "CardUC", Method: "Create"},
+				},
 			},
 		},
 	}
@@ -324,6 +321,50 @@ func TestClassify_MultiCallResolver_EmissionORAggregation(t *testing.T) {
 	fieldMap := map[string]string{
 		"CardgroupUC": "cardgroupUsecase",
 		"CardUC":      "cardUsecase",
+	}
+	allowlist := makeAllowlist()
+
+	violations, drifts := Classify(schema, resolver, usecase, fieldMap, allowlist, noIfaceConfig())
+
+	if len(drifts) != 0 {
+		t.Errorf("expected 0 drifts, got %d", len(drifts))
+	}
+	if len(violations) != 1 {
+		t.Fatalf("expected 1 violation from OR-aggregation, got %d: %v", len(violations), violations)
+	}
+	if violations[0].Mutation != "handleSwipe" {
+		t.Errorf("violation.Mutation = %q, want %q", violations[0].Mutation, "handleSwipe")
+	}
+}
+
+// TestClassify_MultiCallResolver_EmissionORAggregation_ReverseDirection asserts
+// the symmetric case: first call DOES emit, second call does NOT. The result
+// must still be a single violation, proving OR semantics are not order-dependent.
+func TestClassify_MultiCallResolver_EmissionORAggregation_ReverseDirection(t *testing.T) {
+	t.Parallel()
+
+	schema := []MutationReturn{
+		{Field: "handleSwipe", ReturnType: "Card!", IsBare: true},
+	}
+	resolver := ResolverWalkResult{
+		Mappings: []ResolverMapping{
+			{
+				MutationField:  "handleSwipe",
+				ResolverMethod: "HandleSwipe",
+				UsecaseCalls: []UsecaseCall{
+					{Selector: "CardUC", Method: "Create"},   // emits
+					{Selector: "CardgroupUC", Method: "Get"}, // does not emit
+				},
+			},
+		},
+	}
+	usecase := []UsecaseMethod{
+		{ReceiverType: "*cardUsecase", Method: "Create", EmitsTypedError: true},
+		{ReceiverType: "*cardgroupUsecase", Method: "Get", EmitsTypedError: false},
+	}
+	fieldMap := map[string]string{
+		"CardUC":      "cardUsecase",
+		"CardgroupUC": "cardgroupUsecase",
 	}
 	allowlist := makeAllowlist()
 
@@ -351,13 +392,13 @@ func TestClassify_InterfaceToImplResolution(t *testing.T) {
 	resolver := ResolverWalkResult{
 		Mappings: []ResolverMapping{
 			{
-				MutationField:   "updateRole",
-				ResolverMethod:  "UpdateRole",
-				UsecaseSelector: "AdminRoleUC",
-				UsecaseMethod:   "Update",
+				MutationField:  "updateRole",
+				ResolverMethod: "UpdateRole",
+				UsecaseCalls: []UsecaseCall{
+					{Selector: "AdminRoleUC", Method: "Update"},
+				},
 			},
 		},
-		AdditionalCalls: map[string][]struct{ Selector, Method string }{},
 	}
 	// LoadResolverFieldMap returns the interface name; impl differs.
 	fieldMap := map[string]string{
@@ -387,6 +428,89 @@ func TestClassify_InterfaceToImplResolution(t *testing.T) {
 	}
 }
 
+// TestClassify_UnresolvableSelector_EmitsDrift asserts that a resolver method
+// whose usecase selector cannot be resolved via the field map (and is also
+// not present in InterfaceToImpl) produces a classifier drift. This prevents
+// the silent failure mode where a new interface-typed Resolver field is
+// added but the hardcoded interfaceToImpl map is not extended.
+func TestClassify_UnresolvableSelector_EmitsDrift(t *testing.T) {
+	t.Parallel()
+
+	schema := []MutationReturn{
+		{Field: "frobnicate", ReturnType: "Role!", IsBare: true},
+	}
+	resolver := ResolverWalkResult{
+		Mappings: []ResolverMapping{
+			{
+				MutationField:  "frobnicate",
+				ResolverMethod: "Frobnicate",
+				UsecaseCalls: []UsecaseCall{
+					{Selector: "MysteryUC", Method: "DoIt"},
+				},
+			},
+		},
+	}
+	usecase := []UsecaseMethod{}
+	// Field map deliberately omits MysteryUC.
+	fieldMap := map[string]string{}
+	allowlist := makeAllowlist()
+
+	_, drifts := Classify(schema, resolver, usecase, fieldMap, allowlist, noIfaceConfig())
+
+	if len(drifts) == 0 {
+		t.Fatalf("expected at least one drift for unresolvable selector, got 0")
+	}
+	found := false
+	for _, d := range drifts {
+		if d.ResolverMethod == "Frobnicate" && strings.Contains(d.Description, "no corresponding usecase type found") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected a drift mentioning the unresolved selector; got drifts: %v", drifts)
+	}
+}
+
+// TestClassify_ResolvableSelectorButMissingMethod_NoDrift asserts that when
+// the selector resolves but the method does not match any UsecaseMethod entry
+// (e.g. the method does not exist on that receiver), the classifier does NOT
+// emit a drift for that case — that is a separate "method not in usecase scope"
+// concern, not the silent-disable failure the unresolvable-selector drift
+// guards against.
+func TestClassify_ResolvableSelectorButMissingMethod_NoDrift(t *testing.T) {
+	t.Parallel()
+
+	schema := []MutationReturn{
+		{Field: "updateRole", ReturnType: "Role!", IsBare: true},
+	}
+	resolver := ResolverWalkResult{
+		Mappings: []ResolverMapping{
+			{
+				MutationField:  "updateRole",
+				ResolverMethod: "UpdateRole",
+				UsecaseCalls: []UsecaseCall{
+					{Selector: "AdminRoleUC", Method: "MethodThatDoesNotExist"},
+				},
+			},
+		},
+	}
+	usecase := []UsecaseMethod{
+		// Different method name; the call's method is not represented.
+		{ReceiverType: "*adminRoleUsecase", Method: "Update", EmitsTypedError: true},
+	}
+	fieldMap := map[string]string{"AdminRoleUC": "adminRoleUsecase"}
+	allowlist := makeAllowlist()
+
+	_, drifts := Classify(schema, resolver, usecase, fieldMap, allowlist, noIfaceConfig())
+
+	for _, d := range drifts {
+		if d.ResolverMethod == "UpdateRole" && strings.Contains(d.Description, "no corresponding usecase type found") {
+			t.Errorf("did not expect an unresolvable-selector drift for a method-not-found case; got: %v", d)
+		}
+	}
+}
+
 func TestClassify_SortedOutput_Deterministic(t *testing.T) {
 	t.Parallel()
 
@@ -397,19 +521,20 @@ func TestClassify_SortedOutput_Deterministic(t *testing.T) {
 	resolver := ResolverWalkResult{
 		Mappings: []ResolverMapping{
 			{
-				MutationField:   "updateRole",
-				ResolverMethod:  "UpdateRole",
-				UsecaseSelector: "AdminRoleUC",
-				UsecaseMethod:   "Update",
+				MutationField:  "updateRole",
+				ResolverMethod: "UpdateRole",
+				UsecaseCalls: []UsecaseCall{
+					{Selector: "AdminRoleUC", Method: "Update"},
+				},
 			},
 			{
-				MutationField:   "createRole",
-				ResolverMethod:  "CreateRole",
-				UsecaseSelector: "AdminRoleUC",
-				UsecaseMethod:   "Create",
+				MutationField:  "createRole",
+				ResolverMethod: "CreateRole",
+				UsecaseCalls: []UsecaseCall{
+					{Selector: "AdminRoleUC", Method: "Create"},
+				},
 			},
 		},
-		AdditionalCalls: map[string][]struct{ Selector, Method string }{},
 	}
 	usecase := []UsecaseMethod{
 		{ReceiverType: "*adminRoleUsecase", Method: "Update", EmitsTypedError: true},
@@ -575,13 +700,13 @@ func TestAllowlistRotEntries_PromotedMutation_IsRotten(t *testing.T) {
 	resolver := ResolverWalkResult{
 		Mappings: []ResolverMapping{
 			{
-				MutationField:   "updateRole",
-				ResolverMethod:  "UpdateRole",
-				UsecaseSelector: "AdminRoleUC",
-				UsecaseMethod:   "Update",
+				MutationField:  "updateRole",
+				ResolverMethod: "UpdateRole",
+				UsecaseCalls: []UsecaseCall{
+					{Selector: "AdminRoleUC", Method: "Update"},
+				},
 			},
 		},
-		AdditionalCalls: map[string][]struct{ Selector, Method string }{},
 	}
 	usecase := []UsecaseMethod{
 		{ReceiverType: "*adminRoleUsecase", Method: "Update", EmitsTypedError: true},
@@ -606,13 +731,13 @@ func TestAllowlistRotEntries_StillViolating_NotRotten(t *testing.T) {
 	resolver := ResolverWalkResult{
 		Mappings: []ResolverMapping{
 			{
-				MutationField:   "updateRole",
-				ResolverMethod:  "UpdateRole",
-				UsecaseSelector: "AdminRoleUC",
-				UsecaseMethod:   "Update",
+				MutationField:  "updateRole",
+				ResolverMethod: "UpdateRole",
+				UsecaseCalls: []UsecaseCall{
+					{Selector: "AdminRoleUC", Method: "Update"},
+				},
 			},
 		},
-		AdditionalCalls: map[string][]struct{ Selector, Method string }{},
 	}
 	usecase := []UsecaseMethod{
 		{ReceiverType: "*adminRoleUsecase", Method: "Update", EmitsTypedError: true},
@@ -624,5 +749,107 @@ func TestAllowlistRotEntries_StillViolating_NotRotten(t *testing.T) {
 
 	if len(rotten) != 0 {
 		t.Errorf("expected no rotten entries, got %v", rotten)
+	}
+}
+
+// Test 2: AllowlistRotEntries branch coverage for missing-mutation branch.
+// The allowlist has "oldMutation" but the schema slice does NOT contain it.
+// AllowlistRotEntries must report "oldMutation" as a rot entry with no further
+// context required — the mutation has been removed from the schema entirely.
+func TestAllowlistRotEntries_MutationRemovedFromSchema_IsRotten(t *testing.T) {
+	t.Parallel()
+
+	schema := []MutationReturn{
+		// "oldMutation" is absent; only an unrelated mutation is present.
+		{Field: "keepMe", ReturnType: "Thing!", IsBare: true},
+	}
+	resolver := ResolverWalkResult{
+		Mappings: []ResolverMapping{
+			{
+				MutationField:  "keepMe",
+				ResolverMethod: "KeepMe",
+				UsecaseCalls:   nil,
+			},
+		},
+	}
+	usecase := []UsecaseMethod{}
+	fieldMap := map[string]string{}
+	allowlist := makeAllowlist("oldMutation")
+
+	rotten := AllowlistRotEntries(schema, resolver, usecase, fieldMap, allowlist, noIfaceConfig())
+
+	if len(rotten) != 1 {
+		t.Fatalf("expected 1 rotten entry, got %d: %v", len(rotten), rotten)
+	}
+	if rotten[0] != "oldMutation" {
+		t.Errorf("expected rotten entry %q, got %q", "oldMutation", rotten[0])
+	}
+}
+
+// Test 2: AllowlistRotEntries branch coverage for missing-resolver branch.
+// The allowlist has "mut"; schema has "mut" as a bare return; but the resolver
+// mapping slice contains no method whose camelCase name matches "mut".
+// AllowlistRotEntries must report "mut" as a rot entry.
+func TestAllowlistRotEntries_ResolverMethodRemoved_IsRotten(t *testing.T) {
+	t.Parallel()
+
+	schema := []MutationReturn{
+		{Field: "orphanedMut", ReturnType: "Role!", IsBare: true},
+	}
+	// Resolver has no mapping for "orphanedMut".
+	resolver := ResolverWalkResult{
+		Mappings: []ResolverMapping{},
+	}
+	usecase := []UsecaseMethod{
+		{ReceiverType: "*adminRoleUsecase", Method: "Update", EmitsTypedError: true},
+	}
+	fieldMap := map[string]string{"AdminRoleUC": "adminRoleUsecase"}
+	allowlist := makeAllowlist("orphanedMut")
+
+	rotten := AllowlistRotEntries(schema, resolver, usecase, fieldMap, allowlist, noIfaceConfig())
+
+	if len(rotten) != 1 {
+		t.Fatalf("expected 1 rotten entry, got %d: %v", len(rotten), rotten)
+	}
+	if rotten[0] != "orphanedMut" {
+		t.Errorf("expected rotten entry %q, got %q", "orphanedMut", rotten[0])
+	}
+}
+
+// Test 2: AllowlistRotEntries branch coverage for no-longer-emits branch.
+// The allowlist has "silentMut"; schema has "silentMut" as a bare return;
+// resolver matches; but the usecase method now has EmitsTypedError = false.
+// AllowlistRotEntries must report "silentMut" as a rot entry.
+func TestAllowlistRotEntries_UsecaseNoLongerEmits_IsRotten(t *testing.T) {
+	t.Parallel()
+
+	schema := []MutationReturn{
+		{Field: "silentMut", ReturnType: "Role!", IsBare: true},
+	}
+	resolver := ResolverWalkResult{
+		Mappings: []ResolverMapping{
+			{
+				MutationField:  "silentMut",
+				ResolverMethod: "SilentMut",
+				UsecaseCalls: []UsecaseCall{
+					{Selector: "AdminRoleUC", Method: "Update"},
+				},
+			},
+		},
+	}
+	// Usecase method now has EmitsTypedError = false.
+	usecase := []UsecaseMethod{
+		{ReceiverType: "*adminRoleUsecase", Method: "Update", EmitsTypedError: false},
+	}
+	fieldMap := map[string]string{"AdminRoleUC": "adminRoleUsecase"}
+	allowlist := makeAllowlist("silentMut")
+
+	rotten := AllowlistRotEntries(schema, resolver, usecase, fieldMap, allowlist, noIfaceConfig())
+
+	if len(rotten) != 1 {
+		t.Fatalf("expected 1 rotten entry, got %d: %v", len(rotten), rotten)
+	}
+	if rotten[0] != "silentMut" {
+		t.Errorf("expected rotten entry %q, got %q", "silentMut", rotten[0])
 	}
 }

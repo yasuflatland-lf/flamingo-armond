@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -203,6 +204,26 @@ func Classify(
 		}
 	}
 
+	// Drift detection — resolver method has a usecase selector whose
+	// resolver-struct field type is not resolvable (neither directly in the
+	// field-map nor via InterfaceToImpl). A new interface-typed Resolver field
+	// without a corresponding interfaceToImpl entry would silently disable
+	// emission detection otherwise.
+	for _, rm := range resolver.Mappings {
+		for _, c := range rm.UsecaseCalls {
+			if isSelectorResolvable(c.Selector, resolverFieldToUsecaseType, cfg.InterfaceToImpl) {
+				continue
+			}
+			drifts = append(drifts, Drift{
+				ResolverMethod: rm.ResolverMethod,
+				Description: fmt.Sprintf(
+					"classifier: resolver method '%s' has usecase selector 'r.%s.%s' but no corresponding usecase type found (add to interfaceToImpl map?)",
+					rm.ResolverMethod, c.Selector, c.Method,
+				),
+			})
+		}
+	}
+
 	// Violation detection — for each schema mutation, check if it is bare and emits.
 	for _, mr := range schema {
 		if !mr.IsBare {
@@ -214,20 +235,10 @@ func Classify(
 			continue
 		}
 
-		// Gather all usecase calls: the primary call plus any additional calls.
-		type call struct{ Selector, Method string }
-		var calls []call
-		if rm.UsecaseSelector != "" && rm.UsecaseMethod != "" {
-			calls = append(calls, call{rm.UsecaseSelector, rm.UsecaseMethod})
-		}
-		for _, extra := range resolver.AdditionalCalls[rm.ResolverMethod] {
-			calls = append(calls, call{extra.Selector, extra.Method})
-		}
-
 		// OR-aggregate emission: if any reachable usecase method emits, mark true.
 		emits := false
 		usecaseTarget := ""
-		for _, c := range calls {
+		for _, c := range rm.UsecaseCalls {
 			// Resolve the resolver field type.
 			fieldType, ok := resolverFieldToUsecaseType[c.Selector]
 			if !ok {
@@ -262,8 +273,8 @@ func Classify(
 			continue
 		}
 
-		if usecaseTarget == "" && len(calls) > 0 {
-			usecaseTarget = calls[0].Selector + "." + calls[0].Method
+		if usecaseTarget == "" && len(rm.UsecaseCalls) > 0 {
+			usecaseTarget = rm.UsecaseCalls[0].Selector + "." + rm.UsecaseCalls[0].Method
 		}
 
 		violations = append(violations, Violation{
@@ -300,6 +311,28 @@ func resolveImplType(typeName string, interfaceToImpl map[string]string) string 
 		return impl
 	}
 	return typeName
+}
+
+// isSelectorResolvable returns true when the resolver-struct field selector
+// is present in resolverFieldToUsecaseType. The selector resolves to a
+// type name; whether that type name eventually matches a concrete usecase
+// receiver is a separate concern handled by emission detection.
+func isSelectorResolvable(selector string, resolverFieldToUsecaseType, interfaceToImpl map[string]string) bool {
+	_, ok := resolverFieldToUsecaseType[selector]
+	if ok {
+		return true
+	}
+	// As a defensive fallback, if the selector is itself a known interface name
+	// in InterfaceToImpl, treat it as resolvable. In practice the selector is
+	// a field name (e.g. "AdminRoleUC"), not a type name, so this branch is
+	// rarely exercised — but it keeps the lint quiet when an operator adds an
+	// interfaceToImpl entry that happens to share a name with a field.
+	if interfaceToImpl != nil {
+		if _, ok := interfaceToImpl[selector]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // AllowlistRotEntries returns the subset of allowlist entries that no longer
@@ -360,18 +393,9 @@ func AllowlistRotEntries(
 			continue
 		}
 
-		// Check emission status.
-		type call struct{ Selector, Method string }
-		var calls []call
-		if rm.UsecaseSelector != "" && rm.UsecaseMethod != "" {
-			calls = append(calls, call{rm.UsecaseSelector, rm.UsecaseMethod})
-		}
-		for _, extra := range resolver.AdditionalCalls[rm.ResolverMethod] {
-			calls = append(calls, call{extra.Selector, extra.Method})
-		}
-
+		// Check emission status across every usecase call in the resolver method.
 		emits := false
-		for _, c := range calls {
+		for _, c := range rm.UsecaseCalls {
 			fieldType, ok := resolverFieldToUsecaseType[c.Selector]
 			if !ok {
 				continue

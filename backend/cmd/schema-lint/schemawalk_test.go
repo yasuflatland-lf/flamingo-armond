@@ -2,6 +2,7 @@ package main
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -11,10 +12,11 @@ func TestSchemaWalk(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		files   []string
-		want    []MutationReturn
-		wantErr bool
+		name        string
+		files       []string
+		want        []MutationReturn
+		wantErr     bool
+		wantErrSubs string
 	}{
 		{
 			name:  "bare object returns IsBare true",
@@ -57,6 +59,12 @@ func TestSchemaWalk(t *testing.T) {
 			files:   []string{filepath.Join("testdata", "schemawalk", "does-not-exist.graphql")},
 			wantErr: true,
 		},
+		{
+			name:        "schema with no Mutation type returns error",
+			files:       []string{filepath.Join("testdata", "schemawalk", "no-mutation.graphql")},
+			wantErr:     true,
+			wantErrSubs: "no Mutation type",
+		},
 	}
 
 	for _, tc := range tests {
@@ -66,6 +74,9 @@ func TestSchemaWalk(t *testing.T) {
 			if tc.wantErr {
 				if err == nil {
 					t.Fatal("SchemaWalk: expected error, got nil")
+				}
+				if tc.wantErrSubs != "" && !strings.Contains(err.Error(), tc.wantErrSubs) {
+					t.Errorf("SchemaWalk: error %q does not contain %q", err.Error(), tc.wantErrSubs)
 				}
 				return
 			}

@@ -5,6 +5,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -31,7 +32,18 @@ type UsecaseMethod struct {
 // UsecaseWalk parses every non-test *.go file in usecaseDir (non-recursive:
 // sub-packages such as ucerr/ are intentionally skipped) and returns one
 // UsecaseMethod per declared method.
+//
+// Returns an error when:
+//   - usecaseDir cannot be stat'd (missing, permission denied, etc.) — a
+//     missing directory silently disables enforcement otherwise, because
+//     parser.ParseDir returns (nil, nil) in that case.
+//   - usecaseDir contains no Go packages — likely a wrong path, since the
+//     real usecase directory always has at least one non-test .go file.
 func UsecaseWalk(usecaseDir string) ([]UsecaseMethod, error) {
+	if _, err := os.Stat(usecaseDir); err != nil {
+		return nil, eris.Wrap(err, "usecasewalk: usecase dir")
+	}
+
 	fset := token.NewFileSet()
 	// Parse only the immediate directory; do not recurse into sub-packages.
 	pkgs, err := parser.ParseDir(fset, usecaseDir, func(info fs.FileInfo) bool {
@@ -40,6 +52,9 @@ func UsecaseWalk(usecaseDir string) ([]UsecaseMethod, error) {
 	}, 0)
 	if err != nil {
 		return nil, eris.Wrapf(err, "usecasewalk: parse dir %s", usecaseDir)
+	}
+	if len(pkgs) == 0 {
+		return nil, eris.Errorf("usecasewalk: no Go packages found in %q (likely wrong dir path)", usecaseDir)
 	}
 
 	var results []UsecaseMethod

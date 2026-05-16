@@ -10,37 +10,32 @@ import (
 	"github.com/rotisserie/eris"
 )
 
-// ResolverMapping maps a single GraphQL mutation field to the usecase call
-// made in its resolver method.
+// UsecaseCall captures a single r.<Selector>.<Method>(...) call expression
+// inside a resolver method body.
+type UsecaseCall struct {
+	// Selector is the field name on the resolver struct, e.g. "AdminRoleUC".
+	Selector string
+	// Method is the method invoked on the usecase, e.g. "Update".
+	Method string
+}
+
+// ResolverMapping maps a single GraphQL mutation field to the usecase
+// call(s) made in its resolver method.
 type ResolverMapping struct {
 	// MutationField is the camelCase GraphQL field name, e.g. "updateRole".
 	MutationField string
 	// ResolverMethod is the PascalCase method name on *mutationResolver, e.g. "UpdateRole".
 	ResolverMethod string
-	// UsecaseSelector is the field name on the resolver struct, e.g. "AdminRoleUC".
-	// Empty when no usecase call was found in the method body.
-	UsecaseSelector string
-	// UsecaseMethod is the method invoked on the usecase, e.g. "Update".
-	// Empty when no usecase call was found in the method body.
-	UsecaseMethod string
-}
-
-// usecaseCall captures a single r.<Selector>.<Method> call expression.
-type usecaseCall struct {
-	Selector string
-	Method   string
+	// UsecaseCalls is every r.<Selector>.<Method>(...) call found in the
+	// resolver method body, in source order. len(UsecaseCalls) == 0 when the
+	// resolver method makes no usecase call at all.
+	UsecaseCalls []UsecaseCall
 }
 
 // ResolverWalkResult holds all mappings extracted from the resolver file.
 type ResolverWalkResult struct {
 	// Mappings contains one ResolverMapping per method on *mutationResolver.
-	// When a method has multiple usecase calls, the first call is reflected
-	// here; the rest appear in AdditionalCalls.
 	Mappings []ResolverMapping
-
-	// AdditionalCalls maps a ResolverMethod name to any usecase calls beyond
-	// the first. Only populated for methods with two or more calls.
-	AdditionalCalls map[string][]struct{ Selector, Method string }
 }
 
 // ResolverWalk parses the Go source file at resolverPath and extracts every
@@ -53,9 +48,7 @@ func ResolverWalk(resolverPath string) (ResolverWalkResult, error) {
 		return ResolverWalkResult{}, eris.Wrapf(err, "resolverwalk: parse %s", resolverPath)
 	}
 
-	result := ResolverWalkResult{
-		AdditionalCalls: make(map[string][]struct{ Selector, Method string }),
-	}
+	var result ResolverWalkResult
 
 	for _, decl := range f.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
@@ -69,22 +62,10 @@ func ResolverWalk(resolverPath string) (ResolverWalkResult, error) {
 		}
 
 		methodName := fn.Name.Name
-		calls := collectUsecaseCalls(fn.Body, recvName)
-
 		mapping := ResolverMapping{
 			MutationField:  toCamelCase(methodName),
 			ResolverMethod: methodName,
-		}
-		if len(calls) >= 1 {
-			mapping.UsecaseSelector = calls[0].Selector
-			mapping.UsecaseMethod = calls[0].Method
-		}
-		if len(calls) > 1 {
-			extra := make([]struct{ Selector, Method string }, 0, len(calls)-1)
-			for _, c := range calls[1:] {
-				extra = append(extra, struct{ Selector, Method string }{c.Selector, c.Method})
-			}
-			result.AdditionalCalls[methodName] = extra
+			UsecaseCalls:   collectUsecaseCalls(fn.Body, recvName),
 		}
 
 		result.Mappings = append(result.Mappings, mapping)
@@ -111,12 +92,13 @@ func extractReceiver(field *ast.Field) (varName, typeName string) {
 }
 
 // collectUsecaseCalls walks the function body and returns every call of the
-// form <recv>.<Selector>.<Method>(...), in source order.
-func collectUsecaseCalls(body *ast.BlockStmt, recvVarName string) []usecaseCall {
+// form <recv>.<Selector>.<Method>(...), in source order. Returns nil when the
+// body has no such call (so an empty slice is preserved as nil for cmp.Diff).
+func collectUsecaseCalls(body *ast.BlockStmt, recvVarName string) []UsecaseCall {
 	if body == nil {
 		return nil
 	}
-	var calls []usecaseCall
+	var calls []UsecaseCall
 	ast.Inspect(body, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
@@ -140,7 +122,7 @@ func collectUsecaseCalls(body *ast.BlockStmt, recvVarName string) []usecaseCall 
 		if !ok || recvIdent.Name != recvVarName {
 			return true
 		}
-		calls = append(calls, usecaseCall{
+		calls = append(calls, UsecaseCall{
 			Selector: inner.Sel.Name,
 			Method:   outer.Sel.Name,
 		})
