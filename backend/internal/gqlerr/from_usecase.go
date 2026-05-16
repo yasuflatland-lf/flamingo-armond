@@ -33,12 +33,10 @@ func FromUsecaseError(ctx context.Context, err error) error {
 	if errors.Is(err, ucerr.ErrUnauthenticated) {
 		return Unauthenticated()
 	}
-	var ve *ucerr.ValidationError
-	if errors.As(err, &ve) {
+	if ve, ok := errors.AsType[*ucerr.ValidationError](err); ok {
 		return BadUserInput(ve.Field, ve.Message)
 	}
-	var fe *ucerr.ForbiddenError
-	if errors.As(err, &fe) {
+	if fe, ok := errors.AsType[*ucerr.ForbiddenError](err); ok {
 		return NewForbidden(fe.Message)
 	}
 	return Internal(ctx, err)
