@@ -34,10 +34,7 @@ type Cardgroup struct {
 // IsOwnedBy reports whether the cardgroup belongs to the user identified by userID.
 // Empty userID always returns false so callers do not need a redundant nil/empty guard.
 func (c Cardgroup) IsOwnedBy(userID string) bool {
-	if userID == "" {
-		return false
-	}
-	return c.OwnerID == userID
+	return userID != "" && c.OwnerID == userID
 }
 
 // Validate enforces invariants on the cardgroup aggregate. The Postgres CHECK
