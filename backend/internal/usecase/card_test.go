@@ -693,9 +693,8 @@ func decodeJSONRecords(t *testing.T, data []byte) []map[string]any {
 
 // TestCardUsecase_Create_Duplicate verifies that the (cardgroup_id, front)
 // unique-index collision is surfaced via outcome.Duplicate as a typed value,
-// not as a gqlerror. The usecase now returns the existing card's identity as
-// data so the resolver can map it to the GraphQL `CardDuplicateFrontError`
-// union variant.
+// not as an error. The usecase returns the existing card's identity as
+// data so the resolver maps it to the GraphQL `CardDuplicateFrontError` union variant.
 func TestCardUsecase_Create_Duplicate(t *testing.T) {
 	t.Parallel()
 

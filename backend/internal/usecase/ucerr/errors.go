@@ -7,9 +7,8 @@ package ucerr
 import "errors"
 
 // ErrUnauthenticated signals an unauthenticated caller from a usecase method.
-// The resolver layer translates this into gqlerr.Unauthenticated() via
-// gqlerr.FromUsecaseError so the wire response carries
-// extensions.code = "UNAUTHENTICATED".
+// The resolver layer translates this via gqlerr.FromUsecaseError so the wire
+// response carries extensions.code = "UNAUTHENTICATED".
 var ErrUnauthenticated = errors.New("usecase: not authenticated")
 
 // ValidationError is the field-scoped, message-bearing validation failure
@@ -27,7 +26,8 @@ func (e *ValidationError) Error() string {
 }
 
 // ForbiddenError signals an authorized-but-not-permitted caller. The Message
-// is propagated to the FORBIDDEN gqlerror's user-facing message. Same
+// is propagated to the wire error's user-facing message field when
+// FromUsecaseError translates to extensions.code = "FORBIDDEN". Same
 // pointer-receiver discipline as ValidationError.
 type ForbiddenError struct {
 	Message string

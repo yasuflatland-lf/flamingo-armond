@@ -89,7 +89,7 @@ func (u *lastViewedCardgroupUsecase) Set(ctx context.Context, cardgroupID string
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, err
 		}
-		return nil, eris.Wrap(err, "usecase: set last viewed cardgroup: refetch")
+		return nil, eris.Wrap(err, "usecase: last viewed cardgroup: refetch own user row")
 	}
 	return user, nil
 }

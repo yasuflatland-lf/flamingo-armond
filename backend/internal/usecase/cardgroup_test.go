@@ -120,7 +120,10 @@ func (m *mockCardgroupRepository) CountByOwner(_ context.Context, ownerID string
 	return m.countResult, m.countErr
 }
 
-// --- helpers already defined in user_test.go (authedCtx, anonCtx, ptr, assertGQLErr) ---
+// --- helpers (authedCtx, anonCtx, ptr) are defined in user_test.go;
+// assertion helpers (assertUnauthenticated, assertValidationError,
+// assertForbidden, assertCancelled, assertInternalChain) live in
+// helpers_test.go. ---
 
 // cgAuthedCtx is a convenience wrapper for cardgroup tests.
 func cgAuthedCtx(sub string) context.Context {

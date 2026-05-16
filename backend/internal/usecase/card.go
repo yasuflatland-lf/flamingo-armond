@@ -109,8 +109,9 @@ type CreateCardInput struct {
 
 // CreateCardOutcome is the usecase-level result returned by Create. Exactly one
 // of Card or Duplicate is non-nil. The duplicate-front case is surfaced as a
-// typed value (not an `error`) so the resolver can map it to a GraphQL union
-// variant ("errors as data") instead of a top-level gqlerror.
+// typed value (not an `error`) so the resolver maps it to the
+// model.CardDuplicateFrontError union variant rather than placing it in the
+// errors array; model.CreateCardSuccess carries the happy-path result.
 type CreateCardOutcome struct {
 	// Card is the newly persisted card on the happy path. Non-nil iff Duplicate is nil.
 	Card *domain.Card
@@ -201,8 +202,8 @@ func (u *CardUsecase) Card(ctx context.Context, id string) (*domain.Card, error)
 // Create persists a new card and returns a CreateCardOutcome that signals the
 // duplicate-front case as data (via outcome.Duplicate) rather than as an error.
 // Real failures — unauthenticated caller, validation, infrastructure — are still
-// returned as the second return value so the resolver layer can convert them to
-// top-level gqlerrors.
+// returned as the second return value so the resolver can wrap them via
+// gqlerr.FromUsecaseError into the wire-format GraphQL error.
 func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCardOutcome, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {

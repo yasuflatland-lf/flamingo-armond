@@ -152,7 +152,7 @@ func TestLastViewedCardgroup_RefetchUserMissing_Internal(t *testing.T) {
 	uc := NewLastViewedCardgroupWithDeps(prefs, users)
 
 	_, err := uc.Set(authedCtx("u-1"), "cg-1")
-	assertInternalChain(t, err, "usecase: set last viewed cardgroup: refetch")
+	assertInternalChain(t, err, "usecase: last viewed cardgroup: refetch own user row")
 	if prefs.called != 1 {
 		t.Fatalf("UpsertLastViewedCardgroup must have been called once before the refetch failure; got %d", prefs.called)
 	}

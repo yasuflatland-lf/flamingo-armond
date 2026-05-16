@@ -346,9 +346,9 @@ func TestUpsertDictionary_ResolverMapsValidationErrorFrontBack(t *testing.T) {
 }
 
 // TestUpsertDictionary_ResolverPropagatesForbidden verifies that when the
-// DictionaryUsecase returns a FORBIDDEN gqlerror (e.g. non-admin caller), the
-// resolver propagates it unchanged and the GraphQL response carries
-// errors[0].extensions.code == "FORBIDDEN".
+// DictionaryUsecase returns *ucerr.ForbiddenError (e.g. non-admin caller),
+// the resolver wraps it via gqlerr.FromUsecaseError and the GraphQL
+// response carries errors[0].extensions.code == "FORBIDDEN".
 func TestUpsertDictionary_ResolverPropagatesForbidden(t *testing.T) {
 	t.Parallel()
 

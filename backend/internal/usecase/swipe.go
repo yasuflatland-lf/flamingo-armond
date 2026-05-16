@@ -149,10 +149,10 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 	var nextCards []*domain.Card
 	var now time.Time
 	if u.tx == nil {
-		return nil, eris.New("swipe usecase: transaction runner is not configured")
+		return nil, eris.New("usecase: swipe: transaction runner is not configured")
 	}
 	if u.userFSRSRepo == nil {
-		return nil, eris.New("swipe usecase: user card fsrs repository is not configured")
+		return nil, eris.New("usecase: swipe: user card fsrs repository is not configured")
 	}
 	err = u.tx(ctx, func(tx *gorm.DB) error {
 		card, err := u.cardRepo.FindByIDTx(ctx, tx, in.CardID)
@@ -204,7 +204,7 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 	}
 	recentSwipes, err := u.swipeRepo.ListRecentByUser(ctx, user.Sub, swipePerformanceSampleLimit)
 	if err != nil {
-		return nil, eris.Wrap(err, "swipe usecase: list recent swipes")
+		return nil, eris.Wrap(err, "usecase: swipe: list recent swipes")
 	}
 	metrics := service.ComputeMetrics(swipeRecordsByValue(recentSwipes), now)
 	return &SwipeOutput{
@@ -220,7 +220,7 @@ func (u *SwipeUsecase) authorizeCardgroup(ctx context.Context, cardgroupID, user
 		if errors.Is(err, repository.ErrNotFound) {
 			return &ucerr.ValidationError{Field: "cardgroupId", Message: "cardgroup not found"}
 		}
-		return eris.Wrap(err, "swipe usecase: find cardgroup")
+		return eris.Wrap(err, "usecase: swipe: find cardgroup")
 	}
 	if !cg.IsOwnedBy(userID) {
 		return ucerr.ErrUnauthenticated

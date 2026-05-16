@@ -50,7 +50,7 @@ func TestUserUsecase_Me(t *testing.T) {
 		ctx        context.Context
 		findResult *domain.User
 		findErr    error
-		wantErr    string // gqlerror extensions.code, empty = no error
+		wantErr    string // expected typed-error class: "UNAUTHENTICATED" | "INTERNAL" | "" (no error)
 		wantID     string
 	}{
 		{
@@ -94,7 +94,7 @@ func TestUserUsecase_Me(t *testing.T) {
 				case "UNAUTHENTICATED":
 					assertUnauthenticated(t, err)
 				case "INTERNAL":
-					assertInternalChain(t, err, "")
+					assertInternalChain(t, err, "usecase: Me: find user by ID")
 				default:
 					t.Fatalf("unhandled wantErr code %q in test", tc.wantErr)
 				}
@@ -131,7 +131,7 @@ func TestUserUsecase_UpdateUser(t *testing.T) {
 		input         UpdateUserInput
 		repoResult    *domain.User
 		repoErr       error
-		wantErrCode   string // non-empty = expect gqlerror with this code
+		wantErrCode   string // expected typed-error class: "UNAUTHENTICATED" | "BAD_USER_INPUT" | "INTERNAL" | "" (no error)
 		wantErrField  string // non-empty = check extensions.field
 		wantRepoName  *string
 		wantRepoBio   *string
@@ -275,7 +275,7 @@ func TestUserUsecase_UpdateUser(t *testing.T) {
 				case "BAD_USER_INPUT":
 					assertValidationError(t, err, tc.wantErrField, "")
 				case "INTERNAL":
-					assertInternalChain(t, err, "")
+					assertInternalChain(t, err, "usecase: UpdateUser: update user")
 				default:
 					t.Fatalf("unhandled wantErrCode %q in test", tc.wantErrCode)
 				}
