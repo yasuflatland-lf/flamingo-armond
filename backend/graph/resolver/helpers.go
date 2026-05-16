@@ -19,21 +19,15 @@ func toUserModel(user *domain.User) *model.User {
 	if user == nil {
 		return nil
 	}
-	out := &model.User{
+	// LastViewedCardgroup is intentionally left nil here. The
+	// userResolver.LastViewedCardgroup field resolver hydrates it lazily via
+	// UserPreferenceLoader + CardgroupLoader when the client selects the field.
+	return &model.User{
 		ID:          user.ID,
 		DisplayName: user.DisplayName,
 		Bio:         user.Bio,
 		AvatarURL:   user.AvatarURL,
 	}
-	// LastViewedCardgroup carries only the ID across the model boundary; the
-	// userResolver.LastViewedCardgroup field resolver hydrates the rest via the
-	// per-request Cardgroup DataLoader. Storing the ID this way avoids exposing
-	// a flat lastViewedCardgroupId field on the User type while still letting
-	// the resolver branch on a non-nil obj.LastViewedCardgroup.
-	if user.LastViewedCardgroupID != nil {
-		out.LastViewedCardgroup = &model.Cardgroup{ID: *user.LastViewedCardgroupID}
-	}
-	return out
 }
 
 // toCardgroupModel leaves Owner nil; cardgroupResolver.Owner populates it

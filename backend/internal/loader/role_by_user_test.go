@@ -88,6 +88,7 @@ func newLoadersForRoleByUser(roleRepo repository.RoleRepository) *loader.Loaders
 		roleRepo,
 		emptyCardgroupRepo(),
 		emptyCardRepo(),
+		emptyUserPreferenceRepo(),
 	)
 }
 

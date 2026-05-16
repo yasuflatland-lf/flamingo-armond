@@ -148,7 +148,7 @@ func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil), nil, nil, nil, nil, nil, ping.New(nil, "test-token"), nil, nil))
+	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil), nil, nil, nil, nil, nil, nil, ping.New(nil, "test-token"), nil, nil))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -560,7 +560,8 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10, userCardFSRSRepo)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
-	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil), userRepo, roleRepo, cardgroupRepo, cardRepo, userCardFSRSRepo, ping.New(pingRecordRepo, "test-token"), nil, swipeRecordRepo)
+	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
+	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil), userRepo, roleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo, ping.New(pingRecordRepo, "test-token"), nil, swipeRecordRepo)
 
 	ts := httptest.NewServer(e)
 	t.Cleanup(ts.Close)
@@ -605,12 +606,6 @@ func (c *countingUserRepo) ListPage(
 	search *string,
 ) ([]*domain.User, int64, error) {
 	return c.inner.ListPage(ctx, after, before, first, last, search)
-}
-
-// SetLastViewedCardgroup forwards to the inner repository so any future test
-// that exercises the last-viewed-cardgroup mutation keeps working.
-func (c *countingUserRepo) SetLastViewedCardgroup(ctx context.Context, userID, cardgroupID string) error {
-	return c.inner.SetLastViewedCardgroup(ctx, userID, cardgroupID)
 }
 
 // insertAuthUser inserts a row into auth.users so the handle_new_user trigger

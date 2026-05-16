@@ -47,12 +47,58 @@ func newLastViewedSrv(uc usecase.LastViewedCardgroupUsecase) *handler.Server {
 
 // ctxWithCardgroupLoader returns a context enriched with a loader.Loaders
 // whose Cardgroup loader is backed by an in-memory map. Used for tests that
-// resolve User.lastViewedCardgroup (which goes through the DataLoader).
+// exercise error branches on the Cardgroup loader but do not need a
+// UserPreference loader (the UserPreference field is left nil, meaning these
+// tests must also provide a UserPreference loader via ctxWithBothLoaders).
 //
 // The not-found case returns repository.ErrNotFound so the resolver can
 // branch on it and surface null instead of INTERNAL.
 func ctxWithCardgroupLoader(base context.Context, cgs map[string]*domain.Cardgroup) context.Context {
 	loaders := &loader.Loaders{
+		Cardgroup: dataloader.NewBatchedLoader(
+			func(ctx context.Context, keys []string) []*dataloader.Result[*domain.Cardgroup] {
+				out := make([]*dataloader.Result[*domain.Cardgroup], len(keys))
+				for i, k := range keys {
+					if cg, ok := cgs[k]; ok {
+						out[i] = &dataloader.Result[*domain.Cardgroup]{Data: cg}
+						continue
+					}
+					out[i] = &dataloader.Result[*domain.Cardgroup]{Error: repository.ErrNotFound}
+				}
+				return out
+			},
+		),
+	}
+	return loader.WithContext(base, loaders)
+}
+
+// ctxWithBothLoaders returns a context enriched with a loader.Loaders whose
+// UserPreference loader is backed by an in-memory map keyed by user_id and
+// whose Cardgroup loader is backed by an in-memory map keyed by cardgroup_id.
+// Use this helper whenever the test exercises the full two-step chain:
+// UserPreferenceLoader → CardgroupLoader.
+//
+// A missing user_id in prefs causes ErrNotFound; a missing cardgroup_id in cgs
+// causes ErrNotFound — matching the production loader behaviour.
+func ctxWithBothLoaders(
+	base context.Context,
+	prefs map[string]*domain.UserPreference,
+	cgs map[string]*domain.Cardgroup,
+) context.Context {
+	loaders := &loader.Loaders{
+		UserPreference: dataloader.NewBatchedLoader(
+			func(ctx context.Context, keys []string) []*dataloader.Result[*domain.UserPreference] {
+				out := make([]*dataloader.Result[*domain.UserPreference], len(keys))
+				for i, k := range keys {
+					if pref, ok := prefs[k]; ok {
+						out[i] = &dataloader.Result[*domain.UserPreference]{Data: pref}
+						continue
+					}
+					out[i] = &dataloader.Result[*domain.UserPreference]{Error: repository.ErrNotFound}
+				}
+				return out
+			},
+		),
 		Cardgroup: dataloader.NewBatchedLoader(
 			func(ctx context.Context, keys []string) []*dataloader.Result[*domain.Cardgroup] {
 				out := make([]*dataloader.Result[*domain.Cardgroup], len(keys))
@@ -81,9 +127,8 @@ const setLastViewedMutation = `{"query":"mutation { setLastViewedCardgroup(cardg
 func TestSetLastViewedCardgroup_HappyPath(t *testing.T) {
 	t.Parallel()
 
-	cgID := "cg-1"
 	mock := &mockLastViewedCardgroupUsecase{
-		setResult: &domain.User{ID: "u-1", LastViewedCardgroupID: &cgID},
+		setResult: &domain.User{ID: "u-1"},
 	}
 	srv := newLastViewedSrv(mock)
 	resp := gqlRequest(t, srv, authedCtx("u-1"), setLastViewedMutation)
@@ -148,27 +193,38 @@ func TestSetLastViewedCardgroup_Unauthenticated(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// User.lastViewedCardgroup field resolver tests
+// User.lastViewedCardgroup field resolver tests — §9.4 cases
 // ---------------------------------------------------------------------------
 
-// TestUserLastViewedCardgroup_NilFieldResolvesNull verifies that a user with
-// LastViewedCardgroupID == nil resolves the field as GraphQL null with no
-// DataLoader call. The me { lastViewedCardgroup { id } } query is convenient
-// here because Me is wired through UserUsecase.
-func TestUserLastViewedCardgroup_NilFieldResolvesNull(t *testing.T) {
-	t.Parallel()
-
-	dn := "Alice"
-	userMock := &mockUserRepository{
-		findResult: &domain.User{ID: "u-1", DisplayName: &dn}, // LastViewedCardgroupID nil
-	}
+// newMeServer builds a gqlgen handler.Server wired to the given UserUsecase
+// for testing User field resolvers via the me query.
+func newMeServer(userMock *mockUserRepository) *handler.Server {
 	uc := usecase.NewUserUsecase(userMock)
 	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
+	return srv
+}
 
-	// Empty cardgroup loader — the resolver must not invoke it.
-	ctx := ctxWithCardgroupLoader(authedCtx("u-1"), map[string]*domain.Cardgroup{})
+// TestUserLastViewedCardgroup_NoPreferenceRowReturnsNull verifies case §9.4-1:
+// when the UserPreference loader returns ErrNotFound (no preference row for
+// this user), the field resolver returns (nil, nil) — GraphQL null with no
+// error.
+func TestUserLastViewedCardgroup_NoPreferenceRowReturnsNull(t *testing.T) {
+	t.Parallel()
+
+	dn := "Alice"
+	userMock := &mockUserRepository{
+		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
+	}
+	srv := newMeServer(userMock)
+
+	// UserPreference loader has no entry for "u-1" → ErrNotFound path.
+	ctx := ctxWithBothLoaders(
+		authedCtx("u-1"),
+		map[string]*domain.UserPreference{}, // no row for u-1
+		map[string]*domain.Cardgroup{},
+	)
 	body := `{"query":"{ me { id lastViewedCardgroup { id } } }"}`
 	resp := gqlRequest(t, srv, ctx, body)
 
@@ -188,30 +244,64 @@ func TestUserLastViewedCardgroup_NilFieldResolvesNull(t *testing.T) {
 	}
 }
 
-// TestUserLastViewedCardgroup_PopulatedResolvesViaDataLoader verifies that a
-// user with a non-nil LastViewedCardgroupID resolves the field by calling
-// the Cardgroup DataLoader with that ID.
+// TestUserLastViewedCardgroup_NilCardgroupIDReturnsNull verifies case §9.4-2:
+// when the UserPreference loader returns a preference row whose
+// LastViewedCardgroupID is nil, the field resolver returns (nil, nil).
+func TestUserLastViewedCardgroup_NilCardgroupIDReturnsNull(t *testing.T) {
+	t.Parallel()
+
+	dn := "Alice"
+	userMock := &mockUserRepository{
+		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
+	}
+	srv := newMeServer(userMock)
+
+	// Preference row exists but LastViewedCardgroupID is nil.
+	prefs := map[string]*domain.UserPreference{
+		"u-1": {UserID: "u-1", LastViewedCardgroupID: nil},
+	}
+	ctx := ctxWithBothLoaders(authedCtx("u-1"), prefs, map[string]*domain.Cardgroup{})
+	body := `{"query":"{ me { id lastViewedCardgroup { id } } }"}`
+	resp := gqlRequest(t, srv, ctx, body)
+
+	if errs, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	data, _ := resp["data"].(map[string]any)
+	me, _ := data["me"].(map[string]any)
+	if me == nil {
+		t.Fatalf("expected data.me, got nil; response: %v", resp)
+	}
+	if _, exists := me["lastViewedCardgroup"]; !exists {
+		t.Fatalf("expected lastViewedCardgroup key (null), got absent; response: %v", resp)
+	}
+	if me["lastViewedCardgroup"] != nil {
+		t.Fatalf("expected lastViewedCardgroup == null when pref.LastViewedCardgroupID is nil, got %v",
+			me["lastViewedCardgroup"])
+	}
+}
+
+// TestUserLastViewedCardgroup_PopulatedResolvesViaDataLoader verifies case §9.4-3:
+// when both a preference row (with a non-nil cardgroup ID) and the cardgroup
+// itself are present, the field resolver returns the correctly hydrated
+// Cardgroup model.
 func TestUserLastViewedCardgroup_PopulatedResolvesViaDataLoader(t *testing.T) {
 	t.Parallel()
 
 	cgID := "cg-1"
 	dn := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{
-			ID:                    "u-1",
-			DisplayName:           &dn,
-			LastViewedCardgroupID: &cgID,
-		},
+		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
 	}
-	uc := usecase.NewUserUsecase(userMock)
-	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
-	srv.AddTransport(transport.POST{})
+	srv := newMeServer(userMock)
 
+	prefs := map[string]*domain.UserPreference{
+		"u-1": {UserID: "u-1", LastViewedCardgroupID: &cgID},
+	}
 	cgs := map[string]*domain.Cardgroup{
 		cgID: {ID: cgID, OwnerID: "u-1", Name: "My Group"},
 	}
-	ctx := ctxWithCardgroupLoader(authedCtx("u-1"), cgs)
+	ctx := ctxWithBothLoaders(authedCtx("u-1"), prefs, cgs)
 	body := `{"query":"{ me { id lastViewedCardgroup { id name } } }"}`
 	resp := gqlRequest(t, srv, ctx, body)
 
@@ -235,6 +325,43 @@ func TestUserLastViewedCardgroup_PopulatedResolvesViaDataLoader(t *testing.T) {
 	}
 }
 
+// TestUserLastViewedCardgroup_DanglingIDResolvesNull verifies case §9.4-4:
+// when the UserPreference loader returns a preference with a non-nil
+// LastViewedCardgroupID but CardgroupLoader.Load returns ErrNotFound (e.g.
+// ON DELETE SET NULL race between preference read and field resolution), the
+// resolver gracefully returns (nil, nil) — GraphQL null with no error.
+func TestUserLastViewedCardgroup_DanglingIDResolvesNull(t *testing.T) {
+	t.Parallel()
+
+	cgID := "cg-deleted"
+	dn := "Alice"
+	userMock := &mockUserRepository{
+		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
+	}
+	srv := newMeServer(userMock)
+
+	prefs := map[string]*domain.UserPreference{
+		"u-1": {UserID: "u-1", LastViewedCardgroupID: &cgID},
+	}
+	// Empty cardgroup map: cgID will resolve to ErrNotFound.
+	ctx := ctxWithBothLoaders(authedCtx("u-1"), prefs, map[string]*domain.Cardgroup{})
+	body := `{"query":"{ me { id lastViewedCardgroup { id } } }"}`
+	resp := gqlRequest(t, srv, ctx, body)
+
+	if errs, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors for dangling FK: %v", errs)
+	}
+	data, _ := resp["data"].(map[string]any)
+	me, _ := data["me"].(map[string]any)
+	if me == nil {
+		t.Fatalf("expected data.me, got nil; response: %v", resp)
+	}
+	if me["lastViewedCardgroup"] != nil {
+		t.Fatalf("expected lastViewedCardgroup == null on dangling FK, got %v",
+			me["lastViewedCardgroup"])
+	}
+}
+
 // ---------------------------------------------------------------------------
 // User.lastViewedCardgroup error-branch tests
 // ---------------------------------------------------------------------------
@@ -245,19 +372,11 @@ func TestUserLastViewedCardgroup_PopulatedResolvesViaDataLoader(t *testing.T) {
 func TestUserLastViewedCardgroup_LoadersNilReturnsInternal(t *testing.T) {
 	t.Parallel()
 
-	cgID := "cg-1"
 	dn := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{
-			ID:                    "u-1",
-			DisplayName:           &dn,
-			LastViewedCardgroupID: &cgID,
-		},
+		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
 	}
-	uc := usecase.NewUserUsecase(userMock)
-	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
-	srv.AddTransport(transport.POST{})
+	srv := newMeServer(userMock)
 
 	// Deliberately omit the loader installation so loader.For returns nil.
 	body := `{"query":"{ me { id lastViewedCardgroup { id } } }"}`
@@ -270,27 +389,29 @@ func TestUserLastViewedCardgroup_LoadersNilReturnsInternal(t *testing.T) {
 }
 
 // TestUserLastViewedCardgroup_ContextCancelledReturnsCancelled verifies that
-// when the DataLoader's BatchFn propagates context.Canceled, the resolver maps
-// it to gqlerr.Cancelled (extension code "CANCELLED") rather than INTERNAL.
+// when the UserPreference DataLoader's BatchFn propagates context.Canceled,
+// the resolver maps it to gqlerr.Cancelled (extension code "CANCELLED") rather
+// than INTERNAL.
 func TestUserLastViewedCardgroup_ContextCancelledReturnsCancelled(t *testing.T) {
 	t.Parallel()
 
-	cgID := "cg-1"
 	dn := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{
-			ID:                    "u-1",
-			DisplayName:           &dn,
-			LastViewedCardgroupID: &cgID,
-		},
+		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
 	}
-	uc := usecase.NewUserUsecase(userMock)
-	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
-	srv.AddTransport(transport.POST{})
+	srv := newMeServer(userMock)
 
-	// Install a Cardgroup loader whose BatchFn always returns context.Canceled.
+	// Install a UserPreference loader whose BatchFn always returns context.Canceled.
 	cancelledLoaders := &loader.Loaders{
+		UserPreference: dataloader.NewBatchedLoader(
+			func(ctx context.Context, keys []string) []*dataloader.Result[*domain.UserPreference] {
+				out := make([]*dataloader.Result[*domain.UserPreference], len(keys))
+				for i := range keys {
+					out[i] = &dataloader.Result[*domain.UserPreference]{Error: context.Canceled}
+				}
+				return out
+			},
+		),
 		Cardgroup: dataloader.NewBatchedLoader(
 			func(ctx context.Context, keys []string) []*dataloader.Result[*domain.Cardgroup] {
 				out := make([]*dataloader.Result[*domain.Cardgroup], len(keys))
@@ -313,26 +434,30 @@ func TestUserLastViewedCardgroup_ContextCancelledReturnsCancelled(t *testing.T) 
 }
 
 // TestUserLastViewedCardgroup_GenericLoaderErrorReturnsInternal verifies that
-// an arbitrary (non-sentinel) DataLoader error maps to gqlerr.Internal.
+// an arbitrary (non-sentinel) UserPreference DataLoader error maps to
+// gqlerr.Internal.
 func TestUserLastViewedCardgroup_GenericLoaderErrorReturnsInternal(t *testing.T) {
 	t.Parallel()
 
-	cgID := "cg-1"
 	dn := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{
-			ID:                    "u-1",
-			DisplayName:           &dn,
-			LastViewedCardgroupID: &cgID,
-		},
+		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
 	}
-	uc := usecase.NewUserUsecase(userMock)
-	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
-	srv.AddTransport(transport.POST{})
+	srv := newMeServer(userMock)
 
-	// Install a Cardgroup loader whose BatchFn always returns a generic error.
+	// Install a UserPreference loader whose BatchFn always returns a generic error.
 	errorLoaders := &loader.Loaders{
+		UserPreference: dataloader.NewBatchedLoader(
+			func(ctx context.Context, keys []string) []*dataloader.Result[*domain.UserPreference] {
+				out := make([]*dataloader.Result[*domain.UserPreference], len(keys))
+				for i := range keys {
+					out[i] = &dataloader.Result[*domain.UserPreference]{
+						Error: errBoom,
+					}
+				}
+				return out
+			},
+		),
 		Cardgroup: dataloader.NewBatchedLoader(
 			func(ctx context.Context, keys []string) []*dataloader.Result[*domain.Cardgroup] {
 				out := make([]*dataloader.Result[*domain.Cardgroup], len(keys))
@@ -358,43 +483,3 @@ func TestUserLastViewedCardgroup_GenericLoaderErrorReturnsInternal(t *testing.T)
 
 // errBoom is a package-level sentinel used by TestUserLastViewedCardgroup_GenericLoaderErrorReturnsInternal.
 var errBoom = errors.New("boom")
-
-// TestUserLastViewedCardgroup_DanglingIDResolvesNull verifies that when the
-// DataLoader returns ErrNotFound (e.g. ON DELETE SET NULL race between
-// model conversion and field resolution), the resolver gracefully renders
-// null rather than surfacing an error.
-func TestUserLastViewedCardgroup_DanglingIDResolvesNull(t *testing.T) {
-	t.Parallel()
-
-	cgID := "cg-deleted"
-	dn := "Alice"
-	userMock := &mockUserRepository{
-		findResult: &domain.User{
-			ID:                    "u-1",
-			DisplayName:           &dn,
-			LastViewedCardgroupID: &cgID, // points to a cardgroup the loader cannot find
-		},
-	}
-	uc := usecase.NewUserUsecase(userMock)
-	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
-	srv.AddTransport(transport.POST{})
-
-	// Empty loader: the cgID will resolve to repository.ErrNotFound.
-	ctx := ctxWithCardgroupLoader(authedCtx("u-1"), map[string]*domain.Cardgroup{})
-	body := `{"query":"{ me { id lastViewedCardgroup { id } } }"}`
-	resp := gqlRequest(t, srv, ctx, body)
-
-	if errs, hasErrs := resp["errors"]; hasErrs {
-		t.Fatalf("unexpected errors for dangling FK: %v", errs)
-	}
-	data, _ := resp["data"].(map[string]any)
-	me, _ := data["me"].(map[string]any)
-	if me == nil {
-		t.Fatalf("expected data.me, got nil; response: %v", resp)
-	}
-	if me["lastViewedCardgroup"] != nil {
-		t.Fatalf("expected lastViewedCardgroup == null on dangling FK, got %v",
-			me["lastViewedCardgroup"])
-	}
-}

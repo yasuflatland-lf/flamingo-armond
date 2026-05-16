@@ -489,15 +489,16 @@ func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Rol
 }
 
 // LastViewedCardgroup is the resolver for the lastViewedCardgroup field.
+// It hydrates the field via two DataLoaders: UserPreferenceLoader (batched by
+// user_id) then CardgroupLoader (batched by cardgroup_id), preventing N+1
+// queries across both layers.
 func (r *userResolver) LastViewedCardgroup(ctx context.Context, obj *model.User) (*model.Cardgroup, error) {
-	if obj.LastViewedCardgroup == nil || obj.LastViewedCardgroup.ID == "" {
-		return nil, nil
-	}
 	loaders := loader.For(ctx)
 	if loaders == nil {
 		return nil, gqlerr.Internal(ctx, eris.New("loader: middleware not installed for /query"))
 	}
-	cg, err := loaders.Cardgroup.Load(ctx, obj.LastViewedCardgroup.ID)()
+
+	pref, err := loaders.UserPreference.Load(ctx, obj.ID)()
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, nil
@@ -505,7 +506,21 @@ func (r *userResolver) LastViewedCardgroup(ctx context.Context, obj *model.User)
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, gqlerr.Cancelled(ctx, err)
 		}
-		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "resolver: user last viewed cardgroup"))
+		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "resolver: user preference"))
+	}
+	if pref == nil || pref.LastViewedCardgroupID == nil {
+		return nil, nil
+	}
+
+	cg, err := loaders.Cardgroup.Load(ctx, *pref.LastViewedCardgroupID)()
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, nil
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, gqlerr.Cancelled(ctx, err)
+		}
+		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "resolver: cardgroup"))
 	}
 	return toCardgroupModel(cg), nil
 }

@@ -78,7 +78,7 @@ func TestUserCardFSRSLoader_BatchesNCallsIntoOne(t *testing.T) {
 		ids[i] = fmt.Sprintf("card-%03d", i)
 	}
 	results, errs := loadAllUserCardFSRS(context.Background(), loader.NewWithUserCardFSRS(
-		emptyUserRepo(), emptyRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), nil, ucsRepo, viewerID,
+		emptyUserRepo(), emptyRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo(), nil, ucsRepo, viewerID,
 	), ids)
 
 	for i, err := range errs {
@@ -117,7 +117,7 @@ func TestUserCardFSRSLoader_MissingRowsReturnNilData(t *testing.T) {
 	}
 
 	results, errs := loadAllUserCardFSRS(context.Background(), loader.NewWithUserCardFSRS(
-		emptyUserRepo(), emptyRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), nil, ucsRepo, "user-1",
+		emptyUserRepo(), emptyRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo(), nil, ucsRepo, "user-1",
 	), []string{"present", "missing"})
 	if errs[0] != nil || results[0] == nil || results[0].CardID != "present" {
 		t.Fatalf("present: result=%+v err=%v", results[0], errs[0])
