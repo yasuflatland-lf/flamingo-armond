@@ -284,7 +284,11 @@ func (u *stubUsecase) Noop() {}
 		t.Fatalf("drift-only run -mode=error: want exit 1, got %d\nstdout: %s\nstderr: %s",
 			code, stdout.String(), stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "drift:") {
-		t.Errorf("stderr does not contain 'drift:' prefix:\n%s", stderr.String())
+	stderrStr := stderr.String()
+	if strings.Contains(stderrStr, "violation:") {
+		t.Errorf("expected drift-only stderr without 'violation:' prefix, got: %s", stderrStr)
+	}
+	if !strings.Contains(stderrStr, "drift:") {
+		t.Errorf("expected drift-only stderr to contain 'drift:' prefix, got: %s", stderrStr)
 	}
 }

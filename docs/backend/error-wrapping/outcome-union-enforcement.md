@@ -140,11 +140,11 @@ any real violation analysis runs.
 ### Adding a new `ucerr.*` constructor
 
 If a new constructor is added to `backend/internal/usecase/ucerr/` (e.g.
-`ucerr.NewConflictError`), extend `backend/cmd/schema-lint/usecasewalk.go`'s
-string-match list with the new constructor name and add a fixture test in
-`backend/cmd/schema-lint/testdata/` to cover the true and false cases. The
-fixture test runs without access to the project-wide source tree; keep it
-self-contained.
+`ucerr.NewConflictError`), extend the constructor switch in
+`methodEmitsTypedError` (`backend/cmd/schema-lint/usecasewalk.go`) with one
+new case and add a fixture test in `backend/cmd/schema-lint/testdata/` to cover
+the true and false cases. The fixture test runs without access to the
+project-wide source tree; keep it self-contained.
 
 ### False-positive recovery
 

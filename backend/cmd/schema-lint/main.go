@@ -28,13 +28,17 @@ import (
 	"os"
 )
 
-// interfaceToImpl is the hardcoded mapping from resolver-struct interface type
-// names to their concrete implementation type names.
+// interfaceToImpl maps each Resolver field whose type is a usecase
+// interface to the concrete impl type's lowercase identifier (the
+// receiver type used by methods on that impl). For example:
 //
-// Maintenance: when a new interface-based usecase is added to the Resolver
-// struct in backend/graph/resolver/resolver.go, add the corresponding
-// "InterfaceName" -> "implName" entry here. See the README for the
-// full maintenance guide.
+//	"AdminUserUsecase": "adminUserUsecase"
+//
+// The value must be the receiver-type identifier exactly as it appears
+// in the usecase impl files. Maintenance: add an entry for each new
+// interface-typed field added to Resolver.
+//
+// See backend/cmd/schema-lint/README.md § "Maintenance" for guidance.
 var interfaceToImpl = map[string]string{
 	"AdminUserUsecase":           "adminUserUsecase",
 	"AdminRoleUsecase":           "adminRoleUsecase",
