@@ -375,8 +375,8 @@ func TestUserPreferenceRepository_OnDeleteUser_CascadesPreferenceRow(t *testing.
 		t.Fatal("expected user_preferences row to exist before user deletion")
 	}
 
-	// Delete from auth.users; the trigger cascades to public.users, which then
-	// cascades to user_preferences via the ON DELETE CASCADE FK.
+	// Delete from auth.users; the ON DELETE CASCADE FK on public.users(id) removes
+	// the public.users row, which then cascades to user_preferences via its own ON DELETE CASCADE FK.
 	sqlDB := sqlDBHandle(t)
 	if _, err := sqlDB.ExecContext(ctx,
 		`DELETE FROM auth.users WHERE id = $1`, userID); err != nil {
