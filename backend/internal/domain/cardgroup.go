@@ -47,7 +47,7 @@ func (c Cardgroup) IsOwnedBy(userID string) bool {
 // Name (after trimming surrounding whitespace) must be 1-CardgroupNameMax
 // grapheme clusters. Returns ErrCardgroupNameRequired or ErrCardgroupNameTooLong
 // on violation so callers can match with errors.Is.
-func (c *Cardgroup) Validate() error {
+func (c Cardgroup) Validate() error {
 	name := strings.TrimSpace(c.Name)
 	n := uniseg.GraphemeClusterCount(name)
 	if n < 1 {
