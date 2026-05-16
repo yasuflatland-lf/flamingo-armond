@@ -11,7 +11,6 @@ import (
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
 	"backend/internal/gqlerr"
-	"backend/internal/usecase"
 	"backend/internal/usecase/ucerr"
 )
 
@@ -148,26 +147,23 @@ func TestFromUsecaseError(t *testing.T) {
 	}
 }
 
-func TestValidationErrorAliasIsTransparent(t *testing.T) {
-	// &usecase.ValidationError{} and &ucerr.ValidationError{} are the same
-	// type via Go alias. FromUsecaseError must classify either as
-	// BAD_USER_INPUT.
-	ve := &usecase.ValidationError{Field: "x", Message: "y"}
+func TestValidationErrorClassification(t *testing.T) {
+	// *ucerr.ValidationError must be classified as BAD_USER_INPUT by
+	// FromUsecaseError.
+	ve := &ucerr.ValidationError{Field: "x", Message: "y"}
 	silenceLogger(t)
 	out := gqlerr.FromUsecaseError(context.Background(), ve)
 	if !gqlerr.IsCode(out, gqlerr.CodeBadUserInput) {
-		t.Fatalf("expected BAD_USER_INPUT via usecase alias, got: %v", out)
+		t.Fatalf("expected BAD_USER_INPUT for ucerr.ValidationError, got: %v", out)
 	}
 }
 
-func TestErrUnauthenticatedReexportIsTransparent(t *testing.T) {
-	// usecase.ErrUnauthenticated is a var re-export of ucerr.ErrUnauthenticated.
-	// Both point at the same underlying error value, so errors.Is succeeds for
-	// either name. FromUsecaseError must classify a usecase-named sentinel as
-	// UNAUTHENTICATED.
+func TestErrUnauthenticatedClassification(t *testing.T) {
+	// ucerr.ErrUnauthenticated must be classified as UNAUTHENTICATED by
+	// FromUsecaseError.
 	silenceLogger(t)
-	out := gqlerr.FromUsecaseError(context.Background(), usecase.ErrUnauthenticated)
+	out := gqlerr.FromUsecaseError(context.Background(), ucerr.ErrUnauthenticated)
 	if !gqlerr.IsCode(out, gqlerr.CodeUnauthenticated) {
-		t.Fatalf("expected UNAUTHENTICATED via usecase re-export, got: %v", out)
+		t.Fatalf("expected UNAUTHENTICATED for ucerr.ErrUnauthenticated, got: %v", out)
 	}
 }
