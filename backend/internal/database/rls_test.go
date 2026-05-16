@@ -15,6 +15,7 @@ import (
 type rlsFixture struct {
 	userA     string
 	userB     string
+	userC     string // fresh user with no user_preferences row; used for INSERT-own tests
 	adminUser string
 	groupA    string
 	groupB    string
@@ -110,10 +111,12 @@ func TestRLSPolicies_AuthenticatedRole(t *testing.T) {
 		// SELECT-admin: admin can read any user's row.
 		assertCount(t, queryCountAs(t, ctx, authPool, fx.adminUser, `SELECT count(*) FROM public.user_preferences WHERE user_id = $1`, fx.userB), 1)
 
-		// INSERT-own: User A can insert a row for themselves.
-		assertRows(t, execOKAs(t, ctx, authPool, fx.userA, insertUserPreferencesSQL(), fx.userA), 1)
-		// INSERT-other denied: User A cannot insert a row with User B's user_id.
-		execDeniedAs(t, ctx, authPool, fx.userA, insertUserPreferencesSQL(), fx.userB)
+		// INSERT-own: User C (no pre-existing row) can insert a row for themselves.
+		// userA/userB already have rows from the fixture setup above, so we use userC
+		// to avoid the ON CONFLICT DO NOTHING returning 0 rows affected.
+		assertRows(t, execOKAs(t, ctx, authPool, fx.userC, insertUserPreferencesSQL(), fx.userC), 1)
+		// INSERT-other denied: User C cannot insert a row with User A's user_id.
+		execDeniedAs(t, ctx, authPool, fx.userC, insertUserPreferencesSQL(), fx.userA)
 
 		// UPDATE-own: User A can update their own row.
 		assertRows(t, execOKAs(t, ctx, authPool, fx.userA,
@@ -159,6 +162,7 @@ func createRLSFixture(t *testing.T, ctx context.Context, sqlDB *sql.DB) rlsFixtu
 	t.Helper()
 	userA := insertRLSAuthUser(t, ctx, sqlDB)
 	userB := insertRLSAuthUser(t, ctx, sqlDB)
+	userC := insertRLSAuthUser(t, ctx, sqlDB) // reserved for INSERT-own tests; no pre-inserted rows
 	adminUser := insertRLSAuthUser(t, ctx, sqlDB)
 
 	var adminRoleID string
@@ -195,6 +199,7 @@ func createRLSFixture(t *testing.T, ctx context.Context, sqlDB *sql.DB) rlsFixtu
 	return rlsFixture{
 		userA:     userA,
 		userB:     userB,
+		userC:     userC,
 		adminUser: adminUser,
 		groupA:    groupA,
 		groupB:    groupB,
