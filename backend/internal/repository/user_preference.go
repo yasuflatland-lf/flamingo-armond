@@ -16,16 +16,18 @@ import (
 // gormUserPreference is the row mapping for public.user_preferences.
 // Package-private so callers cannot bypass the domain conversion.
 type gormUserPreference struct {
-	UserID                string    `gorm:"column:user_id;primaryKey;type:uuid"`
-	LastViewedCardgroupID *string   `gorm:"column:last_viewed_cardgroup_id;type:uuid"`
-	UpdatedAt             time.Time `gorm:"column:updated_at;autoUpdateTime"`
+	UserID                string  `gorm:"column:user_id;primaryKey;type:uuid"`
+	LastViewedCardgroupID *string `gorm:"column:last_viewed_cardgroup_id;type:uuid"`
+	// All writes go through raw UPSERT with now(); no GORM auto-fill.
+	UpdatedAt time.Time `gorm:"column:updated_at"`
 }
 
 func (gormUserPreference) TableName() string { return "user_preferences" }
 
 // ErrCardgroupNotFound is returned when UpsertLastViewedCardgroup targets a
 // cardgroup that is missing OR not owned by the calling user. Joined with
-// ErrNotFound so legacy callers that match the general sentinel keep working.
+// ErrNotFound so generic 'not found' classifiers (logging, metrics) keep working
+// without learning the specific sentinel.
 //
 // Both "missing" and "not owned" collapse to the same sentinel deliberately:
 // surfacing distinct sentinels would let a caller distinguish the two cases

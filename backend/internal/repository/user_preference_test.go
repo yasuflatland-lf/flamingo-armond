@@ -338,3 +338,56 @@ func TestUserPreferenceRepository_FindByUserIDs_EmptyInput(t *testing.T) {
 		t.Fatalf("expected empty slice, got %d entries", len(prefs))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// FK ON DELETE SET NULL — cardgroup deletion
+// ---------------------------------------------------------------------------
+
+// TestUserPreferenceRepository_OnDeleteCardgroup_SetsNull verifies the FK
+// action declared in 20260516120000_extract_user_preferences.up.sql —
+// guards against accidental CASCADE.
+//
+// When a cardgroup referenced by user_preferences.last_viewed_cardgroup_id is
+// deleted, the DB must set that column to NULL (ON DELETE SET NULL) rather than
+// deleting the user_preferences row (ON DELETE CASCADE). A CASCADE would silently
+// destroy user preference data every time a cardgroup is removed.
+func TestUserPreferenceRepository_OnDeleteCardgroup_SetsNull(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	userID := insertAuthUser(t, ctx)
+	cgID := insertCardgroupForUser(t, ctx, userID, "fk-set-null-cg")
+
+	repo := repository.NewUserPreferenceRepository(testDB.GORM)
+	if err := repo.UpsertLastViewedCardgroup(ctx, userID, cgID); err != nil {
+		t.Fatalf("UpsertLastViewedCardgroup: %v", err)
+	}
+
+	// Confirm the row was written with the expected cardgroup ID before deletion.
+	if !prefRowExists(t, ctx, userID) {
+		t.Fatal("expected user_preferences row to exist before cardgroup deletion")
+	}
+
+	// Delete the cardgroup directly via SQL to trigger the FK ON DELETE action.
+	sqlDB := sqlDBHandle(t)
+	if _, err := sqlDB.ExecContext(ctx,
+		`DELETE FROM public.cardgroups WHERE id = $1`, cgID); err != nil {
+		t.Fatalf("delete cardgroup %q: %v", cgID, err)
+	}
+
+	// The user_preferences row must still exist — CASCADE would have removed it.
+	if !prefRowExists(t, ctx, userID) {
+		t.Fatal("user_preferences row was deleted after cardgroup deletion: FK is CASCADE, not SET NULL")
+	}
+
+	// last_viewed_cardgroup_id must now be NULL — that is the SET NULL action.
+	var lastViewedID *string
+	if err := sqlDB.QueryRowContext(ctx,
+		`SELECT last_viewed_cardgroup_id FROM public.user_preferences WHERE user_id = $1`, userID).
+		Scan(&lastViewedID); err != nil {
+		t.Fatalf("read last_viewed_cardgroup_id after cardgroup deletion: %v", err)
+	}
+	if lastViewedID != nil {
+		t.Fatalf("last_viewed_cardgroup_id = %q after cardgroup deletion, want NULL", *lastViewedID)
+	}
+}

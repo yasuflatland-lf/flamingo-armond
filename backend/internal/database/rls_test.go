@@ -99,6 +99,37 @@ func TestRLSPolicies_AuthenticatedRole(t *testing.T) {
 			fx.userB, fx.cardA, time.Now().UTC())
 	})
 
+	t.Run("user_preferences", func(t *testing.T) {
+		insertRLSUserPreferences(t, ctx, sqlDBForTest(t, db), fx.userA)
+		insertRLSUserPreferences(t, ctx, sqlDBForTest(t, db), fx.userB)
+
+		// SELECT-own: User A can read their own row.
+		assertCount(t, queryCountAs(t, ctx, authPool, fx.userA, `SELECT count(*) FROM public.user_preferences WHERE user_id = $1`, fx.userA), 1)
+		// SELECT-other denied: User A cannot read User B's row.
+		assertCount(t, queryCountAs(t, ctx, authPool, fx.userA, `SELECT count(*) FROM public.user_preferences WHERE user_id = $1`, fx.userB), 0)
+		// SELECT-admin: admin can read any user's row.
+		assertCount(t, queryCountAs(t, ctx, authPool, fx.adminUser, `SELECT count(*) FROM public.user_preferences WHERE user_id = $1`, fx.userB), 1)
+
+		// INSERT-own: User A can insert a row for themselves.
+		assertRows(t, execOKAs(t, ctx, authPool, fx.userA, insertUserPreferencesSQL(), fx.userA), 1)
+		// INSERT-other denied: User A cannot insert a row with User B's user_id.
+		execDeniedAs(t, ctx, authPool, fx.userA, insertUserPreferencesSQL(), fx.userB)
+
+		// UPDATE-own: User A can update their own row.
+		assertRows(t, execOKAs(t, ctx, authPool, fx.userA,
+			`UPDATE public.user_preferences SET updated_at = now() WHERE user_id = $1`, fx.userA), 1)
+		// UPDATE-other denied: User A cannot update User B's row (0 rows affected).
+		assertRows(t, execOKAs(t, ctx, authPool, fx.userA,
+			`UPDATE public.user_preferences SET updated_at = now() WHERE user_id = $1`, fx.userB), 0)
+
+		// DELETE-own: User A can delete their own row.
+		assertRows(t, execOKAs(t, ctx, authPool, fx.userA,
+			`DELETE FROM public.user_preferences WHERE user_id = $1`, fx.userA), 1)
+		// DELETE-other denied: User A cannot delete User B's row (0 rows affected).
+		assertRows(t, execOKAs(t, ctx, authPool, fx.userA,
+			`DELETE FROM public.user_preferences WHERE user_id = $1`, fx.userB), 0)
+	})
+
 	t.Run("roles", func(t *testing.T) {
 		assertCount(t, queryCountAs(t, ctx, authPool, fx.userA, `SELECT count(*) FROM public.roles WHERE name = 'admin'`), 1)
 		execDeniedAs(t, ctx, authPool, fx.userA,
@@ -361,5 +392,20 @@ func insertUserCardFSRSSQL() string {
         )
         VALUES ($1, $2, 0, $3, 2.5, 5.0, 0, 0, $3, 0, 0)
         ON CONFLICT (user_id, card_id) DO NOTHING
+    `
+}
+
+func insertRLSUserPreferences(t *testing.T, ctx context.Context, sqlDB *sql.DB, userID string) {
+	t.Helper()
+	if _, err := sqlDB.ExecContext(ctx, insertUserPreferencesSQL(), userID); err != nil {
+		t.Fatalf("insert user_preferences: %v", err)
+	}
+}
+
+func insertUserPreferencesSQL() string {
+	return `
+        INSERT INTO public.user_preferences (user_id)
+        VALUES ($1)
+        ON CONFLICT (user_id) DO NOTHING
     `
 }

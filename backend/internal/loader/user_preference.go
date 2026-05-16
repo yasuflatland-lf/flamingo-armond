@@ -48,9 +48,11 @@ func userPreferenceBatchFunc(repo userPreferenceReader) dataloader.BatchFunc[str
 			byUserID[p.UserID] = p
 		}
 
-		// Populate results in key order. A missing key means the user has no
-		// preference row yet; return nil data (not an error) so the resolver
-		// can treat absence as "all defaults".
+		// Populate results in key order. Missing keys return nil data with nil
+		// error — absence is a normal state ("no preference set yet"), not a
+		// fetch failure. The resolver branches on pref == nil instead of
+		// errors.Is(err, ErrNotFound). This intentionally differs from
+		// CardgroupLoader, which returns ErrNotFound for missing keys.
 		for i, k := range keys {
 			out[i] = &dataloader.Result[*domain.UserPreference]{Data: byUserID[k]}
 		}

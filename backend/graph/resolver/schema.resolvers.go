@@ -500,9 +500,6 @@ func (r *userResolver) LastViewedCardgroup(ctx context.Context, obj *model.User)
 
 	pref, err := loaders.UserPreference.Load(ctx, obj.ID)()
 	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return nil, nil
-		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return nil, gqlerr.Cancelled(ctx, err)
 		}

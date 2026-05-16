@@ -78,8 +78,10 @@ func ctxWithCardgroupLoader(base context.Context, cgs map[string]*domain.Cardgro
 // Use this helper whenever the test exercises the full two-step chain:
 // UserPreferenceLoader → CardgroupLoader.
 //
-// A missing user_id in prefs causes ErrNotFound; a missing cardgroup_id in cgs
-// causes ErrNotFound — matching the production loader behaviour.
+// A missing user_id in prefs returns nil data with nil error (matching
+// production loader behaviour — absence is a normal state, not an error).
+// A missing cardgroup_id in cgs returns ErrNotFound — matching the Cardgroup
+// loader's production behaviour, which differs from UserPreference intentionally.
 func ctxWithBothLoaders(
 	base context.Context,
 	prefs map[string]*domain.UserPreference,
@@ -94,7 +96,8 @@ func ctxWithBothLoaders(
 						out[i] = &dataloader.Result[*domain.UserPreference]{Data: pref}
 						continue
 					}
-					out[i] = &dataloader.Result[*domain.UserPreference]{Error: repository.ErrNotFound}
+					// Missing key: nil data + nil error, matching production loader.
+					out[i] = &dataloader.Result[*domain.UserPreference]{}
 				}
 				return out
 			},
@@ -193,7 +196,7 @@ func TestSetLastViewedCardgroup_Unauthenticated(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// User.lastViewedCardgroup field resolver tests — §9.4 cases
+// User.lastViewedCardgroup field resolver tests
 // ---------------------------------------------------------------------------
 
 // newMeServer builds a gqlgen handler.Server wired to the given UserUsecase
@@ -206,10 +209,10 @@ func newMeServer(userMock *mockUserRepository) *handler.Server {
 	return srv
 }
 
-// TestUserLastViewedCardgroup_NoPreferenceRowReturnsNull verifies case §9.4-1:
-// when the UserPreference loader returns ErrNotFound (no preference row for
-// this user), the field resolver returns (nil, nil) — GraphQL null with no
-// error.
+// TestUserLastViewedCardgroup_NoPreferenceRowReturnsNull verifies case: no
+// preference row → null. When the UserPreference loader returns nil data + nil
+// error (no preference row for this user), the field resolver returns (nil, nil)
+// — GraphQL null with no error.
 func TestUserLastViewedCardgroup_NoPreferenceRowReturnsNull(t *testing.T) {
 	t.Parallel()
 
@@ -244,9 +247,10 @@ func TestUserLastViewedCardgroup_NoPreferenceRowReturnsNull(t *testing.T) {
 	}
 }
 
-// TestUserLastViewedCardgroup_NilCardgroupIDReturnsNull verifies case §9.4-2:
-// when the UserPreference loader returns a preference row whose
-// LastViewedCardgroupID is nil, the field resolver returns (nil, nil).
+// TestUserLastViewedCardgroup_NilCardgroupIDReturnsNull verifies case: preference
+// row exists but LastViewedCardgroupID is nil → null. When the UserPreference
+// loader returns a preference row whose LastViewedCardgroupID is nil, the field
+// resolver returns (nil, nil).
 func TestUserLastViewedCardgroup_NilCardgroupIDReturnsNull(t *testing.T) {
 	t.Parallel()
 
@@ -281,10 +285,10 @@ func TestUserLastViewedCardgroup_NilCardgroupIDReturnsNull(t *testing.T) {
 	}
 }
 
-// TestUserLastViewedCardgroup_PopulatedResolvesViaDataLoader verifies case §9.4-3:
-// when both a preference row (with a non-nil cardgroup ID) and the cardgroup
-// itself are present, the field resolver returns the correctly hydrated
-// Cardgroup model.
+// TestUserLastViewedCardgroup_PopulatedResolvesViaDataLoader verifies case:
+// preference row with a non-nil cardgroup ID and the cardgroup present → hydrated
+// model. When both a preference row and the cardgroup itself are present, the
+// field resolver returns the correctly hydrated Cardgroup model.
 func TestUserLastViewedCardgroup_PopulatedResolvesViaDataLoader(t *testing.T) {
 	t.Parallel()
 
@@ -325,11 +329,11 @@ func TestUserLastViewedCardgroup_PopulatedResolvesViaDataLoader(t *testing.T) {
 	}
 }
 
-// TestUserLastViewedCardgroup_DanglingIDResolvesNull verifies case §9.4-4:
-// when the UserPreference loader returns a preference with a non-nil
-// LastViewedCardgroupID but CardgroupLoader.Load returns ErrNotFound (e.g.
-// ON DELETE SET NULL race between preference read and field resolution), the
-// resolver gracefully returns (nil, nil) — GraphQL null with no error.
+// TestUserLastViewedCardgroup_DanglingIDResolvesNull verifies case: dangling
+// cardgroup FK → null. When the UserPreference loader returns a preference with
+// a non-nil LastViewedCardgroupID but CardgroupLoader.Load returns ErrNotFound
+// (e.g. ON DELETE SET NULL race between preference read and field resolution),
+// the resolver gracefully returns (nil, nil) — GraphQL null with no error.
 func TestUserLastViewedCardgroup_DanglingIDResolvesNull(t *testing.T) {
 	t.Parallel()
 
