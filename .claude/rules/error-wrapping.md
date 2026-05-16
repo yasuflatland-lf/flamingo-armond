@@ -76,6 +76,7 @@ detection is grep-based today and pinned at single-file
 - [Shared-kernel sub-package for cycle-safe shared types (`usecase/ucerr`)](../../docs/backend/error-wrapping/alias-bridge-subpackage.md)
 - [Typed classifier field over string-prefix matching at conversion boundaries](../../docs/backend/error-wrapping/typed-classifier-over-string-prefix.md)
 - [Classifier check must run before any pipeline step that appends to the classified slice](../../docs/backend/error-wrapping/classifier-check-ordering-before-pipeline-mutation.md)
+- [Redundant tests after alias-bridge deletion: cross-check existing table cases before retaining](../../docs/backend/error-wrapping/redundant-tests-after-alias-bridge-deletion.md)
 
 ## Background
 

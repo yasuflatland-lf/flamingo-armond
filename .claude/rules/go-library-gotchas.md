@@ -57,6 +57,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Constructor panics are the right tool for "non-empty config requires non-nil deps"](../../docs/backend/library-gotchas/constructor-panics-for-non-empty-config.md)
 - [Constructor panics must cover argument-relationship invariants, not just nil checks](../../docs/backend/library-gotchas/constructor-relationship-invariant-panic.md)
 - [Variadic optional dep injection is an antipattern in constructors](../../docs/backend/library-gotchas/variadic-optional-dep-injection-antipattern.md)
+- [Docblock correction cascades — audit rule prose + bullet list on same edit](../../docs/backend/library-gotchas/constructor-docblock-cascade.md)
 - [Go `map` is a reference type — copy in the constructor when accepting one](../../docs/backend/library-gotchas/go-map-reference-copy-in-constructor.md)
 - [`json:",omitempty"` controls marshal output, never the decode path](../../docs/backend/library-gotchas/json-omitempty-marshal-only.md)
 - [Extending a JSON-marshaled struct: tag all fields, not just the new ones](../../docs/backend/library-gotchas/json-tag-asymmetry-on-struct-extension.md)

@@ -26,6 +26,23 @@ file boundaries:
 
 D lands last so the gate flips only after every site is converted.
 
+## Re-verify call-site count before sizing
+
+Before estimating migration cost in a plan, grep the production tree directly.
+Issue-body estimates are written at a point in time and become stale as prior
+work lands. The canonical check:
+
+    grep -rnE '<pattern>' backend/ --include='*.go' | grep -v '_test.go'
+
+This takes seconds and is the authoritative count. Do not trust an issue body's
+stated N-site figure without running the grep yourself.
+
+**Worked example (issue #160 / gqlerr decoupling).** The issue body for Option A
+cited a "151-site migration" cost. A scope-discovery grep returned zero
+production hits because issue #158 had already converted every site. The actual
+remaining work was ~50 lines. Acting on the stale estimate would have added
+~1000 unnecessary lines to the diff.
+
 ## Why test diff is exempt
 
 A migration that splits test rewrites away from their production code

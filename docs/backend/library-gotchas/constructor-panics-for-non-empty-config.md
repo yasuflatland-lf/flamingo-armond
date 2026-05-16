@@ -17,3 +17,15 @@ func NewSuperUserPromoter(emails map[string]struct{}, adminRoleID string,
 ```
 
 The pattern only applies to config-shaped constructors where one branch (here, the OFF branch) legitimately accepts zero values. Constructors whose contract is "always need these deps" should use a regular nil-check + return-error.
+
+## Asymmetric guards: panic only when the wire consequence is unrecoverable
+
+When applying panic guards to typed-error constructors, the decision to panic must trace back to the wire-format consequence of the missing value, not to a uniform "non-empty / non-nil" policy.
+
+`ucerr.NewValidationError(field, message string) *ValidationError` panics when `field == ""` because the struct is serialized to `extensions.field` in the GraphQL error response. An empty `field` value is unrenderable on the frontend — the client cannot attach the validation message to any input element. The missing value has no valid fallback at the consumer; panicking at construction forces the caller to supply a real field name.
+
+`ucerr.NewForbiddenError(message string) *ForbiddenError` does **not** panic when `message == ""` because the frontend has fallback copy for a forbidden state. An empty message degrades gracefully; it is not unrenderable.
+
+Both decisions trace to the same question: *can the downstream consumer recover from the zero value?* Panic when the answer is no; allow the zero value when the answer is yes.
+
+See also [`docs/backend/error-wrapping/pointer-receiver-for-errors-as.md`](../error-wrapping/pointer-receiver-for-errors-as.md) for the pointer-receiver discipline required by `errors.As` on these same typed-error structs.
