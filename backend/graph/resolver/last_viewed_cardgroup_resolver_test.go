@@ -18,10 +18,7 @@ import (
 	"backend/internal/usecase"
 )
 
-// ---------------------------------------------------------------------------
-// mockLastViewedCardgroupUsecase — stub for LastViewedCardgroupUsecase
-// ---------------------------------------------------------------------------
-
+// mockLastViewedCardgroupUsecase stubs LastViewedCardgroupUsecase.
 type mockLastViewedCardgroupUsecase struct {
 	setResult       *domain.User
 	setErr          error
@@ -35,9 +32,7 @@ func (m *mockLastViewedCardgroupUsecase) Set(_ context.Context, cardgroupID stri
 	return m.setResult, m.setErr
 }
 
-// newLastViewedSrv builds a gqlgen handler.Server backed by a mock
-// LastViewedCardgroupUsecase. Other usecase fields are nil — only the
-// last-viewed-cardgroup paths are exercised here.
+// newLastViewedSrv builds a gqlgen Server wired to uc; other usecase fields are nil.
 func newLastViewedSrv(uc usecase.LastViewedCardgroupUsecase) *handler.Server {
 	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, uc, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
@@ -45,16 +40,9 @@ func newLastViewedSrv(uc usecase.LastViewedCardgroupUsecase) *handler.Server {
 	return srv
 }
 
-// ctxWithBothLoaders returns a context enriched with a loader.Loaders whose
-// UserPreference loader is backed by an in-memory map keyed by user_id and
-// whose Cardgroup loader is backed by an in-memory map keyed by cardgroup_id.
-// Use this helper whenever the test exercises the full two-step chain:
-// UserPreferenceLoader → CardgroupLoader.
-//
-// A missing user_id in prefs returns nil data with nil error (matching
-// production loader behaviour — absence is a normal state, not an error).
-// A missing cardgroup_id in cgs returns ErrNotFound — matching the Cardgroup
-// loader's production behaviour, which differs from UserPreference intentionally.
+// ctxWithBothLoaders installs in-memory UserPreference and Cardgroup loaders.
+// A missing user_id returns nil data + nil error (absence is not an error).
+// A missing cardgroup_id returns ErrNotFound (matching production behaviour).
 func ctxWithBothLoaders(
 	base context.Context,
 	prefs map[string]*domain.UserPreference,
@@ -67,10 +55,9 @@ func ctxWithBothLoaders(
 				for i, k := range keys {
 					if pref, ok := prefs[k]; ok {
 						out[i] = &dataloader.Result[*domain.UserPreference]{Data: pref}
-						continue
+					} else {
+						out[i] = &dataloader.Result[*domain.UserPreference]{}
 					}
-					// Missing key: nil data + nil error, matching production loader.
-					out[i] = &dataloader.Result[*domain.UserPreference]{}
 				}
 				return out
 			},
@@ -81,9 +68,9 @@ func ctxWithBothLoaders(
 				for i, k := range keys {
 					if cg, ok := cgs[k]; ok {
 						out[i] = &dataloader.Result[*domain.Cardgroup]{Data: cg}
-						continue
+					} else {
+						out[i] = &dataloader.Result[*domain.Cardgroup]{Error: repository.ErrNotFound}
 					}
-					out[i] = &dataloader.Result[*domain.Cardgroup]{Error: repository.ErrNotFound}
 				}
 				return out
 			},
@@ -92,14 +79,8 @@ func ctxWithBothLoaders(
 	return loader.WithContext(base, loaders)
 }
 
-// ---------------------------------------------------------------------------
-// Mutation.setLastViewedCardgroup tests
-// ---------------------------------------------------------------------------
-
 const setLastViewedMutation = `{"query":"mutation { setLastViewedCardgroup(cardgroupId: \"cg-1\") { id } }"}`
 
-// TestSetLastViewedCardgroup_HappyPath verifies that the resolver returns the
-// usecase's user payload as model.User on success.
 func TestSetLastViewedCardgroup_HappyPath(t *testing.T) {
 	t.Parallel()
 
@@ -128,8 +109,6 @@ func TestSetLastViewedCardgroup_HappyPath(t *testing.T) {
 	}
 }
 
-// TestSetLastViewedCardgroup_BadUserInput verifies that BAD_USER_INPUT from
-// the usecase propagates to the caller with extensions.code and field set.
 func TestSetLastViewedCardgroup_BadUserInput(t *testing.T) {
 	t.Parallel()
 
@@ -151,8 +130,6 @@ func TestSetLastViewedCardgroup_BadUserInput(t *testing.T) {
 	}
 }
 
-// TestSetLastViewedCardgroup_Unauthenticated verifies that an anonymous
-// caller receives UNAUTHENTICATED from the usecase via the resolver.
 func TestSetLastViewedCardgroup_Unauthenticated(t *testing.T) {
 	t.Parallel()
 
@@ -168,12 +145,8 @@ func TestSetLastViewedCardgroup_Unauthenticated(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// User.lastViewedCardgroup field resolver tests
-// ---------------------------------------------------------------------------
-
-// newMeServer builds a gqlgen handler.Server wired to the given UserUsecase
-// for testing User field resolvers via the me query.
+// newMeServer builds a gqlgen Server wired to UserUsecase for testing User
+// field resolvers via the me query.
 func newMeServer(userMock *mockUserRepository) *handler.Server {
 	uc := usecase.NewUserUsecase(userMock)
 	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
@@ -182,10 +155,8 @@ func newMeServer(userMock *mockUserRepository) *handler.Server {
 	return srv
 }
 
-// TestUserLastViewedCardgroup_NoPreferenceRowReturnsNull verifies case: no
-// preference row → null. When the UserPreference loader returns nil data + nil
-// error (no preference row for this user), the field resolver returns (nil, nil)
-// — GraphQL null with no error.
+// TestUserLastViewedCardgroup_NoPreferenceRowReturnsNull verifies that no
+// preference row (nil data, nil error from the loader) resolves to GraphQL null.
 func TestUserLastViewedCardgroup_NoPreferenceRowReturnsNull(t *testing.T) {
 	t.Parallel()
 
@@ -220,10 +191,8 @@ func TestUserLastViewedCardgroup_NoPreferenceRowReturnsNull(t *testing.T) {
 	}
 }
 
-// TestUserLastViewedCardgroup_NilCardgroupIDReturnsNull verifies case: preference
-// row exists but LastViewedCardgroupID is nil → null. When the UserPreference
-// loader returns a preference row whose LastViewedCardgroupID is nil, the field
-// resolver returns (nil, nil).
+// TestUserLastViewedCardgroup_NilCardgroupIDReturnsNull verifies that a
+// preference row with nil LastViewedCardgroupID resolves to GraphQL null.
 func TestUserLastViewedCardgroup_NilCardgroupIDReturnsNull(t *testing.T) {
 	t.Parallel()
 
@@ -258,10 +227,8 @@ func TestUserLastViewedCardgroup_NilCardgroupIDReturnsNull(t *testing.T) {
 	}
 }
 
-// TestUserLastViewedCardgroup_PopulatedResolvesViaDataLoader verifies case:
-// preference row with a non-nil cardgroup ID and the cardgroup present → hydrated
-// model. When both a preference row and the cardgroup itself are present, the
-// field resolver returns the correctly hydrated Cardgroup model.
+// TestUserLastViewedCardgroup_PopulatedResolvesViaDataLoader verifies that a
+// non-nil LastViewedCardgroupID with the cardgroup present returns the hydrated model.
 func TestUserLastViewedCardgroup_PopulatedResolvesViaDataLoader(t *testing.T) {
 	t.Parallel()
 
@@ -302,11 +269,9 @@ func TestUserLastViewedCardgroup_PopulatedResolvesViaDataLoader(t *testing.T) {
 	}
 }
 
-// TestUserLastViewedCardgroup_DanglingIDResolvesNull verifies case: dangling
-// cardgroup FK → null. When the UserPreference loader returns a preference with
-// a non-nil LastViewedCardgroupID but CardgroupLoader.Load returns ErrNotFound
-// (e.g. ON DELETE SET NULL race between preference read and field resolution),
-// the resolver gracefully returns (nil, nil) — GraphQL null with no error.
+// TestUserLastViewedCardgroup_DanglingIDResolvesNull verifies that a non-nil
+// LastViewedCardgroupID whose cardgroup no longer exists (ErrNotFound from loader)
+// resolves to GraphQL null with no error.
 func TestUserLastViewedCardgroup_DanglingIDResolvesNull(t *testing.T) {
 	t.Parallel()
 
@@ -320,7 +285,6 @@ func TestUserLastViewedCardgroup_DanglingIDResolvesNull(t *testing.T) {
 	prefs := map[string]*domain.UserPreference{
 		"u-1": {UserID: "u-1", LastViewedCardgroupID: &cgID},
 	}
-	// Empty cardgroup map: cgID will resolve to ErrNotFound.
 	ctx := ctxWithBothLoaders(authedCtx("u-1"), prefs, map[string]*domain.Cardgroup{})
 	body := `{"query":"{ me { id lastViewedCardgroup { id } } }"}`
 	resp := gqlRequest(t, srv, ctx, body)
@@ -339,13 +303,9 @@ func TestUserLastViewedCardgroup_DanglingIDResolvesNull(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// User.lastViewedCardgroup error-branch tests
-// ---------------------------------------------------------------------------
-
 // TestUserLastViewedCardgroup_LoadersNilReturnsInternal verifies that when the
-// DataLoader middleware was not installed (loader.For returns nil), the resolver
-// returns a GraphQL INTERNAL error rather than panicking or returning null.
+// DataLoader middleware is absent (loader.For returns nil), the resolver returns
+// INTERNAL rather than panicking.
 func TestUserLastViewedCardgroup_LoadersNilReturnsInternal(t *testing.T) {
 	t.Parallel()
 
@@ -355,7 +315,6 @@ func TestUserLastViewedCardgroup_LoadersNilReturnsInternal(t *testing.T) {
 	}
 	srv := newMeServer(userMock)
 
-	// Deliberately omit the loader installation so loader.For returns nil.
 	body := `{"query":"{ me { id lastViewedCardgroup { id } } }"}`
 	resp := gqlRequest(t, srv, authedCtx("u-1"), body)
 
@@ -366,9 +325,7 @@ func TestUserLastViewedCardgroup_LoadersNilReturnsInternal(t *testing.T) {
 }
 
 // TestUserLastViewedCardgroup_ContextCancelledReturnsCancelled verifies that
-// when the UserPreference DataLoader's BatchFn propagates context.Canceled,
-// the resolver maps it to gqlerr.Cancelled (extension code "CANCELLED") rather
-// than INTERNAL.
+// context.Canceled from the UserPreference loader maps to CANCELLED, not INTERNAL.
 func TestUserLastViewedCardgroup_ContextCancelledReturnsCancelled(t *testing.T) {
 	t.Parallel()
 
@@ -378,7 +335,6 @@ func TestUserLastViewedCardgroup_ContextCancelledReturnsCancelled(t *testing.T) 
 	}
 	srv := newMeServer(userMock)
 
-	// Install a UserPreference loader whose BatchFn always returns context.Canceled.
 	cancelledLoaders := &loader.Loaders{
 		UserPreference: dataloader.NewBatchedLoader(
 			func(ctx context.Context, keys []string) []*dataloader.Result[*domain.UserPreference] {
@@ -411,8 +367,7 @@ func TestUserLastViewedCardgroup_ContextCancelledReturnsCancelled(t *testing.T) 
 }
 
 // TestUserLastViewedCardgroup_GenericLoaderErrorReturnsInternal verifies that
-// an arbitrary (non-sentinel) UserPreference DataLoader error maps to
-// gqlerr.Internal.
+// a non-sentinel UserPreference loader error maps to INTERNAL.
 func TestUserLastViewedCardgroup_GenericLoaderErrorReturnsInternal(t *testing.T) {
 	t.Parallel()
 
@@ -422,7 +377,6 @@ func TestUserLastViewedCardgroup_GenericLoaderErrorReturnsInternal(t *testing.T)
 	}
 	srv := newMeServer(userMock)
 
-	// Install a UserPreference loader whose BatchFn always returns a generic error.
 	errorLoaders := &loader.Loaders{
 		UserPreference: dataloader.NewBatchedLoader(
 			func(ctx context.Context, keys []string) []*dataloader.Result[*domain.UserPreference] {
@@ -458,5 +412,4 @@ func TestUserLastViewedCardgroup_GenericLoaderErrorReturnsInternal(t *testing.T)
 	}
 }
 
-// errBoom is a package-level sentinel used by TestUserLastViewedCardgroup_GenericLoaderErrorReturnsInternal.
 var errBoom = errors.New("boom")

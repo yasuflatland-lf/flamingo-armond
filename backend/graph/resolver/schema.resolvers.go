@@ -488,10 +488,9 @@ func (r *userResolver) Roles(ctx context.Context, obj *model.User) ([]*model.Rol
 	return toRoleModels(ctx, roles), nil
 }
 
-// LastViewedCardgroup is the resolver for the lastViewedCardgroup field.
-// It hydrates the field via two DataLoaders: UserPreferenceLoader (batched by
-// user_id) then CardgroupLoader (batched by cardgroup_id), preventing N+1
-// queries across both layers.
+// LastViewedCardgroup hydrates via two DataLoaders: UserPreferenceLoader
+// (batched by user_id) then CardgroupLoader (batched by cardgroup_id),
+// preventing N+1 queries across both layers.
 func (r *userResolver) LastViewedCardgroup(ctx context.Context, obj *model.User) (*model.Cardgroup, error) {
 	loaders := loader.For(ctx)
 	if loaders == nil {

@@ -1,8 +1,8 @@
 package repository
 
-// White-box tests for classifyUserPreferenceCardgroupFKError. The function is
-// unexported so the tests must live in the same package. All assertions use
-// fabricated *pgconn.PgError values — no live DB is required.
+// White-box tests for classifyUserPreferenceCardgroupFKError. Tests live in
+// the same package because the function is unexported. All assertions use
+// fabricated *pgconn.PgError values — no live DB required.
 
 import (
 	"errors"
@@ -11,8 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// TestClassifyUserPreferenceCardgroupFKError_NotAFKViolation: a non-23503
-// Postgres error must not be classified.
 func TestClassifyUserPreferenceCardgroupFKError_NotAFKViolation(t *testing.T) {
 	t.Parallel()
 	pgErr := &pgconn.PgError{Code: "23505"} // unique_violation
@@ -21,8 +19,6 @@ func TestClassifyUserPreferenceCardgroupFKError_NotAFKViolation(t *testing.T) {
 	}
 }
 
-// TestClassifyUserPreferenceCardgroupFKError_NonPgError: a plain stdlib error
-// must not be classified.
 func TestClassifyUserPreferenceCardgroupFKError_NonPgError(t *testing.T) {
 	t.Parallel()
 	if got := classifyUserPreferenceCardgroupFKError(errors.New("boom")); got != nil {
@@ -30,8 +26,6 @@ func TestClassifyUserPreferenceCardgroupFKError_NonPgError(t *testing.T) {
 	}
 }
 
-// TestClassifyUserPreferenceCardgroupFKError_NilError: a nil input must
-// produce nil.
 func TestClassifyUserPreferenceCardgroupFKError_NilError(t *testing.T) {
 	t.Parallel()
 	if got := classifyUserPreferenceCardgroupFKError(nil); got != nil {
@@ -39,9 +33,9 @@ func TestClassifyUserPreferenceCardgroupFKError_NilError(t *testing.T) {
 	}
 }
 
-// TestClassifyUserPreferenceCardgroupFKError_LastViewedConstraint: a 23503
-// violation on a constraint name containing "last_viewed_cardgroup_id" must
-// map to ErrCardgroupNotFound and also satisfy the generic ErrNotFound sentinel.
+// TestClassifyUserPreferenceCardgroupFKError_LastViewedConstraint verifies that
+// a 23503 violation on the last_viewed_cardgroup_id FK maps to
+// ErrCardgroupNotFound and also satisfies the joined ErrNotFound sentinel.
 func TestClassifyUserPreferenceCardgroupFKError_LastViewedConstraint(t *testing.T) {
 	t.Parallel()
 	pgErr := &pgconn.PgError{
@@ -57,10 +51,9 @@ func TestClassifyUserPreferenceCardgroupFKError_LastViewedConstraint(t *testing.
 	}
 }
 
-// TestClassifyUserPreferenceCardgroupFKError_UnknownConstraint: a 23503
-// violation on a constraint name that does NOT contain "last_viewed_cardgroup_id"
-// must return nil so the caller falls through to eris.Wrap rather than
-// swallowing an unrelated FK violation.
+// TestClassifyUserPreferenceCardgroupFKError_UnknownConstraint verifies that a
+// 23503 on an unrelated constraint returns nil so the caller falls through to
+// eris.Wrap rather than swallowing the violation.
 func TestClassifyUserPreferenceCardgroupFKError_UnknownConstraint(t *testing.T) {
 	t.Parallel()
 	pgErr := &pgconn.PgError{

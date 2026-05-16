@@ -11,9 +11,7 @@ import (
 	"backend/internal/repository"
 )
 
-// mockPrefRepo implements the narrow lastViewedCardgroupRepo interface consumed
-// by LastViewedCardgroupUsecase. It records calls to UpsertLastViewedCardgroup
-// and returns the configured error.
+// mockPrefRepo stubs lastViewedCardgroupRepo and records UpsertLastViewedCardgroup calls.
 type mockPrefRepo struct {
 	err            error
 	called         int
@@ -28,8 +26,7 @@ func (m *mockPrefRepo) UpsertLastViewedCardgroup(_ context.Context, userID, card
 	return m.err
 }
 
-// mockUserRefetchRepo implements the narrow userPreferenceRefetchRepo interface
-// consumed by LastViewedCardgroupUsecase for the post-upsert refetch step.
+// mockUserRefetchRepo stubs userPreferenceRefetchRepo for the post-upsert refetch step.
 type mockUserRefetchRepo struct {
 	user  *domain.User
 	err   error
@@ -44,9 +41,6 @@ func (m *mockUserRefetchRepo) FindByID(_ context.Context, _ string) (*domain.Use
 	return m.user, nil
 }
 
-// TestLastViewedCardgroup_Anonymous_Unauthenticated verifies that an anonymous
-// caller (no auth context) is rejected with UNAUTHENTICATED before the
-// repository is touched.
 func TestLastViewedCardgroup_Anonymous_Unauthenticated(t *testing.T) {
 	t.Parallel()
 
@@ -61,9 +55,6 @@ func TestLastViewedCardgroup_Anonymous_Unauthenticated(t *testing.T) {
 	}
 }
 
-// TestLastViewedCardgroup_HappyPath_ReturnsRefreshedUser verifies that the
-// usecase calls UpsertLastViewedCardgroup with the caller's sub and the supplied
-// cardgroupID, then returns the refreshed user from FindByID.
 func TestLastViewedCardgroup_HappyPath_ReturnsRefreshedUser(t *testing.T) {
 	t.Parallel()
 
@@ -98,11 +89,9 @@ func TestLastViewedCardgroup_HappyPath_ReturnsRefreshedUser(t *testing.T) {
 	}
 }
 
-// TestLastViewedCardgroup_CardgroupNotFound_BadUserInput verifies that the
-// repository's ErrCardgroupNotFound sentinel maps to BAD_USER_INPUT(cardgroupId).
-// This is the central authorization-policy assertion: "not owned" and "does
-// not exist" collapse to the same response so existence of other users'
-// cardgroups is not leaked.
+// TestLastViewedCardgroup_CardgroupNotFound_BadUserInput verifies ErrCardgroupNotFound
+// maps to BAD_USER_INPUT(cardgroupId) — "not owned" and "does not exist" collapse
+// to the same response to avoid leaking cardgroup existence.
 func TestLastViewedCardgroup_CardgroupNotFound_BadUserInput(t *testing.T) {
 	t.Parallel()
 
@@ -117,18 +106,12 @@ func TestLastViewedCardgroup_CardgroupNotFound_BadUserInput(t *testing.T) {
 	}
 }
 
-// TestLastViewedCardgroup_LegacyErrNotFound_FallsThroughToInternal verifies
-// that a repository implementation that surfaces only the legacy ErrNotFound
-// (no errors.Join with ErrCardgroupNotFound) still maps to INTERNAL, because
-// the usecase has no special handling for the general sentinel — it must NOT
-// be silently routed into a BAD_USER_INPUT path. This guards the "always check
-// more specific sentinel before the general one" rule.
+// TestLastViewedCardgroup_LegacyErrNotFound_FallsThroughToInternal verifies that
+// bare ErrNotFound (without ErrCardgroupNotFound join) maps to INTERNAL, not
+// BAD_USER_INPUT — guards the "check specific sentinel first" rule.
 func TestLastViewedCardgroup_LegacyErrNotFound_FallsThroughToInternal(t *testing.T) {
 	t.Parallel()
 
-	// Repository returns the bare ErrNotFound — not the joined sentinel. The
-	// usecase has no special handling for this case, so it must surface as
-	// INTERNAL rather than collapse to BAD_USER_INPUT.
 	prefs := &mockPrefRepo{err: repository.ErrNotFound}
 	users := &mockUserRefetchRepo{}
 	uc := NewLastViewedCardgroupWithDeps(prefs, users)
@@ -137,9 +120,6 @@ func TestLastViewedCardgroup_LegacyErrNotFound_FallsThroughToInternal(t *testing
 	assertGQLErr(t, err, "INTERNAL", "")
 }
 
-// TestLastViewedCardgroup_GenericRepoError_Internal verifies that any
-// non-sentinel error from UpsertLastViewedCardgroup is mapped to INTERNAL with
-// the eris chain preserved.
 func TestLastViewedCardgroup_GenericRepoError_Internal(t *testing.T) {
 	t.Parallel()
 
@@ -151,10 +131,6 @@ func TestLastViewedCardgroup_GenericRepoError_Internal(t *testing.T) {
 	assertGQLErr(t, err, "INTERNAL", "")
 }
 
-// TestLastViewedCardgroup_ContextCancelled_Cancelled verifies that a
-// context-cancelled error from the repository surfaces as CANCELLED rather
-// than INTERNAL — operators must not see a 5xx alarm for client-driven
-// cancellations.
 func TestLastViewedCardgroup_ContextCancelled_Cancelled(t *testing.T) {
 	t.Parallel()
 
@@ -166,10 +142,8 @@ func TestLastViewedCardgroup_ContextCancelled_Cancelled(t *testing.T) {
 	assertGQLErr(t, err, "CANCELLED", "")
 }
 
-// TestLastViewedCardgroup_RefetchUserMissing_Internal verifies that a user
-// row that vanishes between the UPDATE and the refetch is reported as
-// INTERNAL — this can only happen if the auth.users row is concurrently
-// deleted, which is genuinely abnormal.
+// TestLastViewedCardgroup_RefetchUserMissing_Internal verifies that a user row
+// deleted between the upsert and refetch reports as INTERNAL (genuinely abnormal).
 func TestLastViewedCardgroup_RefetchUserMissing_Internal(t *testing.T) {
 	t.Parallel()
 
@@ -184,8 +158,6 @@ func TestLastViewedCardgroup_RefetchUserMissing_Internal(t *testing.T) {
 	}
 }
 
-// TestLastViewedCardgroup_RefetchContextCancelled_Cancelled verifies that a
-// context cancellation during the refetch is surfaced as CANCELLED.
 func TestLastViewedCardgroup_RefetchContextCancelled_Cancelled(t *testing.T) {
 	t.Parallel()
 
@@ -197,9 +169,8 @@ func TestLastViewedCardgroup_RefetchContextCancelled_Cancelled(t *testing.T) {
 	assertGQLErr(t, err, "CANCELLED", "")
 }
 
-// TestLastViewedCardgroup_EmptySub_Unauthenticated verifies that an auth
-// context with an empty Sub is treated as anonymous (defence-in-depth in case
-// upstream middleware leaves a zero-value AuthUser in the context).
+// TestLastViewedCardgroup_EmptySub_Unauthenticated verifies that an auth context
+// with an empty Sub is treated as anonymous (defence-in-depth).
 func TestLastViewedCardgroup_EmptySub_Unauthenticated(t *testing.T) {
 	t.Parallel()
 
@@ -207,7 +178,6 @@ func TestLastViewedCardgroup_EmptySub_Unauthenticated(t *testing.T) {
 	users := &mockUserRefetchRepo{}
 	uc := NewLastViewedCardgroupWithDeps(prefs, users)
 
-	// authedCtx with empty sub.
 	_, err := uc.Set(authedCtx(""), "cg-1")
 	assertGQLErr(t, err, "UNAUTHENTICATED", "")
 	if prefs.called != 0 {
@@ -215,12 +185,9 @@ func TestLastViewedCardgroup_EmptySub_Unauthenticated(t *testing.T) {
 	}
 }
 
-// TestLastViewedCardgroup_SentinelOrderingMatters guards the
-// "always check more specific sentinel before the general one" rule.
-// ErrCardgroupNotFound is errors.Join'd with ErrNotFound, so errors.Is matches
-// both. The usecase must branch on the specific sentinel first — verified here
-// by sending the joined sentinel and asserting we receive BAD_USER_INPUT
-// (cardgroupId) and not INTERNAL.
+// TestLastViewedCardgroup_SentinelOrderingMatters verifies the joined sentinel:
+// ErrCardgroupNotFound satisfies errors.Is(_, ErrNotFound), and the usecase
+// must branch on the specific sentinel first, returning BAD_USER_INPUT not INTERNAL.
 func TestLastViewedCardgroup_SentinelOrderingMatters(t *testing.T) {
 	t.Parallel()
 

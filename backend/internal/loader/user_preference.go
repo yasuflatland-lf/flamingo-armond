@@ -42,17 +42,13 @@ func userPreferenceBatchFunc(repo userPreferenceReader) dataloader.BatchFunc[str
 			return out
 		}
 
-		// Build a user_id → *UserPreference map from the returned slice.
 		byUserID := make(map[string]*domain.UserPreference, len(prefs))
 		for _, p := range prefs {
 			byUserID[p.UserID] = p
 		}
 
-		// Populate results in key order. Missing keys return nil data with nil
-		// error — absence is a normal state ("no preference set yet"), not a
-		// fetch failure. The resolver branches on pref == nil instead of
-		// errors.Is(err, ErrNotFound). This intentionally differs from
-		// CardgroupLoader, which returns ErrNotFound for missing keys.
+		// Missing keys yield nil data with nil error: absence means "no preference
+		// set yet", not a fetch failure. Callers branch on pref == nil.
 		for i, k := range keys {
 			out[i] = &dataloader.Result[*domain.UserPreference]{Data: byUserID[k]}
 		}

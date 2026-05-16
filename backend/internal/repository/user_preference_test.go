@@ -1,7 +1,6 @@
 package repository_test
 
-// TestMain, testDB, insertAuthUser, and sqlDBHandle are defined in user_test.go
-// and shared across this package.
+// TestMain, testDB, insertAuthUser, and sqlDBHandle are shared from user_test.go.
 
 import (
 	"context"
@@ -14,9 +13,7 @@ import (
 	"backend/internal/repository"
 )
 
-// insertCardgroupForUser inserts a cardgroup owned by ownerID and returns its
-// ID. Uses the raw SQL helper to stay independent of CardgroupRepository
-// semantics.
+// insertCardgroupForUser inserts a cardgroup owned by ownerID and returns its ID.
 func insertCardgroupForUser(t *testing.T, ctx context.Context, ownerID, name string) string {
 	t.Helper()
 	sqlDB := sqlDBHandle(t)
@@ -31,7 +28,7 @@ func insertCardgroupForUser(t *testing.T, ctx context.Context, ownerID, name str
 	return id
 }
 
-// prefUpdatedAt reads user_preferences.updated_at directly via SQL.
+// prefUpdatedAt reads user_preferences.updated_at for the given user.
 func prefUpdatedAt(t *testing.T, ctx context.Context, userID string) time.Time {
 	t.Helper()
 	sqlDB := sqlDBHandle(t)
@@ -44,7 +41,7 @@ func prefUpdatedAt(t *testing.T, ctx context.Context, userID string) time.Time {
 	return ts
 }
 
-// prefRowExists returns true when a user_preferences row exists for userID.
+// prefRowExists reports whether a user_preferences row exists for userID.
 func prefRowExists(t *testing.T, ctx context.Context, userID string) bool {
 	t.Helper()
 	sqlDB := sqlDBHandle(t)
@@ -57,12 +54,6 @@ func prefRowExists(t *testing.T, ctx context.Context, userID string) bool {
 	return count > 0
 }
 
-// ---------------------------------------------------------------------------
-// UpsertLastViewedCardgroup
-// ---------------------------------------------------------------------------
-
-// TestUserPreferenceRepository_Upsert_CreateRow verifies that the first UPSERT
-// with an owned cardgroup inserts a new user_preferences row.
 func TestUserPreferenceRepository_Upsert_CreateRow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -79,8 +70,6 @@ func TestUserPreferenceRepository_Upsert_CreateRow(t *testing.T) {
 	}
 }
 
-// TestUserPreferenceRepository_Upsert_UpdateRow verifies that a second UPSERT
-// with an owned cardgroup updates the existing row and advances updated_at.
 func TestUserPreferenceRepository_Upsert_UpdateRow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -119,9 +108,6 @@ func TestUserPreferenceRepository_Upsert_UpdateRow(t *testing.T) {
 	}
 }
 
-// TestUserPreferenceRepository_Upsert_UnownedCardgroup verifies that a UPSERT
-// targeting a cardgroup owned by a different user returns ErrCardgroupNotFound
-// and does not create a row.
 func TestUserPreferenceRepository_Upsert_UnownedCardgroup(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -143,9 +129,8 @@ func TestUserPreferenceRepository_Upsert_UnownedCardgroup(t *testing.T) {
 }
 
 // TestUserPreferenceRepository_Upsert_NonExistentCardgroup verifies that a
-// UPSERT with a cardgroup ID that does not exist at all returns the same
-// ErrCardgroupNotFound sentinel as the ownership case, preserving the
-// existence-oracle guard.
+// missing cardgroup returns the same ErrCardgroupNotFound as an unowned one,
+// preventing an existence oracle.
 func TestUserPreferenceRepository_Upsert_NonExistentCardgroup(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -164,9 +149,6 @@ func TestUserPreferenceRepository_Upsert_NonExistentCardgroup(t *testing.T) {
 	}
 }
 
-// TestUserPreferenceRepository_CrossTenant_UpsertBlocked verifies that User A
-// cannot record User B's cardgroup as their last-viewed cardgroup. The
-// ownership guard in the EXISTS clause must prevent it, and no row is written.
 func TestUserPreferenceRepository_CrossTenant_UpsertBlocked(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -180,12 +162,10 @@ func TestUserPreferenceRepository_CrossTenant_UpsertBlocked(t *testing.T) {
 
 	repo := repository.NewUserPreferenceRepository(testDB.GORM)
 
-	// A can UPSERT their own cardgroup.
 	if err := repo.UpsertLastViewedCardgroup(ctx, userA, cgA); err != nil {
 		t.Fatalf("A upsert own cardgroup: %v", err)
 	}
 
-	// A must NOT be able to UPSERT B's cardgroup.
 	err := repo.UpsertLastViewedCardgroup(ctx, userA, cgB)
 	if !errors.Is(err, repository.ErrCardgroupNotFound) {
 		t.Fatalf("cross-tenant: want ErrCardgroupNotFound, got %v", err)
@@ -203,18 +183,11 @@ func TestUserPreferenceRepository_CrossTenant_UpsertBlocked(t *testing.T) {
 		t.Fatalf("cross-tenant UPSERT must not overwrite existing row: got %q, want %q", lastViewedID, cgA)
 	}
 
-	// B must have no row in user_preferences (was never written by this test).
 	if prefRowExists(t, ctx, userB) {
 		t.Fatal("no row should exist for userB — only userA upserted")
 	}
 }
 
-// ---------------------------------------------------------------------------
-// FindByUserID
-// ---------------------------------------------------------------------------
-
-// TestUserPreferenceRepository_FindByUserID_Found verifies that a row created
-// by UpsertLastViewedCardgroup is returned correctly by FindByUserID.
 func TestUserPreferenceRepository_FindByUserID_Found(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -241,12 +214,9 @@ func TestUserPreferenceRepository_FindByUserID_Found(t *testing.T) {
 	}
 }
 
-// TestUserPreferenceRepository_FindByUserID_NotFound verifies that looking up
-// a user with no preference row returns ErrNotFound.
 func TestUserPreferenceRepository_FindByUserID_NotFound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	// Use a random UUID that has no corresponding row.
 	repo := repository.NewUserPreferenceRepository(testDB.GORM)
 	_, err := repo.FindByUserID(ctx, uuid.NewString())
 	if !errors.Is(err, repository.ErrNotFound) {
@@ -254,12 +224,6 @@ func TestUserPreferenceRepository_FindByUserID_NotFound(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// FindByUserIDs
-// ---------------------------------------------------------------------------
-
-// TestUserPreferenceRepository_FindByUserIDs_Found verifies that multiple
-// user IDs are returned together in one call.
 func TestUserPreferenceRepository_FindByUserIDs_Found(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -294,8 +258,6 @@ func TestUserPreferenceRepository_FindByUserIDs_Found(t *testing.T) {
 	}
 }
 
-// TestUserPreferenceRepository_FindByUserIDs_MissingUser verifies that a user
-// ID with no preference row is simply absent from the result (not an error).
 func TestUserPreferenceRepository_FindByUserIDs_MissingUser(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -312,7 +274,6 @@ func TestUserPreferenceRepository_FindByUserIDs_MissingUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindByUserIDs: %v", err)
 	}
-	// Only the existing row should appear.
 	if len(prefs) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(prefs))
 	}
@@ -321,10 +282,8 @@ func TestUserPreferenceRepository_FindByUserIDs_MissingUser(t *testing.T) {
 	}
 }
 
-// TestUserPreferenceRepository_FindByUserIDs_EmptyInput verifies that an
-// empty IDs slice returns an empty slice without error and without hitting the
-// database. This guards against the GORM WHERE IN () full-table scan bug
-// documented in go-library-gotchas.md.
+// TestUserPreferenceRepository_FindByUserIDs_EmptyInput guards against the GORM
+// WHERE IN () full-table scan: an empty slice must return empty without error.
 func TestUserPreferenceRepository_FindByUserIDs_EmptyInput(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -339,25 +298,10 @@ func TestUserPreferenceRepository_FindByUserIDs_EmptyInput(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// FK ON DELETE SET NULL — cardgroup deletion
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// FK ON DELETE CASCADE — user deletion
-// ---------------------------------------------------------------------------
-
-// TestUserPreferenceRepository_OnDeleteUser_CascadesPreferenceRow verifies the
-// FK action declared in 20260516120000_extract_user_preferences.up.sql —
-// guards against accidental RESTRICT or SET NULL on
-// user_preferences.user_id REFERENCES public.users(id) ON DELETE CASCADE.
-//
-// When the owning user is deleted, the user_preferences row must be removed
-// automatically by the database:
-//   - RESTRICT would cause the auth.users DELETE to fail, breaking user
-//     account deletion and causing a service outage.
-//   - SET NULL would violate the PRIMARY KEY constraint on user_preferences.user_id
-//     (NOT NULL is implied by PRIMARY KEY), crashing the database operation.
+// TestUserPreferenceRepository_OnDeleteUser_CascadesPreferenceRow guards
+// against accidental RESTRICT or SET NULL on user_preferences.user_id:
+//   - RESTRICT would make auth.users DELETE fail, breaking account deletion.
+//   - SET NULL is impossible on a PRIMARY KEY column.
 func TestUserPreferenceRepository_OnDeleteUser_CascadesPreferenceRow(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -370,34 +314,24 @@ func TestUserPreferenceRepository_OnDeleteUser_CascadesPreferenceRow(t *testing.
 		t.Fatalf("UpsertLastViewedCardgroup: %v", err)
 	}
 
-	// Confirm the user_preferences row was written before triggering the cascade.
 	if !prefRowExists(t, ctx, userID) {
 		t.Fatal("expected user_preferences row to exist before user deletion")
 	}
 
-	// Delete from auth.users; the ON DELETE CASCADE FK on public.users(id) removes
-	// the public.users row, which then cascades to user_preferences via its own ON DELETE CASCADE FK.
 	sqlDB := sqlDBHandle(t)
 	if _, err := sqlDB.ExecContext(ctx,
 		`DELETE FROM auth.users WHERE id = $1`, userID); err != nil {
 		t.Fatalf("delete auth.users %q: %v", userID, err)
 	}
 
-	// The user_preferences row must be gone — RESTRICT would have made the
-	// DELETE above fail, and SET NULL is impossible on a PRIMARY KEY column.
 	if prefRowExists(t, ctx, userID) {
 		t.Fatal("user_preferences row still exists after user deletion: FK is not ON DELETE CASCADE")
 	}
 }
 
-// TestUserPreferenceRepository_OnDeleteCardgroup_SetsNull verifies the FK
-// action declared in 20260516120000_extract_user_preferences.up.sql —
-// guards against accidental CASCADE.
-//
-// When a cardgroup referenced by user_preferences.last_viewed_cardgroup_id is
-// deleted, the DB must set that column to NULL (ON DELETE SET NULL) rather than
-// deleting the user_preferences row (ON DELETE CASCADE). A CASCADE would silently
-// destroy user preference data every time a cardgroup is removed.
+// TestUserPreferenceRepository_OnDeleteCardgroup_SetsNull guards against
+// accidental CASCADE on last_viewed_cardgroup_id: deleting a cardgroup must
+// set that column to NULL rather than removing the user_preferences row.
 func TestUserPreferenceRepository_OnDeleteCardgroup_SetsNull(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -410,24 +344,20 @@ func TestUserPreferenceRepository_OnDeleteCardgroup_SetsNull(t *testing.T) {
 		t.Fatalf("UpsertLastViewedCardgroup: %v", err)
 	}
 
-	// Confirm the row was written with the expected cardgroup ID before deletion.
 	if !prefRowExists(t, ctx, userID) {
 		t.Fatal("expected user_preferences row to exist before cardgroup deletion")
 	}
 
-	// Delete the cardgroup directly via SQL to trigger the FK ON DELETE action.
 	sqlDB := sqlDBHandle(t)
 	if _, err := sqlDB.ExecContext(ctx,
 		`DELETE FROM public.cardgroups WHERE id = $1`, cgID); err != nil {
 		t.Fatalf("delete cardgroup %q: %v", cgID, err)
 	}
 
-	// The user_preferences row must still exist — CASCADE would have removed it.
 	if !prefRowExists(t, ctx, userID) {
 		t.Fatal("user_preferences row was deleted after cardgroup deletion: FK is CASCADE, not SET NULL")
 	}
 
-	// last_viewed_cardgroup_id must now be NULL — that is the SET NULL action.
 	var lastViewedID *string
 	if err := sqlDB.QueryRowContext(ctx,
 		`SELECT last_viewed_cardgroup_id FROM public.user_preferences WHERE user_id = $1`, userID).

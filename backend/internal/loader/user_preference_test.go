@@ -11,8 +11,7 @@ import (
 	"backend/internal/loader"
 )
 
-// loadAllUserPreferences concurrently loads all userIDs through
-// l.UserPreference and returns aligned results/errors.
+// loadAllUserPreferences concurrently loads all userIDs and returns aligned results/errors.
 func loadAllUserPreferences(ctx context.Context, l *loader.Loaders, userIDs []string) ([]*domain.UserPreference, []error) {
 	results := make([]*domain.UserPreference, len(userIDs))
 	errs := make([]error, len(userIDs))
@@ -72,11 +71,8 @@ func TestUserPreferenceLoader_BatchesNCallsIntoOne(t *testing.T) {
 	}
 }
 
-// TestUserPreferenceLoader_EmptyKeySliceShortCircuits verifies that
-// userPreferenceBatchFunc short-circuits on an empty key slice without hitting
-// the repository. The dataloader runtime never passes empty keys in normal
-// operation; this exercises the guard directly by issuing no Load calls and
-// checking the repository stays cold.
+// TestUserPreferenceLoader_EmptyKeySliceShortCircuits verifies that the batch
+// func stays cold when no Load calls are issued (exercises the empty-key guard).
 func TestUserPreferenceLoader_EmptyKeySliceShortCircuits(t *testing.T) {
 	t.Parallel()
 
@@ -88,7 +84,6 @@ func TestUserPreferenceLoader_EmptyKeySliceShortCircuits(t *testing.T) {
 		},
 	}
 
-	// Build a loader but issue no Load calls — the batch func must stay cold.
 	_ = loader.New(emptyUserRepo(), emptyRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), prefRepo)
 
 	if got := calls.Load(); got != 0 {
@@ -96,15 +91,13 @@ func TestUserPreferenceLoader_EmptyKeySliceShortCircuits(t *testing.T) {
 	}
 }
 
-// TestUserPreferenceLoader_MissingUserReturnsNilData asserts that a user_id
-// absent from the FindByUserIDs result set produces a nil result (not an
-// error) so the resolver can treat absence as "all defaults".
+// TestUserPreferenceLoader_MissingUserReturnsNilData asserts that an absent
+// user_id produces a nil result (not an error) so resolvers treat it as defaults.
 func TestUserPreferenceLoader_MissingUserReturnsNilData(t *testing.T) {
 	t.Parallel()
 
 	prefRepo := &countingUserPreferenceRepo{
 		findByUserIDs: func(_ context.Context, userIDs []string) ([]*domain.UserPreference, error) {
-			// Only return a preference for "present"; "missing" is absent.
 			out := []*domain.UserPreference{}
 			for _, id := range userIDs {
 				if id == "present" {

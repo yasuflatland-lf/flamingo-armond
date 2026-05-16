@@ -20,15 +20,10 @@ type LastViewedCardgroupUsecase interface {
 	Set(ctx context.Context, cardgroupID string) (*domain.User, error)
 }
 
-// lastViewedCardgroupRepo is the narrow interface over UserPreferenceRepository
-// consumed by LastViewedCardgroupUsecase. Declared package-private so test
-// doubles can implement only the method this usecase exercises.
 type lastViewedCardgroupRepo interface {
 	UpsertLastViewedCardgroup(ctx context.Context, userID, cardgroupID string) error
 }
 
-// userPreferenceRefetchRepo is the narrow interface over UserRepository used
-// only for the post-upsert refetch step.
 type userPreferenceRefetchRepo interface {
 	FindByID(ctx context.Context, id string) (*domain.User, error)
 }
@@ -47,8 +42,7 @@ func NewLastViewedCardgroup(
 	return &lastViewedCardgroupUsecase{prefs: prefs, users: users}
 }
 
-// NewLastViewedCardgroupWithDeps accepts the narrow interfaces for tests;
-// production code must use NewLastViewedCardgroup.
+// NewLastViewedCardgroupWithDeps accepts narrow interfaces for tests.
 func NewLastViewedCardgroupWithDeps(
 	prefs lastViewedCardgroupRepo,
 	users userPreferenceRefetchRepo,

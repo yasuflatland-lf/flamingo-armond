@@ -15,11 +15,11 @@ import (
 
 // gormUserPreference is the row mapping for public.user_preferences.
 // Package-private so callers cannot bypass the domain conversion.
+// All writes go through raw UPSERT with now(); no GORM auto-fill.
 type gormUserPreference struct {
-	UserID                string  `gorm:"column:user_id;primaryKey;type:uuid"`
-	LastViewedCardgroupID *string `gorm:"column:last_viewed_cardgroup_id;type:uuid"`
-	// All writes go through raw UPSERT with now(); no GORM auto-fill.
-	UpdatedAt time.Time `gorm:"column:updated_at"`
+	UserID                string    `gorm:"column:user_id;primaryKey;type:uuid"`
+	LastViewedCardgroupID *string   `gorm:"column:last_viewed_cardgroup_id;type:uuid"`
+	UpdatedAt             time.Time `gorm:"column:updated_at"`
 }
 
 func (gormUserPreference) TableName() string { return "user_preferences" }
@@ -53,13 +53,10 @@ type UserPreferenceRepository interface {
 
 type userPreferenceRepo struct{ db *gorm.DB }
 
-// NewUserPreferenceRepository returns a GORM-backed UserPreferenceRepository.
 func NewUserPreferenceRepository(db *gorm.DB) UserPreferenceRepository {
 	return &userPreferenceRepo{db: db}
 }
 
-// FindByUserID returns the preference row for userID, or ErrNotFound when no
-// row exists (i.e. the user has never set any preference).
 func (r *userPreferenceRepo) FindByUserID(ctx context.Context, userID string) (*domain.UserPreference, error) {
 	var row gormUserPreference
 	err := r.db.WithContext(ctx).Where("user_id = ?", userID).Take(&row).Error
@@ -72,9 +69,6 @@ func (r *userPreferenceRepo) FindByUserID(ctx context.Context, userID string) (*
 	return toDomainUserPreference(row), nil
 }
 
-// FindByUserIDs returns preference rows for all given userIDs. The returned
-// slice contains only rows that exist; missing users are absent. Short-circuits
-// on an empty input to avoid the GORM WHERE IN () full-table scan bug.
 func (r *userPreferenceRepo) FindByUserIDs(ctx context.Context, userIDs []string) ([]*domain.UserPreference, error) {
 	// GORM turns WHERE user_id IN () into an unfiltered scan, so short-circuit.
 	if len(userIDs) == 0 {
@@ -139,7 +133,6 @@ func classifyUserPreferenceCardgroupFKError(err error) error {
 	return nil
 }
 
-// toDomainUserPreference converts a gormUserPreference row to the domain type.
 func toDomainUserPreference(g gormUserPreference) *domain.UserPreference {
 	return &domain.UserPreference{
 		UserID:                g.UserID,
