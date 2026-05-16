@@ -84,7 +84,7 @@ jobs:
 
       - name: Warn on gqlerr imports inside usecase (will be hard error after #158)
         run: |
-          if grep -rln 'gqlerr' internal/usecase --include='*.go' --exclude='*_test.go'; then
+          if grep -rln '"backend/internal/gqlerr"' internal/usecase --include='*.go' --exclude='*_test.go'; then
             echo "::warning::gqlerr.* still referenced inside backend/internal/usecase. Migrate to *usecase.ValidationError / usecase.ErrUnauthenticated / *usecase.ForbiddenError. Tracking: #158"
           fi
 
