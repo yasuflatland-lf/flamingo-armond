@@ -90,7 +90,7 @@ func (u *LearnUsecase) NextDueCards(ctx context.Context, cardgroupID string, now
 		}
 		return nil, gqlerr.Internal(ctx, err)
 	}
-	if cg.OwnerID != user.Sub {
+	if !cg.IsOwnedBy(user.Sub) {
 		return nil, gqlerr.Unauthenticated()
 	}
 	limit = u.clampLimit(limit)

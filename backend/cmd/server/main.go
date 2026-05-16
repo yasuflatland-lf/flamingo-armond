@@ -106,9 +106,9 @@ func newRouter(
 	swipeRecordRepo repository.SwipeRecordRepository,
 ) *echo.Echo {
 	e := echo.New()
-	e.Use(middleware.RequestLogger())
-	e.Use(middleware.Recover())
 	e.Use(internalmw.RequestID())
+	e.Use(middleware.Recover())
+	e.Use(middleware.RequestLogger())
 
 	e.GET("/", func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{

@@ -31,6 +31,12 @@ type Cardgroup struct {
 	UpdatedAt time.Time
 }
 
+// IsOwnedBy reports whether the cardgroup belongs to the user identified by userID.
+// Empty userID always returns false so callers do not need a redundant nil/empty guard.
+func (c Cardgroup) IsOwnedBy(userID string) bool {
+	return userID != "" && c.OwnerID == userID
+}
+
 // Validate enforces invariants on the cardgroup aggregate. The Postgres CHECK
 // constraint is a coarse floor (UTF-8 code points); this method is the
 // authoritative bound (grapheme clusters).
@@ -38,7 +44,7 @@ type Cardgroup struct {
 // Name (after trimming surrounding whitespace) must be 1-CardgroupNameMax
 // grapheme clusters. Returns ErrCardgroupNameRequired or ErrCardgroupNameTooLong
 // on violation so callers can match with errors.Is.
-func (c *Cardgroup) Validate() error {
+func (c Cardgroup) Validate() error {
 	name := strings.TrimSpace(c.Name)
 	n := uniseg.GraphemeClusterCount(name)
 	if n < 1 {

@@ -226,7 +226,7 @@ func (u *SwipeUsecase) authorizeCardgroup(ctx context.Context, cardgroupID, user
 		}
 		return gqlerr.Internal(ctx, err)
 	}
-	if cg.OwnerID != userID {
+	if !cg.IsOwnedBy(userID) {
 		return gqlerr.Unauthenticated()
 	}
 	return nil

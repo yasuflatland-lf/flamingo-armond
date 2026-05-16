@@ -96,7 +96,7 @@ func (u *CardgroupUsecase) Cardgroup(ctx context.Context, id string) (*domain.Ca
 		}
 		return nil, gqlerr.Internal(ctx, err)
 	}
-	if cg.OwnerID != user.Sub {
+	if !cg.IsOwnedBy(user.Sub) {
 		return nil, gqlerr.Unauthenticated()
 	}
 	return cg, nil
@@ -158,7 +158,7 @@ func (u *CardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardg
 		}
 		return nil, gqlerr.Internal(ctx, err)
 	}
-	if existing.OwnerID != user.Sub {
+	if !existing.IsOwnedBy(user.Sub) {
 		return nil, gqlerr.Unauthenticated()
 	}
 
@@ -195,7 +195,7 @@ func (u *CardgroupUsecase) Delete(ctx context.Context, id string) error {
 		}
 		return gqlerr.Internal(ctx, err)
 	}
-	if existing.OwnerID != user.Sub {
+	if !existing.IsOwnedBy(user.Sub) {
 		return gqlerr.Unauthenticated()
 	}
 
@@ -428,7 +428,7 @@ func (u *CardgroupUsecase) resolveCardgroupCursor(
 		}
 		return nil, gqlerr.Internal(ctx, eris.Wrap(err, "usecase: hydrate cardgroup cursor"))
 	}
-	if cg.OwnerID != ownerID {
+	if !cg.IsOwnedBy(ownerID) {
 		return nil, gqlerr.BadUserInput(field, "cursor not found")
 	}
 
