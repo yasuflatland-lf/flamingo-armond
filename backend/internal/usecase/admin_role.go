@@ -227,14 +227,18 @@ func (u *adminRoleUsecase) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// mapAdminRoleError translates the role-repository sentinel set into
-// typed usecase errors (*ucerr.ValidationError / *ucerr.ForbiddenError)
-// for the resolver to wrap via gqlerr.FromUsecaseError. The notFoundField
-// argument lets callers say "the id in this request was bad" (Update /
-// Delete / Get-from-Update) without hardcoding a single field name.
+// mapAdminRoleError classifies the role-repository sentinel set into the
+// outcomes the resolver consumes via gqlerr.FromUsecaseError:
+//   - repository.ErrRoleNotFound            -> *ucerr.ValidationError{Field: notFoundField}
+//   - repository.ErrRoleDuplicate           -> *ucerr.ValidationError{Field: "name"}
+//   - context.Canceled / DeadlineExceeded   -> passthrough
+//   - default                               -> eris.Wrap(err, wrap) (opaque chain -> INTERNAL)
 //
-// ErrRoleDuplicate always maps to field="name" — the duplicate condition is
-// always on the name column, regardless of which method surfaced it.
+// The notFoundField argument lets callers name the request field that was bad
+// (e.g. "id" for Update / Delete / Get-from-Update) without hardcoding a
+// single field name here.
+//
+// Forbidden conditions are constructed at the call sites, not via this mapper.
 func mapAdminRoleError(err error, notFoundField, wrap string) error {
 	switch {
 	case errors.Is(err, repository.ErrRoleNotFound):

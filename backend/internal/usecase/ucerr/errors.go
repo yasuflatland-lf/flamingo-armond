@@ -2,7 +2,7 @@
 // that the resolver layer translates to wire-format GraphQL errors via
 // gqlerr.FromUsecaseError. The types live in a leaf sub-package so that
 // gqlerr can import them without acquiring a transitive dependency on the
-// parent usecase package; the parent re-exports them as type aliases for
+// parent usecase package; the parent re-exports them as type aliases (and a re-exported sentinel var) for
 // caller ergonomics.
 package ucerr
 
