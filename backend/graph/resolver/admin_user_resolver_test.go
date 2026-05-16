@@ -15,6 +15,7 @@ import (
 	"backend/internal/gqlerr"
 	"backend/internal/loader"
 	"backend/internal/usecase"
+	"backend/internal/usecase/ucerr"
 )
 
 // ---------------------------------------------------------------------------
@@ -145,7 +146,7 @@ func TestAdminUserResolver_Users_NonAdmin(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockAdminUserUsecase{
-		listErr: gqlerr.NewForbidden("admin only"),
+		listErr: &ucerr.ForbiddenError{Message: "admin only"},
 	}
 	srv := newAdminUserSrv(mock)
 	resp := gqlRequest(t, srv, authedCtx("non-admin"), usersQuery)
@@ -229,7 +230,7 @@ func TestAdminUserResolver_AssignRole_Forbidden(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockAdminUserUsecase{
-		assignErr: gqlerr.NewForbidden("admin only"),
+		assignErr: &ucerr.ForbiddenError{Message: "admin only"},
 	}
 	srv := newAdminUserSrv(mock)
 	resp := gqlRequest(t, srv, authedCtx("non-admin"), assignRoleMutation)
@@ -476,7 +477,7 @@ func TestAdminUserResolver_RevokeRole_SelfDemotionForbidden(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockAdminUserUsecase{
-		revokeErr: gqlerr.NewForbidden("cannot revoke own admin role"),
+		revokeErr: &ucerr.ForbiddenError{Message: "cannot revoke own admin role"},
 	}
 	srv := newAdminUserSrv(mock)
 	resp := gqlRequest(t, srv, authedCtx("admin"), revokeRoleSelfMutation)
@@ -493,7 +494,7 @@ func TestAdminUserResolver_RevokeRole_NonAdmin(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockAdminUserUsecase{
-		revokeErr: gqlerr.NewForbidden("admin only"),
+		revokeErr: &ucerr.ForbiddenError{Message: "admin only"},
 	}
 	srv := newAdminUserSrv(mock)
 	resp := gqlRequest(t, srv, authedCtx("non-admin"), revokeRoleMutation)
@@ -577,7 +578,7 @@ func TestAdminUserResolver_AdminUser_Forbidden(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockAdminUserUsecase{
-		getErr: gqlerr.NewForbidden("admin only"),
+		getErr: &ucerr.ForbiddenError{Message: "admin only"},
 	}
 	srv := newAdminUserSrv(mock)
 	body := `{"query":"{ adminUser(id: \"u1\") { id } }"}`
@@ -632,7 +633,7 @@ func TestAdminUserResolver_AdminUpdateUser_Forbidden(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockAdminUserUsecase{
-		updateErr: gqlerr.NewForbidden("admin only"),
+		updateErr: &ucerr.ForbiddenError{Message: "admin only"},
 	}
 	srv := newAdminUserSrv(mock)
 	body := `{"query":"mutation { adminUpdateUser(id: \"u1\", input: { displayName: \"Eve\" }) { id } }"}`

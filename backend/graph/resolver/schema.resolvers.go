@@ -75,7 +75,7 @@ func (r *mutationResolver) UpdateProfile(ctx context.Context, input model.Update
 		Bio:         input.Bio,
 	})
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return &model.UpdateProfilePayload{User: toUserModel(user)}, nil
 }
@@ -84,7 +84,7 @@ func (r *mutationResolver) UpdateProfile(ctx context.Context, input model.Update
 func (r *mutationResolver) CreateCardgroup(ctx context.Context, input model.NewCardgroupInput) (*model.CreateCardgroupPayload, error) {
 	cg, err := r.CardgroupUC.Create(ctx, usecase.CreateCardgroupInput{Name: input.Name})
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return &model.CreateCardgroupPayload{Cardgroup: toCardgroupModel(cg)}, nil
 }
@@ -93,7 +93,7 @@ func (r *mutationResolver) CreateCardgroup(ctx context.Context, input model.NewC
 func (r *mutationResolver) UpdateCardgroup(ctx context.Context, id string, input model.UpdateCardgroupInput) (*model.UpdateCardgroupPayload, error) {
 	cg, err := r.CardgroupUC.Update(ctx, id, usecase.UpdateCardgroupInput{Name: input.Name})
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return &model.UpdateCardgroupPayload{Cardgroup: toCardgroupModel(cg)}, nil
 }
@@ -101,7 +101,7 @@ func (r *mutationResolver) UpdateCardgroup(ctx context.Context, id string, input
 // DeleteCardgroup is the resolver for the deleteCardgroup field.
 func (r *mutationResolver) DeleteCardgroup(ctx context.Context, id string) (bool, error) {
 	if err := r.CardgroupUC.Delete(ctx, id); err != nil {
-		return false, err
+		return false, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return true, nil
 }
@@ -119,7 +119,7 @@ func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCardIn
 		Back:        input.Back,
 	})
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	if outcome.Duplicate != nil {
 		return model.CardDuplicateFrontError{
@@ -142,7 +142,7 @@ func (r *mutationResolver) UpdateCard(ctx context.Context, id string, input mode
 		Back:  input.Back,
 	})
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return &model.UpdateCardPayload{Card: toCardModel(card)}, nil
 }
@@ -150,7 +150,7 @@ func (r *mutationResolver) UpdateCard(ctx context.Context, id string, input mode
 // DeleteCard is the resolver for the deleteCard field.
 func (r *mutationResolver) DeleteCard(ctx context.Context, id string) (bool, error) {
 	if err := r.CardUC.Delete(ctx, id); err != nil {
-		return false, err
+		return false, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return true, nil
 }
@@ -159,7 +159,7 @@ func (r *mutationResolver) DeleteCard(ctx context.Context, id string) (bool, err
 func (r *mutationResolver) DeleteCards(ctx context.Context, ids []string) (int, error) {
 	n, err := r.CardUC.BulkDelete(ctx, ids)
 	if err != nil {
-		return 0, err
+		return 0, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return int(n), nil
 }
@@ -172,7 +172,7 @@ func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.HandleSw
 		Mode:        input.Mode,
 	})
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return toSwipeResponseModel(ctx, out), nil
 }
@@ -184,7 +184,7 @@ func (r *mutationResolver) UpsertDictionary(ctx context.Context, input model.Ups
 		Payload:     input.Payload,
 	})
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	errs := make([]*model.DictionaryValidationError, 0, len(out.Errors))
 	for _, e := range out.Errors {
@@ -211,7 +211,7 @@ func (r *mutationResolver) AdminUpdateUser(ctx context.Context, id string, input
 		Bio:         input.Bio,
 	})
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return toUserModel(user), nil
 }
@@ -220,7 +220,7 @@ func (r *mutationResolver) AdminUpdateUser(ctx context.Context, id string, input
 func (r *mutationResolver) AssignRole(ctx context.Context, userID string, roleID string) (*model.User, error) {
 	user, err := r.AdminUserUC.AssignRole(ctx, userID, roleID)
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return toUserModel(user), nil
 }
@@ -229,7 +229,7 @@ func (r *mutationResolver) AssignRole(ctx context.Context, userID string, roleID
 func (r *mutationResolver) RevokeRole(ctx context.Context, userID string, roleID string) (*model.User, error) {
 	user, err := r.AdminUserUC.RevokeRole(ctx, userID, roleID)
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return toUserModel(user), nil
 }
@@ -238,7 +238,7 @@ func (r *mutationResolver) RevokeRole(ctx context.Context, userID string, roleID
 func (r *mutationResolver) CreateRole(ctx context.Context, name string) (*model.Role, error) {
 	role, err := r.AdminRoleUC.Create(ctx, name)
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return toRoleModel(role), nil
 }
@@ -247,7 +247,7 @@ func (r *mutationResolver) CreateRole(ctx context.Context, name string) (*model.
 func (r *mutationResolver) UpdateRole(ctx context.Context, id string, name string) (*model.Role, error) {
 	role, err := r.AdminRoleUC.Update(ctx, id, name)
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return toRoleModel(role), nil
 }
@@ -255,7 +255,7 @@ func (r *mutationResolver) UpdateRole(ctx context.Context, id string, name strin
 // DeleteRole is the resolver for the deleteRole field.
 func (r *mutationResolver) DeleteRole(ctx context.Context, id string) (bool, error) {
 	if err := r.AdminRoleUC.Delete(ctx, id); err != nil {
-		return false, err
+		return false, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return true, nil
 }
@@ -264,7 +264,7 @@ func (r *mutationResolver) DeleteRole(ctx context.Context, id string) (bool, err
 func (r *mutationResolver) SetLastViewedCardgroup(ctx context.Context, cardgroupID string) (*model.User, error) {
 	user, err := r.LastViewedCardgroupUC.Set(ctx, cardgroupID)
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return toUserModel(user), nil
 }
@@ -278,7 +278,7 @@ func (r *queryResolver) Health(ctx context.Context) (string, error) {
 func (r *queryResolver) Me(ctx context.Context) (*model.User, error) {
 	user, err := r.UserUC.Me(ctx)
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return toUserModel(user), nil
 }
@@ -287,7 +287,7 @@ func (r *queryResolver) Me(ctx context.Context) (*model.User, error) {
 func (r *queryResolver) Cardgroup(ctx context.Context, id string) (*model.Cardgroup, error) {
 	cg, err := r.CardgroupUC.Cardgroup(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return toCardgroupModel(cg), nil
 }
@@ -304,7 +304,7 @@ func (r *queryResolver) MyCardgroupsConnection(ctx context.Context, first *int, 
 		OrderDirection: toUsecaseSortOrder(orderDirection),
 	})
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return toCardgroupConnectionModel(ctx, out), nil
 }
@@ -313,7 +313,7 @@ func (r *queryResolver) MyCardgroupsConnection(ctx context.Context, first *int, 
 func (r *queryResolver) Card(ctx context.Context, id string) (*model.Card, error) {
 	card, err := r.CardUC.Card(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return toCardModel(card), nil
 }
@@ -326,7 +326,7 @@ func (r *queryResolver) LearnNextDueCards(ctx context.Context, cardgroupID strin
 	}
 	cards, err := r.LearnUC.NextDueCards(ctx, cardgroupID, time.Now().UTC(), n)
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return toCardModels(ctx, cards), nil
 }
@@ -344,7 +344,7 @@ func (r *queryResolver) CardsByCardgroupConnection(ctx context.Context, cardgrou
 		OrderDirection: toUsecaseSortOrder(orderDirection),
 	})
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return toCardConnectionModel(ctx, out), nil
 }
@@ -404,7 +404,7 @@ func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.Vali
 func (r *queryResolver) Users(ctx context.Context, first *int, after *string, last *int, before *string, search *string) (*model.UserConnection, error) {
 	uc, err := r.AdminUserUC.List(ctx, first, last, after, before, search)
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	edges := make([]*model.UserEdge, len(uc.Edges))
 	for i, e := range uc.Edges {
@@ -426,7 +426,7 @@ func (r *queryResolver) Users(ctx context.Context, first *int, after *string, la
 func (r *queryResolver) AdminUser(ctx context.Context, id string) (*model.User, error) {
 	user, err := r.AdminUserUC.Get(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	if user == nil {
 		return nil, nil
@@ -438,7 +438,7 @@ func (r *queryResolver) AdminUser(ctx context.Context, id string) (*model.User, 
 func (r *queryResolver) Roles(ctx context.Context) ([]*model.Role, error) {
 	roles, err := r.AdminRoleUC.List(ctx)
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return toRoleModels(ctx, roles), nil
 }
@@ -447,7 +447,7 @@ func (r *queryResolver) Roles(ctx context.Context) ([]*model.Role, error) {
 func (r *queryResolver) Role(ctx context.Context, id string) (*model.Role, error) {
 	role, err := r.AdminRoleUC.Get(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return toRoleModel(role), nil
 }

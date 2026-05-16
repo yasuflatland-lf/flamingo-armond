@@ -15,6 +15,7 @@ import (
 	"backend/internal/gqlerr"
 	"backend/internal/repository"
 	"backend/internal/usecase"
+	"backend/internal/usecase/ucerr"
 )
 
 // mockUserRoleRepository satisfies repository.UserRoleRepository.
@@ -352,7 +353,7 @@ func TestUpsertDictionary_ResolverPropagatesForbidden(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockDictionaryUsecase{
-		returnErr: gqlerr.NewForbidden("admin role required"),
+		returnErr: &ucerr.ForbiddenError{Message: "admin role required"},
 	}
 	srv := newUpsertDictSrv(mock)
 	payload := base64.StdEncoding.EncodeToString([]byte("apple fruit"))
