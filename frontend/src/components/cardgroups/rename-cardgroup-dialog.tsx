@@ -37,7 +37,10 @@ export function RenameCardgroupDialog({ cardgroup, open, onOpenChange }: Props) 
     const result = await updateCardgroup({
       variables: { id: cardgroup.id, input: { name: values.name } },
     }).catch((err) => {
-      console.error("[RenameCardgroupDialog] update rejection", err);
+      console.error("[RenameCardgroupDialog] update rejection", {
+        name: err instanceof Error ? err.name : "unknown",
+        cardgroupId: cardgroup.id,
+      });
       const codes = liftGraphQLCodes(err);
       if (codes.includes("UNAUTHENTICATED")) {
         setBannerMessage("Your session expired. Please sign in again.");

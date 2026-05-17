@@ -470,6 +470,17 @@ export function CardsClient({
       // correct it. The row stays in edit mode; rowValidationError drives the
       // inline field highlight via the validationError prop.
       setRowValidationError({ field: payload.field, message: payload.message });
+    } else {
+      // Unknown variant: null payload or a future union variant the client was not regenerated against.
+      // Cast through unknown because TypeScript narrows the else branch to `never` once all
+      // discriminated union members are handled above.
+      const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
+      console.warn("[CardsClient] unexpected updateCard payload", {
+        typename: unknownPayload?.__typename ?? null,
+        cardId: id,
+        cardgroupId,
+      });
+      setRowValidationError({ field: "front", message: "Save failed. Please try again." });
     }
   }
 

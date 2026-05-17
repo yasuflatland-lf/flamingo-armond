@@ -282,10 +282,13 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
           cardgroupId,
           field: payload.field,
         });
-      } else if (payload === null || payload === undefined) {
-        // Mutation resolved (no .catch), but the server payload is missing handleSwipe.
-        // The optimistic queue is now the source of truth; surface for operator triage.
-        console.warn("[LearnClient] handleSwipe resolved without data", {
+      } else {
+        // Unknown variant or null/undefined payload — optimistic queue is now source of truth.
+        // Cast through unknown because TypeScript narrows the else branch to `never` once all
+        // discriminated union members are handled above.
+        const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
+        console.warn("[LearnClient] handleSwipe unexpected payload", {
+          typename: unknownPayload?.__typename ?? null,
           cardId: card.id,
           cardgroupId,
         });

@@ -460,8 +460,9 @@ describe("<LearnClient>", () => {
 
       await waitFor(() => {
         expect(consoleWarnSpy).toHaveBeenCalledWith(
-          "[LearnClient] handleSwipe resolved without data",
+          "[LearnClient] handleSwipe unexpected payload",
           expect.objectContaining({
+            typename: null,
             cardId: expect.any(String),
             cardgroupId: CG_ID,
           }),

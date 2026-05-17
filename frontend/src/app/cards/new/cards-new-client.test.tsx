@@ -408,8 +408,8 @@ describe("<CardsNewClient> — navigate-on-success", () => {
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         "[cards-new-client] create card rejection",
         expect.objectContaining({
-          message: expect.any(String),
-          err: expect.anything(),
+          name: expect.any(String),
+          cardgroupId: CG_ID,
         }),
       );
     });
@@ -636,8 +636,9 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         "[cards-new-client] overwrite card rejection",
         expect.objectContaining({
-          message: expect.any(String),
-          err: expect.anything(),
+          name: expect.any(String),
+          cardgroupId: CG_ID,
+          cardId: "existing-id",
         }),
       );
     });

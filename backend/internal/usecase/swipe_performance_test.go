@@ -420,3 +420,55 @@ func TestSwipeUsecase_HandleSwipe_CardgroupNotFound_ValidationVariant(t *testing
 		t.Fatalf("expected Validation.Message=%q, got %q", "cardgroup not found", outcome.Validation.Message)
 	}
 }
+
+// TestSwipeUsecase_HandleSwipe_CardCrossCardgroup_ValidationVariant verifies that
+// when the card's CardgroupID does not match the input CardgroupID, HandleSwipe
+// returns the Validation variant with field "cardId" and message "card not found".
+// This guards the cross-cardgroup mismatch branch at swipe.go (card.CardgroupID != in.CardgroupID).
+func TestSwipeUsecase_HandleSwipe_CardCrossCardgroup_ValidationVariant(t *testing.T) {
+	t.Parallel()
+
+	// FindByIDTx returns a card whose CardgroupID belongs to a different cardgroup.
+	// The usecase must detect the mismatch and return a Validation outcome.
+	cardRepo := &mockCardRepository{
+		findResult: &domain.Card{
+			ID:          "card-1",
+			CardgroupID: "cg-other",
+		},
+	}
+	cardgroupRepo := &mockCardgroupRepoForCard{
+		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+	}
+	tx, _ := fakeTxRunner()
+	uc := NewSwipeUsecaseWithTx(
+		cardRepo,
+		cardgroupRepo,
+		&mockSwipeRecordRepoForSwipe{},
+		service.NewFSRSScheduler(),
+		10,
+		tx,
+		&mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}},
+	)
+
+	outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+		CardID:      "card-1",
+		CardgroupID: "cg-1",
+		Mode:        int(domain.RatingEasy),
+	})
+
+	if err != nil {
+		t.Fatalf("expected nil error (validation goes to outcome), got: %v", err)
+	}
+	if outcome.Swipe != nil {
+		t.Fatal("expected nil Swipe on cross-cardgroup mismatch")
+	}
+	if outcome.Validation == nil {
+		t.Fatal("expected non-nil Validation on cross-cardgroup mismatch")
+	}
+	if outcome.Validation.Field != "cardId" {
+		t.Fatalf("expected Validation.Field=%q, got %q", "cardId", outcome.Validation.Field)
+	}
+	if outcome.Validation.Message != "card not found" {
+		t.Fatalf("expected Validation.Message=%q, got %q", "card not found", outcome.Validation.Message)
+	}
+}

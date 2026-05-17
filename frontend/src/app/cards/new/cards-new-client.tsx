@@ -200,8 +200,8 @@ export default function CardsNewClient({
       markCreationSucceeded();
     } catch (err) {
       console.error("[cards-new-client] create card rejection", {
-        message: err instanceof Error ? err.message : String(err),
-        err,
+        name: err instanceof Error ? err.name : "unknown",
+        cardgroupId: currentId,
       });
     }
   }
@@ -225,8 +225,9 @@ export default function CardsNewClient({
       const message = fieldErrors.back ?? banner ?? "Overwrite failed. Please try again.";
       setOverwriteError(message);
       console.error("[cards-new-client] overwrite card rejection", {
-        message: err instanceof Error ? err.message : String(err),
-        err,
+        name: err instanceof Error ? err.name : "unknown",
+        cardgroupId: currentId,
+        cardId: duplicate.existingCardId,
       });
       return null;
     });
