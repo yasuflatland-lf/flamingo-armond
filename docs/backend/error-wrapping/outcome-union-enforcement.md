@@ -155,6 +155,22 @@ comment explaining why. File a follow-up issue to investigate whether the
 emission is intentional or a refactor leak; link the issue in the comment.
 Never leave an unexplained allowlist entry.
 
+### Allowlist rot detection is informational, not exit-code-affecting
+
+When an allowlist entry no longer corresponds to a bare-emit mutation — because
+the mutation was promoted to a union, deleted, renamed, or its usecase stopped
+emitting typed errors — the lint prints `allowlist-rot: <mutation> is allowlisted
+but no longer violates; remove from allowlist.txt` to stderr. **The rot check is
+deliberately informational and does not affect the exit code.** A rotted entry
+is harmless to enforcement (it forgives a violation that no longer exists), so
+treating it as a hard CI failure would block unrelated PRs over a cleanup task.
+Maintainers periodically delete rotted entries; the stderr noise is the prompt,
+not a blocker. The implementation in `backend/cmd/schema-lint/main.go` prints
+the rot warnings before the violation check and continues regardless. If a
+future change wants to enforce zero rot in CI, that is a separate flag — do
+not flip the existing behavior, because pre-existing rot blocks the next
+unrelated PR until it is cleaned up.
+
 ## Back-links
 
 - [`result-union-errors-as-data.md`](result-union-errors-as-data.md) — pattern reference; `createCard` is the canonical worked example; `updateRole` is a second precedent that follows the same shape.
