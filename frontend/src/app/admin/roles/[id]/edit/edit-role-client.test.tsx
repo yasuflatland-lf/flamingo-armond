@@ -176,9 +176,7 @@ describe("EditRoleClient", () => {
       expect(mockRefresh).not.toHaveBeenCalled();
 
       // No typed-error banner, no auth banner, no unexpected-payload banner.
-      expect(
-        screen.queryByTestId("admin-role-edit-system-role-error"),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId("admin-role-edit-system-role-error")).not.toBeInTheDocument();
       expect(screen.queryByTestId("admin-role-edit-auth-error")).not.toBeInTheDocument();
       expect(
         screen.queryByTestId("admin-role-edit-unexpected-payload-error"),
@@ -347,16 +345,12 @@ describe("EditRoleClient", () => {
       // Degraded banner is shown on the dedicated unexpected-payload state,
       // NOT on the typed-error state (which is reserved for
       // CannotModifySystemRoleError per fix I18).
-      expect(
-        screen.getByTestId("admin-role-edit-unexpected-payload-error"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByTestId("admin-role-edit-unexpected-payload-error"),
-      ).toHaveTextContent(/something went wrong/i);
+      expect(screen.getByTestId("admin-role-edit-unexpected-payload-error")).toBeInTheDocument();
+      expect(screen.getByTestId("admin-role-edit-unexpected-payload-error")).toHaveTextContent(
+        /something went wrong/i,
+      );
       // Typed-error banner MUST NOT fire for an unknown __typename.
-      expect(
-        screen.queryByTestId("admin-role-edit-system-role-error"),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId("admin-role-edit-system-role-error")).not.toBeInTheDocument();
 
       // No navigation — this is not a success variant.
       expect(mockPush).not.toHaveBeenCalled();
@@ -406,15 +400,11 @@ describe("EditRoleClient", () => {
 
       // Degraded banner is shown on the dedicated unexpected-payload state
       // per fix I18 — typed-error state stays clean.
-      expect(
-        screen.getByTestId("admin-role-edit-unexpected-payload-error"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByTestId("admin-role-edit-unexpected-payload-error"),
-      ).toHaveTextContent(/something went wrong/i);
-      expect(
-        screen.queryByTestId("admin-role-edit-system-role-error"),
-      ).not.toBeInTheDocument();
+      expect(screen.getByTestId("admin-role-edit-unexpected-payload-error")).toBeInTheDocument();
+      expect(screen.getByTestId("admin-role-edit-unexpected-payload-error")).toHaveTextContent(
+        /something went wrong/i,
+      );
+      expect(screen.queryByTestId("admin-role-edit-system-role-error")).not.toBeInTheDocument();
 
       // No navigation.
       expect(mockPush).not.toHaveBeenCalled();

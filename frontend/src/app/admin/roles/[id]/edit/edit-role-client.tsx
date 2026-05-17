@@ -28,8 +28,8 @@ function liftGraphQLCodes(err: unknown): string[] {
   if (!Array.isArray(maybe)) return [];
   const codes: string[] = [];
   for (const entry of maybe) {
-    const code = (entry as { extensions?: { code?: unknown } } | null | undefined)
-      ?.extensions?.code;
+    const code = (entry as { extensions?: { code?: unknown } } | null | undefined)?.extensions
+      ?.code;
     if (typeof code === "string") codes.push(code);
   }
   return codes;
