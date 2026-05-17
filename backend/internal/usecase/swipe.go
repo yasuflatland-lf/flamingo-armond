@@ -84,11 +84,13 @@ type SwipeOutput struct {
 	Metrics         service.PerformanceMetrics
 }
 
-// HandleSwipeOutcome is the result of SwipeUsecase.HandleSwipe. Exactly one
-// of Swipe or Validation is non-nil on a nil-error return: a successful swipe
-// carries the SwipeOutput; an invalid mode, unknown card, or unowned cardgroup
-// surfaces via Validation so the resolver maps it to the HandleSwipeResult
-// union's InputValidationError variant.
+// HandleSwipeOutcome is the result of SwipeUsecase.HandleSwipe. Exactly one of
+// Swipe or Validation is non-nil on a nil-error return.
+//   - Swipe holds the success result (next cards + performance metrics + completion state).
+//   - Validation holds field-level user-input errors: invalid mode, an unknown card, or
+//     an unknown cardgroup. Validation.Field will be one of "mode", "cardId", or "cardgroupId".
+//   - Authorization failures (caller does not own the cardgroup) and infrastructure errors
+//     travel on the error channel, not on Validation.
 type HandleSwipeOutcome struct {
 	Swipe      *SwipeOutput
 	Validation *InputValidationInfo
@@ -150,20 +152,21 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 	}
 	rating, err := domain.RatingFromSwipeMode(in.Mode)
 	if err != nil {
-		return HandleSwipeOutcome{Validation: NewInputValidationInfo("mode", err.Error())}, nil
+		// Use a plain user-facing message; err.Error() carries an internal layer
+		// prefix ("rating: unknown swipe mode N") that is not appropriate on the wire.
+		return HandleSwipeOutcome{Validation: NewInputValidationInfo("mode", "unknown swipe mode")}, nil
 	}
 	if err := u.authorizeCardgroup(ctx, in.CardgroupID, user.Sub); err != nil {
 		// authorizeCardgroup returns ucerr.NewValidationError("cardgroupId", ...) for
 		// not-found and ucerr.ErrUnauthenticated for non-owner. The not-found case
 		// is a validation variant; the non-owner case stays on the error channel.
-		info, lifted := liftValidationErr(err)
-		if lifted != nil {
-			return HandleSwipeOutcome{}, lifted
+		info, err := liftValidationErr(err)
+		if err != nil {
+			return HandleSwipeOutcome{}, err
 		}
 		if info != nil {
 			return HandleSwipeOutcome{Validation: info}, nil
 		}
-		return HandleSwipeOutcome{}, err
 	}
 
 	var nextCards []*domain.Card
@@ -223,14 +226,13 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		// Validation errors surfaced from within the transaction closure (e.g.
 		// card not found, cardgroup mismatch) are promoted to the outcome's
 		// Validation variant rather than returned on the error channel.
-		info, lifted := liftValidationErr(err)
-		if lifted != nil {
-			return HandleSwipeOutcome{}, lifted
+		info, err := liftValidationErr(err)
+		if err != nil {
+			return HandleSwipeOutcome{}, err
 		}
 		if info != nil {
 			return HandleSwipeOutcome{Validation: info}, nil
 		}
-		return HandleSwipeOutcome{}, err
 	}
 	recentSwipes, err := u.swipeRepo.ListRecentByUser(ctx, user.Sub, swipePerformanceSampleLimit)
 	if err != nil {

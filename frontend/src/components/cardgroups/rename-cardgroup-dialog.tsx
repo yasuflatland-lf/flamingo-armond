@@ -7,6 +7,7 @@ import { UpdateCardgroupMutation } from "@/app/cardgroups/queries";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 
 type Props = {
   cardgroup: { id: string; name: string };
@@ -37,6 +38,11 @@ export function RenameCardgroupDialog({ cardgroup, open, onOpenChange }: Props) 
       variables: { id: cardgroup.id, input: { name: values.name } },
     }).catch((err) => {
       console.error("[RenameCardgroupDialog] update rejection", err);
+      const codes = liftGraphQLCodes(err);
+      if (codes.includes("UNAUTHENTICATED")) {
+        setBannerMessage("Your session expired. Please sign in again.");
+        return null;
+      }
       const banner = getBackendErrorBanner(err) ?? "Something went wrong. Please try again.";
       setBannerMessage(banner);
       return null;

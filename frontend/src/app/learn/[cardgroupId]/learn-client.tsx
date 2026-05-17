@@ -271,6 +271,17 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
       const payload = result.data?.handleSwipe;
       if (payload?.__typename === "HandleSwipeSuccess") {
         setQueue(payload.response.nextCards);
+      } else if (payload?.__typename === "InputValidationError") {
+        // Server rejected the swipe (stale card, cardgroup mismatch, invalid mode).
+        // The optimistic queue advanced so learning continues, but we surface to
+        // operator telemetry — repeated firing indicates a stale prefetch.
+        // payload.message is omitted — it may echo user-authored card content.
+        // See docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
+        console.warn("[LearnClient] handleSwipe InputValidationError", {
+          cardId: card.id,
+          cardgroupId,
+          field: payload.field,
+        });
       } else if (payload === null || payload === undefined) {
         // Mutation resolved (no .catch), but the server payload is missing handleSwipe.
         // The optimistic queue is now the source of truth; surface for operator triage.
@@ -279,8 +290,6 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
           cardgroupId,
         });
       }
-      // InputValidationError variant: the optimistic queue remains the source of
-      // truth. Non-fatal — learning continues on the current queue.
     },
     [cardgroupId, handleSwipe],
   );

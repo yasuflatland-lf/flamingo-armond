@@ -374,3 +374,49 @@ func TestSwipeUsecase_HandleSwipe_CardNotFound_ValidationVariant(t *testing.T) {
 		t.Fatalf("expected Validation.Field=%q, got %q", "cardId", outcome.Validation.Field)
 	}
 }
+
+// TestSwipeUsecase_HandleSwipe_CardgroupNotFound_ValidationVariant verifies that
+// when authorizeCardgroup cannot find the cardgroup, HandleSwipe returns the
+// Validation variant with field "cardgroupId" rather than an error channel error.
+func TestSwipeUsecase_HandleSwipe_CardgroupNotFound_ValidationVariant(t *testing.T) {
+	t.Parallel()
+
+	// FindByID returns ErrNotFound → authorizeCardgroup returns
+	// ucerr.NewValidationError("cardgroupId", "cardgroup not found") → liftValidationErr
+	// promotes it to outcome.Validation.
+	cardgroupRepo := &mockCardgroupRepoForCard{
+		findErr: repository.ErrNotFound,
+	}
+	tx, _ := fakeTxRunner()
+	uc := NewSwipeUsecaseWithTx(
+		&mockCardRepository{},
+		cardgroupRepo,
+		&mockSwipeRecordRepoForSwipe{},
+		service.NewFSRSScheduler(),
+		10,
+		tx,
+		&mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}},
+	)
+
+	outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+		CardID:      "card-1",
+		CardgroupID: "cg-missing",
+		Mode:        int(domain.RatingEasy),
+	})
+
+	if err != nil {
+		t.Fatalf("expected nil error (validation goes to outcome), got: %v", err)
+	}
+	if outcome.Swipe != nil {
+		t.Fatal("expected nil Swipe on validation failure")
+	}
+	if outcome.Validation == nil {
+		t.Fatal("expected non-nil Validation on cardgroup-not-found")
+	}
+	if outcome.Validation.Field != "cardgroupId" {
+		t.Fatalf("expected Validation.Field=%q, got %q", "cardgroupId", outcome.Validation.Field)
+	}
+	if outcome.Validation.Message != "cardgroup not found" {
+		t.Fatalf("expected Validation.Message=%q, got %q", "cardgroup not found", outcome.Validation.Message)
+	}
+}

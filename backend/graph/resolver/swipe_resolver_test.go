@@ -260,17 +260,14 @@ func TestResolver_HandleSwipe_Unauthenticated(t *testing.T) {
 	}
 }
 
-// TestResolver_HandleSwipe_NilVariant_ReturnsInternal covers the defensive
-// guard in the resolver where the usecase returns a HandleSwipeOutcome with
-// both Swipe and Validation nil (a bug shape). This cannot be triggered through
-// the real SwipeUsecase — the guard is structural. The closest reachable proxy
-// is an internal infrastructure error (missing tx runner) that causes the
-// usecase to return a non-nil error, which the resolver maps to INTERNAL via
-// gqlerr.FromUsecaseError.
-//
-// Here we simulate the missing-tx-runner case by constructing the usecase
-// without a tx runner, which causes HandleSwipe to return INTERNAL immediately.
-func TestResolver_HandleSwipe_NilVariant_ReturnsInternal(t *testing.T) {
+// TestResolver_HandleSwipe_InfrastructureError_ReturnsInternal verifies that an
+// infrastructure error from HandleSwipe (e.g. a nil tx runner) maps to INTERNAL
+// via gqlerr.FromUsecaseError. The nil-variant guard at the resolver
+// (if outcome.Swipe == nil) is structurally unreachable through the real usecase
+// — HandleSwipe never returns a zero-value HandleSwipeOutcome alongside nil error
+// — so the guard itself has no test, only this nearest reachable proxy for the
+// INTERNAL mapping.
+func TestResolver_HandleSwipe_InfrastructureError_ReturnsInternal(t *testing.T) {
 	t.Parallel()
 
 	// Build the SwipeUsecase directly with a nil tx to trigger the
@@ -299,7 +296,42 @@ func TestResolver_HandleSwipe_NilVariant_ReturnsInternal(t *testing.T) {
 	}
 }
 
-// ensure the repository import is used (domain.Card is used above, but
-// repository.ErrNotFound may not be used in this file — include a blank
-// assignment to keep the import if needed).
-var _ = repository.ErrNotFound
+// TestResolver_HandleSwipe_CardNotFound_InputValidation verifies that when the
+// card repo returns ErrNotFound inside the transaction, the resolver surfaces
+// the InputValidationError union variant with field "cardId" (errors as data),
+// not a GraphQL protocol error.
+func TestResolver_HandleSwipe_CardNotFound_InputValidation(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &swipeCardRepo{
+		findByIDTxErr: repository.ErrNotFound,
+	}
+	cgRepo := &swipeCGRepo{
+		findByIDResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"},
+	}
+	swipeRepo := &swipeRecordRepo{}
+	fsrsRepo := &userCardFSRSRepo{}
+
+	srv := newSwipeSrv(cardRepo, cgRepo, swipeRepo, fsrsRepo)
+
+	// Mode 1 = Again — passes mode validation, reaches the card lookup.
+	resp := gqlRequest(t, srv, authedCtx("u-1"), handleSwipeMutation("c-missing", "cg-1", 1))
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors (validation should come as data): %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["handleSwipe"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.handleSwipe, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "InputValidationError" {
+		t.Fatalf("expected __typename=InputValidationError, got %v; response: %v", payload["__typename"], resp)
+	}
+	if payload["field"] != "cardId" {
+		t.Fatalf("expected field=cardId, got %v", payload["field"])
+	}
+	if payload["message"] != "card not found" {
+		t.Fatalf("expected message=%q, got %v", "card not found", payload["message"])
+	}
+}

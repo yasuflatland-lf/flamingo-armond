@@ -63,6 +63,14 @@ export function CardsClient({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
 
+  // Typed InputValidationError variant surfaced by the updateCard outcome-union.
+  // Keyed by the card id currently in edit mode so only the active row's form
+  // receives the error. Cleared when editing begins or when the edit is cancelled.
+  const [rowValidationError, setRowValidationError] = useState<{
+    field: string;
+    message: string;
+  } | null>(null);
+
   // Map of per-row SwipeableRow refs, keyed by card id. When the user taps a
   // different row to enter edit mode, we close any half-open row first via its
   // ref. Using a Map (not a ref to an object literal) avoids stale-closure
@@ -438,6 +446,7 @@ export function CardsClient({
   }, []);
 
   async function handleUpdate(id: string, values: { front: string; back: string }) {
+    setRowValidationError(null);
     const result = await updateCard({
       variables: { id, input: { front: values.front, back: values.back } },
     }).catch((err) => {
@@ -454,12 +463,13 @@ export function CardsClient({
     if (!result) return;
 
     const payload = result.data?.updateCard;
-    // InputValidationError: leave the row in edit mode so the user can correct it.
-    // The CardForm's error prop (driven by useMutation's error state) surfaces the
-    // backend message — the union variant here is a second path for the same signal.
-    // For now, treat InputValidationError the same as a missing payload (stay in edit).
     if (payload?.__typename === "UpdateCardSuccess") {
       setEditingId(null);
+    } else if (payload?.__typename === "InputValidationError") {
+      // Surface the field-level error into the row's CardForm so the user can
+      // correct it. The row stays in edit mode; rowValidationError drives the
+      // inline field highlight via the validationError prop.
+      setRowValidationError({ field: payload.field, message: payload.message });
     }
   }
 
@@ -618,7 +628,11 @@ export function CardsClient({
                     submitLabel="Save"
                     submitting={updating}
                     error={updateError}
-                    onCancel={() => setEditingId(null)}
+                    validationError={rowValidationError}
+                    onCancel={() => {
+                      setRowValidationError(null);
+                      setEditingId(null);
+                    }}
                   />
                 </li>
               ) : (
@@ -670,12 +684,14 @@ export function CardsClient({
                         tabIndex={0}
                         onClick={() => {
                           closeOtherRows(card.id);
+                          setRowValidationError(null);
                           setEditingId(card.id);
                         }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
                             closeOtherRows(card.id);
+                            setRowValidationError(null);
                             setEditingId(card.id);
                           }
                         }}
