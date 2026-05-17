@@ -41,3 +41,17 @@ When a plan asserts a structural property of *our own* code — "no import cycle
 A worked example: a plan asserted that adding a `gqlerr → usecase` import would not create a cycle, on the basis that the new shared types in `usecase` had no `gqlerr` import. The legacy `usecase/*.go` production files already imported `gqlerr` (a fact the plan summary did not surface), and the proposed direct import would have closed a cycle the compiler rejects. A 5-second smoke build (`echo 'package main; import _ "backend/internal/gqlerr"; func main() {}' | go build -`, scoped to the proposed layout) catches this before any other infrastructure is wired. Run the toolchain check before committing to a directory layout; do not settle the question by re-reading the plan.
 
 A second worked example: before writing a `go-arch-lint` archfile that encodes 21 component dependency rules, run `go list -f '{{join .Imports "\n"}}' ./internal/usecase/...` (and analogous invocations for every component) to enumerate the actual imports. Any mismatch between the plan's stated `mayDependOn` list and the real import set produces either a violation at first run (too restrictive) or a silent gap in enforcement (too permissive). The pre-flight `go list` survey takes under a minute for the whole tree and eliminates an entire class of "rule doesn't match reality" iteration rounds.
+
+## Pre-existing inconsistency surfaced by an adjacent edit
+
+When a PR's diff converts adjacent lines in a file to a new style (e.g. bare-text `§` reference → Markdown anchor link), other pre-existing bare-text references in the **same file** may become visibly inconsistent with the just-edited lines. The bug existed before the PR — `git show main:<file>` confirms it — but the *visibility* and the in-file style asymmetry were introduced by the current change.
+
+Default posture: **the same PR fixes the adjacent (visually contiguous) pre-existing instances** when:
+
+- They live in the same file as the lines just edited.
+- They follow the same broken pattern (e.g. the same `docs/foo.md §` failure mode).
+- The fix cost is bounded (one-line per site, no semantic change).
+
+A worked example from this repository: a change converted `docs/deployment.md:106, 297` from bare-text `docs/backend.md § "X"` references to anchor links. Two siblings in the same file (`L108`, `L301`) carried the identical broken pattern as pre-existing bugs. They were brought into the PR scope because the in-file style was now mixed; the diff stayed bounded and the fixes were one-line each. The further-away `L135, L303` and 13+ similar sites in other files stayed out of scope — those did not become inconsistent with anything the PR had touched.
+
+The boundary: same file, same pattern, same edit-shape. Going beyond is the cleanup-by-the-side-of-the-road that the broader rule above forbids.

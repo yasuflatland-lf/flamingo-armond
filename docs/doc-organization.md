@@ -113,3 +113,63 @@ Splitting multiple rule files in parallel (one agent per file) is safe when:
 3. Edits to **shared sink files** (source comments referencing moved paths, sibling rule cross-references) happen at different anchors — verify this before dispatching.
 
 Doubly-edited files are safe when the two agents edit non-overlapping anchors. Conflicts arise only when two agents touch the same anchor in the same file.
+
+## Hierarchical CLAUDE.md scheme
+
+In addition to the L1/L2/L3 tier docs, area-specific `CLAUDE.md` files at the top of each major directory carry the area's topic-doc index. The four area files are:
+
+- [`backend/CLAUDE.md`](../backend/CLAUDE.md) — Go / Echo backend orientation and chapter index.
+- [`frontend/CLAUDE.md`](../frontend/CLAUDE.md) — TypeScript / GraphQL frontend orientation and chapter index.
+- [`schema/CLAUDE.md`](../schema/CLAUDE.md) — shared GraphQL schema orientation.
+- [`docs/CLAUDE.md`](CLAUDE.md) — doc-tier conventions and layout pointer.
+
+Claude Code auto-loads ancestor `CLAUDE.md` files based on the current working directory, so backend-only work no longer pulls the frontend chapter list into context (and vice versa).
+
+### What belongs in an area `CLAUDE.md`
+
+- Layout pointers (`cmd/`, `internal/`, `src/`, …).
+- Area-specific quickstart commands (`go run ./cmd/server`, `pnpm --filter frontend dev`).
+- A Markdown-hyperlinked index of the area's L2 chapter docs (`docs/<area>/...md`).
+- A short "Cross-cutting rules already in context" footer naming the `.claude/rules/` files auto-loaded alongside it, so the file does not duplicate their content.
+
+**What does NOT belong**: cross-cutting rules (language policy, error wrapping, RSC error handling, …). Those stay in `.claude/rules/` and auto-load orthogonally to cwd.
+
+### Soft caps
+
+Same spirit as L1's 35-line cap. Actual sizes in the current tree: `backend/CLAUDE.md` ~30 lines, `frontend/CLAUDE.md` ~50 lines, `schema/CLAUDE.md` ~20 lines, `docs/CLAUDE.md` ~27 lines. When a section grows, push the detail down to a `docs/<area>/<topic>.md` chapter and leave the area file a pointer.
+
+**Topic-doc references must be Markdown hyperlinks, not backtick-only text.** The CI check described below greps `](...)` patterns; a bare-text reference escapes verification and the next file-rename will silently rot the index.
+
+## CI verification: `scripts/check-claude-md-hierarchy.sh`
+
+The script runs in `.github/workflows/docs.yml` and enforces four invariants:
+
+1. **Presence** — each of the four area `CLAUDE.md` files exists.
+2. **Absence** — `docs/frontend.md` does **not** exist (it was migrated to `frontend/CLAUDE.md`; this gate catches accidental reintroduction).
+3. **Coverage** — every direct child of `docs/frontend/*.md` is listed in `frontend/CLAUDE.md`'s topic-docs section.
+4. **Link validity** — every Markdown-link target inside the four area `CLAUDE.md` files resolves to a real file.
+
+The check is scoped to area `CLAUDE.md` files. It deliberately does **not** validate links inside L2/L3 chapter docs — that is a follow-up candidate for a fuller link checker (e.g. `lychee`, `markdown-link-check`).
+
+### Bash portability gotchas fixed in the script
+
+The initial implementation hit two macOS-incompatible idioms under `set -euo pipefail`. Both are documented here so future maintainers do not reintroduce them:
+
+- **`find -printf` is GNU-only.** `find` on BSD/macOS does not support `-printf`. The portable substitute is `find ... -exec basename {} \;`, which works on both GNU and BSD `find`.
+- **`grep | sed | while ... exit 1` is silently swallowed.** A subshell `exit 1` terminates only the subshell, not the parent script. Additionally, when the leading `grep` in a pipeline returns exit code 1 for a no-match (a legitimate outcome when a file contains zero Markdown links), `set -euo pipefail` aborts the entire script before the `while` body runs. The fix is process substitution with an error counter:
+
+  ```bash
+  # Correct — process substitution avoids the subshell + pipefail trap
+  while IFS= read -r link; do
+    # ... validate $link ...
+    link_errors=$((link_errors + 1))
+  done < <(grep -oE '\]\(([^)]+)\)' "$f" 2>/dev/null | sed -E '...' || true)
+  if [[ $link_errors -ne 0 ]]; then exit 1; fi
+
+  # Incorrect — exit 1 in the while body terminates only the subshell
+  grep ... | sed ... | while ...; do
+    exit 1   # silently swallowed
+  done
+  ```
+
+  The `|| true` after the `sed` invocation prevents `pipefail` from aborting when `grep` finds no matches; the `while` loop then correctly iterates over zero lines.
