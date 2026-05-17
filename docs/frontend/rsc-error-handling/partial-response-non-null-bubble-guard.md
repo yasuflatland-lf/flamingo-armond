@@ -47,3 +47,5 @@ A new consumer of any non-null Connection field must pick a branch from the tabl
 ## Why this is not a `gqlFetch` problem
 
 [`partial-response-gqlfetch.md`](partial-response-gqlfetch.md) describes how `gqlFetch` handles auth-coded partial responses (re-throw) and non-auth partial responses (return data + warn). The non-auth branch is the one this rule covers: `gqlFetch` returned `data` with the failed field as `null` and emitted a `console.warn`, but the caller still has to inspect the field. There is no place inside `gqlFetch` to know which fields are required by the caller — that decision lives at the consumer site, which is why the guard belongs there.
+
+For a **mutation** that has the same shape — null payload silently passing through `.then` instead of `.catch` — see [`fire-and-forget-mutation-warn-on-null-and-non-success.md`](fire-and-forget-mutation-warn-on-null-and-non-success.md). The write-path analogue requires a structured warn when `result.data?.<field>` is null, plus a separate warn when `__typename` does not match any known success variant, plus `liftGraphQLCodes(err)` in `.catch`.

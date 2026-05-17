@@ -452,11 +452,14 @@ function makePersistMock(cardgroupId: string, onCalled?: () => void) {
       return {
         data: {
           setLastViewedCardgroup: {
-            __typename: "User" as const,
-            id: USER_ID,
-            lastViewedCardgroup: {
-              __typename: "Cardgroup" as const,
-              id: cardgroupId,
+            __typename: "SetLastViewedCardgroupSuccess" as const,
+            user: {
+              __typename: "User" as const,
+              id: USER_ID,
+              lastViewedCardgroup: {
+                __typename: "Cardgroup" as const,
+                id: cardgroupId,
+              },
             },
           },
         },
@@ -524,6 +527,61 @@ describe("<LearnClient> persist-last-viewed path", () => {
       });
       expect(cached?.lastViewedCardgroup?.id).toBe(CG_ID);
     });
+  });
+
+  it("InputValidationError variant — does not write to the cache (regression guard)", async () => {
+    // When the server returns an InputValidationError variant, the update callback
+    // must return early without calling cache.writeFragment. This test asserts that
+    // the User fragment is NOT written to the cache — the __typename narrowing guard
+    // in learn-client.tsx is load-bearing.
+    const cache = new InMemoryCache();
+
+    const validationMock = {
+      request: {
+        query: SetLastViewedCardgroupDocument,
+        variables: { cardgroupId: CG_ID },
+      },
+      result: () => ({
+        data: {
+          setLastViewedCardgroup: {
+            __typename: "InputValidationError" as const,
+            field: "cardgroupId",
+            message: "cardgroup not found or not owned",
+          },
+        },
+      }),
+    };
+
+    render(
+      <MockedProvider mocks={[validationMock, ...makeDefaultPrefetchMocks()]} cache={cache}>
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
+      </MockedProvider>,
+    );
+
+    // Wait for the mutation to resolve (the non-success warn fires).
+    await waitFor(() => {
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "[learn] setLastViewedCardgroup non-success variant",
+        expect.objectContaining({ typename: "InputValidationError" }),
+      );
+    });
+
+    // The User fragment must NOT have been written.
+    const LastViewedFragment = gql`
+      fragment LastViewedValidationCheck on User {
+        lastViewedCardgroup {
+          id
+        }
+      }
+    `;
+    const cached = cache.readFragment<{ lastViewedCardgroup: { id: string } | null }>({
+      id: `User:${USER_ID}`,
+      fragment: LastViewedFragment,
+    });
+    expect(cached).toBeNull();
+
+    // Component still renders the card stack — no crash.
+    expect(screen.getByText("Hello")).toBeInTheDocument();
   });
 
   it.each([

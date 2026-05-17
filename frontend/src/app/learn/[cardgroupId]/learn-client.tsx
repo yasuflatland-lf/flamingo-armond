@@ -19,6 +19,7 @@ import type {
   LearnNextDueCardsQuery,
 } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 
 type LearnCard = LearnNextDueCardsQuery["learnNextDueCards"][number];
 type PerformanceMetrics = HandleSwipeMutationType["handleSwipe"]["metrics"];
@@ -86,8 +87,9 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
   // can keep the effect's dependency surface narrow.
   //
   // No `optimisticResponse`: setLastViewedCardgroup can return typed errors
-  // (BAD_USER_INPUT, UNAUTHENTICATED) which @apollo/client v3.x does not
-  // reliably roll back from optimistic writes — see docs/pagination/drop-optimistic-response-typed-errors.md.
+  // (InputValidationError, UNAUTHENTICATED) which @apollo/client v3.x does not
+  // reliably roll back from optimistic writes — see .claude/rules/pagination.md
+  // § "Drop optimisticResponse for mutations that can fail with typed GraphQL errors".
   //
   // `lastDispatchedRef` is a mutable ref (not state) so it can be read and
   // written synchronously — state updates are async and would allow Strict
@@ -103,11 +105,14 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
         mutation: SetLastViewedCardgroupMutation,
         variables: { cardgroupId },
         update: (cache, { data }) => {
-          if (!data?.setLastViewedCardgroup) return;
+          // Narrow on __typename before the cache write so an InputValidationError
+          // or unknown variant does not silently mutate the cache.
+          const payload = data?.setLastViewedCardgroup;
+          if (payload?.__typename !== "SetLastViewedCardgroupSuccess") return;
           cache.writeFragment({
             id: cache.identify({
               __typename: "User",
-              id: data.setLastViewedCardgroup.id,
+              id: payload.user.id,
             }),
             fragment: gql`
               fragment LastViewedFragment on User {
@@ -117,10 +122,22 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
               }
             `,
             data: {
-              lastViewedCardgroup: data.setLastViewedCardgroup.lastViewedCardgroup,
+              lastViewedCardgroup: payload.user.lastViewedCardgroup,
             },
           });
         },
+      })
+      .then((result) => {
+        const payload = result.data?.setLastViewedCardgroup;
+        if (!payload) {
+          console.warn("[learn] setLastViewedCardgroup returned null payload");
+          return;
+        }
+        if (payload.__typename !== "SetLastViewedCardgroupSuccess") {
+          console.warn("[learn] setLastViewedCardgroup non-success variant", {
+            typename: payload.__typename,
+          });
+        }
       })
       .catch((err) => {
         // err.message is omitted — backend messages may echo user-authored content.
@@ -128,6 +145,7 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
         console.warn("[learn] setLastViewedCardgroup failed", {
           cardgroupId,
           name: err instanceof Error ? err.name : "unknown",
+          codes: liftGraphQLCodes(err),
         });
       });
   }, [cardgroupId, lastViewedCardgroupId, client]);

@@ -90,3 +90,15 @@ The current producer/consumer count is 1+1 (`CardUsecase.Create` + `mutationReso
 The runtime guard at the resolver converts the invariant violation into an INTERNAL error
 that surfaces in tests and structured logs, making drift loud without the boilerplate cost
 of a sealed interface. If a second producer or consumer is added, migrate to option 2.
+
+## Testability of the nil-variant guard depends on the resolver field shape
+
+Whether the nil-variant `gqlerr.Internal` guard can be exercised by a unit test depends
+on whether the resolver's usecase dependency is an interface or a concrete struct pointer.
+A concrete-struct field cannot be mocked at the resolver-package boundary; the symmetric
+unit test for the guard is structurally impossible and the guard remains correct but
+unverifiable in isolation. See
+[`resolver-usecase-interface-vs-concrete-testability.md`](resolver-usecase-interface-vs-concrete-testability.md)
+for the asymmetry between `CardgroupUC *usecase.CardgroupUsecase` (concrete, no unit
+test for the guard) and `LastViewedCardgroupUC usecase.LastViewedCardgroupUsecase`
+(interface, guard verified via mock) in this codebase.
