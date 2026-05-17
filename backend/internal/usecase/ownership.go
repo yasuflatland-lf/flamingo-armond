@@ -16,26 +16,42 @@ type CardgroupOwnershipFinder interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
 }
 
-// authorizeCardgroup verifies that userID owns the cardgroup identified by id.
-// When missingAsBadInput is true, a not-found cardgroup becomes
-// ucerr.NewValidationError("cardgroupId", "cardgroup not found"). When false,
-// a not-found cardgroup becomes ucerr.ErrUnauthenticated (the existing
-// behaviour callers of CardUsecase relied on when the ID had already been
-// validated upstream). Pass true at create-time when the input may carry a
-// stale cardgroup ID; pass false at update/delete-time where the ID was
-// already authorized.
-func authorizeCardgroup(
+// authorizeCardgroupOrBadInput verifies that userID owns the cardgroup identified
+// by id, treating a not-found cardgroup as a validation error against the caller-
+// supplied input. Use at the boundary where id originates from untrusted user
+// input (mutation arguments, list filters) and a stale id is a recoverable
+// caller mistake rather than a security event.
+func authorizeCardgroupOrBadInput(
 	ctx context.Context,
 	repo CardgroupOwnershipFinder,
 	id, userID string,
-	missingAsBadInput bool,
 ) error {
 	cg, err := repo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			if missingAsBadInput {
-				return ucerr.NewValidationError("cardgroupId", "cardgroup not found")
-			}
+			return ucerr.NewValidationError("cardgroupId", "cardgroup not found")
+		}
+		return eris.Wrap(err, "usecase: authorize cardgroup: find by id")
+	}
+	if !cg.IsOwnedBy(userID) {
+		return ucerr.ErrUnauthenticated
+	}
+	return nil
+}
+
+// authorizeCardgroupOrUnauthenticated verifies that userID owns the cardgroup
+// identified by id, treating a not-found cardgroup as an authorization failure.
+// Use deeper in the application layer where id was already validated upstream
+// (e.g. resolved from a DB-fetched entity) and a missing cardgroup signals an
+// authorization or consistency issue, not a caller mistake.
+func authorizeCardgroupOrUnauthenticated(
+	ctx context.Context,
+	repo CardgroupOwnershipFinder,
+	id, userID string,
+) error {
+	cg, err := repo.FindByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
 			return ucerr.ErrUnauthenticated
 		}
 		return eris.Wrap(err, "usecase: authorize cardgroup: find by id")

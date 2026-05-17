@@ -205,7 +205,7 @@ func (u *CardUsecase) Card(ctx context.Context, id string) (*domain.Card, error)
 		}
 		return nil, eris.Wrap(err, "usecase: card: find by id")
 	}
-	if err := authorizeCardgroup(ctx, u.cardgroupRepo, card.CardgroupID, user.Sub, false); err != nil {
+	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, card.CardgroupID, user.Sub); err != nil {
 		return nil, err
 	}
 	return card, nil
@@ -221,7 +221,7 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 	if user == nil {
 		return CreateCardOutcome{}, ucerr.ErrUnauthenticated
 	}
-	if err := authorizeCardgroup(ctx, u.cardgroupRepo, in.CardgroupID, user.Sub, true); err != nil {
+	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, in.CardgroupID, user.Sub); err != nil {
 		return CreateCardOutcome{}, err
 	}
 
@@ -292,7 +292,7 @@ func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 		}
 		return UpdateCardOutcome{}, eris.Wrap(err, "usecase: update card: find by id")
 	}
-	if err := authorizeCardgroup(ctx, u.cardgroupRepo, existing.CardgroupID, user.Sub, false); err != nil {
+	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, existing.CardgroupID, user.Sub); err != nil {
 		return UpdateCardOutcome{}, err
 	}
 
@@ -335,7 +335,7 @@ func (u *CardUsecase) Delete(ctx context.Context, id string) error {
 		}
 		return eris.Wrap(err, "usecase: delete card: find by id")
 	}
-	if err := authorizeCardgroup(ctx, u.cardgroupRepo, card.CardgroupID, user.Sub, false); err != nil {
+	if err := authorizeCardgroupOrUnauthenticated(ctx, u.cardgroupRepo, card.CardgroupID, user.Sub); err != nil {
 		return err
 	}
 	if err := u.cardRepo.Delete(ctx, id); err != nil {
@@ -353,7 +353,7 @@ func (u *CardUsecase) ListCardsByCardgroupConnection(
 	if user == nil {
 		return nil, ucerr.ErrUnauthenticated
 	}
-	if err := authorizeCardgroup(ctx, u.cardgroupRepo, in.CardgroupID, user.Sub, true); err != nil {
+	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, in.CardgroupID, user.Sub); err != nil {
 		return nil, err
 	}
 

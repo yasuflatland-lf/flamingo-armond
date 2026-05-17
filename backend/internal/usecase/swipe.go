@@ -148,8 +148,8 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		// prefix ("rating: unknown swipe mode N") that is not appropriate on the wire.
 		return HandleSwipeOutcome{Validation: NewInputValidationInfo("mode", "unknown swipe mode")}, nil
 	}
-	if err := authorizeCardgroup(ctx, u.cardgroupRepo, in.CardgroupID, user.Sub, true); err != nil {
-		// authorizeCardgroup returns ucerr.NewValidationError("cardgroupId", ...) for
+	if err := authorizeCardgroupOrBadInput(ctx, u.cardgroupRepo, in.CardgroupID, user.Sub); err != nil {
+		// authorizeCardgroupOrBadInput returns ucerr.NewValidationError("cardgroupId", ...) for
 		// not-found and ucerr.ErrUnauthenticated for non-owner. The not-found case
 		// is a validation variant; the non-owner case stays on the error channel.
 		info, err := liftValidationErr(err)
