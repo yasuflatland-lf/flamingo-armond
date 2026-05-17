@@ -205,7 +205,7 @@ func (u *CardUsecase) Card(ctx context.Context, id string) (*domain.Card, error)
 		}
 		return nil, eris.Wrap(err, "usecase: card: find by id")
 	}
-	if err := u.authorizeCardgroup(ctx, card.CardgroupID, user.Sub, false); err != nil {
+	if err := authorizeCardgroup(ctx, u.cardgroupRepo, card.CardgroupID, user.Sub, false); err != nil {
 		return nil, err
 	}
 	return card, nil
@@ -221,7 +221,7 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 	if user == nil {
 		return CreateCardOutcome{}, ucerr.ErrUnauthenticated
 	}
-	if err := u.authorizeCardgroup(ctx, in.CardgroupID, user.Sub, true); err != nil {
+	if err := authorizeCardgroup(ctx, u.cardgroupRepo, in.CardgroupID, user.Sub, true); err != nil {
 		return CreateCardOutcome{}, err
 	}
 
@@ -292,7 +292,7 @@ func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 		}
 		return UpdateCardOutcome{}, eris.Wrap(err, "usecase: update card: find by id")
 	}
-	if err := u.authorizeCardgroup(ctx, existing.CardgroupID, user.Sub, false); err != nil {
+	if err := authorizeCardgroup(ctx, u.cardgroupRepo, existing.CardgroupID, user.Sub, false); err != nil {
 		return UpdateCardOutcome{}, err
 	}
 
@@ -335,7 +335,7 @@ func (u *CardUsecase) Delete(ctx context.Context, id string) error {
 		}
 		return eris.Wrap(err, "usecase: delete card: find by id")
 	}
-	if err := u.authorizeCardgroup(ctx, card.CardgroupID, user.Sub, false); err != nil {
+	if err := authorizeCardgroup(ctx, u.cardgroupRepo, card.CardgroupID, user.Sub, false); err != nil {
 		return err
 	}
 	if err := u.cardRepo.Delete(ctx, id); err != nil {
@@ -353,7 +353,7 @@ func (u *CardUsecase) ListCardsByCardgroupConnection(
 	if user == nil {
 		return nil, ucerr.ErrUnauthenticated
 	}
-	if err := u.authorizeCardgroup(ctx, in.CardgroupID, user.Sub, true); err != nil {
+	if err := authorizeCardgroup(ctx, u.cardgroupRepo, in.CardgroupID, user.Sub, true); err != nil {
 		return nil, err
 	}
 
@@ -409,18 +409,10 @@ func (u *CardUsecase) ListCardsByCardgroupConnection(
 
 	out := &CardConnectionOutput{TotalCount: total}
 	if first > 0 {
-		if len(cards) > first {
-			out.HasNext = true
-			cards = cards[:first]
-		}
+		cards, out.HasNext = TrimAndDetect(cards, first)
 		out.HasPrev = after != nil
 	} else if last > 0 {
-		if len(cards) > last {
-			out.HasPrev = true
-			// Backward paging fetched (last+1) trailing rows; drop the
-			// leading extra so the page boundary stays at the tail.
-			cards = cards[len(cards)-last:]
-		}
+		cards, out.HasPrev = TrimAndDetectBackward(cards, last)
 		out.HasNext = before != nil
 	}
 
@@ -546,23 +538,6 @@ func (u *CardUsecase) resolveCursor(
 		c.UpdatedAt = &ua
 	}
 	return c, nil
-}
-
-func (u *CardUsecase) authorizeCardgroup(ctx context.Context, id, userID string, missingAsBadInput bool) error {
-	cg, err := u.cardgroupRepo.FindByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) && missingAsBadInput {
-			return ucerr.NewValidationError("cardgroupId", "cardgroup not found")
-		}
-		if errors.Is(err, repository.ErrNotFound) {
-			return ucerr.ErrUnauthenticated
-		}
-		return eris.Wrap(err, "usecase: authorize cardgroup: find by id")
-	}
-	if !cg.IsOwnedBy(userID) {
-		return ucerr.ErrUnauthenticated
-	}
-	return nil
 }
 
 func translateCardErr(err error) error {

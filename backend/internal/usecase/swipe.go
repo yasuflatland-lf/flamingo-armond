@@ -148,7 +148,7 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		// prefix ("rating: unknown swipe mode N") that is not appropriate on the wire.
 		return HandleSwipeOutcome{Validation: NewInputValidationInfo("mode", "unknown swipe mode")}, nil
 	}
-	if err := u.authorizeCardgroup(ctx, in.CardgroupID, user.Sub); err != nil {
+	if err := authorizeCardgroup(ctx, u.cardgroupRepo, in.CardgroupID, user.Sub, true); err != nil {
 		// authorizeCardgroup returns ucerr.NewValidationError("cardgroupId", ...) for
 		// not-found and ucerr.ErrUnauthenticated for non-owner. The not-found case
 		// is a validation variant; the non-owner case stays on the error channel.
@@ -236,20 +236,6 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		PerformanceMode: service.ModeFromMetrics(metrics),
 		Metrics:         metrics,
 	}}, nil
-}
-
-func (u *SwipeUsecase) authorizeCardgroup(ctx context.Context, cardgroupID, userID string) error {
-	cg, err := u.cardgroupRepo.FindByID(ctx, cardgroupID)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return ucerr.NewValidationError("cardgroupId", "cardgroup not found")
-		}
-		return eris.Wrap(err, "usecase: swipe: find cardgroup")
-	}
-	if !cg.IsOwnedBy(userID) {
-		return ucerr.ErrUnauthenticated
-	}
-	return nil
 }
 
 func swipeRecordsByValue(swipes []*domain.SwipeRecord) []domain.SwipeRecord {

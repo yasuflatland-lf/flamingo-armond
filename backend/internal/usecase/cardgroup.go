@@ -342,19 +342,10 @@ func (u *CardgroupUsecase) ListCardgroupsByOwnerConnection(
 	out := &CardgroupConnectionOutput{TotalCount: total}
 	switch {
 	case first > 0:
-		if len(cgs) > first {
-			out.HasNext = true
-			cgs = cgs[:first]
-		}
+		cgs, out.HasNext = TrimAndDetect(cgs, first)
 		out.HasPrev = after != nil
 	case last > 0:
-		if len(cgs) > last {
-			out.HasPrev = true
-			// Backward paging fetched (last+1) rows; the repository already
-			// reversed them so the extra row is at the leading edge of the
-			// slice. Drop it so the page boundary stays at the tail.
-			cgs = cgs[len(cgs)-last:]
-		}
+		cgs, out.HasPrev = TrimAndDetectBackward(cgs, last)
 		out.HasNext = before != nil
 	}
 
