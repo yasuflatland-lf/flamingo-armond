@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 
 	"backend/internal/auth"
 	"backend/internal/usecase/ucerr"
@@ -21,9 +22,7 @@ type AdminChecker interface {
 // admin. Returns ucerr.ErrUnauthenticated when no caller is on the context and
 // ucerr.NewForbiddenError when the caller is not an admin. Pass-through for
 // context cancellation and IsAdmin infrastructure errors — no wrapping is
-// applied here. Callers should wrap the returned error with their
-// caller-specific layer prefix (e.g. eris.Wrap(err, "usecase: admin role:
-// check admin")) when the error is not a sentinel or context error.
+// applied here. Callers wrap the returned error via wrapAdminGateError.
 func requireAdmin(ctx context.Context, svc AdminChecker) (callerID string, err error) {
 	caller := auth.UserFrom(ctx)
 	if caller == nil || caller.Sub == "" {
@@ -40,4 +39,22 @@ func requireAdmin(ctx context.Context, svc AdminChecker) (callerID string, err e
 		return "", ucerr.NewForbiddenError("admin only")
 	}
 	return caller.Sub, nil
+}
+
+// wrapAdminGateError classifies the error returned by requireAdmin. Sentinels
+// (ErrUnauthenticated, ForbiddenError) and context errors pass through
+// unchanged; unknown infrastructure errors are wrapped with callerPrefix so
+// the log chain carries a layer-specific attribution (e.g.
+// "usecase: admin role: check admin").
+func wrapAdminGateError(err error, callerPrefix string) error {
+	if err == nil {
+		return nil
+	}
+	if isContextDone(err) || errors.Is(err, ucerr.ErrUnauthenticated) {
+		return err
+	}
+	if _, ok := errors.AsType[*ucerr.ForbiddenError](err); ok {
+		return err
+	}
+	return eris.Wrap(err, callerPrefix)
 }
