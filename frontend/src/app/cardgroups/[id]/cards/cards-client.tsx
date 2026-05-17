@@ -451,7 +451,14 @@ export function CardsClient({
       });
       return null;
     });
-    if (result?.data?.updateCard?.card) {
+    if (!result) return;
+
+    const payload = result.data?.updateCard;
+    // InputValidationError: leave the row in edit mode so the user can correct it.
+    // The CardForm's error prop (driven by useMutation's error state) surfaces the
+    // backend message — the union variant here is a second path for the same signal.
+    // For now, treat InputValidationError the same as a missing payload (stay in edit).
+    if (payload?.__typename === "UpdateCardSuccess") {
       setEditingId(null);
     }
   }

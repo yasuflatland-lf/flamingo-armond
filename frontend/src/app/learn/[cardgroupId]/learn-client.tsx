@@ -14,15 +14,22 @@ import { LearnActionBar } from "@/components/learn/learn-action-bar";
 import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
 import type { SwipeDirection } from "@/components/learn/types";
-import type {
-  HandleSwipeMutation as HandleSwipeMutationType,
-  LearnNextDueCardsQuery,
-} from "@/generated/graphql";
+import type { LearnNextDueCardsQuery } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 
 type LearnCard = LearnNextDueCardsQuery["learnNextDueCards"][number];
-type PerformanceMetrics = HandleSwipeMutationType["handleSwipe"]["metrics"];
+// PerformanceMetrics is sourced from the SwipeResponse type, accessed via the
+// HandleSwipeSuccess variant's `response` field after the outcome-union promotion.
+type PerformanceMetrics = {
+  __typename?: "PerformanceMetrics";
+  successRate: number;
+  avgDifficulty: number;
+  retentionRate: number;
+  studyStreak: number;
+  lapseRate: number;
+  reviewCount: number;
+};
 
 /**
  * When `queue.length` falls to this value (or below) and is still non-zero,
@@ -229,17 +236,20 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
 
       const result = await handleSwipe({
         variables: { input: { cardId: card.id, cardgroupId, mode } },
-        // performanceMode and metrics are optimistic placeholders. The SwipeResponse
-        // schema requires both fields, so we write zero/no-op values here until the
-        // server reconciles the cache. No UI consumer reads them today, but omitting
-        // them from the optimistic write would break the codegen-generated type contract.
+        // performanceMode and metrics are optimistic placeholders. The HandleSwipeSuccess
+        // shape now wraps SwipeResponse inside `response`. We write zero/no-op values
+        // here until the server reconciles the cache. No UI consumer reads them today,
+        // but omitting them from the optimistic write would break the codegen type contract.
         optimisticResponse: {
           __typename: "Mutation",
           handleSwipe: {
-            __typename: "SwipeResponse",
-            nextCards: remaining,
-            performanceMode: 1,
-            metrics: DEFAULT_METRICS,
+            __typename: "HandleSwipeSuccess" as const,
+            response: {
+              __typename: "SwipeResponse" as const,
+              nextCards: remaining,
+              performanceMode: 1,
+              metrics: DEFAULT_METRICS,
+            },
           },
         },
       }).catch((err) => {
@@ -256,9 +266,12 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
         return null;
       });
 
-      if (result?.data?.handleSwipe) {
-        setQueue(result.data.handleSwipe.nextCards);
-      } else if (result !== null) {
+      if (!result) return;
+
+      const payload = result.data?.handleSwipe;
+      if (payload?.__typename === "HandleSwipeSuccess") {
+        setQueue(payload.response.nextCards);
+      } else if (payload === null || payload === undefined) {
         // Mutation resolved (no .catch), but the server payload is missing handleSwipe.
         // The optimistic queue is now the source of truth; surface for operator triage.
         console.warn("[LearnClient] handleSwipe resolved without data", {
@@ -266,6 +279,8 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
           cardgroupId,
         });
       }
+      // InputValidationError variant: the optimistic queue remains the source of
+      // truth. Non-fatal — learning continues on the current queue.
     },
     [cardgroupId, handleSwipe],
   );

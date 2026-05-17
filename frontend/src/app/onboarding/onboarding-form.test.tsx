@@ -2,7 +2,6 @@
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { GraphQLError } from "graphql";
 import { describe, expect, it, vi } from "vitest";
 import { UpdateProfileDocument } from "@/generated/graphql";
 import { OnboardingForm } from "./onboarding-form";
@@ -32,7 +31,7 @@ function makeUpdateProfileMock(
       return {
         data: {
           updateProfile: {
-            __typename: "UpdateProfilePayload" as const,
+            __typename: "UpdateProfileSuccess" as const,
             user: {
               __typename: "User" as const,
               id: "user-1",
@@ -114,7 +113,7 @@ describe("<OnboardingForm>", () => {
     });
   });
 
-  it("backend BAD_USER_INPUT field error surfaces in the form", async () => {
+  it("InputValidationError variant surfaces field error in the form", async () => {
     const user = userEvent.setup();
 
     const mocks = [
@@ -124,17 +123,19 @@ describe("<OnboardingForm>", () => {
           variables: { input: { displayName: "Alice" } },
         },
         result: {
-          errors: [
-            new GraphQLError("displayName must be 1-50 characters", {
-              extensions: { code: "BAD_USER_INPUT", field: "displayName" },
-            }),
-          ],
+          data: {
+            updateProfile: {
+              __typename: "InputValidationError" as const,
+              field: "displayName",
+              message: "displayName must be 1-50 characters",
+            },
+          },
         },
       },
     ];
 
     render(
-      <MockedProvider mocks={mocks} defaultOptions={{ mutate: { errorPolicy: "all" } }}>
+      <MockedProvider mocks={mocks}>
         <OnboardingForm />
       </MockedProvider>,
     );

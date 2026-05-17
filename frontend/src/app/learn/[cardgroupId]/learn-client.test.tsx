@@ -253,10 +253,13 @@ function makeSwipeMock(mode: 1 | 2 | 4, nextCards: (typeof CARD_1)[] = []) {
         return {
           data: {
             handleSwipe: {
-              __typename: "SwipeResponse" as const,
-              nextCards,
-              performanceMode: 0,
-              metrics: DEFAULT_METRICS,
+              __typename: "HandleSwipeSuccess" as const,
+              response: {
+                __typename: "SwipeResponse" as const,
+                nextCards,
+                performanceMode: 0,
+                metrics: DEFAULT_METRICS,
+              },
             },
           },
         };
@@ -720,10 +723,13 @@ describe("<LearnClient> onSwipe identity stability", () => {
       result: {
         data: {
           handleSwipe: {
-            __typename: "SwipeResponse" as const,
-            nextCards: [CARD_2],
-            performanceMode: 0,
-            metrics: DEFAULT_METRICS,
+            __typename: "HandleSwipeSuccess" as const,
+            response: {
+              __typename: "SwipeResponse" as const,
+              nextCards: [CARD_2],
+              performanceMode: 0,
+              metrics: DEFAULT_METRICS,
+            },
           },
         },
       },
@@ -859,10 +865,13 @@ describe("<LearnClient> queue prefetch", () => {
       result: {
         data: {
           handleSwipe: {
-            __typename: "SwipeResponse" as const,
-            nextCards: initial.slice(1),
-            performanceMode: 0,
-            metrics: DEFAULT_METRICS,
+            __typename: "HandleSwipeSuccess" as const,
+            response: {
+              __typename: "SwipeResponse" as const,
+              nextCards: initial.slice(1),
+              performanceMode: 0,
+              metrics: DEFAULT_METRICS,
+            },
           },
         },
       },
@@ -982,10 +991,13 @@ describe("<LearnClient> queue prefetch", () => {
       result: {
         data: {
           handleSwipe: {
-            __typename: "SwipeResponse" as const,
-            nextCards: initial.slice(1),
-            performanceMode: 0,
-            metrics: DEFAULT_METRICS,
+            __typename: "HandleSwipeSuccess" as const,
+            response: {
+              __typename: "SwipeResponse" as const,
+              nextCards: initial.slice(1),
+              performanceMode: 0,
+              metrics: DEFAULT_METRICS,
+            },
           },
         },
       },

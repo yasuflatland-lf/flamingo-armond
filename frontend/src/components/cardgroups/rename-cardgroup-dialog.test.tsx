@@ -3,7 +3,6 @@ import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { GraphQLError } from "graphql";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UpdateCardgroupDocument } from "@/generated/graphql";
 import { RenameCardgroupDialog } from "./rename-cardgroup-dialog";
@@ -24,11 +23,10 @@ function makeUpdateMock(
   return { request: { query: UpdateCardgroupDocument, variables }, result };
 }
 
-function renderDialog(mocks: MockedResponse[] = [], open = true, errorPolicy?: "all" | "none") {
+function renderDialog(mocks: MockedResponse[] = [], open = true) {
   const onOpenChange = vi.fn();
-  const defaultOptions = errorPolicy ? { mutate: { errorPolicy } } : undefined;
   render(
-    <MockedProvider mocks={mocks} defaultOptions={defaultOptions}>
+    <MockedProvider mocks={mocks}>
       <RenameCardgroupDialog cardgroup={CARDGROUP} open={open} onOpenChange={onOpenChange} />
     </MockedProvider>,
   );
@@ -59,9 +57,9 @@ describe("<RenameCardgroupDialog>", () => {
         {
           data: {
             updateCardgroup: {
-              __typename: "UpdateCardgroupPayload",
+              __typename: "UpdateCardgroupSuccess" as const,
               cardgroup: {
-                __typename: "Cardgroup",
+                __typename: "Cardgroup" as const,
                 id: "cg-1",
                 name: "Spanish Vocab",
                 updatedAt: "2024-06-15T10:00:00.000Z",
@@ -81,24 +79,22 @@ describe("<RenameCardgroupDialog>", () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
-  it("BAD_USER_INPUT field=name shows inline error and does not close", async () => {
+  it("InputValidationError field=name shows inline error and does not close", async () => {
     const user = userEvent.setup();
-    const { onOpenChange } = renderDialog(
-      [
-        makeUpdateMock(
-          { id: "cg-1", input: { name: "Spanish Vocab" } },
-          {
-            errors: [
-              new GraphQLError("name already exists", {
-                extensions: { code: "BAD_USER_INPUT", field: "name" },
-              }),
-            ],
+    const { onOpenChange } = renderDialog([
+      makeUpdateMock(
+        { id: "cg-1", input: { name: "Spanish Vocab" } },
+        {
+          data: {
+            updateCardgroup: {
+              __typename: "InputValidationError" as const,
+              field: "name",
+              message: "name already exists",
+            },
           },
-        ),
-      ],
-      true,
-      "all",
-    );
+        },
+      ),
+    ]);
 
     await user.click(screen.getByRole("button", { name: /^save$/i }));
 

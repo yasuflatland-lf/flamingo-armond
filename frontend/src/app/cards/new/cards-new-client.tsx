@@ -209,21 +209,17 @@ export default function CardsNewClient({
   async function handleOverwrite() {
     if (!duplicate || !currentId) return;
     setOverwriteError(null);
-    try {
-      await updateCard({
-        variables: {
-          id: duplicate.existingCardId,
-          input: { back: duplicate.attemptedBack },
-        },
-      });
-      setDuplicate(null);
-      markCreationSucceeded();
-    } catch (err) {
-      // Leave `duplicate` set so the dialog stays mounted; surface the failure
-      // inline. Field-level error on `back` is the only validation-failure shape
-      // updateCard can return today (the input only carries `back`); surface it
-      // directly since getBackendErrorBanner skips field-level BAD_USER_INPUT
-      // and would otherwise fall through to the generic banner fallback.
+
+    const result = await updateCard({
+      variables: {
+        id: duplicate.existingCardId,
+        input: { back: duplicate.attemptedBack },
+      },
+    }).catch((err) => {
+      // Network, auth, or field-level validation rejection (GraphQL error channel).
+      // Field-level error on `back` is the only validation-failure shape updateCard
+      // can return on this path (the input only carries `back`); surface it directly
+      // since getBackendErrorBanner skips field-level BAD_USER_INPUT.
       const fieldErrors = getBackendFieldErrors(err);
       const banner = getBackendErrorBanner(err);
       const message = fieldErrors.back ?? banner ?? "Overwrite failed. Please try again.";
@@ -232,7 +228,32 @@ export default function CardsNewClient({
         message: err instanceof Error ? err.message : String(err),
         err,
       });
+      return null;
+    });
+
+    if (!result) return;
+
+    const payload = result.data?.updateCard;
+    const typename = payload?.__typename ?? null;
+
+    if (typename === "InputValidationError" && payload?.__typename === "InputValidationError") {
+      // Field-level error on `back` is the only validation-failure shape updateCard
+      // can return on this path (the input only carries `back`); surface the
+      // backend message directly so the user can correct the value.
+      setOverwriteError(payload.message);
+      return;
     }
+
+    if (typename === "UpdateCardSuccess") {
+      setDuplicate(null);
+      markCreationSucceeded();
+      return;
+    }
+
+    // Unknown variant: null payload or a future union variant the client was not
+    // regenerated against.
+    console.warn("[cards-new-client] unexpected updateCard payload", { typename });
+    setOverwriteError("Overwrite failed. Please try again.");
   }
 
   function handleCancelOverwrite() {

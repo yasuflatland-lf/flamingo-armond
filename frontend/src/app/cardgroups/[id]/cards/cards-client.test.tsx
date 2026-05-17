@@ -162,7 +162,7 @@ function makeUpdateMock(id: string, input: { front: string; back: string }, card
     request: { query: UpdateCardDocument, variables: { id, input } },
     result: {
       data: {
-        updateCard: { __typename: "UpdateCardPayload" as const, card },
+        updateCard: { __typename: "UpdateCardSuccess" as const, card },
       },
     },
   };

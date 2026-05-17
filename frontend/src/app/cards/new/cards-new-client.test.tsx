@@ -175,7 +175,7 @@ function makeUpdateMock(args: {
       return {
         data: {
           updateCard: {
-            __typename: "UpdateCardPayload" as const,
+            __typename: "UpdateCardSuccess" as const,
             card: {
               __typename: "Card" as const,
               id,
@@ -226,11 +226,14 @@ function makePersistMock(
       return {
         data: {
           setLastViewedCardgroup: {
-            __typename: "User" as const,
-            id: "u-1",
-            lastViewedCardgroup: {
-              __typename: "Cardgroup" as const,
-              id: cardgroupId,
+            __typename: "SetLastViewedCardgroupSuccess" as const,
+            user: {
+              __typename: "User" as const,
+              id: "u-1",
+              lastViewedCardgroup: {
+                __typename: "Cardgroup" as const,
+                id: cardgroupId,
+              },
             },
           },
         },
