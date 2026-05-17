@@ -3,14 +3,12 @@ package usecase
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"log/slog"
 	"time"
 
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 
-	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
 	"backend/internal/textdic"
@@ -129,23 +127,8 @@ func NewDictionaryUsecaseWithTx(authSvc AdminChecker, cardRepo DictionaryCardRep
 // parser) returns a zero-valued result with the parser error surfaced via
 // Output.Errors.
 func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryInput) (UpsertDictionaryOutput, error) {
-	caller := auth.UserFrom(ctx)
-	if caller == nil || caller.Sub == "" {
-		return UpsertDictionaryOutput{}, ucerr.ErrUnauthenticated
-	}
-
-	if u.auth == nil {
-		return UpsertDictionaryOutput{}, eris.New("usecase: dictionary admin checker not configured")
-	}
-	isAdmin, err := u.auth.IsAdmin(ctx, caller.Sub)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return UpsertDictionaryOutput{}, err
-		}
-		return UpsertDictionaryOutput{}, eris.Wrap(err, "usecase: dictionary upsert: check admin")
-	}
-	if !isAdmin {
-		return UpsertDictionaryOutput{}, ucerr.NewForbiddenError("admin role required")
+	if _, err := requireAdmin(ctx, u.auth); err != nil {
+		return UpsertDictionaryOutput{}, err
 	}
 
 	if input.CardgroupID == "" {
@@ -235,7 +218,7 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 		result = r
 		return nil
 	}); err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if isContextDone(err) {
 			return UpsertDictionaryOutput{}, err
 		}
 		return UpsertDictionaryOutput{}, eris.Wrap(err, "usecase: dictionary upsert: tx")
