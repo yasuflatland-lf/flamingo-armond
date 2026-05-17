@@ -2569,8 +2569,8 @@ func TestServerConfig_SwipeNextBatchSize(t *testing.T) {
 		{"empty uses default", "", 10, ""},
 		{"valid positive", "20", 20, ""},
 		{"invalid string uses default", "bad", 10, "invalid SWIPE_NEXT_BATCH_SIZE"},
-		{"zero uses default", "0", 10, "invalid SWIPE_NEXT_BATCH_SIZE"},
-		{"negative uses default", "-5", 10, "invalid SWIPE_NEXT_BATCH_SIZE"},
+		{"zero uses default", "0", 10, "non-positive SWIPE_NEXT_BATCH_SIZE"},
+		{"negative uses default", "-5", 10, "non-positive SWIPE_NEXT_BATCH_SIZE"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

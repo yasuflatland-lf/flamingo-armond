@@ -53,6 +53,8 @@ type serverConfig struct {
 // serverConfigFromEnv builds a serverConfig from environment variables.
 // SHUTDOWN_TIMEOUT accepts any value accepted by time.ParseDuration; invalid
 // or non-positive values fall back to defaultShutdownTimeout with a WARN log.
+// SWIPE_NEXT_BATCH_SIZE must be a positive integer; non-numeric or
+// non-positive values fall back to defaultSwipeNextBatchSize with a WARN log.
 func serverConfigFromEnv(logger *slog.Logger) serverConfig {
 	shutdownDur := defaultShutdownTimeout
 	if v := os.Getenv("SHUTDOWN_TIMEOUT"); v != "" {
@@ -70,8 +72,11 @@ func serverConfigFromEnv(logger *slog.Logger) serverConfig {
 	swipeBatch := defaultSwipeNextBatchSize
 	if v := os.Getenv("SWIPE_NEXT_BATCH_SIZE"); v != "" {
 		n, err := strconv.Atoi(v)
-		if err != nil || n <= 0 {
+		if err != nil {
 			logger.Warn("invalid SWIPE_NEXT_BATCH_SIZE, using default",
+				"value", v, "err", err, "default", defaultSwipeNextBatchSize)
+		} else if n <= 0 {
+			logger.Warn("non-positive SWIPE_NEXT_BATCH_SIZE, using default",
 				"value", v, "default", defaultSwipeNextBatchSize)
 		} else {
 			swipeBatch = n
