@@ -77,7 +77,7 @@ func (r *userCardFSRSRepo) FindByUserAndCardIDs(ctx context.Context, userID stri
 
 func (r *userCardFSRSRepo) FindByUserAndCardIDsTx(ctx context.Context, tx *gorm.DB, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error) {
 	if len(cardIDs) == 0 {
-		return nil, nil
+		return map[string]*domain.UserCardFSRS{}, nil
 	}
 	var rows []gormUserCardFSRS
 	if err := tx.WithContext(ctx).
