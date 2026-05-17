@@ -483,18 +483,38 @@ type CannotRevokeOwnAdminRoleError implements UserError {
   message: String!
 }
 
+"""
+Returned by `revokeRole` when the target user's admin role was successfully
+revoked. Carries the updated `user` so clients can refresh their role view
+without a follow-up query.
+"""
 type RevokeRoleSuccess {
   user: User!
 }
 
+"""
+Returned by `assignRole` when the target user was successfully granted the
+requested role. Carries the updated `user` so clients can refresh their role
+view without a follow-up query.
+"""
 type AssignRoleSuccess {
   user: User!
 }
 
+"""
+Returned by `adminUpdateUser` when the admin's update to a target user
+succeeded. Carries the updated `user` so clients can refresh the profile
+view without a follow-up query.
+"""
 type AdminUpdateUserSuccess {
   user: User!
 }
 
+"""
+Returned by `createRole` when a new role was successfully created. Carries
+the freshly inserted `role` so clients can insert it into local caches
+without a follow-up query.
+"""
 type CreateRoleSuccess {
   role: Role!
 }
