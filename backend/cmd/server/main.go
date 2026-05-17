@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -42,9 +43,11 @@ import (
 )
 
 const defaultShutdownTimeout = 25 * time.Second
+const defaultSwipeNextBatchSize = 10
 
 type serverConfig struct {
-	shutdownTimeout time.Duration
+	shutdownTimeout    time.Duration
+	swipeNextBatchSize int
 }
 
 // serverConfigFromEnv builds a serverConfig from environment variables.
@@ -64,8 +67,19 @@ func serverConfigFromEnv(logger *slog.Logger) serverConfig {
 			shutdownDur = d
 		}
 	}
+	swipeBatch := defaultSwipeNextBatchSize
+	if v := os.Getenv("SWIPE_NEXT_BATCH_SIZE"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			logger.Warn("invalid SWIPE_NEXT_BATCH_SIZE, using default",
+				"value", v, "default", defaultSwipeNextBatchSize)
+		} else {
+			swipeBatch = n
+		}
+	}
 	return serverConfig{
-		shutdownTimeout: shutdownDur,
+		shutdownTimeout:    shutdownDur,
+		swipeNextBatchSize: swipeBatch,
 	}
 }
 
@@ -264,7 +278,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
 	learnUC := usecase.NewLearnUsecase(cardRepo, cardgroupRepo, service.NewOrderingPolicy(), nil, 0, 0, logger)
-	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), usecase.SwipeNextBatchSize(logger), userCardFSRSRepo, logger)
+	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), srvCfg.swipeNextBatchSize, userCardFSRSRepo, logger)
 	dictionaryUC := usecase.NewDictionaryUsecase(authSvc, cardRepo, db.GORM, logger)
 	adminUserUC := usecase.NewAdminUser(userRepo, roleRepo, authSvc, logger)
 	adminRoleUC := usecase.NewAdminRole(roleRepo, authSvc, logger)
