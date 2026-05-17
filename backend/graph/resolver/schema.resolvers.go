@@ -206,42 +206,108 @@ func (r *mutationResolver) UpsertDictionary(ctx context.Context, input model.Ups
 }
 
 // AdminUpdateUser is the resolver for the adminUpdateUser field.
-func (r *mutationResolver) AdminUpdateUser(ctx context.Context, id string, input model.AdminUpdateUserInput) (*model.User, error) {
-	user, err := r.AdminUserUC.Update(ctx, id, usecase.AdminUpdateUserInput{
+//
+// Returns a union: `model.AdminUpdateUserSuccess` on the happy path, or
+// `model.InputValidationError` when the input fails validation (e.g.
+// displayName length, missing target user). Validation is "errors as data" —
+// the second return value is reserved for real errors (auth, internal).
+func (r *mutationResolver) AdminUpdateUser(ctx context.Context, id string, input model.AdminUpdateUserInput) (model.AdminUpdateUserResult, error) {
+	outcome, err := r.AdminUserUC.Update(ctx, id, usecase.AdminUpdateUserInput{
 		DisplayName: input.DisplayName,
 		Bio:         input.Bio,
 	})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	return toUserModel(user), nil
+	if outcome.Validation != nil {
+		return model.InputValidationError{
+			Field:   outcome.Validation.Field,
+			Message: outcome.Validation.Message,
+		}, nil
+	}
+	if outcome.User == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: AdminUpdateUserOutcome has no variant set"))
+	}
+	return model.AdminUpdateUserSuccess{User: toUserModel(outcome.User)}, nil
 }
 
 // AssignRole is the resolver for the assignRole field.
-func (r *mutationResolver) AssignRole(ctx context.Context, userID string, roleID string) (*model.User, error) {
-	user, err := r.AdminUserUC.AssignRole(ctx, userID, roleID)
+//
+// Returns a union: `model.AssignRoleSuccess` on the happy path, or
+// `model.InputValidationError` when the userId or roleId fails validation
+// (e.g. unknown user / unknown role). Validation is "errors as data" — the
+// second return value is reserved for real errors (auth, internal).
+func (r *mutationResolver) AssignRole(ctx context.Context, userID string, roleID string) (model.AssignRoleResult, error) {
+	outcome, err := r.AdminUserUC.AssignRole(ctx, userID, roleID)
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	return toUserModel(user), nil
+	if outcome.Validation != nil {
+		return model.InputValidationError{
+			Field:   outcome.Validation.Field,
+			Message: outcome.Validation.Message,
+		}, nil
+	}
+	if outcome.User == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: AssignRoleOutcome has no variant set"))
+	}
+	return model.AssignRoleSuccess{User: toUserModel(outcome.User)}, nil
 }
 
 // RevokeRole is the resolver for the revokeRole field.
-func (r *mutationResolver) RevokeRole(ctx context.Context, userID string, roleID string) (*model.User, error) {
-	user, err := r.AdminUserUC.RevokeRole(ctx, userID, roleID)
+//
+// Returns a union: `model.RevokeRoleSuccess` on the happy path,
+// `model.InputValidationError` when the userId or roleId fails validation, or
+// `model.CannotRevokeOwnAdminRoleError` when the caller attempts to revoke the
+// admin role from themselves. All three are "errors as data" — the second
+// return value is reserved for real errors (auth, internal).
+func (r *mutationResolver) RevokeRole(ctx context.Context, userID string, roleID string) (model.RevokeRoleResult, error) {
+	outcome, err := r.AdminUserUC.RevokeRole(ctx, userID, roleID)
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	return toUserModel(user), nil
+	if outcome.Validation != nil {
+		return model.InputValidationError{
+			Field:   outcome.Validation.Field,
+			Message: outcome.Validation.Message,
+		}, nil
+	}
+	if outcome.CannotRevokeOwnAdmin {
+		return model.CannotRevokeOwnAdminRoleError{
+			Message: "Cannot revoke your own admin role",
+		}, nil
+	}
+	if outcome.User == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: RevokeRoleOutcome has no variant set"))
+	}
+	return model.RevokeRoleSuccess{User: toUserModel(outcome.User)}, nil
 }
 
 // CreateRole is the resolver for the createRole field.
-func (r *mutationResolver) CreateRole(ctx context.Context, name string) (*model.Role, error) {
-	role, err := r.AdminRoleUC.Create(ctx, name)
+//
+// Returns a union: `model.CreateRoleSuccess` on the happy path, or
+// `model.InputValidationError` when the name fails validation (e.g. character
+// set, length, duplicate). Validation is "errors as data" — the second return
+// value is reserved for real errors (auth, internal).
+func (r *mutationResolver) CreateRole(ctx context.Context, name string) (model.CreateRoleResult, error) {
+	outcome, err := r.AdminRoleUC.Create(ctx, name)
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	return toRoleModel(role), nil
+	if outcome.Validation != nil {
+		return model.InputValidationError{
+			Field:   outcome.Validation.Field,
+			Message: outcome.Validation.Message,
+		}, nil
+	}
+	if outcome.Role == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: CreateRoleOutcome has no variant set"))
+	}
+	return model.CreateRoleSuccess{Role: toRoleModel(outcome.Role)}, nil
 }
 
 // UpdateRole is the resolver for the updateRole field.

@@ -23,16 +23,16 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockAdminUserUsecase struct {
-	listResult   *usecase.AdminUserConnection
-	listErr      error
-	getResult    *domain.User
-	getErr       error
-	updateResult *domain.User
-	updateErr    error
-	assignResult *domain.User
-	assignErr    error
-	revokeResult *domain.User
-	revokeErr    error
+	listResult    *usecase.AdminUserConnection
+	listErr       error
+	getResult     *domain.User
+	getErr        error
+	updateOutcome usecase.AdminUpdateUserOutcome
+	updateErr     error
+	assignOutcome usecase.AssignRoleOutcome
+	assignErr     error
+	revokeOutcome usecase.RevokeRoleOutcome
+	revokeErr     error
 }
 
 func (m *mockAdminUserUsecase) List(_ context.Context, _, _ *int, _, _, _ *string) (*usecase.AdminUserConnection, error) {
@@ -41,14 +41,14 @@ func (m *mockAdminUserUsecase) List(_ context.Context, _, _ *int, _, _, _ *strin
 func (m *mockAdminUserUsecase) Get(_ context.Context, _ string) (*domain.User, error) {
 	return m.getResult, m.getErr
 }
-func (m *mockAdminUserUsecase) Update(_ context.Context, _ string, _ usecase.AdminUpdateUserInput) (*domain.User, error) {
-	return m.updateResult, m.updateErr
+func (m *mockAdminUserUsecase) Update(_ context.Context, _ string, _ usecase.AdminUpdateUserInput) (usecase.AdminUpdateUserOutcome, error) {
+	return m.updateOutcome, m.updateErr
 }
-func (m *mockAdminUserUsecase) AssignRole(_ context.Context, _, _ string) (*domain.User, error) {
-	return m.assignResult, m.assignErr
+func (m *mockAdminUserUsecase) AssignRole(_ context.Context, _, _ string) (usecase.AssignRoleOutcome, error) {
+	return m.assignOutcome, m.assignErr
 }
-func (m *mockAdminUserUsecase) RevokeRole(_ context.Context, _, _ string) (*domain.User, error) {
-	return m.revokeResult, m.revokeErr
+func (m *mockAdminUserUsecase) RevokeRole(_ context.Context, _, _ string) (usecase.RevokeRoleOutcome, error) {
+	return m.revokeOutcome, m.revokeErr
 }
 
 // mockRoleByUserIDRepo satisfies the minimal interface needed to build the
@@ -198,7 +198,10 @@ func TestAdminUserResolver_Users_AdminHappyPath(t *testing.T) {
 // Mutation.assignRole tests
 // ---------------------------------------------------------------------------
 
-const assignRoleMutation = `{"query":"mutation { assignRole(userId: \"u1\", roleId: \"r1\") { id } }"}`
+// assignRoleMutation selects across both variants of the AssignRoleResult
+// union so a single mutation body covers the success and input-validation
+// cases.
+const assignRoleMutation = `{"query":"mutation { assignRole(userId: \"u1\", roleId: \"r1\") { __typename ... on AssignRoleSuccess { user { id } } ... on InputValidationError { field message } } }"}`
 
 // TestAdminUserResolver_AssignRole_HappyPath verifies that assignRole returns
 // the updated user's ID when the usecase succeeds.
@@ -206,7 +209,9 @@ func TestAdminUserResolver_AssignRole_HappyPath(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockAdminUserUsecase{
-		assignResult: &domain.User{ID: "u1"},
+		assignOutcome: usecase.AssignRoleOutcome{
+			User: &domain.User{ID: "u1"},
+		},
 	}
 	srv := newAdminUserSrv(mock)
 	resp := gqlRequest(t, srv, authedCtx("admin"), assignRoleMutation)
@@ -215,12 +220,16 @@ func TestAdminUserResolver_AssignRole_HappyPath(t *testing.T) {
 		t.Fatalf("unexpected errors: %v", resp["errors"])
 	}
 	data, _ := resp["data"].(map[string]any)
-	user, _ := data["assignRole"].(map[string]any)
-	if user == nil {
+	payload, _ := data["assignRole"].(map[string]any)
+	if payload == nil {
 		t.Fatalf("expected data.assignRole, got nil; response: %v", resp)
 	}
-	if user["id"] != "u1" {
-		t.Fatalf("expected id=u1, got %v", user["id"])
+	if payload["__typename"] != "AssignRoleSuccess" {
+		t.Fatalf("expected __typename=AssignRoleSuccess, got %v", payload["__typename"])
+	}
+	user, _ := payload["user"].(map[string]any)
+	if user == nil || user["id"] != "u1" {
+		t.Fatalf("expected user.id=u1, got %v", payload["user"])
 	}
 }
 
@@ -238,6 +247,61 @@ func TestAdminUserResolver_AssignRole_Forbidden(t *testing.T) {
 	code := errCode(t, resp)
 	if code != string(gqlerr.CodeForbidden) {
 		t.Fatalf("expected FORBIDDEN, got %q", code)
+	}
+}
+
+// TestAdminUserResolver_AssignRole_InputValidation_UnknownUser verifies that
+// an outcome carrying a Validation slot (e.g. unknown userId) maps to the
+// InputValidationError union variant — surfaced as data, not as an error.
+func TestAdminUserResolver_AssignRole_InputValidation_UnknownUser(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminUserUsecase{
+		assignOutcome: usecase.AssignRoleOutcome{
+			Validation: &usecase.InputValidationInfo{
+				Field:   "userId",
+				Message: "user not found",
+			},
+		},
+	}
+	srv := newAdminUserSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("admin"), assignRoleMutation)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["assignRole"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.assignRole, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "InputValidationError" {
+		t.Fatalf("expected __typename=InputValidationError, got %v", payload["__typename"])
+	}
+	if payload["field"] != "userId" {
+		t.Fatalf("expected field=userId, got %v", payload["field"])
+	}
+	if payload["message"] != "user not found" {
+		t.Fatalf("expected message='user not found', got %v", payload["message"])
+	}
+}
+
+// TestAdminUserResolver_AssignRole_XORInvariantViolation covers the defensive
+// guard where the usecase returns an AssignRoleOutcome with no variant set.
+// This must surface as INTERNAL — the resolver refuses to render an
+// unselectable union value.
+func TestAdminUserResolver_AssignRole_XORInvariantViolation(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminUserUsecase{
+		assignOutcome: usecase.AssignRoleOutcome{}, // no variant set
+	}
+	srv := newAdminUserSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("admin"), assignRoleMutation)
+
+	code := errCode(t, resp)
+	if code != string(gqlerr.CodeInternal) {
+		t.Fatalf("expected INTERNAL_SERVER_ERROR, got %q; response: %v", code, resp)
 	}
 }
 
@@ -443,8 +507,11 @@ func TestAdminUserResolver_Roles_SelfIntrospection_Allowed(t *testing.T) {
 // Mutation.revokeRole tests (C6)
 // ---------------------------------------------------------------------------
 
-const revokeRoleMutation = `{"query":"mutation { revokeRole(userId: \"u1\", roleId: \"r1\") { id } }"}`
-const revokeRoleSelfMutation = `{"query":"mutation { revokeRole(userId: \"admin\", roleId: \"r-admin\") { id } }"}`
+// revokeRoleMutation selects across every variant of the RevokeRoleResult
+// union so a single mutation body covers success, input-validation, and the
+// self-demotion CannotRevokeOwnAdminRoleError cases.
+const revokeRoleMutation = `{"query":"mutation { revokeRole(userId: \"u1\", roleId: \"r1\") { __typename ... on RevokeRoleSuccess { user { id } } ... on InputValidationError { field message } ... on CannotRevokeOwnAdminRoleError { message } } }"}`
+const revokeRoleSelfMutation = `{"query":"mutation { revokeRole(userId: \"admin\", roleId: \"r-admin\") { __typename ... on RevokeRoleSuccess { user { id } } ... on InputValidationError { field message } ... on CannotRevokeOwnAdminRoleError { message } } }"}`
 
 // TestAdminUserResolver_RevokeRole_HappyPath verifies that an admin caller
 // revoking a role from another user gets the updated user back with no error.
@@ -452,7 +519,9 @@ func TestAdminUserResolver_RevokeRole_HappyPath(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockAdminUserUsecase{
-		revokeResult: &domain.User{ID: "u1"},
+		revokeOutcome: usecase.RevokeRoleOutcome{
+			User: &domain.User{ID: "u1"},
+		},
 	}
 	srv := newAdminUserSrv(mock)
 	resp := gqlRequest(t, srv, authedCtx("admin"), revokeRoleMutation)
@@ -461,18 +530,56 @@ func TestAdminUserResolver_RevokeRole_HappyPath(t *testing.T) {
 		t.Fatalf("unexpected errors: %v", resp["errors"])
 	}
 	data, _ := resp["data"].(map[string]any)
-	user, _ := data["revokeRole"].(map[string]any)
-	if user == nil {
+	payload, _ := data["revokeRole"].(map[string]any)
+	if payload == nil {
 		t.Fatalf("expected data.revokeRole, got nil; response: %v", resp)
 	}
-	if user["id"] != "u1" {
-		t.Fatalf("expected id=u1, got %v", user["id"])
+	if payload["__typename"] != "RevokeRoleSuccess" {
+		t.Fatalf("expected __typename=RevokeRoleSuccess, got %v", payload["__typename"])
+	}
+	user, _ := payload["user"].(map[string]any)
+	if user == nil || user["id"] != "u1" {
+		t.Fatalf("expected user.id=u1, got %v", payload["user"])
+	}
+}
+
+// TestAdminUserResolver_RevokeRole_CannotRevokeOwnAdmin verifies that the
+// usecase-signalled self-demotion guard surfaces as the
+// CannotRevokeOwnAdminRoleError union variant (data, not an error).
+func TestAdminUserResolver_RevokeRole_CannotRevokeOwnAdmin(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminUserUsecase{
+		revokeOutcome: usecase.RevokeRoleOutcome{
+			CannotRevokeOwnAdmin: true,
+		},
+	}
+	srv := newAdminUserSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("admin"), revokeRoleSelfMutation)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["revokeRole"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.revokeRole, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "CannotRevokeOwnAdminRoleError" {
+		t.Fatalf("expected __typename=CannotRevokeOwnAdminRoleError, got %v", payload["__typename"])
+	}
+	msg, _ := payload["message"].(string)
+	if msg == "" {
+		t.Fatalf("expected non-empty message, got %q", msg)
 	}
 }
 
 // TestAdminUserResolver_RevokeRole_SelfDemotionForbidden verifies that an
-// admin caller attempting to revoke their own admin role receives FORBIDDEN.
-// This covers the self-demotion guard in the usecase.
+// admin caller attempting to revoke their own admin role still maps a real
+// FORBIDDEN error from the usecase (e.g. an alternative auth refusal path) to
+// extensions.code=FORBIDDEN. The data-shape self-demotion guard is covered by
+// the CannotRevokeOwnAdmin test above; this test guards the legacy
+// error-channel path.
 func TestAdminUserResolver_RevokeRole_SelfDemotionForbidden(t *testing.T) {
 	t.Parallel()
 
@@ -502,6 +609,60 @@ func TestAdminUserResolver_RevokeRole_NonAdmin(t *testing.T) {
 	code := errCode(t, resp)
 	if code != string(gqlerr.CodeForbidden) {
 		t.Fatalf("expected FORBIDDEN, got %q; response: %v", code, resp)
+	}
+}
+
+// TestAdminUserResolver_RevokeRole_InputValidation_UnknownRole verifies that
+// an outcome carrying a Validation slot (e.g. unknown roleId) maps to the
+// InputValidationError union variant.
+func TestAdminUserResolver_RevokeRole_InputValidation_UnknownRole(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminUserUsecase{
+		revokeOutcome: usecase.RevokeRoleOutcome{
+			Validation: &usecase.InputValidationInfo{
+				Field:   "roleId",
+				Message: "role not found",
+			},
+		},
+	}
+	srv := newAdminUserSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("admin"), revokeRoleMutation)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["revokeRole"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.revokeRole, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "InputValidationError" {
+		t.Fatalf("expected __typename=InputValidationError, got %v", payload["__typename"])
+	}
+	if payload["field"] != "roleId" {
+		t.Fatalf("expected field=roleId, got %v", payload["field"])
+	}
+	if payload["message"] != "role not found" {
+		t.Fatalf("expected message='role not found', got %v", payload["message"])
+	}
+}
+
+// TestAdminUserResolver_RevokeRole_XORInvariantViolation covers the defensive
+// guard where the usecase returns a RevokeRoleOutcome with no variant set.
+// Must surface as INTERNAL.
+func TestAdminUserResolver_RevokeRole_XORInvariantViolation(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminUserUsecase{
+		revokeOutcome: usecase.RevokeRoleOutcome{}, // no variant set
+	}
+	srv := newAdminUserSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("admin"), revokeRoleMutation)
+
+	code := errCode(t, resp)
+	if code != string(gqlerr.CodeInternal) {
+		t.Fatalf("expected INTERNAL_SERVER_ERROR, got %q; response: %v", code, resp)
 	}
 }
 
@@ -594,27 +755,46 @@ func TestAdminUserResolver_AdminUser_Forbidden(t *testing.T) {
 // Mutation.adminUpdateUser tests (I9)
 // ---------------------------------------------------------------------------
 
+// adminUpdateUserMutation selects across both variants of the
+// AdminUpdateUserResult union so a single mutation body covers the success
+// and input-validation cases.
+const adminUpdateUserMutation = `{"query":"mutation { adminUpdateUser(id: \"u-target\", input: { displayName: \"Dana\", bio: \"A short bio.\" }) { __typename ... on AdminUpdateUserSuccess { user { id displayName bio } } ... on InputValidationError { field message } } }"}`
+
+// adminUpdateUserForbiddenMutation is the minimal selection used by tests that
+// only need to assert errors[].code; the selection set still selects across
+// both union variants to remain syntactically valid.
+const adminUpdateUserForbiddenMutation = `{"query":"mutation { adminUpdateUser(id: \"u1\", input: { displayName: \"Eve\" }) { __typename ... on AdminUpdateUserSuccess { user { id } } ... on InputValidationError { field message } } }"}`
+
 // TestAdminUserResolver_AdminUpdateUser_HappyPath verifies that an admin caller
-// updating displayName/bio gets the updated user back in the payload.
+// updating displayName/bio gets the updated user back in the payload via the
+// AdminUpdateUserSuccess union variant.
 func TestAdminUserResolver_AdminUpdateUser_HappyPath(t *testing.T) {
 	t.Parallel()
 
 	newName := "Dana"
 	newBio := "A short bio."
 	mock := &mockAdminUserUsecase{
-		updateResult: &domain.User{ID: "u-target", DisplayName: &newName, Bio: &newBio},
+		updateOutcome: usecase.AdminUpdateUserOutcome{
+			User: &domain.User{ID: "u-target", DisplayName: &newName, Bio: &newBio},
+		},
 	}
 	srv := newAdminUserSrv(mock)
-	body := `{"query":"mutation { adminUpdateUser(id: \"u-target\", input: { displayName: \"Dana\", bio: \"A short bio.\" }) { id displayName bio } }"}`
-	resp := gqlRequest(t, srv, authedCtx("admin"), body)
+	resp := gqlRequest(t, srv, authedCtx("admin"), adminUpdateUserMutation)
 
 	if _, hasErrs := resp["errors"]; hasErrs {
 		t.Fatalf("unexpected errors: %v", resp["errors"])
 	}
 	data, _ := resp["data"].(map[string]any)
-	user, _ := data["adminUpdateUser"].(map[string]any)
-	if user == nil {
+	payload, _ := data["adminUpdateUser"].(map[string]any)
+	if payload == nil {
 		t.Fatalf("expected data.adminUpdateUser, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "AdminUpdateUserSuccess" {
+		t.Fatalf("expected __typename=AdminUpdateUserSuccess, got %v", payload["__typename"])
+	}
+	user, _ := payload["user"].(map[string]any)
+	if user == nil {
+		t.Fatalf("expected user payload, got nil; response: %v", resp)
 	}
 	if user["id"] != "u-target" {
 		t.Fatalf("expected id=u-target, got %v", user["id"])
@@ -636,11 +816,64 @@ func TestAdminUserResolver_AdminUpdateUser_Forbidden(t *testing.T) {
 		updateErr: &ucerr.ForbiddenError{Message: "admin only"},
 	}
 	srv := newAdminUserSrv(mock)
-	body := `{"query":"mutation { adminUpdateUser(id: \"u1\", input: { displayName: \"Eve\" }) { id } }"}`
-	resp := gqlRequest(t, srv, authedCtx("non-admin"), body)
+	resp := gqlRequest(t, srv, authedCtx("non-admin"), adminUpdateUserForbiddenMutation)
 
 	code := errCode(t, resp)
 	if code != string(gqlerr.CodeForbidden) {
 		t.Fatalf("expected FORBIDDEN, got %q; response: %v", code, resp)
+	}
+}
+
+// TestAdminUserResolver_AdminUpdateUser_InputValidation_DisplayName verifies
+// that an outcome carrying a Validation slot maps to the
+// InputValidationError union variant — surfaced as data, not as an error.
+func TestAdminUserResolver_AdminUpdateUser_InputValidation_DisplayName(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminUserUsecase{
+		updateOutcome: usecase.AdminUpdateUserOutcome{
+			Validation: &usecase.InputValidationInfo{
+				Field:   "displayName",
+				Message: "displayName must be 1-50 characters",
+			},
+		},
+	}
+	srv := newAdminUserSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("admin"), adminUpdateUserMutation)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["adminUpdateUser"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.adminUpdateUser, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "InputValidationError" {
+		t.Fatalf("expected __typename=InputValidationError, got %v", payload["__typename"])
+	}
+	if payload["field"] != "displayName" {
+		t.Fatalf("expected field=displayName, got %v", payload["field"])
+	}
+	if payload["message"] != "displayName must be 1-50 characters" {
+		t.Fatalf("expected message='displayName must be 1-50 characters', got %v", payload["message"])
+	}
+}
+
+// TestAdminUserResolver_AdminUpdateUser_XORInvariantViolation covers the
+// defensive guard where the usecase returns an AdminUpdateUserOutcome with
+// no variant set. Must surface as INTERNAL.
+func TestAdminUserResolver_AdminUpdateUser_XORInvariantViolation(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminUserUsecase{
+		updateOutcome: usecase.AdminUpdateUserOutcome{}, // no variant set
+	}
+	srv := newAdminUserSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("admin"), adminUpdateUserMutation)
+
+	code := errCode(t, resp)
+	if code != string(gqlerr.CodeInternal) {
+		t.Fatalf("expected INTERNAL_SERVER_ERROR, got %q; response: %v", code, resp)
 	}
 }
