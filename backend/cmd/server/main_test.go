@@ -2561,16 +2561,17 @@ func TestServerConfigFromEnv(t *testing.T) {
 
 func TestServerConfig_SwipeNextBatchSize(t *testing.T) {
 	cases := []struct {
-		name    string
-		env     string
-		want    int
-		wantLog string
+		name        string
+		env         string
+		want        int
+		wantLog     string
+		wantErrAttr bool
 	}{
-		{"empty uses default", "", 10, ""},
-		{"valid positive", "20", 20, ""},
-		{"invalid string uses default", "bad", 10, "invalid SWIPE_NEXT_BATCH_SIZE"},
-		{"zero uses default", "0", 10, "non-positive SWIPE_NEXT_BATCH_SIZE"},
-		{"negative uses default", "-5", 10, "non-positive SWIPE_NEXT_BATCH_SIZE"},
+		{"empty uses default", "", 10, "", false},
+		{"valid positive", "20", 20, "", false},
+		{"invalid string uses default", "bad", 10, "invalid SWIPE_NEXT_BATCH_SIZE", true},
+		{"zero uses default", "0", 10, "non-positive SWIPE_NEXT_BATCH_SIZE", false},
+		{"negative uses default", "-5", 10, "non-positive SWIPE_NEXT_BATCH_SIZE", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -2587,7 +2588,7 @@ func TestServerConfig_SwipeNextBatchSize(t *testing.T) {
 			if tc.wantLog == "" && buf.Len() > 0 {
 				t.Errorf("expected no log output, got %q", buf.String())
 			}
-			if tc.name == "invalid string uses default" && !strings.Contains(buf.String(), `"err":`) {
+			if tc.wantErrAttr && !strings.Contains(buf.String(), `"err":`) {
 				t.Errorf("expected log to contain %q attribute, got %q", `"err":`, buf.String())
 			}
 		})
