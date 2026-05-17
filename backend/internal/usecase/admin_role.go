@@ -108,7 +108,13 @@ func validateRoleName(name string) (string, error) {
 // List returns every role in the system. Admin-only.
 func (u *adminRoleUsecase) List(ctx context.Context) ([]*domain.Role, error) {
 	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return nil, err
+		if isContextDone(err) || errors.Is(err, ucerr.ErrUnauthenticated) {
+			return nil, err
+		}
+		if _, ok := errors.AsType[*ucerr.ForbiddenError](err); ok {
+			return nil, err
+		}
+		return nil, eris.Wrap(err, "usecase: admin role: check admin")
 	}
 	roles, err := u.roles.ListAll(ctx)
 	if err != nil {
@@ -125,7 +131,13 @@ func (u *adminRoleUsecase) List(ctx context.Context) ([]*domain.Role, error) {
 // is nullable in the schema for this reason.
 func (u *adminRoleUsecase) Get(ctx context.Context, id string) (*domain.Role, error) {
 	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return nil, err
+		if isContextDone(err) || errors.Is(err, ucerr.ErrUnauthenticated) {
+			return nil, err
+		}
+		if _, ok := errors.AsType[*ucerr.ForbiddenError](err); ok {
+			return nil, err
+		}
+		return nil, eris.Wrap(err, "usecase: admin role: check admin")
 	}
 	role, err := u.roles.FindByID(ctx, id)
 	if err != nil {
@@ -149,7 +161,13 @@ func (u *adminRoleUsecase) Get(ctx context.Context, id string) (*domain.Role, er
 // return.
 func (u *adminRoleUsecase) Create(ctx context.Context, name string) (CreateRoleOutcome, error) {
 	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return CreateRoleOutcome{}, err
+		if isContextDone(err) || errors.Is(err, ucerr.ErrUnauthenticated) {
+			return CreateRoleOutcome{}, err
+		}
+		if _, ok := errors.AsType[*ucerr.ForbiddenError](err); ok {
+			return CreateRoleOutcome{}, err
+		}
+		return CreateRoleOutcome{}, eris.Wrap(err, "usecase: admin role: check admin")
 	}
 	normalized, info, err := normalizeAndValidateRoleName(name)
 	if err != nil {
@@ -232,7 +250,13 @@ type SystemRoleConflictInfo struct {
 // concurrent delete surfaces uniformly as ErrRoleNotFound.
 func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (UpdateRoleOutcome, error) {
 	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return UpdateRoleOutcome{}, err
+		if isContextDone(err) || errors.Is(err, ucerr.ErrUnauthenticated) {
+			return UpdateRoleOutcome{}, err
+		}
+		if _, ok := errors.AsType[*ucerr.ForbiddenError](err); ok {
+			return UpdateRoleOutcome{}, err
+		}
+		return UpdateRoleOutcome{}, eris.Wrap(err, "usecase: admin role: check admin")
 	}
 	normalized, err := validateRoleName(name)
 	if err != nil {
@@ -269,7 +293,13 @@ func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (UpdateR
 // rather than INTERNAL.
 func (u *adminRoleUsecase) Delete(ctx context.Context, id string) error {
 	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return err
+		if isContextDone(err) || errors.Is(err, ucerr.ErrUnauthenticated) {
+			return err
+		}
+		if _, ok := errors.AsType[*ucerr.ForbiddenError](err); ok {
+			return err
+		}
+		return eris.Wrap(err, "usecase: admin role: check admin")
 	}
 
 	existing, err := u.roles.FindByID(ctx, id)

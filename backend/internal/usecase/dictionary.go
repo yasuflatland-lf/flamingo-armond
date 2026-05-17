@@ -135,7 +135,7 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 		if _, ok := errors.AsType[*ucerr.ForbiddenError](err); ok {
 			return UpsertDictionaryOutput{}, err
 		}
-		return UpsertDictionaryOutput{}, eris.Wrap(err, "dictionary upsert: check admin")
+		return UpsertDictionaryOutput{}, eris.Wrap(err, "usecase: dictionary upsert: check admin")
 	}
 
 	if input.CardgroupID == "" {

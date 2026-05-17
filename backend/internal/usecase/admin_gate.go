@@ -21,7 +21,10 @@ type AdminChecker interface {
 // requireAdmin returns the caller's user ID after confirming the bearer is an
 // admin. Returns ucerr.ErrUnauthenticated when no caller is on the context and
 // ucerr.NewForbiddenError when the caller is not an admin. Pass-through for
-// context cancellation; wraps any other AdminChecker error.
+// context cancellation and IsAdmin infrastructure errors — no wrapping is
+// applied here. Callers should wrap the returned error with their
+// caller-specific layer prefix (e.g. eris.Wrap(err, "usecase: admin role:
+// check admin")) when the error is not a sentinel or context error.
 func requireAdmin(ctx context.Context, svc AdminChecker) (callerID string, err error) {
 	caller := auth.UserFrom(ctx)
 	if caller == nil || caller.Sub == "" {
@@ -35,7 +38,7 @@ func requireAdmin(ctx context.Context, svc AdminChecker) (callerID string, err e
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return "", err
 		}
-		return "", eris.Wrap(err, "usecase: admin gate: check admin")
+		return "", err // raw error; caller wraps with its own layer prefix
 	}
 	if !isAdmin {
 		return "", ucerr.NewForbiddenError("admin only")

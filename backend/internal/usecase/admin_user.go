@@ -301,7 +301,13 @@ func (u *adminUserUsecase) List(
 // resolver renders the GraphQL field as null without erroring.
 func (u *adminUserUsecase) Get(ctx context.Context, id string) (*domain.User, error) {
 	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return nil, err
+		if isContextDone(err) || errors.Is(err, ucerr.ErrUnauthenticated) {
+			return nil, err
+		}
+		if _, ok := errors.AsType[*ucerr.ForbiddenError](err); ok {
+			return nil, err
+		}
+		return nil, eris.Wrap(err, "usecase: admin user: check admin")
 	}
 	user, err := u.users.FindByID(ctx, id)
 	if err != nil {
@@ -324,7 +330,13 @@ func (u *adminUserUsecase) Get(ctx context.Context, id string) (*domain.User, er
 // the AdminUpdateUserResult union's InputValidationError variant.
 func (u *adminUserUsecase) Update(ctx context.Context, id string, input AdminUpdateUserInput) (AdminUpdateUserOutcome, error) {
 	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return AdminUpdateUserOutcome{}, err
+		if isContextDone(err) || errors.Is(err, ucerr.ErrUnauthenticated) {
+			return AdminUpdateUserOutcome{}, err
+		}
+		if _, ok := errors.AsType[*ucerr.ForbiddenError](err); ok {
+			return AdminUpdateUserOutcome{}, err
+		}
+		return AdminUpdateUserOutcome{}, eris.Wrap(err, "usecase: admin user: check admin")
 	}
 
 	patch := repository.UserUpdate{}
@@ -378,7 +390,13 @@ func (u *adminUserUsecase) Update(ctx context.Context, id string, input AdminUpd
 // errors surface via the error return.
 func (u *adminUserUsecase) AssignRole(ctx context.Context, userID, roleID string) (AssignRoleOutcome, error) {
 	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return AssignRoleOutcome{}, err
+		if isContextDone(err) || errors.Is(err, ucerr.ErrUnauthenticated) {
+			return AssignRoleOutcome{}, err
+		}
+		if _, ok := errors.AsType[*ucerr.ForbiddenError](err); ok {
+			return AssignRoleOutcome{}, err
+		}
+		return AssignRoleOutcome{}, eris.Wrap(err, "usecase: admin user: check admin")
 	}
 	if err := u.roles.AssignToUser(ctx, userID, roleID); err != nil {
 		info, perr := mapRoleAssignmentError(err, "usecase: admin user assign role")
@@ -401,7 +419,13 @@ func (u *adminUserUsecase) AssignRole(ctx context.Context, userID, roleID string
 func (u *adminUserUsecase) RevokeRole(ctx context.Context, userID, roleID string) (RevokeRoleOutcome, error) {
 	callerID, err := requireAdmin(ctx, u.auth)
 	if err != nil {
-		return RevokeRoleOutcome{}, err
+		if isContextDone(err) || errors.Is(err, ucerr.ErrUnauthenticated) {
+			return RevokeRoleOutcome{}, err
+		}
+		if _, ok := errors.AsType[*ucerr.ForbiddenError](err); ok {
+			return RevokeRoleOutcome{}, err
+		}
+		return RevokeRoleOutcome{}, eris.Wrap(err, "usecase: admin user: check admin")
 	}
 
 	// Self-demotion guard: only blocks revoking the *admin* role from the
