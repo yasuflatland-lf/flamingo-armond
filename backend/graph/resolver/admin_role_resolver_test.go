@@ -24,7 +24,7 @@ type mockAdminRoleUsecase struct {
 	listErr       error
 	getResult     *domain.Role
 	getErr        error
-	createResult  *domain.Role
+	createOutcome usecase.CreateRoleOutcome
 	createErr     error
 	updateOutcome usecase.UpdateRoleOutcome
 	updateErr     error
@@ -37,8 +37,8 @@ func (m *mockAdminRoleUsecase) List(_ context.Context) ([]*domain.Role, error) {
 func (m *mockAdminRoleUsecase) Get(_ context.Context, _ string) (*domain.Role, error) {
 	return m.getResult, m.getErr
 }
-func (m *mockAdminRoleUsecase) Create(_ context.Context, _ string) (*domain.Role, error) {
-	return m.createResult, m.createErr
+func (m *mockAdminRoleUsecase) Create(_ context.Context, _ string) (usecase.CreateRoleOutcome, error) {
+	return m.createOutcome, m.createErr
 }
 func (m *mockAdminRoleUsecase) Update(_ context.Context, _, _ string) (usecase.UpdateRoleOutcome, error) {
 	return m.updateOutcome, m.updateErr
@@ -61,15 +61,21 @@ func newAdminRoleSrv(roleUC usecase.AdminRoleUsecase) *handler.Server {
 // Mutation.createRole tests
 // ---------------------------------------------------------------------------
 
-const createRoleMutation = `{"query":"mutation { createRole(name: \"editor\") { id name } }"}`
+// createRoleMutation selects across both variants of the CreateRoleResult
+// union so a single mutation body covers the success and input-validation
+// cases.
+const createRoleMutation = `{"query":"mutation { createRole(name: \"editor\") { __typename ... on CreateRoleSuccess { role { id name } } ... on InputValidationError { field message } } }"}`
 
 // TestResolver_CreateRole_Success verifies that createRole returns the new
-// role's id and name when the usecase succeeds.
+// role's id and name when the usecase succeeds, via the CreateRoleSuccess
+// union variant.
 func TestResolver_CreateRole_Success(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockAdminRoleUsecase{
-		createResult: &domain.Role{ID: "r-editor", Name: "editor"},
+		createOutcome: usecase.CreateRoleOutcome{
+			Role: &domain.Role{ID: "r-editor", Name: "editor"},
+		},
 	}
 	srv := newAdminRoleSrv(mock)
 	resp := gqlRequest(t, srv, authedCtx("admin"), createRoleMutation)
@@ -78,9 +84,16 @@ func TestResolver_CreateRole_Success(t *testing.T) {
 		t.Fatalf("unexpected errors: %v", resp["errors"])
 	}
 	data, _ := resp["data"].(map[string]any)
-	role, _ := data["createRole"].(map[string]any)
-	if role == nil {
+	payload, _ := data["createRole"].(map[string]any)
+	if payload == nil {
 		t.Fatalf("expected data.createRole, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "CreateRoleSuccess" {
+		t.Fatalf("expected __typename=CreateRoleSuccess, got %v", payload["__typename"])
+	}
+	role, _ := payload["role"].(map[string]any)
+	if role == nil {
+		t.Fatalf("expected role payload, got nil; response: %v", resp)
 	}
 	if role["id"] != "r-editor" {
 		t.Fatalf("expected id=r-editor, got %v", role["id"])
@@ -104,6 +117,61 @@ func TestResolver_CreateRole_Forbidden(t *testing.T) {
 	code := errCode(t, resp)
 	if code != string(gqlerr.CodeForbidden) {
 		t.Fatalf("expected FORBIDDEN, got %q", code)
+	}
+}
+
+// TestResolver_CreateRole_InputValidation_DuplicateName verifies that an
+// outcome carrying a Validation slot (e.g. duplicate role name) maps to the
+// InputValidationError union variant — surfaced as data, not as an error.
+func TestResolver_CreateRole_InputValidation_DuplicateName(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminRoleUsecase{
+		createOutcome: usecase.CreateRoleOutcome{
+			Validation: &usecase.InputValidationInfo{
+				Field:   "name",
+				Message: "role name already exists",
+			},
+		},
+	}
+	srv := newAdminRoleSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("admin"), createRoleMutation)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["createRole"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.createRole, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "InputValidationError" {
+		t.Fatalf("expected __typename=InputValidationError, got %v", payload["__typename"])
+	}
+	if payload["field"] != "name" {
+		t.Fatalf("expected field=name, got %v", payload["field"])
+	}
+	if payload["message"] != "role name already exists" {
+		t.Fatalf("expected message='role name already exists', got %v", payload["message"])
+	}
+}
+
+// TestResolver_CreateRole_XORInvariantViolation covers the defensive guard
+// where the usecase returns a CreateRoleOutcome with no variant set. Must
+// surface as INTERNAL — the resolver refuses to render an unselectable union
+// value.
+func TestResolver_CreateRole_XORInvariantViolation(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminRoleUsecase{
+		createOutcome: usecase.CreateRoleOutcome{}, // no variant set
+	}
+	srv := newAdminRoleSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("admin"), createRoleMutation)
+
+	code := errCode(t, resp)
+	if code != string(gqlerr.CodeInternal) {
+		t.Fatalf("expected INTERNAL_SERVER_ERROR, got %q; response: %v", code, resp)
 	}
 }
 

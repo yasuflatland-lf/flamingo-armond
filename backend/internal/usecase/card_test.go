@@ -292,12 +292,18 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 			&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
 			nil,
 		)
-		got, err := uc.Update(authedCtx("u1"), "card1", UpdateCardInput{Front: ptr(" new front ")})
+		outcome, err := uc.Update(authedCtx("u1"), "card1", UpdateCardInput{Front: ptr(" new front ")})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if got.Front != newFront {
-			t.Fatalf("front = %q, want %q", got.Front, newFront)
+		if outcome.Card == nil {
+			t.Fatal("expected non-nil Card on success")
+		}
+		if outcome.Card.Front != newFront {
+			t.Fatalf("front = %q, want %q", outcome.Card.Front, newFront)
+		}
+		if outcome.Validation != nil {
+			t.Fatalf("expected nil Validation on success, got %+v", outcome.Validation)
 		}
 		if cardRepo.capturedPatch.Front == nil || *cardRepo.capturedPatch.Front != newFront {
 			t.Fatalf("unexpected patch: %+v", cardRepo.capturedPatch)
@@ -306,6 +312,66 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 			t.Fatalf("back should be unchanged: %+v", cardRepo.capturedPatch)
 		}
 	})
+}
+
+func TestCardUsecase_Update_EmptyFront_ValidationVariant(t *testing.T) {
+	t.Parallel()
+
+	existing := &domain.Card{
+		ID:          "card1",
+		CardgroupID: "cg1",
+		Front:       "old front",
+		Back:        "old back",
+	}
+	cardRepo := &mockCardRepository{findResult: existing}
+	uc := NewCardUsecase(nil, cardRepo,
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		nil,
+	)
+
+	outcome, err := uc.Update(authedCtx("u1"), "card1", UpdateCardInput{Front: ptr("")})
+
+	if err != nil {
+		t.Fatalf("expected nil error (validation goes to outcome), got: %v", err)
+	}
+	if outcome.Card != nil {
+		t.Fatal("expected nil Card on validation failure")
+	}
+	if outcome.Validation == nil {
+		t.Fatal("expected non-nil Validation on empty front")
+	}
+	if outcome.Validation.Field != "front" {
+		t.Fatalf("expected Validation.Field=%q, got %q", "front", outcome.Validation.Field)
+	}
+	if cardRepo.capturedPatch.Front != nil {
+		t.Fatal("repository.Update must not be called on validation failure")
+	}
+}
+
+func TestCardUsecase_Update_RepoError_InfraChannel(t *testing.T) {
+	t.Parallel()
+
+	existing := &domain.Card{
+		ID:          "card1",
+		CardgroupID: "cg1",
+		Front:       "old front",
+		Back:        "old back",
+	}
+	cardRepo := &mockCardRepository{
+		findResult: existing,
+		updateErr:  errors.New("db: storage failure"),
+	}
+	uc := NewCardUsecase(nil, cardRepo,
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		nil,
+	)
+
+	_, err := uc.Update(authedCtx("u1"), "card1", UpdateCardInput{Front: ptr("new front")})
+
+	if err == nil {
+		t.Fatal("expected error from repo, got nil")
+	}
+	assertInternalChain(t, err, "usecase: update card: repo update")
 }
 
 func TestCardUsecase_Delete_NotFoundMasksExistence(t *testing.T) {

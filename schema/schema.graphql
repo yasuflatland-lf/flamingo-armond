@@ -32,10 +32,15 @@ input UpdateProfileInput {
   bio: String
 }
 
-"""Payload returned by `updateProfile`."""
-type UpdateProfilePayload {
+"""Success variant returned by `updateProfile` when the profile was updated. Carries the updated `user` so clients can refresh local state without a follow-up query."""
+type UpdateProfileSuccess {
   user: User!
 }
+
+"""Result of `updateProfile`. Either the updated user or an input-validation failure."""
+union UpdateProfileResult =
+    UpdateProfileSuccess
+  | InputValidationError
 
 """Root of all write operations exposed by the GraphQL API. See per-field doc-blocks for individual mutations."""
 type Mutation {
@@ -43,7 +48,7 @@ type Mutation {
   Updates the authenticated user's own profile.
   Unauthenticated callers receive an error with `extensions.code = "UNAUTHENTICATED"`.
   """
-  updateProfile(input: UpdateProfileInput!): UpdateProfilePayload!
+  updateProfile(input: UpdateProfileInput!): UpdateProfileResult!
 }
 
 """ISO-8601 / RFC-3339 timestamp serialized as a string."""
@@ -72,15 +77,35 @@ input UpdateCardgroupInput {
   name: String
 }
 
-"""Payload returned by `createCardgroup`."""
-type CreateCardgroupPayload {
+"""Success variant returned by `createCardgroup` when the cardgroup was created. Carries the new `cardgroup` so clients can insert it into local caches without a follow-up query."""
+type CreateCardgroupSuccess {
   cardgroup: Cardgroup!
 }
 
-"""Payload returned by `updateCardgroup`."""
-type UpdateCardgroupPayload {
+"""Success variant returned by `setLastViewedCardgroup` when the preference was recorded. Carries the updated `user` so clients can refresh the last-viewed state without a follow-up query."""
+type SetLastViewedCardgroupSuccess {
+  user: User!
+}
+
+"""Result of `createCardgroup`. Either the created cardgroup or an input-validation failure."""
+union CreateCardgroupResult =
+    CreateCardgroupSuccess
+  | InputValidationError
+
+"""Result of `setLastViewedCardgroup`. Either the updated user or an input-validation failure."""
+union SetLastViewedCardgroupResult =
+    SetLastViewedCardgroupSuccess
+  | InputValidationError
+
+"""Success variant returned by `updateCardgroup` when the cardgroup was updated. Carries the updated `cardgroup` so clients can refresh local state without a follow-up query."""
+type UpdateCardgroupSuccess {
   cardgroup: Cardgroup!
 }
+
+"""Result of `updateCardgroup`. Either the updated cardgroup or an input-validation failure."""
+union UpdateCardgroupResult =
+    UpdateCardgroupSuccess
+  | InputValidationError
 
 extend type Query {
   """Single cardgroup by ID. Returns UNAUTHENTICATED for non-owners (existence is not leaked)."""
@@ -102,10 +127,14 @@ extend type Query {
 }
 
 extend type Mutation {
-  """Create a cardgroup owned by the authenticated caller."""
-  createCardgroup(input: NewCardgroupInput!): CreateCardgroupPayload!
+  """
+  Create a cardgroup owned by the authenticated caller.
+  Returns a union: `CreateCardgroupSuccess` for the happy path, or `InputValidationError`
+  when the name fails validation (typed "error as data").
+  """
+  createCardgroup(input: NewCardgroupInput!): CreateCardgroupResult!
   """Update a cardgroup. Non-owners receive UNAUTHENTICATED."""
-  updateCardgroup(id: ID!, input: UpdateCardgroupInput!): UpdateCardgroupPayload!
+  updateCardgroup(id: ID!, input: UpdateCardgroupInput!): UpdateCardgroupResult!
   """Delete a cardgroup. Non-owners receive UNAUTHENTICATED."""
   deleteCardgroup(id: ID!): Boolean!
 }
@@ -175,10 +204,15 @@ type CreateCardSuccess {
 """Result of `createCard`. Either the created card, or a typed duplicate-front error returned as data."""
 union CreateCardResult = CreateCardSuccess | CardDuplicateFrontError
 
-"""Payload returned by `updateCard`."""
-type UpdateCardPayload {
+"""Success variant returned by `updateCard` when the card was updated. Carries the updated `card` so clients can refresh local state without a follow-up query."""
+type UpdateCardSuccess {
   card: Card!
 }
+
+"""Result of `updateCard`. Either the updated card or an input-validation failure."""
+union UpdateCardResult =
+    UpdateCardSuccess
+  | InputValidationError
 
 """Sort order for paginated queries."""
 enum SortOrder {
@@ -279,7 +313,7 @@ extend type Mutation {
   """
   createCard(input: NewCardInput!): CreateCardResult!
   """Update a card. Non-owners receive UNAUTHENTICATED."""
-  updateCard(id: ID!, input: UpdateCardInput!): UpdateCardPayload!
+  updateCard(id: ID!, input: UpdateCardInput!): UpdateCardResult!
   """Delete a card. Non-owners receive UNAUTHENTICATED."""
   deleteCard(id: ID!): Boolean!
   """Bulk-delete cards owned by the authenticated caller. Returns the number of rows deleted. Foreign-owned IDs in the list are silently skipped (count reflects only successful deletes)."""
@@ -313,9 +347,19 @@ type PerformanceMetrics {
   reviewCount: Int!
 }
 
+"""Success variant returned by `handleSwipe` when the swipe was recorded. Carries the full `SwipeResponse` so clients can refresh the learn flow without a follow-up query."""
+type HandleSwipeSuccess {
+  response: SwipeResponse!
+}
+
+"""Result of `handleSwipe`. Either the swipe response or an input-validation failure."""
+union HandleSwipeResult =
+    HandleSwipeSuccess
+  | InputValidationError
+
 extend type Mutation {
   """Apply one swipe rating, persist the SwipeRecord event, and return the next due cards."""
-  handleSwipe(input: HandleSwipeInput!): SwipeResponse!
+  handleSwipe(input: HandleSwipeInput!): HandleSwipeResult!
 }
 
 """
@@ -375,10 +419,11 @@ type DictionaryValidationError implements UserError {
 }
 
 """
-Generic input-validation failure intended for use as a UserError variant in a future outcome union — not yet a member of any union in this schema.
-Mapped from `*ucerr.ValidationError` via `gqlerr.FromUsecaseError`.
-Also surfaced via `errors` array with `extensions.code = "BAD_USER_INPUT"` and
-`extensions.field` for mutations that have not yet been promoted to a result union.
+Generic input-validation failure used as the UserError variant in outcome-union
+mutations. Mapped from `*ucerr.ValidationError` via `gqlerr.FromUsecaseError`.
+Also surfaced via the `errors` array with `extensions.code = "BAD_USER_INPUT"`
+and `extensions.field` for mutations that have not yet been promoted to a
+result union.
 """
 type InputValidationError implements UserError {
   """The input field that failed validation. Matches the GraphQL input field name (camelCase)."""
@@ -474,6 +519,75 @@ CannotModifySystemRoleError describing the system-role guard.
 """
 union UpdateRoleResult = UpdateRoleSuccess | CannotModifySystemRoleError
 
+"""
+Typed business error returned by `revokeRole` when the caller attempts to
+revoke the admin role from their own account. Self-demotion is rejected by
+the server regardless of caller privilege.
+"""
+type CannotRevokeOwnAdminRoleError implements UserError {
+  message: String!
+}
+
+"""
+Returned by `revokeRole` when the target user's admin role was successfully
+revoked. Carries the updated `user` so clients can refresh their role view
+without a follow-up query.
+"""
+type RevokeRoleSuccess {
+  user: User!
+}
+
+"""
+Returned by `assignRole` when the target user was successfully granted the
+requested role. Carries the updated `user` so clients can refresh their role
+view without a follow-up query.
+"""
+type AssignRoleSuccess {
+  user: User!
+}
+
+"""
+Returned by `adminUpdateUser` when the admin's update to a target user
+succeeded. Carries the updated `user` so clients can refresh the profile
+view without a follow-up query.
+"""
+type AdminUpdateUserSuccess {
+  user: User!
+}
+
+"""
+Returned by `createRole` when a new role was successfully created. Carries
+the freshly inserted `role` so clients can insert it into local caches
+without a follow-up query.
+"""
+type CreateRoleSuccess {
+  role: Role!
+}
+
+"""
+Result of `revokeRole`. Either the updated user, an input-validation failure,
+or a CannotRevokeOwnAdminRoleError when the caller tries to demote themselves.
+"""
+union RevokeRoleResult =
+    RevokeRoleSuccess
+  | InputValidationError
+  | CannotRevokeOwnAdminRoleError
+
+"""Result of `assignRole`. Either the updated user or an input-validation failure."""
+union AssignRoleResult =
+    AssignRoleSuccess
+  | InputValidationError
+
+"""Result of `adminUpdateUser`. Either the updated user or an input-validation failure."""
+union AdminUpdateUserResult =
+    AdminUpdateUserSuccess
+  | InputValidationError
+
+"""Result of `createRole`. Either the new role or an input-validation failure."""
+union CreateRoleResult =
+    CreateRoleSuccess
+  | InputValidationError
+
 extend type User {
   """Roles assigned to this user. Resolved via the per-request RoleByUserID DataLoader."""
   roles: [Role!]!
@@ -521,13 +635,13 @@ input AdminUpdateUserInput {
 
 extend type Mutation {
   """Admin-only. Edit display_name / bio of any user."""
-  adminUpdateUser(id: ID!, input: AdminUpdateUserInput!): User!
+  adminUpdateUser(id: ID!, input: AdminUpdateUserInput!): AdminUpdateUserResult!
   """Admin-only. Assign a role to a user. Idempotent."""
-  assignRole(userId: ID!, roleId: ID!): User!
-  """Admin-only. Revoke a role from a user. Self-demotion of admin role is rejected with FORBIDDEN."""
-  revokeRole(userId: ID!, roleId: ID!): User!
-  """Admin-only. Create a new role. Names are normalized to lowercase. Duplicates are rejected with BAD_USER_INPUT."""
-  createRole(name: String!): Role!
+  assignRole(userId: ID!, roleId: ID!): AssignRoleResult!
+  """Admin-only. Revoke a role from a user. Self-demotion of admin role is returned as CannotRevokeOwnAdminRoleError."""
+  revokeRole(userId: ID!, roleId: ID!): RevokeRoleResult!
+  """Admin-only. Create a new role. Names are normalized to lowercase. Duplicates are returned as InputValidationError."""
+  createRole(name: String!): CreateRoleResult!
   """
   Rename a role. System roles are immutable — the call returns
   CannotModifySystemRoleError as a typed union variant in that case.
@@ -542,11 +656,11 @@ extend type Mutation {
 extend type Mutation {
   """
   Records the cardgroup the authenticated user most recently viewed on /learn.
-  Idempotent. Returns the updated user.
-  Errors:
-   - UNAUTHENTICATED  — caller has no session
-   - BAD_USER_INPUT   — cardgroupId does not exist or is not owned by caller
-                        (existence of others' cardgroups is not leaked: same code in both cases)
+  Idempotent.
+  Returns a union: `SetLastViewedCardgroupSuccess` carrying the updated user for the happy path,
+  or `InputValidationError` when the cardgroup does not exist or is not owned by the caller
+  (typed "error as data"; existence of others' cardgroups is not leaked).
+  Unauthenticated callers receive an error with `extensions.code = "UNAUTHENTICATED"`.
   """
-  setLastViewedCardgroup(cardgroupId: ID!): User!
+  setLastViewedCardgroup(cardgroupId: ID!): SetLastViewedCardgroupResult!
 }

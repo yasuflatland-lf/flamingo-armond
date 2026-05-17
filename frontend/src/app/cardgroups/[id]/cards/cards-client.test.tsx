@@ -162,7 +162,7 @@ function makeUpdateMock(id: string, input: { front: string; back: string }, card
     request: { query: UpdateCardDocument, variables: { id, input } },
     result: {
       data: {
-        updateCard: { __typename: "UpdateCardPayload" as const, card },
+        updateCard: { __typename: "UpdateCardSuccess" as const, card },
       },
     },
   };
@@ -1292,4 +1292,51 @@ describe("<CardsClient>", () => {
   // gets tabIndex=-1) requires a live SwipeableRow with pointer events,
   // which jsdom does not simulate reliably. The imperative close() API is
   // covered in swipeable-row.test.tsx (T10). Limitation documented here.
+
+  // Union-data path: server returns InputValidationError as data (not errors[]).
+  // The row must stay in edit mode and display the validation message inline.
+  // Fix #1 (sibling agent) wires a `validationError` prop from CardsClient into
+  // CardForm so the union-data path surfaces the message the same way the
+  // error-channel path does.
+  it("keeps the row in edit mode and surfaces a field error when updateCard returns InputValidationError", async () => {
+    const user = userEvent.setup();
+
+    const mock = {
+      request: {
+        query: UpdateCardDocument,
+        variables: { id: "c-1", input: { front: "", back: "Hola" } },
+      },
+      result: {
+        data: {
+          updateCard: {
+            __typename: "InputValidationError" as const,
+            field: "front",
+            message: "front is required",
+          },
+        },
+      },
+    };
+
+    renderClient([mock], [CARD_1]);
+
+    // Enter edit mode for CARD_1.
+    await user.click(screen.getByTestId("card-edit-target-c-1"));
+
+    // Clear the front field so it submits an empty value.
+    const editFrontInput = screen.getByLabelText(/front/i) as HTMLElement;
+    await user.clear(editFrontInput);
+
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    // Row must remain in edit mode (editingId is not cleared for InputValidationError).
+    await waitFor(() => {
+      expect(screen.getByText("front is required")).toBeInTheDocument();
+    });
+
+    // The form is still mounted — both the field input and the Save button remain.
+    expect(screen.getByLabelText(/front/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument();
+    // No spinner — the mutation has resolved, not pending.
+    expect(screen.queryByText(/saving/i)).not.toBeInTheDocument();
+  });
 });

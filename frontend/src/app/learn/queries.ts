@@ -21,24 +21,33 @@ export const LearnNextDueCardsQuery = graphql(`
 export const HandleSwipeMutation = graphql(`
   mutation HandleSwipe($input: HandleSwipeInput!) {
     handleSwipe(input: $input) {
-      nextCards {
-        id
-        front
-        back
-        userCardState {
-          due
-          state
+      __typename
+      ... on HandleSwipeSuccess {
+        response {
+          nextCards {
+            id
+            front
+            back
+            userCardState {
+              due
+              state
+            }
+            cardgroupId
+          }
+          performanceMode
+          metrics {
+            successRate
+            avgDifficulty
+            retentionRate
+            studyStreak
+            lapseRate
+            reviewCount
+          }
         }
-        cardgroupId
       }
-      performanceMode
-      metrics {
-        successRate
-        avgDifficulty
-        retentionRate
-        studyStreak
-        lapseRate
-        reviewCount
+      ... on InputValidationError {
+        field
+        message
       }
     }
   }
@@ -47,9 +56,18 @@ export const HandleSwipeMutation = graphql(`
 export const SetLastViewedCardgroupMutation = graphql(`
   mutation SetLastViewedCardgroup($cardgroupId: ID!) {
     setLastViewedCardgroup(cardgroupId: $cardgroupId) {
-      id
-      lastViewedCardgroup {
-        id
+      __typename
+      ... on SetLastViewedCardgroupSuccess {
+        user {
+          id
+          lastViewedCardgroup {
+            id
+          }
+        }
+      }
+      ... on InputValidationError {
+        field
+        message
       }
     }
   }

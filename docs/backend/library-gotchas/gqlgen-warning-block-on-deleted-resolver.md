@@ -33,3 +33,42 @@ grep -n "!!! WARNING !!!" backend/graph/resolver/schema.resolvers.go
 ```
 
 A clean schema-deletion PR returns no matches. A leftover match is a hard failure of the cleanup pass, not a stylistic note.
+
+## Inverse case: regen against a schema change rewrites the resolver as `panic("not implemented")`
+
+The dead-resolver mechanism above (orphaned function preserved under a WARNING
+block) has an inverse: when `gqlgen generate` runs against a schema change that
+**alters** a mutation's return type — e.g. promoting `updateProfile` from a bare
+`UpdateProfilePayload` to a `UpdateProfileResult` union — and the existing
+resolver body in `backend/graph/resolver/schema.resolvers.go` still has the old
+signature, gqlgen does not patch the body in place. It rewrites the function as
+a fresh `panic("not implemented")` stub, treating the existing implementation as
+orphaned. The body that contained the working logic is discarded entirely.
+
+In a multi-commit promotion sequence ordered as (1) schema → (2) usecase → (3)
+resolver-wiring → (4) regen, this is not a problem in the final landed state.
+The risk surfaces when an intermediate agent runs regen between commits 1 and
+3 — for example, a verification subagent that runs `go tool gqlgen generate &&
+go build ./...` as a sanity check after the schema commit but before the
+resolver-wiring commit. The regen step silently replaces the working resolver
+with a panic stub; the build then passes (the stub is valid Go); the
+resolver-wiring commit on top of the stub looks like net-new code in the diff,
+masking the loss of the prior body.
+
+Two mitigations:
+
+- **Verify the resolver body did not regress after every regen.** Run
+  `git diff backend/graph/resolver/schema.resolvers.go` after `gqlgen generate`;
+  if the diff shows `panic("not implemented")` where a body used to live, run
+  `git checkout -- backend/graph/resolver/schema.resolvers.go` to restore the
+  prior body and re-run regen only after the resolver-wiring commit has been
+  authored.
+- **Sequence the resolver-wiring commit before the regen-only commit.** The
+  resolver-wiring commit (which manually edits `schema.resolvers.go` to match
+  the new return type) must land before any standalone regen step so the
+  signature is in sync when `gqlgen` reads the file.
+
+The
+[outcome-union enforcement checklist](../error-wrapping/outcome-union-enforcement.md)
+captures the canonical commit ordering; this gotcha is the failure mode that
+ordering exists to prevent.

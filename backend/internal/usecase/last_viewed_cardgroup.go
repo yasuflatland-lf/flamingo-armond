@@ -12,12 +12,22 @@ import (
 	"backend/internal/usecase/ucerr"
 )
 
+// SetLastViewedCardgroupOutcome is the result of LastViewedCardgroupUsecase.Set.
+// Exactly one of User or Validation is non-nil on a nil-error return: a
+// successful upsert carries the refreshed User; a cardgroup that is not found
+// or not owned by the caller surfaces via Validation so the resolver maps it
+// to the SetLastViewedCardgroupResult union's InputValidationError variant.
+type SetLastViewedCardgroupOutcome struct {
+	User       *domain.User
+	Validation *InputValidationInfo
+}
+
 // LastViewedCardgroupUsecase records the cardgroup the authenticated caller
 // most recently viewed on /learn. The mutation is idempotent and ownership-
 // checked at the repository layer (single SQL statement, no TOCTOU window the
 // usecase needs to widen).
 type LastViewedCardgroupUsecase interface {
-	Set(ctx context.Context, cardgroupID string) (*domain.User, error)
+	Set(ctx context.Context, cardgroupID string) (SetLastViewedCardgroupOutcome, error)
 }
 
 type lastViewedCardgroupRepo interface {
@@ -51,32 +61,34 @@ func NewLastViewedCardgroupWithDeps(
 }
 
 // Set records cardgroupID as the caller's most recently viewed cardgroup and
-// returns the refreshed user row. Authorization rules:
+// returns the refreshed user row via SetLastViewedCardgroupOutcome. Authorization rules:
 //
 //   - Anonymous (no auth context) → UNAUTHENTICATED.
-//   - Cardgroup not owned OR cardgroup does not exist → BAD_USER_INPUT(cardgroupId).
-//     The same code is returned for both cases so existence of other users'
-//     cardgroups is not leaked through the error shape.
-//   - Owned, existing cardgroup → success.
+//   - Cardgroup not owned OR cardgroup does not exist → Validation variant
+//     (cardgroupId). The same variant is returned for both cases so existence
+//     of other users' cardgroups is not leaked through the error shape.
+//   - Owned, existing cardgroup → User variant.
 //
 // Concurrency: a cardgroup deleted between the EXISTS check and the UPDATE
 // surfaces as a 23503 FK violation, which the repository classifies into
-// ErrCardgroupNotFound so the caller receives BAD_USER_INPUT rather than
-// INTERNAL.
-func (u *lastViewedCardgroupUsecase) Set(ctx context.Context, cardgroupID string) (*domain.User, error) {
+// ErrCardgroupNotFound so the caller receives the Validation variant rather
+// than an error.
+func (u *lastViewedCardgroupUsecase) Set(ctx context.Context, cardgroupID string) (SetLastViewedCardgroupOutcome, error) {
 	caller := auth.UserFrom(ctx)
 	if caller == nil || caller.Sub == "" {
-		return nil, ucerr.ErrUnauthenticated
+		return SetLastViewedCardgroupOutcome{}, ucerr.ErrUnauthenticated
 	}
 
 	if err := u.prefs.UpsertLastViewedCardgroup(ctx, caller.Sub, cardgroupID); err != nil {
 		switch {
 		case errors.Is(err, repository.ErrCardgroupNotFound):
-			return nil, ucerr.NewValidationError("cardgroupId", "cardgroup not found or not owned")
+			return SetLastViewedCardgroupOutcome{
+				Validation: NewInputValidationInfo("cardgroupId", "cardgroup not found or not owned"),
+			}, nil
 		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-			return nil, err
+			return SetLastViewedCardgroupOutcome{}, err
 		default:
-			return nil, eris.Wrap(err, "usecase: set last viewed cardgroup")
+			return SetLastViewedCardgroupOutcome{}, eris.Wrap(err, "usecase: set last viewed cardgroup")
 		}
 	}
 
@@ -87,9 +99,9 @@ func (u *lastViewedCardgroupUsecase) Set(ctx context.Context, cardgroupID string
 		// concurrently. Treated as INTERNAL like any other refetch failure,
 		// with the wrapped sentinel preserved for log correlation.
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, err
+			return SetLastViewedCardgroupOutcome{}, err
 		}
-		return nil, eris.Wrap(err, "usecase: last viewed cardgroup: refetch own user row")
+		return SetLastViewedCardgroupOutcome{}, eris.Wrap(err, "usecase: last viewed cardgroup: refetch own user row")
 	}
-	return user, nil
+	return SetLastViewedCardgroupOutcome{User: user}, nil
 }

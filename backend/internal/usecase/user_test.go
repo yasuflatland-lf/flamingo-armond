@@ -263,18 +263,30 @@ func TestUserUsecase_UpdateUser(t *testing.T) {
 			repo := &mockUserRepository{updateResult: tc.repoResult, updateErr: tc.repoErr}
 			uc := NewUserUsecase(repo)
 
-			p, err := uc.UpdateUser(tc.ctx, tc.input)
+			outcome, err := uc.UpdateUser(tc.ctx, tc.input)
 
 			if tc.wantErrCode != "" {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
 				switch tc.wantErrCode {
 				case "UNAUTHENTICATED":
+					if err == nil {
+						t.Fatal("expected error, got nil")
+					}
 					assertUnauthenticated(t, err)
 				case "BAD_USER_INPUT":
-					assertValidationError(t, err, tc.wantErrField, "")
+					// Validation failures are promoted to the outcome variant (nil error).
+					if err != nil {
+						t.Fatalf("expected nil error (validation goes to outcome), got: %v", err)
+					}
+					if outcome.Validation == nil {
+						t.Fatal("expected non-nil Validation on BAD_USER_INPUT case")
+					}
+					if tc.wantErrField != "" && outcome.Validation.Field != tc.wantErrField {
+						t.Fatalf("expected Validation.Field=%q, got %q", tc.wantErrField, outcome.Validation.Field)
+					}
 				case "INTERNAL":
+					if err == nil {
+						t.Fatal("expected error, got nil")
+					}
 					assertInternalChain(t, err, "usecase: UpdateUser: update user")
 				default:
 					t.Fatalf("unhandled wantErrCode %q in test", tc.wantErrCode)
@@ -285,8 +297,11 @@ func TestUserUsecase_UpdateUser(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if p == nil {
-				t.Fatal("expected user, got nil")
+			if outcome.User == nil {
+				t.Fatal("expected non-nil User on success")
+			}
+			if outcome.Validation != nil {
+				t.Fatalf("expected nil Validation on success, got %+v", outcome.Validation)
 			}
 
 			if tc.wantRepoName != nil {
@@ -313,4 +328,91 @@ func TestUserUsecase_UpdateUser(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUserUsecase_UpdateUser_SuccessVariant(t *testing.T) {
+	t.Parallel()
+
+	returned := &domain.User{ID: "u1", DisplayName: ptr("Alice")}
+	repo := &mockUserRepository{updateResult: returned}
+	uc := NewUserUsecase(repo)
+
+	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: "Alice"})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if outcome.User == nil {
+		t.Fatal("expected non-nil User on success")
+	}
+	if outcome.Validation != nil {
+		t.Fatalf("expected nil Validation on success, got %+v", outcome.Validation)
+	}
+}
+
+func TestUserUsecase_UpdateUser_ValidationVariant_DisplayName(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockUserRepository{}
+	uc := NewUserUsecase(repo)
+
+	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: ""})
+
+	if err != nil {
+		t.Fatalf("expected nil error (validation goes to outcome), got: %v", err)
+	}
+	if outcome.User != nil {
+		t.Fatal("expected nil User on validation failure")
+	}
+	if outcome.Validation == nil {
+		t.Fatal("expected non-nil Validation on empty displayName")
+	}
+	if outcome.Validation.Field != "displayName" {
+		t.Fatalf("expected Validation.Field=%q, got %q", "displayName", outcome.Validation.Field)
+	}
+	if repo.capturedPatch.DisplayName != nil {
+		t.Fatal("repository.Update must not be called on validation failure")
+	}
+}
+
+func TestUserUsecase_UpdateUser_ValidationVariant_Bio(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockUserRepository{}
+	uc := NewUserUsecase(repo)
+
+	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{
+		DisplayName: "Alice",
+		Bio:         ptr(strings.Repeat("b", 501)),
+	})
+
+	if err != nil {
+		t.Fatalf("expected nil error (validation goes to outcome), got: %v", err)
+	}
+	if outcome.User != nil {
+		t.Fatal("expected nil User on validation failure")
+	}
+	if outcome.Validation == nil {
+		t.Fatal("expected non-nil Validation on oversized bio")
+	}
+	if outcome.Validation.Field != "bio" {
+		t.Fatalf("expected Validation.Field=%q, got %q", "bio", outcome.Validation.Field)
+	}
+	if repo.capturedPatch.DisplayName != nil {
+		t.Fatal("repository.Update must not be called on validation failure")
+	}
+}
+
+func TestUserUsecase_UpdateUser_RepoError_InfraChannel(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockUserRepository{updateErr: errors.New("db: storage failure")}
+	uc := NewUserUsecase(repo)
+
+	_, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: "Alice"})
+
+	if err == nil {
+		t.Fatal("expected error from repo, got nil")
+	}
+	assertInternalChain(t, err, "usecase: UpdateUser: update user")
 }

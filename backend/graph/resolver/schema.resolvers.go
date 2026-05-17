@@ -70,33 +70,78 @@ func (r *cardgroupResolver) Owner(ctx context.Context, obj *model.Cardgroup) (*m
 }
 
 // UpdateProfile is the resolver for the updateProfile field.
-func (r *mutationResolver) UpdateProfile(ctx context.Context, input model.UpdateProfileInput) (*model.UpdateProfilePayload, error) {
-	user, err := r.UserUC.UpdateUser(ctx, usecase.UpdateUserInput{
+//
+// Returns a union: `model.UpdateProfileSuccess` on the happy path, or
+// `model.InputValidationError` when displayName or bio fails validation.
+// Validation failures are "errors as data" — the error return is reserved
+// for auth and infrastructure failures.
+func (r *mutationResolver) UpdateProfile(ctx context.Context, input model.UpdateProfileInput) (model.UpdateProfileResult, error) {
+	outcome, err := r.UserUC.UpdateUser(ctx, usecase.UpdateUserInput{
 		DisplayName: input.DisplayName,
 		Bio:         input.Bio,
 	})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	return &model.UpdateProfilePayload{User: toUserModel(user)}, nil
+	if outcome.Validation != nil {
+		return model.InputValidationError{
+			Field:   outcome.Validation.Field,
+			Message: outcome.Validation.Message,
+		}, nil
+	}
+	if outcome.User == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: UpdateProfileOutcome has no variant set"))
+	}
+	return model.UpdateProfileSuccess{User: toUserModel(outcome.User)}, nil
 }
 
 // CreateCardgroup is the resolver for the createCardgroup field.
-func (r *mutationResolver) CreateCardgroup(ctx context.Context, input model.NewCardgroupInput) (*model.CreateCardgroupPayload, error) {
-	cg, err := r.CardgroupUC.Create(ctx, usecase.CreateCardgroupInput{Name: input.Name})
+//
+// Returns a union: `model.CreateCardgroupSuccess` on the happy path, or
+// `model.InputValidationError` when the name fails validation (e.g. empty,
+// too long). Validation failures are "errors as data" — the error return is
+// reserved for auth and infrastructure failures.
+func (r *mutationResolver) CreateCardgroup(ctx context.Context, input model.NewCardgroupInput) (model.CreateCardgroupResult, error) {
+	outcome, err := r.CardgroupUC.Create(ctx, usecase.CreateCardgroupInput{Name: input.Name})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	return &model.CreateCardgroupPayload{Cardgroup: toCardgroupModel(cg)}, nil
+	if outcome.Validation != nil {
+		return model.InputValidationError{
+			Field:   outcome.Validation.Field,
+			Message: outcome.Validation.Message,
+		}, nil
+	}
+	if outcome.Cardgroup == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: CreateCardgroupOutcome has no variant set"))
+	}
+	return model.CreateCardgroupSuccess{Cardgroup: toCardgroupModel(outcome.Cardgroup)}, nil
 }
 
 // UpdateCardgroup is the resolver for the updateCardgroup field.
-func (r *mutationResolver) UpdateCardgroup(ctx context.Context, id string, input model.UpdateCardgroupInput) (*model.UpdateCardgroupPayload, error) {
-	cg, err := r.CardgroupUC.Update(ctx, id, usecase.UpdateCardgroupInput{Name: input.Name})
+//
+// Returns a union: `model.UpdateCardgroupSuccess` on the happy path, or
+// `model.InputValidationError` when the name fails validation (e.g. empty,
+// too long). Validation failures are "errors as data" — the error return is
+// reserved for auth and infrastructure failures.
+func (r *mutationResolver) UpdateCardgroup(ctx context.Context, id string, input model.UpdateCardgroupInput) (model.UpdateCardgroupResult, error) {
+	outcome, err := r.CardgroupUC.Update(ctx, id, usecase.UpdateCardgroupInput{Name: input.Name})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	return &model.UpdateCardgroupPayload{Cardgroup: toCardgroupModel(cg)}, nil
+	if outcome.Validation != nil {
+		return model.InputValidationError{
+			Field:   outcome.Validation.Field,
+			Message: outcome.Validation.Message,
+		}, nil
+	}
+	if outcome.Cardgroup == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: UpdateCardgroupOutcome has no variant set"))
+	}
+	return model.UpdateCardgroupSuccess{Cardgroup: toCardgroupModel(outcome.Cardgroup)}, nil
 }
 
 // DeleteCardgroup is the resolver for the deleteCardgroup field.
@@ -137,15 +182,30 @@ func (r *mutationResolver) CreateCard(ctx context.Context, input model.NewCardIn
 }
 
 // UpdateCard is the resolver for the updateCard field.
-func (r *mutationResolver) UpdateCard(ctx context.Context, id string, input model.UpdateCardInput) (*model.UpdateCardPayload, error) {
-	card, err := r.CardUC.Update(ctx, id, usecase.UpdateCardInput{
+//
+// Returns a union: `model.UpdateCardSuccess` on the happy path, or
+// `model.InputValidationError` when front/back fails validation. Validation
+// failures are "errors as data" — the error return is reserved for auth and
+// infrastructure failures.
+func (r *mutationResolver) UpdateCard(ctx context.Context, id string, input model.UpdateCardInput) (model.UpdateCardResult, error) {
+	outcome, err := r.CardUC.Update(ctx, id, usecase.UpdateCardInput{
 		Front: input.Front,
 		Back:  input.Back,
 	})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	return &model.UpdateCardPayload{Card: toCardModel(card)}, nil
+	if outcome.Validation != nil {
+		return model.InputValidationError{
+			Field:   outcome.Validation.Field,
+			Message: outcome.Validation.Message,
+		}, nil
+	}
+	if outcome.Card == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: UpdateCardOutcome has no variant set"))
+	}
+	return model.UpdateCardSuccess{Card: toCardModel(outcome.Card)}, nil
 }
 
 // DeleteCard is the resolver for the deleteCard field.
@@ -166,8 +226,13 @@ func (r *mutationResolver) DeleteCards(ctx context.Context, ids []string) (int, 
 }
 
 // HandleSwipe is the resolver for the handleSwipe field.
-func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.HandleSwipeInput) (*model.SwipeResponse, error) {
-	out, err := r.SwipeUC.HandleSwipe(ctx, usecase.HandleSwipeInput{
+//
+// Returns a union: `model.HandleSwipeSuccess` on the happy path, or
+// `model.InputValidationError` when the mode, cardId, or cardgroupId fails
+// validation. Validation failures are "errors as data" — the error return is
+// reserved for auth and infrastructure failures.
+func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.HandleSwipeInput) (model.HandleSwipeResult, error) {
+	outcome, err := r.SwipeUC.HandleSwipe(ctx, usecase.HandleSwipeInput{
 		CardID:      input.CardID,
 		CardgroupID: input.CardgroupID,
 		Mode:        input.Mode,
@@ -175,7 +240,17 @@ func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.HandleSw
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	return toSwipeResponseModel(ctx, out), nil
+	if outcome.Validation != nil {
+		return model.InputValidationError{
+			Field:   outcome.Validation.Field,
+			Message: outcome.Validation.Message,
+		}, nil
+	}
+	if outcome.Swipe == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: HandleSwipeOutcome has no variant set"))
+	}
+	return model.HandleSwipeSuccess{Response: toSwipeResponseModel(ctx, outcome.Swipe)}, nil
 }
 
 // UpsertDictionary is the resolver for the upsertDictionary field.
@@ -206,42 +281,108 @@ func (r *mutationResolver) UpsertDictionary(ctx context.Context, input model.Ups
 }
 
 // AdminUpdateUser is the resolver for the adminUpdateUser field.
-func (r *mutationResolver) AdminUpdateUser(ctx context.Context, id string, input model.AdminUpdateUserInput) (*model.User, error) {
-	user, err := r.AdminUserUC.Update(ctx, id, usecase.AdminUpdateUserInput{
+//
+// Returns a union: `model.AdminUpdateUserSuccess` on the happy path, or
+// `model.InputValidationError` when the input fails validation (e.g.
+// displayName length, missing target user). Validation is "errors as data" —
+// the second return value is reserved for real errors (auth, internal).
+func (r *mutationResolver) AdminUpdateUser(ctx context.Context, id string, input model.AdminUpdateUserInput) (model.AdminUpdateUserResult, error) {
+	outcome, err := r.AdminUserUC.Update(ctx, id, usecase.AdminUpdateUserInput{
 		DisplayName: input.DisplayName,
 		Bio:         input.Bio,
 	})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	return toUserModel(user), nil
+	if outcome.Validation != nil {
+		return model.InputValidationError{
+			Field:   outcome.Validation.Field,
+			Message: outcome.Validation.Message,
+		}, nil
+	}
+	if outcome.User == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: AdminUpdateUserOutcome has no variant set"))
+	}
+	return model.AdminUpdateUserSuccess{User: toUserModel(outcome.User)}, nil
 }
 
 // AssignRole is the resolver for the assignRole field.
-func (r *mutationResolver) AssignRole(ctx context.Context, userID string, roleID string) (*model.User, error) {
-	user, err := r.AdminUserUC.AssignRole(ctx, userID, roleID)
+//
+// Returns a union: `model.AssignRoleSuccess` on the happy path, or
+// `model.InputValidationError` when the userId or roleId fails validation
+// (e.g. unknown user / unknown role). Validation failures are returned as
+// data; the error return is reserved for auth and infrastructure failures.
+func (r *mutationResolver) AssignRole(ctx context.Context, userID string, roleID string) (model.AssignRoleResult, error) {
+	outcome, err := r.AdminUserUC.AssignRole(ctx, userID, roleID)
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	return toUserModel(user), nil
+	if outcome.Validation != nil {
+		return model.InputValidationError{
+			Field:   outcome.Validation.Field,
+			Message: outcome.Validation.Message,
+		}, nil
+	}
+	if outcome.User == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: AssignRoleOutcome has no variant set"))
+	}
+	return model.AssignRoleSuccess{User: toUserModel(outcome.User)}, nil
 }
 
 // RevokeRole is the resolver for the revokeRole field.
-func (r *mutationResolver) RevokeRole(ctx context.Context, userID string, roleID string) (*model.User, error) {
-	user, err := r.AdminUserUC.RevokeRole(ctx, userID, roleID)
+//
+// Returns a union: `model.RevokeRoleSuccess` on the happy path,
+// `model.InputValidationError` when the userId or roleId fails validation, or
+// `model.CannotRevokeOwnAdminRoleError` when the caller attempts to revoke the
+// admin role from themselves. Both typed variants are returned as data; the
+// error return is reserved for auth and infrastructure failures.
+func (r *mutationResolver) RevokeRole(ctx context.Context, userID string, roleID string) (model.RevokeRoleResult, error) {
+	outcome, err := r.AdminUserUC.RevokeRole(ctx, userID, roleID)
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	return toUserModel(user), nil
+	if outcome.Validation != nil {
+		return model.InputValidationError{
+			Field:   outcome.Validation.Field,
+			Message: outcome.Validation.Message,
+		}, nil
+	}
+	if outcome.CannotRevokeOwnAdmin {
+		return model.CannotRevokeOwnAdminRoleError{
+			Message: "Cannot revoke your own admin role",
+		}, nil
+	}
+	if outcome.User == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: RevokeRoleOutcome has no variant set"))
+	}
+	return model.RevokeRoleSuccess{User: toUserModel(outcome.User)}, nil
 }
 
 // CreateRole is the resolver for the createRole field.
-func (r *mutationResolver) CreateRole(ctx context.Context, name string) (*model.Role, error) {
-	role, err := r.AdminRoleUC.Create(ctx, name)
+//
+// Returns a union: `model.CreateRoleSuccess` on the happy path, or
+// `model.InputValidationError` when the name fails validation (e.g. character
+// set, length, duplicate). Validation failures are returned as data; the
+// error return is reserved for auth and infrastructure failures.
+func (r *mutationResolver) CreateRole(ctx context.Context, name string) (model.CreateRoleResult, error) {
+	outcome, err := r.AdminRoleUC.Create(ctx, name)
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	return toRoleModel(role), nil
+	if outcome.Validation != nil {
+		return model.InputValidationError{
+			Field:   outcome.Validation.Field,
+			Message: outcome.Validation.Message,
+		}, nil
+	}
+	if outcome.Role == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: CreateRoleOutcome has no variant set"))
+	}
+	return model.CreateRoleSuccess{Role: toRoleModel(outcome.Role)}, nil
 }
 
 // UpdateRole is the resolver for the updateRole field.
@@ -278,12 +419,28 @@ func (r *mutationResolver) DeleteRole(ctx context.Context, id string) (bool, err
 }
 
 // SetLastViewedCardgroup is the resolver for the setLastViewedCardgroup field.
-func (r *mutationResolver) SetLastViewedCardgroup(ctx context.Context, cardgroupID string) (*model.User, error) {
-	user, err := r.LastViewedCardgroupUC.Set(ctx, cardgroupID)
+//
+// Returns a union: `model.SetLastViewedCardgroupSuccess` on the happy path, or
+// `model.InputValidationError` when cardgroupId fails validation (e.g. the
+// cardgroup no longer exists or is not owned by the caller). Validation
+// failures are "errors as data" — the error return is reserved for auth and
+// infrastructure failures.
+func (r *mutationResolver) SetLastViewedCardgroup(ctx context.Context, cardgroupID string) (model.SetLastViewedCardgroupResult, error) {
+	outcome, err := r.LastViewedCardgroupUC.Set(ctx, cardgroupID)
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	return toUserModel(user), nil
+	if outcome.Validation != nil {
+		return model.InputValidationError{
+			Field:   outcome.Validation.Field,
+			Message: outcome.Validation.Message,
+		}, nil
+	}
+	if outcome.User == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: SetLastViewedCardgroupOutcome has no variant set"))
+	}
+	return model.SetLastViewedCardgroupSuccess{User: toUserModel(outcome.User)}, nil
 }
 
 // Health is the resolver for the health field.

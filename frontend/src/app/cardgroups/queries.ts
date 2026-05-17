@@ -74,10 +74,17 @@ export const CardgroupQuery = graphql(`
 export const CreateCardgroupMutation = graphql(`
   mutation CreateCardgroup($input: NewCardgroupInput!) {
     createCardgroup(input: $input) {
-      cardgroup {
-        id
-        name
-        updatedAt
+      __typename
+      ... on CreateCardgroupSuccess {
+        cardgroup {
+          id
+          name
+          updatedAt
+        }
+      }
+      ... on InputValidationError {
+        field
+        message
       }
     }
   }
@@ -86,10 +93,17 @@ export const CreateCardgroupMutation = graphql(`
 export const UpdateCardgroupMutation = graphql(`
   mutation UpdateCardgroup($id: ID!, $input: UpdateCardgroupInput!) {
     updateCardgroup(id: $id, input: $input) {
-      cardgroup {
-        id
-        name
-        updatedAt
+      __typename
+      ... on UpdateCardgroupSuccess {
+        cardgroup {
+          id
+          name
+          updatedAt
+        }
+      }
+      ... on InputValidationError {
+        field
+        message
       }
     }
   }
@@ -131,15 +145,22 @@ export const CreateCardMutation = graphql(`
 export const UpdateCardMutation = graphql(`
   mutation UpdateCard($id: ID!, $input: UpdateCardInput!) {
     updateCard(id: $id, input: $input) {
-      card {
-        id
-        front
-        back
-        userCardState {
-          due
-          state
+      __typename
+      ... on UpdateCardSuccess {
+        card {
+          id
+          front
+          back
+          userCardState {
+            due
+            state
+          }
+          cardgroupId
         }
-        cardgroupId
+      }
+      ... on InputValidationError {
+        field
+        message
       }
     }
   }

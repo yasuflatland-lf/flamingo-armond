@@ -22,6 +22,13 @@ export type CardFormProps = {
   submitLabel?: string;
   submitting?: boolean;
   error?: unknown;
+  /**
+   * Typed InputValidationError variant surfaced by outcome-union mutations.
+   * When present, takes precedence over `error` for the matched field so the
+   * inline field error shows the server message instead of the
+   * substring-matched `BAD_USER_INPUT` text.
+   */
+  validationError?: { field: string; message: string } | null;
   onCancel?: () => void;
 };
 
@@ -33,6 +40,7 @@ export function CardForm({
   submitLabel,
   submitting = false,
   error,
+  validationError,
   onCancel,
 }: CardFormProps) {
   const resolvedLabel = submitLabel ?? (mode === "create" ? "Add" : "Save");
@@ -85,7 +93,12 @@ export function CardForm({
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
               />
-              <FieldError zodErrors={field.state.meta.errors} backendError={fieldErrors.front} />
+              <FieldError
+                zodErrors={field.state.meta.errors}
+                backendError={
+                  validationError?.field === "front" ? validationError.message : fieldErrors.front
+                }
+              />
             </div>
           );
         }}
@@ -104,7 +117,12 @@ export function CardForm({
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
               />
-              <FieldError zodErrors={field.state.meta.errors} backendError={fieldErrors.back} />
+              <FieldError
+                zodErrors={field.state.meta.errors}
+                backendError={
+                  validationError?.field === "back" ? validationError.message : fieldErrors.back
+                }
+              />
             </div>
           );
         }}

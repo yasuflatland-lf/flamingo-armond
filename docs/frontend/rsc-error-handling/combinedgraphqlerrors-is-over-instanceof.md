@@ -2,7 +2,7 @@
 
 > Part of the [frontend RSC error handling](../../../.claude/rules/frontend-rsc-error-handling.md) rules.
 
-Apollo Client ships `CombinedGraphQLErrors.is(err)` as the canonical check because `instanceof` is unreliable across module realm boundaries. In a Next.js build, the server bundle and the client bundle each have their own copy of `@apollo/client/errors`; a `CombinedGraphQLErrors` created in one realm does not pass `instanceof` in the other. The `.is()` static method uses a duck-type check (`err?.graphQLErrors != null`) that survives the realm split.
+Apollo Client v4 ships `CombinedGraphQLErrors.is(err)` as the canonical check because `instanceof` is unreliable across module realm boundaries. In a Next.js build, the server bundle and the client bundle each have their own copy of `@apollo/client/errors`; a `CombinedGraphQLErrors` created in one realm does not pass `instanceof` in the other. The `.is()` static method uses a brand check that survives the realm split. After narrowing, iterate `err.errors` (the v4 field name) — the v3 `err.graphQLErrors` field is gone from the public API and a reader built on it returns `[]` for every real Apollo Client error in production.
 
 Every helper in `frontend/src/lib/apollo/graphql-errors.ts` uses `.is()` already. Any new helper added to that file — or anywhere else that must detect a `CombinedGraphQLErrors` — must also use `.is()`:
 

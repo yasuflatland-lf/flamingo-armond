@@ -13,6 +13,7 @@ Layers shown:
   - Render hosts the Go / Echo v5 backend (gqlgen GraphQL endpoint).
   - Supabase hosts Postgres (with RLS) and Auth (JWT issuer + JWKS).
   - schema/schema.graphql is the shared SDL feeding both codegen tools.
+  - Cards content is periodically synced from a Notion page into Postgres.
 """
 
 from diagrams import Cluster, Diagram, Edge
@@ -28,6 +29,7 @@ from diagrams.programming.framework import GraphQL
 ICON_VERCEL = "icons/vercel.png"
 ICON_RENDER = "icons/render.png"
 ICON_SUPABASE = "icons/supabase.png"
+ICON_NOTION = "icons/notion.png"
 
 graph_attr = {
     "fontsize": "18",
@@ -69,6 +71,9 @@ with Diagram(
             ICON_SUPABASE,
         )
         pg = PostgreSQL("Postgres\nRLS · public + auth schemas")
+
+    # Notion — upstream content source for Cards, synced on a schedule.
+    notion = Custom("Notion\n(Cards source page)", ICON_NOTION)
 
     # Optional telemetry sink
     otel = Jaeger("OTLP collector\n(optional)")
@@ -124,3 +129,10 @@ with Diagram(
     # CI / scheduled
     ci >> Edge(label="deploy hook /\n15-min /internal/ping", style="dotted") >> backend
     ci >> Edge(style="dotted") >> web
+
+    # Scheduled Cards sync: Notion → backend → Postgres.
+    notion >> Edge(
+        label="scheduled sync\n(Cards content)",
+        style="dashed",
+        color="darkorange",
+    ) >> backend

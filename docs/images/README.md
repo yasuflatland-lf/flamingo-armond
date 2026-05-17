@@ -44,10 +44,14 @@ The script writes `architecture.png` next to itself. Re-run after updating
   Supabase JWKS.
 - **schema/schema.graphql** — single source of truth for the wire contract;
   feeds `gqlgen` (backend) and `graphql-codegen` (frontend).
+- **Notion** — upstream source for `Cards` content. A scheduled job
+  (`/internal/notion-sync`, fired every 6 hours from GitHub Actions) pulls the
+  configured Notion page and persists rows into Postgres via the backend. See
+  `docs/notion-sync.md` for the env-var matrix and operational runbook.
 - **GitHub Actions** — `backend.yml` triggers the Render deploy hook,
   `frontend.yml` is informational (Vercel's native git integration deploys),
   `e2e.yml` runs Playwright, and `readiness-ping.yml` keeps the stack warm
   every 15 minutes by hitting `/internal/ping`.
 
 For the narrative version of the same picture, see `docs/deployment.md`
-("Topology"), `docs/backend.md`, and `docs/frontend.md`.
+("Topology"), `docs/backend.md`, `docs/frontend.md`, and `docs/notion-sync.md`.

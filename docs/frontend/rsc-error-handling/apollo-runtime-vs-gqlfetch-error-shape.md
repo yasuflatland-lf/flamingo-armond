@@ -14,21 +14,10 @@ The `"GraphQL errors: "` prefix is the SSR shape that `gqlFetch` (`frontend/src/
 
 This divergence is non-obvious because the helper names omit the transport assumption. RSC pages, route handlers, and any code path that consumes `gqlFetch` use the helpers correctly. Client components that consume `useMutation` / `useQuery` results must read `err.graphQLErrors[*].extensions.code` directly.
 
-**How to apply:** in a client component that needs typed-error discrimination after a mutation, lift the extension codes off `err.graphQLErrors` instead of calling the SSR helpers:
+**How to apply:** in a client component that needs typed-error discrimination after a mutation, use the shared `liftGraphQLCodes` helper from `@/lib/apollo/graphql-errors`. The helper narrows via `CombinedGraphQLErrors.is(err)` and iterates `err.errors` — both are Apollo Client v4 names. The v3 shape (`err.graphQLErrors`) is gone from the public API; readers built on the v3 field name will return `[]` for every real client-runtime error and the typed-error branch will silently never fire:
 
 ```ts
-function liftGraphQLCodes(err: unknown): string[] {
-  if (err == null || typeof err !== "object") return [];
-  const maybe = (err as { graphQLErrors?: unknown }).graphQLErrors;
-  if (!Array.isArray(maybe)) return [];
-  const codes: string[] = [];
-  for (const entry of maybe) {
-    const code = (entry as { extensions?: { code?: unknown } } | null | undefined)
-      ?.extensions?.code;
-    if (typeof code === "string") codes.push(code);
-  }
-  return codes;
-}
+import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 
 const result = await mutate({ variables }).catch((err) => {
   const codes = liftGraphQLCodes(err);
@@ -40,8 +29,26 @@ const result = await mutate({ variables }).catch((err) => {
 });
 ```
 
+The implementation in `frontend/src/lib/apollo/graphql-errors.ts`:
+
+```ts
+import { CombinedGraphQLErrors } from "@apollo/client/errors";
+
+export function liftGraphQLCodes(err: unknown): string[] {
+  if (!CombinedGraphQLErrors.is(err)) return [];
+  const codes: string[] = [];
+  for (const entry of err.errors) {
+    const code = entry?.extensions?.code;
+    if (typeof code === "string") codes.push(code);
+  }
+  return codes;
+}
+```
+
+Two things to keep stable: (1) the guard uses `CombinedGraphQLErrors.is(err)` rather than `instanceof` — the latter fails across module-realm boundaries (see [`combinedgraphqlerrors-is-over-instanceof.md`](combinedgraphqlerrors-is-over-instanceof.md)); (2) the iteration reads `err.errors`, the v4 field name. Plain-object test fixtures shaped like `{ graphQLErrors: [...] }` pass through `liftGraphQLCodes` returning `[]` and look like a working test, while production catches at runtime reject `CombinedGraphQLErrors.is(err) === false` and the dispatch UX dies silently. Test fixtures for this helper MUST construct a real `new CombinedGraphQLErrors([...])` so the `.is()` shape check passes — never a plain object with a `graphQLErrors` key.
+
 The `codes` payload is safe to log; the raw `err.message` may carry user-supplied content echoed by the backend (see [`redact-err-message-from-console-payloads.md`](redact-err-message-from-console-payloads.md)) and must stay out of the structured payload.
 
-Reference: the `liftGraphQLCodes` helper in `frontend/src/app/admin/roles/[id]/edit/edit-role-client.tsx` is the canonical worked example. Its top-of-file comment ("We deliberately do not reuse `parseGqlErrors` here") exists specifically to flag this divergence for the next reader.
+Reference: `frontend/src/lib/apollo/graphql-errors.ts` (`liftGraphQLCodes`) is the canonical implementation, consumed by `frontend/src/app/admin/roles/[id]/edit/edit-role-client.tsx`, `frontend/src/app/admin/roles/new/new-role-client.tsx`, and `frontend/src/app/admin/users/[id]/edit/AdminUserEditClient.tsx`.
 
-Related: [`Use CombinedGraphQLErrors.is(err)`](combinedgraphqlerrors-is-over-instanceof.md) covers a different concern — realm-safe detection of `CombinedGraphQLErrors`. This rule is about extension-code extraction, which works regardless of whether the runtime error is a `CombinedGraphQLErrors` or any other Error whose shape exposes `graphQLErrors`.
+Related: [`Use CombinedGraphQLErrors.is(err)`](combinedgraphqlerrors-is-over-instanceof.md) covers a different concern — realm-safe detection of `CombinedGraphQLErrors`. This rule is about extension-code extraction, which works regardless of whether the runtime error is a `CombinedGraphQLErrors` or any other Error whose shape exposes `graphQLErrors`. For a fire-and-forget mutation that needs `liftGraphQLCodes` in its `.catch` branch plus distinct warns for null payloads and non-success variants in `.then`, see [`fire-and-forget-mutation-warn-on-null-and-non-success.md`](fire-and-forget-mutation-warn-on-null-and-non-success.md).

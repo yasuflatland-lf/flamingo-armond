@@ -2,6 +2,7 @@ package resolver_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -34,6 +35,11 @@ type mockCardgroupRepoForResolver struct {
 	findPageErr    error
 	countResult    int64
 	countErr       error
+
+	// updateResult / updateErr control the return value of Update.
+	// Used by the TestResolver_UpdateCardgroup_* tests.
+	updateResult *domain.Cardgroup
+	updateErr    error
 }
 
 func (m *mockCardgroupRepoForResolver) FindByID(_ context.Context, _ string) (*domain.Cardgroup, error) {
@@ -61,7 +67,7 @@ func (m *mockCardgroupRepoForResolver) Create(_ context.Context, _ *domain.Cardg
 }
 
 func (m *mockCardgroupRepoForResolver) Update(_ context.Context, _ string, _ repository.CardgroupUpdate) (*domain.Cardgroup, error) {
-	return nil, nil
+	return m.updateResult, m.updateErr
 }
 
 func (m *mockCardgroupRepoForResolver) Delete(_ context.Context, _ string) error {
@@ -313,4 +319,235 @@ func (c *capturingCardgroupRepo) FindPageByOwner(
 	c.findPageAfter = after
 	c.findPageBefore = before
 	return c.findPageResult, c.findPageErr
+}
+
+// ---------------------------------------------------------------------------
+// CreateCardgroup resolver tests
+// ---------------------------------------------------------------------------
+//
+// Note on the nil-variant (XOR-invariant) guard:
+//
+//   The resolver's CreateCardgroup method contains a defensive guard:
+//
+//     if outcome.Cardgroup == nil {
+//         return nil, gqlerr.Internal(...)
+//     }
+//
+//   CardgroupUsecase is a concrete struct (not an interface), so the resolver
+//   cannot accept a mock implementation at the unit-test layer. The guard is
+//   dead code: the usecase always sets outcome.Cardgroup on a nil-error path.
+//   Its presence is a structural invariant, not a reachable branch. Integration
+//   coverage for the happy path and error paths is provided by the tests in
+//   backend/cmd/server/main_test.go (TestGraphQL_CreateCardgroup_*).
+
+// createCardgroupBody returns a JSON-encoded mutation body that selects both
+// union variants of CreateCardgroupResult. It is the CreateCardgroup analogue
+// of setLastViewedMutation: each call site embeds its own name value but
+// shares the fragment shape so variant coverage is consistent across tests.
+// name must not contain double-quote characters.
+func createCardgroupBody(name string) string {
+	return `{"query":"mutation { createCardgroup(input: {name: \"` + name + `\"}) { __typename ... on CreateCardgroupSuccess { cardgroup { id name } } ... on InputValidationError { field message } } }"}`
+}
+
+// TestResolver_CreateCardgroup_HappyPath verifies that a successful create
+// returns the CreateCardgroupSuccess union variant with a non-nil Cardgroup.
+// This confirms the resolver reaches the success branch, not the nil guard.
+func TestResolver_CreateCardgroup_HappyPath(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockCardgroupRepoForResolver{}
+	srv := newCardgroupSrv(repo)
+	resp := gqlRequest(t, srv, authedCtx("u1"), createCardgroupBody("Test Group"))
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["createCardgroup"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.createCardgroup, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "CreateCardgroupSuccess" {
+		t.Fatalf("expected CreateCardgroupSuccess, got %v; response: %v", payload["__typename"], resp)
+	}
+	cg, _ := payload["cardgroup"].(map[string]any)
+	if cg == nil {
+		t.Fatalf("expected cardgroup in success payload, got nil; response: %v", resp)
+	}
+	if cg["name"] != "Test Group" {
+		t.Fatalf("expected cardgroup.name=Test Group, got %v", cg["name"])
+	}
+}
+
+// TestResolver_CreateCardgroup_Unauthenticated verifies that an anonymous
+// request is rejected with UNAUTHENTICATED via the usecase auth check.
+func TestResolver_CreateCardgroup_Unauthenticated(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockCardgroupRepoForResolver{}
+	srv := newCardgroupSrv(repo)
+	resp := gqlRequest(t, srv, context.Background(), createCardgroupBody("Test"))
+
+	code := errCode(t, resp)
+	if code != "UNAUTHENTICATED" {
+		t.Fatalf("expected UNAUTHENTICATED, got %q; response: %v", code, resp)
+	}
+}
+
+// TestResolver_CreateCardgroup_ValidationError_EmptyName verifies that an
+// empty name is surfaced as the InputValidationError union variant (errors as
+// data), not as a GraphQL protocol error.
+func TestResolver_CreateCardgroup_ValidationError_EmptyName(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockCardgroupRepoForResolver{}
+	srv := newCardgroupSrv(repo)
+	resp := gqlRequest(t, srv, authedCtx("u1"), createCardgroupBody(""))
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors (validation should come as data): %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["createCardgroup"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.createCardgroup, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "InputValidationError" {
+		t.Fatalf("expected InputValidationError, got %v; response: %v", payload["__typename"], resp)
+	}
+	if payload["field"] != "name" {
+		t.Fatalf("expected field=name, got %v; response: %v", payload["field"], resp)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestResolver_UpdateCardgroup_* — standard four-case coverage for the
+// UpdateCardgroup union mutation
+// (UpdateCardgroupResult = UpdateCardgroupSuccess | InputValidationError).
+// ---------------------------------------------------------------------------
+
+// updateCardgroupMutation returns a JSON-encoded GraphQL mutation body for
+// updateCardgroup, selecting across both union variants.
+func updateCardgroupMutation(id, name string) string {
+	b, _ := json.Marshal(map[string]any{
+		"query": `mutation($id: ID!, $input: UpdateCardgroupInput!) {
+			updateCardgroup(id: $id, input: $input) {
+				__typename
+				... on UpdateCardgroupSuccess { cardgroup { id name } }
+				... on InputValidationError { field message }
+			}
+		}`,
+		"variables": map[string]any{
+			"id": id,
+			"input": map[string]any{
+				"name": name,
+			},
+		},
+	})
+	return string(b)
+}
+
+// TestResolver_UpdateCardgroup_HappyPath verifies that a successful update
+// returns the UpdateCardgroupSuccess union variant with the updated cardgroup.
+func TestResolver_UpdateCardgroup_HappyPath(t *testing.T) {
+	t.Parallel()
+
+	updatedCG := &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1", Name: "NewName"}
+	repo := &mockCardgroupRepoForResolver{
+		findByIDResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1", Name: "OldName"},
+		updateResult:   updatedCG,
+	}
+	srv := newCardgroupSrv(repo)
+
+	resp := gqlRequest(t, srv, authedCtx("u-1"), updateCardgroupMutation("cg-1", "NewName"))
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["updateCardgroup"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.updateCardgroup, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "UpdateCardgroupSuccess" {
+		t.Fatalf("expected __typename=UpdateCardgroupSuccess, got %v; response: %v", payload["__typename"], resp)
+	}
+	cg, _ := payload["cardgroup"].(map[string]any)
+	if cg == nil {
+		t.Fatalf("expected cardgroup in success payload, got nil; response: %v", resp)
+	}
+	if cg["id"] != "cg-1" {
+		t.Fatalf("expected cardgroup.id=cg-1, got %v", cg["id"])
+	}
+	if cg["name"] != "NewName" {
+		t.Fatalf("expected cardgroup.name=NewName, got %v", cg["name"])
+	}
+}
+
+// TestResolver_UpdateCardgroup_InputValidation verifies that an empty name is
+// surfaced as the InputValidationError union variant (errors as data), not as
+// a GraphQL protocol error.
+func TestResolver_UpdateCardgroup_InputValidation(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockCardgroupRepoForResolver{
+		findByIDResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1", Name: "OldName"},
+	}
+	srv := newCardgroupSrv(repo)
+
+	// An empty name triggers domain.ErrCardgroupNameRequired → InputValidationError.
+	resp := gqlRequest(t, srv, authedCtx("u-1"), updateCardgroupMutation("cg-1", ""))
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors (validation should come as data): %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["updateCardgroup"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.updateCardgroup, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "InputValidationError" {
+		t.Fatalf("expected __typename=InputValidationError, got %v; response: %v", payload["__typename"], resp)
+	}
+	if payload["field"] == nil || payload["field"] == "" {
+		t.Fatalf("expected non-empty field in InputValidationError, got %v", payload["field"])
+	}
+}
+
+// TestResolver_UpdateCardgroup_Unauthenticated verifies that an anonymous
+// request is rejected with UNAUTHENTICATED via gqlerr.FromUsecaseError.
+func TestResolver_UpdateCardgroup_Unauthenticated(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockCardgroupRepoForResolver{}
+	srv := newCardgroupSrv(repo)
+
+	resp := gqlRequest(t, srv, context.Background(), updateCardgroupMutation("cg-1", "SomeName"))
+
+	code := errCode(t, resp)
+	if code != "UNAUTHENTICATED" {
+		t.Fatalf("expected UNAUTHENTICATED, got %q", code)
+	}
+}
+
+// TestResolver_UpdateCardgroup_NilVariant_ReturnsInternal covers the defensive
+// guard in the resolver where the usecase returns an UpdateCardgroupOutcome with
+// both Cardgroup and Validation nil (a bug shape). This is triggered by having
+// repo.Update return nil, nil — the usecase returns
+// UpdateCardgroupOutcome{Cardgroup: nil} with nil error, hitting the INTERNAL guard.
+func TestResolver_UpdateCardgroup_NilVariant_ReturnsInternal(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockCardgroupRepoForResolver{
+		findByIDResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1", Name: "OldName"},
+		updateResult:   nil, // triggers nil-variant path
+	}
+	srv := newCardgroupSrv(repo)
+
+	resp := gqlRequest(t, srv, authedCtx("u-1"), updateCardgroupMutation("cg-1", "NewName"))
+
+	code := errCode(t, resp)
+	if code != "INTERNAL" {
+		t.Fatalf("expected INTERNAL, got %q; response: %v", code, resp)
+	}
 }

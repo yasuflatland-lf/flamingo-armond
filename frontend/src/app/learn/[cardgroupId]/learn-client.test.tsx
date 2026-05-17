@@ -253,10 +253,13 @@ function makeSwipeMock(mode: 1 | 2 | 4, nextCards: (typeof CARD_1)[] = []) {
         return {
           data: {
             handleSwipe: {
-              __typename: "SwipeResponse" as const,
-              nextCards,
-              performanceMode: 0,
-              metrics: DEFAULT_METRICS,
+              __typename: "HandleSwipeSuccess" as const,
+              response: {
+                __typename: "SwipeResponse" as const,
+                nextCards,
+                performanceMode: 0,
+                metrics: DEFAULT_METRICS,
+              },
             },
           },
         };
@@ -373,6 +376,71 @@ describe("<LearnClient>", () => {
       consoleWarnSpy.mockRestore();
     });
 
+    it("InputValidationError union variant — emits console.warn, advances optimistic queue, shows no banner", async () => {
+      // Fix #2 (sibling agent): handleSwipe receiving an InputValidationError union
+      // variant must emit a structured console.warn for operator triage, but must
+      // NOT surface a banner (the swipe is non-fatal) and must NOT roll back the
+      // optimistic queue advance (the card is removed from the queue).
+      //
+      // Payload shape: `data: { handleSwipe: { __typename: "InputValidationError",
+      // field, message } }` — union data, not the error channel.
+      const user = userEvent.setup();
+      const mock = {
+        request: {
+          query: HandleSwipeDocument,
+          variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, mode: 4 } },
+        },
+        result: {
+          data: {
+            handleSwipe: {
+              __typename: "InputValidationError" as const,
+              field: "cardId",
+              message: "card not found",
+            },
+          },
+        },
+      };
+
+      // Render with CARD_1 and CARD_2 so we can observe the optimistic remove
+      // without immediately hitting the empty-queue caught-up screen.
+      renderLearnClient([mock], [CARD_1, CARD_2]);
+
+      // Swipe CARD_1 right (mode 4 = Easy).
+      await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+      // console.warn must be emitted with the structured payload for operator triage.
+      // The message must include cardId and cardgroupId, but NOT the server's
+      // `message` field — backend messages may echo user-authored content.
+      // See docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
+      await waitFor(() => {
+        expect(consoleWarnSpy).toHaveBeenCalledWith(
+          "[LearnClient] handleSwipe InputValidationError",
+          expect.objectContaining({
+            cardId: CARD_1.id,
+            cardgroupId: CG_ID,
+            field: "cardId",
+          }),
+        );
+      });
+
+      // The warn payload must NOT include the server message (PII redaction).
+      const warnCall = consoleWarnSpy.mock.calls.find(
+        (call: unknown[]) => call[0] === "[LearnClient] handleSwipe InputValidationError",
+      );
+      expect(warnCall).toBeDefined();
+      expect(warnCall?.[1]).not.toHaveProperty("message");
+
+      // No error banner — the swipe is deliberately non-fatal at the UI level.
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+      // The optimistic queue advanced: CARD_1 is no longer the active card.
+      // CARD_2 (the next card in the queue) is now shown.
+      await waitFor(() => {
+        expect(screen.getByText("Bye")).toBeInTheDocument();
+      });
+      expect(screen.queryByText("Hello")).not.toBeInTheDocument();
+    });
+
     it("emits a console.warn with cardId and cardgroupId when handleSwipe resolves with null data", async () => {
       const user = userEvent.setup();
       const mock = {
@@ -392,8 +460,9 @@ describe("<LearnClient>", () => {
 
       await waitFor(() => {
         expect(consoleWarnSpy).toHaveBeenCalledWith(
-          "[LearnClient] handleSwipe resolved without data",
+          "[LearnClient] handleSwipe unexpected payload",
           expect.objectContaining({
+            typename: null,
             cardId: expect.any(String),
             cardgroupId: CG_ID,
           }),
@@ -452,11 +521,14 @@ function makePersistMock(cardgroupId: string, onCalled?: () => void) {
       return {
         data: {
           setLastViewedCardgroup: {
-            __typename: "User" as const,
-            id: USER_ID,
-            lastViewedCardgroup: {
-              __typename: "Cardgroup" as const,
-              id: cardgroupId,
+            __typename: "SetLastViewedCardgroupSuccess" as const,
+            user: {
+              __typename: "User" as const,
+              id: USER_ID,
+              lastViewedCardgroup: {
+                __typename: "Cardgroup" as const,
+                id: cardgroupId,
+              },
             },
           },
         },
@@ -524,6 +596,61 @@ describe("<LearnClient> persist-last-viewed path", () => {
       });
       expect(cached?.lastViewedCardgroup?.id).toBe(CG_ID);
     });
+  });
+
+  it("InputValidationError variant — does not write to the cache (regression guard)", async () => {
+    // When the server returns an InputValidationError variant, the update callback
+    // must return early without calling cache.writeFragment. This test asserts that
+    // the User fragment is NOT written to the cache — the __typename narrowing guard
+    // in learn-client.tsx is load-bearing.
+    const cache = new InMemoryCache();
+
+    const validationMock = {
+      request: {
+        query: SetLastViewedCardgroupDocument,
+        variables: { cardgroupId: CG_ID },
+      },
+      result: () => ({
+        data: {
+          setLastViewedCardgroup: {
+            __typename: "InputValidationError" as const,
+            field: "cardgroupId",
+            message: "cardgroup not found or not owned",
+          },
+        },
+      }),
+    };
+
+    render(
+      <MockedProvider mocks={[validationMock, ...makeDefaultPrefetchMocks()]} cache={cache}>
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
+      </MockedProvider>,
+    );
+
+    // Wait for the mutation to resolve (the non-success warn fires).
+    await waitFor(() => {
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        "[learn] setLastViewedCardgroup non-success variant",
+        expect.objectContaining({ typename: "InputValidationError" }),
+      );
+    });
+
+    // The User fragment must NOT have been written.
+    const LastViewedFragment = gql`
+      fragment LastViewedValidationCheck on User {
+        lastViewedCardgroup {
+          id
+        }
+      }
+    `;
+    const cached = cache.readFragment<{ lastViewedCardgroup: { id: string } | null }>({
+      id: `User:${USER_ID}`,
+      fragment: LastViewedFragment,
+    });
+    expect(cached).toBeNull();
+
+    // Component still renders the card stack — no crash.
+    expect(screen.getByText("Hello")).toBeInTheDocument();
   });
 
   it.each([
@@ -662,10 +789,13 @@ describe("<LearnClient> onSwipe identity stability", () => {
       result: {
         data: {
           handleSwipe: {
-            __typename: "SwipeResponse" as const,
-            nextCards: [CARD_2],
-            performanceMode: 0,
-            metrics: DEFAULT_METRICS,
+            __typename: "HandleSwipeSuccess" as const,
+            response: {
+              __typename: "SwipeResponse" as const,
+              nextCards: [CARD_2],
+              performanceMode: 0,
+              metrics: DEFAULT_METRICS,
+            },
           },
         },
       },
@@ -801,10 +931,13 @@ describe("<LearnClient> queue prefetch", () => {
       result: {
         data: {
           handleSwipe: {
-            __typename: "SwipeResponse" as const,
-            nextCards: initial.slice(1),
-            performanceMode: 0,
-            metrics: DEFAULT_METRICS,
+            __typename: "HandleSwipeSuccess" as const,
+            response: {
+              __typename: "SwipeResponse" as const,
+              nextCards: initial.slice(1),
+              performanceMode: 0,
+              metrics: DEFAULT_METRICS,
+            },
           },
         },
       },
@@ -924,10 +1057,13 @@ describe("<LearnClient> queue prefetch", () => {
       result: {
         data: {
           handleSwipe: {
-            __typename: "SwipeResponse" as const,
-            nextCards: initial.slice(1),
-            performanceMode: 0,
-            metrics: DEFAULT_METRICS,
+            __typename: "HandleSwipeSuccess" as const,
+            response: {
+              __typename: "SwipeResponse" as const,
+              nextCards: initial.slice(1),
+              performanceMode: 0,
+              metrics: DEFAULT_METRICS,
+            },
           },
         },
       },
