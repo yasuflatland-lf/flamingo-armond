@@ -1,6 +1,6 @@
 # Observability
 
-> The backend ↔ frontend contract for tracing, request-ID propagation, and Automatic Persisted Queries. Implementation notes that are sided (backend-only or frontend-only) live in `docs/backend.md` § "Observability impl" and `frontend/CLAUDE.md` § "Observability impl" respectively.
+> The backend ↔ frontend contract for tracing, request-ID propagation, and Automatic Persisted Queries. Implementation notes that are sided (backend-only or frontend-only) live in `docs/backend.md` § "Observability impl" and [`docs/frontend/observability.md`](frontend/observability.md) respectively.
 
 ## Tracing (OpenTelemetry)
 

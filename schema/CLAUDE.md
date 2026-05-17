@@ -11,7 +11,7 @@ Both consumers must stay in sync with `schema/schema.graphql`. Generated output 
 
 ## Topic docs
 
-- [`docs/backend-graphql.md`](../docs/backend-graphql.md) — gqlgen wiring, resolver layer, schema-lint.
+- [`docs/backend-graphql.md`](../docs/backend-graphql.md) — gqlgen wiring, resolver layer.
 - [`.claude/rules/error-wrapping.md`](../.claude/rules/error-wrapping.md) § "Errors as data — detailed cases" — outcome-union enforcement.
 
 ## Cross-cutting rules already in context

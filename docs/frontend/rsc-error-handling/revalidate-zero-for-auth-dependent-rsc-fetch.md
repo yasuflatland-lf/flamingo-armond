@@ -6,4 +6,4 @@ Any GraphQL query whose result depends on `Authorization` (role lookups, `me`, o
 
 To find all current call sites: `grep -rn "gqlFetch" frontend/src/`. Any new file that touches auth-sensitive data must pass `{ revalidate: 0 }` — there is no per-file list to maintain because the enumeration rots the moment a new auth-dependent page lands.
 
-The three `revalidate` states are documented in `frontend/CLAUDE.md` — `0` means no cache, `false` means cache forever, omitted means Next's default heuristic. Pick `0` for auth-sensitive; never collapse to a `number` default.
+The three `revalidate` states are documented in [`docs/frontend/gotchas-encountered.md`](../gotchas-encountered.md) — `0` means no cache, `false` means cache forever, omitted means Next's default heuristic. Pick `0` for auth-sensitive; never collapse to a `number` default.

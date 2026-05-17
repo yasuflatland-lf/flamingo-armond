@@ -1,6 +1,6 @@
 # Frontend: delayed-DELETE undo toast, SwipeableRow, and useReducedMotion
 
-> L2 doc — overflow from [`frontend/CLAUDE.md`](../../frontend/CLAUDE.md) (frontend orientation hub). Covers the sonner snackbar undo pattern, the mobile swipe-to-delete row component, and the `useReducedMotion` JS hook.
+> Part of [`frontend/CLAUDE.md`](../../frontend/CLAUDE.md). See the index for related chapters. Covers the sonner snackbar undo pattern, the mobile swipe-to-delete row component, and the `useReducedMotion` JS hook.
 
 ## Delayed-DELETE with sonner snackbar undo
 
@@ -28,7 +28,7 @@ The module also exports `flushPendingDeletes(): Promise<void>` and the test-only
 
 **Caller responsibility — sequencing:**
 
-1. Apply the optimistic Apollo cache update (remove the edge, decrement `totalCount`) using `readQuery + writeQuery`. See [`.claude/rules/pagination.md` § "Frontend cache patterns"](../.claude/rules/pagination.md#frontend-cache-patterns) for the "Connection delete" cache pattern.
+1. Apply the optimistic Apollo cache update (remove the edge, decrement `totalCount`) using `readQuery + writeQuery`. See [`.claude/rules/pagination.md` § "Frontend cache patterns"](../../.claude/rules/pagination.md#frontend-cache-patterns) for the "Connection delete" cache pattern.
 2. Call `scheduleDelete(...)` with the rollback and commit closures. The helper does not touch the cache itself.
 3. On Undo click, `optimisticRollback` is invoked to restore the snapshot.
 4. On timer elapse, `commitDelete()` runs. Rejection triggers `optimisticRollback` then `onCommitFailed`.

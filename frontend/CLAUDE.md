@@ -1,6 +1,6 @@
 # frontend/
 
-Next.js 16 / React 19 / Apollo Client / TypeScript 5.9. The L1 (`CLAUDE.md` at repo root) applies; this file adds frontend-specific orientation.
+Next.js 16 / React 19.2 / Apollo Client / TypeScript 5.9. The L1 (`CLAUDE.md` at repo root) applies; this file adds frontend-specific orientation.
 
 ## Layout and commands
 
