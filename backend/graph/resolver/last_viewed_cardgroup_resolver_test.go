@@ -125,7 +125,7 @@ func TestSetLastViewedCardgroup_HappyPath(t *testing.T) {
 // TestSetLastViewedCardgroup_InputValidation verifies that a validation failure
 // (e.g. cardgroup not found or not owned) is surfaced as the
 // InputValidationError union variant — returned as data, not as a GraphQL
-// error. Validation failures are returned as data, not as GraphQL errors, per the outcome-union design in .claude/rules/error-wrapping.md.
+// error. See .claude/rules/error-wrapping.md for the outcome-union design.
 func TestSetLastViewedCardgroup_InputValidation(t *testing.T) {
 	t.Parallel()
 

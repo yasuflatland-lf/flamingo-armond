@@ -1545,7 +1545,8 @@ func TestGraphQL_Cardgroup_OwnerLoader_NoNPlus1(t *testing.T) {
 
 // TestGraphQL_CreateCardgroup_NameTooShort verifies that an empty name is
 // surfaced as the InputValidationError union variant — returned as data, not
-// Validation failures travel through the data path per the outcome-union design in .claude/rules/error-wrapping.md.
+// as a GraphQL protocol error. Validation failures travel through the data
+// path per the outcome-union design in .claude/rules/error-wrapping.md.
 func TestGraphQL_CreateCardgroup_NameTooShort(t *testing.T) {
 	f := newJWTFixture(t)
 	ts, _ := newGraphQLTestServer(t, f)

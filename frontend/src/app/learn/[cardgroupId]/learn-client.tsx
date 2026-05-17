@@ -19,6 +19,7 @@ import type {
   LearnNextDueCardsQuery,
 } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 
 type LearnCard = LearnNextDueCardsQuery["learnNextDueCards"][number];
 type PerformanceMetrics = HandleSwipeMutationType["handleSwipe"]["metrics"];
@@ -144,6 +145,7 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
         console.warn("[learn] setLastViewedCardgroup failed", {
           cardgroupId,
           name: err instanceof Error ? err.name : "unknown",
+          codes: liftGraphQLCodes(err),
         });
       });
   }, [cardgroupId, lastViewedCardgroupId, client]);
