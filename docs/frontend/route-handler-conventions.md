@@ -1,6 +1,6 @@
 # Route Handler conventions
 
-> Part of [`docs/frontend.md`](../frontend.md). See the index for related chapters.
+> Part of [`frontend/CLAUDE.md`](../../frontend/CLAUDE.md). See the index for related chapters.
 
 Route Handlers under `frontend/src/app/api/**/route.ts` follow the same per-route layout as pages:
 

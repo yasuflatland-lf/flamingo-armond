@@ -1,6 +1,6 @@
 # Optimistic-rollback cache key MUST track the active query variables, not the default factory
 
-> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `docs/frontend.md`.
+> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `frontend/CLAUDE.md`.
 
 A `cardsDefaultVars(cardgroupId)` factory produces the cache vars for the unfiltered query (e.g. `{ cardgroupId, first: 20, search: null }`). When the user has an active filter (e.g. `searchQuery !== null`), the live `useQuery` is keyed on a **different** cache entry. A delete handler that snapshots and writes via the default-vars factory calls `readQuery` on the unfiltered entry, gets `null`, and the `if (snapshot)` guard silently skips the optimistic remove — the deleted row stays visible until the server commit settles. The same miss affects bulk-delete `update` callbacks.
 

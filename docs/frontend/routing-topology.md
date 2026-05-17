@@ -1,6 +1,6 @@
 # Routing topology
 
-> Part of [`docs/frontend.md`](../frontend.md). See the index for related chapters.
+> Part of [`frontend/CLAUDE.md`](../../frontend/CLAUDE.md). See the index for related chapters.
 
 `/` (HomePage RSC) is the canonical landing — every entry converges there, and `/` then routes the user to the most useful next screen rather than dropping them on a static page. The convergence guarantees no stale-placeholder or redirect-loop edge case can develop:
 

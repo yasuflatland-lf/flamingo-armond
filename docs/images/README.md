@@ -54,4 +54,4 @@ The script writes `architecture.png` next to itself. Re-run after updating
   every 15 minutes by hitting `/internal/ping`.
 
 For the narrative version of the same picture, see `docs/deployment.md`
-("Topology"), `docs/backend.md`, `docs/frontend.md`, and `docs/notion-sync.md`.
+("Topology"), `docs/backend.md`, `frontend/CLAUDE.md`, and `docs/notion-sync.md`.

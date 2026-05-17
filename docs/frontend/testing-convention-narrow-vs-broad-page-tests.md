@@ -1,6 +1,6 @@
 # Testing convention: narrow vs broad page tests
 
-> Part of [`docs/frontend.md`](../frontend.md). See the index for related chapters.
+> Part of [`frontend/CLAUDE.md`](../../frontend/CLAUDE.md). See the index for related chapters.
 
 All tests live under `frontend/__tests__/` using Vitest + Testing Library. Two naming conventions split responsibility:
 

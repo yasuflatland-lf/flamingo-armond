@@ -1,6 +1,6 @@
 # Stack
 
-> Part of [`docs/frontend.md`](../frontend.md). See the index for related chapters.
+> Part of [`frontend/CLAUDE.md`](../../frontend/CLAUDE.md). See the index for related chapters.
 
 - Next.js 16 (App Router) + React 19.2 + TypeScript 5.9 (Node 24.x)
 - Tailwind 4 (CSS-first config via `@theme`, no `tailwind.config.ts`)

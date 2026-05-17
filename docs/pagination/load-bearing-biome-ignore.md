@@ -1,6 +1,6 @@
 # Load-bearing `biome-ignore` comments
 
-> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `docs/frontend.md`.
+> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `frontend/CLAUDE.md`.
 
 A `biome-ignore lint/correctness/useExhaustiveDependencies: <intent>` comment on a `useEffect` whose dep array intentionally lists a trigger NOT read in the body (e.g. a reset effect keyed on `searchQuery` whose body only resets derived IO state, never reads `searchQuery` itself) is load-bearing: it documents the trigger-not-read intent so a future code-mod tool, lint-rule upgrade, or IDE quick-fix does not silently re-engage the rule and either (a) widen the dep array to values the effect must NOT depend on, or (b) flag the suppression as a candidate for removal because "the dep is unused inside the body."
 

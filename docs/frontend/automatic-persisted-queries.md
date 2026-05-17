@@ -1,6 +1,6 @@
 # Automatic Persisted Queries
 
-> Part of [`docs/frontend.md`](../frontend.md). See the index for related chapters.
+> Part of [`frontend/CLAUDE.md`](../../frontend/CLAUDE.md). See the index for related chapters.
 
 Wire format, POST-only rationale, and the `useGETForHashedQueries: false` token-leak decision live in [`docs/observability.md` § "Automatic Persisted Queries"](../observability.md#automatic-persisted-queries). Frontend-only implementation notes follow.
 

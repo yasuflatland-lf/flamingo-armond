@@ -7,7 +7,7 @@ import { isUserOnboarded } from "@/lib/auth/onboarding";
 import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-// Root redirect — see docs/frontend.md § routing topology.
+// Root redirect — see frontend/CLAUDE.md § routing topology.
 export default async function HomePage() {
   const supabase = await createSupabaseServerClient();
   const {

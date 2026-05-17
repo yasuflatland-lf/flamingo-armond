@@ -1,6 +1,6 @@
 # Onboarding gate
 
-> Part of [`docs/frontend.md`](../frontend.md). See the index for related chapters.
+> Part of [`frontend/CLAUDE.md`](../../frontend/CLAUDE.md). See the index for related chapters.
 
 The "is this user onboarded?" question is asked twice — once by HomePage (to decide whether to send the user *into* `/onboarding`) and once by `/onboarding` itself (to decide whether to send an already-onboarded caller back *out*). Both questions resolve to the same predicate: `isUserOnboarded(me)` in `frontend/src/lib/auth/onboarding.ts`. The predicate is the unit of meaning; the two pages are two consumers.
 

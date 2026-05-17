@@ -1,6 +1,6 @@
 # Migrating a flat list to a Connection: write to BOTH cached shapes during the deprecation window
 
-> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `docs/frontend.md`.
+> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `frontend/CLAUDE.md`.
 
 The `@deprecated` schema migration (see [`pagination.md` § "Migration via `@deprecated`"](../../.claude/rules/pagination.md#schema-side-conventions)) leaves the old flat-list query and the new Connection query coexisting in the codebase. A mutation `update` callback that creates an entity must write to BOTH cached shapes for the entire window where any consumer still reads the deprecated query — otherwise the consumer of the old query (often a sibling component like a picker sheet that has not yet migrated) shows stale data after a successful create.
 

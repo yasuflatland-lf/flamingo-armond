@@ -1,6 +1,6 @@
 # Synchronous SSR cache seed in the render body, not in a `useEffect`
 
-> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `docs/frontend.md`.
+> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `frontend/CLAUDE.md`.
 
 The SSR-seed-into-Apollo-cache pattern has historically run inside a `useEffect(() => apollo.writeQuery(...), [apollo, initialConnection])` with a `seededRef` boolean to survive Strict Mode's double-mount. Running the seed in a post-render effect leaves a window between first paint and the effect firing during which `useQuery` (cache-first) finds the cache empty and may issue a network round-trip — defeating the point of the SSR seed.
 

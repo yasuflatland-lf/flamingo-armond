@@ -1,6 +1,6 @@
 # Do not reuse one mutation's Apollo-managed error state for a sibling mutation's failure surface
 
-> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `docs/frontend.md`.
+> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `frontend/CLAUDE.md`.
 
 `useMutation` returns a managed `error` field that clears automatically on the next call to the same mutation. If a component runs two independent mutations (e.g. `createCard` and `updateCard`), using `createError` from `useMutation(CreateCardMutation)` to display a failure message from `updateCard` causes the banner to vanish the moment the user retries `createCard` — even before the user dismisses the error. The clearing is silent; the user sees the banner disappear with no explanation.
 

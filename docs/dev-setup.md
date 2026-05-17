@@ -11,7 +11,7 @@
 # Install Go 1.26.2 (backend/.tool-versions), Node 24.x + pnpm 10.33.2 + Supabase CLI (./.tool-versions).
 mise install
 
-# Install workspace deps. The frontend workspace is populated with a Next.js 16 App Router scaffold (see `docs/frontend.md`).
+# Install workspace deps. The frontend workspace is populated with a Next.js 16 App Router scaffold (see `frontend/CLAUDE.md`).
 pnpm install
 ```
 
