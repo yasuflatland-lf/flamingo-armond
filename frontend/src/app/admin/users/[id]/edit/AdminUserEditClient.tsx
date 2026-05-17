@@ -43,6 +43,12 @@ const DISPLAY_NAME_MAX = 50;
 /** Maximum grapheme clusters for bio (mirrors usecase/user.go bioMax). */
 const BIO_MAX = 500;
 
+// User-facing error copy shared between handleSave and handleRoleToggle.
+const ERR_FORBIDDEN = "You do not have permission.";
+const ERR_UNAUTHENTICATED = "Your session has expired. Sign in again.";
+const ERR_UNEXPECTED = "An unexpected error occurred. Please try again.";
+const ERR_SOMETHING_WRONG = "Something went wrong. Please try again.";
+
 export function AdminUserEditClient({ user, allRoles }: Props) {
   const [displayName, setDisplayName] = useState(user.displayName ?? "");
   const [bio, setBio] = useState(user.bio ?? "");
@@ -65,6 +71,10 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
   function clearSaveStatus(): void {
     setSaveError("");
     setSaveBanner("");
+  }
+
+  function setRoleBanner(roleId: string, message: string): void {
+    setRoleBanners((prev) => ({ ...prev, [roleId]: message }));
   }
 
   /** Client-side validation mirror of server-side constraints. Returns error or "". */
@@ -108,7 +118,7 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
       console.warn("[admin/users/:id/edit] unexpected save payload", {
         typename: saveTypename,
       });
-      setSaveError("Something went wrong. Please try again.");
+      setSaveError(ERR_SOMETHING_WRONG);
     } catch (err) {
       const codes = liftGraphQLCodes(err);
       // err.message is omitted — backend messages may echo user input. codes
@@ -122,17 +132,17 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
       });
       setSaveError(
         codes.includes("FORBIDDEN")
-          ? "You do not have permission."
+          ? ERR_FORBIDDEN
           : codes.includes("UNAUTHENTICATED")
-            ? "Your session has expired. Sign in again."
-            : "An unexpected error occurred. Please try again.",
+            ? ERR_UNAUTHENTICATED
+            : ERR_UNEXPECTED,
       );
     }
   }
 
   async function handleRoleToggle(roleId: string, currentlyAssigned: boolean) {
     setRoleInflight((prev) => ({ ...prev, [roleId]: true }));
-    setRoleBanners((prev) => ({ ...prev, [roleId]: "" }));
+    setRoleBanner(roleId, "");
     try {
       const variables = { userId: user.id, roleId };
       const result = currentlyAssigned
@@ -141,12 +151,11 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
       // Capture typename before narrowing so the unknown-variant branch still
       // has access to it (TypeScript narrows to `never` after the known cases).
       const roleTypename = result?.__typename ?? null;
-      if (result?.__typename === "InputValidationError") {
-        setRoleBanners((prev) => ({ ...prev, [roleId]: result.message }));
-        return;
-      }
-      if (result?.__typename === "CannotRevokeOwnAdminRoleError") {
-        setRoleBanners((prev) => ({ ...prev, [roleId]: result.message }));
+      if (
+        result?.__typename === "InputValidationError" ||
+        result?.__typename === "CannotRevokeOwnAdminRoleError"
+      ) {
+        setRoleBanner(roleId, result.message);
         return;
       }
       if (
@@ -162,10 +171,7 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
       console.warn("[admin/users/:id/edit] unexpected role-toggle payload", {
         typename: roleTypename,
       });
-      setRoleBanners((prev) => ({
-        ...prev,
-        [roleId]: "Something went wrong. Please try again.",
-      }));
+      setRoleBanner(roleId, ERR_SOMETHING_WRONG);
     } catch (err) {
       const codes = liftGraphQLCodes(err);
       // err.message is omitted — backend messages may echo user input. codes
@@ -174,14 +180,14 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
         name: err instanceof Error ? err.name : "unknown",
         codes,
       });
-      setRoleBanners((prev) => ({
-        ...prev,
-        [roleId]: codes.includes("FORBIDDEN")
-          ? "You do not have permission."
+      setRoleBanner(
+        roleId,
+        codes.includes("FORBIDDEN")
+          ? ERR_FORBIDDEN
           : codes.includes("UNAUTHENTICATED")
-            ? "Your session has expired. Sign in again."
-            : "An unexpected error occurred. Please try again.",
-      }));
+            ? ERR_UNAUTHENTICATED
+            : ERR_UNEXPECTED,
+      );
     } finally {
       setRoleInflight((prev) => ({ ...prev, [roleId]: false }));
     }
