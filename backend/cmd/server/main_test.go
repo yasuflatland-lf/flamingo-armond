@@ -1111,9 +1111,10 @@ func TestLoader_Middleware_DoesNotBreakQuery(t *testing.T) {
 
 // createTestCardgroup calls the createCardgroup mutation and returns the new cardgroup id.
 // It serialises the full JSON body via json.Marshal so name is always a valid JSON string.
+// Uses the CreateCardgroupResult union selection set introduced in Phase 3.
 func createTestCardgroup(t *testing.T, srvURL, bearer, name string) string {
 	t.Helper()
-	gqlQuery := fmt.Sprintf(`mutation { createCardgroup(input: {name: %s}) { cardgroup { id name ownerId } } }`, gqlStringLit(name))
+	gqlQuery := fmt.Sprintf(`mutation { createCardgroup(input: {name: %s}) { __typename ... on CreateCardgroupSuccess { cardgroup { id name ownerId } } ... on InputValidationError { field message } } }`, gqlStringLit(name))
 	body, err := json.Marshal(map[string]string{"query": gqlQuery})
 	if err != nil {
 		t.Fatalf("json.Marshal body: %v", err)
@@ -1124,6 +1125,12 @@ func createTestCardgroup(t *testing.T, srvURL, bearer, name string) string {
 	}
 	data, _ := resp["data"].(map[string]any)
 	payload, _ := data["createCardgroup"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("createCardgroup: expected payload, got nil; resp=%v", resp)
+	}
+	if payload["__typename"] != "CreateCardgroupSuccess" {
+		t.Fatalf("createCardgroup: expected CreateCardgroupSuccess, got %v; resp=%v", payload["__typename"], resp)
+	}
 	cg, _ := payload["cardgroup"].(map[string]any)
 	if cg == nil {
 		t.Fatalf("createCardgroup: expected cardgroup, got nil; resp=%v", resp)
@@ -1536,6 +1543,9 @@ func TestGraphQL_Cardgroup_OwnerLoader_NoNPlus1(t *testing.T) {
 		counter.findByID.Load(), counter.findByIDs.Load(), counter.receivedKeys)
 }
 
+// TestGraphQL_CreateCardgroup_NameTooShort verifies that an empty name is
+// surfaced as the InputValidationError union variant — returned as data, not
+// as a GraphQL error. This is the "errors as data" pattern promoted in Phase 3.
 func TestGraphQL_CreateCardgroup_NameTooShort(t *testing.T) {
 	f := newJWTFixture(t)
 	ts, _ := newGraphQLTestServer(t, f)
@@ -1543,16 +1553,27 @@ func TestGraphQL_CreateCardgroup_NameTooShort(t *testing.T) {
 	sub := insertAuthUser(t, ctx)
 	tok := f.sign(t, sub)
 
-	resp := postGraphQL(t, ts.URL+"/query", `{"query":"mutation { createCardgroup(input: {name: \"\"}) { cardgroup { id } } }"}`, tok)
+	resp := postGraphQL(t, ts.URL+"/query", `{"query":"mutation { createCardgroup(input: {name: \"\"}) { __typename ... on InputValidationError { field message } } }"}`, tok)
 
-	if code := gqlErrCode(resp); code != "BAD_USER_INPUT" {
-		t.Fatalf("expected BAD_USER_INPUT, got %q; resp=%v", code, resp)
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("unexpected GraphQL errors: %v", errs)
 	}
-	if field := gqlErrField(resp); field != "name" {
-		t.Fatalf("expected extensions.field=name, got %q; resp=%v", field, resp)
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["createCardgroup"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.createCardgroup, got nil; resp=%v", resp)
+	}
+	if payload["__typename"] != "InputValidationError" {
+		t.Fatalf("expected __typename=InputValidationError, got %v; resp=%v", payload["__typename"], resp)
+	}
+	if payload["field"] != "name" {
+		t.Fatalf("expected field=name, got %v; resp=%v", payload["field"], resp)
 	}
 }
 
+// TestGraphQL_CreateCardgroup_NameTooLong verifies that a name exceeding the
+// length limit is surfaced as the InputValidationError union variant — returned
+// as data, not as a GraphQL error.
 func TestGraphQL_CreateCardgroup_NameTooLong(t *testing.T) {
 	f := newJWTFixture(t)
 	ts, _ := newGraphQLTestServer(t, f)
@@ -1561,14 +1582,22 @@ func TestGraphQL_CreateCardgroup_NameTooLong(t *testing.T) {
 	tok := f.sign(t, sub)
 
 	longName := strings.Repeat("x", 101)
-	body := fmt.Sprintf(`{"query":"mutation { createCardgroup(input: {name: \"%s\"}) { cardgroup { id } } }"}`, longName)
+	body := fmt.Sprintf(`{"query":"mutation { createCardgroup(input: {name: \"%s\"}) { __typename ... on InputValidationError { field message } } }"}`, longName)
 	resp := postGraphQL(t, ts.URL+"/query", body, tok)
 
-	if code := gqlErrCode(resp); code != "BAD_USER_INPUT" {
-		t.Fatalf("expected BAD_USER_INPUT, got %q; resp=%v", code, resp)
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("unexpected GraphQL errors: %v", errs)
 	}
-	if field := gqlErrField(resp); field != "name" {
-		t.Fatalf("expected extensions.field=name, got %q; resp=%v", field, resp)
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["createCardgroup"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.createCardgroup, got nil; resp=%v", resp)
+	}
+	if payload["__typename"] != "InputValidationError" {
+		t.Fatalf("expected __typename=InputValidationError, got %v; resp=%v", payload["__typename"], resp)
+	}
+	if payload["field"] != "name" {
+		t.Fatalf("expected field=name, got %v; resp=%v", payload["field"], resp)
 	}
 }
 
@@ -1576,7 +1605,7 @@ func TestGraphQL_CreateCardgroup_Anonymous_Unauthenticated(t *testing.T) {
 	f := newJWTFixture(t)
 	ts, _ := newGraphQLTestServer(t, f)
 
-	resp := postGraphQL(t, ts.URL+"/query", `{"query":"mutation { createCardgroup(input: {name: \"Anon\"}) { cardgroup { id } } }"}`, "")
+	resp := postGraphQL(t, ts.URL+"/query", `{"query":"mutation { createCardgroup(input: {name: \"Anon\"}) { __typename ... on CreateCardgroupSuccess { cardgroup { id } } ... on InputValidationError { field message } } }"}`, "")
 
 	if code := gqlErrCode(resp); code != "UNAUTHENTICATED" {
 		t.Fatalf("expected UNAUTHENTICATED, got %q; resp=%v", code, resp)

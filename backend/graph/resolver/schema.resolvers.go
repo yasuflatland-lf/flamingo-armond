@@ -82,12 +82,27 @@ func (r *mutationResolver) UpdateProfile(ctx context.Context, input model.Update
 }
 
 // CreateCardgroup is the resolver for the createCardgroup field.
-func (r *mutationResolver) CreateCardgroup(ctx context.Context, input model.NewCardgroupInput) (*model.CreateCardgroupPayload, error) {
-	cg, err := r.CardgroupUC.Create(ctx, usecase.CreateCardgroupInput{Name: input.Name})
+//
+// Returns a union: `model.CreateCardgroupSuccess` on the happy path, or
+// `model.InputValidationError` when the name fails validation (e.g. empty,
+// too long). Validation failures are "errors as data" — the error return is
+// reserved for auth and infrastructure failures.
+func (r *mutationResolver) CreateCardgroup(ctx context.Context, input model.NewCardgroupInput) (model.CreateCardgroupResult, error) {
+	outcome, err := r.CardgroupUC.Create(ctx, usecase.CreateCardgroupInput{Name: input.Name})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	return &model.CreateCardgroupPayload{Cardgroup: toCardgroupModel(cg)}, nil
+	if outcome.Validation != nil {
+		return model.InputValidationError{
+			Field:   outcome.Validation.Field,
+			Message: outcome.Validation.Message,
+		}, nil
+	}
+	if outcome.Cardgroup == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: CreateCardgroupOutcome has no variant set"))
+	}
+	return model.CreateCardgroupSuccess{Cardgroup: toCardgroupModel(outcome.Cardgroup)}, nil
 }
 
 // UpdateCardgroup is the resolver for the updateCardgroup field.
@@ -344,12 +359,28 @@ func (r *mutationResolver) DeleteRole(ctx context.Context, id string) (bool, err
 }
 
 // SetLastViewedCardgroup is the resolver for the setLastViewedCardgroup field.
-func (r *mutationResolver) SetLastViewedCardgroup(ctx context.Context, cardgroupID string) (*model.User, error) {
-	user, err := r.LastViewedCardgroupUC.Set(ctx, cardgroupID)
+//
+// Returns a union: `model.SetLastViewedCardgroupSuccess` on the happy path, or
+// `model.InputValidationError` when cardgroupId fails validation (e.g. the
+// cardgroup no longer exists or is not owned by the caller). Validation
+// failures are "errors as data" — the error return is reserved for auth and
+// infrastructure failures.
+func (r *mutationResolver) SetLastViewedCardgroup(ctx context.Context, cardgroupID string) (model.SetLastViewedCardgroupResult, error) {
+	outcome, err := r.LastViewedCardgroupUC.Set(ctx, cardgroupID)
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	return toUserModel(user), nil
+	if outcome.Validation != nil {
+		return model.InputValidationError{
+			Field:   outcome.Validation.Field,
+			Message: outcome.Validation.Message,
+		}, nil
+	}
+	if outcome.User == nil {
+		return nil, gqlerr.Internal(ctx,
+			eris.New("resolver: SetLastViewedCardgroupOutcome has no variant set"))
+	}
+	return model.SetLastViewedCardgroupSuccess{User: toUserModel(outcome.User)}, nil
 }
 
 // Health is the resolver for the health field.

@@ -21,16 +21,16 @@ import (
 
 // mockLastViewedCardgroupUsecase stubs LastViewedCardgroupUsecase.
 type mockLastViewedCardgroupUsecase struct {
-	setResult       *domain.User
+	setOutcome      usecase.SetLastViewedCardgroupOutcome
 	setErr          error
 	setCalls        int
 	lastCardgroupID string
 }
 
-func (m *mockLastViewedCardgroupUsecase) Set(_ context.Context, cardgroupID string) (*domain.User, error) {
+func (m *mockLastViewedCardgroupUsecase) Set(_ context.Context, cardgroupID string) (usecase.SetLastViewedCardgroupOutcome, error) {
 	m.setCalls++
 	m.lastCardgroupID = cardgroupID
-	return m.setResult, m.setErr
+	return m.setOutcome, m.setErr
 }
 
 // newLastViewedSrv builds a gqlgen Server wired to uc; other usecase fields are nil.
@@ -80,13 +80,18 @@ func ctxWithBothLoaders(
 	return loader.WithContext(base, loaders)
 }
 
-const setLastViewedMutation = `{"query":"mutation { setLastViewedCardgroup(cardgroupId: \"cg-1\") { id } }"}`
+// setLastViewedMutation selects across both variants of the
+// SetLastViewedCardgroupResult union so a single mutation body covers the
+// success and input-validation cases.
+const setLastViewedMutation = `{"query":"mutation { setLastViewedCardgroup(cardgroupId: \"cg-1\") { __typename ... on SetLastViewedCardgroupSuccess { user { id } } ... on InputValidationError { field message } } }"}`
 
 func TestSetLastViewedCardgroup_HappyPath(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockLastViewedCardgroupUsecase{
-		setResult: &domain.User{ID: "u-1"},
+		setOutcome: usecase.SetLastViewedCardgroupOutcome{
+			User: &domain.User{ID: "u-1"},
+		},
 	}
 	srv := newLastViewedSrv(mock)
 	resp := gqlRequest(t, srv, authedCtx("u-1"), setLastViewedMutation)
@@ -95,9 +100,16 @@ func TestSetLastViewedCardgroup_HappyPath(t *testing.T) {
 		t.Fatalf("unexpected errors: %v", errs)
 	}
 	data, _ := resp["data"].(map[string]any)
-	user, _ := data["setLastViewedCardgroup"].(map[string]any)
-	if user == nil {
+	payload, _ := data["setLastViewedCardgroup"].(map[string]any)
+	if payload == nil {
 		t.Fatalf("expected data.setLastViewedCardgroup, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "SetLastViewedCardgroupSuccess" {
+		t.Fatalf("expected __typename=SetLastViewedCardgroupSuccess, got %v", payload["__typename"])
+	}
+	user, _ := payload["user"].(map[string]any)
+	if user == nil {
+		t.Fatalf("expected user payload, got nil; response: %v", resp)
 	}
 	if user["id"] != "u-1" {
 		t.Fatalf("expected id=u-1, got %v", user["id"])
@@ -110,24 +122,40 @@ func TestSetLastViewedCardgroup_HappyPath(t *testing.T) {
 	}
 }
 
-func TestSetLastViewedCardgroup_BadUserInput(t *testing.T) {
+// TestSetLastViewedCardgroup_InputValidation verifies that a validation failure
+// (e.g. cardgroup not found or not owned) is surfaced as the
+// InputValidationError union variant — returned as data, not as a GraphQL
+// error. This is the "errors as data" pattern promoted in Phase 3.
+func TestSetLastViewedCardgroup_InputValidation(t *testing.T) {
 	t.Parallel()
 
 	mock := &mockLastViewedCardgroupUsecase{
-		setErr: &ucerr.ValidationError{Field: "cardgroupId", Message: "cardgroup not found or not owned"},
+		setOutcome: usecase.SetLastViewedCardgroupOutcome{
+			Validation: &usecase.InputValidationInfo{
+				Field:   "cardgroupId",
+				Message: "cardgroup not found or not owned",
+			},
+		},
 	}
 	srv := newLastViewedSrv(mock)
 	resp := gqlRequest(t, srv, authedCtx("u-1"), setLastViewedMutation)
 
-	code := errCode(t, resp)
-	if code != string(gqlerr.CodeBadUserInput) {
-		t.Fatalf("expected BAD_USER_INPUT, got %q", code)
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
 	}
-	errs, _ := resp["errors"].([]any)
-	first, _ := errs[0].(map[string]any)
-	ext, _ := first["extensions"].(map[string]any)
-	if ext["field"] != "cardgroupId" {
-		t.Fatalf("expected extensions.field=cardgroupId, got %v", ext["field"])
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["setLastViewedCardgroup"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.setLastViewedCardgroup, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "InputValidationError" {
+		t.Fatalf("expected __typename=InputValidationError, got %v", payload["__typename"])
+	}
+	if payload["field"] != "cardgroupId" {
+		t.Fatalf("expected field=cardgroupId, got %v", payload["field"])
+	}
+	if payload["message"] != "cardgroup not found or not owned" {
+		t.Fatalf("expected message='cardgroup not found or not owned', got %v", payload["message"])
 	}
 }
 
