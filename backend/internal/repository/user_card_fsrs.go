@@ -83,7 +83,7 @@ func (r *userCardFSRSRepo) FindByUserAndCardIDsTx(ctx context.Context, tx *gorm.
 	if err := tx.WithContext(ctx).
 		Where("user_id = ? AND card_id IN ?", userID, cardIDs).
 		Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: FindByUserAndCardIDsTx")
+		return nil, eris.Wrap(err, "repository: find user card fsrs by user and card ids tx")
 	}
 	return rowsToUserCardFSRSMap(rows)
 }
