@@ -32,10 +32,15 @@ input UpdateProfileInput {
   bio: String
 }
 
-"""Payload returned by `updateProfile`."""
-type UpdateProfilePayload {
+"""Success variant returned by `updateProfile` when the profile was updated. Carries the updated `user` so clients can refresh local state without a follow-up query."""
+type UpdateProfileSuccess {
   user: User!
 }
+
+"""Result of `updateProfile`. Either the updated user or an input-validation failure."""
+union UpdateProfileResult =
+    UpdateProfileSuccess
+  | InputValidationError
 
 """Root of all write operations exposed by the GraphQL API. See per-field doc-blocks for individual mutations."""
 type Mutation {
@@ -43,7 +48,7 @@ type Mutation {
   Updates the authenticated user's own profile.
   Unauthenticated callers receive an error with `extensions.code = "UNAUTHENTICATED"`.
   """
-  updateProfile(input: UpdateProfileInput!): UpdateProfilePayload!
+  updateProfile(input: UpdateProfileInput!): UpdateProfileResult!
 }
 
 """ISO-8601 / RFC-3339 timestamp serialized as a string."""
@@ -92,10 +97,15 @@ union SetLastViewedCardgroupResult =
     SetLastViewedCardgroupSuccess
   | InputValidationError
 
-"""Payload returned by `updateCardgroup`."""
-type UpdateCardgroupPayload {
+"""Success variant returned by `updateCardgroup` when the cardgroup was updated. Carries the updated `cardgroup` so clients can refresh local state without a follow-up query."""
+type UpdateCardgroupSuccess {
   cardgroup: Cardgroup!
 }
+
+"""Result of `updateCardgroup`. Either the updated cardgroup or an input-validation failure."""
+union UpdateCardgroupResult =
+    UpdateCardgroupSuccess
+  | InputValidationError
 
 extend type Query {
   """Single cardgroup by ID. Returns UNAUTHENTICATED for non-owners (existence is not leaked)."""
@@ -124,7 +134,7 @@ extend type Mutation {
   """
   createCardgroup(input: NewCardgroupInput!): CreateCardgroupResult!
   """Update a cardgroup. Non-owners receive UNAUTHENTICATED."""
-  updateCardgroup(id: ID!, input: UpdateCardgroupInput!): UpdateCardgroupPayload!
+  updateCardgroup(id: ID!, input: UpdateCardgroupInput!): UpdateCardgroupResult!
   """Delete a cardgroup. Non-owners receive UNAUTHENTICATED."""
   deleteCardgroup(id: ID!): Boolean!
 }
@@ -194,10 +204,15 @@ type CreateCardSuccess {
 """Result of `createCard`. Either the created card, or a typed duplicate-front error returned as data."""
 union CreateCardResult = CreateCardSuccess | CardDuplicateFrontError
 
-"""Payload returned by `updateCard`."""
-type UpdateCardPayload {
+"""Success variant returned by `updateCard` when the card was updated. Carries the updated `card` so clients can refresh local state without a follow-up query."""
+type UpdateCardSuccess {
   card: Card!
 }
+
+"""Result of `updateCard`. Either the updated card or an input-validation failure."""
+union UpdateCardResult =
+    UpdateCardSuccess
+  | InputValidationError
 
 """Sort order for paginated queries."""
 enum SortOrder {
@@ -298,7 +313,7 @@ extend type Mutation {
   """
   createCard(input: NewCardInput!): CreateCardResult!
   """Update a card. Non-owners receive UNAUTHENTICATED."""
-  updateCard(id: ID!, input: UpdateCardInput!): UpdateCardPayload!
+  updateCard(id: ID!, input: UpdateCardInput!): UpdateCardResult!
   """Delete a card. Non-owners receive UNAUTHENTICATED."""
   deleteCard(id: ID!): Boolean!
   """Bulk-delete cards owned by the authenticated caller. Returns the number of rows deleted. Foreign-owned IDs in the list are silently skipped (count reflects only successful deletes)."""
@@ -332,9 +347,19 @@ type PerformanceMetrics {
   reviewCount: Int!
 }
 
+"""Success variant returned by `handleSwipe` when the swipe was recorded. Carries the full `SwipeResponse` so clients can refresh the learn flow without a follow-up query."""
+type HandleSwipeSuccess {
+  response: SwipeResponse!
+}
+
+"""Result of `handleSwipe`. Either the swipe response or an input-validation failure."""
+union HandleSwipeResult =
+    HandleSwipeSuccess
+  | InputValidationError
+
 extend type Mutation {
   """Apply one swipe rating, persist the SwipeRecord event, and return the next due cards."""
-  handleSwipe(input: HandleSwipeInput!): SwipeResponse!
+  handleSwipe(input: HandleSwipeInput!): HandleSwipeResult!
 }
 
 """
