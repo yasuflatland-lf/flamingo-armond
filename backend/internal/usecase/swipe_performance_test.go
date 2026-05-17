@@ -10,6 +10,7 @@ import (
 
 	"backend/internal/domain"
 	"backend/internal/domain/service"
+	"backend/internal/repository"
 )
 
 type mockSwipeRecordRepoForSwipe struct {
@@ -98,7 +99,7 @@ func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
 				userFSRSRepo,
 			)
 
-			got, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+			outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 				CardID:      "card-1",
 				CardgroupID: "cg-1",
 				Mode:        int(domain.RatingEasy),
@@ -107,11 +108,14 @@ func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got.PerformanceMode != tc.wantMode {
-				t.Fatalf("performance mode=%d, want %d; metrics=%+v", got.PerformanceMode, tc.wantMode, got.Metrics)
+			if outcome.Swipe == nil {
+				t.Fatal("expected non-nil Swipe on success")
 			}
-			if got.Metrics.ReviewCount != tc.wantReview {
-				t.Fatalf("review count=%d, want %d", got.Metrics.ReviewCount, tc.wantReview)
+			if outcome.Swipe.PerformanceMode != tc.wantMode {
+				t.Fatalf("performance mode=%d, want %d; metrics=%+v", outcome.Swipe.PerformanceMode, tc.wantMode, outcome.Swipe.Metrics)
+			}
+			if outcome.Swipe.Metrics.ReviewCount != tc.wantReview {
+				t.Fatalf("review count=%d, want %d", outcome.Swipe.Metrics.ReviewCount, tc.wantReview)
 			}
 			if swipeRepo.created == nil {
 				t.Fatal("expected swipe record to be created before metrics are listed")
@@ -122,8 +126,8 @@ func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
 			if swipeRepo.listLimit != swipePerformanceSampleLimit {
 				t.Fatalf("ListRecentByUser limit=%d, want %d", swipeRepo.listLimit, swipePerformanceSampleLimit)
 			}
-			if len(got.NextCards) != 1 || got.NextCards[0].ID != "next-1" {
-				t.Fatalf("unexpected next cards: %+v", got.NextCards)
+			if len(outcome.Swipe.NextCards) != 1 || outcome.Swipe.NextCards[0].ID != "next-1" {
+				t.Fatalf("unexpected next cards: %+v", outcome.Swipe.NextCards)
 			}
 		})
 	}
@@ -155,7 +159,7 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 		userFSRSRepo,
 	)
 
-	got, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+	outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
 		CardID:      "card-1",
 		CardgroupID: "cg-1",
 		Mode:        int(domain.RatingEasy),
@@ -163,6 +167,9 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if outcome.Swipe == nil {
+		t.Fatal("expected non-nil Swipe on success")
 	}
 	if userFSRSRepo.upserted == nil {
 		t.Fatal("expected per-user FSRS row to be upserted")
@@ -176,8 +183,8 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 	if swipeRepo.created == nil || swipeRepo.created.StateAfter != userFSRSRepo.upserted.State {
 		t.Fatalf("swipe snapshot must match upserted user state, swipe=%+v ucs=%+v", swipeRepo.created, userFSRSRepo.upserted)
 	}
-	if len(got.NextCards) != 1 || got.NextCards[0].ID != "next-1" {
-		t.Fatalf("unexpected next cards: %+v", got.NextCards)
+	if len(outcome.Swipe.NextCards) != 1 || outcome.Swipe.NextCards[0].ID != "next-1" {
+		t.Fatalf("unexpected next cards: %+v", outcome.Swipe.NextCards)
 	}
 }
 
@@ -279,4 +286,91 @@ func TestSwipeUsecase_HandleSwipe_PropagatesUpsertError(t *testing.T) {
 		t.Fatal("expected error from UpsertTx, got nil")
 	}
 	assertInternalChain(t, err, "storage: simulated upsert failure")
+}
+
+// TestSwipeUsecase_HandleSwipe_InvalidMode_ValidationVariant verifies that an
+// invalid swipe mode surfaces as the outcome's Validation variant (not an
+// error channel error) so the resolver maps it to the InputValidationError
+// union member.
+func TestSwipeUsecase_HandleSwipe_InvalidMode_ValidationVariant(t *testing.T) {
+	t.Parallel()
+
+	cardgroupRepo := &mockCardgroupRepoForCard{
+		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+	}
+	tx, _ := fakeTxRunner()
+	uc := NewSwipeUsecaseWithTx(
+		&mockCardRepository{},
+		cardgroupRepo,
+		&mockSwipeRecordRepoForSwipe{},
+		service.NewFSRSScheduler(),
+		10,
+		tx,
+		&mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}},
+	)
+
+	outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+		CardID:      "card-1",
+		CardgroupID: "cg-1",
+		Mode:        9999, // invalid
+	})
+
+	if err != nil {
+		t.Fatalf("expected nil error (validation goes to outcome), got: %v", err)
+	}
+	if outcome.Swipe != nil {
+		t.Fatal("expected nil Swipe on validation failure")
+	}
+	if outcome.Validation == nil {
+		t.Fatal("expected non-nil Validation on invalid mode")
+	}
+	if outcome.Validation.Field != "mode" {
+		t.Fatalf("expected Validation.Field=%q, got %q", "mode", outcome.Validation.Field)
+	}
+}
+
+// TestSwipeUsecase_HandleSwipe_CardNotFound_ValidationVariant verifies that a
+// card that cannot be found during the transaction surfaces as the outcome's
+// Validation variant with field "cardId".
+func TestSwipeUsecase_HandleSwipe_CardNotFound_ValidationVariant(t *testing.T) {
+	t.Parallel()
+
+	// FindByIDTx returns (findResult, findErr); set findErr to ErrNotFound to
+	// exercise the not-found branch inside the transaction closure.
+	cardRepo := &mockCardRepository{
+		findErr: repository.ErrNotFound,
+	}
+	cardgroupRepo := &mockCardgroupRepoForCard{
+		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+	}
+	swipeRepo := &mockSwipeRecordRepoForSwipe{}
+	tx, _ := fakeTxRunner()
+	uc := NewSwipeUsecaseWithTx(
+		cardRepo,
+		cardgroupRepo,
+		swipeRepo,
+		service.NewFSRSScheduler(),
+		10,
+		tx,
+		&mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}},
+	)
+
+	outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+		CardID:      "card-missing",
+		CardgroupID: "cg-1",
+		Mode:        int(domain.RatingEasy),
+	})
+
+	if err != nil {
+		t.Fatalf("expected nil error (validation goes to outcome), got: %v", err)
+	}
+	if outcome.Swipe != nil {
+		t.Fatal("expected nil Swipe on validation failure")
+	}
+	if outcome.Validation == nil {
+		t.Fatal("expected non-nil Validation on card-not-found")
+	}
+	if outcome.Validation.Field != "cardId" {
+		t.Fatalf("expected Validation.Field=%q, got %q", "cardId", outcome.Validation.Field)
+	}
 }
