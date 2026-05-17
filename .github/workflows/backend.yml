@@ -55,13 +55,6 @@ jobs:
             exit 1
           fi
 
-      - name: Forbid gqlerr imports inside usecase
-        run: |
-          if grep -rln '"backend/internal/gqlerr"' internal/usecase --include='*.go' --exclude='*_test.go'; then
-            echo "::error::gqlerr.* imports forbidden in backend/internal/usecase (non-test). Use ucerr.* types and let the resolver wrap via gqlerr.FromUsecaseError. See .claude/rules/error-wrapping.md."
-            exit 1
-          fi
-
       - name: Forbid &ucerr.ValidationError / &ucerr.ForbiddenError struct literals outside ucerr and tests
         working-directory: backend
         run: |
@@ -109,6 +102,10 @@ jobs:
             echo "::error::Schema-lint failed with exit $rc. See docs/backend/error-wrapping/outcome-union-enforcement.md for the promotion guide (exit 1 = violation/drift; exit 2 = walker/config error)."
             exit "$rc"
           fi
+
+      - name: Enforce layer dependencies (go-arch-lint)
+        run: |
+          go tool go-arch-lint check --project-path .
 
       - name: Build
         run: go build ./...
