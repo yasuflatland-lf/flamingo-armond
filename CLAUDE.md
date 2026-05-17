@@ -22,7 +22,7 @@ go run ./cmd/server   # PORT defaults to 1323
 
 ## PR Updates
 
-When rewriting a PR title/body, always write the body to a tempfile and pass `gh pr edit <N> --title "..." --body-file <tempfile>`. Never use HEREDOC or inline `--body "..."` for multiline content. Full rule: [`.claude/rules/pr-updates.md`](.claude/rules/pr-updates.md).
+When rewriting a PR title/body, always write the body to a tempfile and pass `gh pr edit <N> --title "..." --body-file <tempfile>`. Never use HEREDOC or inline `--body "..."` for multiline content. Full rule: [`.claude/rules/pr-updates.md`](.claude/rules/pr-updates.md). Backend layer-dependency rules: [`.claude/rules/backend-layering.md`](.claude/rules/backend-layering.md) (CI-enforced via [`go-arch-lint`](backend/.go-arch-lint.yml)).
 
 ## Doc tiers
 
