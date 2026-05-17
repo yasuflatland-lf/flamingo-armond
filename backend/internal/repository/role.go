@@ -170,22 +170,24 @@ func (r *roleRepo) Create(ctx context.Context, name string) (*domain.Role, error
 func (r *roleRepo) Update(ctx context.Context, id, name string) (*domain.Role, error) {
 	name = strings.ToLower(strings.TrimSpace(name))
 
-	var row gormRole
-	if err := r.db.WithContext(ctx).Where("id = ?", id).Take(&row).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrRoleNotFound
-		}
-		return nil, eris.Wrap(err, "repository: role: update: find")
-	}
-
-	row.Name = name
-	if err := r.db.WithContext(ctx).Save(&row).Error; err != nil {
-		if classified := classifyUniqueError(err); classified != nil {
+	res := r.db.WithContext(ctx).
+		Model(&gormRole{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"name": name})
+	if res.Error != nil {
+		if classified := classifyUniqueError(res.Error); classified != nil {
 			return nil, classified
 		}
-		return nil, eris.Wrap(err, "repository: role: update")
+		return nil, eris.Wrap(res.Error, "repository: role: update")
 	}
-	return roleToDomain(row), nil
+	if res.RowsAffected == 0 {
+		return nil, ErrRoleNotFound
+	}
+	role, err := r.FindByID(ctx, id)
+	if err != nil {
+		return nil, eris.Wrap(err, "repository: role: update: find after update")
+	}
+	return role, nil
 }
 
 func (r *roleRepo) Delete(ctx context.Context, id string) error {

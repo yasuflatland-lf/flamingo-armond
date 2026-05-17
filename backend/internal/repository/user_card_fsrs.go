@@ -77,13 +77,13 @@ func (r *userCardFSRSRepo) FindByUserAndCardIDs(ctx context.Context, userID stri
 
 func (r *userCardFSRSRepo) FindByUserAndCardIDsTx(ctx context.Context, tx *gorm.DB, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error) {
 	if len(cardIDs) == 0 {
-		return nil, nil
+		return map[string]*domain.UserCardFSRS{}, nil
 	}
 	var rows []gormUserCardFSRS
 	if err := tx.WithContext(ctx).
 		Where("user_id = ? AND card_id IN ?", userID, cardIDs).
 		Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: FindByUserAndCardIDsTx")
+		return nil, eris.Wrap(err, "repository: find user card fsrs by user and card ids tx")
 	}
 	return rowsToUserCardFSRSMap(rows)
 }

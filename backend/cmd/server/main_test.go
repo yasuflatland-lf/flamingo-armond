@@ -2558,3 +2558,39 @@ func TestServerConfigFromEnv(t *testing.T) {
 		})
 	}
 }
+
+func TestServerConfig_SwipeNextBatchSize(t *testing.T) {
+	cases := []struct {
+		name        string
+		env         string
+		want        int
+		wantLog     string
+		wantErrAttr bool
+	}{
+		{"empty uses default", "", 10, "", false},
+		{"valid positive", "20", 20, "", false},
+		{"invalid string uses default", "bad", 10, "invalid SWIPE_NEXT_BATCH_SIZE", true},
+		{"zero uses default", "0", 10, "non-positive SWIPE_NEXT_BATCH_SIZE", false},
+		{"negative uses default", "-5", 10, "non-positive SWIPE_NEXT_BATCH_SIZE", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("SWIPE_NEXT_BATCH_SIZE", tc.env)
+			var buf bytes.Buffer
+			logger := slog.New(slog.NewJSONHandler(&buf, nil))
+			cfg := serverConfigFromEnv(logger)
+			if cfg.swipeNextBatchSize != tc.want {
+				t.Errorf("swipeNextBatchSize = %d, want %d", cfg.swipeNextBatchSize, tc.want)
+			}
+			if tc.wantLog != "" && !strings.Contains(buf.String(), tc.wantLog) {
+				t.Errorf("expected log to contain %q, got %q", tc.wantLog, buf.String())
+			}
+			if tc.wantLog == "" && buf.Len() > 0 {
+				t.Errorf("expected no log output, got %q", buf.String())
+			}
+			if tc.wantErrAttr && !strings.Contains(buf.String(), `"err":`) {
+				t.Errorf("expected log to contain %q attribute, got %q", `"err":`, buf.String())
+			}
+		})
+	}
+}

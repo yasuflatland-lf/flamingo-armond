@@ -251,7 +251,9 @@ type SystemRoleConflictInfo struct {
 //
 // TOCTOU: between FindByID and roles.Update another admin can delete the row;
 // the resulting ErrRoleNotFound is mapped back to BAD_USER_INPUT(field=id)
-// rather than INTERNAL.
+// rather than INTERNAL. The race window also covers the repository-internal
+// re-fetch inside roles.Update (Updates → FindByID), where the same
+// concurrent delete surfaces uniformly as ErrRoleNotFound.
 func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (UpdateRoleOutcome, error) {
 	if err := u.requireAdmin(ctx); err != nil {
 		return UpdateRoleOutcome{}, err

@@ -95,3 +95,19 @@ func TestUserCardFSRSRepository_FindByUserAndCardIDs_EmptySlice(t *testing.T) {
 	require.NotNil(t, got)
 	require.Empty(t, got)
 }
+
+func TestUserCardFSRSRepository_FindByUserAndCardIDsTx_EmptySlice(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+
+	var got map[string]*domain.UserCardFSRS
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var inner error
+		got, inner = ucsRepo.FindByUserAndCardIDsTx(ctx, tx, "00000000-0000-0000-0000-000000000001", nil)
+		return inner
+	})
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Empty(t, got)
+}
