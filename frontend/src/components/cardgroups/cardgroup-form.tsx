@@ -96,9 +96,7 @@ export function CardgroupForm({
             <FieldError
               zodErrors={field.state.meta.errors}
               backendError={
-                validationError?.field === "name"
-                  ? validationError.message
-                  : fieldErrors.name
+                validationError?.field === "name" ? validationError.message : fieldErrors.name
               }
             />
           </div>

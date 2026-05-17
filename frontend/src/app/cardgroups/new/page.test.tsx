@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { InMemoryCache } from "@apollo/client";
+import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor, within } from "@testing-library/react";
