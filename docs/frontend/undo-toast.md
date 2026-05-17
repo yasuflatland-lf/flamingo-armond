@@ -1,6 +1,6 @@
 # Frontend: delayed-DELETE undo toast, SwipeableRow, and useReducedMotion
 
-> L2 doc — overflow from [`docs/frontend.md`](frontend.md) (at its 600-line soft cap). Covers the sonner snackbar undo pattern, the mobile swipe-to-delete row component, and the `useReducedMotion` JS hook.
+> L2 doc — overflow from [`frontend/CLAUDE.md`](../../frontend/CLAUDE.md) (frontend orientation hub). Covers the sonner snackbar undo pattern, the mobile swipe-to-delete row component, and the `useReducedMotion` JS hook.
 
 ## Delayed-DELETE with sonner snackbar undo
 
