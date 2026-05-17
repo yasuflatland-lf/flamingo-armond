@@ -25,6 +25,7 @@ go run ./cmd/server   # PORT defaults to 1323
 - [`docs/backend-db.md`](../docs/backend-db.md) — migrations, recover
 - [`docs/backend-graphql.md`](../docs/backend-graphql.md) — gqlgen, resolver, DataLoader, authorization, validation, generated code
 - [`docs/observability.md`](../docs/observability.md) — logging contracts (shared with frontend)
+- [`docs/backend/error-wrapping/logging-error-warn-helpers.md`](../docs/backend/error-wrapping/logging-error-warn-helpers.md) — `LogError` / `LogWarn` helpers, usecase-layer logger DI
 
 ## Cross-cutting rules already in context
 
