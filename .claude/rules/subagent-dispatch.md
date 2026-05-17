@@ -39,6 +39,38 @@ A migration that applies the same substitution across N files (e.g. swapping eve
 
 The post-conditions are the same as in [`docs/doc-organization.md` § "Parallel agent safety for doc splits"](../../docs/doc-organization.md#parallel-agent-safety-for-doc-splits) — single source ownership, no cross-agent edits — but the workflow is named differently (mechanical code migration vs. doc tree split) because the verification harness is `go build && go vet` rather than `markdown-link-check`.
 
+### Scope `git add` to a known file list — never `git add <directory>` while siblings are mid-edit
+
+The per-file fan-out above keeps source edits non-conflicting, but the commit
+agent's `git add` step can still race the implementation agents if it stages by
+directory. A `git add backend/internal/usecase/` issued while one implementation
+agent is mid-edit of `swipe.go` will silently capture the partially-written
+buffer; the commit lands with broken Go and the implementation agent's
+subsequent `Write` is left as an unstaged delta the next commit attempts to
+fix-forward. The race window is small but real on parallel toolchains.
+
+Three mitigations, in increasing strictness:
+
+1. **Stage by explicit file list.** The commit agent's prompt must enumerate
+   the exact files to stage (`git add backend/internal/usecase/swipe.go backend/internal/usecase/swipe_test.go`),
+   not the parent directory. The list comes from the implementation agents'
+   completion reports, not from a `git status` snapshot taken inside the
+   commit agent.
+2. **Verify the working tree matches the expected list before staging.** Run
+   `git diff --name-only HEAD` and assert the output is a superset of the
+   expected file list. Any unexpected entry — typically a sibling agent's
+   in-flight buffer — is a signal to wait, not to stage.
+3. **Serialize commits behind implementation.** The strongest guarantee:
+   no commit agent is dispatched until every implementation agent has
+   reported done. The commit agent then runs alone with no concurrent
+   writers, and the staging command's scope no longer matters.
+
+The doc-split equivalent of this race — two agents editing the same anchor in
+a shared sink file — is described in
+[`docs/doc-organization.md` § "Parallel agent safety for doc splits"](../../docs/doc-organization.md#parallel-agent-safety-for-doc-splits)
+and is the same shape of failure (concurrent writers to a single resource);
+the mitigations there generalize.
+
 ## Pair reviewers with non-overlapping blind spots
 
 A single review agent does not exhaust the failure modes of a change. `comment-analyzer` is keyed on identifier-level staleness (a function name in prose that no longer exists in code) while `code-reviewer` is keyed on structural and tier-discipline regressions (duplicate `##` headings, files in the wrong tier, missing cross-references). Either one alone misses what the other catches. For doc-cleanup or refactor passes that touch both prose accuracy and structural shape, run both review agents and merge their findings before acting. Worked example: a doc-cleanup pass surfaced a stale identifier reference only via `comment-analyzer` and a duplicate-heading regression only via `code-reviewer` — running just one would have shipped one of the two defects.

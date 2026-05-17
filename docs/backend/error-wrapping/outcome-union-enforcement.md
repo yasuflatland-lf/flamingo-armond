@@ -138,9 +138,20 @@ after step 7 pass their respective verifications.
    Wrap all usecase errors via `gqlerr.FromUsecaseError(ctx, err)` per the
    mandatory resolver-side wrap rule.
 
-4. **Regenerate**: run `go tool gqlgen generate` from `backend/`; commit the
-   resulting `backend/graph/generated/` and `backend/graph/model/` diff. Verify
-   `go build ./...` and `go vet ./...` pass before continuing.
+4. **Regenerate**: run `go tool gqlgen generate` from `backend/`. The artifacts
+   under `backend/graph/generated/` and `backend/graph/model/models_gen.go` are
+   gitignored (see `.gitignore`), so this step produces no committable diff —
+   but it MUST still run locally and in CI because the next commit's resolver
+   wiring (step 3 above, already landed in the prior commit) and any subsequent
+   test must compile against the freshly generated symbols. Verify
+   `go build ./...` and `go vet ./...` pass before continuing. If `gqlgen`
+   detects that the existing resolver signature in
+   `backend/graph/resolver/schema.resolvers.go` does not match the new union
+   return type (e.g. because the resolver-wiring commit has not landed yet
+   when regen is invoked), it rewrites the resolver body as a
+   `panic("not implemented")` stub; in that ordering, run
+   `git checkout -- backend/graph/resolver/schema.resolvers.go` after the
+   regen so the stub does not leak into the resolver commit.
 
 5. **Update the frontend mutation**: discriminate on `__typename` with inline
    fragments per variant in the `.graphql` document; regenerate types via
@@ -153,6 +164,27 @@ after step 7 pass their respective verifications.
 7. **Verify the lint exits cleanly**: run `go run ./cmd/schema-lint` from
    `backend/`; assert it exits 0 with no violations reported for the promoted
    mutation or any other.
+
+8. **Update integration tests under `backend/cmd/`**: end-to-end tests in
+   `backend/cmd/server/main_test.go` and
+   `backend/cmd/schema-lint/schema_lint_integration_test.go` issue real GraphQL
+   queries against the running schema. A promotion changes the field shape
+   from `mutation { updateX { field } }` to
+   `mutation { updateX { __typename ... on UpdateXSuccess { field } ... on InputValidationError { field message } } }`,
+   so any existing integration test that selects the old bare-object fields
+   fails with `GRAPHQL_VALIDATION_FAILED` until the selection set is rewritten.
+   The promotion-PR file search must include `backend/cmd/**/*_test.go`, not
+   only `backend/graph/resolver/*_test.go`. Common patches:
+
+   - Add `__typename` plus inline fragments to every mutation selection set
+     referencing the promoted mutation.
+   - Replace the legacy `gqlErrCode(resp) == "BAD_USER_INPUT"` assertion with
+     `payload["__typename"] == "InputValidationError"` plus a `payload["field"]`
+     check, since field-level validation now flows through the union variant
+     rather than the top-level `errors` array.
+   - Move the promoted mutation name into the `promoted` slice in
+     `TestIntegration_PromotedMutations_NotInAllowlist_NotViolation` so the
+     allowlist-rot guard keeps pinning the post-promotion state.
 
 ## Maintaining the lint
 

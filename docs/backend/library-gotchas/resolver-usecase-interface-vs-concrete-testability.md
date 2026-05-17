@@ -100,7 +100,22 @@ deliberately:
   for why — but accept that the unit-test coverage of the guard is structural
   only. Document the asymmetry inline at the resolver test (per the example
   above) so a future refactor does not silently remove the guard on the
-  assumption that "there is no test for it".
+  assumption that "there is no test for it". The nearest reachable proxy is
+  a unit test that drives the **next** `gqlerr.Internal` path immediately
+  following the nil-variant guard — typically an infrastructure precondition
+  the resolver layer can synthesize without an interface mock (e.g. a nil tx
+  runner on `NewSwipeUsecaseWithTx`, an unconfigured FSRS repo). Test names
+  should reflect the true subject, not the structurally-unreachable guard:
+  use `_InfrastructureError_ReturnsInternal` rather than `_NilVariant_ReturnsInternal`,
+  and add a block comment explaining the substitution. Reference:
+  `backend/graph/resolver/swipe_resolver_test.go` —
+  `TestResolver_HandleSwipe_InfrastructureError_ReturnsInternal` builds a
+  real `SwipeUsecase` with `tx = nil` and asserts the resolver returns
+  `INTERNAL` via `gqlerr.FromUsecaseError`; the comment above the test
+  records that the nil-variant guard at the resolver
+  (`if outcome.Swipe == nil`) is structurally unreachable through the real
+  usecase and the infrastructure path is the nearest reachable proxy for
+  the INTERNAL mapping.
 
 Migrating an existing concrete-struct field to an interface is a separate
 refactor: extract the usecase's exported method set into an interface
