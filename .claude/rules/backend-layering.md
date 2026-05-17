@@ -10,7 +10,7 @@ The five invariants the config encodes, with the failure mode each guards agains
 - **Application (`internal/usecase`) does not import `internal/gqlerr`**. `gqlerr` is a wire-format constructor tied to the GraphQL transport. Importing it from the application layer couples business logic to the presentation protocol and creates an import cycle when the resolver calls back into usecase types. The `usecase` entry in `deps` deliberately omits `gqlerr` from `mayDependOn`; this prevents the application layer from acquiring a transport dependency that would close an import cycle with the resolver. The replacement path is: usecase code returns `ucerr.*` typed values; the resolver converts them to wire format via the single `gqlerr.FromUsecaseError` call site. See [`.claude/rules/error-wrapping.md` § "Legacy primitives (resolver-only)"](error-wrapping.md#legacy-primitives-resolver-only) for the per-gate rationale and the `ucerr` replacements.
 - **Infrastructure (`internal/repository`, `internal/auth`, etc.) does not import `usecase` or the presentation layer**. Allowing adapter packages to call upward into application logic inverts the dependency arrow and makes it impossible to substitute adapters or test them in isolation.
 - **Only the presentation layer and the composition root may import `gqlerr`** — concretely `graph/resolver`, `internal/handler/*`, `internal/middleware`, and `cmd/server`. Today `graph/resolver` and `cmd/server` are the only consumers of `gqlerr`; the YAML config's `mayDependOn` lists reflect that exactly. A new handler that needs to construct wire errors must update its component's `mayDependOn` to include `gqlerr` in the same change.
-- **CLI entrypoints (`cmd/seed`, `cmd/schema-lint`) do not import the transport surface** (`gqlerr`, `resolver`). A seed or schema-lint binary that pulls in the HTTP/GraphQL stack becomes fragile and bloated; `anyVendorDeps: true` freezes that property and prevents drive-by import additions. v3 spec validator requires every component to declare at least one permission flag (`mayDependOn`, `canUse`, `anyProjectDeps`, or `anyVendorDeps`); use `anyVendorDeps: true` for leaf components that depend only on stdlib and vendor packages.
+- **CLI entrypoints (`cmd/seed`, `cmd/schema-lint`) do not import the transport surface** (`gqlerr`, `resolver`). A seed or schema-lint binary that pulls in the HTTP/GraphQL stack becomes fragile and bloated; `anyVendorDeps: true` freezes that property and prevents drive-by import additions.
 
 ## Layer model
 
@@ -37,22 +37,21 @@ The backend follows a DDD/layered architecture. The dependency arrow always poin
 
 ## What `go-arch-lint` covers vs. doesn't
 
-`go-arch-lint` operates at the **import-graph level only**. Even with `deepScan: true` it does not classify function-call, struct-literal, or string-literal shapes. The six existing CI grep gates in [`.github/workflows/backend.yml`](../../.github/workflows/backend.yml) are evaluated against that capability:
+`go-arch-lint` operates at the **import-graph level only**. Even with `deepScan: true` it does not classify function-call, struct-literal, or string-literal shapes. The CI grep gates in [`.github/workflows/backend.yml`](../../.github/workflows/backend.yml) are evaluated against that capability:
 
-| # | Step name in CI | Shape | Coverable by `go-arch-lint`? | Decision |
-|---|---|---|---|---|
-| 1 | Verify no `fmt.Errorf("%w")` remains | function-call + string arg | No | **keep** |
-| 2 | Forbid `gqlerr` imports inside `usecase` | import shape | **Yes** | **delete** (replaced by `go-arch-lint`) |
-| 3 | Forbid `&ucerr.ValidationError` / `&ucerr.ForbiddenError` struct literals | composite literal | No | **keep** |
-| 4 | Forbid resolver returning raw usecase error | call-sequence pattern | No | **keep** |
-| 5 | Verify no hardcoded `extensions.code` literals outside `gqlerr` | string literal | No | **keep** |
-| 6 | Schema-lint outcome-union enforcement | schema AST | No | **keep** |
+| # | Step name in CI | Shape | Why grep, not go-arch-lint |
+|---|---|---|---|
+| 1 | Verify no `fmt.Errorf("%w")` remains | function-call + string arg | go-arch-lint sees imports only |
+| 2 | Forbid `&ucerr.ValidationError` / `&ucerr.ForbiddenError` struct literals | composite literal | go-arch-lint sees imports only |
+| 3 | Forbid resolver returning raw usecase error | call-sequence pattern | go-arch-lint sees imports only |
+| 4 | Verify no hardcoded `extensions.code` literals outside `gqlerr` | string literal | go-arch-lint sees imports only |
+| 5 | Schema-lint outcome-union enforcement | schema AST | schema-lint covers GraphQL AST |
 
-Of the original six gates, only #2 was an import-shape check, so `go-arch-lint` replaces it directly. The remaining five (#1, #3, #4, #5, #6) enforce sub-import-level shapes (function calls, struct literals, string literals, schema AST) and stay as grep- or AST-based checks because `go-arch-lint` has no visibility into them.
+The one import-shape gate that previously enforced "`usecase` must not import `gqlerr`" is now expressed in [`backend/.go-arch-lint.yml`](../../backend/.go-arch-lint.yml) — the `usecase` component deliberately omits `gqlerr` from its `mayDependOn` list.
 
 ## Follow-up: more aggressive gate retirement
 
-Retiring gates #1, #3, and #5 requires a complementary tool. Two viable directions: (1) `golangci-lint` with `forbidigo` covers function-call shapes (regex over Go identifiers) and would retire gate #1; (2) `ast-grep` covers composite-literal, call-sequence, and string-literal shapes declaratively and would retire gates #3, #4, and #5. `depguard` is not on this list — it overlaps with `go-arch-lint` (both are import-graph linters) and would not add coverage. Track adoption under a dedicated issue and link it from this section.
+Retiring the function-call, composite-literal, call-sequence, and string-literal gates requires a complementary tool. Two viable directions: (1) `golangci-lint` with `forbidigo` covers function-call shapes (regex over Go identifiers) and would retire the `fmt.Errorf("%w")` gate; (2) `ast-grep` covers composite-literal, call-sequence, and string-literal shapes declaratively and would retire the remaining three. `depguard` is not on this list — it overlaps with `go-arch-lint` (both are import-graph linters) and would not add coverage. Track adoption under a dedicated issue and link it from this section.
 
 ## Operating notes
 
@@ -63,8 +62,6 @@ cd backend
 go tool go-arch-lint check --project-path .   # exits 1 on violations; output names the offending import
 go tool go-arch-lint graph --out /tmp/arch.svg  # optional: render the dependency graph as SVG
 ```
-
-For scripted use, the binary supports `--output-type=json`; inspect the actual schema with `--output-json-one-line | jq .` since v1.15.0 nests violations under `.Payload.ArchWarningsDeps` (subject to change between releases).
 
 The `go tool go-arch-lint` invocation works because the binary is declared as a tool dependency in `backend/go.mod` (a `tool` directive). No separate installation step is needed; `go mod download` fetches and checksum-verifies it as part of the normal module bootstrap. The tool's version is pinned in `go.sum` — update it via `go get -tool github.com/fe3dback/go-arch-lint@<new-tag> && go mod tidy`.
 
@@ -93,6 +90,6 @@ The two relevant facts are the component pair (`resolver` → `backend/internal/
 
 `go-arch-lint` is preferred for import-graph enforcement over ad-hoc grep because: (1) it is declaration-first — the allowed graph is a versioned YAML file that doubles as architecture documentation; (2) it produces structured output (`--json`) that is easy to parse in CI and to surface in tooling; (3) it handles `commonComponents` and `anyProjectDeps` semantically, so composition roots and generated packages do not require boilerplate allowances in every component; (4) it integrates as a Go tool dependency (`go get -tool`) and is therefore checksum-verified and reproducible across environments without a separate install step.
 
-The limitation that motivates keeping the remaining grep gates is fundamental to the approach: `go-arch-lint` reads the Go import graph, not the AST. It answers "does package A import package B?" but not "does file X call function Y?" or "does struct Z appear as a composite literal?". The grep gates (#1, #3, #4, #5) and the schema-lint gate (#6) each enforce a shape below the import-graph level and cannot be retired without a complementary AST-aware tool.
+The limitation that motivates keeping the remaining grep gates is fundamental to the approach: `go-arch-lint` reads the Go import graph, not the AST. It answers "does package A import package B?" but not "does file X call function Y?" or "does struct Z appear as a composite literal?". The function-call, composite-literal, call-sequence, and string-literal gates — plus the schema-lint gate — each enforce a shape below the import-graph level and cannot be retired without a complementary AST-aware tool.
 
 See [`.claude/rules/error-wrapping.md`](error-wrapping.md) for the full wire-format and error-wrapping conventions that the import-graph invariants support.
