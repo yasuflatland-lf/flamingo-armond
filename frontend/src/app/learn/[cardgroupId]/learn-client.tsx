@@ -103,11 +103,14 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
         mutation: SetLastViewedCardgroupMutation,
         variables: { cardgroupId },
         update: (cache, { data }) => {
-          if (!data?.setLastViewedCardgroup) return;
+          // Narrow on __typename before the cache write so an InputValidationError
+          // or unknown variant does not silently mutate the cache.
+          const payload = data?.setLastViewedCardgroup;
+          if (payload?.__typename !== "SetLastViewedCardgroupSuccess") return;
           cache.writeFragment({
             id: cache.identify({
               __typename: "User",
-              id: data.setLastViewedCardgroup.id,
+              id: payload.user.id,
             }),
             fragment: gql`
               fragment LastViewedFragment on User {
@@ -117,10 +120,18 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
               }
             `,
             data: {
-              lastViewedCardgroup: data.setLastViewedCardgroup.lastViewedCardgroup,
+              lastViewedCardgroup: payload.user.lastViewedCardgroup,
             },
           });
         },
+      })
+      .then((result) => {
+        const payload = result.data?.setLastViewedCardgroup;
+        if (payload && payload.__typename !== "SetLastViewedCardgroupSuccess") {
+          console.warn("[learn] setLastViewedCardgroup non-success variant", {
+            typename: payload.__typename,
+          });
+        }
       })
       .catch((err) => {
         // err.message is omitted — backend messages may echo user-authored content.

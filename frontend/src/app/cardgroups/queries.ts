@@ -74,10 +74,17 @@ export const CardgroupQuery = graphql(`
 export const CreateCardgroupMutation = graphql(`
   mutation CreateCardgroup($input: NewCardgroupInput!) {
     createCardgroup(input: $input) {
-      cardgroup {
-        id
-        name
-        updatedAt
+      __typename
+      ... on CreateCardgroupSuccess {
+        cardgroup {
+          id
+          name
+          updatedAt
+        }
+      }
+      ... on InputValidationError {
+        field
+        message
       }
     }
   }

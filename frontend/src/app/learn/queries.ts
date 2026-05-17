@@ -47,9 +47,18 @@ export const HandleSwipeMutation = graphql(`
 export const SetLastViewedCardgroupMutation = graphql(`
   mutation SetLastViewedCardgroup($cardgroupId: ID!) {
     setLastViewedCardgroup(cardgroupId: $cardgroupId) {
-      id
-      lastViewedCardgroup {
-        id
+      __typename
+      ... on SetLastViewedCardgroupSuccess {
+        user {
+          id
+          lastViewedCardgroup {
+            id
+          }
+        }
+      }
+      ... on InputValidationError {
+        field
+        message
       }
     }
   }
