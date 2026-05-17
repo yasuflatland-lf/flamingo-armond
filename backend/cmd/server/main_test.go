@@ -709,7 +709,7 @@ func TestGraphQL_UpdateProfile_Authenticated(t *testing.T) {
 	userID := insertAuthUser(t, context.Background())
 	tok := f.sign(t, userID)
 
-	mutation := `{"query":"mutation { updateProfile(input: { displayName: \"Alice\", bio: \"hi\" }) { user { id displayName bio } } }"}`
+	mutation := `{"query":"mutation { updateProfile(input: { displayName: \"Alice\", bio: \"hi\" }) { __typename ... on UpdateProfileSuccess { user { id displayName bio } } ... on InputValidationError { field message } } }"}`
 	resp := postGraphQL(t, ts.URL+"/query", mutation, tok)
 
 	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
@@ -717,6 +717,9 @@ func TestGraphQL_UpdateProfile_Authenticated(t *testing.T) {
 	}
 	data, _ := resp["data"].(map[string]any)
 	upd, _ := data["updateProfile"].(map[string]any)
+	if upd["__typename"] != "UpdateProfileSuccess" {
+		t.Fatalf("expected UpdateProfileSuccess, got %v; resp=%v", upd["__typename"], resp)
+	}
 	user, _ := upd["user"].(map[string]any)
 	if user == nil {
 		t.Fatalf("expected updateProfile.user, got nil; resp=%v", resp)
@@ -1364,7 +1367,7 @@ func TestGraphQL_UpdateCardgroup_NonOwner_Unauthenticated(t *testing.T) {
 
 	subB := insertAuthUser(t, ctx)
 	tokB := f.sign(t, subB)
-	body := fmt.Sprintf(`{"query":"mutation { updateCardgroup(id: \"%s\", input: {name: \"stolen\"}) { cardgroup { id } } }"}`, cgID)
+	body := fmt.Sprintf(`{"query":"mutation { updateCardgroup(id: \"%s\", input: {name: \"stolen\"}) { __typename } }"}`, cgID)
 	resp := postGraphQL(t, ts.URL+"/query", body, tokB)
 
 	if code := gqlErrCode(resp); code != "UNAUTHENTICATED" {
@@ -1801,9 +1804,15 @@ func TestGraphQL_HandleSwipe_HappyPath(t *testing.T) {
 
 	gqlQuery := fmt.Sprintf(`mutation {
 		handleSwipe(input: {cardId: %s, cardgroupId: %s, mode: 4}) {
-			performanceMode
-			metrics { reviewCount successRate }
-			nextCards { id }
+			__typename
+			... on HandleSwipeSuccess {
+				response {
+					performanceMode
+					metrics { reviewCount successRate }
+					nextCards { id }
+				}
+			}
+			... on InputValidationError { field message }
 		}
 	}`, gqlStringLit(firstID), gqlStringLit(cgID))
 	body, err := json.Marshal(map[string]string{"query": gqlQuery})
@@ -1818,17 +1827,24 @@ func TestGraphQL_HandleSwipe_HappyPath(t *testing.T) {
 	if payload == nil {
 		t.Fatalf("expected handleSwipe payload; resp=%v", resp)
 	}
-	if payload["performanceMode"] != float64(1) {
-		t.Fatalf("performanceMode=%v, want 1", payload["performanceMode"])
+	if payload["__typename"] != "HandleSwipeSuccess" {
+		t.Fatalf("expected HandleSwipeSuccess, got %v; resp=%v", payload["__typename"], resp)
 	}
-	metrics, _ := payload["metrics"].(map[string]any)
+	swipeResp, _ := payload["response"].(map[string]any)
+	if swipeResp == nil {
+		t.Fatalf("expected handleSwipe.response; resp=%v", resp)
+	}
+	if swipeResp["performanceMode"] != float64(1) {
+		t.Fatalf("performanceMode=%v, want 1", swipeResp["performanceMode"])
+	}
+	metrics, _ := swipeResp["metrics"].(map[string]any)
 	if metrics["reviewCount"] != float64(1) {
 		t.Fatalf("metrics.reviewCount=%v, want 1", metrics["reviewCount"])
 	}
 	if metrics["successRate"] != float64(1) {
 		t.Fatalf("metrics.successRate=%v, want 1", metrics["successRate"])
 	}
-	nextCards, _ := payload["nextCards"].([]any)
+	nextCards, _ := swipeResp["nextCards"].([]any)
 	for _, item := range nextCards {
 		card, _ := item.(map[string]any)
 		if card["id"] == firstID {
@@ -1869,13 +1885,20 @@ func TestGraphQL_HandleSwipe_InvalidModes(t *testing.T) {
 	cardID := createTestCard(t, ts.URL, tok, cgID, "front", "back")
 
 	for _, mode := range []int{0, 3, 5} {
-		body := fmt.Sprintf(`{"query":"mutation { handleSwipe(input: {cardId: \"%s\", cardgroupId: \"%s\", mode: %d}) { performanceMode } }"}`, cardID, cgID, mode)
+		body := fmt.Sprintf(`{"query":"mutation { handleSwipe(input: {cardId: \"%s\", cardgroupId: \"%s\", mode: %d}) { __typename ... on InputValidationError { field message } } }"}`, cardID, cgID, mode)
 		resp := postGraphQL(t, ts.URL+"/query", body, tok)
-		if code := gqlErrCode(resp); code != "BAD_USER_INPUT" {
-			t.Fatalf("mode=%d: expected BAD_USER_INPUT, got %q; resp=%v", mode, code, resp)
+		if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+			t.Fatalf("mode=%d: unexpected GraphQL errors: %v", mode, errs)
 		}
-		if field := gqlErrField(resp); field != "mode" {
-			t.Fatalf("mode=%d: expected extensions.field=mode, got %q; resp=%v", mode, field, resp)
+		payload, _ := resp["data"].(map[string]any)["handleSwipe"].(map[string]any)
+		if payload == nil {
+			t.Fatalf("mode=%d: expected data.handleSwipe, got nil; resp=%v", mode, resp)
+		}
+		if payload["__typename"] != "InputValidationError" {
+			t.Fatalf("mode=%d: expected InputValidationError, got %v; resp=%v", mode, payload["__typename"], resp)
+		}
+		if payload["field"] != "mode" {
+			t.Fatalf("mode=%d: expected field=mode, got %q; resp=%v", mode, payload["field"], resp)
 		}
 	}
 }
@@ -1891,7 +1914,7 @@ func TestGraphQL_HandleSwipe_NonOwnerUnauthenticated(t *testing.T) {
 
 	subB := insertAuthUser(t, ctx)
 	tokB := f.sign(t, subB)
-	body := fmt.Sprintf(`{"query":"mutation { handleSwipe(input: {cardId: \"%s\", cardgroupId: \"%s\", mode: 4}) { performanceMode } }"}`, cardID, cgID)
+	body := fmt.Sprintf(`{"query":"mutation { handleSwipe(input: {cardId: \"%s\", cardgroupId: \"%s\", mode: 4}) { __typename } }"}`, cardID, cgID)
 	resp := postGraphQL(t, ts.URL+"/query", body, tokB)
 
 	if code := gqlErrCode(resp); code != "UNAUTHENTICATED" {
@@ -1912,22 +1935,32 @@ func TestGraphQL_HandleSwipe_CrossCardgroupMatchesMissingCardError(t *testing.T)
 	missingCardID := uuid.NewString()
 
 	bodyForCard := func(cardID string) string {
-		return fmt.Sprintf(`{"query":"mutation { handleSwipe(input: {cardId: \"%s\", cardgroupId: \"%s\", mode: 4}) { performanceMode } }"}`, cardID, ownedCgID)
+		return fmt.Sprintf(`{"query":"mutation { handleSwipe(input: {cardId: \"%s\", cardgroupId: \"%s\", mode: 4}) { __typename ... on InputValidationError { field message } } }"}`, cardID, ownedCgID)
 	}
 	mismatchResp := postGraphQL(t, ts.URL+"/query", bodyForCard(otherCardID), tok)
 	missingResp := postGraphQL(t, ts.URL+"/query", bodyForCard(missingCardID), tok)
 
-	for name, resp := range map[string]map[string]any{"mismatch": mismatchResp, "missing": missingResp} {
-		if code := gqlErrCode(resp); code != "BAD_USER_INPUT" {
-			t.Fatalf("%s: expected BAD_USER_INPUT, got %q; resp=%v", name, code, resp)
+	extractPayload := func(name string, resp map[string]any) map[string]any {
+		if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+			t.Fatalf("%s: unexpected GraphQL errors: %v", name, errs)
 		}
-		if field := gqlErrField(resp); field != "cardId" {
-			t.Fatalf("%s: expected extensions.field=cardId, got %q; resp=%v", name, field, resp)
+		payload, _ := resp["data"].(map[string]any)["handleSwipe"].(map[string]any)
+		if payload == nil {
+			t.Fatalf("%s: expected data.handleSwipe, got nil; resp=%v", name, resp)
 		}
+		if payload["__typename"] != "InputValidationError" {
+			t.Fatalf("%s: expected InputValidationError, got %v; resp=%v", name, payload["__typename"], resp)
+		}
+		if payload["field"] != "cardId" {
+			t.Fatalf("%s: expected field=cardId, got %q; resp=%v", name, payload["field"], resp)
+		}
+		return payload
 	}
-	if gqlErrMessage(mismatchResp) != gqlErrMessage(missingResp) {
+	mismatchPayload := extractPayload("mismatch", mismatchResp)
+	missingPayload := extractPayload("missing", missingResp)
+	if mismatchPayload["message"] != missingPayload["message"] {
 		t.Fatalf("mismatched-cardgroup and missing-card errors differ: mismatch=%q missing=%q",
-			gqlErrMessage(mismatchResp), gqlErrMessage(missingResp))
+			mismatchPayload["message"], missingPayload["message"])
 	}
 }
 
