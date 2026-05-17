@@ -191,7 +191,7 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 
 // TestSwipeUsecase_HandleSwipe_NonOwner_Unauthenticated verifies that
 // HandleSwipe rejects a caller whose user ID does not match the cardgroup
-// OwnerID.  authorizeCardgroup returns ucerr.ErrUnauthenticated for a
+// OwnerID.  authorizeCardgroupOrBadInput returns ucerr.ErrUnauthenticated for a
 // non-owner, which the resolver layer translates into UNAUTHENTICATED on
 // the wire.
 func TestSwipeUsecase_HandleSwipe_NonOwner_Unauthenticated(t *testing.T) {
@@ -381,12 +381,12 @@ func TestSwipeUsecase_HandleSwipe_CardNotFound_ValidationVariant(t *testing.T) {
 }
 
 // TestSwipeUsecase_HandleSwipe_CardgroupNotFound_ValidationVariant verifies that
-// when authorizeCardgroup cannot find the cardgroup, HandleSwipe returns the
+// when authorizeCardgroupOrBadInput cannot find the cardgroup, HandleSwipe returns the
 // Validation variant with field "cardgroupId" rather than an error channel error.
 func TestSwipeUsecase_HandleSwipe_CardgroupNotFound_ValidationVariant(t *testing.T) {
 	t.Parallel()
 
-	// FindByID returns ErrNotFound → authorizeCardgroup returns
+	// FindByID returns ErrNotFound → authorizeCardgroupOrBadInput returns
 	// ucerr.NewValidationError("cardgroupId", "cardgroup not found") → liftValidationErr
 	// promotes it to outcome.Validation.
 	cardgroupRepo := &mockCardgroupRepoForCard{

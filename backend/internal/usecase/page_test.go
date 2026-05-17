@@ -57,6 +57,13 @@ func TestTrimAndDetect(t *testing.T) {
 			wantOut:  []int{},
 			wantMore: false,
 		},
+		{
+			name:     "nil input returns nil, no more",
+			items:    nil,
+			want:     3,
+			wantOut:  nil,
+			wantMore: false,
+		},
 	}
 
 	for _, tc := range tests {
@@ -123,6 +130,13 @@ func TestTrimAndDetectBackward(t *testing.T) {
 			items:    []int{},
 			want:     5,
 			wantOut:  []int{},
+			wantMore: false,
+		},
+		{
+			name:     "nil input returns nil, no more",
+			items:    nil,
+			want:     3,
+			wantOut:  nil,
 			wantMore: false,
 		},
 	}
