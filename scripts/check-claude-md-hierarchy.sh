@@ -16,14 +16,13 @@ if [[ -f docs/frontend.md ]]; then
 fi
 
 # Check 3: every docs/frontend/*.md direct child appears in frontend/CLAUDE.md
-actual=$(find docs/frontend -maxdepth 1 -type f -name '*.md' | xargs -I{} basename {} | sort -u)
-indexed=$(grep -oE 'docs/frontend/[a-z0-9-]+\.md' frontend/CLAUDE.md \
-          | sed 's|docs/frontend/||' \
-          | sort -u)
-if ! diff -u <(echo "$actual") <(echo "$indexed") > /dev/null; then
+actual=$(find docs/frontend -maxdepth 1 -type f -name '*.md' -exec basename {} \; | sort -u)
+indexed=$(grep -oE 'docs/frontend/[a-z0-9-]+\.md' frontend/CLAUDE.md | sed 's|docs/frontend/||' | sort -u)
+diff_out=$(diff -u <(echo "$actual") <(echo "$indexed") 2>/dev/null || true)
+if [[ -n "$diff_out" ]]; then
   echo "ERROR: frontend/CLAUDE.md index is out of sync with docs/frontend/ contents" >&2
   echo "--- docs/frontend/ (actual) vs frontend/CLAUDE.md (indexed) ---" >&2
-  diff -u <(echo "$actual") <(echo "$indexed") >&2 || true
+  echo "$diff_out" >&2
   exit 1
 fi
 

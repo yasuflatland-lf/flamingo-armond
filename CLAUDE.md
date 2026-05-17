@@ -23,4 +23,4 @@ This file is **L1**: keep it ≤35 lines, top-level orientation only. Overflow g
 - **L2 — `docs/`** — architecture & topic docs (source of truth for technical detail). Soft cap ~600 lines per file; if a top-level section exceeds that, split by topic.
 - **L3 — `.claude/rules/`** — cross-cutting rules and conventions (apply across multiple L2 docs, or to all of `backend/` / `frontend/`).
 
-Prefer updating an L2 or L3 doc over expanding this file. Hierarchical CLAUDE.md: see `<area>/CLAUDE.md` for area orientation. `README.md` § "Further reading" remains as the human-onboarding index. When L1 grows past 35 lines, move the newest section down a tier and leave a one-line pointer here.
+Prefer updating an L2 or L3 doc over expanding this file. `README.md` § "Further reading" is the human-onboarding index. When L1 grows past 35 lines, move the newest section down a tier and leave a one-line pointer here.
