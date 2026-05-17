@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { RoleForm } from "@/components/admin/role-form";
 import { Button } from "@/components/ui/button";
+import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import { AdminUpdateRoleMutation, SYSTEM_ROLE_NAMES } from "../../queries";
 
 export type RoleForEdit = { id: string; name: string };
@@ -13,27 +14,6 @@ export type RoleForEdit = { id: string; name: string };
 type Props = {
   role: RoleForEdit;
 };
-
-// Lift GraphQL extension codes from an arbitrary Apollo / network error for
-// the warn payload. We do NOT trust err.message — backend messages may echo
-// user input — but extensions.code is a fixed enum from the server's
-// resolver layer and safe to log. The shape check is permissive: if the
-// underlying transport surfaces graphQLErrors as a property on the Error,
-// pluck them; otherwise return an empty list. We deliberately do not
-// reuse parseGqlErrors here — that helper is keyed on the literal
-// "GraphQL errors: " message prefix, which not every transport produces.
-function liftGraphQLCodes(err: unknown): string[] {
-  if (err == null || typeof err !== "object") return [];
-  const maybe = (err as { graphQLErrors?: unknown }).graphQLErrors;
-  if (!Array.isArray(maybe)) return [];
-  const codes: string[] = [];
-  for (const entry of maybe) {
-    const code = (entry as { extensions?: { code?: unknown } } | null | undefined)?.extensions
-      ?.code;
-    if (typeof code === "string") codes.push(code);
-  }
-  return codes;
-}
 
 export function EditRoleClient({ role }: Props) {
   const router = useRouter();

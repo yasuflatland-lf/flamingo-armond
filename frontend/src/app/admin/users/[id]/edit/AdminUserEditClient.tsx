@@ -1,12 +1,11 @@
 "use client";
 
-import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { useMutation } from "@apollo/client/react";
 import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { AdminRoleFieldsFragment } from "@/generated/graphql";
-import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import {
   AdminAssignRoleMutation,
   AdminRevokeRoleMutation,
@@ -44,21 +43,11 @@ const DISPLAY_NAME_MAX = 50;
 /** Maximum grapheme clusters for bio (mirrors usecase/user.go bioMax). */
 const BIO_MAX = 500;
 
-/**
- * Classify a raw Apollo error into a user-facing banner string.
- * FORBIDDEN errors surface the server message verbatim (e.g. self-demotion guard).
- */
-function classifyError(err: unknown): string {
-  if (!err) return "";
-  if (CombinedGraphQLErrors.is(err)) {
-    for (const ge of err.errors) {
-      if (ge.extensions?.code === "FORBIDDEN") {
-        return ge.message;
-      }
-    }
-  }
-  return getBackendErrorBanner(err) ?? "An unexpected error occurred. Please try again.";
-}
+// User-facing error copy shared between handleSave and handleRoleToggle.
+const ERR_FORBIDDEN = "You do not have permission.";
+const ERR_UNAUTHENTICATED = "Your session has expired. Sign in again.";
+const ERR_UNEXPECTED = "An unexpected error occurred. Please try again.";
+const ERR_SOMETHING_WRONG = "Something went wrong. Please try again.";
 
 export function AdminUserEditClient({ user, allRoles }: Props) {
   const [displayName, setDisplayName] = useState(user.displayName ?? "");
@@ -84,6 +73,10 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
     setSaveBanner("");
   }
 
+  function setRoleBanner(roleId: string, message: string): void {
+    setRoleBanners((prev) => ({ ...prev, [roleId]: message }));
+  }
+
   /** Client-side validation mirror of server-side constraints. Returns error or "". */
   function validate(): string {
     const trimmed = displayName.trim();
@@ -101,46 +94,100 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
       return;
     }
     clearSaveStatus();
-
     try {
-      await runUpdate({
+      const result = await runUpdate({
         variables: {
           id: user.id,
-          input: {
-            displayName: displayName.trim(),
-            bio: bio || null,
-          },
+          input: { displayName: displayName.trim(), bio: bio || null },
         },
       });
-      setSaveBanner("Changes saved.");
+      const payload = result.data?.adminUpdateUser;
+      // Capture typename before narrowing so the unknown-variant branch still
+      // has access to it (TypeScript narrows to `never` after the known cases).
+      const saveTypename = payload?.__typename ?? null;
+      if (payload?.__typename === "InputValidationError") {
+        setSaveError(payload.message);
+        return;
+      }
+      if (payload?.__typename === "AdminUpdateUserSuccess") {
+        setSaveBanner("Changes saved.");
+        return;
+      }
+      // Unknown variant: null payload, partial-response null bubble, or a
+      // future union variant the client was not regenerated against.
+      console.warn("[admin/users/:id/edit] unexpected save payload", {
+        typename: saveTypename,
+      });
+      setSaveError(ERR_SOMETHING_WRONG);
     } catch (err) {
-      setSaveError(classifyError(err));
+      const codes = liftGraphQLCodes(err);
+      // err.message is omitted — backend messages may echo user input. codes
+      // is safe to log (fixed enum of GraphQL extension codes). Warning is
+      // emitted on every catch so unmapped transport rejections (network
+      // down, malformed response) leave a diagnostic breadcrumb instead of
+      // silently degrading to the generic banner.
+      console.warn("[admin/users/:id/edit] adminUpdateUser rejected", {
+        name: err instanceof Error ? err.name : "unknown",
+        codes,
+      });
+      setSaveError(
+        codes.includes("FORBIDDEN")
+          ? ERR_FORBIDDEN
+          : codes.includes("UNAUTHENTICATED")
+            ? ERR_UNAUTHENTICATED
+            : ERR_UNEXPECTED,
+      );
     }
   }
 
   async function handleRoleToggle(roleId: string, currentlyAssigned: boolean) {
     setRoleInflight((prev) => ({ ...prev, [roleId]: true }));
-    setRoleBanners((prev) => ({ ...prev, [roleId]: "" }));
-
+    setRoleBanner(roleId, "");
     try {
       const variables = { userId: user.id, roleId };
-      // Update local role state from the server-truth response. Fragment masking
-      // is compile-time only; at runtime the shape is the plain object.
-      const serverRoles = (
-        currentlyAssigned
-          ? (await runRevoke({ variables })).data?.revokeRole?.roles
-          : (await runAssign({ variables })).data?.assignRole?.roles
-      ) as AdminRoleFieldsFragment[] | undefined;
-      if (serverRoles) {
-        setUserRoleIds(new Set(serverRoles.map((r) => r.id)));
+      const result = currentlyAssigned
+        ? (await runRevoke({ variables })).data?.revokeRole
+        : (await runAssign({ variables })).data?.assignRole;
+      // Capture typename before narrowing so the unknown-variant branch still
+      // has access to it (TypeScript narrows to `never` after the known cases).
+      const roleTypename = result?.__typename ?? null;
+      if (
+        result?.__typename === "InputValidationError" ||
+        result?.__typename === "CannotRevokeOwnAdminRoleError"
+      ) {
+        setRoleBanner(roleId, result.message);
+        return;
       }
+      if (
+        result?.__typename === "RevokeRoleSuccess" ||
+        result?.__typename === "AssignRoleSuccess"
+      ) {
+        // Fragment masking is compile-time only; cast to read role ids.
+        const serverRoles = result.user.roles as AdminRoleFieldsFragment[];
+        setUserRoleIds(new Set(serverRoles.map((r) => r.id)));
+        return;
+      }
+      // Unknown variant: null payload / partial-response null bubble / future variant.
+      console.warn("[admin/users/:id/edit] unexpected role-toggle payload", {
+        typename: roleTypename,
+      });
+      setRoleBanner(roleId, ERR_SOMETHING_WRONG);
     } catch (err) {
-      // On failure (including FORBIDDEN), surface the banner.
-      // No optimistic writes were made, so local state already reflects server truth.
-      setRoleBanners((prev) => ({
-        ...prev,
-        [roleId]: classifyError(err),
-      }));
+      const codes = liftGraphQLCodes(err);
+      // err.message is omitted — backend messages may echo user input. codes
+      // is safe to log. See handleSave for the rationale.
+      console.warn("[admin/users/:id/edit] role-toggle rejected", {
+        name: err instanceof Error ? err.name : "unknown",
+        codes,
+      });
+      setRoleBanner(
+        roleId,
+        codes.includes("FORBIDDEN")
+          ? ERR_FORBIDDEN
+          : codes.includes("UNAUTHENTICATED")
+            ? ERR_UNAUTHENTICATED
+            : ERR_UNEXPECTED,
+      );
     } finally {
       setRoleInflight((prev) => ({ ...prev, [roleId]: false }));
     }

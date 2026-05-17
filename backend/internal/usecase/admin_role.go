@@ -35,9 +35,19 @@ var roleNamePattern = regexp.MustCompile(`^[a-z0-9_-]+$`)
 type AdminRoleUsecase interface {
 	List(ctx context.Context) ([]*domain.Role, error)
 	Get(ctx context.Context, id string) (*domain.Role, error)
-	Create(ctx context.Context, name string) (*domain.Role, error)
+	Create(ctx context.Context, name string) (CreateRoleOutcome, error)
 	Update(ctx context.Context, id, name string) (UpdateRoleOutcome, error)
 	Delete(ctx context.Context, id string) error
+}
+
+// CreateRoleOutcome is the result of adminRoleUsecase.Create. Exactly one of
+// Role or Validation is non-nil on a nil-error return: a successful insert
+// carries the new Role; a name that fails normalisation/validation or
+// collides with an existing role surfaces via Validation so the resolver
+// maps it to the CreateRoleResult union's InputValidationError variant.
+type CreateRoleOutcome struct {
+	Role       *domain.Role
+	Validation *InputValidationInfo
 }
 
 // adminRoleRepoForCRUD is the narrow repository surface consumed by the
@@ -148,20 +158,49 @@ func (u *adminRoleUsecase) Get(ctx context.Context, id string) (*domain.Role, er
 
 // Create inserts a new role with the supplied name. The name is normalised
 // (trimmed, lowercased) and validated against the role-name character set
-// before reaching the repository.
-func (u *adminRoleUsecase) Create(ctx context.Context, name string) (*domain.Role, error) {
+// before reaching the repository. Validation failures and repository-level
+// classified failures (duplicate name) surface via outcome.Validation so the
+// resolver maps them to the CreateRoleResult union's InputValidationError
+// variant; cancellation and infrastructure errors surface via the error
+// return.
+func (u *adminRoleUsecase) Create(ctx context.Context, name string) (CreateRoleOutcome, error) {
 	if err := u.requireAdmin(ctx); err != nil {
-		return nil, err
+		return CreateRoleOutcome{}, err
 	}
-	normalized, err := validateRoleName(name)
+	normalized, info, err := normalizeAndValidateRoleName(name)
 	if err != nil {
-		return nil, err
+		return CreateRoleOutcome{}, err
+	}
+	if info != nil {
+		return CreateRoleOutcome{Validation: info}, nil
 	}
 	role, err := u.roles.Create(ctx, normalized)
 	if err != nil {
-		return nil, mapAdminRoleError(err, "name", "usecase: admin role create")
+		info, perr := mapAdminRoleError(err, "name", "usecase: admin role create")
+		if perr != nil {
+			return CreateRoleOutcome{}, perr
+		}
+		return CreateRoleOutcome{Validation: info}, nil
 	}
-	return role, nil
+	return CreateRoleOutcome{Role: role}, nil
+}
+
+// normalizeAndValidateRoleName wraps validateRoleName for outcome-bearing
+// callers: it returns the canonical name on success, or an
+// InputValidationInfo (with empty canonical name) on a validation failure.
+// Non-validation errors are not expected from validateRoleName today; if
+// one ever appears, it propagates via the error return so the caller can
+// surface it as INTERNAL.
+func normalizeAndValidateRoleName(name string) (string, *InputValidationInfo, error) {
+	normalized, err := validateRoleName(name)
+	if err != nil {
+		info, perr := liftValidationErr(err)
+		if perr != nil {
+			return "", nil, perr
+		}
+		return "", info, nil
+	}
+	return normalized, nil, nil
 }
 
 // UpdateRoleOutcome is the result of admin_role.Update. Exactly one of Role
@@ -216,7 +255,7 @@ func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (UpdateR
 
 	existing, err := u.roles.FindByID(ctx, id)
 	if err != nil {
-		return UpdateRoleOutcome{}, mapAdminRoleError(err, "id", "usecase: admin role update: find")
+		return UpdateRoleOutcome{}, lowerValidationInfo(mapAdminRoleError(err, "id", "usecase: admin role update: find"))
 	}
 	if isSystemRole(existing.Name) {
 		return UpdateRoleOutcome{SystemRoleConflict: &SystemRoleConflictInfo{
@@ -227,7 +266,7 @@ func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (UpdateR
 
 	role, err := u.roles.Update(ctx, id, normalized)
 	if err != nil {
-		return UpdateRoleOutcome{}, mapAdminRoleError(err, "id", "usecase: admin role update")
+		return UpdateRoleOutcome{}, lowerValidationInfo(mapAdminRoleError(err, "id", "usecase: admin role update"))
 	}
 	return UpdateRoleOutcome{Role: role}, nil
 }
@@ -249,39 +288,61 @@ func (u *adminRoleUsecase) Delete(ctx context.Context, id string) error {
 
 	existing, err := u.roles.FindByID(ctx, id)
 	if err != nil {
-		return mapAdminRoleError(err, "id", "usecase: admin role delete: find")
+		return lowerValidationInfo(mapAdminRoleError(err, "id", "usecase: admin role delete: find"))
 	}
 	if isSystemRole(existing.Name) {
 		return ucerr.NewForbiddenError(fmt.Sprintf("cannot delete system role %q", existing.Name))
 	}
 
 	if err := u.roles.Delete(ctx, id); err != nil {
-		return mapAdminRoleError(err, "id", "usecase: admin role delete")
+		return lowerValidationInfo(mapAdminRoleError(err, "id", "usecase: admin role delete"))
 	}
 	return nil
 }
 
-// mapAdminRoleError classifies the role-repository sentinel set into the
-// outcomes the resolver consumes via gqlerr.FromUsecaseError:
-//   - repository.ErrRoleNotFound            -> *ucerr.ValidationError{Field: notFoundField}
-//   - repository.ErrRoleDuplicate           -> *ucerr.ValidationError{Field: "name"}
-//   - context.Canceled / DeadlineExceeded   -> passthrough
-//   - default                               -> eris.Wrap(err, wrap) (opaque chain -> INTERNAL)
+// mapAdminRoleError classifies the role-repository sentinel set into either
+// input-validation data (first slot non-nil) or a propagating error (second
+// slot non-nil). The shape mirrors mapRoleAssignmentError so promoted
+// outcome-bearing callers can route validation refusals into outcome data
+// uniformly:
+//   - repository.ErrRoleNotFound            -> InputValidationInfo{Field: notFoundField}
+//   - repository.ErrRoleDuplicate           -> InputValidationInfo{Field: "name"}
+//   - context.Canceled / DeadlineExceeded   -> passthrough via error
+//   - default                               -> eris.Wrap(err, wrap) via error
 //
 // The notFoundField argument lets callers name the request field that was bad
 // (e.g. "id" for Update / Delete / Get-from-Update) without hardcoding a
-// single field name here.
+// single field name here. Forbidden conditions are constructed at the call
+// sites, not via this mapper.
 //
-// Forbidden conditions are constructed at the call sites, not via this mapper.
-func mapAdminRoleError(err error, notFoundField, wrap string) error {
+// Unpromoted callers (Update, Delete) wrap the first-slot InputValidationInfo
+// back into a *ucerr.ValidationError via lowerValidationInfo so their
+// error-returning signatures stay intact.
+func mapAdminRoleError(err error, notFoundField, wrap string) (*InputValidationInfo, error) {
 	switch {
 	case errors.Is(err, repository.ErrRoleNotFound):
-		return ucerr.NewValidationError(notFoundField, "role not found")
+		return NewInputValidationInfo(notFoundField, "role not found"), nil
 	case errors.Is(err, repository.ErrRoleDuplicate):
-		return ucerr.NewValidationError("name", "role name already exists")
+		return NewInputValidationInfo("name", "role name already exists"), nil
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-		return err
+		return nil, err
 	default:
-		return eris.Wrap(err, wrap)
+		return nil, eris.Wrap(err, wrap)
 	}
+}
+
+// lowerValidationInfo is the inverse of liftValidationErr for unpromoted
+// callers of mapAdminRoleError (adminRoleUsecase.Update / Delete) that keep
+// the legacy error-returning signature. Given the (info, err) tuple returned
+// by mapAdminRoleError, it returns a single error: the propagating error if
+// non-nil, otherwise a *ucerr.ValidationError reconstructed from the info,
+// otherwise nil.
+func lowerValidationInfo(info *InputValidationInfo, err error) error {
+	if err != nil {
+		return err
+	}
+	if info != nil {
+		return ucerr.NewValidationError(info.Field, info.Message)
+	}
+	return nil
 }

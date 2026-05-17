@@ -1,11 +1,77 @@
+import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { describe, expect, test, vi } from "vitest";
-import { isForbiddenGraphQLError, isUnauthenticatedGraphQLError } from "./graphql-errors";
+import {
+  isForbiddenGraphQLError,
+  isUnauthenticatedGraphQLError,
+  liftGraphQLCodes,
+} from "./graphql-errors";
 
 const PREFIX = "GraphQL errors: ";
 
 function makeErr(payload: unknown): Error {
   return new Error(PREFIX + JSON.stringify(payload));
 }
+
+/** Build a CombinedGraphQLErrors from a plain errors array. */
+function makeCombinedError(
+  errors: Array<{ message: string; extensions?: Record<string, unknown> }>,
+): CombinedGraphQLErrors {
+  return new CombinedGraphQLErrors({ errors });
+}
+
+describe("liftGraphQLCodes", () => {
+  test("returns extension codes from a CombinedGraphQLErrors, skipping entries without a code", () => {
+    const err = makeCombinedError([
+      { message: "Not allowed", extensions: { code: "FORBIDDEN" } },
+      // Entry without an extensions.code — must be skipped silently.
+      { message: "Floating message", extensions: {} },
+    ]);
+    expect(liftGraphQLCodes(err)).toEqual(["FORBIDDEN"]);
+  });
+
+  test("returns multiple codes preserving order", () => {
+    const err = makeCombinedError([
+      { message: "Session expired", extensions: { code: "UNAUTHENTICATED" } },
+      { message: "Not allowed", extensions: { code: "FORBIDDEN" } },
+    ]);
+    expect(liftGraphQLCodes(err)).toEqual(["UNAUTHENTICATED", "FORBIDDEN"]);
+  });
+
+  test("returns empty array for a non-CombinedGraphQLErrors (plain) Error", () => {
+    expect(liftGraphQLCodes(new Error("network down"))).toEqual([]);
+  });
+
+  test("ignores a v3-shaped Error that carries .graphQLErrors but is not a CombinedGraphQLErrors", () => {
+    // Guards the Apollo v3 → v4 migration: the old shape attached an array
+    // named `graphQLErrors` to a plain Error. v4 surfaces a typed
+    // CombinedGraphQLErrors instance instead. liftGraphQLCodes must NOT match
+    // the v3 shape — doing so would mask a real migration regression.
+    const v3Shaped = Object.assign(new Error("transport"), {
+      graphQLErrors: [{ extensions: { code: "FORBIDDEN" } }],
+    });
+    expect(liftGraphQLCodes(v3Shaped)).toEqual([]);
+  });
+
+  test("returns empty array for null / undefined", () => {
+    expect(liftGraphQLCodes(null)).toEqual([]);
+    expect(liftGraphQLCodes(undefined)).toEqual([]);
+  });
+
+  test("returns empty array for a primitive (string / number)", () => {
+    expect(liftGraphQLCodes("oops")).toEqual([]);
+    expect(liftGraphQLCodes(42)).toEqual([]);
+  });
+
+  test("ignores non-string extensions.code values", () => {
+    // The shape narrows on `typeof code === 'string'`; numeric or object
+    // values must be skipped so the warn payload stays a string[] enum.
+    const err = makeCombinedError([
+      { message: "Bad code", extensions: { code: 500 } },
+      { message: "Good code", extensions: { code: "INTERNAL" } },
+    ]);
+    expect(liftGraphQLCodes(err)).toEqual(["INTERNAL"]);
+  });
+});
 
 describe("isUnauthenticatedGraphQLError", () => {
   test("non-Error value returns false", () => {

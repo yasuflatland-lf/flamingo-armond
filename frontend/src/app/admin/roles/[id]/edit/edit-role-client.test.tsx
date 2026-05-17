@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -7,6 +8,17 @@ import { describe, expect, it, vi } from "vitest";
 
 import { AdminUpdateRoleDocument } from "@/generated/graphql";
 import { EditRoleClient, type RoleForEdit } from "./edit-role-client";
+
+/**
+ * Build a CombinedGraphQLErrors carrying a single extension code. Mirrors the
+ * runtime shape Apollo Client v4 surfaces to useMutation's catch path — this
+ * is the shape liftGraphQLCodes narrows via CombinedGraphQLErrors.is.
+ */
+function makeCodedError(code: string): CombinedGraphQLErrors {
+  return new CombinedGraphQLErrors({
+    errors: [{ message: "transport", extensions: { code } }],
+  });
+}
 
 const mockPush = vi.fn();
 const mockRefresh = vi.fn();
@@ -205,21 +217,18 @@ describe("EditRoleClient", () => {
     mockPush.mockClear();
     mockRefresh.mockClear();
 
-    // Match the Apollo runtime shape: an Error with a graphQLErrors array
-    // carrying the extension code. liftGraphQLCodes reads err.graphQLErrors
-    // directly — it does NOT use the "GraphQL errors: " prefix that gqlFetch
-    // produces, which is the SSR-only shape. Using the runtime shape here
-    // ensures the test exercises the production code path for useMutation.
-    const authError = Object.assign(new Error("transport"), {
-      graphQLErrors: [{ extensions: { code: "UNAUTHENTICATED" } }],
-    });
+    // Match the Apollo runtime shape: CombinedGraphQLErrors with
+    // extensions.code. liftGraphQLCodes narrows via CombinedGraphQLErrors.is —
+    // it does NOT use the "GraphQL errors: " prefix that gqlFetch produces,
+    // which is the SSR-only shape. Using the runtime shape here ensures the
+    // test exercises the production code path for useMutation.
     const mocks = [
       {
         request: {
           query: AdminUpdateRoleDocument,
           variables: { id: CUSTOM_ROLE.id, name: "reviewer" },
         },
-        error: authError,
+        error: makeCodedError("UNAUTHENTICATED"),
       },
     ];
 
@@ -263,16 +272,13 @@ describe("EditRoleClient", () => {
     mockRefresh.mockClear();
 
     // Apollo runtime shape — same reasoning as the UNAUTHENTICATED test above.
-    const forbiddenError = Object.assign(new Error("transport"), {
-      graphQLErrors: [{ extensions: { code: "FORBIDDEN" } }],
-    });
     const mocks = [
       {
         request: {
           query: AdminUpdateRoleDocument,
           variables: { id: CUSTOM_ROLE.id, name: "reviewer" },
         },
-        error: forbiddenError,
+        error: makeCodedError("FORBIDDEN"),
       },
     ];
 

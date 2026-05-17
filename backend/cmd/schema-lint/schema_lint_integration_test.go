@@ -163,12 +163,15 @@ func TestIntegration_LiveTree_NoAllowlistRot(t *testing.T) {
 	}
 }
 
-// TestIntegration_UpdateRole_NotInAllowlist_NotViolation verifies that the
-// pilot promotion (updateRole -> UpdateRoleResult) is reflected correctly:
-//   - "updateRole" must NOT appear in the on-disk allowlist.
+// TestIntegration_PromotedMutations_NotInAllowlist_NotViolation verifies that
+// every mutation promoted to a result-union return type satisfies two
+// invariants:
+//   - The mutation name must NOT appear in the on-disk allowlist (it was
+//     removed when the return type became a union).
 //   - Running the classifier with the production allowlist must NOT produce a
-//     violation for "updateRole" (because its return type is now a union).
-func TestIntegration_UpdateRole_NotInAllowlist_NotViolation(t *testing.T) {
+//     violation for the mutation (the union return type eliminates the bare
+//     object that triggers the lint rule).
+func TestIntegration_PromotedMutations_NotInAllowlist_NotViolation(t *testing.T) {
 	_, _, _, _, allowlistPath := liveInputs(t)
 
 	al, err := LoadAllowlist(allowlistPath)
@@ -176,16 +179,20 @@ func TestIntegration_UpdateRole_NotInAllowlist_NotViolation(t *testing.T) {
 		t.Fatalf("LoadAllowlist: %v", err)
 	}
 
-	// updateRole must not be in the allowlist.
-	if _, present := al["updateRole"]; present {
-		t.Error("updateRole is in the allowlist but should have been promoted; remove it from allowlist.txt")
-	}
-
 	violations, _ := runLivePipeline(t, al)
 
-	for _, v := range violations {
-		if v.Mutation == "updateRole" {
-			t.Errorf("unexpected violation for updateRole: %+v (pilot promotion should have eliminated the bare return type)", v)
-		}
+	promoted := []string{"updateRole", "revokeRole", "adminUpdateUser"}
+	for _, mutation := range promoted {
+		mutation := mutation
+		t.Run(mutation, func(t *testing.T) {
+			if _, present := al[mutation]; present {
+				t.Errorf("%s is in the allowlist but should have been promoted; remove it from allowlist.txt", mutation)
+			}
+			for _, v := range violations {
+				if v.Mutation == mutation {
+					t.Errorf("unexpected violation for %s: %+v (promotion should have eliminated the bare return type)", mutation, v)
+				}
+			}
+		})
 	}
 }

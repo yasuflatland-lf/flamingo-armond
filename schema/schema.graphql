@@ -474,6 +474,75 @@ CannotModifySystemRoleError describing the system-role guard.
 """
 union UpdateRoleResult = UpdateRoleSuccess | CannotModifySystemRoleError
 
+"""
+Typed business error returned by `revokeRole` when the caller attempts to
+revoke the admin role from their own account. Self-demotion is rejected by
+the server regardless of caller privilege.
+"""
+type CannotRevokeOwnAdminRoleError implements UserError {
+  message: String!
+}
+
+"""
+Returned by `revokeRole` when the target user's admin role was successfully
+revoked. Carries the updated `user` so clients can refresh their role view
+without a follow-up query.
+"""
+type RevokeRoleSuccess {
+  user: User!
+}
+
+"""
+Returned by `assignRole` when the target user was successfully granted the
+requested role. Carries the updated `user` so clients can refresh their role
+view without a follow-up query.
+"""
+type AssignRoleSuccess {
+  user: User!
+}
+
+"""
+Returned by `adminUpdateUser` when the admin's update to a target user
+succeeded. Carries the updated `user` so clients can refresh the profile
+view without a follow-up query.
+"""
+type AdminUpdateUserSuccess {
+  user: User!
+}
+
+"""
+Returned by `createRole` when a new role was successfully created. Carries
+the freshly inserted `role` so clients can insert it into local caches
+without a follow-up query.
+"""
+type CreateRoleSuccess {
+  role: Role!
+}
+
+"""
+Result of `revokeRole`. Either the updated user, an input-validation failure,
+or a CannotRevokeOwnAdminRoleError when the caller tries to demote themselves.
+"""
+union RevokeRoleResult =
+    RevokeRoleSuccess
+  | InputValidationError
+  | CannotRevokeOwnAdminRoleError
+
+"""Result of `assignRole`. Either the updated user or an input-validation failure."""
+union AssignRoleResult =
+    AssignRoleSuccess
+  | InputValidationError
+
+"""Result of `adminUpdateUser`. Either the updated user or an input-validation failure."""
+union AdminUpdateUserResult =
+    AdminUpdateUserSuccess
+  | InputValidationError
+
+"""Result of `createRole`. Either the new role or an input-validation failure."""
+union CreateRoleResult =
+    CreateRoleSuccess
+  | InputValidationError
+
 extend type User {
   """Roles assigned to this user. Resolved via the per-request RoleByUserID DataLoader."""
   roles: [Role!]!
@@ -521,13 +590,13 @@ input AdminUpdateUserInput {
 
 extend type Mutation {
   """Admin-only. Edit display_name / bio of any user."""
-  adminUpdateUser(id: ID!, input: AdminUpdateUserInput!): User!
+  adminUpdateUser(id: ID!, input: AdminUpdateUserInput!): AdminUpdateUserResult!
   """Admin-only. Assign a role to a user. Idempotent."""
-  assignRole(userId: ID!, roleId: ID!): User!
-  """Admin-only. Revoke a role from a user. Self-demotion of admin role is rejected with FORBIDDEN."""
-  revokeRole(userId: ID!, roleId: ID!): User!
-  """Admin-only. Create a new role. Names are normalized to lowercase. Duplicates are rejected with BAD_USER_INPUT."""
-  createRole(name: String!): Role!
+  assignRole(userId: ID!, roleId: ID!): AssignRoleResult!
+  """Admin-only. Revoke a role from a user. Self-demotion of admin role is returned as CannotRevokeOwnAdminRoleError."""
+  revokeRole(userId: ID!, roleId: ID!): RevokeRoleResult!
+  """Admin-only. Create a new role. Names are normalized to lowercase. Duplicates are returned as InputValidationError."""
+  createRole(name: String!): CreateRoleResult!
   """
   Rename a role. System roles are immutable — the call returns
   CannotModifySystemRoleError as a typed union variant in that case.

@@ -260,7 +260,8 @@ func TestAdminRole_Unauthenticated(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestAdminRole_Create_Success normalises mixed-case input to lowercase and
-// passes the canonical form to the repository.
+// passes the canonical form to the repository. The outcome carries the new
+// role in Role; Validation is nil on the happy path.
 func TestAdminRole_Create_Success(t *testing.T) {
 	t.Parallel()
 
@@ -270,34 +271,41 @@ func TestAdminRole_Create_Success(t *testing.T) {
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _ := buildAdminRoleUC(roles, authChk)
 
-	got, err := uc.Create(authedCtx("admin-1"), "Moderator")
+	outcome, err := uc.Create(authedCtx("admin-1"), "Moderator")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got == nil || got.Name != "moderator" {
-		t.Fatalf("got = %+v, want role with name=moderator", got)
+	assertCreateRoleOutcomeXOR(t, outcome)
+	if outcome.Role == nil || outcome.Role.Name != "moderator" {
+		t.Fatalf("outcome.Role = %+v, want role with name=moderator", outcome.Role)
 	}
 	if roles.lastCreateName != "moderator" {
 		t.Fatalf("repo create arg = %q, want %q (normalised)", roles.lastCreateName, "moderator")
 	}
 }
 
-// TestAdminRole_Create_DuplicateName maps ErrRoleDuplicate from the repo to
-// BAD_USER_INPUT keyed on "name".
-func TestAdminRole_Create_DuplicateName(t *testing.T) {
+// TestAdminRole_Create_Validation_DuplicateName maps ErrRoleDuplicate from
+// the repo to outcome.Validation keyed on "name" (errors-as-data).
+func TestAdminRole_Create_Validation_DuplicateName(t *testing.T) {
 	t.Parallel()
 
 	roles := &mockAdminRoleRepoForCRUD{createErr: repository.ErrRoleDuplicate}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _ := buildAdminRoleUC(roles, authChk)
 
-	_, err := uc.Create(authedCtx("admin-1"), "moderator")
-	assertValidationError(t, err, "name", "")
+	outcome, err := uc.Create(authedCtx("admin-1"), "moderator")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertCreateRoleOutcomeXOR(t, outcome)
+	if outcome.Validation == nil || outcome.Validation.Field != "name" {
+		t.Fatalf("outcome.Validation = %+v, want field=name", outcome.Validation)
+	}
 }
 
-// TestAdminRole_Create_EmptyName rejects whitespace-only input before the
-// repository is reached.
-func TestAdminRole_Create_EmptyName(t *testing.T) {
+// TestAdminRole_Create_Validation_EmptyName rejects whitespace-only input via
+// outcome.Validation before the repository is reached.
+func TestAdminRole_Create_Validation_EmptyName(t *testing.T) {
 	t.Parallel()
 
 	cases := []string{"", "   "}
@@ -308,8 +316,14 @@ func TestAdminRole_Create_EmptyName(t *testing.T) {
 			authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 			uc, _ := buildAdminRoleUC(roles, authChk)
 
-			_, err := uc.Create(authedCtx("admin-1"), in)
-			assertValidationError(t, err, "name", "")
+			outcome, err := uc.Create(authedCtx("admin-1"), in)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			assertCreateRoleOutcomeXOR(t, outcome)
+			if outcome.Validation == nil || outcome.Validation.Field != "name" {
+				t.Fatalf("outcome.Validation = %+v, want field=name", outcome.Validation)
+			}
 			if roles.createCalls != 0 {
 				t.Fatalf("expected no repo create on validation failure, got %d", roles.createCalls)
 			}
@@ -317,9 +331,10 @@ func TestAdminRole_Create_EmptyName(t *testing.T) {
 	}
 }
 
-// TestAdminRole_Create_TooLong rejects 51-character input before the repo
-// is reached. The post-normalisation grapheme-cluster count is what bounds.
-func TestAdminRole_Create_TooLong(t *testing.T) {
+// TestAdminRole_Create_Validation_TooLong rejects 51-character input via
+// outcome.Validation before the repo is reached. The post-normalisation
+// grapheme-cluster count is what bounds.
+func TestAdminRole_Create_Validation_TooLong(t *testing.T) {
 	t.Parallel()
 
 	roles := &mockAdminRoleRepoForCRUD{}
@@ -327,18 +342,24 @@ func TestAdminRole_Create_TooLong(t *testing.T) {
 	uc, _ := buildAdminRoleUC(roles, authChk)
 
 	overMax := strings.Repeat("a", roleNameMax+1)
-	_, err := uc.Create(authedCtx("admin-1"), overMax)
-	assertValidationError(t, err, "name", "")
+	outcome, err := uc.Create(authedCtx("admin-1"), overMax)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertCreateRoleOutcomeXOR(t, outcome)
+	if outcome.Validation == nil || outcome.Validation.Field != "name" {
+		t.Fatalf("outcome.Validation = %+v, want field=name", outcome.Validation)
+	}
 	if roles.createCalls != 0 {
 		t.Fatalf("expected no repo create on validation failure, got %d", roles.createCalls)
 	}
 }
 
-// TestAdminRole_Create_InvalidChars rejects names whose post-normalisation
-// form contains characters outside [a-z0-9_-]. Uppercase is folded by the
-// normaliser (so "FOO" → "foo" passes), but a punctuation character that
-// survives normalisation triggers the regex check.
-func TestAdminRole_Create_InvalidChars(t *testing.T) {
+// TestAdminRole_Create_Validation_InvalidChars rejects names whose
+// post-normalisation form contains characters outside [a-z0-9_-]. Uppercase
+// is folded by the normaliser (so "FOO" → "foo" passes), but a punctuation
+// character that survives normalisation triggers the regex check.
+func TestAdminRole_Create_Validation_InvalidChars(t *testing.T) {
 	t.Parallel()
 
 	cases := []string{
@@ -354,8 +375,14 @@ func TestAdminRole_Create_InvalidChars(t *testing.T) {
 			authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 			uc, _ := buildAdminRoleUC(roles, authChk)
 
-			_, err := uc.Create(authedCtx("admin-1"), in)
-			assertValidationError(t, err, "name", "")
+			outcome, err := uc.Create(authedCtx("admin-1"), in)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			assertCreateRoleOutcomeXOR(t, outcome)
+			if outcome.Validation == nil || outcome.Validation.Field != "name" {
+				t.Fatalf("outcome.Validation = %+v, want field=name", outcome.Validation)
+			}
 			if roles.createCalls != 0 {
 				t.Fatalf("expected no repo create on validation failure, got %d", roles.createCalls)
 			}
@@ -364,7 +391,8 @@ func TestAdminRole_Create_InvalidChars(t *testing.T) {
 }
 
 // TestAdminRole_Create_ContextCanceled propagates context cancellation from
-// the repository as CANCELLED rather than INTERNAL.
+// the repository as CANCELLED on the error return rather than INTERNAL. The
+// outcome remains zero-valued because no variant is set.
 func TestAdminRole_Create_ContextCanceled(t *testing.T) {
 	t.Parallel()
 
@@ -372,8 +400,32 @@ func TestAdminRole_Create_ContextCanceled(t *testing.T) {
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _ := buildAdminRoleUC(roles, authChk)
 
-	_, err := uc.Create(authedCtx("admin-1"), "moderator")
+	outcome, err := uc.Create(authedCtx("admin-1"), "moderator")
 	assertCancelled(t, err)
+	if outcome.Role != nil || outcome.Validation != nil {
+		t.Fatalf("expected zero-value outcome on cancellation, got %+v", outcome)
+	}
+}
+
+// TestAdminRole_Create_InfraError verifies that a non-sentinel error from
+// roles.Create (anything other than ErrRoleDuplicate, context.Canceled, or
+// context.DeadlineExceeded) surfaces via the error return and carries the
+// "usecase: admin role create" wrap prefix. The outcome must be zero-value
+// (no Role, no Validation) so a future refactor that drops the eris.Wrap
+// cannot silently change the resolver classification from INTERNAL to a
+// no-extensions passthrough.
+func TestAdminRole_Create_InfraError(t *testing.T) {
+	t.Parallel()
+
+	roles := &mockAdminRoleRepoForCRUD{createErr: errors.New("db down")}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _ := buildAdminRoleUC(roles, authChk)
+
+	outcome, err := uc.Create(authedCtx("admin-1"), "moderator")
+	assertInternalChain(t, err, "usecase: admin role create")
+	if outcome.Role != nil || outcome.Validation != nil {
+		t.Fatalf("expected zero-value outcome on infra error, got %+v", outcome)
+	}
 }
 
 // TestAdminRole_Create_NormalizesBeforeUniqueCheck exercises the normalisation
@@ -414,12 +466,13 @@ func TestAdminRole_Create_NormalizesBeforeUniqueCheck(t *testing.T) {
 			authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 			uc, _ := buildAdminRoleUC(roles, authChk)
 
-			got, err := uc.Create(authedCtx("admin-1"), tc.input)
+			outcome, err := uc.Create(authedCtx("admin-1"), tc.input)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got == nil || got.Name != tc.wantRepo {
-				t.Fatalf("got = %+v, want role with name=%s", got, tc.wantRepo)
+			assertCreateRoleOutcomeXOR(t, outcome)
+			if outcome.Role == nil || outcome.Role.Name != tc.wantRepo {
+				t.Fatalf("outcome.Role = %+v, want role with name=%s", outcome.Role, tc.wantRepo)
 			}
 			if roles.lastCreateName != tc.wantRepo {
 				t.Fatalf("repo create arg = %q, want %q (normalised)", roles.lastCreateName, tc.wantRepo)
@@ -431,19 +484,26 @@ func TestAdminRole_Create_NormalizesBeforeUniqueCheck(t *testing.T) {
 	}
 }
 
-// TestAdminRole_Create_DuplicateMatchesAfterNormalization ensures that when
-// a user supplies a mixed-case name (e.g. "Admin") and a normalised form
-// already exists in the system (e.g. a system role "admin"), the duplicate
-// check catches the collision and returns BAD_USER_INPUT(field=name).
-func TestAdminRole_Create_DuplicateMatchesAfterNormalization(t *testing.T) {
+// TestAdminRole_Create_Validation_DuplicateMatchesAfterNormalization ensures
+// that when a user supplies a mixed-case name (e.g. "Admin") and a normalised
+// form already exists in the system (e.g. a system role "admin"), the
+// duplicate check catches the collision and surfaces via outcome.Validation
+// keyed on "name".
+func TestAdminRole_Create_Validation_DuplicateMatchesAfterNormalization(t *testing.T) {
 	t.Parallel()
 
 	roles := &mockAdminRoleRepoForCRUD{createErr: repository.ErrRoleDuplicate}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _ := buildAdminRoleUC(roles, authChk)
 
-	_, err := uc.Create(authedCtx("admin-1"), "Admin")
-	assertValidationError(t, err, "name", "")
+	outcome, err := uc.Create(authedCtx("admin-1"), "Admin")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertCreateRoleOutcomeXOR(t, outcome)
+	if outcome.Validation == nil || outcome.Validation.Field != "name" {
+		t.Fatalf("outcome.Validation = %+v, want field=name", outcome.Validation)
+	}
 	if roles.lastCreateName != "admin" {
 		t.Fatalf("repo create arg = %q, want %q (normalised before duplicate check)",
 			roles.lastCreateName, "admin")
@@ -868,5 +928,27 @@ func TestAdminRole_List_Multiple(t *testing.T) {
 		if r.ID != want[i].ID || r.Name != want[i].Name {
 			t.Errorf("roles[%d] = {%q,%q}, want {%q,%q}", i, r.ID, r.Name, want[i].ID, want[i].Name)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// XOR-invariant outcome assertions
+// ---------------------------------------------------------------------------
+
+// assertCreateRoleOutcomeXOR asserts that exactly one of Role or Validation is
+// set in the outcome. Used at every nil-error return site so a future variant
+// addition cannot accidentally produce a multi-variant or zero-variant
+// outcome.
+func assertCreateRoleOutcomeXOR(t *testing.T, outcome CreateRoleOutcome) {
+	t.Helper()
+	set := 0
+	if outcome.Role != nil {
+		set++
+	}
+	if outcome.Validation != nil {
+		set++
+	}
+	if set != 1 {
+		t.Fatalf("CreateRoleOutcome XOR: expected exactly one variant set, got %d (outcome=%+v)", set, outcome)
 	}
 }

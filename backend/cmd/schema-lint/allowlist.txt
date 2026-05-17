@@ -10,10 +10,8 @@
 # See docs/backend/error-wrapping/outcome-union-enforcement.md for the full
 # 7-step promotion checklist.
 
-adminUpdateUser        # NewValidationError("id", "user not found")
 createCardgroup        # NewValidationError("name", ...): field-only payload
 handleSwipe            # NewValidationError("cardId", "card not found"): race; learn-UI broad
-revokeRole             # NewForbiddenError("cannot revoke own admin role")
 setLastViewedCardgroup # NewValidationError("cardgroupId", "cardgroup not found")
 updateCard             # NewValidationError(...): field-level validation
 updateCardgroup        # NewValidationError("name", ...): field-only payload
