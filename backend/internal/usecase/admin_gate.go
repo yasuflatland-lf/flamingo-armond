@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"errors"
 
 	"backend/internal/auth"
 	"backend/internal/usecase/ucerr"
@@ -35,10 +34,7 @@ func requireAdmin(ctx context.Context, svc AdminChecker) (callerID string, err e
 	}
 	isAdmin, err := svc.IsAdmin(ctx, caller.Sub)
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return "", err
-		}
-		return "", err // raw error; caller wraps with its own layer prefix
+		return "", err // pass-through for context errors and infrastructure failures
 	}
 	if !isAdmin {
 		return "", ucerr.NewForbiddenError("admin only")
