@@ -555,7 +555,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	cardRepo := repository.NewCardRepository(db.GORM)
 	userCardFSRSRepo := repository.NewUserCardFSRSRepository(db.GORM)
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	userUC := usecase.NewUserUsecase(userRepo, logger)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
@@ -1649,7 +1649,7 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 	userCardFSRSRepo := repository.NewUserCardFSRSRepository(db.GORM)
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	userUC := usecase.NewUserUsecase(userRepo, logger)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
@@ -1988,7 +1988,7 @@ func TestHandleSwipe_RollsBackWhenSwipeRecordInsertFails(t *testing.T) {
 	cardRepo := repository.NewCardRepository(db.GORM)
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	userCardFSRSRepo := repository.NewUserCardFSRSRepository(db.GORM)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	uc := usecase.NewSwipeUsecase(
 		db.GORM,
 		cardRepo,

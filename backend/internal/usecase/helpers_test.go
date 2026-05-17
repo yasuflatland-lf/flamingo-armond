@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -144,8 +143,8 @@ func TestAssertInternalChain_Passes(t *testing.T) {
 	assertInternalChain(t, err, "db: timeout") // matches ErrExternal frame
 }
 
-// newTestLogger returns a *slog.Logger that writes to io.Discard so unit tests
-// can construct usecases without producing log noise.
+// newTestLogger returns a *slog.Logger backed by slog.DiscardHandler so unit
+// tests can construct usecases without producing log noise.
 func newTestLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
