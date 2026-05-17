@@ -205,30 +205,52 @@ func TestCardgroupUsecase_Create_Anonymous(t *testing.T) {
 	assertUnauthenticated(t, err)
 }
 
-func TestCardgroupUsecase_Create_EmptyName_BadUserInput(t *testing.T) {
+func TestCardgroupUsecase_Create_EmptyName_ValidationVariant(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{}
 	uc := NewCardgroupUsecase(repo)
 
-	_, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: ""})
+	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: ""})
 
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	if err != nil {
+		t.Fatalf("expected nil error (validation goes to outcome), got: %v", err)
 	}
-	assertValidationError(t, err, "name", "")
+	if outcome.Cardgroup != nil {
+		t.Fatal("expected nil Cardgroup on validation failure")
+	}
+	if outcome.Validation == nil {
+		t.Fatal("expected non-nil Validation on empty name")
+	}
+	if outcome.Validation.Field != "name" {
+		t.Fatalf("expected Validation.Field=%q, got %q", "name", outcome.Validation.Field)
+	}
+	if repo.capturedCreate != nil {
+		t.Fatal("repository.Create must not be called on validation failure")
+	}
 }
 
-func TestCardgroupUsecase_Create_TooLong_BadUserInput(t *testing.T) {
+func TestCardgroupUsecase_Create_TooLong_ValidationVariant(t *testing.T) {
 	t.Parallel()
 	repo := &mockCardgroupRepository{}
 	uc := NewCardgroupUsecase(repo)
 
-	_, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: strings.Repeat("a", 101)})
+	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: strings.Repeat("a", 101)})
 
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	if err != nil {
+		t.Fatalf("expected nil error (validation goes to outcome), got: %v", err)
 	}
-	assertValidationError(t, err, "name", "")
+	if outcome.Cardgroup != nil {
+		t.Fatal("expected nil Cardgroup on validation failure")
+	}
+	if outcome.Validation == nil {
+		t.Fatal("expected non-nil Validation on too-long name")
+	}
+	if outcome.Validation.Field != "name" {
+		t.Fatalf("expected Validation.Field=%q, got %q", "name", outcome.Validation.Field)
+	}
+	if repo.capturedCreate != nil {
+		t.Fatal("repository.Create must not be called on validation failure")
+	}
 }
 
 func TestCardgroupUsecase_Create_Trims(t *testing.T) {
@@ -236,13 +258,16 @@ func TestCardgroupUsecase_Create_Trims(t *testing.T) {
 	repo := &mockCardgroupRepository{}
 	uc := NewCardgroupUsecase(repo)
 
-	got, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "  Hello  "})
+	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "  Hello  "})
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.Name != "Hello" {
-		t.Fatalf("expected trimmed name %q, got %q", "Hello", got.Name)
+	if outcome.Cardgroup == nil {
+		t.Fatal("expected non-nil Cardgroup on success")
+	}
+	if outcome.Cardgroup.Name != "Hello" {
+		t.Fatalf("expected trimmed name %q, got %q", "Hello", outcome.Cardgroup.Name)
 	}
 	if repo.capturedCreate == nil || repo.capturedCreate.Name != "Hello" {
 		t.Fatal("expected repo.Create to receive trimmed name")
@@ -254,15 +279,18 @@ func TestCardgroupUsecase_Create_Success_AssignsOwnerToCaller(t *testing.T) {
 	repo := &mockCardgroupRepository{}
 	uc := NewCardgroupUsecase(repo)
 
-	got, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "My Group"})
+	outcome, err := uc.Create(cgAuthedCtx("user-1"), CreateCardgroupInput{Name: "My Group"})
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.OwnerID != "user-1" {
-		t.Fatalf("expected OwnerID=%q, got %q", "user-1", got.OwnerID)
+	if outcome.Cardgroup == nil {
+		t.Fatal("expected non-nil Cardgroup on success")
 	}
-	if got.ID == "" {
+	if outcome.Cardgroup.OwnerID != "user-1" {
+		t.Fatalf("expected OwnerID=%q, got %q", "user-1", outcome.Cardgroup.OwnerID)
+	}
+	if outcome.Cardgroup.ID == "" {
 		t.Fatal("expected non-empty ID")
 	}
 	if repo.capturedCreate == nil {

@@ -105,22 +105,36 @@ func (u *CardgroupUsecase) Cardgroup(ctx context.Context, id string) (*domain.Ca
 // CreateCardgroupInput carries the fields required to create a new cardgroup.
 type CreateCardgroupInput struct{ Name string }
 
+// CreateCardgroupOutcome is the result of CardgroupUsecase.Create. Exactly one
+// of Cardgroup or Validation is non-nil on a nil-error return: a successful
+// insert carries the new Cardgroup; a name that fails validation surfaces via
+// Validation so the resolver maps it to the CreateCardgroupResult union's
+// InputValidationError variant.
+type CreateCardgroupOutcome struct {
+	Cardgroup  *domain.Cardgroup
+	Validation *InputValidationInfo
+}
+
 // Create creates a new cardgroup owned by the authenticated caller.
-func (u *CardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) (*domain.Cardgroup, error) {
+func (u *CardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) (CreateCardgroupOutcome, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
-		return nil, ucerr.ErrUnauthenticated
+		return CreateCardgroupOutcome{}, ucerr.ErrUnauthenticated
 	}
 
 	trimmed := strings.TrimSpace(in.Name)
 	tmp := &domain.Cardgroup{Name: trimmed}
-	if err := tmp.Validate(); err != nil {
-		return nil, translateCardgroupNameErr(err)
+	info, err := liftValidationErr(translateCardgroupNameErr(tmp.Validate()))
+	if err != nil {
+		return CreateCardgroupOutcome{}, err
+	}
+	if info != nil {
+		return CreateCardgroupOutcome{Validation: info}, nil
 	}
 
 	id, err := uuidV7()
 	if err != nil {
-		return nil, eris.Wrap(err, "usecase: generate cardgroup uuid")
+		return CreateCardgroupOutcome{}, eris.Wrap(err, "usecase: generate cardgroup uuid")
 	}
 
 	now := time.Now().UTC()
@@ -133,9 +147,9 @@ func (u *CardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 	}
 
 	if err := u.repo.Create(ctx, cg); err != nil {
-		return nil, eris.Wrap(err, "usecase: create cardgroup")
+		return CreateCardgroupOutcome{}, eris.Wrap(err, "usecase: create cardgroup")
 	}
-	return cg, nil
+	return CreateCardgroupOutcome{Cardgroup: cg}, nil
 }
 
 // UpdateCardgroupInput carries the fields that may be patched on an existing cardgroup.
@@ -207,8 +221,11 @@ func (u *CardgroupUsecase) Delete(ctx context.Context, id string) error {
 
 // translateCardgroupNameErr maps domain sentinel errors from Cardgroup.Validate
 // to usecase-layer typed errors. Unexpected domain errors are wrapped with eris.
-// Callers must guard against err == nil before invoking.
+// Returns nil when err is nil.
 func translateCardgroupNameErr(err error) error {
+	if err == nil {
+		return nil
+	}
 	switch {
 	case errors.Is(err, domain.ErrCardgroupNameRequired):
 		return ucerr.NewValidationError("name", "name is required")
