@@ -1111,7 +1111,7 @@ func TestLoader_Middleware_DoesNotBreakQuery(t *testing.T) {
 
 // createTestCardgroup calls the createCardgroup mutation and returns the new cardgroup id.
 // It serialises the full JSON body via json.Marshal so name is always a valid JSON string.
-// Uses the CreateCardgroupResult union selection set introduced in Phase 3.
+// Uses the CreateCardgroupResult union selection set; validates __typename before extracting the id.
 func createTestCardgroup(t *testing.T, srvURL, bearer, name string) string {
 	t.Helper()
 	gqlQuery := fmt.Sprintf(`mutation { createCardgroup(input: {name: %s}) { __typename ... on CreateCardgroupSuccess { cardgroup { id name ownerId } } ... on InputValidationError { field message } } }`, gqlStringLit(name))
@@ -1545,7 +1545,7 @@ func TestGraphQL_Cardgroup_OwnerLoader_NoNPlus1(t *testing.T) {
 
 // TestGraphQL_CreateCardgroup_NameTooShort verifies that an empty name is
 // surfaced as the InputValidationError union variant — returned as data, not
-// as a GraphQL error. This is the "errors as data" pattern promoted in Phase 3.
+// Validation failures travel through the data path per the outcome-union design in .claude/rules/error-wrapping.md.
 func TestGraphQL_CreateCardgroup_NameTooShort(t *testing.T) {
 	f := newJWTFixture(t)
 	ts, _ := newGraphQLTestServer(t, f)
@@ -1606,6 +1606,150 @@ func TestGraphQL_CreateCardgroup_Anonymous_Unauthenticated(t *testing.T) {
 	ts, _ := newGraphQLTestServer(t, f)
 
 	resp := postGraphQL(t, ts.URL+"/query", `{"query":"mutation { createCardgroup(input: {name: \"Anon\"}) { __typename ... on CreateCardgroupSuccess { cardgroup { id } } ... on InputValidationError { field message } } }"}`, "")
+
+	if code := gqlErrCode(resp); code != "UNAUTHENTICATED" {
+		t.Fatalf("expected UNAUTHENTICATED, got %q; resp=%v", code, resp)
+	}
+}
+
+// newLastViewedGraphQLTestServer builds a real router backed by testcontainer
+// Postgres and wires the LastViewedCardgroupUsecase, which newGraphQLTestServer
+// leaves nil. All other usecase dependencies are also wired so that helper
+// functions like createTestCardgroup work correctly.
+func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Server, *database.DB) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	cfg := auth.Config{JWKSURL: f.jwksURL, Audience: f.audience, Issuer: f.issuer}
+	kf, err := auth.NewJWKSKeyfunc(ctx, cfg)
+	if err != nil {
+		t.Fatalf("jwks keyfunc: %v", err)
+	}
+	mw, err := auth.AuthMiddleware(kf, cfg)
+	if err != nil {
+		t.Fatalf("auth middleware: %v", err)
+	}
+
+	db, err := database.Open(ctx, database.Config{URL: testDBURL})
+	if err != nil {
+		t.Fatalf("db open: %v", err)
+	}
+	t.Cleanup(db.Close)
+
+	userRepo := repository.NewUserRepository(db.GORM)
+	roleRepo := repository.NewRoleRepository(db.GORM)
+	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
+	cardRepo := repository.NewCardRepository(db.GORM)
+	userCardFSRSRepo := repository.NewUserCardFSRSRepository(db.GORM)
+	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
+	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
+	userUC := usecase.NewUserUsecase(userRepo)
+	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)
+	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo)
+	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10, userCardFSRSRepo)
+	lastViewedUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo)
+	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
+	e := newRouter(
+		resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, lastViewedUC, nil),
+		mw,
+		auth.NewSuperUserPromoter(nil, "", nil, nil),
+		userRepo, roleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo,
+		ping.New(pingRecordRepo, "test-token"), nil, swipeRecordRepo,
+	)
+
+	ts := httptest.NewServer(e)
+	t.Cleanup(ts.Close)
+	return ts, db
+}
+
+// TestGraphQL_SetLastViewedCardgroup_HappyPath verifies that an authenticated
+// user can record a cardgroup as last-viewed and the response carries
+// __typename SetLastViewedCardgroupSuccess with the matching user and cardgroup.
+func TestGraphQL_SetLastViewedCardgroup_HappyPath(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newLastViewedGraphQLTestServer(t, f)
+	ctx := context.Background()
+	sub := insertAuthUser(t, ctx)
+	tok := f.sign(t, sub)
+
+	cgID := createTestCardgroup(t, ts.URL, tok, "Last Viewed Group")
+
+	body := fmt.Sprintf(
+		`{"query":"mutation { setLastViewedCardgroup(cardgroupId: \"%s\") { __typename ... on SetLastViewedCardgroupSuccess { user { id lastViewedCardgroup { id } } } ... on InputValidationError { field message } } }"}`,
+		cgID,
+	)
+	resp := postGraphQL(t, ts.URL+"/query", body, tok)
+
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("unexpected GraphQL errors: %v", errs)
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["setLastViewedCardgroup"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.setLastViewedCardgroup, got nil; resp=%v", resp)
+	}
+	if payload["__typename"] != "SetLastViewedCardgroupSuccess" {
+		t.Fatalf("expected SetLastViewedCardgroupSuccess, got %v; resp=%v", payload["__typename"], resp)
+	}
+	user, _ := payload["user"].(map[string]any)
+	if user == nil {
+		t.Fatalf("expected user in success payload, got nil; resp=%v", resp)
+	}
+	if user["id"] != sub {
+		t.Fatalf("expected user.id=%q, got %v; resp=%v", sub, user["id"], resp)
+	}
+	lastViewed, _ := user["lastViewedCardgroup"].(map[string]any)
+	if lastViewed == nil {
+		t.Fatalf("expected user.lastViewedCardgroup, got nil; resp=%v", resp)
+	}
+	if lastViewed["id"] != cgID {
+		t.Fatalf("expected lastViewedCardgroup.id=%q, got %v; resp=%v", cgID, lastViewed["id"], resp)
+	}
+}
+
+// TestGraphQL_SetLastViewedCardgroup_NotFound_InputValidation verifies that
+// passing a cardgroup ID that does not exist (or is not owned by the caller)
+// is surfaced as the InputValidationError union variant with field==cardgroupId,
+// not as a GraphQL protocol error.
+func TestGraphQL_SetLastViewedCardgroup_NotFound_InputValidation(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newLastViewedGraphQLTestServer(t, f)
+	ctx := context.Background()
+	sub := insertAuthUser(t, ctx)
+	tok := f.sign(t, sub)
+
+	nonexistentID := "00000000-0000-0000-0000-000000000000"
+	body := fmt.Sprintf(
+		`{"query":"mutation { setLastViewedCardgroup(cardgroupId: \"%s\") { __typename ... on SetLastViewedCardgroupSuccess { user { id } } ... on InputValidationError { field message } } }"}`,
+		nonexistentID,
+	)
+	resp := postGraphQL(t, ts.URL+"/query", body, tok)
+
+	if errs, ok := resp["errors"].([]any); ok && len(errs) > 0 {
+		t.Fatalf("unexpected GraphQL errors (validation should come as data): %v", errs)
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["setLastViewedCardgroup"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.setLastViewedCardgroup, got nil; resp=%v", resp)
+	}
+	if payload["__typename"] != "InputValidationError" {
+		t.Fatalf("expected InputValidationError, got %v; resp=%v", payload["__typename"], resp)
+	}
+	if payload["field"] != "cardgroupId" {
+		t.Fatalf("expected field=cardgroupId, got %v; resp=%v", payload["field"], resp)
+	}
+}
+
+// TestGraphQL_SetLastViewedCardgroup_Anonymous_Unauthenticated verifies that an
+// anonymous request (no bearer token) is rejected with UNAUTHENTICATED.
+func TestGraphQL_SetLastViewedCardgroup_Anonymous_Unauthenticated(t *testing.T) {
+	f := newJWTFixture(t)
+	ts, _ := newLastViewedGraphQLTestServer(t, f)
+
+	body := `{"query":"mutation { setLastViewedCardgroup(cardgroupId: \"some-id\") { __typename ... on SetLastViewedCardgroupSuccess { user { id } } ... on InputValidationError { field message } } }"}`
+	resp := postGraphQL(t, ts.URL+"/query", body, "")
 
 	if code := gqlErrCode(resp); code != "UNAUTHENTICATED" {
 		t.Fatalf("expected UNAUTHENTICATED, got %q; resp=%v", code, resp)

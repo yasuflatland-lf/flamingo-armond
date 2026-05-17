@@ -53,8 +53,8 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
       // Update the Connection cache so the /cardgroups listing page
       // shows the new entry without a refetch when the user returns there.
       // cache.modify is forbidden — use readQuery + writeQuery so cold-cache
-      // entries are also handled correctly. See
-      // docs/pagination/cache-modify-skips-nonexistent-fields.md.
+      // entries are also handled correctly. See .claude/rules/pagination.md
+      // § "cache.modify skips non-existent fields".
       // CARDGROUPS_DEFAULT_VARS keeps the cache key in sync with the SSR seed
       // and the client useQuery — any mismatch makes this write invisible.
       const existingConnection = cache.readQuery({

@@ -314,3 +314,96 @@ func (c *capturingCardgroupRepo) FindPageByOwner(
 	c.findPageBefore = before
 	return c.findPageResult, c.findPageErr
 }
+
+// ---------------------------------------------------------------------------
+// CreateCardgroup resolver tests
+// ---------------------------------------------------------------------------
+//
+// Note on the nil-variant (XOR-invariant) guard:
+//
+//   The resolver's CreateCardgroup method contains a defensive guard:
+//
+//     if outcome.Cardgroup == nil {
+//         return nil, gqlerr.Internal(...)
+//     }
+//
+//   CardgroupUsecase is a concrete struct (not an interface), so the resolver
+//   cannot accept a mock implementation at the unit-test layer. The guard is
+//   dead code: the usecase always sets outcome.Cardgroup on a nil-error path.
+//   Its presence is a structural invariant, not a reachable branch. Integration
+//   coverage for the happy path and error paths is provided by the tests in
+//   backend/cmd/server/main_test.go (TestGraphQL_CreateCardgroup_*).
+
+// TestResolver_CreateCardgroup_HappyPath verifies that a successful create
+// returns the CreateCardgroupSuccess union variant with a non-nil Cardgroup.
+// This confirms the resolver reaches the success branch, not the nil guard.
+func TestResolver_CreateCardgroup_HappyPath(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockCardgroupRepoForResolver{}
+	srv := newCardgroupSrv(repo)
+	body := `{"query":"mutation { createCardgroup(input: {name: \"Test Group\"}) { __typename ... on CreateCardgroupSuccess { cardgroup { id name } } ... on InputValidationError { field message } } }"}`
+	resp := gqlRequest(t, srv, authedCtx("u1"), body)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["createCardgroup"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.createCardgroup, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "CreateCardgroupSuccess" {
+		t.Fatalf("expected CreateCardgroupSuccess, got %v; response: %v", payload["__typename"], resp)
+	}
+	cg, _ := payload["cardgroup"].(map[string]any)
+	if cg == nil {
+		t.Fatalf("expected cardgroup in success payload, got nil; response: %v", resp)
+	}
+	if cg["name"] != "Test Group" {
+		t.Fatalf("expected cardgroup.name=Test Group, got %v", cg["name"])
+	}
+}
+
+// TestResolver_CreateCardgroup_Unauthenticated verifies that an anonymous
+// request is rejected with UNAUTHENTICATED via the usecase auth check.
+func TestResolver_CreateCardgroup_Unauthenticated(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockCardgroupRepoForResolver{}
+	srv := newCardgroupSrv(repo)
+	body := `{"query":"mutation { createCardgroup(input: {name: \"Test\"}) { __typename ... on CreateCardgroupSuccess { cardgroup { id } } ... on InputValidationError { field message } } }"}`
+	resp := gqlRequest(t, srv, context.Background(), body)
+
+	code := errCode(t, resp)
+	if code != "UNAUTHENTICATED" {
+		t.Fatalf("expected UNAUTHENTICATED, got %q; response: %v", code, resp)
+	}
+}
+
+// TestResolver_CreateCardgroup_ValidationError_EmptyName verifies that an
+// empty name is surfaced as the InputValidationError union variant (errors as
+// data), not as a GraphQL protocol error.
+func TestResolver_CreateCardgroup_ValidationError_EmptyName(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockCardgroupRepoForResolver{}
+	srv := newCardgroupSrv(repo)
+	body := `{"query":"mutation { createCardgroup(input: {name: \"\"}) { __typename ... on CreateCardgroupSuccess { cardgroup { id } } ... on InputValidationError { field message } } }"}`
+	resp := gqlRequest(t, srv, authedCtx("u1"), body)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors (validation should come as data): %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["createCardgroup"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.createCardgroup, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "InputValidationError" {
+		t.Fatalf("expected InputValidationError, got %v; response: %v", payload["__typename"], resp)
+	}
+	if payload["field"] != "name" {
+		t.Fatalf("expected field=name, got %v; response: %v", payload["field"], resp)
+	}
+}

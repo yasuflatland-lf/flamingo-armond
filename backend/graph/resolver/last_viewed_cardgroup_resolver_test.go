@@ -125,7 +125,7 @@ func TestSetLastViewedCardgroup_HappyPath(t *testing.T) {
 // TestSetLastViewedCardgroup_InputValidation verifies that a validation failure
 // (e.g. cardgroup not found or not owned) is surfaced as the
 // InputValidationError union variant — returned as data, not as a GraphQL
-// error. This is the "errors as data" pattern promoted in Phase 3.
+// error. Validation failures are returned as data, not as GraphQL errors, per the outcome-union design in .claude/rules/error-wrapping.md.
 func TestSetLastViewedCardgroup_InputValidation(t *testing.T) {
 	t.Parallel()
 
@@ -171,6 +171,26 @@ func TestSetLastViewedCardgroup_Unauthenticated(t *testing.T) {
 	code := errCode(t, resp)
 	if code != string(gqlerr.CodeUnauthenticated) {
 		t.Fatalf("expected UNAUTHENTICATED, got %q", code)
+	}
+}
+
+// TestSetLastViewedCardgroup_NilVariant_ReturnsInternal covers the defensive
+// guard in the resolver where the usecase returns a zero-value
+// SetLastViewedCardgroupOutcome (both User and Validation are nil) with a nil
+// error. The resolver must surface INTERNAL rather than panicking or returning
+// an unselectable union value.
+func TestSetLastViewedCardgroup_NilVariant_ReturnsInternal(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockLastViewedCardgroupUsecase{
+		setOutcome: usecase.SetLastViewedCardgroupOutcome{}, // no variant set
+	}
+	srv := newLastViewedSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("u-1"), setLastViewedMutation)
+
+	code := errCode(t, resp)
+	if code != string(gqlerr.CodeInternal) {
+		t.Fatalf("expected INTERNAL, got %q; response: %v", code, resp)
 	}
 }
 

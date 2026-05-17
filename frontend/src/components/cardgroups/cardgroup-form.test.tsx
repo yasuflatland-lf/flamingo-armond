@@ -64,6 +64,7 @@ function renderForm(props: Partial<Parameters<typeof CardgroupForm>[0]> = {}) {
         submitLabel={props.submitLabel}
         submitting={props.submitting}
         error={props.error}
+        validationError={props.validationError}
         secondarySlot={props.secondarySlot}
       />
     </MockedProvider>,
@@ -174,6 +175,60 @@ describe("<CardgroupForm>", () => {
     renderForm({ mode: "edit", defaultValues: { name: "Group" }, submitting: true });
     const btn = screen.getByRole("button", { name: /saving/i });
     expect(btn).toBeDisabled();
+  });
+
+  it("validationError with field=name renders the server message as inline field error", () => {
+    // The validationError prop takes precedence over fieldErrors.name when
+    // validationError.field === "name". FieldError picks backendError over
+    // zodErrors, so the server message appears under the Name label.
+    renderForm({
+      defaultValues: { name: "duplicate" },
+      validationError: { field: "name", message: "name already taken by another group" },
+    });
+
+    const msg = screen.getByText("name already taken by another group");
+    expect(msg).toBeInTheDocument();
+    expect(msg.className).toMatch(/text-destructive/);
+  });
+
+  it("validationError with field !== name falls back to fieldErrors.name from error prop", () => {
+    // When validationError.field is not "name", the form expression
+    // `validationError?.field === "name" ? validationError.message : fieldErrors.name`
+    // falls through to fieldErrors.name. The error prop carries a BAD_USER_INPUT
+    // with field:"name" so fieldErrors.name should be rendered.
+    const gqlError = new GraphQLError("name already exists", {
+      extensions: { code: "BAD_USER_INPUT", field: "name" },
+    });
+    const combinedError = new CombinedGraphQLErrors({ errors: [gqlError] });
+
+    renderForm({
+      defaultValues: { name: "duplicate" },
+      error: combinedError,
+      validationError: { field: "description", message: "description is too long" },
+    });
+
+    // The BAD_USER_INPUT field error for "name" is shown (not the validationError message).
+    expect(screen.getByText("name already exists")).toBeInTheDocument();
+    expect(screen.queryByText("description is too long")).not.toBeInTheDocument();
+  });
+
+  it("validationError=null preserves existing error/fieldErrors behaviour", () => {
+    // When validationError is null, the form falls back to fieldErrors.name
+    // derived from the error prop, matching the legacy Tier C behavior.
+    const gqlError = new GraphQLError("name conflict", {
+      extensions: { code: "BAD_USER_INPUT", field: "name" },
+    });
+    const combinedError = new CombinedGraphQLErrors({ errors: [gqlError] });
+
+    renderForm({
+      defaultValues: { name: "conflict" },
+      error: combinedError,
+      validationError: null,
+    });
+
+    expect(screen.getByText("name conflict")).toBeInTheDocument();
+    const errorEl = screen.getByText("name conflict");
+    expect(errorEl.className).toMatch(/text-destructive/);
   });
 
   it("keeps formState.isSubmitSuccessful=false after a rejecting submit (regression: issue #111)", async () => {

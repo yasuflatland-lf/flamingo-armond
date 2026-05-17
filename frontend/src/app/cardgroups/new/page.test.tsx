@@ -182,6 +182,56 @@ describe("<NewCardgroupPage> (client)", () => {
     expect(mockRefresh).not.toHaveBeenCalled();
   });
 
+  it("InputValidationError — does not write to the MyCardgroupsConnection cache (regression guard)", async () => {
+    // When the server returns InputValidationError, the useMutation update()
+    // callback guards on __typename !== "CreateCardgroupSuccess" and returns
+    // early without calling cache.writeQuery. This test asserts that the cache
+    // is not mutated — the guard is load-bearing.
+    const user = userEvent.setup();
+
+    const cache = new InMemoryCache();
+
+    const mocks = [
+      {
+        request: {
+          query: CreateCardgroupDocument,
+          variables: { input: { name: "Bad Name" } },
+        },
+        result: () => ({
+          data: {
+            createCardgroup: {
+              __typename: "InputValidationError" as const,
+              field: "name",
+              message: "name already exists",
+            },
+          },
+        }),
+      },
+    ];
+
+    render(
+      <MockedProvider mocks={mocks} cache={cache}>
+        <NewCardgroupClient returnTo={null} />
+      </MockedProvider>,
+    );
+
+    await user.type(screen.getByRole("textbox"), "Bad Name");
+    await user.click(screen.getByRole("button", { name: /create/i }));
+
+    // Wait for the validation error banner to appear (mutation completed).
+    await waitFor(() => {
+      expect(screen.getByTestId("cardgroup-new-validation-error")).toBeInTheDocument();
+    });
+
+    // The MyCardgroupsConnection must NOT have been written to the cache —
+    // the update() early-return guard must have fired.
+    const result = cache.readQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+    });
+    expect(result).toBeNull();
+  });
+
   it("UNAUTHENTICATED transport rejection — shows session-expired banner with login link, no navigation", async () => {
     const user = userEvent.setup();
 

@@ -20,13 +20,13 @@ type CardgroupFormProps = {
   submitLabel?: string;
   /** Parent passes Apollo mutation `loading` state. */
   submitting?: boolean;
-  /** Parent passes Apollo mutation `error` for triage. Used by Tier C callers (updateCardgroup). */
+  /** Parent passes Apollo mutation `error` for triage. Used by non-promoted callers (updateCardgroup). */
   error?: unknown;
   /**
-   * Typed InputValidationError variant surfaced by outcome-union mutations
-   * (Tier A / Tier B). When present, takes precedence over `error` for the
-   * `name` field so the inline field error shows the server message instead
-   * of the substring-matched `BAD_USER_INPUT` text.
+   * Typed InputValidationError variant surfaced by outcome-union mutations.
+   * When present, takes precedence over `error` for the `name` field so the
+   * inline field error shows the server message instead of the
+   * substring-matched `BAD_USER_INPUT` text.
    */
   validationError?: { field: string; message: string } | null;
   /** Extra controls rendered next to the submit button (e.g. Delete button on Edit page). */
