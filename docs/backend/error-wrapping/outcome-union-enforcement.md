@@ -63,6 +63,25 @@ emission outside the same function body is a known false-negative; its profile
 is low today (verified via grep). Extend the walker if a future helper
 extraction produces a real miss.
 
+**Worked example of the helper-delegated false-negative.** `adminUserUsecase.AssignRole`
+and `adminRoleUsecase.Create` were never on the allowlist before [#171] even though
+both ultimately surfaced typed `ucerr.NewValidationError` values to the resolver.
+The classifier missed them because both methods routed validation through helper
+functions (`mapRoleAssignmentError`, `mapAdminRoleError`, `validateRoleName`)
+that themselves called `ucerr.New*` — the helpers lived outside the methods'
+function bodies, so the body-only `ast.Inspect` saw zero direct constructor
+references and treated `emitsTypedError = false`. The promotion still landed
+cleanly (no allowlist edit was required for either mutation), but a maintainer
+relying on the allowlist as ground truth for "what is bare-emit today" would be
+misled. When a future audit needs the true bare-emit set, grep the production
+tree directly per
+[`.claude/rules/pr-sizing.md` § "Re-verify call-site count before sizing"](../../../.claude/rules/pr-sizing.md#re-verify-call-site-count-before-sizing)
+rather than treating the allowlist as exhaustive. The walker's positive-discovery
+guards (see
+[`docs/backend/library-gotchas/walker-parser-positive-discovery-guards.md`](../library-gotchas/walker-parser-positive-discovery-guards.md))
+are independent — they catch missing inputs, not helper-delegated emission
+in present-but-correctly-parsed source.
+
 ## Why allowlist (stop-the-bleeding philosophy)
 
 The allowlist at `backend/cmd/schema-lint/allowlist.txt` follows the same
@@ -96,6 +115,15 @@ after step 7 pass their respective verifications.
    `TypeError2` types (error types implement `UserError` to gain `message:
    String!`), declare `union <Op>Result = TypeSuccess | TypeError1 | ...`, and
    change the mutation field's return type from the bare object to `<Op>Result!`.
+   Docstring convention: dock the **union** with a one-line description of the
+   outcomes ("Either the updated user or an input-validation failure."); leave
+   the `<Op>Success` and per-variant error types bare. A per-Success-type
+   docstring that restates the union docstring ("Success result of `foo`.
+   Returned when foo succeeded.") adds nothing and accumulates as noise across
+   the schema. Error types that need invariant-level context (e.g.
+   `CannotRevokeOwnAdminRoleError` carries a docblock explaining the
+   self-demotion rule) keep their docstrings — the rule is "narrate the
+   non-obvious", not "no docstrings on variant types".
 
 2. **Refactor the usecase**: introduce an `<Op>Outcome` struct with one pointer
    per variant; change the method signature to `(<Op>Outcome, error)`. The XOR
@@ -173,6 +201,8 @@ unrelated PR until it is cleaned up.
 
 ## Back-links
 
-- [`result-union-errors-as-data.md`](result-union-errors-as-data.md) — pattern reference; `createCard` is the canonical worked example; `updateRole` is a second precedent that follows the same shape.
+- [`result-union-errors-as-data.md`](result-union-errors-as-data.md) — pattern reference; `createCard` is the canonical worked example; `updateRole`, `revokeRole`, `assignRole`, `adminUpdateUser`, and `createRole` are subsequent precedents that follow the same shape.
+- [`input-validation-info-empty-field-panic.md`](input-validation-info-empty-field-panic.md) — construction invariant for the `InputValidationInfo` carrier shared across promoted outcomes.
+- [`inverse-helper-for-partial-promotion.md`](inverse-helper-for-partial-promotion.md) — `lower*` / `lift*` pattern for sharing an error classifier between promoted and unpromoted callers in the same package.
 - [`.claude/rules/error-wrapping.md` § "Errors as data — detailed cases"](../../../.claude/rules/error-wrapping.md#errors-as-data--detailed-cases-on-demand) — rule layer this doc supports.
 - [`.claude/rules/scope-discipline.md`](../../../.claude/rules/scope-discipline.md) — allowlist-as-baseline rationale; per-mutation promotion as opportunistic follow-up.
