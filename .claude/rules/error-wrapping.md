@@ -16,6 +16,8 @@ The backend uses [`github.com/rotisserie/eris`](https://github.com/rotisserie/er
 
 **Canonical layer prefix.** The `layer:` token at the start of every wrap message is the package name, not the function name — `usecase:`, `repository:`, `auth:`, `gqlerr:`. Inside `backend/internal/usecase/` the second segment is the file's module (`usecase: card: ...`, `usecase: admin role: ...`), followed by a verb and object phrase (`usecase: card: find by id`, `usecase: admin role: check admin`). The two-segment prefix lets `grep -n 'usecase: card:'` return every wrap from one file regardless of the surrounding function; it also gives [`assertInternalChain`](../../docs/backend/error-wrapping/test-error-chain-shape-not-presence.md) call sites a stable substring to pin against. Inverted forms (`card usecase: ...`) defeat the grep and break the assertion convention.
 
+**Shared helpers must not embed a layer prefix wrap.** A helper extracted to serve multiple callers (e.g. `requireAdmin`, `authorizeCardgroupOrBadInput`) MUST NOT call `eris.Wrap` with its own prefix inside the helper body. The helper returns sentinels and typed errors (`ucerr.ErrUnauthenticated`, `*ucerr.ForbiddenError`) as-is and returns raw infrastructure errors unwrapped. Callers apply their own per-module prefix via a companion classifier: `wrapAdminGateError(err, "usecase: admin role: check admin")`. A helper-internal wrap displaces the caller-specific module attribution from the chain, making the logged `error_chain` attribute point at the helper's name instead of the file that actually performed the operation. See [`error-classifier-helper-pass-through-with-caller-prefix.md`](../../docs/backend/error-wrapping/error-classifier-helper-pass-through-with-caller-prefix.md) for the full pattern, a before/after code example, and the double-wrap failure mode.
+
 ## Sentinels
 
 Sentinels used today: `repository.ErrNotFound`, and domain-level sentinels such as `domain.ErrCardgroupNameRequired` / `domain.ErrCardgroupNameTooLong`. New sentinels are allowed when (a) callers need to branch on identity, and (b) a string-equality match is fragile. Keep sentinels as plain `errors.New` so `errors.Is` works without going through eris's chain walk.
@@ -82,6 +84,7 @@ detection is grep-based today and pinned at single-file
 - [Typed classifier field over string-prefix matching at conversion boundaries](../../docs/backend/error-wrapping/typed-classifier-over-string-prefix.md)
 - [Classifier check must run before any pipeline step that appends to the classified slice](../../docs/backend/error-wrapping/classifier-check-ordering-before-pipeline-mutation.md)
 - [Redundant tests after alias-bridge deletion: cross-check existing table cases before retaining](../../docs/backend/error-wrapping/redundant-tests-after-alias-bridge-deletion.md)
+- [Error classifier helper: pass-through sentinels and typed errors, wrap infra errors with caller-supplied prefix](../../docs/backend/error-wrapping/error-classifier-helper-pass-through-with-caller-prefix.md)
 
 ## Background
 

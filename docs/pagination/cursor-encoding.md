@@ -51,3 +51,12 @@ The frontend must never decode, inspect, or construct cursor strings. Cursor
 values are read from API responses and passed back verbatim. The audit grep
 `grep -rn "atob\|btoa\|startsWith.*v1" frontend/src/` must return no matches
 for cursor-related code.
+
+## "Opaque envelope" vs plain UUID — terminology by aggregate
+
+The repo carries two distinct cursor encodings depending on the aggregate:
+
+- **Opaque envelope** (`v1:base64(uuid)`): `Card`, `Cardgroup`, and other entities whose IDs are wrapped by `cursor.Encode` in the resolver helpers (`toCardConnectionModel`, `toCardgroupConnectionModel` in `backend/graph/resolver/helpers.go`). The "opaque" label is meaningful — clients treat the `v1:` envelope as a black box and must not parse it.
+- **Plain UUID** (raw entity ID): `User` connection cursors are emitted by the admin usecase as raw UUID strings and pass through `toUserConnectionModel` without `cursor.Encode` wrapping. They are opaque to clients in the sense that clients should not interpret them, but the encoding is a plain UUID, not the `v1:` envelope.
+
+When documenting or commenting on a Connection helper, use "opaque envelope" only for the `cursor.Encode` form. Use "plain UUID" (or "raw entity ID") for the unwrapped form. Mixing the two terms in the same context confuses readers who grep for the encoding convention. The canonical examples are `toUserConnectionModel` (plain UUID) and `toCardConnectionModel` / `toCardgroupConnectionModel` (opaque envelope) in `backend/graph/resolver/helpers.go`.

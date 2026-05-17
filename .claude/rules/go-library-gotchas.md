@@ -108,3 +108,6 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [go-arch-lint violation output format and import-graph scope (binary vs. archfile version; what AST shapes it cannot enforce)](../../docs/backend/library-gotchas/go-arch-lint-violation-output-and-scope.md)
 - [go-arch-lint: exclude testdata Go files and regenerate generated packages before checking](../../docs/backend/library-gotchas/go-arch-lint-testdata-and-generated-exclusions.md)
 - [`go get -tool`: installing Go tools as module dependencies (Go 1.24+)](../../docs/backend/library-gotchas/go-mod-tool-directive.md)
+- [Bool flag vs two-function split: ubiquitous language signals (`authorizeCardgroup*`)](../../docs/backend/library-gotchas/bool-flag-vs-two-function-ubiquitous-language.md)
+- [Direct unit tests for shared helpers + directionality assertion](../../docs/backend/library-gotchas/direct-unit-test-for-shared-helper.md)
+- [Dead context-done branch in pass-through helper — collapse to single return](../../docs/backend/library-gotchas/dead-context-check-in-pass-through-helper.md)
