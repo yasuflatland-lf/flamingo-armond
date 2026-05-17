@@ -22,17 +22,23 @@ import (
 // --- mock repositories used only by the card resolver tests ---
 
 // cardMockRepo satisfies usecase.CardRepository. Only the methods exercised by
-// the two resolver mutations are non-trivial; the rest are no-op stubs.
+// the resolver mutations are non-trivial; the rest are no-op stubs.
 type cardMockRepo struct {
 	deleteByIDsResult int64
 	deleteByIDsErr    error
 	findDueRows       []*domain.Card
 	findDueErr        error
 	findDueLimit      int
+
+	// Fields used by UpdateCard tests.
+	findByIDResult *domain.Card
+	findByIDErr    error
+	updateResult   *domain.Card
+	updateErr      error
 }
 
 func (m *cardMockRepo) FindByID(_ context.Context, _ string) (*domain.Card, error) {
-	return nil, nil
+	return m.findByIDResult, m.findByIDErr
 }
 func (m *cardMockRepo) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Card, error) {
 	return nil, nil
@@ -68,7 +74,7 @@ func (m *cardMockRepo) FindByCardgroupAndFront(_ context.Context, _, _ string) (
 }
 func (m *cardMockRepo) Create(_ context.Context, _ *domain.Card) error { return nil }
 func (m *cardMockRepo) Update(_ context.Context, _ string, _ repository.CardUpdate) (*domain.Card, error) {
-	return nil, nil
+	return m.updateResult, m.updateErr
 }
 func (m *cardMockRepo) Delete(_ context.Context, _ string) error { return nil }
 func (m *cardMockRepo) DeleteByIDsTx(
@@ -342,5 +348,157 @@ func TestResolver_CreateCard_DuplicateFront_ReturnsCardDuplicateFrontError(t *te
 	message, _ := result["message"].(string)
 	if message == "" {
 		t.Fatalf("expected non-empty message, got empty string")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestResolver_UpdateCard_* — standard four-case coverage for the UpdateCard
+// union mutation (UpdateCardResult = UpdateCardSuccess | InputValidationError).
+// ---------------------------------------------------------------------------
+
+// newUpdateCardSrv builds a gqlgen Server backed by a CardUsecase wired with
+// the supplied card repo and cardgroup repo for authorization.
+func newUpdateCardSrv(cardRepo usecase.CardRepository, cgRepo usecase.CardgroupRepositoryForCard) *handler.Server {
+	cardUC := usecase.NewCardUsecaseWithTx(cardRepo, cgRepo, cardFakeTx(), nil)
+	r := resolver.NewResolver(nil, nil, cardUC, nil, nil, nil, nil, nil, nil, nil)
+	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
+	srv.AddTransport(transport.POST{})
+	return srv
+}
+
+// updateCardMutation returns a JSON-encoded GraphQL mutation body for
+// updateCard, selecting across both union variants.
+func updateCardMutation(id, front, back string) string {
+	b, _ := json.Marshal(map[string]any{
+		"query": `mutation($id: ID!, $input: UpdateCardInput!) {
+			updateCard(id: $id, input: $input) {
+				__typename
+				... on UpdateCardSuccess { card { id front back } }
+				... on InputValidationError { field message }
+			}
+		}`,
+		"variables": map[string]any{
+			"id": id,
+			"input": map[string]any{
+				"front": front,
+				"back":  back,
+			},
+		},
+	})
+	return string(b)
+}
+
+// TestResolver_UpdateCard_HappyPath verifies that a successful update returns
+// the UpdateCardSuccess union variant with the updated card.
+func TestResolver_UpdateCard_HappyPath(t *testing.T) {
+	t.Parallel()
+
+	updatedCard := &domain.Card{ID: "c-1", CardgroupID: "cg-1", Front: "NewFront", Back: "NewBack"}
+	cardRepo := &cardMockRepo{
+		findByIDResult: &domain.Card{ID: "c-1", CardgroupID: "cg-1", Front: "OldFront", Back: "OldBack"},
+		updateResult:   updatedCard,
+	}
+	cgRepo := &cardMockCGRepo{
+		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"},
+	}
+	srv := newUpdateCardSrv(cardRepo, cgRepo)
+
+	resp := gqlRequest(t, srv, authedCtx("u-1"), updateCardMutation("c-1", "NewFront", "NewBack"))
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["updateCard"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.updateCard, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "UpdateCardSuccess" {
+		t.Fatalf("expected __typename=UpdateCardSuccess, got %v; response: %v", payload["__typename"], resp)
+	}
+	card, _ := payload["card"].(map[string]any)
+	if card == nil {
+		t.Fatalf("expected card in success payload, got nil; response: %v", resp)
+	}
+	if card["id"] != "c-1" {
+		t.Fatalf("expected card.id=c-1, got %v", card["id"])
+	}
+	if card["front"] != "NewFront" {
+		t.Fatalf("expected card.front=NewFront, got %v", card["front"])
+	}
+}
+
+// TestResolver_UpdateCard_InputValidation verifies that patching front with an
+// empty string is surfaced as the InputValidationError union variant
+// (errors as data), not as a GraphQL protocol error.
+func TestResolver_UpdateCard_InputValidation(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &cardMockRepo{
+		findByIDResult: &domain.Card{ID: "c-1", CardgroupID: "cg-1", Front: "OldFront", Back: "OldBack"},
+	}
+	cgRepo := &cardMockCGRepo{
+		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"},
+	}
+	srv := newUpdateCardSrv(cardRepo, cgRepo)
+
+	// An empty front fails card.Validate() → InputValidationError.
+	resp := gqlRequest(t, srv, authedCtx("u-1"), updateCardMutation("c-1", "", "SomeBack"))
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors (validation should come as data): %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["updateCard"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.updateCard, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "InputValidationError" {
+		t.Fatalf("expected __typename=InputValidationError, got %v; response: %v", payload["__typename"], resp)
+	}
+	if payload["field"] == nil || payload["field"] == "" {
+		t.Fatalf("expected non-empty field in InputValidationError, got %v", payload["field"])
+	}
+}
+
+// TestResolver_UpdateCard_Unauthenticated verifies that an anonymous request
+// is rejected with UNAUTHENTICATED via gqlerr.FromUsecaseError.
+func TestResolver_UpdateCard_Unauthenticated(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &cardMockRepo{}
+	cgRepo := &cardMockCGRepo{}
+	srv := newUpdateCardSrv(cardRepo, cgRepo)
+
+	resp := gqlRequest(t, srv, context.Background(), updateCardMutation("c-1", "Front", "Back"))
+
+	code := errCode(t, resp)
+	if code != "UNAUTHENTICATED" {
+		t.Fatalf("expected UNAUTHENTICATED, got %q", code)
+	}
+}
+
+// TestResolver_UpdateCard_NilVariant_ReturnsInternal covers the defensive guard
+// in the resolver where the usecase returns an UpdateCardOutcome with both Card
+// and Validation nil (a bug shape). This is triggered by having cardRepo.Update
+// return nil, nil — the usecase then returns UpdateCardOutcome{Card: nil} with
+// nil error, hitting the resolver's INTERNAL guard.
+func TestResolver_UpdateCard_NilVariant_ReturnsInternal(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &cardMockRepo{
+		findByIDResult: &domain.Card{ID: "c-1", CardgroupID: "cg-1", Front: "OldFront", Back: "OldBack"},
+		updateResult:   nil, // triggers nil-variant path
+	}
+	cgRepo := &cardMockCGRepo{
+		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"},
+	}
+	srv := newUpdateCardSrv(cardRepo, cgRepo)
+
+	resp := gqlRequest(t, srv, authedCtx("u-1"), updateCardMutation("c-1", "NewFront", "NewBack"))
+
+	code := errCode(t, resp)
+	if code != "INTERNAL" {
+		t.Fatalf("expected INTERNAL, got %q; response: %v", code, resp)
 	}
 }
