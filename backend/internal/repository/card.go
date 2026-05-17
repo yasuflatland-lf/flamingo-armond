@@ -51,11 +51,6 @@ type CardCursor struct {
 	UpdatedAt *time.Time
 }
 
-// pageCap is the upper bound for first/last in paginated queries. Set to
-// usecase.maxPageSize+1 so the usecase's "+1 fetch" trick can detect another
-// page even when the caller asks for the documented max (100).
-const pageCap = 101
-
 type gormCard struct {
 	ID          string    `gorm:"column:id;primaryKey;type:uuid"`
 	CardgroupID string    `gorm:"column:cardgroup_id"`
@@ -226,8 +221,8 @@ func (r *cardRepo) FindPageByCardgroupForUser(
 	search *string,
 ) ([]*domain.Card, int64, error) {
 	userID = coalesceUserIDForJoin(userID)
-	first = clampPageSize(first)
-	last = clampPageSize(last)
+	first = ClampPageSize(first)
+	last = ClampPageSize(last)
 
 	// Base query scoped to the cardgroup.
 	base := r.db.WithContext(ctx).Model(&gormCard{}).Where("cards.cardgroup_id = ?", cardgroupID)
@@ -258,7 +253,7 @@ func (r *cardRepo) FindPageByCardgroupForUser(
 	cursor := after
 	reverse := false
 	if last > 0 {
-		effectiveDir = invertDir(dir)
+		effectiveDir = InvertDir(dir)
 		limit = last
 		cursor = before
 		reverse = true
@@ -289,9 +284,7 @@ func (r *cardRepo) FindPageByCardgroupForUser(
 	}
 
 	if reverse {
-		for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
-			rows[i], rows[j] = rows[j], rows[i]
-		}
+		ReverseSlice(rows)
 	}
 
 	out := make([]*domain.Card, len(rows))
@@ -299,23 +292,6 @@ func (r *cardRepo) FindPageByCardgroupForUser(
 		out[i] = cardToDomain(rows[i])
 	}
 	return out, total, nil
-}
-
-func clampPageSize(n int) int {
-	if n < 0 {
-		return 0
-	}
-	if n > pageCap {
-		return pageCap
-	}
-	return n
-}
-
-func invertDir(d SortOrder) SortOrder {
-	if d == SortDesc {
-		return SortAsc
-	}
-	return SortDesc
 }
 
 // orderClause renders the SQL ORDER BY tail. When orderBy is `id` only one
