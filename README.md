@@ -103,6 +103,8 @@ Project-wide guidance for AI assistants lives in `CLAUDE.md`.
 
 ## Further reading
 
+> AI agents: orientation files live in each area's `<area>/CLAUDE.md` (Hierarchical CLAUDE.md scheme). `Further reading` below is for human onboarding.
+
 | Document | Contents |
 |---|---|
 | `docs/notion-sync.md` | Notion page sync — env vars, local testing, GitHub Actions setup, operational runbook |
@@ -110,7 +112,7 @@ Project-wide guidance for AI assistants lives in `CLAUDE.md`.
 | `docs/doc-organization.md` | L1/L2/L3 tier conventions and doc-split rules |
 | `docs/dev-setup.md` | Local development setup details (OAuth, tool versions, Supabase CLI) |
 | `docs/backend.md` | Backend runtime notes (Echo v5, GORM, graceful shutdown, env vars) |
-| `docs/frontend.md` | Frontend notes (commands, routing, Apollo cache patterns) |
+| `frontend/CLAUDE.md` | Frontend notes (commands, routing, Apollo cache patterns) |
 | `docs/ci.md` | CI configuration and workflow reference |
 | `docs/observability.md` | Logging and structured error reporting |
 | `docs/e2e.md` | End-to-end test setup and conventions |
