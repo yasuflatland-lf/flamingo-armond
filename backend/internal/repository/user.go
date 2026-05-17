@@ -35,15 +35,6 @@ var ErrNotFound = errors.New("repository: not found")
 // eris's chain walk.
 var ErrCursorNotFound = errors.New("user pagination: cursor user not found")
 
-// User pagination caps. maxUserPageSize is the user-facing limit; userPageCap
-// is the repository limit set to maxUserPageSize+1 so the usecase's "+1 fetch"
-// trick can still detect another page when the caller asks for the documented
-// max.
-const (
-	maxUserPageSize = 100
-	userPageCap     = maxUserPageSize + 1
-)
-
 // UserUpdate carries patch fields. nil means "leave untouched"; a non-nil
 // pointer to "" is a request to clear the column.
 type UserUpdate struct {
@@ -69,7 +60,7 @@ type UserRepository interface {
 	// total is computed via a separate COUNT(*) scoped by the same search
 	// predicate as the page query (cursor predicate excluded).
 	//
-	// Repository caps page size at userPageCap so callers can use the
+	// Repository caps page size at PageCap so callers can use the
 	// usecase-level +1 fetch trick at the documented maximum.
 	ListPage(
 		ctx context.Context,
@@ -153,8 +144,8 @@ func (r *userRepo) ListPage(
 	if first < 0 || last < 0 {
 		return nil, 0, eris.New("user repo: first/last must be >= 0")
 	}
-	first = clampUserPageSize(first)
-	last = clampUserPageSize(last)
+	first = ClampPageSize(first)
+	last = ClampPageSize(last)
 
 	// Normalise search: trim, treat blank as nil, escape ILIKE wildcards so
 	// "%" and "_" supplied by the caller match literally.
@@ -235,9 +226,7 @@ func (r *userRepo) ListPage(
 	}
 
 	if reverse {
-		for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
-			rows[i], rows[j] = rows[j], rows[i]
-		}
+		ReverseSlice(rows)
 	}
 
 	out := make([]*domain.User, len(rows))
@@ -245,16 +234,6 @@ func (r *userRepo) ListPage(
 		out[i] = userToDomain(rows[i])
 	}
 	return out, total, nil
-}
-
-func clampUserPageSize(n int) int {
-	if n < 0 {
-		return 0
-	}
-	if n > userPageCap {
-		return userPageCap
-	}
-	return n
 }
 
 // userOrderClause renders the SQL ORDER BY tail for the configured axis

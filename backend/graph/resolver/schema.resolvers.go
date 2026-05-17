@@ -262,21 +262,10 @@ func (r *mutationResolver) UpsertDictionary(ctx context.Context, input model.Ups
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	errs := make([]*model.DictionaryValidationError, 0, len(out.Errors))
-	for _, e := range out.Errors {
-		errs = append(errs, &model.DictionaryValidationError{
-			Line:    e.Line,
-			Message: e.Message,
-			Kind:    dictionaryKindOrPanic(ctx, string(e.Kind)),
-			Snippet: nilIfEmpty(e.Snippet),
-			Front:   nilIfEmpty(e.Front),
-			Back:    nilIfEmpty(e.Back),
-		})
-	}
 	return &model.UpsertDictionaryPayload{
 		Inserted: int(out.Inserted),
 		Updated:  int(out.Updated),
-		Errors:   errs,
+		Errors:   toDictionaryValidationErrorsFromUpsert(ctx, out.Errors),
 	}, nil
 }
 
@@ -558,15 +547,7 @@ func (r *queryResolver) ValidateDictionary(ctx context.Context, input model.Vali
 	for _, w := range words {
 		parsed = append(parsed, &model.ParsedWord{Front: w.Front, Back: w.Back, Line: w.Line})
 	}
-	validationErrs := make([]*model.DictionaryValidationError, 0, len(errs))
-	for _, e := range errs {
-		validationErrs = append(validationErrs, &model.DictionaryValidationError{
-			Line:    e.Line,
-			Message: e.Message,
-			Kind:    dictionaryKindOrPanic(ctx, e.Kind.String()),
-			Snippet: nilIfEmpty(e.Snippet),
-		})
-	}
+	validationErrs := toDictionaryValidationErrorsFromValidate(ctx, errs)
 	return &model.DictionaryValidationResult{
 		Valid:       len(errs) == 0 && len(words) > 0,
 		ParsedWords: parsed,
@@ -580,20 +561,7 @@ func (r *queryResolver) Users(ctx context.Context, first *int, after *string, la
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
-	edges := make([]*model.UserEdge, len(uc.Edges))
-	for i, e := range uc.Edges {
-		edges[i] = &model.UserEdge{Cursor: e.Cursor, Node: toUserModel(e.Node)}
-	}
-	return &model.UserConnection{
-		Edges: edges,
-		PageInfo: &model.PageInfo{
-			HasNextPage:     uc.PageInfo.HasNextPage,
-			HasPreviousPage: uc.PageInfo.HasPreviousPage,
-			StartCursor:     uc.PageInfo.StartCursor,
-			EndCursor:       uc.PageInfo.EndCursor,
-		},
-		TotalCount: int(uc.TotalCount),
-	}, nil
+	return toUserConnectionModel(ctx, uc), nil
 }
 
 // AdminUser is the resolver for the adminUser field.

@@ -3,26 +3,17 @@ package usecase
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"log/slog"
 	"time"
 
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
 
-	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
 	"backend/internal/textdic"
 	"backend/internal/usecase/ucerr"
 )
-
-// AdminChecker abstracts the admin-role check. Implemented by *auth.Service in
-// production; the local interface keeps the usecase decoupled from the auth
-// package's concrete struct so tests can substitute a stub.
-type AdminChecker interface {
-	IsAdmin(ctx context.Context, userID string) (bool, error)
-}
 
 // DictionaryCardRepository is the subset of repository.CardRepository the
 // dictionary usecase consumes. Declaring a narrow interface here lets the
@@ -136,23 +127,8 @@ func NewDictionaryUsecaseWithTx(authSvc AdminChecker, cardRepo DictionaryCardRep
 // parser) returns a zero-valued result with the parser error surfaced via
 // Output.Errors.
 func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryInput) (UpsertDictionaryOutput, error) {
-	caller := auth.UserFrom(ctx)
-	if caller == nil || caller.Sub == "" {
-		return UpsertDictionaryOutput{}, ucerr.ErrUnauthenticated
-	}
-
-	if u.auth == nil {
-		return UpsertDictionaryOutput{}, eris.New("usecase: dictionary admin checker not configured")
-	}
-	isAdmin, err := u.auth.IsAdmin(ctx, caller.Sub)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return UpsertDictionaryOutput{}, err
-		}
-		return UpsertDictionaryOutput{}, eris.Wrap(err, "usecase: dictionary upsert: check admin")
-	}
-	if !isAdmin {
-		return UpsertDictionaryOutput{}, ucerr.NewForbiddenError("admin role required")
+	if _, err := requireAdmin(ctx, u.auth); err != nil {
+		return UpsertDictionaryOutput{}, wrapAdminGateError(err, "usecase: dictionary upsert: check admin")
 	}
 
 	if input.CardgroupID == "" {
@@ -242,7 +218,7 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 		result = r
 		return nil
 	}); err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if isContextDone(err) {
 			return UpsertDictionaryOutput{}, err
 		}
 		return UpsertDictionaryOutput{}, eris.Wrap(err, "usecase: dictionary upsert: tx")

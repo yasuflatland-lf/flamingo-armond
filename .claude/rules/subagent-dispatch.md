@@ -73,6 +73,18 @@ a shared sink file — is described in
 and is the same shape of failure (concurrent writers to a single resource);
 the mitigations there generalize.
 
+### Symbol moves must be atomic — one agent owns both delete and add
+
+When moving a symbol (function, type, interface, constant) from one file to another **within the same Go package**, the deletion and the addition MUST happen in the same agent's edit batch. Splitting the two across parallel agents creates a duplicate-declaration build break in the intermediate state.
+
+Worked example from issue #181 Phase 1:
+
+- `H2`: created `admin_gate.go` (with `AdminChecker` interface) AND deleted the original `AdminChecker` declaration from `dictionary.go`. One agent owns both edits.
+- `H4`: created `ids.go` (with `uuidV7` function) AND deleted the original from `cardgroup.go`.
+- `H5`: created `tx.go` (with `txRunner` type) AND deleted the original from `card.go`.
+
+Parallel agents can still run, but each handles a **distinct symbol move**. Two agents touching the same symbol — one adding, one deleting — would race on the build state. If a symbol move is the *only* edit in a phase, a single sequential agent is sufficient; parallelism pays off only when several independent symbol moves share the phase.
+
 ## Pair reviewers with non-overlapping blind spots
 
 A single review agent does not exhaust the failure modes of a change. `comment-analyzer` is keyed on identifier-level staleness (a function name in prose that no longer exists in code) while `code-reviewer` is keyed on structural and tier-discipline regressions (duplicate `##` headings, files in the wrong tier, missing cross-references). Either one alone misses what the other catches. For doc-cleanup or refactor passes that touch both prose accuracy and structural shape, run both review agents and merge their findings before acting. Worked example: a doc-cleanup pass surfaced a stale identifier reference only via `comment-analyzer` and a duplicate-heading regression only via `code-reviewer` — running just one would have shipped one of the two defects.

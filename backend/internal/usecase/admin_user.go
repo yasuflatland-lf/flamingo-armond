@@ -199,30 +199,6 @@ func NewAdminUserWithDeps(
 	return &adminUserUsecase{users: users, roles: roles, auth: authSvc, logger: logger}
 }
 
-// requireAdmin centralises the auth gate every method shares. It returns the
-// caller's user id alongside any error; callers use the id for the
-// self-demotion guard in RevokeRole.
-func (u *adminUserUsecase) requireAdmin(ctx context.Context) (string, error) {
-	caller := auth.UserFrom(ctx)
-	if caller == nil || caller.Sub == "" {
-		return "", ucerr.ErrUnauthenticated
-	}
-	if u.auth == nil {
-		return "", eris.New("usecase: admin user: admin checker not configured")
-	}
-	isAdmin, err := u.auth.IsAdmin(ctx, caller.Sub)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return "", err
-		}
-		return "", eris.Wrap(err, "usecase: admin user: check admin")
-	}
-	if !isAdmin {
-		return "", ucerr.NewForbiddenError("admin only")
-	}
-	return caller.Sub, nil
-}
-
 // List paginates the users table with Relay-style cursors. Forward paging
 // uses (first, after); backward uses (last, before). The two are mutually
 // exclusive. Default page size is adminUserMaxPageSize (100); the same
@@ -238,8 +214,8 @@ func (u *adminUserUsecase) List(
 	first, last *int,
 	after, before, search *string,
 ) (*AdminUserConnection, error) {
-	if _, err := u.requireAdmin(ctx); err != nil {
-		return nil, err
+	if _, err := requireAdmin(ctx, u.auth); err != nil {
+		return nil, wrapAdminGateError(err, "usecase: admin user: check admin")
 	}
 
 	if after != nil && before != nil {
@@ -286,7 +262,7 @@ func (u *adminUserUsecase) List(
 			}
 			return nil, ucerr.NewValidationError(field, "cursor not found")
 		}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if isContextDone(err) {
 			return nil, err
 		}
 		return nil, eris.Wrap(err, "usecase: admin user list")
@@ -295,19 +271,10 @@ func (u *adminUserUsecase) List(
 	out := &AdminUserConnection{TotalCount: total}
 	switch {
 	case wantFirst > 0:
-		if len(users) > wantFirst {
-			out.PageInfo.HasNextPage = true
-			users = users[:wantFirst]
-		}
+		users, out.PageInfo.HasNextPage = TrimAndDetect(users, wantFirst)
 		out.PageInfo.HasPreviousPage = after != nil
 	case wantLast > 0:
-		if len(users) > wantLast {
-			out.PageInfo.HasPreviousPage = true
-			// Backward paging fetched (last+1) leading rows in reversed
-			// SQL order; the repository already reversed them so the
-			// extra row is at the head of the slice.
-			users = users[len(users)-wantLast:]
-		}
+		users, out.PageInfo.HasPreviousPage = TrimAndDetectBackward(users, wantLast)
 		out.PageInfo.HasNextPage = before != nil
 	}
 
@@ -327,15 +294,15 @@ func (u *adminUserUsecase) List(
 // Get returns a single user by id. Missing rows resolve to (nil, nil) so the
 // resolver renders the GraphQL field as null without erroring.
 func (u *adminUserUsecase) Get(ctx context.Context, id string) (*domain.User, error) {
-	if _, err := u.requireAdmin(ctx); err != nil {
-		return nil, err
+	if _, err := requireAdmin(ctx, u.auth); err != nil {
+		return nil, wrapAdminGateError(err, "usecase: admin user: check admin")
 	}
 	user, err := u.users.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, nil
 		}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if isContextDone(err) {
 			return nil, err
 		}
 		return nil, eris.Wrap(err, "usecase: admin user get")
@@ -350,8 +317,8 @@ func (u *adminUserUsecase) Get(ctx context.Context, id string) (*domain.User, er
 // outcome's Validation slot ("errors as data") so the resolver maps them to
 // the AdminUpdateUserResult union's InputValidationError variant.
 func (u *adminUserUsecase) Update(ctx context.Context, id string, input AdminUpdateUserInput) (AdminUpdateUserOutcome, error) {
-	if _, err := u.requireAdmin(ctx); err != nil {
-		return AdminUpdateUserOutcome{}, err
+	if _, err := requireAdmin(ctx, u.auth); err != nil {
+		return AdminUpdateUserOutcome{}, wrapAdminGateError(err, "usecase: admin user: check admin")
 	}
 
 	patch := repository.UserUpdate{}
@@ -384,7 +351,7 @@ func (u *adminUserUsecase) Update(ctx context.Context, id string, input AdminUpd
 				Validation: NewInputValidationInfo("id", "user not found"),
 			}, nil
 		}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if isContextDone(err) {
 			return AdminUpdateUserOutcome{}, err
 		}
 		return AdminUpdateUserOutcome{}, eris.Wrap(err, "usecase: admin user update")
@@ -404,8 +371,8 @@ func (u *adminUserUsecase) Update(ctx context.Context, id string, input AdminUpd
 // failures surface via outcome.Validation; infrastructure and cancellation
 // errors surface via the error return.
 func (u *adminUserUsecase) AssignRole(ctx context.Context, userID, roleID string) (AssignRoleOutcome, error) {
-	if _, err := u.requireAdmin(ctx); err != nil {
-		return AssignRoleOutcome{}, err
+	if _, err := requireAdmin(ctx, u.auth); err != nil {
+		return AssignRoleOutcome{}, wrapAdminGateError(err, "usecase: admin user: check admin")
 	}
 	if err := u.roles.AssignToUser(ctx, userID, roleID); err != nil {
 		info, perr := mapRoleAssignmentError(err, "usecase: admin user assign role")
@@ -426,9 +393,9 @@ func (u *adminUserUsecase) AssignRole(ctx context.Context, userID, roleID string
 // CannotRevokeOwnAdminRoleError union variant (domain invariant as data,
 // not as an error). Idempotent at the repository layer otherwise.
 func (u *adminUserUsecase) RevokeRole(ctx context.Context, userID, roleID string) (RevokeRoleOutcome, error) {
-	callerID, err := u.requireAdmin(ctx)
+	callerID, err := requireAdmin(ctx, u.auth)
 	if err != nil {
-		return RevokeRoleOutcome{}, err
+		return RevokeRoleOutcome{}, wrapAdminGateError(err, "usecase: admin user: check admin")
 	}
 
 	// Self-demotion guard: only blocks revoking the *admin* role from the
@@ -437,7 +404,7 @@ func (u *adminUserUsecase) RevokeRole(ctx context.Context, userID, roleID string
 	if userID == callerID {
 		roles, err := u.roles.FindByIDs(ctx, []string{roleID})
 		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			if isContextDone(err) {
 				return RevokeRoleOutcome{}, err
 			}
 			return RevokeRoleOutcome{}, eris.Wrap(err, "usecase: admin user revoke role: lookup role")
@@ -476,7 +443,7 @@ func mapRoleAssignmentError(err error, wrap string) (*InputValidationInfo, error
 		return NewInputValidationInfo("roleId", "role not found"), nil
 	case errors.Is(err, repository.ErrNotFound):
 		return NewInputValidationInfo("userId", "user or role not found"), nil
-	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+	case isContextDone(err):
 		return nil, err
 	default:
 		return nil, eris.Wrap(err, wrap)
@@ -511,7 +478,7 @@ func (u *adminUserUsecase) refetchUser(ctx context.Context, id, wrap string) (*d
 		switch {
 		case errors.Is(err, repository.ErrNotFound):
 			return nil, eris.Wrapf(err, "%s: user disappeared", wrap)
-		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		case isContextDone(err):
 			return nil, err
 		default:
 			return nil, eris.Wrap(err, wrap)

@@ -55,3 +55,28 @@ Default posture: **the same PR fixes the adjacent (visually contiguous) pre-exis
 A worked example from this repository: a change converted `docs/deployment.md:106, 297` from bare-text `docs/backend.md § "X"` references to anchor links. Two siblings in the same file (`L108`, `L301`) carried the identical broken pattern as pre-existing bugs. They were brought into the PR scope because the in-file style was now mixed; the diff stayed bounded and the fixes were one-line each. The further-away `L135, L303` and 13+ similar sites in other files stayed out of scope — those did not become inconsistent with anything the PR had touched.
 
 The boundary: same file, same pattern, same edit-shape. Going beyond is the cleanup-by-the-side-of-the-road that the broader rule above forbids.
+
+## Re-verify call-site count before sizing
+
+Before estimating migration cost in a plan, grep the production tree directly. Issue-body estimates are written at a point in time and become stale as prior work lands. The canonical check:
+
+    grep -rnE '<pattern>' backend/ --include='*.go' | grep -v '_test.go'
+
+This takes seconds and is the authoritative count. Do not trust an issue body's stated N-site figure without running the grep yourself.
+
+**Worked example (issue #160 / gqlerr decoupling).** The issue body for Option A cited a "151-site migration" cost. A scope-discovery grep returned zero production hits because issue #158 had already converted every site. The actual remaining work was ~50 lines. Acting on the stale estimate would have added ~1000 unnecessary lines to the diff.
+
+### Post-flight grep: helpers introduced but never wired
+
+The pre-flight grep above measures incoming scope; the **post-flight grep** measures outgoing scope. After a route-through PR (introduce a shared helper, then convert all callers to use it), grep for the helper's caller count and confirm it matches the planned count. A zero-caller result is the signal that the helper was added speculatively, never wired, and should be removed in the same PR.
+
+A worked example from issue #181: `ResolvePageSize` was introduced in Phase 1 alongside `TrimAndDetect`, anticipating that `admin_user.go` / `card.go` / `cardgroup.go` would converge on a single page-size resolver. Phase 2's route-through audit showed each file kept its own variant (`resolveAdminPageSize`, etc.) because their behavioral nuances did not collapse cleanly. The `ResolvePageSize` declaration thus had zero callers at PR-completion time and was deleted in the same PR (commit 3e0f9c8). A speculative helper left behind becomes dead exported API that a future contributor will find before noticing the per-file variants, potentially merging code through a path that bypasses tests pinned to the per-file behavior.
+
+The grep contract is:
+
+```bash
+# After route-through, every shared helper introduced in the PR
+grep -rn <NewHelperName> backend/ --include='*.go' | grep -v _test.go | grep -v <helper-file>
+```
+
+A count of `0` means delete the helper. A count below the planned target means investigate why route-through stopped short. A count matching the plan means the helper is wired correctly.

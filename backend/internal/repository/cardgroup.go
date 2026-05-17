@@ -152,8 +152,8 @@ func (r *cardgroupRepo) FindPageByOwner(
 	dir SortOrder,
 	search *string,
 ) ([]*domain.Cardgroup, error) {
-	first = clampPageSize(first)
-	last = clampPageSize(last)
+	first = ClampPageSize(first)
+	last = ClampPageSize(last)
 
 	if first == 0 && last == 0 {
 		return []*domain.Cardgroup{}, nil
@@ -166,7 +166,7 @@ func (r *cardgroupRepo) FindPageByOwner(
 	cursor := after
 	reverse := false
 	if last > 0 {
-		effectiveDir = invertDir(dir)
+		effectiveDir = InvertDir(dir)
 		limit = last
 		cursor = before
 		reverse = true
@@ -191,9 +191,7 @@ func (r *cardgroupRepo) FindPageByOwner(
 	}
 
 	if reverse {
-		for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
-			rows[i], rows[j] = rows[j], rows[i]
-		}
+		ReverseSlice(rows)
 	}
 
 	out := make([]*domain.Cardgroup, len(rows))

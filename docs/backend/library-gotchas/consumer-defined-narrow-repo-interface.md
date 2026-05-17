@@ -48,3 +48,32 @@ for every existing test suite.
 `CardgroupRepoForLearn` as local interfaces satisfied by the concrete repository.
 The same pattern appears in `internal/usecase/admin_role.go` as `adminRoleRepoForCRUD`
 (documented in `docs/backend-graphql.md` § "Admin usecase split").
+
+## Shared helpers can declare their own narrow interface
+
+The consumer-defined narrow interface pattern also applies to **package-internal
+helper functions**, not just usecase struct fields. When a helper accepts only a
+subset of a repository's surface, declare the interface at the helper's site,
+not at the consumer struct.
+
+Worked example from `backend/internal/usecase/ownership.go`:
+
+```go
+// CardgroupOwnershipFinder is the narrow repo surface ownership checks need.
+type CardgroupOwnershipFinder interface {
+    FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
+}
+
+func authorizeCardgroupOrBadInput(
+    ctx context.Context,
+    repo CardgroupOwnershipFinder, // narrow, not full repo
+    id, userID string,
+) error { ... }
+```
+
+The helper is package-internal but the interface keeps it independently
+mockable, and prevents accidental expansion of the helper's repository
+dependency footprint. If a future helper needs additional methods, it declares
+its own interface rather than widening this one. The ISP cost — one extra
+interface declaration — is paid once at the helper site; the readability and
+test-isolation payoff repeats at every call site and test.

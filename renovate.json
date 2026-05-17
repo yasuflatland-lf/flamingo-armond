@@ -92,7 +92,6 @@
     "enabled": true,
     "labels": ["security"],
     "minimumReleaseAge": null,
-    "prPriority": 10,
     "automerge": false
   }
 }

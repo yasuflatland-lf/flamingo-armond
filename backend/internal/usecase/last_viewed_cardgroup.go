@@ -95,7 +95,7 @@ func (u *lastViewedCardgroupUsecase) Set(ctx context.Context, cardgroupID string
 			return SetLastViewedCardgroupOutcome{
 				Validation: NewInputValidationInfo("cardgroupId", "cardgroup not found or not owned"),
 			}, nil
-		case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		case isContextDone(err):
 			return SetLastViewedCardgroupOutcome{}, err
 		default:
 			return SetLastViewedCardgroupOutcome{}, eris.Wrap(err, "usecase: set last viewed cardgroup")
@@ -108,7 +108,7 @@ func (u *lastViewedCardgroupUsecase) Set(ctx context.Context, cardgroupID string
 		// the refetch — only possible if the auth.users row was deleted
 		// concurrently. Treated as INTERNAL like any other refetch failure,
 		// with the wrapped sentinel preserved for log correlation.
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if isContextDone(err) {
 			return SetLastViewedCardgroupOutcome{}, err
 		}
 		return SetLastViewedCardgroupOutcome{}, eris.Wrap(err, "usecase: last viewed cardgroup: refetch own user row")

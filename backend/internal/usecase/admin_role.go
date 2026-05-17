@@ -87,30 +87,6 @@ func NewAdminRoleWithDeps(roles adminRoleRepoForCRUD, authSvc AdminChecker, logg
 	return &adminRoleUsecase{roles: roles, auth: authSvc, logger: logger}
 }
 
-// requireAdmin centralises the auth gate, mirroring adminUserUsecase.requireAdmin
-// so the two surfaces share the same FORBIDDEN / UNAUTHENTICATED / CANCELLED /
-// INTERNAL classification.
-func (u *adminRoleUsecase) requireAdmin(ctx context.Context) error {
-	caller := auth.UserFrom(ctx)
-	if caller == nil || caller.Sub == "" {
-		return ucerr.ErrUnauthenticated
-	}
-	if u.auth == nil {
-		return eris.New("usecase: admin role: admin checker not configured")
-	}
-	isAdmin, err := u.auth.IsAdmin(ctx, caller.Sub)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return err
-		}
-		return eris.Wrap(err, "usecase: admin role: check admin")
-	}
-	if !isAdmin {
-		return ucerr.NewForbiddenError("admin only")
-	}
-	return nil
-}
-
 // validateRoleName trims, lowercases, and validates a user-supplied role name.
 // Returns the canonical form on success so the caller passes a consistent value
 // to the repository (defence-in-depth — the repository also normalises).
@@ -131,12 +107,12 @@ func validateRoleName(name string) (string, error) {
 
 // List returns every role in the system. Admin-only.
 func (u *adminRoleUsecase) List(ctx context.Context) ([]*domain.Role, error) {
-	if err := u.requireAdmin(ctx); err != nil {
-		return nil, err
+	if _, err := requireAdmin(ctx, u.auth); err != nil {
+		return nil, wrapAdminGateError(err, "usecase: admin role: check admin")
 	}
 	roles, err := u.roles.ListAll(ctx)
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if isContextDone(err) {
 			return nil, err
 		}
 		return nil, eris.Wrap(err, "usecase: admin role list")
@@ -148,15 +124,15 @@ func (u *adminRoleUsecase) List(ctx context.Context) ([]*domain.Role, error) {
 // resolver renders the GraphQL field as null without erroring — Query.role(id)
 // is nullable in the schema for this reason.
 func (u *adminRoleUsecase) Get(ctx context.Context, id string) (*domain.Role, error) {
-	if err := u.requireAdmin(ctx); err != nil {
-		return nil, err
+	if _, err := requireAdmin(ctx, u.auth); err != nil {
+		return nil, wrapAdminGateError(err, "usecase: admin role: check admin")
 	}
 	role, err := u.roles.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrRoleNotFound) {
 			return nil, nil
 		}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if isContextDone(err) {
 			return nil, err
 		}
 		return nil, eris.Wrap(err, "usecase: admin role get")
@@ -172,8 +148,8 @@ func (u *adminRoleUsecase) Get(ctx context.Context, id string) (*domain.Role, er
 // variant; cancellation and infrastructure errors surface via the error
 // return.
 func (u *adminRoleUsecase) Create(ctx context.Context, name string) (CreateRoleOutcome, error) {
-	if err := u.requireAdmin(ctx); err != nil {
-		return CreateRoleOutcome{}, err
+	if _, err := requireAdmin(ctx, u.auth); err != nil {
+		return CreateRoleOutcome{}, wrapAdminGateError(err, "usecase: admin role: check admin")
 	}
 	normalized, info, err := normalizeAndValidateRoleName(name)
 	if err != nil {
@@ -255,8 +231,8 @@ type SystemRoleConflictInfo struct {
 // re-fetch inside roles.Update (Updates → FindByID), where the same
 // concurrent delete surfaces uniformly as ErrRoleNotFound.
 func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (UpdateRoleOutcome, error) {
-	if err := u.requireAdmin(ctx); err != nil {
-		return UpdateRoleOutcome{}, err
+	if _, err := requireAdmin(ctx, u.auth); err != nil {
+		return UpdateRoleOutcome{}, wrapAdminGateError(err, "usecase: admin role: check admin")
 	}
 	normalized, err := validateRoleName(name)
 	if err != nil {
@@ -292,8 +268,8 @@ func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (UpdateR
 // the resulting ErrRoleNotFound is mapped back to BAD_USER_INPUT(field=id)
 // rather than INTERNAL.
 func (u *adminRoleUsecase) Delete(ctx context.Context, id string) error {
-	if err := u.requireAdmin(ctx); err != nil {
-		return err
+	if _, err := requireAdmin(ctx, u.auth); err != nil {
+		return wrapAdminGateError(err, "usecase: admin role: check admin")
 	}
 
 	existing, err := u.roles.FindByID(ctx, id)
@@ -334,7 +310,7 @@ func mapAdminRoleError(err error, notFoundField, wrap string) (*InputValidationI
 		return NewInputValidationInfo(notFoundField, "role not found"), nil
 	case errors.Is(err, repository.ErrRoleDuplicate):
 		return NewInputValidationInfo("name", "role name already exists"), nil
-	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+	case isContextDone(err):
 		return nil, err
 	default:
 		return nil, eris.Wrap(err, wrap)
