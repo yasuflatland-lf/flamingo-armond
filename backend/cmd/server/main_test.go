@@ -2587,6 +2587,9 @@ func TestServerConfig_SwipeNextBatchSize(t *testing.T) {
 			if tc.wantLog == "" && buf.Len() > 0 {
 				t.Errorf("expected no log output, got %q", buf.String())
 			}
+			if tc.name == "invalid string uses default" && !strings.Contains(buf.String(), `"err":`) {
+				t.Errorf("expected log to contain %q attribute, got %q", `"err":`, buf.String())
+			}
 		})
 	}
 }
