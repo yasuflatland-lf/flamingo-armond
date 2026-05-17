@@ -111,6 +111,7 @@ func newSwipeSrv(
 		10,  // nextBatchSize
 		swipeFakeTx(),
 		userFSRSRepo,
+		newDiscardLogger(),
 	)
 	r := resolver.NewResolver(nil, nil, nil, swipeUC, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
@@ -282,6 +283,7 @@ func TestResolver_HandleSwipe_InfrastructureError_ReturnsInternal(t *testing.T) 
 		10,
 		nil, // nil tx runner → INTERNAL
 		&userCardFSRSRepo{},
+		newDiscardLogger(),
 	)
 	r := resolver.NewResolver(nil, nil, nil, swipeUC, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))

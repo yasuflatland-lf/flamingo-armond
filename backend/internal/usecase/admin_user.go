@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/rotisserie/eris"
@@ -162,9 +163,10 @@ type adminRoleRepository interface {
 // adminUserUsecase wires the auth service, the user repository, and the role
 // repository behind the admin-only management API.
 type adminUserUsecase struct {
-	users adminUserRepository
-	roles adminRoleRepository
-	auth  AdminChecker
+	users  adminUserRepository
+	roles  adminRoleRepository
+	auth   AdminChecker
+	logger *slog.Logger
 }
 
 // NewAdminUser constructs an AdminUserUsecase. Pass production
@@ -175,8 +177,12 @@ func NewAdminUser(
 	users repository.UserRepository,
 	roles repository.RoleRepository,
 	authSvc *auth.Service,
+	logger *slog.Logger,
 ) AdminUserUsecase {
-	return &adminUserUsecase{users: users, roles: roles, auth: authSvc}
+	if logger == nil {
+		panic("usecase: admin user: logger is required")
+	}
+	return &adminUserUsecase{users: users, roles: roles, auth: authSvc, logger: logger}
 }
 
 // NewAdminUserWithDeps is the test-time constructor that accepts the narrow
@@ -185,8 +191,12 @@ func NewAdminUserWithDeps(
 	users adminUserRepository,
 	roles adminRoleRepository,
 	authSvc AdminChecker,
+	logger *slog.Logger,
 ) AdminUserUsecase {
-	return &adminUserUsecase{users: users, roles: roles, auth: authSvc}
+	if logger == nil {
+		panic("usecase: admin user: logger is required")
+	}
+	return &adminUserUsecase{users: users, roles: roles, auth: authSvc, logger: logger}
 }
 
 // requireAdmin centralises the auth gate every method shares. It returns the

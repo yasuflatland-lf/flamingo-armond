@@ -260,15 +260,15 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		return err
 	}
 
-	userUC := usecase.NewUserUsecase(userRepo)
-	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)
-	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo)
-	learnUC := usecase.NewLearnUsecase(cardRepo, cardgroupRepo, service.NewOrderingPolicy(), nil, 0, 0)
-	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), usecase.SwipeNextBatchSize(logger), userCardFSRSRepo)
-	dictionaryUC := usecase.NewDictionaryUsecase(authSvc, cardRepo, db.GORM)
-	adminUserUC := usecase.NewAdminUser(userRepo, roleRepo, authSvc)
-	adminRoleUC := usecase.NewAdminRole(roleRepo, authSvc)
-	lastViewedCardgroupUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo)
+	userUC := usecase.NewUserUsecase(userRepo, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
+	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
+	learnUC := usecase.NewLearnUsecase(cardRepo, cardgroupRepo, service.NewOrderingPolicy(), nil, 0, 0, logger)
+	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), usecase.SwipeNextBatchSize(logger), userCardFSRSRepo, logger)
+	dictionaryUC := usecase.NewDictionaryUsecase(authSvc, cardRepo, db.GORM, logger)
+	adminUserUC := usecase.NewAdminUser(userRepo, roleRepo, authSvc, logger)
+	adminRoleUC := usecase.NewAdminRole(roleRepo, authSvc, logger)
+	lastViewedCardgroupUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo, logger)
 	pingHandler := ping.New(pingRecordRepo, pingToken)
 	var notionSyncHandler *notionsync.Handler
 	if !notionSyncDisabled {

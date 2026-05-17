@@ -555,10 +555,11 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	cardRepo := repository.NewCardRepository(db.GORM)
 	userCardFSRSRepo := repository.NewUserCardFSRSRepository(db.GORM)
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
-	userUC := usecase.NewUserUsecase(userRepo)
-	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)
-	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo)
-	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10, userCardFSRSRepo)
+	logger := slog.New(slog.DiscardHandler)
+	userUC := usecase.NewUserUsecase(userRepo, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
+	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
+	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10, userCardFSRSRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
 	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil), userRepo, roleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo, ping.New(pingRecordRepo, "test-token"), nil, swipeRecordRepo)
@@ -1648,11 +1649,12 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 	userCardFSRSRepo := repository.NewUserCardFSRSRepository(db.GORM)
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
-	userUC := usecase.NewUserUsecase(userRepo)
-	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo)
-	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo)
-	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10, userCardFSRSRepo)
-	lastViewedUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo)
+	logger := slog.New(slog.DiscardHandler)
+	userUC := usecase.NewUserUsecase(userRepo, logger)
+	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
+	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
+	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10, userCardFSRSRepo, logger)
+	lastViewedUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	e := newRouter(
 		resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, lastViewedUC, nil),
@@ -1986,6 +1988,7 @@ func TestHandleSwipe_RollsBackWhenSwipeRecordInsertFails(t *testing.T) {
 	cardRepo := repository.NewCardRepository(db.GORM)
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	userCardFSRSRepo := repository.NewUserCardFSRSRepository(db.GORM)
+	logger := slog.New(slog.DiscardHandler)
 	uc := usecase.NewSwipeUsecase(
 		db.GORM,
 		cardRepo,
@@ -1994,6 +1997,7 @@ func TestHandleSwipe_RollsBackWhenSwipeRecordInsertFails(t *testing.T) {
 		service.NewFSRSScheduler(),
 		10,
 		userCardFSRSRepo,
+		logger,
 	)
 
 	_, err := uc.HandleSwipe(auth.ContextWithUser(ctx, &auth.AuthUser{Sub: sub}), usecase.HandleSwipeInput{

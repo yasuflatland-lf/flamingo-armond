@@ -115,7 +115,7 @@ func buildAdminRoleUC(
 	if authChk == nil {
 		authChk = &adminAuthChecker{}
 	}
-	return NewAdminRoleWithDeps(roles, authChk), roles
+	return NewAdminRoleWithDeps(roles, authChk, newTestLogger()), roles
 }
 
 // ---------------------------------------------------------------------------

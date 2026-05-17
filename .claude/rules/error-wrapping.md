@@ -64,6 +64,7 @@ detection is grep-based today and pinned at single-file
 - [Test the `error_chain` shape, not just its presence](../../docs/backend/error-wrapping/test-error-chain-shape-not-presence.md)
 - [Assert PII absence on log lines that carry `user_id`](../../docs/backend/error-wrapping/assert-pii-absence-on-log-lines.md)
 - [Log a structured event when a batch item fails and earlier work will be dropped](../../docs/backend/error-wrapping/log-structured-event-when-batch-item-fails.md)
+- [Logger DI in the usecase layer: `uc.logger`, never bare `slog.*`](../../docs/backend/error-wrapping/logging-error-warn-helpers.md#usecase-layer-logger-dependency-injection)
 
 ## Errors as data — detailed cases (on-demand)
 

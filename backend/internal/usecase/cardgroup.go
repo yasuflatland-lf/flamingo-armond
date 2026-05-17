@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -74,11 +75,17 @@ type CardgroupConnectionOutput struct {
 }
 
 // CardgroupUsecase implements the cardgroup application logic.
-type CardgroupUsecase struct{ repo CardgroupRepository }
+type CardgroupUsecase struct {
+	repo   CardgroupRepository
+	logger *slog.Logger
+}
 
 // NewCardgroupUsecase constructs a CardgroupUsecase backed by the given repository.
-func NewCardgroupUsecase(repo CardgroupRepository) *CardgroupUsecase {
-	return &CardgroupUsecase{repo: repo}
+func NewCardgroupUsecase(repo CardgroupRepository, logger *slog.Logger) *CardgroupUsecase {
+	if logger == nil {
+		panic("usecase: cardgroup: logger is required")
+	}
+	return &CardgroupUsecase{repo: repo, logger: logger}
 }
 
 // Cardgroup returns a single cardgroup by id. Non-owners receive UNAUTHENTICATED

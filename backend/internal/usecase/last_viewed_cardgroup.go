@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"github.com/rotisserie/eris"
 
@@ -39,8 +40,9 @@ type userPreferenceRefetchRepo interface {
 }
 
 type lastViewedCardgroupUsecase struct {
-	prefs lastViewedCardgroupRepo
-	users userPreferenceRefetchRepo
+	prefs  lastViewedCardgroupRepo
+	users  userPreferenceRefetchRepo
+	logger *slog.Logger
 }
 
 // NewLastViewedCardgroup is the production constructor. Tests should prefer
@@ -48,16 +50,24 @@ type lastViewedCardgroupUsecase struct {
 func NewLastViewedCardgroup(
 	prefs repository.UserPreferenceRepository,
 	users repository.UserRepository,
+	logger *slog.Logger,
 ) LastViewedCardgroupUsecase {
-	return &lastViewedCardgroupUsecase{prefs: prefs, users: users}
+	if logger == nil {
+		panic("usecase: last viewed cardgroup: logger is required")
+	}
+	return &lastViewedCardgroupUsecase{prefs: prefs, users: users, logger: logger}
 }
 
 // NewLastViewedCardgroupWithDeps accepts narrow interfaces for tests.
 func NewLastViewedCardgroupWithDeps(
 	prefs lastViewedCardgroupRepo,
 	users userPreferenceRefetchRepo,
+	logger *slog.Logger,
 ) LastViewedCardgroupUsecase {
-	return &lastViewedCardgroupUsecase{prefs: prefs, users: users}
+	if logger == nil {
+		panic("usecase: last viewed cardgroup: logger is required")
+	}
+	return &lastViewedCardgroupUsecase{prefs: prefs, users: users, logger: logger}
 }
 
 // Set records cardgroupID as the caller's most recently viewed cardgroup and

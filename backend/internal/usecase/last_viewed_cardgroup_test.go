@@ -46,7 +46,7 @@ func TestLastViewedCardgroup_Anonymous_Unauthenticated(t *testing.T) {
 
 	prefs := &mockPrefRepo{}
 	users := &mockUserRefetchRepo{}
-	uc := NewLastViewedCardgroupWithDeps(prefs, users)
+	uc := NewLastViewedCardgroupWithDeps(prefs, users, newTestLogger())
 
 	_, err := uc.Set(anonCtx(), "cg-1")
 	assertUnauthenticated(t, err)
@@ -66,7 +66,7 @@ func TestLastViewedCardgroup_HappyPath_ReturnsRefreshedUser(t *testing.T) {
 	}
 	prefs := &mockPrefRepo{}
 	users := &mockUserRefetchRepo{user: want}
-	uc := NewLastViewedCardgroupWithDeps(prefs, users)
+	uc := NewLastViewedCardgroupWithDeps(prefs, users, newTestLogger())
 
 	outcome, err := uc.Set(authedCtx("u-1"), cgID)
 	if err != nil {
@@ -100,7 +100,7 @@ func TestLastViewedCardgroup_CardgroupNotFound_ValidationVariant(t *testing.T) {
 
 	prefs := &mockPrefRepo{err: repository.ErrCardgroupNotFound}
 	users := &mockUserRefetchRepo{}
-	uc := NewLastViewedCardgroupWithDeps(prefs, users)
+	uc := NewLastViewedCardgroupWithDeps(prefs, users, newTestLogger())
 
 	outcome, err := uc.Set(authedCtx("u-1"), "cg-foreign")
 	if err != nil {
@@ -128,7 +128,7 @@ func TestLastViewedCardgroup_LegacyErrNotFound_FallsThroughToInternal(t *testing
 
 	prefs := &mockPrefRepo{err: repository.ErrNotFound}
 	users := &mockUserRefetchRepo{}
-	uc := NewLastViewedCardgroupWithDeps(prefs, users)
+	uc := NewLastViewedCardgroupWithDeps(prefs, users, newTestLogger())
 
 	_, err := uc.Set(authedCtx("u-1"), "cg-1")
 	assertInternalChain(t, err, "usecase: set last viewed cardgroup")
@@ -139,7 +139,7 @@ func TestLastViewedCardgroup_GenericRepoError_Internal(t *testing.T) {
 
 	prefs := &mockPrefRepo{err: eris.New("boom")}
 	users := &mockUserRefetchRepo{}
-	uc := NewLastViewedCardgroupWithDeps(prefs, users)
+	uc := NewLastViewedCardgroupWithDeps(prefs, users, newTestLogger())
 
 	_, err := uc.Set(authedCtx("u-1"), "cg-1")
 	assertInternalChain(t, err, "usecase: set last viewed cardgroup")
@@ -150,7 +150,7 @@ func TestLastViewedCardgroup_ContextCancelled_Cancelled(t *testing.T) {
 
 	prefs := &mockPrefRepo{err: context.Canceled}
 	users := &mockUserRefetchRepo{}
-	uc := NewLastViewedCardgroupWithDeps(prefs, users)
+	uc := NewLastViewedCardgroupWithDeps(prefs, users, newTestLogger())
 
 	_, err := uc.Set(authedCtx("u-1"), "cg-1")
 	assertCancelled(t, err)
@@ -164,7 +164,7 @@ func TestLastViewedCardgroup_RefetchUserMissing_Internal(t *testing.T) {
 
 	prefs := &mockPrefRepo{}
 	users := &mockUserRefetchRepo{err: repository.ErrNotFound}
-	uc := NewLastViewedCardgroupWithDeps(prefs, users)
+	uc := NewLastViewedCardgroupWithDeps(prefs, users, newTestLogger())
 
 	_, err := uc.Set(authedCtx("u-1"), "cg-1")
 	assertInternalChain(t, err, "usecase: last viewed cardgroup: refetch own user row")
@@ -178,7 +178,7 @@ func TestLastViewedCardgroup_RefetchContextCancelled_Cancelled(t *testing.T) {
 
 	prefs := &mockPrefRepo{}
 	users := &mockUserRefetchRepo{err: context.DeadlineExceeded}
-	uc := NewLastViewedCardgroupWithDeps(prefs, users)
+	uc := NewLastViewedCardgroupWithDeps(prefs, users, newTestLogger())
 
 	_, err := uc.Set(authedCtx("u-1"), "cg-1")
 	assertCancelled(t, err)
@@ -191,7 +191,7 @@ func TestLastViewedCardgroup_EmptySub_Unauthenticated(t *testing.T) {
 
 	prefs := &mockPrefRepo{}
 	users := &mockUserRefetchRepo{}
-	uc := NewLastViewedCardgroupWithDeps(prefs, users)
+	uc := NewLastViewedCardgroupWithDeps(prefs, users, newTestLogger())
 
 	_, err := uc.Set(authedCtx(""), "cg-1")
 	assertUnauthenticated(t, err)
@@ -213,7 +213,7 @@ func TestLastViewedCardgroup_SentinelOrderingMatters(t *testing.T) {
 
 	prefs := &mockPrefRepo{err: repository.ErrCardgroupNotFound}
 	users := &mockUserRefetchRepo{}
-	uc := NewLastViewedCardgroupWithDeps(prefs, users)
+	uc := NewLastViewedCardgroupWithDeps(prefs, users, newTestLogger())
 
 	outcome, err := uc.Set(authedCtx("u-1"), "cg-1")
 	if err != nil {

@@ -40,3 +40,18 @@ Today's call sites:
 2. **`cmd/server/main.go main()`** — terminal error before `os.Exit(1)` (uses `LogError`, ERROR level).
 3. **`gqlerr.Cancelled(ctx, err)`** — client cancellation / server timeout returned through GraphQL (uses `LogWarn`, WARN level).
 4. **`auth/middleware.go reject(c, cause)`** — token-rejection log (uses `LogWarn`, WARN level).
+
+### Usecase-layer logger dependency injection
+
+Production code under `backend/internal/usecase/` MUST log through an injected `uc.logger *slog.Logger` field — never via the bare package-level `slog.Warn` / `slog.WarnContext` / `slog.Info` / `slog.InfoContext` / `slog.Error` / `slog.ErrorContext` / `slog.Default()` / `slog.LogAttrs` calls. Every usecase struct carries a logger field set via constructor; the constructor panics if the logger is nil (matches the [`constructor-panics-for-non-empty-config`](../library-gotchas/constructor-panics-for-non-empty-config.md) rule). The composition root in `cmd/server/main.go` plumbs the application's `*slog.Logger` into every `usecase.NewXxx(...)` call as the trailing positional argument.
+
+The `gqlerr.Internal` / `gqlerr.Cancelled` constructors in `backend/internal/gqlerr/` are deliberately exempt — the transport layer is the correct seam for the process-default logger because it has no upstream caller to inject from. Usecase code does not have that excuse.
+
+Acceptance check (run from the repo root):
+
+```bash
+grep -rnE 'slog\.(Default|SetDefault|Warn|WarnContext|Info|InfoContext|Error|ErrorContext|LogAttrs)\(' \
+    backend/internal/usecase/ --include='*.go' | grep -v '_test.go'
+```
+
+Expected: empty. Any match is a regression.

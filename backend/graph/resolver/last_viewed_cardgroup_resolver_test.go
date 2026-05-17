@@ -197,7 +197,7 @@ func TestSetLastViewedCardgroup_NilVariant_ReturnsInternal(t *testing.T) {
 // newMeServer builds a gqlgen Server wired to UserUsecase for testing User
 // field resolvers via the me query.
 func newMeServer(userMock *mockUserRepository) *handler.Server {
-	uc := usecase.NewUserUsecase(userMock)
+	uc := usecase.NewUserUsecase(userMock, newDiscardLogger())
 	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})

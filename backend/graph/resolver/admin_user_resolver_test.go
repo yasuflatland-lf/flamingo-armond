@@ -470,7 +470,7 @@ func TestAdminUserResolver_Roles_SelfIntrospection_Allowed(t *testing.T) {
 	userMock := &mockUserRepository{
 		findResult: &domain.User{ID: "u-self", DisplayName: &displayName},
 	}
-	uc := usecase.NewUserUsecase(userMock)
+	uc := usecase.NewUserUsecase(userMock, newDiscardLogger())
 	// isAdmin=false models a non-admin caller; the self-introspection branch
 	// must skip the IsAdmin check entirely.
 	roleRepo := &mockUserRoleRepository{isAdmin: false}

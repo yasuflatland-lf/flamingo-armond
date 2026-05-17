@@ -38,3 +38,5 @@ causes state leakage across test functions.
 
 **Reference:** `backend/internal/gqlerr/errors_test.go` — `TestRecoverFunc`,
 `TestInternal_logsError`, and `TestInternal_VariadicAttrs` all follow this pattern.
+
+**Scope.** This gotcha applies to handler, auth, and gqlerr tests where `slog.SetDefault` is the only seam available. The usecase layer is exempt: every usecase constructor takes an injected `*slog.Logger`, and tests pass a discard logger via the `newTestLogger()` helper in `backend/internal/usecase/helpers_test.go`, so usecase tests run unrestricted under `t.Parallel()`. See [#161] for the design rationale.

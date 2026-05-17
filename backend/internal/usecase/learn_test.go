@@ -57,6 +57,7 @@ func TestLearnUsecaseNextDueCards(t *testing.T) {
 		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 		20,
 		100,
+		newTestLogger(),
 	)
 
 	got, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", now, 5)
@@ -84,6 +85,7 @@ func TestLearnUsecaseNextDueCardsAuthAndCardgroupErrors(t *testing.T) {
 			func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 			20,
 			100,
+			newTestLogger(),
 		)
 		_, err := uc.NextDueCards(anonCtx(), "cg-1", now, 5)
 		assertUnauthenticated(t, err)
@@ -98,6 +100,7 @@ func TestLearnUsecaseNextDueCardsAuthAndCardgroupErrors(t *testing.T) {
 			func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 			20,
 			100,
+			newTestLogger(),
 		)
 		_, err := uc.NextDueCards(authedCtx("u-1"), "missing", now, 5)
 		assertValidationError(t, err, "cardgroupId", "")
@@ -112,6 +115,7 @@ func TestLearnUsecaseNextDueCardsAuthAndCardgroupErrors(t *testing.T) {
 			func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 			20,
 			100,
+			newTestLogger(),
 		)
 		_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", now, 5)
 		assertUnauthenticated(t, err)
@@ -145,6 +149,7 @@ func TestLearnUsecaseNextDueCardsLimitClampAndEmpty(t *testing.T) {
 				func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 				20,
 				100,
+				newTestLogger(),
 			)
 
 			got, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", now, tc.in)
@@ -167,6 +172,7 @@ func TestLearnUsecaseNextDueCardsRepoError(t *testing.T) {
 		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 		20,
 		100,
+		newTestLogger(),
 	)
 
 	_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", now, 5)
@@ -185,6 +191,7 @@ func TestLearnUsecaseNextDueCardsCardgroupRepoInternalError(t *testing.T) {
 		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 		20,
 		100,
+		newTestLogger(),
 	)
 
 	_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", now, 5)
@@ -199,19 +206,19 @@ func TestNewLearnUsecase_PanicsOnInvalidDeps(t *testing.T) {
 	t.Run("nil cardRepo", func(t *testing.T) {
 		t.Parallel()
 		require.Panics(t, func() {
-			NewLearnUsecase(nil, cgRepo, nil, nil, 20, 100)
+			NewLearnUsecase(nil, cgRepo, nil, nil, 20, 100, newTestLogger())
 		})
 	})
 	t.Run("nil cardgroupRepo", func(t *testing.T) {
 		t.Parallel()
 		require.Panics(t, func() {
-			NewLearnUsecase(cardRepo, nil, nil, nil, 20, 100)
+			NewLearnUsecase(cardRepo, nil, nil, nil, 20, 100, newTestLogger())
 		})
 	})
 	t.Run("defaultLimit greater than maxLimit", func(t *testing.T) {
 		t.Parallel()
 		require.Panics(t, func() {
-			NewLearnUsecase(cardRepo, cgRepo, nil, nil, 30, 20)
+			NewLearnUsecase(cardRepo, cgRepo, nil, nil, 30, 20, newTestLogger())
 		})
 	})
 }

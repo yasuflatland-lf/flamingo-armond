@@ -114,7 +114,7 @@ func TestNotionSyncUsecase_DiffMerge(t *testing.T) {
 		upsertResult:   repository.UpsertManyTxResult{Inserted: 1, Updated: 1},
 	}
 	tx, txCalls := dictTxRunner()
-	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, nil)
+	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	out, err := uc.Sync(context.Background(), SyncFromNotionInput{
 		PageIDs:       []string{" page-1 ", "page-1"},
@@ -163,7 +163,7 @@ func TestNotionSyncUsecase_DuplicateFrontLastWins(t *testing.T) {
 	cardgroups := &mockNotionCardgroupRepo{cg: &domain.Cardgroup{ID: "cg-target"}}
 	cards := &mockNotionCardRepo{upsertResult: repository.UpsertManyTxResult{Inserted: 1}}
 	tx, txCalls := dictTxRunner()
-	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, nil)
+	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	out, err := uc.Sync(context.Background(), SyncFromNotionInput{
 		PageIDs:       []string{"page-1", "page-2"},
@@ -216,7 +216,7 @@ func TestNotionSyncUsecase_DuplicateFrontSamePageLastWins(t *testing.T) {
 	cardgroups := &mockNotionCardgroupRepo{cg: &domain.Cardgroup{ID: "cg-target"}}
 	cards := &mockNotionCardRepo{upsertResult: repository.UpsertManyTxResult{Inserted: 1}}
 	tx, txCalls := dictTxRunner()
-	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, nil)
+	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	out, err := uc.Sync(context.Background(), SyncFromNotionInput{
 		PageIDs:       []string{"page-1"},
@@ -312,7 +312,7 @@ func newValidationUsecase() *NotionSyncUsecase {
 		&mockNotionCardgroupRepo{},
 		&mockNotionCardRepo{},
 		tx,
-		nil,
+		newTestLogger(),
 	)
 }
 
@@ -329,7 +329,7 @@ func TestNotionSyncUsecase_SoftParseFailure(t *testing.T) {
 	cardgroups := &mockNotionCardgroupRepo{}
 	cards := &mockNotionCardRepo{}
 	tx, txCalls := dictTxRunner()
-	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, nil)
+	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncFromNotionInput{
 		PageIDs:       []string{"page-1"},
@@ -361,7 +361,7 @@ func TestNotionSyncUsecase_MixedSkipAndLexerErrorIsNotSkipOnly(t *testing.T) {
 	cardgroups := &mockNotionCardgroupRepo{}
 	cards := &mockNotionCardRepo{}
 	tx, txCalls := dictTxRunner()
-	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, nil)
+	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncFromNotionInput{
 		PageIDs:       []string{"page-1"},
@@ -394,7 +394,7 @@ func TestNotionSyncUsecase_LoneFrontDoesNotOverwriteExistingBack(t *testing.T) {
 	cardgroups := &mockNotionCardgroupRepo{cg: &domain.Cardgroup{ID: "cg-target"}}
 	cards := &mockNotionCardRepo{existingFronts: []string{"apple"}}
 	tx, txCalls := dictTxRunner()
-	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, nil)
+	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	out, err := uc.Sync(context.Background(), SyncFromNotionInput{
 		PageIDs:       []string{"page-1"},
@@ -433,7 +433,7 @@ func TestNotionSyncUsecase_FetchErrorSkipsPersistence(t *testing.T) {
 	cardgroups := &mockNotionCardgroupRepo{}
 	cards := &mockNotionCardRepo{}
 	tx, txCalls := dictTxRunner()
-	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, nil)
+	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncFromNotionInput{
 		PageIDs:       []string{"page-1"},
@@ -456,7 +456,7 @@ func TestNotionSyncUsecase_PersistError(t *testing.T) {
 	cardgroups := &mockNotionCardgroupRepo{cg: &domain.Cardgroup{ID: "cg-target"}}
 	cards := &mockNotionCardRepo{upsertErr: boom}
 	tx, _ := dictTxRunner()
-	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, nil)
+	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncFromNotionInput{
 		PageIDs:       []string{"page-1"},
@@ -481,7 +481,7 @@ func TestNotionSyncUsecase_CardgroupEnsureError(t *testing.T) {
 	cardgroups := &mockNotionCardgroupRepo{err: dbErr}
 	cards := &mockNotionCardRepo{}
 	tx, txCalls := dictTxRunner()
-	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, nil)
+	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncFromNotionInput{
 		PageIDs:       []string{"page-1"},
@@ -520,7 +520,7 @@ func TestNotionSyncUsecase_ListFrontsError(t *testing.T) {
 	cardgroups := &mockNotionCardgroupRepo{cg: &domain.Cardgroup{ID: "cg-target"}}
 	cards := &mockNotionCardRepo{listErr: listErr}
 	tx, txCalls := dictTxRunner()
-	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, nil)
+	uc := NewNotionSyncUsecaseWithTx(fetcher, cardgroups, cards, tx, newTestLogger())
 
 	_, err := uc.Sync(context.Background(), SyncFromNotionInput{
 		PageIDs:       []string{"page-1"},
