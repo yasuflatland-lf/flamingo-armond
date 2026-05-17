@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 
@@ -63,20 +64,27 @@ type adminRoleRepoForCRUD interface {
 }
 
 type adminRoleUsecase struct {
-	roles adminRoleRepoForCRUD
-	auth  AdminChecker
+	roles  adminRoleRepoForCRUD
+	auth   AdminChecker
+	logger *slog.Logger
 }
 
 // NewAdminRole is the production constructor. Tests should prefer
 // NewAdminRoleWithDeps to inject narrow stubs.
-func NewAdminRole(roles repository.RoleRepository, authSvc *auth.Service) AdminRoleUsecase {
-	return &adminRoleUsecase{roles: roles, auth: authSvc}
+func NewAdminRole(roles repository.RoleRepository, authSvc *auth.Service, logger *slog.Logger) AdminRoleUsecase {
+	if logger == nil {
+		panic("usecase: admin role: logger is required")
+	}
+	return &adminRoleUsecase{roles: roles, auth: authSvc, logger: logger}
 }
 
 // NewAdminRoleWithDeps accepts narrow interface types for tests; production
 // code must use NewAdminRole.
-func NewAdminRoleWithDeps(roles adminRoleRepoForCRUD, authSvc AdminChecker) AdminRoleUsecase {
-	return &adminRoleUsecase{roles: roles, auth: authSvc}
+func NewAdminRoleWithDeps(roles adminRoleRepoForCRUD, authSvc AdminChecker, logger *slog.Logger) AdminRoleUsecase {
+	if logger == nil {
+		panic("usecase: admin role: logger is required")
+	}
+	return &adminRoleUsecase{roles: roles, auth: authSvc, logger: logger}
 }
 
 // requireAdmin centralises the auth gate, mirroring adminUserUsecase.requireAdmin

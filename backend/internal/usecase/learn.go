@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"time"
 
@@ -36,6 +37,7 @@ type LearnUsecase struct {
 	randSource    func() *rand.Rand
 	defaultLimit  int
 	maxLimit      int
+	logger        *slog.Logger
 }
 
 func NewLearnUsecase(
@@ -44,7 +46,11 @@ func NewLearnUsecase(
 	ordering *service.OrderingPolicy,
 	randSource func() *rand.Rand,
 	defaultLimit, maxLimit int,
+	logger *slog.Logger,
 ) *LearnUsecase {
+	if logger == nil {
+		panic("usecase: learn: logger is required")
+	}
 	if ordering == nil {
 		ordering = service.NewOrderingPolicy()
 	}
@@ -75,6 +81,7 @@ func NewLearnUsecase(
 		randSource:    randSource,
 		defaultLimit:  defaultLimit,
 		maxLimit:      maxLimit,
+		logger:        logger,
 	}
 }
 

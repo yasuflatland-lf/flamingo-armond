@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -227,7 +228,7 @@ func TestCardUsecase_Create(t *testing.T) {
 			t.Parallel()
 			cardRepo := &mockCardRepository{}
 			cgRepo := &mockCardgroupRepoForCard{findResult: tc.cardgroup, findErr: tc.cardgroupErr}
-			uc := NewCardUsecase(nil, cardRepo, cgRepo, nil)
+			uc := NewCardUsecase(nil, cardRepo, cgRepo, nil, newTestLogger())
 
 			got, err := uc.Create(tc.ctx, tc.input)
 
@@ -275,7 +276,7 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 		t.Parallel()
 		uc := NewCardUsecase(nil, &mockCardRepository{findResult: existing},
 			&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
-			nil,
+			nil, newTestLogger(),
 		)
 		_, err := uc.Update(authedCtx("u2"), "card1", UpdateCardInput{Front: ptr("new")})
 		assertUnauthenticated(t, err)
@@ -290,7 +291,7 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 		}
 		uc := NewCardUsecase(nil, cardRepo,
 			&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
-			nil,
+			nil, newTestLogger(),
 		)
 		outcome, err := uc.Update(authedCtx("u1"), "card1", UpdateCardInput{Front: ptr(" new front ")})
 		if err != nil {
@@ -326,7 +327,7 @@ func TestCardUsecase_Update_EmptyFront_ValidationVariant(t *testing.T) {
 	cardRepo := &mockCardRepository{findResult: existing}
 	uc := NewCardUsecase(nil, cardRepo,
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
-		nil,
+		nil, newTestLogger(),
 	)
 
 	outcome, err := uc.Update(authedCtx("u1"), "card1", UpdateCardInput{Front: ptr("")})
@@ -363,7 +364,7 @@ func TestCardUsecase_Update_RepoError_InfraChannel(t *testing.T) {
 	}
 	uc := NewCardUsecase(nil, cardRepo,
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
-		nil,
+		nil, newTestLogger(),
 	)
 
 	_, err := uc.Update(authedCtx("u1"), "card1", UpdateCardInput{Front: ptr("new front")})
@@ -379,7 +380,7 @@ func TestCardUsecase_Delete_NotFoundMasksExistence(t *testing.T) {
 
 	uc := NewCardUsecase(nil, &mockCardRepository{findErr: repository.ErrNotFound},
 		&mockCardgroupRepoForCard{},
-		nil,
+		nil, newTestLogger(),
 	)
 
 	err := uc.Delete(authedCtx("u1"), "missing")
@@ -391,7 +392,7 @@ func TestCardUsecase_Card_NotFoundReturnsNil(t *testing.T) {
 
 	uc := NewCardUsecase(nil, &mockCardRepository{findErr: repository.ErrNotFound},
 		&mockCardgroupRepoForCard{},
-		nil,
+		nil, newTestLogger(),
 	)
 
 	got, err := uc.Card(authedCtx("u1"), "missing")
@@ -408,7 +409,7 @@ func TestCardUsecase_RepoErrorsBecomeInternal(t *testing.T) {
 
 	uc := NewCardUsecase(nil, &mockCardRepository{findErr: errors.New("db died")},
 		&mockCardgroupRepoForCard{},
-		nil,
+		nil, newTestLogger(),
 	)
 	_, err := uc.Card(authedCtx("u1"), "card1")
 	assertInternalChain(t, err, "usecase: card: find by id")
@@ -416,7 +417,7 @@ func TestCardUsecase_RepoErrorsBecomeInternal(t *testing.T) {
 
 func TestCardUsecase_ListCardsByCardgroupConnection_Anonymous(t *testing.T) {
 	t.Parallel()
-	uc := NewCardUsecase(nil, &mockCardRepository{}, &mockCardgroupRepoForCard{}, nil)
+	uc := NewCardUsecase(nil, &mockCardRepository{}, &mockCardgroupRepoForCard{}, nil, newTestLogger())
 	_, err := uc.ListCardsByCardgroupConnection(anonCtx(), CardConnectionInput{CardgroupID: "cg1"})
 	assertUnauthenticated(t, err)
 }
@@ -425,7 +426,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_NonOwner(t *testing.T) {
 	t.Parallel()
 	uc := NewCardUsecase(nil, &mockCardRepository{},
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
-		nil,
+		nil, newTestLogger(),
 	)
 	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u2"), CardConnectionInput{CardgroupID: "cg1"})
 	assertUnauthenticated(t, err)
@@ -435,7 +436,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_InvalidOrderBy(t *testing.T)
 	t.Parallel()
 	uc := NewCardUsecase(nil, &mockCardRepository{},
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
-		nil,
+		nil, newTestLogger(),
 	)
 	bad := CardOrderBy("STABILITY")
 	_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
@@ -449,7 +450,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_BothFirstAndLast(t *testing.
 	t.Parallel()
 	uc := NewCardUsecase(nil, &mockCardRepository{},
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
-		nil,
+		nil, newTestLogger(),
 	)
 	first := 5
 	last := 5
@@ -472,7 +473,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_DefaultsAndPaging(t *testing
 	cardRepo := &mockCardRepository{findPageRows: rows, findPageTotal: 50}
 	uc := NewCardUsecase(nil, cardRepo,
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
-		nil,
+		nil, newTestLogger(),
 	)
 
 	out, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
@@ -528,7 +529,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_CursorCrossCardgroup(t *test
 		}
 		uc := NewCardUsecase(nil, cardRepo,
 			&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
-			nil,
+			nil, newTestLogger(),
 		)
 		_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
 			CardgroupID: "cg1",
@@ -546,7 +547,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_CursorCrossCardgroup(t *test
 		}
 		uc := NewCardUsecase(nil, cardRepo,
 			&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
-			nil,
+			nil, newTestLogger(),
 		)
 		_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
 			CardgroupID: "cg1",
@@ -573,7 +574,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_BackwardPaging(t *testing.T)
 	cardRepo := &mockCardRepository{findPageRows: rows, findPageTotal: 10}
 	uc := NewCardUsecase(nil, cardRepo,
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
-		nil,
+		nil, newTestLogger(),
 	)
 
 	out, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
@@ -672,7 +673,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_ResolveCursorHydratesDueFiel
 			}
 			uc := NewCardUsecase(nil, cardRepo,
 				&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
-				userFSRSRepo,
+				userFSRSRepo, newTestLogger(),
 			)
 			_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
 				CardgroupID: "cg1",
@@ -703,7 +704,7 @@ func TestCardUsecase_ResolveCursor_MalformedV1_ReturnsBadUserInput(t *testing.T)
 
 	uc := NewCardUsecase(nil, &mockCardRepository{},
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
-		nil,
+		nil, newTestLogger(),
 	)
 	malformed := "v1:!!!not-base64!!!"
 	_, err := uc.resolveCursor(
@@ -721,7 +722,7 @@ func TestCardUsecase_ResolveCursor_V1EncodedID(t *testing.T) {
 
 	uc := NewCardUsecase(nil, &mockCardRepository{},
 		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
-		nil,
+		nil, newTestLogger(),
 	)
 	// "v1:" + base64.RawURLEncoding.EncodeToString([]byte("card-abc")) == "v1:Y2FyZC1hYmM"
 	encoded := "v1:Y2FyZC1hYmM"
@@ -770,7 +771,7 @@ func TestCardUsecase_Create_Duplicate(t *testing.T) {
 		findByCardgroupAndFrontResult: fixture,
 	}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
-	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil)
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil, newTestLogger())
 
 	// Submit with surrounding whitespace to regression-guard the TrimSpace contract.
 	got, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "  hello  ", Back: "world"})
@@ -815,7 +816,7 @@ func TestCardUsecase_Create_DuplicateLookupRace(t *testing.T) {
 		findByCardgroupAndFrontErr: eris.New("db: connection reset"),
 	}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: wantCardgroupID, OwnerID: "u1"}}
-	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil)
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil, newTestLogger())
 
 	_, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: wantCardgroupID, Front: "hello", Back: "world"})
 	// Load-bearing: eris.Wrap at the call site must produce a rich chain even for external errors.
@@ -837,7 +838,7 @@ func TestCardUsecase_Create_DuplicateLookupRace_RowVanished(t *testing.T) {
 		findByCardgroupAndFrontErr: repository.ErrNotFound,
 	}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: wantCardgroupID, OwnerID: "u1"}}
-	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil)
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil, newTestLogger())
 
 	_, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: wantCardgroupID, Front: "hello", Back: "world"})
 	// Load-bearing: eris.Wrap in production must produce a rich chain even when
@@ -873,7 +874,7 @@ func TestCardUsecase_Create_triggersNotionWriteback(t *testing.T) {
 	stub := &stubNotionWriter{called: make(chan struct{})}
 	cardRepo := &mockCardRepository{}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
-	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil).WithNotionWritebacker(stub, "page-xyz")
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil, newTestLogger()).WithNotionWritebacker(stub, "page-xyz")
 
 	got, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "front", Back: "back"})
 	if err != nil {
@@ -914,7 +915,7 @@ func TestCardUsecase_Create_duplicateDoesNotTriggerWriteback(t *testing.T) {
 		findByCardgroupAndFrontResult: fixture,
 	}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
-	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil).WithNotionWritebacker(stub, "page-xyz")
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil, newTestLogger()).WithNotionWritebacker(stub, "page-xyz")
 
 	got, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "front", Back: "back"})
 	if err != nil {
@@ -952,7 +953,7 @@ func TestCardUsecase_Create_writebackErrorDoesNotAffectOutcome(t *testing.T) {
 	}
 	cardRepo := &mockCardRepository{}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
-	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil).WithNotionWritebacker(stub, "page-xyz")
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil, newTestLogger()).WithNotionWritebacker(stub, "page-xyz")
 
 	got, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "front", Back: "back"})
 	if err != nil {
@@ -969,12 +970,94 @@ func TestCardUsecase_Create_writebackErrorDoesNotAffectOutcome(t *testing.T) {
 	}
 }
 
+// signalWriter wraps a bytes.Buffer and closes done exactly once on the first
+// Write call. This lets us wait until the slog handler has actually flushed a
+// record before inspecting the buffer, which is necessary because the goroutine
+// in card.go calls WarnContext AFTER AppendParagraph returns — so the
+// stubNotionWriter.called channel fires one step too early for log assertions.
+type signalWriter struct {
+	buf  bytes.Buffer
+	done chan struct{}
+	once sync.Once
+}
+
+func (w *signalWriter) Write(p []byte) (int, error) {
+	n, err := w.buf.Write(p)
+	w.once.Do(func() { close(w.done) })
+	return n, err
+}
+
+// TestCardUsecase_Create_writebackErrorLogsCardgroupID pins the structured log
+// record emitted when the notion writeback goroutine fails. It asserts that
+// the "cardgroup_id" attribute is present on the WarnContext line and equals
+// the value captured before the goroutine launched.
+func TestCardUsecase_Create_writebackErrorLogsCardgroupID(t *testing.T) {
+	t.Parallel()
+
+	const wantCardgroupID = "cg-writeback-log-test"
+
+	// signalWriter lets us block until the first JSON record lands in the
+	// buffer, rather than relying on stub.called which fires before WarnContext.
+	sw := &signalWriter{done: make(chan struct{})}
+	logger := slog.New(slog.NewJSONHandler(sw, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	stub := &stubNotionWriter{
+		err:    errors.New("notion: 503 unavailable"),
+		called: make(chan struct{}),
+	}
+	cardRepo := &mockCardRepository{}
+	cgRepo := &mockCardgroupRepoForCard{
+		findResult: &domain.Cardgroup{ID: wantCardgroupID, OwnerID: "u1"},
+	}
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil, logger).WithNotionWritebacker(stub, "page-log-test")
+
+	got, err := uc.Create(authedCtx("u1"), CreateCardInput{
+		CardgroupID: wantCardgroupID,
+		Front:       "front",
+		Back:        "back",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error from Create: %v", err)
+	}
+	if got.Card == nil {
+		t.Fatal("expected outcome.Card to be non-nil even when writeback errors")
+	}
+
+	// Block until the first log record lands in the buffer (WarnContext called).
+	select {
+	case <-sw.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("notion writeback goroutine did not log within timeout")
+	}
+
+	records := decodeJSONRecords(t, sw.buf.Bytes())
+	var warnRec map[string]any
+	for _, rec := range records {
+		if rec["msg"] == "card create: notion writeback failed" {
+			warnRec = rec
+			break
+		}
+	}
+	if warnRec == nil {
+		t.Fatalf("no WarnContext record with msg %q found in log output:\n%s",
+			"card create: notion writeback failed", sw.buf.String())
+	}
+
+	gotCGID, ok := warnRec["cardgroup_id"].(string)
+	if !ok {
+		t.Fatalf("cardgroup_id attr missing or not a string; full record: %v", warnRec)
+	}
+	if gotCGID != wantCardgroupID {
+		t.Fatalf("cardgroup_id = %q, want %q", gotCGID, wantCardgroupID)
+	}
+}
+
 func TestCardUsecase_Create_noWritebackWhenNotConfigured(t *testing.T) {
 	t.Parallel()
 
 	cardRepo := &mockCardRepository{}
 	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
-	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil)
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil, newTestLogger())
 
 	got, err := uc.Create(authedCtx("u1"), CreateCardInput{CardgroupID: "cg1", Front: "front", Back: "back"})
 	if err != nil {
@@ -1038,7 +1121,7 @@ func TestCardUsecase_ListCardsByCardgroupConnection_SearchPassthrough(t *testing
 			cgRepo := &mockCardgroupRepoForCard{
 				findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"},
 			}
-			uc := NewCardUsecase(nil, cardRepo, cgRepo, nil)
+			uc := NewCardUsecase(nil, cardRepo, cgRepo, nil, newTestLogger())
 
 			_, err := uc.ListCardsByCardgroupConnection(authedCtx("u1"), CardConnectionInput{
 				CardgroupID: "cg1",

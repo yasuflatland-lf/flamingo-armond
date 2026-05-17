@@ -179,7 +179,7 @@ func buildAdminUC(
 	if authChk == nil {
 		authChk = &adminAuthChecker{}
 	}
-	uc := NewAdminUserWithDeps(users, roles, authChk)
+	uc := NewAdminUserWithDeps(users, roles, authChk, newTestLogger())
 	return uc, users, roles
 }
 

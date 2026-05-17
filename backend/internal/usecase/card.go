@@ -71,10 +71,14 @@ type CardUsecase struct {
 	tx            txRunner
 	notionWriter  NotionWritebacker
 	notionPageID  string
+	logger        *slog.Logger
 }
 
-func NewCardUsecase(db *gorm.DB, cardRepo CardRepository, cardgroupRepo CardgroupRepositoryForCard, userCardFSRSRepo UserCardFSRSRepositoryForCard) *CardUsecase {
-	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo, userFSRSRepo: userCardFSRSRepo}
+func NewCardUsecase(db *gorm.DB, cardRepo CardRepository, cardgroupRepo CardgroupRepositoryForCard, userCardFSRSRepo UserCardFSRSRepositoryForCard, logger *slog.Logger) *CardUsecase {
+	if logger == nil {
+		panic("usecase: card: logger is required")
+	}
+	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo, userFSRSRepo: userCardFSRSRepo, logger: logger}
 	if db != nil {
 		uc.tx = func(ctx context.Context, fn func(tx *gorm.DB) error) error {
 			return db.WithContext(ctx).Transaction(fn)
@@ -91,8 +95,12 @@ func NewCardUsecaseWithTx(
 	cardgroupRepo CardgroupRepositoryForCard,
 	tx func(ctx context.Context, fn func(tx *gorm.DB) error) error,
 	userCardFSRSRepo UserCardFSRSRepositoryForCard,
+	logger *slog.Logger,
 ) *CardUsecase {
-	return &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo, tx: tx, userFSRSRepo: userCardFSRSRepo}
+	if logger == nil {
+		panic("usecase: card: logger is required")
+	}
+	return &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo, tx: tx, userFSRSRepo: userCardFSRSRepo, logger: logger}
 }
 
 func (u *CardUsecase) WithNotionWritebacker(w NotionWritebacker, pageID string) *CardUsecase {
@@ -250,7 +258,6 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 				// between the failed INSERT and this SELECT) or fail for an unrelated DB
 				// reason. Either way, surface as Internal so the client can retry; the
 				// duplicate is recoverable input, but a failed re-lookup is not.
-				// TODO(#161): preserve cardgroup_id attr via logger DI
 				return CreateCardOutcome{}, eris.Wrap(lookupErr, "usecase: lookup duplicate card after 23505")
 			}
 			return CreateCardOutcome{Duplicate: &DuplicateCardInfo{
@@ -264,13 +271,15 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 		text := card.Front + " " + card.Back
 		cardID := card.ID
 		pageID := u.notionPageID
+		cardgroupID := card.CardgroupID
 		writer := u.notionWriter
+		logger := u.logger
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			if err := writer.AppendParagraph(ctx, pageID, text); err != nil {
-				slog.WarnContext(ctx, "card create: notion writeback failed",
-					"card_id", cardID, "page_id", pageID, "err", err)
+				logger.WarnContext(ctx, "card create: notion writeback failed",
+					"card_id", cardID, "page_id", pageID, "cardgroup_id", cardgroupID, "err", err)
 			}
 		}()
 	}
@@ -524,7 +533,7 @@ func (u *CardUsecase) resolveCursor(
 	case repository.CardOrderByDue:
 		due := card.CreatedAt
 		if u.userFSRSRepo == nil {
-			slog.WarnContext(ctx, "card: resolveCursor: falling back to createdAt for OrderByDue because userFSRSRepo is nil or not configured")
+			u.logger.WarnContext(ctx, "card: resolveCursor: falling back to createdAt for OrderByDue because userFSRSRepo is nil or not configured")
 		} else if user := auth.UserFrom(ctx); user != nil {
 			byCardID, err := u.userFSRSRepo.FindByUserAndCardIDs(ctx, user.Sub, []string{id})
 			if err != nil {
@@ -613,7 +622,7 @@ func (u *CardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, erro
 		return 0, eris.Wrap(err, "usecase: bulk delete: transaction")
 	}
 	if deleted < int64(len(ids)) {
-		slog.Default().LogAttrs(ctx, slog.LevelInfo, "bulk delete: partial match",
+		u.logger.LogAttrs(ctx, slog.LevelInfo, "bulk delete: partial match",
 			slog.String("user_id", user.Sub),
 			slog.Int("requested", len(ids)),
 			slog.Int64("deleted", deleted),

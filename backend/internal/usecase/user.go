@@ -32,11 +32,15 @@ type UserRepository interface {
 }
 
 type UserUsecase struct {
-	repo UserRepository
+	repo   UserRepository
+	logger *slog.Logger
 }
 
-func NewUserUsecase(repo UserRepository) *UserUsecase {
-	return &UserUsecase{repo: repo}
+func NewUserUsecase(repo UserRepository, logger *slog.Logger) *UserUsecase {
+	if logger == nil {
+		panic("usecase: user: logger is required")
+	}
+	return &UserUsecase{repo: repo, logger: logger}
 }
 
 func (u *UserUsecase) Me(ctx context.Context) (*domain.User, error) {
@@ -50,7 +54,7 @@ func (u *UserUsecase) Me(ctx context.Context) (*domain.User, error) {
 	}
 	if errors.Is(err, repository.ErrNotFound) {
 		// handle_new_user trigger should have provisioned the row; degrade gracefully.
-		slog.Warn("user row missing for authenticated user; returning empty user",
+		u.logger.WarnContext(ctx, "user row missing for authenticated user; returning empty user",
 			"user_id", user.Sub)
 		return &domain.User{ID: user.Sub}, nil
 	}

@@ -71,6 +71,9 @@ func NewNotionSyncUsecase(
 	db *gorm.DB,
 	logger *slog.Logger,
 ) *NotionSyncUsecase {
+	if logger == nil {
+		panic("usecase: notion sync: logger is required")
+	}
 	uc := &NotionSyncUsecase{
 		fetcher:       fetcher,
 		cardgroupRepo: cardgroupRepo,
@@ -92,6 +95,9 @@ func NewNotionSyncUsecaseWithTx(
 	tx txRunner,
 	logger *slog.Logger,
 ) *NotionSyncUsecase {
+	if logger == nil {
+		panic("usecase: notion sync: logger is required")
+	}
 	return &NotionSyncUsecase{
 		fetcher:       fetcher,
 		cardgroupRepo: cardgroupRepo,
@@ -137,24 +143,20 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 	// happens to also have duplicates added later in the pipeline.
 	if len(rows) == 0 && len(parseErrs) > 0 {
 		if allDictionaryErrorsSkipped(parseErrs) {
-			if u.logger != nil {
-				u.logger.InfoContext(ctx, "notion sync: skip-only payload, no persistence",
-					"skipped_count", len(parseErrs),
-					"first_line", parseErrs[0].Line,
-					"first_kind", parseErrs[0].Kind,
-					"first_snippet", parseErrs[0].Snippet,
-				)
-			}
+			u.logger.InfoContext(ctx, "notion sync: skip-only payload, no persistence",
+				"skipped_count", len(parseErrs),
+				"first_line", parseErrs[0].Line,
+				"first_kind", parseErrs[0].Kind,
+				"first_snippet", parseErrs[0].Snippet,
+			)
 			return SyncFromNotionOutput{ParseErrors: parseErrs}, nil
 		}
-		if u.logger != nil {
-			u.logger.WarnContext(ctx, "notion sync: all rows failed to parse",
-				"parse_error_count", len(parseErrs),
-				"first_error_line", parseErrs[0].Line,
-				"first_error_kind", parseErrs[0].Kind,
-				"first_error_snippet", parseErrs[0].Snippet,
-			)
-		}
+		u.logger.WarnContext(ctx, "notion sync: all rows failed to parse",
+			"parse_error_count", len(parseErrs),
+			"first_error_line", parseErrs[0].Line,
+			"first_error_kind", parseErrs[0].Kind,
+			"first_error_snippet", parseErrs[0].Snippet,
+		)
 		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncParse, "all rows failed to parse")
 	}
 	if len(rows) > dictionaryParsedRowCap {
@@ -201,15 +203,13 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 		return SyncFromNotionOutput{}, eris.Wrap(errors.Join(ErrNotionSyncPersist, err), "persist cards")
 	}
 
-	if u.logger != nil {
-		u.logger.InfoContext(ctx, "notion sync complete",
-			"cardgroup_id", out.CardgroupID,
-			"inserted", out.Inserted,
-			"updated", out.Updated,
-			"deleted", out.Deleted,
-			"parse_errors_count", len(out.ParseErrors),
-		)
-	}
+	u.logger.InfoContext(ctx, "notion sync complete",
+		"cardgroup_id", out.CardgroupID,
+		"inserted", out.Inserted,
+		"updated", out.Updated,
+		"deleted", out.Deleted,
+		"parse_errors_count", len(out.ParseErrors),
+	)
 	return out, nil
 }
 
@@ -260,14 +260,12 @@ func parseNotionPages(ctx context.Context, logger *slog.Logger, pages []notion.P
 			// side (the function returns nil rows). Log the failing page so
 			// operators can locate the breakage; the caller maps err into
 			// ErrNotionSyncParse.
-			if logger != nil {
-				logger.ErrorContext(ctx, "notion sync: page parse failed",
-					"page_index", i,
-					"page_id", page.ID,
-					"error_name", reflect.TypeOf(err).String(),
-					"error", err.Error(),
-				)
-			}
+			logger.ErrorContext(ctx, "notion sync: page parse failed",
+				"page_index", i,
+				"page_id", page.ID,
+				"error_name", reflect.TypeOf(err).String(),
+				"error", err.Error(),
+			)
 			return nil, nil, err
 		}
 		for _, word := range words {
