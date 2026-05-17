@@ -248,10 +248,10 @@ func dictionaryKindOrPanic(ctx context.Context, raw string) model.DictionaryVali
 }
 
 // toUserConnectionModel mirrors toCardConnectionModel / toCardgroupConnectionModel.
-// The usecase returns AdminUserEdge values whose Cursor is already the opaque
-// UUID string; no re-encoding is needed here (unlike card/cardgroup which call
-// cursor.Encode because they receive raw domain IDs). Nil nodes are skipped to
-// satisfy the schema's non-null node: User! constraint.
+// The usecase sets Cursor = user.ID (a plain UUID); no cursor.Encode wrapping
+// is applied here, unlike toCardConnectionModel / toCardgroupConnectionModel
+// which wrap the entity ID in the v1 opaque envelope via cursor.Encode.
+// Nil nodes are skipped to satisfy the schema's non-null node: User! constraint.
 func toUserConnectionModel(ctx context.Context, uc *usecase.AdminUserConnection) *model.UserConnection {
 	if uc == nil {
 		return &model.UserConnection{Edges: []*model.UserEdge{}, PageInfo: &model.PageInfo{}}
