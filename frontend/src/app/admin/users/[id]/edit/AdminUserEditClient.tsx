@@ -1,12 +1,11 @@
 "use client";
 
-import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { useMutation } from "@apollo/client/react";
 import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { AdminRoleFieldsFragment } from "@/generated/graphql";
-import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import {
   AdminAssignRoleMutation,
   AdminRevokeRoleMutation,
@@ -43,22 +42,6 @@ const DISPLAY_NAME_MAX = 50;
 
 /** Maximum grapheme clusters for bio (mirrors usecase/user.go bioMax). */
 const BIO_MAX = 500;
-
-/**
- * Classify a raw Apollo error into a user-facing banner string.
- * FORBIDDEN errors surface the server message verbatim (e.g. self-demotion guard).
- */
-function classifyError(err: unknown): string {
-  if (!err) return "";
-  if (CombinedGraphQLErrors.is(err)) {
-    for (const ge of err.errors) {
-      if (ge.extensions?.code === "FORBIDDEN") {
-        return ge.message;
-      }
-    }
-  }
-  return getBackendErrorBanner(err) ?? "An unexpected error occurred. Please try again.";
-}
 
 export function AdminUserEditClient({ user, allRoles }: Props) {
   const [displayName, setDisplayName] = useState(user.displayName ?? "");
@@ -101,45 +84,88 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
       return;
     }
     clearSaveStatus();
-
     try {
-      await runUpdate({
+      const result = await runUpdate({
         variables: {
           id: user.id,
-          input: {
-            displayName: displayName.trim(),
-            bio: bio || null,
-          },
+          input: { displayName: displayName.trim(), bio: bio || null },
         },
       });
-      setSaveBanner("Changes saved.");
+      const payload = result.data?.adminUpdateUser;
+      // Capture typename before narrowing so the unknown-variant branch still
+      // has access to it (TypeScript narrows to `never` after the known cases).
+      const saveTypename = payload?.__typename ?? null;
+      if (payload?.__typename === "InputValidationError") {
+        setSaveError(payload.message);
+        return;
+      }
+      if (payload?.__typename === "AdminUpdateUserSuccess") {
+        setSaveBanner("Changes saved.");
+        return;
+      }
+      // Unknown variant: null payload, partial-response null bubble, or a
+      // future union variant the client was not regenerated against.
+      console.warn("[admin/users/:id/edit] unexpected save payload", {
+        typename: saveTypename,
+      });
+      setSaveError("Something went wrong. Please try again.");
     } catch (err) {
-      setSaveError(classifyError(err));
+      const codes = liftGraphQLCodes(err);
+      setSaveError(
+        codes.includes("FORBIDDEN")
+          ? "You do not have permission."
+          : codes.includes("UNAUTHENTICATED")
+            ? "Your session has expired. Sign in again."
+            : "An unexpected error occurred. Please try again.",
+      );
     }
   }
 
   async function handleRoleToggle(roleId: string, currentlyAssigned: boolean) {
     setRoleInflight((prev) => ({ ...prev, [roleId]: true }));
     setRoleBanners((prev) => ({ ...prev, [roleId]: "" }));
-
     try {
       const variables = { userId: user.id, roleId };
-      // Update local role state from the server-truth response. Fragment masking
-      // is compile-time only; at runtime the shape is the plain object.
-      const serverRoles = (
-        currentlyAssigned
-          ? (await runRevoke({ variables })).data?.revokeRole?.roles
-          : (await runAssign({ variables })).data?.assignRole?.roles
-      ) as AdminRoleFieldsFragment[] | undefined;
-      if (serverRoles) {
-        setUserRoleIds(new Set(serverRoles.map((r) => r.id)));
+      const result = currentlyAssigned
+        ? (await runRevoke({ variables })).data?.revokeRole
+        : (await runAssign({ variables })).data?.assignRole;
+      // Capture typename before narrowing so the unknown-variant branch still
+      // has access to it (TypeScript narrows to `never` after the known cases).
+      const roleTypename = result?.__typename ?? null;
+      if (result?.__typename === "InputValidationError") {
+        setRoleBanners((prev) => ({ ...prev, [roleId]: result.message }));
+        return;
       }
-    } catch (err) {
-      // On failure (including FORBIDDEN), surface the banner.
-      // No optimistic writes were made, so local state already reflects server truth.
+      if (result?.__typename === "CannotRevokeOwnAdminRoleError") {
+        setRoleBanners((prev) => ({ ...prev, [roleId]: result.message }));
+        return;
+      }
+      if (
+        result?.__typename === "RevokeRoleSuccess" ||
+        result?.__typename === "AssignRoleSuccess"
+      ) {
+        // Fragment masking is compile-time only; cast to read role ids.
+        const serverRoles = result.user.roles as AdminRoleFieldsFragment[];
+        setUserRoleIds(new Set(serverRoles.map((r) => r.id)));
+        return;
+      }
+      // Unknown variant: null payload / partial-response null bubble / future variant.
+      console.warn("[admin/users/:id/edit] unexpected role-toggle payload", {
+        typename: roleTypename,
+      });
       setRoleBanners((prev) => ({
         ...prev,
-        [roleId]: classifyError(err),
+        [roleId]: "Something went wrong. Please try again.",
+      }));
+    } catch (err) {
+      const codes = liftGraphQLCodes(err);
+      setRoleBanners((prev) => ({
+        ...prev,
+        [roleId]: codes.includes("FORBIDDEN")
+          ? "You do not have permission."
+          : codes.includes("UNAUTHENTICATED")
+            ? "Your session has expired. Sign in again."
+            : "An unexpected error occurred. Please try again.",
       }));
     } finally {
       setRoleInflight((prev) => ({ ...prev, [roleId]: false }));

@@ -70,9 +70,18 @@ export const AdminRolesQuery = graphql(`
 export const AdminUpdateUserMutation = graphql(`
   mutation AdminUpdateUser($id: ID!, $input: AdminUpdateUserInput!) {
     adminUpdateUser(id: $id, input: $input) {
-      ...AdminUserFields
-      roles {
-        ...AdminRoleFields
+      __typename
+      ... on AdminUpdateUserSuccess {
+        user {
+          ...AdminUserFields
+          roles {
+            ...AdminRoleFields
+          }
+        }
+      }
+      ... on InputValidationError {
+        field
+        message
       }
     }
   }
@@ -81,9 +90,18 @@ export const AdminUpdateUserMutation = graphql(`
 export const AdminAssignRoleMutation = graphql(`
   mutation AdminAssignRole($userId: ID!, $roleId: ID!) {
     assignRole(userId: $userId, roleId: $roleId) {
-      ...AdminUserFields
-      roles {
-        ...AdminRoleFields
+      __typename
+      ... on AssignRoleSuccess {
+        user {
+          ...AdminUserFields
+          roles {
+            ...AdminRoleFields
+          }
+        }
+      }
+      ... on InputValidationError {
+        field
+        message
       }
     }
   }
@@ -92,9 +110,21 @@ export const AdminAssignRoleMutation = graphql(`
 export const AdminRevokeRoleMutation = graphql(`
   mutation AdminRevokeRole($userId: ID!, $roleId: ID!) {
     revokeRole(userId: $userId, roleId: $roleId) {
-      ...AdminUserFields
-      roles {
-        ...AdminRoleFields
+      __typename
+      ... on RevokeRoleSuccess {
+        user {
+          ...AdminUserFields
+          roles {
+            ...AdminRoleFields
+          }
+        }
+      }
+      ... on InputValidationError {
+        field
+        message
+      }
+      ... on CannotRevokeOwnAdminRoleError {
+        message
       }
     }
   }

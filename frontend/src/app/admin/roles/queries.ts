@@ -17,7 +17,16 @@ export const AdminRoleQuery = graphql(`
 export const AdminCreateRoleMutation = graphql(`
   mutation AdminCreateRole($name: String!) {
     createRole(name: $name) {
-      ...AdminRoleFields
+      __typename
+      ... on CreateRoleSuccess {
+        role {
+          ...AdminRoleFields
+        }
+      }
+      ... on InputValidationError {
+        field
+        message
+      }
     }
   }
 `);

@@ -2,7 +2,6 @@
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RoleOption, UserForEdit } from "@/app/admin/users/[id]/edit/AdminUserEditClient";
 import { AdminUserEditClient } from "@/app/admin/users/[id]/edit/AdminUserEditClient";
@@ -99,15 +98,18 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
       return {
         data: {
           assignRole: {
-            __typename: "User",
-            id: USER_ID,
-            displayName: `User ${USER_ID}`,
-            bio: null,
-            avatarUrl: null,
-            roles: [
-              { __typename: "Role", id: ROLE_GENERAL_ID, name: "general" },
-              { __typename: "Role", id: ROLE_ADMIN_ID, name: "admin" },
-            ],
+            __typename: "AssignRoleSuccess",
+            user: {
+              __typename: "User",
+              id: USER_ID,
+              displayName: `User ${USER_ID}`,
+              bio: null,
+              avatarUrl: null,
+              roles: [
+                { __typename: "Role", id: ROLE_GENERAL_ID, name: "general" },
+                { __typename: "Role", id: ROLE_ADMIN_ID, name: "admin" },
+              ],
+            },
           },
         },
       };
@@ -148,12 +150,15 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
       return {
         data: {
           revokeRole: {
-            __typename: "User",
-            id: USER_ID,
-            displayName: `User ${USER_ID}`,
-            bio: null,
-            avatarUrl: null,
-            roles: [{ __typename: "Role", id: ROLE_ADMIN_ID, name: "admin" }],
+            __typename: "RevokeRoleSuccess",
+            user: {
+              __typename: "User",
+              id: USER_ID,
+              displayName: `User ${USER_ID}`,
+              bio: null,
+              avatarUrl: null,
+              roles: [{ __typename: "Role", id: ROLE_ADMIN_ID, name: "admin" }],
+            },
           },
         },
       };
@@ -186,10 +191,11 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
     });
   });
 
-  // T4: Self-demotion guard — FORBIDDEN error keeps checkbox checked (server truth),
-  //     shows banner. Because there is no optimistic response, the checkbox never flips;
-  //     its state after the error matches the server-truth initial state (checked).
-  it("shows FORBIDDEN banner and keeps admin checkbox checked when revoking own admin role", async () => {
+  // T4: Self-demotion guard — typed CannotRevokeOwnAdminRoleError variant keeps
+  //     checkbox checked (server truth) and shows the banner with .message.
+  //     Because there is no optimistic response, the checkbox never flips; its
+  //     state after the error matches the server-truth initial state (checked).
+  it("shows CannotRevokeOwnAdminRoleError banner and keeps admin checkbox checked when revoking own admin role", async () => {
     const user = userEvent.setup({ delay: null });
 
     const selfDemotionRevokeMock = {
@@ -198,11 +204,12 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
         variables: { userId: SELF_ADMIN_USER_ID, roleId: ROLE_ADMIN_ID },
       },
       result: {
-        errors: [
-          new GraphQLError("cannot revoke own admin role", {
-            extensions: { code: "FORBIDDEN" },
-          }),
-        ],
+        data: {
+          revokeRole: {
+            __typename: "CannotRevokeOwnAdminRoleError",
+            message: "cannot revoke own admin role",
+          },
+        },
       },
     };
 
@@ -215,7 +222,7 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
     // Attempt to uncheck (revoke own admin role)
     await user.click(adminCheckbox);
 
-    // Banner with FORBIDDEN message must appear
+    // Banner with typed-variant message must appear
     const banner = await screen.findByRole("alert");
     expect(banner).toHaveTextContent("cannot revoke own admin role");
 
@@ -238,15 +245,18 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
       result: {
         data: {
           assignRole: {
-            __typename: "User",
-            id: USER_ID,
-            displayName: `User ${USER_ID}`,
-            bio: null,
-            avatarUrl: null,
-            roles: [
-              { __typename: "Role", id: ROLE_GENERAL_ID, name: "general" },
-              { __typename: "Role", id: ROLE_ADMIN_ID, name: "admin" },
-            ],
+            __typename: "AssignRoleSuccess",
+            user: {
+              __typename: "User",
+              id: USER_ID,
+              displayName: `User ${USER_ID}`,
+              bio: null,
+              avatarUrl: null,
+              roles: [
+                { __typename: "Role", id: ROLE_GENERAL_ID, name: "general" },
+                { __typename: "Role", id: ROLE_ADMIN_ID, name: "admin" },
+              ],
+            },
           },
         },
       },
