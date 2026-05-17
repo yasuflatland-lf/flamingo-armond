@@ -72,10 +72,25 @@ input UpdateCardgroupInput {
   name: String
 }
 
-"""Payload returned by `createCardgroup`."""
-type CreateCardgroupPayload {
+"""Success variant returned by `createCardgroup` when the cardgroup was created. Carries the new `cardgroup` so clients can insert it into local caches without a follow-up query."""
+type CreateCardgroupSuccess {
   cardgroup: Cardgroup!
 }
+
+"""Success variant returned by `setLastViewedCardgroup` when the preference was recorded. Carries the updated `user` so clients can refresh the last-viewed state without a follow-up query."""
+type SetLastViewedCardgroupSuccess {
+  user: User!
+}
+
+"""Result of `createCardgroup`. Either the created cardgroup or an input-validation failure."""
+union CreateCardgroupResult =
+    CreateCardgroupSuccess
+  | InputValidationError
+
+"""Result of `setLastViewedCardgroup`. Either the updated user or an input-validation failure."""
+union SetLastViewedCardgroupResult =
+    SetLastViewedCardgroupSuccess
+  | InputValidationError
 
 """Payload returned by `updateCardgroup`."""
 type UpdateCardgroupPayload {
@@ -102,8 +117,12 @@ extend type Query {
 }
 
 extend type Mutation {
-  """Create a cardgroup owned by the authenticated caller."""
-  createCardgroup(input: NewCardgroupInput!): CreateCardgroupPayload!
+  """
+  Create a cardgroup owned by the authenticated caller.
+  Returns a union: `CreateCardgroupSuccess` for the happy path, or `InputValidationError`
+  when the name fails validation (typed "error as data").
+  """
+  createCardgroup(input: NewCardgroupInput!): CreateCardgroupResult!
   """Update a cardgroup. Non-owners receive UNAUTHENTICATED."""
   updateCardgroup(id: ID!, input: UpdateCardgroupInput!): UpdateCardgroupPayload!
   """Delete a cardgroup. Non-owners receive UNAUTHENTICATED."""
@@ -611,11 +630,11 @@ extend type Mutation {
 extend type Mutation {
   """
   Records the cardgroup the authenticated user most recently viewed on /learn.
-  Idempotent. Returns the updated user.
-  Errors:
-   - UNAUTHENTICATED  — caller has no session
-   - BAD_USER_INPUT   — cardgroupId does not exist or is not owned by caller
-                        (existence of others' cardgroups is not leaked: same code in both cases)
+  Idempotent.
+  Returns a union: `SetLastViewedCardgroupSuccess` carrying the updated user for the happy path,
+  or `InputValidationError` when the cardgroup does not exist or is not owned by the caller
+  (typed "error as data"; existence of others' cardgroups is not leaked).
+  Unauthenticated callers receive an error with `extensions.code = "UNAUTHENTICATED"`.
   """
-  setLastViewedCardgroup(cardgroupId: ID!): User!
+  setLastViewedCardgroup(cardgroupId: ID!): SetLastViewedCardgroupResult!
 }
