@@ -14,6 +14,13 @@ func swipeRecordBatchFunc(repo repository.SwipeRecordRepository) dataloader.Batc
 	return func(ctx context.Context, keys []string) []*dataloader.Result[*domain.SwipeRecord] {
 		out := make([]*dataloader.Result[*domain.SwipeRecord], len(keys))
 
+		// Defensive: dataloader normally never invokes the batch fn with an
+		// empty key slice, but the GORM "WHERE id IN ()" gotcha would turn
+		// such a call into a full-table scan. Short-circuit instead.
+		if len(keys) == 0 {
+			return out
+		}
+
 		byID, err := repo.FindByIDs(ctx, keys)
 		if err != nil {
 			for i := range keys {
