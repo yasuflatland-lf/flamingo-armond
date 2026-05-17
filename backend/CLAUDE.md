@@ -23,7 +23,7 @@ go run ./cmd/server   # PORT defaults to 1323
 - [`docs/backend.md`](../docs/backend.md) — runtime notes (Echo v5, GORM, graceful shutdown)
 - [`docs/backend-auth.md`](../docs/backend-auth.md) — Supabase JWT, RLS, role management, Custom Access Token Hook
 - [`docs/backend-db.md`](../docs/backend-db.md) — migrations, recover
-- [`docs/backend-graphql.md`](../docs/backend-graphql.md) — gqlgen, resolver, generated code
+- [`docs/backend-graphql.md`](../docs/backend-graphql.md) — gqlgen, resolver, DataLoader, authorization, validation, generated code
 - [`docs/observability.md`](../docs/observability.md) — logging contracts (shared with frontend)
 
 ## Cross-cutting rules already in context
