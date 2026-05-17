@@ -58,12 +58,6 @@ type NotionWritebacker interface {
 	AppendParagraph(ctx context.Context, pageID, text string) error
 }
 
-// txRunner is the function the usecase calls to run fn inside a database
-// transaction. NewCardUsecase binds it to db.WithContext(ctx).Transaction(fn);
-// NewCardUsecaseWithTx lets unit tests inject a stub that invokes fn with
-// a fake *gorm.DB.
-type txRunner func(ctx context.Context, fn func(tx *gorm.DB) error) error
-
 type CardUsecase struct {
 	cardRepo      CardRepository
 	cardgroupRepo CardgroupRepositoryForCard

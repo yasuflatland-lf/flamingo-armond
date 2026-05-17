@@ -7,6 +7,7 @@ import (
 	"backend/graph/model"
 	"backend/internal/cursor"
 	"backend/internal/domain"
+	"backend/internal/textdic"
 	"backend/internal/usecase"
 
 	"github.com/rotisserie/eris"
@@ -244,4 +245,72 @@ func dictionaryKindOrPanic(ctx context.Context, raw string) model.DictionaryVali
 		panic(eris.Errorf("dictionary: UNKNOWN/empty Kind escaped to resolver: %q", raw))
 	}
 	return model.DictionaryValidationKind(raw)
+}
+
+// toUserConnectionModel mirrors toCardConnectionModel / toCardgroupConnectionModel.
+// The usecase returns AdminUserEdge values whose Cursor is already the opaque
+// UUID string; no re-encoding is needed here (unlike card/cardgroup which call
+// cursor.Encode because they receive raw domain IDs). Nil nodes are skipped to
+// satisfy the schema's non-null node: User! constraint.
+func toUserConnectionModel(ctx context.Context, uc *usecase.AdminUserConnection) *model.UserConnection {
+	if uc == nil {
+		return &model.UserConnection{Edges: []*model.UserEdge{}, PageInfo: &model.PageInfo{}}
+	}
+	edges := make([]*model.UserEdge, 0, len(uc.Edges))
+	for _, e := range uc.Edges {
+		um := toUserModel(e.Node)
+		if um == nil {
+			slog.WarnContext(ctx, "toUserConnectionModel: skipping nil entry")
+			continue
+		}
+		edges = append(edges, &model.UserEdge{Cursor: e.Cursor, Node: um})
+	}
+	return &model.UserConnection{
+		Edges: edges,
+		PageInfo: &model.PageInfo{
+			HasNextPage:     uc.PageInfo.HasNextPage,
+			HasPreviousPage: uc.PageInfo.HasPreviousPage,
+			StartCursor:     uc.PageInfo.StartCursor,
+			EndCursor:       uc.PageInfo.EndCursor,
+		},
+		TotalCount: int(uc.TotalCount),
+	}
+}
+
+// toDictionaryValidationErrorsFromUpsert maps the usecase-layer
+// []usecase.DictionaryValidationError (returned by DictionaryUC.Upsert) to the
+// resolver model slice. The usecase Kind is already wire-aligned (string values
+// match the GraphQL DictionaryValidationKind enum), so string(e.Kind) is a
+// direct cast via dictionaryKindOrPanic.
+func toDictionaryValidationErrorsFromUpsert(ctx context.Context, errs []usecase.DictionaryValidationError) []*model.DictionaryValidationError {
+	out := make([]*model.DictionaryValidationError, 0, len(errs))
+	for _, e := range errs {
+		out = append(out, &model.DictionaryValidationError{
+			Line:    e.Line,
+			Message: e.Message,
+			Kind:    dictionaryKindOrPanic(ctx, string(e.Kind)),
+			Snippet: nilIfEmpty(e.Snippet),
+			Front:   nilIfEmpty(e.Front),
+			Back:    nilIfEmpty(e.Back),
+		})
+	}
+	return out
+}
+
+// toDictionaryValidationErrorsFromValidate maps the textdic-layer
+// []textdic.ValidationError (returned by textdic.Process, used by
+// ValidateDictionary) to the resolver model slice. textdic.ValidationError
+// carries SkipKind (also wire-aligned string values) but has no Front/Back
+// fields; those are omitted (nil) for this shape.
+func toDictionaryValidationErrorsFromValidate(ctx context.Context, errs []textdic.ValidationError) []*model.DictionaryValidationError {
+	out := make([]*model.DictionaryValidationError, 0, len(errs))
+	for _, e := range errs {
+		out = append(out, &model.DictionaryValidationError{
+			Line:    e.Line,
+			Message: e.Message,
+			Kind:    dictionaryKindOrPanic(ctx, e.Kind.String()),
+			Snippet: nilIfEmpty(e.Snippet),
+		})
+	}
+	return out
 }

@@ -17,13 +17,6 @@ import (
 	"backend/internal/usecase/ucerr"
 )
 
-// AdminChecker abstracts the admin-role check. Implemented by *auth.Service in
-// production; the local interface keeps the usecase decoupled from the auth
-// package's concrete struct so tests can substitute a stub.
-type AdminChecker interface {
-	IsAdmin(ctx context.Context, userID string) (bool, error)
-}
-
 // DictionaryCardRepository is the subset of repository.CardRepository the
 // dictionary usecase consumes. Declaring a narrow interface here lets the
 // existing mockCardRepository in card_test.go satisfy it without a separate

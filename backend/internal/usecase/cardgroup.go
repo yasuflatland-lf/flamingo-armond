@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/rotisserie/eris"
 
 	"backend/internal/auth"
@@ -487,15 +486,4 @@ func (u *CardgroupUsecase) resolveCardgroupCursor(
 		return nil, eris.Errorf("usecase: cardgroup unhandled orderBy %q", orderBy)
 	}
 	return c, nil
-}
-
-// uuidV7 returns a new UUID v7 string, or an error if the OS entropy source
-// fails. The caller wraps the error with eris; the silent v4 fallback
-// is removed because both v7 and v4 draw from the same entropy source.
-func uuidV7() (string, error) {
-	id, err := uuid.NewV7()
-	if err != nil {
-		return "", eris.Wrap(err, "uuid: NewV7 failed")
-	}
-	return id.String(), nil
 }
