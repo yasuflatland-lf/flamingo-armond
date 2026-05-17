@@ -10,9 +10,7 @@
 # See docs/backend/error-wrapping/outcome-union-enforcement.md for the full
 # 7-step promotion checklist.
 
-createCardgroup        # NewValidationError("name", ...): field-only payload
 handleSwipe            # NewValidationError("cardId", "card not found"): race; learn-UI broad
-setLastViewedCardgroup # NewValidationError("cardgroupId", "cardgroup not found")
 updateCard             # NewValidationError(...): field-level validation
 updateCardgroup        # NewValidationError("name", ...): field-only payload
 updateProfile          # NewValidationError("displayName"/"bio", ...)
