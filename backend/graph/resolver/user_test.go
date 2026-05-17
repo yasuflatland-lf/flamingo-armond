@@ -128,6 +128,8 @@ func TestResolver_Me_Anonymous(t *testing.T) {
 }
 
 // updateProfileMutation returns a JSON-encoded GraphQL mutation body.
+// The query selects across both union variants so tests can assert either
+// the UpdateProfileSuccess or InputValidationError shape.
 func updateProfileMutation(displayName string, bio *string) string {
 	type vars struct {
 		Input struct {
@@ -141,7 +143,11 @@ func updateProfileMutation(displayName string, bio *string) string {
 
 	b, _ := json.Marshal(map[string]any{
 		"query": `mutation($input: UpdateProfileInput!) {
-			updateProfile(input: $input) { user { id displayName bio } }
+			updateProfile(input: $input) {
+				__typename
+				... on UpdateProfileSuccess { user { id displayName bio } }
+				... on InputValidationError { field message }
+			}
 		}`,
 		"variables": v,
 	})
@@ -149,7 +155,8 @@ func updateProfileMutation(displayName string, bio *string) string {
 }
 
 // TestResolver_UpdateProfile_BioVariants verifies how the resolver passes the
-// bio field through to the repository layer.
+// bio field through to the repository layer. Each sub-test issues the union
+// query and asserts the UpdateProfileSuccess.user.bio passthrough.
 func TestResolver_UpdateProfile_BioVariants(t *testing.T) {
 	t.Parallel()
 
@@ -179,7 +186,6 @@ func TestResolver_UpdateProfile_BioVariants(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			mock := &mockUserRepository{updateResult: returned}
@@ -190,6 +196,15 @@ func TestResolver_UpdateProfile_BioVariants(t *testing.T) {
 
 			if _, hasErrs := resp["errors"]; hasErrs {
 				t.Fatalf("unexpected errors: %v", resp["errors"])
+			}
+
+			data, _ := resp["data"].(map[string]any)
+			payload, _ := data["updateProfile"].(map[string]any)
+			if payload == nil {
+				t.Fatalf("expected data.updateProfile, got nil; response: %v", resp)
+			}
+			if payload["__typename"] != "UpdateProfileSuccess" {
+				t.Fatalf("expected __typename=UpdateProfileSuccess, got %v", payload["__typename"])
 			}
 
 			if tc.checkBioIsNil {
@@ -205,5 +220,110 @@ func TestResolver_UpdateProfile_BioVariants(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestResolver_UpdateProfile_* — standard four-case coverage
+// ---------------------------------------------------------------------------
+
+// TestResolver_UpdateProfile_HappyPath verifies that a successful profile
+// update returns the UpdateProfileSuccess union variant with the updated user.
+func TestResolver_UpdateProfile_HappyPath(t *testing.T) {
+	t.Parallel()
+
+	returned := &domain.User{ID: "u1", DisplayName: ptr("Alice")}
+	mock := &mockUserRepository{updateResult: returned}
+	srv := newServer(mock)
+
+	resp := gqlRequest(t, srv, authedCtx("u1"), updateProfileMutation("Alice", nil))
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["updateProfile"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.updateProfile, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "UpdateProfileSuccess" {
+		t.Fatalf("expected __typename=UpdateProfileSuccess, got %v", payload["__typename"])
+	}
+	user, _ := payload["user"].(map[string]any)
+	if user == nil {
+		t.Fatalf("expected user in success payload, got nil; response: %v", resp)
+	}
+	if user["id"] != "u1" {
+		t.Fatalf("expected user.id=u1, got %v", user["id"])
+	}
+}
+
+// TestResolver_UpdateProfile_InputValidation verifies that a display name that
+// fails validation is surfaced as the InputValidationError union variant
+// (errors as data), not as a GraphQL protocol error.
+func TestResolver_UpdateProfile_InputValidation(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockUserRepository{}
+	srv := newServer(mock)
+
+	// An empty displayName fails the 1-50 char validation inside UserUsecase.
+	resp := gqlRequest(t, srv, authedCtx("u1"), updateProfileMutation("", nil))
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors (validation should come as data): %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["updateProfile"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.updateProfile, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "InputValidationError" {
+		t.Fatalf("expected __typename=InputValidationError, got %v", payload["__typename"])
+	}
+	if payload["field"] == nil || payload["field"] == "" {
+		t.Fatalf("expected non-empty field in InputValidationError, got %v", payload["field"])
+	}
+}
+
+// TestResolver_UpdateProfile_Unauthenticated verifies that an anonymous
+// request is rejected with UNAUTHENTICATED via gqlerr.FromUsecaseError.
+func TestResolver_UpdateProfile_Unauthenticated(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockUserRepository{}
+	srv := newServer(mock)
+
+	resp := gqlRequest(t, srv, context.Background(), updateProfileMutation("Alice", nil))
+
+	code := errCode(t, resp)
+	if code != "UNAUTHENTICATED" {
+		t.Fatalf("expected UNAUTHENTICATED, got %q", code)
+	}
+}
+
+// TestResolver_UpdateProfile_NilVariant_ReturnsInternal covers the defensive
+// guard in the resolver where the usecase returns an UpdateProfileOutcome with
+// both User and Validation nil (a bug shape). Because UserUsecase is a concrete
+// struct (not an interface), this guard is structurally unreachable through the
+// real usecase; the guard is verified by constructing a zero-value outcome via
+// the repository returning a nil user alongside a nil error.
+//
+// The repository Update mock returns nil, nil which causes UserUsecase to
+// return UpdateProfileOutcome{} with User nil. The resolver then hits the
+// nil-variant guard and returns INTERNAL.
+func TestResolver_UpdateProfile_NilVariant_ReturnsInternal(t *testing.T) {
+	t.Parallel()
+
+	// updateResult is nil (zero value) — UserUsecase will wrap this and return
+	// UpdateProfileOutcome{User: nil} with nil error, triggering the INTERNAL guard.
+	mock := &mockUserRepository{updateResult: nil, updateErr: nil}
+	srv := newServer(mock)
+
+	resp := gqlRequest(t, srv, authedCtx("u1"), updateProfileMutation("Alice", nil))
+
+	code := errCode(t, resp)
+	if code != "INTERNAL" {
+		t.Fatalf("expected INTERNAL, got %q; response: %v", code, resp)
 	}
 }

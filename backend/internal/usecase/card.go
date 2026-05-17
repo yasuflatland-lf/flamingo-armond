@@ -132,6 +132,16 @@ type UpdateCardInput struct {
 	Back  *string
 }
 
+// UpdateCardOutcome is the result of CardUsecase.Update. Exactly one of Card
+// or Validation is non-nil on a nil-error return: a successful patch carries
+// the updated Card; a front/back that fails validation surfaces via Validation
+// so the resolver maps it to the UpdateCardResult union's InputValidationError
+// variant.
+type UpdateCardOutcome struct {
+	Card       *domain.Card
+	Validation *InputValidationInfo
+}
+
 // CardOrderBy mirrors the schema CardOrderBy enum but stays in the usecase
 // layer so the repository remains independent of the GraphQL model package.
 type CardOrderBy string
@@ -267,20 +277,20 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 	return CreateCardOutcome{Card: card}, nil
 }
 
-func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput) (*domain.Card, error) {
+func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput) (UpdateCardOutcome, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
-		return nil, ucerr.ErrUnauthenticated
+		return UpdateCardOutcome{}, ucerr.ErrUnauthenticated
 	}
 	existing, err := u.cardRepo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ucerr.ErrUnauthenticated
+			return UpdateCardOutcome{}, ucerr.ErrUnauthenticated
 		}
-		return nil, eris.Wrap(err, "usecase: update card: find by id")
+		return UpdateCardOutcome{}, eris.Wrap(err, "usecase: update card: find by id")
 	}
 	if err := u.authorizeCardgroup(ctx, existing.CardgroupID, user.Sub, false); err != nil {
-		return nil, err
+		return UpdateCardOutcome{}, err
 	}
 
 	patch := repository.CardUpdate{}
@@ -295,15 +305,19 @@ func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 		patch.Back = &back
 		candidate.Back = back
 	}
-	if err := candidate.Validate(); err != nil {
-		return nil, translateCardErr(err)
+	info, err := liftValidationErr(translateCardErr(candidate.Validate()))
+	if err != nil {
+		return UpdateCardOutcome{}, err
+	}
+	if info != nil {
+		return UpdateCardOutcome{Validation: info}, nil
 	}
 
 	updated, err := u.cardRepo.Update(ctx, id, patch)
 	if err != nil {
-		return nil, eris.Wrap(err, "usecase: update card: repo update")
+		return UpdateCardOutcome{}, eris.Wrap(err, "usecase: update card: repo update")
 	}
-	return updated, nil
+	return UpdateCardOutcome{Card: updated}, nil
 }
 
 func (u *CardUsecase) Delete(ctx context.Context, id string) error {

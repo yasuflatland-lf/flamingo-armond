@@ -104,9 +104,9 @@ func TestIntegration_AllowlistReleaseValve(t *testing.T) {
 		t.Fatalf("LoadAllowlist: %v", err)
 	}
 
-	// "updateProfile" is a known bare-emit mutation frozen in the allowlist.
+	// "upsertDictionary" is a known bare-emit mutation frozen in the allowlist.
 	// Remove it from the in-memory copy to simulate a line deletion.
-	const targetMutation = "updateProfile"
+	const targetMutation = "upsertDictionary"
 	if _, present := al[targetMutation]; !present {
 		t.Fatalf("test precondition failed: %q not found in allowlist; update the test if the mutation was promoted", targetMutation)
 	}
@@ -181,9 +181,8 @@ func TestIntegration_PromotedMutations_NotInAllowlist_NotViolation(t *testing.T)
 
 	violations, _ := runLivePipeline(t, al)
 
-	promoted := []string{"updateRole", "revokeRole", "adminUpdateUser"}
+	promoted := []string{"updateRole", "revokeRole", "adminUpdateUser", "updateProfile", "updateCardgroup", "updateCard", "handleSwipe"}
 	for _, mutation := range promoted {
-		mutation := mutation
 		t.Run(mutation, func(t *testing.T) {
 			if _, present := al[mutation]; present {
 				t.Errorf("%s is in the allowlist but should have been promoted; remove it from allowlist.txt", mutation)

@@ -71,6 +71,7 @@ detection is grep-based today and pinned at single-file
 - [Outcome-union enforcement: schema-lint gate forbidding new bare-object mutations that emit typed `ucerr.*` variants](../../docs/backend/error-wrapping/outcome-union-enforcement.md)
 - [`NewInputValidationInfo` panics on empty `Field` — mirror the `ucerr.NewValidationError` invariant](../../docs/backend/error-wrapping/input-validation-info-empty-field-panic.md)
 - [Inverse `lower*` helper when a shared error classifier serves both promoted and unpromoted callers](../../docs/backend/error-wrapping/inverse-helper-for-partial-promotion.md)
+- [`liftValidationErr` shadow-assignment pattern and dead-code trap at promoted call sites](../../docs/backend/error-wrapping/lift-validation-err-shadow-pattern.md)
 
 ## Conversion boundaries — detailed cases (on-demand)
 

@@ -62,18 +62,42 @@ type UpdateUserInput struct {
 	Bio         *string // nil = unchanged, "" = explicit clear
 }
 
-func (u *UserUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (*domain.User, error) {
+// UpdateProfileOutcome is the result of UserUsecase.UpdateUser. Exactly one
+// of User or Validation is non-nil on a nil-error return: a successful update
+// carries the refreshed User; a displayName or bio that fails validation
+// surfaces via Validation so the resolver maps it to the UpdateProfileResult
+// union's InputValidationError variant.
+type UpdateProfileOutcome struct {
+	User       *domain.User
+	Validation *InputValidationInfo
+}
+
+// UpdateUser validates and applies a profile patch for the authenticated
+// caller. displayName is trimmed and checked against the 1–50 grapheme range;
+// bio is optional (nil = unchanged, "" = explicit clear) and capped at 500
+// graphemes. Validation failures are returned via the outcome's Validation
+// field, not on the error channel.
+func (u *UserUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (UpdateProfileOutcome, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
-		return nil, ucerr.ErrUnauthenticated
+		return UpdateProfileOutcome{}, ucerr.ErrUnauthenticated
 	}
 
 	name := strings.TrimSpace(in.DisplayName)
-	if err := validateDisplayName(name); err != nil {
-		return nil, err
+	info, err := liftValidationErr(validateDisplayName(name))
+	if err != nil {
+		return UpdateProfileOutcome{}, err
 	}
-	if err := validateBio(in.Bio); err != nil {
-		return nil, err
+	if info != nil {
+		return UpdateProfileOutcome{Validation: info}, nil
+	}
+
+	info, err = liftValidationErr(validateBio(in.Bio))
+	if err != nil {
+		return UpdateProfileOutcome{}, err
+	}
+	if info != nil {
+		return UpdateProfileOutcome{Validation: info}, nil
 	}
 
 	appUser, err := u.repo.Update(ctx, user.Sub, repository.UserUpdate{
@@ -81,9 +105,9 @@ func (u *UserUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (*doma
 		Bio:         in.Bio,
 	})
 	if err != nil {
-		return nil, eris.Wrap(err, "usecase: UpdateUser: update user")
+		return UpdateProfileOutcome{}, eris.Wrap(err, "usecase: UpdateUser: update user")
 	}
-	return appUser, nil
+	return UpdateProfileOutcome{User: appUser}, nil
 }
 
 func validateDisplayName(v string) error {

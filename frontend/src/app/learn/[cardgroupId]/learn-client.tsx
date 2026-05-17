@@ -22,7 +22,11 @@ import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 
 type LearnCard = LearnNextDueCardsQuery["learnNextDueCards"][number];
-type PerformanceMetrics = HandleSwipeMutationType["handleSwipe"]["metrics"];
+// Derived from the generated HandleSwipeMutationType so schema changes stay in sync automatically.
+type PerformanceMetrics = Extract<
+  HandleSwipeMutationType["handleSwipe"],
+  { __typename: "HandleSwipeSuccess" }
+>["response"]["metrics"];
 
 /**
  * When `queue.length` falls to this value (or below) and is still non-zero,
@@ -229,17 +233,20 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
 
       const result = await handleSwipe({
         variables: { input: { cardId: card.id, cardgroupId, mode } },
-        // performanceMode and metrics are optimistic placeholders. The SwipeResponse
-        // schema requires both fields, so we write zero/no-op values here until the
-        // server reconciles the cache. No UI consumer reads them today, but omitting
-        // them from the optimistic write would break the codegen-generated type contract.
+        // performanceMode and metrics are optimistic placeholders. The HandleSwipeSuccess
+        // shape now wraps SwipeResponse inside `response`. We write zero/no-op values
+        // here until the server reconciles the cache. No UI consumer reads them today,
+        // but omitting them from the optimistic write would break the codegen type contract.
         optimisticResponse: {
           __typename: "Mutation",
           handleSwipe: {
-            __typename: "SwipeResponse",
-            nextCards: remaining,
-            performanceMode: 1,
-            metrics: DEFAULT_METRICS,
+            __typename: "HandleSwipeSuccess" as const,
+            response: {
+              __typename: "SwipeResponse" as const,
+              nextCards: remaining,
+              performanceMode: 1,
+              metrics: DEFAULT_METRICS,
+            },
           },
         },
       }).catch((err) => {
@@ -256,12 +263,29 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
         return null;
       });
 
-      if (result?.data?.handleSwipe) {
-        setQueue(result.data.handleSwipe.nextCards);
-      } else if (result !== null) {
-        // Mutation resolved (no .catch), but the server payload is missing handleSwipe.
-        // The optimistic queue is now the source of truth; surface for operator triage.
-        console.warn("[LearnClient] handleSwipe resolved without data", {
+      if (!result) return;
+
+      const payload = result.data?.handleSwipe;
+      if (payload?.__typename === "HandleSwipeSuccess") {
+        setQueue(payload.response.nextCards);
+      } else if (payload?.__typename === "InputValidationError") {
+        // Server rejected the swipe (stale card, cardgroup mismatch, invalid mode).
+        // The optimistic queue advanced so learning continues, but we surface to
+        // operator telemetry — repeated firing indicates a stale prefetch.
+        // payload.message is omitted — it may echo user-authored card content.
+        // See docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
+        console.warn("[LearnClient] handleSwipe InputValidationError", {
+          cardId: card.id,
+          cardgroupId,
+          field: payload.field,
+        });
+      } else {
+        // Unknown variant or null/undefined payload — optimistic queue is now source of truth.
+        // Cast through unknown because TypeScript narrows the else branch to `never` once all
+        // discriminated union members are handled above.
+        const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
+        console.warn("[LearnClient] handleSwipe unexpected payload", {
+          typename: unknownPayload?.__typename ?? null,
           cardId: card.id,
           cardgroupId,
         });

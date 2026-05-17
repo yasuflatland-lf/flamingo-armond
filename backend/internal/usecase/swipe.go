@@ -84,6 +84,18 @@ type SwipeOutput struct {
 	Metrics         service.PerformanceMetrics
 }
 
+// HandleSwipeOutcome is the result of SwipeUsecase.HandleSwipe. Exactly one of
+// Swipe or Validation is non-nil on a nil-error return.
+//   - Swipe holds the success result (next cards + performance metrics + completion state).
+//   - Validation holds field-level user-input errors: invalid mode, an unknown card, or
+//     an unknown cardgroup. Validation.Field will be one of "mode", "cardId", or "cardgroupId".
+//   - Authorization failures (caller does not own the cardgroup) and infrastructure errors
+//     travel on the error channel, not on Validation.
+type HandleSwipeOutcome struct {
+	Swipe      *SwipeOutput
+	Validation *InputValidationInfo
+}
+
 func NewSwipeUsecase(
 	db *gorm.DB,
 	cardRepo CardRepoForSwipe,
@@ -133,26 +145,37 @@ func NewSwipeUsecaseWithTx(
 	return uc
 }
 
-func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*SwipeOutput, error) {
+func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (HandleSwipeOutcome, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
-		return nil, ucerr.ErrUnauthenticated
+		return HandleSwipeOutcome{}, ucerr.ErrUnauthenticated
 	}
 	rating, err := domain.RatingFromSwipeMode(in.Mode)
 	if err != nil {
-		return nil, ucerr.NewValidationError("mode", err.Error())
+		// Use a plain user-facing message; err.Error() carries an internal layer
+		// prefix ("rating: unknown swipe mode N") that is not appropriate on the wire.
+		return HandleSwipeOutcome{Validation: NewInputValidationInfo("mode", "unknown swipe mode")}, nil
 	}
 	if err := u.authorizeCardgroup(ctx, in.CardgroupID, user.Sub); err != nil {
-		return nil, err
+		// authorizeCardgroup returns ucerr.NewValidationError("cardgroupId", ...) for
+		// not-found and ucerr.ErrUnauthenticated for non-owner. The not-found case
+		// is a validation variant; the non-owner case stays on the error channel.
+		info, err := liftValidationErr(err)
+		if err != nil {
+			return HandleSwipeOutcome{}, err
+		}
+		if info != nil {
+			return HandleSwipeOutcome{Validation: info}, nil
+		}
 	}
 
 	var nextCards []*domain.Card
 	var now time.Time
 	if u.tx == nil {
-		return nil, eris.New("usecase: swipe: transaction runner is not configured")
+		return HandleSwipeOutcome{}, eris.New("usecase: swipe: transaction runner is not configured")
 	}
 	if u.userFSRSRepo == nil {
-		return nil, eris.New("usecase: swipe: user card fsrs repository is not configured")
+		return HandleSwipeOutcome{}, eris.New("usecase: swipe: user card fsrs repository is not configured")
 	}
 	err = u.tx(ctx, func(tx *gorm.DB) error {
 		card, err := u.cardRepo.FindByIDTx(ctx, tx, in.CardID)
@@ -200,18 +223,27 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (*S
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		// Validation errors surfaced from within the transaction closure (e.g.
+		// card not found, cardgroup mismatch) are promoted to the outcome's
+		// Validation variant rather than returned on the error channel.
+		info, err := liftValidationErr(err)
+		if err != nil {
+			return HandleSwipeOutcome{}, err
+		}
+		if info != nil {
+			return HandleSwipeOutcome{Validation: info}, nil
+		}
 	}
 	recentSwipes, err := u.swipeRepo.ListRecentByUser(ctx, user.Sub, swipePerformanceSampleLimit)
 	if err != nil {
-		return nil, eris.Wrap(err, "usecase: swipe: list recent swipes")
+		return HandleSwipeOutcome{}, eris.Wrap(err, "usecase: swipe: list recent swipes")
 	}
 	metrics := service.ComputeMetrics(swipeRecordsByValue(recentSwipes), now)
-	return &SwipeOutput{
+	return HandleSwipeOutcome{Swipe: &SwipeOutput{
 		NextCards:       nextCards,
 		PerformanceMode: service.ModeFromMetrics(metrics),
 		Metrics:         metrics,
-	}, nil
+	}}, nil
 }
 
 func (u *SwipeUsecase) authorizeCardgroup(ctx context.Context, cardgroupID, userID string) error {

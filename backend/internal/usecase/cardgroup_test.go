@@ -353,13 +353,19 @@ func TestCardgroupUsecase_Update_NameChange_Success(t *testing.T) {
 	repo := &mockCardgroupRepository{findResult: existing, updateResult: updated}
 	uc := NewCardgroupUsecase(repo)
 
-	got, err := uc.Update(cgAuthedCtx("user-1"), "cg1", UpdateCardgroupInput{Name: ptr("New")})
+	outcome, err := uc.Update(cgAuthedCtx("user-1"), "cg1", UpdateCardgroupInput{Name: ptr("New")})
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.Name != "New" {
-		t.Fatalf("expected name %q, got %q", "New", got.Name)
+	if outcome.Cardgroup == nil {
+		t.Fatal("expected non-nil Cardgroup on success")
+	}
+	if outcome.Cardgroup.Name != "New" {
+		t.Fatalf("expected name %q, got %q", "New", outcome.Cardgroup.Name)
+	}
+	if outcome.Validation != nil {
+		t.Fatalf("expected nil Validation on success, got %+v", outcome.Validation)
 	}
 	if !repo.updateCalled {
 		t.Fatal("expected repo.Update to be called")
@@ -375,17 +381,87 @@ func TestCardgroupUsecase_Update_EmptyPatch_NoWrite(t *testing.T) {
 	repo := &mockCardgroupRepository{findResult: existing}
 	uc := NewCardgroupUsecase(repo)
 
-	got, err := uc.Update(cgAuthedCtx("user-1"), "cg1", UpdateCardgroupInput{Name: nil})
+	outcome, err := uc.Update(cgAuthedCtx("user-1"), "cg1", UpdateCardgroupInput{Name: nil})
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got == nil || got.Name != "Original" {
-		t.Fatalf("expected existing row returned, got %+v", got)
+	if outcome.Cardgroup == nil || outcome.Cardgroup.Name != "Original" {
+		t.Fatalf("expected existing row returned, got %+v", outcome)
+	}
+	if outcome.Validation != nil {
+		t.Fatalf("expected nil Validation on empty patch, got %+v", outcome.Validation)
 	}
 	if repo.updateCalled {
 		t.Fatal("expected repo.Update NOT to be called for empty patch")
 	}
+}
+
+func TestCardgroupUsecase_Update_EmptyName_ValidationVariant(t *testing.T) {
+	t.Parallel()
+	existing := &domain.Cardgroup{ID: "cg1", OwnerID: "user-1", Name: "Original"}
+	repo := &mockCardgroupRepository{findResult: existing}
+	uc := NewCardgroupUsecase(repo)
+
+	outcome, err := uc.Update(cgAuthedCtx("user-1"), "cg1", UpdateCardgroupInput{Name: ptr("")})
+
+	if err != nil {
+		t.Fatalf("expected nil error (validation goes to outcome), got: %v", err)
+	}
+	if outcome.Cardgroup != nil {
+		t.Fatal("expected nil Cardgroup on validation failure")
+	}
+	if outcome.Validation == nil {
+		t.Fatal("expected non-nil Validation on empty name")
+	}
+	if outcome.Validation.Field != "name" {
+		t.Fatalf("expected Validation.Field=%q, got %q", "name", outcome.Validation.Field)
+	}
+	if repo.updateCalled {
+		t.Fatal("repository.Update must not be called on validation failure")
+	}
+}
+
+func TestCardgroupUsecase_Update_TooLongName_ValidationVariant(t *testing.T) {
+	t.Parallel()
+	existing := &domain.Cardgroup{ID: "cg1", OwnerID: "user-1", Name: "Original"}
+	repo := &mockCardgroupRepository{findResult: existing}
+	uc := NewCardgroupUsecase(repo)
+
+	outcome, err := uc.Update(cgAuthedCtx("user-1"), "cg1", UpdateCardgroupInput{Name: ptr(strings.Repeat("a", 101))})
+
+	if err != nil {
+		t.Fatalf("expected nil error (validation goes to outcome), got: %v", err)
+	}
+	if outcome.Cardgroup != nil {
+		t.Fatal("expected nil Cardgroup on validation failure")
+	}
+	if outcome.Validation == nil {
+		t.Fatal("expected non-nil Validation on too-long name")
+	}
+	if outcome.Validation.Field != "name" {
+		t.Fatalf("expected Validation.Field=%q, got %q", "name", outcome.Validation.Field)
+	}
+	if repo.updateCalled {
+		t.Fatal("repository.Update must not be called on validation failure")
+	}
+}
+
+func TestCardgroupUsecase_Update_RepoError_InfraChannel(t *testing.T) {
+	t.Parallel()
+	existing := &domain.Cardgroup{ID: "cg1", OwnerID: "user-1", Name: "Original"}
+	repo := &mockCardgroupRepository{
+		findResult: existing,
+		updateErr:  errors.New("db: connection lost"),
+	}
+	uc := NewCardgroupUsecase(repo)
+
+	_, err := uc.Update(cgAuthedCtx("user-1"), "cg1", UpdateCardgroupInput{Name: ptr("New")})
+
+	if err == nil {
+		t.Fatal("expected error from repo, got nil")
+	}
+	assertInternalChain(t, err, "usecase: update cardgroup")
 }
 
 // --- Delete tests ---

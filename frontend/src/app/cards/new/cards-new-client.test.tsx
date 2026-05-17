@@ -175,7 +175,7 @@ function makeUpdateMock(args: {
       return {
         data: {
           updateCard: {
-            __typename: "UpdateCardPayload" as const,
+            __typename: "UpdateCardSuccess" as const,
             card: {
               __typename: "Card" as const,
               id,
@@ -226,11 +226,14 @@ function makePersistMock(
       return {
         data: {
           setLastViewedCardgroup: {
-            __typename: "User" as const,
-            id: "u-1",
-            lastViewedCardgroup: {
-              __typename: "Cardgroup" as const,
-              id: cardgroupId,
+            __typename: "SetLastViewedCardgroupSuccess" as const,
+            user: {
+              __typename: "User" as const,
+              id: "u-1",
+              lastViewedCardgroup: {
+                __typename: "Cardgroup" as const,
+                id: cardgroupId,
+              },
             },
           },
         },
@@ -405,8 +408,8 @@ describe("<CardsNewClient> — navigate-on-success", () => {
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         "[cards-new-client] create card rejection",
         expect.objectContaining({
-          message: expect.any(String),
-          err: expect.anything(),
+          name: expect.any(String),
+          cardgroupId: CG_ID,
         }),
       );
     });
@@ -633,8 +636,9 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         "[cards-new-client] overwrite card rejection",
         expect.objectContaining({
-          message: expect.any(String),
-          err: expect.anything(),
+          name: expect.any(String),
+          cardgroupId: CG_ID,
+          cardId: "existing-id",
         }),
       );
     });
@@ -682,6 +686,63 @@ describe("<CardsNewClient> — duplicate-front overwrite flow", () => {
     expect(screen.getByText("Card already exists")).toBeInTheDocument();
     // The generic fallback must NOT be shown when a field-level message is
     // available — that was the original bug.
+    expect(screen.queryByText("Overwrite failed. Please try again.")).not.toBeInTheDocument();
+  });
+
+  it("overwrite returns InputValidationError union variant — dialog stays open with server message", async () => {
+    // Two MockedResponse entries: the first triggers the duplicate dialog,
+    // the second is consumed by the overwrite click and returns an
+    // InputValidationError via the union data path (not the error channel).
+    // The dialog must surface the server message and keep the duplicate state.
+    const validationMessage = "back must not be empty";
+    renderClient({
+      mocks: [
+        makeCreateMock({
+          front: "apple",
+          back: "new back text",
+          duplicate: {
+            existingCardId: "existing-id",
+            existingBack: "existing back text",
+          },
+        }),
+        // Union-data path: server returns InputValidationError as data, not as
+        // a GraphQL error. `__typename: "InputValidationError" as const` ensures
+        // the discriminated union is correctly typed.
+        {
+          request: {
+            query: UpdateCardDocument,
+            variables: { id: "existing-id", input: { back: "new back text" } },
+          },
+          result: {
+            data: {
+              updateCard: {
+                __typename: "InputValidationError" as const,
+                field: "back",
+                message: validationMessage,
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    await fillAndSubmit("apple", "new back text");
+
+    const user = userEvent.setup();
+    const confirmBtn = await screen.findByRole("button", { name: "Overwrite" });
+    await user.click(confirmBtn);
+
+    // Dialog stays open (duplicate state is not cleared on InputValidationError).
+    await waitFor(() => {
+      expect(screen.getByText(validationMessage)).toBeInTheDocument();
+    });
+    expect(screen.getByText("Card already exists")).toBeInTheDocument();
+    // The duplicate-detection state persists — the comparison is still visible.
+    expect(screen.getByText("existing back text")).toBeInTheDocument();
+    expect(screen.getByText("new back text")).toBeInTheDocument();
+    // No navigation on validation failure.
+    expect(mockPush).not.toHaveBeenCalled();
+    // The generic fallback is not shown when the server provides a message.
     expect(screen.queryByText("Overwrite failed. Please try again.")).not.toBeInTheDocument();
   });
 });

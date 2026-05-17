@@ -63,6 +63,14 @@ export function CardsClient({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
 
+  // Typed InputValidationError variant surfaced by the updateCard outcome-union.
+  // Keyed by the card id currently in edit mode so only the active row's form
+  // receives the error. Cleared when editing begins or when the edit is cancelled.
+  const [rowValidationError, setRowValidationError] = useState<{
+    field: string;
+    message: string;
+  } | null>(null);
+
   // Map of per-row SwipeableRow refs, keyed by card id. When the user taps a
   // different row to enter edit mode, we close any half-open row first via its
   // ref. Using a Map (not a ref to an object literal) avoids stale-closure
@@ -438,6 +446,7 @@ export function CardsClient({
   }, []);
 
   async function handleUpdate(id: string, values: { front: string; back: string }) {
+    setRowValidationError(null);
     const result = await updateCard({
       variables: { id, input: { front: values.front, back: values.back } },
     }).catch((err) => {
@@ -451,8 +460,27 @@ export function CardsClient({
       });
       return null;
     });
-    if (result?.data?.updateCard?.card) {
+    if (!result) return;
+
+    const payload = result.data?.updateCard;
+    if (payload?.__typename === "UpdateCardSuccess") {
       setEditingId(null);
+    } else if (payload?.__typename === "InputValidationError") {
+      // Surface the field-level error into the row's CardForm so the user can
+      // correct it. The row stays in edit mode; rowValidationError drives the
+      // inline field highlight via the validationError prop.
+      setRowValidationError({ field: payload.field, message: payload.message });
+    } else {
+      // Unknown variant: null payload or a future union variant the client was not regenerated against.
+      // Cast through unknown because TypeScript narrows the else branch to `never` once all
+      // discriminated union members are handled above.
+      const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
+      console.warn("[CardsClient] unexpected updateCard payload", {
+        typename: unknownPayload?.__typename ?? null,
+        cardId: id,
+        cardgroupId,
+      });
+      setRowValidationError({ field: "front", message: "Save failed. Please try again." });
     }
   }
 
@@ -611,7 +639,11 @@ export function CardsClient({
                     submitLabel="Save"
                     submitting={updating}
                     error={updateError}
-                    onCancel={() => setEditingId(null)}
+                    validationError={rowValidationError}
+                    onCancel={() => {
+                      setRowValidationError(null);
+                      setEditingId(null);
+                    }}
                   />
                 </li>
               ) : (
@@ -663,12 +695,14 @@ export function CardsClient({
                         tabIndex={0}
                         onClick={() => {
                           closeOtherRows(card.id);
+                          setRowValidationError(null);
                           setEditingId(card.id);
                         }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
                             closeOtherRows(card.id);
+                            setRowValidationError(null);
                             setEditingId(card.id);
                           }
                         }}

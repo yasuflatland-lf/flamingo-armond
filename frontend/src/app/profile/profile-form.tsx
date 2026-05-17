@@ -4,24 +4,32 @@ import { useMutation } from "@apollo/client/react";
 import { useForm } from "@tanstack/react-form";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { graphql } from "@/generated";
-import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
+import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import { FieldError } from "@/lib/forms/field-error";
 import { updateProfileSchema } from "@/schemas/profile";
 
 const UpdateProfileMutation = graphql(`
   mutation UpdateProfile($input: UpdateProfileInput!) {
     updateProfile(input: $input) {
-      user {
-        id
-        displayName
-        bio
-        avatarUrl
+      __typename
+      ... on UpdateProfileSuccess {
+        user {
+          id
+          displayName
+          bio
+          avatarUrl
+        }
+      }
+      ... on InputValidationError {
+        field
+        message
       }
     }
   }
@@ -35,12 +43,18 @@ type Props = {
 
 export function ProfileForm({ email, initial }: Props) {
   const router = useRouter();
-  const [updateProfile, { loading, error }] = useMutation(UpdateProfileMutation, {
-    onCompleted: () => router.refresh(),
-  });
 
-  const fieldErrors = useMemo(() => getBackendFieldErrors(error), [error]);
-  const bannerError = useMemo(() => getBackendErrorBanner(error), [error]);
+  // Typed InputValidationError variant — field-level validation failure
+  // surfaced by the server via the outcome union. Cleared on each new submission.
+  const [validationError, setValidationError] = useState<{
+    field: string;
+    message: string;
+  } | null>(null);
+
+  // Mid-session auth failures or unexpected payloads. Cleared on each submission.
+  const [bannerMessage, setBannerMessage] = useState<string | null>(null);
+
+  const [updateProfile, { loading }] = useMutation(UpdateProfileMutation);
 
   const displayNameSchema = updateProfileSchema.shape.displayName;
   const bioSchema = updateProfileSchema.shape.bio;
@@ -51,9 +65,10 @@ export function ProfileForm({ email, initial }: Props) {
       bio: initial.bio as string | undefined,
     },
     onSubmit: async ({ value }) => {
-      // bio: "" clears, undefined leaves unchanged. Errors surface via the mutation's error state;
-      // the catch prevents unhandled rejections without swallowing diagnostics.
-      await updateProfile({
+      setValidationError(null);
+      setBannerMessage(null);
+
+      const result = await updateProfile({
         variables: {
           input: {
             displayName: value.displayName,
@@ -61,11 +76,45 @@ export function ProfileForm({ email, initial }: Props) {
           },
         },
       }).catch((err) => {
+        const codes = liftGraphQLCodes(err);
+        if (codes.includes("UNAUTHENTICATED")) {
+          setBannerMessage("Your session expired. Please sign in again.");
+          return null;
+        }
+        const banner = getBackendErrorBanner(err) ?? "Something went wrong. Please try again.";
+        setBannerMessage(banner);
         console.error("[ProfileForm] mutation rejection", err);
         throw err; // keep formState.isSubmitSuccessful correct
       });
+
+      if (!result) return;
+
+      const payload = result.data?.updateProfile;
+
+      if (payload?.__typename === "InputValidationError") {
+        setValidationError({ field: payload.field, message: payload.message });
+        return;
+      }
+
+      if (payload?.__typename === "UpdateProfileSuccess") {
+        router.refresh();
+        return;
+      }
+
+      // Unknown variant: null payload or a future union variant the client was not
+      // regenerated against.
+      const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
+      console.warn("[ProfileForm] unexpected updateProfile payload", {
+        typename: unknownPayload?.__typename ?? null,
+      });
+      setBannerMessage("Something went wrong. Please try again.");
     },
   });
+
+  // Derive per-field backend errors from the validationError state (outcome union path).
+  const fieldErrors: Record<string, string | undefined> = validationError
+    ? { [validationError.field]: validationError.message }
+    : {};
 
   return (
     <form
@@ -80,9 +129,9 @@ export function ProfileForm({ email, initial }: Props) {
       }}
       className="space-y-4"
     >
-      {bannerError ? (
+      {bannerMessage ? (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-          {bannerError}
+          {bannerMessage}
         </div>
       ) : null}
 

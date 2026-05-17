@@ -26,7 +26,7 @@ function makeMutationMock(
       return {
         data: {
           updateProfile: {
-            __typename: "UpdateProfilePayload" as const,
+            __typename: "UpdateProfileSuccess" as const,
             user: {
               __typename: "User" as const,
               id: "user-1",
@@ -183,7 +183,7 @@ describe("<ProfileForm>", () => {
     });
   });
 
-  it("backend BAD_USER_INPUT is shown under the corresponding field", async () => {
+  it("InputValidationError variant is shown under the corresponding field", async () => {
     const user = userEvent.setup();
 
     const mocks = [
@@ -193,17 +193,19 @@ describe("<ProfileForm>", () => {
           variables: { input: { displayName: "Alice", bio: "hi" } },
         },
         result: {
-          errors: [
-            new GraphQLError("displayName must be 1-50 characters", {
-              extensions: { code: "BAD_USER_INPUT", field: "displayName" },
-            }),
-          ],
+          data: {
+            updateProfile: {
+              __typename: "InputValidationError" as const,
+              field: "displayName",
+              message: "displayName must be 1-50 characters",
+            },
+          },
         },
       },
     ];
 
     render(
-      <MockedProvider mocks={mocks} defaultOptions={{ mutate: { errorPolicy: "all" } }}>
+      <MockedProvider mocks={mocks}>
         <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
     );
@@ -218,6 +220,9 @@ describe("<ProfileForm>", () => {
   it("backend INTERNAL error is shown as a generic banner", async () => {
     const user = userEvent.setup();
 
+    // INTERNAL errors reject the mutation promise (no errorPolicy: "all" needed).
+    // The .catch handler in onSubmit maps the banner and re-throws to keep
+    // formState.isSubmitSuccessful=false.
     const mocks = [
       {
         request: {
@@ -235,7 +240,7 @@ describe("<ProfileForm>", () => {
     ];
 
     render(
-      <MockedProvider mocks={mocks} defaultOptions={{ mutate: { errorPolicy: "all" } }}>
+      <MockedProvider mocks={mocks}>
         <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
     );
@@ -250,6 +255,8 @@ describe("<ProfileForm>", () => {
   it("backend UNAUTHENTICATED error is shown with sign-in prompt", async () => {
     const user = userEvent.setup();
 
+    // UNAUTHENTICATED rejects the mutation promise; the .catch handler
+    // in onSubmit maps liftGraphQLCodes([UNAUTHENTICATED]) to the session-expired banner.
     const mocks = [
       {
         request: {
@@ -267,7 +274,7 @@ describe("<ProfileForm>", () => {
     ];
 
     render(
-      <MockedProvider mocks={mocks} defaultOptions={{ mutate: { errorPolicy: "all" } }}>
+      <MockedProvider mocks={mocks}>
         <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
     );
@@ -354,7 +361,7 @@ describe("<ProfileForm>", () => {
           return {
             data: {
               updateProfile: {
-                __typename: "UpdateProfilePayload" as const,
+                __typename: "UpdateProfileSuccess" as const,
                 user: {
                   __typename: "User" as const,
                   id: "user-1",

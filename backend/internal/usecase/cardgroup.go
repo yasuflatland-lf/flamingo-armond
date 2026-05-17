@@ -155,43 +155,57 @@ func (u *CardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 // UpdateCardgroupInput carries the fields that may be patched on an existing cardgroup.
 type UpdateCardgroupInput struct{ Name *string }
 
+// UpdateCardgroupOutcome is the result of CardgroupUsecase.Update. Exactly one
+// of Cardgroup or Validation is non-nil on a nil-error return: a successful
+// patch carries the updated Cardgroup; a name that fails validation surfaces
+// via Validation so the resolver maps it to the UpdateCardgroupResult union's
+// InputValidationError variant.
+type UpdateCardgroupOutcome struct {
+	Cardgroup  *domain.Cardgroup
+	Validation *InputValidationInfo
+}
+
 // Update applies a partial patch to the cardgroup identified by id.
 // Non-owners and missing rows both return UNAUTHENTICATED to prevent ID enumeration.
 // A nil Name field is treated as an empty patch: the existing row is returned
 // without any database write.
-func (u *CardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardgroupInput) (*domain.Cardgroup, error) {
+func (u *CardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardgroupInput) (UpdateCardgroupOutcome, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
-		return nil, ucerr.ErrUnauthenticated
+		return UpdateCardgroupOutcome{}, ucerr.ErrUnauthenticated
 	}
 
 	existing, err := u.repo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ucerr.ErrUnauthenticated
+			return UpdateCardgroupOutcome{}, ucerr.ErrUnauthenticated
 		}
-		return nil, eris.Wrap(err, "usecase: find cardgroup for update")
+		return UpdateCardgroupOutcome{}, eris.Wrap(err, "usecase: find cardgroup for update")
 	}
 	if !existing.IsOwnedBy(user.Sub) {
-		return nil, ucerr.ErrUnauthenticated
+		return UpdateCardgroupOutcome{}, ucerr.ErrUnauthenticated
 	}
 
 	// Empty patch: no DB write, return current row.
 	if in.Name == nil {
-		return existing, nil
+		return UpdateCardgroupOutcome{Cardgroup: existing}, nil
 	}
 
 	trimmed := strings.TrimSpace(*in.Name)
 	tmp := &domain.Cardgroup{Name: trimmed}
-	if err := tmp.Validate(); err != nil {
-		return nil, translateCardgroupNameErr(err)
+	info, err := liftValidationErr(translateCardgroupNameErr(tmp.Validate()))
+	if err != nil {
+		return UpdateCardgroupOutcome{}, err
+	}
+	if info != nil {
+		return UpdateCardgroupOutcome{Validation: info}, nil
 	}
 
 	updated, err := u.repo.Update(ctx, id, repository.CardgroupUpdate{Name: &trimmed})
 	if err != nil {
-		return nil, eris.Wrap(err, "usecase: update cardgroup")
+		return UpdateCardgroupOutcome{}, eris.Wrap(err, "usecase: update cardgroup")
 	}
-	return updated, nil
+	return UpdateCardgroupOutcome{Cardgroup: updated}, nil
 }
 
 // Delete removes the cardgroup identified by id.
