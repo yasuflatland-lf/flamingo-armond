@@ -1,0 +1,15 @@
+name: docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check-claude-md:
+    name: CLAUDE.md hierarchy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify hierarchical CLAUDE.md scheme
+        run: bash scripts/check-claude-md-hierarchy.sh

@@ -13,4 +13,4 @@ if (user) {
 }
 ```
 
-This is the inverse of the "fail-closed in `gqlFetch`" rule documented in `docs/frontend.md` § "Authorization forwarding in `gqlFetch`": `gqlFetch` itself throws on a session-fetch error rather than silently sending an anonymous request, but **callers** of `gqlFetch` are responsible for not invoking it in the first place when they already know the user is anonymous.
+This is the inverse of the "fail-closed in `gqlFetch`" rule documented in [`docs/frontend/profile-page-profile.md`](../profile-page-profile.md#authorization-forwarding-in-gqlfetch) § "Authorization forwarding in `gqlFetch`": `gqlFetch` itself throws on a session-fetch error rather than silently sending an anonymous request, but **callers** of `gqlFetch` are responsible for not invoking it in the first place when they already know the user is anonymous.

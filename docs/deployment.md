@@ -103,9 +103,9 @@ flowchart LR
     Render -- "Postgres + JWKS" --> Supabase
 ```
 
-The browser only ever talks to its own Vercel origin. `frontend/next.config.ts` rewrites `/api/graphql` → `${BACKEND_URL}/query`, so requests reach Render through Next's rewrite — there is no CORS layer on the backend (see `docs/frontend.md` § "Backend rewrite contract").
+The browser only ever talks to its own Vercel origin. `frontend/next.config.ts` rewrites `/api/graphql` → `${BACKEND_URL}/query`, so requests reach Render through Next's rewrite — there is no CORS layer on the backend (see [`docs/frontend/backend-rewrite-contract.md`](frontend/backend-rewrite-contract.md)).
 
-The backend trusts Supabase as the JWT issuer: it fetches the JWKS at boot from `SUPABASE_JWKS_URL` and validates `aud` / `iss` against `SUPABASE_JWT_AUDIENCE` / `SUPABASE_JWT_ISSUER` (see `docs/backend.md` § "Authentication"). Supabase is therefore the single trust anchor between Vercel and Render.
+The backend trusts Supabase as the JWT issuer: it fetches the JWKS at boot from `SUPABASE_JWKS_URL` and validates `aud` / `iss` against `SUPABASE_JWT_AUDIENCE` / `SUPABASE_JWT_ISSUER` (see [`docs/backend-auth.md` § "Authentication"](backend-auth.md#authentication)). Supabase is therefore the single trust anchor between Vercel and Render.
 
 ## Manual prerequisites
 
@@ -294,11 +294,11 @@ curl -X POST "<backend-url>/query" \
 curl -I "<frontend-url>"                                 # → 200
 ```
 
-For an end-to-end check, sign in via Google on the Vercel domain and load `/profile`. The page issues an authenticated `me` query through the rewrite, which exercises the full Vercel → Render → Supabase chain (see `docs/frontend.md` § "Profile page").
+For an end-to-end check, sign in via Google on the Vercel domain and load `/profile`. The page issues an authenticated `me` query through the rewrite, which exercises the full Vercel → Render → Supabase chain (see [`docs/frontend/profile-page-profile.md`](frontend/profile-page-profile.md)).
 
 ## Operational gotchas
 
-- **Migrations run on every Render boot.** A failing migration sets `schema_migrations.dirty=true` and requires manual `migrate force <version>` recovery (`docs/backend.md` § "Migrations").
+- **Migrations run on every Render boot.** A failing migration sets `schema_migrations.dirty=true` and requires manual `migrate force <version>` recovery (see [`docs/backend-db.md` § "Migrations"](backend-db.md#migrations)).
 - **Renaming or renumbering migration files breaks the next boot.** `public.schema_migrations.version` keeps the old identifier, while the new source tree no longer contains it; startup dies with `no migration found for version <N>: read down for version <N> migrations: file does not exist`. Recovery for an identifier-only rename (R100 in `git log -M`) is a manual `UPDATE` on `schema_migrations` per `playbooks/setup-prod/recover-migration-version-rebase.sql`.
 - **Use `127.0.0.1`, not `localhost`, for any local OAuth setup.** Google's redirect URI validation treats them as distinct origins. This applies to local development only; production uses real domains (`docs/dev-setup.md` § "Gotchas").
 - **Render free tier sleeps idle services.** The first request after idleness incurs a cold start. Health checks on `/health` keep the service warm only while traffic flows.

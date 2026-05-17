@@ -27,7 +27,7 @@ The `AppShell` component (`frontend/src/components/nav/app-shell.tsx`) is mounte
 
 The **authorization gate** is `app/admin/layout.tsx`, which redirects on failure. The two layers are deliberately asymmetric: Header is UI hint, admin layout is the enforcement boundary. A broken Header never grants access; an over-eager Header throw 500s the whole site.
 
-This is why `app/<route>/error.tsx` cannot rescue layout-level throws — the same constraint as the `Gotchas encountered` entry in `docs/frontend.md` ("`app/<route>/error.tsx` does not catch errors from `app/layout.tsx`").
+This is why `app/<route>/error.tsx` cannot rescue layout-level throws — the same constraint as [`docs/frontend/gotchas-encountered.md`](../../docs/frontend/gotchas-encountered.md) ("`app/<route>/error.tsx` does not catch errors from `app/layout.tsx`").
 
 ## Structurally parse GraphQL `extensions.code` — never substring-match the message
 

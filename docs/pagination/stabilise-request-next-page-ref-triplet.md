@@ -1,6 +1,6 @@
 # Stabilise `requestNextPage` via the cursor / search / hasNextPage ref triplet
 
-> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `docs/frontend.md`.
+> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `frontend/CLAUDE.md`.
 
 The `useCallback` for `requestNextPage` reads three values that change every time a page lands or the user types into the search box: `endCursor`, `searchQuery`, and `hasNextPage`. If any of them appear in the callback's dep array, the callback gets a fresh identity on every advance — and the IntersectionObserver `useEffect` (which lists `requestNextPage` as a dep) tears down and re-attaches the observer on every page transition. The fix is to mirror all three values into refs and read them via `*.current` inside the callback, leaving only Apollo's stable `fetchMore` (and any cardgroup-id parameter) in the dep array:
 

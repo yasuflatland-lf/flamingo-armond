@@ -1,6 +1,6 @@
 # Split debounce from immediate-reset effects on the same input
 
-> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `docs/frontend.md`.
+> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `frontend/CLAUDE.md`.
 
 A single effect that combines the debounced state update with the immediate-reset cleanup violates the "one effect, one synchronization" guideline AND silently delays the reset by the debounce window. The user starts typing, the prior page's `fetchingRef = true` and `fetchMoreError` banner remain in place for 300ms, and the IO observer continues to interpret the prior cursor as live during that window. Split into two effects keyed on different triggers — the input for the debounce, the resulting query for the reset:
 

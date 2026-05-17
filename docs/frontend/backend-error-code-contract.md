@@ -1,6 +1,6 @@
 # Backend error-code contract
 
-> Part of [`docs/frontend.md`](../frontend.md). See the index for related chapters.
+> Part of [`frontend/CLAUDE.md`](../../frontend/CLAUDE.md). See the index for related chapters.
 
 The backend (`backend/internal/gqlerr`) returns three `extensions.code` values. The frontend handles them at two layers:
 

@@ -1,5 +1,5 @@
 # Source of truth for both backend (gqlgen) and frontend (graphql-codegen).
-# See docs/frontend.md for the codegen contract.
+# See docs/frontend/codegen.md for the codegen contract.
 
 """Root of all read operations exposed by the GraphQL API. See per-field doc-blocks for individual queries."""
 type Query {

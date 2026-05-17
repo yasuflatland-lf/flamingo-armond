@@ -7,18 +7,10 @@ Guidance for Claude Code (claude.ai/code) when working in this repository.
 Monorepo for a swiping flashcard app (`🦩 flamingo-armond`):
 
 - `backend/` — Go / Echo v5. The only area wired end-to-end (build, tests, CI, deploy).
-- `frontend/` — TypeScript / GraphQL client. See `docs/frontend.md` before inventing commands.
+- `frontend/` — TypeScript / GraphQL client.
 - `schema/` — Shared GraphQL schema. Source of truth for both `gqlgen` (backend) and `codegen` (frontend); outputs land in `backend/graph/{generated,model}/` and `frontend/src/generated/`.
 
-## Backend quickstart
-
-Go is pinned via mise (`backend/.tool-versions`). Run from `backend/`:
-
-```bash
-go mod download && go vet ./... && go build ./...
-go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
-go run ./cmd/server   # PORT defaults to 1323
-```
+Each top-level area has its own `CLAUDE.md` that auto-loads when working under that directory (Hierarchical CLAUDE.md scheme): [`backend/CLAUDE.md`](backend/CLAUDE.md), [`frontend/CLAUDE.md`](frontend/CLAUDE.md), [`schema/CLAUDE.md`](schema/CLAUDE.md), [`docs/CLAUDE.md`](docs/CLAUDE.md).
 
 ## PR Updates
 
@@ -31,4 +23,4 @@ This file is **L1**: keep it ≤35 lines, top-level orientation only. Overflow g
 - **L2 — `docs/`** — architecture & topic docs (source of truth for technical detail). Soft cap ~600 lines per file; if a top-level section exceeds that, split by topic.
 - **L3 — `.claude/rules/`** — cross-cutting rules and conventions (apply across multiple L2 docs, or to all of `backend/` / `frontend/`).
 
-Prefer updating an L2 or L3 doc over expanding this file. See `docs/` and `.claude/rules/` for the current file lists; `README.md` § "Further reading" indexes them. When L1 grows past 35 lines, move the newest section down a tier and leave a one-line pointer here.
+Prefer updating an L2 or L3 doc over expanding this file. `README.md` § "Further reading" is the human-onboarding index. When L1 grows past 35 lines, move the newest section down a tier and leave a one-line pointer here.

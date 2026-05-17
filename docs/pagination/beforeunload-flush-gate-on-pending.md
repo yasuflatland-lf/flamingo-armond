@@ -1,6 +1,6 @@
 # `beforeunload` flush is browser-cancellable; gate the warn on pending count
 
-> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `docs/frontend.md`.
+> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `frontend/CLAUDE.md`.
 
 A `beforeunload` listener that unconditionally fires `void flushPendingDeletes()` produces false-positive operator noise on every routine navigation even when there is nothing pending. More critically, modern browsers cancel pending `fetch` / XHR requests when `beforeunload` fires unless the request uses `keepalive: true` or `sendBeacon` — neither of which is viable for GraphQL endpoints that require `Authorization` headers. The flush is therefore a best-effort hint, not a guarantee.
 

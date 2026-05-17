@@ -1,6 +1,6 @@
 # Apollo wiring
 
-> Part of [`docs/frontend.md`](../frontend.md). See the index for related chapters.
+> Part of [`frontend/CLAUDE.md`](../../frontend/CLAUDE.md). See the index for related chapters.
 
 ### RSC (`gqlFetch`)
 

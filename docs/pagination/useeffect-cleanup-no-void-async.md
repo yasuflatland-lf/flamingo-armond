@@ -1,6 +1,6 @@
 # `useEffect` cleanup must not fire `void asyncFn()` for navigation-time side effects
 
-> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `docs/frontend.md`.
+> Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `frontend/CLAUDE.md`.
 
 Putting a flush call such as `flushPendingDeletes()` inside the `useEffect` cleanup function (`return () => { void asyncFn(); }`) is unreliable. The cleanup fires synchronously on unmount or dep-change; the returned Promise is voided; React does not keep the component alive while the async work runs; in-flight mutations can be abandoned mid-flight with no error surface.
 

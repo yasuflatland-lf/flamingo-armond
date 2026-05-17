@@ -11,7 +11,7 @@
 # Install Go 1.26.2 (backend/.tool-versions), Node 24.x + pnpm 10.33.2 + Supabase CLI (./.tool-versions).
 mise install
 
-# Install workspace deps. The frontend workspace is populated with a Next.js 16 App Router scaffold (see `docs/frontend.md`).
+# Install workspace deps. The frontend workspace is populated with a Next.js 16 App Router scaffold (see `frontend/CLAUDE.md`).
 pnpm install
 ```
 
@@ -220,6 +220,27 @@ The backend fails to start if any of these is missing — check `supabase status
 For the production setup of the same Google sign-in path (Supabase project, Vercel, Render, Supabase Auth settings), see `docs/deployment.md`.
 
 ## Git tooling
+
+### Working in a git worktree
+
+`backend/graph/generated/` (gqlgen output) and `frontend/src/generated/` (graphql-codegen output) are both gitignored. CI always runs codegen before build and typecheck, so missing generated files are invisible on CI. A `git worktree add` of any branch starts without these directories, and the first build or test run fails immediately:
+
+- `go build ./...` — "no required module provides package backend/graph/generated"
+- `tsc --noEmit` / `pnpm vitest` — "Cannot find module '@/generated/...'"
+
+Run codegen once after creating or switching to a worktree:
+
+```bash
+# Backend — from the worktree root
+cd backend && go tool gqlgen generate
+
+# Frontend — from the worktree root
+pnpm --filter frontend codegen
+```
+
+`make codegen` at the repo root runs both steps together. The same applies whenever the `schema/*.graphql` source changes on the active branch, since the generated output is not updated by `git checkout`.
+
+See [§ "Policy on generated files"](#policy-on-generated-files) for the full rationale behind gitignoring codegen output, and [`docs/backend/library-gotchas/go-arch-lint-testdata-and-generated-exclusions.md`](backend/library-gotchas/go-arch-lint-testdata-and-generated-exclusions.md) for the same requirement applied to `go-arch-lint`.
 
 ### Extracting a single file's hunk from a mixed-purpose commit
 

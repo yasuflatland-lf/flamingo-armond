@@ -1,0 +1,32 @@
+# backend/
+
+Go / Echo v5 backend. The L1 (`CLAUDE.md` at repo root) applies; this file adds backend-specific orientation.
+
+## Layout
+
+- `cmd/` — entrypoints (server, seed, schema-lint)
+- `internal/` — domain, usecase, repository, auth, middleware
+- `graph/` — gqlgen output and resolver layer
+
+## Quickstart
+
+Go is pinned via mise (`backend/.tool-versions`). Run from `backend/`:
+
+```bash
+go mod download && go vet ./... && go build ./...
+go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
+go run ./cmd/server   # PORT defaults to 1323
+```
+
+## Topic docs
+
+- [`docs/backend.md`](../docs/backend.md) — runtime notes (Echo v5, GORM, graceful shutdown)
+- [`docs/backend-auth.md`](../docs/backend-auth.md) — Supabase JWT, RLS, role management, Custom Access Token Hook
+- [`docs/backend-db.md`](../docs/backend-db.md) — migrations, recover
+- [`docs/backend-graphql.md`](../docs/backend-graphql.md) — gqlgen, resolver, DataLoader, authorization, validation, generated code
+- [`docs/observability.md`](../docs/observability.md) — logging contracts (shared with frontend)
+- [`docs/backend/error-wrapping/logging-error-warn-helpers.md`](../docs/backend/error-wrapping/logging-error-warn-helpers.md) — `LogError` / `LogWarn` helpers, usecase-layer logger DI
+
+## Cross-cutting rules already in context
+
+Layer dependency, error wrapping, library gotchas, language policy are auto-loaded via `.claude/rules/`. Do not duplicate them here.
