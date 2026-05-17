@@ -39,7 +39,7 @@ Use `ucerr.NewValidationError(field, message)` and `ucerr.NewForbiddenError(mess
 
 The resolver wraps every usecase return error with `gqlerr.FromUsecaseError(ctx, err)` to translate to the wire form. Resolver-internal `gqlerr.*` calls remain unwrapped — they are already wire-format.
 
-CI enforces this import-graph invariant via `go-arch-lint`; the full layer model and adjacent rules are in [`backend-layering.md`](backend-layering.md). The old standalone grep gate (`grep -rln '"backend/internal/gqlerr"' internal/usecase`) is retired now that `go-arch-lint` covers it directly.
+CI enforces this import-graph invariant via `go-arch-lint`; see [`backend-layering.md`](backend-layering.md) for the full layer model and the list of adjacent rules.
 
 ### Resolver-side usecase wrap is mandatory
 

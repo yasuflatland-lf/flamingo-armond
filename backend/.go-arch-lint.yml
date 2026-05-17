@@ -58,7 +58,7 @@ deps:
   repository:         { mayDependOn: [domain] }
   telemetry:          { anyVendorDeps: true }           # leaf: vendor-only deps (otel, eris)
   textdic:            { anyVendorDeps: true }           # leaf: vendor-only deps (eris)
-  ucerr:              { anyVendorDeps: true }           # leaf: spec requires one permission; imports stdlib only
+  ucerr:              { anyVendorDeps: true }           # leaf: go-arch-lint requires at least one allow setting; ucerr imports stdlib only
   usecase:
     mayDependOn:
       - auth
