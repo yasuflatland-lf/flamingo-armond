@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -97,14 +98,18 @@ type dictionaryUsecase struct {
 	auth     AdminChecker
 	cardRepo DictionaryCardRepository
 	tx       txRunner
+	logger   *slog.Logger
 }
 
 // NewDictionaryUsecase constructs a DictionaryUsecase. db is the gorm handle
 // used to open transactions; pass the same *gorm.DB used by the other
 // usecase constructors. Passing a nil db defers transaction wiring; the
 // usecase will return INTERNAL when Upsert is invoked without a tx runner.
-func NewDictionaryUsecase(authSvc AdminChecker, cardRepo DictionaryCardRepository, db *gorm.DB) *dictionaryUsecase {
-	uc := &dictionaryUsecase{auth: authSvc, cardRepo: cardRepo}
+func NewDictionaryUsecase(authSvc AdminChecker, cardRepo DictionaryCardRepository, db *gorm.DB, logger *slog.Logger) *dictionaryUsecase {
+	if logger == nil {
+		panic("usecase: dictionary: logger is required")
+	}
+	uc := &dictionaryUsecase{auth: authSvc, cardRepo: cardRepo, logger: logger}
 	if db != nil {
 		uc.tx = func(ctx context.Context, fn func(tx *gorm.DB) error) error {
 			return db.WithContext(ctx).Transaction(fn)
@@ -116,8 +121,11 @@ func NewDictionaryUsecase(authSvc AdminChecker, cardRepo DictionaryCardRepositor
 // NewDictionaryUsecaseWithTx is the test-time constructor that injects an
 // explicit transaction runner. Production callers must use
 // NewDictionaryUsecase.
-func NewDictionaryUsecaseWithTx(authSvc AdminChecker, cardRepo DictionaryCardRepository, tx txRunner) *dictionaryUsecase {
-	return &dictionaryUsecase{auth: authSvc, cardRepo: cardRepo, tx: tx}
+func NewDictionaryUsecaseWithTx(authSvc AdminChecker, cardRepo DictionaryCardRepository, tx txRunner, logger *slog.Logger) *dictionaryUsecase {
+	if logger == nil {
+		panic("usecase: dictionary: logger is required")
+	}
+	return &dictionaryUsecase{auth: authSvc, cardRepo: cardRepo, tx: tx, logger: logger}
 }
 
 // Upsert ingests a base64-encoded dictionary payload, parses it, and persists

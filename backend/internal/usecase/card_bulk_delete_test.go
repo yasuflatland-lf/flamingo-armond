@@ -24,7 +24,7 @@ func TestCardUsecase_BulkDelete_EmptyIDs(t *testing.T) {
 	cardRepo := &mockCardRepository{}
 	cgRepo := &mockCardgroupRepoForCard{}
 	tx, calls := fakeTxRunner()
-	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx}
+	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: newTestLogger()}
 
 	n, err := uc.BulkDelete(authedCtx("u1"), nil)
 	if err != nil {
@@ -46,7 +46,7 @@ func TestCardUsecase_BulkDelete_Anonymous(t *testing.T) {
 	cardRepo := &mockCardRepository{}
 	cgRepo := &mockCardgroupRepoForCard{}
 	tx, _ := fakeTxRunner()
-	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx}
+	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: newTestLogger()}
 
 	_, err := uc.BulkDelete(anonCtx(), []string{"c1", "c2"})
 	assertUnauthenticated(t, err)
@@ -58,7 +58,7 @@ func TestCardUsecase_BulkDelete_Anonymous(t *testing.T) {
 func TestCardUsecase_BulkDelete_AnonymousWithEmptyIDs(t *testing.T) {
 	// Auth check fires before the empty-ids short-circuit.
 	t.Parallel()
-	uc := &CardUsecase{cardRepo: &mockCardRepository{}, cardgroupRepo: &mockCardgroupRepoForCard{}}
+	uc := &CardUsecase{cardRepo: &mockCardRepository{}, cardgroupRepo: &mockCardgroupRepoForCard{}, logger: newTestLogger()}
 	_, err := uc.BulkDelete(anonCtx(), nil)
 	assertUnauthenticated(t, err)
 }
@@ -70,7 +70,7 @@ func TestCardUsecase_BulkDelete_AllOwn(t *testing.T) {
 	}
 	cgRepo := &mockCardgroupRepoForCard{}
 	tx, calls := fakeTxRunner()
-	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx}
+	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: newTestLogger()}
 
 	n, err := uc.BulkDelete(authedCtx("u1"), []string{"c1", "c2", "c3"})
 	if err != nil {
@@ -101,7 +101,7 @@ func TestCardUsecase_BulkDelete_SilentlySkipsForeign(t *testing.T) {
 	cardRepo := &mockCardRepository{deleteByIDsResult: 1}
 	cgRepo := &mockCardgroupRepoForCard{}
 	tx, calls := fakeTxRunner()
-	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx}
+	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: newTestLogger()}
 
 	n, err := uc.BulkDelete(authedCtx("u1"), []string{"c1", "foreign"})
 	if err != nil {
@@ -133,7 +133,7 @@ func TestCardUsecase_BulkDelete_PartialMatchSucceeds(t *testing.T) {
 	cardRepo := &mockCardRepository{deleteByIDsResult: 2}
 	cgRepo := &mockCardgroupRepoForCard{}
 	tx, calls := fakeTxRunner()
-	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx}
+	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: newTestLogger()}
 
 	ids := []string{"own1", "own2", "foreign1", "foreign2", "foreign3"}
 	n, err := uc.BulkDelete(authedCtx("u1"), ids)
@@ -159,7 +159,7 @@ func TestCardUsecase_BulkDelete_RejectsTooManyIDs(t *testing.T) {
 	cardRepo := &mockCardRepository{}
 	cgRepo := &mockCardgroupRepoForCard{}
 	tx, calls := fakeTxRunner()
-	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx}
+	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cgRepo, tx: tx, logger: newTestLogger()}
 
 	_, err := uc.BulkDelete(authedCtx("u1"), ids)
 	assertValidationError(t, err, "ids", "")

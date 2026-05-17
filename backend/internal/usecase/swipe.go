@@ -70,6 +70,7 @@ type SwipeUsecase struct {
 	randSource    func() *rand.Rand
 	tx            txRunner
 	nextBatchSize int
+	logger        *slog.Logger
 }
 
 type HandleSwipeInput struct {
@@ -104,7 +105,11 @@ func NewSwipeUsecase(
 	scheduler *service.FSRSScheduler,
 	nextBatchSize int,
 	userCardFSRSRepo UserCardFSRSRepoForSwipe,
+	logger *slog.Logger,
 ) *SwipeUsecase {
+	if logger == nil {
+		panic("usecase: swipe: logger is required")
+	}
 	if scheduler == nil {
 		scheduler = service.NewFSRSScheduler()
 	}
@@ -122,6 +127,7 @@ func NewSwipeUsecase(
 			return rand.New(rand.NewSource(time.Now().UnixNano()))
 		},
 		nextBatchSize: nextBatchSize,
+		logger:        logger,
 	}
 	if db != nil {
 		uc.tx = func(ctx context.Context, fn func(tx *gorm.DB) error) error {
@@ -139,8 +145,12 @@ func NewSwipeUsecaseWithTx(
 	nextBatchSize int,
 	tx txRunner,
 	userCardFSRSRepo UserCardFSRSRepoForSwipe,
+	logger *slog.Logger,
 ) *SwipeUsecase {
-	uc := NewSwipeUsecase(nil, cardRepo, cardgroupRepo, swipeRepo, scheduler, nextBatchSize, userCardFSRSRepo)
+	if logger == nil {
+		panic("usecase: swipe: logger is required")
+	}
+	uc := NewSwipeUsecase(nil, cardRepo, cardgroupRepo, swipeRepo, scheduler, nextBatchSize, userCardFSRSRepo, logger)
 	uc.tx = tx
 	return uc
 }

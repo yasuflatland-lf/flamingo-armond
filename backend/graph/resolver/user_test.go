@@ -43,7 +43,7 @@ func ptr(s string) *string { return &s }
 // newServer builds a gqlgen handler.Server backed by a resolver that uses the
 // given mock repository.
 func newServer(mock *mockUserRepository) *handler.Server {
-	uc := usecase.NewUserUsecase(mock)
+	uc := usecase.NewUserUsecase(mock, newDiscardLogger())
 	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})

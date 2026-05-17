@@ -96,6 +96,7 @@ func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
 				10,
 				tx,
 				userFSRSRepo,
+				newTestLogger(),
 			)
 
 			outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
@@ -156,6 +157,7 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 		10,
 		tx,
 		userFSRSRepo,
+		newTestLogger(),
 	)
 
 	outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
@@ -207,6 +209,7 @@ func TestSwipeUsecase_HandleSwipe_NonOwner_Unauthenticated(t *testing.T) {
 		10,
 		tx,
 		&mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}},
+		newTestLogger(),
 	)
 
 	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
@@ -273,6 +276,7 @@ func TestSwipeUsecase_HandleSwipe_PropagatesUpsertError(t *testing.T) {
 		10,
 		tx,
 		userFSRSRepo,
+		newTestLogger(),
 	)
 
 	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
@@ -306,6 +310,7 @@ func TestSwipeUsecase_HandleSwipe_InvalidMode_ValidationVariant(t *testing.T) {
 		10,
 		tx,
 		&mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}},
+		newTestLogger(),
 	)
 
 	outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
@@ -352,6 +357,7 @@ func TestSwipeUsecase_HandleSwipe_CardNotFound_ValidationVariant(t *testing.T) {
 		10,
 		tx,
 		&mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}},
+		newTestLogger(),
 	)
 
 	outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
@@ -395,6 +401,7 @@ func TestSwipeUsecase_HandleSwipe_CardgroupNotFound_ValidationVariant(t *testing
 		10,
 		tx,
 		&mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}},
+		newTestLogger(),
 	)
 
 	outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
@@ -447,6 +454,7 @@ func TestSwipeUsecase_HandleSwipe_CardCrossCardgroup_ValidationVariant(t *testin
 		10,
 		tx,
 		&mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}},
+		newTestLogger(),
 	)
 
 	outcome, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{

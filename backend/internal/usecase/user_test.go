@@ -82,7 +82,7 @@ func TestUserUsecase_Me(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			repo := &mockUserRepository{findResult: tc.findResult, findErr: tc.findErr}
-			uc := NewUserUsecase(repo)
+			uc := NewUserUsecase(repo, newTestLogger())
 
 			p, err := uc.Me(tc.ctx)
 
@@ -261,7 +261,7 @@ func TestUserUsecase_UpdateUser(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			repo := &mockUserRepository{updateResult: tc.repoResult, updateErr: tc.repoErr}
-			uc := NewUserUsecase(repo)
+			uc := NewUserUsecase(repo, newTestLogger())
 
 			outcome, err := uc.UpdateUser(tc.ctx, tc.input)
 
@@ -335,7 +335,7 @@ func TestUserUsecase_UpdateUser_SuccessVariant(t *testing.T) {
 
 	returned := &domain.User{ID: "u1", DisplayName: ptr("Alice")}
 	repo := &mockUserRepository{updateResult: returned}
-	uc := NewUserUsecase(repo)
+	uc := NewUserUsecase(repo, newTestLogger())
 
 	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: "Alice"})
 
@@ -354,7 +354,7 @@ func TestUserUsecase_UpdateUser_ValidationVariant_DisplayName(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockUserRepository{}
-	uc := NewUserUsecase(repo)
+	uc := NewUserUsecase(repo, newTestLogger())
 
 	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: ""})
 
@@ -379,7 +379,7 @@ func TestUserUsecase_UpdateUser_ValidationVariant_Bio(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockUserRepository{}
-	uc := NewUserUsecase(repo)
+	uc := NewUserUsecase(repo, newTestLogger())
 
 	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{
 		DisplayName: "Alice",
@@ -407,7 +407,7 @@ func TestUserUsecase_UpdateUser_RepoError_InfraChannel(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockUserRepository{updateErr: errors.New("db: storage failure")}
-	uc := NewUserUsecase(repo)
+	uc := NewUserUsecase(repo, newTestLogger())
 
 	_, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: "Alice"})
 

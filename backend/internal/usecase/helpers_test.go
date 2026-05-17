@@ -3,6 +3,8 @@ package usecase
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -140,4 +142,10 @@ func TestAssertInternalChain_Passes(t *testing.T) {
 	err := eris.Wrap(base, "usecase: fetch user")
 	assertInternalChain(t, err, "usecase: fetch user")
 	assertInternalChain(t, err, "db: timeout") // matches ErrExternal frame
+}
+
+// newTestLogger returns a *slog.Logger that writes to io.Discard so unit tests
+// can construct usecases without producing log noise.
+func newTestLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }

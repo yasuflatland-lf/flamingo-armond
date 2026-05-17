@@ -77,7 +77,7 @@ func (m *mockCardgroupRepoForResolver) Delete(_ context.Context, _ string) error
 // newCardgroupSrv builds a gqlgen handler.Server backed by a real
 // CardgroupUsecase wired to the supplied mock repository.
 func newCardgroupSrv(repo usecase.CardgroupRepository) *handler.Server {
-	cgUC := usecase.NewCardgroupUsecase(repo)
+	cgUC := usecase.NewCardgroupUsecase(repo, newDiscardLogger())
 	r := resolver.NewResolver(nil, cgUC, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
