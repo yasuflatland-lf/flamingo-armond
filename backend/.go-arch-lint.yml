@@ -45,8 +45,8 @@ commonComponents:
 deps:
   auth:               { mayDependOn: [logging, repository] }
   cursor:             { anyVendorDeps: true }           # leaf: vendor-only deps (eris, std)
-  database:           { anyVendorDeps: true }           # leaf: vendor-only deps (gorm, pgx, migrate)
-  domain:             { anyVendorDeps: true }           # leaf: vendor-only deps (uuid, eris, go-fsrs)
+  database:           { anyVendorDeps: true }           # leaf: vendor-only deps (gorm, pgx, migrate, eris)
+  domain:             { anyVendorDeps: true }           # leaf: vendor-only deps (uuid, uniseg, eris)
   domain_service:     { mayDependOn: [domain] }
   gqlerr:             { mayDependOn: [logging, ucerr] }
   handler_notionsync: { mayDependOn: [logging, notion, usecase] }

@@ -6,7 +6,7 @@
 
 The five invariants the config encodes, with the failure mode each guards against. Test files (`*_test.go`) are excluded from enforcement via `excludeFiles` in [`backend/.go-arch-lint.yml`](../../backend/.go-arch-lint.yml) — tests legitimately cross layers (e.g. an integration test in `repository/` that calls a usecase helper). The excluded pattern applies to all components; there is no per-component override needed.
 
-- **Domain depends on nothing in `backend/internal/`** (`internal/domain`, `internal/domain/service`). A domain package that imports infrastructure pulls business rules into a deployment detail and makes the domain untestable without a real database or HTTP stack.
+- **Domain has no inbound deps from infrastructure or transport; `domain/service` only depends on `domain` itself** (`internal/domain`, `internal/domain/service`). A domain package that imports infrastructure pulls business rules into a deployment detail and makes the domain untestable without a real database or HTTP stack.
 - **Application (`internal/usecase`) does not import `internal/gqlerr`**. `gqlerr` is a wire-format constructor tied to the GraphQL transport. Importing it from the application layer couples business logic to the presentation protocol and creates an import cycle when the resolver calls back into usecase types. The `usecase` entry in `deps` deliberately omits `gqlerr` from `mayDependOn`; this prevents the application layer from acquiring a transport dependency that would close an import cycle with the resolver. The replacement path is: usecase code returns `ucerr.*` typed values; the resolver converts them to wire format via the single `gqlerr.FromUsecaseError` call site. See [`.claude/rules/error-wrapping.md` § "Legacy primitives (resolver-only)"](error-wrapping.md#legacy-primitives-resolver-only) for the per-gate rationale and the `ucerr` replacements.
 - **Infrastructure (`internal/repository`, `internal/auth`, etc.) does not import `usecase` or the presentation layer**. Allowing adapter packages to call upward into application logic inverts the dependency arrow and makes it impossible to substitute adapters or test them in isolation.
 - **Only the presentation layer and the composition root may import `gqlerr`** — concretely `graph/resolver`, `internal/handler/*`, `internal/middleware`, and `cmd/server`. Today `graph/resolver` and `cmd/server` are the only consumers of `gqlerr`; the YAML config's `mayDependOn` lists reflect that exactly. A new handler that needs to construct wire errors must update its component's `mayDependOn` to include `gqlerr` in the same change.
@@ -27,7 +27,7 @@ The backend follows a DDD/layered architecture. The dependency arrow always poin
 | Cross-cutting | `internal/logging`, `internal/telemetry`, `internal/cursor` |
 | Generated (common) | `graph/generated`, `graph/model` |
 
-**Cross-cutting packages** (`logging`, `telemetry`, `cursor`) have no inbound restrictions and may be imported by any layer. They are listed as components with their own `mayDependOn` entries to prevent them from accidentally acquiring internal dependencies that would create cycles. `cursor` is a pure utility package; `logging` and `telemetry` are vendor-leaf packages — they depend only on stdlib and vendor packages, never on each other or on application/domain types. This keeps cross-cutting infrastructure free of business-logic coupling.
+**Cross-cutting packages** (`logging`, `telemetry`, `cursor`) are intended for use across layers, but every importer must explicitly list them in `mayDependOn` — `commonComponents` (which would grant universal availability) is reserved for generated DTOs. This keeps the dependency graph explicit and prevents accidental coupling.
 
 **`internal/usecase/ucerr`** is a shared-kernel sub-package that lives inside the application layer but has no `gqlerr` dependency. It provides the typed error constructors (`ucerr.NewValidationError`, `ucerr.NewForbiddenError`, `ucerr.ErrUnauthenticated`) that usecase code returns to the resolver. The resolver converts these to wire format via `gqlerr.FromUsecaseError`. See [`docs/backend/error-wrapping/alias-bridge-subpackage.md`](../../docs/backend/error-wrapping/alias-bridge-subpackage.md) for the cycle-safety analysis.
 
@@ -52,7 +52,7 @@ Of the original six gates, only #2 was an import-shape check, so `go-arch-lint` 
 
 ## Follow-up: more aggressive gate retirement
 
-Retiring gates #1, #3, and #5 requires a complementary tool. Two viable directions: (1) `golangci-lint` with `depguard` + `forbidigo` covers function-call and string-literal shapes via configuration; (2) `ast-grep` covers composite-literal and call-sequence shapes declaratively and would also retire gate #4. Track adoption under a dedicated issue and link it from this section.
+Retiring gates #1, #3, and #5 requires a complementary tool. Two viable directions: (1) `golangci-lint` with `forbidigo` covers function-call shapes (regex over Go identifiers) and would retire gate #1; (2) `ast-grep` covers composite-literal, call-sequence, and string-literal shapes declaratively and would retire gates #3, #4, and #5. `depguard` is not on this list — it overlaps with `go-arch-lint` (both are import-graph linters) and would not add coverage. Track adoption under a dedicated issue and link it from this section.
 
 ## Operating notes
 
@@ -84,10 +84,10 @@ Note: the config sets `ignoreNotFoundComponents: false`. This means a component 
 A violation line looks like:
 
 ```
-internal/usecase/card.go:14:2: component "usecase" cannot import "gqlerr" (not in allowedList)
+Component resolver shouldn't depend on backend/internal/gqlerr in /abs/path/graph/resolver/schema.resolvers.go:12
 ```
 
-The format is `file:line:column: component "<A>" cannot import "<B>" (not in allowedList)`. Fix by either (a) removing the import from the source file if it violates the intended layer boundary, or (b) adding `B` to `deps.A.mayDependOn` in the config after confirming the dependency is intentional and does not close a cycle. Do not add allowances silently — the config is the machine record of the intended layer graph; loosening it without justification defeats its purpose. When in doubt, verify with `go list -deps ./internal/usecase/...` to see the full transitive set before editing `mayDependOn`.
+The two relevant facts are the component pair (`resolver` → `backend/internal/gqlerr`) and the offending file:line. Fix by either (a) removing the disallowed import from the named file, or (b) adjusting `mayDependOn` for the importing component in `backend/.go-arch-lint.yml` if the dependency is intentional. For machine-parseable output use `--output-type=json`; v1.15.0 nests entries under `.Payload.ArchWarningsDeps`.
 
 ## Background
 
