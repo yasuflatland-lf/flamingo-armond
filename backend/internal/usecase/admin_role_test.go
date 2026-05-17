@@ -407,6 +407,27 @@ func TestAdminRole_Create_ContextCanceled(t *testing.T) {
 	}
 }
 
+// TestAdminRole_Create_InfraError verifies that a non-sentinel error from
+// roles.Create (anything other than ErrRoleDuplicate, context.Canceled, or
+// context.DeadlineExceeded) surfaces via the error return and carries the
+// "usecase: admin role create" wrap prefix. The outcome must be zero-value
+// (no Role, no Validation) so a future refactor that drops the eris.Wrap
+// cannot silently change the resolver classification from INTERNAL to a
+// no-extensions passthrough.
+func TestAdminRole_Create_InfraError(t *testing.T) {
+	t.Parallel()
+
+	roles := &mockAdminRoleRepoForCRUD{createErr: errors.New("db down")}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _ := buildAdminRoleUC(roles, authChk)
+
+	outcome, err := uc.Create(authedCtx("admin-1"), "moderator")
+	assertInternalChain(t, err, "usecase: admin role create")
+	if outcome.Role != nil || outcome.Validation != nil {
+		t.Fatalf("expected zero-value outcome on infra error, got %+v", outcome)
+	}
+}
+
 // TestAdminRole_Create_NormalizesBeforeUniqueCheck exercises the normalisation
 // (lowercase + trim) step so that mixed-case input reaches the repository in
 // canonical form. The unique-check constraint then applies to the normalised

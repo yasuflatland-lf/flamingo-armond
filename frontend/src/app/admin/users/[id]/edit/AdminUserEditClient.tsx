@@ -111,6 +111,15 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
       setSaveError("Something went wrong. Please try again.");
     } catch (err) {
       const codes = liftGraphQLCodes(err);
+      // err.message is omitted — backend messages may echo user input. codes
+      // is safe to log (fixed enum of GraphQL extension codes). Warning is
+      // emitted on every catch so unmapped transport rejections (network
+      // down, malformed response) leave a diagnostic breadcrumb instead of
+      // silently degrading to the generic banner.
+      console.warn("[admin/users/:id/edit] adminUpdateUser rejected", {
+        name: err instanceof Error ? err.name : "unknown",
+        codes,
+      });
       setSaveError(
         codes.includes("FORBIDDEN")
           ? "You do not have permission."
@@ -159,6 +168,12 @@ export function AdminUserEditClient({ user, allRoles }: Props) {
       }));
     } catch (err) {
       const codes = liftGraphQLCodes(err);
+      // err.message is omitted — backend messages may echo user input. codes
+      // is safe to log. See handleSave for the rationale.
+      console.warn("[admin/users/:id/edit] role-toggle rejected", {
+        name: err instanceof Error ? err.name : "unknown",
+        codes,
+      });
       setRoleBanners((prev) => ({
         ...prev,
         [roleId]: codes.includes("FORBIDDEN")

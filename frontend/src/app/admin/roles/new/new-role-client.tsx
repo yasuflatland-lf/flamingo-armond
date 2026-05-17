@@ -12,8 +12,8 @@ import { AdminCreateRoleMutation } from "../queries";
 export function NewRoleClient() {
   const router = useRouter();
 
-  // Typed InputValidationError variant — field-level message rendered next to
-  // the offending input. Cleared on each new submission attempt.
+  // Typed InputValidationError variant — field-level validation failure
+  // surfaced by the server. Cleared on each new submission attempt.
   const [validationError, setValidationError] = useState<{
     field: string;
     message: string;

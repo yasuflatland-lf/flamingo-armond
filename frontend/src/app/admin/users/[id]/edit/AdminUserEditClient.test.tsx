@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -11,6 +12,17 @@ import {
   AdminUpdateUserDocument,
 } from "@/generated/graphql";
 import { AdminUserEditClient, type RoleOption, type UserForEdit } from "./AdminUserEditClient";
+
+/**
+ * Build a CombinedGraphQLErrors carrying a single extension code. Mirrors the
+ * runtime shape Apollo Client v4 surfaces to useMutation's catch path — this
+ * is the shape liftGraphQLCodes narrows via CombinedGraphQLErrors.is.
+ */
+function makeCodedError(code: string): CombinedGraphQLErrors {
+  return new CombinedGraphQLErrors({
+    errors: [{ message: "transport", extensions: { code } }],
+  });
+}
 
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
@@ -152,9 +164,6 @@ describe("AdminUserEditClient", () => {
 
     it("FORBIDDEN transport rejection — shows permission banner", async () => {
       const user = userEvent.setup();
-      const forbiddenError = Object.assign(new Error("transport"), {
-        graphQLErrors: [{ extensions: { code: "FORBIDDEN" } }],
-      });
       const mocks = [
         {
           request: {
@@ -164,13 +173,15 @@ describe("AdminUserEditClient", () => {
               input: { displayName: "Alice 2", bio: "bio text" },
             },
           },
-          error: forbiddenError,
+          error: makeCodedError("FORBIDDEN"),
         },
       ];
 
       // The Apollo error path emits a console.error inside the React render
-      // pipeline; silence it so test output stays clean.
+      // pipeline; silence it so test output stays clean. Production code also
+      // logs a console.warn with the codes payload — capture that too.
       errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       render(
         <MockedProvider mocks={mocks}>
           <AdminUserEditClient user={makeUser()} allRoles={[ADMIN_ROLE]} />
@@ -185,13 +196,21 @@ describe("AdminUserEditClient", () => {
       await waitFor(() => {
         expect(screen.getByRole("alert")).toHaveTextContent(/do not have permission/i);
       });
+      // Warn payload carries the lifted FORBIDDEN code — proves liftGraphQLCodes
+      // narrowed the CombinedGraphQLErrors shape correctly. err.message MUST NOT
+      // leak (it could echo user input).
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("adminUpdateUser rejected"),
+        expect.objectContaining({ codes: ["FORBIDDEN"] }),
+      );
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ message: expect.anything() }),
+      );
     });
 
     it("UNAUTHENTICATED transport rejection — shows session-expired banner", async () => {
       const user = userEvent.setup();
-      const authError = Object.assign(new Error("transport"), {
-        graphQLErrors: [{ extensions: { code: "UNAUTHENTICATED" } }],
-      });
       const mocks = [
         {
           request: {
@@ -201,11 +220,12 @@ describe("AdminUserEditClient", () => {
               input: { displayName: "Alice 2", bio: "bio text" },
             },
           },
-          error: authError,
+          error: makeCodedError("UNAUTHENTICATED"),
         },
       ];
 
       errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       render(
         <MockedProvider mocks={mocks}>
           <AdminUserEditClient user={makeUser()} allRoles={[ADMIN_ROLE]} />
@@ -220,6 +240,56 @@ describe("AdminUserEditClient", () => {
       await waitFor(() => {
         expect(screen.getByRole("alert")).toHaveTextContent(/session has expired/i);
       });
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("adminUpdateUser rejected"),
+        expect.objectContaining({ codes: ["UNAUTHENTICATED"] }),
+      );
+    });
+
+    it("generic transport rejection — warns with empty codes and shows generic banner", async () => {
+      const user = userEvent.setup();
+      const networkError = new Error("network down");
+      const mocks = [
+        {
+          request: {
+            query: AdminUpdateUserDocument,
+            variables: {
+              id: "u-1",
+              input: { displayName: "Alice 2", bio: "bio text" },
+            },
+          },
+          error: networkError,
+        },
+      ];
+
+      errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      render(
+        <MockedProvider mocks={mocks}>
+          <AdminUserEditClient user={makeUser()} allRoles={[ADMIN_ROLE]} />
+        </MockedProvider>,
+      );
+
+      const input = screen.getByLabelText(/display name/i);
+      await user.clear(input);
+      await user.type(input, "Alice 2");
+      await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole("alert")).toHaveTextContent(/unexpected error occurred/i);
+      });
+      // Warn payload MUST NOT include err.message — backend messages may echo
+      // user input. Per .claude/rules/frontend-rsc-error-handling.md
+      // § "Substring-matching SDK error strings: pair mapped copy with raw-
+      // message warn for unmapped paths".
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("adminUpdateUser rejected"),
+        expect.objectContaining({ name: "Error", codes: [] }),
+      );
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ message: expect.anything() }),
+      );
     });
 
     it("unknown __typename — warns and shows degraded banner", async () => {
@@ -382,20 +452,18 @@ describe("AdminUserEditClient", () => {
 
     it("FORBIDDEN transport rejection — shows permission banner per role", async () => {
       const user = userEvent.setup();
-      const forbiddenError = Object.assign(new Error("transport"), {
-        graphQLErrors: [{ extensions: { code: "FORBIDDEN" } }],
-      });
       const mocks = [
         {
           request: {
             query: AdminAssignRoleDocument,
             variables: { userId: "u-1", roleId: MOD_ROLE.id },
           },
-          error: forbiddenError,
+          error: makeCodedError("FORBIDDEN"),
         },
       ];
 
       errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       render(
         <MockedProvider mocks={mocks}>
           <AdminUserEditClient user={makeUser()} allRoles={[ADMIN_ROLE, MOD_ROLE]} />
@@ -407,24 +475,26 @@ describe("AdminUserEditClient", () => {
       await waitFor(() => {
         expect(screen.getByRole("alert")).toHaveTextContent(/do not have permission/i);
       });
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("role-toggle rejected"),
+        expect.objectContaining({ codes: ["FORBIDDEN"] }),
+      );
     });
 
     it("UNAUTHENTICATED transport rejection — shows session-expired banner per role", async () => {
       const user = userEvent.setup();
-      const authError = Object.assign(new Error("transport"), {
-        graphQLErrors: [{ extensions: { code: "UNAUTHENTICATED" } }],
-      });
       const mocks = [
         {
           request: {
             query: AdminAssignRoleDocument,
             variables: { userId: "u-1", roleId: MOD_ROLE.id },
           },
-          error: authError,
+          error: makeCodedError("UNAUTHENTICATED"),
         },
       ];
 
       errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       render(
         <MockedProvider mocks={mocks}>
           <AdminUserEditClient user={makeUser()} allRoles={[ADMIN_ROLE, MOD_ROLE]} />
@@ -436,6 +506,46 @@ describe("AdminUserEditClient", () => {
       await waitFor(() => {
         expect(screen.getByRole("alert")).toHaveTextContent(/session has expired/i);
       });
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("role-toggle rejected"),
+        expect.objectContaining({ codes: ["UNAUTHENTICATED"] }),
+      );
+    });
+
+    it("generic transport rejection — warns with empty codes and shows generic role banner", async () => {
+      const user = userEvent.setup();
+      const networkError = new Error("network down");
+      const mocks = [
+        {
+          request: {
+            query: AdminAssignRoleDocument,
+            variables: { userId: "u-1", roleId: MOD_ROLE.id },
+          },
+          error: networkError,
+        },
+      ];
+
+      errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      render(
+        <MockedProvider mocks={mocks}>
+          <AdminUserEditClient user={makeUser()} allRoles={[ADMIN_ROLE, MOD_ROLE]} />
+        </MockedProvider>,
+      );
+
+      await user.click(screen.getByRole("checkbox", { name: /moderator/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole("alert")).toHaveTextContent(/unexpected error occurred/i);
+      });
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("role-toggle rejected"),
+        expect.objectContaining({ name: "Error", codes: [] }),
+      );
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ message: expect.anything() }),
+      );
     });
 
     it("unknown __typename — warns and shows degraded banner", async () => {

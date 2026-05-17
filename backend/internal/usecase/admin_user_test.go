@@ -1109,6 +1109,130 @@ func TestAdminUser_Get_Cancelled(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// AssignRole — cancellation and infra-error paths
+// ---------------------------------------------------------------------------
+
+// TestAdminUser_AssignRole_CancelledFromRepo verifies that context.Canceled
+// from roles.AssignToUser propagates unchanged as a cancelled error. The
+// outcome must be zero-value (no variant slot set) because the operation did
+// not complete.
+func TestAdminUser_AssignRole_CancelledFromRepo(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	roles := &mockAdminRoleRepository{assignErr: context.Canceled}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, roles, authChk)
+
+	outcome, err := uc.AssignRole(adminCallerCtx("admin-1"), "u-target", "r-admin")
+	assertCancelled(t, err)
+	if outcome.User != nil || outcome.Validation != nil {
+		t.Fatalf("expected zero-value outcome on cancellation, got %+v", outcome)
+	}
+}
+
+// TestAdminUser_AssignRole_InfraError verifies that a non-sentinel error from
+// roles.AssignToUser surfaces via the error return (not via outcome.Validation)
+// and carries the "usecase: admin user assign role" wrap prefix. The outcome
+// must be zero-value.
+func TestAdminUser_AssignRole_InfraError(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	roles := &mockAdminRoleRepository{assignErr: errors.New("db down")}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, roles, authChk)
+
+	outcome, err := uc.AssignRole(adminCallerCtx("admin-1"), "u-target", "r-admin")
+	assertInternalChain(t, err, "usecase: admin user assign role")
+	if outcome.User != nil || outcome.Validation != nil {
+		t.Fatalf("expected zero-value outcome on infra error, got %+v", outcome)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// RevokeRole — cancellation and infra-error paths
+// ---------------------------------------------------------------------------
+
+// TestAdminUser_RevokeRole_CancelledFromRepo verifies that context.Canceled
+// from roles.RevokeFromUser (on a non-self target, so the self-demotion path
+// is not taken) propagates unchanged. The outcome must be zero-value.
+func TestAdminUser_RevokeRole_CancelledFromRepo(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	roles := &mockAdminRoleRepository{revokeErr: context.Canceled}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, roles, authChk)
+
+	// userID != callerID so the self-demotion path and FindByIDs are skipped.
+	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "u-other", "r-some")
+	assertCancelled(t, err)
+	if outcome.User != nil || outcome.Validation != nil || outcome.CannotRevokeOwnAdmin {
+		t.Fatalf("expected zero-value outcome on cancellation, got %+v", outcome)
+	}
+}
+
+// TestAdminUser_RevokeRole_InfraError verifies that a non-sentinel error from
+// roles.RevokeFromUser surfaces via the error return and carries the
+// "usecase: admin user revoke role" wrap prefix. The outcome must be
+// zero-value.
+func TestAdminUser_RevokeRole_InfraError(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	roles := &mockAdminRoleRepository{revokeErr: errors.New("db down")}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, roles, authChk)
+
+	// userID != callerID so the self-demotion path is not taken.
+	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "u-other", "r-some")
+	assertInternalChain(t, err, "usecase: admin user revoke role")
+	if outcome.User != nil || outcome.Validation != nil || outcome.CannotRevokeOwnAdmin {
+		t.Fatalf("expected zero-value outcome on infra error, got %+v", outcome)
+	}
+}
+
+// TestAdminUser_RevokeRole_LookupRoleCancelled covers the self-demotion path
+// (userID == callerID): context.Canceled from roles.FindByIDs propagates
+// unchanged. The outcome must be zero-value.
+func TestAdminUser_RevokeRole_LookupRoleCancelled(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	roles := &mockAdminRoleRepository{findErr: context.Canceled}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, roles, authChk)
+
+	// userID == callerID triggers the self-demotion FindByIDs path.
+	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "admin-1", "r-admin")
+	assertCancelled(t, err)
+	if outcome.User != nil || outcome.Validation != nil || outcome.CannotRevokeOwnAdmin {
+		t.Fatalf("expected zero-value outcome on lookup cancellation, got %+v", outcome)
+	}
+}
+
+// TestAdminUser_RevokeRole_LookupRoleInfraError covers the self-demotion path
+// (userID == callerID): a non-sentinel error from roles.FindByIDs surfaces via
+// the error return and carries the "usecase: admin user revoke role: lookup
+// role" wrap prefix. The outcome must be zero-value.
+func TestAdminUser_RevokeRole_LookupRoleInfraError(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	roles := &mockAdminRoleRepository{findErr: errors.New("db down")}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _ := buildAdminUC(users, roles, authChk)
+
+	// userID == callerID triggers the self-demotion FindByIDs path.
+	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "admin-1", "r-admin")
+	assertInternalChain(t, err, "usecase: admin user revoke role: lookup role")
+	if outcome.User != nil || outcome.Validation != nil || outcome.CannotRevokeOwnAdmin {
+		t.Fatalf("expected zero-value outcome on lookup infra error, got %+v", outcome)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // XOR-invariant outcome assertions
 // ---------------------------------------------------------------------------
 

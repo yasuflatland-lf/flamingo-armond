@@ -236,8 +236,8 @@ func (r *mutationResolver) AdminUpdateUser(ctx context.Context, id string, input
 //
 // Returns a union: `model.AssignRoleSuccess` on the happy path, or
 // `model.InputValidationError` when the userId or roleId fails validation
-// (e.g. unknown user / unknown role). Validation is "errors as data" — the
-// second return value is reserved for real errors (auth, internal).
+// (e.g. unknown user / unknown role).
+// See AdminUpdateUser for the errors-as-data routing rationale.
 func (r *mutationResolver) AssignRole(ctx context.Context, userID string, roleID string) (model.AssignRoleResult, error) {
 	outcome, err := r.AdminUserUC.AssignRole(ctx, userID, roleID)
 	if err != nil {
@@ -261,8 +261,8 @@ func (r *mutationResolver) AssignRole(ctx context.Context, userID string, roleID
 // Returns a union: `model.RevokeRoleSuccess` on the happy path,
 // `model.InputValidationError` when the userId or roleId fails validation, or
 // `model.CannotRevokeOwnAdminRoleError` when the caller attempts to revoke the
-// admin role from themselves. All three are "errors as data" — the second
-// return value is reserved for real errors (auth, internal).
+// admin role from themselves.
+// See AdminUpdateUser for the errors-as-data routing rationale.
 func (r *mutationResolver) RevokeRole(ctx context.Context, userID string, roleID string) (model.RevokeRoleResult, error) {
 	outcome, err := r.AdminUserUC.RevokeRole(ctx, userID, roleID)
 	if err != nil {
@@ -290,8 +290,8 @@ func (r *mutationResolver) RevokeRole(ctx context.Context, userID string, roleID
 //
 // Returns a union: `model.CreateRoleSuccess` on the happy path, or
 // `model.InputValidationError` when the name fails validation (e.g. character
-// set, length, duplicate). Validation is "errors as data" — the second return
-// value is reserved for real errors (auth, internal).
+// set, length, duplicate).
+// See AdminUpdateUser for the errors-as-data routing rationale.
 func (r *mutationResolver) CreateRole(ctx context.Context, name string) (model.CreateRoleResult, error) {
 	outcome, err := r.AdminRoleUC.Create(ctx, name)
 	if err != nil {

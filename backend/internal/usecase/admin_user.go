@@ -88,6 +88,17 @@ type InputValidationInfo struct {
 	Message string
 }
 
+// NewInputValidationInfo constructs an InputValidationInfo. Panics on an
+// empty field for the same reason as ucerr.NewValidationError: an empty
+// field produces extensions.field == "" on the wire, which the frontend
+// cannot render against any input.
+func NewInputValidationInfo(field, message string) *InputValidationInfo {
+	if field == "" {
+		panic("usecase.NewInputValidationInfo: field must be non-empty")
+	}
+	return &InputValidationInfo{Field: field, Message: message}
+}
+
 // AssignRoleOutcome is the result of adminUserUsecase.AssignRole. Exactly one
 // of User or Validation is non-nil on a nil-error return.
 type AssignRoleOutcome struct {
@@ -360,7 +371,7 @@ func (u *adminUserUsecase) Update(ctx context.Context, id string, input AdminUpd
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return AdminUpdateUserOutcome{
-				Validation: &InputValidationInfo{Field: "id", Message: "user not found"},
+				Validation: NewInputValidationInfo("id", "user not found"),
 			}, nil
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -376,11 +387,12 @@ func (u *adminUserUsecase) Update(ctx context.Context, id string, input AdminUpd
 //
 // Error mapping: distinguishes user-missing from role-missing via the
 // repository's ErrUserNotFound / ErrRoleNotFound sentinels so the
-// InputValidationError variant carries the correct field for the frontend
-// banner-by-field machinery. The generic ErrNotFound branch is kept as a
-// fallback for any future repository implementation that surfaces only the
-// legacy sentinel. Input-validation failures surface via outcome.Validation;
-// infrastructure and cancellation errors surface via the error return.
+// InputValidationError variant carries the field name so the frontend can
+// attach the message next to the offending input (userId vs roleId). The
+// generic ErrNotFound branch is kept as a fallback for any future repository
+// implementation that surfaces only the legacy sentinel. Input-validation
+// failures surface via outcome.Validation; infrastructure and cancellation
+// errors surface via the error return.
 func (u *adminUserUsecase) AssignRole(ctx context.Context, userID, roleID string) (AssignRoleOutcome, error) {
 	if _, err := u.requireAdmin(ctx); err != nil {
 		return AssignRoleOutcome{}, err
@@ -449,11 +461,11 @@ func (u *adminUserUsecase) RevokeRole(ctx context.Context, userID, roleID string
 func mapRoleAssignmentError(err error, wrap string) (*InputValidationInfo, error) {
 	switch {
 	case errors.Is(err, repository.ErrUserNotFound):
-		return &InputValidationInfo{Field: "userId", Message: "user not found"}, nil
+		return NewInputValidationInfo("userId", "user not found"), nil
 	case errors.Is(err, repository.ErrRoleNotFound):
-		return &InputValidationInfo{Field: "roleId", Message: "role not found"}, nil
+		return NewInputValidationInfo("roleId", "role not found"), nil
 	case errors.Is(err, repository.ErrNotFound):
-		return &InputValidationInfo{Field: "userId", Message: "user or role not found"}, nil
+		return NewInputValidationInfo("userId", "user or role not found"), nil
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return nil, err
 	default:
@@ -466,15 +478,13 @@ func mapRoleAssignmentError(err error, wrap string) (*InputValidationInfo, error
 // InputValidationInfo carrier (first slot); any other error is passed through
 // unchanged (second slot). nil maps to (nil, nil). The shape lets call sites
 // in promoted methods uniformly route validation failures into outcome data
-// without having to re-classify each validator's return type. Lives in
-// admin_user.go because that file already holds the InputValidationInfo
-// definition; admin_role.go reuses it via the same package.
+// without having to re-classify each validator's return type.
 func liftValidationErr(err error) (*InputValidationInfo, error) {
 	if err == nil {
 		return nil, nil
 	}
 	if ve, ok := errors.AsType[*ucerr.ValidationError](err); ok {
-		return &InputValidationInfo{Field: ve.Field, Message: ve.Message}, nil
+		return NewInputValidationInfo(ve.Field, ve.Message), nil
 	}
 	return nil, err
 }

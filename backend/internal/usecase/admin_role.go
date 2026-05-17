@@ -321,9 +321,9 @@ func (u *adminRoleUsecase) Delete(ctx context.Context, id string) error {
 func mapAdminRoleError(err error, notFoundField, wrap string) (*InputValidationInfo, error) {
 	switch {
 	case errors.Is(err, repository.ErrRoleNotFound):
-		return &InputValidationInfo{Field: notFoundField, Message: "role not found"}, nil
+		return NewInputValidationInfo(notFoundField, "role not found"), nil
 	case errors.Is(err, repository.ErrRoleDuplicate):
-		return &InputValidationInfo{Field: "name", Message: "role name already exists"}, nil
+		return NewInputValidationInfo("name", "role name already exists"), nil
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
 		return nil, err
 	default:

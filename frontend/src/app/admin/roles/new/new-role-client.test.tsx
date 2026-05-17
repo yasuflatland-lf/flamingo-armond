@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -7,6 +8,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AdminCreateRoleDocument } from "@/generated/graphql";
 import { NewRoleClient } from "./new-role-client";
+
+/**
+ * Build a CombinedGraphQLErrors carrying a single extension code. Mirrors the
+ * runtime shape Apollo Client v4 surfaces to useMutation's catch path — this
+ * is the shape liftGraphQLCodes narrows via CombinedGraphQLErrors.is.
+ */
+function makeCodedError(code: string): CombinedGraphQLErrors {
+  return new CombinedGraphQLErrors({
+    errors: [{ message: "transport", extensions: { code } }],
+  });
+}
 
 const mockPush = vi.fn();
 const mockRefresh = vi.fn();
@@ -125,15 +137,12 @@ describe("NewRoleClient", () => {
   it("unauthenticated transport rejection — shows login link banner, no navigation", async () => {
     const user = userEvent.setup();
 
-    // Apollo runtime shape: an Error with a graphQLErrors array carrying the
-    // extension code. liftGraphQLCodes reads err.graphQLErrors directly.
-    const authError = Object.assign(new Error("transport"), {
-      graphQLErrors: [{ extensions: { code: "UNAUTHENTICATED" } }],
-    });
+    // Apollo runtime shape: CombinedGraphQLErrors with extensions.code.
+    // liftGraphQLCodes narrows via CombinedGraphQLErrors.is.
     const mocks = [
       {
         request: { query: AdminCreateRoleDocument, variables: { name: "moderator" } },
-        error: authError,
+        error: makeCodedError("UNAUTHENTICATED"),
       },
     ];
 
@@ -164,13 +173,10 @@ describe("NewRoleClient", () => {
   it("forbidden transport rejection — shows login link banner, no navigation", async () => {
     const user = userEvent.setup();
 
-    const forbiddenError = Object.assign(new Error("transport"), {
-      graphQLErrors: [{ extensions: { code: "FORBIDDEN" } }],
-    });
     const mocks = [
       {
         request: { query: AdminCreateRoleDocument, variables: { name: "moderator" } },
-        error: forbiddenError,
+        error: makeCodedError("FORBIDDEN"),
       },
     ];
 

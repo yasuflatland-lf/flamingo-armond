@@ -1,21 +1,24 @@
+import { CombinedGraphQLErrors } from "@apollo/client/errors";
+
 /**
  * Lift GraphQL extension codes from an arbitrary Apollo / network error for
  * warn payloads. We do NOT trust err.message — backend messages may echo user
  * input — but extensions.code is a fixed enum from the server's resolver layer
- * and safe to log. The shape check is permissive: if the underlying transport
- * surfaces graphQLErrors as a property on the Error, pluck them; otherwise
- * return an empty list. This deliberately does not reuse parseGqlErrors because
- * that helper is keyed on the literal "GraphQL errors: " message prefix, which
- * not every transport produces.
+ * and safe to log. The shape check uses CombinedGraphQLErrors.is, which is the
+ * canonical narrowing helper in Apollo Client v4 — the rejected error from a
+ * useMutation / useQuery hook is an instance of that class when the server
+ * responded with an `errors` array. Errors that are not CombinedGraphQLErrors
+ * (e.g. transport / network failures) return an empty list so callers can fall
+ * through to the generic warn path. This deliberately does not reuse
+ * parseGqlErrors because that helper is keyed on the literal
+ * "GraphQL errors: " message prefix produced by gqlFetch, not by the Apollo
+ * Client runtime.
  */
 export function liftGraphQLCodes(err: unknown): string[] {
-  if (err == null || typeof err !== "object") return [];
-  const maybe = (err as { graphQLErrors?: unknown }).graphQLErrors;
-  if (!Array.isArray(maybe)) return [];
+  if (!CombinedGraphQLErrors.is(err)) return [];
   const codes: string[] = [];
-  for (const entry of maybe) {
-    const code = (entry as { extensions?: { code?: unknown } } | null | undefined)?.extensions
-      ?.code;
+  for (const entry of err.errors) {
+    const code = entry?.extensions?.code;
     if (typeof code === "string") codes.push(code);
   }
   return codes;
