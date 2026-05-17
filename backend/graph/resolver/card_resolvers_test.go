@@ -21,8 +21,8 @@ import (
 
 // --- mock repositories used only by the card resolver tests ---
 
-// cardMockRepo satisfies usecase.CardRepository. Only the methods exercised by
-// the resolver mutations are non-trivial; the rest are no-op stubs.
+// cardMockRepo satisfies usecase.CardRepository. FindByID and Update are
+// configurable via struct fields; the remaining methods are no-op stubs.
 type cardMockRepo struct {
 	deleteByIDsResult int64
 	deleteByIDsErr    error

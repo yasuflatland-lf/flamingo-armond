@@ -54,14 +54,13 @@ export function RenameCardgroupDialog({ cardgroup, open, onOpenChange }: Props) 
     if (!result) return;
 
     const payload = result.data?.updateCardgroup;
-    const typename = payload?.__typename ?? null;
 
-    if (typename === "InputValidationError" && payload?.__typename === "InputValidationError") {
+    if (payload?.__typename === "InputValidationError") {
       setValidationError({ field: payload.field, message: payload.message });
       return;
     }
 
-    if (typename === "UpdateCardgroupSuccess") {
+    if (payload?.__typename === "UpdateCardgroupSuccess") {
       onOpenChange(false);
       // Refresh the RSC tree so the h1 and Badge reflect the new name immediately.
       router.refresh();
@@ -70,7 +69,10 @@ export function RenameCardgroupDialog({ cardgroup, open, onOpenChange }: Props) 
 
     // Unknown variant: null payload or a future union variant the client was not
     // regenerated against.
-    console.warn("[RenameCardgroupDialog] unexpected updateCardgroup payload", { typename });
+    const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
+    console.warn("[RenameCardgroupDialog] unexpected updateCardgroup payload", {
+      typename: unknownPayload?.__typename ?? null,
+    });
     setBannerMessage("Something went wrong. Please try again.");
   }
 

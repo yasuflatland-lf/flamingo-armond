@@ -90,21 +90,23 @@ export function ProfileForm({ email, initial }: Props) {
       if (!result) return;
 
       const payload = result.data?.updateProfile;
-      const typename = payload?.__typename ?? null;
 
-      if (typename === "InputValidationError" && payload?.__typename === "InputValidationError") {
+      if (payload?.__typename === "InputValidationError") {
         setValidationError({ field: payload.field, message: payload.message });
         return;
       }
 
-      if (typename === "UpdateProfileSuccess") {
+      if (payload?.__typename === "UpdateProfileSuccess") {
         router.refresh();
         return;
       }
 
       // Unknown variant: null payload or a future union variant the client was not
       // regenerated against.
-      console.warn("[ProfileForm] unexpected updateProfile payload", { typename });
+      const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
+      console.warn("[ProfileForm] unexpected updateProfile payload", {
+        typename: unknownPayload?.__typename ?? null,
+      });
       setBannerMessage("Something went wrong. Please try again.");
     },
   });

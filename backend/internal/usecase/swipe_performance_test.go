@@ -68,7 +68,6 @@ func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -221,10 +220,10 @@ func TestSwipeUsecase_HandleSwipe_NonOwner_Unauthenticated(t *testing.T) {
 
 func performanceSwipes(now time.Time, successes, failures int, difficulty float64) []*domain.SwipeRecord {
 	swipes := make([]*domain.SwipeRecord, 0, successes+failures)
-	for i := 0; i < successes; i++ {
+	for i := range successes {
 		swipes = append(swipes, performanceSwipe(domain.RatingEasy, now.Add(-time.Duration(i+1)*time.Hour), difficulty))
 	}
-	for i := 0; i < failures; i++ {
+	for i := range failures {
 		swipes = append(swipes, performanceSwipe(domain.RatingAgain, now.Add(-time.Duration(successes+i+1)*time.Hour), difficulty))
 	}
 	return swipes

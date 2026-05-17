@@ -72,6 +72,11 @@ type UpdateProfileOutcome struct {
 	Validation *InputValidationInfo
 }
 
+// UpdateUser validates and applies a profile patch for the authenticated
+// caller. displayName is trimmed and checked against the 1–50 grapheme range;
+// bio is optional (nil = unchanged, "" = explicit clear) and capped at 500
+// graphemes. Validation failures are returned via the outcome's Validation
+// field, not on the error channel.
 func (u *UserUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (UpdateProfileOutcome, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {

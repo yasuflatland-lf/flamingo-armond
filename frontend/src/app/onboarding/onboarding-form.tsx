@@ -79,21 +79,23 @@ export function OnboardingForm() {
       if (!result) return;
 
       const payload = result.data?.updateProfile;
-      const typename = payload?.__typename ?? null;
 
-      if (typename === "InputValidationError" && payload?.__typename === "InputValidationError") {
+      if (payload?.__typename === "InputValidationError") {
         setValidationError({ field: payload.field, message: payload.message });
         return;
       }
 
-      if (typename === "UpdateProfileSuccess") {
+      if (payload?.__typename === "UpdateProfileSuccess") {
         router.push("/cardgroups/new?welcome=1");
         return;
       }
 
       // Unknown variant: null payload or a future union variant the client was not
       // regenerated against.
-      console.warn("[OnboardingForm] unexpected updateProfile payload", { typename });
+      const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
+      console.warn("[OnboardingForm] unexpected updateProfile payload", {
+        typename: unknownPayload?.__typename ?? null,
+      });
       setBannerMessage("Something went wrong. Please try again.");
     },
   });

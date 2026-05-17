@@ -14,22 +14,19 @@ import { LearnActionBar } from "@/components/learn/learn-action-bar";
 import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
 import type { SwipeDirection } from "@/components/learn/types";
-import type { LearnNextDueCardsQuery } from "@/generated/graphql";
+import type {
+  HandleSwipeMutation as HandleSwipeMutationType,
+  LearnNextDueCardsQuery,
+} from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 
 type LearnCard = LearnNextDueCardsQuery["learnNextDueCards"][number];
-// PerformanceMetrics is sourced from the SwipeResponse type, accessed via the
-// HandleSwipeSuccess variant's `response` field after the outcome-union promotion.
-type PerformanceMetrics = {
-  __typename?: "PerformanceMetrics";
-  successRate: number;
-  avgDifficulty: number;
-  retentionRate: number;
-  studyStreak: number;
-  lapseRate: number;
-  reviewCount: number;
-};
+// Derived from the generated HandleSwipeMutationType so schema changes stay in sync automatically.
+type PerformanceMetrics = Extract<
+  HandleSwipeMutationType["handleSwipe"],
+  { __typename: "HandleSwipeSuccess" }
+>["response"]["metrics"];
 
 /**
  * When `queue.length` falls to this value (or below) and is still non-zero,

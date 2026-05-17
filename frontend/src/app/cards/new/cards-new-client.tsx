@@ -235,9 +235,8 @@ export default function CardsNewClient({
     if (!result) return;
 
     const payload = result.data?.updateCard;
-    const typename = payload?.__typename ?? null;
 
-    if (typename === "InputValidationError" && payload?.__typename === "InputValidationError") {
+    if (payload?.__typename === "InputValidationError") {
       // Field-level error on `back` is the only validation-failure shape updateCard
       // can return on this path (the input only carries `back`); surface the
       // backend message directly so the user can correct the value.
@@ -245,7 +244,7 @@ export default function CardsNewClient({
       return;
     }
 
-    if (typename === "UpdateCardSuccess") {
+    if (payload?.__typename === "UpdateCardSuccess") {
       setDuplicate(null);
       markCreationSucceeded();
       return;
@@ -253,7 +252,10 @@ export default function CardsNewClient({
 
     // Unknown variant: null payload or a future union variant the client was not
     // regenerated against.
-    console.warn("[cards-new-client] unexpected updateCard payload", { typename });
+    const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
+    console.warn("[cards-new-client] unexpected updateCard payload", {
+      typename: unknownPayload?.__typename ?? null,
+    });
     setOverwriteError("Overwrite failed. Please try again.");
   }
 
