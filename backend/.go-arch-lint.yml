@@ -1,0 +1,88 @@
+version: 3
+workdir: .
+allow:
+  depOnAnyVendor: true        # vendor surface is not the invariant we enforce
+  deepScan: true              # v3 default; explicit for clarity
+  ignoreNotFoundComponents: false
+
+excludeFiles:
+  - '^.*_test\.go$'            # tests legitimately cross layers
+  - '.*schema-lint/testdata/.*\.go$'  # sample Go files for schema-lint's own AST-walker tests; not part of the binary
+  # graph/generated and graph/model are gqlgen output — declared as
+  # commonComponents below, not excluded, so they participate in the graph.
+  # internal/textdic/parser.go is goyacc output but lives inside `textdic`
+  # which has no internal deps anyway; no exclude needed.
+
+components:
+  auth:                { in: internal/auth }
+  cursor:              { in: internal/cursor }
+  database:            { in: internal/database }
+  domain:              { in: internal/domain }
+  domain_service:      { in: internal/domain/service }
+  gqlerr:              { in: internal/gqlerr }
+  handler_notionsync:  { in: internal/handler/notionsync }
+  handler_ping:        { in: internal/handler/ping }
+  loader:              { in: internal/loader }
+  logging:             { in: internal/logging }
+  middleware:          { in: internal/middleware }
+  notion:              { in: internal/notion }
+  repository:          { in: internal/repository }
+  telemetry:           { in: internal/telemetry }
+  textdic:             { in: internal/textdic }
+  ucerr:               { in: internal/usecase/ucerr }
+  usecase:             { in: internal/usecase }
+  resolver:            { in: graph/resolver }
+  graph_generated:     { in: graph/generated }
+  graph_model:         { in: graph/model }
+  cmd_server:          { in: cmd/server }
+  cmd_seed:            { in: cmd/seed }
+  cmd_schema_lint:     { in: cmd/schema-lint }
+
+commonComponents:
+  - graph_generated
+  - graph_model
+
+deps:
+  auth:               { mayDependOn: [logging, repository] }
+  cursor:             { anyVendorDeps: true }           # leaf: vendor-only deps (eris, std)
+  database:           { anyVendorDeps: true }           # leaf: vendor-only deps (gorm, pgx, migrate)
+  domain:             { anyVendorDeps: true }           # leaf: vendor-only deps (uuid, eris, go-fsrs)
+  domain_service:     { mayDependOn: [domain] }
+  gqlerr:             { mayDependOn: [logging, ucerr] }
+  handler_notionsync: { mayDependOn: [logging, notion, usecase] }
+  handler_ping:       { mayDependOn: [repository] }
+  loader:             { mayDependOn: [auth, domain, repository] }
+  logging:            { anyVendorDeps: true }           # leaf: vendor-only deps (eris, slog)
+  middleware:         { anyVendorDeps: true }           # leaf: vendor-only deps (echo, uuid)
+  notion:             { anyVendorDeps: true }           # leaf: vendor-only deps (notionapi, eris)
+  repository:         { mayDependOn: [domain] }
+  telemetry:          { anyVendorDeps: true }           # leaf: vendor-only deps (otel, eris)
+  textdic:            { anyVendorDeps: true }           # leaf: vendor-only deps (eris)
+  ucerr:              { anyVendorDeps: true }           # leaf: spec requires one permission; imports stdlib only
+  usecase:
+    mayDependOn:
+      - auth
+      - cursor
+      - domain
+      - domain_service
+      - notion
+      - repository
+      - textdic
+      - ucerr
+    # NOTE: `gqlerr` is deliberately absent — this is the #154 invariant.
+  resolver:
+    mayDependOn:
+      - auth
+      - cursor
+      - domain
+      - gqlerr
+      - loader
+      - repository
+      - textdic
+      - usecase
+  cmd_server:
+    anyProjectDeps: true        # composition root
+  cmd_seed:
+    anyVendorDeps: true          # CLI must not pull in project/transport deps; vendor ok
+  cmd_schema_lint:
+    anyVendorDeps: true          # CLI must not pull in project/transport deps; vendor ok
