@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -128,7 +129,13 @@ func NewDictionaryUsecaseWithTx(authSvc AdminChecker, cardRepo DictionaryCardRep
 // Output.Errors.
 func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryInput) (UpsertDictionaryOutput, error) {
 	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return UpsertDictionaryOutput{}, err
+		if isContextDone(err) || errors.Is(err, ucerr.ErrUnauthenticated) {
+			return UpsertDictionaryOutput{}, err
+		}
+		if _, ok := errors.AsType[*ucerr.ForbiddenError](err); ok {
+			return UpsertDictionaryOutput{}, err
+		}
+		return UpsertDictionaryOutput{}, eris.Wrap(err, "dictionary upsert: check admin")
 	}
 
 	if input.CardgroupID == "" {

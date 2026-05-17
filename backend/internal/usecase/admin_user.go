@@ -215,7 +215,13 @@ func (u *adminUserUsecase) List(
 	after, before, search *string,
 ) (*AdminUserConnection, error) {
 	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return nil, err
+		if isContextDone(err) || errors.Is(err, ucerr.ErrUnauthenticated) {
+			return nil, err
+		}
+		if _, ok := errors.AsType[*ucerr.ForbiddenError](err); ok {
+			return nil, err
+		}
+		return nil, eris.Wrap(err, "usecase: admin user: check admin")
 	}
 
 	if after != nil && before != nil {
