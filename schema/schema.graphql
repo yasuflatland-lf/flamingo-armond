@@ -449,6 +449,31 @@ type Role {
   name: String!
 }
 
+"""Success result of `updateRole`. Returned when the role rename succeeded."""
+type UpdateRoleSuccess {
+  role: Role!
+}
+
+"""
+Returned by `updateRole` when the target role is a system role
+("admin", "general"). System roles are immutable by domain invariant — the
+backend refuses the rename regardless of caller privilege.
+
+The variant carries the offending role's identity so the client can render
+"system role 'admin' cannot be renamed" without re-fetching.
+"""
+type CannotModifySystemRoleError implements UserError {
+  message: String!
+  roleId: ID!
+  roleName: String!
+}
+
+"""
+Result of `updateRole`. Either the updated role, or a typed
+CannotModifySystemRoleError describing the system-role guard.
+"""
+union UpdateRoleResult = UpdateRoleSuccess | CannotModifySystemRoleError
+
 extend type User {
   """Roles assigned to this user. Resolved via the per-request RoleByUserID DataLoader."""
   roles: [Role!]!
@@ -503,8 +528,13 @@ extend type Mutation {
   revokeRole(userId: ID!, roleId: ID!): User!
   """Admin-only. Create a new role. Names are normalized to lowercase. Duplicates are rejected with BAD_USER_INPUT."""
   createRole(name: String!): Role!
-  """Admin-only. Rename a role. The system role "admin" cannot be renamed (FORBIDDEN). Duplicates are rejected with BAD_USER_INPUT."""
-  updateRole(id: ID!, name: String!): Role!
+  """
+  Rename a role. System roles are immutable — the call returns
+  CannotModifySystemRoleError as a typed union variant in that case.
+  Validation failures (empty name, duplicate name) continue to surface
+  as a top-level GraphQL error with extensions.code = "BAD_USER_INPUT".
+  """
+  updateRole(id: ID!, name: String!): UpdateRoleResult!
   """Admin-only. Delete a role. The system role "admin" cannot be deleted (FORBIDDEN). Returns true on success."""
   deleteRole(id: ID!): Boolean!
 }

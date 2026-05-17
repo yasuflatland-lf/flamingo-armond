@@ -1,0 +1,12 @@
+type Query {
+  health: String!
+}
+
+type Card {
+  id: ID!
+  front: String!
+}
+
+type Mutation {
+  bulkCreateCards(fronts: [String!]!): [Card!]!
+}

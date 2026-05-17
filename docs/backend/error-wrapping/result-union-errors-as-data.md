@@ -20,9 +20,9 @@ produces typed variants the client can switch on safely.
 
 ## Schema-side conventions
 
-Declare the error type with `implements UserError` (the existing schema interface
-at `schema/schema.graphql:316`) so all business-error types share a `message:
-String!` field:
+Declare the error type with `implements UserError` (the existing `UserError`
+interface declared in `schema/schema.graphql`) so all business-error types
+share a `message: String!` field:
 
 ```graphql
 interface UserError {
@@ -151,3 +151,23 @@ type safety those helpers tried to recover by hand.
 Prefer Result Union when the variant set is small and schema-driven. Fall back
 to `BadUserInputWithExtensions` when a full union type would be disproportionate
 (e.g. a single optional extra field on an otherwise uniform validation error).
+
+## Enforcement
+
+The outcome-union pattern is enforced by a Go lint program at
+`backend/cmd/schema-lint/` that runs as part of the CI backend workflow. The
+lint flags any mutation whose return type is a bare object (not wrapped in a
+union) while its backing usecase method emits at least one typed `ucerr.*`
+variant (`ucerr.NewValidationError`, `ucerr.NewForbiddenError`, or
+`ucerr.ErrUnauthenticated`).
+
+An allowlist at `backend/cmd/schema-lint/allowlist.txt` freezes the
+pre-existing bare-emit mutations so the gate ships without a bulk migration;
+any new mutation that matches both conditions fails CI immediately. `createCard`
+is the canonical worked example that has been promoted to the full outcome-union
+shape; `updateRole` is a second precedent that follows the same XOR-invariant
+outcome struct pattern, where exactly one pointer field in the outcome struct is
+non-nil per returned result.
+
+See [outcome-union-enforcement.md](outcome-union-enforcement.md) for the full
+promotion checklist and lint internals.

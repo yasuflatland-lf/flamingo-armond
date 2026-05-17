@@ -79,3 +79,4 @@ Use `isUnauthenticatedGraphQLError` for all code paths — including simple redi
 - [GraphQL UNAUTHENTICATED must redirect to `/login`, not to an auth-required route](../../docs/frontend/rsc-error-handling/unauthenticated-redirect-target-must-be-login.md)
 - [Apollo `client.query()` is not cancelled on unmount — guard `setState` with `isMountedRef`](../../docs/frontend/rsc-error-handling/apollo-client-query-unmount-guard.md)
 - [`supabase.auth.getClaims()` has a three-way return — branch on `claimsData == null`](../../docs/frontend/rsc-error-handling/getclaims-three-way-return.md)
+- [`isUnauthenticatedGraphQLError` matches gqlFetch — not Apollo Client runtime errors](../../docs/frontend/rsc-error-handling/apollo-runtime-vs-gqlfetch-error-shape.md)

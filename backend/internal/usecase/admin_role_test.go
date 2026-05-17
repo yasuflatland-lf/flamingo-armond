@@ -458,7 +458,8 @@ func TestAdminRole_Create_DuplicateMatchesAfterNormalization(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestAdminRole_Update_Success looks the role up, confirms it is not the
-// system admin role, and pushes the normalised new name to the repo.
+// system admin role, and pushes the normalised new name to the repo. The
+// happy-path outcome carries the renamed Role and a nil SystemRoleConflict.
 func TestAdminRole_Update_Success(t *testing.T) {
 	t.Parallel()
 
@@ -469,12 +470,16 @@ func TestAdminRole_Update_Success(t *testing.T) {
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _ := buildAdminRoleUC(roles, authChk)
 
-	got, err := uc.Update(authedCtx("admin-1"), "r-1", "Reviewer")
+	outcome, err := uc.Update(authedCtx("admin-1"), "r-1", "Reviewer")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got == nil || got.Name != "reviewer" {
-		t.Fatalf("got = %+v, want role with name=reviewer", got)
+	if outcome.SystemRoleConflict != nil {
+		t.Fatalf("expected SystemRoleConflict==nil on happy path, got %+v",
+			outcome.SystemRoleConflict)
+	}
+	if outcome.Role == nil || outcome.Role.Name != "reviewer" {
+		t.Fatalf("outcome.Role = %+v, want role with name=reviewer", outcome.Role)
 	}
 	if roles.lastUpdateID != "r-1" || roles.lastUpdateName != "reviewer" {
 		t.Fatalf("repo update args = (%q,%q), want (r-1, reviewer)",
@@ -482,25 +487,26 @@ func TestAdminRole_Update_Success(t *testing.T) {
 	}
 }
 
-// TestAdminRole_Update_RenameSystemRoleForbidden enforces the system-role
-// guard for every name in the protected set. Renaming any of them must be
-// rejected with FORBIDDEN, and the repo Update must not be called. A
-// negative case (a non-system role with a similar-looking name) is included
-// so a future widening of the guard cannot silently route a custom role
-// through the system branch.
-func TestAdminRole_Update_RenameSystemRoleForbidden(t *testing.T) {
+// TestAdminRole_Update_RenameSystemRoleConflict enforces the system-role
+// guard for every name in the protected set. Renaming any of them must
+// return UpdateRoleOutcome{SystemRoleConflict: ...} with a nil error (the
+// refusal is surfaced as data, not as an error), and the repo Update must
+// not be called. A negative case (a non-system role with a similar-looking
+// name) is included so a future widening of the guard cannot silently route
+// a custom role through the system branch.
+func TestAdminRole_Update_RenameSystemRoleConflict(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name     string
-		roleName string
-		want     string
+		name       string
+		roleName   string
+		wantSystem bool
 	}{
-		{name: "admin", roleName: "admin", want: "FORBIDDEN"},
-		{name: "general", roleName: "general", want: "FORBIDDEN"},
+		{name: "admin", roleName: "admin", wantSystem: true},
+		{name: "general", roleName: "general", wantSystem: true},
 		// Negative: a non-system role with a confusable prefix must NOT be
 		// rejected by the system-role guard. It still hits the repo Update.
-		{name: "non-system 'general-2'", roleName: "general-2", want: ""},
+		{name: "non-system 'general-2'", roleName: "general-2", wantSystem: false},
 	}
 
 	for _, tc := range cases {
@@ -512,9 +518,22 @@ func TestAdminRole_Update_RenameSystemRoleForbidden(t *testing.T) {
 			authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 			uc, _ := buildAdminRoleUC(roles, authChk)
 
-			_, err := uc.Update(authedCtx("admin-1"), "r-x", "renamed")
-			if tc.want == "FORBIDDEN" {
-				assertForbidden(t, err, "")
+			outcome, err := uc.Update(authedCtx("admin-1"), "r-x", "renamed")
+			if tc.wantSystem {
+				if err != nil {
+					t.Fatalf("expected nil error on system-role refusal, got %v", err)
+				}
+				if outcome.SystemRoleConflict == nil {
+					t.Fatalf("expected SystemRoleConflict, got nil; outcome=%+v", outcome)
+				}
+				if outcome.SystemRoleConflict.ID != "r-x" ||
+					outcome.SystemRoleConflict.Name != tc.roleName {
+					t.Fatalf("SystemRoleConflict = %+v, want {ID:r-x Name:%s}",
+						outcome.SystemRoleConflict, tc.roleName)
+				}
+				if outcome.Role != nil {
+					t.Fatalf("expected Role==nil on system-role refusal, got %+v", outcome.Role)
+				}
 				if roles.updateCalls != 0 {
 					t.Fatalf("expected 0 repo update calls on system-role guard, got %d",
 						roles.updateCalls)
@@ -523,6 +542,13 @@ func TestAdminRole_Update_RenameSystemRoleForbidden(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("unexpected error for non-system role: %v", err)
+			}
+			if outcome.Role == nil {
+				t.Fatalf("expected outcome.Role for non-system role, got nil")
+			}
+			if outcome.SystemRoleConflict != nil {
+				t.Fatalf("expected SystemRoleConflict==nil for non-system role, got %+v",
+					outcome.SystemRoleConflict)
 			}
 			if roles.updateCalls != 1 {
 				t.Fatalf("expected 1 repo update call for non-system role, got %d",
@@ -723,6 +749,32 @@ func TestAdminRole_Delete_RepoInternalError(t *testing.T) {
 
 	err := uc.Delete(authedCtx("admin-1"), "r-1")
 	assertInternalChain(t, err, "usecase: admin role delete")
+}
+
+// Test 3: Update default-branch chain assertion.
+// TestAdminRole_Update_RepoInternalError surfaces a generic repository error
+// from the roles.Update call (anything other than the classified sentinels) as
+// INTERNAL with the eris chain attached. The pattern mirrors
+// TestAdminRole_Delete_RepoInternalError: requireAdmin OK, validateRoleName OK,
+// FindByID returns a non-system role, roles.Update returns a non-sentinel error.
+func TestAdminRole_Update_RepoInternalError(t *testing.T) {
+	t.Parallel()
+
+	roles := &mockAdminRoleRepoForCRUD{
+		findResult: &domain.Role{ID: "r-1", Name: "moderator"}, // non-system role
+		updateErr:  errors.New("boom: db blew up"),
+	}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _ := buildAdminRoleUC(roles, authChk)
+
+	outcome, err := uc.Update(authedCtx("admin-1"), "r-1", "reviewer")
+
+	// The outcome struct must be zero-value (no Role, no SystemRoleConflict).
+	if outcome.Role != nil || outcome.SystemRoleConflict != nil {
+		t.Fatalf("expected zero-value outcome, got %+v", outcome)
+	}
+	// The error must be non-nil and carry the "usecase: admin role update" wrap.
+	assertInternalChain(t, err, "usecase: admin role update")
 }
 
 // ---------------------------------------------------------------------------

@@ -68,6 +68,7 @@ detection is grep-based today and pinned at single-file
 ## Errors as data — detailed cases (on-demand)
 
 - [Result Union: "errors as data" pattern — when to use `CreateCardResult`-style unions over `BadUserInputWithExtensions`](../../docs/backend/error-wrapping/result-union-errors-as-data.md)
+- [Outcome-union enforcement: schema-lint gate forbidding new bare-object mutations that emit typed `ucerr.*` variants](../../docs/backend/error-wrapping/outcome-union-enforcement.md)
 
 ## Conversion boundaries — detailed cases (on-demand)
 

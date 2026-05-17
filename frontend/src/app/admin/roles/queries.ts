@@ -25,7 +25,17 @@ export const AdminCreateRoleMutation = graphql(`
 export const AdminUpdateRoleMutation = graphql(`
   mutation AdminUpdateRole($id: ID!, $name: String!) {
     updateRole(id: $id, name: $name) {
-      ...AdminRoleFields
+      __typename
+      ... on UpdateRoleSuccess {
+        role {
+          ...AdminRoleFields
+        }
+      }
+      ... on CannotModifySystemRoleError {
+        message
+        roleId
+        roleName
+      }
     }
   }
 `);
