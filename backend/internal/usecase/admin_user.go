@@ -79,6 +79,40 @@ type AdminUpdateUserInput struct {
 	Bio         *string
 }
 
+// InputValidationInfo carries an input-validation failure as a typed value
+// (not as an error). The resolver maps it to model.InputValidationError.
+// Lives at package usecase so all promoted outcome-returning methods can
+// share the carrier.
+type InputValidationInfo struct {
+	Field   string
+	Message string
+}
+
+// AssignRoleOutcome is the result of adminUserUsecase.AssignRole. Exactly one
+// of User or Validation is non-nil on a nil-error return.
+type AssignRoleOutcome struct {
+	User       *domain.User
+	Validation *InputValidationInfo
+}
+
+// RevokeRoleOutcome is the result of adminUserUsecase.RevokeRole. Exactly one
+// of the three variant fields is the active slot on a nil-error return:
+//   - User: happy path
+//   - Validation: input validation refusal
+//   - CannotRevokeOwnAdmin: domain invariant refusal (self-demotion of admin)
+type RevokeRoleOutcome struct {
+	User                 *domain.User
+	Validation           *InputValidationInfo
+	CannotRevokeOwnAdmin bool
+}
+
+// AdminUpdateUserOutcome is the result of adminUserUsecase.Update. Exactly one
+// of User or Validation is non-nil on a nil-error return.
+type AdminUpdateUserOutcome struct {
+	User       *domain.User
+	Validation *InputValidationInfo
+}
+
 // AdminUserUsecase is the admin-only user management surface.
 type AdminUserUsecase interface {
 	List(
@@ -87,9 +121,9 @@ type AdminUserUsecase interface {
 		after, before, search *string,
 	) (*AdminUserConnection, error)
 	Get(ctx context.Context, id string) (*domain.User, error)
-	Update(ctx context.Context, id string, input AdminUpdateUserInput) (*domain.User, error)
-	AssignRole(ctx context.Context, userID, roleID string) (*domain.User, error)
-	RevokeRole(ctx context.Context, userID, roleID string) (*domain.User, error)
+	Update(ctx context.Context, id string, input AdminUpdateUserInput) (AdminUpdateUserOutcome, error)
+	AssignRole(ctx context.Context, userID, roleID string) (AssignRoleOutcome, error)
+	RevokeRole(ctx context.Context, userID, roleID string) (RevokeRoleOutcome, error)
 }
 
 // adminUserRepository is the subset of repository.UserRepository the
@@ -291,23 +325,33 @@ func (u *adminUserUsecase) Get(ctx context.Context, id string) (*domain.User, er
 // Update applies the patch to the user identified by id. Validation mirrors
 // UserUsecase.UpdateUser: display_name must be 1-50 grapheme clusters when
 // non-nil, bio must be at most 500 grapheme clusters when non-nil, and an
-// explicit empty bio clears the column.
-func (u *adminUserUsecase) Update(ctx context.Context, id string, input AdminUpdateUserInput) (*domain.User, error) {
+// explicit empty bio clears the column. Validation failures surface via the
+// outcome's Validation slot ("errors as data") so the resolver maps them to
+// the AdminUpdateUserResult union's InputValidationError variant.
+func (u *adminUserUsecase) Update(ctx context.Context, id string, input AdminUpdateUserInput) (AdminUpdateUserOutcome, error) {
 	if _, err := u.requireAdmin(ctx); err != nil {
-		return nil, err
+		return AdminUpdateUserOutcome{}, err
 	}
 
 	patch := repository.UserUpdate{}
 	if input.DisplayName != nil {
 		trimmed := strings.TrimSpace(*input.DisplayName)
-		if err := validateDisplayName(trimmed); err != nil {
-			return nil, err
+		info, err := liftValidationErr(validateDisplayName(trimmed))
+		if err != nil {
+			return AdminUpdateUserOutcome{}, err
+		}
+		if info != nil {
+			return AdminUpdateUserOutcome{Validation: info}, nil
 		}
 		patch.DisplayName = &trimmed
 	}
 	if input.Bio != nil {
-		if err := validateBio(input.Bio); err != nil {
-			return nil, err
+		info, err := liftValidationErr(validateBio(input.Bio))
+		if err != nil {
+			return AdminUpdateUserOutcome{}, err
+		}
+		if info != nil {
+			return AdminUpdateUserOutcome{Validation: info}, nil
 		}
 		patch.Bio = input.Bio
 	}
@@ -315,14 +359,16 @@ func (u *adminUserUsecase) Update(ctx context.Context, id string, input AdminUpd
 	user, err := u.users.Update(ctx, id, patch)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ucerr.NewValidationError("id", "user not found")
+			return AdminUpdateUserOutcome{
+				Validation: &InputValidationInfo{Field: "id", Message: "user not found"},
+			}, nil
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, err
+			return AdminUpdateUserOutcome{}, err
 		}
-		return nil, eris.Wrap(err, "usecase: admin user update")
+		return AdminUpdateUserOutcome{}, eris.Wrap(err, "usecase: admin user update")
 	}
-	return user, nil
+	return AdminUpdateUserOutcome{User: user}, nil
 }
 
 // AssignRole grants roleID to userID. Idempotent at the repository layer:
@@ -330,27 +376,37 @@ func (u *adminUserUsecase) Update(ctx context.Context, id string, input AdminUpd
 //
 // Error mapping: distinguishes user-missing from role-missing via the
 // repository's ErrUserNotFound / ErrRoleNotFound sentinels so the
-// BAD_USER_INPUT response carries the correct field for the frontend
+// InputValidationError variant carries the correct field for the frontend
 // banner-by-field machinery. The generic ErrNotFound branch is kept as a
 // fallback for any future repository implementation that surfaces only the
-// legacy sentinel.
-func (u *adminUserUsecase) AssignRole(ctx context.Context, userID, roleID string) (*domain.User, error) {
+// legacy sentinel. Input-validation failures surface via outcome.Validation;
+// infrastructure and cancellation errors surface via the error return.
+func (u *adminUserUsecase) AssignRole(ctx context.Context, userID, roleID string) (AssignRoleOutcome, error) {
 	if _, err := u.requireAdmin(ctx); err != nil {
-		return nil, err
+		return AssignRoleOutcome{}, err
 	}
 	if err := u.roles.AssignToUser(ctx, userID, roleID); err != nil {
-		return nil, mapRoleAssignmentError(err, "usecase: admin user assign role")
+		info, perr := mapRoleAssignmentError(err, "usecase: admin user assign role")
+		if perr != nil {
+			return AssignRoleOutcome{}, perr
+		}
+		return AssignRoleOutcome{Validation: info}, nil
 	}
-	return u.refetchUser(ctx, userID, "usecase: admin user assign role: refetch")
+	user, err := u.refetchUser(ctx, userID, "usecase: admin user assign role: refetch")
+	if err != nil {
+		return AssignRoleOutcome{}, err
+	}
+	return AssignRoleOutcome{User: user}, nil
 }
 
 // RevokeRole removes roleID from userID. Self-demotion of the admin role is
-// rejected with FORBIDDEN to prevent locking the system out of admin
-// management. Idempotent at the repository layer otherwise.
-func (u *adminUserUsecase) RevokeRole(ctx context.Context, userID, roleID string) (*domain.User, error) {
+// surfaced via outcome.CannotRevokeOwnAdmin so the resolver maps it to the
+// CannotRevokeOwnAdminRoleError union variant (domain invariant as data,
+// not as an error). Idempotent at the repository layer otherwise.
+func (u *adminUserUsecase) RevokeRole(ctx context.Context, userID, roleID string) (RevokeRoleOutcome, error) {
 	callerID, err := u.requireAdmin(ctx)
 	if err != nil {
-		return nil, err
+		return RevokeRoleOutcome{}, err
 	}
 
 	// Self-demotion guard: only blocks revoking the *admin* role from the
@@ -360,39 +416,67 @@ func (u *adminUserUsecase) RevokeRole(ctx context.Context, userID, roleID string
 		roles, err := u.roles.FindByIDs(ctx, []string{roleID})
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return nil, err
+				return RevokeRoleOutcome{}, err
 			}
-			return nil, eris.Wrap(err, "usecase: admin user revoke role: lookup role")
+			return RevokeRoleOutcome{}, eris.Wrap(err, "usecase: admin user revoke role: lookup role")
 		}
 		if role, ok := roles[roleID]; ok && role.Name == adminRoleName {
-			return nil, ucerr.NewForbiddenError("cannot revoke own admin role")
+			return RevokeRoleOutcome{CannotRevokeOwnAdmin: true}, nil
 		}
 	}
 
 	if err := u.roles.RevokeFromUser(ctx, userID, roleID); err != nil {
-		return nil, mapRoleAssignmentError(err, "usecase: admin user revoke role")
+		info, perr := mapRoleAssignmentError(err, "usecase: admin user revoke role")
+		if perr != nil {
+			return RevokeRoleOutcome{}, perr
+		}
+		return RevokeRoleOutcome{Validation: info}, nil
 	}
-	return u.refetchUser(ctx, userID, "usecase: admin user revoke role: refetch")
+	user, err := u.refetchUser(ctx, userID, "usecase: admin user revoke role: refetch")
+	if err != nil {
+		return RevokeRoleOutcome{}, err
+	}
+	return RevokeRoleOutcome{User: user}, nil
 }
 
-// mapRoleAssignmentError translates the sentinel set returned by
-// roleRepo.AssignToUser / RevokeFromUser into typed usecase errors used by
-// AssignRole and RevokeRole. Specific sentinels are matched before the legacy
-// ErrNotFound fallback because both ErrUserNotFound and ErrRoleNotFound also
-// satisfy errors.Is(_, ErrNotFound).
-func mapRoleAssignmentError(err error, wrap string) error {
+// mapRoleAssignmentError classifies the sentinel set returned by
+// roleRepo.AssignToUser / RevokeFromUser into either input-validation data
+// (returned via the first slot, with second slot nil) or a propagating error
+// (returned via the second slot, with first slot nil). Specific sentinels
+// are matched before the legacy ErrNotFound fallback because both
+// ErrUserNotFound and ErrRoleNotFound also satisfy errors.Is(_, ErrNotFound).
+// Context cancellation passes through unwrapped.
+func mapRoleAssignmentError(err error, wrap string) (*InputValidationInfo, error) {
 	switch {
 	case errors.Is(err, repository.ErrUserNotFound):
-		return ucerr.NewValidationError("userId", "user not found")
+		return &InputValidationInfo{Field: "userId", Message: "user not found"}, nil
 	case errors.Is(err, repository.ErrRoleNotFound):
-		return ucerr.NewValidationError("roleId", "role not found")
+		return &InputValidationInfo{Field: "roleId", Message: "role not found"}, nil
 	case errors.Is(err, repository.ErrNotFound):
-		return ucerr.NewValidationError("userId", "user or role not found")
+		return &InputValidationInfo{Field: "userId", Message: "user or role not found"}, nil
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-		return err
+		return nil, err
 	default:
-		return eris.Wrap(err, wrap)
+		return nil, eris.Wrap(err, wrap)
 	}
+}
+
+// liftValidationErr bridges a validator that returns error into an outcome-
+// bearing call site. *ucerr.ValidationError values are unwrapped into an
+// InputValidationInfo carrier (first slot); any other error is passed through
+// unchanged (second slot). nil maps to (nil, nil). The shape lets call sites
+// in promoted methods uniformly route validation failures into outcome data
+// without having to re-classify each validator's return type. Lives in
+// admin_user.go because that file already holds the InputValidationInfo
+// definition; admin_role.go reuses it via the same package.
+func liftValidationErr(err error) (*InputValidationInfo, error) {
+	if err == nil {
+		return nil, nil
+	}
+	if ve, ok := errors.AsType[*ucerr.ValidationError](err); ok {
+		return &InputValidationInfo{Field: ve.Field, Message: ve.Message}, nil
+	}
+	return nil, err
 }
 
 // refetchUser loads the user after a mutation so callers see a fresh row
