@@ -334,6 +334,15 @@ func (c *capturingCardgroupRepo) FindPageByOwner(
 //   coverage for the happy path and error paths is provided by the tests in
 //   backend/cmd/server/main_test.go (TestGraphQL_CreateCardgroup_*).
 
+// createCardgroupBody returns a JSON-encoded mutation body that selects both
+// union variants of CreateCardgroupResult. It is the CreateCardgroup analogue
+// of setLastViewedMutation: each call site embeds its own name value but
+// shares the fragment shape so variant coverage is consistent across tests.
+// name must not contain double-quote characters.
+func createCardgroupBody(name string) string {
+	return `{"query":"mutation { createCardgroup(input: {name: \"` + name + `\"}) { __typename ... on CreateCardgroupSuccess { cardgroup { id name } } ... on InputValidationError { field message } } }"}`
+}
+
 // TestResolver_CreateCardgroup_HappyPath verifies that a successful create
 // returns the CreateCardgroupSuccess union variant with a non-nil Cardgroup.
 // This confirms the resolver reaches the success branch, not the nil guard.
@@ -342,8 +351,7 @@ func TestResolver_CreateCardgroup_HappyPath(t *testing.T) {
 
 	repo := &mockCardgroupRepoForResolver{}
 	srv := newCardgroupSrv(repo)
-	body := `{"query":"mutation { createCardgroup(input: {name: \"Test Group\"}) { __typename ... on CreateCardgroupSuccess { cardgroup { id name } } ... on InputValidationError { field message } } }"}`
-	resp := gqlRequest(t, srv, authedCtx("u1"), body)
+	resp := gqlRequest(t, srv, authedCtx("u1"), createCardgroupBody("Test Group"))
 
 	if _, hasErrs := resp["errors"]; hasErrs {
 		t.Fatalf("unexpected errors: %v", resp["errors"])
@@ -372,8 +380,7 @@ func TestResolver_CreateCardgroup_Unauthenticated(t *testing.T) {
 
 	repo := &mockCardgroupRepoForResolver{}
 	srv := newCardgroupSrv(repo)
-	body := `{"query":"mutation { createCardgroup(input: {name: \"Test\"}) { __typename ... on CreateCardgroupSuccess { cardgroup { id } } ... on InputValidationError { field message } } }"}`
-	resp := gqlRequest(t, srv, context.Background(), body)
+	resp := gqlRequest(t, srv, context.Background(), createCardgroupBody("Test"))
 
 	code := errCode(t, resp)
 	if code != "UNAUTHENTICATED" {
@@ -389,8 +396,7 @@ func TestResolver_CreateCardgroup_ValidationError_EmptyName(t *testing.T) {
 
 	repo := &mockCardgroupRepoForResolver{}
 	srv := newCardgroupSrv(repo)
-	body := `{"query":"mutation { createCardgroup(input: {name: \"\"}) { __typename ... on CreateCardgroupSuccess { cardgroup { id } } ... on InputValidationError { field message } } }"}`
-	resp := gqlRequest(t, srv, authedCtx("u1"), body)
+	resp := gqlRequest(t, srv, authedCtx("u1"), createCardgroupBody(""))
 
 	if _, hasErrs := resp["errors"]; hasErrs {
 		t.Fatalf("unexpected errors (validation should come as data): %v", resp["errors"])
