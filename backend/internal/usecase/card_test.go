@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -966,6 +967,88 @@ func TestCardUsecase_Create_writebackErrorDoesNotAffectOutcome(t *testing.T) {
 	case <-stub.called:
 	case <-time.After(2 * time.Second):
 		t.Fatal("notion writeback goroutine did not fire within timeout")
+	}
+}
+
+// signalWriter wraps a bytes.Buffer and closes done exactly once on the first
+// Write call. This lets us wait until the slog handler has actually flushed a
+// record before inspecting the buffer, which is necessary because the goroutine
+// in card.go calls WarnContext AFTER AppendParagraph returns — so the
+// stubNotionWriter.called channel fires one step too early for log assertions.
+type signalWriter struct {
+	buf  bytes.Buffer
+	done chan struct{}
+	once sync.Once
+}
+
+func (w *signalWriter) Write(p []byte) (int, error) {
+	n, err := w.buf.Write(p)
+	w.once.Do(func() { close(w.done) })
+	return n, err
+}
+
+// TestCardUsecase_Create_writebackErrorLogsCardgroupID pins the structured log
+// record emitted when the notion writeback goroutine fails. It asserts that
+// the "cardgroup_id" attribute is present on the WarnContext line and equals
+// the value captured before the goroutine launched.
+func TestCardUsecase_Create_writebackErrorLogsCardgroupID(t *testing.T) {
+	t.Parallel()
+
+	const wantCardgroupID = "cg-writeback-log-test"
+
+	// signalWriter lets us block until the first JSON record lands in the
+	// buffer, rather than relying on stub.called which fires before WarnContext.
+	sw := &signalWriter{done: make(chan struct{})}
+	logger := slog.New(slog.NewJSONHandler(sw, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	stub := &stubNotionWriter{
+		err:    errors.New("notion: 503 unavailable"),
+		called: make(chan struct{}),
+	}
+	cardRepo := &mockCardRepository{}
+	cgRepo := &mockCardgroupRepoForCard{
+		findResult: &domain.Cardgroup{ID: wantCardgroupID, OwnerID: "u1"},
+	}
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil, logger).WithNotionWritebacker(stub, "page-log-test")
+
+	got, err := uc.Create(authedCtx("u1"), CreateCardInput{
+		CardgroupID: wantCardgroupID,
+		Front:       "front",
+		Back:        "back",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error from Create: %v", err)
+	}
+	if got.Card == nil {
+		t.Fatal("expected outcome.Card to be non-nil even when writeback errors")
+	}
+
+	// Block until the first log record lands in the buffer (WarnContext called).
+	select {
+	case <-sw.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("notion writeback goroutine did not log within timeout")
+	}
+
+	records := decodeJSONRecords(t, sw.buf.Bytes())
+	var warnRec map[string]any
+	for _, rec := range records {
+		if rec["msg"] == "card create: notion writeback failed" {
+			warnRec = rec
+			break
+		}
+	}
+	if warnRec == nil {
+		t.Fatalf("no WarnContext record with msg %q found in log output:\n%s",
+			"card create: notion writeback failed", sw.buf.String())
+	}
+
+	gotCGID, ok := warnRec["cardgroup_id"].(string)
+	if !ok {
+		t.Fatalf("cardgroup_id attr missing or not a string; full record: %v", warnRec)
+	}
+	if gotCGID != wantCardgroupID {
+		t.Fatalf("cardgroup_id = %q, want %q", gotCGID, wantCardgroupID)
 	}
 }
 

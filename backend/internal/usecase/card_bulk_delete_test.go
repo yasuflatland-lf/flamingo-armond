@@ -122,10 +122,9 @@ func TestCardUsecase_BulkDelete_SilentlySkipsForeign(t *testing.T) {
 
 // TestCardUsecase_BulkDelete_PartialMatchSucceeds verifies that when the SQL
 // subselect filters out foreign-owned ids (deleted < len(ids)), BulkDelete still
-// succeeds and returns the actual deleted count. The partial-match log line emitted
-// by slog.Default() is observed via the logger; its behavioral effect is pinned
-// by this test and by the existing SilentlySkipsForeign test passing both before
-// and after the log statement was added.
+// succeeds and returns the actual deleted count. The partial-match INFO log line
+// emitted via u.logger.LogAttrs is observed indirectly: the test asserts the return
+// value, and the SilentlySkipsForeign test pins behavior on both sides of the log.
 func TestCardUsecase_BulkDelete_PartialMatchSucceeds(t *testing.T) {
 	t.Parallel()
 	// Repository reports 2 deleted out of 5 requested — simulates the SQL
