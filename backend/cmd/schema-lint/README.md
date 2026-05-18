@@ -22,8 +22,8 @@ go run ./cmd/schema-lint
 | Flag | Default | Description |
 |---|---|---|
 | `-mode` | `error` | `error`: exit 1 on violations or drift. `warn`: print but exit 0. |
-| `-schema` | `../schema/schema.graphql` | Path to the GraphQL SDL file. |
-| `-resolver` | `graph/resolver/schema.resolvers.go` | Path to the generated resolver file. |
+| `-schema` | `../schema/*.graphql` | Path, glob, or comma-separated list for GraphQL SDL files. |
+| `-resolver` | `graph/resolver/*.resolvers.go` | Path, glob, or comma-separated list for generated resolver files. |
 | `-resolver-struct` | `graph/resolver/resolver.go` | Path to the `Resolver` struct declaration. |
 | `-usecase` | `internal/usecase` | Path to the usecase package directory (non-recursive). |
 | `-allowlist` | `cmd/schema-lint/allowlist.txt` | Path to the allowlist file. |
@@ -41,7 +41,7 @@ go run ./cmd/schema-lint
 | File | Role |
 |---|---|
 | `schemawalk.go` | GraphQL SDL parser; classifies each mutation's return type as bare or not. |
-| `resolverwalk.go` | Go AST walker for `*mutationResolver` methods; extracts `r.<Field>.<Method>` calls. |
+| `resolverwalk.go` | Go AST walker for `*mutationResolver` methods across generated resolver files; extracts `r.<Field>.<Method>` calls. |
 | `usecasewalk.go` | Go AST walker for usecase methods; 1-bit `EmitsTypedError` detection. |
 | `classifier.go` | Joins the three walker outputs, applies the allowlist, reports violations and drifts. |
 | `main.go` | CLI wiring; hardcoded `InterfaceToImpl` map for interface-typed usecase fields. |

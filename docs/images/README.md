@@ -42,7 +42,7 @@ The script writes `architecture.png` next to itself. Re-run after updating
   issuer, JWKS endpoint, Google OAuth broker). Sole trust anchor between
   Vercel and Render — the backend verifies every incoming JWT against the
   Supabase JWKS.
-- **schema/schema.graphql** — single source of truth for the wire contract;
+- **schema/*.graphql** — single source of truth for the wire contract;
   feeds `gqlgen` (backend) and `graphql-codegen` (frontend).
 - **Notion** — upstream source for `Cards` content. A scheduled job
   (`/internal/notion-sync`, fired every 6 hours from GitHub Actions) pulls the

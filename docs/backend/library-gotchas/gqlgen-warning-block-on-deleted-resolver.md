@@ -2,7 +2,7 @@
 
 > Part of the [Go library gotchas](../../../.claude/rules/go-library-gotchas.md) rules.
 
-When a field is deleted from `schema/schema.graphql` and `gqlgen` is regenerated, the corresponding resolver function in `backend/graph/resolver/schema.resolvers.go` is **not** removed. Instead, gqlgen wraps the orphaned resolver in a `// !!! WARNING !!!` comment block that survives every subsequent regeneration. The build still passes because the function is no longer referenced from the generated interface, but the code stays in the repo as dead body until a human deletes the block by hand.
+When a field is deleted from `schema/*.graphql` and `gqlgen` is regenerated, the corresponding resolver function in `backend/graph/resolver/*.resolvers.go` is **not** removed. Instead, gqlgen wraps the orphaned resolver in a `// !!! WARNING !!!` comment block that survives every subsequent regeneration. The build still passes because the function is no longer referenced from the generated interface, but the code stays in the repo as dead body until a human deletes the block by hand.
 
 The same applies to model receivers and any helper that was uniquely keyed to the deleted field (e.g. a `toFooModel` converter): if the helper has no other callers after the field is gone, it becomes unreferenced but is not auto-removed by gqlgen.
 
@@ -18,7 +18,7 @@ The orphaned resolver is dead code that:
 
 After running `gqlgen generate` on a schema change that deletes a field:
 
-1. Search the generated file for the warning marker: `grep -n "!!! WARNING !!!" backend/graph/resolver/schema.resolvers.go`.
+1. Search the generated resolver files for the warning marker: `grep -n "!!! WARNING !!!" backend/graph/resolver/*.resolvers.go`.
 2. For each match, confirm the function corresponds to a deleted schema field (compare against the schema diff).
 3. Delete the entire block — the leading comment, the function body, the trailing `}`.
 4. Run `go vet ./... && go build ./...` from `backend/` to catch any helper, type, or import that was only reachable from the deleted resolver. Helpers that are now unreferenced must also be deleted (gqlgen does not track these).
@@ -29,7 +29,7 @@ After running `gqlgen generate` on a schema change that deletes a field:
 Add the warning marker grep to the schema-deletion checklist:
 
 ```bash
-grep -n "!!! WARNING !!!" backend/graph/resolver/schema.resolvers.go
+grep -n "!!! WARNING !!!" backend/graph/resolver/*.resolvers.go
 ```
 
 A clean schema-deletion PR returns no matches. A leftover match is a hard failure of the cleanup pass, not a stylistic note.
@@ -40,7 +40,7 @@ The dead-resolver mechanism above (orphaned function preserved under a WARNING
 block) has an inverse: when `gqlgen generate` runs against a schema change that
 **alters** a mutation's return type — e.g. promoting `updateProfile` from a bare
 `UpdateProfilePayload` to a `UpdateProfileResult` union — and the existing
-resolver body in `backend/graph/resolver/schema.resolvers.go` still has the old
+resolver body in the relevant `backend/graph/resolver/*.resolvers.go` file still has the old
 signature, gqlgen does not patch the body in place. It rewrites the function as
 a fresh `panic("not implemented")` stub, treating the existing implementation as
 orphaned. The body that contained the working logic is discarded entirely.
@@ -58,13 +58,13 @@ masking the loss of the prior body.
 Two mitigations:
 
 - **Verify the resolver body did not regress after every regen.** Run
-  `git diff backend/graph/resolver/schema.resolvers.go` after `gqlgen generate`;
+  `git diff backend/graph/resolver/*.resolvers.go` after `gqlgen generate`;
   if the diff shows `panic("not implemented")` where a body used to live, run
-  `git checkout -- backend/graph/resolver/schema.resolvers.go` to restore the
+  restore the affected resolver file to recover the
   prior body and re-run regen only after the resolver-wiring commit has been
   authored.
 - **Sequence the resolver-wiring commit before the regen-only commit.** The
-  resolver-wiring commit (which manually edits `schema.resolvers.go` to match
+  resolver-wiring commit (which manually edits the affected resolver file to match
   the new return type) must land before any standalone regen step so the
   signature is in sync when `gqlgen` reads the file.
 

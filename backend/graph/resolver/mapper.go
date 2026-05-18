@@ -1,0 +1,141 @@
+package resolver
+
+import (
+	"context"
+	"log/slog"
+
+	"backend/graph/model"
+	"backend/internal/domain"
+	"backend/internal/usecase"
+)
+
+func toUserModel(user *domain.User) *model.User {
+	if user == nil {
+		return nil
+	}
+	return &model.User{
+		ID:          user.ID,
+		DisplayName: (*string)(user.DisplayName),
+		Bio:         user.Bio.Ptr(),
+		AvatarURL:   user.AvatarURL,
+	}
+}
+
+func toCardgroupModel(cg *domain.Cardgroup) *model.Cardgroup {
+	if cg == nil {
+		return nil
+	}
+	return &model.Cardgroup{
+		ID:        cg.ID,
+		Name:      cg.Name,
+		OwnerID:   cg.OwnerID,
+		CreatedAt: cg.CreatedAt,
+		UpdatedAt: cg.UpdatedAt,
+	}
+}
+
+func toCardModel(card *domain.Card) *model.Card {
+	if card == nil {
+		return nil
+	}
+	return &model.Card{
+		ID:          card.ID,
+		Front:       string(card.Front),
+		Back:        string(card.Back),
+		CardgroupID: card.CardgroupID,
+		CreatedAt:   card.CreatedAt,
+		UpdatedAt:   card.UpdatedAt,
+	}
+}
+
+func toModelUserCardState(ucs *domain.UserCardFSRS) *model.UserCardState {
+	if ucs == nil {
+		return nil
+	}
+	return &model.UserCardState{
+		Due:           ucs.State.Due,
+		Stability:     ucs.State.Stability,
+		Difficulty:    ucs.State.Difficulty,
+		State:         int(ucs.State.State),
+		Reps:          ucs.State.Reps,
+		Lapses:        ucs.State.Lapses,
+		LastReview:    ucs.State.LastReview,
+		ElapsedDays:   ucs.State.ElapsedDays,
+		ScheduledDays: ucs.State.ScheduledDays,
+	}
+}
+
+func toCardModels(ctx context.Context, cards []*domain.Card) []*model.Card {
+	out := make([]*model.Card, 0, len(cards))
+	for _, card := range cards {
+		cm := toCardModel(card)
+		if cm == nil {
+			slog.WarnContext(ctx, "toCardModels: skipping nil entry")
+			continue
+		}
+		out = append(out, cm)
+	}
+	return out
+}
+
+func toRoleModel(r *domain.Role) *model.Role {
+	if r == nil {
+		return nil
+	}
+	return &model.Role{ID: r.ID, Name: string(r.Name)}
+}
+
+func toRoleModels(ctx context.Context, roles []*domain.Role) []*model.Role {
+	out := make([]*model.Role, 0, len(roles))
+	for _, r := range roles {
+		rm := toRoleModel(r)
+		if rm == nil {
+			slog.WarnContext(ctx, "toRoleModels: skipping nil entry")
+			continue
+		}
+		out = append(out, rm)
+	}
+	return out
+}
+
+func toUsecaseCardOrderBy(o *model.CardOrderBy) *usecase.CardOrderBy {
+	if o == nil {
+		return nil
+	}
+	v := usecase.CardOrderBy(*o)
+	return &v
+}
+
+func toUsecaseCardgroupOrderBy(o *model.CardgroupOrderBy) *usecase.CardgroupOrderBy {
+	if o == nil {
+		return nil
+	}
+	v := usecase.CardgroupOrderBy(*o)
+	return &v
+}
+
+func toUsecaseSortOrder(d *model.SortOrder) *usecase.SortOrder {
+	if d == nil {
+		return nil
+	}
+	v := usecase.SortOrder(*d)
+	return &v
+}
+
+func toSwipeResponseModel(ctx context.Context, out *usecase.SwipeOutput) *model.SwipeResponse {
+	if out == nil {
+		return nil
+	}
+	return &model.SwipeResponse{
+		NextCards:       toCardModels(ctx, out.NextCards),
+		PerformanceMode: out.PerformanceMode,
+		Metrics: &model.PerformanceMetrics{
+			SuccessRate:   out.Metrics.SuccessRate,
+			AvgDifficulty: out.Metrics.AvgDifficulty,
+			RetentionRate: out.Metrics.RetentionRate,
+			StudyStreak:   out.Metrics.StudyStreak,
+			LapseRate:     out.Metrics.LapseRate,
+			ReviewCount:   out.Metrics.ReviewCount,
+		},
+	}
+}

@@ -12,6 +12,7 @@ import (
 
 	"backend/internal/domain"
 	"backend/internal/repository"
+	"backend/internal/textdic"
 )
 
 // ---------------------------------------------------------------------------
@@ -140,6 +141,136 @@ func buildPayload(t *testing.T, pairs [][2]string) string {
 		b.WriteString("\n")
 	}
 	return base64.StdEncoding.EncodeToString([]byte(b.String()))
+}
+
+func TestDictionaryUsecase_ValidateHappyPath(t *testing.T) {
+	t.Parallel()
+
+	payload := buildPayload(t, [][2]string{{"apple", jpRunes(3)}})
+	auth := &mockAdminChecker{isAdmin: true}
+	uc := NewDictionaryUsecaseWithTx(auth, nil, nil, newTestLogger())
+
+	out, err := uc.Validate(authedCtx("admin-1"), payload)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !out.Valid {
+		t.Fatalf("expected Valid=true, got false: %+v", out)
+	}
+	if len(out.ParsedWords) != 1 {
+		t.Fatalf("expected 1 parsed word, got %d", len(out.ParsedWords))
+	}
+	if out.ParsedWords[0].Front != "apple" || out.ParsedWords[0].Back == "" || out.ParsedWords[0].Line != 1 {
+		t.Fatalf("unexpected parsed word: %+v", out.ParsedWords[0])
+	}
+	if len(out.Errors) != 0 {
+		t.Fatalf("expected no validation errors, got %+v", out.Errors)
+	}
+	if auth.calls != 1 {
+		t.Fatalf("expected 1 IsAdmin call, got %d", auth.calls)
+	}
+}
+
+func TestDictionaryUsecase_ValidateAuthGate(t *testing.T) {
+	t.Parallel()
+
+	payload := buildPayload(t, [][2]string{{"apple", jpRunes(3)}})
+
+	t.Run("anonymous", func(t *testing.T) {
+		t.Parallel()
+		auth := &mockAdminChecker{isAdmin: true}
+		uc := NewDictionaryUsecaseWithTx(auth, nil, nil, newTestLogger())
+
+		_, err := uc.Validate(anonCtx(), payload)
+
+		assertUnauthenticated(t, err)
+		if auth.calls != 0 {
+			t.Fatalf("expected 0 IsAdmin calls, got %d", auth.calls)
+		}
+	})
+
+	t.Run("non-admin", func(t *testing.T) {
+		t.Parallel()
+		auth := &mockAdminChecker{isAdmin: false}
+		uc := NewDictionaryUsecaseWithTx(auth, nil, nil, newTestLogger())
+
+		_, err := uc.Validate(authedCtx("user-1"), payload)
+
+		assertForbidden(t, err, "")
+		if auth.calls != 1 {
+			t.Fatalf("expected 1 IsAdmin call, got %d", auth.calls)
+		}
+	})
+
+	t.Run("admin-check error", func(t *testing.T) {
+		t.Parallel()
+		auth := &mockAdminChecker{err: errors.New("db died")}
+		uc := NewDictionaryUsecaseWithTx(auth, nil, nil, newTestLogger())
+
+		_, err := uc.Validate(authedCtx("admin-1"), payload)
+
+		assertInternalChain(t, err, "usecase: dictionary validate: check admin")
+	})
+}
+
+func TestDictionaryUsecase_ValidatePayloadErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty payload", func(t *testing.T) {
+		t.Parallel()
+		uc := NewDictionaryUsecaseWithTx(&mockAdminChecker{isAdmin: true}, nil, nil, newTestLogger())
+		_, err := uc.Validate(authedCtx("admin-1"), "")
+		assertValidationError(t, err, "payload", "payload must not be empty")
+	})
+
+	t.Run("bad base64", func(t *testing.T) {
+		t.Parallel()
+		uc := NewDictionaryUsecaseWithTx(&mockAdminChecker{isAdmin: true}, nil, nil, newTestLogger())
+		_, err := uc.Validate(authedCtx("admin-1"), "!!!not-base64!!!")
+		assertValidationError(t, err, "payload", "payload must be standard base64-encoded text")
+	})
+}
+
+func TestDictionaryUsecase_ValidateReturnsParserDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	auth := &mockAdminChecker{isAdmin: true}
+	uc := NewDictionaryUsecaseWithTx(auth, nil, nil, newTestLogger())
+	payload := base64.StdEncoding.EncodeToString([]byte("orphan"))
+
+	out, err := uc.Validate(authedCtx("admin-1"), payload)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.Valid {
+		t.Fatal("expected Valid=false for parser diagnostics")
+	}
+	if len(out.ParsedWords) != 0 {
+		t.Fatalf("expected no parsed words, got %+v", out.ParsedWords)
+	}
+	if len(out.Errors) != 1 {
+		t.Fatalf("expected 1 validation error, got %+v", out.Errors)
+	}
+	if out.Errors[0].Kind != DictErrKindFrontOnly || out.Errors[0].Snippet != "orphan" {
+		t.Fatalf("unexpected validation error: %+v", out.Errors[0])
+	}
+}
+
+func TestDictionaryUsecase_ValidateParserFailure(t *testing.T) {
+	t.Parallel()
+
+	auth := &mockAdminChecker{isAdmin: true}
+	uc := NewDictionaryUsecaseWithTx(auth, nil, nil, newTestLogger())
+	uc.processDictionary = func(string) ([]textdic.ParsedWord, []textdic.ValidationError, error) {
+		return nil, nil, errors.New("parser boom")
+	}
+	payload := base64.StdEncoding.EncodeToString([]byte("apple " + jpRunes(3)))
+
+	_, err := uc.Validate(authedCtx("admin-1"), payload)
+
+	assertInternalChain(t, err, "usecase: dictionary validate: parse")
 }
 
 // ---------------------------------------------------------------------------

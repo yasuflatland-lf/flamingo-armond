@@ -22,16 +22,22 @@ type UserRepository interface {
 	Update(ctx context.Context, id string, patch repository.UserUpdate) (*domain.User, error)
 }
 
+type UserRolesRepository interface {
+	ListByUser(ctx context.Context, userID string) ([]*domain.Role, error)
+}
+
 type UserUsecase struct {
 	repo   UserRepository
+	roles  UserRolesRepository
+	auth   AdminChecker
 	logger *slog.Logger
 }
 
-func NewUserUsecase(repo UserRepository, logger *slog.Logger) *UserUsecase {
+func NewUserUsecase(repo UserRepository, roles UserRolesRepository, authSvc AdminChecker, logger *slog.Logger) *UserUsecase {
 	if logger == nil {
 		panic("usecase: user: logger is required")
 	}
-	return &UserUsecase{repo: repo, logger: logger}
+	return &UserUsecase{repo: repo, roles: roles, auth: authSvc, logger: logger}
 }
 
 func (u *UserUsecase) Me(ctx context.Context) (*domain.User, error) {
@@ -50,6 +56,39 @@ func (u *UserUsecase) Me(ctx context.Context) (*domain.User, error) {
 		return &domain.User{ID: user.Sub}, nil
 	}
 	return nil, eris.Wrap(err, "usecase: Me: find user by ID")
+}
+
+func (u *UserUsecase) RolesFor(ctx context.Context, targetID string) ([]*domain.Role, error) {
+	caller := auth.UserFrom(ctx)
+	if caller == nil || caller.Sub == "" {
+		return nil, ucerr.ErrUnauthenticated
+	}
+	if caller.Sub != targetID {
+		if u.auth == nil {
+			return nil, eris.New("usecase: user roles: admin checker not configured")
+		}
+		ok, err := u.auth.IsAdmin(ctx, caller.Sub)
+		if err != nil {
+			if isContextDone(err) {
+				return nil, err
+			}
+			return nil, eris.Wrap(err, "usecase: user roles: check admin")
+		}
+		if !ok {
+			return nil, ucerr.NewForbiddenError("admin only")
+		}
+	}
+	if u.roles == nil {
+		return nil, eris.New("usecase: user roles: roles repository not configured")
+	}
+	roles, err := u.roles.ListByUser(ctx, targetID)
+	if err != nil {
+		if isContextDone(err) {
+			return nil, err
+		}
+		return nil, eris.Wrap(err, "usecase: user roles: list by user")
+	}
+	return roles, nil
 }
 
 type UpdateUserInput struct {

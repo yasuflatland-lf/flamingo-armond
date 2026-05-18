@@ -10,7 +10,11 @@ import (
 	"backend/internal/repository"
 )
 
-func cardBatchFunc(repo repository.CardRepository) dataloader.BatchFunc[string, *domain.Card] {
+type cardReader interface {
+	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error)
+}
+
+func cardBatchFunc(repo cardReader) dataloader.BatchFunc[string, *domain.Card] {
 	return func(ctx context.Context, keys []string) []*dataloader.Result[*domain.Card] {
 		out := make([]*dataloader.Result[*domain.Card], len(keys))
 

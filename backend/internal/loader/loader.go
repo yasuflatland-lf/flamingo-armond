@@ -31,7 +31,7 @@ type Loaders struct {
 	UserPreference *UserPreferenceLoader
 }
 
-func New(userRepo repository.UserRepository, roleRepo repository.RoleRepository, cardgroupRepo repository.CardgroupRepository, cardRepo repository.CardRepository, userPreferenceRepo repository.UserPreferenceRepository, swipeRecordRepo ...repository.SwipeRecordRepository) *Loaders {
+func New(userRepo repository.UserRepository, roleRepo repository.RoleRepository, cardgroupRepo repository.CardgroupRepository, cardRepo repository.CardReadRepository, userPreferenceRepo repository.UserPreferenceRepository, swipeRecordRepo ...repository.SwipeRecordRepository) *Loaders {
 	loaders := &Loaders{
 		User:           dataloader.NewBatchedLoader(userBatchFunc(userRepo)),
 		Role:           dataloader.NewBatchedLoader(roleBatchFunc(roleRepo)),
@@ -50,7 +50,7 @@ func NewWithUserCardFSRS(
 	userRepo repository.UserRepository,
 	roleRepo repository.RoleRepository,
 	cardgroupRepo repository.CardgroupRepository,
-	cardRepo repository.CardRepository,
+	cardRepo repository.CardReadRepository,
 	userPreferenceRepo repository.UserPreferenceRepository,
 	swipeRecordRepo repository.SwipeRecordRepository,
 	userCardFSRSRepo userCardFSRSReader,
@@ -67,7 +67,7 @@ func NewWithUserCardFSRS(
 
 // Middleware installs a fresh Loaders per request so batching and caching do
 // not bleed across requests.
-func Middleware(userRepo repository.UserRepository, roleRepo repository.RoleRepository, cardgroupRepo repository.CardgroupRepository, cardRepo repository.CardRepository, userPreferenceRepo repository.UserPreferenceRepository, swipeRecordRepo ...repository.SwipeRecordRepository) echo.MiddlewareFunc {
+func Middleware(userRepo repository.UserRepository, roleRepo repository.RoleRepository, cardgroupRepo repository.CardgroupRepository, cardRepo repository.CardReadRepository, userPreferenceRepo repository.UserPreferenceRepository, swipeRecordRepo ...repository.SwipeRecordRepository) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
 			ctx := context.WithValue(c.Request().Context(), contextKey{}, New(userRepo, roleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, swipeRecordRepo...))
@@ -81,7 +81,7 @@ func MiddlewareWithUserCardFSRS(
 	userRepo repository.UserRepository,
 	roleRepo repository.RoleRepository,
 	cardgroupRepo repository.CardgroupRepository,
-	cardRepo repository.CardRepository,
+	cardRepo repository.CardReadRepository,
 	userPreferenceRepo repository.UserPreferenceRepository,
 	swipeRecordRepo repository.SwipeRecordRepository,
 	userCardFSRSRepo userCardFSRSReader,

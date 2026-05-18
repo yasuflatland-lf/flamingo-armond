@@ -52,4 +52,4 @@ The cardgroup step **must** check `errors.Is(err, ErrNotFound)` explicitly; the 
 
 ## Reference
 
-`backend/internal/loader/cardgroup.go` returns `eris.Wrapf(repository.ErrNotFound, "cardgroup %s", k)` for missing keys. `backend/internal/loader/user_preference.go` returns `&Result{Data: byUserID[k]}` with `byUserID` lookup yielding `nil` when the key is absent. `backend/graph/resolver/schema.resolvers.go` — `userResolver.LastViewedCardgroup` is the canonical consumer that branches on both shapes.
+`backend/internal/loader/cardgroup.go` returns `eris.Wrapf(repository.ErrNotFound, "cardgroup %s", k)` for missing keys. `backend/internal/loader/user_preference.go` returns `&Result{Data: byUserID[k]}` with `byUserID` lookup yielding `nil` when the key is absent. `backend/graph/resolver/last_viewed_cardgroup.resolvers.go` — `userResolver.LastViewedCardgroup` is the canonical consumer that branches on both shapes.

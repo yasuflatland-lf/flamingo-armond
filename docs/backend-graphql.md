@@ -118,7 +118,7 @@ The schema docstring on each `*string` field must state which of the two empty-s
 ### Layering rule
 
 ```
-resolver (schema.resolvers.go)
+resolver (*.resolvers.go)
   └─ usecase (internal/usecase/user.go)
        └─ repository (internal/repository/)
 ```
@@ -323,7 +323,7 @@ rather than implementation-oriented (what the resolver calls). Do not list error
 codes only in the resolver body — that surface is invisible to client code-generators
 and frontend teams reading the schema.
 
-**Dedupe is asymmetric: `upsertDictionary` dedupes, `validateDictionary` does not.** `upsertDictionary` runs dedup and surfaces dropped rows as `DictionaryValidationError` entries with `Front`/`Back` populated. `validateDictionary` runs `textdic.Process` directly and surfaces only parser-level syntax errors — those entries never carry `Front`/`Back`. The resolver mapping site for `validateDictionary` (in `backend/graph/resolver/schema.resolvers.go`) therefore deliberately omits `nilIfEmpty(e.Front)` calls; there is nothing to map. If a future change adds dedup to `validateDictionary`, the resolver mapping site must be updated symmetrically with `upsertDictionary`.
+**Dedupe is asymmetric: `upsertDictionary` dedupes, `validateDictionary` does not.** `upsertDictionary` runs dedup and surfaces dropped rows as `DictionaryValidationError` entries with `Front`/`Back` populated. `validateDictionary` runs `textdic.Process` directly and surfaces only parser-level syntax errors — those entries never carry `Front`/`Back`. The resolver mapping site for `validateDictionary` (in `backend/graph/resolver/dictionary.resolvers.go`) therefore deliberately omits `nilIfEmpty(e.Front)` calls; there is nothing to map. If a future change adds dedup to `validateDictionary`, the resolver mapping site must be updated symmetrically with `upsertDictionary`.
 
 ## Backend hardening
 
@@ -495,4 +495,3 @@ they diverge (edge cases in older browsers), the backend error is canonical and
 must be surfaced as a form-level `BAD_USER_INPUT` error on the client.
 
 **DB CHECK vs. domain bound divergence:** Postgres `char_length(trim(name)) BETWEEN 1 AND 100` counts Unicode code points, not grapheme clusters. A 100-grapheme ZWJ-emoji string can exceed 500 code points and be rejected by the DB even though the domain accepts it. The domain bound is authoritative; the DB constraint is a coarse floor only. Do not rely on the DB constraint to enforce business rules — the domain `Validate()` method is the single source of truth.
-

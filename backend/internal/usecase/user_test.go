@@ -29,6 +29,19 @@ func (m *mockUserRepository) Update(_ context.Context, _ string, patch repositor
 	return m.updateResult, m.updateErr
 }
 
+type mockUserRolesRepository struct {
+	roles  []*domain.Role
+	err    error
+	calls  int
+	userID string
+}
+
+func (m *mockUserRolesRepository) ListByUser(_ context.Context, userID string) ([]*domain.Role, error) {
+	m.calls++
+	m.userID = userID
+	return m.roles, m.err
+}
+
 func authedCtx(sub string) context.Context {
 	return auth.ContextWithUser(context.Background(), &auth.AuthUser{Sub: sub})
 }
@@ -90,7 +103,7 @@ func TestUserUsecase_Me(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			repo := &mockUserRepository{findResult: tc.findResult, findErr: tc.findErr}
-			uc := NewUserUsecase(repo, newTestLogger())
+			uc := NewUserUsecase(repo, nil, nil, newTestLogger())
 
 			p, err := uc.Me(tc.ctx)
 
@@ -119,6 +132,106 @@ func TestUserUsecase_Me(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUserUsecase_RolesFor(t *testing.T) {
+	t.Parallel()
+
+	roles := []*domain.Role{{ID: "r-general", Name: domain.RoleName("general")}}
+
+	t.Run("self can read roles without admin check", func(t *testing.T) {
+		t.Parallel()
+		roleRepo := &mockUserRolesRepository{roles: roles}
+		authChk := &mockAdminChecker{isAdmin: false}
+		uc := NewUserUsecase(&mockUserRepository{}, roleRepo, authChk, newTestLogger())
+
+		got, err := uc.RolesFor(authedCtx("u-self"), "u-self")
+
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 1 || got[0].ID != "r-general" {
+			t.Fatalf("unexpected roles: %+v", got)
+		}
+		if authChk.calls != 0 {
+			t.Fatalf("expected 0 admin checks for self, got %d", authChk.calls)
+		}
+		if roleRepo.calls != 1 || roleRepo.userID != "u-self" {
+			t.Fatalf("role repo calls/userID = %d/%q, want 1/u-self", roleRepo.calls, roleRepo.userID)
+		}
+	})
+
+	t.Run("admin can read another user roles", func(t *testing.T) {
+		t.Parallel()
+		roleRepo := &mockUserRolesRepository{roles: roles}
+		authChk := &mockAdminChecker{isAdmin: true}
+		uc := NewUserUsecase(&mockUserRepository{}, roleRepo, authChk, newTestLogger())
+
+		got, err := uc.RolesFor(authedCtx("admin-1"), "u-target")
+
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("expected 1 role, got %+v", got)
+		}
+		if authChk.calls != 1 {
+			t.Fatalf("expected 1 admin check, got %d", authChk.calls)
+		}
+		if roleRepo.userID != "u-target" {
+			t.Fatalf("expected roles for u-target, got %q", roleRepo.userID)
+		}
+	})
+
+	t.Run("non-admin cannot read another user roles", func(t *testing.T) {
+		t.Parallel()
+		roleRepo := &mockUserRolesRepository{roles: roles}
+		authChk := &mockAdminChecker{isAdmin: false}
+		uc := NewUserUsecase(&mockUserRepository{}, roleRepo, authChk, newTestLogger())
+
+		_, err := uc.RolesFor(authedCtx("user-1"), "u-target")
+
+		assertForbidden(t, err, "admin only")
+		if roleRepo.calls != 0 {
+			t.Fatalf("expected 0 role repo calls on forbidden, got %d", roleRepo.calls)
+		}
+	})
+
+	t.Run("anonymous", func(t *testing.T) {
+		t.Parallel()
+		roleRepo := &mockUserRolesRepository{roles: roles}
+		authChk := &mockAdminChecker{isAdmin: true}
+		uc := NewUserUsecase(&mockUserRepository{}, roleRepo, authChk, newTestLogger())
+
+		_, err := uc.RolesFor(anonCtx(), "u-target")
+
+		assertUnauthenticated(t, err)
+		if authChk.calls != 0 || roleRepo.calls != 0 {
+			t.Fatalf("expected no downstream calls, got auth=%d roles=%d", authChk.calls, roleRepo.calls)
+		}
+	})
+
+	t.Run("admin check error", func(t *testing.T) {
+		t.Parallel()
+		roleRepo := &mockUserRolesRepository{roles: roles}
+		authChk := &mockAdminChecker{err: errors.New("db down")}
+		uc := NewUserUsecase(&mockUserRepository{}, roleRepo, authChk, newTestLogger())
+
+		_, err := uc.RolesFor(authedCtx("admin-1"), "u-target")
+
+		assertInternalChain(t, err, "usecase: user roles: check admin")
+	})
+
+	t.Run("roles repo error", func(t *testing.T) {
+		t.Parallel()
+		roleRepo := &mockUserRolesRepository{err: errors.New("roles db down")}
+		authChk := &mockAdminChecker{isAdmin: true}
+		uc := NewUserUsecase(&mockUserRepository{}, roleRepo, authChk, newTestLogger())
+
+		_, err := uc.RolesFor(authedCtx("admin-1"), "u-target")
+
+		assertInternalChain(t, err, "usecase: user roles: list by user")
+	})
 }
 
 // --- UpdateUser tests ---
@@ -269,7 +382,7 @@ func TestUserUsecase_UpdateUser(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			repo := &mockUserRepository{updateResult: tc.repoResult, updateErr: tc.repoErr}
-			uc := NewUserUsecase(repo, newTestLogger())
+			uc := NewUserUsecase(repo, nil, nil, newTestLogger())
 
 			outcome, err := uc.UpdateUser(tc.ctx, tc.input)
 
@@ -343,7 +456,7 @@ func TestUserUsecase_UpdateUser_SuccessVariant(t *testing.T) {
 
 	returned := &domain.User{ID: "u1", DisplayName: dnPtr("Alice")}
 	repo := &mockUserRepository{updateResult: returned}
-	uc := NewUserUsecase(repo, newTestLogger())
+	uc := NewUserUsecase(repo, nil, nil, newTestLogger())
 
 	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: "Alice"})
 
@@ -362,7 +475,7 @@ func TestUserUsecase_UpdateUser_ValidationVariant_DisplayName(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockUserRepository{}
-	uc := NewUserUsecase(repo, newTestLogger())
+	uc := NewUserUsecase(repo, nil, nil, newTestLogger())
 
 	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: ""})
 
@@ -387,7 +500,7 @@ func TestUserUsecase_UpdateUser_ValidationVariant_Bio(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockUserRepository{}
-	uc := NewUserUsecase(repo, newTestLogger())
+	uc := NewUserUsecase(repo, nil, nil, newTestLogger())
 
 	outcome, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{
 		DisplayName: "Alice",
@@ -415,7 +528,7 @@ func TestUserUsecase_UpdateUser_RepoError_InfraChannel(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockUserRepository{updateErr: errors.New("db: storage failure")}
-	uc := NewUserUsecase(repo, newTestLogger())
+	uc := NewUserUsecase(repo, nil, nil, newTestLogger())
 
 	_, err := uc.UpdateUser(authedCtx("u1"), UpdateUserInput{DisplayName: "Alice"})
 

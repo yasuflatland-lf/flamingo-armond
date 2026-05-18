@@ -1,0 +1,158 @@
+"""A named permission role. Names are stored lowercase (e.g., "admin", "general")."""
+type Role {
+  id: ID!
+  name: String!
+}
+
+"""Success result of `updateRole`. Returned when the role rename succeeded."""
+type UpdateRoleSuccess {
+  role: Role!
+}
+
+"""
+Returned by `updateRole` when the target role is a system role
+("admin", "general"). System roles are immutable by domain invariant — the
+backend refuses the rename regardless of caller privilege.
+
+The variant carries the offending role's identity so the client can render
+"system role 'admin' cannot be renamed" without re-fetching.
+"""
+type CannotModifySystemRoleError implements UserError {
+  message: String!
+  roleId: ID!
+  roleName: String!
+}
+
+"""
+Result of `updateRole`. Either the updated role, or a typed
+CannotModifySystemRoleError describing the system-role guard.
+"""
+union UpdateRoleResult = UpdateRoleSuccess | CannotModifySystemRoleError
+
+"""
+Typed business error returned by `revokeRole` when the caller attempts to
+revoke the admin role from their own account. Self-demotion is rejected by
+the server regardless of caller privilege.
+"""
+type CannotRevokeOwnAdminRoleError implements UserError {
+  message: String!
+}
+
+"""
+Returned by `revokeRole` when the target user's admin role was successfully
+revoked. Carries the updated `user` so clients can refresh their role view
+without a follow-up query.
+"""
+type RevokeRoleSuccess {
+  user: User!
+}
+
+"""
+Returned by `assignRole` when the target user was successfully granted the
+requested role. Carries the updated `user` so clients can refresh their role
+view without a follow-up query.
+"""
+type AssignRoleSuccess {
+  user: User!
+}
+
+"""
+Returned by `adminUpdateUser` when the admin's update to a target user
+succeeded. Carries the updated `user` so clients can refresh the profile
+view without a follow-up query.
+"""
+type AdminUpdateUserSuccess {
+  user: User!
+}
+
+"""
+Returned by `createRole` when a new role was successfully created. Carries
+the freshly inserted `role` so clients can insert it into local caches
+without a follow-up query.
+"""
+type CreateRoleSuccess {
+  role: Role!
+}
+
+"""
+Result of `revokeRole`. Either the updated user, an input-validation failure,
+or a CannotRevokeOwnAdminRoleError when the caller tries to demote themselves.
+"""
+union RevokeRoleResult =
+    RevokeRoleSuccess
+  | InputValidationError
+  | CannotRevokeOwnAdminRoleError
+
+"""Result of `assignRole`. Either the updated user or an input-validation failure."""
+union AssignRoleResult =
+    AssignRoleSuccess
+  | InputValidationError
+
+"""Result of `adminUpdateUser`. Either the updated user or an input-validation failure."""
+union AdminUpdateUserResult =
+    AdminUpdateUserSuccess
+  | InputValidationError
+
+"""Result of `createRole`. Either the new role or an input-validation failure."""
+union CreateRoleResult =
+    CreateRoleSuccess
+  | InputValidationError
+
+extend type User {
+  """Roles assigned to this user. Resolved via the per-request RoleByUserID DataLoader."""
+  roles: [Role!]!
+}
+
+"""One element in a UserConnection."""
+type UserEdge {
+  """Opaque cursor for this position. Currently equal to node.id."""
+  cursor: ID!
+  node: User!
+}
+
+"""Paginated list of Users (Relay Connection)."""
+type UserConnection {
+  edges: [UserEdge!]!
+  pageInfo: PageInfo!
+  """Total users matching the filter, regardless of page window."""
+  totalCount: Int!
+}
+
+extend type Query {
+  """Admin-only. Paginated user list. Non-admin callers receive FORBIDDEN."""
+  users(first: Int, after: ID, last: Int, before: ID, search: String): UserConnection!
+  """Admin-only. Single user with roles populated. Non-admin callers receive FORBIDDEN."""
+  adminUser(id: ID!): User
+  """Admin-only. List all roles (used by admin role-assignment UI). Non-admin callers receive FORBIDDEN."""
+  roles: [Role!]!
+  """Admin-only. Single role by ID. Non-admin callers receive FORBIDDEN."""
+  role(id: ID!): Role
+}
+
+"""Input for admin-edited user fields."""
+input AdminUpdateUserInput {
+  """null/omitted = unchanged. Non-null = set; must be 1-50 grapheme clusters after trim. Empty string is rejected with BAD_USER_INPUT."""
+  displayName: String
+  """null/omitted = unchanged. Empty string clears the field. Non-empty must be <= 500 grapheme clusters."""
+  bio: String
+}
+
+extend type Mutation {
+  """Admin-only. Edit display_name / bio of any user."""
+  adminUpdateUser(id: ID!, input: AdminUpdateUserInput!): AdminUpdateUserResult!
+  """Admin-only. Assign a role to a user. Idempotent."""
+  assignRole(userId: ID!, roleId: ID!): AssignRoleResult!
+  """Admin-only. Revoke a role from a user. Self-demotion of admin role is returned as CannotRevokeOwnAdminRoleError."""
+  revokeRole(userId: ID!, roleId: ID!): RevokeRoleResult!
+  """Admin-only. Create a new role. Names are normalized to lowercase. Duplicates are returned as InputValidationError."""
+  createRole(name: String!): CreateRoleResult!
+  """
+  Rename a role. System roles are immutable — the call returns
+  CannotModifySystemRoleError as a typed union variant in that case.
+  Validation failures (empty name, duplicate name) continue to surface
+  as a top-level GraphQL error with extensions.code = "BAD_USER_INPUT".
+  """
+  updateRole(id: ID!, name: String!): UpdateRoleResult!
+  """Admin-only. Delete a role. The system role "admin" cannot be deleted (FORBIDDEN). Returns true on success."""
+  deleteRole(id: ID!): Boolean!
+}

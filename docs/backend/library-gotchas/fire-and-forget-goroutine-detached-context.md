@@ -11,8 +11,8 @@ When launching a goroutine from inside an HTTP handler or GraphQL resolver for a
 // with later mutation of the receiver's fields.
 text   := card.Front + " " + card.Back
 cardID := card.ID
-pageID := u.notionPageID
-writer := u.notionWriter
+pageID := w.pageID
+writer := w.appender
 
 go func() {
     ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -38,4 +38,4 @@ An unrecovered panic in a detached goroutine crashes the process. This is intent
 
 ## Reference
 
-The Notion card write-back in `backend/internal/usecase/card.go` (`CardUsecase.Create`) is the primary example. The design rationale is documented in [`docs/superpowers/specs/2026-05-12-notion-card-writeback-design.md`](../../superpowers/specs/2026-05-12-notion-card-writeback-design.md).
+The Notion card write-back adapter in `backend/internal/notion/writeback.go` is the primary example. The design rationale is documented in [`docs/superpowers/specs/2026-05-12-notion-card-writeback-design.md`](../../superpowers/specs/2026-05-12-notion-card-writeback-design.md).

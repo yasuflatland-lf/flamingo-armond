@@ -1,0 +1,143 @@
+"""Per-user FSRS scheduling state for a single card."""
+type UserCardState {
+  due: Time!
+  stability: Float!
+  difficulty: Float!
+  state: Int!
+  reps: Int!
+  lapses: Int!
+  lastReview: Time!
+  elapsedDays: Int!
+  scheduledDays: Int!
+}
+
+"""A flashcard with viewer-specific FSRS scheduling state."""
+type Card {
+  id: ID!
+  front: String!
+  back: String!
+  """Foreign key to the owning cardgroup. The `cardgroup` prefix names the related type, not a stutter of the parent type."""
+  # eslint-disable-next-line @graphql-eslint/no-typename-prefix
+  cardgroupId: ID!
+  """The parent cardgroup. Resolved via the per-request Cardgroup DataLoader."""
+  # eslint-disable-next-line @graphql-eslint/no-typename-prefix
+  cardgroup: Cardgroup!
+  """
+  Viewer's per-user FSRS state. For cards the viewer has not reviewed,
+  resolves to a synthesized new-card state.
+  """
+  userCardState: UserCardState!
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+"""Input for creating a new card."""
+input NewCardInput {
+  cardgroupId: ID!
+  """1-500 grapheme clusters (length measured after trimming surrounding whitespace)."""
+  front: String!
+  """1-500 grapheme clusters (length measured after trimming surrounding whitespace)."""
+  back: String!
+}
+
+"""Input for `updateCard`. Fields default to "leave unchanged" when null or omitted."""
+input UpdateCardInput {
+  """null or omitted = leave unchanged."""
+  front: String
+  """null or omitted = leave unchanged."""
+  back: String
+}
+
+"""Typed business error returned by `createCard` when an existing card in the same cardgroup already has the same front."""
+type CardDuplicateFrontError implements UserError {
+  message: String!
+  existingCardId: ID!
+  existingBack: String!
+}
+
+"""Success result of `createCard`. Returned as the union variant when the card was created."""
+type CreateCardSuccess {
+  card: Card!
+}
+
+"""Result of `createCard`. Either the created card, or a typed duplicate-front error returned as data."""
+union CreateCardResult = CreateCardSuccess | CardDuplicateFrontError
+
+"""Success variant returned by `updateCard` when the card was updated. Carries the updated `card` so clients can refresh local state without a follow-up query."""
+type UpdateCardSuccess {
+  card: Card!
+}
+
+"""Result of `updateCard`. Either the updated card or an input-validation failure."""
+union UpdateCardResult =
+    UpdateCardSuccess
+  | InputValidationError
+
+"""Field to order Cards by in paginated queries. DUE uses the viewer's due state."""
+enum CardOrderBy {
+  ID
+  CREATED_AT
+  UPDATED_AT
+  DUE
+}
+
+"""One element in a CardConnection."""
+type CardEdge {
+  """Opaque cursor for this position. Currently equal to node.id."""
+  cursor: ID!
+  node: Card!
+}
+
+"""Paginated list of Cards (Relay Connection)."""
+type CardConnection {
+  edges: [CardEdge!]!
+  pageInfo: PageInfo!
+  """
+  Total cards in the cardgroup, regardless of page window.
+  Backed by a separate COUNT(*); intended for cardgroups up to ~10k cards.
+  """
+  totalCount: Int!
+}
+
+extend type Query {
+  """Single card by ID. Returns UNAUTHENTICATED for non-owners (existence is not leaked)."""
+  card(id: ID!): Card
+  """
+  Next batch of cards due for review in this cardgroup, ordered by due-date with
+  same-due ties shuffled per session. Returns an empty list when all cards are caught up.
+  Limit defaults to 20 (clamped to 100). Returns UNAUTHENTICATED if the caller does not own
+  the cardgroup; BAD_USER_INPUT if the cardgroup does not exist.
+  """
+  learnNextDueCards(cardgroupId: ID!, limit: Int = 20): [Card!]!
+  """
+  Paginated cards in a cardgroup. Forward pagination uses (first, after); backward uses (last, before).
+  Cursor is the card UUID. Default page size is 20; max is 100.
+  Optional case-insensitive substring search on front OR back (ILIKE partial match).
+  Nil or empty string skips the search filter.
+  """
+  cardsByCardgroupConnection(
+    cardgroupId: ID!,
+    first: Int,
+    after: ID,
+    last: Int,
+    before: ID,
+    search: String,
+    orderBy: CardOrderBy = ID,
+    orderDirection: SortOrder = ASC
+  ): CardConnection!
+}
+
+extend type Mutation {
+  """
+  Create a card in a cardgroup owned by the authenticated caller.
+  Returns a union: `CreateCardSuccess` for the happy path, or `CardDuplicateFrontError`
+  when a card with the same front already exists in the cardgroup (typed "error as data").
+  """
+  createCard(input: NewCardInput!): CreateCardResult!
+  """Update a card. Non-owners receive UNAUTHENTICATED."""
+  updateCard(id: ID!, input: UpdateCardInput!): UpdateCardResult!
+  """Delete a card. Non-owners receive UNAUTHENTICATED."""
+  deleteCard(id: ID!): Boolean!
+  """Bulk-delete cards owned by the authenticated caller. Returns the number of rows deleted. Foreign-owned IDs in the list are silently skipped (count reflects only successful deletes)."""
+  deleteCards(ids: [ID!]!): Int!
+}

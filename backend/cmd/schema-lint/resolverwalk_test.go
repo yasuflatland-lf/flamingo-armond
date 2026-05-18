@@ -95,6 +95,36 @@ func TestResolverWalk(t *testing.T) {
 	}
 }
 
+func TestResolverWalkFiles(t *testing.T) {
+	t.Parallel()
+
+	got, err := ResolverWalkFiles([]string{
+		filepath.Join("testdata", "resolverwalk", "one-call.go"),
+		filepath.Join("testdata", "resolverwalk", "no-call.go"),
+	})
+	if err != nil {
+		t.Fatalf("ResolverWalkFiles: unexpected error: %v", err)
+	}
+
+	want := []ResolverMapping{
+		{
+			MutationField:  "updateRole",
+			ResolverMethod: "UpdateRole",
+			UsecaseCalls: []UsecaseCall{
+				{Selector: "AdminRoleUC", Method: "Update"},
+			},
+		},
+		{
+			MutationField:  "deleteRole",
+			ResolverMethod: "DeleteRole",
+			UsecaseCalls:   nil,
+		},
+	}
+	if diff := cmp.Diff(want, got.Mappings); diff != "" {
+		t.Errorf("ResolverWalkFiles Mappings mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestToCamelCase(t *testing.T) {
 	t.Parallel()
 

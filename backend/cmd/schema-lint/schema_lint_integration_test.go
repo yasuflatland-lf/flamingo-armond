@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -24,9 +23,13 @@ func repoRoot(t *testing.T) string {
 	// Go up three levels: schema-lint/ -> cmd/ -> backend/ -> repo root
 	root := filepath.Join(filepath.Dir(file), "..", "..", "..")
 	root = filepath.Clean(root)
-	// Sanity check: schema/schema.graphql should exist at the root.
-	if _, err := os.Stat(filepath.Join(root, "schema", "schema.graphql")); err != nil {
-		t.Fatalf("repoRoot: schema/schema.graphql not found under %s: %v", root, err)
+	// Sanity check: schema/*.graphql should exist at the root.
+	matches, err := filepath.Glob(filepath.Join(root, "schema", "*.graphql"))
+	if err != nil {
+		t.Fatalf("repoRoot: bad schema glob under %s: %v", root, err)
+	}
+	if len(matches) == 0 {
+		t.Fatalf("repoRoot: schema/*.graphql not found under %s", root)
 	}
 	return root
 }
@@ -36,8 +39,8 @@ func liveInputs(t *testing.T) (schemaPath, resolverPath, resolverStructPath, use
 	t.Helper()
 	root := repoRoot(t)
 	backend := filepath.Join(root, "backend")
-	schemaPath = filepath.Join(root, "schema", "schema.graphql")
-	resolverPath = filepath.Join(backend, "graph", "resolver", "schema.resolvers.go")
+	schemaPath = filepath.Join(root, "schema", "*.graphql")
+	resolverPath = filepath.Join(backend, "graph", "resolver", "*.resolvers.go")
 	resolverStructPath = filepath.Join(backend, "graph", "resolver", "resolver.go")
 	usecaseDir = filepath.Join(backend, "internal", "usecase")
 	allowlistPath = filepath.Join(backend, "cmd", "schema-lint", "allowlist.txt")
@@ -50,11 +53,19 @@ func runLivePipeline(t *testing.T, al Allowlist) ([]Violation, []Drift) {
 	t.Helper()
 	schemaPath, resolverPath, resolverStructPath, usecaseDir, _ := liveInputs(t)
 
-	schemaMutations, err := SchemaWalk([]string{schemaPath})
+	schemaPaths, err := expandPathList(schemaPath)
+	if err != nil {
+		t.Fatalf("expand schema paths: %v", err)
+	}
+	schemaMutations, err := SchemaWalk(schemaPaths)
 	if err != nil {
 		t.Fatalf("SchemaWalk: %v", err)
 	}
-	resolverResult, err := ResolverWalk(resolverPath)
+	resolverPaths, err := expandPathList(resolverPath)
+	if err != nil {
+		t.Fatalf("expand resolver paths: %v", err)
+	}
+	resolverResult, err := ResolverWalkFiles(resolverPaths)
 	if err != nil {
 		t.Fatalf("ResolverWalk: %v", err)
 	}
@@ -138,11 +149,19 @@ func TestIntegration_LiveTree_NoAllowlistRot(t *testing.T) {
 		t.Fatalf("LoadAllowlist: %v", err)
 	}
 
-	schemaMutations, err := SchemaWalk([]string{schemaPath})
+	schemaPaths, err := expandPathList(schemaPath)
+	if err != nil {
+		t.Fatalf("expand schema paths: %v", err)
+	}
+	schemaMutations, err := SchemaWalk(schemaPaths)
 	if err != nil {
 		t.Fatalf("SchemaWalk: %v", err)
 	}
-	resolverResult, err := ResolverWalk(resolverPath)
+	resolverPaths, err := expandPathList(resolverPath)
+	if err != nil {
+		t.Fatalf("expand resolver paths: %v", err)
+	}
+	resolverResult, err := ResolverWalkFiles(resolverPaths)
 	if err != nil {
 		t.Fatalf("ResolverWalk: %v", err)
 	}

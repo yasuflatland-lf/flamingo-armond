@@ -29,10 +29,12 @@ func (m *mockUserRoleRepository) HasRole(_ context.Context, _ string, _ domain.R
 	return m.isAdmin, m.err
 }
 
-// newDictOnlySrv builds a server with only AuthSvc wired; only the
+// newDictOnlySrv builds a server with only DictionaryUsecase wired; only the
 // validateDictionary resolver is exercised here.
 func newDictOnlySrv(roleRepo repository.UserRoleRepository) *handler.Server {
-	r := resolver.NewResolver(nil, nil, nil, nil, auth.NewService(roleRepo), nil, nil, nil, nil, nil)
+	authSvc := auth.NewService(roleRepo)
+	dictUC := usecase.NewDictionaryUsecaseWithTx(authSvc, nil, nil, newDiscardLogger())
+	r := resolver.NewResolver(nil, nil, nil, nil, authSvc, dictUC, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
 	return srv
@@ -203,8 +205,10 @@ func TestValidateDictionary_IsAdminDeadlineExceeded(t *testing.T) {
 // field drives the happy-path result; the returnErr field, when non-nil, is
 // returned instead so the error-propagation path can be exercised.
 type mockDictionaryUsecase struct {
-	returnOut usecase.UpsertDictionaryOutput
-	returnErr error
+	returnOut   usecase.UpsertDictionaryOutput
+	returnErr   error
+	validateOut usecase.ValidateDictionaryOutcome
+	validateErr error
 }
 
 func (m *mockDictionaryUsecase) Upsert(_ context.Context, _ usecase.UpsertDictionaryInput) (usecase.UpsertDictionaryOutput, error) {
@@ -212,6 +216,13 @@ func (m *mockDictionaryUsecase) Upsert(_ context.Context, _ usecase.UpsertDictio
 		return usecase.UpsertDictionaryOutput{}, m.returnErr
 	}
 	return m.returnOut, nil
+}
+
+func (m *mockDictionaryUsecase) Validate(_ context.Context, _ string) (usecase.ValidateDictionaryOutcome, error) {
+	if m.validateErr != nil {
+		return usecase.ValidateDictionaryOutcome{}, m.validateErr
+	}
+	return m.validateOut, nil
 }
 
 // newUpsertDictSrv builds a server with the given DictionaryUsecase mock

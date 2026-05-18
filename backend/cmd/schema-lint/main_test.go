@@ -24,8 +24,8 @@ func liveArgsForRun(t *testing.T, extraArgs ...string) []string {
 	backend := filepath.Join(root, "backend")
 
 	args := []string{
-		"-schema=" + filepath.Join(root, "schema", "schema.graphql"),
-		"-resolver=" + filepath.Join(backend, "graph", "resolver", "schema.resolvers.go"),
+		"-schema=" + filepath.Join(root, "schema", "*.graphql"),
+		"-resolver=" + filepath.Join(backend, "graph", "resolver", "*.resolvers.go"),
 		"-resolver-struct=" + filepath.Join(backend, "graph", "resolver", "resolver.go"),
 		"-usecase=" + filepath.Join(backend, "internal", "usecase"),
 		"-allowlist=" + filepath.Join(backend, "cmd", "schema-lint", "allowlist.txt"),
@@ -185,6 +185,49 @@ func TestRun_ErrorMode_SyntheticViolation_ExitsOne(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("run -mode=error with violation: want exit 1, got %d\nstdout: %s\nstderr: %s",
 			code, stdout.String(), stderr.String())
+	}
+}
+
+func TestRun_GlobInputs_SyntheticViolation_ExitsOne(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	schemaPath, resolverPath, resolverStructPath, usecaseDir, allowlistPath := syntheticFixtures(t, dir)
+
+	// Add a second file for each input kind so the glob path exercises
+	// multi-file expansion rather than a single matched path.
+	if err := os.WriteFile(filepath.Join(dir, "base.graphql"), []byte("extend type Query { noop: String }\n"), 0o644); err != nil {
+		t.Fatalf("write extra schema: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "base.resolvers.go"), []byte("package resolver\n"), 0o644); err != nil {
+		t.Fatalf("write extra resolver: %v", err)
+	}
+	if err := os.Rename(schemaPath, filepath.Join(dir, "feature.graphql")); err != nil {
+		t.Fatalf("rename schema: %v", err)
+	}
+	if err := os.Rename(resolverPath, filepath.Join(dir, "feature.resolvers.go")); err != nil {
+		t.Fatalf("rename resolver: %v", err)
+	}
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	args := buildSyntheticArgs(
+		"error",
+		filepath.Join(dir, "*.graphql"),
+		filepath.Join(dir, "*.resolvers.go"),
+		resolverStructPath,
+		usecaseDir,
+		allowlistPath,
+	)
+	code := run(args, stdout, stderr)
+
+	if code != 1 {
+		t.Fatalf("run -mode=error with glob inputs: want exit 1, got %d\nstdout: %s\nstderr: %s",
+			code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "violation:") {
+		t.Errorf("stderr does not contain 'violation:' prefix:\n%s", stderr.String())
 	}
 }
 

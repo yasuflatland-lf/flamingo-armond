@@ -1,0 +1,43 @@
+"""Authenticated user's profile. 1:1 with auth.users."""
+type User {
+  """Matches auth.users.id (UUID v4)."""
+  id: ID!
+  displayName: String
+  bio: String
+  avatarUrl: String
+}
+
+extend type Query {
+  """
+  Returns the authenticated user's own profile.
+  Unauthenticated callers receive an error with `extensions.code = "UNAUTHENTICATED"` and data is null.
+  """
+  me: User
+}
+
+"""Input for `updateProfile`. The authenticated caller's own profile fields."""
+input UpdateProfileInput {
+  """1-50 characters (length measured after trimming surrounding whitespace)."""
+  displayName: String!
+  """null or omitted = leave unchanged; empty string = explicit clear."""
+  bio: String
+}
+
+"""Success variant returned by `updateProfile` when the profile was updated. Carries the updated `user` so clients can refresh local state without a follow-up query."""
+type UpdateProfileSuccess {
+  user: User!
+}
+
+"""Result of `updateProfile`. Either the updated user or an input-validation failure."""
+union UpdateProfileResult =
+    UpdateProfileSuccess
+  | InputValidationError
+
+"""Root of all write operations exposed by the GraphQL API. See per-field doc-blocks for individual mutations."""
+type Mutation {
+  """
+  Updates the authenticated user's own profile.
+  Unauthenticated callers receive an error with `extensions.code = "UNAUTHENTICATED"`.
+  """
+  updateProfile(input: UpdateProfileInput!): UpdateProfileResult!
+}

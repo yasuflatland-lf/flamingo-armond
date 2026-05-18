@@ -20,16 +20,6 @@ import (
 
 type CardRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Card, error)
-	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error)
-	FindPageByCardgroup(
-		ctx context.Context,
-		cardgroupID string,
-		after, before *repository.CardCursor,
-		first, last int,
-		orderBy repository.CardOrderBy,
-		dir repository.SortOrder,
-		search *string,
-	) ([]*domain.Card, int64, error)
 	FindPageByCardgroupForUser(
 		ctx context.Context,
 		userID, cardgroupID string,
@@ -54,8 +44,21 @@ type UserCardFSRSRepositoryForCard interface {
 	FindByUserAndCardIDs(ctx context.Context, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
 }
 
-type NotionWritebacker interface {
-	AppendParagraph(ctx context.Context, pageID, text string) error
+type CardObserver interface {
+	OnCardCreated(ctx context.Context, card *domain.Card)
+	OnCardUpdated(ctx context.Context, card *domain.Card)
+}
+
+type noopCardObserver struct{}
+
+func (noopCardObserver) OnCardCreated(context.Context, *domain.Card) {}
+func (noopCardObserver) OnCardUpdated(context.Context, *domain.Card) {}
+
+func normalizeCardObserver(observer CardObserver) CardObserver {
+	if observer == nil {
+		return noopCardObserver{}
+	}
+	return observer
 }
 
 type CardUsecase struct {
@@ -63,16 +66,28 @@ type CardUsecase struct {
 	cardgroupRepo CardgroupRepositoryForCard
 	userFSRSRepo  UserCardFSRSRepositoryForCard
 	tx            txRunner
-	notionWriter  NotionWritebacker
-	notionPageID  string
+	observer      CardObserver
 	logger        *slog.Logger
 }
 
-func NewCardUsecase(db *gorm.DB, cardRepo CardRepository, cardgroupRepo CardgroupRepositoryForCard, userCardFSRSRepo UserCardFSRSRepositoryForCard, logger *slog.Logger) *CardUsecase {
+func NewCardUsecase(
+	db *gorm.DB,
+	cardRepo CardRepository,
+	cardgroupRepo CardgroupRepositoryForCard,
+	userCardFSRSRepo UserCardFSRSRepositoryForCard,
+	observer CardObserver,
+	logger *slog.Logger,
+) *CardUsecase {
 	if logger == nil {
 		panic("usecase: card: logger is required")
 	}
-	uc := &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo, userFSRSRepo: userCardFSRSRepo, logger: logger}
+	uc := &CardUsecase{
+		cardRepo:      cardRepo,
+		cardgroupRepo: cardgroupRepo,
+		userFSRSRepo:  userCardFSRSRepo,
+		observer:      normalizeCardObserver(observer),
+		logger:        logger,
+	}
 	if db != nil {
 		uc.tx = func(ctx context.Context, fn func(tx *gorm.DB) error) error {
 			return db.WithContext(ctx).Transaction(fn)
@@ -89,18 +104,20 @@ func NewCardUsecaseWithTx(
 	cardgroupRepo CardgroupRepositoryForCard,
 	tx func(ctx context.Context, fn func(tx *gorm.DB) error) error,
 	userCardFSRSRepo UserCardFSRSRepositoryForCard,
+	observer CardObserver,
 	logger *slog.Logger,
 ) *CardUsecase {
 	if logger == nil {
 		panic("usecase: card: logger is required")
 	}
-	return &CardUsecase{cardRepo: cardRepo, cardgroupRepo: cardgroupRepo, tx: tx, userFSRSRepo: userCardFSRSRepo, logger: logger}
-}
-
-func (u *CardUsecase) WithNotionWritebacker(w NotionWritebacker, pageID string) *CardUsecase {
-	u.notionWriter = w
-	u.notionPageID = pageID
-	return u
+	return &CardUsecase{
+		cardRepo:      cardRepo,
+		cardgroupRepo: cardgroupRepo,
+		tx:            tx,
+		userFSRSRepo:  userCardFSRSRepo,
+		observer:      normalizeCardObserver(observer),
+		logger:        logger,
+	}
 }
 
 type CreateCardInput struct {
@@ -264,22 +281,7 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 		}
 		return CreateCardOutcome{}, eris.Wrap(err, "usecase: create card: repo create")
 	}
-	if u.notionWriter != nil && u.notionPageID != "" {
-		text := string(card.Front) + " " + string(card.Back)
-		cardID := card.ID
-		pageID := u.notionPageID
-		cardgroupID := card.CardgroupID
-		writer := u.notionWriter
-		logger := u.logger
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-			if err := writer.AppendParagraph(ctx, pageID, text); err != nil {
-				logger.WarnContext(ctx, "card create: notion writeback failed",
-					"card_id", cardID, "page_id", pageID, "cardgroup_id", cardgroupID, "err", err)
-			}
-		}()
-	}
+	u.observer.OnCardCreated(ctx, card)
 	return CreateCardOutcome{Card: card}, nil
 }
 
@@ -329,6 +331,7 @@ func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 	if err != nil {
 		return UpdateCardOutcome{}, eris.Wrap(err, "usecase: update card: repo update")
 	}
+	u.observer.OnCardUpdated(ctx, updated)
 	return UpdateCardOutcome{Card: updated}, nil
 }
 

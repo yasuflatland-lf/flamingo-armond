@@ -280,10 +280,9 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		return err
 	}
 
-	userUC := usecase.NewUserUsecase(userRepo, logger)
+	userUC := usecase.NewUserUsecase(userRepo, roleRepo, authSvc, logger)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
-	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, logger)
-	learnUC := usecase.NewLearnUsecase(cardRepo, cardgroupRepo, service.NewOrderingPolicy(), nil, 0, 0, logger)
+	learnUC := usecase.NewLearnUsecase(cardRepo, cardgroupRepo, service.NewOrderingPolicy(), nil, 0, 0, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), srvCfg.swipeNextBatchSize, userCardFSRSRepo, logger)
 	dictionaryUC := usecase.NewDictionaryUsecase(authSvc, cardRepo, db.GORM, logger)
 	adminUserUC := usecase.NewAdminUser(userRepo, roleRepo, authSvc, logger)
@@ -291,6 +290,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	lastViewedCardgroupUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo, logger)
 	pingHandler := ping.New(pingRecordRepo, pingToken)
 	var notionSyncHandler *notionsync.Handler
+	var cardObserver usecase.CardObserver
 	if !notionSyncDisabled {
 		retryCfg, err := notion.RetryConfigFromEnv()
 		if err != nil {
@@ -299,10 +299,11 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		retryCfg.Logger = logger
 		notionFetcher := notion.NewFetcher(notionEnv.NotionToken, retryCfg)
 		notionWriter := notion.NewWriter(notionEnv.NotionToken, retryCfg)
-		cardUC = cardUC.WithNotionWritebacker(notionWriter, notionEnv.HandlerConfig.PageIDs[0])
+		cardObserver = notion.NewCardWritebacker(notionWriter, notionEnv.HandlerConfig.PageIDs[0], logger)
 		notionSyncUC := usecase.NewNotionSyncUsecase(notionFetcher, cardgroupRepo, cardRepo, db.GORM, logger)
 		notionSyncHandler = notionsync.New(notionSyncUC, notionEnv.HandlerConfig)
 	}
+	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, cardObserver, logger)
 	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, dictionaryUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, learnUC)
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above

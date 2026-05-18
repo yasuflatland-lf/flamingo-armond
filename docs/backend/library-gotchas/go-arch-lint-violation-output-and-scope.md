@@ -7,7 +7,7 @@
 `go-arch-lint check` emits plain ASCII text, one line per violation:
 
 ```
-Component resolver shouldn't depend on backend/internal/gqlerr in /abs/path/graph/resolver/schema.resolvers.go:12
+Component resolver shouldn't depend on backend/internal/gqlerr in /abs/path/graph/resolver/card.resolvers.go:12
 ```
 
 The format is: `Component <name> shouldn't depend on <import-path> in <abs-file>:<line>`.

@@ -67,12 +67,19 @@ type CardUpdate struct {
 	Back  *string
 }
 
-type CardRepository interface {
+type CardReadRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.Card, error)
 	FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Card, error)
 	FindByCardgroup(ctx context.Context, cardgroupID string) ([]*domain.Card, error)
 	ListFrontsByCardgroupTx(ctx context.Context, tx *gorm.DB, cardgroupID string) ([]string, error)
+	// FindByCardgroupAndFront returns the card identified by the (cardgroup_id,
+	// front) unique key, or ErrNotFound when no such row exists. The front value
+	// is matched exactly; trimming is the caller's responsibility.
+	FindByCardgroupAndFront(ctx context.Context, cardgroupID, front string) (*domain.Card, error)
+}
+
+type CardPageRepository interface {
 	FindPageByCardgroup(
 		ctx context.Context,
 		cardgroupID string,
@@ -93,11 +100,10 @@ type CardRepository interface {
 	) (cards []*domain.Card, totalCount int64, err error)
 	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
 	FindDueCardsForUserTx(ctx context.Context, tx *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
+}
+
+type CardWriteRepository interface {
 	Create(ctx context.Context, card *domain.Card) error
-	// FindByCardgroupAndFront returns the card identified by the (cardgroup_id,
-	// front) unique key, or ErrNotFound when no such row exists. The front value
-	// is matched exactly; trimming is the caller's responsibility.
-	FindByCardgroupAndFront(ctx context.Context, cardgroupID, front string) (*domain.Card, error)
 	Update(ctx context.Context, id string, patch CardUpdate) (*domain.Card, error)
 	Delete(ctx context.Context, id string) error
 	// DeleteByIDsTx hard-deletes the cards whose ids are in the list AND whose
@@ -123,6 +129,12 @@ type CardRepository interface {
 	// their `back` and `updated_at` columns overwritten. Returns the
 	// per-row split between Inserted and Updated. Empty input is a no-op.
 	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (UpsertManyTxResult, error)
+}
+
+type CardRepository interface {
+	CardReadRepository
+	CardPageRepository
+	CardWriteRepository
 }
 
 type cardRepo struct{ db *gorm.DB }

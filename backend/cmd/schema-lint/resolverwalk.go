@@ -42,6 +42,28 @@ type ResolverWalkResult struct {
 // method on *mutationResolver (or mutationResolver) together with the
 // usecase call(s) found in its body.
 func ResolverWalk(resolverPath string) (ResolverWalkResult, error) {
+	return ResolverWalkFiles([]string{resolverPath})
+}
+
+// ResolverWalkFiles parses one or more Go source files and extracts every
+// method on *mutationResolver (or mutationResolver) together with the usecase
+// call(s) found in its body. Mappings are appended in the order paths are
+// provided, then in source declaration order within each file.
+func ResolverWalkFiles(resolverPaths []string) (ResolverWalkResult, error) {
+	var result ResolverWalkResult
+
+	for _, resolverPath := range resolverPaths {
+		fileResult, err := resolverWalkFile(resolverPath)
+		if err != nil {
+			return ResolverWalkResult{}, err
+		}
+		result.Mappings = append(result.Mappings, fileResult.Mappings...)
+	}
+
+	return result, nil
+}
+
+func resolverWalkFile(resolverPath string) (ResolverWalkResult, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, resolverPath, nil, 0)
 	if err != nil {
