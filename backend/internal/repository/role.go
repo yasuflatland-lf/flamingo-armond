@@ -370,7 +370,7 @@ func (r *roleRepo) CountAdminUsers(ctx context.Context) (int64, error) {
 	err := r.db.WithContext(ctx).
 		Table("user_roles").
 		Joins("JOIN roles ON roles.id = user_roles.role_id").
-		Where("roles.name = ?", "admin").
+		Where("roles.name = ?", domain.AdminRoleName).
 		Count(&n).Error
 	if err != nil {
 		return 0, eris.Wrap(err, "repository: count admin users")

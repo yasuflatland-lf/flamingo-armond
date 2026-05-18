@@ -67,7 +67,7 @@ extraction produces a real miss.
 and `adminRoleUsecase.Create` were never on the allowlist before [#171] even though
 both ultimately surfaced typed `ucerr.NewValidationError` values to the resolver.
 The classifier missed them because both methods routed validation through helper
-functions (`mapRoleAssignmentError`, `mapAdminRoleError`, `validateRoleName`)
+functions (`mapRoleAssignmentError`, `mapAdminRoleError`, `domain.ParseRoleName`)
 that themselves called `ucerr.New*` — the helpers lived outside the methods'
 function bodies, so the body-only `ast.Inspect` saw zero direct constructor
 references and treated `emitsTypedError = false`. The promotion still landed

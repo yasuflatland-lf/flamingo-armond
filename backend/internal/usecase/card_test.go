@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -262,6 +263,36 @@ func TestCardUsecase_Create(t *testing.T) {
 	}
 }
 
+func TestCardUsecase_Create_FrontTooLong(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &mockCardRepository{}
+	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil, newTestLogger())
+
+	_, err := uc.Create(authedCtx("u1"), CreateCardInput{
+		CardgroupID: "cg1",
+		Front:       strings.Repeat("a", 501),
+		Back:        "back",
+	})
+	assertValidationError(t, err, "front", "")
+}
+
+func TestCardUsecase_Create_BackTooLong(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &mockCardRepository{}
+	cgRepo := &mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}}
+	uc := NewCardUsecase(nil, cardRepo, cgRepo, nil, newTestLogger())
+
+	_, err := uc.Create(authedCtx("u1"), CreateCardInput{
+		CardgroupID: "cg1",
+		Front:       "front",
+		Back:        strings.Repeat("a", 501),
+	})
+	assertValidationError(t, err, "back", "")
+}
+
 func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 	t.Parallel()
 
@@ -346,6 +377,64 @@ func TestCardUsecase_Update_EmptyFront_ValidationVariant(t *testing.T) {
 	}
 	if cardRepo.capturedPatch.Front != nil {
 		t.Fatal("repository.Update must not be called on validation failure")
+	}
+}
+
+func TestCardUsecase_Update_FrontTooLong(t *testing.T) {
+	t.Parallel()
+
+	existing := &domain.Card{
+		ID:          "card1",
+		CardgroupID: "cg1",
+		Front:       "old front",
+		Back:        "old back",
+	}
+	cardRepo := &mockCardRepository{findResult: existing}
+	uc := NewCardUsecase(nil, cardRepo,
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		nil, newTestLogger(),
+	)
+
+	overMax := strings.Repeat("a", 501)
+	outcome, err := uc.Update(authedCtx("u1"), "card1", UpdateCardInput{Front: &overMax})
+
+	if err != nil {
+		t.Fatalf("expected nil error (validation goes to outcome), got: %v", err)
+	}
+	if outcome.Card != nil {
+		t.Fatal("expected nil Card on validation failure")
+	}
+	if outcome.Validation == nil || outcome.Validation.Field != "front" {
+		t.Fatalf("outcome.Validation = %+v, want field=front", outcome.Validation)
+	}
+}
+
+func TestCardUsecase_Update_BackTooLong(t *testing.T) {
+	t.Parallel()
+
+	existing := &domain.Card{
+		ID:          "card1",
+		CardgroupID: "cg1",
+		Front:       "old front",
+		Back:        "old back",
+	}
+	cardRepo := &mockCardRepository{findResult: existing}
+	uc := NewCardUsecase(nil, cardRepo,
+		&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+		nil, newTestLogger(),
+	)
+
+	overMax := strings.Repeat("a", 501)
+	outcome, err := uc.Update(authedCtx("u1"), "card1", UpdateCardInput{Back: &overMax})
+
+	if err != nil {
+		t.Fatalf("expected nil error (validation goes to outcome), got: %v", err)
+	}
+	if outcome.Card != nil {
+		t.Fatal("expected nil Card on validation failure")
+	}
+	if outcome.Validation == nil || outcome.Validation.Field != "back" {
+		t.Fatalf("outcome.Validation = %+v, want field=back", outcome.Validation)
 	}
 }
 

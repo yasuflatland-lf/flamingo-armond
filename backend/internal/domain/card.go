@@ -4,7 +4,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rivo/uniseg"
 	"github.com/rotisserie/eris"
 )
 
@@ -33,27 +32,11 @@ func (c *Card) Validate() error {
 	if strings.TrimSpace(c.CardgroupID) == "" {
 		return ErrCardCardgroupIDRequired
 	}
-	if err := validateCardText("front", c.Front); err != nil {
+	if _, err := ParseCardText(c.Front, ErrCardFrontRequired, ErrCardFrontTooLong); err != nil {
 		return err
 	}
-	if err := validateCardText("back", c.Back); err != nil {
+	if _, err := ParseCardText(c.Back, ErrCardBackRequired, ErrCardBackTooLong); err != nil {
 		return err
 	}
 	return nil
-}
-
-func validateCardText(field, value string) error {
-	n := uniseg.GraphemeClusterCount(strings.TrimSpace(value))
-	switch {
-	case n < 1 && field == "front":
-		return ErrCardFrontRequired
-	case n < 1:
-		return ErrCardBackRequired
-	case n > CardTextMax && field == "front":
-		return ErrCardFrontTooLong
-	case n > CardTextMax:
-		return ErrCardBackTooLong
-	default:
-		return nil
-	}
 }

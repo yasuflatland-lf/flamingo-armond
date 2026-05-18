@@ -192,7 +192,7 @@ The `auth` package exposes two distinct types with different lifetimes and data 
 
 The split is deliberate: the JWT does not carry roles in this project, so every role check goes through the DB. `auth.Service` is constructed once at boot in `run()` against the `UserRoleRepository` and injected into resolvers/usecases that need to gate on role membership.
 
-`auth.Service.IsAdmin(ctx, userID)` hardcodes the literal `"admin"` role name in the method body — callers cannot pass a role string. This prevents drift to bespoke role names; add a new dedicated method (e.g. `IsModerator`) when a second role is needed rather than parameterising `IsAdmin`. The same `"admin"` literal is exposed to the role-CRUD usecase as `adminRoleName` (see `internal/usecase/admin_role.go`) so the system-role rename / delete guards stay in lockstep with the auth-side check; both move together when a second privileged role is introduced.
+`auth.Service.IsAdmin(ctx, userID)` hardcodes the literal `"admin"` role name in the method body — callers cannot pass a role string. This prevents drift to bespoke role names; add a new dedicated method (e.g. `IsModerator`) when a second role is needed rather than parameterising `IsAdmin`. The same `"admin"` literal is exposed to the role-CRUD usecase as `domain.AdminRoleName` (see `internal/domain/role.go`) so the system-role rename / delete guards stay in lockstep with the auth-side check; both move together when a second privileged role is introduced.
 
 The DB side of the same check is `public.is_admin(uid uuid) RETURNS boolean`, defined in migration `20260502000000_add_rbac_helpers`. See `docs/backend-db.md` § "SECURITY DEFINER helper recipe" for the function shape RLS policies and future RBAC helpers must replicate.
 
@@ -209,7 +209,7 @@ The DB side of the same check is `public.is_admin(uid uuid) RETURNS boolean`, de
 
 ### System-role guard reads the persisted name, not the input
 
-`AdminRoleUsecase.Update` rejects renaming the system `"admin"` role. The check is `existing.Name == adminRoleName` against the row just loaded by `FindByID`, not against the post-normalisation new name. The reasoning is asymmetric:
+`AdminRoleUsecase.Update` rejects renaming the system `"admin"` role. The check is `existing.IsSystem()` against the row just loaded by `FindByID`, not against the post-normalisation new name. The reasoning is asymmetric:
 
 - "Renaming admin away" is what the guard must block — the persisted name is what tells you whether this row is admin.
 - "Renaming something else *to* admin" is also blocked, but by the unique-name guard at the repository layer (`ErrRoleDuplicate` on `name`) — admin always exists, so the new-name collision is automatic.
@@ -223,7 +223,7 @@ Reading the input name instead would force the guard to also know that admin exi
 ### Validation rules in `usecase.UpdateUser`
 
 - `displayName` is `strings.TrimSpace`-ed, then validated as 1–50 grapheme clusters via `rivo/uniseg`.
-- `bio` accepts up to 500 grapheme clusters (no trim; whitespace is preserved).
+- `bio` accepts up to 500 grapheme clusters (trimmed; whitespace-only collapses to explicit clear).
 - Out-of-bounds returns `gqlerr.BadUserInput("displayName", ...)` (extensions.code = "BAD_USER_INPUT", field = "displayName"). See [Validation (grapheme clusters)](#validation-grapheme-clusters) for the WHY.
 
 ### Card bulk delete + FSRS override
@@ -406,9 +406,9 @@ Usage in the usecase layer:
 if user == nil {
     return nil, gqlerr.Unauthenticated()
 }
-if n > displayNameMax {
+if n > domain.DisplayNameMax {
     return nil, gqlerr.BadUserInput("displayName",
-        fmt.Sprintf("displayName must be at most %d characters", displayNameMax))
+        fmt.Sprintf("displayName must be at most %d characters", domain.DisplayNameMax))
 }
 if err := repo.Update(ctx, id, patch); err != nil {
     return nil, gqlerr.Internal(ctx, err)

@@ -700,7 +700,7 @@ func TestAdminUser_Update_Validation_DisplayNameOverMax(t *testing.T) {
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
-	overMax := strings.Repeat("a", displayNameMax+1)
+	overMax := strings.Repeat("a", 51)
 	outcome, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
 		DisplayName: ptr(overMax),
 	})
@@ -1079,7 +1079,7 @@ func TestAdminUser_Update_Validation_BioOverMax(t *testing.T) {
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _ := buildAdminUC(users, nil, authChk)
 
-	overMax := strings.Repeat("b", bioMax+1)
+	overMax := strings.Repeat("b", 501)
 	outcome, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
 		Bio: ptr(overMax),
 	})

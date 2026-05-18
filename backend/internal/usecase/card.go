@@ -225,24 +225,28 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 		return CreateCardOutcome{}, err
 	}
 
-	front := strings.TrimSpace(in.Front)
-	back := strings.TrimSpace(in.Back)
+	frontVO, err := domain.ParseCardText(in.Front, domain.ErrCardFrontRequired, domain.ErrCardFrontTooLong)
+	if err != nil {
+		return CreateCardOutcome{}, translateCardErr(err)
+	}
+	backVO, err := domain.ParseCardText(in.Back, domain.ErrCardBackRequired, domain.ErrCardBackTooLong)
+	if err != nil {
+		return CreateCardOutcome{}, translateCardErr(err)
+	}
 	now := time.Now().UTC()
 	id, err := uuidV7()
 	if err != nil {
 		return CreateCardOutcome{}, eris.Wrap(err, "usecase: create card: generate id")
 	}
 
+	front := frontVO.String()
 	card := &domain.Card{
 		ID:          id,
 		CardgroupID: in.CardgroupID,
 		Front:       front,
-		Back:        back,
+		Back:        backVO.String(),
 		CreatedAt:   now,
 		UpdatedAt:   now,
-	}
-	if err := card.Validate(); err != nil {
-		return CreateCardOutcome{}, translateCardErr(err)
 	}
 	if err := u.cardRepo.Create(ctx, card); err != nil {
 		if errors.Is(err, repository.ErrCardDuplicateFront) {
@@ -297,23 +301,29 @@ func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 	}
 
 	patch := repository.CardUpdate{}
-	candidate := *existing
 	if in.Front != nil {
-		front := strings.TrimSpace(*in.Front)
-		patch.Front = &front
-		candidate.Front = front
+		front, err := domain.ParseCardText(*in.Front, domain.ErrCardFrontRequired, domain.ErrCardFrontTooLong)
+		if err != nil {
+			info, perr := liftValidationErr(translateCardErr(err))
+			if perr != nil {
+				return UpdateCardOutcome{}, perr
+			}
+			return UpdateCardOutcome{Validation: info}, nil
+		}
+		s := front.String()
+		patch.Front = &s
 	}
 	if in.Back != nil {
-		back := strings.TrimSpace(*in.Back)
-		patch.Back = &back
-		candidate.Back = back
-	}
-	info, err := liftValidationErr(translateCardErr(candidate.Validate()))
-	if err != nil {
-		return UpdateCardOutcome{}, err
-	}
-	if info != nil {
-		return UpdateCardOutcome{Validation: info}, nil
+		back, err := domain.ParseCardText(*in.Back, domain.ErrCardBackRequired, domain.ErrCardBackTooLong)
+		if err != nil {
+			info, perr := liftValidationErr(translateCardErr(err))
+			if perr != nil {
+				return UpdateCardOutcome{}, perr
+			}
+			return UpdateCardOutcome{Validation: info}, nil
+		}
+		s := back.String()
+		patch.Back = &s
 	}
 
 	updated, err := u.cardRepo.Update(ctx, id, patch)

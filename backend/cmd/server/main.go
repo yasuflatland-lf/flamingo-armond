@@ -29,6 +29,7 @@ import (
 	"backend/graph/resolver"
 	"backend/internal/auth"
 	"backend/internal/database"
+	"backend/internal/domain"
 	"backend/internal/domain/service"
 	"backend/internal/gqlerr"
 	"backend/internal/handler/notionsync"
@@ -190,7 +191,7 @@ func bootstrapSuperUserPromoter(
 ) (*auth.SuperUserPromoter, error) {
 	superUserEmails := auth.ParseSuperUserSet(emailsEnv)
 	if len(superUserEmails) > 0 {
-		adminRole, err := roleRepo.FindByName(ctx, "admin")
+		adminRole, err := roleRepo.FindByName(ctx, domain.AdminRoleName)
 		if err != nil {
 			return nil, eris.Wrap(err, "run: lookup admin role for super-user bootstrap")
 		}

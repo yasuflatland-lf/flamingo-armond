@@ -14,14 +14,14 @@ import (
 func TestCardShape(t *testing.T) {
 	t.Parallel()
 
-	cardType := reflect.TypeOf(Card{})
+	cardType := reflect.TypeFor[Card]()
 	want := map[string]reflect.Type{
-		"ID":          reflect.TypeOf(""),
-		"CardgroupID": reflect.TypeOf(""),
-		"Front":       reflect.TypeOf(""),
-		"Back":        reflect.TypeOf(""),
-		"CreatedAt":   reflect.TypeOf(time.Time{}),
-		"UpdatedAt":   reflect.TypeOf(time.Time{}),
+		"ID":          reflect.TypeFor[string](),
+		"CardgroupID": reflect.TypeFor[string](),
+		"Front":       reflect.TypeFor[string](),
+		"Back":        reflect.TypeFor[string](),
+		"CreatedAt":   reflect.TypeFor[time.Time](),
+		"UpdatedAt":   reflect.TypeFor[time.Time](),
 	}
 	for name, typ := range want {
 		field, ok := cardType.FieldByName(name)
@@ -53,6 +53,11 @@ func TestCardValidate(t *testing.T) {
 			sentinelErr: ErrCardFrontRequired,
 		},
 		{
+			name:        "front whitespace only treated as required",
+			card:        Card{CardgroupID: "cg", Front: "   ", Back: "back"},
+			sentinelErr: ErrCardFrontRequired,
+		},
+		{
 			name:        "back required",
 			card:        Card{CardgroupID: "cg", Front: "front", Back: "  "},
 			sentinelErr: ErrCardBackRequired,
@@ -74,7 +79,6 @@ func TestCardValidate(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -122,7 +126,6 @@ func TestRatingFromSwipeMode(t *testing.T) {
 		{mode: 5, wantErr: true},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(fmt.Sprintf("mode_%d", tc.mode), func(t *testing.T) {
 			t.Parallel()
 			got, err := RatingFromSwipeMode(tc.mode)

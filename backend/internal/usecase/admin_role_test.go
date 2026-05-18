@@ -341,7 +341,7 @@ func TestAdminRole_Create_Validation_TooLong(t *testing.T) {
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _ := buildAdminRoleUC(roles, authChk)
 
-	overMax := strings.Repeat("a", roleNameMax+1)
+	overMax := strings.Repeat("a", 51)
 	outcome, err := uc.Create(authedCtx("admin-1"), overMax)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -668,6 +668,43 @@ func TestAdminRole_Update_EmptyName(t *testing.T) {
 	}
 }
 
+// TestAdminRole_Update_Validation_TooLong rejects a 51-character name before
+// FindByID is reached. The error surfaces via the error channel as a
+// *ucerr.ValidationError with Field: "name".
+func TestAdminRole_Update_Validation_TooLong(t *testing.T) {
+	t.Parallel()
+
+	roles := &mockAdminRoleRepoForCRUD{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _ := buildAdminRoleUC(roles, authChk)
+
+	overMax := strings.Repeat("a", 51)
+	_, err := uc.Update(authedCtx("admin-1"), "r-1", overMax)
+	assertValidationError(t, err, "name", "")
+	if roles.findCalls != 0 || roles.updateCalls != 0 {
+		t.Fatalf("expected 0 repo calls on validation failure, got find=%d update=%d",
+			roles.findCalls, roles.updateCalls)
+	}
+}
+
+// TestAdminRole_Update_Validation_InvalidChars rejects names whose
+// post-normalisation form contains characters outside [a-z0-9_-]. The error
+// surfaces via the error channel as a *ucerr.ValidationError with Field: "name".
+func TestAdminRole_Update_Validation_InvalidChars(t *testing.T) {
+	t.Parallel()
+
+	roles := &mockAdminRoleRepoForCRUD{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _ := buildAdminRoleUC(roles, authChk)
+
+	_, err := uc.Update(authedCtx("admin-1"), "r-1", "INVALID!")
+	assertValidationError(t, err, "name", "")
+	if roles.findCalls != 0 || roles.updateCalls != 0 {
+		t.Fatalf("expected 0 repo calls on validation failure, got find=%d update=%d",
+			roles.findCalls, roles.updateCalls)
+	}
+}
+
 // TestAdminRole_Update_TOCTOUNotFound covers the race where FindByID succeeds
 // (role existed at lookup time) but the subsequent Update returns
 // ErrRoleNotFound because another admin deleted the row in between. This must
@@ -815,7 +852,7 @@ func TestAdminRole_Delete_RepoInternalError(t *testing.T) {
 // TestAdminRole_Update_RepoInternalError surfaces a generic repository error
 // from the roles.Update call (anything other than the classified sentinels) as
 // INTERNAL with the eris chain attached. The pattern mirrors
-// TestAdminRole_Delete_RepoInternalError: requireAdmin OK, validateRoleName OK,
+// TestAdminRole_Delete_RepoInternalError: requireAdmin OK, domain.ParseRoleName OK,
 // FindByID returns a non-system role, roles.Update returns a non-sentinel error.
 func TestAdminRole_Update_RepoInternalError(t *testing.T) {
 	t.Parallel()

@@ -139,6 +139,6 @@ This bounds the promotion's diff to the mutation being promoted plus a single
 one-line wrap at each non-routing caller — well inside the 800-line ceiling in
 [`.claude/rules/pr-sizing.md`](../../../.claude/rules/pr-sizing.md). Reference:
 `backend/internal/usecase/admin_role.go` (`mapAdminRoleError`, `lowerValidationInfo`,
-`normalizeAndValidateRoleName`) and `backend/internal/usecase/admin_user.go`
+`translateRoleNameErr`) and `backend/internal/usecase/admin_user.go`
 (`mapRoleAssignmentError`, `liftValidationErr`) — both pairs were introduced
 for the four-mutation outcome promotion in [#171].

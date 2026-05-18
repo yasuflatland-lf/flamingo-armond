@@ -5,23 +5,14 @@ package usecase
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
-	"strings"
 
-	"github.com/rivo/uniseg"
 	"github.com/rotisserie/eris"
 
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
-)
-
-const (
-	displayNameMin = 1
-	displayNameMax = 50
-	bioMax         = 500
 )
 
 // UserRepository is the consumer-driven interface used by UserUsecase.
@@ -63,7 +54,7 @@ func (u *UserUsecase) Me(ctx context.Context) (*domain.User, error) {
 
 type UpdateUserInput struct {
 	DisplayName string
-	Bio         *string // nil = unchanged, "" = explicit clear
+	Bio         *string // nil = unchanged, "" or whitespace-only = explicit clear (trimmed); surrounding whitespace is stripped
 }
 
 // UpdateProfileOutcome is the result of UserUsecase.UpdateUser. Exactly one
@@ -87,51 +78,33 @@ func (u *UserUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (Updat
 		return UpdateProfileOutcome{}, ucerr.ErrUnauthenticated
 	}
 
-	name := strings.TrimSpace(in.DisplayName)
-	info, err := liftValidationErr(validateDisplayName(name))
+	dn, err := domain.ParseDisplayName(in.DisplayName)
 	if err != nil {
-		return UpdateProfileOutcome{}, err
-	}
-	if info != nil {
+		info, perr := liftValidationErr(translateDisplayNameErr(err))
+		if perr != nil {
+			return UpdateProfileOutcome{}, perr
+		}
 		return UpdateProfileOutcome{Validation: info}, nil
 	}
 
-	info, err = liftValidationErr(validateBio(in.Bio))
-	if err != nil {
-		return UpdateProfileOutcome{}, err
-	}
-	if info != nil {
-		return UpdateProfileOutcome{Validation: info}, nil
-	}
-
-	appUser, err := u.repo.Update(ctx, user.Sub, repository.UserUpdate{
+	name := string(dn)
+	patch := repository.UserUpdate{
 		DisplayName: &name,
-		Bio:         in.Bio,
-	})
+	}
+	if in.Bio != nil {
+		bio, err := domain.ParseBio(in.Bio)
+		if err != nil {
+			info, perr := liftValidationErr(translateBioErr(err))
+			if perr != nil {
+				return UpdateProfileOutcome{}, perr
+			}
+			return UpdateProfileOutcome{Validation: info}, nil
+		}
+		patch.Bio = bio.Value()
+	}
+	appUser, err := u.repo.Update(ctx, user.Sub, patch)
 	if err != nil {
 		return UpdateProfileOutcome{}, eris.Wrap(err, "usecase: UpdateUser: update user")
 	}
 	return UpdateProfileOutcome{User: appUser}, nil
-}
-
-func validateDisplayName(v string) error {
-	n := uniseg.GraphemeClusterCount(v)
-	if n < displayNameMin {
-		return ucerr.NewValidationError("displayName", "displayName is required")
-	}
-	if n > displayNameMax {
-		return ucerr.NewValidationError("displayName", fmt.Sprintf("displayName must be at most %d characters", displayNameMax))
-	}
-	return nil
-}
-
-func validateBio(v *string) error {
-	if v == nil {
-		return nil
-	}
-	n := uniseg.GraphemeClusterCount(*v)
-	if n > bioMax {
-		return ucerr.NewValidationError("bio", fmt.Sprintf("bio must be at most %d characters", bioMax))
-	}
-	return nil
 }

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/rotisserie/eris"
 
@@ -14,33 +13,6 @@ import (
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
 )
-
-// adminRoleName is the name of the role that grants admin privileges. It is
-// hardcoded here for the self-demotion guard in RevokeRole. Keeping the
-// literal in one place avoids drift from the same constant baked into
-// auth.Service.IsAdmin.
-const adminRoleName = "admin"
-
-// generalRoleName is the name of the default end-user role seeded alongside
-// "admin". Treated as a system role by AdminRole.Update / AdminRole.Delete:
-// renaming or deleting it is blocked because deployments may rely on the
-// literal name being present.
-const generalRoleName = "general"
-
-// systemRoleNames enumerates the role names that are protected from rename
-// and delete by the AdminRole usecase. The set is closed at compile time so
-// any future system role must be added here explicitly.
-var systemRoleNames = map[string]struct{}{
-	adminRoleName:   {},
-	generalRoleName: {},
-}
-
-// isSystemRole reports whether a role name is in the protected set. Used by
-// AdminRole.Update and AdminRole.Delete to gate the system-role guard.
-func isSystemRole(name string) bool {
-	_, ok := systemRoleNames[name]
-	return ok
-}
 
 // adminUserMaxPageSize is the user-facing cap on AdminUser.List page size.
 // Mirrors the repository-level maxUserPageSize (100). The asymmetry between
@@ -323,25 +295,27 @@ func (u *adminUserUsecase) Update(ctx context.Context, id string, input AdminUpd
 
 	patch := repository.UserUpdate{}
 	if input.DisplayName != nil {
-		trimmed := strings.TrimSpace(*input.DisplayName)
-		info, err := liftValidationErr(validateDisplayName(trimmed))
+		dn, err := domain.ParseDisplayName(*input.DisplayName)
 		if err != nil {
-			return AdminUpdateUserOutcome{}, err
-		}
-		if info != nil {
+			info, perr := liftValidationErr(translateDisplayNameErr(err))
+			if perr != nil {
+				return AdminUpdateUserOutcome{}, perr
+			}
 			return AdminUpdateUserOutcome{Validation: info}, nil
 		}
-		patch.DisplayName = &trimmed
+		s := string(dn)
+		patch.DisplayName = &s
 	}
 	if input.Bio != nil {
-		info, err := liftValidationErr(validateBio(input.Bio))
+		bio, err := domain.ParseBio(input.Bio)
 		if err != nil {
-			return AdminUpdateUserOutcome{}, err
-		}
-		if info != nil {
+			info, perr := liftValidationErr(translateBioErr(err))
+			if perr != nil {
+				return AdminUpdateUserOutcome{}, perr
+			}
 			return AdminUpdateUserOutcome{Validation: info}, nil
 		}
-		patch.Bio = input.Bio
+		patch.Bio = bio.Value()
 	}
 
 	user, err := u.users.Update(ctx, id, patch)
@@ -409,7 +383,7 @@ func (u *adminUserUsecase) RevokeRole(ctx context.Context, userID, roleID string
 			}
 			return RevokeRoleOutcome{}, eris.Wrap(err, "usecase: admin user revoke role: lookup role")
 		}
-		if role, ok := roles[roleID]; ok && role.Name == adminRoleName {
+		if role, ok := roles[roleID]; ok && role.Name == domain.AdminRoleName {
 			return RevokeRoleOutcome{CannotRevokeOwnAdmin: true}, nil
 		}
 	}
@@ -464,6 +438,35 @@ func liftValidationErr(err error) (*InputValidationInfo, error) {
 		return NewInputValidationInfo(ve.Field, ve.Message), nil
 	}
 	return nil, err
+}
+
+// translateDisplayNameErr maps domain DisplayName sentinels into usecase-layer
+// typed errors. Unexpected errors are wrapped with eris. Returns nil when err
+// is nil.
+func translateDisplayNameErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, domain.ErrDisplayNameRequired):
+		return ucerr.NewValidationError("displayName", "displayName is required")
+	case errors.Is(err, domain.ErrDisplayNameTooLong):
+		return ucerr.NewValidationError("displayName", fmt.Sprintf("displayName must be at most %d characters", domain.DisplayNameMax))
+	default:
+		return eris.Wrap(err, "usecase: translate display name error")
+	}
+}
+
+// translateBioErr maps domain Bio sentinels into usecase-layer typed errors.
+// Unexpected errors are wrapped with eris. Returns nil when err is nil.
+func translateBioErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, domain.ErrBioTooLong) {
+		return ucerr.NewValidationError("bio", fmt.Sprintf("bio must be at most %d characters", domain.BioMax))
+	}
+	return eris.Wrap(err, "usecase: translate bio error")
 }
 
 // refetchUser loads the user after a mutation so callers see a fresh row

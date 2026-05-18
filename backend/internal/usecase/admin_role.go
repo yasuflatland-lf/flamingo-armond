@@ -5,10 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"regexp"
-	"strings"
 
-	"github.com/rivo/uniseg"
 	"github.com/rotisserie/eris"
 
 	"backend/internal/auth"
@@ -16,20 +13,6 @@ import (
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
 )
-
-// roleNameMin / roleNameMax bound the post-normalisation grapheme-cluster
-// length of a role name. The lower bound rejects whitespace-only input that
-// collapses to "" after TrimSpace; the upper bound matches the column constraint.
-const (
-	roleNameMin = 1
-	roleNameMax = 50
-)
-
-// roleNamePattern restricts the post-normalisation role name to lowercase
-// ASCII letters, digits, underscore, and hyphen. The set is deliberately narrow
-// so role names round-trip cleanly through URLs, log lines, and the frontend
-// without escaping.
-var roleNamePattern = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
 // AdminRoleUsecase is the admin-only role CRUD surface. Kept separate from
 // AdminUserUsecase: the two share an auth gate but no business state.
@@ -87,24 +70,6 @@ func NewAdminRoleWithDeps(roles adminRoleRepoForCRUD, authSvc AdminChecker, logg
 	return &adminRoleUsecase{roles: roles, auth: authSvc, logger: logger}
 }
 
-// validateRoleName trims, lowercases, and validates a user-supplied role name.
-// Returns the canonical form on success so the caller passes a consistent value
-// to the repository (defence-in-depth — the repository also normalises).
-func validateRoleName(name string) (string, error) {
-	normalized := strings.ToLower(strings.TrimSpace(name))
-	n := uniseg.GraphemeClusterCount(normalized)
-	if n < roleNameMin {
-		return "", ucerr.NewValidationError("name", "name is required")
-	}
-	if n > roleNameMax {
-		return "", ucerr.NewValidationError("name", fmt.Sprintf("name must be at most %d characters", roleNameMax))
-	}
-	if !roleNamePattern.MatchString(normalized) {
-		return "", ucerr.NewValidationError("name", "name must contain only lowercase letters, digits, '_' or '-'")
-	}
-	return normalized, nil
-}
-
 // List returns every role in the system. Admin-only.
 func (u *adminRoleUsecase) List(ctx context.Context) ([]*domain.Role, error) {
 	if _, err := requireAdmin(ctx, u.auth); err != nil {
@@ -151,13 +116,15 @@ func (u *adminRoleUsecase) Create(ctx context.Context, name string) (CreateRoleO
 	if _, err := requireAdmin(ctx, u.auth); err != nil {
 		return CreateRoleOutcome{}, wrapAdminGateError(err, "usecase: admin role: check admin")
 	}
-	normalized, info, err := normalizeAndValidateRoleName(name)
+	parsed, err := domain.ParseRoleName(name)
 	if err != nil {
-		return CreateRoleOutcome{}, err
-	}
-	if info != nil {
+		info, perr := liftValidationErr(translateRoleNameErr(err))
+		if perr != nil {
+			return CreateRoleOutcome{}, perr
+		}
 		return CreateRoleOutcome{Validation: info}, nil
 	}
+	normalized := string(parsed)
 	role, err := u.roles.Create(ctx, normalized)
 	if err != nil {
 		info, perr := mapAdminRoleError(err, "name", "usecase: admin role create")
@@ -167,24 +134,6 @@ func (u *adminRoleUsecase) Create(ctx context.Context, name string) (CreateRoleO
 		return CreateRoleOutcome{Validation: info}, nil
 	}
 	return CreateRoleOutcome{Role: role}, nil
-}
-
-// normalizeAndValidateRoleName wraps validateRoleName for outcome-bearing
-// callers: it returns the canonical name on success, or an
-// InputValidationInfo (with empty canonical name) on a validation failure.
-// Non-validation errors are not expected from validateRoleName today; if
-// one ever appears, it propagates via the error return so the caller can
-// surface it as INTERNAL.
-func normalizeAndValidateRoleName(name string) (string, *InputValidationInfo, error) {
-	normalized, err := validateRoleName(name)
-	if err != nil {
-		info, perr := liftValidationErr(err)
-		if perr != nil {
-			return "", nil, perr
-		}
-		return "", info, nil
-	}
-	return normalized, nil, nil
 }
 
 // UpdateRoleOutcome is the result of admin_role.Update. Exactly one of Role
@@ -234,16 +183,17 @@ func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (UpdateR
 	if _, err := requireAdmin(ctx, u.auth); err != nil {
 		return UpdateRoleOutcome{}, wrapAdminGateError(err, "usecase: admin role: check admin")
 	}
-	normalized, err := validateRoleName(name)
+	parsed, err := domain.ParseRoleName(name)
 	if err != nil {
-		return UpdateRoleOutcome{}, err
+		return UpdateRoleOutcome{}, translateRoleNameErr(err)
 	}
+	normalized := string(parsed)
 
 	existing, err := u.roles.FindByID(ctx, id)
 	if err != nil {
 		return UpdateRoleOutcome{}, lowerValidationInfo(mapAdminRoleError(err, "id", "usecase: admin role update: find"))
 	}
-	if isSystemRole(existing.Name) {
+	if existing.IsSystem() {
 		return UpdateRoleOutcome{SystemRoleConflict: &SystemRoleConflictInfo{
 			ID:   existing.ID,
 			Name: existing.Name,
@@ -276,7 +226,7 @@ func (u *adminRoleUsecase) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return lowerValidationInfo(mapAdminRoleError(err, "id", "usecase: admin role delete: find"))
 	}
-	if isSystemRole(existing.Name) {
+	if existing.IsSystem() {
 		return ucerr.NewForbiddenError(fmt.Sprintf("cannot delete system role %q", existing.Name))
 	}
 
@@ -284,6 +234,24 @@ func (u *adminRoleUsecase) Delete(ctx context.Context, id string) error {
 		return lowerValidationInfo(mapAdminRoleError(err, "id", "usecase: admin role delete"))
 	}
 	return nil
+}
+
+// translateRoleNameErr maps domain RoleName sentinels into usecase-layer typed
+// errors. Unexpected errors are wrapped with eris. Returns nil when err is nil.
+func translateRoleNameErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, domain.ErrRoleNameRequired):
+		return ucerr.NewValidationError("name", "name is required")
+	case errors.Is(err, domain.ErrRoleNameTooLong):
+		return ucerr.NewValidationError("name", fmt.Sprintf("name must be at most %d characters", domain.RoleNameMax))
+	case errors.Is(err, domain.ErrRoleNameInvalid):
+		return ucerr.NewValidationError("name", "name must contain only lowercase letters, digits, '_' or '-'")
+	default:
+		return eris.Wrap(err, "usecase: translate role name error")
+	}
 }
 
 // mapAdminRoleError classifies the role-repository sentinel set into either

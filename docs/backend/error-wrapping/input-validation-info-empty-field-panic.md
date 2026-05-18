@@ -68,5 +68,5 @@ production code.
   tests legitimately construct invalid shapes to verify classifier coverage.
 - Reference: `backend/internal/usecase/admin_user.go` (`NewInputValidationInfo`,
   `liftValidationErr`, `mapRoleAssignmentError`) and `backend/internal/usecase/admin_role.go`
-  (`mapAdminRoleError`, `normalizeAndValidateRoleName`) — all production
+  (`mapAdminRoleError`, `translateRoleNameErr`) — all production
   construction sites flow through the constructor.
