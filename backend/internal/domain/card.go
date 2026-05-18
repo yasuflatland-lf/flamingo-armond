@@ -22,8 +22,8 @@ var (
 type Card struct {
 	ID          string
 	CardgroupID string
-	Front       string
-	Back        string
+	Front       CardText
+	Back        CardText
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
@@ -32,10 +32,10 @@ func (c *Card) Validate() error {
 	if strings.TrimSpace(c.CardgroupID) == "" {
 		return ErrCardCardgroupIDRequired
 	}
-	if _, err := ParseCardText(c.Front, ErrCardFrontRequired, ErrCardFrontTooLong); err != nil {
+	if _, err := ParseCardText(string(c.Front), ErrCardFrontRequired, ErrCardFrontTooLong); err != nil {
 		return err
 	}
-	if _, err := ParseCardText(c.Back, ErrCardBackRequired, ErrCardBackTooLong); err != nil {
+	if _, err := ParseCardText(string(c.Back), ErrCardBackRequired, ErrCardBackTooLong); err != nil {
 		return err
 	}
 	return nil

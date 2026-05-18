@@ -316,8 +316,8 @@ func cardsFromParsedRows(cardgroupID string, rows []ParsedRow) []*domain.Card {
 	for _, row := range rows {
 		cards = append(cards, &domain.Card{
 			CardgroupID: cardgroupID,
-			Front:       row.Front,
-			Back:        row.Back,
+			Front:       domain.CardText(row.Front),
+			Back:        domain.CardText(row.Back),
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		})

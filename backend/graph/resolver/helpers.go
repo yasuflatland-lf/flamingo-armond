@@ -54,8 +54,8 @@ func toCardModel(card *domain.Card) *model.Card {
 	}
 	return &model.Card{
 		ID:          card.ID,
-		Front:       card.Front,
-		Back:        card.Back,
+		Front:       string(card.Front),
+		Back:        string(card.Back),
 		CardgroupID: card.CardgroupID,
 		CreatedAt:   card.CreatedAt,
 		UpdatedAt:   card.UpdatedAt,

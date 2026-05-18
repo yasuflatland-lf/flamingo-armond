@@ -20,8 +20,8 @@ func newCard(cardgroupID, front, back string) *domain.Card {
 	return &domain.Card{
 		ID:          uuid.NewString(),
 		CardgroupID: cardgroupID,
-		Front:       front,
-		Back:        back,
+		Front:       domain.CardText(front),
+		Back:        domain.CardText(back),
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -49,15 +49,15 @@ func TestCardRepository_CRUD(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, card.ID, got.ID)
 	require.Equal(t, cg.ID, got.CardgroupID)
-	require.Equal(t, "front", got.Front)
-	require.Equal(t, "back", got.Back)
+	require.Equal(t, domain.CardText("front"), got.Front)
+	require.Equal(t, domain.CardText("back"), got.Back)
 
 	time.Sleep(5 * time.Millisecond)
 	front := "updated front"
 	updated, err := repo.Update(ctx, card.ID, repository.CardUpdate{Front: &front})
 	require.NoError(t, err)
-	require.Equal(t, front, updated.Front)
-	require.Equal(t, "back", updated.Back)
+	require.Equal(t, domain.CardText(front), updated.Front)
+	require.Equal(t, domain.CardText("back"), updated.Back)
 	require.True(t, updated.UpdatedAt.After(got.UpdatedAt))
 
 	require.NoError(t, repo.Delete(ctx, card.ID))
@@ -312,7 +312,7 @@ func TestCardRepo_FindByCardgroupAndFront(t *testing.T) {
 		t.Errorf("FindByCardgroupAndFront (hit): ID = %q, want %q", got.ID, card.ID)
 	}
 	if got.Back != "find-back" {
-		t.Errorf("FindByCardgroupAndFront (hit): Back = %q, want %q", got.Back, "find-back")
+		t.Errorf("FindByCardgroupAndFront (hit): Back = %q, want %q", string(got.Back), "find-back")
 	}
 
 	// Miss: unknown front value must return ErrNotFound.

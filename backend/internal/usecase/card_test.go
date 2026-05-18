@@ -256,7 +256,7 @@ func TestCardUsecase_Create(t *testing.T) {
 			if cardRepo.capturedCreate == nil {
 				t.Fatal("expected repo.Create call")
 			}
-			if got.Card.Front != "front" || got.Card.Back != "back" {
+			if got.Card.Front != domain.CardText("front") || got.Card.Back != domain.CardText("back") {
 				t.Fatalf("expected trimmed text, got front=%q back=%q", got.Card.Front, got.Card.Back)
 			}
 		})
@@ -299,8 +299,8 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 	existing := &domain.Card{
 		ID:          "card1",
 		CardgroupID: "cg1",
-		Front:       "old front",
-		Back:        "old back",
+		Front:       domain.CardText("old front"),
+		Back:        domain.CardText("old back"),
 	}
 
 	t.Run("non owner", func(t *testing.T) {
@@ -318,7 +318,7 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 		newFront := "new front"
 		cardRepo := &mockCardRepository{
 			findResult:   existing,
-			updateResult: &domain.Card{ID: "card1", CardgroupID: "cg1", Front: newFront, Back: "old back"},
+			updateResult: &domain.Card{ID: "card1", CardgroupID: "cg1", Front: domain.CardText(newFront), Back: "old back"},
 		}
 		uc := NewCardUsecase(nil, cardRepo,
 			&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
@@ -331,7 +331,7 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 		if outcome.Card == nil {
 			t.Fatal("expected non-nil Card on success")
 		}
-		if outcome.Card.Front != newFront {
+		if outcome.Card.Front != domain.CardText(newFront) {
 			t.Fatalf("front = %q, want %q", outcome.Card.Front, newFront)
 		}
 		if outcome.Validation != nil {
@@ -352,8 +352,8 @@ func TestCardUsecase_Update_EmptyFront_ValidationVariant(t *testing.T) {
 	existing := &domain.Card{
 		ID:          "card1",
 		CardgroupID: "cg1",
-		Front:       "old front",
-		Back:        "old back",
+		Front:       domain.CardText("old front"),
+		Back:        domain.CardText("old back"),
 	}
 	cardRepo := &mockCardRepository{findResult: existing}
 	uc := NewCardUsecase(nil, cardRepo,
@@ -386,8 +386,8 @@ func TestCardUsecase_Update_FrontTooLong(t *testing.T) {
 	existing := &domain.Card{
 		ID:          "card1",
 		CardgroupID: "cg1",
-		Front:       "old front",
-		Back:        "old back",
+		Front:       domain.CardText("old front"),
+		Back:        domain.CardText("old back"),
 	}
 	cardRepo := &mockCardRepository{findResult: existing}
 	uc := NewCardUsecase(nil, cardRepo,
@@ -415,8 +415,8 @@ func TestCardUsecase_Update_BackTooLong(t *testing.T) {
 	existing := &domain.Card{
 		ID:          "card1",
 		CardgroupID: "cg1",
-		Front:       "old front",
-		Back:        "old back",
+		Front:       domain.CardText("old front"),
+		Back:        domain.CardText("old back"),
 	}
 	cardRepo := &mockCardRepository{findResult: existing}
 	uc := NewCardUsecase(nil, cardRepo,
@@ -444,8 +444,8 @@ func TestCardUsecase_Update_RepoError_InfraChannel(t *testing.T) {
 	existing := &domain.Card{
 		ID:          "card1",
 		CardgroupID: "cg1",
-		Front:       "old front",
-		Back:        "old back",
+		Front:       domain.CardText("old front"),
+		Back:        domain.CardText("old back"),
 	}
 	cardRepo := &mockCardRepository{
 		findResult: existing,
@@ -854,7 +854,7 @@ func decodeJSONRecords(t *testing.T, data []byte) []map[string]any {
 func TestCardUsecase_Create_Duplicate(t *testing.T) {
 	t.Parallel()
 
-	fixture := &domain.Card{ID: "fixture-id", CardgroupID: "cg1", Front: "hello", Back: "fixture-back"}
+	fixture := &domain.Card{ID: "fixture-id", CardgroupID: "cg1", Front: domain.CardText("hello"), Back: domain.CardText("fixture-back")}
 	cardRepo := &mockCardRepository{
 		createErr:                     repository.ErrCardDuplicateFront,
 		findByCardgroupAndFrontResult: fixture,
@@ -997,7 +997,7 @@ func TestCardUsecase_Create_triggersNotionWriteback(t *testing.T) {
 func TestCardUsecase_Create_duplicateDoesNotTriggerWriteback(t *testing.T) {
 	t.Parallel()
 
-	fixture := &domain.Card{ID: "existing-id", CardgroupID: "cg1", Front: "front", Back: "existing-back"}
+	fixture := &domain.Card{ID: "existing-id", CardgroupID: "cg1", Front: domain.CardText("front"), Back: domain.CardText("existing-back")}
 	stub := &stubNotionWriter{called: make(chan struct{})}
 	cardRepo := &mockCardRepository{
 		createErr:                     repository.ErrCardDuplicateFront,

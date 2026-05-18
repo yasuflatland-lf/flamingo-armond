@@ -197,8 +197,8 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 	for _, w := range words {
 		c := &domain.Card{
 			CardgroupID: input.CardgroupID,
-			Front:       w.Front,
-			Back:        w.Back,
+			Front:       domain.CardText(w.Front),
+			Back:        domain.CardText(w.Back),
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		}

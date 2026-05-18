@@ -579,8 +579,8 @@ func cardToRow(card *domain.Card) *gormCard {
 	return &gormCard{
 		ID:          card.ID,
 		CardgroupID: card.CardgroupID,
-		Front:       card.Front,
-		Back:        card.Back,
+		Front:       string(card.Front),
+		Back:        string(card.Back),
 		CreatedAt:   card.CreatedAt,
 		UpdatedAt:   card.UpdatedAt,
 	}
@@ -590,8 +590,8 @@ func cardToDomain(row gormCard) *domain.Card {
 	return &domain.Card{
 		ID:          row.ID,
 		CardgroupID: row.CardgroupID,
-		Front:       row.Front,
-		Back:        row.Back,
+		Front:       domain.CardText(row.Front),
+		Back:        domain.CardText(row.Back),
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
 	}

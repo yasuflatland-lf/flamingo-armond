@@ -152,13 +152,13 @@ func TestCardRepository_UpsertManyTx(t *testing.T) {
 		storedA, err := repo.FindByCardgroup(ctx, cgA.ID)
 		require.NoError(t, err)
 		require.Len(t, storedA, 1)
-		require.Equal(t, "hello", storedA[0].Front)
-		require.Equal(t, "back-A", storedA[0].Back)
+		require.Equal(t, domain.CardText("hello"), storedA[0].Front)
+		require.Equal(t, domain.CardText("back-A"), storedA[0].Back)
 
 		storedB, err := repo.FindByCardgroup(ctx, cgB.ID)
 		require.NoError(t, err)
 		require.Len(t, storedB, 1)
-		require.Equal(t, "hello", storedB[0].Front)
-		require.Equal(t, "back-B", storedB[0].Back)
+		require.Equal(t, domain.CardText("hello"), storedB[0].Front)
+		require.Equal(t, domain.CardText("back-B"), storedB[0].Back)
 	})
 }
