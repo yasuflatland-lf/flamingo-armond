@@ -123,3 +123,42 @@ func TestCardsUpsertIndex_OnConflictUpdatesRow(t *testing.T) {
 		t.Fatalf("back = %q, want %q", gotBack, backSecond)
 	}
 }
+
+// TestCardsUpsertIndex_DistinctCardgroupsAllowSameFront verifies that the
+// unique index is scoped to (cardgroup_id, front), not just front alone.
+// A regression to UNIQUE (front) only would cause the second INSERT below to
+// conflict, proving that both columns are part of the constraint.
+func TestCardsUpsertIndex_DistinctCardgroupsAllowSameFront(t *testing.T) {
+	ctx := context.Background()
+	db := openMigratedDB(t)
+	defer db.Close()
+
+	sqlDB := sqlDBForTest(t, db)
+	groupA := setupUpsertFixture(t, ctx, sqlDB)
+	groupB := setupUpsertFixture(t, ctx, sqlDB)
+
+	const sharedFront = "cross-group-front"
+
+	if _, err := sqlDB.ExecContext(ctx,
+		`INSERT INTO public.cards (id, cardgroup_id, front, back) VALUES ($1, $2, $3, $4)`,
+		uuid.NewString(), groupA, sharedFront, "back-A",
+	); err != nil {
+		t.Fatalf("insert card into groupA: %v", err)
+	}
+	if _, err := sqlDB.ExecContext(ctx,
+		`INSERT INTO public.cards (id, cardgroup_id, front, back) VALUES ($1, $2, $3, $4)`,
+		uuid.NewString(), groupB, sharedFront, "back-B",
+	); err != nil {
+		t.Fatalf("insert card into groupB (same front, different cardgroup): %v", err)
+	}
+
+	var count int
+	if err := sqlDB.QueryRowContext(ctx,
+		`SELECT count(*) FROM public.cards WHERE front = $1`, sharedFront,
+	).Scan(&count); err != nil {
+		t.Fatalf("count cards by front: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 cards with front=%q (one per cardgroup), got %d", sharedFront, count)
+	}
+}
