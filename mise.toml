@@ -16,6 +16,7 @@
 [tools]
 rust = "latest"
 "cargo:mprocs" = "latest"
+supabase = "latest"
 
 [env]
 _.file = [".env"]
