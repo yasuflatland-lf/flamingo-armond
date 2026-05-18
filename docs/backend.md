@@ -4,7 +4,7 @@ Design and constraints for the Go / Echo v5 backend that are not obvious from th
 
 ## Module layout
 
-- Go version is pinned via mise (`backend/.tool-versions`, currently `golang 1.26.2`). CI resolves Go through `jdx/mise-action` with `working_directory: backend`.
+- Go version is pinned via mise (`backend/.tool-versions`, currently `golang 1.26.3`). CI resolves Go through `jdx/mise-action` with `working_directory: backend`.
 - Module name is the bare `backend` (see `backend/go.mod`). All internal imports start with `backend/...`.
 - All `go` commands **must run from `backend/`** (CI sets `defaults.run.working-directory: backend`; match that locally).
 
