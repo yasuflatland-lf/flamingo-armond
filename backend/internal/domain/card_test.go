@@ -53,6 +53,11 @@ func TestCardValidate(t *testing.T) {
 			sentinelErr: ErrCardFrontRequired,
 		},
 		{
+			name:        "front whitespace only treated as required",
+			card:        Card{CardgroupID: "cg", Front: "   ", Back: "back"},
+			sentinelErr: ErrCardFrontRequired,
+		},
+		{
 			name:        "back required",
 			card:        Card{CardgroupID: "cg", Front: "front", Back: "  "},
 			sentinelErr: ErrCardBackRequired,
