@@ -208,7 +208,7 @@ func toRoleModel(r *domain.Role) *model.Role {
 	if r == nil {
 		return nil
 	}
-	return &model.Role{ID: r.ID, Name: r.Name}
+	return &model.Role{ID: r.ID, Name: string(r.Name)}
 }
 
 func toRoleModels(ctx context.Context, roles []*domain.Role) []*model.Role {

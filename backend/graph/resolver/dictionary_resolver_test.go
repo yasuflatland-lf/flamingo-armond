@@ -12,6 +12,7 @@ import (
 	"backend/graph/generated"
 	"backend/graph/resolver"
 	"backend/internal/auth"
+	"backend/internal/domain"
 	"backend/internal/gqlerr"
 	"backend/internal/repository"
 	"backend/internal/usecase"
@@ -24,7 +25,7 @@ type mockUserRoleRepository struct {
 	err     error
 }
 
-func (m *mockUserRoleRepository) HasRole(_ context.Context, _, _ string) (bool, error) {
+func (m *mockUserRoleRepository) HasRole(_ context.Context, _ string, _ domain.RoleName) (bool, error) {
 	return m.isAdmin, m.err
 }
 

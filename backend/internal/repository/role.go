@@ -50,7 +50,7 @@ type RoleRepository interface {
 	// (which also satisfies ErrNotFound) when no matching row exists.
 	FindByID(ctx context.Context, id string) (*domain.Role, error)
 
-	FindByName(ctx context.Context, name string) (*domain.Role, error)
+	FindByName(ctx context.Context, name domain.RoleName) (*domain.Role, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Role, error)
 
 	// Create inserts a new role with the given name. The name is normalised
@@ -121,7 +121,7 @@ func (r *roleRepo) FindByID(ctx context.Context, id string) (*domain.Role, error
 	return roleToDomain(row), nil
 }
 
-func (r *roleRepo) FindByName(ctx context.Context, name string) (*domain.Role, error) {
+func (r *roleRepo) FindByName(ctx context.Context, name domain.RoleName) (*domain.Role, error) {
 	var row gormRole
 	err := r.db.WithContext(ctx).Where("name = ?", name).Take(&row).Error
 	if err != nil {
@@ -347,7 +347,7 @@ func (r *roleRepo) ListByUserIDs(ctx context.Context, userIDs []string) (map[str
 	for i := range rows {
 		out[rows[i].UserID] = append(out[rows[i].UserID], &domain.Role{
 			ID:   rows[i].ID,
-			Name: rows[i].Name,
+			Name: domain.RoleName(rows[i].Name),
 		})
 	}
 	return out, nil
@@ -381,6 +381,6 @@ func (r *roleRepo) CountAdminUsers(ctx context.Context) (int64, error) {
 func roleToDomain(g gormRole) *domain.Role {
 	return &domain.Role{
 		ID:   g.ID,
-		Name: g.Name,
+		Name: domain.RoleName(g.Name),
 	}
 }

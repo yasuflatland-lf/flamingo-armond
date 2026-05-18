@@ -4,17 +4,17 @@ package domain
 // model and is queried through the repository layer.
 type Role struct {
 	ID   string
-	Name string
+	Name RoleName
 }
 
 // AdminRoleName and GeneralRoleName are the two built-in system role names.
 const (
-	AdminRoleName   = "admin"
-	GeneralRoleName = "general"
+	AdminRoleName   RoleName = "admin"
+	GeneralRoleName RoleName = "general"
 )
 
 // systemRoleNames is the set of role names that are owned by the system.
-var systemRoleNames = map[string]struct{}{
+var systemRoleNames = map[RoleName]struct{}{
 	AdminRoleName:   {},
 	GeneralRoleName: {},
 }

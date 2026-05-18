@@ -324,8 +324,8 @@ const usersWithRolesQuery = `{"query":"{ users(first: 3) { edges { node { id rol
 func TestAdminUserResolver_Roles_ViaDataLoader(t *testing.T) {
 	t.Parallel()
 
-	adminRoleName := "admin"
-	generalRoleName := "general"
+	adminRoleName := domain.RoleName("admin")
+	generalRoleName := domain.RoleName("general")
 	adminRole := &domain.Role{ID: "role-admin", Name: adminRoleName}
 	generalRole := &domain.Role{ID: "role-general", Name: generalRoleName}
 

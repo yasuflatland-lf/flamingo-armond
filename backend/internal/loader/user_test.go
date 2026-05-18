@@ -27,7 +27,7 @@ type countingRepo struct {
 }
 
 type countingRoleRepo struct {
-	findByName func(ctx context.Context, name string) (*domain.Role, error)
+	findByName func(ctx context.Context, name domain.RoleName) (*domain.Role, error)
 	findByIDs  func(ctx context.Context, ids []string) (map[string]*domain.Role, error)
 }
 
@@ -35,7 +35,7 @@ func (r *countingRoleRepo) FindByID(_ context.Context, _ string) (*domain.Role, 
 	panic("countingRoleRepo.FindByID not configured")
 }
 
-func (r *countingRoleRepo) FindByName(ctx context.Context, name string) (*domain.Role, error) {
+func (r *countingRoleRepo) FindByName(ctx context.Context, name domain.RoleName) (*domain.Role, error) {
 	if r.findByName == nil {
 		panic("countingRoleRepo.FindByName not configured")
 	}
@@ -418,7 +418,7 @@ func TestRoleLoader_BatchesNCallsIntoOne(t *testing.T) {
 			batchCalls.Add(1)
 			out := make(map[string]*domain.Role, len(ids))
 			for _, id := range ids {
-				out[id] = &domain.Role{ID: id, Name: "role-" + id}
+				out[id] = &domain.Role{ID: id, Name: domain.RoleName("role-" + id)}
 			}
 			return out, nil
 		},

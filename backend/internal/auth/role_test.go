@@ -6,16 +6,17 @@ import (
 	"testing"
 
 	"backend/internal/auth"
+	"backend/internal/domain"
 )
 
 type stubUserRoles struct {
 	hasRole bool
 	err     error
 	gotUID  string
-	gotRole string
+	gotRole domain.RoleName
 }
 
-func (s *stubUserRoles) HasRole(_ context.Context, userID, roleName string) (bool, error) {
+func (s *stubUserRoles) HasRole(_ context.Context, userID string, roleName domain.RoleName) (bool, error) {
 	s.gotUID = userID
 	s.gotRole = roleName
 	return s.hasRole, s.err
@@ -51,7 +52,7 @@ func TestServiceIsAdmin(t *testing.T) {
 				if tc.stub.gotUID != "user-1" {
 					t.Errorf("uid passed through: got %q", tc.stub.gotUID)
 				}
-				if tc.stub.gotRole != "admin" {
+				if tc.stub.gotRole != domain.AdminRoleName {
 					t.Errorf("role passed through: got %q", tc.stub.gotRole)
 				}
 			}
