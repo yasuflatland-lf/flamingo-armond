@@ -51,7 +51,7 @@ func dnPtr(s string) *domain.DisplayName {
 // newServer builds a gqlgen handler.Server backed by a resolver that uses the
 // given mock repository.
 func newServer(mock *mockUserRepository) *handler.Server {
-	uc := usecase.NewUserUsecase(mock, newDiscardLogger())
+	uc := usecase.NewUserUsecase(mock, nil, nil, newDiscardLogger())
 	r := resolver.NewResolver(uc, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})

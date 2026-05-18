@@ -26,6 +26,7 @@ type DictionaryCardRepository interface {
 // DictionaryUsecase exposes the admin-only bulk dictionary upsert.
 type DictionaryUsecase interface {
 	Upsert(ctx context.Context, input UpsertDictionaryInput) (UpsertDictionaryOutput, error)
+	Validate(ctx context.Context, payload string) (ValidateDictionaryOutcome, error)
 }
 
 // UpsertDictionaryInput is the wire-shape consumed by DictionaryUsecase.Upsert.
@@ -68,6 +69,18 @@ type DictionaryValidationError struct {
 	Back    string              `json:"back,omitempty"`    // dedupe-only
 }
 
+type ParsedWord struct {
+	Front string
+	Back  string
+	Line  int
+}
+
+type ValidateDictionaryOutcome struct {
+	Valid       bool
+	ParsedWords []ParsedWord
+	Errors      []DictionaryValidationError
+}
+
 // UpsertDictionaryOutput is the result returned to the caller. Inserted +
 // Updated equals the number of cards persisted; Errors carries the per-line
 // parser diagnostics that did not block the upsert.
@@ -86,10 +99,11 @@ const dictionaryParsedRowCap = 5000
 // dictionaryUsecase wires the auth check, the textdic parser, the card
 // repository, and the transaction runner that persists the upsert.
 type dictionaryUsecase struct {
-	auth     AdminChecker
-	cardRepo DictionaryCardRepository
-	tx       txRunner
-	logger   *slog.Logger
+	auth              AdminChecker
+	cardRepo          DictionaryCardRepository
+	tx                txRunner
+	processDictionary func(string) ([]textdic.ParsedWord, []textdic.ValidationError, error)
+	logger            *slog.Logger
 }
 
 // NewDictionaryUsecase constructs a DictionaryUsecase. db is the gorm handle
@@ -100,7 +114,7 @@ func NewDictionaryUsecase(authSvc AdminChecker, cardRepo DictionaryCardRepositor
 	if logger == nil {
 		panic("usecase: dictionary: logger is required")
 	}
-	uc := &dictionaryUsecase{auth: authSvc, cardRepo: cardRepo, logger: logger}
+	uc := &dictionaryUsecase{auth: authSvc, cardRepo: cardRepo, processDictionary: textdic.Process, logger: logger}
 	if db != nil {
 		uc.tx = func(ctx context.Context, fn func(tx *gorm.DB) error) error {
 			return db.WithContext(ctx).Transaction(fn)
@@ -116,7 +130,41 @@ func NewDictionaryUsecaseWithTx(authSvc AdminChecker, cardRepo DictionaryCardRep
 	if logger == nil {
 		panic("usecase: dictionary: logger is required")
 	}
-	return &dictionaryUsecase{auth: authSvc, cardRepo: cardRepo, tx: tx, logger: logger}
+	return &dictionaryUsecase{auth: authSvc, cardRepo: cardRepo, tx: tx, processDictionary: textdic.Process, logger: logger}
+}
+
+func (u *dictionaryUsecase) Validate(ctx context.Context, payload string) (ValidateDictionaryOutcome, error) {
+	if _, err := requireAdmin(ctx, u.auth); err != nil {
+		return ValidateDictionaryOutcome{}, wrapAdminGateError(err, "usecase: dictionary validate: check admin")
+	}
+
+	if payload == "" {
+		return ValidateDictionaryOutcome{}, ucerr.NewValidationError("payload", "payload must not be empty")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		return ValidateDictionaryOutcome{}, ucerr.NewValidationError("payload", "payload must be standard base64-encoded text")
+	}
+
+	process := u.processDictionary
+	if process == nil {
+		process = textdic.Process
+	}
+	words, parseErrs, perr := process(string(decoded))
+	if perr != nil {
+		return ValidateDictionaryOutcome{}, eris.Wrap(perr, "usecase: dictionary validate: parse")
+	}
+
+	parsed := make([]ParsedWord, 0, len(words))
+	for _, w := range words {
+		parsed = append(parsed, ParsedWord{Front: w.Front, Back: w.Back, Line: w.Line})
+	}
+	errs := dictionaryValidationErrorsFromTextdic(parseErrs)
+	return ValidateDictionaryOutcome{
+		Valid:       len(errs) == 0 && len(parsed) > 0,
+		ParsedWords: parsed,
+		Errors:      errs,
+	}, nil
 }
 
 // Upsert ingests a base64-encoded dictionary payload, parses it, and persists
@@ -143,7 +191,11 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 		return UpsertDictionaryOutput{}, ucerr.NewValidationError("payload", "payload must be standard base64-encoded text")
 	}
 
-	words, parseErrs, perr := textdic.Process(string(decoded))
+	process := u.processDictionary
+	if process == nil {
+		process = textdic.Process
+	}
+	words, parseErrs, perr := process(string(decoded))
 	if perr != nil {
 		return UpsertDictionaryOutput{}, eris.Wrap(perr, "usecase: dictionary upsert: parse")
 	}
@@ -152,15 +204,7 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 		return UpsertDictionaryOutput{}, ucerr.NewValidationError("payload", "payload exceeds 5000 row cap")
 	}
 
-	mappedErrs := make([]DictionaryValidationError, 0, len(parseErrs))
-	for _, e := range parseErrs {
-		mappedErrs = append(mappedErrs, DictionaryValidationError{
-			Line:    e.Line,
-			Message: e.Message,
-			Kind:    DictionaryErrorKind(e.Kind.String()),
-			Snippet: e.Snippet,
-		})
-	}
+	mappedErrs := dictionaryValidationErrorsFromTextdic(parseErrs)
 
 	// Deduplicate parsed words by front within this payload. Postgres error 21000
 	// ("ON CONFLICT DO UPDATE command cannot affect row a second time") fires when
@@ -229,4 +273,17 @@ func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryIn
 		Updated:  result.Updated,
 		Errors:   mappedErrs,
 	}, nil
+}
+
+func dictionaryValidationErrorsFromTextdic(errs []textdic.ValidationError) []DictionaryValidationError {
+	out := make([]DictionaryValidationError, 0, len(errs))
+	for _, e := range errs {
+		out = append(out, DictionaryValidationError{
+			Line:    e.Line,
+			Message: e.Message,
+			Kind:    DictionaryErrorKind(e.Kind.String()),
+			Snippet: e.Snippet,
+		})
+	}
+	return out
 }

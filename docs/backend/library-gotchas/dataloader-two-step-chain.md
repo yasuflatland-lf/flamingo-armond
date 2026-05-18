@@ -37,4 +37,4 @@ The two loaders are **not symmetric** in how they report "no row found": the car
 
 ## Reference
 
-`backend/graph/resolver/schema.resolvers.go` — `userResolver.LastViewedCardgroup` is the canonical example. `backend/internal/loader/user_preference.go` carries the first-step loader; `backend/internal/loader/cardgroup.go` carries the second-step loader. Both registries are built per-request by the `loader.For(ctx)` middleware so the batch window matches the GraphQL request scope.
+`backend/graph/resolver/last_viewed_cardgroup.resolvers.go` — `userResolver.LastViewedCardgroup` is the canonical example. `backend/internal/loader/user_preference.go` carries the first-step loader; `backend/internal/loader/cardgroup.go` carries the second-step loader. Both registries are built per-request by the `loader.For(ctx)` middleware so the batch window matches the GraphQL request scope.

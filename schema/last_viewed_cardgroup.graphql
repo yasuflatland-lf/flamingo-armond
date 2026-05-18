@@ -1,0 +1,30 @@
+"""Success variant returned by `setLastViewedCardgroup` when the preference was recorded. Carries the updated `user` so clients can refresh the last-viewed state without a follow-up query."""
+type SetLastViewedCardgroupSuccess {
+  user: User!
+}
+
+"""Result of `setLastViewedCardgroup`. Either the updated user or an input-validation failure."""
+union SetLastViewedCardgroupResult =
+    SetLastViewedCardgroupSuccess
+  | InputValidationError
+
+extend type User {
+  """
+  The cardgroup this user most recently viewed on /learn.
+  Used to land returning users directly on the learn screen.
+  Null when never set, or when the referenced cardgroup was deleted (FK cascade SET NULL).
+  """
+  lastViewedCardgroup: Cardgroup
+}
+
+extend type Mutation {
+  """
+  Records the cardgroup the authenticated user most recently viewed on /learn.
+  Idempotent.
+  Returns a union: `SetLastViewedCardgroupSuccess` carrying the updated user for the happy path,
+  or `InputValidationError` when the cardgroup does not exist or is not owned by the caller
+  (typed "error as data"; existence of others' cardgroups is not leaked).
+  Unauthenticated callers receive an error with `extensions.code = "UNAUTHENTICATED"`.
+  """
+  setLastViewedCardgroup(cardgroupId: ID!): SetLastViewedCardgroupResult!
+}

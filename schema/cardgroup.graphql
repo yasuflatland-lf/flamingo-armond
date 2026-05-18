@@ -1,0 +1,97 @@
+"""A user-owned named collection of flashcards. Owns no Card aggregate; cards live in a sibling aggregate."""
+type Cardgroup {
+  id: ID!
+  name: String!
+  ownerId: ID!
+  createdAt: Time!
+  updatedAt: Time!
+  """The owning user. Resolved via the per-request User DataLoader."""
+  owner: User!
+}
+
+"""Input for `createCardgroup`."""
+input NewCardgroupInput {
+  """1-100 grapheme clusters (length measured after trimming surrounding whitespace)."""
+  name: String!
+}
+
+"""Input for `updateCardgroup`. Fields default to "leave unchanged" when null or omitted."""
+input UpdateCardgroupInput {
+  """null or omitted = leave unchanged."""
+  name: String
+}
+
+"""Success variant returned by `createCardgroup` when the cardgroup was created. Carries the new `cardgroup` so clients can insert it into local caches without a follow-up query."""
+type CreateCardgroupSuccess {
+  cardgroup: Cardgroup!
+}
+
+"""Result of `createCardgroup`. Either the created cardgroup or an input-validation failure."""
+union CreateCardgroupResult =
+    CreateCardgroupSuccess
+  | InputValidationError
+
+"""Success variant returned by `updateCardgroup` when the cardgroup was updated. Carries the updated `cardgroup` so clients can refresh local state without a follow-up query."""
+type UpdateCardgroupSuccess {
+  cardgroup: Cardgroup!
+}
+
+"""Result of `updateCardgroup`. Either the updated cardgroup or an input-validation failure."""
+union UpdateCardgroupResult =
+    UpdateCardgroupSuccess
+  | InputValidationError
+
+"""Field to order Cardgroups by in paginated queries."""
+enum CardgroupOrderBy {
+  ID
+  CREATED_AT
+  UPDATED_AT
+  NAME
+}
+
+"""One cardgroup plus the cursor pointing at it."""
+type CardgroupEdge {
+  """Opaque cursor for resuming pagination at this edge. Currently the cardgroup id."""
+  cursor: ID!
+  node: Cardgroup!
+}
+
+"""A page of cardgroups returned from a paginated query."""
+type CardgroupConnection {
+  edges: [CardgroupEdge!]!
+  pageInfo: PageInfo!
+  """Total cardgroup count matching the filter (independent of paging)."""
+  totalCount: Int!
+}
+
+extend type Query {
+  """Single cardgroup by ID. Returns UNAUTHENTICATED for non-owners (existence is not leaked)."""
+  cardgroup(id: ID!): Cardgroup
+  """
+  Paginated cardgroups owned by the authenticated caller. Forward pagination uses
+  (first, after); backward uses (last, before). Cursor is the cardgroup UUID. Default
+  page size is 20; max is 100. Optional case-insensitive substring search on name.
+  """
+  myCardgroupsConnection(
+    first: Int,
+    after: ID,
+    last: Int,
+    before: ID,
+    search: String,
+    orderBy: CardgroupOrderBy = UPDATED_AT,
+    orderDirection: SortOrder = DESC
+  ): CardgroupConnection!
+}
+
+extend type Mutation {
+  """
+  Create a cardgroup owned by the authenticated caller.
+  Returns a union: `CreateCardgroupSuccess` for the happy path, or `InputValidationError`
+  when the name fails validation (typed "error as data").
+  """
+  createCardgroup(input: NewCardgroupInput!): CreateCardgroupResult!
+  """Update a cardgroup. Non-owners receive UNAUTHENTICATED."""
+  updateCardgroup(id: ID!, input: UpdateCardgroupInput!): UpdateCardgroupResult!
+  """Delete a cardgroup. Non-owners receive UNAUTHENTICATED."""
+  deleteCardgroup(id: ID!): Boolean!
+}

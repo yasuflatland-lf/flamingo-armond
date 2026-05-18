@@ -5,7 +5,7 @@
 When a GraphQL schema declares a field as `[T!]!` — a non-nullable list of non-null items — codegen emits the TypeScript type `T[]`, not `T[] | null | undefined`. The `??` operator short-circuits only when its left-hand operand is `null` or `undefined`, so `data.field ?? []` is unreachable: TypeScript accepts `T[]` as already guaranteed non-null, and the fallback branch never activates at runtime.
 
 ```ts
-// schema/schema.graphql
+// schema/card.graphql
 // learnNextDueCards(cardgroupId: ID!, limit: Int = 20): [Card!]!
 
 // frontend/src/generated/graphql.ts (codegen output)

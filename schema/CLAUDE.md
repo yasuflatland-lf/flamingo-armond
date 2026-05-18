@@ -4,10 +4,10 @@ Shared GraphQL schema. Source of truth for both gqlgen (backend) and graphql-cod
 
 ## Regeneration flow
 
-- Backend: `cd backend && go generate ./...`
+- Backend: `cd backend && go tool gqlgen generate`
 - Frontend: `pnpm --filter frontend codegen`
 
-Both consumers must stay in sync with `schema/schema.graphql`. Generated output lands in `backend/graph/{generated,model}/` and `frontend/src/generated/`.
+Both consumers must stay in sync with `schema/*.graphql`. Generated output lands in `backend/graph/{generated,model}/`, `backend/graph/resolver/*.resolvers.go`, and `frontend/src/generated/`.
 
 ## Topic docs
 

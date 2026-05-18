@@ -8,8 +8,8 @@
 // Flags:
 //
 //	-mode={error,warn}        Exit non-zero on violations (default: error).
-//	-schema=path              Path to schema.graphql (default: ../schema/schema.graphql).
-//	-resolver=path            Path to schema.resolvers.go (default: graph/resolver/schema.resolvers.go).
+//	-schema=path              Path, glob, or comma-list for schema files (default: ../schema/*.graphql).
+//	-resolver=path            Path, glob, or comma-list for resolver files (default: graph/resolver/*.resolvers.go).
 //	-resolver-struct=path     Path to resolver.go struct file (default: graph/resolver/resolver.go).
 //	-usecase=dir              Path to usecase directory (default: internal/usecase).
 //	-allowlist=path           Path to allowlist.txt (default: cmd/schema-lint/allowlist.txt).
@@ -26,6 +26,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 )
 
 // interfaceToImpl maps each Resolver field whose type is a usecase
@@ -60,8 +63,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 
 	mode := fs.String("mode", "error", "lint mode: 'error' (exit 1 on violations) or 'warn' (print but exit 0)")
-	schemaPath := fs.String("schema", "../schema/schema.graphql", "path to schema.graphql")
-	resolverPath := fs.String("resolver", "graph/resolver/schema.resolvers.go", "path to schema.resolvers.go")
+	schemaPath := fs.String("schema", "../schema/*.graphql", "path, glob, or comma-list for GraphQL SDL files")
+	resolverPath := fs.String("resolver", "graph/resolver/*.resolvers.go", "path, glob, or comma-list for generated resolver files")
 	resolverStructPath := fs.String("resolver-struct", "graph/resolver/resolver.go", "path to resolver.go struct file")
 	usecaseDir := fs.String("usecase", "internal/usecase", "path to usecase directory")
 	allowlistPath := fs.String("allowlist", "cmd/schema-lint/allowlist.txt", "path to allowlist.txt")
@@ -77,14 +80,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	// --- Walk schema ---
-	schemaMutations, err := SchemaWalk([]string{*schemaPath})
+	schemaPaths, err := expandPathList(*schemaPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "schema-lint: schema path expansion failed: %v\n", err)
+		return 2
+	}
+	schemaMutations, err := SchemaWalk(schemaPaths)
 	if err != nil {
 		fmt.Fprintf(stderr, "schema-lint: schema walk failed: %v\n", err)
 		return 2
 	}
 
 	// --- Walk resolver ---
-	resolverResult, err := ResolverWalk(*resolverPath)
+	resolverPaths, err := expandPathList(*resolverPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "schema-lint: resolver path expansion failed: %v\n", err)
+		return 2
+	}
+	resolverResult, err := ResolverWalkFiles(resolverPaths)
 	if err != nil {
 		fmt.Fprintf(stderr, "schema-lint: resolver walk failed: %v\n", err)
 		return 2
@@ -147,4 +160,48 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "schema-lint: 0 violations, 0 drifts\n")
 	return 0
+}
+
+func expandPathList(patterns string) ([]string, error) {
+	parts := strings.Split(patterns, ",")
+	seen := make(map[string]struct{}, len(parts))
+	paths := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		var matches []string
+		if hasGlobMeta(part) {
+			globbed, err := filepath.Glob(part)
+			if err != nil {
+				return nil, fmt.Errorf("bad glob %q", part)
+			}
+			if len(globbed) == 0 {
+				return nil, fmt.Errorf("glob %q matched no files", part)
+			}
+			matches = globbed
+		} else {
+			matches = []string{part}
+		}
+
+		for _, match := range matches {
+			clean := filepath.Clean(match)
+			if _, ok := seen[clean]; ok {
+				continue
+			}
+			seen[clean] = struct{}{}
+			paths = append(paths, clean)
+		}
+	}
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("no paths provided")
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+func hasGlobMeta(path string) bool {
+	return strings.ContainsAny(path, "*?[")
 }

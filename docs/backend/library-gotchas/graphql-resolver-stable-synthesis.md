@@ -22,4 +22,4 @@ if ucs == nil {
 
 **Applies to:** any resolver that lazy-initialises a missing aggregate record and returns a field that participates in pagination or ordering. Loader-backed resolvers are the most common pattern — when `loaders.UserCardFSRS.Load(ctx, obj.ID)()` returns `nil`, the nil check triggers synthesis. Whatever timestamp appears in `COALESCE(persisted_col, fallback_col)` in the ordering query, the synthesis must use the same fallback field.
 
-Reference: `backend/graph/resolver/schema.resolvers.go` — `cardResolver.UserCardState` synthesises a new-card state from `obj.CreatedAt`; `backend/internal/domain/user_card_fsrs.go` — `NewUserCardFSRSForNewCard(userID, cardID string, now time.Time)`.
+Reference: `backend/graph/resolver/card.resolvers.go` — `cardResolver.UserCardState` synthesises a new-card state from `obj.CreatedAt`; `backend/internal/domain/user_card_fsrs.go` — `NewUserCardFSRSForNewCard(userID, cardID string, now time.Time)`.

@@ -54,7 +54,7 @@ deps:
   loader:             { mayDependOn: [auth, domain, repository] }
   logging:            { anyVendorDeps: true }           # leaf: vendor-only deps (eris, slog)
   middleware:         { anyVendorDeps: true }           # leaf: vendor-only deps (echo, uuid)
-  notion:             { anyVendorDeps: true }           # leaf: vendor-only deps (notionapi, eris)
+  notion:             { mayDependOn: [domain] }
   repository:         { mayDependOn: [domain] }
   telemetry:          { anyVendorDeps: true }           # leaf: vendor-only deps (otel, eris)
   textdic:            { anyVendorDeps: true }           # leaf: vendor-only deps (eris)

@@ -35,10 +35,19 @@ type LearnUsecase struct {
 	cardgroupRepo CardgroupRepoForLearn
 	ordering      *service.OrderingPolicy
 	randSource    func() *rand.Rand
+	clock         Clock
 	defaultLimit  int
 	maxLimit      int
 	logger        *slog.Logger
 }
+
+type Clock interface {
+	Now() time.Time
+}
+
+type systemClock struct{}
+
+func (systemClock) Now() time.Time { return time.Now() }
 
 func NewLearnUsecase(
 	cardRepo CardRepoForLearn,
@@ -46,6 +55,7 @@ func NewLearnUsecase(
 	ordering *service.OrderingPolicy,
 	randSource func() *rand.Rand,
 	defaultLimit, maxLimit int,
+	clock Clock,
 	logger *slog.Logger,
 ) *LearnUsecase {
 	if logger == nil {
@@ -58,6 +68,9 @@ func NewLearnUsecase(
 		randSource = func() *rand.Rand {
 			return rand.New(rand.NewSource(time.Now().UnixNano()))
 		}
+	}
+	if clock == nil {
+		clock = systemClock{}
 	}
 	if defaultLimit <= 0 {
 		defaultLimit = defaultLearnNextDueLimit
@@ -79,15 +92,16 @@ func NewLearnUsecase(
 		cardgroupRepo: cardgroupRepo,
 		ordering:      ordering,
 		randSource:    randSource,
+		clock:         clock,
 		defaultLimit:  defaultLimit,
 		maxLimit:      maxLimit,
 		logger:        logger,
 	}
 }
 
-// NextDueCards returns up to limit due cards (clamped to [1, maxLimit]; now must be UTC).
+// NextDueCards returns up to limit due cards (clamped to [1, maxLimit]).
 // Returns Unauthenticated when the caller does not own the cardgroup, BadUserInput when the cardgroup is missing.
-func (u *LearnUsecase) NextDueCards(ctx context.Context, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
+func (u *LearnUsecase) NextDueCards(ctx context.Context, cardgroupID string, limit *int) ([]*domain.Card, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
 		return nil, ucerr.ErrUnauthenticated
@@ -102,8 +116,13 @@ func (u *LearnUsecase) NextDueCards(ctx context.Context, cardgroupID string, now
 	if !cg.IsOwnedBy(user.Sub) {
 		return nil, ucerr.ErrUnauthenticated
 	}
-	limit = u.clampLimit(limit)
-	cards, err := u.cardRepo.FindDueCardsForUser(ctx, user.Sub, cardgroupID, now, limit)
+	n := 0
+	if limit != nil {
+		n = *limit
+	}
+	n = u.clampLimit(n)
+	now := u.clock.Now().UTC()
+	cards, err := u.cardRepo.FindDueCardsForUser(ctx, user.Sub, cardgroupID, now, n)
 	if err != nil {
 		return nil, eris.Wrap(err, "usecase: find due cards for user")
 	}

@@ -1,0 +1,41 @@
+"""Input for `handleSwipe`. Identifies the card under review and the rating the user emitted."""
+input HandleSwipeInput {
+  cardId: ID!
+  cardgroupId: ID!
+  """1=Again, 2=Hard, 4=Easy. The 3-step UI does not emit 3=Good."""
+  mode: Int!
+}
+
+"""Response returned by `handleSwipe` — the next page of cards plus the latest performance snapshot."""
+type SwipeResponse {
+  """Next due cards, ordered by due ASC."""
+  nextCards: [Card!]!
+  """Performance mode for the swipe flow, expressed as an Int in the 0..4 range."""
+  performanceMode: Int!
+  metrics: PerformanceMetrics!
+}
+
+"""Per-viewer performance metrics returned alongside a swipe response."""
+type PerformanceMetrics {
+  successRate: Float!
+  avgDifficulty: Float!
+  retentionRate: Float!
+  studyStreak: Int!
+  lapseRate: Float!
+  reviewCount: Int!
+}
+
+"""Success variant returned by `handleSwipe` when the swipe was recorded. Carries the full `SwipeResponse` so clients can refresh the learn flow without a follow-up query."""
+type HandleSwipeSuccess {
+  response: SwipeResponse!
+}
+
+"""Result of `handleSwipe`. Either the swipe response or an input-validation failure."""
+union HandleSwipeResult =
+    HandleSwipeSuccess
+  | InputValidationError
+
+extend type Mutation {
+  """Apply one swipe rating, persist the SwipeRecord event, and return the next due cards."""
+  handleSwipe(input: HandleSwipeInput!): HandleSwipeResult!
+}

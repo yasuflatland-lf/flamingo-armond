@@ -12,7 +12,7 @@ Layers shown:
   - Vercel hosts the Next.js 16 frontend (App Router).
   - Render hosts the Go / Echo v5 backend (gqlgen GraphQL endpoint).
   - Supabase hosts Postgres (with RLS) and Auth (JWT issuer + JWKS).
-  - schema/schema.graphql is the shared SDL feeding both codegen tools.
+  - schema/*.graphql is the shared SDL feeding both codegen tools.
   - Cards content is periodically synced from a Notion page into Postgres.
 """
 
@@ -56,7 +56,7 @@ with Diagram(
 
     # Shared GraphQL contract — sits on the wire between Vercel and Render and
     # is also the SDL source of truth driving both codegen tools.
-    schema = GraphQL("GraphQL\n(schema/schema.graphql)")
+    schema = GraphQL("GraphQL\n(schema/*.graphql)")
 
     # Backend on Render — single node, vendor logo (no cluster frame)
     backend = Custom(

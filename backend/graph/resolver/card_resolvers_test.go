@@ -127,7 +127,7 @@ func newCardSrv(
 	cgRepo usecase.CardgroupRepositoryForCard,
 	tx func(context.Context, func(*gorm.DB) error) error,
 ) *handler.Server {
-	cardUC := usecase.NewCardUsecaseWithTx(cardRepo, cgRepo, tx, nil, newDiscardLogger())
+	cardUC := usecase.NewCardUsecaseWithTx(cardRepo, cgRepo, tx, nil, nil, newDiscardLogger())
 	r := resolver.NewResolver(nil, nil, cardUC, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})
@@ -142,6 +142,7 @@ func newLearnSrv(cardRepo *cardMockRepo, cgRepo *cardMockCGRepo) *handler.Server
 		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
 		20,
 		100,
+		nil,
 		newDiscardLogger(),
 	)
 	r := resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, learnUC)
@@ -360,7 +361,7 @@ func TestResolver_CreateCard_DuplicateFront_ReturnsCardDuplicateFrontError(t *te
 // newUpdateCardSrv builds a gqlgen Server backed by a CardUsecase wired with
 // the supplied card repo and cardgroup repo for authorization.
 func newUpdateCardSrv(cardRepo usecase.CardRepository, cgRepo usecase.CardgroupRepositoryForCard) *handler.Server {
-	cardUC := usecase.NewCardUsecaseWithTx(cardRepo, cgRepo, cardFakeTx(), nil, newDiscardLogger())
+	cardUC := usecase.NewCardUsecaseWithTx(cardRepo, cgRepo, cardFakeTx(), nil, nil, newDiscardLogger())
 	r := resolver.NewResolver(nil, nil, cardUC, nil, nil, nil, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})

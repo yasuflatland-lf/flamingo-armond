@@ -28,10 +28,10 @@ the codebase. New mutations that match both conditions fail immediately.
 
 The classifier joins three independent walkers:
 
-- `schemawalk` — reads `schema/schema.graphql` via `vektah/gqlparser`; produces
+- `schemawalk` — reads `schema/*.graphql` via `vektah/gqlparser`; produces
   `{mutation, returnType, isBare}` for every mutation field.
-- `resolverwalk` — reads `backend/graph/resolver/schema.resolvers.go` as a Go
-  AST; produces the mutation → usecase call mapping.
+- `resolverwalk` — reads `backend/graph/resolver/*.resolvers.go` as Go ASTs;
+  produces the mutation → usecase call mapping.
 - `usecasewalk` — reads `backend/internal/usecase/*.go`; produces a 1-bit
   `emitsTypedError` flag per usecase method.
 
@@ -111,7 +111,7 @@ Follow these steps in order to promote one mutation from the allowlist to a
 full outcome-union. Each step is a single atomic unit; commit after step 4 and
 after step 7 pass their respective verifications.
 
-1. **Edit `schema/schema.graphql`**: add `TypeSuccess`, `TypeError1`,
+1. **Edit the relevant `schema/*.graphql` feature file**: add `TypeSuccess`, `TypeError1`,
    `TypeError2` types (error types implement `UserError` to gain `message:
    String!`), declare `union <Op>Result = TypeSuccess | TypeError1 | ...`, and
    change the mutation field's return type from the bare object to `<Op>Result!`.
@@ -146,11 +146,11 @@ after step 7 pass their respective verifications.
    test must compile against the freshly generated symbols. Verify
    `go build ./...` and `go vet ./...` pass before continuing. If `gqlgen`
    detects that the existing resolver signature in
-   `backend/graph/resolver/schema.resolvers.go` does not match the new union
+   the relevant `backend/graph/resolver/*.resolvers.go` method does not match the new union
    return type (e.g. because the resolver-wiring commit has not landed yet
    when regen is invoked), it rewrites the resolver body as a
    `panic("not implemented")` stub; in that ordering, run
-   `git checkout -- backend/graph/resolver/schema.resolvers.go` after the
+   restore the affected resolver file after the
    regen so the stub does not leak into the resolver commit.
 
 5. **Update the frontend mutation**: discriminate on `__typename` with inline
