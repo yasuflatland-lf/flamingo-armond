@@ -39,12 +39,13 @@ func TestBioFromPtr(t *testing.T) {
 		require.Equal(t, "", *b.Ptr())
 	})
 
-	t.Run("Ptr returns a fresh pointer, not the caller's", func(t *testing.T) {
+	t.Run("Ptr returns a fresh pointer on each call", func(t *testing.T) {
 		t.Parallel()
 		s := "original"
 		b := BioFromPtr(&s)
-		p := b.Ptr()
-		require.NotSame(t, &s, p, "Ptr() must return a fresh pointer; mutating *Ptr() must not affect the caller's s")
+		p1, p2 := b.Ptr(), b.Ptr()
+		require.NotSame(t, p1, p2, "each Ptr() call must allocate a fresh pointer")
+		require.Equal(t, *p1, *p2, "but the values must be equal")
 	})
 }
 

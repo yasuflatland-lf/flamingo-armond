@@ -34,11 +34,11 @@ func ParseBio(s *string) (Bio, error) {
 	return Bio{value: &trimmed}, nil
 }
 
-// BioFromPtr lifts a database-shaped *string into the Bio trinary VO.
-// A nil pointer maps to Bio{} (IsSet=false, "no change"); a non-nil pointer —
-// including pointer-to-empty — maps to a set Bio whose Ptr() returns the
-// same string contents. Used by repository readers to bridge a nullable text
-// column into the typed domain field.
+// BioFromPtr maps a nullable text column to a Bio: nil → Bio{} (IsSet()=false,
+// NULL column); a non-nil pointer — including pointer-to-empty — maps to a set
+// Bio whose Ptr() returns a defensive copy with the same string value.
+// Used by repository readers to bridge a nullable text column into the typed
+// domain field.
 func BioFromPtr(p *string) Bio {
 	if p == nil {
 		return Bio{}
