@@ -496,6 +496,19 @@ CREATE POLICY user_preferences_delete_own_or_admin
     TO authenticated
     USING (user_id = auth.uid() OR public.is_admin(auth.uid()));
 
+-- ping_records: service-level liveness heartbeat table. The backend accesses
+-- this table via the postgres / service-role connection, which bypasses RLS.
+-- The policy below documents the intent for the authenticated role: only admins
+-- may read or write rows when connecting as authenticated (e.g. via PostgREST
+-- or a future admin tool). Anonymous and regular users have no access.
+DROP POLICY IF EXISTS ping_records_admin_all ON public.ping_records;
+CREATE POLICY ping_records_admin_all
+    ON public.ping_records
+    FOR ALL
+    TO authenticated
+    USING (public.is_admin(auth.uid()))
+    WITH CHECK (public.is_admin(auth.uid()));
+
 -- ---------------------------------------------------------------------------
 -- 6) Function privilege management
 -- ---------------------------------------------------------------------------
