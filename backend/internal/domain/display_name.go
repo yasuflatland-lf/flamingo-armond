@@ -7,14 +7,15 @@ import (
 	"github.com/rotisserie/eris"
 )
 
-const displayNameMax = 50
+const DisplayNameMax = 50
 
 var (
 	ErrDisplayNameRequired = eris.New("user: display name is required")
-	ErrDisplayNameTooLong  = eris.Errorf("user: display name exceeds %d characters", displayNameMax)
+	ErrDisplayNameTooLong  = eris.Errorf("user: display name exceeds %d characters", DisplayNameMax)
 )
 
-// DisplayName is the user-chosen profile display name, trimmed, 1..50 graphemes.
+// DisplayName is the user-chosen profile display name, trimmed, 1..DisplayNameMax graphemes.
+// The zero value (DisplayName("")) is invalid; use ParseDisplayName to construct.
 type DisplayName string
 
 // ParseDisplayName trims surrounding whitespace from s, counts grapheme clusters,
@@ -25,7 +26,7 @@ func ParseDisplayName(s string) (DisplayName, error) {
 	if n < 1 {
 		return "", ErrDisplayNameRequired
 	}
-	if n > displayNameMax {
+	if n > DisplayNameMax {
 		return "", ErrDisplayNameTooLong
 	}
 	return DisplayName(trimmed), nil
