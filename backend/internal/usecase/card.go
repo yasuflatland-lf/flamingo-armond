@@ -301,7 +301,6 @@ func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 	}
 
 	patch := repository.CardUpdate{}
-	candidate := *existing
 	if in.Front != nil {
 		front, err := domain.ParseCardText(*in.Front, domain.ErrCardFrontRequired, domain.ErrCardFrontTooLong)
 		if err != nil {
@@ -313,7 +312,6 @@ func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 		}
 		s := front.String()
 		patch.Front = &s
-		candidate.Front = s
 	}
 	if in.Back != nil {
 		back, err := domain.ParseCardText(*in.Back, domain.ErrCardBackRequired, domain.ErrCardBackTooLong)
@@ -326,7 +324,6 @@ func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 		}
 		s := back.String()
 		patch.Back = &s
-		candidate.Back = s
 	}
 
 	updated, err := u.cardRepo.Update(ctx, id, patch)
