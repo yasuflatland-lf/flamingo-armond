@@ -111,6 +111,8 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Bool flag vs two-function split: ubiquitous language signals (`authorizeCardgroup*`)](../../docs/backend/library-gotchas/bool-flag-vs-two-function-ubiquitous-language.md)
 - [Direct unit tests for shared helpers + directionality assertion](../../docs/backend/library-gotchas/direct-unit-test-for-shared-helper.md)
 - [Dead context-done branch in pass-through helper — collapse to single return](../../docs/backend/library-gotchas/dead-context-check-in-pass-through-helper.md)
+- [GORM v1 round-trips underlying-string newtypes without Scanner/Valuer; reserving the `Value` accessor slot](../../docs/backend/library-gotchas/gorm-newtype-string-no-scanner-valuer.md)
+- [Defensive-copy tests assert pointer identity (`require.NotSame`), not variable rebind](../../docs/backend/library-gotchas/defensive-copy-test-pointer-identity.md)
 
 ## DDD patterns (on-demand)
 

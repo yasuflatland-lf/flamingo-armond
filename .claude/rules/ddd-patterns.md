@@ -74,9 +74,53 @@ cap automatically propagates to the user-facing error message.
 
 A speculative domain method with zero production callers at PR completion time must
 be removed in the same PR. Post-flight grep confirms zero callers; a zero count means
-delete, not "keep for later". Application of the existing scope-discipline rule.
+delete, not "keep for later". Application of the existing scope-discipline rule. The
+rule keys on wired-ness per symbol, not on category: a single PR introducing several
+helpers of the same kind applies the grep verdict independently to each.
 
 [`docs/backend/ddd-patterns/helpers-introduced-but-not-wired-must-be-deleted.md`](../../docs/backend/ddd-patterns/helpers-introduced-but-not-wired-must-be-deleted.md)
+
+### Context-neutral docstrings on shared-context value objects
+
+When a struct VO is consumed from both a patch-context (DTO input) and a
+read-context (DB column) — e.g. `Bio` carrying `nil` / `&""` / `&"x"` in
+both — the accessor docstrings must enumerate both interpretations. A
+docstring that bakes in one context misleads readers arriving from the other.
+Context-specific helpers (`ParseBio` for patch input, `BioFromPtr` for DB
+reads) carry context-specific docstrings.
+
+[`docs/backend/ddd-patterns/context-neutral-vo-docstrings.md`](../../docs/backend/ddd-patterns/context-neutral-vo-docstrings.md)
+
+### Same-underlying-type pointer cast for VO bridging
+
+When a repository row stores `*string` and the domain field is
+`*<DomainStringNewtype>`, `(*domain.DisplayName)(g.DisplayName)` is a direct
+pointer conversion legal under Go's same-underlying-type rule. No helper, no
+nil-check needed. Does not apply to struct VOs (e.g. `Bio`), which require a
+boundary helper.
+
+[`docs/backend/ddd-patterns/same-underlying-type-pointer-cast.md`](../../docs/backend/ddd-patterns/same-underlying-type-pointer-cast.md)
+
+### Boundary gate replaces domain re-check
+
+A field that originates in user input and is gated at the usecase boundary
+should not be re-checked in the domain aggregate. `Card.CardgroupID` is gated
+by `authorizeCardgroupOrBadInput` before any `Card` is constructed; the domain
+side's `Validate()` skips the presence check. The remaining `Front`/`Back`
+checks survive because no boundary gate enforces them.
+
+[`docs/backend/ddd-patterns/boundary-gate-replaces-domain-recheck.md`](../../docs/backend/ddd-patterns/boundary-gate-replaces-domain-recheck.md)
+
+### Patch DTOs keep primitive types, not the VO
+
+`repository.UserUpdate.Bio` stays `*string`, even though `User.Bio` is the
+struct VO `Bio`. The patch contract (`nil = no change`) is about
+presence/absence, which the primitive expresses literally. The usecase
+translates `Bio.Ptr()` to `*string` at the DTO construction site; the
+repository site stays unaware of the VO. Same shape for `CardUpdate.Front` /
+`CardUpdate.Back` via `CardText.String()`.
+
+[`docs/backend/ddd-patterns/patch-dto-primitive-not-vo.md`](../../docs/backend/ddd-patterns/patch-dto-primitive-not-vo.md)
 
 ## Further reading (on-demand)
 
@@ -88,3 +132,7 @@ delete, not "keep for later". Application of the existing scope-discipline rule.
 - [Zero-value docstring on string newtypes](../../docs/backend/ddd-patterns/zero-value-docstring-on-string-newtypes.md)
 - [Exported bound constants prevent message drift](../../docs/backend/ddd-patterns/exported-bound-constants-prevent-message-drift.md)
 - [Helpers introduced but not wired must be deleted](../../docs/backend/ddd-patterns/helpers-introduced-but-not-wired-must-be-deleted.md)
+- [Context-neutral docstrings on shared-context value objects](../../docs/backend/ddd-patterns/context-neutral-vo-docstrings.md)
+- [Same-underlying-type pointer cast for VO bridging](../../docs/backend/ddd-patterns/same-underlying-type-pointer-cast.md)
+- [Boundary gate replaces domain re-check](../../docs/backend/ddd-patterns/boundary-gate-replaces-domain-recheck.md)
+- [Patch DTOs keep primitive types, not the VO](../../docs/backend/ddd-patterns/patch-dto-primitive-not-vo.md)

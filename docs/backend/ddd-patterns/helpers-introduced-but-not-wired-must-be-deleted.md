@@ -50,5 +50,40 @@ grep -rn <NewSymbol> backend/ --include='*.go' | grep -v _test.go | grep -v <dec
 A count of `0` means delete the helper in the same PR. "Keep for later" produces
 the exact surface-rot described above.
 
-See [`.claude/rules/scope-discipline.md`](../../../.claude/rules/scope-discipline.md)
-for the general rule and the analogous example from issue #181 (`ResolvePageSize`).
+## The rule applies per symbol, not per category — keyed on wired-ness
+
+A single PR can introduce several helpers of the same category (e.g. a
+boundary helper, a `Scan` method, a `Value` method, a `String` accessor) at
+the same time. The rule applies to each helper *independently*: the
+post-flight grep keys on wired-ness, not on what kind of method it is. The
+current backend VOs illustrate the per-symbol verdict:
+
+| Symbol | Caller count outside declaration | Verdict |
+|---|---|---|
+| `domain.BioFromPtr` | 1 (`repository/user.go:userToDomain`) + 1 test fixture | Keep — load-bearing read-path bridge. |
+| Hypothetical `(Bio).Scan` / `(Bio).Value` (gorm row stores `*string`, never reaches the VO) | 0 | Delete in the same PR if introduced. |
+| `(CardText).String` | 2 (`usecase/card.go` patch construction) | Keep — wired by the patch DTO boundary. |
+| Hypothetical `(DisplayName).String` (no caller wired) | 0 | Delete in the same PR if introduced. |
+
+A reviewer's "no tests" finding is not by itself a signal to delete. The
+right next step is to grep for production callers:
+
+- Zero callers → delete (the test gap is consistent with the call-site gap).
+- One or more callers → keep, and either add the missing test or accept that
+  the call-site behavioural tests cover the helper transitively.
+
+The shorthand "untested means dead" elides the second case and recommends
+deleting helpers that production code actually depends on. The reverse —
+"wired means keep" — is also asymmetric: a helper with one production caller
+and no direct unit test is fine if the caller's behavioural tests exercise
+the helper's path; the helper is greppably reachable from a tested call site.
+
+## Reference
+
+- See [`.claude/rules/scope-discipline.md`](../../../.claude/rules/scope-discipline.md)
+  for the general rule and the analogous example from issue #181 (`ResolvePageSize`).
+- `backend/internal/domain/bio.go` — `BioFromPtr` (kept; wired by repository
+  read path) is co-located with `Bio.Ptr()` / `Bio.IsSet()` (kept; wired by
+  patch construction).
+- `backend/internal/usecase/card.go` — `front.String()` / `back.String()` are
+  the live callers that keep `CardText.String()` from being deleted.
