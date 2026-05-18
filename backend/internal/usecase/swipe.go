@@ -190,17 +190,13 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		if current == nil {
 			current = domain.NewUserCardFSRSForNewCard(user.Sub, card.ID, now)
 		}
-		newState := u.scheduler.Apply(current.State, rating, now)
-		if err := u.userFSRSRepo.UpsertTx(ctx, tx, &domain.UserCardFSRS{
-			UserID:    user.Sub,
-			CardID:    card.ID,
-			State:     newState,
-			CreatedAt: current.CreatedAt,
-			UpdatedAt: now,
-		}); err != nil {
+		if err := current.ApplyRating(u.scheduler, rating, now); err != nil {
+			return eris.Wrap(err, "usecase: swipe: apply rating")
+		}
+		if err := u.userFSRSRepo.UpsertTx(ctx, tx, current); err != nil {
 			return err
 		}
-		sr, err := domain.NewSwipeRecord(user.Sub, card.ID, rating, now, newState)
+		sr, err := domain.NewSwipeRecord(user.Sub, card.ID, rating, now, current.State)
 		if err != nil {
 			return err
 		}
