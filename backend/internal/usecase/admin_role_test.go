@@ -341,7 +341,7 @@ func TestAdminRole_Create_Validation_TooLong(t *testing.T) {
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _ := buildAdminRoleUC(roles, authChk)
 
-	overMax := strings.Repeat("a", roleNameMax+1)
+	overMax := strings.Repeat("a", 51)
 	outcome, err := uc.Create(authedCtx("admin-1"), overMax)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
