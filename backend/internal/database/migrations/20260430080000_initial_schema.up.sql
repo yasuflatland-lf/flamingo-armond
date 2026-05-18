@@ -1,8 +1,7 @@
 -- Consolidated initial schema for flamingo-armond.
 --
--- Replaces the original 11-pair migration history with a single Up/Down pair
--- that produces the same final public schema state. See
--- `.claude/plans/db_organize.md` (2026-05-18) for the consolidation rationale.
+-- Consolidates the prior 11 up/down migration pairs into a single initial-schema
+-- pair; the resulting public schema is equivalent to applying those steps in order.
 --
 -- Order within this file:
 --   1. Trigger functions and the handle_new_user bridge (plpgsql; late-bind, so
@@ -16,10 +15,9 @@
 --      is_admin is LANGUAGE sql, which is early-bind in PostgreSQL: the tables
 --      it references must already exist at CREATE FUNCTION time.
 --   4. Triggers (public.* first, then the trigger on auth.users).
---   5. ENABLE ROW LEVEL SECURITY on every public table.
---   6. CREATE POLICY for every owner-or-admin policy.
---   7. REVOKE / GRANT statements that gate the SECURITY DEFINER functions.
---   8. Seed inserts for the roles table (admin, general).
+--   5. RLS enable + policies (ENABLE ROW LEVEL SECURITY, then CREATE POLICY).
+--   6. REVOKE / GRANT statements that gate the SECURITY DEFINER functions.
+--   7. Seed inserts for the roles table (admin, general).
 --
 -- golang-migrate pgx/v5 does NOT auto-wrap migrations in a transaction; the
 -- explicit BEGIN/COMMIT below ensures all-or-nothing execution.
@@ -301,29 +299,28 @@ $$;
 -- 4) Triggers (public.* first, then auth.users)
 -- ---------------------------------------------------------------------------
 
-CREATE TRIGGER trg_users_set_updated_at
+CREATE OR REPLACE TRIGGER trg_users_set_updated_at
     BEFORE UPDATE ON public.users
     FOR EACH ROW
     EXECUTE FUNCTION public.set_users_updated_at();
 
-CREATE TRIGGER trg_cardgroups_set_updated_at
+CREATE OR REPLACE TRIGGER trg_cardgroups_set_updated_at
     BEFORE UPDATE ON public.cardgroups
     FOR EACH ROW
     EXECUTE FUNCTION public.set_cardgroups_updated_at();
 
-CREATE TRIGGER trg_cards_set_updated_at
+CREATE OR REPLACE TRIGGER trg_cards_set_updated_at
     BEFORE UPDATE ON public.cards
     FOR EACH ROW
     EXECUTE FUNCTION public.set_cards_updated_at();
 
-CREATE TRIGGER trg_user_card_fsrs_set_updated_at
+CREATE OR REPLACE TRIGGER trg_user_card_fsrs_set_updated_at
     BEFORE UPDATE ON public.user_card_fsrs
     FOR EACH ROW
     EXECUTE FUNCTION public.set_user_card_fsrs_updated_at();
 
 -- The lone trigger on auth.users: link new auth identities to public.users.
-DROP TRIGGER IF EXISTS trg_handle_new_user ON auth.users;
-CREATE TRIGGER trg_handle_new_user
+CREATE OR REPLACE TRIGGER trg_handle_new_user
     AFTER INSERT ON auth.users
     FOR EACH ROW
     EXECUTE FUNCTION public.handle_new_user();
@@ -345,12 +342,14 @@ ALTER TABLE public.user_preferences  ENABLE ROW LEVEL SECURITY;
 -- Policies are declared in the same order as the original migration history
 -- so that any future audit grep finds them in the expected sequence.
 
+DROP POLICY IF EXISTS users_select_own_or_admin ON public.users;
 CREATE POLICY users_select_own_or_admin
     ON public.users
     FOR SELECT
     TO authenticated
     USING (id = auth.uid() OR public.is_admin(auth.uid()));
 
+DROP POLICY IF EXISTS users_update_own_or_admin ON public.users;
 CREATE POLICY users_update_own_or_admin
     ON public.users
     FOR UPDATE
@@ -358,6 +357,7 @@ CREATE POLICY users_update_own_or_admin
     USING (id = auth.uid() OR public.is_admin(auth.uid()))
     WITH CHECK (id = auth.uid() OR public.is_admin(auth.uid()));
 
+DROP POLICY IF EXISTS cardgroups_all_owner_or_admin ON public.cardgroups;
 CREATE POLICY cardgroups_all_owner_or_admin
     ON public.cardgroups
     FOR ALL
@@ -365,6 +365,7 @@ CREATE POLICY cardgroups_all_owner_or_admin
     USING (owner_id = auth.uid() OR public.is_admin(auth.uid()))
     WITH CHECK (owner_id = auth.uid() OR public.is_admin(auth.uid()));
 
+DROP POLICY IF EXISTS cards_all_owner_or_admin ON public.cards;
 CREATE POLICY cards_all_owner_or_admin
     ON public.cards
     FOR ALL
@@ -386,30 +387,35 @@ CREATE POLICY cards_all_owner_or_admin
         OR public.is_admin(auth.uid())
     );
 
+DROP POLICY IF EXISTS swipe_records_select_own_or_admin ON public.swipe_records;
 CREATE POLICY swipe_records_select_own_or_admin
     ON public.swipe_records
     FOR SELECT
     TO authenticated
     USING (user_id = auth.uid() OR public.is_admin(auth.uid()));
 
+DROP POLICY IF EXISTS swipe_records_insert_own ON public.swipe_records;
 CREATE POLICY swipe_records_insert_own
     ON public.swipe_records
     FOR INSERT
     TO authenticated
     WITH CHECK (user_id = auth.uid());
 
+DROP POLICY IF EXISTS roles_select_public ON public.roles;
 CREATE POLICY roles_select_public
     ON public.roles
     FOR SELECT
     TO PUBLIC
     USING (true);
 
+DROP POLICY IF EXISTS roles_insert_admin ON public.roles;
 CREATE POLICY roles_insert_admin
     ON public.roles
     FOR INSERT
     TO authenticated
     WITH CHECK (public.is_admin(auth.uid()));
 
+DROP POLICY IF EXISTS roles_update_admin ON public.roles;
 CREATE POLICY roles_update_admin
     ON public.roles
     FOR UPDATE
@@ -417,24 +423,28 @@ CREATE POLICY roles_update_admin
     USING (public.is_admin(auth.uid()))
     WITH CHECK (public.is_admin(auth.uid()));
 
+DROP POLICY IF EXISTS roles_delete_admin ON public.roles;
 CREATE POLICY roles_delete_admin
     ON public.roles
     FOR DELETE
     TO authenticated
     USING (public.is_admin(auth.uid()));
 
+DROP POLICY IF EXISTS user_roles_select_self_or_admin ON public.user_roles;
 CREATE POLICY user_roles_select_self_or_admin
     ON public.user_roles
     FOR SELECT
     TO authenticated
     USING (user_id = auth.uid() OR public.is_admin(auth.uid()));
 
+DROP POLICY IF EXISTS user_roles_insert_admin ON public.user_roles;
 CREATE POLICY user_roles_insert_admin
     ON public.user_roles
     FOR INSERT
     TO authenticated
     WITH CHECK (public.is_admin(auth.uid()));
 
+DROP POLICY IF EXISTS user_roles_update_admin ON public.user_roles;
 CREATE POLICY user_roles_update_admin
     ON public.user_roles
     FOR UPDATE
@@ -442,12 +452,14 @@ CREATE POLICY user_roles_update_admin
     USING (public.is_admin(auth.uid()))
     WITH CHECK (public.is_admin(auth.uid()));
 
+DROP POLICY IF EXISTS user_roles_delete_admin ON public.user_roles;
 CREATE POLICY user_roles_delete_admin
     ON public.user_roles
     FOR DELETE
     TO authenticated
     USING (public.is_admin(auth.uid()));
 
+DROP POLICY IF EXISTS user_card_fsrs_self ON public.user_card_fsrs;
 CREATE POLICY user_card_fsrs_self
     ON public.user_card_fsrs
     FOR ALL
@@ -455,18 +467,21 @@ CREATE POLICY user_card_fsrs_self
     USING (user_id = auth.uid() OR public.is_admin(auth.uid()))
     WITH CHECK (user_id = auth.uid() OR public.is_admin(auth.uid()));
 
+DROP POLICY IF EXISTS user_preferences_select_own_or_admin ON public.user_preferences;
 CREATE POLICY user_preferences_select_own_or_admin
     ON public.user_preferences
     FOR SELECT
     TO authenticated
     USING (user_id = auth.uid() OR public.is_admin(auth.uid()));
 
+DROP POLICY IF EXISTS user_preferences_insert_own_or_admin ON public.user_preferences;
 CREATE POLICY user_preferences_insert_own_or_admin
     ON public.user_preferences
     FOR INSERT
     TO authenticated
     WITH CHECK (user_id = auth.uid() OR public.is_admin(auth.uid()));
 
+DROP POLICY IF EXISTS user_preferences_update_own_or_admin ON public.user_preferences;
 CREATE POLICY user_preferences_update_own_or_admin
     ON public.user_preferences
     FOR UPDATE
@@ -474,6 +489,7 @@ CREATE POLICY user_preferences_update_own_or_admin
     USING (user_id = auth.uid() OR public.is_admin(auth.uid()))
     WITH CHECK (user_id = auth.uid() OR public.is_admin(auth.uid()));
 
+DROP POLICY IF EXISTS user_preferences_delete_own_or_admin ON public.user_preferences;
 CREATE POLICY user_preferences_delete_own_or_admin
     ON public.user_preferences
     FOR DELETE
