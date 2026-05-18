@@ -25,7 +25,7 @@ type Bio struct {
 // a pointer to ""). Returns ErrBioTooLong if the trimmed value exceeds BioMax graphemes.
 func ParseBio(s *string) (Bio, error) {
 	if s == nil {
-		return Bio{value: nil}, nil
+		return Bio{}, nil
 	}
 	trimmed := strings.TrimSpace(*s)
 	if uniseg.GraphemeClusterCount(trimmed) > BioMax {
