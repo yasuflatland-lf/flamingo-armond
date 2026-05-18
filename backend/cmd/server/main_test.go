@@ -2032,7 +2032,7 @@ type panicRoleRepo struct{}
 func (panicRoleRepo) FindByID(_ context.Context, _ string) (*domain.Role, error) {
 	panic("not used in this test")
 }
-func (panicRoleRepo) FindByName(_ context.Context, _ string) (*domain.Role, error) {
+func (panicRoleRepo) FindByName(_ context.Context, _ domain.RoleName) (*domain.Role, error) {
 	panic("not used in this test")
 }
 func (panicRoleRepo) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Role, error) {
@@ -2087,7 +2087,7 @@ type findByNameRepo struct {
 	err  error
 }
 
-func (f findByNameRepo) FindByName(_ context.Context, _ string) (*domain.Role, error) {
+func (f findByNameRepo) FindByName(_ context.Context, _ domain.RoleName) (*domain.Role, error) {
 	return f.role, f.err
 }
 
@@ -2268,7 +2268,7 @@ func TestBootstrapSuperUserPromoter_WarnOnCountError(t *testing.T) {
 // need to verify promoter construction, not per-request role checks.
 type userRoleStub struct{}
 
-func (userRoleStub) HasRole(_ context.Context, _, _ string) (bool, error) {
+func (userRoleStub) HasRole(_ context.Context, _ string, _ domain.RoleName) (bool, error) {
 	return false, nil
 }
 

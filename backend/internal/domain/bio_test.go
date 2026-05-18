@@ -8,6 +8,47 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestBioFromPtr verifies the helper that bridges a *string repository read
+// into the trinary VO. nil → Bio{} (IsSet=false); non-nil pointer copies the
+// underlying string and exposes it via Ptr() in defensive-copy fashion.
+func TestBioFromPtr(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil pointer maps to unset Bio", func(t *testing.T) {
+		t.Parallel()
+		b := BioFromPtr(nil)
+		require.False(t, b.IsSet())
+		require.Nil(t, b.Ptr())
+	})
+
+	t.Run("pointer to non-empty string maps to set Bio", func(t *testing.T) {
+		t.Parallel()
+		s := "hello"
+		b := BioFromPtr(&s)
+		require.True(t, b.IsSet())
+		require.NotNil(t, b.Ptr())
+		require.Equal(t, "hello", *b.Ptr())
+	})
+
+	t.Run("pointer to empty string maps to set Bio holding empty string", func(t *testing.T) {
+		t.Parallel()
+		s := ""
+		b := BioFromPtr(&s)
+		require.True(t, b.IsSet())
+		require.NotNil(t, b.Ptr())
+		require.Equal(t, "", *b.Ptr())
+	})
+
+	t.Run("Ptr returns a fresh pointer on each call", func(t *testing.T) {
+		t.Parallel()
+		s := "original"
+		b := BioFromPtr(&s)
+		p1, p2 := b.Ptr(), b.Ptr()
+		require.NotSame(t, p1, p2, "each Ptr() call must allocate a fresh pointer")
+		require.Equal(t, *p1, *p2, "but the values must be equal")
+	})
+}
+
 func TestParseBio(t *testing.T) {
 	t.Parallel()
 
@@ -81,10 +122,10 @@ func TestParseBio(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.wantIsSet, got.IsSet())
 			if tc.wantValue == nil {
-				require.Nil(t, got.Value())
+				require.Nil(t, got.Ptr())
 			} else {
-				require.NotNil(t, got.Value())
-				require.Equal(t, *tc.wantValue, *got.Value())
+				require.NotNil(t, got.Ptr())
+				require.Equal(t, *tc.wantValue, *got.Ptr())
 			}
 		})
 	}

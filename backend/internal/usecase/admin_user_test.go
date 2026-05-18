@@ -615,7 +615,7 @@ func TestAdminUser_Get_Missing(t *testing.T) {
 func TestAdminUser_Update_DisplayName(t *testing.T) {
 	t.Parallel()
 
-	updated := &domain.User{ID: "u-target", DisplayName: ptr("Bob")}
+	updated := &domain.User{ID: "u-target", DisplayName: dnPtr("Bob")}
 	users := &mockAdminUserRepository{updateResult: updated}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _ := buildAdminUC(users, nil, authChk)
@@ -728,7 +728,7 @@ func TestAdminUser_Update_Validation_DisplayNameOverMax(t *testing.T) {
 func TestAdminUser_AssignRole_Idempotent(t *testing.T) {
 	t.Parallel()
 
-	target := &domain.User{ID: "u-target", DisplayName: ptr("Carol")}
+	target := &domain.User{ID: "u-target", DisplayName: dnPtr("Carol")}
 	users := &mockAdminUserRepository{users: map[string]*domain.User{"u-target": target}}
 	roles := &mockAdminRoleRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}

@@ -160,8 +160,8 @@ func TestFindByID_Success(t *testing.T) {
 	if got.DisplayName != nil {
 		t.Fatalf("DisplayName: want nil, got %v", *got.DisplayName)
 	}
-	if got.Bio != nil {
-		t.Fatalf("Bio: want nil, got %v", *got.Bio)
+	if got.Bio.IsSet() {
+		t.Fatalf("Bio: want IsSet=false, got Ptr=%v", got.Bio.Ptr())
 	}
 	if got.AvatarURL != nil {
 		t.Fatalf("AvatarURL: want nil, got %v", *got.AvatarURL)
@@ -252,11 +252,11 @@ func TestUpdate_Success_DisplayNameOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	if got.DisplayName == nil || *got.DisplayName != name {
+	if got.DisplayName == nil || string(*got.DisplayName) != name {
 		t.Fatalf("DisplayName: got %v, want %q", got.DisplayName, name)
 	}
-	if got.Bio != nil {
-		t.Fatalf("Bio should remain nil, got %v", *got.Bio)
+	if got.Bio.IsSet() {
+		t.Fatalf("Bio should remain IsSet=false, got Ptr=%v", got.Bio.Ptr())
 	}
 	if got.AvatarURL != nil {
 		t.Fatalf("AvatarURL should remain nil, got %v", *got.AvatarURL)
@@ -285,10 +285,10 @@ func TestUpdate_PartialBioOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	if got.Bio == nil || *got.Bio != bio {
-		t.Fatalf("Bio: got %v, want %q", got.Bio, bio)
+	if !got.Bio.IsSet() || got.Bio.Ptr() == nil || *got.Bio.Ptr() != bio {
+		t.Fatalf("Bio: got Ptr=%v, want %q", got.Bio.Ptr(), bio)
 	}
-	if got.DisplayName == nil || *got.DisplayName != name {
+	if got.DisplayName == nil || string(*got.DisplayName) != name {
 		t.Fatalf("DisplayName should remain %q, got %v", name, got.DisplayName)
 	}
 }
@@ -325,7 +325,7 @@ func TestUpdate_EmptyStringClearsField(t *testing.T) {
 	if got.DisplayName == nil {
 		t.Fatalf("DisplayName should be non-nil empty string, got nil")
 	}
-	if *got.DisplayName != "" {
+	if string(*got.DisplayName) != "" {
 		t.Fatalf("DisplayName: got %q, want empty", *got.DisplayName)
 	}
 }

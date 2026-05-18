@@ -5,6 +5,8 @@ import (
 
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
+
+	"backend/internal/domain"
 )
 
 type gormUserRole struct {
@@ -19,7 +21,7 @@ type UserRoleRepository interface {
 	// HasRole reports whether userID holds the named role.
 	// Returns (false, nil) when the user has no rows or the role name does not exist.
 	// Only DB errors return a non-nil error. Role lookup is by name (case-sensitive).
-	HasRole(ctx context.Context, userID, roleName string) (bool, error)
+	HasRole(ctx context.Context, userID string, roleName domain.RoleName) (bool, error)
 }
 
 type userRoleRepo struct{ db *gorm.DB }
@@ -28,7 +30,7 @@ func NewUserRoleRepository(db *gorm.DB) UserRoleRepository {
 	return &userRoleRepo{db: db}
 }
 
-func (r *userRoleRepo) HasRole(ctx context.Context, userID, roleName string) (bool, error) {
+func (r *userRoleRepo) HasRole(ctx context.Context, userID string, roleName domain.RoleName) (bool, error) {
 	var count int64
 	err := r.db.WithContext(ctx).
 		Table("user_roles").

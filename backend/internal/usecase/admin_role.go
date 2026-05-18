@@ -196,7 +196,7 @@ func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (UpdateR
 	if existing.IsSystem() {
 		return UpdateRoleOutcome{SystemRoleConflict: &SystemRoleConflictInfo{
 			ID:   existing.ID,
-			Name: existing.Name,
+			Name: string(existing.Name),
 		}}, nil
 	}
 

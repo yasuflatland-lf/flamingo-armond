@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"backend/internal/domain"
 	"backend/internal/repository"
 )
 
@@ -304,7 +305,7 @@ func TestRoleRepository_ListByUser_OrderedByNameAsc(t *testing.T) {
 		t.Fatalf("ListByUser len = %d, want 3", len(roles))
 	}
 
-	want := []string{"admin", "general", "reviewer"}
+	want := []domain.RoleName{"admin", "general", "reviewer"}
 	for i, r := range roles {
 		if r.Name != want[i] {
 			t.Errorf("roles[%d].Name = %q, want %q", i, r.Name, want[i])

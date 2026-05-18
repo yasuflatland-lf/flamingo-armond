@@ -209,9 +209,8 @@ func newMeServer(userMock *mockUserRepository) *handler.Server {
 func TestUserLastViewedCardgroup_NoPreferenceRowReturnsNull(t *testing.T) {
 	t.Parallel()
 
-	dn := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
+		findResult: &domain.User{ID: "u-1", DisplayName: dnPtr("Alice")},
 	}
 	srv := newMeServer(userMock)
 
@@ -245,9 +244,8 @@ func TestUserLastViewedCardgroup_NoPreferenceRowReturnsNull(t *testing.T) {
 func TestUserLastViewedCardgroup_NilCardgroupIDReturnsNull(t *testing.T) {
 	t.Parallel()
 
-	dn := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
+		findResult: &domain.User{ID: "u-1", DisplayName: dnPtr("Alice")},
 	}
 	srv := newMeServer(userMock)
 
@@ -282,9 +280,8 @@ func TestUserLastViewedCardgroup_PopulatedResolvesViaDataLoader(t *testing.T) {
 	t.Parallel()
 
 	cgID := "cg-1"
-	dn := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
+		findResult: &domain.User{ID: "u-1", DisplayName: dnPtr("Alice")},
 	}
 	srv := newMeServer(userMock)
 
@@ -325,9 +322,8 @@ func TestUserLastViewedCardgroup_DanglingIDResolvesNull(t *testing.T) {
 	t.Parallel()
 
 	cgID := "cg-deleted"
-	dn := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
+		findResult: &domain.User{ID: "u-1", DisplayName: dnPtr("Alice")},
 	}
 	srv := newMeServer(userMock)
 
@@ -358,9 +354,8 @@ func TestUserLastViewedCardgroup_DanglingIDResolvesNull(t *testing.T) {
 func TestUserLastViewedCardgroup_LoadersNilReturnsInternal(t *testing.T) {
 	t.Parallel()
 
-	dn := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
+		findResult: &domain.User{ID: "u-1", DisplayName: dnPtr("Alice")},
 	}
 	srv := newMeServer(userMock)
 
@@ -378,9 +373,8 @@ func TestUserLastViewedCardgroup_LoadersNilReturnsInternal(t *testing.T) {
 func TestUserLastViewedCardgroup_ContextCancelledReturnsCancelled(t *testing.T) {
 	t.Parallel()
 
-	dn := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
+		findResult: &domain.User{ID: "u-1", DisplayName: dnPtr("Alice")},
 	}
 	srv := newMeServer(userMock)
 
@@ -420,9 +414,8 @@ func TestUserLastViewedCardgroup_ContextCancelledReturnsCancelled(t *testing.T) 
 func TestUserLastViewedCardgroup_GenericLoaderErrorReturnsInternal(t *testing.T) {
 	t.Parallel()
 
-	dn := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
+		findResult: &domain.User{ID: "u-1", DisplayName: dnPtr("Alice")},
 	}
 	srv := newMeServer(userMock)
 

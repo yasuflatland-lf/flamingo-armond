@@ -246,7 +246,7 @@ func TestUserPagination_SearchSubstring(t *testing.T) {
 	gotNames := map[string]bool{}
 	for _, u := range got {
 		require.NotNil(t, u.DisplayName)
-		gotNames[*u.DisplayName] = true
+		gotNames[string(*u.DisplayName)] = true
 	}
 	for _, r := range rows {
 		full := r.body + tag
@@ -285,7 +285,7 @@ func TestUserPagination_SearchEscapesPercentLiteral(t *testing.T) {
 	require.Equal(t, int64(1), total)
 	require.Len(t, got, 1)
 	require.NotNil(t, got[0].DisplayName)
-	require.Equal(t, marker+"100%legit", *got[0].DisplayName)
+	require.Equal(t, marker+"100%legit", string(*got[0].DisplayName))
 }
 
 // TestUserPagination_SearchEscapesUnderscoreLiteral verifies that `_` in the
@@ -313,7 +313,7 @@ func TestUserPagination_SearchEscapesUnderscoreLiteral(t *testing.T) {
 	require.Equal(t, int64(1), total)
 	require.Len(t, got, 1)
 	require.NotNil(t, got[0].DisplayName)
-	require.Equal(t, marker+"a_min", *got[0].DisplayName)
+	require.Equal(t, marker+"a_min", string(*got[0].DisplayName))
 }
 
 // TestUserPagination_CursorNotFound verifies that a cursor pointing at a uuid

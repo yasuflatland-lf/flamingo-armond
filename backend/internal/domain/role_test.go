@@ -13,7 +13,7 @@ func TestRoleShape(t *testing.T) {
 	roleType := reflect.TypeFor[Role]()
 	want := map[string]reflect.Type{
 		"ID":   reflect.TypeFor[string](),
-		"Name": reflect.TypeFor[string](),
+		"Name": reflect.TypeFor[RoleName](),
 	}
 
 	for name, typ := range want {

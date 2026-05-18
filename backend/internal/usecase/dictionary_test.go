@@ -67,7 +67,7 @@ func (m *mockDictCardRepo) UpsertManyTx(_ context.Context, _ *gorm.DB, cards []*
 	if m.preExisting != nil {
 		var ins, upd int64
 		for _, c := range cards {
-			if _, ok := m.preExisting[c.Front]; ok {
+			if _, ok := m.preExisting[string(c.Front)]; ok {
 				upd++
 			} else {
 				ins++
@@ -256,8 +256,8 @@ func TestDictionaryUsecase_AdminMixedInsertsAndUpdates(t *testing.T) {
 	wantBack := uniqueBack(probeIdx + 1000)
 	var found bool
 	for _, c := range repo.captured {
-		if c.Front == wantFront {
-			if c.Back != wantBack {
+		if string(c.Front) == wantFront {
+			if string(c.Back) != wantBack {
 				t.Fatalf("captured shared front=%q has Back=%q, want %q", wantFront, c.Back, wantBack)
 			}
 			found = true
@@ -708,7 +708,7 @@ func TestDictionaryUsecase_DuplicateFrontDeduplicatedAndSurfaced(t *testing.T) {
 	if len(repo.captured) != 1 {
 		t.Fatalf("expected 1 card sent to repo, got %d", len(repo.captured))
 	}
-	if repo.captured[0].Back != rubbishBack {
+	if string(repo.captured[0].Back) != rubbishBack {
 		t.Fatalf("expected repo card Back=%q (last occurrence wins), got %q", rubbishBack, repo.captured[0].Back)
 	}
 }

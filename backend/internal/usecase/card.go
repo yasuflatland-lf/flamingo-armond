@@ -239,18 +239,17 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 		return CreateCardOutcome{}, eris.Wrap(err, "usecase: create card: generate id")
 	}
 
-	front := frontVO.String()
 	card := &domain.Card{
 		ID:          id,
 		CardgroupID: in.CardgroupID,
-		Front:       front,
-		Back:        backVO.String(),
+		Front:       frontVO,
+		Back:        backVO,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
 	if err := u.cardRepo.Create(ctx, card); err != nil {
 		if errors.Is(err, repository.ErrCardDuplicateFront) {
-			existing, lookupErr := u.cardRepo.FindByCardgroupAndFront(ctx, in.CardgroupID, front)
+			existing, lookupErr := u.cardRepo.FindByCardgroupAndFront(ctx, in.CardgroupID, string(card.Front))
 			if lookupErr != nil {
 				// The lookup may race with a concurrent delete (the duplicate row vanished
 				// between the failed INSERT and this SELECT) or fail for an unrelated DB
@@ -260,13 +259,13 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 			}
 			return CreateCardOutcome{Duplicate: &DuplicateCardInfo{
 				ExistingID:   existing.ID,
-				ExistingBack: existing.Back,
+				ExistingBack: string(existing.Back),
 			}}, nil
 		}
 		return CreateCardOutcome{}, eris.Wrap(err, "usecase: create card: repo create")
 	}
 	if u.notionWriter != nil && u.notionPageID != "" {
-		text := card.Front + " " + card.Back
+		text := string(card.Front) + " " + string(card.Back)
 		cardID := card.ID
 		pageID := u.notionPageID
 		cardgroupID := card.CardgroupID
@@ -552,8 +551,6 @@ func (u *CardUsecase) resolveCursor(
 
 func translateCardErr(err error) error {
 	switch {
-	case errors.Is(err, domain.ErrCardCardgroupIDRequired):
-		return ucerr.NewValidationError("cardgroupId", "cardgroupId is required")
 	case errors.Is(err, domain.ErrCardFrontRequired):
 		return ucerr.NewValidationError("front", "front is required")
 	case errors.Is(err, domain.ErrCardFrontTooLong):

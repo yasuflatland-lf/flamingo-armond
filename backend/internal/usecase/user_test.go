@@ -39,12 +39,20 @@ func anonCtx() context.Context {
 
 func ptr(s string) *string { return &s }
 
+// dnPtr returns a *domain.DisplayName for the supplied string. Used by User
+// fixture builders because Go does not allow taking the address of a conversion
+// expression like &domain.DisplayName(s).
+func dnPtr(s string) *domain.DisplayName {
+	d := domain.DisplayName(s)
+	return &d
+}
+
 // --- Me tests ---
 
 func TestUserUsecase_Me(t *testing.T) {
 	t.Parallel()
 
-	alice := ptr("Alice")
+	alice := dnPtr("Alice")
 	cases := []struct {
 		name       string
 		ctx        context.Context
@@ -118,7 +126,7 @@ func TestUserUsecase_Me(t *testing.T) {
 func TestUserUsecase_UpdateUser(t *testing.T) {
 	t.Parallel()
 
-	returned := &domain.User{ID: "u1", DisplayName: ptr("Alice")}
+	returned := &domain.User{ID: "u1", DisplayName: dnPtr("Alice")}
 
 	// familyEmoji is a ZWJ sequence that counts as 1 grapheme cluster.
 	familyEmoji := "👨‍👩‍👧‍👦"
@@ -333,7 +341,7 @@ func TestUserUsecase_UpdateUser(t *testing.T) {
 func TestUserUsecase_UpdateUser_SuccessVariant(t *testing.T) {
 	t.Parallel()
 
-	returned := &domain.User{ID: "u1", DisplayName: ptr("Alice")}
+	returned := &domain.User{ID: "u1", DisplayName: dnPtr("Alice")}
 	repo := &mockUserRepository{updateResult: returned}
 	uc := NewUserUsecase(repo, newTestLogger())
 

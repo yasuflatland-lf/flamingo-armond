@@ -315,7 +315,7 @@ func (u *adminUserUsecase) Update(ctx context.Context, id string, input AdminUpd
 			}
 			return AdminUpdateUserOutcome{Validation: info}, nil
 		}
-		patch.Bio = bio.Value()
+		patch.Bio = bio.Ptr()
 	}
 
 	user, err := u.users.Update(ctx, id, patch)

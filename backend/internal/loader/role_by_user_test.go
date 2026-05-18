@@ -24,7 +24,7 @@ func (s *roleBatchRepoStub) FindByID(_ context.Context, _ string) (*domain.Role,
 	panic("roleBatchRepoStub.FindByID not configured")
 }
 
-func (s *roleBatchRepoStub) FindByName(_ context.Context, _ string) (*domain.Role, error) {
+func (s *roleBatchRepoStub) FindByName(_ context.Context, _ domain.RoleName) (*domain.Role, error) {
 	panic("roleBatchRepoStub.FindByName not configured")
 }
 
@@ -143,7 +143,7 @@ func TestRoleByUserIDLoader_BatchesNCallsIntoOne(t *testing.T) {
 			mu.Unlock()
 			out := make(map[string][]*domain.Role, len(userIDs))
 			for _, id := range userIDs {
-				out[id] = []*domain.Role{{ID: "role-for-" + id, Name: "n-" + id}}
+				out[id] = []*domain.Role{{ID: "role-for-" + id, Name: domain.RoleName("n-" + id)}}
 			}
 			return out, nil
 		},
@@ -214,7 +214,7 @@ func TestRoleByUserIDLoader_MixOfKnownAndUnknownUsers(t *testing.T) {
 				if id == "ghost" {
 					continue
 				}
-				out[id] = []*domain.Role{{ID: "r-" + id, Name: "name-" + id}}
+				out[id] = []*domain.Role{{ID: "r-" + id, Name: domain.RoleName("name-" + id)}}
 			}
 			return out, nil
 		},

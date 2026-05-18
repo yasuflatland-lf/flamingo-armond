@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"backend/internal/domain"
 	"backend/internal/repository"
 )
 
@@ -78,7 +79,7 @@ func TestRoleRepository_Create_Success(t *testing.T) {
 	if role.ID == "" {
 		t.Error("Create returned role with empty ID")
 	}
-	if role.Name != name {
+	if role.Name != domain.RoleName(name) {
 		t.Errorf("Create.Name = %q, want %q", role.Name, name)
 	}
 
@@ -87,7 +88,7 @@ func TestRoleRepository_Create_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindByID after Create: %v", err)
 	}
-	if fetched.Name != name {
+	if fetched.Name != domain.RoleName(name) {
 		t.Errorf("FindByID.Name = %q, want %q", fetched.Name, name)
 	}
 }
@@ -105,7 +106,7 @@ func TestRoleRepository_Create_NormalizesName(t *testing.T) {
 	}
 
 	want := strings.ToLower(strings.TrimSpace(raw))
-	if role.Name != want {
+	if role.Name != domain.RoleName(want) {
 		t.Errorf("Create.Name = %q, want %q (normalised)", role.Name, want)
 	}
 }
@@ -153,7 +154,7 @@ func TestRoleRepository_Update_Success(t *testing.T) {
 	if updated.ID != created.ID {
 		t.Errorf("Update.ID = %q, want %q", updated.ID, created.ID)
 	}
-	if updated.Name != newName {
+	if updated.Name != domain.RoleName(newName) {
 		t.Errorf("Update.Name = %q, want %q", updated.Name, newName)
 	}
 
@@ -162,7 +163,7 @@ func TestRoleRepository_Update_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindByID after Update: %v", err)
 	}
-	if fetched.Name != newName {
+	if fetched.Name != domain.RoleName(newName) {
 		t.Errorf("FindByID.Name = %q after Update, want %q", fetched.Name, newName)
 	}
 }
@@ -185,7 +186,7 @@ func TestRoleRepository_Update_NormalizesName(t *testing.T) {
 	}
 
 	want := strings.ToLower(strings.TrimSpace(raw))
-	if updated.Name != want {
+	if updated.Name != domain.RoleName(want) {
 		t.Errorf("Update.Name = %q, want %q (normalised)", updated.Name, want)
 	}
 }

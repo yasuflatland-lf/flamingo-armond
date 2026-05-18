@@ -100,7 +100,7 @@ func (u *UserUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (Updat
 			}
 			return UpdateProfileOutcome{Validation: info}, nil
 		}
-		patch.Bio = bio.Value()
+		patch.Bio = bio.Ptr()
 	}
 	appUser, err := u.repo.Update(ctx, user.Sub, patch)
 	if err != nil {

@@ -68,7 +68,7 @@ func (m *mockAdminRoleRepoForCRUD) Create(_ context.Context, name string) (*doma
 		return m.createResult, nil
 	}
 	// Echo the normalised name so callers see what reached the repo.
-	return &domain.Role{ID: "r-new", Name: name}, nil
+	return &domain.Role{ID: "r-new", Name: domain.RoleName(name)}, nil
 }
 
 func (m *mockAdminRoleRepoForCRUD) Update(_ context.Context, id, name string) (*domain.Role, error) {
@@ -81,7 +81,7 @@ func (m *mockAdminRoleRepoForCRUD) Update(_ context.Context, id, name string) (*
 	if m.updateResult != nil {
 		return m.updateResult, nil
 	}
-	return &domain.Role{ID: id, Name: name}, nil
+	return &domain.Role{ID: id, Name: domain.RoleName(name)}, nil
 }
 
 func (m *mockAdminRoleRepoForCRUD) Delete(_ context.Context, id string) error {
@@ -461,7 +461,7 @@ func TestAdminRole_Create_NormalizesBeforeUniqueCheck(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			roles := &mockAdminRoleRepoForCRUD{
-				createResult: &domain.Role{ID: "r-new", Name: tc.wantRepo},
+				createResult: &domain.Role{ID: "r-new", Name: domain.RoleName(tc.wantRepo)},
 			}
 			authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 			uc, _ := buildAdminRoleUC(roles, authChk)
@@ -471,7 +471,7 @@ func TestAdminRole_Create_NormalizesBeforeUniqueCheck(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			assertCreateRoleOutcomeXOR(t, outcome)
-			if outcome.Role == nil || outcome.Role.Name != tc.wantRepo {
+			if outcome.Role == nil || outcome.Role.Name != domain.RoleName(tc.wantRepo) {
 				t.Fatalf("outcome.Role = %+v, want role with name=%s", outcome.Role, tc.wantRepo)
 			}
 			if roles.lastCreateName != tc.wantRepo {
@@ -573,7 +573,7 @@ func TestAdminRole_Update_RenameSystemRoleConflict(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			roles := &mockAdminRoleRepoForCRUD{
-				findResult: &domain.Role{ID: "r-x", Name: tc.roleName},
+				findResult: &domain.Role{ID: "r-x", Name: domain.RoleName(tc.roleName)},
 			}
 			authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 			uc, _ := buildAdminRoleUC(roles, authChk)
@@ -772,7 +772,7 @@ func TestAdminRole_Delete_SystemRoleForbidden(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			roles := &mockAdminRoleRepoForCRUD{
-				findResult: &domain.Role{ID: "r-x", Name: tc.roleName},
+				findResult: &domain.Role{ID: "r-x", Name: domain.RoleName(tc.roleName)},
 			}
 			authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 			uc, _ := buildAdminRoleUC(roles, authChk)

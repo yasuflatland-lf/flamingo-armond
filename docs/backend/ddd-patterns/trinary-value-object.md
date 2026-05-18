@@ -38,9 +38,9 @@ func ParseBio(s *string) (Bio, error) {
     return Bio{value: &trimmed}, nil
 }
 
-func (b Bio) IsSet() bool    { return b.value != nil }
+func (b Bio) IsSet() bool   { return b.value != nil }
 
-func (b Bio) Value() *string {
+func (b Bio) Ptr() *string {
     if b.value == nil {
         return nil
     }
@@ -51,12 +51,12 @@ func (b Bio) Value() *string {
 
 - `ParseBio(nil)` → `Bio{}` (no change): `IsSet()` returns `false`.
 - `ParseBio(&"")` or `ParseBio(&"   ")` → explicit clear: `IsSet()` returns `true`,
-  `Value()` returns a pointer to `""`. Whitespace-only inputs are collapsed to the
+  `Ptr()` returns a pointer to `""`. Whitespace-only inputs are collapsed to the
   explicit-clear case after trimming.
-- `ParseBio(&"hello")` → set: `IsSet()` returns `true`, `Value()` returns a pointer
+- `ParseBio(&"hello")` → set: `IsSet()` returns `true`, `Ptr()` returns a pointer
   to `"hello"`.
 
-`Value()` returns a copy of the pointer's target so external mutation of the
+`Ptr()` returns a copy of the pointer's target so external mutation of the
 returned pointer does not alter the `Bio`'s internal state.
 
 ## Usecase guard

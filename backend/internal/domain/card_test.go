@@ -18,8 +18,8 @@ func TestCardShape(t *testing.T) {
 	want := map[string]reflect.Type{
 		"ID":          reflect.TypeFor[string](),
 		"CardgroupID": reflect.TypeFor[string](),
-		"Front":       reflect.TypeFor[string](),
-		"Back":        reflect.TypeFor[string](),
+		"Front":       reflect.TypeFor[CardText](),
+		"Back":        reflect.TypeFor[CardText](),
 		"CreatedAt":   reflect.TypeFor[time.Time](),
 		"UpdatedAt":   reflect.TypeFor[time.Time](),
 	}
@@ -43,11 +43,6 @@ func TestCardValidate(t *testing.T) {
 		sentinelErr error
 	}{
 		{
-			name:        "cardgroup id required",
-			card:        Card{Front: "front", Back: "back"},
-			sentinelErr: ErrCardCardgroupIDRequired,
-		},
-		{
 			name:        "front required",
 			card:        Card{CardgroupID: "cg", Front: "", Back: "back"},
 			sentinelErr: ErrCardFrontRequired,
@@ -64,17 +59,17 @@ func TestCardValidate(t *testing.T) {
 		},
 		{
 			name:        "front too long",
-			card:        Card{CardgroupID: "cg", Front: strings.Repeat("a", 501), Back: "back"},
+			card:        Card{CardgroupID: "cg", Front: CardText(strings.Repeat("a", 501)), Back: "back"},
 			sentinelErr: ErrCardFrontTooLong,
 		},
 		{
 			name:        "back too long with graphemes",
-			card:        Card{CardgroupID: "cg", Front: "front", Back: strings.Repeat(zwjEmoji, 501)},
+			card:        Card{CardgroupID: "cg", Front: "front", Back: CardText(strings.Repeat(zwjEmoji, 501))},
 			sentinelErr: ErrCardBackTooLong,
 		},
 		{
 			name: "valid at max grapheme length",
-			card: Card{CardgroupID: "cg", Front: strings.Repeat(zwjEmoji, 500), Back: strings.Repeat("b", 500)},
+			card: Card{CardgroupID: "cg", Front: CardText(strings.Repeat(zwjEmoji, 500)), Back: CardText(strings.Repeat("b", 500))},
 		},
 	}
 

@@ -189,7 +189,7 @@ func TestNotionSyncUsecase_DuplicateFrontLastWins(t *testing.T) {
 	if pe.Back != uniqueBack(1) {
 		t.Fatalf("ParseErrors[0].Back = %q, want %q (the dropped row's back)", pe.Back, uniqueBack(1))
 	}
-	if len(cards.upserted) != 1 || cards.upserted[0].Back != uniqueBack(2) {
+	if len(cards.upserted) != 1 || string(cards.upserted[0].Back) != uniqueBack(2) {
 		t.Fatalf("upserted = %+v, want latest back", cards.upserted)
 	}
 	// Partial success (rows>0, parseErrs>0): persistence must still run.
