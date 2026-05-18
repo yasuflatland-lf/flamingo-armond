@@ -10,10 +10,10 @@ import (
 func TestRoleShape(t *testing.T) {
 	t.Parallel()
 
-	roleType := reflect.TypeOf(Role{})
+	roleType := reflect.TypeFor[Role]()
 	want := map[string]reflect.Type{
-		"ID":   reflect.TypeOf(""),
-		"Name": reflect.TypeOf(""),
+		"ID":   reflect.TypeFor[string](),
+		"Name": reflect.TypeFor[string](),
 	}
 
 	for name, typ := range want {
@@ -46,7 +46,6 @@ func TestRoleIsSystem(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tc.want, tc.role.IsSystem())
