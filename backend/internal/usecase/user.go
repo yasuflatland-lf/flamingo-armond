@@ -54,7 +54,7 @@ func (u *UserUsecase) Me(ctx context.Context) (*domain.User, error) {
 
 type UpdateUserInput struct {
 	DisplayName string
-	Bio         *string // nil = unchanged, "" = explicit clear
+	Bio         *string // nil = unchanged, "" or whitespace-only = explicit clear (trimmed); surrounding whitespace is stripped
 }
 
 // UpdateProfileOutcome is the result of UserUsecase.UpdateUser. Exactly one
@@ -87,20 +87,22 @@ func (u *UserUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (Updat
 		return UpdateProfileOutcome{Validation: info}, nil
 	}
 
-	bio, err := domain.ParseBio(in.Bio)
-	if err != nil {
-		info, perr := liftValidationErr(translateBioErr(err))
-		if perr != nil {
-			return UpdateProfileOutcome{}, perr
-		}
-		return UpdateProfileOutcome{Validation: info}, nil
-	}
-
 	name := string(dn)
-	appUser, err := u.repo.Update(ctx, user.Sub, repository.UserUpdate{
+	patch := repository.UserUpdate{
 		DisplayName: &name,
-		Bio:         bio.Value(),
-	})
+	}
+	if in.Bio != nil {
+		bio, err := domain.ParseBio(in.Bio)
+		if err != nil {
+			info, perr := liftValidationErr(translateBioErr(err))
+			if perr != nil {
+				return UpdateProfileOutcome{}, perr
+			}
+			return UpdateProfileOutcome{Validation: info}, nil
+		}
+		patch.Bio = bio.Value()
+	}
+	appUser, err := u.repo.Update(ctx, user.Sub, patch)
 	if err != nil {
 		return UpdateProfileOutcome{}, eris.Wrap(err, "usecase: UpdateUser: update user")
 	}
