@@ -14,7 +14,7 @@ import (
 func TestBioFromPtr(t *testing.T) {
 	t.Parallel()
 
-	t.Run("nil pointer maps to no-change Bio", func(t *testing.T) {
+	t.Run("nil pointer maps to unset Bio", func(t *testing.T) {
 		t.Parallel()
 		b := BioFromPtr(nil)
 		require.False(t, b.IsSet())
@@ -30,7 +30,7 @@ func TestBioFromPtr(t *testing.T) {
 		require.Equal(t, "hello", *b.Ptr())
 	})
 
-	t.Run("pointer to empty string maps to explicit-clear Bio", func(t *testing.T) {
+	t.Run("pointer to empty string maps to set Bio holding empty string", func(t *testing.T) {
 		t.Parallel()
 		s := ""
 		b := BioFromPtr(&s)

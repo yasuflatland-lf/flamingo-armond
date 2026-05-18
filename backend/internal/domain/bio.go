@@ -47,8 +47,13 @@ func BioFromPtr(p *string) Bio {
 	return Bio{value: &s}
 }
 
-// Ptr returns a copy of the persistence-ready pointer: nil for "no change",
-// pointer-to-"" for explicit clear, pointer-to-non-empty for set.
+// Ptr returns a fresh copy of the internal pointer:
+//   - nil — the Bio holds no value (constructed via ParseBio(nil) or BioFromPtr(nil));
+//   - non-nil pointer to empty string — the Bio holds an empty value;
+//   - non-nil pointer to non-empty string — the Bio holds a populated value.
+//
+// Patch-context callers map nil → "no change", &"" → "explicit clear", &"x" → "set".
+// Read-context callers map nil → NULL column, &"" → empty stored, &"x" → populated stored.
 func (b Bio) Ptr() *string {
 	if b.value == nil {
 		return nil
@@ -57,7 +62,8 @@ func (b Bio) Ptr() *string {
 	return &s
 }
 
-// IsSet reports whether the caller supplied a value (including an explicit clear).
-// Returns false when the Bio was constructed from a nil input or is the zero
-// value (Bio{}); returns true for explicit-clear and set cases.
+// IsSet reports whether the Bio carries a value (its internal pointer is non-nil).
+// Returns false for ParseBio(nil) (patch-context: no change) and for BioFromPtr(nil)
+// (read-context: NULL column / zero value Bio{}). Returns true for any other
+// construction, including an explicit empty string.
 func (b Bio) IsSet() bool { return b.value != nil }

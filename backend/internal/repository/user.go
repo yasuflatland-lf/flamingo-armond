@@ -279,7 +279,7 @@ func userToDomain(g gormUser) *domain.User {
 	// DisplayName is a string newtype, so (*domain.DisplayName)(g.DisplayName)
 	// is a straight pointer cast across the same underlying type. Bio is the
 	// trinary VO; BioFromPtr maps a NULL column to Bio{} (IsSet=false) and a
-	// text column to a set Bio whose Ptr() returns the same string.
+	// text column to a set Bio whose Ptr() returns a defensive copy with the same string value.
 	return &domain.User{
 		ID:          g.ID,
 		DisplayName: (*domain.DisplayName)(g.DisplayName),
