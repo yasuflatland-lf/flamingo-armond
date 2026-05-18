@@ -246,7 +246,7 @@ func translateRoleNameErr(err error) error {
 	case errors.Is(err, domain.ErrRoleNameRequired):
 		return ucerr.NewValidationError("name", "name is required")
 	case errors.Is(err, domain.ErrRoleNameTooLong):
-		return ucerr.NewValidationError("name", "name must be at most 50 characters")
+		return ucerr.NewValidationError("name", fmt.Sprintf("name must be at most %d characters", domain.RoleNameMax))
 	case errors.Is(err, domain.ErrRoleNameInvalid):
 		return ucerr.NewValidationError("name", "name must contain only lowercase letters, digits, '_' or '-'")
 	default:

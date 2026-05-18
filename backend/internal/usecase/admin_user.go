@@ -451,7 +451,7 @@ func translateDisplayNameErr(err error) error {
 	case errors.Is(err, domain.ErrDisplayNameRequired):
 		return ucerr.NewValidationError("displayName", "displayName is required")
 	case errors.Is(err, domain.ErrDisplayNameTooLong):
-		return ucerr.NewValidationError("displayName", "displayName must be at most 50 characters")
+		return ucerr.NewValidationError("displayName", fmt.Sprintf("displayName must be at most %d characters", domain.DisplayNameMax))
 	default:
 		return eris.Wrap(err, "usecase: translate display name error")
 	}
@@ -464,7 +464,7 @@ func translateBioErr(err error) error {
 		return nil
 	}
 	if errors.Is(err, domain.ErrBioTooLong) {
-		return ucerr.NewValidationError("bio", "bio must be at most 500 characters")
+		return ucerr.NewValidationError("bio", fmt.Sprintf("bio must be at most %d characters", domain.BioMax))
 	}
 	return eris.Wrap(err, "usecase: translate bio error")
 }
