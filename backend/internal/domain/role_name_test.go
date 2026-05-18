@@ -49,7 +49,7 @@ func TestParseRoleName(t *testing.T) {
 		},
 		{
 			name:        "too long",
-			input:       strings.Repeat("a", 31),
+			input:       strings.Repeat("a", 51),
 			sentinelErr: ErrRoleNameTooLong,
 		},
 		{

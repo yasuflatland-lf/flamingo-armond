@@ -9,7 +9,7 @@ import (
 
 // roleNameMax is the maximum byte length of a normalized role name. Because the
 // pattern restricts input to ASCII, byte length equals grapheme count.
-const roleNameMax = 30
+const roleNameMax = 50
 
 // roleNamePattern allows lowercase letters, digits, underscores, and hyphens.
 var roleNamePattern = regexp.MustCompile(`^[a-z0-9_-]+$`)
