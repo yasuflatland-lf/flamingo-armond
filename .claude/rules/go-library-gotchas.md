@@ -49,7 +49,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Repository lookup methods scoped by tenant ID require a cross-tenant negative test](../../docs/backend/library-gotchas/repository-cross-tenant-negative-test.md)
 - [GORM rejects unconditional `Delete` — use `Where("1 = 1")` to opt out](../../docs/backend/library-gotchas/gorm-rejects-unconditional-delete.md)
 - [Tx and non-Tx repository methods share a private helper to avoid drift](../../docs/backend/library-gotchas/repo-tx-and-nontx-share-private-helper.md)
-- [Consumer-defined narrow repository interface per usecase](../../docs/backend/library-gotchas/consumer-defined-narrow-repo-interface.md)
+- [Consumer-defined narrow repository interface per usecase](../../docs/backend/library-gotchas/consumer-defined-narrow-repo-interface.md) — for the domain→service variant (same technique, architecture-enforced boundary) see [`docs/backend/ddd-patterns/consumer-defined-interface-cross-package.md`](../../docs/backend/ddd-patterns/consumer-defined-interface-cross-package.md)
 - [Inject `*rand.Rand` into pure functions to keep tests deterministic](../../docs/backend/library-gotchas/inject-rand-rand-for-deterministic-test.md)
 - [Postgres advisory lock for race-safe ensure-by-name when no UNIQUE constraint exists](../../docs/backend/library-gotchas/postgres-advisory-lock-for-ensure-by-name.md)
 - [`subtle.ConstantTimeCompare` leaks token length — pair with a rate limiter](../../docs/backend/library-gotchas/subtle-constanttimecompare-length-leak.md)
@@ -111,3 +111,10 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Bool flag vs two-function split: ubiquitous language signals (`authorizeCardgroup*`)](../../docs/backend/library-gotchas/bool-flag-vs-two-function-ubiquitous-language.md)
 - [Direct unit tests for shared helpers + directionality assertion](../../docs/backend/library-gotchas/direct-unit-test-for-shared-helper.md)
 - [Dead context-done branch in pass-through helper — collapse to single return](../../docs/backend/library-gotchas/dead-context-check-in-pass-through-helper.md)
+
+## DDD patterns (on-demand)
+
+For domain-layer design patterns — value object constructors, aggregate behaviour
+methods, trinary VOs, exported bound constants, and speculative-helper deletion —
+see [`.claude/rules/ddd-patterns.md`](ddd-patterns.md) and the full chapter
+index under `docs/backend/ddd-patterns/`.
