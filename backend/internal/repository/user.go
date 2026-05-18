@@ -275,10 +275,15 @@ func userCursorWhere(createdAtAsc, idAsc bool, cursor gormUser) (string, []any) 
 }
 
 func userToDomain(g gormUser) *domain.User {
+	// The gormUser DisplayName field is *string (DB column type); the domain
+	// DisplayName is a string newtype, so (*domain.DisplayName)(g.DisplayName)
+	// is a straight pointer cast across the same underlying type. Bio is the
+	// trinary VO; BioFromPtr maps a NULL column to Bio{} (IsSet=false) and a
+	// text column to a set Bio whose Ptr() returns the same string.
 	return &domain.User{
 		ID:          g.ID,
-		DisplayName: g.DisplayName,
-		Bio:         g.Bio,
+		DisplayName: (*domain.DisplayName)(g.DisplayName),
+		Bio:         domain.BioFromPtr(g.Bio),
 		AvatarURL:   g.AvatarURL,
 		CreatedAt:   g.CreatedAt,
 		UpdatedAt:   g.UpdatedAt,

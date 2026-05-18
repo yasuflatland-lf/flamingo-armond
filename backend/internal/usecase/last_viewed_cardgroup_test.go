@@ -58,11 +58,10 @@ func TestLastViewedCardgroup_Anonymous_Unauthenticated(t *testing.T) {
 func TestLastViewedCardgroup_HappyPath_ReturnsRefreshedUser(t *testing.T) {
 	t.Parallel()
 
-	dn := "Alice"
 	cgID := "cg-123"
 	want := &domain.User{
 		ID:          "u-1",
-		DisplayName: &dn,
+		DisplayName: dnPtr("Alice"),
 	}
 	prefs := &mockPrefRepo{}
 	users := &mockUserRefetchRepo{user: want}

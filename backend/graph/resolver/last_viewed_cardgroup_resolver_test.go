@@ -211,7 +211,7 @@ func TestUserLastViewedCardgroup_NoPreferenceRowReturnsNull(t *testing.T) {
 
 	dn := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
+		findResult: &domain.User{ID: "u-1", DisplayName: dnPtr(dn)},
 	}
 	srv := newMeServer(userMock)
 
@@ -247,7 +247,7 @@ func TestUserLastViewedCardgroup_NilCardgroupIDReturnsNull(t *testing.T) {
 
 	dn := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
+		findResult: &domain.User{ID: "u-1", DisplayName: dnPtr(dn)},
 	}
 	srv := newMeServer(userMock)
 
@@ -284,7 +284,7 @@ func TestUserLastViewedCardgroup_PopulatedResolvesViaDataLoader(t *testing.T) {
 	cgID := "cg-1"
 	dn := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
+		findResult: &domain.User{ID: "u-1", DisplayName: dnPtr(dn)},
 	}
 	srv := newMeServer(userMock)
 
@@ -327,7 +327,7 @@ func TestUserLastViewedCardgroup_DanglingIDResolvesNull(t *testing.T) {
 	cgID := "cg-deleted"
 	dn := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
+		findResult: &domain.User{ID: "u-1", DisplayName: dnPtr(dn)},
 	}
 	srv := newMeServer(userMock)
 
@@ -360,7 +360,7 @@ func TestUserLastViewedCardgroup_LoadersNilReturnsInternal(t *testing.T) {
 
 	dn := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
+		findResult: &domain.User{ID: "u-1", DisplayName: dnPtr(dn)},
 	}
 	srv := newMeServer(userMock)
 
@@ -380,7 +380,7 @@ func TestUserLastViewedCardgroup_ContextCancelledReturnsCancelled(t *testing.T) 
 
 	dn := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
+		findResult: &domain.User{ID: "u-1", DisplayName: dnPtr(dn)},
 	}
 	srv := newMeServer(userMock)
 
@@ -422,7 +422,7 @@ func TestUserLastViewedCardgroup_GenericLoaderErrorReturnsInternal(t *testing.T)
 
 	dn := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{ID: "u-1", DisplayName: &dn},
+		findResult: &domain.User{ID: "u-1", DisplayName: dnPtr(dn)},
 	}
 	srv := newMeServer(userMock)
 

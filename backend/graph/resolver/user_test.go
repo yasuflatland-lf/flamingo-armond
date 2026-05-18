@@ -40,6 +40,14 @@ func (m *mockUserRepository) Update(_ context.Context, _ string, patch repositor
 // ptr returns a pointer to s.
 func ptr(s string) *string { return &s }
 
+// dnPtr returns a *domain.DisplayName for the supplied string. Used to build
+// User fixtures after the field type changed from *string to *DisplayName in
+// Phase 3.
+func dnPtr(s string) *domain.DisplayName {
+	d := domain.DisplayName(s)
+	return &d
+}
+
 // newServer builds a gqlgen handler.Server backed by a resolver that uses the
 // given mock repository.
 func newServer(mock *mockUserRepository) *handler.Server {
@@ -90,9 +98,8 @@ const meQuery = `{"query":"{ me { id displayName bio avatarUrl } }"}`
 // user returns the expected User shape.
 func TestResolver_Me_Authenticated(t *testing.T) {
 	t.Parallel()
-	displayName := "Alice"
 	mock := &mockUserRepository{
-		findResult: &domain.User{ID: "u1", DisplayName: &displayName},
+		findResult: &domain.User{ID: "u1", DisplayName: dnPtr("Alice")},
 	}
 	srv := newServer(mock)
 	resp := gqlRequest(t, srv, authedCtx("u1"), meQuery)
@@ -160,7 +167,7 @@ func updateProfileMutation(displayName string, bio *string) string {
 func TestResolver_UpdateProfile_BioVariants(t *testing.T) {
 	t.Parallel()
 
-	returned := &domain.User{ID: "u1", DisplayName: ptr("Alice")}
+	returned := &domain.User{ID: "u1", DisplayName: dnPtr("Alice")}
 
 	cases := []struct {
 		name          string
@@ -232,7 +239,7 @@ func TestResolver_UpdateProfile_BioVariants(t *testing.T) {
 func TestResolver_UpdateProfile_HappyPath(t *testing.T) {
 	t.Parallel()
 
-	returned := &domain.User{ID: "u1", DisplayName: ptr("Alice")}
+	returned := &domain.User{ID: "u1", DisplayName: dnPtr("Alice")}
 	mock := &mockUserRepository{updateResult: returned}
 	srv := newServer(mock)
 

@@ -162,12 +162,11 @@ func TestAdminUserResolver_Users_NonAdmin(t *testing.T) {
 func TestAdminUserResolver_Users_AdminHappyPath(t *testing.T) {
 	t.Parallel()
 
-	dn1, dn2 := "Alice", "Bob"
 	mock := &mockAdminUserUsecase{
 		listResult: &usecase.AdminUserConnection{
 			Edges: []usecase.AdminUserEdge{
-				{Cursor: "u1", Node: &domain.User{ID: "u1", DisplayName: &dn1}},
-				{Cursor: "u2", Node: &domain.User{ID: "u2", DisplayName: &dn2}},
+				{Cursor: "u1", Node: &domain.User{ID: "u1", DisplayName: dnPtr("Alice")}},
+				{Cursor: "u2", Node: &domain.User{ID: "u2", DisplayName: dnPtr("Bob")}},
 			},
 			PageInfo:   usecase.PageInfo{HasNextPage: false, HasPreviousPage: false},
 			TotalCount: 2,
@@ -466,9 +465,8 @@ func TestAdminUserResolver_Roles_SelfIntrospection_Allowed(t *testing.T) {
 
 	// Wire UserUsecase so me { ... } can resolve. The AdminUserUsecase is
 	// unused by this query; pass the mock to satisfy the resolver wiring.
-	displayName := "Alice"
 	userMock := &mockUserRepository{
-		findResult: &domain.User{ID: "u-self", DisplayName: &displayName},
+		findResult: &domain.User{ID: "u-self", DisplayName: dnPtr("Alice")},
 	}
 	uc := usecase.NewUserUsecase(userMock, newDiscardLogger())
 	// isAdmin=false models a non-admin caller; the self-introspection branch
@@ -675,9 +673,8 @@ func TestAdminUserResolver_RevokeRole_XORInvariantViolation(t *testing.T) {
 func TestAdminUserResolver_AdminUser_HappyPath(t *testing.T) {
 	t.Parallel()
 
-	displayName := "Charlie"
 	mock := &mockAdminUserUsecase{
-		getResult: &domain.User{ID: "u-existing", DisplayName: &displayName},
+		getResult: &domain.User{ID: "u-existing", DisplayName: dnPtr("Charlie")},
 	}
 	srv := newAdminUserSrv(mock)
 	body := `{"query":"{ adminUser(id: \"u-existing\") { id displayName } }"}`
@@ -771,11 +768,13 @@ const adminUpdateUserForbiddenMutation = `{"query":"mutation { adminUpdateUser(i
 func TestAdminUserResolver_AdminUpdateUser_HappyPath(t *testing.T) {
 	t.Parallel()
 
-	newName := "Dana"
-	newBio := "A short bio."
 	mock := &mockAdminUserUsecase{
 		updateOutcome: usecase.AdminUpdateUserOutcome{
-			User: &domain.User{ID: "u-target", DisplayName: &newName, Bio: &newBio},
+			User: &domain.User{
+				ID:          "u-target",
+				DisplayName: dnPtr("Dana"),
+				Bio:         domain.BioFromPtr(ptr("A short bio.")),
+			},
 		},
 	}
 	srv := newAdminUserSrv(mock)

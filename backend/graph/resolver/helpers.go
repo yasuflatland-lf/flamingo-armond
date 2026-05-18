@@ -23,10 +23,15 @@ func toUserModel(user *domain.User) *model.User {
 	// LastViewedCardgroup is intentionally left nil here. The
 	// userResolver.LastViewedCardgroup field resolver hydrates it lazily via
 	// UserPreferenceLoader + CardgroupLoader when the client selects the field.
+	//
+	// DisplayName is a *DisplayName (typed-string pointer) and converts back
+	// to the GraphQL *string via the same-underlying-type pointer cast.
+	// Bio is the trinary VO; Ptr() returns the defensive-copy *string the
+	// model field expects (nil → null on the wire).
 	return &model.User{
 		ID:          user.ID,
-		DisplayName: user.DisplayName,
-		Bio:         user.Bio,
+		DisplayName: (*string)(user.DisplayName),
+		Bio:         user.Bio.Ptr(),
 		AvatarURL:   user.AvatarURL,
 	}
 }
