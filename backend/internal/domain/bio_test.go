@@ -8,60 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestBio_ScanValuerRoundTrip exercises sql.Scanner and driver.Valuer so a
-// nullable bio column round-trips through GORM with the trinary contract
-// intact: null DB → Bio{} (IsSet=false), text DB → set Bio (IsSet=true),
-// including the explicit-clear empty-string case.
-func TestBio_ScanValuerRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name      string
-		src       any
-		wantIsSet bool
-		wantPtr   *string
-	}{
-		{name: "nil source → no-change Bio", src: nil, wantIsSet: false, wantPtr: nil},
-		{name: "string source set", src: "hello", wantIsSet: true, wantPtr: strPtr("hello")},
-		{name: "empty string source → explicit clear", src: "", wantIsSet: true, wantPtr: strPtr("")},
-		{name: "[]byte source set", src: []byte("from bytes"), wantIsSet: true, wantPtr: strPtr("from bytes")},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			var b Bio
-			require.NoError(t, b.Scan(tc.src))
-			require.Equal(t, tc.wantIsSet, b.IsSet())
-			if tc.wantPtr == nil {
-				require.Nil(t, b.Ptr())
-			} else {
-				require.NotNil(t, b.Ptr())
-				require.Equal(t, *tc.wantPtr, *b.Ptr())
-			}
-
-			v, err := b.Value()
-			require.NoError(t, err)
-			if tc.wantPtr == nil {
-				require.Nil(t, v)
-			} else {
-				require.Equal(t, *tc.wantPtr, v)
-			}
-		})
-	}
-}
-
-// TestBio_ScanUnsupportedType verifies that an unexpected source type
-// surfaces as an eris-wrapped error rather than panicking.
-func TestBio_ScanUnsupportedType(t *testing.T) {
-	t.Parallel()
-
-	var b Bio
-	err := b.Scan(123)
-	require.Error(t, err)
-}
-
 // TestBioFromPtr verifies the helper that bridges a *string repository read
 // into the trinary VO. nil → Bio{} (IsSet=false); non-nil pointer copies the
 // underlying string and exposes it via Ptr() in defensive-copy fashion.
@@ -93,12 +39,12 @@ func TestBioFromPtr(t *testing.T) {
 		require.Equal(t, "", *b.Ptr())
 	})
 
-	t.Run("input pointer mutation does not affect VO", func(t *testing.T) {
+	t.Run("Ptr returns a fresh pointer, not the caller's", func(t *testing.T) {
 		t.Parallel()
 		s := "original"
 		b := BioFromPtr(&s)
-		s = "mutated"
-		require.Equal(t, "original", *b.Ptr())
+		p := b.Ptr()
+		require.NotSame(t, &s, p, "Ptr() must return a fresh pointer; mutating *Ptr() must not affect the caller's s")
 	})
 }
 

@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"database/sql/driver"
 	"strings"
 
 	"github.com/rivo/uniseg"
@@ -49,9 +48,7 @@ func BioFromPtr(p *string) Bio {
 }
 
 // Ptr returns a copy of the persistence-ready pointer: nil for "no change",
-// pointer-to-"" for explicit clear, pointer-to-non-empty for set. Use this
-// accessor for non-database call sites (usecase patches, GraphQL output).
-// The driver.Valuer Value method below is reserved for sql/driver consumers.
+// pointer-to-"" for explicit clear, pointer-to-non-empty for set.
 func (b Bio) Ptr() *string {
 	if b.value == nil {
 		return nil
@@ -61,37 +58,6 @@ func (b Bio) Ptr() *string {
 }
 
 // IsSet reports whether the caller supplied a value (including an explicit clear).
-// Returns false only when the Bio was constructed from a nil input.
+// Returns false when the Bio was constructed from a nil input or is the zero
+// value (Bio{}); returns true for explicit-clear and set cases.
 func (b Bio) IsSet() bool { return b.value != nil }
-
-// Scan implements sql.Scanner so GORM can read a Bio column directly.
-// Semantics mirror BioFromPtr — null source maps to Bio{} (IsSet=false,
-// "no change"); a text source maps to a set Bio (IsSet=true, including the
-// empty-string explicit-clear case).
-func (b *Bio) Scan(src any) error {
-	if src == nil {
-		*b = Bio{}
-		return nil
-	}
-	switch v := src.(type) {
-	case string:
-		s := v
-		*b = Bio{value: &s}
-	case []byte:
-		s := string(v)
-		*b = Bio{value: &s}
-	default:
-		return eris.Errorf("domain: bio: unsupported scan type %T", src)
-	}
-	return nil
-}
-
-// Value implements driver.Valuer so GORM writes the trinary back to a
-// nullable text column: Bio{value: nil} → SQL NULL; Bio{value: &s} → the
-// string s (including the empty-string explicit-clear case).
-func (b Bio) Value() (driver.Value, error) {
-	if b.value == nil {
-		return nil, nil
-	}
-	return *b.value, nil
-}

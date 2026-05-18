@@ -39,9 +39,9 @@ func anonCtx() context.Context {
 
 func ptr(s string) *string { return &s }
 
-// dnPtr returns a *domain.DisplayName for the supplied string. Used to build
-// User fixtures after the field type changed from *string to *DisplayName in
-// Phase 3.
+// dnPtr returns a *domain.DisplayName for the supplied string. Used by User
+// fixture builders because Go does not allow taking the address of a conversion
+// expression like &domain.DisplayName(s).
 func dnPtr(s string) *domain.DisplayName {
 	d := domain.DisplayName(s)
 	return &d
