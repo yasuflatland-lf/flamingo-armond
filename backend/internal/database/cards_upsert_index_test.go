@@ -3,6 +3,7 @@ package database_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 
@@ -19,7 +20,7 @@ func indexIsUnique(t *testing.T, ctx context.Context, sqlDB *sql.DB, indexName s
 		 WHERE schemaname = 'public' AND tablename = 'cards' AND indexname = $1`,
 		indexName,
 	).Scan(&indexdef)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return false
 	}
 	if err != nil {
