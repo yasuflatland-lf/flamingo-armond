@@ -406,9 +406,9 @@ Usage in the usecase layer:
 if user == nil {
     return nil, gqlerr.Unauthenticated()
 }
-if n > displayNameMax {
+if n > domain.DisplayNameMax {
     return nil, gqlerr.BadUserInput("displayName",
-        fmt.Sprintf("displayName must be at most %d characters", displayNameMax))
+        fmt.Sprintf("displayName must be at most %d characters", domain.DisplayNameMax))
 }
 if err := repo.Update(ctx, id, patch); err != nil {
     return nil, gqlerr.Internal(ctx, err)
