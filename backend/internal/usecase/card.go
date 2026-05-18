@@ -551,8 +551,6 @@ func (u *CardUsecase) resolveCursor(
 
 func translateCardErr(err error) error {
 	switch {
-	case errors.Is(err, domain.ErrCardCardgroupIDRequired):
-		return ucerr.NewValidationError("cardgroupId", "cardgroupId is required")
 	case errors.Is(err, domain.ErrCardFrontRequired):
 		return ucerr.NewValidationError("front", "front is required")
 	case errors.Is(err, domain.ErrCardFrontTooLong):

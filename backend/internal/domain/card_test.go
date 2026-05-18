@@ -43,11 +43,6 @@ func TestCardValidate(t *testing.T) {
 		sentinelErr error
 	}{
 		{
-			name:        "cardgroup id required",
-			card:        Card{Front: "front", Back: "back"},
-			sentinelErr: ErrCardCardgroupIDRequired,
-		},
-		{
 			name:        "front required",
 			card:        Card{CardgroupID: "cg", Front: "", Back: "back"},
 			sentinelErr: ErrCardFrontRequired,
