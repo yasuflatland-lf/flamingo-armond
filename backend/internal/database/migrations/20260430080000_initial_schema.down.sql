@@ -59,6 +59,8 @@ DROP POLICY IF EXISTS roles_update_admin ON public.roles;
 DROP POLICY IF EXISTS roles_insert_admin ON public.roles;
 DROP POLICY IF EXISTS roles_select_public ON public.roles;
 
+DROP POLICY IF EXISTS ping_records_admin_all ON public.ping_records;
+
 DROP POLICY IF EXISTS swipe_records_insert_own ON public.swipe_records;
 DROP POLICY IF EXISTS swipe_records_select_own_or_admin ON public.swipe_records;
 
