@@ -127,8 +127,7 @@ jobs:
         run: |
           supabase db query \
             "insert into public.roles (name) values ('admin'), ('general') on conflict (name) do nothing;" \
-            --local \
-            --output table
+            --local
 
       - name: Run Playwright
         run: pnpm --filter frontend test:e2e
