@@ -8,7 +8,7 @@
 ## First-time setup
 
 ```bash
-# Install Go 1.26.2 (backend/.tool-versions), Node 24.x + pnpm 10.33.2 + Supabase CLI (./.tool-versions).
+# Install Go 1.26.3 (backend/.tool-versions), Node 24.x + pnpm 10.33.4 + Supabase CLI (./.tool-versions).
 mise install
 
 # Install workspace deps. The frontend workspace is populated with a Next.js 16 App Router scaffold (see `frontend/CLAUDE.md`).
@@ -19,7 +19,7 @@ Verify:
 
 ```bash
 node --version        # v24.x.y
-pnpm --version        # 10.33.2  (resolved by mise from .tool-versions)
+pnpm --version        # 10.33.4  (resolved by mise from .tool-versions)
 which pnpm            # ~/.local/share/mise/shims/pnpm
 ```
 
