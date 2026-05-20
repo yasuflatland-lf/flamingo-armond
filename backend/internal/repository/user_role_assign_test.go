@@ -265,6 +265,30 @@ func TestUserRoleRepository_RevokeFromUser_RoleNotFound(t *testing.T) {
 	}
 }
 
+// TestUserRoleRepository_RevokeFromUser_UserNotFoundDistinct asserts that the new
+// sentinels are distinct: a missing-user error must not match the
+// missing-role sentinel, and vice versa.
+func TestUserRoleRepository_RevokeFromUser_UserNotFoundDistinct(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	roleRepo := repository.NewRoleRepository(testDB.GORM)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
+
+	admin, err := roleRepo.FindByName(ctx, "admin")
+	if err != nil {
+		t.Fatalf("FindByName(admin): %v", err)
+	}
+
+	missingUser := uuid.NewString()
+	err = repo.RevokeFromUser(ctx, missingUser, admin.ID)
+	if !errors.Is(err, repository.ErrUserNotFound) {
+		t.Fatalf("want ErrUserNotFound, got %v", err)
+	}
+	if errors.Is(err, repository.ErrRoleNotFound) {
+		t.Fatalf("missing-user error must not match ErrRoleNotFound, got %v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // ListByUser
 // ---------------------------------------------------------------------------

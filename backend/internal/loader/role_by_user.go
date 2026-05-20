@@ -2,6 +2,7 @@ package loader
 
 import (
 	"context"
+	"errors"
 
 	"github.com/graph-gophers/dataloader/v7"
 	"github.com/rotisserie/eris"
@@ -29,9 +30,14 @@ func roleByUserIDBatchFunc(repo repository.UserRoleRepository) dataloader.BatchF
 
 		byUser, err := repo.ListByUserIDs(ctx, keys)
 		if err != nil {
-			wrapped := eris.Wrap(err, "loader: list roles by user IDs")
+			var errToSet error
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				errToSet = err
+			} else {
+				errToSet = eris.Wrap(err, "loader: list roles by user IDs")
+			}
 			for i := range keys {
-				out[i] = &dataloader.Result[[]*domain.Role]{Error: wrapped}
+				out[i] = &dataloader.Result[[]*domain.Role]{Error: errToSet}
 			}
 			return out
 		}

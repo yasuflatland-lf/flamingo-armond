@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
@@ -93,6 +94,9 @@ func (r *userRoleRepo) requireExists(ctx context.Context, table, id, wrap string
 		Table(table).
 		Where("id = ?", id).
 		Count(&count).Error; err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
 		return eris.Wrap(err, wrap)
 	}
 	if count == 0 {

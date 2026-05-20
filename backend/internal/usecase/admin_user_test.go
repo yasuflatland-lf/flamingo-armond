@@ -1136,6 +1136,9 @@ func TestAdminUser_AssignRole_CancelledFromRepo(t *testing.T) {
 
 	outcome, err := uc.AssignRole(adminCallerCtx("admin-1"), "u-target", "r-admin")
 	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("context.Canceled identity: got %T %v", err, err)
+	}
 	if outcome.User != nil || outcome.Validation != nil {
 		t.Fatalf("expected zero-value outcome on cancellation, got %+v", outcome)
 	}
@@ -1178,6 +1181,9 @@ func TestAdminUser_RevokeRole_CancelledFromRepo(t *testing.T) {
 	// userID != callerID so the self-demotion path and FindByIDs are skipped.
 	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "u-other", "r-some")
 	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("context.Canceled identity: got %T %v", err, err)
+	}
 	if outcome.User != nil || outcome.Validation != nil || outcome.CannotRevokeOwnAdmin {
 		t.Fatalf("expected zero-value outcome on cancellation, got %+v", outcome)
 	}
