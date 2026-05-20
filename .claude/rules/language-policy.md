@@ -25,6 +25,14 @@ When a doc references a GraphQL mutation name, a Go function name, an env-var na
 
 **The same rule applies after a refactor deletes a Go type or function.** A doc that uses the deleted symbol as a worked example looks self-consistent until a reader greps the source and finds nothing. After landing a refactor that removes a type or function, run `grep -rn <DeletedSymbol> docs/` across the whole doc tree — not just the docs adjacent to the changed code — because worked examples hide in seemingly unrelated rule files that teach an adjacent pattern. If the example is load-bearing for the doc's thesis, rewrite it with a current symbol; if the reference was incidental, drop it entirely rather than leaving a pointer to a symbol that no longer exists. The same grep applies to **test files**, not just `docs/`. A refactor that renames or removes a function leaves stale identifiers behind in test comments (worked example: issue #181 commit 4829b40 refreshed three `authorizeCardgroup` references in `swipe_performance_test.go` that no longer named any production symbol). Test-file comments rot as silently as `docs/` references and need the same post-refactor grep — `grep -rn <DeletedSymbol> backend/` covers both production and test trees.
 
+**The same grep must cover `.claude/rules/` and the L3 chapters they link to.** Rule files teach patterns by citing real production symbols as worked examples. When a symbol used as a worked example in a rule file is renamed or deleted, the rule's worked example silently rots — a future reader who follows it will grep for the symbol and find nothing. The canonical post-refactor grep is therefore:
+
+```bash
+grep -rn <DeletedSymbol> backend/ frontend/src/ docs/ .claude/rules/
+```
+
+A `uuidV7` → `domain.NewID` rename left a stale identifier in [`.claude/rules/subagent-dispatch.md`](subagent-dispatch.md) under the "Symbol moves must be atomic" section; the grep over `docs/` and `backend/` alone missed it because rules live under `.claude/rules/`.
+
 **Mechanical rewrites preserve broken `§` anchors silently.** A regex/sed replacement that swaps `docs/foo.md` → `bar/CLAUDE.md` across N files preserves the `§ "X"` suffix on every site. If `## X` was only ever a heading in `docs/foo.md` and the new target is a different document, the anchor falls through silently — GitHub resolves unknown fragments to the page top without a 404. The verification gate is to walk each rewritten line and confirm the heading the `§` suffix names exists in the new target, before committing. A worked example from this repository: nine sites preserved `frontend/CLAUDE.md § "X"` anchors during the `docs/frontend.md` → `frontend/CLAUDE.md` migration. The target was a 49-line orientation hub with three `##` headings; none of the nine `X` strings matched. Each site was repointed at the actual `docs/frontend/<chapter>.md` file with the verified GitHub slug.
 
 ## Markdown anchor links over bare-text references

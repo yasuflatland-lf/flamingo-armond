@@ -85,6 +85,8 @@ detection is grep-based today and pinned at single-file
 - [Classifier check must run before any pipeline step that appends to the classified slice](../../docs/backend/error-wrapping/classifier-check-ordering-before-pipeline-mutation.md)
 - [Redundant tests after alias-bridge deletion: cross-check existing table cases before retaining](../../docs/backend/error-wrapping/redundant-tests-after-alias-bridge-deletion.md)
 - [Error classifier helper: pass-through sentinels and typed errors, wrap infra errors with caller-supplied prefix](../../docs/backend/error-wrapping/error-classifier-helper-pass-through-with-caller-prefix.md)
+- [Application vs Presentation error responsibility split: usecase is consumer-agnostic; wire shape is a Presentation decision](../../docs/backend/error-wrapping/application-presentation-error-responsibility.md)
+- [Generic helper vs aggregate-specific wrap prefix: bare package name for cross-aggregate helpers, two-segment prefix for aggregate-scoped code](../../docs/backend/error-wrapping/generic-helper-vs-aggregate-prefix.md)
 
 ## Background
 

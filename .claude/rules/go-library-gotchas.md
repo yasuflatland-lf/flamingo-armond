@@ -51,6 +51,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Tx and non-Tx repository methods share a private helper to avoid drift](../../docs/backend/library-gotchas/repo-tx-and-nontx-share-private-helper.md)
 - [Consumer-defined narrow repository interface per usecase](../../docs/backend/library-gotchas/consumer-defined-narrow-repo-interface.md) — for the domain→service variant (same technique, architecture-enforced boundary) see [`docs/backend/ddd-patterns/consumer-defined-interface-cross-package.md`](../../docs/backend/ddd-patterns/consumer-defined-interface-cross-package.md)
 - [Inject `*rand.Rand` into pure functions to keep tests deterministic](../../docs/backend/library-gotchas/inject-rand-rand-for-deterministic-test.md)
+- [`newV7` indirection seam for rare-failure crypto helpers — package-private `var` swap enables failure-path chain-shape assertions](../../docs/backend/library-gotchas/newv7-test-seam.md)
 - [Postgres advisory lock for race-safe ensure-by-name when no UNIQUE constraint exists](../../docs/backend/library-gotchas/postgres-advisory-lock-for-ensure-by-name.md)
 - [`subtle.ConstantTimeCompare` leaks token length — pair with a rate limiter](../../docs/backend/library-gotchas/subtle-constanttimecompare-length-leak.md)
 - [slog context enrichment must precede the log call that announces the enrichment](../../docs/backend/library-gotchas/slog-context-enrichment-precedes-log.md)
