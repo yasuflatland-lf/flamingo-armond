@@ -251,7 +251,7 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 		return CreateCardOutcome{}, translateCardErr(err)
 	}
 	now := time.Now().UTC()
-	id, err := uuidV7()
+	id, err := domain.NewID()
 	if err != nil {
 		return CreateCardOutcome{}, eris.Wrap(err, "usecase: create card: generate id")
 	}

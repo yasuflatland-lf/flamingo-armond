@@ -135,7 +135,7 @@ func (u *CardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 		return CreateCardgroupOutcome{Validation: info}, nil
 	}
 
-	id, err := uuidV7()
+	id, err := domain.NewID()
 	if err != nil {
 		return CreateCardgroupOutcome{}, eris.Wrap(err, "usecase: generate cardgroup uuid")
 	}
