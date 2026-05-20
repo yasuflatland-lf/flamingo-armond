@@ -16,7 +16,7 @@ import (
 )
 
 func newCard(cardgroupID, front, back string) *domain.Card {
-	now := time.Now().UTC()
+	now := time.Now().UTC().Truncate(time.Microsecond)
 	return &domain.Card{
 		ID:          uuid.NewString(),
 		CardgroupID: cardgroupID,
