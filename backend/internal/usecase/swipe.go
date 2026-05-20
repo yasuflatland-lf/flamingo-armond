@@ -175,7 +175,7 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			if errors.Is(err, repository.ErrNotFound) {
 				return ucerr.NewValidationError("cardId", "card not found")
 			}
-			return err
+			return eris.Wrap(err, "usecase: swipe: find card by id")
 		}
 		if !card.BelongsToCardgroup(in.CardgroupID) {
 			return ucerr.NewValidationError("cardId", "card not found")
@@ -184,7 +184,7 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		now = time.Now().UTC()
 		byCardID, err := u.userFSRSRepo.FindByUserAndCardIDsTx(ctx, tx, user.Sub, []string{card.ID})
 		if err != nil {
-			return err
+			return eris.Wrap(err, "usecase: swipe: find user-card fsrs")
 		}
 		current := byCardID[card.ID]
 		if current == nil {
@@ -194,20 +194,23 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			return eris.Wrap(err, "usecase: swipe: apply rating")
 		}
 		if err := u.userFSRSRepo.UpsertTx(ctx, tx, current); err != nil {
-			return err
+			return eris.Wrap(err, "usecase: swipe: upsert user-card fsrs")
 		}
 		sr, err := domain.NewSwipeRecord(user.Sub, card.ID, rating, now, current.State)
 		if err != nil {
-			return err
+			return eris.Wrap(err, "usecase: swipe: new swipe record")
 		}
 		if err := u.swipeRepo.CreateTx(ctx, tx, sr); err != nil {
-			return err
+			return eris.Wrap(err, "usecase: swipe: insert swipe record")
 		}
 		due, err := u.cardRepo.FindDueCardsForUserTx(ctx, tx, user.Sub, in.CardgroupID, now, u.nextBatchSize)
 		if err != nil {
 			return eris.Wrap(err, "usecase: swipe: find due cards")
 		}
 		nextCards = u.ordering.Apply(due, u.randSource())
+		if len(nextCards) > u.nextBatchSize {
+			nextCards = nextCards[:u.nextBatchSize]
+		}
 		return nil
 	})
 	if err != nil {
