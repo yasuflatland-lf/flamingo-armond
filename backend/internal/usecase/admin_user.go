@@ -411,7 +411,7 @@ func (u *adminUserUsecase) RevokeRole(ctx context.Context, userID, roleID string
 }
 
 // mapRoleAssignmentError classifies the sentinel set returned by
-// roleRepo.AssignToUser / RevokeFromUser into either input-validation data
+// userRoles.AssignToUser / RevokeFromUser into either input-validation data
 // (returned via the first slot, with second slot nil) or a propagating error
 // (returned via the second slot, with first slot nil). Specific sentinels
 // are matched before the legacy ErrNotFound fallback because both

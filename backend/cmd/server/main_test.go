@@ -2203,7 +2203,7 @@ func TestBootstrapSuperUserPromoter_WarnsWhenNoEscapeHatch(t *testing.T) {
 }
 
 // TestBootstrapSuperUserPromoter_WarnOnCountError verifies that a DB failure
-// in CountAdminUsers is non-fatal: bootstrapSuperUserPromoter returns a
+// in CountAdmins is non-fatal: bootstrapSuperUserPromoter returns a
 // pass-through promoter and emits a structured WARN with error_chain.root.stack.
 func TestBootstrapSuperUserPromoter_WarnOnCountError(t *testing.T) {
 	ctx := t.Context()
