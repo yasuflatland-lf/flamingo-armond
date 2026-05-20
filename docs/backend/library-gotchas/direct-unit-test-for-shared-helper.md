@@ -73,6 +73,34 @@ func TestTrimAndDetect_DirectionDistinction(t *testing.T) {
 This single assertion is load-bearing: it catches a future refactor that
 accidentally makes the two functions identical.
 
+## Symmetric branch coverage for error-classifying sibling pairs
+
+When two helpers share the same structure but differ in one classification branch
+(e.g. `authorizeCardgroupOrBadInput` vs `authorizeCardgroupOrUnauthenticated`, both
+in `backend/internal/usecase/ownership.go`), every branch in one must be mirrored
+in the other. The siblings differ only in the `ErrNotFound` arm — one returns
+`ucerr.NewValidationError(...)`, the other returns `ucerr.ErrUnauthenticated` — but
+they share the same happy path, non-owner path, infrastructure-error path, and
+context-pass-through path. A test file that covers only the new branch in one
+sibling leaves the parallel branches in the other silently uncovered.
+
+Apply the mirror rule when a new test file is introduced for either helper:
+map each branch of the covered sibling to the corresponding branch of the uncovered
+one and add a test for each gap. For `authorizeCardgroup*` the full branch map is:
+
+| Branch | `OrBadInput` test | `OrUnauthenticated` test |
+|---|---|---|
+| `ErrNotFound` | `NotFound_ReturnsValidationError` | `NotFound_ReturnsUnauthenticated` |
+| `context.Canceled` | `PropagatesCancelled` | `PropagatesCancelled` |
+| `context.DeadlineExceeded` | `PropagatesDeadlineExceeded` | `PropagatesDeadlineExceeded` |
+| Non-owner | `NonOwner_ReturnsUnauthenticated` | `NonOwner_ReturnsUnauthenticated` |
+| Success | `Success_ReturnsNil` | `Success_ReturnsNil` |
+| Infra error | `InfraError_WrappedAsInternal` | `InfraError_WrappedAsInternal` |
+
+This is the test-file variant of the "pre-existing inconsistency surfaced by an
+adjacent edit" rule in `.claude/rules/scope-discipline.md`: the new test file made
+the gap visible, so the same PR closes it.
+
 ## Checklist for shared helper unit tests
 
 1. **`want=0` (or zero-value sentinel)** — verify the bypass / no-op path.
@@ -82,6 +110,9 @@ accidentally makes the two functions identical.
 4. **`len == want+1`** — the sentinel row is trimmed, `hasMore = true`.
 5. **Symmetric pair** — if the helper has a `Backward` (or `Reverse`) sibling,
    add one directionality assertion as described above.
+6. **Error-classifying sibling pair** — if the helper has an `Or<X>` / `Or<Y>`
+   sibling, map every branch to the corresponding branch in the other and confirm
+   each is covered (see "Symmetric branch coverage" above).
 
 ## Why not rely on integration tests alone
 

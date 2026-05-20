@@ -31,6 +31,9 @@ func authorizeCardgroupOrBadInput(
 		if errors.Is(err, repository.ErrNotFound) {
 			return ucerr.NewValidationError("cardgroupId", "cardgroup not found")
 		}
+		if isContextDone(err) {
+			return err
+		}
 		return eris.Wrap(err, "usecase: authorize cardgroup: find by id")
 	}
 	if !cg.IsOwnedBy(userID) {
@@ -53,6 +56,9 @@ func authorizeCardgroupOrUnauthenticated(
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ucerr.ErrUnauthenticated
+		}
+		if isContextDone(err) {
+			return err
 		}
 		return eris.Wrap(err, "usecase: authorize cardgroup: find by id")
 	}
