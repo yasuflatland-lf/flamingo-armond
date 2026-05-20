@@ -25,7 +25,7 @@ import (
 type swipeCardRepo struct {
 	findByIDTxResult         *domain.Card
 	findByIDTxErr            error
-	findDueCardsForUserTxRes []*domain.Card
+	findDueCardsForUserTxRes []domain.DueCard
 	findDueCardsForUserTxErr error
 }
 
@@ -33,7 +33,7 @@ func (m *swipeCardRepo) FindByIDTx(_ context.Context, _ *gorm.DB, _ string) (*do
 	return m.findByIDTxResult, m.findByIDTxErr
 }
 
-func (m *swipeCardRepo) FindDueCardsForUserTx(_ context.Context, _ *gorm.DB, _, _ string, _ time.Time, _ int) ([]*domain.Card, error) {
+func (m *swipeCardRepo) FindDueCardsForUserTx(_ context.Context, _ *gorm.DB, _, _ string, _ time.Time, _ int) ([]domain.DueCard, error) {
 	return m.findDueCardsForUserTxRes, m.findDueCardsForUserTxErr
 }
 
@@ -160,8 +160,10 @@ func TestResolver_HandleSwipe_HappyPath(t *testing.T) {
 	nextCard := &domain.Card{ID: "c-2", CardgroupID: "cg-1", Front: "Q2", Back: "A2"}
 
 	cardRepo := &swipeCardRepo{
-		findByIDTxResult:         card,
-		findDueCardsForUserTxRes: []*domain.Card{nextCard},
+		findByIDTxResult: card,
+		findDueCardsForUserTxRes: []domain.DueCard{
+			{Card: nextCard, State: domain.FSRSStateNew, Due: nextCard.CreatedAt},
+		},
 	}
 	cgRepo := &swipeCGRepo{
 		findByIDResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"},

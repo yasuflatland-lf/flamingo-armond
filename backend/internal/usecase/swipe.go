@@ -24,7 +24,7 @@ const (
 
 type CardRepoForSwipe interface {
 	FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
-	FindDueCardsForUserTx(ctx context.Context, tx *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
+	FindDueCardsForUserTx(ctx context.Context, tx *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error)
 }
 
 type CardgroupRepoForSwipe interface {
@@ -203,11 +203,11 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		if err := u.swipeRepo.CreateTx(ctx, tx, sr); err != nil {
 			return err
 		}
-		nextCards, err = u.cardRepo.FindDueCardsForUserTx(ctx, tx, user.Sub, in.CardgroupID, now, u.nextBatchSize)
+		due, err := u.cardRepo.FindDueCardsForUserTx(ctx, tx, user.Sub, in.CardgroupID, now, u.nextBatchSize)
 		if err != nil {
-			return err
+			return eris.Wrap(err, "usecase: swipe: find due cards")
 		}
-		nextCards = u.ordering.Apply(nextCards, u.randSource())
+		nextCards = u.ordering.Apply(due, u.randSource())
 		return nil
 	})
 	if err != nil {

@@ -76,7 +76,7 @@ func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
 					ID:          "card-1",
 					CardgroupID: "cg-1",
 				},
-				findDueRows: []*domain.Card{{ID: "next-1", CardgroupID: "cg-1"}},
+				findDueRows: []domain.DueCard{{Card: &domain.Card{ID: "next-1", CardgroupID: "cg-1"}}},
 			}
 			cardgroupRepo := &mockCardgroupRepoForCard{
 				findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
@@ -141,7 +141,7 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 			ID:          "card-1",
 			CardgroupID: "cg-1",
 		},
-		findDueRows: []*domain.Card{{ID: "next-1", CardgroupID: "cg-1"}},
+		findDueRows: []domain.DueCard{{Card: &domain.Card{ID: "next-1", CardgroupID: "cg-1"}}},
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
 		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
@@ -256,7 +256,7 @@ func TestSwipeUsecase_HandleSwipe_PropagatesUpsertError(t *testing.T) {
 			ID:          "card-1",
 			CardgroupID: "cg-1",
 		},
-		findDueRows: []*domain.Card{},
+		findDueRows: []domain.DueCard{},
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
 		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},

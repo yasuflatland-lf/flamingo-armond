@@ -26,7 +26,7 @@ import (
 type cardMockRepo struct {
 	deleteByIDsResult int64
 	deleteByIDsErr    error
-	findDueRows       []*domain.Card
+	findDueRows       []domain.DueCard
 	findDueErr        error
 	findDueLimit      int
 
@@ -43,7 +43,7 @@ func (m *cardMockRepo) FindByID(_ context.Context, _ string) (*domain.Card, erro
 func (m *cardMockRepo) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Card, error) {
 	return nil, nil
 }
-func (m *cardMockRepo) FindDueCardsForUser(_ context.Context, _ string, _ string, _ time.Time, limit int) ([]*domain.Card, error) {
+func (m *cardMockRepo) FindDueCardsForUser(_ context.Context, _ string, _ string, _ time.Time, limit int) ([]domain.DueCard, error) {
 	m.findDueLimit = limit
 	return m.findDueRows, m.findDueErr
 }
@@ -212,14 +212,15 @@ func TestResolver_DeleteCards_Anonymous(t *testing.T) {
 func TestResolver_LearnNextDueCards_ReturnsDueCards(t *testing.T) {
 	t.Parallel()
 
+	c1 := &domain.Card{
+		ID:          "c1",
+		CardgroupID: "cg1",
+		Front:       "front",
+		Back:        "back",
+	}
 	cardRepo := &cardMockRepo{
-		findDueRows: []*domain.Card{
-			{
-				ID:          "c1",
-				CardgroupID: "cg1",
-				Front:       "front",
-				Back:        "back",
-			},
+		findDueRows: []domain.DueCard{
+			{Card: c1, State: domain.FSRSStateNew, Due: c1.CreatedAt},
 		},
 	}
 	srv := newLearnSrv(
@@ -265,7 +266,7 @@ func TestResolver_LearnNextDueCards_EmptyListIsNormal(t *testing.T) {
 	t.Parallel()
 
 	srv := newLearnSrv(
-		&cardMockRepo{findDueRows: []*domain.Card{}},
+		&cardMockRepo{findDueRows: []domain.DueCard{}},
 		&cardMockCGRepo{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
 	)
 
