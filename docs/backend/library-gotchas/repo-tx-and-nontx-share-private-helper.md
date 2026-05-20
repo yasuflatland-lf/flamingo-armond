@@ -9,47 +9,47 @@ accepts `*gorm.DB` directly and call it from both public methods:
 ```go
 // backend/internal/repository/card.go
 
-// FindDueCards is the standalone version — uses the repo's default DB handle.
-func (r *cardRepo) FindDueCards(
+// FindDueCardsForUser is the standalone version — uses the repo's default DB handle.
+func (r *cardRepo) FindDueCardsForUser(
     ctx context.Context,
-    cardgroupID string,
+    userID, cardgroupID string,
     now time.Time,
     limit int,
-) ([]*domain.Card, error) {
-    return findDueCardsOn(r.db.WithContext(ctx), cardgroupID, now, limit)
+) ([]domain.DueCard, error) {
+    return findDueCardsOn(r.db.WithContext(ctx), userID, cardgroupID, now, limit)
 }
 
-// FindDueCardsTx is the transaction-aware version — operates on the caller's tx.
-func (r *cardRepo) FindDueCardsTx(
+// FindDueCardsForUserTx is the transaction-aware version — operates on the caller's tx.
+func (r *cardRepo) FindDueCardsForUserTx(
     ctx context.Context,
     tx *gorm.DB,
-    cardgroupID string,
+    userID, cardgroupID string,
     now time.Time,
     limit int,
-) ([]*domain.Card, error) {
-    return findDueCardsOn(tx.WithContext(ctx), cardgroupID, now, limit)
+) ([]domain.DueCard, error) {
+    return findDueCardsOn(tx.WithContext(ctx), userID, cardgroupID, now, limit)
 }
 
 // findDueCardsOn holds the shared implementation.
-// db is either the default handle (from FindDueCards) or a transaction handle
-// (from FindDueCardsTx).
-func findDueCardsOn(db *gorm.DB, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
+// db is either the default handle (from FindDueCardsForUser) or a transaction handle
+// (from FindDueCardsForUserTx).
+func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error) {
+    userID = coalesceUserIDForJoin(userID)
     if limit <= 0 {
-        return []*domain.Card{}, nil
+        return []domain.DueCard{}, nil
     }
-    var rows []gormCard
+    var rows []dueCardRow
     if err := db.
-        Where("cardgroup_id = ? AND due <= ?", cardgroupID, now).
-        Order("due ASC, id ASC").
+        Table("cards").
+        Select("cards.id, cards.cardgroup_id, cards.front, cards.back, cards.created_at, cards.updated_at, ucs.state, ucs.due").
+        Joins("LEFT JOIN user_card_fsrs ucs ON ucs.user_id = ? AND ucs.card_id = cards.id", userID).
+        Where("cards.cardgroup_id = ? AND (ucs.due IS NULL OR ucs.due <= ?)", cardgroupID, now).
+        Order("COALESCE(ucs.due, cards.created_at) ASC, cards.id ASC").
         Limit(limit).
         Find(&rows).Error; err != nil {
-        return nil, eris.Wrap(err, "repository: find due cards")
+        return nil, eris.Wrap(err, "repository: card: find due cards")
     }
-    out := make([]*domain.Card, len(rows))
-    for i := range rows {
-        out[i] = cardToDomain(rows[i])
-    }
-    return out, nil
+    // ... build []domain.DueCard from rows ...
 }
 ```
 
@@ -63,6 +63,17 @@ suffix, accepting `*gorm.DB` as its first argument. This pattern is consistent
 with the existing `findCardByID(ctx, db, id)` helper used by `FindByID` and
 `FindByIDTx`.
 
-**Reference:** `backend/internal/repository/card.go` — `FindDueCards`,
-`FindDueCardsTx`, and `findDueCardsOn`. The same `On`-suffix pattern is used by
+**Per-user variant naming:** when the query takes a `userID` because it joins
+against a per-user table (here `user_card_fsrs`), the public methods carry a
+`ForUser` segment between the operation and the `Tx` suffix
+(`FindDueCardsForUser` / `FindDueCardsForUserTx`). The private helper drops the
+`ForUser` segment and treats `userID` as a positional argument — the
+shared-helper name describes the operation; the per-user variant lives only on
+the public surface that callers grep against. Note also that
+[GORM scan targets with embedded TableName methods](gorm-embedded-tablename-scan-confusion.md)
+can silently break LEFT JOIN projection, so the private helper uses a flat
+scan target (`dueCardRow`) rather than embedding `gormCard`.
+
+**Reference:** `backend/internal/repository/card.go` — `FindDueCardsForUser`,
+`FindDueCardsForUserTx`, and `findDueCardsOn`. The same `On`-suffix pattern is used by
 `findCardByID` for `FindByID` / `FindByIDTx`.

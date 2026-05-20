@@ -19,33 +19,49 @@ func NewLearnUsecase(
     ordering      *service.OrderingPolicy,
     randSource    func() *rand.Rand,
     defaultLimit, maxLimit int,
+    clock Clock,
+    logger *slog.Logger,
 ) *LearnUsecase {
-    // nil guards first
+    // nil guards for required deps (panic)
+    if logger == nil {
+        panic("usecase: learn: logger is required")
+    }
     if cardRepo == nil {
-        panic("LearnUsecase: cardRepo must not be nil")
+        panic("usecase: learn: cardRepo must not be nil")
     }
     if cardgroupRepo == nil {
-        panic("LearnUsecase: cardgroupRepo must not be nil")
+        panic("usecase: learn: cardgroupRepo must not be nil")
+    }
+    // optional deps fall back to a default rather than panicking
+    if ordering == nil {
+        ordering = service.NewOrderingPolicy()
+    }
+    if randSource == nil {
+        randSource = func() *rand.Rand {
+            return rand.New(rand.NewSource(time.Now().UnixNano()))
+        }
     }
 
     // relationship invariant: defaultLimit may never exceed maxLimit
     if defaultLimit > maxLimit {
         panic(fmt.Sprintf(
-            "LearnUsecase: defaultLimit (%d) must not exceed maxLimit (%d)",
+            "usecase: learn: defaultLimit (%d) must not exceed maxLimit (%d)",
             defaultLimit, maxLimit,
         ))
     }
 
-    return &LearnUsecase{
-        cardRepo:      cardRepo,
-        cardgroupRepo: cardgroupRepo,
-        ordering:      ordering,
-        randSource:    randSource,
-        defaultLimit:  defaultLimit,
-        maxLimit:      maxLimit,
-    }
+    return &LearnUsecase{ /* fields */ }
 }
 ```
+
+**Optional vs. required dep split.** `cardRepo`, `cardgroupRepo`, and `logger`
+are required: nil indicates a wiring bug and must panic at boot. `ordering`
+and `randSource` are optional: a missing value is recoverable because the
+constructor knows the canonical default (`NewOrderingPolicy()` is stateless,
+`rand.New(rand.NewSource(time.Now().UnixNano()))` is the production seed).
+The fallback is intentional, not lenient: it lets tests omit deps they do not
+exercise without forcing every test to construct a `service.OrderingPolicy`
+just to satisfy the nil check.
 
 Without the relationship panic, passing `defaultLimit=50, maxLimit=20` constructs a
 `LearnUsecase` whose `clampLimit` helper will always clamp to 20, silently ignoring

@@ -10,30 +10,19 @@ pass a fixed seed and can assert an exact output order.
 ```go
 // backend/internal/domain/service/due_card_ordering.go
 
-// Apply returns cards ordered by due ASC, with same-due ties shuffled by r.
-// Passing r == nil skips the shuffle (stable sort only).
-// Apply is pure: it never mutates the input slice.
-func (p *OrderingPolicy) Apply(cards []*domain.Card, r *rand.Rand) []*domain.Card {
-    out := append([]*domain.Card(nil), cards...) // copy, never mutate input
-    sort.SliceStable(out, func(i, j int) bool {
-        return out[i].FSRS.Due.Before(out[j].FSRS.Due)
-    })
-    if r == nil {
-        return out
+// Apply orders due cards with a two-step policy:
+//
+//  1. Within each partition (new / review), cards sharing the same Due
+//     timestamp are shuffled using rng.
+//  2. New and review cards are interleaved at NewCardRatio:ReviewCardRatio.
+//
+// rng must be non-nil. Tests inject a seeded *rand.Rand for deterministic
+// order; production constructs one per session.
+func (p *OrderingPolicy) Apply(due []domain.DueCard, rng *rand.Rand) []*domain.Card {
+    if rng == nil {
+        panic("domain/service: OrderingPolicy.Apply requires non-nil rng")
     }
-    // shuffle runs of cards sharing the same due timestamp
-    for start := 0; start < len(out); {
-        end := start + 1
-        for end < len(out) && out[end].FSRS.Due.Equal(out[start].FSRS.Due) {
-            end++
-        }
-        if end-start > 1 {
-            run := out[start:end]
-            r.Shuffle(len(run), func(i, j int) { run[i], run[j] = run[j], run[i] })
-        }
-        start = end
-    }
-    return out
+    // ... partition, shuffleSameDue, interleave ...
 }
 ```
 
@@ -56,14 +45,18 @@ randSource: func() *rand.Rand {
 and cannot be seeded from Go tests, making ordering assertions impossible.
 Pulling the shuffle into application code with an injected source keeps the
 database responsible only for fetching rows in stable due-date order
-(`ORDER BY due ASC, id ASC`); the application layer applies the within-tie
-shuffle on top.
+(`ORDER BY COALESCE(ucs.due, cards.created_at) ASC, cards.id ASC`); the
+application layer applies the within-tie shuffle on top.
 
-**Passing `nil` skips the shuffle:** when the caller does not care about
-tie-breaking order (integration tests asserting only which cards appear, not
-their sequence within a tie), passing `r = nil` returns a stable sort and
-removes the non-determinism without requiring a seeded source.
+**Non-nil rng is enforced at the entry point.** Earlier iterations of the
+policy used `rng == nil` to mean "stable sort only". The current contract
+panics on `nil` because every production wiring (and every test fixture
+written since the interleave step landed) supplies a seeded source — silently
+returning a stable order on `nil` would mask a wiring bug. Tests that want
+deterministic output pass `rand.NewSource(42)`; tests that only assert set
+equality still pass a seeded source.
 
-**Reference:** `backend/internal/domain/service/due_card_ordering.go` — `OrderingPolicy.Apply`;
-`backend/internal/usecase/learn.go` — `randSource func() *rand.Rand` field and
-`NewLearnUsecase` factory injection.
+**Reference:** `backend/internal/domain/service/due_card_ordering.go` — `OrderingPolicy.Apply`
+panics on nil rng; `backend/internal/usecase/learn.go` — `randSource func() *rand.Rand`
+field, factory pattern documented under
+[constructor-relationship-invariant-panic](constructor-relationship-invariant-panic.md).
