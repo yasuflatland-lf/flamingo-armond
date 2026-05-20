@@ -78,7 +78,7 @@ func TestSwipeRecordLoader_BatchesNCallsIntoOne(t *testing.T) {
 	for i := range ids {
 		ids[i] = fmt.Sprintf("swipe-%03d", i)
 	}
-	results, errs := loadAllSwipeRecords(context.Background(), loader.New(emptyUser, emptyRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo(), swipeRepo), ids)
+	results, errs := loadAllSwipeRecords(context.Background(), loader.New(emptyUser, emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo(), swipeRepo), ids)
 
 	for i, err := range errs {
 		if err != nil {
@@ -113,7 +113,7 @@ func TestSwipeRecordLoader_PartialNotFound(t *testing.T) {
 		},
 	}
 
-	results, errs := loadAllSwipeRecords(context.Background(), loader.New(emptyUser, emptyRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo(), swipeRepo), []string{"present", "missing"})
+	results, errs := loadAllSwipeRecords(context.Background(), loader.New(emptyUser, emptyRoleRepo(), emptyUserRoleRepo(), emptyCardgroupRepo(), emptyCardRepo(), emptyUserPreferenceRepo(), swipeRepo), []string{"present", "missing"})
 	if errs[0] != nil || results[0] == nil || results[0].ID != "present" {
 		t.Fatalf("present: result=%+v err=%v", results[0], errs[0])
 	}

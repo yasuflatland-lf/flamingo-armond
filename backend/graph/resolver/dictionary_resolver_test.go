@@ -14,12 +14,13 @@ import (
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
-	"backend/internal/repository"
 	"backend/internal/usecase"
 	"backend/internal/usecase/ucerr"
 )
 
-// mockUserRoleRepository satisfies repository.UserRoleRepository.
+// mockUserRoleRepository only implements HasRole — the narrow subset that
+// auth.NewService requires. It does NOT satisfy the full repository.UserRoleRepository
+// interface; use it only where HasRole is the only method called.
 type mockUserRoleRepository struct {
 	isAdmin bool
 	err     error
@@ -29,9 +30,14 @@ func (m *mockUserRoleRepository) HasRole(_ context.Context, _ string, _ domain.R
 	return m.isAdmin, m.err
 }
 
+// hasRoleChecker is the narrow interface required by auth.NewService.
+type hasRoleChecker interface {
+	HasRole(ctx context.Context, userID string, roleName domain.RoleName) (bool, error)
+}
+
 // newDictOnlySrv builds a server with only DictionaryUsecase wired; only the
 // validateDictionary resolver is exercised here.
-func newDictOnlySrv(roleRepo repository.UserRoleRepository) *handler.Server {
+func newDictOnlySrv(roleRepo hasRoleChecker) *handler.Server {
 	authSvc := auth.NewService(roleRepo)
 	dictUC := usecase.NewDictionaryUsecaseWithTx(authSvc, nil, nil, newDiscardLogger())
 	r := resolver.NewResolver(nil, nil, nil, nil, authSvc, dictUC, nil, nil, nil, nil)

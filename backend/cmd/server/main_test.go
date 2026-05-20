@@ -1645,13 +1645,14 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 
 	userRepo := repository.NewUserRepository(db.GORM)
 	roleRepo := repository.NewRoleRepository(db.GORM)
+	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	cardRepo := repository.NewCardRepository(db.GORM)
 	userCardFSRSRepo := repository.NewUserCardFSRSRepository(db.GORM)
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
 	logger := slog.New(slog.DiscardHandler)
-	userUC := usecase.NewUserUsecase(userRepo, roleRepo, nil, logger)
+	userUC := usecase.NewUserUsecase(userRepo, userRoleRepo, nil, logger)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10, userCardFSRSRepo, logger)
@@ -1661,7 +1662,7 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 		resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, lastViewedUC, nil),
 		mw,
 		auth.NewSuperUserPromoter(nil, "", nil, nil),
-		userRepo, roleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo,
+		userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo,
 		ping.New(pingRecordRepo, "test-token"), nil, swipeRecordRepo,
 	)
 
@@ -2278,7 +2279,7 @@ func TestBootstrapSuperUserPromoter_WarnOnCountError(t *testing.T) {
 // userRoleStub satisfies repository.UserRoleRepository. HasRole always returns
 // (false, nil) — sufficient for constructing auth.NewService in tests that only
 // need to verify promoter construction, not per-request role checks.
-type userRoleStub struct{}
+type userRoleStub struct{ panicUserRoleRepo }
 
 func (userRoleStub) HasRole(_ context.Context, _ string, _ domain.RoleName) (bool, error) {
 	return false, nil
