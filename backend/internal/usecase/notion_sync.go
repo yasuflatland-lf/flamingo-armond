@@ -118,6 +118,9 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 	}
 	cgName, cgNameErr := domain.ParseCardgroupName(input.CardgroupName)
 	if cgNameErr != nil {
+		// The typed *ucerr.ValidationError is preserved in the chain for log-structured
+		// detail and any future GraphQL/CLI consumer; the REST handler intentionally
+		// collapses it to a generic 422 body.
 		return SyncFromNotionOutput{}, eris.Wrap(
 			errors.Join(ErrNotionSyncInvalidInput, translateCardgroupNameErr(cgNameErr)),
 			"cardgroup name is invalid",

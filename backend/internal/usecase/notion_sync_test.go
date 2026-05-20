@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"backend/internal/domain"
 	"backend/internal/notion"
 	"backend/internal/repository"
+	"backend/internal/usecase/ucerr"
 )
 
 type stubNotionFetcher struct {
@@ -302,6 +304,16 @@ func TestNotionSyncUsecase_InputValidation(t *testing.T) {
 		if !errors.Is(err, ErrNotionSyncInvalidInput) {
 			t.Fatalf("err = %v, want ErrNotionSyncInvalidInput", err)
 		}
+		var v *ucerr.ValidationError
+		if !errors.As(err, &v) {
+			t.Fatalf("err chain has no *ucerr.ValidationError, got %v", err)
+		}
+		if v.Field != "name" {
+			t.Fatalf("ValidationError.Field = %q, want %q", v.Field, "name")
+		}
+		if v.Message != "name is required" {
+			t.Fatalf("ValidationError.Message = %q, want %q", v.Message, "name is required")
+		}
 	})
 
 	t.Run("over-cap cardgroup name", func(t *testing.T) {
@@ -315,6 +327,17 @@ func TestNotionSyncUsecase_InputValidation(t *testing.T) {
 		})
 		if !errors.Is(err, ErrNotionSyncInvalidInput) {
 			t.Fatalf("err = %v, want ErrNotionSyncInvalidInput", err)
+		}
+		var v *ucerr.ValidationError
+		if !errors.As(err, &v) {
+			t.Fatalf("err chain has no *ucerr.ValidationError, got %v", err)
+		}
+		if v.Field != "name" {
+			t.Fatalf("ValidationError.Field = %q, want %q", v.Field, "name")
+		}
+		wantSubstr := fmt.Sprintf("%d", domain.CardgroupNameMax)
+		if !strings.Contains(v.Message, wantSubstr) {
+			t.Fatalf("ValidationError.Message = %q, want it to contain cap %q", v.Message, wantSubstr)
 		}
 	})
 }

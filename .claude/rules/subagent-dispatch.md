@@ -80,7 +80,6 @@ When moving a symbol (function, type, interface, constant) from one file to anot
 Worked example from issue #181 Phase 1:
 
 - `H2`: created `admin_gate.go` (with `AdminChecker` interface) AND deleted the original `AdminChecker` declaration from `dictionary.go`. One agent owns both edits.
-- `H4`: created `ids.go` (with `uuidV7` function) AND deleted the original from `cardgroup.go`.
 - `H5`: created `tx.go` (with `txRunner` type) AND deleted the original from `card.go`.
 
 Parallel agents can still run, but each handles a **distinct symbol move**. Two agents touching the same symbol — one adding, one deleting — would race on the build state. If a symbol move is the *only* edit in a phase, a single sequential agent is sufficient; parallelism pays off only when several independent symbol moves share the phase.
