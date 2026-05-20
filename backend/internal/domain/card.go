@@ -30,6 +30,13 @@ type Card struct {
 	UpdatedAt   time.Time
 }
 
+// BelongsToCardgroup reports whether this card belongs to the cardgroup identified by
+// cardgroupID. Empty cardgroupID always returns false so callers do not need a redundant
+// nil/empty guard.
+func (c *Card) BelongsToCardgroup(cardgroupID string) bool {
+	return cardgroupID != "" && c.CardgroupID == cardgroupID
+}
+
 func (c *Card) Validate() error {
 	if _, err := ParseCardText(string(c.Front), ErrCardFrontRequired, ErrCardFrontTooLong); err != nil {
 		return err

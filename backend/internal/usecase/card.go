@@ -524,7 +524,7 @@ func (u *CardUsecase) resolveCursor(
 		}
 		return nil, eris.Wrap(err, "usecase: resolve cursor: find by id")
 	}
-	if card.CardgroupID != cardgroupID {
+	if !card.BelongsToCardgroup(cardgroupID) {
 		return nil, ucerr.NewValidationError(field, "cursor not found")
 	}
 	switch orderBy {

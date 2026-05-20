@@ -177,7 +177,7 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			}
 			return err
 		}
-		if card.CardgroupID != in.CardgroupID {
+		if !card.BelongsToCardgroup(in.CardgroupID) {
 			return ucerr.NewValidationError("cardId", "card not found")
 		}
 
