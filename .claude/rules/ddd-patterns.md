@@ -122,6 +122,28 @@ repository site stays unaware of the VO. Same shape for `CardUpdate.Front` /
 
 [`docs/backend/ddd-patterns/patch-dto-primitive-not-vo.md`](../../docs/backend/ddd-patterns/patch-dto-primitive-not-vo.md)
 
+### View-level value in the domain package
+
+`DueCard` is a non-aggregate struct that bundles `*Card` with the viewer's
+FSRS `State` and `Due` timestamp. It lives in `domain/` because
+`OrderingPolicy.Apply` (a domain service) consumes it. The placement rule:
+when a domain service is the consumer, keep the read-model value in `domain/`
+rather than introducing a sibling `readmodel/` package whose only purpose
+is to feed the service its own input.
+
+[`docs/backend/ddd-patterns/view-level-value-in-domain-package.md`](../../docs/backend/ddd-patterns/view-level-value-in-domain-package.md)
+
+### Caller-truncate contract for domain services
+
+`OrderingPolicy.Apply` returns all cards it processed; each caller
+(`LearnUsecase.NextDueCards`, `SwipeUsecase.HandleSwipe`) truncates to its own
+per-session limit immediately after. The contract is documented on the
+service signature; the truncate is mirrored at every call site so a future
+ordering policy that emits more rows than it received cannot exceed the
+caller's cap.
+
+[`docs/backend/ddd-patterns/caller-truncate-contract.md`](../../docs/backend/ddd-patterns/caller-truncate-contract.md)
+
 ## Further reading (on-demand)
 
 - [Value object Parse pattern](../../docs/backend/ddd-patterns/value-object-parse-pattern.md)
@@ -136,3 +158,5 @@ repository site stays unaware of the VO. Same shape for `CardUpdate.Front` /
 - [Same-underlying-type pointer cast for VO bridging](../../docs/backend/ddd-patterns/same-underlying-type-pointer-cast.md)
 - [Boundary gate replaces domain re-check](../../docs/backend/ddd-patterns/boundary-gate-replaces-domain-recheck.md)
 - [Patch DTOs keep primitive types, not the VO](../../docs/backend/ddd-patterns/patch-dto-primitive-not-vo.md)
+- [View-level value in the domain package](../../docs/backend/ddd-patterns/view-level-value-in-domain-package.md)
+- [Caller-truncate contract for domain services](../../docs/backend/ddd-patterns/caller-truncate-contract.md)

@@ -16,7 +16,7 @@ import (
 )
 
 func newCard(cardgroupID, front, back string) *domain.Card {
-	now := time.Now().UTC()
+	now := time.Now().UTC().Truncate(time.Microsecond)
 	return &domain.Card{
 		ID:          uuid.NewString(),
 		CardgroupID: cardgroupID,
@@ -199,7 +199,7 @@ func TestCardRepository_FindDueCardsTx_OrderedAndScoped(t *testing.T) {
 		return nil
 	}))
 
-	var due []*domain.Card
+	var due []domain.DueCard
 	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var err error
 		due, err = repo.FindDueCardsForUserTx(ctx, tx, ownerID, cg1.ID, now, 10)
@@ -207,8 +207,8 @@ func TestCardRepository_FindDueCardsTx_OrderedAndScoped(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Len(t, due, 2)
-	require.Equal(t, earlier.ID, due[0].ID)
-	require.Equal(t, later.ID, due[1].ID)
+	require.Equal(t, earlier.ID, due[0].Card.ID)
+	require.Equal(t, later.ID, due[1].Card.ID)
 }
 
 func TestCardRepository_FindDueCards_OrderedScopedAndLimited(t *testing.T) {
@@ -260,6 +260,113 @@ func TestCardRepository_FindDueCards_OrderedScopedAndLimited(t *testing.T) {
 	require.Empty(t, empty)
 }
 
+// TestCardRepository_FindDueCards_NoFSRSRow verifies that a card with no
+// user_card_fsrs row is returned with State == FSRSStateNew and Due ==
+// card.CreatedAt (the stable fallback).
+func TestCardRepository_FindDueCards_NoFSRSRow(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	now := time.Now().UTC().Add(time.Hour) // far future so the card is "due"
+
+	card := newCard(cg.ID, "no-fsrs", "back")
+	require.NoError(t, repo.Create(ctx, card))
+
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, 10)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, card.ID, got[0].Card.ID)
+	require.Equal(t, domain.FSRSStateNew, got[0].State)
+	require.True(t, got[0].Due.Equal(card.CreatedAt), "Due should fall back to card.CreatedAt when no FSRS row exists")
+}
+
+// TestCardRepository_FindDueCards_FSRSStateMapping verifies that existing
+// FSRS rows with Learning, Review, and Relearning states are mapped correctly
+// to the corresponding domain.FSRSCardState values.
+func TestCardRepository_FindDueCards_FSRSStateMapping(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	cases := []struct {
+		front string
+		state domain.FSRSCardState
+	}{
+		{"learning-card", domain.FSRSStateLearning},
+		{"review-card", domain.FSRSStateReview},
+		{"relearning-card", domain.FSRSStateRelearning},
+	}
+
+	cards := make([]*domain.Card, len(cases))
+	for i, tc := range cases {
+		c := newCard(cg.ID, tc.front, "back")
+		require.NoError(t, repo.Create(ctx, c))
+		cards[i] = c
+	}
+
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for i, tc := range cases {
+			ucs := domain.NewUserCardFSRSForNewCard(ownerID, cards[i].ID, now)
+			ucs.State.State = tc.state
+			ucs.State.Due = now.Add(-time.Minute) // ensure it is due
+			if err := ucsRepo.UpsertTx(ctx, tx, ucs); err != nil {
+				return err
+			}
+		}
+		return nil
+	}))
+
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, 10)
+	require.NoError(t, err)
+	require.Len(t, got, len(cases))
+
+	byID := make(map[string]domain.DueCard, len(got))
+	for _, dc := range got {
+		byID[dc.Card.ID] = dc
+	}
+	for i, tc := range cases {
+		dc, ok := byID[cards[i].ID]
+		require.True(t, ok, "missing card for case %q", tc.front)
+		require.Equal(t, tc.state, dc.State, "state mismatch for case %q", tc.front)
+	}
+}
+
+// TestCardRepository_FindDueCards_InvalidState verifies that an out-of-range
+// state value stored in user_card_fsrs causes FindDueCardsForUser to return an
+// error rather than silently producing a zero-value FSRSCardState.
+func TestCardRepository_FindDueCards_InvalidState(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	card := newCard(cg.ID, "invalid-state", "back")
+	require.NoError(t, repo.Create(ctx, card))
+
+	// Insert a user_card_fsrs row directly with an invalid state value (99) so
+	// that the IsValid gate in findDueCardsOn is exercised.
+	sqlDB, err := testDB.GORM.DB()
+	require.NoError(t, err)
+	_, err = sqlDB.ExecContext(ctx,
+		`INSERT INTO user_card_fsrs
+		 (user_id, card_id, state, due, stability, difficulty, reps, lapses, last_review, elapsed_days, scheduled_days, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, 0, 5.0, 0, 0, $4, 0, 0, now(), now())`,
+		ownerID, card.ID, 99, now.Add(-time.Minute),
+	)
+	require.NoError(t, err)
+
+	_, err = repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, 10)
+	require.ErrorContains(t, err, "repository: card: invalid FSRSCardState 99")
+}
+
 func TestCardRepo_Create_DuplicateFront(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -283,10 +390,10 @@ func TestCardRepo_Create_DuplicateFront(t *testing.T) {
 	}
 }
 
-func repoCardIDs(cards []*domain.Card) []string {
+func repoCardIDs(cards []domain.DueCard) []string {
 	out := make([]string, len(cards))
-	for i, card := range cards {
-		out[i] = card.ID
+	for i, dc := range cards {
+		out[i] = dc.Card.ID
 	}
 	return out
 }

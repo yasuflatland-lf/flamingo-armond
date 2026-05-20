@@ -15,7 +15,7 @@ import (
 )
 
 type mockLearnCardRepo struct {
-	rows []*domain.Card
+	rows []domain.DueCard
 	err  error
 
 	cardgroupID string
@@ -25,7 +25,7 @@ type mockLearnCardRepo struct {
 	calls       int
 }
 
-func (m *mockLearnCardRepo) FindDueCardsForUser(_ context.Context, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
+func (m *mockLearnCardRepo) FindDueCardsForUser(_ context.Context, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error) {
 	m.calls++
 	m.userID = userID
 	m.cardgroupID = cardgroupID
@@ -51,9 +51,10 @@ func TestLearnUsecaseNextDueCards(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
-	first := learnCard("repo-first", now.Add(time.Hour))
-	second := learnCard("repo-second", now.Add(-time.Hour))
-	cardRepo := &mockLearnCardRepo{rows: []*domain.Card{first, second}}
+	// Two review cards with distinct Due times so shuffleSameDue leaves order stable.
+	first := learnDueCard("repo-first", now.Add(-2*time.Hour), domain.FSRSStateReview)
+	second := learnDueCard("repo-second", now.Add(-time.Hour), domain.FSRSStateReview)
+	cardRepo := &mockLearnCardRepo{rows: []domain.DueCard{first, second}}
 	uc := NewLearnUsecase(
 		cardRepo,
 		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
@@ -150,7 +151,7 @@ func TestLearnUsecaseNextDueCardsLimitClampAndEmpty(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			cardRepo := &mockLearnCardRepo{rows: []*domain.Card{}}
+			cardRepo := &mockLearnCardRepo{rows: []domain.DueCard{}}
 			uc := NewLearnUsecase(
 				cardRepo,
 				&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
@@ -189,7 +190,7 @@ func TestLearnUsecaseNextDueCardsRepoError(t *testing.T) {
 
 	_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
 
-	assertInternalChain(t, err, "usecase: find due cards for user")
+	assertInternalChain(t, err, "usecase: learn: find due cards")
 }
 
 func TestLearnUsecaseNextDueCardsCardgroupRepoInternalError(t *testing.T) {
@@ -236,9 +237,87 @@ func TestNewLearnUsecase_PanicsOnInvalidDeps(t *testing.T) {
 	})
 }
 
-func learnCard(id string, _ time.Time) *domain.Card {
-	return &domain.Card{
-		ID: id,
+// TestLearnUsecaseNextDueCards_TruncatesToDueLimit verifies that NextDueCards
+// truncates the ordered result to the requested limit when the mock repository
+// returns more rows than requested, exercising the guard at the usecase layer.
+func TestLearnUsecaseNextDueCards_TruncatesToDueLimit(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
+	// 3 new + 3 review cards, all with distinct Due timestamps so shuffleSameDue
+	// is a no-op and the interleave order is fully deterministic.
+	// With ReviewCardRatio=4 and 3 reviews, all reviews emit before any new card:
+	// rev-1, rev-2, rev-3, new-1, new-2, new-3.  Truncating at limit=3 yields
+	// the first three review cards in their Due-sorted order.
+	rows := []domain.DueCard{
+		learnDueCard("new-1", now.Add(-3*time.Hour), domain.FSRSStateNew),
+		learnDueCard("new-2", now.Add(-2*time.Hour), domain.FSRSStateNew),
+		learnDueCard("new-3", now.Add(-time.Hour), domain.FSRSStateNew),
+		learnDueCard("rev-1", now.Add(-6*time.Hour), domain.FSRSStateReview),
+		learnDueCard("rev-2", now.Add(-5*time.Hour), domain.FSRSStateReview),
+		learnDueCard("rev-3", now.Add(-4*time.Hour), domain.FSRSStateReview),
+	}
+	cardRepo := &mockLearnCardRepo{rows: rows}
+	uc := NewLearnUsecase(
+		cardRepo,
+		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+		service.NewOrderingPolicy(),
+		func() *rand.Rand { return rand.New(rand.NewSource(42)) },
+		20,
+		100,
+		fixedClock{now: now},
+		newTestLogger(),
+	)
+
+	got, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", learnIntPtr(3))
+
+	require.NoError(t, err)
+	require.Len(t, got, 3, "result must be truncated to the requested limit")
+	require.Equal(t, []string{"rev-1", "rev-2", "rev-3"}, learnCardIDs(got),
+		"truncated result must contain the first three cards from the ordered set")
+}
+
+// TestLearnUsecaseNextDueCards_HappyPathReviewOnly verifies the simple path
+// where the repository returns only review cards and the limit is lower than
+// the number returned, so the result is truncated.
+func TestLearnUsecaseNextDueCards_HappyPathReviewOnly(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
+	// 5 review cards; request limit=3 → expect 3 back.
+	rows := []domain.DueCard{
+		learnDueCard("rev-1", now.Add(-5*time.Hour), domain.FSRSStateReview),
+		learnDueCard("rev-2", now.Add(-4*time.Hour), domain.FSRSStateReview),
+		learnDueCard("rev-3", now.Add(-3*time.Hour), domain.FSRSStateReview),
+		learnDueCard("rev-4", now.Add(-2*time.Hour), domain.FSRSStateReview),
+		learnDueCard("rev-5", now.Add(-time.Hour), domain.FSRSStateReview),
+	}
+	cardRepo := &mockLearnCardRepo{rows: rows}
+	uc := NewLearnUsecase(
+		cardRepo,
+		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+		service.NewOrderingPolicy(),
+		func() *rand.Rand { return rand.New(rand.NewSource(7)) },
+		20,
+		100,
+		fixedClock{now: now},
+		newTestLogger(),
+	)
+
+	got, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", learnIntPtr(3))
+
+	require.NoError(t, err)
+	require.Len(t, got, 3, "result must contain exactly the requested limit")
+}
+
+// learnDueCard constructs a DueCard for use in learn tests.
+// state controls the partition (FSRSStateNew vs review).
+// due sets the DueCard.Due timestamp so shuffleSameDue groups cards correctly.
+func learnDueCard(id string, due time.Time, state domain.FSRSCardState) domain.DueCard {
+	return domain.DueCard{
+		Card:  &domain.Card{ID: id},
+		State: state,
+		Due:   due,
 	}
 }
 

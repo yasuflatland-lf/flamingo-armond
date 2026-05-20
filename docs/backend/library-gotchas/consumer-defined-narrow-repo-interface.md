@@ -17,7 +17,7 @@ any change to the concrete repository:
 // CardRepoForLearn is the minimal card-repository surface that LearnUsecase needs.
 // The concrete *repository.cardRepo satisfies it automatically.
 type CardRepoForLearn interface {
-    FindDueCards(ctx context.Context, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
+    FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error)
 }
 
 // CardgroupRepoForLearn is the minimal cardgroup-repository surface.
@@ -27,8 +27,8 @@ type CardgroupRepoForLearn interface {
 ```
 
 The shared `CardRepository` in `backend/internal/repository/card.go` keeps its full
-surface (`FindByID`, `FindByIDs`, `FindPageByCardgroup`, `FindDueCards`,
-`FindDueCardsTx`, `Create`, `Update`, `Delete`, …). The `LearnUsecase` sees only
+surface (`FindByID`, `FindByIDs`, `FindPageByCardgroup`, `FindDueCardsForUser`,
+`FindDueCardsForUserTx`, `Create`, `Update`, `Delete`, …). The `LearnUsecase` sees only
 the two methods it calls, so:
 
 - Test stubs for `LearnUsecase` need only two methods, not the full fourteen-method
@@ -38,13 +38,28 @@ the two methods it calls, so:
 - Grepping `CardRepoForLearn` immediately shows the complete data-access footprint
   of `LearnUsecase`, which the shared interface cannot provide.
 
-**Antipattern:** adding `FindDueCards` to the shared `CardRepository` interface and
+**Antipattern:** adding `FindDueCardsForUser` to the shared `CardRepository` interface and
 passing the concrete repository everywhere. This works until the test setup for a
-`CardUsecase` test must implement `FindDueCards` even though that test exercises only
+`CardUsecase` test must implement `FindDueCardsForUser` even though that test exercises only
 card-create logic. Over time each new cross-cutting method increases stub boilerplate
 for every existing test suite.
 
-**Reference:** `backend/internal/usecase/learn.go:21–28` — `CardRepoForLearn` and
+### Return-type widening ripples through every narrow interface
+
+When the concrete repository method's return type changes — for example
+`[]*domain.Card` widening to `[]domain.DueCard` to carry per-user state — every
+narrow interface that names the method (`CardRepoForLearn`, `CardRepoForSwipe`,
+resolver test mocks) must be updated in lockstep. The Go compiler catches the
+mismatch at every site, but a parallel-agent migration that fans out per file
+without first pinning the new signature upstream produces a temporary build
+break across every consumer site. Pin the interface contract first (in one
+agent), then propagate to consumers (in fanned-out agents). The mechanical-
+migration discipline in [`.claude/rules/subagent-dispatch.md` § "Symbol moves
+must be atomic"](../../../.claude/rules/subagent-dispatch.md#symbol-moves-must-be-atomic-----one-agent-owns-both-delete-and-add)
+applies to interface-shape changes for the same reason — a type rename split
+across agents leaves an unbuildable intermediate state.
+
+**Reference:** `backend/internal/usecase/learn.go` — `CardRepoForLearn` and
 `CardgroupRepoForLearn` as local interfaces satisfied by the concrete repository.
 The same pattern appears in `internal/usecase/admin_role.go` as `adminRoleRepoForCRUD`
 (documented in `docs/backend-graphql.md` § "Admin usecase split").

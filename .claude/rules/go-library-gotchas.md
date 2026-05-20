@@ -114,6 +114,8 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Dead context-done branch in pass-through helper — collapse to single return](../../docs/backend/library-gotchas/dead-context-check-in-pass-through-helper.md)
 - [GORM v1 round-trips underlying-string newtypes without Scanner/Valuer; reserving the `Value` accessor slot](../../docs/backend/library-gotchas/gorm-newtype-string-no-scanner-valuer.md)
 - [Defensive-copy tests assert pointer identity (`require.NotSame`), not variable rebind](../../docs/backend/library-gotchas/defensive-copy-test-pointer-identity.md)
+- [GORM embedded struct with `TableName()` silently breaks the outer scan target](../../docs/backend/library-gotchas/gorm-embedded-tablename-scan-confusion.md)
+- [Interleave trailing-append paths need a non-divisible fixture per direction](../../docs/backend/library-gotchas/interleave-trailing-append-test-fixture.md)
 
 ## DDD patterns (on-demand)
 

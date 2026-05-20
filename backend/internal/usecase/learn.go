@@ -23,7 +23,7 @@ const (
 )
 
 type CardRepoForLearn interface {
-	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
+	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error)
 }
 
 type CardgroupRepoForLearn interface {
@@ -61,6 +61,12 @@ func NewLearnUsecase(
 	if logger == nil {
 		panic("usecase: learn: logger is required")
 	}
+	if cardRepo == nil {
+		panic("usecase: learn: cardRepo must not be nil")
+	}
+	if cardgroupRepo == nil {
+		panic("usecase: learn: cardgroupRepo must not be nil")
+	}
 	if ordering == nil {
 		ordering = service.NewOrderingPolicy()
 	}
@@ -78,14 +84,8 @@ func NewLearnUsecase(
 	if maxLimit <= 0 {
 		maxLimit = maxLearnNextDueLimit
 	}
-	if cardRepo == nil {
-		panic("LearnUsecase: cardRepo must not be nil")
-	}
-	if cardgroupRepo == nil {
-		panic("LearnUsecase: cardgroupRepo must not be nil")
-	}
 	if defaultLimit > maxLimit {
-		panic(fmt.Sprintf("LearnUsecase: defaultLimit (%d) must not exceed maxLimit (%d)", defaultLimit, maxLimit))
+		panic(fmt.Sprintf("usecase: learn: defaultLimit (%d) must not exceed maxLimit (%d)", defaultLimit, maxLimit))
 	}
 	return &LearnUsecase{
 		cardRepo:      cardRepo,
@@ -122,11 +122,15 @@ func (u *LearnUsecase) NextDueCards(ctx context.Context, cardgroupID string, lim
 	}
 	n = u.clampLimit(n)
 	now := u.clock.Now().UTC()
-	cards, err := u.cardRepo.FindDueCardsForUser(ctx, user.Sub, cardgroupID, now, n)
+	due, err := u.cardRepo.FindDueCardsForUser(ctx, user.Sub, cardgroupID, now, n)
 	if err != nil {
-		return nil, eris.Wrap(err, "usecase: find due cards for user")
+		return nil, eris.Wrap(err, "usecase: learn: find due cards")
 	}
-	return u.ordering.Apply(cards, u.randSource()), nil
+	ordered := u.ordering.Apply(due, u.randSource())
+	if len(ordered) > n {
+		ordered = ordered[:n]
+	}
+	return ordered, nil
 }
 
 func (u *LearnUsecase) clampLimit(limit int) int {
