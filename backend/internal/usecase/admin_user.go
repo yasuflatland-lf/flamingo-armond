@@ -137,8 +137,8 @@ type adminUserRoleRepository interface {
 	RevokeFromUser(ctx context.Context, userID, roleID string) error
 }
 
-// adminUserUsecase wires the auth service, the user repository, and the role
-// repository behind the admin-only management API.
+// adminUserUsecase wires the auth service, the user repository, the role
+// repository, and the user-role repository behind the admin-only management API.
 type adminUserUsecase struct {
 	users     adminUserRepository
 	roles     adminRoleRepository     // FindByIDs (self-demotion guard in RevokeRole)
