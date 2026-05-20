@@ -88,3 +88,27 @@ func TestAuthorizeCardgroupOrBadInput_NonOwner_ReturnsUnauthenticated(t *testing
 	err := authorizeCardgroupOrBadInput(context.Background(), repo, "cg-1", "u-1")
 	assertUnauthenticated(t, err)
 }
+
+// TestAuthorizeCardgroupOrUnauthenticated_PropagatesDeadlineExceeded verifies
+// the same contract for context.DeadlineExceeded in the unauthenticated-on-
+// missing variant, exercising the second arm of isContextDone so a future
+// regression that drops DeadlineExceeded support from the guard is detected
+// here as well as in swipe.go / learn.go.
+func TestAuthorizeCardgroupOrUnauthenticated_PropagatesDeadlineExceeded(t *testing.T) {
+	t.Parallel()
+	repo := &mockOwnershipFinder{err: context.DeadlineExceeded}
+	err := authorizeCardgroupOrUnauthenticated(context.Background(), repo, "cg-1", "u-1")
+
+	assertCancelled(t, err)
+	require.Equal(t, context.DeadlineExceeded, err, "expected unwrapped context.DeadlineExceeded, got %v", err)
+}
+
+// TestAuthorizeCardgroupOrUnauthenticated_NonOwner_ReturnsUnauthenticated pins
+// the post-lookup ownership check for the unauthenticated variant so the
+// isContextDone guard insertion cannot perturb it.
+func TestAuthorizeCardgroupOrUnauthenticated_NonOwner_ReturnsUnauthenticated(t *testing.T) {
+	t.Parallel()
+	repo := &mockOwnershipFinder{result: &domain.Cardgroup{ID: "cg-1", OwnerID: "other-user"}}
+	err := authorizeCardgroupOrUnauthenticated(context.Background(), repo, "cg-1", "u-1")
+	assertUnauthenticated(t, err)
+}
