@@ -111,6 +111,9 @@ func (u *LearnUsecase) NextDueCards(ctx context.Context, cardgroupID string, lim
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ucerr.NewValidationError("cardgroupId", "cardgroup not found")
 		}
+		if isContextDone(err) {
+			return nil, err
+		}
 		return nil, eris.Wrap(err, "usecase: find cardgroup by id")
 	}
 	if !cg.IsOwnedBy(user.Sub) {
@@ -124,6 +127,9 @@ func (u *LearnUsecase) NextDueCards(ctx context.Context, cardgroupID string, lim
 	now := u.clock.Now().UTC()
 	due, err := u.cardRepo.FindDueCardsForUser(ctx, user.Sub, cardgroupID, now, n)
 	if err != nil {
+		if isContextDone(err) {
+			return nil, err
+		}
 		return nil, eris.Wrap(err, "usecase: learn: find due cards")
 	}
 	ordered := u.ordering.Apply(due, u.randSource())

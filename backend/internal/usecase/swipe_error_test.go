@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -265,4 +266,242 @@ func TestSwipeUsecase_HandleSwipe_InsertSwipeRecordError_PinsChain(t *testing.T)
 
 	assertInternalChain(t, err, "usecase: swipe: insert swipe record")
 	require.ErrorIs(t, err, infraErr, "error chain must preserve injected root sentinel")
+}
+
+// TestSwipeUsecase_HandleSwipe_FindCardByID_PropagatesCancelled verifies that
+// context.Canceled returned from FindByIDTx passes through unwrapped so the
+// caller can distinguish a cancellation from an infrastructure failure.
+func TestSwipeUsecase_HandleSwipe_FindCardByID_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &mockCardRepository{findErr: context.Canceled}
+	cardgroupRepo := &mockCardgroupRepoForCard{
+		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+	}
+	tx, _ := fakeTxRunner()
+	uc := NewSwipeUsecaseWithTx(
+		cardRepo,
+		cardgroupRepo,
+		&mockSwipeRecordRepoForSwipe{},
+		service.NewFSRSScheduler(),
+		10,
+		tx,
+		&mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}},
+		newTestLogger(),
+	)
+
+	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+		CardID:      "card-1",
+		CardgroupID: "cg-1",
+		Mode:        int(domain.RatingEasy),
+	})
+
+	assertCancelled(t, err)
+	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
+}
+
+// TestSwipeUsecase_HandleSwipe_FindUserCardFSRS_PropagatesCancelled verifies
+// that context.Canceled returned from FindByUserAndCardIDsTx passes through
+// unwrapped after FindByIDTx succeeds.
+func TestSwipeUsecase_HandleSwipe_FindUserCardFSRS_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &mockCardRepository{
+		findResult: &domain.Card{
+			ID:          "card-1",
+			CardgroupID: "cg-1",
+		},
+	}
+	cardgroupRepo := &mockCardgroupRepoForCard{
+		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+	}
+	userFSRSRepo := &mockUserCardFSRSRepository{
+		byCardID: map[string]*domain.UserCardFSRS{},
+		findErr:  context.Canceled,
+	}
+	tx, _ := fakeTxRunner()
+	uc := NewSwipeUsecaseWithTx(
+		cardRepo,
+		cardgroupRepo,
+		&mockSwipeRecordRepoForSwipe{},
+		service.NewFSRSScheduler(),
+		10,
+		tx,
+		userFSRSRepo,
+		newTestLogger(),
+	)
+
+	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+		CardID:      "card-1",
+		CardgroupID: "cg-1",
+		Mode:        int(domain.RatingEasy),
+	})
+
+	assertCancelled(t, err)
+}
+
+// TestSwipeUsecase_HandleSwipe_UpsertUserCardFSRS_PropagatesCancelled verifies
+// that context.Canceled returned from UpsertTx passes through unwrapped after
+// the preceding find steps succeed.
+func TestSwipeUsecase_HandleSwipe_UpsertUserCardFSRS_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &mockCardRepository{
+		findResult: &domain.Card{
+			ID:          "card-1",
+			CardgroupID: "cg-1",
+		},
+	}
+	cardgroupRepo := &mockCardgroupRepoForCard{
+		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+	}
+	userFSRSRepo := &mockUserCardFSRSRepository{
+		byCardID:  map[string]*domain.UserCardFSRS{},
+		upsertErr: context.Canceled,
+	}
+	tx, _ := fakeTxRunner()
+	uc := NewSwipeUsecaseWithTx(
+		cardRepo,
+		cardgroupRepo,
+		&mockSwipeRecordRepoForSwipe{},
+		service.NewFSRSScheduler(),
+		10,
+		tx,
+		userFSRSRepo,
+		newTestLogger(),
+	)
+
+	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+		CardID:      "card-1",
+		CardgroupID: "cg-1",
+		Mode:        int(domain.RatingEasy),
+	})
+
+	assertCancelled(t, err)
+}
+
+// TestSwipeUsecase_HandleSwipe_InsertSwipeRecord_PropagatesCancelled verifies
+// that context.Canceled returned from CreateTx passes through unwrapped after
+// the upsert step succeeds.
+func TestSwipeUsecase_HandleSwipe_InsertSwipeRecord_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &mockCardRepository{
+		findResult: &domain.Card{
+			ID:          "card-1",
+			CardgroupID: "cg-1",
+		},
+	}
+	cardgroupRepo := &mockCardgroupRepoForCard{
+		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+	}
+	swipeRepo := &mockSwipeRecordRepoForSwipe{
+		createErr: context.Canceled,
+	}
+	userFSRSRepo := &mockUserCardFSRSRepository{
+		byCardID: map[string]*domain.UserCardFSRS{},
+	}
+	tx, _ := fakeTxRunner()
+	uc := NewSwipeUsecaseWithTx(
+		cardRepo,
+		cardgroupRepo,
+		swipeRepo,
+		service.NewFSRSScheduler(),
+		10,
+		tx,
+		userFSRSRepo,
+		newTestLogger(),
+	)
+
+	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+		CardID:      "card-1",
+		CardgroupID: "cg-1",
+		Mode:        int(domain.RatingEasy),
+	})
+
+	assertCancelled(t, err)
+}
+
+// TestSwipeUsecase_HandleSwipe_FindDueCards_PropagatesCancelled verifies that
+// context.Canceled returned from FindDueCardsForUserTx passes through unwrapped
+// after the insert step succeeds.
+func TestSwipeUsecase_HandleSwipe_FindDueCards_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &mockCardRepository{
+		findResult: &domain.Card{
+			ID:          "card-1",
+			CardgroupID: "cg-1",
+		},
+		findDueErr: context.Canceled,
+	}
+	cardgroupRepo := &mockCardgroupRepoForCard{
+		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+	}
+	userFSRSRepo := &mockUserCardFSRSRepository{
+		byCardID: map[string]*domain.UserCardFSRS{},
+	}
+	tx, _ := fakeTxRunner()
+	uc := NewSwipeUsecaseWithTx(
+		cardRepo,
+		cardgroupRepo,
+		&mockSwipeRecordRepoForSwipe{},
+		service.NewFSRSScheduler(),
+		10,
+		tx,
+		userFSRSRepo,
+		newTestLogger(),
+	)
+
+	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+		CardID:      "card-1",
+		CardgroupID: "cg-1",
+		Mode:        int(domain.RatingEasy),
+	})
+
+	assertCancelled(t, err)
+}
+
+// TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesDeadlineExceeded
+// verifies that context.DeadlineExceeded returned from ListRecentByUser passes
+// through unwrapped after the transaction commits successfully.
+func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesDeadlineExceeded(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &mockCardRepository{
+		findResult: &domain.Card{
+			ID:          "card-1",
+			CardgroupID: "cg-1",
+		},
+		findDueRows: []domain.DueCard{},
+	}
+	cardgroupRepo := &mockCardgroupRepoForCard{
+		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+	}
+	swipeRepo := &mockSwipeRecordRepoForSwipe{
+		listErr: context.DeadlineExceeded,
+	}
+	userFSRSRepo := &mockUserCardFSRSRepository{
+		byCardID: map[string]*domain.UserCardFSRS{},
+	}
+	tx, _ := fakeTxRunner()
+	uc := NewSwipeUsecaseWithTx(
+		cardRepo,
+		cardgroupRepo,
+		swipeRepo,
+		service.NewFSRSScheduler(),
+		10,
+		tx,
+		userFSRSRepo,
+		newTestLogger(),
+	)
+
+	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+		CardID:      "card-1",
+		CardgroupID: "cg-1",
+		Mode:        int(domain.RatingEasy),
+	})
+
+	assertCancelled(t, err)
+	require.Equal(t, context.DeadlineExceeded, err, "expected unwrapped context.DeadlineExceeded, got %v", err)
 }

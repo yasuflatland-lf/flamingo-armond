@@ -181,6 +181,9 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			if errors.Is(err, repository.ErrNotFound) {
 				return ucerr.NewValidationError("cardId", "card not found")
 			}
+			if isContextDone(err) {
+				return err
+			}
 			return eris.Wrap(err, "usecase: swipe: find card by id")
 		}
 		if !card.BelongsToCardgroup(in.CardgroupID) {
@@ -190,6 +193,9 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		now = time.Now().UTC()
 		byCardID, err := u.userFSRSRepo.FindByUserAndCardIDsTx(ctx, tx, user.Sub, []string{card.ID})
 		if err != nil {
+			if isContextDone(err) {
+				return err
+			}
 			return eris.Wrap(err, "usecase: swipe: find user-card fsrs")
 		}
 		current := byCardID[card.ID]
@@ -200,6 +206,9 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			return eris.Wrap(err, "usecase: swipe: apply rating")
 		}
 		if err := u.userFSRSRepo.UpsertTx(ctx, tx, current); err != nil {
+			if isContextDone(err) {
+				return err
+			}
 			return eris.Wrap(err, "usecase: swipe: upsert user-card fsrs")
 		}
 		sr, err := u.newSwipeRecord(user.Sub, card.ID, card.CardgroupID, rating, now, current.State)
@@ -207,10 +216,16 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			return eris.Wrap(err, "usecase: swipe: new swipe record")
 		}
 		if err := u.swipeRepo.CreateTx(ctx, tx, sr); err != nil {
+			if isContextDone(err) {
+				return err
+			}
 			return eris.Wrap(err, "usecase: swipe: insert swipe record")
 		}
 		due, err := u.cardRepo.FindDueCardsForUserTx(ctx, tx, user.Sub, in.CardgroupID, now, u.nextBatchSize)
 		if err != nil {
+			if isContextDone(err) {
+				return err
+			}
 			return eris.Wrap(err, "usecase: swipe: find due cards")
 		}
 		nextCards = u.ordering.Apply(due, u.randSource())
@@ -233,6 +248,9 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 	}
 	recentSwipes, err := u.swipeRepo.ListRecentByUser(ctx, user.Sub, swipePerformanceSampleLimit)
 	if err != nil {
+		if isContextDone(err) {
+			return HandleSwipeOutcome{}, err
+		}
 		return HandleSwipeOutcome{}, eris.Wrap(err, "usecase: swipe: list recent swipes")
 	}
 	metrics := service.ComputeMetrics(swipeRecordsByValue(recentSwipes), now)

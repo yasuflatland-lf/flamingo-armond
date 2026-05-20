@@ -330,3 +330,44 @@ func learnCardIDs(cards []*domain.Card) []string {
 }
 
 func learnIntPtr(v int) *int { return &v }
+
+// TestLearnUsecase_NextDueCards_FindCardgroup_PropagatesCancelled verifies that
+// context.Canceled returned by the cardgroup repository is propagated unwrapped.
+func TestLearnUsecase_NextDueCards_FindCardgroup_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+	cgRepo := &mockLearnCardgroupRepo{err: context.Canceled}
+	uc := NewLearnUsecase(
+		&mockLearnCardRepo{},
+		cgRepo,
+		nil,
+		nil,
+		20,
+		100,
+		fixedClock{now: time.Now()},
+		newTestLogger(),
+	)
+	_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", nil)
+	assertCancelled(t, err)
+	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
+}
+
+// TestLearnUsecase_NextDueCards_FindDueCards_PropagatesDeadlineExceeded verifies
+// that context.DeadlineExceeded returned by the card repository is propagated
+// unwrapped after a successful cardgroup lookup.
+func TestLearnUsecase_NextDueCards_FindDueCards_PropagatesDeadlineExceeded(t *testing.T) {
+	t.Parallel()
+	cardRepo := &mockLearnCardRepo{err: context.DeadlineExceeded}
+	cgRepo := &mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}}
+	uc := NewLearnUsecase(
+		cardRepo,
+		cgRepo,
+		nil,
+		nil,
+		20,
+		100,
+		fixedClock{now: time.Now()},
+		newTestLogger(),
+	)
+	_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", nil)
+	assertCancelled(t, err)
+}
