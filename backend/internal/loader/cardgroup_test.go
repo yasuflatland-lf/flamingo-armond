@@ -42,7 +42,7 @@ func TestCardgroupLoader_BatchesNCallsIntoOne(t *testing.T) {
 			receivedKeys = ids
 			out := make(map[string]*domain.Cardgroup, len(ids))
 			for _, id := range ids {
-				out[id] = &domain.Cardgroup{ID: id, Name: "cg-" + id}
+				out[id] = &domain.Cardgroup{ID: id, Name: domain.CardgroupName("cg-" + id)}
 			}
 			return out, nil
 		},
@@ -91,7 +91,7 @@ func TestCardgroupLoader_PartialNotFound(t *testing.T) {
 				if id == "missing" {
 					continue
 				}
-				out[id] = &domain.Cardgroup{ID: id, Name: "cg-" + id}
+				out[id] = &domain.Cardgroup{ID: id, Name: domain.CardgroupName("cg-" + id)}
 			}
 			return out, nil
 		},

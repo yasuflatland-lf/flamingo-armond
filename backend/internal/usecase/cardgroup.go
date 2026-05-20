@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -127,9 +126,8 @@ func (u *CardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 		return CreateCardgroupOutcome{}, ucerr.ErrUnauthenticated
 	}
 
-	trimmed := strings.TrimSpace(in.Name)
-	tmp := &domain.Cardgroup{Name: trimmed}
-	info, err := liftValidationErr(translateCardgroupNameErr(tmp.Validate()))
+	name, nameErr := domain.ParseCardgroupName(in.Name)
+	info, err := liftValidationErr(translateCardgroupNameErr(nameErr))
 	if err != nil {
 		return CreateCardgroupOutcome{}, err
 	}
@@ -146,7 +144,7 @@ func (u *CardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 	cg := &domain.Cardgroup{
 		ID:        id,
 		OwnerID:   user.Sub,
-		Name:      trimmed,
+		Name:      name,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -196,9 +194,8 @@ func (u *CardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardg
 		return UpdateCardgroupOutcome{Cardgroup: existing}, nil
 	}
 
-	trimmed := strings.TrimSpace(*in.Name)
-	tmp := &domain.Cardgroup{Name: trimmed}
-	info, err := liftValidationErr(translateCardgroupNameErr(tmp.Validate()))
+	name, nameErr := domain.ParseCardgroupName(*in.Name)
+	info, err := liftValidationErr(translateCardgroupNameErr(nameErr))
 	if err != nil {
 		return UpdateCardgroupOutcome{}, err
 	}
@@ -206,7 +203,8 @@ func (u *CardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardg
 		return UpdateCardgroupOutcome{Validation: info}, nil
 	}
 
-	updated, err := u.repo.Update(ctx, id, repository.CardgroupUpdate{Name: &trimmed})
+	nameStr := name.String()
+	updated, err := u.repo.Update(ctx, id, repository.CardgroupUpdate{Name: &nameStr})
 	if err != nil {
 		return UpdateCardgroupOutcome{}, eris.Wrap(err, "usecase: update cardgroup")
 	}
@@ -447,7 +445,7 @@ func (u *CardgroupUsecase) resolveCardgroupCursor(
 	case repository.CardgroupOrderByID:
 		// No extra column needed; ownership-check above is the gate.
 	case repository.CardgroupOrderByName:
-		name := cg.Name
+		name := cg.Name.String()
 		c.Name = &name
 	case repository.CardgroupOrderByCreatedAt:
 		ca := cg.CreatedAt

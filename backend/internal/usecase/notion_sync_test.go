@@ -47,7 +47,7 @@ func (m *mockNotionCardgroupRepo) EnsureByName(_ context.Context, ownerID, name 
 		return nil, m.err
 	}
 	if m.cg == nil {
-		m.cg = &domain.Cardgroup{ID: "cg-created", OwnerID: ownerID, Name: name}
+		m.cg = &domain.Cardgroup{ID: "cg-created", OwnerID: ownerID, Name: domain.CardgroupName(name)}
 	}
 	return m.cg, nil
 }

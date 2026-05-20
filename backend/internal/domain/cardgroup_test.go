@@ -17,7 +17,7 @@ func TestCardgroupShape(t *testing.T) {
 	want := map[string]reflect.Type{
 		"ID":        reflect.TypeOf(""),
 		"OwnerID":   reflect.TypeOf(""),
-		"Name":      reflect.TypeOf(""),
+		"Name":      reflect.TypeOf(CardgroupName("")),
 		"CreatedAt": reflect.TypeOf(time.Time{}),
 		"UpdatedAt": reflect.TypeOf(time.Time{}),
 	}
@@ -75,7 +75,7 @@ func TestCardgroup_IsOwnedBy(t *testing.T) {
 	}
 }
 
-func TestCardgroup_Validate(t *testing.T) {
+func TestCardgroupName_ParseRoundtrip(t *testing.T) {
 	t.Parallel()
 
 	// zwjEmoji is a family emoji composed of multiple code points joined by
@@ -139,8 +139,7 @@ func TestCardgroup_Validate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			cg := &Cardgroup{Name: tc.input}
-			err := cg.Validate()
+			_, err := ParseCardgroupName(tc.input)
 			if tc.wantErr {
 				require.Error(t, err, "expected an error for input %q", tc.input)
 				if tc.sentinelErr != nil {
