@@ -125,36 +125,43 @@ type adminUserRepository interface {
 }
 
 // adminRoleRepository is the subset of repository.RoleRepository used by the
-// AdminUser usecase.
+// AdminUser usecase (CRUD lookup only).
 type adminRoleRepository interface {
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Role, error)
+}
+
+// adminUserRoleRepository is the subset of repository.UserRoleRepository used
+// by the AdminUser usecase (membership write operations).
+type adminUserRoleRepository interface {
 	AssignToUser(ctx context.Context, userID, roleID string) error
 	RevokeFromUser(ctx context.Context, userID, roleID string) error
 }
 
-// adminUserUsecase wires the auth service, the user repository, and the role
-// repository behind the admin-only management API.
+// adminUserUsecase wires the auth service, the user repository, the role
+// repository, and the user-role repository behind the admin-only management API.
 type adminUserUsecase struct {
-	users  adminUserRepository
-	roles  adminRoleRepository
-	auth   AdminChecker
-	logger *slog.Logger
+	users     adminUserRepository
+	roles     adminRoleRepository     // FindByIDs (self-demotion guard in RevokeRole)
+	userRoles adminUserRoleRepository // AssignToUser, RevokeFromUser
+	auth      AdminChecker
+	logger    *slog.Logger
 }
 
 // NewAdminUser constructs an AdminUserUsecase. Pass production
-// repository.UserRepository / repository.RoleRepository implementations;
-// tests may pass narrower stubs that satisfy the package-private
-// adminUserRepository / adminRoleRepository interfaces.
+// repository.UserRepository / repository.RoleRepository /
+// repository.UserRoleRepository implementations; tests may pass narrower stubs
+// that satisfy the package-private interfaces.
 func NewAdminUser(
 	users repository.UserRepository,
 	roles repository.RoleRepository,
+	userRoles repository.UserRoleRepository,
 	authSvc *auth.Service,
 	logger *slog.Logger,
 ) AdminUserUsecase {
 	if logger == nil {
 		panic("usecase: admin user: logger is required")
 	}
-	return &adminUserUsecase{users: users, roles: roles, auth: authSvc, logger: logger}
+	return &adminUserUsecase{users: users, roles: roles, userRoles: userRoles, auth: authSvc, logger: logger}
 }
 
 // NewAdminUserWithDeps is the test-time constructor that accepts the narrow
@@ -162,13 +169,14 @@ func NewAdminUser(
 func NewAdminUserWithDeps(
 	users adminUserRepository,
 	roles adminRoleRepository,
+	userRoles adminUserRoleRepository,
 	authSvc AdminChecker,
 	logger *slog.Logger,
 ) AdminUserUsecase {
 	if logger == nil {
 		panic("usecase: admin user: logger is required")
 	}
-	return &adminUserUsecase{users: users, roles: roles, auth: authSvc, logger: logger}
+	return &adminUserUsecase{users: users, roles: roles, userRoles: userRoles, auth: authSvc, logger: logger}
 }
 
 // List paginates the users table with Relay-style cursors. Forward paging
@@ -348,7 +356,7 @@ func (u *adminUserUsecase) AssignRole(ctx context.Context, userID, roleID string
 	if _, err := requireAdmin(ctx, u.auth); err != nil {
 		return AssignRoleOutcome{}, wrapAdminGateError(err, "usecase: admin user: check admin")
 	}
-	if err := u.roles.AssignToUser(ctx, userID, roleID); err != nil {
+	if err := u.userRoles.AssignToUser(ctx, userID, roleID); err != nil {
 		info, perr := mapRoleAssignmentError(err, "usecase: admin user assign role")
 		if perr != nil {
 			return AssignRoleOutcome{}, perr
@@ -388,7 +396,7 @@ func (u *adminUserUsecase) RevokeRole(ctx context.Context, userID, roleID string
 		}
 	}
 
-	if err := u.roles.RevokeFromUser(ctx, userID, roleID); err != nil {
+	if err := u.userRoles.RevokeFromUser(ctx, userID, roleID); err != nil {
 		info, perr := mapRoleAssignmentError(err, "usecase: admin user revoke role")
 		if perr != nil {
 			return RevokeRoleOutcome{}, perr
@@ -403,7 +411,7 @@ func (u *adminUserUsecase) RevokeRole(ctx context.Context, userID, roleID string
 }
 
 // mapRoleAssignmentError classifies the sentinel set returned by
-// roleRepo.AssignToUser / RevokeFromUser into either input-validation data
+// userRoles.AssignToUser / RevokeFromUser into either input-validation data
 // (returned via the first slot, with second slot nil) or a propagating error
 // (returned via the second slot, with first slot nil). Specific sentinels
 // are matched before the legacy ErrNotFound fallback because both

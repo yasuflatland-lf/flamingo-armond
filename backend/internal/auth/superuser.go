@@ -17,7 +17,7 @@ type adminChecker interface {
 	IsAdmin(ctx context.Context, userID string) (bool, error)
 }
 
-// roleAssigner grants a role to a user. Satisfied by repository.RoleRepository.
+// roleAssigner grants a role to a user. Satisfied by repository.UserRoleRepository.
 // Idempotent via ON CONFLICT DO NOTHING.
 type roleAssigner interface {
 	AssignToUser(ctx context.Context, userID, roleID string) error

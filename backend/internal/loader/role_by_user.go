@@ -2,6 +2,7 @@ package loader
 
 import (
 	"context"
+	"errors"
 
 	"github.com/graph-gophers/dataloader/v7"
 	"github.com/rotisserie/eris"
@@ -16,7 +17,7 @@ import (
 // error at the loader layer).
 type RoleByUserIDLoader = dataloader.Loader[string, []*domain.Role]
 
-func roleByUserIDBatchFunc(repo repository.RoleRepository) dataloader.BatchFunc[string, []*domain.Role] {
+func roleByUserIDBatchFunc(repo repository.UserRoleRepository) dataloader.BatchFunc[string, []*domain.Role] {
 	return func(ctx context.Context, keys []string) []*dataloader.Result[[]*domain.Role] {
 		out := make([]*dataloader.Result[[]*domain.Role], len(keys))
 
@@ -29,9 +30,12 @@ func roleByUserIDBatchFunc(repo repository.RoleRepository) dataloader.BatchFunc[
 
 		byUser, err := repo.ListByUserIDs(ctx, keys)
 		if err != nil {
-			wrapped := eris.Wrap(err, "loader: list roles by user IDs")
+			batchErr := err
+			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+				batchErr = eris.Wrap(err, "loader: list roles by user IDs")
+			}
 			for i := range keys {
-				out[i] = &dataloader.Result[[]*domain.Role]{Error: wrapped}
+				out[i] = &dataloader.Result[[]*domain.Role]{Error: batchErr}
 			}
 			return out
 		}

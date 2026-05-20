@@ -33,13 +33,14 @@ func insertRole(t *testing.T, ctx context.Context, name string) string {
 // AssignToUser
 // ---------------------------------------------------------------------------
 
-func TestRoleRepository_AssignToUser_HappyPath(t *testing.T) {
+func TestUserRoleRepository_AssignToUser_HappyPath(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
-	repo := repository.NewRoleRepository(testDB.GORM)
+	roleRepo := repository.NewRoleRepository(testDB.GORM)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
 
-	admin, err := repo.FindByName(ctx, "admin")
+	admin, err := roleRepo.FindByName(ctx, "admin")
 	if err != nil {
 		t.Fatalf("FindByName(admin): %v", err)
 	}
@@ -60,13 +61,14 @@ func TestRoleRepository_AssignToUser_HappyPath(t *testing.T) {
 	}
 }
 
-func TestRoleRepository_AssignToUser_Idempotent(t *testing.T) {
+func TestUserRoleRepository_AssignToUser_Idempotent(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
-	repo := repository.NewRoleRepository(testDB.GORM)
+	roleRepo := repository.NewRoleRepository(testDB.GORM)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
 
-	admin, err := repo.FindByName(ctx, "admin")
+	admin, err := roleRepo.FindByName(ctx, "admin")
 	if err != nil {
 		t.Fatalf("FindByName(admin): %v", err)
 	}
@@ -88,12 +90,13 @@ func TestRoleRepository_AssignToUser_Idempotent(t *testing.T) {
 	}
 }
 
-func TestRoleRepository_AssignToUser_UserNotFound(t *testing.T) {
+func TestUserRoleRepository_AssignToUser_UserNotFound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	repo := repository.NewRoleRepository(testDB.GORM)
+	roleRepo := repository.NewRoleRepository(testDB.GORM)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
 
-	admin, err := repo.FindByName(ctx, "admin")
+	admin, err := roleRepo.FindByName(ctx, "admin")
 	if err != nil {
 		t.Fatalf("FindByName(admin): %v", err)
 	}
@@ -110,11 +113,11 @@ func TestRoleRepository_AssignToUser_UserNotFound(t *testing.T) {
 	}
 }
 
-func TestRoleRepository_AssignToUser_RoleNotFound(t *testing.T) {
+func TestUserRoleRepository_AssignToUser_RoleNotFound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
-	repo := repository.NewRoleRepository(testDB.GORM)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
 
 	missingRole := uuid.NewString()
 	err := repo.AssignToUser(ctx, userID, missingRole)
@@ -126,14 +129,14 @@ func TestRoleRepository_AssignToUser_RoleNotFound(t *testing.T) {
 	}
 }
 
-// TestRoleRepository_AssignToUser_RoleNotFoundDistinct asserts that the new
+// TestUserRoleRepository_AssignToUser_RoleNotFoundDistinct asserts that the new
 // sentinels are distinct: a missing-role error must not match the
 // missing-user sentinel, and vice versa.
-func TestRoleRepository_AssignToUser_RoleNotFoundDistinct(t *testing.T) {
+func TestUserRoleRepository_AssignToUser_RoleNotFoundDistinct(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
-	repo := repository.NewRoleRepository(testDB.GORM)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
 
 	missingRole := uuid.NewString()
 	err := repo.AssignToUser(ctx, userID, missingRole)
@@ -149,13 +152,14 @@ func TestRoleRepository_AssignToUser_RoleNotFoundDistinct(t *testing.T) {
 // RevokeFromUser
 // ---------------------------------------------------------------------------
 
-func TestRoleRepository_RevokeFromUser_HappyPath(t *testing.T) {
+func TestUserRoleRepository_RevokeFromUser_HappyPath(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
-	repo := repository.NewRoleRepository(testDB.GORM)
+	roleRepo := repository.NewRoleRepository(testDB.GORM)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
 
-	admin, err := repo.FindByName(ctx, "admin")
+	admin, err := roleRepo.FindByName(ctx, "admin")
 	if err != nil {
 		t.Fatalf("FindByName(admin): %v", err)
 	}
@@ -176,16 +180,17 @@ func TestRoleRepository_RevokeFromUser_HappyPath(t *testing.T) {
 	}
 }
 
-// TestRoleRepository_RevokeFromUser_Idempotent verifies that revoking a role
+// TestUserRoleRepository_RevokeFromUser_Idempotent verifies that revoking a role
 // that was never assigned is a silent no-op when both the user and role exist.
 // This is the legitimate idempotency path: user + role exist, no assignment.
-func TestRoleRepository_RevokeFromUser_Idempotent(t *testing.T) {
+func TestUserRoleRepository_RevokeFromUser_Idempotent(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
-	repo := repository.NewRoleRepository(testDB.GORM)
+	roleRepo := repository.NewRoleRepository(testDB.GORM)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
 
-	admin, err := repo.FindByName(ctx, "admin")
+	admin, err := roleRepo.FindByName(ctx, "admin")
 	if err != nil {
 		t.Fatalf("FindByName(admin): %v", err)
 	}
@@ -196,16 +201,17 @@ func TestRoleRepository_RevokeFromUser_Idempotent(t *testing.T) {
 	}
 }
 
-// TestRoleRepository_RevokeFromUser_AssignmentMissing is an explicit test for
+// TestUserRoleRepository_RevokeFromUser_AssignmentMissing is an explicit test for
 // the idempotent path: user and role both exist, but no (user_id, role_id)
 // assignment row is present. The operation must succeed without error.
-func TestRoleRepository_RevokeFromUser_AssignmentMissing(t *testing.T) {
+func TestUserRoleRepository_RevokeFromUser_AssignmentMissing(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
-	repo := repository.NewRoleRepository(testDB.GORM)
+	roleRepo := repository.NewRoleRepository(testDB.GORM)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
 
-	admin, err := repo.FindByName(ctx, "admin")
+	admin, err := roleRepo.FindByName(ctx, "admin")
 	if err != nil {
 		t.Fatalf("FindByName(admin): %v", err)
 	}
@@ -216,14 +222,15 @@ func TestRoleRepository_RevokeFromUser_AssignmentMissing(t *testing.T) {
 	}
 }
 
-// TestRoleRepository_RevokeFromUser_UserNotFound verifies that revoking a role
+// TestUserRoleRepository_RevokeFromUser_UserNotFound verifies that revoking a role
 // from a non-existent user returns ErrUserNotFound, not a silent no-op.
-func TestRoleRepository_RevokeFromUser_UserNotFound(t *testing.T) {
+func TestUserRoleRepository_RevokeFromUser_UserNotFound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	repo := repository.NewRoleRepository(testDB.GORM)
+	roleRepo := repository.NewRoleRepository(testDB.GORM)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
 
-	admin, err := repo.FindByName(ctx, "admin")
+	admin, err := roleRepo.FindByName(ctx, "admin")
 	if err != nil {
 		t.Fatalf("FindByName(admin): %v", err)
 	}
@@ -240,13 +247,13 @@ func TestRoleRepository_RevokeFromUser_UserNotFound(t *testing.T) {
 	}
 }
 
-// TestRoleRepository_RevokeFromUser_RoleNotFound verifies that revoking a
+// TestUserRoleRepository_RevokeFromUser_RoleNotFound verifies that revoking a
 // non-existent role from a real user returns ErrRoleNotFound.
-func TestRoleRepository_RevokeFromUser_RoleNotFound(t *testing.T) {
+func TestUserRoleRepository_RevokeFromUser_RoleNotFound(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
-	repo := repository.NewRoleRepository(testDB.GORM)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
 
 	missingRole := uuid.NewString()
 	err := repo.RevokeFromUser(ctx, userID, missingRole)
@@ -258,15 +265,39 @@ func TestRoleRepository_RevokeFromUser_RoleNotFound(t *testing.T) {
 	}
 }
 
+// TestUserRoleRepository_RevokeFromUser_UserNotFoundDistinct asserts that the new
+// sentinels are distinct: a missing-user error must not match the
+// missing-role sentinel, and vice versa.
+func TestUserRoleRepository_RevokeFromUser_UserNotFoundDistinct(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	roleRepo := repository.NewRoleRepository(testDB.GORM)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
+
+	admin, err := roleRepo.FindByName(ctx, "admin")
+	if err != nil {
+		t.Fatalf("FindByName(admin): %v", err)
+	}
+
+	missingUser := uuid.NewString()
+	err = repo.RevokeFromUser(ctx, missingUser, admin.ID)
+	if !errors.Is(err, repository.ErrUserNotFound) {
+		t.Fatalf("want ErrUserNotFound, got %v", err)
+	}
+	if errors.Is(err, repository.ErrRoleNotFound) {
+		t.Fatalf("missing-user error must not match ErrRoleNotFound, got %v", err)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // ListByUser
 // ---------------------------------------------------------------------------
 
-func TestRoleRepository_ListByUser_NoRoles(t *testing.T) {
+func TestUserRoleRepository_ListByUser_NoRoles(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
-	repo := repository.NewRoleRepository(testDB.GORM)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
 
 	roles, err := repo.ListByUser(ctx, userID)
 	if err != nil {
@@ -280,11 +311,11 @@ func TestRoleRepository_ListByUser_NoRoles(t *testing.T) {
 	}
 }
 
-func TestRoleRepository_ListByUser_OrderedByNameAsc(t *testing.T) {
+func TestUserRoleRepository_ListByUser_OrderedByNameAsc(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	userID := insertAuthUser(t, ctx)
-	repo := repository.NewRoleRepository(testDB.GORM)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
 
 	// Seed three roles with names that should sort alphabetically.
 	adminID := insertRole(t, ctx, "admin")
@@ -372,13 +403,13 @@ func TestRoleRepository_ListAll_EmptySliceNotNil(t *testing.T) {
 // ListByUserIDs (C4)
 // ---------------------------------------------------------------------------
 
-// TestRoleRepository_ListByUserIDs_EmptySlice verifies the GORM empty-IN guard:
+// TestUserRoleRepository_ListByUserIDs_EmptySlice verifies the GORM empty-IN guard:
 // passing an empty userIDs slice must return an empty (non-nil) map and must
 // not issue any SQL query (the method short-circuits before touching the DB).
-func TestRoleRepository_ListByUserIDs_EmptySlice(t *testing.T) {
+func TestUserRoleRepository_ListByUserIDs_EmptySlice(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	repo := repository.NewRoleRepository(testDB.GORM)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
 
 	result, err := repo.ListByUserIDs(ctx, []string{})
 	if err != nil {
@@ -392,13 +423,13 @@ func TestRoleRepository_ListByUserIDs_EmptySlice(t *testing.T) {
 	}
 }
 
-// TestRoleRepository_ListByUserIDs_MultipleUsers_NameAsc creates three users
+// TestUserRoleRepository_ListByUserIDs_MultipleUsers_NameAsc creates three users
 // each with two roles assigned in varying insertion order, then verifies that
 // ListByUserIDs returns each user's roles sorted by name ASC.
-func TestRoleRepository_ListByUserIDs_MultipleUsers_NameAsc(t *testing.T) {
+func TestUserRoleRepository_ListByUserIDs_MultipleUsers_NameAsc(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	repo := repository.NewRoleRepository(testDB.GORM)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
 
 	userA := insertAuthUser(t, ctx)
 	userB := insertAuthUser(t, ctx)
@@ -455,14 +486,14 @@ func TestRoleRepository_ListByUserIDs_MultipleUsers_NameAsc(t *testing.T) {
 	}
 }
 
-// TestRoleRepository_ListByUserIDs_UnknownUserAbsentFromMap verifies that
+// TestUserRoleRepository_ListByUserIDs_UnknownUserAbsentFromMap verifies that
 // passing a mix of a known user and an unknown UUID returns only the known
 // user's entry in the map. The unknown UUID must not appear as a key and no
 // error is returned.
-func TestRoleRepository_ListByUserIDs_UnknownUserAbsentFromMap(t *testing.T) {
+func TestUserRoleRepository_ListByUserIDs_UnknownUserAbsentFromMap(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	repo := repository.NewRoleRepository(testDB.GORM)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
 
 	knownUser := insertAuthUser(t, ctx)
 	unknownUser := uuid.NewString()

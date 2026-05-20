@@ -6,19 +6,24 @@ import (
 	"github.com/rotisserie/eris"
 
 	"backend/internal/domain"
-	"backend/internal/repository"
 )
+
+// roleChecker is the narrow interface auth.Service requires from the repository
+// layer. Only HasRole is needed; callers may pass any repository.UserRoleRepository.
+type roleChecker interface {
+	HasRole(ctx context.Context, userID string, roleName domain.RoleName) (bool, error)
+}
 
 // Service centralises authorisation helpers that depend on durable role state.
 // Construct once at boot and pass into resolvers / usecases that need to gate
 // on role membership. Keeping this struct distinct from the request-scoped
-// AuthUser lets us inject a mock UserRoleRepository in tests.
+// AuthUser lets us inject a mock in tests.
 type Service struct {
-	userRoles repository.UserRoleRepository
+	userRoles roleChecker
 }
 
-// NewService wires the auth.Service against a UserRoleRepository.
-func NewService(userRoles repository.UserRoleRepository) *Service {
+// NewService wires the auth.Service against a role-checking repository.
+func NewService(userRoles roleChecker) *Service {
 	return &Service{userRoles: userRoles}
 }
 

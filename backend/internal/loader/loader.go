@@ -31,11 +31,11 @@ type Loaders struct {
 	UserPreference *UserPreferenceLoader
 }
 
-func New(userRepo repository.UserRepository, roleRepo repository.RoleRepository, cardgroupRepo repository.CardgroupRepository, cardRepo repository.CardReadRepository, userPreferenceRepo repository.UserPreferenceRepository, swipeRecordRepo ...repository.SwipeRecordRepository) *Loaders {
+func New(userRepo repository.UserRepository, roleRepo repository.RoleRepository, userRoleRepo repository.UserRoleRepository, cardgroupRepo repository.CardgroupRepository, cardRepo repository.CardReadRepository, userPreferenceRepo repository.UserPreferenceRepository, swipeRecordRepo ...repository.SwipeRecordRepository) *Loaders {
 	loaders := &Loaders{
 		User:           dataloader.NewBatchedLoader(userBatchFunc(userRepo)),
 		Role:           dataloader.NewBatchedLoader(roleBatchFunc(roleRepo)),
-		RoleByUserID:   dataloader.NewBatchedLoader(roleByUserIDBatchFunc(roleRepo)),
+		RoleByUserID:   dataloader.NewBatchedLoader(roleByUserIDBatchFunc(userRoleRepo)),
 		Cardgroup:      dataloader.NewBatchedLoader(cardgroupBatchFunc(cardgroupRepo)),
 		Card:           dataloader.NewBatchedLoader(cardBatchFunc(cardRepo)),
 		UserPreference: NewUserPreferenceLoader(userPreferenceRepo),
@@ -49,6 +49,7 @@ func New(userRepo repository.UserRepository, roleRepo repository.RoleRepository,
 func NewWithUserCardFSRS(
 	userRepo repository.UserRepository,
 	roleRepo repository.RoleRepository,
+	userRoleRepo repository.UserRoleRepository,
 	cardgroupRepo repository.CardgroupRepository,
 	cardRepo repository.CardReadRepository,
 	userPreferenceRepo repository.UserPreferenceRepository,
@@ -58,7 +59,7 @@ func NewWithUserCardFSRS(
 ) *Loaders {
 	// New tolerates a nil SwipeRecordRepository inside the variadic slot, so
 	// forward unconditionally; the nil-check lives there.
-	loaders := New(userRepo, roleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, swipeRecordRepo)
+	loaders := New(userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, swipeRecordRepo)
 	if userCardFSRSRepo != nil && viewer != "" {
 		loaders.UserCardFSRS = dataloader.NewBatchedLoader(userCardFSRSBatchFunc(userCardFSRSRepo, viewer))
 	}
@@ -67,10 +68,10 @@ func NewWithUserCardFSRS(
 
 // Middleware installs a fresh Loaders per request so batching and caching do
 // not bleed across requests.
-func Middleware(userRepo repository.UserRepository, roleRepo repository.RoleRepository, cardgroupRepo repository.CardgroupRepository, cardRepo repository.CardReadRepository, userPreferenceRepo repository.UserPreferenceRepository, swipeRecordRepo ...repository.SwipeRecordRepository) echo.MiddlewareFunc {
+func Middleware(userRepo repository.UserRepository, roleRepo repository.RoleRepository, userRoleRepo repository.UserRoleRepository, cardgroupRepo repository.CardgroupRepository, cardRepo repository.CardReadRepository, userPreferenceRepo repository.UserPreferenceRepository, swipeRecordRepo ...repository.SwipeRecordRepository) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
-			ctx := context.WithValue(c.Request().Context(), contextKey{}, New(userRepo, roleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, swipeRecordRepo...))
+			ctx := context.WithValue(c.Request().Context(), contextKey{}, New(userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, swipeRecordRepo...))
 			c.SetRequest(c.Request().WithContext(ctx))
 			return next(c)
 		}
@@ -80,6 +81,7 @@ func Middleware(userRepo repository.UserRepository, roleRepo repository.RoleRepo
 func MiddlewareWithUserCardFSRS(
 	userRepo repository.UserRepository,
 	roleRepo repository.RoleRepository,
+	userRoleRepo repository.UserRoleRepository,
 	cardgroupRepo repository.CardgroupRepository,
 	cardRepo repository.CardReadRepository,
 	userPreferenceRepo repository.UserPreferenceRepository,
@@ -93,7 +95,7 @@ func MiddlewareWithUserCardFSRS(
 				viewer = user.Sub
 			}
 			ctx := context.WithValue(c.Request().Context(), contextKey{}, NewWithUserCardFSRS(
-				userRepo, roleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, swipeRecordRepo, userCardFSRSRepo, viewer,
+				userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, swipeRecordRepo, userCardFSRSRepo, viewer,
 			))
 			c.SetRequest(c.Request().WithContext(ctx))
 			return next(c)

@@ -3,7 +3,7 @@ package repository_test
 // Tests for RoleRepository Create, Update, Delete, and FindByID methods.
 //
 // TestMain, testDB, insertAuthUser, and sqlDBHandle are defined in user_test.go
-// and shared across this package. insertRole is defined in role_assign_test.go.
+// and shared across this package. insertRole is defined in user_role_assign_test.go.
 
 import (
 	"context"
@@ -274,6 +274,7 @@ func TestRoleRepository_Delete_CascadesUserRoles(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	repo := repository.NewRoleRepository(testDB.GORM)
+	userRoleRepo := repository.NewUserRoleRepository(testDB.GORM)
 
 	// Create a role and a user, assign the role.
 	name := "cascade-role-" + uuid.NewString()
@@ -282,7 +283,7 @@ func TestRoleRepository_Delete_CascadesUserRoles(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 	userID := insertAuthUser(t, ctx)
-	if err := repo.AssignToUser(ctx, userID, role.ID); err != nil {
+	if err := userRoleRepo.AssignToUser(ctx, userID, role.ID); err != nil {
 		t.Fatalf("AssignToUser: %v", err)
 	}
 
@@ -292,7 +293,7 @@ func TestRoleRepository_Delete_CascadesUserRoles(t *testing.T) {
 	}
 
 	// The user should now have no roles.
-	roles, err := repo.ListByUser(ctx, userID)
+	roles, err := userRoleRepo.ListByUser(ctx, userID)
 	if err != nil {
 		t.Fatalf("ListByUser after cascaded Delete: %v", err)
 	}

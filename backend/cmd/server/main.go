@@ -118,6 +118,7 @@ func newRouter(
 	promoter *auth.SuperUserPromoter,
 	userRepo repository.UserRepository,
 	roleRepo repository.RoleRepository,
+	userRoleRepo repository.UserRoleRepository,
 	cardgroupRepo repository.CardgroupRepository,
 	cardRepo repository.CardRepository,
 	userPreferenceRepo repository.UserPreferenceRepository,
@@ -167,7 +168,7 @@ func newRouter(
 			return r.Method + " " + r.URL.Path
 		}),
 	)
-	q := e.Group("/query", authMW, promoter.Middleware(), loader.MiddlewareWithUserCardFSRS(userRepo, roleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, swipeRecordRepo, userCardFSRSRepo))
+	q := e.Group("/query", authMW, promoter.Middleware(), loader.MiddlewareWithUserCardFSRS(userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, swipeRecordRepo, userCardFSRSRepo))
 	q.POST("", echo.WrapHandler(otelGQLHandler))
 	e.GET("/playground", echo.WrapHandler(playground.Handler("GraphQL", "/query")))
 
@@ -187,6 +188,7 @@ func bootstrapSuperUserPromoter(
 	logger *slog.Logger,
 	authSvc *auth.Service,
 	roleRepo repository.RoleRepository,
+	userRoleRepo repository.UserRoleRepository,
 	emailsEnv string,
 ) (*auth.SuperUserPromoter, error) {
 	superUserEmails := auth.ParseSuperUserSet(emailsEnv)
@@ -196,13 +198,13 @@ func bootstrapSuperUserPromoter(
 			return nil, eris.Wrap(err, "run: lookup admin role for super-user bootstrap")
 		}
 		logger.Info("super-user bootstrap enabled", "email_count", len(superUserEmails))
-		return auth.NewSuperUserPromoter(superUserEmails, adminRole.ID, authSvc, roleRepo), nil
+		return auth.NewSuperUserPromoter(superUserEmails, adminRole.ID, authSvc, userRoleRepo), nil
 	}
 	// No SUPER_USER_EMAILS configured. Check whether at least one admin
 	// already exists in the DB; if not, the operator has no escape hatch
 	// and we emit a single-line WARN to make the misconfiguration visible.
 	// A failed count query is non-fatal — log the eris chain and continue.
-	if adminCount, err := roleRepo.CountAdminUsers(ctx); err != nil {
+	if adminCount, err := userRoleRepo.CountAdmins(ctx); err != nil {
 		logging.LogWarn(ctx, logger, "super-user bootstrap: admin count check failed",
 			eris.Wrap(err, "run: count admin users for bootstrap check"))
 	} else if adminCount == 0 {
@@ -275,17 +277,17 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
 	authSvc := auth.NewService(userRoleRepo)
 
-	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, roleRepo, os.Getenv("SUPER_USER_EMAILS"))
+	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, roleRepo, userRoleRepo, os.Getenv("SUPER_USER_EMAILS"))
 	if err != nil {
 		return err
 	}
 
-	userUC := usecase.NewUserUsecase(userRepo, roleRepo, authSvc, logger)
+	userUC := usecase.NewUserUsecase(userRepo, userRoleRepo, authSvc, logger)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
 	learnUC := usecase.NewLearnUsecase(cardRepo, cardgroupRepo, service.NewOrderingPolicy(), nil, 0, 0, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), srvCfg.swipeNextBatchSize, userCardFSRSRepo, logger)
 	dictionaryUC := usecase.NewDictionaryUsecase(authSvc, cardRepo, db.GORM, logger)
-	adminUserUC := usecase.NewAdminUser(userRepo, roleRepo, authSvc, logger)
+	adminUserUC := usecase.NewAdminUser(userRepo, roleRepo, userRoleRepo, authSvc, logger)
 	adminRoleUC := usecase.NewAdminRole(roleRepo, authSvc, logger)
 	lastViewedCardgroupUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo, logger)
 	pingHandler := ping.New(pingRecordRepo, pingToken)
@@ -308,7 +310,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
 	// telemetry.Init for the full ordering invariant.
-	e := newRouter(resolvers, authMW, promoter, userRepo, roleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo, pingHandler, notionSyncHandler, swipeRecordRepo)
+	e := newRouter(resolvers, authMW, promoter, userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo, pingHandler, notionSyncHandler, swipeRecordRepo)
 	e.Logger = logger
 
 	port := os.Getenv("PORT")

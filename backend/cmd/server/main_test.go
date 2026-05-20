@@ -148,7 +148,7 @@ func noopAuthMW(next echo.HandlerFunc) echo.HandlerFunc {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil), nil, nil, nil, nil, nil, nil, ping.New(nil, "test-token"), nil, nil))
+	ts := httptest.NewServer(newRouter(resolver.NewResolver(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil), noopAuthMW, auth.NewSuperUserPromoter(nil, "", nil, nil), nil, nil, nil, nil, nil, nil, nil, ping.New(nil, "test-token"), nil, nil))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -551,18 +551,19 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 		userRepo = repository.NewUserRepository(db.GORM)
 	}
 	roleRepo := repository.NewRoleRepository(db.GORM)
+	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	cardRepo := repository.NewCardRepository(db.GORM)
 	userCardFSRSRepo := repository.NewUserCardFSRSRepository(db.GORM)
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	logger := slog.New(slog.DiscardHandler)
-	userUC := usecase.NewUserUsecase(userRepo, roleRepo, nil, logger)
+	userUC := usecase.NewUserUsecase(userRepo, userRoleRepo, nil, logger)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10, userCardFSRSRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
-	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil), userRepo, roleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo, ping.New(pingRecordRepo, "test-token"), nil, swipeRecordRepo)
+	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil), userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo, ping.New(pingRecordRepo, "test-token"), nil, swipeRecordRepo)
 
 	ts := httptest.NewServer(e)
 	t.Cleanup(ts.Close)
@@ -1644,13 +1645,14 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 
 	userRepo := repository.NewUserRepository(db.GORM)
 	roleRepo := repository.NewRoleRepository(db.GORM)
+	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
 	cardgroupRepo := repository.NewCardgroupRepository(db.GORM)
 	cardRepo := repository.NewCardRepository(db.GORM)
 	userCardFSRSRepo := repository.NewUserCardFSRSRepository(db.GORM)
 	swipeRecordRepo := repository.NewSwipeRecordRepository(db.GORM)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
 	logger := slog.New(slog.DiscardHandler)
-	userUC := usecase.NewUserUsecase(userRepo, roleRepo, nil, logger)
+	userUC := usecase.NewUserUsecase(userRepo, userRoleRepo, nil, logger)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10, userCardFSRSRepo, logger)
@@ -1660,7 +1662,7 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 		resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, lastViewedUC, nil),
 		mw,
 		auth.NewSuperUserPromoter(nil, "", nil, nil),
-		userRepo, roleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo,
+		userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo,
 		ping.New(pingRecordRepo, "test-token"), nil, swipeRecordRepo,
 	)
 
@@ -2024,9 +2026,10 @@ func TestHandleSwipe_RollsBackWhenSwipeRecordInsertFails(t *testing.T) {
 	}
 }
 
-// panicRoleRepo is an embed base that satisfies repository.RoleRepository with
-// every method panicking. Concrete stubs embed this and override only the
-// methods their test exercises; any unexpected call fails loudly.
+// panicRoleRepo is an embed base that satisfies repository.RoleRepository
+// (CRUD only, 7 methods) with every method panicking. Concrete stubs embed
+// this and override only the methods their test exercises; any unexpected
+// call fails loudly.
 type panicRoleRepo struct{}
 
 func (panicRoleRepo) FindByID(_ context.Context, _ string) (*domain.Role, error) {
@@ -2047,40 +2050,49 @@ func (panicRoleRepo) Update(_ context.Context, _, _ string) (*domain.Role, error
 func (panicRoleRepo) Delete(_ context.Context, _ string) error {
 	panic("not used in this test")
 }
-func (panicRoleRepo) AssignToUser(_ context.Context, _, _ string) error {
-	panic("not used in this test")
-}
-func (panicRoleRepo) RevokeFromUser(_ context.Context, _, _ string) error {
-	panic("not used in this test")
-}
-func (panicRoleRepo) ListByUser(_ context.Context, _ string) ([]*domain.Role, error) {
-	panic("not used in this test")
-}
-func (panicRoleRepo) ListByUserIDs(_ context.Context, _ []string) (map[string][]*domain.Role, error) {
-	panic("not used in this test")
-}
 func (panicRoleRepo) ListAll(_ context.Context) ([]*domain.Role, error) {
 	panic("not used in this test")
 }
-func (panicRoleRepo) CountAdminUsers(_ context.Context) (int64, error) {
+
+// panicUserRoleRepo is an embed base that satisfies repository.UserRoleRepository
+// with every method panicking. Concrete stubs embed this and override only the
+// methods their test exercises; any unexpected call fails loudly.
+type panicUserRoleRepo struct{}
+
+func (panicUserRoleRepo) HasRole(_ context.Context, _ string, _ domain.RoleName) (bool, error) {
+	panic("not used in this test")
+}
+func (panicUserRoleRepo) AssignToUser(_ context.Context, _, _ string) error {
+	panic("not used in this test")
+}
+func (panicUserRoleRepo) RevokeFromUser(_ context.Context, _, _ string) error {
+	panic("not used in this test")
+}
+func (panicUserRoleRepo) ListByUser(_ context.Context, _ string) ([]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (panicUserRoleRepo) ListByUserIDs(_ context.Context, _ []string) (map[string][]*domain.Role, error) {
+	panic("not used in this test")
+}
+func (panicUserRoleRepo) CountAdmins(_ context.Context) (int64, error) {
 	panic("not used in this test")
 }
 
-// failingCountRepo satisfies repository.RoleRepository with only CountAdminUsers
-// implemented. All other methods panic via the embedded panicRoleRepo.
+// failingCountRepo satisfies repository.UserRoleRepository with only CountAdmins
+// implemented. All other methods panic via the embedded panicUserRoleRepo.
 type failingCountRepo struct {
-	panicRoleRepo
+	panicUserRoleRepo
 	err error
 }
 
-func (f failingCountRepo) CountAdminUsers(_ context.Context) (int64, error) {
+func (f failingCountRepo) CountAdmins(_ context.Context) (int64, error) {
 	return 0, f.err
 }
 
 // findByNameRepo satisfies repository.RoleRepository with FindByName returning
-// a configurable (role, error) pair. CountAdminUsers panics via the embedded
+// a configurable (role, error) pair. CountAdmins panics via the embedded
 // panicRoleRepo — the non-empty-emails branch in bootstrapSuperUserPromoter
-// never calls CountAdminUsers, only FindByName.
+// never calls CountAdmins, only FindByName.
 type findByNameRepo struct {
 	panicRoleRepo
 	role *domain.Role
@@ -2091,15 +2103,15 @@ func (f findByNameRepo) FindByName(_ context.Context, _ domain.RoleName) (*domai
 	return f.role, f.err
 }
 
-// existingAdminRepo satisfies repository.RoleRepository with CountAdminUsers
+// existingAdminRepo satisfies repository.UserRoleRepository with CountAdmins
 // returning a fixed count. Used by deterministic tests for the Branch E path
 // (admin role-holders already exist → no WARN emitted).
 type existingAdminRepo struct {
-	panicRoleRepo
+	panicUserRoleRepo
 	count int64
 }
 
-func (e existingAdminRepo) CountAdminUsers(_ context.Context) (int64, error) {
+func (e existingAdminRepo) CountAdmins(_ context.Context) (int64, error) {
 	return e.count, nil
 }
 
@@ -2138,13 +2150,14 @@ func TestBootstrapSuperUserPromoter_WarnsWhenNoEscapeHatch(t *testing.T) {
 	defer db.Close()
 
 	roleRepo := repository.NewRoleRepository(db.GORM)
+	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
 
 	// Confirm there are no admin role-holders in this test DB state so the
 	// WARN branch fires. Other tests may insert user_roles rows but none grant
 	// the admin role as part of their setup.
-	adminCount, err := roleRepo.CountAdminUsers(ctx)
+	adminCount, err := userRoleRepo.CountAdmins(ctx)
 	if err != nil {
-		t.Fatalf("CountAdminUsers: %v", err)
+		t.Fatalf("CountAdmins: %v", err)
 	}
 	if adminCount != 0 {
 		t.Skipf("pre-condition: %d admin role-holder(s) already exist; WARN branch would not fire — skipping", adminCount)
@@ -2154,7 +2167,7 @@ func TestBootstrapSuperUserPromoter_WarnsWhenNoEscapeHatch(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	promoter, err := bootstrapSuperUserPromoter(ctx, logger, nil, roleRepo, "")
+	promoter, err := bootstrapSuperUserPromoter(ctx, logger, nil, roleRepo, userRoleRepo, "")
 	if err != nil {
 		t.Fatalf("bootstrapSuperUserPromoter returned unexpected error: %v", err)
 	}
@@ -2190,7 +2203,7 @@ func TestBootstrapSuperUserPromoter_WarnsWhenNoEscapeHatch(t *testing.T) {
 }
 
 // TestBootstrapSuperUserPromoter_WarnOnCountError verifies that a DB failure
-// in CountAdminUsers is non-fatal: bootstrapSuperUserPromoter returns a
+// in CountAdmins is non-fatal: bootstrapSuperUserPromoter returns a
 // pass-through promoter and emits a structured WARN with error_chain.root.stack.
 func TestBootstrapSuperUserPromoter_WarnOnCountError(t *testing.T) {
 	ctx := t.Context()
@@ -2209,7 +2222,7 @@ func TestBootstrapSuperUserPromoter_WarnOnCountError(t *testing.T) {
 		func(_ context.Context) string { return "" },
 	))
 
-	promoter, err := bootstrapSuperUserPromoter(ctx, logger, nil, stub, "")
+	promoter, err := bootstrapSuperUserPromoter(ctx, logger, nil, panicRoleRepo{}, stub, "")
 	if err != nil {
 		t.Fatalf("bootstrapSuperUserPromoter returned unexpected error: %v", err)
 	}
@@ -2266,7 +2279,7 @@ func TestBootstrapSuperUserPromoter_WarnOnCountError(t *testing.T) {
 // userRoleStub satisfies repository.UserRoleRepository. HasRole always returns
 // (false, nil) — sufficient for constructing auth.NewService in tests that only
 // need to verify promoter construction, not per-request role checks.
-type userRoleStub struct{}
+type userRoleStub struct{ panicUserRoleRepo }
 
 func (userRoleStub) HasRole(_ context.Context, _ string, _ domain.RoleName) (bool, error) {
 	return false, nil
@@ -2286,7 +2299,7 @@ func TestBootstrapSuperUserPromoter_FindByNameError(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, stub, "you@example.com")
+	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, stub, panicUserRoleRepo{}, "you@example.com")
 
 	if err == nil {
 		t.Fatal("expected non-nil error when FindByName fails, got nil")
@@ -2324,7 +2337,7 @@ func TestBootstrapSuperUserPromoter_NonEmptyEmailsHappyPath(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	const emailsEnv = "alice@example.com,bob@example.com"
-	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, stub, emailsEnv)
+	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, stub, panicUserRoleRepo{}, emailsEnv)
 
 	if err != nil {
 		t.Fatalf("bootstrapSuperUserPromoter returned unexpected error: %v", err)
@@ -2512,7 +2525,7 @@ func TestBootstrapSuperUserPromoter_NoWarnWhenAdminExists(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	promoter, err := bootstrapSuperUserPromoter(ctx, logger, nil, stub, "")
+	promoter, err := bootstrapSuperUserPromoter(ctx, logger, nil, panicRoleRepo{}, stub, "")
 
 	if err != nil {
 		t.Fatalf("bootstrapSuperUserPromoter returned unexpected error: %v", err)
