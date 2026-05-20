@@ -237,16 +237,18 @@ func TestNewLearnUsecase_PanicsOnInvalidDeps(t *testing.T) {
 	})
 }
 
-// TestLearnUsecaseNextDueCards_TruncatesToDueLimit verifies that when
-// OrderingPolicy.Apply returns more cards than the requested limit (because new
-// and review interleaving can produce a larger set), NextDueCards truncates the
-// result to the originally requested limit.
+// TestLearnUsecaseNextDueCards_TruncatesToDueLimit verifies that NextDueCards
+// truncates the ordered result to the requested limit when the mock repository
+// returns more rows than requested, exercising the guard at the usecase layer.
 func TestLearnUsecaseNextDueCards_TruncatesToDueLimit(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
-	// Mix of 3 new and 3 review cards. The interleave policy emits all 6.
-	// Request limit=3; expect exactly 3 cards back.
+	// 3 new + 3 review cards, all with distinct Due timestamps so shuffleSameDue
+	// is a no-op and the interleave order is fully deterministic.
+	// With ReviewCardRatio=4 and 3 reviews, all reviews emit before any new card:
+	// rev-1, rev-2, rev-3, new-1, new-2, new-3.  Truncating at limit=3 yields
+	// the first three review cards in their Due-sorted order.
 	rows := []domain.DueCard{
 		learnDueCard("new-1", now.Add(-3*time.Hour), domain.FSRSStateNew),
 		learnDueCard("new-2", now.Add(-2*time.Hour), domain.FSRSStateNew),
@@ -271,6 +273,8 @@ func TestLearnUsecaseNextDueCards_TruncatesToDueLimit(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, got, 3, "result must be truncated to the requested limit")
+	require.Equal(t, []string{"rev-1", "rev-2", "rev-3"}, learnCardIDs(got),
+		"truncated result must contain the first three cards from the ordered set")
 }
 
 // TestLearnUsecaseNextDueCards_HappyPathReviewOnly verifies the simple path

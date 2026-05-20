@@ -121,8 +121,7 @@ func TestOrderingPolicy_Apply_SameDueShuffled(t *testing.T) {
 
 	// All four cards share the same Due, so shuffleSameDue MUST permute the
 	// run. With rand.NewSource(42), four identical-Due cards [a, b, c, d]
-	// shuffle to [c, d, a, b] — see the comment in the file documenting the
-	// seed.
+	// shuffle to [c, d, a, b].
 	due := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
 	in := []domain.DueCard{
 		dueCard("a", domain.FSRSStateReview, due),
@@ -179,4 +178,97 @@ func TestOrderingPolicy_Apply_PanicsOnNilRng(t *testing.T) {
 			_ = NewOrderingPolicy().Apply(nil, nil)
 		},
 	)
+}
+
+// TestOrderingPolicy_Apply_MixedInterleaveRatio_TrailingAppend exercises the
+// trailing-append paths in interleave when the review bucket exhausts before the
+// new bucket (2 new + 7 review). All Due timestamps are distinct so shuffleSameDue
+// is a no-op and the output order is fully deterministic.
+//
+// With ReviewCardRatio=4 and NewCardRatio=1 the loop produces:
+//
+//	rev-0, rev-1, rev-2, rev-3, new-0  (first cycle)
+//	rev-4, rev-5, rev-6, new-1          (second cycle: only 3 reviews remain)
+//
+// That exhausts the review bucket mid-cycle before the new bucket empties, so
+// the trailing `for ; i < len(newC); i++` path appends new-1 and the remaining
+// review tail is emitted by `for ; j < len(reviewC); j++`.
+func TestOrderingPolicy_Apply_MixedInterleaveRatio_TrailingAppend(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
+	in := make([]domain.DueCard, 0, 9)
+	for i := 0; i < 7; i++ {
+		in = append(in, dueCard(
+			fmt.Sprintf("rev-%d", i),
+			domain.FSRSStateReview,
+			base.Add(time.Duration(i)*time.Minute),
+		))
+	}
+	for i := 0; i < 2; i++ {
+		in = append(in, dueCard(
+			fmt.Sprintf("new-%d", i),
+			domain.FSRSStateNew,
+			base.Add(time.Duration(100+i)*time.Minute),
+		))
+	}
+
+	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)))
+
+	// Probed output from the interleave algorithm with the above input.
+	// rev-0..rev-3 + new-0 (first full cycle), then rev-4..rev-6 + new-1
+	// (second cycle where review exhausts after 3, then new-1 trails).
+	want := []string{
+		"rev-0", "rev-1", "rev-2", "rev-3", "new-0",
+		"rev-4", "rev-5", "rev-6", "new-1",
+	}
+	require.Len(t, got, 9)
+	require.Equal(t, want, cardIDs(got))
+}
+
+// TestOrderingPolicy_Apply_MultipleSameDueRuns verifies that two disjoint
+// same-Due runs are each shuffled independently and that run-1 (earlier Due)
+// is emitted entirely before run-2 (later Due).
+//
+// Fixture: run-1 has two review cards at T1; run-2 has two review cards at T2
+// where T1 < T2. With rand.NewSource(42) the shuffle produces a deterministic
+// permutation within each run; the inter-run order is unchanged (T1 before T2).
+func TestOrderingPolicy_Apply_MultipleSameDueRuns(t *testing.T) {
+	t.Parallel()
+
+	T1 := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
+	T2 := T1.Add(time.Hour)
+
+	in := []domain.DueCard{
+		dueCard("r1a", domain.FSRSStateReview, T1),
+		dueCard("r1b", domain.FSRSStateReview, T1),
+		dueCard("r2a", domain.FSRSStateReview, T2),
+		dueCard("r2b", domain.FSRSStateReview, T2),
+	}
+
+	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)))
+	ids := cardIDs(got)
+
+	require.Len(t, ids, 4)
+
+	// Both run-1 cards appear before both run-2 cards (inter-run order preserved).
+	run1Set := map[string]bool{"r1a": true, "r1b": true}
+	run2Set := map[string]bool{"r2a": true, "r2b": true}
+	lastRun1Idx := -1
+	firstRun2Idx := len(ids)
+	for i, id := range ids {
+		if run1Set[id] {
+			lastRun1Idx = i
+		}
+		if run2Set[id] && i < firstRun2Idx {
+			firstRun2Idx = i
+		}
+	}
+	require.Less(t, lastRun1Idx, firstRun2Idx,
+		"all run-1 cards must appear before all run-2 cards")
+
+	// With rand.NewSource(42) each 2-card run is shuffled deterministically.
+	// Probed result: run-1 permutes to [r1b, r1a]; run-2 permutes to [r2b, r2a].
+	require.Equal(t, []string{"r1b", "r1a", "r2b", "r2a"}, ids,
+		"deterministic shuffle order for seed 42")
 }

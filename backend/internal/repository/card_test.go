@@ -364,7 +364,7 @@ func TestCardRepository_FindDueCards_InvalidState(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, 10)
-	require.Error(t, err, "expected error for invalid FSRSCardState 99")
+	require.ErrorContains(t, err, "repository: card: invalid FSRSCardState 99")
 }
 
 func TestCardRepo_Create_DuplicateFront(t *testing.T) {
