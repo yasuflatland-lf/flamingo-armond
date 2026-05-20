@@ -74,11 +74,11 @@ func TestRLSPolicies_AuthenticatedRole(t *testing.T) {
 		assertCount(t, queryCountAs(t, ctx, authPool, fx.adminUser, `SELECT count(*) FROM public.swipe_records WHERE user_id = $1`, fx.userB), 1)
 
 		assertRows(t, execOKAs(t, ctx, authPool, fx.userA, insertSwipeSQL(),
-			fx.userA, fx.cardA, time.Now().UTC()), 1)
+			fx.userA, fx.cardA, fx.groupA, time.Now().UTC()), 1)
 		execDeniedAs(t, ctx, authPool, fx.userA, insertSwipeSQL(),
-			fx.userB, fx.cardA, time.Now().UTC())
+			fx.userB, fx.cardA, fx.groupA, time.Now().UTC())
 		execDeniedAs(t, ctx, authPool, fx.adminUser, insertSwipeSQL(),
-			fx.userB, fx.cardB, time.Now().UTC())
+			fx.userB, fx.cardB, fx.groupB, time.Now().UTC())
 	})
 
 	t.Run("user_card_fsrs", func(t *testing.T) {
@@ -193,8 +193,8 @@ func createRLSFixture(t *testing.T, ctx context.Context, sqlDB *sql.DB) rlsFixtu
 	groupB := insertRLSCardgroup(t, ctx, sqlDB, userB, "RLS group B")
 	cardA := insertRLSCard(t, ctx, sqlDB, groupA, "Card A")
 	cardB := insertRLSCard(t, ctx, sqlDB, groupB, "Card B")
-	insertRLSSwipe(t, ctx, sqlDB, userA, cardA)
-	insertRLSSwipe(t, ctx, sqlDB, userB, cardB)
+	insertRLSSwipe(t, ctx, sqlDB, userA, cardA, groupA)
+	insertRLSSwipe(t, ctx, sqlDB, userB, cardB, groupB)
 
 	return rlsFixture{
 		userA:     userA,
@@ -239,9 +239,9 @@ func insertRLSCard(t *testing.T, ctx context.Context, sqlDB *sql.DB, cardgroupID
 	return id
 }
 
-func insertRLSSwipe(t *testing.T, ctx context.Context, sqlDB *sql.DB, userID, cardID string) {
+func insertRLSSwipe(t *testing.T, ctx context.Context, sqlDB *sql.DB, userID, cardID, cardgroupID string) {
 	t.Helper()
-	if _, err := sqlDB.ExecContext(ctx, insertSwipeSQL(), userID, cardID, time.Now().UTC()); err != nil {
+	if _, err := sqlDB.ExecContext(ctx, insertSwipeSQL(), userID, cardID, cardgroupID, time.Now().UTC()); err != nil {
 		t.Fatalf("insert swipe: %v", err)
 	}
 }
@@ -374,10 +374,10 @@ func insertCardSQL() string {
 func insertSwipeSQL() string {
 	return `
         INSERT INTO public.swipe_records (
-            user_id, card_id, rating, reviewed_at, due, stability, difficulty,
+            user_id, card_id, cardgroup_id, rating, reviewed_at, due, stability, difficulty,
             elapsed_days, scheduled_days, reps, lapses, state, last_review
         )
-        VALUES ($1, $2, 3, $3, $3, 2.5, 5.0, 0, 0, 0, 0, 0, $3)
+        VALUES ($1, $2, $3, 3, $4, $4, 2.5, 5.0, 0, 0, 0, 0, 0, $4)
     `
 }
 
