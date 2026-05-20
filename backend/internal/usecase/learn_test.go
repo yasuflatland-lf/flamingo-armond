@@ -348,6 +348,7 @@ func TestLearnUsecase_NextDueCards_FindCardgroup_PropagatesCancelled(t *testing.
 	)
 	_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", nil)
 	assertCancelled(t, err)
+	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
 }
 
 // TestLearnUsecase_NextDueCards_FindDueCards_PropagatesDeadlineExceeded verifies

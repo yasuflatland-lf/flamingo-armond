@@ -297,6 +297,7 @@ func TestSwipeUsecase_HandleSwipe_FindCardByID_PropagatesCancelled(t *testing.T)
 	})
 
 	assertCancelled(t, err)
+	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
 }
 
 // TestSwipeUsecase_HandleSwipe_FindUserCardFSRS_PropagatesCancelled verifies
@@ -502,4 +503,5 @@ func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesDeadlineExceeded(t 
 	})
 
 	assertCancelled(t, err)
+	require.Equal(t, context.DeadlineExceeded, err, "expected unwrapped context.DeadlineExceeded, got %v", err)
 }
