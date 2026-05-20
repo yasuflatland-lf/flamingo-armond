@@ -91,25 +91,14 @@ func (m *mockAdminUserRepository) ListPage(
 	return m.listResult, m.listTotal, nil
 }
 
-// mockAdminRoleRepository implements the narrow adminRoleRepository surface.
+// mockAdminRoleRepository implements the narrow adminRoleRepository surface
+// (CRUD lookup only, after the RoleRepository split).
 type mockAdminRoleRepository struct {
 	// FindByIDs
 	roles       map[string]*domain.Role
 	findErr     error
 	findCalls   int
 	lastFindIDs []string
-
-	// AssignToUser
-	assignErr     error
-	assignCalls   int
-	lastAssignUID string
-	lastAssignRID string
-
-	// RevokeFromUser
-	revokeErr     error
-	revokeCalls   int
-	lastRevokeUID string
-	lastRevokeRID string
 }
 
 func (m *mockAdminRoleRepository) FindByIDs(_ context.Context, ids []string) (map[string]*domain.Role, error) {
@@ -127,14 +116,28 @@ func (m *mockAdminRoleRepository) FindByIDs(_ context.Context, ids []string) (ma
 	return out, nil
 }
 
-func (m *mockAdminRoleRepository) AssignToUser(_ context.Context, userID, roleID string) error {
+// mockAdminUserRoleRepository implements the narrow adminUserRoleRepository
+// surface (membership write operations).
+type mockAdminUserRoleRepository struct {
+	assignErr     error
+	assignCalls   int
+	lastAssignUID string
+	lastAssignRID string
+
+	revokeErr     error
+	revokeCalls   int
+	lastRevokeUID string
+	lastRevokeRID string
+}
+
+func (m *mockAdminUserRoleRepository) AssignToUser(_ context.Context, userID, roleID string) error {
 	m.assignCalls++
 	m.lastAssignUID = userID
 	m.lastAssignRID = roleID
 	return m.assignErr
 }
 
-func (m *mockAdminRoleRepository) RevokeFromUser(_ context.Context, userID, roleID string) error {
+func (m *mockAdminUserRoleRepository) RevokeFromUser(_ context.Context, userID, roleID string) error {
 	m.revokeCalls++
 	m.lastRevokeUID = userID
 	m.lastRevokeRID = roleID
@@ -168,19 +171,23 @@ func (a *adminAuthChecker) IsAdmin(_ context.Context, userID string) (bool, erro
 func buildAdminUC(
 	users *mockAdminUserRepository,
 	roles *mockAdminRoleRepository,
+	userRoles *mockAdminUserRoleRepository,
 	authChk AdminChecker,
-) (AdminUserUsecase, *mockAdminUserRepository, *mockAdminRoleRepository) {
+) (AdminUserUsecase, *mockAdminUserRepository, *mockAdminRoleRepository, *mockAdminUserRoleRepository) {
 	if users == nil {
 		users = &mockAdminUserRepository{}
 	}
 	if roles == nil {
 		roles = &mockAdminRoleRepository{}
 	}
+	if userRoles == nil {
+		userRoles = &mockAdminUserRoleRepository{}
+	}
 	if authChk == nil {
 		authChk = &adminAuthChecker{}
 	}
-	uc := NewAdminUserWithDeps(users, roles, authChk, newTestLogger())
-	return uc, users, roles
+	uc := NewAdminUserWithDeps(users, roles, userRoles, authChk, newTestLogger())
+	return uc, users, roles, userRoles
 }
 
 // adminCallerCtx returns a context whose AuthUser sub matches a caller marked
@@ -245,8 +252,8 @@ func TestAdminUser_NonAdminForbidden(t *testing.T) {
 			t.Parallel()
 			authChk := &adminAuthChecker{admins: map[string]bool{}} // u1 is not admin
 			users := &mockAdminUserRepository{}
-			roles := &mockAdminRoleRepository{}
-			uc, _, _ := buildAdminUC(users, roles, authChk)
+			userRoles := &mockAdminUserRoleRepository{}
+			uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
 
 			err := tc.call(uc)
 			assertForbidden(t, err, "")
@@ -255,9 +262,9 @@ func TestAdminUser_NonAdminForbidden(t *testing.T) {
 				t.Fatalf("expected no user repo calls, got find=%d update=%d list=%d",
 					users.findCalls, users.updateCalls, users.listCalls)
 			}
-			if roles.assignCalls+roles.revokeCalls != 0 {
+			if userRoles.assignCalls+userRoles.revokeCalls != 0 {
 				t.Fatalf("expected no role repo writes, got assign=%d revoke=%d",
-					roles.assignCalls, roles.revokeCalls)
+					userRoles.assignCalls, userRoles.revokeCalls)
 			}
 		})
 	}
@@ -279,7 +286,7 @@ func TestAdminUser_List_Page1(t *testing.T) {
 	}
 	users := &mockAdminUserRepository{listResult: page, listTotal: 3}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	out, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil)
 	if err != nil {
@@ -336,7 +343,7 @@ func TestAdminUser_List_ForwardPage2(t *testing.T) {
 	}
 	users := &mockAdminUserRepository{listResult: page, listTotal: 10}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	after := "u-1"
 	out, err := uc.List(adminCallerCtx("admin-1"), intPtr(2), nil, &after, nil, nil)
@@ -378,7 +385,7 @@ func TestAdminUser_List_Backward(t *testing.T) {
 	}
 	users := &mockAdminUserRepository{listResult: page, listTotal: 10}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	before := "u-z"
 	out, err := uc.List(adminCallerCtx("admin-1"), nil, intPtr(2), nil, &before, nil)
@@ -413,7 +420,7 @@ func TestAdminUser_List_BadCursor_After(t *testing.T) {
 
 	users := &mockAdminUserRepository{listErr: repository.ErrCursorNotFound}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	stale := "00000000-0000-0000-0000-000000000000"
 	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, &stale, nil, nil)
@@ -427,7 +434,7 @@ func TestAdminUser_List_BadCursor_Before(t *testing.T) {
 
 	users := &mockAdminUserRepository{listErr: repository.ErrCursorNotFound}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	stale := "00000000-0000-0000-0000-000000000000"
 	_, err := uc.List(adminCallerCtx("admin-1"), nil, intPtr(5), nil, &stale, nil)
@@ -441,7 +448,7 @@ func TestAdminUser_List_BothFirstAndLast(t *testing.T) {
 
 	users := &mockAdminUserRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(5), intPtr(5), nil, nil, nil)
 	assertValidationError(t, err, "first", "")
@@ -457,7 +464,7 @@ func TestAdminUser_List_FirstNegative(t *testing.T) {
 
 	users := &mockAdminUserRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(-1), nil, nil, nil, nil)
 	assertValidationError(t, err, "first", "")
@@ -469,7 +476,7 @@ func TestAdminUser_List_FirstOverCap(t *testing.T) {
 
 	users := &mockAdminUserRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(adminUserMaxPageSize+1), nil, nil, nil, nil)
 	assertValidationError(t, err, "first", "")
@@ -482,7 +489,7 @@ func TestAdminUser_List_AfterAndBeforeMutuallyExclusive(t *testing.T) {
 
 	users := &mockAdminUserRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	after := "u-a"
 	before := "u-b"
@@ -500,7 +507,7 @@ func TestAdminUser_List_FirstWithBefore(t *testing.T) {
 
 	users := &mockAdminUserRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	before := "u-b"
 	_, err := uc.List(adminCallerCtx("admin-1"), intPtr(5), nil, nil, &before, nil)
@@ -517,7 +524,7 @@ func TestAdminUser_List_LastWithAfter(t *testing.T) {
 
 	users := &mockAdminUserRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	after := "u-a"
 	_, err := uc.List(adminCallerCtx("admin-1"), nil, intPtr(5), &after, nil, nil)
@@ -535,7 +542,7 @@ func TestAdminUser_List_BeforeWithoutLast(t *testing.T) {
 
 	users := &mockAdminUserRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	before := "u-b"
 	// No first, no last — only before.
@@ -554,7 +561,7 @@ func TestAdminUser_List_AfterWithoutFirst(t *testing.T) {
 
 	users := &mockAdminUserRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	after := "u-a"
 	// No first, no last — only after.
@@ -576,7 +583,7 @@ func TestAdminUser_Get_Found(t *testing.T) {
 	want := &domain.User{ID: "u-target"}
 	users := &mockAdminUserRepository{users: map[string]*domain.User{"u-target": want}}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	got, err := uc.Get(adminCallerCtx("admin-1"), "u-target")
 	if err != nil {
@@ -594,7 +601,7 @@ func TestAdminUser_Get_Missing(t *testing.T) {
 
 	users := &mockAdminUserRepository{users: map[string]*domain.User{}}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	got, err := uc.Get(adminCallerCtx("admin-1"), "missing")
 	if err != nil {
@@ -618,7 +625,7 @@ func TestAdminUser_Update_DisplayName(t *testing.T) {
 	updated := &domain.User{ID: "u-target", DisplayName: dnPtr("Bob")}
 	users := &mockAdminUserRepository{updateResult: updated}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	outcome, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
 		DisplayName: ptr("  Bob  "),
@@ -646,7 +653,7 @@ func TestAdminUser_Update_BioClear(t *testing.T) {
 	updated := &domain.User{ID: "u-target"}
 	users := &mockAdminUserRepository{updateResult: updated}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	outcome, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
 		Bio: ptr(""),
@@ -674,7 +681,7 @@ func TestAdminUser_Update_Validation_DisplayNameEmpty(t *testing.T) {
 
 	users := &mockAdminUserRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	outcome, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
 		DisplayName: ptr("   "),
@@ -698,7 +705,7 @@ func TestAdminUser_Update_Validation_DisplayNameOverMax(t *testing.T) {
 
 	users := &mockAdminUserRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	overMax := strings.Repeat("a", 51)
 	outcome, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
@@ -730,9 +737,9 @@ func TestAdminUser_AssignRole_Idempotent(t *testing.T) {
 
 	target := &domain.User{ID: "u-target", DisplayName: dnPtr("Carol")}
 	users := &mockAdminUserRepository{users: map[string]*domain.User{"u-target": target}}
-	roles := &mockAdminRoleRepository{}
+	userRoles := &mockAdminUserRoleRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, roles, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
 
 	for i := 0; i < 2; i++ {
 		outcome, err := uc.AssignRole(adminCallerCtx("admin-1"), "u-target", "r-admin")
@@ -744,12 +751,12 @@ func TestAdminUser_AssignRole_Idempotent(t *testing.T) {
 			t.Fatalf("call %d: outcome.User = %p, want %p", i, outcome.User, target)
 		}
 	}
-	if roles.assignCalls != 2 {
-		t.Fatalf("expected 2 assign calls, got %d", roles.assignCalls)
+	if userRoles.assignCalls != 2 {
+		t.Fatalf("expected 2 assign calls, got %d", userRoles.assignCalls)
 	}
-	if roles.lastAssignUID != "u-target" || roles.lastAssignRID != "r-admin" {
+	if userRoles.lastAssignUID != "u-target" || userRoles.lastAssignRID != "r-admin" {
 		t.Fatalf("repo assign args = (%q,%q), want (u-target, r-admin)",
-			roles.lastAssignUID, roles.lastAssignRID)
+			userRoles.lastAssignUID, userRoles.lastAssignRID)
 	}
 }
 
@@ -760,9 +767,9 @@ func TestAdminUser_AssignRole_Validation_UserNotFound(t *testing.T) {
 	t.Parallel()
 
 	users := &mockAdminUserRepository{}
-	roles := &mockAdminRoleRepository{assignErr: repository.ErrUserNotFound}
+	userRoles := &mockAdminUserRoleRepository{assignErr: repository.ErrUserNotFound}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, roles, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
 
 	outcome, err := uc.AssignRole(adminCallerCtx("admin-1"), "missing-user", "r-admin")
 	if err != nil {
@@ -782,9 +789,9 @@ func TestAdminUser_AssignRole_Validation_RoleNotFound(t *testing.T) {
 	t.Parallel()
 
 	users := &mockAdminUserRepository{}
-	roles := &mockAdminRoleRepository{assignErr: repository.ErrRoleNotFound}
+	userRoles := &mockAdminUserRoleRepository{assignErr: repository.ErrRoleNotFound}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, roles, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
 
 	outcome, err := uc.AssignRole(adminCallerCtx("admin-1"), "u-target", "missing-role")
 	if err != nil {
@@ -804,9 +811,9 @@ func TestAdminUser_AssignRole_Validation_LegacyErrNotFound(t *testing.T) {
 	t.Parallel()
 
 	users := &mockAdminUserRepository{}
-	roles := &mockAdminRoleRepository{assignErr: repository.ErrNotFound}
+	userRoles := &mockAdminUserRoleRepository{assignErr: repository.ErrNotFound}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, roles, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
 
 	outcome, err := uc.AssignRole(adminCallerCtx("admin-1"), "u-target", "r-admin")
 	if err != nil {
@@ -831,8 +838,9 @@ func TestAdminUser_RevokeRole_Happy(t *testing.T) {
 	target := &domain.User{ID: "u-victim"}
 	users := &mockAdminUserRepository{users: map[string]*domain.User{"u-victim": target}}
 	roles := &mockAdminRoleRepository{}
+	userRoles := &mockAdminUserRoleRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, roles, authChk)
+	uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
 
 	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "u-victim", "r-some")
 	if err != nil {
@@ -842,8 +850,8 @@ func TestAdminUser_RevokeRole_Happy(t *testing.T) {
 	if outcome.User != target {
 		t.Fatalf("outcome.User = %p, want %p", outcome.User, target)
 	}
-	if roles.revokeCalls != 1 {
-		t.Fatalf("expected 1 revoke call, got %d", roles.revokeCalls)
+	if userRoles.revokeCalls != 1 {
+		t.Fatalf("expected 1 revoke call, got %d", userRoles.revokeCalls)
 	}
 	// Self-demotion guard does not fire when caller != target, so the role
 	// lookup must not have been issued.
@@ -868,8 +876,9 @@ func TestAdminUser_RevokeRole_CannotRevokeOwnAdmin_True(t *testing.T) {
 			"r-admin": {ID: "r-admin", Name: "admin"},
 		},
 	}
+	userRoles := &mockAdminUserRoleRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, roles, authChk)
+	uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
 
 	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "admin-1", "r-admin")
 	if err != nil {
@@ -879,8 +888,8 @@ func TestAdminUser_RevokeRole_CannotRevokeOwnAdmin_True(t *testing.T) {
 	if !outcome.CannotRevokeOwnAdmin {
 		t.Fatalf("expected outcome.CannotRevokeOwnAdmin=true, got %+v", outcome)
 	}
-	if roles.revokeCalls != 0 {
-		t.Fatalf("expected 0 revoke calls on self-demotion, got %d", roles.revokeCalls)
+	if userRoles.revokeCalls != 0 {
+		t.Fatalf("expected 0 revoke calls on self-demotion, got %d", userRoles.revokeCalls)
 	}
 	if roles.findCalls != 1 {
 		t.Fatalf("expected 1 role lookup for self-demotion check, got %d", roles.findCalls)
@@ -901,8 +910,9 @@ func TestAdminUser_RevokeRole_SelfNonAdminAllowed(t *testing.T) {
 			"r-other": {ID: "r-other", Name: "moderator"},
 		},
 	}
+	userRoles := &mockAdminUserRoleRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, roles, authChk)
+	uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
 
 	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "admin-1", "r-other")
 	if err != nil {
@@ -912,8 +922,8 @@ func TestAdminUser_RevokeRole_SelfNonAdminAllowed(t *testing.T) {
 	if outcome.User != caller {
 		t.Fatalf("outcome.User = %p, want %p", outcome.User, caller)
 	}
-	if roles.revokeCalls != 1 {
-		t.Fatalf("expected 1 revoke call, got %d", roles.revokeCalls)
+	if userRoles.revokeCalls != 1 {
+		t.Fatalf("expected 1 revoke call, got %d", userRoles.revokeCalls)
 	}
 }
 
@@ -924,9 +934,9 @@ func TestAdminUser_RevokeRole_Validation_UserNotFound(t *testing.T) {
 	t.Parallel()
 
 	users := &mockAdminUserRepository{}
-	roles := &mockAdminRoleRepository{revokeErr: repository.ErrUserNotFound}
+	userRoles := &mockAdminUserRoleRepository{revokeErr: repository.ErrUserNotFound}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, roles, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
 
 	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "missing-user", "r-some")
 	if err != nil {
@@ -945,9 +955,9 @@ func TestAdminUser_RevokeRole_Validation_RoleNotFound(t *testing.T) {
 
 	target := &domain.User{ID: "u-victim"}
 	users := &mockAdminUserRepository{users: map[string]*domain.User{"u-victim": target}}
-	roles := &mockAdminRoleRepository{revokeErr: repository.ErrRoleNotFound}
+	userRoles := &mockAdminUserRoleRepository{revokeErr: repository.ErrRoleNotFound}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, roles, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
 
 	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "u-victim", "missing-role")
 	if err != nil {
@@ -971,7 +981,7 @@ func TestAdminUser_List_CancelledFromAdminCheck(t *testing.T) {
 
 	authChk := &adminAuthChecker{err: context.Canceled}
 	users := &mockAdminUserRepository{}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil)
 	assertCancelled(t, err)
@@ -987,7 +997,7 @@ func TestAdminUser_List_CancelledFromRepo(t *testing.T) {
 
 	users := &mockAdminUserRepository{listErr: context.DeadlineExceeded}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil)
 	assertCancelled(t, err)
@@ -1000,7 +1010,7 @@ func TestAdminUser_Update_CancelledFromRepo(t *testing.T) {
 
 	users := &mockAdminUserRepository{updateErr: context.Canceled}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	_, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
 		DisplayName: ptr("Alice"),
@@ -1020,7 +1030,7 @@ func TestAdminUser_AnonymousUnauthenticated(t *testing.T) {
 
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	users := &mockAdminUserRepository{}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	_, err := uc.List(anonCtx(), nil, nil, nil, nil, nil)
 	assertUnauthenticated(t, err)
@@ -1036,7 +1046,7 @@ func TestAdminUser_IsAdminInternalError(t *testing.T) {
 
 	authChk := &adminAuthChecker{err: errors.New("db down")}
 	users := &mockAdminUserRepository{}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	_, err := uc.List(adminCallerCtx("admin-1"), nil, nil, nil, nil, nil)
 	assertInternalChain(t, err, "usecase: admin user: check admin")
@@ -1055,7 +1065,7 @@ func TestAdminUser_Update_Validation_NotFound(t *testing.T) {
 
 	users := &mockAdminUserRepository{updateErr: repository.ErrNotFound}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	outcome, err := uc.Update(adminCallerCtx("admin-1"), "missing-user", AdminUpdateUserInput{
 		DisplayName: ptr("Valid Name"),
@@ -1077,7 +1087,7 @@ func TestAdminUser_Update_Validation_BioOverMax(t *testing.T) {
 
 	users := &mockAdminUserRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	overMax := strings.Repeat("b", 501)
 	outcome, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
@@ -1102,7 +1112,7 @@ func TestAdminUser_Get_Cancelled(t *testing.T) {
 
 	users := &mockAdminUserRepository{findErr: context.Canceled}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, nil, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
 
 	_, err := uc.Get(adminCallerCtx("admin-1"), "u-target")
 	assertCancelled(t, err)
@@ -1120,9 +1130,9 @@ func TestAdminUser_AssignRole_CancelledFromRepo(t *testing.T) {
 	t.Parallel()
 
 	users := &mockAdminUserRepository{}
-	roles := &mockAdminRoleRepository{assignErr: context.Canceled}
+	userRoles := &mockAdminUserRoleRepository{assignErr: context.Canceled}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, roles, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
 
 	outcome, err := uc.AssignRole(adminCallerCtx("admin-1"), "u-target", "r-admin")
 	assertCancelled(t, err)
@@ -1139,9 +1149,9 @@ func TestAdminUser_AssignRole_InfraError(t *testing.T) {
 	t.Parallel()
 
 	users := &mockAdminUserRepository{}
-	roles := &mockAdminRoleRepository{assignErr: errors.New("db down")}
+	userRoles := &mockAdminUserRoleRepository{assignErr: errors.New("db down")}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, roles, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
 
 	outcome, err := uc.AssignRole(adminCallerCtx("admin-1"), "u-target", "r-admin")
 	assertInternalChain(t, err, "usecase: admin user assign role")
@@ -1161,9 +1171,9 @@ func TestAdminUser_RevokeRole_CancelledFromRepo(t *testing.T) {
 	t.Parallel()
 
 	users := &mockAdminUserRepository{}
-	roles := &mockAdminRoleRepository{revokeErr: context.Canceled}
+	userRoles := &mockAdminUserRoleRepository{revokeErr: context.Canceled}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, roles, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
 
 	// userID != callerID so the self-demotion path and FindByIDs are skipped.
 	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "u-other", "r-some")
@@ -1181,9 +1191,9 @@ func TestAdminUser_RevokeRole_InfraError(t *testing.T) {
 	t.Parallel()
 
 	users := &mockAdminUserRepository{}
-	roles := &mockAdminRoleRepository{revokeErr: errors.New("db down")}
+	userRoles := &mockAdminUserRoleRepository{revokeErr: errors.New("db down")}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, roles, authChk)
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
 
 	// userID != callerID so the self-demotion path is not taken.
 	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "u-other", "r-some")
@@ -1202,7 +1212,7 @@ func TestAdminUser_RevokeRole_LookupRoleCancelled(t *testing.T) {
 	users := &mockAdminUserRepository{}
 	roles := &mockAdminRoleRepository{findErr: context.Canceled}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, roles, authChk)
+	uc, _, _, _ := buildAdminUC(users, roles, nil, authChk)
 
 	// userID == callerID triggers the self-demotion FindByIDs path.
 	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "admin-1", "r-admin")
@@ -1222,7 +1232,7 @@ func TestAdminUser_RevokeRole_LookupRoleInfraError(t *testing.T) {
 	users := &mockAdminUserRepository{}
 	roles := &mockAdminRoleRepository{findErr: errors.New("db down")}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _ := buildAdminUC(users, roles, authChk)
+	uc, _, _, _ := buildAdminUC(users, roles, nil, authChk)
 
 	// userID == callerID triggers the self-demotion FindByIDs path.
 	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "admin-1", "r-admin")

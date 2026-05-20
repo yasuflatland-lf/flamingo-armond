@@ -16,7 +16,7 @@ import (
 // error at the loader layer).
 type RoleByUserIDLoader = dataloader.Loader[string, []*domain.Role]
 
-func roleByUserIDBatchFunc(repo repository.RoleRepository) dataloader.BatchFunc[string, []*domain.Role] {
+func roleByUserIDBatchFunc(repo repository.UserRoleRepository) dataloader.BatchFunc[string, []*domain.Role] {
 	return func(ctx context.Context, keys []string) []*dataloader.Result[[]*domain.Role] {
 		out := make([]*dataloader.Result[[]*domain.Role], len(keys))
 

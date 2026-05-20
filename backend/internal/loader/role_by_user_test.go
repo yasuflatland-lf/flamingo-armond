@@ -13,41 +13,16 @@ import (
 	"backend/internal/repository"
 )
 
-// roleBatchRepoStub satisfies repository.RoleRepository (which includes
-// ListByUserIDs). Methods unrelated to the RoleByUserID loader panic so
-// an unexpected call fails loudly.
+// roleBatchRepoStub satisfies repository.UserRoleRepository. Methods unrelated
+// to the RoleByUserID loader panic so an unexpected call fails loudly.
 type roleBatchRepoStub struct {
 	listByUserIDs func(ctx context.Context, userIDs []string) (map[string][]*domain.Role, error)
 }
 
-func (s *roleBatchRepoStub) FindByID(_ context.Context, _ string) (*domain.Role, error) {
-	panic("roleBatchRepoStub.FindByID not configured")
+func (s *roleBatchRepoStub) HasRole(_ context.Context, _ string, _ domain.RoleName) (bool, error) {
+	panic("roleBatchRepoStub.HasRole not configured")
 }
 
-func (s *roleBatchRepoStub) FindByName(_ context.Context, _ domain.RoleName) (*domain.Role, error) {
-	panic("roleBatchRepoStub.FindByName not configured")
-}
-
-func (s *roleBatchRepoStub) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Role, error) {
-	// Return empty so the singular Role loader stays a no-op when invoked.
-	return map[string]*domain.Role{}, nil
-}
-
-func (s *roleBatchRepoStub) Create(_ context.Context, _ string) (*domain.Role, error) {
-	panic("roleBatchRepoStub.Create not configured")
-}
-
-func (s *roleBatchRepoStub) Update(_ context.Context, _, _ string) (*domain.Role, error) {
-	panic("roleBatchRepoStub.Update not configured")
-}
-
-func (s *roleBatchRepoStub) Delete(_ context.Context, _ string) error {
-	panic("roleBatchRepoStub.Delete not configured")
-}
-
-// AssignToUser, RevokeFromUser, ListByUser satisfy the wider RoleRepository
-// interface. None of the RoleByUserID loader tests exercise these paths, so
-// they panic to surface accidental coupling.
 func (s *roleBatchRepoStub) AssignToUser(_ context.Context, _, _ string) error {
 	panic("roleBatchRepoStub.AssignToUser not configured")
 }
@@ -67,25 +42,22 @@ func (s *roleBatchRepoStub) ListByUserIDs(ctx context.Context, userIDs []string)
 	return s.listByUserIDs(ctx, userIDs)
 }
 
-func (s *roleBatchRepoStub) ListAll(_ context.Context) ([]*domain.Role, error) {
-	panic("roleBatchRepoStub.ListAll not configured")
-}
-
-func (s *roleBatchRepoStub) CountAdminUsers(_ context.Context) (int64, error) {
-	panic("roleBatchRepoStub.CountAdminUsers not configured")
+func (s *roleBatchRepoStub) CountAdmins(_ context.Context) (int64, error) {
+	panic("roleBatchRepoStub.CountAdmins not configured")
 }
 
 // Compile-time assertion that the stub satisfies the unified interface.
-var _ repository.RoleRepository = (*roleBatchRepoStub)(nil)
+var _ repository.UserRoleRepository = (*roleBatchRepoStub)(nil)
 
-func newLoadersForRoleByUser(roleRepo repository.RoleRepository) *loader.Loaders {
+func newLoadersForRoleByUser(userRoleRepo repository.UserRoleRepository) *loader.Loaders {
 	return loader.New(
 		&countingRepo{
 			findByIDs: func(_ context.Context, _ []string) (map[string]*domain.User, error) {
 				return map[string]*domain.User{}, nil
 			},
 		},
-		roleRepo,
+		emptyRoleRepo(),
+		userRoleRepo,
 		emptyCardgroupRepo(),
 		emptyCardRepo(),
 		emptyUserPreferenceRepo(),
