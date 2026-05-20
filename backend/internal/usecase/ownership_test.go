@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -111,4 +112,45 @@ func TestAuthorizeCardgroupOrUnauthenticated_NonOwner_ReturnsUnauthenticated(t *
 	repo := &mockOwnershipFinder{result: &domain.Cardgroup{ID: "cg-1", OwnerID: "other-user"}}
 	err := authorizeCardgroupOrUnauthenticated(context.Background(), repo, "cg-1", "u-1")
 	assertUnauthenticated(t, err)
+}
+
+// TestAuthorizeCardgroupOrBadInput_Success_ReturnsNil verifies that the helper
+// returns nil when the repository finds the cardgroup and the caller is its owner.
+func TestAuthorizeCardgroupOrBadInput_Success_ReturnsNil(t *testing.T) {
+	t.Parallel()
+	repo := &mockOwnershipFinder{result: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}}
+	err := authorizeCardgroupOrBadInput(context.Background(), repo, "cg-1", "u-1")
+	require.NoError(t, err)
+}
+
+// TestAuthorizeCardgroupOrBadInput_InfraError_WrappedAsInternal verifies that a
+// non-sentinel, non-context infrastructure error is wrapped by eris and that the
+// chain contains the canonical prefix so structured logging surfaces the right
+// operation name.
+func TestAuthorizeCardgroupOrBadInput_InfraError_WrappedAsInternal(t *testing.T) {
+	t.Parallel()
+	repo := &mockOwnershipFinder{err: errors.New("db down")}
+	err := authorizeCardgroupOrBadInput(context.Background(), repo, "cg-1", "u-1")
+	assertInternalChain(t, err, "usecase: authorize cardgroup: find by id")
+}
+
+// TestAuthorizeCardgroupOrUnauthenticated_Success_ReturnsNil verifies that the
+// helper returns nil when the repository finds the cardgroup and the caller is
+// its owner.
+func TestAuthorizeCardgroupOrUnauthenticated_Success_ReturnsNil(t *testing.T) {
+	t.Parallel()
+	repo := &mockOwnershipFinder{result: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}}
+	err := authorizeCardgroupOrUnauthenticated(context.Background(), repo, "cg-1", "u-1")
+	require.NoError(t, err)
+}
+
+// TestAuthorizeCardgroupOrUnauthenticated_InfraError_WrappedAsInternal verifies
+// that a non-sentinel, non-context infrastructure error is wrapped by eris and
+// that the chain contains the canonical prefix in the unauthenticated-on-missing
+// variant.
+func TestAuthorizeCardgroupOrUnauthenticated_InfraError_WrappedAsInternal(t *testing.T) {
+	t.Parallel()
+	repo := &mockOwnershipFinder{err: errors.New("db down")}
+	err := authorizeCardgroupOrUnauthenticated(context.Background(), repo, "cg-1", "u-1")
+	assertInternalChain(t, err, "usecase: authorize cardgroup: find by id")
 }
