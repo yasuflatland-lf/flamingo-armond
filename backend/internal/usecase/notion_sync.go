@@ -110,15 +110,18 @@ func NewNotionSyncUsecaseWithTx(
 func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput) (SyncFromNotionOutput, error) {
 	pageIDs := normalizePageIDs(input.PageIDs)
 	ownerID := strings.TrimSpace(input.OwnerID)
-	cardgroupName := strings.TrimSpace(input.CardgroupName)
 	if len(pageIDs) == 0 {
 		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "page ids are required")
 	}
 	if ownerID == "" {
 		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "owner id is required")
 	}
-	if cardgroupName == "" {
-		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "cardgroup name is required")
+	cgName, cgNameErr := domain.ParseCardgroupName(input.CardgroupName)
+	if cgNameErr != nil {
+		return SyncFromNotionOutput{}, eris.Wrap(
+			errors.Join(ErrNotionSyncInvalidInput, translateCardgroupNameErr(cgNameErr)),
+			"cardgroup name is invalid",
+		)
 	}
 	if u.fetcher == nil || u.cardgroupRepo == nil || u.cardRepo == nil || u.tx == nil {
 		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "dependencies are not configured")
@@ -163,7 +166,7 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "parsed rows exceed cap")
 	}
 
-	cardgroup, err := u.cardgroupRepo.EnsureByName(ctx, ownerID, cardgroupName)
+	cardgroup, err := u.cardgroupRepo.EnsureByName(ctx, ownerID, cgName.String())
 	if err != nil {
 		return SyncFromNotionOutput{}, eris.Wrap(errors.Join(ErrNotionSyncPersist, err), "ensure cardgroup")
 	}

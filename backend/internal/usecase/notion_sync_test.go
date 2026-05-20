@@ -303,6 +303,20 @@ func TestNotionSyncUsecase_InputValidation(t *testing.T) {
 			t.Fatalf("err = %v, want ErrNotionSyncInvalidInput", err)
 		}
 	})
+
+	t.Run("over-cap cardgroup name", func(t *testing.T) {
+		t.Parallel()
+		uc := newValidationUsecase()
+		overCap := strings.Repeat("a", domain.CardgroupNameMax+1)
+		_, err := uc.Sync(context.Background(), SyncFromNotionInput{
+			PageIDs:       []string{"page-1"},
+			OwnerID:       "owner-1",
+			CardgroupName: overCap,
+		})
+		if !errors.Is(err, ErrNotionSyncInvalidInput) {
+			t.Fatalf("err = %v, want ErrNotionSyncInvalidInput", err)
+		}
+	})
 }
 
 func newValidationUsecase() *NotionSyncUsecase {

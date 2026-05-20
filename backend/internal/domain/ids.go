@@ -5,11 +5,14 @@ import (
 	"github.com/rotisserie/eris"
 )
 
-// NewID returns a fresh UUID v7 string. Fails only when crypto/rand is unavailable.
-// Callers MUST propagate the error; do not fall back to v4 (same RNG source).
-// The wrap prefix uses the "domain:" layer token per the error-wrapping convention.
+// newV7 is the indirection seam for tests; production code calls uuid.NewV7.
+var newV7 = uuid.NewV7
+
+// NewID returns a fresh UUID v7 string. Fails only when crypto/rand is
+// unavailable. Callers MUST propagate the error; see `.claude/rules/go-library-gotchas.md`
+// § "`uuid.NewV7` failure must propagate".
 func NewID() (string, error) {
-	id, err := uuid.NewV7()
+	id, err := newV7()
 	if err != nil {
 		return "", eris.Wrap(err, "domain: new uuid v7")
 	}

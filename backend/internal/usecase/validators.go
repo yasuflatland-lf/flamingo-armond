@@ -42,7 +42,7 @@ func translateCardErr(err error) error {
 	}
 }
 
-// translateCardgroupNameErr maps domain sentinel errors from Cardgroup.Validate
+// translateCardgroupNameErr maps domain sentinel errors from ParseCardgroupName
 // to usecase-layer typed errors. Unexpected domain errors are wrapped with eris.
 // Returns nil when err is nil.
 func translateCardgroupNameErr(err error) error {

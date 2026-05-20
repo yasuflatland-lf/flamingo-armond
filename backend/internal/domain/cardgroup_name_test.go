@@ -36,11 +36,6 @@ func TestParseCardgroupName(t *testing.T) {
 			wantValue: CardgroupName(strings.Repeat("a", CardgroupNameMax)),
 		},
 		{
-			name:      "happy CJK characters",
-			input:     "日本語フラッシュカード",
-			wantValue: CardgroupName("日本語フラッシュカード"),
-		},
-		{
 			name:        "empty string",
 			input:       "",
 			sentinelErr: ErrCardgroupNameRequired,

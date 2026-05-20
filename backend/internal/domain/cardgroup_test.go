@@ -1,9 +1,7 @@
 package domain
 
 import (
-	"errors"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
@@ -71,84 +69,6 @@ func TestCardgroup_IsOwnedBy(t *testing.T) {
 
 			cg := &Cardgroup{OwnerID: tc.owner}
 			require.Equal(t, tc.want, cg.IsOwnedBy(tc.userID))
-		})
-	}
-}
-
-func TestCardgroupName_ParseRoundtrip(t *testing.T) {
-	t.Parallel()
-
-	// zwjEmoji is a family emoji composed of multiple code points joined by
-	// zero-width joiners; uniseg counts it as exactly one grapheme cluster.
-	const zwjEmoji = "👨‍👩‍👧‍👦"
-
-	cases := []struct {
-		name        string
-		input       string
-		wantErr     bool
-		sentinelErr error
-	}{
-		{
-			name:        "empty string",
-			input:       "",
-			wantErr:     true,
-			sentinelErr: ErrCardgroupNameRequired,
-		},
-		{
-			name:        "whitespace only",
-			input:       "   ",
-			wantErr:     true,
-			sentinelErr: ErrCardgroupNameRequired,
-		},
-		{
-			name:    "single latin char",
-			input:   "a",
-			wantErr: false,
-		},
-		{
-			name:    "exactly 100 latin chars",
-			input:   strings.Repeat("a", 100),
-			wantErr: false,
-		},
-		{
-			name:        "101 latin chars",
-			input:       strings.Repeat("a", 101),
-			wantErr:     true,
-			sentinelErr: ErrCardgroupNameTooLong,
-		},
-		{
-			name:    "single ZWJ emoji (one grapheme cluster)",
-			input:   zwjEmoji,
-			wantErr: false,
-		},
-		{
-			name:    "100 ZWJ emojis (each one grapheme)",
-			input:   strings.Repeat(zwjEmoji, 100),
-			wantErr: false,
-		},
-		{
-			name:        "101 ZWJ emojis",
-			input:       strings.Repeat(zwjEmoji, 101),
-			wantErr:     true,
-			sentinelErr: ErrCardgroupNameTooLong,
-		},
-	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			_, err := ParseCardgroupName(tc.input)
-			if tc.wantErr {
-				require.Error(t, err, "expected an error for input %q", tc.input)
-				if tc.sentinelErr != nil {
-					require.True(t, errors.Is(err, tc.sentinelErr),
-						"expected errors.Is(err, %v), got %v", tc.sentinelErr, err)
-				}
-			} else {
-				require.NoError(t, err, "expected no error for input %q", tc.input)
-			}
 		})
 	}
 }

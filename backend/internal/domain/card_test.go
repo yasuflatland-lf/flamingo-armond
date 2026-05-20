@@ -115,6 +115,12 @@ func TestCardBelongsToCardgroup(t *testing.T) {
 			cardgroupID: "cg-2",
 			want:        false,
 		},
+		{
+			name:        "both empty returns false",
+			card:        Card{CardgroupID: ""},
+			cardgroupID: "",
+			want:        false,
+		},
 	}
 
 	for _, tc := range cases {
