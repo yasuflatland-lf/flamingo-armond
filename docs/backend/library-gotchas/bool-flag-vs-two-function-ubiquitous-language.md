@@ -56,9 +56,12 @@ func authorizeCardgroupOrBadInput(
         if errors.Is(err, repository.ErrNotFound) {
             return ucerr.NewValidationError("cardgroupId", "cardgroup not found")
         }
-        return eris.Wrap(err, "usecase: authorize cardgroup or bad input")
+        if isContextDone(err) {
+            return err // pass through unwrapped — resolver's errors.Is must work
+        }
+        return eris.Wrap(err, "usecase: authorize cardgroup: find by id")
     }
-    if cg.UserID != userID {
+    if !cg.IsOwnedBy(userID) {
         return ucerr.ErrUnauthenticated
     }
     return nil
@@ -77,9 +80,12 @@ func authorizeCardgroupOrUnauthenticated(
         if errors.Is(err, repository.ErrNotFound) {
             return ucerr.ErrUnauthenticated
         }
-        return eris.Wrap(err, "usecase: authorize cardgroup or unauthenticated")
+        if isContextDone(err) {
+            return err // pass through unwrapped — resolver's errors.Is must work
+        }
+        return eris.Wrap(err, "usecase: authorize cardgroup: find by id")
     }
-    if cg.UserID != userID {
+    if !cg.IsOwnedBy(userID) {
         return ucerr.ErrUnauthenticated
     }
     return nil
@@ -89,6 +95,21 @@ func authorizeCardgroupOrUnauthenticated(
 authorizeCardgroupOrBadInput(ctx, repo, id, userID)
 authorizeCardgroupOrUnauthenticated(ctx, repo, id, userID)
 ```
+
+## Context pass-through is mandatory between sentinel and infra-wrap arms
+
+Each function in an `Or<X>` / `Or<Y>` pair follows the same classification ladder:
+sentinel check → context-done check → `eris.Wrap` fallback. The `isContextDone`
+guard **must appear between** the sentinel arm and the `eris.Wrap` fallback. Without
+it, a canceled request returns `eris.Wrap(context.Canceled, "...")` — `errors.Is`
+still detects the wrapped sentinel, but the returned error is no longer the bare
+sentinel, violating the identity-pin rule in
+[`pin-unwrapped-context-error-with-identity-check.md`](../../backend/error-wrapping/pin-unwrapped-context-error-with-identity-check.md).
+
+Both siblings need the guard independently. The bool-flag refactor that produces the
+pair is the right moment to add the guard to both — adding it to only one sibling
+leaves the other with an identity-level regression that will be caught only by a
+dedicated context-cancellation test on that sibling.
 
 ## When the split is warranted
 

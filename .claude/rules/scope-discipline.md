@@ -56,6 +56,8 @@ A worked example from this repository: a change converted `docs/deployment.md:10
 
 The boundary: same file, same pattern, same edit-shape. Going beyond is the cleanup-by-the-side-of-the-road that the broader rule above forbids.
 
+The same principle applies to **test files**. When a PR introduces a new test file for a function (rather than appending to an existing one), pre-existing untested branches of that function become the new file's responsibility — even if the PR's stated intent only covered one new branch. The new file is now the canonical location for testing the function; leaving other branches uncovered sends the signal that the file is complete when it is not. A concrete example: a new `ownership_test.go` added tests for the context-pass-through branch of `authorizeCardgroupOrBadInput` and `authorizeCardgroupOrUnauthenticated`; a reviewer found that the success path and the generic infrastructure-error wrap path were also untested. Because the new file was the only test coverage for those helpers, those branches became in-scope for the same PR. See [`docs/backend/library-gotchas/direct-unit-test-for-shared-helper.md`](../../docs/backend/library-gotchas/direct-unit-test-for-shared-helper.md) for the branch-map technique.
+
 ## Re-verify call-site count before sizing
 
 Before estimating migration cost in a plan, grep the production tree directly. Issue-body estimates are written at a point in time and become stale as prior work lands. The canonical check:
