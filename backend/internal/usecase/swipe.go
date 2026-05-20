@@ -43,16 +43,18 @@ type UserCardFSRSRepoForSwipe interface {
 }
 
 type SwipeUsecase struct {
-	cardRepo      CardRepoForSwipe
-	cardgroupRepo CardgroupRepoForSwipe
-	swipeRepo     SwipeRecordRepoForSwipe
-	userFSRSRepo  UserCardFSRSRepoForSwipe
-	scheduler     *service.FSRSScheduler
-	ordering      *service.OrderingPolicy
-	randSource    func() *rand.Rand
-	tx            txRunner
-	nextBatchSize int
-	logger        *slog.Logger
+	cardRepo       CardRepoForSwipe
+	cardgroupRepo  CardgroupRepoForSwipe
+	swipeRepo      SwipeRecordRepoForSwipe
+	userFSRSRepo   UserCardFSRSRepoForSwipe
+	scheduler      *service.FSRSScheduler
+	ordering       *service.OrderingPolicy
+	randSource     func() *rand.Rand
+	applyRating    func(current *domain.UserCardFSRS, scheduler domain.FSRSScheduler, rating domain.Rating, now time.Time) error
+	newSwipeRecord func(userID, cardID, cardgroupID string, rating domain.Rating, reviewedAt time.Time, stateAfter domain.FSRSState) (*domain.SwipeRecord, error)
+	tx             txRunner
+	nextBatchSize  int
+	logger         *slog.Logger
 }
 
 type HandleSwipeInput struct {
@@ -108,8 +110,12 @@ func NewSwipeUsecase(
 		randSource: func() *rand.Rand {
 			return rand.New(rand.NewSource(time.Now().UnixNano()))
 		},
-		nextBatchSize: nextBatchSize,
-		logger:        logger,
+		applyRating: func(current *domain.UserCardFSRS, scheduler domain.FSRSScheduler, rating domain.Rating, now time.Time) error {
+			return current.ApplyRating(scheduler, rating, now)
+		},
+		newSwipeRecord: domain.NewSwipeRecord,
+		nextBatchSize:  nextBatchSize,
+		logger:         logger,
 	}
 	if db != nil {
 		uc.tx = func(ctx context.Context, fn func(tx *gorm.DB) error) error {
@@ -190,13 +196,13 @@ func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		if current == nil {
 			current = domain.NewUserCardFSRSForNewCard(user.Sub, card.ID, now)
 		}
-		if err := current.ApplyRating(u.scheduler, rating, now); err != nil {
+		if err := u.applyRating(current, u.scheduler, rating, now); err != nil {
 			return eris.Wrap(err, "usecase: swipe: apply rating")
 		}
 		if err := u.userFSRSRepo.UpsertTx(ctx, tx, current); err != nil {
 			return eris.Wrap(err, "usecase: swipe: upsert user-card fsrs")
 		}
-		sr, err := domain.NewSwipeRecord(user.Sub, card.ID, rating, now, current.State)
+		sr, err := u.newSwipeRecord(user.Sub, card.ID, card.CardgroupID, rating, now, current.State)
 		if err != nil {
 			return eris.Wrap(err, "usecase: swipe: new swipe record")
 		}
