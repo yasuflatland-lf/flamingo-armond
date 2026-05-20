@@ -5,9 +5,7 @@ package usecase
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -128,9 +126,8 @@ func (u *CardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 		return CreateCardgroupOutcome{}, ucerr.ErrUnauthenticated
 	}
 
-	trimmed := strings.TrimSpace(in.Name)
-	tmp := &domain.Cardgroup{Name: trimmed}
-	info, err := liftValidationErr(translateCardgroupNameErr(tmp.Validate()))
+	name, nameErr := domain.ParseCardgroupName(in.Name)
+	info, err := liftValidationErr(translateCardgroupNameErr(nameErr))
 	if err != nil {
 		return CreateCardgroupOutcome{}, err
 	}
@@ -138,7 +135,7 @@ func (u *CardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 		return CreateCardgroupOutcome{Validation: info}, nil
 	}
 
-	id, err := uuidV7()
+	id, err := domain.NewID()
 	if err != nil {
 		return CreateCardgroupOutcome{}, eris.Wrap(err, "usecase: generate cardgroup uuid")
 	}
@@ -147,7 +144,7 @@ func (u *CardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 	cg := &domain.Cardgroup{
 		ID:        id,
 		OwnerID:   user.Sub,
-		Name:      trimmed,
+		Name:      name,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -197,9 +194,8 @@ func (u *CardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardg
 		return UpdateCardgroupOutcome{Cardgroup: existing}, nil
 	}
 
-	trimmed := strings.TrimSpace(*in.Name)
-	tmp := &domain.Cardgroup{Name: trimmed}
-	info, err := liftValidationErr(translateCardgroupNameErr(tmp.Validate()))
+	name, nameErr := domain.ParseCardgroupName(*in.Name)
+	info, err := liftValidationErr(translateCardgroupNameErr(nameErr))
 	if err != nil {
 		return UpdateCardgroupOutcome{}, err
 	}
@@ -207,7 +203,8 @@ func (u *CardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardg
 		return UpdateCardgroupOutcome{Validation: info}, nil
 	}
 
-	updated, err := u.repo.Update(ctx, id, repository.CardgroupUpdate{Name: &trimmed})
+	nameStr := name.String()
+	updated, err := u.repo.Update(ctx, id, repository.CardgroupUpdate{Name: &nameStr})
 	if err != nil {
 		return UpdateCardgroupOutcome{}, eris.Wrap(err, "usecase: update cardgroup")
 	}
@@ -237,23 +234,6 @@ func (u *CardgroupUsecase) Delete(ctx context.Context, id string) error {
 		return eris.Wrap(err, "usecase: delete cardgroup")
 	}
 	return nil
-}
-
-// translateCardgroupNameErr maps domain sentinel errors from Cardgroup.Validate
-// to usecase-layer typed errors. Unexpected domain errors are wrapped with eris.
-// Returns nil when err is nil.
-func translateCardgroupNameErr(err error) error {
-	if err == nil {
-		return nil
-	}
-	switch {
-	case errors.Is(err, domain.ErrCardgroupNameRequired):
-		return ucerr.NewValidationError("name", "name is required")
-	case errors.Is(err, domain.ErrCardgroupNameTooLong):
-		return ucerr.NewValidationError("name", fmt.Sprintf("name must be at most %d characters", domain.CardgroupNameMax))
-	default:
-		return eris.Wrap(err, "usecase: translate cardgroup name error")
-	}
 }
 
 // ListCardgroupsByOwnerConnection paginates the authenticated caller's
@@ -465,7 +445,7 @@ func (u *CardgroupUsecase) resolveCardgroupCursor(
 	case repository.CardgroupOrderByID:
 		// No extra column needed; ownership-check above is the gate.
 	case repository.CardgroupOrderByName:
-		name := cg.Name
+		name := cg.Name.String()
 		c.Name = &name
 	case repository.CardgroupOrderByCreatedAt:
 		ca := cg.CreatedAt

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"backend/internal/domain"
 	"backend/internal/notion"
 	"backend/internal/repository"
+	"backend/internal/usecase/ucerr"
 )
 
 type stubNotionFetcher struct {
@@ -47,7 +49,7 @@ func (m *mockNotionCardgroupRepo) EnsureByName(_ context.Context, ownerID, name 
 		return nil, m.err
 	}
 	if m.cg == nil {
-		m.cg = &domain.Cardgroup{ID: "cg-created", OwnerID: ownerID, Name: name}
+		m.cg = &domain.Cardgroup{ID: "cg-created", OwnerID: ownerID, Name: domain.CardgroupName(name)}
 	}
 	return m.cg, nil
 }
@@ -301,6 +303,41 @@ func TestNotionSyncUsecase_InputValidation(t *testing.T) {
 		})
 		if !errors.Is(err, ErrNotionSyncInvalidInput) {
 			t.Fatalf("err = %v, want ErrNotionSyncInvalidInput", err)
+		}
+		var v *ucerr.ValidationError
+		if !errors.As(err, &v) {
+			t.Fatalf("err chain has no *ucerr.ValidationError, got %v", err)
+		}
+		if v.Field != "name" {
+			t.Fatalf("ValidationError.Field = %q, want %q", v.Field, "name")
+		}
+		if v.Message != "name is required" {
+			t.Fatalf("ValidationError.Message = %q, want %q", v.Message, "name is required")
+		}
+	})
+
+	t.Run("over-cap cardgroup name", func(t *testing.T) {
+		t.Parallel()
+		uc := newValidationUsecase()
+		overCap := strings.Repeat("a", domain.CardgroupNameMax+1)
+		_, err := uc.Sync(context.Background(), SyncFromNotionInput{
+			PageIDs:       []string{"page-1"},
+			OwnerID:       "owner-1",
+			CardgroupName: overCap,
+		})
+		if !errors.Is(err, ErrNotionSyncInvalidInput) {
+			t.Fatalf("err = %v, want ErrNotionSyncInvalidInput", err)
+		}
+		var v *ucerr.ValidationError
+		if !errors.As(err, &v) {
+			t.Fatalf("err chain has no *ucerr.ValidationError, got %v", err)
+		}
+		if v.Field != "name" {
+			t.Fatalf("ValidationError.Field = %q, want %q", v.Field, "name")
+		}
+		wantSubstr := fmt.Sprintf("%d", domain.CardgroupNameMax)
+		if !strings.Contains(v.Message, wantSubstr) {
+			t.Fatalf("ValidationError.Message = %q, want it to contain cap %q", v.Message, wantSubstr)
 		}
 	})
 }

@@ -88,6 +88,49 @@ func TestCardValidate(t *testing.T) {
 	}
 }
 
+func TestCardBelongsToCardgroup(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name        string
+		card        Card
+		cardgroupID string
+		want        bool
+	}{
+		{
+			name:        "matching cardgroup returns true",
+			card:        Card{CardgroupID: "cg-1"},
+			cardgroupID: "cg-1",
+			want:        true,
+		},
+		{
+			name:        "empty cardgroupID returns false",
+			card:        Card{CardgroupID: "cg-1"},
+			cardgroupID: "",
+			want:        false,
+		},
+		{
+			name:        "mismatched cardgroupID returns false",
+			card:        Card{CardgroupID: "cg-1"},
+			cardgroupID: "cg-2",
+			want:        false,
+		},
+		{
+			name:        "both empty returns false",
+			card:        Card{CardgroupID: ""},
+			cardgroupID: "",
+			want:        false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, tc.card.BelongsToCardgroup(tc.cardgroupID))
+		})
+	}
+}
+
 func TestNewFSRSStateForNewCard(t *testing.T) {
 	t.Parallel()
 

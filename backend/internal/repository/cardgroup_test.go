@@ -26,7 +26,7 @@ func newCardgroup(ownerID, name string) *domain.Cardgroup {
 	return &domain.Cardgroup{
 		ID:        uuid.NewString(),
 		OwnerID:   ownerID,
-		Name:      name,
+		Name:      domain.CardgroupName(name),
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -45,7 +45,7 @@ func TestCardgroupRepository_CreateAndFindByID(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, cg.ID, got.ID)
 	require.Equal(t, ownerID, got.OwnerID)
-	require.Equal(t, "My Flashcards", got.Name)
+	require.Equal(t, "My Flashcards", got.Name.String())
 	require.False(t, got.CreatedAt.IsZero())
 	require.False(t, got.UpdatedAt.IsZero())
 }
@@ -208,7 +208,7 @@ func TestCardgroupRepository_Update_NameOnly(t *testing.T) {
 	newName := "Renamed"
 	got, err := repo.Update(ctx, cg.ID, repository.CardgroupUpdate{Name: &newName})
 	require.NoError(t, err)
-	require.Equal(t, "Renamed", got.Name)
+	require.Equal(t, "Renamed", got.Name.String())
 	require.True(t, got.UpdatedAt.After(cg.CreatedAt),
 		"updated_at should be strictly later than created_at")
 }
@@ -311,11 +311,11 @@ func TestCardgroupRepository_EnsureByName_Existing(t *testing.T) {
 	existing := newCardgroup(ownerID, "Ensure Existing")
 	require.NoError(t, repo.Create(ctx, existing))
 
-	got, err := repo.EnsureByName(ctx, ownerID, existing.Name)
+	got, err := repo.EnsureByName(ctx, ownerID, existing.Name.String())
 	require.NoError(t, err)
 	require.Equal(t, existing.ID, got.ID)
 
-	rows := countCardgroupsByOwnerAndName(t, ctx, ownerID, existing.Name)
+	rows := countCardgroupsByOwnerAndName(t, ctx, ownerID, existing.Name.String())
 	require.Equal(t, int64(1), rows)
 }
 
@@ -328,7 +328,7 @@ func TestCardgroupRepository_EnsureByName_Create(t *testing.T) {
 	got, err := repo.EnsureByName(ctx, ownerID, "Ensure Create")
 	require.NoError(t, err)
 	require.Equal(t, ownerID, got.OwnerID)
-	require.Equal(t, "Ensure Create", got.Name)
+	require.Equal(t, "Ensure Create", got.Name.String())
 	require.NotEmpty(t, got.ID)
 
 	found, err := repo.FindByName(ctx, ownerID, "Ensure Create")
@@ -411,7 +411,7 @@ func insertNamedCardgroups(t *testing.T, ctx context.Context, ownerID string, na
 		cg := &domain.Cardgroup{
 			ID:        uuid.NewString(),
 			OwnerID:   ownerID,
-			Name:      name,
+			Name:      domain.CardgroupName(name),
 			CreatedAt: now,
 			UpdatedAt: now,
 		}
@@ -436,7 +436,7 @@ func countCardgroupsByOwnerAndName(t *testing.T, ctx context.Context, ownerID, n
 func cardgroupNameSet(cgs []*domain.Cardgroup) map[string]struct{} {
 	m := make(map[string]struct{}, len(cgs))
 	for _, cg := range cgs {
-		m[cg.Name] = struct{}{}
+		m[cg.Name.String()] = struct{}{}
 	}
 	return m
 }
@@ -488,7 +488,7 @@ func TestCardgroupRepo_FindPageByOwner_ExactMatch(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Len(t, got, 1, "exactly one group should match the search term")
-	require.Equal(t, "Exact Match", got[0].Name)
+	require.Equal(t, "Exact Match", got[0].Name.String())
 
 	total, err := repo.CountByOwner(ctx, ownerID, &search)
 	require.NoError(t, err)
@@ -635,7 +635,7 @@ func TestCardgroupRepo_FindPageByOwner_CrossTenant(t *testing.T) {
 
 	for _, cgA := range gotA {
 		require.NotContains(t, idsB, cgA.ID,
-			"ownerA's cardgroup %q must not appear in ownerB's page results", cgA.Name)
+			"ownerA's cardgroup %q must not appear in ownerB's page results", cgA.Name.String())
 	}
 
 	// CountByOwner for ownerB must return exactly 2 (its own rows only).
@@ -719,9 +719,9 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_Name_Asc(t *testing.T) {
 	require.NoError(t, err)
 	mine := pickOwnerCardgroups(got, want)
 	require.Len(t, mine, 3)
-	require.Equal(t, "Alpha", mine[0].Name)
-	require.Equal(t, "Bravo", mine[1].Name)
-	require.Equal(t, "Charlie", mine[2].Name)
+	require.Equal(t, "Alpha", mine[0].Name.String())
+	require.Equal(t, "Bravo", mine[1].Name.String())
+	require.Equal(t, "Charlie", mine[2].Name.String())
 }
 
 // TestCardgroupRepo_FindPageByOwner_OrderBy_Name_Desc verifies that
@@ -744,9 +744,9 @@ func TestCardgroupRepo_FindPageByOwner_OrderBy_Name_Desc(t *testing.T) {
 	require.NoError(t, err)
 	mine := pickOwnerCardgroups(got, want)
 	require.Len(t, mine, 3)
-	require.Equal(t, "Charlie", mine[0].Name)
-	require.Equal(t, "Bravo", mine[1].Name)
-	require.Equal(t, "Alpha", mine[2].Name)
+	require.Equal(t, "Charlie", mine[0].Name.String())
+	require.Equal(t, "Bravo", mine[1].Name.String())
+	require.Equal(t, "Alpha", mine[2].Name.String())
 }
 
 // TestCardgroupRepo_FindPageByOwner_OrderBy_UpdatedAt_Desc verifies that
@@ -869,9 +869,10 @@ func TestCardgroupRepo_FindPageByOwner_Cursor_AfterByName(t *testing.T) {
 	want := map[string]struct{}{cgs[0].ID: {}, cgs[1].ID: {}, cgs[2].ID: {}}
 
 	// Cursor at "Banana"; expect only "Cherry" after it.
+	bananaName := cgs[1].Name.String()
 	cursor := &repository.CardgroupCursor{
 		ID:   cgs[1].ID,
-		Name: &cgs[1].Name,
+		Name: &bananaName,
 	}
 	got, err := repo.FindPageByOwner(
 		ctx, ownerID, cursor, nil, 100, 0,
@@ -880,7 +881,7 @@ func TestCardgroupRepo_FindPageByOwner_Cursor_AfterByName(t *testing.T) {
 	require.NoError(t, err)
 	mine := pickOwnerCardgroups(got, want)
 	require.Len(t, mine, 1)
-	require.Equal(t, "Cherry", mine[0].Name)
+	require.Equal(t, "Cherry", mine[0].Name.String())
 }
 
 // TestCardgroupRepo_FindPageByOwner_Cursor_BackwardByCreatedAt verifies the
@@ -978,14 +979,15 @@ func TestCardgroupRepo_FindPageByOwner_Cursor_NameTie_TupleComparison(t *testing
 	mine := pickOwnerCardgroups(all, want)
 	require.Len(t, mine, 3)
 	// The two Tie rows must come back-to-back; the third row is Zebra.
-	require.Equal(t, "Tie", mine[0].Name)
-	require.Equal(t, "Tie", mine[1].Name)
-	require.Equal(t, "Zebra", mine[2].Name)
+	require.Equal(t, "Tie", mine[0].Name.String())
+	require.Equal(t, "Tie", mine[1].Name.String())
+	require.Equal(t, "Zebra", mine[2].Name.String())
 
 	// Page after the FIRST tie row using its (name, id) cursor — the next
 	// row must be the OTHER tie row, then Zebra. The tuple compare keeps
 	// the second tie reachable; without it, `name > 'Tie'` would skip past it.
-	cursor := &repository.CardgroupCursor{ID: mine[0].ID, Name: &mine[0].Name}
+	tieName := mine[0].Name.String()
+	cursor := &repository.CardgroupCursor{ID: mine[0].ID, Name: &tieName}
 	pageAfter, err := repo.FindPageByOwner(
 		ctx, ownerID, cursor, nil, 100, 0,
 		repository.CardgroupOrderByName, repository.SortAsc, nil,
@@ -994,7 +996,7 @@ func TestCardgroupRepo_FindPageByOwner_Cursor_NameTie_TupleComparison(t *testing
 	myAfter := pickOwnerCardgroups(pageAfter, want)
 	require.Len(t, myAfter, 2, "tuple compare must not skip the second tie row")
 	require.Equal(t, mine[1].ID, myAfter[0].ID, "second tie row must come next")
-	require.Equal(t, "Zebra", myAfter[1].Name)
+	require.Equal(t, "Zebra", myAfter[1].Name.String())
 }
 
 // ---------------------------------------------------------------------------

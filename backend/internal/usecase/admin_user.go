@@ -440,35 +440,6 @@ func liftValidationErr(err error) (*InputValidationInfo, error) {
 	return nil, err
 }
 
-// translateDisplayNameErr maps domain DisplayName sentinels into usecase-layer
-// typed errors. Unexpected errors are wrapped with eris. Returns nil when err
-// is nil.
-func translateDisplayNameErr(err error) error {
-	if err == nil {
-		return nil
-	}
-	switch {
-	case errors.Is(err, domain.ErrDisplayNameRequired):
-		return ucerr.NewValidationError("displayName", "displayName is required")
-	case errors.Is(err, domain.ErrDisplayNameTooLong):
-		return ucerr.NewValidationError("displayName", fmt.Sprintf("displayName must be at most %d characters", domain.DisplayNameMax))
-	default:
-		return eris.Wrap(err, "usecase: translate display name error")
-	}
-}
-
-// translateBioErr maps domain Bio sentinels into usecase-layer typed errors.
-// Unexpected errors are wrapped with eris. Returns nil when err is nil.
-func translateBioErr(err error) error {
-	if err == nil {
-		return nil
-	}
-	if errors.Is(err, domain.ErrBioTooLong) {
-		return ucerr.NewValidationError("bio", fmt.Sprintf("bio must be at most %d characters", domain.BioMax))
-	}
-	return eris.Wrap(err, "usecase: translate bio error")
-}
-
 // refetchUser loads the user after a mutation so callers see a fresh row
 // (e.g. with the trigger-refreshed updated_at). A missing row after a
 // successful mutation is unusual; surface it as INTERNAL with the supplied

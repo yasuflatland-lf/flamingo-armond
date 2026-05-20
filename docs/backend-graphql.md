@@ -218,7 +218,7 @@ Reading the input name instead would force the guard to also know that admin exi
 
 ### Sentinel errors and domain validation
 
-`domain.Cardgroup.Validate()` returns typed sentinels (`ErrCardgroupNameRequired`, `ErrCardgroupNameTooLong`). The usecase translates them via a dedicated helper (`translateCardgroupNameErr`) to `gqlerr.BadUserInput`. The rule itself lives only in the domain; the usecase holds only the domain→GraphQL mapping. Apply this pattern to every new aggregate.
+`domain.ParseCardgroupName` returns typed sentinels (`ErrCardgroupNameRequired`, `ErrCardgroupNameTooLong`). The usecase translates them via a dedicated helper (`translateCardgroupNameErr`) to `gqlerr.BadUserInput`. The validation rule itself lives only in the domain's `ParseCardgroupName` constructor; the usecase holds only the domain→GraphQL mapping. Apply this pattern to every new aggregate.
 
 ### Validation rules in `usecase.UpdateUser`
 

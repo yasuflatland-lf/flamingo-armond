@@ -73,6 +73,21 @@ a shared sink file — is described in
 and is the same shape of failure (concurrent writers to a single resource);
 the mitigations there generalize.
 
+### Partial staging across waves: hand-crafted patches over `git add -p`
+
+When a multi-Item PR assigns per-Item commits for reviewability but two or more Items share a file, a naive `git add <file>` collapses all of that file's hunks into one commit and destroys the per-Item story. `git add -p` interactive prompts are unreliable for automated agents — subagent tooling cannot answer "y/n/s" deterministically across hunk boundaries.
+
+The mitigation pattern:
+
+1. **Implementation agents complete all edits without staging.** No git operations inside implementation agents (see ["Scope `git add` to a known file list"](#scope-git-add-to-a-known-file-list----never-git-add-directory-while-siblings-are-mid-edit) above).
+2. **A dedicated commit agent per wave splits shared files by hunk:**
+   - Produce a per-Item patch via `git diff <file>` filtered to the target line ranges.
+   - Apply it to the index via `git apply --cached --recount <patch>`. The `--recount` flag is required because hand-crafted patches violate git's strict hunk-line-count validator before content evaluation.
+   - After that commit lands, the remaining unstaged hunks belong to the next commit — `git add <file>` (or `git add -A` for unshared files) picks them up.
+3. **Verify each commit** with `git diff <commit>~..<commit> -- <file>` to confirm only the intended hunks landed.
+
+Worked example: PR #204 Wave 1 split `usecase/card.go` between two Items (`BelongsToCardgroup` swap and `translateCardErr` removal); Wave 2 split `usecase/cardgroup.go` between two other Items (`ParseCardgroupName` swap and `uuidV7` → `domain.NewID`). Both splits used hand-crafted patches with `--recount`.
+
 ### Symbol moves must be atomic — one agent owns both delete and add
 
 When moving a symbol (function, type, interface, constant) from one file to another **within the same Go package**, the deletion and the addition MUST happen in the same agent's edit batch. Splitting the two across parallel agents creates a duplicate-declaration build break in the intermediate state.
@@ -80,7 +95,6 @@ When moving a symbol (function, type, interface, constant) from one file to anot
 Worked example from issue #181 Phase 1:
 
 - `H2`: created `admin_gate.go` (with `AdminChecker` interface) AND deleted the original `AdminChecker` declaration from `dictionary.go`. One agent owns both edits.
-- `H4`: created `ids.go` (with `uuidV7` function) AND deleted the original from `cardgroup.go`.
 - `H5`: created `tx.go` (with `txRunner` type) AND deleted the original from `card.go`.
 
 Parallel agents can still run, but each handles a **distinct symbol move**. Two agents touching the same symbol — one adding, one deleting — would race on the build state. If a symbol move is the *only* edit in a phase, a single sequential agent is sufficient; parallelism pays off only when several independent symbol moves share the phase.

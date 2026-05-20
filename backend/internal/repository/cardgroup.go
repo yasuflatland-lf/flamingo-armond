@@ -309,7 +309,7 @@ func (r *cardgroupRepo) Create(ctx context.Context, cg *domain.Cardgroup) error 
 	row := gormCardgroup{
 		ID:        cg.ID,
 		OwnerID:   cg.OwnerID,
-		Name:      cg.Name,
+		Name:      string(cg.Name),
 		CreatedAt: cg.CreatedAt,
 		UpdatedAt: cg.UpdatedAt,
 	}
@@ -407,7 +407,7 @@ func cardgroupToDomain(g gormCardgroup) *domain.Cardgroup {
 	return &domain.Cardgroup{
 		ID:        g.ID,
 		OwnerID:   g.OwnerID,
-		Name:      g.Name,
+		Name:      domain.CardgroupName(g.Name),
 		CreatedAt: g.CreatedAt,
 		UpdatedAt: g.UpdatedAt,
 	}

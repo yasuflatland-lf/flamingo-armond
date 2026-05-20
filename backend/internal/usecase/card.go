@@ -251,7 +251,7 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 		return CreateCardOutcome{}, translateCardErr(err)
 	}
 	now := time.Now().UTC()
-	id, err := uuidV7()
+	id, err := domain.NewID()
 	if err != nil {
 		return CreateCardOutcome{}, eris.Wrap(err, "usecase: create card: generate id")
 	}
@@ -524,7 +524,7 @@ func (u *CardUsecase) resolveCursor(
 		}
 		return nil, eris.Wrap(err, "usecase: resolve cursor: find by id")
 	}
-	if card.CardgroupID != cardgroupID {
+	if !card.BelongsToCardgroup(cardgroupID) {
 		return nil, ucerr.NewValidationError(field, "cursor not found")
 	}
 	switch orderBy {
@@ -550,21 +550,6 @@ func (u *CardUsecase) resolveCursor(
 		c.UpdatedAt = &ua
 	}
 	return c, nil
-}
-
-func translateCardErr(err error) error {
-	switch {
-	case errors.Is(err, domain.ErrCardFrontRequired):
-		return ucerr.NewValidationError("front", "front is required")
-	case errors.Is(err, domain.ErrCardFrontTooLong):
-		return ucerr.NewValidationError("front", fmt.Sprintf("front must be at most %d characters", domain.CardTextMax))
-	case errors.Is(err, domain.ErrCardBackRequired):
-		return ucerr.NewValidationError("back", "back is required")
-	case errors.Is(err, domain.ErrCardBackTooLong):
-		return ucerr.NewValidationError("back", fmt.Sprintf("back must be at most %d characters", domain.CardTextMax))
-	default:
-		return eris.Wrap(err, "usecase: translate card err: unexpected domain error")
-	}
 }
 
 // BulkDelete removes the cards in `ids` whose cardgroup is owned by the
