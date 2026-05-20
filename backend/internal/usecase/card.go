@@ -552,21 +552,6 @@ func (u *CardUsecase) resolveCursor(
 	return c, nil
 }
 
-func translateCardErr(err error) error {
-	switch {
-	case errors.Is(err, domain.ErrCardFrontRequired):
-		return ucerr.NewValidationError("front", "front is required")
-	case errors.Is(err, domain.ErrCardFrontTooLong):
-		return ucerr.NewValidationError("front", fmt.Sprintf("front must be at most %d characters", domain.CardTextMax))
-	case errors.Is(err, domain.ErrCardBackRequired):
-		return ucerr.NewValidationError("back", "back is required")
-	case errors.Is(err, domain.ErrCardBackTooLong):
-		return ucerr.NewValidationError("back", fmt.Sprintf("back must be at most %d characters", domain.CardTextMax))
-	default:
-		return eris.Wrap(err, "usecase: translate card err: unexpected domain error")
-	}
-}
-
 // BulkDelete removes the cards in `ids` whose cardgroup is owned by the
 // authenticated caller. Ownership is enforced exclusively by the SQL subselect
 // in DeleteByIDsTx (one DELETE scoped to cardgroups owned by the caller);

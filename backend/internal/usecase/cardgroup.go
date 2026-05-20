@@ -5,7 +5,6 @@ package usecase
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -237,23 +236,6 @@ func (u *CardgroupUsecase) Delete(ctx context.Context, id string) error {
 		return eris.Wrap(err, "usecase: delete cardgroup")
 	}
 	return nil
-}
-
-// translateCardgroupNameErr maps domain sentinel errors from Cardgroup.Validate
-// to usecase-layer typed errors. Unexpected domain errors are wrapped with eris.
-// Returns nil when err is nil.
-func translateCardgroupNameErr(err error) error {
-	if err == nil {
-		return nil
-	}
-	switch {
-	case errors.Is(err, domain.ErrCardgroupNameRequired):
-		return ucerr.NewValidationError("name", "name is required")
-	case errors.Is(err, domain.ErrCardgroupNameTooLong):
-		return ucerr.NewValidationError("name", fmt.Sprintf("name must be at most %d characters", domain.CardgroupNameMax))
-	default:
-		return eris.Wrap(err, "usecase: translate cardgroup name error")
-	}
 }
 
 // ListCardgroupsByOwnerConnection paginates the authenticated caller's

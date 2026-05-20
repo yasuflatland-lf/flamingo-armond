@@ -236,24 +236,6 @@ func (u *adminRoleUsecase) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// translateRoleNameErr maps domain RoleName sentinels into usecase-layer typed
-// errors. Unexpected errors are wrapped with eris. Returns nil when err is nil.
-func translateRoleNameErr(err error) error {
-	if err == nil {
-		return nil
-	}
-	switch {
-	case errors.Is(err, domain.ErrRoleNameRequired):
-		return ucerr.NewValidationError("name", "name is required")
-	case errors.Is(err, domain.ErrRoleNameTooLong):
-		return ucerr.NewValidationError("name", fmt.Sprintf("name must be at most %d characters", domain.RoleNameMax))
-	case errors.Is(err, domain.ErrRoleNameInvalid):
-		return ucerr.NewValidationError("name", "name must contain only lowercase letters, digits, '_' or '-'")
-	default:
-		return eris.Wrap(err, "usecase: translate role name error")
-	}
-}
-
 // mapAdminRoleError classifies the role-repository sentinel set into either
 // input-validation data (first slot non-nil) or a propagating error (second
 // slot non-nil). The shape mirrors mapRoleAssignmentError so promoted
