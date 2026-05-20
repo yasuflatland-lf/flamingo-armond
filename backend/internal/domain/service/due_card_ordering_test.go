@@ -180,24 +180,19 @@ func TestOrderingPolicy_Apply_PanicsOnNilRng(t *testing.T) {
 	)
 }
 
-// TestOrderingPolicy_Apply_MixedInterleaveRatio_TrailingAppend exercises the
-// trailing-append paths in interleave when the review bucket exhausts before the
-// new bucket (2 new + 7 review). All Due timestamps are distinct so shuffleSameDue
-// is a no-op and the output order is fully deterministic.
+// TestOrderingPolicy_Apply_TrailingReviewAppend exercises the trailing-review
+// append path in interleave. Fixture: 1 new + 7 review, all with distinct Due
+// timestamps so shuffleSameDue is a no-op.
 //
-// With ReviewCardRatio=4 and NewCardRatio=1 the loop produces:
-//
-//	rev-0, rev-1, rev-2, rev-3, new-0  (first cycle)
-//	rev-4, rev-5, rev-6, new-1          (second cycle: only 3 reviews remain)
-//
-// That exhausts the review bucket mid-cycle before the new bucket empties, so
-// the trailing `for ; i < len(newC); i++` path appends new-1 and the remaining
-// review tail is emitted by `for ; j < len(reviewC); j++`.
-func TestOrderingPolicy_Apply_MixedInterleaveRatio_TrailingAppend(t *testing.T) {
+// With ReviewCardRatio=4 and NewCardRatio=1 the outer loop runs one full cycle:
+// emit rev-0..rev-3 then new-0. After that cycle i=1 == len(newC)=1, so the
+// outer loop exits. The trailing-review append path ("for ; j < len(reviewC)")
+// then appends rev-4, rev-5, rev-6.
+func TestOrderingPolicy_Apply_TrailingReviewAppend(t *testing.T) {
 	t.Parallel()
 
 	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
-	in := make([]domain.DueCard, 0, 9)
+	in := make([]domain.DueCard, 0, 8)
 	for i := 0; i < 7; i++ {
 		in = append(in, dueCard(
 			fmt.Sprintf("rev-%d", i),
@@ -205,7 +200,45 @@ func TestOrderingPolicy_Apply_MixedInterleaveRatio_TrailingAppend(t *testing.T) 
 			base.Add(time.Duration(i)*time.Minute),
 		))
 	}
-	for i := 0; i < 2; i++ {
+	in = append(in, dueCard(
+		"new-0",
+		domain.FSRSStateNew,
+		base.Add(100*time.Minute),
+	))
+
+	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)))
+
+	// One full cycle emits rev-0..rev-3 + new-0; new bucket exhausts and the
+	// trailing-review append path emits rev-4, rev-5, rev-6.
+	want := []string{
+		"rev-0", "rev-1", "rev-2", "rev-3", "new-0",
+		"rev-4", "rev-5", "rev-6",
+	}
+	require.Len(t, got, 8)
+	require.Equal(t, want, cardIDs(got))
+}
+
+// TestOrderingPolicy_Apply_TrailingNewAppend exercises the trailing-new append
+// path in interleave. Fixture: 5 new + 3 review, all with distinct Due
+// timestamps so shuffleSameDue is a no-op.
+//
+// With ReviewCardRatio=4 and NewCardRatio=1 the k-loop guard "j < len(reviewC)"
+// exits after emitting rev-0, rev-1, rev-2 (only 3 reviews exist), then new-0
+// is emitted. After that j=3 == len(reviewC)=3, so the outer loop exits. The
+// trailing-new append path ("for ; i < len(newC)") then appends new-1..new-4.
+func TestOrderingPolicy_Apply_TrailingNewAppend(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
+	in := make([]domain.DueCard, 0, 8)
+	for i := 0; i < 3; i++ {
+		in = append(in, dueCard(
+			fmt.Sprintf("rev-%d", i),
+			domain.FSRSStateReview,
+			base.Add(time.Duration(i)*time.Minute),
+		))
+	}
+	for i := 0; i < 5; i++ {
 		in = append(in, dueCard(
 			fmt.Sprintf("new-%d", i),
 			domain.FSRSStateNew,
@@ -215,14 +248,15 @@ func TestOrderingPolicy_Apply_MixedInterleaveRatio_TrailingAppend(t *testing.T) 
 
 	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)))
 
-	// Probed output from the interleave algorithm with the above input.
-	// rev-0..rev-3 + new-0 (first full cycle), then rev-4..rev-6 + new-1
-	// (second cycle where review exhausts after 3, then new-1 trails).
+	// The k-loop emits rev-0, rev-1, rev-2 then exits early (review bucket
+	// exhausted inside the k-loop guard); new-0 is emitted next. The review
+	// bucket is now empty so the outer loop exits. The trailing-new append
+	// path emits new-1, new-2, new-3, new-4.
 	want := []string{
-		"rev-0", "rev-1", "rev-2", "rev-3", "new-0",
-		"rev-4", "rev-5", "rev-6", "new-1",
+		"rev-0", "rev-1", "rev-2", "new-0",
+		"new-1", "new-2", "new-3", "new-4",
 	}
-	require.Len(t, got, 9)
+	require.Len(t, got, 8)
 	require.Equal(t, want, cardIDs(got))
 }
 
