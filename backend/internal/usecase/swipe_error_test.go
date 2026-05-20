@@ -1,10 +1,10 @@
 package usecase
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/rotisserie/eris"
+	"github.com/stretchr/testify/require"
 
 	"backend/internal/domain"
 	"backend/internal/domain/service"
@@ -45,9 +45,7 @@ func TestSwipeUsecase_HandleSwipe_FindCardByIDError_PinsChain(t *testing.T) {
 	})
 
 	assertInternalChain(t, err, "usecase: swipe: find card by id")
-	if !errors.Is(err, infraErr) {
-		t.Fatalf("error chain should preserve injected root sentinel; got: %v", err)
-	}
+	require.ErrorIs(t, err, infraErr, "error chain must preserve injected root sentinel")
 }
 
 // TestSwipeUsecase_HandleSwipe_FindUserCardFSRSError_PinsChain verifies that an
@@ -89,9 +87,7 @@ func TestSwipeUsecase_HandleSwipe_FindUserCardFSRSError_PinsChain(t *testing.T) 
 	})
 
 	assertInternalChain(t, err, "usecase: swipe: find user-card fsrs")
-	if !errors.Is(err, infraErr) {
-		t.Fatalf("error chain should preserve injected root sentinel; got: %v", err)
-	}
+	require.ErrorIs(t, err, infraErr, "error chain must preserve injected root sentinel")
 }
 
 // TestSwipeUsecase_HandleSwipe_FindDueCardsError_PinsChain verifies that an
@@ -135,7 +131,5 @@ func TestSwipeUsecase_HandleSwipe_FindDueCardsError_PinsChain(t *testing.T) {
 	})
 
 	assertInternalChain(t, err, "usecase: swipe: find due cards")
-	if !errors.Is(err, infraErr) {
-		t.Fatalf("error chain should preserve injected root sentinel; got: %v", err)
-	}
+	require.ErrorIs(t, err, infraErr, "error chain must preserve injected root sentinel")
 }

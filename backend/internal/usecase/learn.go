@@ -61,6 +61,12 @@ func NewLearnUsecase(
 	if logger == nil {
 		panic("usecase: learn: logger is required")
 	}
+	if cardRepo == nil {
+		panic("usecase: learn: cardRepo must not be nil")
+	}
+	if cardgroupRepo == nil {
+		panic("usecase: learn: cardgroupRepo must not be nil")
+	}
 	if ordering == nil {
 		ordering = service.NewOrderingPolicy()
 	}
@@ -78,14 +84,8 @@ func NewLearnUsecase(
 	if maxLimit <= 0 {
 		maxLimit = maxLearnNextDueLimit
 	}
-	if cardRepo == nil {
-		panic("LearnUsecase: cardRepo must not be nil")
-	}
-	if cardgroupRepo == nil {
-		panic("LearnUsecase: cardgroupRepo must not be nil")
-	}
 	if defaultLimit > maxLimit {
-		panic(fmt.Sprintf("LearnUsecase: defaultLimit (%d) must not exceed maxLimit (%d)", defaultLimit, maxLimit))
+		panic(fmt.Sprintf("usecase: learn: defaultLimit (%d) must not exceed maxLimit (%d)", defaultLimit, maxLimit))
 	}
 	return &LearnUsecase{
 		cardRepo:      cardRepo,
