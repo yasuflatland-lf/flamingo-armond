@@ -25,7 +25,7 @@ func TestSwipeRecordRepository_CreateTxAndFind(t *testing.T) {
 	reviewedAt := time.Now().UTC()
 	state := domain.NewFSRSStateForNewCard(reviewedAt)
 	state.Reps = 1
-	sr, err := domain.NewSwipeRecord(ownerID, card.ID, domain.RatingEasy, reviewedAt, state)
+	sr, err := domain.NewSwipeRecord(ownerID, card.ID, cg.ID, domain.RatingEasy, reviewedAt, state)
 	require.NoError(t, err)
 
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -36,6 +36,7 @@ func TestSwipeRecordRepository_CreateTxAndFind(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, byID, 1)
 	require.Equal(t, sr.ID, byID[sr.ID].ID)
+	require.Equal(t, cg.ID, byID[sr.ID].CardgroupID)
 	require.Equal(t, domain.RatingEasy, byID[sr.ID].Rating)
 	require.Equal(t, state.Reps, byID[sr.ID].StateAfter.Reps)
 
@@ -43,6 +44,38 @@ func TestSwipeRecordRepository_CreateTxAndFind(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, history, 1)
 	require.Equal(t, sr.ID, history[0].ID)
+	require.Equal(t, cg.ID, history[0].CardgroupID)
+}
+
+func TestSwipeRecordRepository_FindByUserAndCardgroup_UsesDenormalizedCardgroup(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cgAtSwipe := insertCardgroup(t, ctx, ownerID)
+	cgCurrent := insertCardgroup(t, ctx, ownerID)
+	cardRepo := repository.NewCardRepository(testDB.GORM)
+	swipeRepo := repository.NewSwipeRecordRepository(testDB.GORM)
+
+	card := newCard(cgCurrent.ID, "front denormalized", "back")
+	require.NoError(t, cardRepo.Create(ctx, card))
+	reviewedAt := time.Now().UTC().Truncate(time.Microsecond)
+	state := domain.NewFSRSStateForNewCard(reviewedAt)
+	sr, err := domain.NewSwipeRecord(ownerID, card.ID, cgAtSwipe.ID, domain.RatingGood, reviewedAt, state)
+	require.NoError(t, err)
+
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return swipeRepo.CreateTx(ctx, tx, sr)
+	}))
+
+	historyAtSwipe, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, cgAtSwipe.ID)
+	require.NoError(t, err)
+	require.Len(t, historyAtSwipe, 1)
+	require.Equal(t, sr.ID, historyAtSwipe[0].ID)
+	require.Equal(t, cgAtSwipe.ID, historyAtSwipe[0].CardgroupID)
+
+	historyCurrent, err := swipeRepo.FindByUserAndCardgroup(ctx, ownerID, cgCurrent.ID)
+	require.NoError(t, err)
+	require.Empty(t, historyCurrent)
 }
 
 func TestSwipeRecordRepository_ListRecentByUser_OrdersAndScopes(t *testing.T) {
@@ -66,24 +99,25 @@ func TestSwipeRecordRepository_ListRecentByUser_OrdersAndScopes(t *testing.T) {
 	sameReviewTime := base
 	newest := base.Add(time.Hour)
 
-	seed := func(id, userID, cardID string, reviewedAt time.Time) *domain.SwipeRecord {
+	seed := func(id, userID, cardID, cardgroupID string, reviewedAt time.Time) *domain.SwipeRecord {
 		return &domain.SwipeRecord{
-			ID:         id,
-			UserID:     userID,
-			CardID:     cardID,
-			Rating:     domain.RatingEasy,
-			ReviewedAt: reviewedAt,
-			StateAfter: domain.NewFSRSStateForNewCard(reviewedAt),
+			ID:          id,
+			UserID:      userID,
+			CardID:      cardID,
+			CardgroupID: cardgroupID,
+			Rating:      domain.RatingEasy,
+			ReviewedAt:  reviewedAt,
+			StateAfter:  domain.NewFSRSStateForNewCard(reviewedAt),
 		}
 	}
 
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for _, sr := range []*domain.SwipeRecord{
-			seed("00000000-0000-0000-0000-000000000001", ownerID, ownerCard1.ID, earlier),
-			seed("00000000-0000-0000-0000-000000000002", ownerID, ownerCard1.ID, sameReviewTime),
-			seed("00000000-0000-0000-0000-000000000003", ownerID, ownerCard2.ID, sameReviewTime),
-			seed("00000000-0000-0000-0000-000000000004", ownerID, ownerCard2.ID, newest),
-			seed("00000000-0000-0000-0000-000000000005", otherUserID, otherCard.ID, newest),
+			seed("00000000-0000-0000-0000-000000000001", ownerID, ownerCard1.ID, cg.ID, earlier),
+			seed("00000000-0000-0000-0000-000000000002", ownerID, ownerCard1.ID, cg.ID, sameReviewTime),
+			seed("00000000-0000-0000-0000-000000000003", ownerID, ownerCard2.ID, cg.ID, sameReviewTime),
+			seed("00000000-0000-0000-0000-000000000004", ownerID, ownerCard2.ID, cg.ID, newest),
+			seed("00000000-0000-0000-0000-000000000005", otherUserID, otherCard.ID, cg.ID, newest),
 		} {
 			if err := swipeRepo.CreateTx(ctx, tx, sr); err != nil {
 				return err
