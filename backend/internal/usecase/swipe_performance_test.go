@@ -121,6 +121,9 @@ func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
 			if swipeRepo.created == nil {
 				t.Fatal("expected swipe record to be created before metrics are listed")
 			}
+			if swipeRepo.created.CardgroupID != "cg-1" {
+				t.Fatalf("created swipe cardgroup=%q, want cg-1", swipeRepo.created.CardgroupID)
+			}
 			if swipeRepo.listUserID != "user-1" {
 				t.Fatalf("ListRecentByUser user=%q, want user-1", swipeRepo.listUserID)
 			}
@@ -185,6 +188,9 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 	}
 	if swipeRepo.created == nil || swipeRepo.created.StateAfter != userFSRSRepo.upserted.State {
 		t.Fatalf("swipe snapshot must match upserted user state, swipe=%+v ucs=%+v", swipeRepo.created, userFSRSRepo.upserted)
+	}
+	if swipeRepo.created.CardgroupID != "cg-1" {
+		t.Fatalf("created swipe cardgroup=%q, want cg-1", swipeRepo.created.CardgroupID)
 	}
 	if len(outcome.Swipe.NextCards) != 1 || outcome.Swipe.NextCards[0].ID != "next-1" {
 		t.Fatalf("unexpected next cards: %+v", outcome.Swipe.NextCards)

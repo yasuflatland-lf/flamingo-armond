@@ -14,6 +14,7 @@ type gormSwipeRecord struct {
 	ID            string    `gorm:"column:id;primaryKey;type:uuid"`
 	UserID        string    `gorm:"column:user_id"`
 	CardID        string    `gorm:"column:card_id"`
+	CardgroupID   string    `gorm:"column:cardgroup_id;type:uuid"`
 	Rating        int       `gorm:"column:rating"`
 	ReviewedAt    time.Time `gorm:"column:reviewed_at"`
 	Due           time.Time `gorm:"column:due"`
@@ -61,9 +62,8 @@ func (r *swipeRecordRepo) FindByIDs(ctx context.Context, ids []string) (map[stri
 func (r *swipeRecordRepo) FindByUserAndCardgroup(ctx context.Context, userID, cardgroupID string) ([]*domain.SwipeRecord, error) {
 	var rows []gormSwipeRecord
 	if err := r.db.WithContext(ctx).
-		Joins("JOIN cards ON cards.id = swipe_records.card_id").
-		Where("swipe_records.user_id = ? AND cards.cardgroup_id = ?", userID, cardgroupID).
-		Order("swipe_records.reviewed_at DESC, swipe_records.id DESC").
+		Where("user_id = ? AND cardgroup_id = ?", userID, cardgroupID).
+		Order("reviewed_at DESC, id DESC").
 		Find(&rows).Error; err != nil {
 		return nil, eris.Wrap(err, "repository: find swipe records by user and cardgroup")
 	}
@@ -107,6 +107,7 @@ func swipeRecordToRow(sr *domain.SwipeRecord) *gormSwipeRecord {
 		ID:            sr.ID,
 		UserID:        sr.UserID,
 		CardID:        sr.CardID,
+		CardgroupID:   sr.CardgroupID,
 		Rating:        int(sr.Rating),
 		ReviewedAt:    sr.ReviewedAt,
 		Due:           sr.StateAfter.Due,
@@ -123,11 +124,12 @@ func swipeRecordToRow(sr *domain.SwipeRecord) *gormSwipeRecord {
 
 func swipeRecordToDomain(row gormSwipeRecord) *domain.SwipeRecord {
 	return &domain.SwipeRecord{
-		ID:         row.ID,
-		UserID:     row.UserID,
-		CardID:     row.CardID,
-		Rating:     domain.Rating(row.Rating),
-		ReviewedAt: row.ReviewedAt,
+		ID:          row.ID,
+		UserID:      row.UserID,
+		CardID:      row.CardID,
+		CardgroupID: row.CardgroupID,
+		Rating:      domain.Rating(row.Rating),
+		ReviewedAt:  row.ReviewedAt,
 		StateAfter: domain.FSRSState{
 			Due:           row.Due,
 			Stability:     row.Stability,
