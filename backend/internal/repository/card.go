@@ -98,8 +98,8 @@ type CardPageRepository interface {
 		dir SortOrder,
 		search *string,
 	) (cards []*domain.Card, totalCount int64, err error)
-	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
-	FindDueCardsForUserTx(ctx context.Context, tx *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error)
+	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error)
+	FindDueCardsForUserTx(ctx context.Context, tx *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error)
 }
 
 type CardWriteRepository interface {
@@ -364,33 +364,68 @@ func cursorFieldValue(orderBy CardOrderBy, c *CardCursor) (any, error) {
 	return nil, eris.Errorf("cursor missing %s column", orderBy)
 }
 
-func (r *cardRepo) FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
+func (r *cardRepo) FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error) {
 	return findDueCardsOn(r.db.WithContext(ctx), userID, cardgroupID, now, limit)
 }
 
-func (r *cardRepo) FindDueCardsForUserTx(ctx context.Context, tx *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
+func (r *cardRepo) FindDueCardsForUserTx(ctx context.Context, tx *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error) {
 	return findDueCardsOn(tx.WithContext(ctx), userID, cardgroupID, now, limit)
 }
 
-func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]*domain.Card, error) {
+// dueCardRow is the raw scan target for findDueCardsOn. It holds all cards.*
+// columns as flat fields plus nullable FSRS columns from the LEFT JOIN.
+// Embedding gormCard is intentionally avoided: gormCard carries a TableName()
+// method that confuses GORM's embedded-struct schema parser when the outer
+// scan target is a different type.
+type dueCardRow struct {
+	ID          string     `gorm:"column:id"`
+	CardgroupID string     `gorm:"column:cardgroup_id"`
+	Front       string     `gorm:"column:front"`
+	Back        string     `gorm:"column:back"`
+	CreatedAt   time.Time  `gorm:"column:created_at"`
+	UpdatedAt   time.Time  `gorm:"column:updated_at"`
+	State       *int       `gorm:"column:state"`
+	Due         *time.Time `gorm:"column:due"`
+}
+
+func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error) {
 	userID = coalesceUserIDForJoin(userID)
 	if limit <= 0 {
-		return []*domain.Card{}, nil
+		return []domain.DueCard{}, nil
 	}
-	var rows []gormCard
+	var rows []dueCardRow
 	if err := db.
-		Model(&gormCard{}).
-		Select("cards.*").
+		Table("cards").
+		Select("cards.id, cards.cardgroup_id, cards.front, cards.back, cards.created_at, cards.updated_at, ucs.state, ucs.due").
 		Joins("LEFT JOIN user_card_fsrs ucs ON ucs.user_id = ? AND ucs.card_id = cards.id", userID).
 		Where("cards.cardgroup_id = ? AND (ucs.due IS NULL OR ucs.due <= ?)", cardgroupID, now).
 		Order("COALESCE(ucs.due, cards.created_at) ASC, cards.id ASC").
 		Limit(limit).
 		Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: find due cards")
+		return nil, eris.Wrap(err, "repository: card: find due cards")
 	}
-	out := make([]*domain.Card, len(rows))
-	for i := range rows {
-		out[i] = cardToDomain(rows[i])
+	out := make([]domain.DueCard, len(rows))
+	for i, r := range rows {
+		c := &domain.Card{
+			ID:          r.ID,
+			CardgroupID: r.CardgroupID,
+			Front:       domain.CardText(r.Front),
+			Back:        domain.CardText(r.Back),
+			CreatedAt:   r.CreatedAt,
+			UpdatedAt:   r.UpdatedAt,
+		}
+		dc := domain.DueCard{Card: c, State: domain.FSRSStateNew, Due: r.CreatedAt}
+		if r.State != nil {
+			s := domain.FSRSCardState(*r.State)
+			if !s.IsValid() {
+				return nil, eris.Errorf("repository: card: invalid FSRSCardState %d", *r.State)
+			}
+			dc.State = s
+		}
+		if r.Due != nil {
+			dc.Due = *r.Due
+		}
+		out[i] = dc
 	}
 	return out, nil
 }
