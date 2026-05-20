@@ -3,3 +3,6 @@ packages:
 
 onlyBuiltDependencies:
   - sharp
+
+allowBuilds:
+  sharp: true
