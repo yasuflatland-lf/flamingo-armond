@@ -401,7 +401,7 @@ export function CardsClient({
         },
       });
     },
-    [apollo, deleteCardMutation, queryVariables],
+    [apollo, deleteCardMutation, queryVariables, scheduleDelete],
   );
 
   async function handleUpdate(id: string, values: { front: string; back: string }) {

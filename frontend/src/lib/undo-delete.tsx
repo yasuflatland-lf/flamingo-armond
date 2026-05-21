@@ -7,7 +7,7 @@
  * the Provider instance rather than module scope. Mount <UndoDeleteProvider>
  * once near the app root (e.g. providers.tsx) and consume via useUndoDelete().
  *
- * Behaviour (unchanged from the module-scope version):
+ * Behaviour:
  * - The caller performs an optimistic Apollo cache update BEFORE calling
  *   scheduleDelete. The hook does NOT touch the cache itself.
  * - A 5-second timer is started. While the timer is live, a sonner toast is
@@ -67,6 +67,8 @@ export interface ScheduleDeleteHandle {
   undo(): void;
 }
 
+/** Public API surface returned by useUndoDelete(). All three methods share the
+ *  same pending-delete registry held by the nearest UndoDeleteProvider. */
 export interface UndoDeleteAPI {
   scheduleDelete(opts: ScheduleDeleteOptions): ScheduleDeleteHandle;
   flushPendingDeletes(): Promise<void>;
@@ -75,12 +77,17 @@ export interface UndoDeleteAPI {
 
 const UndoDeleteContext = createContext<UndoDeleteAPI | null>(null);
 
+/** Mount once near the app root (e.g. providers.tsx) to make useUndoDelete()
+ *  available throughout the tree. The Provider centralises the beforeunload and
+ *  pathname-change flush listeners; nesting two providers creates independent
+ *  registries, each with its own listeners. */
 export function UndoDeleteProvider({ children }: { children: ReactNode }) {
   const pendingRef = useRef<Map<string, PendingDelete>>(new Map());
   const pathname = usePathname();
   const previousPathnameRef = useRef(pathname);
 
   const flushPendingDeletes = useCallback(async (): Promise<void> => {
+    // Snapshot then clear so a concurrent flush cannot double-commit the same entry.
     const entries = Array.from(pendingRef.current.entries());
     for (const [id, entry] of entries) {
       clearTimeout(entry.timerId);
@@ -90,15 +97,22 @@ export function UndoDeleteProvider({ children }: { children: ReactNode }) {
       entries.map(async ([, entry]) => {
         try {
           await entry.commitDelete();
-        } catch (err) {
-          entry.optimisticRollback();
-          entry.onCommitFailed?.(err);
+        } catch (commitErr) {
+          try {
+            entry.optimisticRollback();
+          } catch (rollbackErr) {
+            console.warn("[undo-delete] optimisticRollback threw during flush", {
+              errName: rollbackErr instanceof Error ? rollbackErr.name : "unknown",
+            });
+          }
+          entry.onCommitFailed?.(commitErr);
         }
       }),
     );
   }, []);
 
   const cancelPending = useCallback((id: string): void => {
+    // Does not invoke optimisticRollback — callers are responsible for side effects.
     const entry = pendingRef.current.get(id);
     if (!entry) return;
     clearTimeout(entry.timerId);
@@ -121,8 +135,14 @@ export function UndoDeleteProvider({ children }: { children: ReactNode }) {
         if (existing.toastId !== undefined) toast.dismiss(existing.toastId);
         clearTimeout(existing.timerId);
         pendingRef.current.delete(id);
+        // onCommitFailed of the prior entry is deliberately NOT called here: the
+        // new schedule is the authoritative intent, the item is already removed from
+        // the user's view, and surfacing a banner would be misleading with no retry path.
         void existing.commitDelete().catch((err) => {
-          console.warn("[undo-delete] prior pending delete commit failed on re-schedule", { id, err });
+          console.warn("[undo-delete] prior pending delete commit failed on re-schedule", {
+            id,
+            errName: err instanceof Error ? err.name : "unknown",
+          });
         });
       }
 
@@ -130,9 +150,16 @@ export function UndoDeleteProvider({ children }: { children: ReactNode }) {
         pendingRef.current.delete(id);
         try {
           await commitDelete();
-        } catch (err) {
-          optimisticRollback();
-          onCommitFailed?.(err);
+        } catch (commitErr) {
+          try {
+            optimisticRollback();
+          } catch (rollbackErr) {
+            console.warn("[undo-delete] optimisticRollback threw during commit failure", {
+              id,
+              errName: rollbackErr instanceof Error ? rollbackErr.name : "unknown",
+            });
+          }
+          onCommitFailed?.(commitErr);
         }
       };
 
@@ -167,6 +194,8 @@ export function UndoDeleteProvider({ children }: { children: ReactNode }) {
     [cancelPending],
   );
 
+  // Returns a point-in-time snapshot. Not reactive — the value does not trigger
+  // re-renders. Intended for testing and the beforeunload guard.
   const pendingCount = useCallback((): number => {
     return pendingRef.current.size;
   }, []);
@@ -174,15 +203,23 @@ export function UndoDeleteProvider({ children }: { children: ReactNode }) {
   // Flush pending deletes on pathname change so navigating away inside the
   // 5-second undo window does not silently discard a pending DELETE request.
   useEffect(() => {
-    if (previousPathnameRef.current !== pathname) {
-      void flushPendingDeletes();
-      previousPathnameRef.current = pathname;
-    }
+    if (previousPathnameRef.current === pathname) return;
+    const prev = previousPathnameRef.current;
+    previousPathnameRef.current = pathname;
+    void flushPendingDeletes().catch((err) => {
+      console.warn("[UndoDeleteProvider] flushPendingDeletes on pathname change failed", {
+        from: prev,
+        to: pathname,
+        errName: err instanceof Error ? err.name : "unknown",
+      });
+    });
   }, [pathname, flushPendingDeletes]);
 
   // Browser-level navigation safety net. Most browsers cancel pending fetch
   // requests when beforeunload fires, so these DELETEs are NOT guaranteed to
   // reach the server. The console.warn surfaces the discard for operators.
+  // navigator.sendBeacon is not a viable alternative: it only supports anonymous
+  // POSTs and cannot attach the Authorization header this app's GraphQL endpoint requires.
   useEffect(() => {
     function onBeforeUnload() {
       if (pendingRef.current.size === 0) return;
@@ -203,6 +240,8 @@ export function UndoDeleteProvider({ children }: { children: ReactNode }) {
   return <UndoDeleteContext.Provider value={api}>{children}</UndoDeleteContext.Provider>;
 }
 
+/** Returns the UndoDeleteAPI from the nearest UndoDeleteProvider.
+ *  Throws if called outside a provider tree. */
 export function useUndoDelete(): UndoDeleteAPI {
   const ctx = useContext(UndoDeleteContext);
   if (!ctx) throw new Error("useUndoDelete must be called inside <UndoDeleteProvider>");
