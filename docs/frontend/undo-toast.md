@@ -39,10 +39,16 @@ scheduleDelete({
 
 ```ts
 useEffect(() => {
-  if (previousPathnameRef.current !== pathname) {
-    void flushPendingDeletes();
-    previousPathnameRef.current = pathname;
-  }
+  if (previousPathnameRef.current === pathname) return;
+  const prev = previousPathnameRef.current;
+  previousPathnameRef.current = pathname;  // advance ref before the async flush
+  void flushPendingDeletes().catch((err) => {
+    console.warn("[UndoDeleteProvider] flushPendingDeletes on pathname change failed", {
+      from: prev,
+      to: pathname,
+      errName: err instanceof Error ? err.name : "unknown",
+    });
+  });
 }, [pathname, flushPendingDeletes]);
 ```
 
