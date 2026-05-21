@@ -41,11 +41,10 @@ func NewAdminGate(checker AdminChecker) *AdminGate {
 // admin. Return paths:
 //
 //   - ucerr.ErrUnauthenticated — no caller on the context (caller == nil
-//     or empty Sub).
+//     or empty Sub), or pass-through if IsAdmin itself returns it
+//     (defensive; current auth.Service.IsAdmin does not).
 //   - context.Canceled / context.DeadlineExceeded — propagated from the
 //     IsAdmin call, unwrapped (so the resolver matches via errors.Is).
-//   - ucerr.ErrUnauthenticated — pass-through if IsAdmin itself returns
-//     it (defensive; current auth.Service.IsAdmin does not).
 //   - *ucerr.ForbiddenError — pass-through if IsAdmin returns it
 //     (defensive); also returned directly with "admin only" when the
 //     check completes and the bearer is not an admin.
