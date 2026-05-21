@@ -3,7 +3,6 @@
 import { NetworkStatus } from "@apollo/client";
 import { useApolloClient, useMutation, useQuery } from "@apollo/client/react";
 import { Search, Trash2, X } from "lucide-react";
-import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -31,7 +30,7 @@ import {
   type CardsByCardgroupConnectionQueryVariables,
 } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
-import { _pendingCount, flushPendingDeletes, scheduleDelete } from "@/lib/undo-delete";
+import { useUndoDelete } from "@/lib/undo-delete";
 import { cardsDefaultVars } from "./queries";
 
 type Connection = CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"];
@@ -60,6 +59,7 @@ export function CardsClient({
   sectionHeader,
 }: Props) {
   const apollo = useApolloClient();
+  const { scheduleDelete } = useUndoDelete();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
 
@@ -90,8 +90,6 @@ export function CardsClient({
   // banner to persist until the user dismisses it implicitly via a successful
   // retry. See docs/pagination/do-not-reuse-mutation-error-state.md.
   const [deleteCommitError, setDeleteCommitError] = useState<string | null>(null);
-
-  const pathname = usePathname();
 
   const toggleSelected = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -405,45 +403,6 @@ export function CardsClient({
     },
     [apollo, deleteCardMutation, queryVariables],
   );
-
-  // Flush pending deletes on pathname change so a user who navigates away
-  // inside the 5-second undo window does not silently lose the DELETE request.
-  //
-  // Fire on the *change*, not in cleanup: cleanup callbacks run while React is
-  // tearing the component down, so `void flushPendingDeletes()` returns a
-  // Promise the runtime never awaits and the in-flight DELETE mutations get
-  // dropped. Triggering inside the effect body — keyed on a previous-pathname
-  // ref — runs while the component is still mounted and the async context is
-  // alive long enough for Apollo to flush the mutations.
-  const previousPathnameRef = useRef(pathname);
-  useEffect(() => {
-    if (previousPathnameRef.current !== pathname) {
-      void flushPendingDeletes();
-      previousPathnameRef.current = pathname;
-    }
-  }, [pathname]);
-
-  // Browser-level navigation safety net for the same flush concern.
-  //
-  // NOTE: most browsers cancel pending fetch / XHR requests when `beforeunload`
-  // fires, so the DELETE mutations triggered from here are NOT guaranteed to
-  // reach the server — the user may navigate away before the request settles.
-  // The console.warn surfaces the discard so operators can see in dev tools
-  // that the pending DELETE may have been dropped. Switching to
-  // `navigator.sendBeacon` would only work for endpoints that accept anonymous
-  // POSTs; this app's GraphQL endpoint requires Authorization headers, which
-  // sendBeacon cannot reliably attach. Document and accept the limitation.
-  useEffect(() => {
-    function onBeforeUnload() {
-      if (_pendingCount() === 0) return;
-      console.warn(
-        "[CardsClient] flushPendingDeletes on beforeunload — may be cancelled by browser",
-      );
-      void flushPendingDeletes();
-    }
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, []);
 
   async function handleUpdate(id: string, values: { front: string; back: string }) {
     setRowValidationError(null);
