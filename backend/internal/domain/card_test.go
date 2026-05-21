@@ -176,3 +176,101 @@ func TestRatingFromSwipeMode(t *testing.T) {
 		})
 	}
 }
+
+func TestCardUpdateFront(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		initial   Card
+		newFront  CardText
+		wantErr   error
+		wantFront CardText
+		wantBack  CardText
+	}{
+		{
+			name:      "empty CardText rejected with ErrCardFrontRequired",
+			initial:   Card{ID: "c", CardgroupID: "cg", Front: "front", Back: "back"},
+			newFront:  "",
+			wantErr:   ErrCardFrontRequired,
+			wantFront: "front", // unchanged on error
+			wantBack:  "back",
+		},
+		{
+			name:      "valid CardText updates Front and returns nil",
+			initial:   Card{ID: "c", CardgroupID: "cg", Front: "front", Back: "back"},
+			newFront:  "new front",
+			wantErr:   nil,
+			wantFront: "new front",
+			wantBack:  "back",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			card := tc.initial
+			err := card.UpdateFront(tc.newFront)
+
+			if tc.wantErr != nil {
+				require.Error(t, err)
+				require.True(t, errors.Is(err, tc.wantErr), "got %v", err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tc.wantFront, card.Front)
+			// Back must remain untouched regardless of outcome.
+			require.Equal(t, tc.wantBack, card.Back)
+		})
+	}
+}
+
+func TestCardUpdateBack(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		initial   Card
+		newBack   CardText
+		wantErr   error
+		wantFront CardText
+		wantBack  CardText
+	}{
+		{
+			name:      "empty CardText rejected with ErrCardBackRequired",
+			initial:   Card{ID: "c", CardgroupID: "cg", Front: "front", Back: "back"},
+			newBack:   "",
+			wantErr:   ErrCardBackRequired,
+			wantFront: "front",
+			wantBack:  "back", // unchanged on error
+		},
+		{
+			name:      "valid CardText updates Back and returns nil",
+			initial:   Card{ID: "c", CardgroupID: "cg", Front: "front", Back: "back"},
+			newBack:   "new back",
+			wantErr:   nil,
+			wantFront: "front",
+			wantBack:  "new back",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			card := tc.initial
+			err := card.UpdateBack(tc.newBack)
+
+			if tc.wantErr != nil {
+				require.Error(t, err)
+				require.True(t, errors.Is(err, tc.wantErr), "got %v", err)
+			} else {
+				require.NoError(t, err)
+			}
+			// Front must remain untouched regardless of outcome.
+			require.Equal(t, tc.wantFront, card.Front)
+			require.Equal(t, tc.wantBack, card.Back)
+		})
+	}
+}

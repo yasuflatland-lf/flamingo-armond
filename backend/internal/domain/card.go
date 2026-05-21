@@ -46,3 +46,28 @@ func (c *Card) Validate() error {
 	}
 	return nil
 }
+
+// UpdateFront updates the card's front text to the supplied value and returns an
+// error if the value is the zero CardText. The zero-value guard is defense-in-depth:
+// production callers parse the input through ParseCardText before reaching this
+// method, so structural invariants (length, non-empty) are enforced at VO construction
+// time. This method enforces only the aggregate-state invariant that c.Front must
+// never be the zero value. UpdatedAt is intentionally not modified here; persistence
+// is responsible for stamping the modification timestamp.
+func (c *Card) UpdateFront(front CardText) error {
+	if front == "" {
+		return ErrCardFrontRequired
+	}
+	c.Front = front
+	return nil
+}
+
+// UpdateBack mirrors UpdateFront for the back text; see UpdateFront for the
+// defense-in-depth rationale and the UpdatedAt non-stamping note.
+func (c *Card) UpdateBack(back CardText) error {
+	if back == "" {
+		return ErrCardBackRequired
+	}
+	c.Back = back
+	return nil
+}
