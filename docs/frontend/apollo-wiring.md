@@ -82,7 +82,7 @@ For Connection types (`*Connection` / `*Edge`), use `readQuery + writeQuery` (no
 
 ### Pagination patterns
 
-The reference implementation is `frontend/src/app/cardgroups/[id]/cards/cards-client.tsx` (`useQuery` + `fetchMore` with an IntersectionObserver sentinel). See `docs/pagination/` for IntersectionObserver in-flight guards, `fetchMoreError` handling, `NetworkStatus.fetchMore` conventions, MockedProvider warn-spy patterns, and the sibling `useRef<string | null>` discriminator-keyed mount-effect mutation guard (used by `LearnClient` to fire `setLastViewedCardgroup` exactly once per cardgroup, not once per render).
+The reference implementation is `frontend/src/app/cardgroups/[id]/cards/use-cards-connection.ts` (consumed by `cards-client.tsx`) — it owns `useQuery` + `fetchMore`, the IntersectionObserver sentinel, the ref triplet (`endCursorRef`, `hasNextPageRef`, `searchQueryRef`), the in-flight `fetchingRef`, and `fetchMoreError` state. See `docs/pagination/` for IntersectionObserver in-flight guards, `fetchMoreError` handling, `NetworkStatus.fetchMore` conventions, MockedProvider warn-spy patterns, and the sibling `useRef<string | null>` discriminator-keyed mount-effect mutation guard (used by `LearnClient` to fire `setLastViewedCardgroup` exactly once per cardgroup, not once per render).
 
 ### Bulk delete cache update pattern
 

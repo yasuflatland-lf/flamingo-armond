@@ -1108,6 +1108,9 @@ describe("<CardsClient>", () => {
     );
     expect(errorCall?.[1]).not.toHaveProperty("message");
 
+    // The user-facing error banner must be visible after the rejection settles.
+    expect(await screen.findByTestId("cards-bulk-delete-error")).toBeInTheDocument();
+
     consoleErrorSpy.mockRestore();
   });
 
