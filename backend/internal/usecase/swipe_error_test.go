@@ -122,7 +122,7 @@ func TestSwipeUsecase_HandleSwipe_ApplyRatingError_PinsChain(t *testing.T) {
 		userFSRSRepo,
 		newTestLogger(),
 	)
-	uc.applyRating = func(_ *domain.UserCardFSRS, _ domain.FSRSScheduler, _ domain.Rating, _ time.Time) error {
+	uc.(*swipeUsecase).applyRating = func(_ *domain.UserCardFSRS, _ domain.FSRSScheduler, _ domain.Rating, _ time.Time) error {
 		return infraErr
 	}
 
@@ -210,7 +210,7 @@ func TestSwipeUsecase_HandleSwipe_NewSwipeRecordError_PinsChain(t *testing.T) {
 		userFSRSRepo,
 		newTestLogger(),
 	)
-	uc.newSwipeRecord = func(_, _, _ string, _ domain.Rating, _ time.Time, _ domain.FSRSState) (*domain.SwipeRecord, error) {
+	uc.(*swipeUsecase).newSwipeRecord = func(_, _, _ string, _ domain.Rating, _ time.Time, _ domain.FSRSState) (*domain.SwipeRecord, error) {
 		return nil, infraErr
 	}
 
