@@ -302,6 +302,13 @@ func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 	}
 
 	patch := repository.CardUpdate{}
+	// UpdateFront/UpdateBack errors below are routed through eris.Wrap, not
+	// translateCardErr: ParseCardText (called immediately inside each guard)
+	// already returns the sentinel for empty/zero input on the validation
+	// channel. If UpdateFront/UpdateBack still rejects the parsed VO, the
+	// invariant has been violated by a programmer error, not bad user input.
+	// INTERNAL is the honest classification — surfacing as BAD_USER_INPUT
+	// would mislead the client.
 	if in.Front != nil {
 		front, err := domain.ParseCardText(*in.Front, domain.ErrCardFrontRequired, domain.ErrCardFrontTooLong)
 		if err != nil {
@@ -311,7 +318,10 @@ func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 			}
 			return UpdateCardOutcome{Validation: info}, nil
 		}
-		s := front.String()
+		if err := existing.UpdateFront(front); err != nil {
+			return UpdateCardOutcome{}, eris.Wrap(err, "usecase: card: update front")
+		}
+		s := existing.Front.String()
 		patch.Front = &s
 	}
 	if in.Back != nil {
@@ -323,7 +333,10 @@ func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 			}
 			return UpdateCardOutcome{Validation: info}, nil
 		}
-		s := back.String()
+		if err := existing.UpdateBack(back); err != nil {
+			return UpdateCardOutcome{}, eris.Wrap(err, "usecase: card: update back")
+		}
+		s := existing.Back.String()
 		patch.Back = &s
 	}
 

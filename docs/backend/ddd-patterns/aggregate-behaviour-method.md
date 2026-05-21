@@ -81,3 +81,85 @@ func (u *UserCardFSRS) ApplyRating(scheduler FSRSScheduler, rating Rating, now t
 The usecase passes the concrete scheduler; the aggregate updates its own fields.
 `UpdatedAt` is always stamped, and the aggregate's invariants are maintained in
 one place.
+
+### Single-field aggregate mutation (`Cardgroup.Rename`, `Card.UpdateFront`/`UpdateBack`) (issues #212, #213)
+
+**Before**: `CardgroupUsecase.Update` and `CardUsecase.Update` mutated the
+persistence patch directly from a parsed VO:
+
+```go
+// old shape — patch derived from the local VO, aggregate never mutated
+nameStr := name.String()
+updated, err := u.repo.Update(ctx, id, repository.CardgroupUpdate{Name: &nameStr})
+```
+
+The aggregate (`*domain.Cardgroup`, `*domain.Card`) was loaded via `repo.FindByID`
+but never mutated through a behaviour method. A future invariant spanning two
+fields — say, `UpdatedAt >= CreatedAt` — would have had no obvious home.
+
+**After**: each aggregate exposes a behaviour method that enforces the
+aggregate-state invariant (the field must never become the zero VO). The usecase
+mutates `existing` via the method, then derives the persistence patch from the
+*mutated aggregate*:
+
+```go
+// Cardgroup.Rename — usecase route-through
+if err := existing.Rename(name); err != nil {
+    return UpdateCardgroupOutcome{}, eris.Wrap(err, "usecase: cardgroup: rename")
+}
+nameStr := existing.Name.String()
+updated, err := u.repo.Update(ctx, id, repository.CardgroupUpdate{Name: &nameStr})
+```
+
+```go
+// Card.UpdateFront — usecase route-through; UpdateBack is symmetric
+if err := existing.UpdateFront(front); err != nil {
+    return UpdateCardOutcome{}, eris.Wrap(err, "usecase: card: update front")
+}
+s := existing.Front.String()
+patch.Front = &s
+```
+
+The two-step "behaviour method → patch derivation" decouples invariant enforcement
+from persistence shape; the repository patch DTO never knows about aggregate methods.
+
+**Single-field vs combined method.** For per-field mutation — where the patch DTO
+has a `*string` per field that may independently be `nil` — two single-field methods
+beat one combined `UpdateText(front, back *CardText)` method. Reasons:
+
+1. The patch's `nil = no change` semantics belong to the usecase layer; the
+   aggregate should not interpret per-field nullability.
+2. Each single-field method encodes exactly one invariant; combined methods
+   accumulate tri-state pointer handling that obscures the per-field invariant.
+3. Symmetric methods (`UpdateFront` / `UpdateBack`) document parity and let unit
+   tests use a single shape.
+
+**Defense-in-depth zero-value guard.** Each method's body is structurally identical:
+
+```go
+func (c *Card) UpdateFront(front CardText) error {
+    if front == "" {
+        return ErrCardFrontRequired
+    }
+    c.Front = front
+    return nil
+}
+```
+
+The guard is defense-in-depth: production callers parse the input through
+`ParseCardText` before reaching the method. The guard fires only if a future caller
+bypasses the parser, which is a programmer error that classifies as `INTERNAL`, not
+`BAD_USER_INPUT`. See
+[`docs/backend/error-wrapping/defense-in-depth-classification-internal.md`](../error-wrapping/defense-in-depth-classification-internal.md).
+
+`Cardgroup.Rename` follows the identical shape using `CardgroupName` and
+`ErrCardgroupNameRequired`.
+
+**`UpdatedAt` is intentionally not stamped by the aggregate methods.** Persistence
+(GORM `AutoUpdateTime` on the `UpdatedAt` field) is the canonical source of the
+modification timestamp. Stamping `c.UpdatedAt = time.Now()` inside a behaviour
+method would couple the aggregate to a clock seam and introduce a second
+source-of-truth for the timestamp. Compare `UserCardFSRS.ApplyRating` above, which
+does stamp `UpdatedAt` — that case owns the full state-transition including the
+timestamp because the FSRS algorithm dictates the exact moment the card state
+changes; the simpler rename/field-update cases have no such requirement.

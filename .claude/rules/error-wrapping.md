@@ -88,6 +88,7 @@ detection is grep-based today and pinned at single-file
 - [Pin unwrapped context error identity at the usecase boundary](../../docs/backend/error-wrapping/pin-unwrapped-context-error-with-identity-check.md)
 - [Application vs Presentation error responsibility split: usecase is consumer-agnostic; wire shape is a Presentation decision](../../docs/backend/error-wrapping/application-presentation-error-responsibility.md)
 - [Generic helper vs aggregate-specific wrap prefix: bare package name for cross-aggregate helpers, two-segment prefix for aggregate-scoped code](../../docs/backend/error-wrapping/generic-helper-vs-aggregate-prefix.md)
+- [Defense-in-depth aggregate-method errors classify as INTERNAL, not BAD_USER_INPUT](../../docs/backend/error-wrapping/defense-in-depth-classification-internal.md)
 
 ## Background
 
