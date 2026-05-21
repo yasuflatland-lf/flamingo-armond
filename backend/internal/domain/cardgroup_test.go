@@ -34,6 +34,64 @@ func TestCardgroupShape(t *testing.T) {
 	}
 }
 
+func TestCardgroup_Rename(t *testing.T) {
+	t.Parallel()
+
+	fixedTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name        string
+		initial     CardgroupName
+		arg         CardgroupName
+		wantErr     error
+		wantName    CardgroupName
+	}{
+		{
+			name:     "zero CardgroupName returns ErrCardgroupNameRequired and leaves Name unchanged",
+			initial:  CardgroupName("original"),
+			arg:      CardgroupName(""),
+			wantErr:  ErrCardgroupNameRequired,
+			wantName: CardgroupName("original"),
+		},
+		{
+			name:     "valid CardgroupName mutates Name and returns nil",
+			initial:  CardgroupName("original"),
+			arg:      CardgroupName("renamed"),
+			wantErr:  nil,
+			wantName: CardgroupName("renamed"),
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cg := &Cardgroup{
+				ID:        "cg-id-001",
+				OwnerID:   "owner-001",
+				Name:      tc.initial,
+				CreatedAt: fixedTime,
+				UpdatedAt: fixedTime,
+			}
+
+			err := cg.Rename(tc.arg)
+
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tc.wantName, cg.Name)
+
+			// Rename must not mutate ID, OwnerID, CreatedAt, or UpdatedAt.
+			require.Equal(t, "cg-id-001", cg.ID)
+			require.Equal(t, "owner-001", cg.OwnerID)
+			require.Equal(t, fixedTime, cg.CreatedAt)
+			require.Equal(t, fixedTime, cg.UpdatedAt)
+		})
+	}
+}
+
 func TestCardgroup_IsOwnedBy(t *testing.T) {
 	t.Parallel()
 

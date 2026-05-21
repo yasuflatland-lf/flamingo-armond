@@ -34,3 +34,17 @@ type Cardgroup struct {
 func (c Cardgroup) IsOwnedBy(userID string) bool {
 	return userID != "" && c.OwnerID == userID
 }
+
+// Rename updates the cardgroup's name. The non-empty invariant is enforced at
+// VO construction time by ParseCardgroupName; this method's zero-value guard
+// is a safety net for callers that construct CardgroupName directly (via the
+// string cast) and bypass the parser. Length is NOT re-checked here — that
+// invariant lives only in ParseCardgroupName. UpdatedAt is intentionally not
+// modified; persistence is responsible for stamping the modification timestamp.
+func (c *Cardgroup) Rename(name CardgroupName) error {
+	if name == "" {
+		return ErrCardgroupNameRequired
+	}
+	c.Name = name
+	return nil
+}

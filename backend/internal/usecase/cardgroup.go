@@ -98,7 +98,7 @@ func (u *CardgroupUsecase) Cardgroup(ctx context.Context, id string) (*domain.Ca
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, nil
 		}
-		return nil, eris.Wrap(err, "usecase: find cardgroup by id")
+		return nil, eris.Wrap(err, "usecase: cardgroup: find by id")
 	}
 	if !cg.IsOwnedBy(user.Sub) {
 		return nil, ucerr.ErrUnauthenticated
@@ -137,7 +137,7 @@ func (u *CardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 
 	id, err := domain.NewID()
 	if err != nil {
-		return CreateCardgroupOutcome{}, eris.Wrap(err, "usecase: generate cardgroup uuid")
+		return CreateCardgroupOutcome{}, eris.Wrap(err, "usecase: cardgroup: generate id")
 	}
 
 	now := time.Now().UTC()
@@ -150,7 +150,7 @@ func (u *CardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) 
 	}
 
 	if err := u.repo.Create(ctx, cg); err != nil {
-		return CreateCardgroupOutcome{}, eris.Wrap(err, "usecase: create cardgroup")
+		return CreateCardgroupOutcome{}, eris.Wrap(err, "usecase: cardgroup: create")
 	}
 	return CreateCardgroupOutcome{Cardgroup: cg}, nil
 }
@@ -183,7 +183,7 @@ func (u *CardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardg
 		if errors.Is(err, repository.ErrNotFound) {
 			return UpdateCardgroupOutcome{}, ucerr.ErrUnauthenticated
 		}
-		return UpdateCardgroupOutcome{}, eris.Wrap(err, "usecase: find cardgroup for update")
+		return UpdateCardgroupOutcome{}, eris.Wrap(err, "usecase: cardgroup: find for update")
 	}
 	if !existing.IsOwnedBy(user.Sub) {
 		return UpdateCardgroupOutcome{}, ucerr.ErrUnauthenticated
@@ -203,10 +203,14 @@ func (u *CardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardg
 		return UpdateCardgroupOutcome{Validation: info}, nil
 	}
 
-	nameStr := name.String()
+	if err := existing.Rename(name); err != nil {
+		return UpdateCardgroupOutcome{}, eris.Wrap(err, "usecase: cardgroup: rename")
+	}
+
+	nameStr := existing.Name.String()
 	updated, err := u.repo.Update(ctx, id, repository.CardgroupUpdate{Name: &nameStr})
 	if err != nil {
-		return UpdateCardgroupOutcome{}, eris.Wrap(err, "usecase: update cardgroup")
+		return UpdateCardgroupOutcome{}, eris.Wrap(err, "usecase: cardgroup: update")
 	}
 	return UpdateCardgroupOutcome{Cardgroup: updated}, nil
 }
@@ -224,14 +228,14 @@ func (u *CardgroupUsecase) Delete(ctx context.Context, id string) error {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ucerr.ErrUnauthenticated
 		}
-		return eris.Wrap(err, "usecase: find cardgroup for delete")
+		return eris.Wrap(err, "usecase: cardgroup: find for delete")
 	}
 	if !existing.IsOwnedBy(user.Sub) {
 		return ucerr.ErrUnauthenticated
 	}
 
 	if err := u.repo.Delete(ctx, id); err != nil {
-		return eris.Wrap(err, "usecase: delete cardgroup")
+		return eris.Wrap(err, "usecase: cardgroup: delete")
 	}
 	return nil
 }
@@ -298,7 +302,7 @@ func (u *CardgroupUsecase) ListCardgroupsByOwnerConnection(
 	// well below 10k; revisit with a denormalised counter if the cap grows.
 	total, err := u.repo.CountByOwner(ctx, user.Sub, in.Search)
 	if err != nil {
-		return nil, eris.Wrap(err, "usecase: count cardgroups by owner")
+		return nil, eris.Wrap(err, "usecase: cardgroup: count by owner")
 	}
 
 	// Request one extra row to detect whether another page exists. Trim
@@ -316,7 +320,7 @@ func (u *CardgroupUsecase) ListCardgroupsByOwnerConnection(
 		ctx, user.Sub, after, before, wantFirst, wantLast, orderBy, dir, in.Search,
 	)
 	if err != nil {
-		return nil, eris.Wrap(err, "usecase: find cardgroup page by owner")
+		return nil, eris.Wrap(err, "usecase: cardgroup: find page by owner")
 	}
 
 	out := &CardgroupConnectionOutput{TotalCount: total}
@@ -434,7 +438,7 @@ func (u *CardgroupUsecase) resolveCardgroupCursor(
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ucerr.NewValidationError(field, "cursor not found")
 		}
-		return nil, eris.Wrap(err, "usecase: hydrate cardgroup cursor")
+		return nil, eris.Wrap(err, "usecase: cardgroup: hydrate cursor")
 	}
 	if !cg.IsOwnedBy(ownerID) {
 		return nil, ucerr.NewValidationError(field, "cursor not found")
@@ -454,7 +458,7 @@ func (u *CardgroupUsecase) resolveCardgroupCursor(
 		ua := cg.UpdatedAt
 		c.UpdatedAt = &ua
 	default:
-		return nil, eris.Errorf("usecase: cardgroup unhandled orderBy %q", orderBy)
+		return nil, eris.Errorf("usecase: cardgroup: unhandled orderBy %q", orderBy)
 	}
 	return c, nil
 }
