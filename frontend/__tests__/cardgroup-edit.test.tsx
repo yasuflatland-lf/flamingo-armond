@@ -71,6 +71,7 @@ import { redirect } from "next/navigation";
 import { cardsDefaultVars } from "@/app/cardgroups/[id]/cards/queries";
 import EditCardgroupPage from "@/app/cardgroups/[id]/edit/page";
 import { gqlFetch } from "@/lib/apollo/server";
+import { UndoDeleteProvider } from "@/lib/undo-delete";
 
 class FakeIntersectionObserver {
   observe() {}
@@ -115,7 +116,7 @@ async function renderPage(
 
   render(
     <MockedProvider mocks={[]} cache={cache}>
-      {jsx as React.ReactElement}
+      <UndoDeleteProvider>{jsx as React.ReactElement}</UndoDeleteProvider>
     </MockedProvider>,
   );
 }
