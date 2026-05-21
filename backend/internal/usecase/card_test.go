@@ -320,14 +320,57 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 		if cardRepo.capturedPatch.Front == nil || *cardRepo.capturedPatch.Front != newFront {
 			t.Fatalf("unexpected patch: %+v", cardRepo.capturedPatch)
 		}
-		// Route-through assertion: the patch is derived from the mutated aggregate,
-		// so *patch.Front must equal existing.Front.String() after UpdateFront ran.
-		if *cardRepo.capturedPatch.Front != existing.Front.String() {
-			t.Fatalf("patch.Front %q != existing.Front %q: aggregate mutation did not propagate to patch",
-				*cardRepo.capturedPatch.Front, existing.Front.String())
+		// Route-through guard: UpdateFront must have mutated the aggregate before
+		// patch derivation. A regression that bypassed UpdateFront would leave
+		// existing.Front at its initial value.
+		if existing.Front != domain.CardText(newFront) {
+			t.Fatalf("aggregate not mutated: existing.Front = %q, want %q", existing.Front, newFront)
 		}
 		if cardRepo.capturedPatch.Back != nil {
 			t.Fatalf("back should be unchanged: %+v", cardRepo.capturedPatch)
+		}
+	})
+
+	t.Run("valid partial update back", func(t *testing.T) {
+		t.Parallel()
+		newBack := "new back"
+		existingBack := &domain.Card{
+			ID:          "card1",
+			CardgroupID: "cg1",
+			Front:       domain.CardText("old front"),
+			Back:        domain.CardText("old back"),
+		}
+		cardRepo := &mockCardRepository{
+			findResult:   existingBack,
+			updateResult: &domain.Card{ID: "card1", CardgroupID: "cg1", Front: "old front", Back: domain.CardText(newBack)},
+		}
+		uc := NewCardUsecase(nil, cardRepo,
+			&mockCardgroupRepoForCard{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+			nil, nil, newTestLogger(),
+		)
+		outcome, err := uc.Update(authedCtx("u1"), "card1", UpdateCardInput{Back: ptr(" new back ")})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if outcome.Card == nil {
+			t.Fatal("expected non-nil Card on success")
+		}
+		if outcome.Card.Back != domain.CardText(newBack) {
+			t.Fatalf("back = %q, want %q", outcome.Card.Back, newBack)
+		}
+		if outcome.Validation != nil {
+			t.Fatalf("expected nil Validation on success, got %+v", outcome.Validation)
+		}
+		if cardRepo.capturedPatch.Back == nil || *cardRepo.capturedPatch.Back != newBack {
+			t.Fatalf("unexpected patch: %+v", cardRepo.capturedPatch)
+		}
+		// Route-through guard: UpdateBack must have mutated the aggregate before
+		// patch derivation.
+		if existingBack.Back != domain.CardText(newBack) {
+			t.Fatalf("aggregate not mutated: existing.Back = %q, want %q", existingBack.Back, newBack)
+		}
+		if cardRepo.capturedPatch.Front != nil {
+			t.Fatalf("front should be unchanged: %+v", cardRepo.capturedPatch)
 		}
 	})
 }
