@@ -6,20 +6,20 @@
 
 ## Why
 
-When multiple usecase methods share a common gate check (e.g. `requireAdmin`),
-each caller needs the returned error wrapped with its own per-module prefix:
+When multiple usecase methods share a common gate check, each caller needs
+infrastructure errors wrapped with its own per-module prefix:
 
 ```
 "usecase: admin role: check admin"
 "usecase: admin user: check admin"
-"usecase: dictionary: upsert"
+"usecase: dictionary upsert: check admin"
 ```
 
-A naive approach embeds `eris.Wrap` inside the helper:
+A naive approach embeds a fixed `eris.Wrap` inside the helper:
 
 ```go
 // BAD: helper buries caller attribution in the chain.
-func requireAdmin(ctx context.Context, svc AdminChecker) (string, error) {
+func checkAdmin(ctx context.Context, ...) (string, error) {
     // ...
     if err != nil {
         return "", eris.Wrap(err, "usecase: admin gate: check admin") // wrong prefix for every caller
@@ -33,96 +33,94 @@ module ("admin role", "admin user", "dictionary") is gone; `grep -n 'usecase: ad
 returns nothing for these paths, and `assertInternalChain` cannot pin a stable
 per-file substring.
 
-When N callers each duplicate the classification ladder inline the problem
-compounds: the same `isContextDone / errors.Is / errors.As / eris.Wrap` block
-appears 11 times and diverges over time.
+## Pattern: consolidated method with caller-supplied prefix
 
-## Pattern
+The canonical solution is a method that accepts the prefix as a parameter,
+applies the sentinel pass-through logic internally, and wraps infrastructure
+errors with the caller-supplied string. This eliminates the "forgot the
+classifier wrap" footgun: the wrap is unconditionally applied inside `Require`,
+so there is no separate step the caller can omit.
 
-Extract a pure classifier helper that accepts the error and the caller-supplied
-prefix. Sentinels and typed errors pass through unchanged; raw infrastructure
-errors are wrapped with the provided prefix.
+`AdminGate.Require` in `backend/internal/usecase/admin_gate.go` is the current
+implementation:
 
 ```go
-// backend/internal/usecase/admin_gate.go
+// AdminGate consolidates admin-authorization for usecase entry points.
+type AdminGate struct {
+    checker AdminChecker
+}
 
-// requireAdmin returns the caller's user ID after confirming admin status.
-// Sentinels (ErrUnauthenticated, ForbiddenError) and context errors pass
-// through; infrastructure errors are returned unwrapped. Callers must wrap
-// the returned error via wrapAdminGateError.
-func requireAdmin(ctx context.Context, svc AdminChecker) (callerID string, err error) {
+// Require returns the caller's user ID after confirming the bearer is an admin.
+// Return paths:
+//
+//   - ucerr.ErrUnauthenticated — no caller on the context.
+//   - context.Canceled / context.DeadlineExceeded — propagated unwrapped.
+//   - ucerr.ErrUnauthenticated / *ucerr.ForbiddenError — passed through from IsAdmin.
+//   - eris.Wrap(err, callerPrefix) — every other IsAdmin error.
+//   - *ucerr.ForbiddenError("admin only") — bearer is not an admin.
+//   - nil — bearer is confirmed admin; callerID == caller.Sub.
+//
+// callerPrefix MUST be non-empty (e.g. "usecase: admin role: check admin").
+func (g *AdminGate) Require(ctx context.Context, callerPrefix string) (callerID string, err error) {
     caller := auth.UserFrom(ctx)
     if caller == nil || caller.Sub == "" {
         return "", ucerr.ErrUnauthenticated
     }
-    if svc == nil {
-        return "", eris.New("usecase: admin gate: admin checker not configured")
-    }
-    isAdmin, err := svc.IsAdmin(ctx, caller.Sub)
+    isAdmin, err := g.checker.IsAdmin(ctx, caller.Sub)
     if err != nil {
-        return "", err // pass-through — callers apply their prefix via wrapAdminGateError
+        if isContextDone(err) || errors.Is(err, ucerr.ErrUnauthenticated) {
+            return "", err
+        }
+        if _, ok := errors.AsType[*ucerr.ForbiddenError](err); ok {
+            return "", err
+        }
+        return "", eris.Wrap(err, callerPrefix)
     }
     if !isAdmin {
         return "", ucerr.NewForbiddenError("admin only")
     }
     return caller.Sub, nil
 }
-
-// wrapAdminGateError classifies the error from requireAdmin.
-// Sentinels and context errors pass through; unknown infrastructure errors
-// are wrapped with callerPrefix (e.g. "usecase: admin role: check admin").
-func wrapAdminGateError(err error, callerPrefix string) error {
-    if err == nil {
-        return nil
-    }
-    if isContextDone(err) || errors.Is(err, ucerr.ErrUnauthenticated) {
-        return err
-    }
-    if _, ok := errors.AsType[*ucerr.ForbiddenError](err); ok {
-        return err
-    }
-    return eris.Wrap(err, callerPrefix)
-}
 ```
 
-Each caller applies its own prefix in one line:
+Each caller passes its own prefix in one line:
 
 ```go
-// admin_role.go
-if _, err := requireAdmin(ctx, u.auth); err != nil {
-    return ..., wrapAdminGateError(err, "usecase: admin role: check admin")
+// admin_role.go:80
+if _, err := u.adminGate.Require(ctx, "usecase: admin role: check admin"); err != nil {
+    return ..., err
 }
 
-// admin_user.go
-if _, err := requireAdmin(ctx, u.auth); err != nil {
-    return ..., wrapAdminGateError(err, "usecase: admin user: check admin")
+// admin_user.go:202
+if _, err := u.adminGate.Require(ctx, "usecase: admin user: check admin"); err != nil {
+    return ..., err
 }
 
-// dictionary.go
-if _, err := requireAdmin(ctx, u.auth); err != nil {
-    return ..., wrapAdminGateError(err, "usecase: dictionary: upsert")
+// dictionary.go:184
+if _, err := u.adminGate.Require(ctx, "usecase: dictionary upsert: check admin"); err != nil {
+    return ..., err
 }
 ```
 
 ## Design principles
 
-1. **Helper is classification-only.** `wrapAdminGateError` decides whether an
-   error passes through or gets wrapped; it never decides the prefix string.
-2. **Sentinels and typed errors always pass through.** `ucerr.ErrUnauthenticated`,
+1. **Sentinels and typed errors always pass through.** `ucerr.ErrUnauthenticated`,
    `*ucerr.ForbiddenError`, `context.Canceled`, and `context.DeadlineExceeded`
    must reach the resolver layer unchanged so `gqlerr.FromUsecaseError` can
-   classify them correctly.
-3. **Caller owns the prefix.** The prefix encodes the caller's module and
+   classify them correctly. An additional wrap would defeat `errors.Is` /
+   `errors.AsType` matching.
+2. **Caller owns the prefix.** The prefix encodes the caller's module and
    operation (`"usecase: admin role: check admin"`), not the helper's identity.
    This preserves the two-segment prefix convention and keeps `grep` and
    `assertInternalChain` usable at the per-file level.
-4. **One helper, N callers.** A single `wrapAdminGateError` function consolidates
-   the classification ladder that would otherwise be duplicated at every call site.
+3. **The wrap is unconditional for infrastructure errors.** Applying the wrap
+   inside `Require` removes the two-step call pattern and ensures no caller can
+   accidentally skip the wrap.
 
-## Anti-pattern: helper-internal wrap causes double-wrapping
+## Anti-pattern: helper-internal fixed-prefix wrap causes double-wrapping
 
-If the helper wraps with its own prefix and callers wrap again with their prefix,
-the chain carries both messages:
+If a future refactor embeds a fixed prefix inside the helper and callers wrap
+again with their own prefix, the chain carries both messages:
 
 ```
 "usecase: admin role: check admin": "usecase: admin gate: check admin": <db error>
@@ -130,15 +128,17 @@ the chain carries both messages:
 
 The outer message is correct; the inner one is redundant noise that pollutes the
 `error_chain` log attribute and breaks `assertInternalChain` assertions that pin
-on a single stable prefix. Removing the helper-internal wrap is the fix.
+on a single stable prefix. The fix is always to move the prefix into the caller
+parameter rather than hardcoding it in the helper.
 
-## Evolution in this codebase
+## Evolution
 
-`admin_gate.go` went through three iterations (commits 91b10cd → 995276d → da42b0a):
-
-- **91b10cd**: helper wrapped internally; `admin_user.go` and `dictionary.go`
-  re-wrapped on top — double-wrap for those two callers, inconsistent for the rest.
-- **995276d**: all 5 callers re-wrap to achieve consistency — double-wrap now
-  universal but still wrong.
-- **da42b0a**: helper made pass-through; `wrapAdminGateError(err, callerPrefix)`
-  introduced; 11 callers each reduced to one line with their own prefix.
+This pattern was originally implemented as a split pair: a pure pass-through
+helper (`requireAdmin`) that returned infrastructure errors unwrapped, plus a
+companion classifier (`wrapAdminGateError`) that callers invoked with their own
+prefix string. The split worked correctly but required every caller to remember
+the two-step invocation. The pattern was consolidated into `AdminGate.Require`
+(issue #215), which accepts `callerPrefix` as a parameter and applies the
+classification ladder internally. The underlying invariant — the prefix must
+come from the caller, not be hardcoded in the helper — is unchanged; only the
+call shape is simpler.
