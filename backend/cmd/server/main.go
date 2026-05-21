@@ -276,6 +276,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	userRoleRepo := repository.NewUserRoleRepository(db.GORM)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
 	authSvc := auth.NewService(userRoleRepo)
+	adminGate := usecase.NewAdminGate(authSvc)
 
 	promoter, err := bootstrapSuperUserPromoter(ctx, logger, authSvc, roleRepo, userRoleRepo, os.Getenv("SUPER_USER_EMAILS"))
 	if err != nil {
@@ -286,9 +287,9 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
 	learnUC := usecase.NewLearnUsecase(cardRepo, cardgroupRepo, service.NewOrderingPolicy(), nil, 0, 0, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), srvCfg.swipeNextBatchSize, userCardFSRSRepo, logger)
-	dictionaryUC := usecase.NewDictionaryUsecase(authSvc, cardRepo, db.GORM, logger)
-	adminUserUC := usecase.NewAdminUser(userRepo, roleRepo, userRoleRepo, authSvc, logger)
-	adminRoleUC := usecase.NewAdminRole(roleRepo, authSvc, logger)
+	dictionaryUC := usecase.NewDictionaryUsecase(adminGate, cardRepo, db.GORM, logger)
+	adminUserUC := usecase.NewAdminUser(userRepo, roleRepo, userRoleRepo, adminGate, logger)
+	adminRoleUC := usecase.NewAdminRole(roleRepo, adminGate, logger)
 	lastViewedCardgroupUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo, logger)
 	pingHandler := ping.New(pingRecordRepo, pingToken)
 	var notionSyncHandler *notionsync.Handler
