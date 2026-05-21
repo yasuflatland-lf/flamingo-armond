@@ -82,7 +82,7 @@ For Connection types (`*Connection` / `*Edge`), use `readQuery + writeQuery` (no
 
 ### Pagination patterns
 
-The reference implementation is `frontend/src/app/cardgroups/[id]/cards/use-cards-connection.ts` (consumed by `cards-client.tsx`) — it owns `useQuery` + `fetchMore`, the IntersectionObserver sentinel, the ref triplet (`endCursorRef`, `hasNextPageRef`, `searchQueryRef`), the in-flight `fetchingRef`, and `fetchMoreError` state. See `docs/pagination/` for IntersectionObserver in-flight guards, `fetchMoreError` handling, `NetworkStatus.fetchMore` conventions, MockedProvider warn-spy patterns, and the sibling `useRef<string | null>` discriminator-keyed mount-effect mutation guard (used by `LearnClient` to fire `setLastViewedCardgroup` exactly once per cardgroup, not once per render).
+The reference implementation is `frontend/src/app/cardgroups/[id]/cards/use-cards-connection.ts` (consumed by `cards-client.tsx`) — it owns `useQuery` + `fetchMore`, the IntersectionObserver sentinel, the `useEffectEvent` observer callback, the parameterized `fetchNextPage({ hasNextPage, endCursor, searchQuery })` helper, the in-flight `fetchingRef`, and `fetchMoreError` state. See `docs/pagination/` for IntersectionObserver in-flight guards, `fetchMoreError` handling, `NetworkStatus.fetchMore` conventions, MockedProvider warn-spy patterns, and the sibling `useRef<string | null>` discriminator-keyed mount-effect mutation guard (used by `LearnClient` to fire `setLastViewedCardgroup` exactly once per cardgroup, not once per render).
 
 ### Bulk delete cache update pattern
 
@@ -91,4 +91,3 @@ Selection state lives on the client component as a `Set<string>`. A checkbox row
 Cache update pattern: read the Connection query via `cache.readQuery` → filter `edges` to remove the deleted ids → decrement `totalCount` by the backend's reported count (NOT `ids.length`) → `cache.writeQuery` to persist the modified Connection → `cache.evict` per id to clear normalized entries → `cache.gc()` to garbage-collect orphaned references. This mirrors the single-delete pattern; do not use `cache.modify` alone because cold caches no-op silently.
 
 Early-return guard: the `update` callback must begin with `if (data?.deleteCards == null) return;`. Although Apollo Client normally skips `update` on network-layer rejection, a synchronous error inside the callback body will still fire `cache.evict + cache.gc` on whatever was already processed, causing cards to visually vanish while still present server-side. The guard defends against this: if the server response is absent or null the callback exits before touching the cache, so a transient failure followed by a retry leaves the UI consistent.
-
