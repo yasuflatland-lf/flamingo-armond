@@ -28,6 +28,12 @@ type mockCardgroupRepository struct {
 	// aggregate's Name was mutated by Rename before repo.Update is called.
 	lastFoundCardgroup *domain.Cardgroup
 
+	// nameAtUpdateCall snapshots lastFoundCardgroup.Name at the moment Update is
+	// invoked. Rename mutates the aggregate referenced by lastFoundCardgroup, so a
+	// post-hoc read always sees the post-Rename value; capturing here proves the
+	// mutation preceded the repository call.
+	nameAtUpdateCall domain.CardgroupName
+
 	// Create
 	createErr      error
 	capturedCreate *domain.Cardgroup
@@ -91,6 +97,9 @@ func (m *mockCardgroupRepository) Create(_ context.Context, cg *domain.Cardgroup
 }
 
 func (m *mockCardgroupRepository) Update(_ context.Context, _ string, patch repository.CardgroupUpdate) (*domain.Cardgroup, error) {
+	if m.lastFoundCardgroup != nil {
+		m.nameAtUpdateCall = m.lastFoundCardgroup.Name
+	}
 	m.updateCalled = true
 	m.capturedPatch = patch
 	return m.updateResult, m.updateErr
@@ -385,16 +394,16 @@ func TestCardgroupUsecase_Update_NameChange_Success(t *testing.T) {
 	if repo.capturedPatch.Name == nil || *repo.capturedPatch.Name != "New" {
 		t.Fatalf("expected patch.Name=%q, got %v", "New", repo.capturedPatch.Name)
 	}
-	// Verify that the aggregate's Name field was mutated by Rename before
-	// repo.Update was invoked. lastFoundCardgroup captures the pointer returned
-	// by FindByID; if Rename ran in-place on that pointer, its Name must equal
-	// the new name at the moment Update is called.
+	// nameAtUpdateCall snapshots aggregate.Name inside the mock's Update method
+	// at call time. If Rename had been moved after repo.Update, this snapshot
+	// would still hold the original name, so the assertion below catches both
+	// "Rename removed" and "Rename after repo.Update" regressions.
 	if repo.lastFoundCardgroup == nil {
 		t.Fatal("expected FindByID to have been called and captured the aggregate")
 	}
-	if repo.lastFoundCardgroup.Name != domain.CardgroupName("New") {
-		t.Fatalf("expected aggregate.Name=%q after Rename (before repo.Update), got %q",
-			"New", repo.lastFoundCardgroup.Name)
+	if repo.nameAtUpdateCall != domain.CardgroupName("New") {
+		t.Fatalf("aggregate.Name must be %q at the moment repo.Update is called (Rename must precede repo.Update), got %q",
+			"New", repo.nameAtUpdateCall)
 	}
 }
 
@@ -484,7 +493,7 @@ func TestCardgroupUsecase_Update_RepoError_InfraChannel(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error from repo, got nil")
 	}
-	assertInternalChain(t, err, "usecase: update cardgroup")
+	assertInternalChain(t, err, "usecase: cardgroup: update")
 }
 
 // --- Delete tests ---
@@ -1235,7 +1244,7 @@ func TestCardgroupUC_Connection_CursorHydration_OrderByID_RepoError(t *testing.T
 		After:   &after,
 		OrderBy: &ob,
 	})
-	assertInternalChain(t, err, "usecase: hydrate cardgroup cursor")
+	assertInternalChain(t, err, "usecase: cardgroup: hydrate cursor")
 }
 
 // TestCardgroupUC_Connection_CursorHydration_OrderByID_OtherOwner verifies that
@@ -1291,7 +1300,7 @@ func TestCardgroupUC_Connection_CursorHydration_RepoError_Internal(t *testing.T)
 		First: &first,
 		After: &after,
 	})
-	assertInternalChain(t, err, "usecase: hydrate cardgroup cursor")
+	assertInternalChain(t, err, "usecase: cardgroup: hydrate cursor")
 }
 
 // TestCardgroupUC_Connection_FindPageRepoError_Internal verifies that an
@@ -1309,7 +1318,7 @@ func TestCardgroupUC_Connection_FindPageRepoError_Internal(t *testing.T) {
 	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("u1"), CardgroupConnectionInput{
 		First: &first,
 	})
-	assertInternalChain(t, err, "usecase: find cardgroup page by owner")
+	assertInternalChain(t, err, "usecase: cardgroup: find page by owner")
 }
 
 // TestCardgroupUC_Connection_CountError_Internal verifies that a CountByOwner
@@ -1324,7 +1333,7 @@ func TestCardgroupUC_Connection_CountError_Internal(t *testing.T) {
 	_, err := uc.ListCardgroupsByOwnerConnection(cgAuthedCtx("u1"), CardgroupConnectionInput{
 		First: &first,
 	})
-	assertInternalChain(t, err, "usecase: count cardgroups by owner")
+	assertInternalChain(t, err, "usecase: cardgroup: count by owner")
 	if len(repo.findPageCalls) != 0 {
 		t.Fatalf("expected no FindPageByOwner call when CountByOwner fails, got %d",
 			len(repo.findPageCalls))
@@ -1454,7 +1463,7 @@ func TestResolveCardgroupCursor_UnknownOrderBy(t *testing.T) {
 		context.Background(),
 		&id, "u1", repository.CardgroupOrderBy("not_a_real_column"), "after",
 	)
-	assertInternalChain(t, err, "usecase: cardgroup unhandled orderBy")
+	assertInternalChain(t, err, "usecase: cardgroup: unhandled orderBy")
 }
 
 // TestTranslateCardgroupNameErr_DefaultArm verifies the default switch arm
