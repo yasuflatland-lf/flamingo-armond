@@ -1,6 +1,6 @@
 import { graphql } from "@/generated";
 import { gqlFetch } from "@/lib/apollo/server";
-import { AdminRolesClient, type RoleItem } from "./AdminRolesClient";
+import { AdminRolesClient, type RoleItem } from "./admin-roles-client";
 
 /**
  * Inline-fields query for the SSR seed (no fragment): useFragment is a React

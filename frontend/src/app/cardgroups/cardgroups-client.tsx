@@ -14,18 +14,13 @@ import {
   type MyCardgroupsConnectionQuery,
 } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import type { FetchNextPageInput } from "@/lib/pagination/types";
 import { CARDGROUPS_DEFAULT_VARS } from "./queries";
 
 type Connection = MyCardgroupsConnectionQuery["myCardgroupsConnection"];
 
 interface CardgroupsClientProps {
   initialConnection: Connection | null;
-}
-
-interface FetchNextPageInput {
-  hasNextPage: boolean;
-  endCursor: string | null;
-  searchQuery: string | null;
 }
 
 /**

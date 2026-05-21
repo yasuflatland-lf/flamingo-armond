@@ -8,17 +8,12 @@ import {
   type CardsByCardgroupConnectionQueryVariables,
 } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import type { FetchNextPageInput } from "@/lib/pagination/types";
 import { cardsDefaultVars } from "./queries";
 
 type CardEdge = CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"]["edges"][number];
 type CardConnectionPageInfo =
   CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"]["pageInfo"];
-
-interface FetchNextPageInput {
-  hasNextPage: boolean;
-  endCursor: string | null;
-  searchQuery: string | null;
-}
 
 export interface UseCardsConnectionInput {
   cardgroupId: string;

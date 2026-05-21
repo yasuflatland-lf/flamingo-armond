@@ -10,7 +10,7 @@ import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
 } from "../../../../__tests__/utils/mock-apollo-paginated";
-import { AdminUsersClient } from "./AdminUsersClient";
+import { AdminUsersClient } from "./admin-users-client";
 import { ADMIN_USERS_PAGE_SIZE } from "./queries";
 
 vi.mock("next/link", () => ({

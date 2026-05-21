@@ -19,7 +19,7 @@
  * the per-file behavioral test companions:
  *   - src/app/cardgroups/[id]/cards/use-cards-connection.test.ts
  *   - src/app/cardgroups/cardgroups-client.test.tsx
- *   - src/app/admin/users/AdminUsersClient.test.tsx
+ *   - src/app/admin/users/admin-users-client.test.tsx
  *
  * This file is intentionally a grep-style regression guard: if a future
  * refactor accidentally reintroduces the ref-triplet pattern or removes the
@@ -42,7 +42,7 @@ const productionSites = [
   },
   {
     name: "admin users listing",
-    sourcePath: "src/app/admin/users/AdminUsersClient.tsx",
+    sourcePath: "src/app/admin/users/admin-users-client.tsx",
   },
 ];
 

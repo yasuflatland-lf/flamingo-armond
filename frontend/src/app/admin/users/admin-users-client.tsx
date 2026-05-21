@@ -8,6 +8,7 @@ import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react"
 import { useFragment } from "@/generated/fragment-masking";
 import type { AdminUsersQuery as AdminUsersQueryResult } from "@/generated/graphql";
 import { classifyQueryError, getBackendErrorBanner } from "@/lib/apollo/errors";
+import type { FetchNextPageInput } from "@/lib/pagination/types";
 import {
   ADMIN_USERS_PAGE_SIZE,
   AdminRoleFieldsFragment,
@@ -17,12 +18,6 @@ import {
 
 type Connection = AdminUsersQueryResult["users"];
 type Edge = Connection["edges"][number];
-
-interface FetchNextPageInput {
-  hasNextPage: boolean;
-  endCursor: string | null;
-  searchQuery: string | null;
-}
 
 function UserRow({ edge }: { edge: Edge }) {
   const user = useFragment(AdminUserFieldsFragment, edge.node);

@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { AdminDeleteRoleDocument } from "@/generated/graphql";
-import { AdminRolesClient, type RoleItem } from "./AdminRolesClient";
+import { AdminRolesClient, type RoleItem } from "./admin-roles-client";
 
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (

@@ -11,7 +11,7 @@ import {
   AdminRevokeRoleDocument,
   AdminUpdateUserDocument,
 } from "@/generated/graphql";
-import { AdminUserEditClient, type RoleOption, type UserForEdit } from "./AdminUserEditClient";
+import { AdminUserEditClient, type RoleOption, type UserForEdit } from "./admin-user-edit-client";
 
 /**
  * Build a CombinedGraphQLErrors carrying a single extension code. Mirrors the
