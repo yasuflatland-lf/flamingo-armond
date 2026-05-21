@@ -44,11 +44,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
               </p>
             </div>
 
-            {error ? (
+            {error && (
               <p role="alert" className="text-sm text-destructive">
                 Sign-in failed: {error}
               </p>
-            ) : null}
+            )}
 
             <LoginButton />
 
