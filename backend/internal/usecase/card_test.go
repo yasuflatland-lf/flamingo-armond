@@ -296,8 +296,17 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 	t.Run("valid partial update", func(t *testing.T) {
 		t.Parallel()
 		newFront := "new front"
+		// Isolated fixture: a parallel sibling sub-test ("non owner") also
+		// receives the outer `existing` via its mock, so writing through that
+		// shared pointer would race under -race.
+		existingFront := &domain.Card{
+			ID:          "card1",
+			CardgroupID: "cg1",
+			Front:       domain.CardText("old front"),
+			Back:        domain.CardText("old back"),
+		}
 		cardRepo := &mockCardRepository{
-			findResult:   existing,
+			findResult:   existingFront,
 			updateResult: &domain.Card{ID: "card1", CardgroupID: "cg1", Front: domain.CardText(newFront), Back: "old back"},
 		}
 		uc := NewCardUsecase(nil, cardRepo,
@@ -322,9 +331,9 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 		}
 		// Route-through guard: UpdateFront must have mutated the aggregate before
 		// patch derivation. A regression that bypassed UpdateFront would leave
-		// existing.Front at its initial value.
-		if existing.Front != domain.CardText(newFront) {
-			t.Fatalf("aggregate not mutated: existing.Front = %q, want %q", existing.Front, newFront)
+		// existingFront.Front at its initial value.
+		if existingFront.Front != domain.CardText(newFront) {
+			t.Fatalf("aggregate not mutated: existingFront.Front = %q, want %q", existingFront.Front, newFront)
 		}
 		if cardRepo.capturedPatch.Back != nil {
 			t.Fatalf("back should be unchanged: %+v", cardRepo.capturedPatch)
