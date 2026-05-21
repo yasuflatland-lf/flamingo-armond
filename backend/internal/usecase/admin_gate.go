@@ -10,10 +10,11 @@ import (
 	"github.com/rotisserie/eris"
 )
 
-// AdminChecker is the auth-service surface every admin-gated usecase needs.
-// Implemented by *auth.Service in production; the local interface keeps the
-// usecase decoupled from the auth package's concrete struct so tests can
-// substitute a stub.
+// AdminChecker is the auth-service surface that AdminGate (and, for the
+// non-gate caller in user.go, UserUsecase) consumes to determine whether
+// the bearer holds the admin role. Implemented by *auth.Service in
+// production; the local interface keeps the usecase decoupled from the
+// auth package's concrete struct so tests can substitute a stub.
 type AdminChecker interface {
 	IsAdmin(ctx context.Context, userID string) (bool, error)
 }
@@ -27,7 +28,8 @@ type AdminGate struct {
 
 // NewAdminGate constructs an AdminGate. Panics when checker is nil — the
 // invariant is enforced at construction time rather than checked on every
-// Require call. See docs/backend/library-gotchas/constructor-panics-for-non-empty-config.md.
+// Require call. The same shape is used by every other usecase constructor
+// in this package for required deps (cf. NewLearnUsecase, NewSwipeUsecase).
 func NewAdminGate(checker AdminChecker) *AdminGate {
 	if checker == nil {
 		panic("usecase: admin gate: checker must not be nil")
@@ -36,11 +38,27 @@ func NewAdminGate(checker AdminChecker) *AdminGate {
 }
 
 // Require returns the caller's user ID after confirming the bearer is an
-// admin. Sentinels (ucerr.ErrUnauthenticated, *ucerr.ForbiddenError) and
-// context errors pass through unchanged; infrastructure errors are wrapped
-// with callerPrefix so the log chain carries a layer-specific attribution
-// (e.g. "usecase: admin role: check admin"). The wrap is applied here so
-// callers no longer need a paired classifier helper.
+// admin. Return paths:
+//
+//   - ucerr.ErrUnauthenticated — no caller on the context (caller == nil
+//     or empty Sub).
+//   - context.Canceled / context.DeadlineExceeded — propagated from the
+//     IsAdmin call, unwrapped (so the resolver matches via errors.Is).
+//   - ucerr.ErrUnauthenticated — pass-through if IsAdmin itself returns
+//     it (defensive; current auth.Service.IsAdmin does not).
+//   - *ucerr.ForbiddenError — pass-through if IsAdmin returns it
+//     (defensive); also returned directly with "admin only" when the
+//     check completes and the bearer is not an admin.
+//   - eris.Wrap(err, callerPrefix) — every other IsAdmin error gets the
+//     caller-supplied per-module prefix. The wrap is intentionally
+//     applied here so callers no longer need a paired classifier helper.
+//     callerPrefix MUST be non-empty (e.g. "usecase: admin role: check
+//     admin"); an empty prefix produces a malformed error_chain entry.
+//   - nil — the bearer is an admin; callerID == caller.Sub.
+//
+// Sentinels and typed errors that propagate from IsAdmin are returned
+// without applying callerPrefix — the resolver layer matches them via
+// errors.Is / errors.AsType and an additional wrap would defeat that.
 func (g *AdminGate) Require(ctx context.Context, callerPrefix string) (callerID string, err error) {
 	caller := auth.UserFrom(ctx)
 	if caller == nil || caller.Sub == "" {
@@ -61,8 +79,3 @@ func (g *AdminGate) Require(ctx context.Context, callerPrefix string) (callerID 
 	}
 	return caller.Sub, nil
 }
-
-// adminGateCacheKey reserves a context key for a future per-request
-// memoize of the IsAdmin result. Not implemented in this PR — see
-// issue #215 "Memoization seam" for the rationale.
-type adminGateCacheKey struct{}
