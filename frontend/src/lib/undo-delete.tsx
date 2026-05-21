@@ -129,9 +129,12 @@ export function UndoDeleteProvider({ children }: { children: ReactNode }) {
 
       const existing = pendingRef.current.get(id);
       if (existing !== undefined) {
-        console.warn("[undo-delete] re-scheduling pending id; committing prior delete immediately", {
-          id,
-        });
+        console.warn(
+          "[undo-delete] re-scheduling pending id; committing prior delete immediately",
+          {
+            id,
+          },
+        );
         if (existing.toastId !== undefined) toast.dismiss(existing.toastId);
         clearTimeout(existing.timerId);
         pendingRef.current.delete(id);

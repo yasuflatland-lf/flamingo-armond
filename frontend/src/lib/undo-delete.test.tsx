@@ -115,7 +115,7 @@ describe("useUndoDelete — scheduleDelete", () => {
     expect(lastUndoAction).toBeDefined();
 
     act(() => {
-      handle!.undo();
+      handle?.undo();
     });
 
     await act(async () => {
@@ -177,7 +177,7 @@ describe("useUndoDelete — scheduleDelete", () => {
     });
 
     act(() => {
-      handleA!.undo();
+      handleA?.undo();
     });
 
     await act(async () => {
@@ -436,7 +436,7 @@ describe("useUndoDelete — pendingCount", () => {
     expect(result.current.pendingCount()).toBe(1);
 
     act(() => {
-      handle!.undo();
+      handle?.undo();
     });
 
     expect(result.current.pendingCount()).toBe(0);

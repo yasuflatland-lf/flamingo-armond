@@ -116,9 +116,7 @@ async function renderPage(
 
   render(
     <MockedProvider mocks={[]} cache={cache}>
-      <UndoDeleteProvider>
-        {jsx as React.ReactElement}
-      </UndoDeleteProvider>
+      <UndoDeleteProvider>{jsx as React.ReactElement}</UndoDeleteProvider>
     </MockedProvider>,
   );
 }
