@@ -3,8 +3,8 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RoleOption, UserForEdit } from "@/app/admin/users/[id]/edit/AdminUserEditClient";
-import { AdminUserEditClient } from "@/app/admin/users/[id]/edit/AdminUserEditClient";
+import type { RoleOption, UserForEdit } from "@/app/admin/users/[id]/edit/admin-user-edit-client";
+import { AdminUserEditClient } from "@/app/admin/users/[id]/edit/admin-user-edit-client";
 import { AdminAssignRoleDocument, AdminRevokeRoleDocument } from "@/generated/graphql";
 
 // ---------------------------------------------------------------------------

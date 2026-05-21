@@ -5,7 +5,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { AdminUsersClient } from "@/app/admin/users/AdminUsersClient";
+import { AdminUsersClient } from "@/app/admin/users/admin-users-client";
 import { ADMIN_USERS_PAGE_SIZE } from "@/app/admin/users/queries";
 import { AdminUsersDocument } from "@/generated/graphql";
 

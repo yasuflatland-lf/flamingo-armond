@@ -20,7 +20,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AdminRolesClient } from "@/app/admin/roles/AdminRolesClient";
+import { AdminRolesClient } from "@/app/admin/roles/admin-roles-client";
 import { AdminDeleteRoleDocument } from "@/generated/graphql";
 
 // ---------------------------------------------------------------------------
