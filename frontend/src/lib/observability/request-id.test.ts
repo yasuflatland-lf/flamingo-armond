@@ -79,4 +79,20 @@ describe("newRequestId — Web Crypto fallback path", () => {
     const unique = new Set(ids);
     expect(unique.size).toBe(20);
   });
+
+  it("timestamp prefix is non-decreasing across 100 calls on the fallback path", async () => {
+    vi.stubGlobal("crypto", undefined);
+    const { newRequestId: newRequestIdFresh } = await import("./request-id");
+
+    const ids = Array.from({ length: 100 }, newRequestIdFresh);
+    // The first 12 hex chars encode the 48-bit timestamp; they must be monotonically
+    // non-decreasing. This guards against a future refactor that accidentally moves
+    // the lastTimestampMs monotonicity guard inside the if (_cryptoAvailable) block.
+    const prefixes = ids.map((id) => id.replace(/-/g, "").slice(0, 12));
+    for (let i = 1; i < prefixes.length; i++) {
+      const curr = prefixes[i] ?? "";
+      const prev = prefixes[i - 1] ?? "";
+      expect(curr >= prev).toBe(true);
+    }
+  });
 });
