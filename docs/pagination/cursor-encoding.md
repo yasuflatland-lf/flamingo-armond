@@ -21,7 +21,7 @@ Example: entity UUID `f47ac10b-58cc-4372-a567-0e02b2c3d479` encodes to
 
 The resolver boundary is the single encoding site. The helpers
 `toCardConnectionModel` and `toCardgroupConnectionModel` in
-`backend/graph/resolver/helpers.go` call `EncodeCursor(id)` for every edge
+`backend/graph/resolver/connection.go` call `cursor.Encode(id)` for every edge
 cursor and for `startCursor`/`endCursor` in `PageInfo`. The usecase layer
 operates on raw entity UUIDs internally and is unaware of the encoding.
 
@@ -56,7 +56,7 @@ for cursor-related code.
 
 The repo carries two distinct cursor encodings depending on the aggregate:
 
-- **Opaque envelope** (`v1:base64(uuid)`): `Card`, `Cardgroup`, and other entities whose IDs are wrapped by `cursor.Encode` in the resolver helpers (`toCardConnectionModel`, `toCardgroupConnectionModel` in `backend/graph/resolver/helpers.go`). The "opaque" label is meaningful — clients treat the `v1:` envelope as a black box and must not parse it.
+- **Opaque envelope** (`v1:base64(uuid)`): `Card`, `Cardgroup`, and other entities whose IDs are wrapped by `cursor.Encode` in the resolver helpers (`toCardConnectionModel`, `toCardgroupConnectionModel` in `backend/graph/resolver/connection.go`). The "opaque" label is meaningful — clients treat the `v1:` envelope as a black box and must not parse it.
 - **Plain UUID** (raw entity ID): `User` connection cursors are emitted by the admin usecase as raw UUID strings and pass through `toUserConnectionModel` without `cursor.Encode` wrapping. They are opaque to clients in the sense that clients should not interpret them, but the encoding is a plain UUID, not the `v1:` envelope.
 
-When documenting or commenting on a Connection helper, use "opaque envelope" only for the `cursor.Encode` form. Use "plain UUID" (or "raw entity ID") for the unwrapped form. Mixing the two terms in the same context confuses readers who grep for the encoding convention. The canonical examples are `toUserConnectionModel` (plain UUID) and `toCardConnectionModel` / `toCardgroupConnectionModel` (opaque envelope) in `backend/graph/resolver/helpers.go`.
+When documenting or commenting on a Connection helper, use "opaque envelope" only for the `cursor.Encode` form. Use "plain UUID" (or "raw entity ID") for the unwrapped form. Mixing the two terms in the same context confuses readers who grep for the encoding convention. The canonical examples are `toUserConnectionModel` (plain UUID) and `toCardConnectionModel` / `toCardgroupConnectionModel` (opaque envelope) in `backend/graph/resolver/connection.go`.
