@@ -8,7 +8,6 @@ import (
 
 	"github.com/rotisserie/eris"
 
-	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
@@ -47,33 +46,33 @@ type adminRoleRepoForCRUD interface {
 }
 
 type adminRoleUsecase struct {
-	roles  adminRoleRepoForCRUD
-	auth   AdminChecker
-	logger *slog.Logger
+	roles     adminRoleRepoForCRUD
+	adminGate *AdminGate
+	logger    *slog.Logger
 }
 
 // NewAdminRole is the production constructor. Tests should prefer
 // NewAdminRoleWithDeps to inject narrow stubs.
-func NewAdminRole(roles repository.RoleRepository, authSvc *auth.Service, logger *slog.Logger) AdminRoleUsecase {
+func NewAdminRole(roles repository.RoleRepository, adminGate *AdminGate, logger *slog.Logger) AdminRoleUsecase {
 	if logger == nil {
 		panic("usecase: admin role: logger is required")
 	}
-	return &adminRoleUsecase{roles: roles, auth: authSvc, logger: logger}
+	return &adminRoleUsecase{roles: roles, adminGate: adminGate, logger: logger}
 }
 
 // NewAdminRoleWithDeps accepts narrow interface types for tests; production
 // code must use NewAdminRole.
-func NewAdminRoleWithDeps(roles adminRoleRepoForCRUD, authSvc AdminChecker, logger *slog.Logger) AdminRoleUsecase {
+func NewAdminRoleWithDeps(roles adminRoleRepoForCRUD, adminGate *AdminGate, logger *slog.Logger) AdminRoleUsecase {
 	if logger == nil {
 		panic("usecase: admin role: logger is required")
 	}
-	return &adminRoleUsecase{roles: roles, auth: authSvc, logger: logger}
+	return &adminRoleUsecase{roles: roles, adminGate: adminGate, logger: logger}
 }
 
 // List returns every role in the system. Admin-only.
 func (u *adminRoleUsecase) List(ctx context.Context) ([]*domain.Role, error) {
-	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return nil, wrapAdminGateError(err, "usecase: admin role: check admin")
+	if _, err := u.adminGate.Require(ctx, "usecase: admin role: check admin"); err != nil {
+		return nil, err
 	}
 	roles, err := u.roles.ListAll(ctx)
 	if err != nil {
@@ -89,8 +88,8 @@ func (u *adminRoleUsecase) List(ctx context.Context) ([]*domain.Role, error) {
 // resolver renders the GraphQL field as null without erroring — Query.role(id)
 // is nullable in the schema for this reason.
 func (u *adminRoleUsecase) Get(ctx context.Context, id string) (*domain.Role, error) {
-	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return nil, wrapAdminGateError(err, "usecase: admin role: check admin")
+	if _, err := u.adminGate.Require(ctx, "usecase: admin role: check admin"); err != nil {
+		return nil, err
 	}
 	role, err := u.roles.FindByID(ctx, id)
 	if err != nil {
@@ -113,8 +112,8 @@ func (u *adminRoleUsecase) Get(ctx context.Context, id string) (*domain.Role, er
 // variant; cancellation and infrastructure errors surface via the error
 // return.
 func (u *adminRoleUsecase) Create(ctx context.Context, name string) (CreateRoleOutcome, error) {
-	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return CreateRoleOutcome{}, wrapAdminGateError(err, "usecase: admin role: check admin")
+	if _, err := u.adminGate.Require(ctx, "usecase: admin role: check admin"); err != nil {
+		return CreateRoleOutcome{}, err
 	}
 	parsed, err := domain.ParseRoleName(name)
 	if err != nil {
@@ -180,8 +179,8 @@ type SystemRoleConflictInfo struct {
 // re-fetch inside roles.Update (Updates → FindByID), where the same
 // concurrent delete surfaces uniformly as ErrRoleNotFound.
 func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (UpdateRoleOutcome, error) {
-	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return UpdateRoleOutcome{}, wrapAdminGateError(err, "usecase: admin role: check admin")
+	if _, err := u.adminGate.Require(ctx, "usecase: admin role: check admin"); err != nil {
+		return UpdateRoleOutcome{}, err
 	}
 	parsed, err := domain.ParseRoleName(name)
 	if err != nil {
@@ -218,8 +217,8 @@ func (u *adminRoleUsecase) Update(ctx context.Context, id, name string) (UpdateR
 // the resulting ErrRoleNotFound is mapped back to BAD_USER_INPUT(field=id)
 // rather than INTERNAL.
 func (u *adminRoleUsecase) Delete(ctx context.Context, id string) error {
-	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return wrapAdminGateError(err, "usecase: admin role: check admin")
+	if _, err := u.adminGate.Require(ctx, "usecase: admin role: check admin"); err != nil {
+		return err
 	}
 
 	existing, err := u.roles.FindByID(ctx, id)
