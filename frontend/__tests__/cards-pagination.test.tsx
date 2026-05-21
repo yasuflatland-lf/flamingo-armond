@@ -30,6 +30,7 @@ vi.mock("next/link", () => ({
 
 import { CardsClient } from "@/app/cardgroups/[id]/cards/cards-client";
 import { CardsByCardgroupConnectionDocument } from "@/generated/graphql";
+import { UndoDeleteProvider } from "@/lib/undo-delete";
 
 const CG_ID = "cg-1";
 const PAGE_SIZE = 20;
@@ -198,12 +199,14 @@ describe("CardsClient pagination via IntersectionObserver", () => {
 
     render(
       <MockedProvider mocks={mocks as never} cache={cache}>
-        <CardsClient
-          cardgroupId={CG_ID}
-          initialEdges={initialEdges}
-          initialPageInfo={initialPageInfo}
-          initialTotalCount={initialTotalCount}
-        />
+        <UndoDeleteProvider>
+          <CardsClient
+            cardgroupId={CG_ID}
+            initialEdges={initialEdges}
+            initialPageInfo={initialPageInfo}
+            initialTotalCount={initialTotalCount}
+          />
+        </UndoDeleteProvider>
       </MockedProvider>,
     );
 
@@ -285,12 +288,14 @@ describe("CardsClient pagination via IntersectionObserver", () => {
 
     render(
       <MockedProvider mocks={mocks as never} cache={cache}>
-        <CardsClient
-          cardgroupId={CG_ID}
-          initialEdges={initialEdges}
-          initialPageInfo={initialPageInfo}
-          initialTotalCount={initialTotalCount}
-        />
+        <UndoDeleteProvider>
+          <CardsClient
+            cardgroupId={CG_ID}
+            initialEdges={initialEdges}
+            initialPageInfo={initialPageInfo}
+            initialTotalCount={initialTotalCount}
+          />
+        </UndoDeleteProvider>
       </MockedProvider>,
     );
 
@@ -376,12 +381,14 @@ describe("CardsClient pagination via IntersectionObserver", () => {
 
     render(
       <MockedProvider mocks={mocks as never} cache={cache}>
-        <CardsClient
-          cardgroupId={CG_ID}
-          initialEdges={initialEdges}
-          initialPageInfo={initialPageInfo}
-          initialTotalCount={initialTotalCount}
-        />
+        <UndoDeleteProvider>
+          <CardsClient
+            cardgroupId={CG_ID}
+            initialEdges={initialEdges}
+            initialPageInfo={initialPageInfo}
+            initialTotalCount={initialTotalCount}
+          />
+        </UndoDeleteProvider>
       </MockedProvider>,
     );
 
@@ -457,12 +464,14 @@ describe("CardsClient pagination via IntersectionObserver", () => {
 
     render(
       <MockedProvider mocks={mocks as never} cache={cache}>
-        <CardsClient
-          cardgroupId={CG_ID}
-          initialEdges={initialEdges}
-          initialPageInfo={initialPageInfo}
-          initialTotalCount={initialTotalCount}
-        />
+        <UndoDeleteProvider>
+          <CardsClient
+            cardgroupId={CG_ID}
+            initialEdges={initialEdges}
+            initialPageInfo={initialPageInfo}
+            initialTotalCount={initialTotalCount}
+          />
+        </UndoDeleteProvider>
       </MockedProvider>,
     );
 
@@ -535,12 +544,14 @@ describe("CardsClient pagination via IntersectionObserver", () => {
 
     render(
       <MockedProvider mocks={mocks as never} cache={cache}>
-        <CardsClient
-          cardgroupId={CG_ID}
-          initialEdges={initialEdges}
-          initialPageInfo={initialPageInfo}
-          initialTotalCount={initialTotalCount}
-        />
+        <UndoDeleteProvider>
+          <CardsClient
+            cardgroupId={CG_ID}
+            initialEdges={initialEdges}
+            initialPageInfo={initialPageInfo}
+            initialTotalCount={initialTotalCount}
+          />
+        </UndoDeleteProvider>
       </MockedProvider>,
     );
 

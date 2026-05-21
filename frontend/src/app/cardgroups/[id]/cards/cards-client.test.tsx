@@ -11,7 +11,7 @@ import {
   DeleteCardsDocument,
   UpdateCardDocument,
 } from "@/generated/graphql";
-import { _pendingCount, flushPendingDeletes } from "@/lib/undo-delete";
+import { UndoDeleteProvider } from "@/lib/undo-delete";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
@@ -200,12 +200,14 @@ function renderClient(
 
   render(
     <MockedProvider mocks={mocks as never} defaultOptions={defaultOptions} cache={cache}>
-      <CardsClient
-        cardgroupId={CG_ID}
-        initialEdges={initialConn.edges}
-        initialPageInfo={initialConn.pageInfo}
-        initialTotalCount={initialConn.totalCount}
-      />
+      <UndoDeleteProvider>
+        <CardsClient
+          cardgroupId={CG_ID}
+          initialEdges={initialConn.edges}
+          initialPageInfo={initialConn.pageInfo}
+          initialTotalCount={initialConn.totalCount}
+        />
+      </UndoDeleteProvider>
     </MockedProvider>,
   );
 }
@@ -530,7 +532,9 @@ describe("<CardsClient>", () => {
 
     const { rerender } = render(
       <MockedProvider mocks={[deleteMock] as never} cache={cache}>
-        <Harness />
+        <UndoDeleteProvider>
+          <Harness />
+        </UndoDeleteProvider>
       </MockedProvider>,
     );
 
@@ -547,7 +551,9 @@ describe("<CardsClient>", () => {
     mockUsePathname.mockReturnValue("/cardgroups");
     rerender(
       <MockedProvider mocks={[deleteMock] as never} cache={cache}>
-        <Harness />
+        <UndoDeleteProvider>
+          <Harness />
+        </UndoDeleteProvider>
       </MockedProvider>,
     );
 
@@ -1104,19 +1110,14 @@ describe("<CardsClient>", () => {
     consoleErrorSpy.mockRestore();
   });
 
-  // T3: beforeunload handler invokes flushPendingDeletes, dropping the
-  // pending entry from the registry (visible via _pendingCount === 0).
+  // T3: beforeunload handler invokes flushPendingDeletes, committing the
+  // pending DELETE mutation immediately.
   // The DELETE mutation may not actually reach the server in production
-  // (browsers cancel pending fetch on beforeunload), but the registry
-  // clear is the observable contract we can assert here.
+  // (browsers cancel pending fetch on beforeunload), but the mutation firing
+  // is the observable contract we can assert here.
   it("beforeunload event triggers flushPendingDeletes", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
-
-    // The undo-delete registry is module-level state. Earlier tests may have
-    // scheduled deletes that did not flush; reset before measuring.
-    await flushPendingDeletes();
-    expect(_pendingCount()).toBe(0);
 
     let mutationFired = false;
     const deleteMock = {
@@ -1136,13 +1137,12 @@ describe("<CardsClient>", () => {
 
     renderClient([deleteMock], [CARD_1, CARD_2], { cache });
 
-    // Schedule a delete — pending count goes to 1.
+    // Schedule a delete — row disappears optimistically.
     await user.click(screen.getByTestId("card-delete-c-1"));
 
     await waitFor(() => {
       expect(screen.queryByText("Hello")).not.toBeInTheDocument();
     });
-    expect(_pendingCount()).toBe(1);
     expect(mutationFired).toBe(false);
 
     // Install the outer spy WITHOUT mockImplementation so the leak spy still
@@ -1151,20 +1151,17 @@ describe("<CardsClient>", () => {
     const consoleWarnSpy = vi.spyOn(console, "warn");
 
     // Dispatch beforeunload — the handler calls flushPendingDeletes which
-    // immediately fires commitDelete and removes the entry from the registry.
+    // immediately fires commitDelete.
     window.dispatchEvent(new Event("beforeunload"));
 
-    // The mutation should fire and the registry should clear.
-    await waitFor(() => {
-      expect(_pendingCount()).toBe(0);
-    });
+    // The mutation should fire.
     await waitFor(() => {
       expect(mutationFired).toBe(true);
     });
 
     // The beforeunload handler emits a warn for operator triage.
     expect(consoleWarnSpy).toHaveBeenCalledWith(
-      "[CardsClient] flushPendingDeletes on beforeunload — may be cancelled by browser",
+      "[UndoDeleteProvider] flushPendingDeletes on beforeunload — may be cancelled by browser",
     );
     consoleWarnSpy.mockRestore();
   });
@@ -1172,10 +1169,6 @@ describe("<CardsClient>", () => {
   // T3b: beforeunload handler does NOT warn or flush when nothing is pending.
   // Pairs with T3 above which confirms warn IS emitted when a delete is pending.
   it("beforeunload event does nothing when no pending deletes exist", async () => {
-    // Ensure the registry is clean before the test.
-    await flushPendingDeletes();
-    expect(_pendingCount()).toBe(0);
-
     const cache = new InMemoryCache();
     cache.writeQuery({
       query: CardsByCardgroupConnectionDocument,
@@ -1188,11 +1181,10 @@ describe("<CardsClient>", () => {
 
     window.dispatchEvent(new Event("beforeunload"));
 
-    // No pending deletes — warn must not fire and registry stays at 0.
+    // No pending deletes — warn must not fire.
     expect(consoleWarnSpy).not.toHaveBeenCalledWith(
-      "[CardsClient] flushPendingDeletes on beforeunload — may be cancelled by browser",
+      "[UndoDeleteProvider] flushPendingDeletes on beforeunload — may be cancelled by browser",
     );
-    expect(_pendingCount()).toBe(0);
 
     consoleWarnSpy.mockRestore();
   });
