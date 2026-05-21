@@ -166,8 +166,22 @@ describe("LoginPage", () => {
       expect(grid).toBeInTheDocument();
       expect(brandPanel).toBeInTheDocument();
       const children = Array.from(grid?.children ?? []);
+      const formIndex = children.findIndex(
+        (el) => el.querySelector("[data-testid='form-brand-header']") !== null,
+      );
       const brandIndex = children.indexOf(brandPanel as Element);
-      expect(brandIndex).toBeGreaterThan(0);
+      expect(brandIndex).not.toBe(-1);
+      expect(formIndex).toBe(0);
+      expect(brandIndex).toBe(1);
+    });
+
+    it("form-brand-header and brand-panel have mutually exclusive viewport visibility", () => {
+      const formBrandHeader = container.querySelector("[data-testid='form-brand-header']");
+      const brandPanel = container.querySelector("[data-testid='brand-panel']");
+      expect(formBrandHeader?.className).toMatch(/lg:hidden/);
+      expect(formBrandHeader?.className).not.toMatch(/max-lg:hidden/);
+      expect(brandPanel?.className).toMatch(/max-lg:hidden/);
+      expect(brandPanel?.className).not.toMatch(/(^|\s)lg:hidden(\s|$)/);
     });
   });
 
@@ -190,5 +204,14 @@ describe("LoginPage", () => {
     render(jsx);
 
     expect(screen.getByRole("alert")).toHaveTextContent(/sign-in failed: access_denied/i);
+  });
+
+  it("no error param: role='alert' element is not present", async () => {
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
+
+    const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
+    render(jsx);
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

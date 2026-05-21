@@ -23,9 +23,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   const { error } = await searchParams;
   return (
     <main data-testid="login-grid" className="relative grid h-svh lg:grid-cols-2">
-      {/* Form column — full width on mobile, left half on lg+ */}
       <div className="flex flex-col">
-        {/* Mobile-only brand header (hidden on lg+ because the right panel carries the brand) */}
         <div
           data-testid="form-brand-header"
           className="lg:hidden flex items-center justify-center gap-2 pt-8"
@@ -36,7 +34,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
           <span className="text-base font-medium">flamingo-armond</span>
         </div>
 
-        {/* Form body — left-aligned, max-w-sm, vertically centered in column */}
         <div className="flex flex-1 items-center justify-center p-8">
           <div className="w-full max-w-sm flex flex-col gap-6">
             <div className="flex flex-col gap-2 text-start">
@@ -55,7 +52,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
 
             <LoginButton />
 
-            <p className="text-xs text-muted-foreground text-center">
+            <footer className="text-xs text-muted-foreground text-center">
               By signing in, you agree to our{" "}
               <a href="/terms" className="underline underline-offset-2 hover:text-foreground">
                 Terms of Service
@@ -65,12 +62,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
                 Privacy Policy
               </a>
               .
-            </p>
+            </footer>
           </div>
         </div>
       </div>
 
-      {/* Decorative panel — right side, gradient + brand mark, lg+ only */}
       <div
         data-testid="brand-panel"
         className="max-lg:hidden relative flex flex-col items-center justify-center gap-4 overflow-hidden bg-gradient-to-br from-brand-tint via-brand-tint to-brand-tint/70"
