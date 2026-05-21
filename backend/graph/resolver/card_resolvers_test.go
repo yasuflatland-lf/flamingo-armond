@@ -21,8 +21,9 @@ import (
 
 // --- mock repositories used only by the card resolver tests ---
 
-// cardMockRepo satisfies usecase.CardRepository. FindByID and Update are
-// configurable via struct fields; the remaining methods are no-op stubs.
+// cardMockRepo satisfies usecase.CardRepository and usecase.CardRepoForLearn.
+// FindByID, Update, and FindDueCardsForUser are configurable via struct fields;
+// the remaining methods are no-op stubs.
 type cardMockRepo struct {
 	deleteByIDsResult int64
 	deleteByIDsErr    error
@@ -40,23 +41,9 @@ type cardMockRepo struct {
 func (m *cardMockRepo) FindByID(_ context.Context, _ string) (*domain.Card, error) {
 	return m.findByIDResult, m.findByIDErr
 }
-func (m *cardMockRepo) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Card, error) {
-	return nil, nil
-}
 func (m *cardMockRepo) FindDueCardsForUser(_ context.Context, _ string, _ string, _ time.Time, limit int) ([]domain.DueCard, error) {
 	m.findDueLimit = limit
 	return m.findDueRows, m.findDueErr
-}
-func (m *cardMockRepo) FindPageByCardgroup(
-	_ context.Context,
-	_ string,
-	_, _ *repository.CardCursor,
-	_, _ int,
-	_ repository.CardOrderBy,
-	_ repository.SortOrder,
-	_ *string,
-) ([]*domain.Card, int64, error) {
-	return nil, 0, nil
 }
 func (m *cardMockRepo) FindPageByCardgroupForUser(
 	_ context.Context,

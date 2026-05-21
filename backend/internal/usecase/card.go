@@ -61,7 +61,7 @@ func normalizeCardObserver(observer CardObserver) CardObserver {
 	return observer
 }
 
-// CardUsecase is the application interface for card-related operations.
+// CardUsecase is the card CRUD and paginated-list surface.
 type CardUsecase interface {
 	Card(ctx context.Context, id string) (*domain.Card, error)
 	Create(ctx context.Context, in CreateCardInput) (CreateCardOutcome, error)

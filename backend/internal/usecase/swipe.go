@@ -42,7 +42,7 @@ type UserCardFSRSRepoForSwipe interface {
 	FindByUserAndCardIDsTx(ctx context.Context, tx *gorm.DB, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
 }
 
-// SwipeUsecase is the application interface for swipe session operations.
+// SwipeUsecase processes a single card swipe and advances the FSRS schedule.
 type SwipeUsecase interface {
 	HandleSwipe(ctx context.Context, in HandleSwipeInput) (HandleSwipeOutcome, error)
 }

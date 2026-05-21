@@ -26,7 +26,7 @@ type UserRolesRepository interface {
 	ListByUser(ctx context.Context, userID string) ([]*domain.Role, error)
 }
 
-// UserUsecase is the application interface for user-related operations.
+// UserUsecase is the authenticated user profile and role-query surface.
 type UserUsecase interface {
 	Me(ctx context.Context) (*domain.User, error)
 	RolesFor(ctx context.Context, targetID string) ([]*domain.Role, error)

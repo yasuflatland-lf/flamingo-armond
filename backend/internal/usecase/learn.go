@@ -30,7 +30,7 @@ type CardgroupRepoForLearn interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
 }
 
-// LearnUsecase is the application interface for learning session operations.
+// LearnUsecase surfaces due-card retrieval for a learning session.
 type LearnUsecase interface {
 	NextDueCards(ctx context.Context, cardgroupID string, limit *int) ([]*domain.Card, error)
 }

@@ -71,7 +71,7 @@ type CardgroupConnectionOutput struct {
 	EndCur     string
 }
 
-// CardgroupUsecase is the application interface for cardgroup-related operations.
+// CardgroupUsecase is the cardgroup CRUD and paginated-list surface.
 type CardgroupUsecase interface {
 	Cardgroup(ctx context.Context, id string) (*domain.Cardgroup, error)
 	Create(ctx context.Context, in CreateCardgroupInput) (CreateCardgroupOutcome, error)
