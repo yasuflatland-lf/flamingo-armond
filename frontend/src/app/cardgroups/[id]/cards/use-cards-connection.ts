@@ -92,8 +92,7 @@ export function useCardsConnection(input: UseCardsConnectionInput): UseCardsConn
 
   const fetchNextPage = useCallback(
     ({ hasNextPage, endCursor, searchQuery }: FetchNextPageInput) => {
-      if (fetchingRef.current) return;
-      if (!hasNextPage) return;
+      if (fetchingRef.current || !hasNextPage) return;
 
       fetchingRef.current = true;
       fetchMore({
@@ -155,9 +154,7 @@ export function useCardsConnection(input: UseCardsConnectionInput): UseCardsConn
     if (!node) return;
 
     const observer = new IntersectionObserver((entries) => {
-      const entry = entries[0];
-      if (!entry?.isIntersecting) return;
-      if (fetchingRef.current) return;
+      if (!entries[0]?.isIntersecting || fetchingRef.current) return;
       requestNextPageFromObserver();
     });
 
