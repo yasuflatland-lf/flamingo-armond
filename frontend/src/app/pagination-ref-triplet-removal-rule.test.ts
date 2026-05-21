@@ -54,19 +54,18 @@ const productionSites = [
 describe("pagination ref-triplet removal regression rule", () => {
   it.each(
     productionSites,
-  )(
-    "$name: uses useEffectEvent and does not contain deprecated endCursorRef/hasNextPageRef/searchQueryRef identifiers",
-    ({ sourcePath }) => {
-      const source = readFileSync(join(process.cwd(), sourcePath), "utf8");
+  )("$name: uses useEffectEvent and does not contain deprecated endCursorRef/hasNextPageRef/searchQueryRef identifiers", ({
+    sourcePath,
+  }) => {
+    const source = readFileSync(join(process.cwd(), sourcePath), "utf8");
 
-      // Rule 1: useEffectEvent must be present — confirms the React 19.2
-      // Effect Event pattern is in use for observer-owned latest-value reads.
-      expect(source).toContain("useEffectEvent");
+    // Rule 1: useEffectEvent must be present — confirms the React 19.2
+    // Effect Event pattern is in use for observer-owned latest-value reads.
+    expect(source).toContain("useEffectEvent");
 
-      // Rule 2: the old ref-triplet identifiers must not reappear — these were
-      // the pre-migration stale-value capture refs, replaced by useEffectEvent
-      // latest-value reads, and are now deleted.
-      expect(source).not.toMatch(/\b(endCursorRef|hasNextPageRef|searchQueryRef)\b/);
-    },
-  );
+    // Rule 2: the old ref-triplet identifiers must not reappear — these were
+    // the pre-migration stale-value capture refs, replaced by useEffectEvent
+    // latest-value reads, and are now deleted.
+    expect(source).not.toMatch(/\b(endCursorRef|hasNextPageRef|searchQueryRef)\b/);
+  });
 });
