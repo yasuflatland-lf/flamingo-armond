@@ -256,10 +256,8 @@ func (u *adminUserUsecase) List(
 		out.Edges[i] = AdminUserEdge{Cursor: user.ID, Node: user}
 	}
 	if len(users) > 0 {
-		start := users[0].ID
-		end := users[len(users)-1].ID
-		out.PageInfo.StartCursor = &start
-		out.PageInfo.EndCursor = &end
+		out.PageInfo.StartCursor = &users[0].ID
+		out.PageInfo.EndCursor = &users[len(users)-1].ID
 	}
 	return out, nil
 }
