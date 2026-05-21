@@ -42,7 +42,12 @@ type UserCardFSRSRepoForSwipe interface {
 	FindByUserAndCardIDsTx(ctx context.Context, tx *gorm.DB, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
 }
 
-type SwipeUsecase struct {
+// SwipeUsecase processes a single card swipe and advances the FSRS schedule.
+type SwipeUsecase interface {
+	HandleSwipe(ctx context.Context, in HandleSwipeInput) (HandleSwipeOutcome, error)
+}
+
+type swipeUsecase struct {
 	cardRepo       CardRepoForSwipe
 	cardgroupRepo  CardgroupRepoForSwipe
 	swipeRepo      SwipeRecordRepoForSwipe
@@ -90,7 +95,7 @@ func NewSwipeUsecase(
 	nextBatchSize int,
 	userCardFSRSRepo UserCardFSRSRepoForSwipe,
 	logger *slog.Logger,
-) *SwipeUsecase {
+) SwipeUsecase {
 	if logger == nil {
 		panic("usecase: swipe: logger is required")
 	}
@@ -100,7 +105,7 @@ func NewSwipeUsecase(
 	if nextBatchSize <= 0 {
 		nextBatchSize = defaultSwipeNextBatchSize
 	}
-	uc := &SwipeUsecase{
+	uc := &swipeUsecase{
 		cardRepo:      cardRepo,
 		cardgroupRepo: cardgroupRepo,
 		swipeRepo:     swipeRepo,
@@ -134,16 +139,13 @@ func NewSwipeUsecaseWithTx(
 	tx txRunner,
 	userCardFSRSRepo UserCardFSRSRepoForSwipe,
 	logger *slog.Logger,
-) *SwipeUsecase {
-	if logger == nil {
-		panic("usecase: swipe: logger is required")
-	}
-	uc := NewSwipeUsecase(nil, cardRepo, cardgroupRepo, swipeRepo, scheduler, nextBatchSize, userCardFSRSRepo, logger)
+) SwipeUsecase {
+	uc := NewSwipeUsecase(nil, cardRepo, cardgroupRepo, swipeRepo, scheduler, nextBatchSize, userCardFSRSRepo, logger).(*swipeUsecase)
 	uc.tx = tx
 	return uc
 }
 
-func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (HandleSwipeOutcome, error) {
+func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (HandleSwipeOutcome, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
 		return HandleSwipeOutcome{}, ucerr.ErrUnauthenticated

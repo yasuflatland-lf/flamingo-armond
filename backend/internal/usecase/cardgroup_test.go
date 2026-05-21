@@ -1406,7 +1406,7 @@ func TestResolveCardgroupCursor_NilCursor(t *testing.T) {
 	repo := &mockCardgroupRepository{}
 	uc := NewCardgroupUsecase(repo, newTestLogger())
 
-	c, err := uc.resolveCardgroupCursor(
+	c, err := uc.(*cardgroupUsecase).resolveCardgroupCursor(
 		context.Background(),
 		nil, "u1", repository.CardgroupOrderByName, "after",
 	)
@@ -1418,7 +1418,7 @@ func TestResolveCardgroupCursor_NilCursor(t *testing.T) {
 	}
 
 	empty := ""
-	c, err = uc.resolveCardgroupCursor(
+	c, err = uc.(*cardgroupUsecase).resolveCardgroupCursor(
 		context.Background(),
 		&empty, "u1", repository.CardgroupOrderByName, "after",
 	)
@@ -1440,7 +1440,7 @@ func TestResolveCardgroupCursor_OtherOwner_NonIDOrderBy(t *testing.T) {
 	uc := NewCardgroupUsecase(repo, newTestLogger())
 
 	id := "cg-x"
-	_, err := uc.resolveCardgroupCursor(
+	_, err := uc.(*cardgroupUsecase).resolveCardgroupCursor(
 		context.Background(),
 		&id, "owner-b", repository.CardgroupOrderByName, "after",
 	)
@@ -1459,7 +1459,7 @@ func TestResolveCardgroupCursor_UnknownOrderBy(t *testing.T) {
 	uc := NewCardgroupUsecase(repo, newTestLogger())
 
 	id := "cg-cursor"
-	_, err := uc.resolveCardgroupCursor(
+	_, err := uc.(*cardgroupUsecase).resolveCardgroupCursor(
 		context.Background(),
 		&id, "u1", repository.CardgroupOrderBy("not_a_real_column"), "after",
 	)
@@ -1486,7 +1486,7 @@ func TestResolveCardgroupCursor_MalformedV1_ReturnsBadUserInput(t *testing.T) {
 	uc := NewCardgroupUsecase(repo, newTestLogger())
 
 	malformed := "v1:!!!not-base64!!!"
-	_, err := uc.resolveCardgroupCursor(
+	_, err := uc.(*cardgroupUsecase).resolveCardgroupCursor(
 		context.Background(),
 		&malformed, "u1", repository.CardgroupOrderByID, "after",
 	)
@@ -1504,7 +1504,7 @@ func TestResolveCardgroupCursor_V1EncodedID(t *testing.T) {
 
 	// Encode the raw ID into the v1 envelope the way the resolver would.
 	encoded := "v1:Y2ctY3Vyc29y" // base64.RawURLEncoding.EncodeToString([]byte("cg-cursor"))
-	c, err := uc.resolveCardgroupCursor(
+	c, err := uc.(*cardgroupUsecase).resolveCardgroupCursor(
 		context.Background(),
 		&encoded, "u1", repository.CardgroupOrderByID, "after",
 	)

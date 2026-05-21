@@ -30,7 +30,12 @@ type CardgroupRepoForLearn interface {
 	FindByID(ctx context.Context, id string) (*domain.Cardgroup, error)
 }
 
-type LearnUsecase struct {
+// LearnUsecase surfaces due-card retrieval for a learning session.
+type LearnUsecase interface {
+	NextDueCards(ctx context.Context, cardgroupID string, limit *int) ([]*domain.Card, error)
+}
+
+type learnUsecase struct {
 	cardRepo      CardRepoForLearn
 	cardgroupRepo CardgroupRepoForLearn
 	ordering      *service.OrderingPolicy
@@ -57,7 +62,7 @@ func NewLearnUsecase(
 	defaultLimit, maxLimit int,
 	clock Clock,
 	logger *slog.Logger,
-) *LearnUsecase {
+) LearnUsecase {
 	if logger == nil {
 		panic("usecase: learn: logger is required")
 	}
@@ -87,7 +92,7 @@ func NewLearnUsecase(
 	if defaultLimit > maxLimit {
 		panic(fmt.Sprintf("usecase: learn: defaultLimit (%d) must not exceed maxLimit (%d)", defaultLimit, maxLimit))
 	}
-	return &LearnUsecase{
+	return &learnUsecase{
 		cardRepo:      cardRepo,
 		cardgroupRepo: cardgroupRepo,
 		ordering:      ordering,
@@ -101,7 +106,7 @@ func NewLearnUsecase(
 
 // NextDueCards returns up to limit due cards (clamped to [1, maxLimit]).
 // Returns Unauthenticated when the caller does not own the cardgroup, BadUserInput when the cardgroup is missing.
-func (u *LearnUsecase) NextDueCards(ctx context.Context, cardgroupID string, limit *int) ([]*domain.Card, error) {
+func (u *learnUsecase) NextDueCards(ctx context.Context, cardgroupID string, limit *int) ([]*domain.Card, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
 		return nil, ucerr.ErrUnauthenticated
@@ -139,7 +144,7 @@ func (u *LearnUsecase) NextDueCards(ctx context.Context, cardgroupID string, lim
 	return ordered, nil
 }
 
-func (u *LearnUsecase) clampLimit(limit int) int {
+func (u *learnUsecase) clampLimit(limit int) int {
 	if limit <= 0 {
 		return u.defaultLimit
 	}

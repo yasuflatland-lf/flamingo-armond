@@ -6,11 +6,11 @@ import (
 )
 
 type Resolver struct {
-	UserUC                *usecase.UserUsecase
-	CardgroupUC           *usecase.CardgroupUsecase
-	CardUC                *usecase.CardUsecase
-	LearnUC               *usecase.LearnUsecase
-	SwipeUC               *usecase.SwipeUsecase
+	UserUC                usecase.UserUsecase
+	CardgroupUC           usecase.CardgroupUsecase
+	CardUC                usecase.CardUsecase
+	LearnUC               usecase.LearnUsecase
+	SwipeUC               usecase.SwipeUsecase
 	AuthSvc               *auth.Service
 	DictionaryUC          usecase.DictionaryUsecase
 	AdminUserUC           usecase.AdminUserUsecase
@@ -21,16 +21,16 @@ type Resolver struct {
 // NewResolver wires every Resolver dependency. Tests may pass nil for unused
 // dependencies; do not pass nil from production wiring.
 func NewResolver(
-	user *usecase.UserUsecase,
-	cardgroupUC *usecase.CardgroupUsecase,
-	cardUC *usecase.CardUsecase,
-	swipeUC *usecase.SwipeUsecase,
+	user usecase.UserUsecase,
+	cardgroupUC usecase.CardgroupUsecase,
+	cardUC usecase.CardUsecase,
+	swipeUC usecase.SwipeUsecase,
 	authSvc *auth.Service,
 	dictionaryUC usecase.DictionaryUsecase,
 	adminUserUC usecase.AdminUserUsecase,
 	adminRoleUC usecase.AdminRoleUsecase,
 	lastViewedCardgroupUC usecase.LastViewedCardgroupUsecase,
-	learnUC *usecase.LearnUsecase,
+	learnUC usecase.LearnUsecase,
 ) *Resolver {
 	return &Resolver{
 		UserUC:                user,

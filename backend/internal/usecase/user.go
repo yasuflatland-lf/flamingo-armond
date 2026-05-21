@@ -26,21 +26,28 @@ type UserRolesRepository interface {
 	ListByUser(ctx context.Context, userID string) ([]*domain.Role, error)
 }
 
-type UserUsecase struct {
+// UserUsecase is the authenticated user profile and role-query surface.
+type UserUsecase interface {
+	Me(ctx context.Context) (*domain.User, error)
+	RolesFor(ctx context.Context, targetID string) ([]*domain.Role, error)
+	UpdateUser(ctx context.Context, in UpdateUserInput) (UpdateProfileOutcome, error)
+}
+
+type userUsecase struct {
 	repo   UserRepository
 	roles  UserRolesRepository
 	auth   AdminChecker
 	logger *slog.Logger
 }
 
-func NewUserUsecase(repo UserRepository, roles UserRolesRepository, authSvc AdminChecker, logger *slog.Logger) *UserUsecase {
+func NewUserUsecase(repo UserRepository, roles UserRolesRepository, authSvc AdminChecker, logger *slog.Logger) UserUsecase {
 	if logger == nil {
 		panic("usecase: user: logger is required")
 	}
-	return &UserUsecase{repo: repo, roles: roles, auth: authSvc, logger: logger}
+	return &userUsecase{repo: repo, roles: roles, auth: authSvc, logger: logger}
 }
 
-func (u *UserUsecase) Me(ctx context.Context) (*domain.User, error) {
+func (u *userUsecase) Me(ctx context.Context) (*domain.User, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
 		return nil, ucerr.ErrUnauthenticated
@@ -58,7 +65,7 @@ func (u *UserUsecase) Me(ctx context.Context) (*domain.User, error) {
 	return nil, eris.Wrap(err, "usecase: Me: find user by ID")
 }
 
-func (u *UserUsecase) RolesFor(ctx context.Context, targetID string) ([]*domain.Role, error) {
+func (u *userUsecase) RolesFor(ctx context.Context, targetID string) ([]*domain.Role, error) {
 	caller := auth.UserFrom(ctx)
 	if caller == nil || caller.Sub == "" {
 		return nil, ucerr.ErrUnauthenticated
@@ -111,7 +118,7 @@ type UpdateProfileOutcome struct {
 // bio is optional (nil = unchanged, "" = explicit clear) and capped at 500
 // graphemes. Validation failures are returned via the outcome's Validation
 // field, not on the error channel.
-func (u *UserUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (UpdateProfileOutcome, error) {
+func (u *userUsecase) UpdateUser(ctx context.Context, in UpdateUserInput) (UpdateProfileOutcome, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
 		return UpdateProfileOutcome{}, ucerr.ErrUnauthenticated
