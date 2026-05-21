@@ -63,7 +63,7 @@ Every client component that dispatches on a GraphQL union's `__typename`:
 The unknown-variant branch is load-bearing precisely because GraphQL unions are
 additive — the backend may ship a new variant before the frontend regenerates,
 and the fallthrough is what surfaces the version skew in operator logs instead
-of letting it surface as a blank UI. Reference: `frontend/src/app/admin/users/[id]/edit/AdminUserEditClient.tsx`
+of letting it surface as a blank UI. Reference: `frontend/src/app/admin/users/[id]/edit/admin-user-edit-client.tsx`
 (`handleSave`, `handleRoleToggle`), `frontend/src/app/admin/roles/[id]/edit/edit-role-client.tsx`,
 `frontend/src/app/admin/roles/new/new-role-client.tsx`, and
 `frontend/src/app/cardgroups/new/new-cardgroup-client.tsx` — all follow the
