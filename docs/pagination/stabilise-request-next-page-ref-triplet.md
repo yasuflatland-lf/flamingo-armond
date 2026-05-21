@@ -1,46 +1,65 @@
-# Stabilise `requestNextPage` via the cursor / search / hasNextPage ref triplet
+# Stabilise `requestNextPage` with `useEffectEvent` and a same-tick mutex
 
 > Part of the [pagination](../../.claude/rules/pagination.md) rules. Cross-referenced by `docs/backend.md` and `frontend/CLAUDE.md`.
 
-The `useCallback` for `requestNextPage` reads three values that change every time a page lands or the user types into the search box: `endCursor`, `searchQuery`, and `hasNextPage`. If any of them appear in the callback's dep array, the callback gets a fresh identity on every advance — and the IntersectionObserver `useEffect` (which lists `requestNextPage` as a dep) tears down and re-attaches the observer on every page transition. The fix is to mirror all three values into refs and read them via `*.current` inside the callback, leaving only Apollo's stable `fetchMore` (and any cardgroup-id parameter) in the dep array:
+This is the compatibility page for the old ref-triplet wording. The recommended React 19.2 shape for IntersectionObserver pagination is `useEffectEvent`.
+
+The production pattern keeps the request logic in a normal helper and moves the observer-only latest-value read into an Effect Event:
 
 ```tsx
-const endCursorRef = useRef(endCursor);
-const searchQueryRef = useRef(searchQuery);
-const hasNextPageRef = useRef(hasNextPage);
-useEffect(() => { endCursorRef.current = endCursor; }, [endCursor]);
-useEffect(() => { searchQueryRef.current = searchQuery; }, [searchQuery]);
-useEffect(() => { hasNextPageRef.current = hasNextPage; }, [hasNextPage]);
+const fetchNextPage = useCallback(
+  ({ hasNextPage, endCursor, searchQuery }: {
+    hasNextPage: boolean;
+    endCursor: string | null;
+    searchQuery: string | null;
+  }) => {
+    if (fetchingRef.current || !hasNextPage) return;
+    fetchingRef.current = true;
+    fetchMore({
+      variables: {
+        ...DEFAULT_VARS,
+        after: endCursor,
+        search: searchQuery,
+      },
+    })
+      .then(() => setFetchMoreError(null))
+      .catch((err) => { /* ...structured warn + banner... */ })
+      .finally(() => {
+        fetchingRef.current = false;
+      });
+  },
+  [fetchMore],
+);
 
-const requestNextPage = useCallback(() => {
-  if (fetchingRef.current || !hasNextPageRef.current) return;
-  fetchingRef.current = true;
-  fetchMore({
-    variables: {
-      ...DEFAULT_VARS,
-      after: endCursorRef.current,
-      search: searchQueryRef.current,
-    },
-    /* ... */
-  })
-    .then(() => setFetchMoreError(null))
-    .catch((err) => { /* ...structured warn + banner... */ })
-    .finally(() => { fetchingRef.current = false; });
-}, [fetchMore]); // stable identity across page advances + search-text edits
+const requestNextPageFromObserver = useEffectEvent(() => {
+  fetchNextPage({ hasNextPage, endCursor, searchQuery });
+});
 
 useEffect(() => {
   if (!hasNextPage || fetchMoreError != null) return;
   const node = sentinelRef.current;
   if (!node) return;
   const observer = new IntersectionObserver((entries) => {
-    if (!entries[0]?.isIntersecting || fetchingRef.current) return;
-    requestNextPage();
+    if (!entries[0]?.isIntersecting) return;
+    requestNextPageFromObserver();
   });
   observer.observe(node);
   return () => observer.disconnect();
-}, [hasNextPage, fetchMoreError, requestNextPage]);
+}, [hasNextPage, fetchMoreError]);
 ```
 
-**Why apply all three refs together, not just one:** mirroring only `endCursor` while leaving `searchQuery` in the dep array still re-creates the callback on every keystroke; mirroring only `searchQuery` still re-creates it on every page advance. The triplet is the minimal stable set: `endCursor` advances per page, `searchQuery` changes per debounced input, `hasNextPage` flips when the last page is reached. The observer effect's structural deps (`hasNextPage`, `fetchMoreError`) are intentionally still real deps — those are the conditions that should re-subscribe the observer. Dropping `hasNextPage` from the effect's dep array would leave the observer attached past the last page; the rule keeps `hasNextPage` as a structural dep AND mirrors it into a ref so the callback's runtime check reads the current value without taking a per-advance dep.
+`useEffectEvent` reads the latest committed `hasNextPage`, `endCursor`, and `searchQuery`, but it is not a stable callback identity. That is fine here because the observer callback is created inside the `useEffect` that owns the subscription. The Effect Event must only be called from Effects or callbacks registered by Effects; do not call it from UI event handlers like Retry buttons.
 
-**How to apply:** any paginated hook or client component that subscribes to an IntersectionObserver and advances via `fetchMore` MUST apply the triplet. Today's call sites are `frontend/src/app/cardgroups/cardgroups-client.tsx`, `frontend/src/app/cardgroups/[id]/cards/use-cards-connection.ts` (consumed by `cards-client.tsx`), and `frontend/src/app/admin/users/AdminUsersClient.tsx`. New paginated hooks should follow the same shape from the start — keep the `requestNextPage` dep array narrow to `[fetchMore]` (plus any caller-stable scalar like `cardgroupId`) and mirror every state value the body reads. This rule extends [the IntersectionObserver in-flight guard](intersection-observer-in-flight-guard.md): that rule covers the boolean re-entrancy guard; this rule covers the cursor/search/hasNextPage cohort that drives the callback's identity.
+Keep `fetchingRef` as the explicit same-tick in-flight mutex. `useEffectEvent` does not serialize overlapping `fetchMore` calls, and `useTransition` would not guard synchronous repeated observer fires before pending state commits.
+
+Retry should call the parameterized helper directly, not the Effect Event:
+
+```tsx
+const retryFetchMore = useCallback(() => {
+  fetchNextPage({ hasNextPage, endCursor, searchQuery });
+}, [fetchNextPage, hasNextPage, endCursor, searchQuery]);
+```
+
+The observer effect keeps structural deps such as `hasNextPage` / `pageInfo.hasNextPage` and `fetchMoreError`. It should not depend on the Effect Event's latest-value reads.
+
+**How to apply:** any paginated hook or client component that subscribes to an IntersectionObserver and advances via `fetchMore` should use this pattern. Today's call sites are `frontend/src/app/cardgroups/cardgroups-client.tsx`, `frontend/src/app/cardgroups/[id]/cards/use-cards-connection.ts` (consumed by `cards-client.tsx`), and `frontend/src/app/admin/users/AdminUsersClient.tsx`. New paginated hooks should keep the helper parameterized and keep the observer path Effect-owned; do not reintroduce the cursor/search/hasNextPage ref triplet unless you are in a non-Effect callback that cannot call an Effect Event.

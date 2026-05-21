@@ -57,6 +57,7 @@ When migrating an existing flat list to a Connection type, keep the old field wi
 ## Frontend pagination UX
 
 - **`fetchMoreError != null` halts the IO loop.** Without an error halt gate, the IO keeps firing on the same failed cursor and loops invisibly with only `console.error` noise. Set state to a banner string in the `fetchMore` `.catch`, render a Retry button that clears the state and re-invokes the request, and short-circuit the IO `useEffect` while the error is set.
+- **`useEffectEvent` for observer-owned latest-value reads; normal callbacks for Retry.** In React 19.2, the observer callback should call an Effect Event that reads the latest committed `hasNextPage`, `endCursor`, and `searchQuery` values. The Effect Event must only be invoked from the Effect-owned `IntersectionObserver` callback, not from UI event handlers like Retry buttons. Retry should call the parameterized `fetchNextPage({ hasNextPage, endCursor, searchQuery })` helper directly. Keep `fetchingRef` as the explicit same-tick mutex because `useEffectEvent` does not serialize overlapping `fetchMore` calls and `useTransition` does not block synchronous repeated observer fires before pending state commits.
 - **`NetworkStatus.fetchMore`, not magic number.** Always import the named `NetworkStatus` enum from `@apollo/client`. Magic numbers silently rot if Apollo renumbers (vanishingly rare, but the named import costs nothing).
 
 ### Further reading (on-demand)
@@ -66,7 +67,7 @@ When migrating an existing flat list to a Connection type, keep the old field wi
 - [`useEffect` cleanup must not fire `void asyncFn()` for navigation-time side effects](../../docs/pagination/useeffect-cleanup-no-void-async.md)
 - [`beforeunload` flush is browser-cancellable; gate the warn on pending count](../../docs/pagination/beforeunload-flush-gate-on-pending.md)
 - [Capture `console.warn` for MockedProvider leaks, then assert in teardown](../../docs/pagination/capture-mockedprovider-warn-leaks.md)
-- [Stabilise `requestNextPage` via the cursor / search / hasNextPage ref triplet](../../docs/pagination/stabilise-request-next-page-ref-triplet.md)
+- [Stabilise `requestNextPage` with `useEffectEvent` and a same-tick mutex](../../docs/pagination/stabilise-request-next-page-ref-triplet.md)
 - [Synchronous SSR cache seed in the render body, not in a `useEffect`](../../docs/pagination/synchronous-ssr-cache-seed.md)
 - [Split debounce from immediate-reset effects on the same input](../../docs/pagination/split-debounce-from-immediate-reset.md)
 - [Load-bearing `biome-ignore` comments](../../docs/pagination/load-bearing-biome-ignore.md)
