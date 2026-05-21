@@ -203,15 +203,8 @@ func (u *CardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardg
 		return UpdateCardgroupOutcome{Validation: info}, nil
 	}
 
-	if renameErr := existing.Rename(name); renameErr != nil {
-		info, err := liftValidationErr(translateCardgroupNameErr(renameErr))
-		if err != nil {
-			return UpdateCardgroupOutcome{}, err
-		}
-		if info != nil {
-			return UpdateCardgroupOutcome{Validation: info}, nil
-		}
-		return UpdateCardgroupOutcome{}, eris.Wrap(renameErr, "usecase: cardgroup: rename")
+	if err := existing.Rename(name); err != nil {
+		return UpdateCardgroupOutcome{}, eris.Wrap(err, "usecase: cardgroup: rename")
 	}
 
 	nameStr := existing.Name.String()
