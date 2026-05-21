@@ -99,7 +99,7 @@ const dictionaryParsedRowCap = 5000
 // dictionaryUsecase wires the auth check, the textdic parser, the card
 // repository, and the transaction runner that persists the upsert.
 type dictionaryUsecase struct {
-	auth              AdminChecker
+	adminGate         *AdminGate
 	cardRepo          DictionaryCardRepository
 	tx                txRunner
 	processDictionary func(string) ([]textdic.ParsedWord, []textdic.ValidationError, error)
@@ -110,11 +110,11 @@ type dictionaryUsecase struct {
 // used to open transactions; pass the same *gorm.DB used by the other
 // usecase constructors. Passing a nil db defers transaction wiring; the
 // usecase will return INTERNAL when Upsert is invoked without a tx runner.
-func NewDictionaryUsecase(authSvc AdminChecker, cardRepo DictionaryCardRepository, db *gorm.DB, logger *slog.Logger) *dictionaryUsecase {
+func NewDictionaryUsecase(adminGate *AdminGate, cardRepo DictionaryCardRepository, db *gorm.DB, logger *slog.Logger) *dictionaryUsecase {
 	if logger == nil {
 		panic("usecase: dictionary: logger is required")
 	}
-	uc := &dictionaryUsecase{auth: authSvc, cardRepo: cardRepo, processDictionary: textdic.Process, logger: logger}
+	uc := &dictionaryUsecase{adminGate: adminGate, cardRepo: cardRepo, processDictionary: textdic.Process, logger: logger}
 	if db != nil {
 		uc.tx = func(ctx context.Context, fn func(tx *gorm.DB) error) error {
 			return db.WithContext(ctx).Transaction(fn)
@@ -126,16 +126,16 @@ func NewDictionaryUsecase(authSvc AdminChecker, cardRepo DictionaryCardRepositor
 // NewDictionaryUsecaseWithTx is the test-time constructor that injects an
 // explicit transaction runner. Production callers must use
 // NewDictionaryUsecase.
-func NewDictionaryUsecaseWithTx(authSvc AdminChecker, cardRepo DictionaryCardRepository, tx txRunner, logger *slog.Logger) *dictionaryUsecase {
+func NewDictionaryUsecaseWithTx(adminGate *AdminGate, cardRepo DictionaryCardRepository, tx txRunner, logger *slog.Logger) *dictionaryUsecase {
 	if logger == nil {
 		panic("usecase: dictionary: logger is required")
 	}
-	return &dictionaryUsecase{auth: authSvc, cardRepo: cardRepo, tx: tx, processDictionary: textdic.Process, logger: logger}
+	return &dictionaryUsecase{adminGate: adminGate, cardRepo: cardRepo, tx: tx, processDictionary: textdic.Process, logger: logger}
 }
 
 func (u *dictionaryUsecase) Validate(ctx context.Context, payload string) (ValidateDictionaryOutcome, error) {
-	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return ValidateDictionaryOutcome{}, wrapAdminGateError(err, "usecase: dictionary validate: check admin")
+	if _, err := u.adminGate.Require(ctx, "usecase: dictionary validate: check admin"); err != nil {
+		return ValidateDictionaryOutcome{}, err
 	}
 
 	if payload == "" {
@@ -175,8 +175,8 @@ func (u *dictionaryUsecase) Validate(ctx context.Context, payload string) (Valid
 // parser) returns a zero-valued result with the parser error surfaced via
 // Output.Errors.
 func (u *dictionaryUsecase) Upsert(ctx context.Context, input UpsertDictionaryInput) (UpsertDictionaryOutput, error) {
-	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return UpsertDictionaryOutput{}, wrapAdminGateError(err, "usecase: dictionary upsert: check admin")
+	if _, err := u.adminGate.Require(ctx, "usecase: dictionary upsert: check admin"); err != nil {
+		return UpsertDictionaryOutput{}, err
 	}
 
 	if input.CardgroupID == "" {

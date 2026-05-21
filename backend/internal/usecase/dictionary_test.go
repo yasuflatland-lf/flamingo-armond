@@ -148,7 +148,7 @@ func TestDictionaryUsecase_ValidateHappyPath(t *testing.T) {
 
 	payload := buildPayload(t, [][2]string{{"apple", jpRunes(3)}})
 	auth := &mockAdminChecker{isAdmin: true}
-	uc := NewDictionaryUsecaseWithTx(auth, nil, nil, newTestLogger())
+	uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), nil, nil, newTestLogger())
 
 	out, err := uc.Validate(authedCtx("admin-1"), payload)
 
@@ -180,7 +180,7 @@ func TestDictionaryUsecase_ValidateAuthGate(t *testing.T) {
 	t.Run("anonymous", func(t *testing.T) {
 		t.Parallel()
 		auth := &mockAdminChecker{isAdmin: true}
-		uc := NewDictionaryUsecaseWithTx(auth, nil, nil, newTestLogger())
+		uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), nil, nil, newTestLogger())
 
 		_, err := uc.Validate(anonCtx(), payload)
 
@@ -193,7 +193,7 @@ func TestDictionaryUsecase_ValidateAuthGate(t *testing.T) {
 	t.Run("non-admin", func(t *testing.T) {
 		t.Parallel()
 		auth := &mockAdminChecker{isAdmin: false}
-		uc := NewDictionaryUsecaseWithTx(auth, nil, nil, newTestLogger())
+		uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), nil, nil, newTestLogger())
 
 		_, err := uc.Validate(authedCtx("user-1"), payload)
 
@@ -206,7 +206,7 @@ func TestDictionaryUsecase_ValidateAuthGate(t *testing.T) {
 	t.Run("admin-check error", func(t *testing.T) {
 		t.Parallel()
 		auth := &mockAdminChecker{err: errors.New("db died")}
-		uc := NewDictionaryUsecaseWithTx(auth, nil, nil, newTestLogger())
+		uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), nil, nil, newTestLogger())
 
 		_, err := uc.Validate(authedCtx("admin-1"), payload)
 
@@ -219,14 +219,14 @@ func TestDictionaryUsecase_ValidatePayloadErrors(t *testing.T) {
 
 	t.Run("empty payload", func(t *testing.T) {
 		t.Parallel()
-		uc := NewDictionaryUsecaseWithTx(&mockAdminChecker{isAdmin: true}, nil, nil, newTestLogger())
+		uc := NewDictionaryUsecaseWithTx(NewAdminGate(&mockAdminChecker{isAdmin: true}), nil, nil, newTestLogger())
 		_, err := uc.Validate(authedCtx("admin-1"), "")
 		assertValidationError(t, err, "payload", "payload must not be empty")
 	})
 
 	t.Run("bad base64", func(t *testing.T) {
 		t.Parallel()
-		uc := NewDictionaryUsecaseWithTx(&mockAdminChecker{isAdmin: true}, nil, nil, newTestLogger())
+		uc := NewDictionaryUsecaseWithTx(NewAdminGate(&mockAdminChecker{isAdmin: true}), nil, nil, newTestLogger())
 		_, err := uc.Validate(authedCtx("admin-1"), "!!!not-base64!!!")
 		assertValidationError(t, err, "payload", "payload must be standard base64-encoded text")
 	})
@@ -236,7 +236,7 @@ func TestDictionaryUsecase_ValidateReturnsParserDiagnostics(t *testing.T) {
 	t.Parallel()
 
 	auth := &mockAdminChecker{isAdmin: true}
-	uc := NewDictionaryUsecaseWithTx(auth, nil, nil, newTestLogger())
+	uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), nil, nil, newTestLogger())
 	payload := base64.StdEncoding.EncodeToString([]byte("orphan"))
 
 	out, err := uc.Validate(authedCtx("admin-1"), payload)
@@ -262,7 +262,7 @@ func TestDictionaryUsecase_ValidateParserFailure(t *testing.T) {
 	t.Parallel()
 
 	auth := &mockAdminChecker{isAdmin: true}
-	uc := NewDictionaryUsecaseWithTx(auth, nil, nil, newTestLogger())
+	uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), nil, nil, newTestLogger())
 	uc.processDictionary = func(string) ([]textdic.ParsedWord, []textdic.ValidationError, error) {
 		return nil, nil, errors.New("parser boom")
 	}
@@ -293,7 +293,7 @@ func TestDictionaryUsecase_AdminAllInserts(t *testing.T) {
 	repo := &mockDictCardRepo{inserted: n, updated: 0}
 	auth := &mockAdminChecker{isAdmin: true}
 	tx, calls := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(auth, repo, tx, newTestLogger())
+	uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), repo, tx, newTestLogger())
 
 	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
@@ -358,7 +358,7 @@ func TestDictionaryUsecase_AdminMixedInsertsAndUpdates(t *testing.T) {
 	repo := &mockDictCardRepo{preExisting: preExisting}
 	auth := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(auth, repo, tx, newTestLogger())
+	uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), repo, tx, newTestLogger())
 
 	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
@@ -411,7 +411,7 @@ func TestDictionaryUsecase_NonAdminForbidden(t *testing.T) {
 	repo := &mockDictCardRepo{}
 	auth := &mockAdminChecker{isAdmin: false}
 	tx, calls := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(auth, repo, tx, newTestLogger())
+	uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), repo, tx, newTestLogger())
 
 	_, err := uc.Upsert(authedCtx("user-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
@@ -441,7 +441,7 @@ func TestDictionaryUsecase_AnonymousUnauthenticated(t *testing.T) {
 	repo := &mockDictCardRepo{}
 	auth := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(auth, repo, tx, newTestLogger())
+	uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), repo, tx, newTestLogger())
 
 	_, err := uc.Upsert(anonCtx(), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
@@ -470,7 +470,7 @@ func TestDictionaryUsecase_PayloadOverCapBadInput(t *testing.T) {
 	repo := &mockDictCardRepo{}
 	auth := &mockAdminChecker{isAdmin: true}
 	tx, calls := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(auth, repo, tx, newTestLogger())
+	uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), repo, tx, newTestLogger())
 
 	_, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
@@ -520,7 +520,7 @@ func TestDictionaryUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
 	repo := &mockDictCardRepo{inserted: 3}
 	authChk := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx, newTestLogger())
+	uc := NewDictionaryUsecaseWithTx(NewAdminGate(authChk), repo, tx, newTestLogger())
 
 	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
@@ -580,7 +580,7 @@ func TestDictionaryUsecase_ValidSkipValidMixedPayload(t *testing.T) {
 	repo := &mockDictCardRepo{inserted: 2}
 	authChk := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx, newTestLogger())
+	uc := NewDictionaryUsecaseWithTx(NewAdminGate(authChk), repo, tx, newTestLogger())
 
 	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
@@ -623,7 +623,7 @@ func TestDictionaryUsecase_SkippedLoneFrontDoesNotReachRepository(t *testing.T) 
 	repo := &mockDictCardRepo{}
 	authChk := &mockAdminChecker{isAdmin: true}
 	tx, calls := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx, newTestLogger())
+	uc := NewDictionaryUsecaseWithTx(NewAdminGate(authChk), repo, tx, newTestLogger())
 
 	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
@@ -677,7 +677,7 @@ func TestDictionaryUsecase_AdminCheckerErrorBecomesInternal(t *testing.T) {
 	repo := &mockDictCardRepo{}
 	auth := &mockAdminChecker{err: errors.New("db died")}
 	tx, calls := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(auth, repo, tx, newTestLogger())
+	uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), repo, tx, newTestLogger())
 
 	_, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
@@ -707,7 +707,7 @@ func TestDictionaryUsecase_RepoErrorBecomesInternal(t *testing.T) {
 	repo := &mockDictCardRepo{returnErr: errors.New("db: boom")}
 	authChk := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx, newTestLogger())
+	uc := NewDictionaryUsecaseWithTx(NewAdminGate(authChk), repo, tx, newTestLogger())
 
 	_, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
@@ -730,7 +730,7 @@ func TestDictionaryUsecase_EmptyCardgroupIDBadInput(t *testing.T) {
 	repo := &mockDictCardRepo{}
 	authChk := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx, newTestLogger())
+	uc := NewDictionaryUsecaseWithTx(NewAdminGate(authChk), repo, tx, newTestLogger())
 
 	_, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "",
@@ -750,7 +750,7 @@ func TestDictionaryUsecase_EmptyPayloadBadInput(t *testing.T) {
 	repo := &mockDictCardRepo{}
 	authChk := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx, newTestLogger())
+	uc := NewDictionaryUsecaseWithTx(NewAdminGate(authChk), repo, tx, newTestLogger())
 
 	_, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
@@ -771,7 +771,7 @@ func TestDictionaryUsecase_BadBase64BadInput(t *testing.T) {
 	repo := &mockDictCardRepo{}
 	authChk := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx, newTestLogger())
+	uc := NewDictionaryUsecaseWithTx(NewAdminGate(authChk), repo, tx, newTestLogger())
 
 	_, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
@@ -807,7 +807,7 @@ func TestDictionaryUsecase_DuplicateFrontDeduplicatedAndSurfaced(t *testing.T) {
 	repo := &mockDictCardRepo{inserted: 1, updated: 0}
 	authChk := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(authChk, repo, tx, newTestLogger())
+	uc := NewDictionaryUsecaseWithTx(NewAdminGate(authChk), repo, tx, newTestLogger())
 
 	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
 		CardgroupID: "cg-target",
