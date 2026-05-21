@@ -1,6 +1,3 @@
-// Package usecase — validator helpers.
-// translateErr functions consolidate domain-sentinel-to-ucerr translation in
-// one file so the mapping logic is easy to audit and update in one place.
 package usecase
 
 import (
@@ -16,24 +13,21 @@ import (
 // validateRelayArgs enforces Relay pagination argument coherence.
 // The Relay spec pairs after with first (forward direction) and before with
 // last (backward direction). The five guards below reject every other
-// combination before any repository call is made, so callers never receive a
-// silently re-interpreted page boundary.
+// combination so callers never receive a silently re-interpreted page boundary.
+// Callers should invoke this before any repository call so invalid arguments
+// are rejected early.
 //
 // Returns a *ucerr.ValidationError on violation; nil otherwise.
 func validateRelayArgs(first, last *int, after, before *string) error {
-	// Mutual exclusion: cursors from opposite directions cannot coexist.
 	if after != nil && before != nil {
 		return ucerr.NewValidationError("after", "after and before are mutually exclusive")
 	}
-	// Direction mismatch: first (forward count) paired with before (backward cursor).
 	if first != nil && *first > 0 && before != nil {
 		return ucerr.NewValidationError("before", "before requires last, not first")
 	}
-	// Direction mismatch: last (backward count) paired with after (forward cursor).
 	if last != nil && *last > 0 && after != nil {
 		return ucerr.NewValidationError("after", "after requires first, not last")
 	}
-	// Cursor without companion count: page size and direction are unresolvable.
 	if before != nil && (first == nil || *first <= 0) && (last == nil || *last <= 0) {
 		return ucerr.NewValidationError("before", "before requires last")
 	}

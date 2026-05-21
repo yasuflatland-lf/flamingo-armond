@@ -1,6 +1,3 @@
-// Package usecase — authentication guard helpers.
-// requireCallerSub centralises the nil-or-empty-Sub check so every usecase
-// method can share the same guard without repeating the two-condition predicate.
 package usecase
 
 import (
@@ -8,13 +5,11 @@ import (
 	"backend/internal/usecase/ucerr"
 )
 
-// requireCallerSub returns ucerr.ErrUnauthenticated if caller is nil or has an
-// empty Sub claim. Call sites should return their own zero values alongside the
-// returned error, for example:
-//
-//	if err := requireCallerSub(caller); err != nil {
-//	    return nil, err
-//	}
+// requireCallerSub returns ucerr.ErrUnauthenticated bare when caller is nil or
+// has an empty Sub claim. Callers MUST NOT wrap the returned error before
+// returning it: gqlerr.FromUsecaseError uses errors.Is to detect the sentinel,
+// and any eris.Wrap around it causes the resolver to emit INTERNAL instead of
+// UNAUTHENTICATED.
 func requireCallerSub(caller *auth.AuthUser) error {
 	if caller == nil || caller.Sub == "" {
 		return ucerr.ErrUnauthenticated
