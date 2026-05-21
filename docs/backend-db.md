@@ -1,6 +1,6 @@
 # Backend database
 
-> Pool / interface design, migrations (golang-migrate), `schema_migrations` and RLS, `SECURITY DEFINER` helper recipe, startup ordering, env vars. See `docs/backend.md` for runtime, `docs/playbook-patterns.md` § "Recovering from a dirty migration" for incident recovery, and `.claude/rules/go-library-gotchas.md` for GORM-specific quirks.
+> Pool / interface design, migrations (golang-migrate), `schema_migrations` and RLS, `SECURITY DEFINER` helper recipe, startup ordering, env vars. See `docs/backend.md` for runtime, [`docs/playbook-patterns.md` § "Recovering from a dirty migration"](playbook-patterns.md#recovering-from-a-dirty-migration) for incident recovery, and `.claude/rules/go-library-gotchas.md` for GORM-specific quirks.
 
 ## Database
 
@@ -16,7 +16,7 @@ Migration files live under `backend/internal/database/migrations/`. Go's `//go:e
 
 **Filename format: `yyyymmddhhmmss_<short_snake_case_description>.{up,down}.sql`** — the 14-digit timestamp prefix is the numeric version `golang-migrate` records in `public.schema_migrations` and uses to order files. New migrations therefore need a timestamp strictly greater than every existing file (UTC is fine; the values just need to sort correctly). The trailing description is for human readers and is not parsed — pick a short verb-led summary like `create_cards`, `enable_rls_deny_all`, or `initial_schema`. Up and down halves must share the same prefix and description so `golang-migrate` can pair them.
 
-When a migration fails mid-run, `schema_migrations.dirty=true` is set. Recovery requires an operator to run `migrate force <version>`. The `run()` function treats any migration error as fatal and returns immediately (fail-fast). See `docs/playbook-patterns.md` § "Recovering from a dirty migration" for the operator runbook.
+When a migration fails mid-run, `schema_migrations.dirty=true` is set. Recovery requires an operator to run `migrate force <version>`. The `run()` function treats any migration error as fatal and returns immediately (fail-fast). See [`docs/playbook-patterns.md` § "Recovering from a dirty migration"](playbook-patterns.md#recovering-from-a-dirty-migration) for the operator runbook.
 
 **`UPDATE schema_migrations SET dirty = false` alone is not enough.** A failed up migration leaves both `dirty = true` AND `version` pointing at the failed migration. Clearing only the dirty flag leaves the version pointing at the failed file, so the next `Steps(1)` call goes looking for migration `<failed+1>` and fails with `os.ErrNotExist`. The idiomatic recovery is `m.Force(<predecessor_version>)` — it rewrites both fields atomically and lets `Steps(1)` re-apply the original migration. The same gotcha applies to test code that simulates a dirty state via the migrate Go API; see `MigrateForceForTest` in `internal/database/export_test.go`.
 
