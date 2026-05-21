@@ -2,7 +2,7 @@
 
 import { useApolloClient, useMutation } from "@apollo/client/react";
 import { Search } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import { useCallback, useRef, useState } from "react";
 import {
   DeleteCardMutation,
@@ -127,7 +127,7 @@ export function CardsClient({
     message: string;
   } | null>(null);
   // Per-card SwipeableRow handles; lets a row close any half-open sibling.
-  const rowRefs = useRef<Map<string, React.RefObject<SwipeableRowHandle | null>>>(new Map());
+  const rowRefs = useRef<Map<string, RefObject<SwipeableRowHandle | null>>>(new Map());
   const selection = useBulkSelection<string>();
   const search = useDebouncedSearch();
   // Per-row delete commit error banner persists across useMutation calls.

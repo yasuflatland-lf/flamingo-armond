@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 
 export interface UseBulkSelectionResult<TId extends PropertyKey> {
   selectedIds: ReadonlySet<TId>;
@@ -30,7 +30,7 @@ export function useBulkSelection<TId extends PropertyKey = string>(): UseBulkSel
 
   const isSelected = useCallback((id: TId) => selectedIds.has(id), [selectedIds]);
 
-  const count = useMemo(() => selectedIds.size, [selectedIds]);
+  const count = selectedIds.size;
 
   return {
     selectedIds,
