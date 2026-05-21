@@ -311,7 +311,10 @@ func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 			}
 			return UpdateCardOutcome{Validation: info}, nil
 		}
-		s := front.String()
+		if err := existing.UpdateFront(front); err != nil {
+			return UpdateCardOutcome{}, eris.Wrap(err, "usecase: card: update front")
+		}
+		s := existing.Front.String()
 		patch.Front = &s
 	}
 	if in.Back != nil {
@@ -323,7 +326,10 @@ func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 			}
 			return UpdateCardOutcome{Validation: info}, nil
 		}
-		s := back.String()
+		if err := existing.UpdateBack(back); err != nil {
+			return UpdateCardOutcome{}, eris.Wrap(err, "usecase: card: update back")
+		}
+		s := existing.Back.String()
 		patch.Back = &s
 	}
 

@@ -320,6 +320,12 @@ func TestCardUsecase_Update_NonOwnerAndPatch(t *testing.T) {
 		if cardRepo.capturedPatch.Front == nil || *cardRepo.capturedPatch.Front != newFront {
 			t.Fatalf("unexpected patch: %+v", cardRepo.capturedPatch)
 		}
+		// Route-through assertion: the patch is derived from the mutated aggregate,
+		// so *patch.Front must equal existing.Front.String() after UpdateFront ran.
+		if *cardRepo.capturedPatch.Front != existing.Front.String() {
+			t.Fatalf("patch.Front %q != existing.Front %q: aggregate mutation did not propagate to patch",
+				*cardRepo.capturedPatch.Front, existing.Front.String())
+		}
 		if cardRepo.capturedPatch.Back != nil {
 			t.Fatalf("back should be unchanged: %+v", cardRepo.capturedPatch)
 		}
