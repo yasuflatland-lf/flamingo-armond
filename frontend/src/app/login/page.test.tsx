@@ -147,6 +147,42 @@ describe("LoginPage", () => {
     it("main landmark is present for screen reader navigation", () => {
       expect(screen.getByRole("main")).toBeInTheDocument();
     });
+
+    it("mobile brand header exists with lg:hidden class (visible on sub-lg only)", () => {
+      const mobileBrand = container.querySelector("[data-testid='form-brand-header']");
+      expect(mobileBrand).toBeInTheDocument();
+      expect(mobileBrand?.className).toMatch(/lg:hidden/);
+      expect(mobileBrand?.textContent).toContain("flamingo-armond");
+    });
+
+    it("sub-copy explaining OAuth-first-time semantics is rendered under h1", () => {
+      expect(screen.getByText(/sign in with your google account to continue/i)).toBeInTheDocument();
+      expect(screen.getByText(/an account is created on first sign-in/i)).toBeInTheDocument();
+    });
+
+    it("brand panel comes after the form column in DOM order (right-side placement)", () => {
+      const grid = container.querySelector("[data-testid='login-grid']");
+      const brandPanel = container.querySelector("[data-testid='brand-panel']");
+      expect(grid).toBeInTheDocument();
+      expect(brandPanel).toBeInTheDocument();
+      const children = Array.from(grid?.children ?? []);
+      const formIndex = children.findIndex(
+        (el) => el.querySelector("[data-testid='form-brand-header']") !== null,
+      );
+      const brandIndex = children.indexOf(brandPanel as Element);
+      expect(brandIndex).not.toBe(-1);
+      expect(formIndex).toBe(0);
+      expect(brandIndex).toBe(1);
+    });
+
+    it("form-brand-header and brand-panel have mutually exclusive viewport visibility", () => {
+      const formBrandHeader = container.querySelector("[data-testid='form-brand-header']");
+      const brandPanel = container.querySelector("[data-testid='brand-panel']");
+      expect(formBrandHeader?.className).toMatch(/lg:hidden/);
+      expect(formBrandHeader?.className).not.toMatch(/max-lg:hidden/);
+      expect(brandPanel?.className).toMatch(/max-lg:hidden/);
+      expect(brandPanel?.className).not.toMatch(/(^|\s)lg:hidden(\s|$)/);
+    });
   });
 
   it("split-screen: error banner and brand panel both render when error param is set", async () => {
@@ -159,5 +195,23 @@ describe("LoginPage", () => {
     expect(container.querySelector("[data-testid='brand-panel']")).toBeInTheDocument();
     expect(screen.getByText(/sign-in failed: access_denied/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
+  });
+
+  it("error banner has role='alert' so screen readers announce sign-in failure", async () => {
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
+
+    const jsx = await LoginPage({ searchParams: Promise.resolve({ error: "access_denied" }) });
+    render(jsx);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/sign-in failed: access_denied/i);
+  });
+
+  it("no error param: role='alert' element is not present", async () => {
+    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
+
+    const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
+    render(jsx);
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

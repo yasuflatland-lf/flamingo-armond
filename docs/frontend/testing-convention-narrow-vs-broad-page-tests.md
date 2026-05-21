@@ -247,7 +247,31 @@ Tests that assert Tailwind utility names break on design changes (palette swaps,
 
 **Delete** CSS layout and visual class assertions. The behavioral contracts they shadow — keyboard clickability, focus order, accessible names, callback invocation — are already covered by `userEvent` interaction tests and ARIA attribute checks.
 
-Exception: class names that control behavior-affecting DOM attributes (e.g., `pointer-events-none` as a layout mechanism) are still unsuitable for jsdom assertions because jsdom does not enforce hit-testing. Document those invariants in a comment on the component instead.
+Exception: when responsive visibility is the behavioral contract under test — one element visible only on desktop (`max-lg:hidden`) and its sibling visible only on mobile (`lg:hidden`) — the mutual exclusivity between the two is the contract, not a cosmetic detail. Assert both directions on both elements so a copy-paste error that applies the same class to both cannot slip through:
+
+```ts
+// frontend/src/app/login/page.test.tsx
+const formBrandHeader = container.querySelector("[data-testid='form-brand-header']");
+const brandPanel = container.querySelector("[data-testid='brand-panel']");
+expect(formBrandHeader?.className).toMatch(/lg:hidden/);
+expect(formBrandHeader?.className).not.toMatch(/max-lg:hidden/);
+expect(brandPanel?.className).toMatch(/max-lg:hidden/);
+expect(brandPanel?.className).not.toMatch(/(^|\s)lg:hidden(\s|$)/);
+```
+
+### Anchor regex patterns when asserting Tailwind class presence
+
+When asserting that `lg:hidden` is NOT on an element, the regex `/lg:hidden/` falsely matches `max-lg:hidden` because it is a substring. Use a word-boundary anchor so the pattern matches only the standalone token:
+
+```ts
+// WRONG — matches max-lg:hidden, producing a false negative
+expect(el?.className).not.toMatch(/lg:hidden/);
+
+// CORRECT — matches only the standalone lg:hidden token
+expect(el?.className).not.toMatch(/(^|\s)lg:hidden(\s|$)/);
+```
+
+Apply the anchored form on every negative `not.toMatch` for a class that could appear as a suffix or prefix of another class in the same element's class list. Positive `toMatch(/lg:hidden/)` assertions are safe because a false positive still locates the token (it just also matches the longer form), but the negative direction silently passes when it should fail.
 
 ### Assert Lucide icons by specific class, not the generic `/lucide/` class
 
@@ -306,6 +330,22 @@ expect(menuButton).toHaveFocus();
 This tests the behavioral contract (tab from `addLink` lands on `menuButton`) without pinning how many other elements exist beforehand.
 
 Use `await user.tab()` from a fixed anchor any time you need to assert that one interactive element is reachable immediately after another in keyboard navigation order.
+
+### Pin specific `indexOf` positions in DOM-order tests
+
+`expect(brandIndex).toBeGreaterThan(0)` is ambiguous in both failure directions: it passes when `brandIndex` is `2` (wrong order relative to form) and fails with a numeric mismatch when `brandIndex` is `-1` (element absent), with no message naming the missing element. Pin both positions explicitly and add a separate `-1` guard so each failure names its own problem:
+
+```ts
+// BEFORE — loose: passes at index 2 (wrong order), fails cryptically at -1
+expect(brandIndex).toBeGreaterThan(0);
+
+// AFTER — pinned: fails with exact value mismatch; -1 guard names the absent element
+expect(brandIndex).not.toBe(-1);  // guard: names the element if absent
+expect(formIndex).toBe(0);        // pinned position
+expect(brandIndex).toBe(1);       // pinned position
+```
+
+Apply this pattern whenever `children.indexOf(el)` or `findIndex(...)` is used to assert DOM order. The `not.toBe(-1)` guard must come before the positional assertion; otherwise the positional failure message shows `-1 !== 1` and does not indicate which element is missing. Reference: `frontend/src/app/login/page.test.tsx` lines 169–175.
 
 ### Assert `disabled` state behaviorally, not just by attribute
 
@@ -460,4 +500,20 @@ Key constraints:
 - The mock factory's `props` type annotation must include `ref?: RefObject<H | null>` explicitly; without it TypeScript infers `props` as `{}` and the `useImperativeHandle` call cannot reference `props.ref`.
 
 Reference: `frontend/src/app/learn/[cardgroupId]/learn-client.test.tsx` mocking `swipe-card-stack` with a `triggerSwipe` spy exposed via `useImperativeHandle`.
+
+### Assert `role="alert"` absence on clean render paths
+
+An always-rendered `<p role="alert">` wrapper element — one whose text content is conditionally set but whose DOM node is unconditionally present — passes a `queryByText` or `queryByRole("alert", { name: /.../ })` assertion on the clean path (no matching text) while silently hiding the structural regression that the alert node is never removed. The `queryByRole("alert").not.toBeInTheDocument()` assertion catches that regression: if the alert element exists regardless of error state, the assertion fails immediately.
+
+On the clean render path (no error), assert the element is absent entirely. Pair this with a positive assertion on the error path so both sides of the conditional are covered:
+
+```ts
+// clean path — no error param
+expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+// error path — error param present
+expect(screen.getByRole("alert")).toHaveTextContent(/sign-in failed/i);
+```
+
+Reference: `frontend/src/app/login/page.test.tsx` lines 209–215 (absence) and 200–206 (presence).
 

@@ -42,6 +42,8 @@
 
 **Biome 2 — `lint` flags things `format` does not auto-fix.** The formatter accepts multi-line forms that the linter then rejects (e.g. `mockResolvedValue(new Response(...))` that lint wants on a single line). Always run `pnpm --filter frontend lint` (Biome `check`) before declaring done — `format` alone is not sufficient.
 
+**Biome 2 — generated JSX and `expect(...)` calls require `lint:fix` after generation.** Programmatically-generated JSX (e.g. from an AI agent or codemod) often produces multi-line text nodes and multi-line call expressions that fail Biome's linter. Run `pnpm --filter frontend lint:fix` (which executes `biome check --write`) to auto-collapse these shapes. This is the recovery workflow after generation; `lint` alone will flag the violations, but only `lint:fix` resolves them.
+
 **`gqlFetch` revalidate has three states, not two.** `revalidate?: number | false` (in `src/lib/apollo/server.ts`) deliberately preserves the difference between *omitted* (Next default heuristic), `0` (no cache), and `false` (cache forever). Collapsing to a `number` default would silently merge two of them — keep the union and only forward `next.revalidate` when the caller passes it explicitly.
 
 **Generated `graphql()` documents flow types into `gqlFetch` call sites.** `@graphql-codegen/client-preset` emits `TypedDocumentNode<TResult, TVars>`, and `gqlFetch<TResult, TVars>(doc, { variables?: TVars })` infers both from the document. Passing wrong-shaped `variables` to e.g. `HealthQuery` becomes a compile error — do not widen the signature to `Record<string, unknown>`.

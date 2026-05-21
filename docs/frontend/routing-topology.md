@@ -131,3 +131,5 @@ Three rules apply to any future page that adopts this shell (e.g. `/signup`, `/r
 2. **Brand panel hidden below `lg` with `max-lg:hidden`.** The left column hides below `lg`; the right column is always visible. This keeps the mobile experience a single-column form (no wasted vertical space for branding) while letting desktop carry the full-bleed brand panel.
 3. **`<main>` landmark required.** Same as every bare-shell route — see "Bare-shell routes" above.
 
+The Terms / Privacy footer block is wrapped in `<footer>` rather than `<p>` for semantic clarity, though ARIA spec only exposes `<footer>` as the `contentinfo` landmark when it is a direct child of `<body>`. Nested inside `<main>` here, browsers expose it as a generic group, not a landmark; the `<footer>` choice is therefore semantic improvement without a landmark-navigation gain.
+
