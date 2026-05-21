@@ -4,7 +4,7 @@ import { NetworkStatus } from "@apollo/client";
 import { useQuery } from "@apollo/client/react";
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { useFragment } from "@/generated/fragment-masking";
 import type { AdminUsersQuery as AdminUsersQueryResult } from "@/generated/graphql";
 import { classifyQueryError, getBackendErrorBanner } from "@/lib/apollo/errors";
@@ -17,6 +17,12 @@ import {
 
 type Connection = AdminUsersQueryResult["users"];
 type Edge = Connection["edges"][number];
+
+interface FetchNextPageInput {
+  hasNextPage: boolean;
+  endCursor: string | null;
+  searchQuery: string | null;
+}
 
 function UserRow({ edge }: { edge: Edge }) {
   const user = useFragment(AdminUserFieldsFragment, edge.node);
@@ -132,62 +138,54 @@ export function AdminUsersClient() {
   const endCursor = connection?.pageInfo.endCursor ?? null;
   const totalCount = connection?.totalCount ?? 0;
 
-  // Mirror state into refs so requestNextPage can stay identity-stable across
-  // cursor / search / hasNextPage changes. Otherwise the IO observer effect
-  // (which depends on requestNextPage) disconnects + reconnects on every page.
-  const endCursorRef = useRef(endCursor);
-  const searchQueryRef = useRef(searchQuery);
-  const hasNextPageRef = useRef(hasNextPage);
-  useEffect(() => {
-    endCursorRef.current = endCursor;
-  }, [endCursor]);
-  useEffect(() => {
-    searchQueryRef.current = searchQuery;
-  }, [searchQuery]);
-  useEffect(() => {
-    hasNextPageRef.current = hasNextPage;
-  }, [hasNextPage]);
+  const fetchNextPage = useCallback(
+    ({ hasNextPage, endCursor, searchQuery }: FetchNextPageInput) => {
+      if (fetchingRef.current) return;
+      if (!hasNextPage) return;
 
-  const requestNextPage = useCallback(() => {
-    if (fetchingRef.current) return;
-    if (!hasNextPageRef.current) return;
-
-    fetchingRef.current = true;
-    fetchMore({
-      variables: {
-        first: ADMIN_USERS_PAGE_SIZE,
-        after: endCursorRef.current,
-        search: searchQueryRef.current,
-      },
-      updateQuery: (prev, { fetchMoreResult }) => {
-        if (!fetchMoreResult) return prev;
-        return {
-          users: {
-            ...fetchMoreResult.users,
-            edges: [...prev.users.edges, ...fetchMoreResult.users.edges],
-          },
-        };
-      },
-    })
-      .then(() => {
-        setFetchMoreError(null);
+      fetchingRef.current = true;
+      fetchMore({
+        variables: {
+          first: ADMIN_USERS_PAGE_SIZE,
+          after: endCursor,
+          search: searchQuery,
+        },
+        updateQuery: (prev, { fetchMoreResult }) => {
+          if (!fetchMoreResult) return prev;
+          return {
+            users: {
+              ...fetchMoreResult.users,
+              edges: [...prev.users.edges, ...fetchMoreResult.users.edges],
+            },
+          };
+        },
       })
-      .catch((err) => {
-        // Structured warn for operator triage: name + request context only.
-        // err.message is omitted — backend messages may carry user-authored content.
-        // See docs/frontend/typescript-conventions.md § "expect.objectContaining".
-        console.warn("[admin-users] fetchMore failed", {
-          name: err instanceof Error ? err.name : "unknown",
-          searchQuery: searchQueryRef.current,
-          endCursor: endCursorRef.current ?? null,
+        .then(() => {
+          setFetchMoreError(null);
+        })
+        .catch((err) => {
+          // Structured warn for operator triage: name + request context only.
+          // err.message is omitted — backend messages may carry user-authored content.
+          // See docs/frontend/typescript-conventions.md § "expect.objectContaining".
+          console.warn("[admin-users] fetchMore failed", {
+            name: err instanceof Error ? err.name : "unknown",
+            searchQuery,
+            endCursor,
+          });
+          const banner =
+            getBackendErrorBanner(err) ?? "Could not load more users. Please try again.";
+          setFetchMoreError(banner);
+        })
+        .finally(() => {
+          fetchingRef.current = false;
         });
-        const banner = getBackendErrorBanner(err) ?? "Could not load more users. Please try again.";
-        setFetchMoreError(banner);
-      })
-      .finally(() => {
-        fetchingRef.current = false;
-      });
-  }, [fetchMore]);
+    },
+    [fetchMore],
+  );
+
+  const requestNextPageFromObserver = useEffectEvent(() => {
+    fetchNextPage({ hasNextPage, endCursor, searchQuery });
+  });
 
   useEffect(() => {
     if (!hasNextPage) return;
@@ -200,12 +198,12 @@ export function AdminUsersClient() {
       const entry = entries[0];
       if (!entry?.isIntersecting) return;
       if (fetchingRef.current) return;
-      requestNextPage();
+      requestNextPageFromObserver();
     });
 
     observer.observe(node);
     return () => observer.disconnect();
-  }, [hasNextPage, fetchMoreError, requestNextPage]);
+  }, [hasNextPage, fetchMoreError]);
 
   const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
   const initialLoading = loading && edges.length === 0 && networkStatus !== NetworkStatus.fetchMore;
@@ -307,7 +305,7 @@ export function AdminUsersClient() {
             className="rounded-md border border-destructive/40 px-3 py-1 text-xs hover:bg-destructive/10"
             onClick={() => {
               setFetchMoreError(null);
-              requestNextPage();
+              fetchNextPage({ hasNextPage, endCursor, searchQuery });
             }}
           >
             Retry
