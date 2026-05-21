@@ -140,33 +140,9 @@ func NewSwipeUsecaseWithTx(
 	userCardFSRSRepo UserCardFSRSRepoForSwipe,
 	logger *slog.Logger,
 ) SwipeUsecase {
-	if logger == nil {
-		panic("usecase: swipe: logger is required")
-	}
-	if scheduler == nil {
-		scheduler = service.NewFSRSScheduler()
-	}
-	if nextBatchSize <= 0 {
-		nextBatchSize = defaultSwipeNextBatchSize
-	}
-	return &swipeUsecase{
-		cardRepo:      cardRepo,
-		cardgroupRepo: cardgroupRepo,
-		swipeRepo:     swipeRepo,
-		userFSRSRepo:  userCardFSRSRepo,
-		scheduler:     scheduler,
-		ordering:      service.NewOrderingPolicy(),
-		randSource: func() *rand.Rand {
-			return rand.New(rand.NewSource(time.Now().UnixNano()))
-		},
-		applyRating: func(current *domain.UserCardFSRS, scheduler domain.FSRSScheduler, rating domain.Rating, now time.Time) error {
-			return current.ApplyRating(scheduler, rating, now)
-		},
-		newSwipeRecord: domain.NewSwipeRecord,
-		nextBatchSize:  nextBatchSize,
-		tx:             tx,
-		logger:         logger,
-	}
+	uc := NewSwipeUsecase(nil, cardRepo, cardgroupRepo, swipeRepo, scheduler, nextBatchSize, userCardFSRSRepo, logger).(*swipeUsecase)
+	uc.tx = tx
+	return uc
 }
 
 func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (HandleSwipeOutcome, error) {
