@@ -54,6 +54,9 @@ type adminRoleUsecase struct {
 // NewAdminRole is the production constructor. Tests should prefer
 // NewAdminRoleWithDeps to inject narrow stubs.
 func NewAdminRole(roles repository.RoleRepository, adminGate *AdminGate, logger *slog.Logger) AdminRoleUsecase {
+	if adminGate == nil {
+		panic("usecase: admin role: adminGate is required")
+	}
 	if logger == nil {
 		panic("usecase: admin role: logger is required")
 	}
@@ -63,6 +66,9 @@ func NewAdminRole(roles repository.RoleRepository, adminGate *AdminGate, logger 
 // NewAdminRoleWithDeps accepts narrow interface types for tests; production
 // code must use NewAdminRole.
 func NewAdminRoleWithDeps(roles adminRoleRepoForCRUD, adminGate *AdminGate, logger *slog.Logger) AdminRoleUsecase {
+	if adminGate == nil {
+		panic("usecase: admin role: adminGate is required")
+	}
 	if logger == nil {
 		panic("usecase: admin role: logger is required")
 	}

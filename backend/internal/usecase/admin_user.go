@@ -157,6 +157,9 @@ func NewAdminUser(
 	adminGate *AdminGate,
 	logger *slog.Logger,
 ) AdminUserUsecase {
+	if adminGate == nil {
+		panic("usecase: admin user: adminGate is required")
+	}
 	if logger == nil {
 		panic("usecase: admin user: logger is required")
 	}
@@ -172,6 +175,9 @@ func NewAdminUserWithDeps(
 	adminGate *AdminGate,
 	logger *slog.Logger,
 ) AdminUserUsecase {
+	if adminGate == nil {
+		panic("usecase: admin user: adminGate is required")
+	}
 	if logger == nil {
 		panic("usecase: admin user: logger is required")
 	}

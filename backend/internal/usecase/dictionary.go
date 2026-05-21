@@ -111,6 +111,9 @@ type dictionaryUsecase struct {
 // usecase constructors. Passing a nil db defers transaction wiring; the
 // usecase will return INTERNAL when Upsert is invoked without a tx runner.
 func NewDictionaryUsecase(adminGate *AdminGate, cardRepo DictionaryCardRepository, db *gorm.DB, logger *slog.Logger) *dictionaryUsecase {
+	if adminGate == nil {
+		panic("usecase: dictionary: adminGate is required")
+	}
 	if logger == nil {
 		panic("usecase: dictionary: logger is required")
 	}
@@ -127,6 +130,9 @@ func NewDictionaryUsecase(adminGate *AdminGate, cardRepo DictionaryCardRepositor
 // explicit transaction runner. Production callers must use
 // NewDictionaryUsecase.
 func NewDictionaryUsecaseWithTx(adminGate *AdminGate, cardRepo DictionaryCardRepository, tx txRunner, logger *slog.Logger) *dictionaryUsecase {
+	if adminGate == nil {
+		panic("usecase: dictionary: adminGate is required")
+	}
 	if logger == nil {
 		panic("usecase: dictionary: logger is required")
 	}

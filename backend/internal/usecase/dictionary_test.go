@@ -19,9 +19,9 @@ import (
 // Test doubles
 // ---------------------------------------------------------------------------
 
-// mockAdminChecker is a stub for the AdminChecker interface used by the
-// dictionary usecase. The boolean field controls the return value; the err
-// field, when non-nil, is returned instead and forces the INTERNAL path.
+// mockAdminChecker is a stub for the AdminChecker interface. Tests wrap
+// it via NewAdminGate(...) before constructing the dictionary usecase
+// (and analogous wraps live in admin_role_test.go / admin_user_test.go).
 type mockAdminChecker struct {
 	isAdmin bool
 	err     error
