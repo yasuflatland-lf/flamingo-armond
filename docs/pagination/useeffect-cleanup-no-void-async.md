@@ -18,4 +18,4 @@ useEffect(() => {
 }, [pathname]);
 ```
 
-This pairs with the [IntersectionObserver in-flight guard](intersection-observer-in-flight-guard.md): both patterns use a `useRef` to track external-trigger state that must not be read asynchronously. Reference: `frontend/src/app/cardgroups/[id]/cards/cards-client.tsx` `previousPathnameRef` pattern.
+This pairs with the [IntersectionObserver in-flight guard](intersection-observer-in-flight-guard.md): both patterns use a `useRef` to track external-trigger state that must not be read asynchronously. Reference: `frontend/src/lib/undo-delete.tsx` `previousPathnameRef` pattern inside `UndoDeleteProvider`.

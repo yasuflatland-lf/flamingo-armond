@@ -546,8 +546,9 @@ describe("<CardsClient>", () => {
     // Mutation has not fired yet — we are still inside the 5s window.
     expect(mutationFired).toBe(false);
 
-    // Flip the pathname; the cleanup of the previous useEffect fires
-    // flushPendingDeletes, which commits the DELETE immediately.
+    // Flip the pathname; the Provider's useEffect body detects
+    // previousPathnameRef.current !== pathname and calls flushPendingDeletes,
+    // which commits the DELETE immediately.
     mockUsePathname.mockReturnValue("/cardgroups");
     rerender(
       <MockedProvider mocks={[deleteMock] as never} cache={cache}>

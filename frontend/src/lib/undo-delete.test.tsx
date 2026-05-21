@@ -237,6 +237,8 @@ describe("useUndoDelete — scheduleDelete", () => {
       });
 
       expect(commitA).toHaveBeenCalledOnce();
+      // The prior entry's toast must be dismissed when the re-schedule fires.
+      expect(mockToastDismiss).toHaveBeenCalledWith(1);
       expect(rollbackA).not.toHaveBeenCalled();
 
       expect(warnSpy).toHaveBeenCalledWith(
@@ -294,7 +296,7 @@ describe("useUndoDelete — scheduleDelete", () => {
 
       expect(warnSpy).toHaveBeenCalledWith(
         "[undo-delete] prior pending delete commit failed on re-schedule",
-        expect.objectContaining({ id: "dup-reject", err: priorError }),
+        expect.objectContaining({ id: "dup-reject", errName: priorError.name }),
       );
 
       await act(async () => {
@@ -417,6 +419,24 @@ describe("useUndoDelete — pendingCount", () => {
 
     await act(async () => {
       await vi.runAllTimersAsync();
+    });
+
+    expect(result.current.pendingCount()).toBe(0);
+  });
+
+  it("decrements after undo", async () => {
+    const { result } = renderHook(useUndoDelete, { wrapper });
+    const opts = makeOpts();
+
+    let handle: ReturnType<typeof result.current.scheduleDelete>;
+    act(() => {
+      handle = result.current.scheduleDelete(opts);
+    });
+
+    expect(result.current.pendingCount()).toBe(1);
+
+    act(() => {
+      handle!.undo();
     });
 
     expect(result.current.pendingCount()).toBe(0);

@@ -12,7 +12,7 @@ Replace per-row `AlertDialog` confirms with an optimistic remove + 5-second dela
 
 **Toaster mount point.** `<Toaster richColors closeButton />` (from `frontend/src/components/ui/sonner.tsx`) mounts inside `<AppShell>` in `frontend/src/app/layout.tsx`. The placement is load-bearing: sonner requires a client rendering context, so the `Toaster` cannot live at the RSC layout level. `AppShell` is already the client-boundary component, so every authenticated route gets the toast container without an extra wrapper.
 
-**`scheduleDelete` helper.** `frontend/src/lib/undo-delete.ts` exports a framework-agnostic singleton:
+**`scheduleDelete` helper.** `frontend/src/lib/undo-delete.tsx` exports a React Context Provider (`UndoDeleteProvider`) and a `useUndoDelete()` hook that returns an `UndoDeleteAPI`:
 
 ```ts
 scheduleDelete({
@@ -24,7 +24,7 @@ scheduleDelete({
 }): ScheduleDeleteHandle  // .undo() cancels timer + calls optimisticRollback
 ```
 
-The module also exports `flushPendingDeletes(): Promise<void>` and the test-only `_pendingCount()` export.
+`UndoDeleteAPI` also exposes `flushPendingDeletes(): Promise<void>` and `pendingCount(): number`. Mount `<UndoDeleteProvider>` once near the app root (e.g. `providers.tsx`) and call `useUndoDelete()` inside the tree to access the API.
 
 **Caller responsibility — sequencing:**
 
@@ -35,15 +35,18 @@ The module also exports `flushPendingDeletes(): Promise<void>` and the test-only
 
 **Re-schedule guard.** A second call with the same `id` before the first timer elapses immediately commits the prior delete (to avoid leaving a dangling optimistic remove), then starts a new timer. A `console.warn` fires for operator triage.
 
-**Navigation flush.** Call `flushPendingDeletes()` on pathname change and in a `beforeunload` listener so navigating away cannot silently drop a pending commit. The flush fires all pending `commitDelete`s immediately and returns a `Promise` that settles when they all complete. Mount the flush in a `useEffect` keyed on `pathname`:
+**Navigation flush.** `UndoDeleteProvider` internally calls `flushPendingDeletes()` on pathname change and registers a `beforeunload` listener so navigating away cannot silently drop a pending commit. The flush fires all pending `commitDelete`s immediately and returns a `Promise` that settles when they all complete. The Provider detects pathname changes via a `previousPathnameRef` pattern, firing the flush in the effect body (not the cleanup) so the Apollo client context is still alive when the async work runs:
 
 ```ts
 useEffect(() => {
-  return () => { void flushPendingDeletes(); };
-}, [pathname]);
+  if (previousPathnameRef.current !== pathname) {
+    void flushPendingDeletes();
+    previousPathnameRef.current = pathname;
+  }
+}, [pathname, flushPendingDeletes]);
 ```
 
-The `return () =>` cleanup form avoids the async-cleanup pitfall: a raw `useEffect(async () => ...)` body would need an inner IIFE and its returned `Promise` is discarded by React. The cleanup function is synchronous; `flushPendingDeletes` itself is async and runs fire-and-forget in that scope, which is intentional — the effect's lifecycle is already over.
+Callers do not need to manage flush lifecycle themselves — mounting `<UndoDeleteProvider>` is sufficient.
 
 ### Bulk delete keeps AlertDialog
 
