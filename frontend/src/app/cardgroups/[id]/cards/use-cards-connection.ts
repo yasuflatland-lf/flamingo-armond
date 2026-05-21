@@ -179,7 +179,7 @@ export function useCardsConnection(input: UseCardsConnectionInput): UseCardsConn
     });
   }, [fetchNextPage, pageInfo.endCursor, pageInfo.hasNextPage, searchQuery]);
 
-  const fetchingMore = networkStatus === NetworkStatus.fetchMore;
+  const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
 
   return {
     edges,
