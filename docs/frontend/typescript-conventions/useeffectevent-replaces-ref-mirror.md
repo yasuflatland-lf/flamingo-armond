@@ -38,6 +38,6 @@ const fetchNextPage = useCallback(
 
 Use that helper directly from Retry buttons and other UI event handlers. UI handlers must not call the Effect Event.
 
-Keep `fetchingRef` as an explicit same-tick mutex for the in-flight window. `useEffectEvent` solves stale reads, not same-tick serialization. Synchronous repeated observer fires can still enqueue overlapping `fetchMore` calls before React commits pending state, and `useTransition` does not close that gap.
+Keep `fetchingRef` as an explicit same-tick mutex for the in-flight window. `useEffectEvent` solves stale reads, not same-tick serialization. Synchronous repeated observer fires can still enqueue overlapping `fetchMore` calls before React commits pending state, and `useTransition` does not close that gap. Scope note: `useEffectEvent` replaces ref-mirror **stale-value capture** patterns. It does NOT replace `fetchingRef`-style same-tick mutex guards — those remain necessary because `useEffectEvent` does not serialize overlapping calls.
 
 This pattern replaces the old cursor/search/hasNextPage ref triplet for IntersectionObserver pagination. The ref-mirror pattern is still a valid fallback for non-Effect callbacks that cannot be called from an Effect-owned subscription, but it is no longer the recommended shape for pagination.

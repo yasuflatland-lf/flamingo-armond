@@ -50,7 +50,7 @@ useEffect(() => {
 
 `useEffectEvent` reads the latest committed `hasNextPage`, `endCursor`, and `searchQuery`, but it is not a stable callback identity. That is fine here because the observer callback is created inside the `useEffect` that owns the subscription. The Effect Event must only be called from Effects or callbacks registered by Effects; do not call it from UI event handlers like Retry buttons.
 
-Keep `fetchingRef` as the explicit same-tick in-flight mutex. `useEffectEvent` does not serialize overlapping `fetchMore` calls, and `useTransition` would not guard synchronous repeated observer fires before pending state commits.
+Keep `fetchingRef` as the explicit same-tick in-flight mutex. `useEffectEvent` does not serialize overlapping `fetchMore` calls, and `useTransition` would not guard synchronous repeated observer fires before pending state commits. `fetchingRef` is retained because it addresses the same-tick serialization problem (preventing duplicate in-flight `fetchMore` calls within a single render tick), which `useEffectEvent` does not solve. The trio (`endCursorRef`, `hasNextPageRef`, `searchQueryRef`) addressed only the stale-closure problem.
 
 Retry should call the parameterized helper directly, not the Effect Event:
 
