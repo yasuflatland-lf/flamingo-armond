@@ -4,7 +4,7 @@ import { NetworkStatus } from "@apollo/client";
 import { useApolloClient, useQuery } from "@apollo/client/react";
 import { Plus } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { CardgroupListItem } from "@/components/cardgroups/cardgroup-list-item";
 import { CardgroupsToolbar } from "@/components/cardgroups/cardgroups-toolbar";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
@@ -20,6 +20,12 @@ type Connection = MyCardgroupsConnectionQuery["myCardgroupsConnection"];
 
 interface CardgroupsClientProps {
   initialConnection: Connection | null;
+}
+
+interface FetchNextPageInput {
+  hasNextPage: boolean;
+  endCursor: string | null;
+  searchQuery: string | null;
 }
 
 /**
@@ -109,65 +115,53 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   const hasNextPage = connection?.pageInfo.hasNextPage ?? false;
   const endCursor = connection?.pageInfo.endCursor ?? null;
 
-  // Mirror cursor / search / hasNextPage into refs so requestNextPage can read
-  // the latest values without taking them as deps. Otherwise requestNextPage's
-  // identity changes every time the cursor advances, which forces the IO
-  // observer effect below to disconnect and reconnect on every page fetch.
-  const endCursorRef = useRef(endCursor);
-  const searchQueryRef = useRef(searchQuery);
-  const hasNextPageRef = useRef(hasNextPage);
-  useEffect(() => {
-    endCursorRef.current = endCursor;
-  }, [endCursor]);
-  useEffect(() => {
-    searchQueryRef.current = searchQuery;
-  }, [searchQuery]);
-  useEffect(() => {
-    hasNextPageRef.current = hasNextPage;
-  }, [hasNextPage]);
+  const fetchNextPage = useCallback(
+    ({ hasNextPage, endCursor, searchQuery }: FetchNextPageInput) => {
+      if (fetchingRef.current || !hasNextPage) return;
 
-  const requestNextPage = useCallback(() => {
-    if (fetchingRef.current || !hasNextPageRef.current) return;
-
-    fetchingRef.current = true;
-    const cursor = endCursorRef.current;
-    const search = searchQueryRef.current;
-    fetchMore({
-      variables: { ...CARDGROUPS_DEFAULT_VARS, after: cursor, search },
-      updateQuery: (prev, { fetchMoreResult }) => {
-        if (!fetchMoreResult) return prev;
-        return {
-          myCardgroupsConnection: {
-            ...fetchMoreResult.myCardgroupsConnection,
-            edges: [
-              ...prev.myCardgroupsConnection.edges,
-              ...fetchMoreResult.myCardgroupsConnection.edges,
-            ],
-          },
-        };
-      },
-    })
-      .then(() => {
-        // Clear any previous fetchMore error on success so the observer can resume.
-        setFetchMoreError(null);
+      fetchingRef.current = true;
+      fetchMore({
+        variables: { ...CARDGROUPS_DEFAULT_VARS, after: endCursor, search: searchQuery },
+        updateQuery: (prev, { fetchMoreResult }) => {
+          if (!fetchMoreResult) return prev;
+          return {
+            myCardgroupsConnection: {
+              ...fetchMoreResult.myCardgroupsConnection,
+              edges: [
+                ...prev.myCardgroupsConnection.edges,
+                ...fetchMoreResult.myCardgroupsConnection.edges,
+              ],
+            },
+          };
+        },
       })
-      .catch((err) => {
-        // Structured warn for operator triage: name + request context only.
-        // err.message is omitted — backend messages may carry user-authored content.
-        // See docs/frontend/typescript-conventions.md § "expect.objectContaining".
-        console.warn("[cardgroups] fetchMore failed", {
-          name: err instanceof Error ? err.name : "unknown",
-          searchQuery: search,
-          endCursor: cursor,
+        .then(() => {
+          // Clear any previous fetchMore error on success so the observer can resume.
+          setFetchMoreError(null);
+        })
+        .catch((err) => {
+          // Structured warn for operator triage: name + request context only.
+          // err.message is omitted — backend messages may carry user-authored content.
+          // See docs/frontend/typescript-conventions.md § "expect.objectContaining".
+          console.warn("[cardgroups] fetchMore failed", {
+            name: err instanceof Error ? err.name : "unknown",
+            searchQuery,
+            endCursor,
+          });
+          setFetchMoreError(
+            getBackendErrorBanner(err) ?? "Could not load more cardgroups. Please try again.",
+          );
+        })
+        .finally(() => {
+          fetchingRef.current = false;
         });
-        setFetchMoreError(
-          getBackendErrorBanner(err) ?? "Could not load more cardgroups. Please try again.",
-        );
-      })
-      .finally(() => {
-        fetchingRef.current = false;
-      });
-  }, [fetchMore]);
+    },
+    [fetchMore],
+  );
+
+  const requestNextPageFromObserver = useEffectEvent(() => {
+    fetchNextPage({ hasNextPage, endCursor, searchQuery });
+  });
 
   useEffect(() => {
     // Halt the observer loop while a previous fetch failed; user must click Retry to resume.
@@ -177,12 +171,12 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
 
     const observer = new IntersectionObserver((entries) => {
       if (!entries[0]?.isIntersecting || fetchingRef.current) return;
-      requestNextPage();
+      requestNextPageFromObserver();
     });
 
     observer.observe(node);
     return () => observer.disconnect();
-  }, [hasNextPage, fetchMoreError, requestNextPage]);
+  }, [hasNextPage, fetchMoreError]);
 
   const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
   const initialLoading = loading && edges.length === 0 && networkStatus !== NetworkStatus.fetchMore;
@@ -248,7 +242,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
             size="sm"
             onClick={() => {
               setFetchMoreError(null);
-              requestNextPage();
+              fetchNextPage({ hasNextPage, endCursor, searchQuery });
             }}
           >
             Retry
