@@ -23,36 +23,67 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   const { error } = await searchParams;
   return (
     <main data-testid="login-grid" className="relative grid h-svh lg:grid-cols-2">
-      <div
-        data-testid="brand-panel"
-        className="max-lg:hidden flex flex-col items-center justify-center gap-6 bg-brand-tint"
-      >
-        <span className="text-7xl" role="img" aria-label="Flamingo">
-          🦩
-        </span>
-        <div className="flex flex-col items-center gap-1 text-center">
-          <span className="text-2xl font-semibold text-brand-tint-foreground">flamingo-armond</span>
-          <span className="text-sm text-brand-tint-foreground/80">Remember more, study less.</span>
+      {/* Form column — full width on mobile, left half on lg+ */}
+      <div className="flex flex-col">
+        {/* Mobile-only brand header (hidden on lg+ because the right panel carries the brand) */}
+        <div
+          data-testid="form-brand-header"
+          className="lg:hidden flex items-center justify-center gap-2 pt-8"
+        >
+          <span className="text-2xl" role="img" aria-label="Flamingo">
+            🦩
+          </span>
+          <span className="text-base font-medium">flamingo-armond</span>
+        </div>
+
+        {/* Form body — left-aligned, max-w-sm, vertically centered in column */}
+        <div className="flex flex-1 items-center justify-center p-8">
+          <div className="w-full max-w-sm flex flex-col gap-6">
+            <div className="flex flex-col gap-2 text-start">
+              <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
+              <p className="text-sm text-muted-foreground">
+                Sign in with your Google account to continue. New here? An account is created on
+                first sign-in.
+              </p>
+            </div>
+
+            {error ? (
+              <p role="alert" className="text-sm text-destructive">
+                Sign-in failed: {error}
+              </p>
+            ) : null}
+
+            <LoginButton />
+
+            <p className="text-xs text-muted-foreground text-center">
+              By signing in, you agree to our{" "}
+              <a href="/terms" className="underline underline-offset-2 hover:text-foreground">
+                Terms of Service
+              </a>{" "}
+              and{" "}
+              <a href="/privacy" className="underline underline-offset-2 hover:text-foreground">
+                Privacy Policy
+              </a>
+              .
+            </p>
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-col">
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
-          <h1 className="text-2xl font-semibold">Sign in</h1>
-          {error ? <p className="text-sm text-destructive">Sign-in failed: {error}</p> : null}
-          <LoginButton />
+      {/* Decorative panel — right side, gradient + brand mark, lg+ only */}
+      <div
+        data-testid="brand-panel"
+        className="max-lg:hidden relative flex flex-col items-center justify-center gap-4 overflow-hidden bg-gradient-to-br from-brand-tint via-brand-tint to-brand-tint/70"
+      >
+        <span className="text-8xl drop-shadow-sm" role="img" aria-label="Flamingo">
+          🦩
+        </span>
+        <div className="flex flex-col items-center gap-1 text-center">
+          <span className="text-3xl font-semibold tracking-tight text-brand-tint-foreground">
+            flamingo-armond
+          </span>
+          <span className="text-sm text-brand-tint-foreground/80">Remember more, study less.</span>
         </div>
-        <footer className="pb-6 px-8 text-center text-xs text-muted-foreground">
-          By signing in, you agree to our{" "}
-          <a href="/terms" className="underline underline-offset-2 hover:text-foreground">
-            Terms of Service
-          </a>{" "}
-          and{" "}
-          <a href="/privacy" className="underline underline-offset-2 hover:text-foreground">
-            Privacy Policy
-          </a>
-          .
-        </footer>
       </div>
     </main>
   );
