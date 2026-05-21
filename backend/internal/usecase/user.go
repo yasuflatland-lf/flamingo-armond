@@ -67,8 +67,8 @@ func (u *userUsecase) Me(ctx context.Context) (*domain.User, error) {
 
 func (u *userUsecase) RolesFor(ctx context.Context, targetID string) ([]*domain.Role, error) {
 	caller := auth.UserFrom(ctx)
-	if caller == nil || caller.Sub == "" {
-		return nil, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(caller); err != nil {
+		return nil, err
 	}
 	if caller.Sub != targetID {
 		if u.auth == nil {

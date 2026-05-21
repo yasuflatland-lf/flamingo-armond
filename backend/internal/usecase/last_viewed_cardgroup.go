@@ -10,7 +10,6 @@ import (
 	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
-	"backend/internal/usecase/ucerr"
 )
 
 // SetLastViewedCardgroupOutcome is the result of LastViewedCardgroupUsecase.Set.
@@ -85,8 +84,8 @@ func NewLastViewedCardgroupWithDeps(
 // than an error.
 func (u *lastViewedCardgroupUsecase) Set(ctx context.Context, cardgroupID string) (SetLastViewedCardgroupOutcome, error) {
 	caller := auth.UserFrom(ctx)
-	if caller == nil || caller.Sub == "" {
-		return SetLastViewedCardgroupOutcome{}, ucerr.ErrUnauthenticated
+	if err := requireCallerSub(caller); err != nil {
+		return SetLastViewedCardgroupOutcome{}, err
 	}
 
 	if err := u.prefs.UpsertLastViewedCardgroup(ctx, caller.Sub, cardgroupID); err != nil {
