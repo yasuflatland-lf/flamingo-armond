@@ -12,6 +12,8 @@ Tracing model, request-ID contract, and APQ wire format are documented in `docs/
 xxxxxxxx-xxxx-7xxx-yxxx-xxxxxxxxxxxx
 ```
 
+**Web Crypto availability + fallback.** The module checks `globalThis.crypto.getRandomValues` availability **once at module load** — not per call — and emits a `console.warn` if the API is absent. When unavailable (older Safari, certain JSDOM configurations, some Node environments), it falls back to `Math.random`-derived bytes, preserving the UUID v7 format contract at reduced collision resistance. Checking once at load time ensures the warning fires exactly once regardless of call count. The `lastTimestampMs` monotonicity clamp is **unconditional** and must remain outside the `if (_cryptoAvailable)` branch; placing it inside would allow the fallback path to produce non-monotone timestamps, breaking UUID v7's time-ordering property. The test suite asserts this invariant with a 100-call sequence check on the fallback path (`frontend/src/lib/observability/request-id.test.ts`, `Web Crypto fallback path` describe block).
+
 **Browser (Apollo link chain).** `frontend/src/lib/apollo/request-id-link.ts` exports `requestIdLink`, an Apollo `setContext` link. It checks for an existing `X-Request-ID` header case-insensitively; if none is found it generates a fresh UUID v7 and attaches it. The link is prepended as the first link in `makeClient()`:
 
 ```ts
