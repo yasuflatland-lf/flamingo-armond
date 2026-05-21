@@ -18,7 +18,7 @@ export interface UseDebouncedSearchResult {
 export function useDebouncedSearch(opts?: UseDebouncedSearchInput): UseDebouncedSearchResult {
   const delayMs = opts?.delayMs ?? 300;
 
-  const [input, setStateInput] = useState<string>("");
+  const [input, setInput] = useState<string>("");
   const [query, setQuery] = useState<string | null>(null);
 
   useEffect(() => {
@@ -31,12 +31,8 @@ export function useDebouncedSearch(opts?: UseDebouncedSearchInput): UseDebounced
     };
   }, [input, delayMs]);
 
-  const setInput = useCallback((next: string) => {
-    setStateInput(next);
-  }, []);
-
   const clear = useCallback(() => {
-    setStateInput("");
+    setInput("");
     setQuery(null);
   }, []);
 

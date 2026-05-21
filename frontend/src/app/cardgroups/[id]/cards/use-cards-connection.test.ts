@@ -314,15 +314,6 @@ describe("useCardsConnection", () => {
   });
 
   it("in-flight guard prevents a second fetchMore while the first is in flight", async () => {
-    let resolvePage2:
-      | ((value: { data: { cardsByCardgroupConnection: CardConnectionData } }) => void)
-      | undefined;
-    const page2Promise = new Promise<{ data: { cardsByCardgroupConnection: CardConnectionData } }>(
-      (resolve) => {
-        resolvePage2 = resolve;
-      },
-    );
-
     let page2CallCount = 0;
     const page1 = connection([CARD_1, CARD_2], true);
     const cache = new InMemoryCache();
@@ -369,11 +360,6 @@ describe("useCardsConnection", () => {
 
     // Exactly one network call must have been issued for page 2.
     expect(page2CallCount).toBe(1);
-
-    // Reference the resolver to keep TS happy if unused; the delayed mock
-    // resolves itself once the timer elapses.
-    void resolvePage2;
-    void page2Promise;
   });
 
   it("fetchMoreError halts the IO loop: a second intersect does not advance", async () => {
