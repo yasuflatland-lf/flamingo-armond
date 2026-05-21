@@ -138,7 +138,6 @@ export function CardsClient({
     edges,
     pageInfo,
     totalCount,
-    loading,
     fetchingMore,
     fetchMoreError,
     retryFetchMore,
