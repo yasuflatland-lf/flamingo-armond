@@ -1,12 +1,13 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
+import type { RefObject } from "react";
 import { SwipeableRow, type SwipeableRowHandle } from "@/components/cardgroups/swipeable-row";
 import { Button } from "@/components/ui/button";
 
 export type CardRowProps = {
   card: { id: string; front: string; back: string };
-  rowRef: React.RefObject<SwipeableRowHandle | null>;
+  rowRef: RefObject<SwipeableRowHandle | null>;
   selected: boolean;
   disabled: boolean;
   onSelectToggle: () => void;

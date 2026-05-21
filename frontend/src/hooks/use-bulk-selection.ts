@@ -1,15 +1,15 @@
 import { useCallback, useMemo, useState } from "react";
 
-export interface UseBulkSelectionResult<TId> {
-  selectedIds: Set<TId>;
+export interface UseBulkSelectionResult<TId extends PropertyKey> {
+  selectedIds: ReadonlySet<TId>;
   toggleSelected: (id: TId) => void;
   clearSelection: () => void;
   isSelected: (id: TId) => boolean;
   count: number;
 }
 
-// Generic Set-of-IDs selection hook with stable callback identities.
-export function useBulkSelection<TId = string>(): UseBulkSelectionResult<TId> {
+/** Generic Set-of-IDs selection hook (Set<TId> with toggle/clear/has/count). */
+export function useBulkSelection<TId extends PropertyKey = string>(): UseBulkSelectionResult<TId> {
   const [selectedIds, setSelectedIds] = useState<Set<TId>>(new Set());
 
   const toggleSelected = useCallback((id: TId) => {
@@ -28,10 +28,7 @@ export function useBulkSelection<TId = string>(): UseBulkSelectionResult<TId> {
     setSelectedIds(new Set());
   }, []);
 
-  const isSelected = useCallback(
-    (id: TId) => selectedIds.has(id),
-    [selectedIds]
-  );
+  const isSelected = useCallback((id: TId) => selectedIds.has(id), [selectedIds]);
 
   const count = useMemo(() => selectedIds.size, [selectedIds]);
 

@@ -108,9 +108,7 @@ describe("useDebouncedSearch", () => {
   describe("custom delayMs", () => {
     it("does not fire query before custom delay elapses", () => {
       vi.useFakeTimers();
-      const { result } = renderHook(() =>
-        useDebouncedSearch({ delayMs: 500 })
-      );
+      const { result } = renderHook(() => useDebouncedSearch({ delayMs: 500 }));
 
       act(() => {
         result.current.setInput("x");
@@ -156,6 +154,31 @@ describe("useDebouncedSearch", () => {
       // Advance past the original debounce window — no stale timer should fire
       act(() => {
         vi.advanceTimersByTime(300);
+      });
+
+      expect(result.current.input).toBe("");
+      expect(result.current.query).toBeNull();
+    });
+
+    it("resets input to empty and query to null after the debounce has already committed", () => {
+      vi.useFakeTimers();
+      const { result } = renderHook(() => useDebouncedSearch());
+
+      act(() => {
+        result.current.setInput("hello");
+      });
+
+      // Advance past the full debounce window so query commits to "hello".
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+
+      expect(result.current.input).toBe("hello");
+      expect(result.current.query).toBe("hello");
+
+      // clear() after commit must reset both synchronously.
+      act(() => {
+        result.current.clear();
       });
 
       expect(result.current.input).toBe("");

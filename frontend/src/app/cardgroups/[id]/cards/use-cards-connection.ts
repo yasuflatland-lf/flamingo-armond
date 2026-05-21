@@ -1,4 +1,4 @@
-import { NetworkStatus, type ErrorLike } from "@apollo/client";
+import { type ErrorLike, NetworkStatus } from "@apollo/client";
 import { useQuery } from "@apollo/client/react";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -30,7 +30,6 @@ export interface UseCardsConnectionResult {
   networkStatus: NetworkStatus;
   fetchingMore: boolean;
   fetchMoreError: string | null;
-  setFetchMoreError: (v: string | null) => void;
   retryFetchMore: () => void;
   sentinelRef: RefObject<HTMLDivElement | null>;
   queryVariables: CardsByCardgroupConnectionQueryVariables;
@@ -44,13 +43,7 @@ export interface UseCardsConnectionResult {
 // stable across page advances, and the split debounce-vs-immediate-reset
 // effects driven by searchQuery changes.
 export function useCardsConnection(input: UseCardsConnectionInput): UseCardsConnectionResult {
-  const {
-    cardgroupId,
-    searchQuery,
-    initialEdges,
-    initialPageInfo,
-    initialTotalCount,
-  } = input;
+  const { cardgroupId, searchQuery, initialEdges, initialPageInfo, initialTotalCount } = input;
 
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
 
@@ -80,14 +73,17 @@ export function useCardsConnection(input: UseCardsConnectionInput): UseCardsConn
     [cardgroupId, searchQuery],
   );
 
-  const { data, fetchMore, loading, networkStatus, error: queryError } = useQuery(
-    CardsByCardgroupConnectionDocument,
-    {
-      variables: queryVariables,
-      fetchPolicy: "cache-first",
-      notifyOnNetworkStatusChange: true,
-    },
-  );
+  const {
+    data,
+    fetchMore,
+    loading,
+    networkStatus,
+    error: queryError,
+  } = useQuery(CardsByCardgroupConnectionDocument, {
+    variables: queryVariables,
+    fetchPolicy: "cache-first",
+    notifyOnNetworkStatusChange: true,
+  });
 
   const connection = data?.cardsByCardgroupConnection;
   const edges = connection?.edges ?? initialEdges;
@@ -142,14 +138,13 @@ export function useCardsConnection(input: UseCardsConnectionInput): UseCardsConn
       .catch((err) => {
         // Structured warn for operator triage: name + request context only.
         // err.message is omitted — backend messages may carry user-authored content.
-        // See docs/frontend/typescript-conventions.md § "expect.objectContaining".
+        // See docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
         console.warn("[cards-client] fetchMore failed", {
           name: err instanceof Error ? err.name : "unknown",
           searchQuery: searchQueryRef.current ?? null,
           endCursor: endCursorRef.current ?? null,
         });
-        const banner =
-          getBackendErrorBanner(err) ?? "Could not load more cards. Please try again.";
+        const banner = getBackendErrorBanner(err) ?? "Could not load more cards. Please try again.";
         setFetchMoreError(banner);
       })
       .finally(() => {
@@ -191,7 +186,6 @@ export function useCardsConnection(input: UseCardsConnectionInput): UseCardsConn
     networkStatus,
     fetchingMore,
     fetchMoreError,
-    setFetchMoreError,
     retryFetchMore,
     sentinelRef,
     queryVariables,

@@ -3,7 +3,7 @@ import { InMemoryCache, NetworkStatus } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { act, render, waitFor } from "@testing-library/react";
 import { GraphQLError } from "graphql";
-import { createElement, useEffect, type ReactNode } from "react";
+import { createElement, type ReactNode, useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CardsByCardgroupConnectionDocument,
@@ -13,7 +13,7 @@ import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
 } from "../../../../../__tests__/utils/mock-apollo-paginated";
-import { useCardsConnection, type UseCardsConnectionResult } from "./use-cards-connection";
+import { type UseCardsConnectionResult, useCardsConnection } from "./use-cards-connection";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -57,8 +57,7 @@ const CARD_3 = {
 
 type CardLike = typeof CARD_1;
 
-type CardConnectionData =
-  CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"];
+type CardConnectionData = CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"];
 
 function edge(card: CardLike) {
   return {
@@ -128,10 +127,7 @@ function latestObserver(): FakeObserver | undefined {
 function fireIntersect() {
   const obs = latestObserver();
   if (!obs) return;
-  obs.cb(
-    [{ isIntersecting: true } as IntersectionObserverEntry],
-    {} as IntersectionObserver,
-  );
+  obs.cb([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
 }
 
 // ---------------------------------------------------------------------------
@@ -185,13 +181,7 @@ type HookHolder = {
   current: UseCardsConnectionResult | null;
 };
 
-function HookProbe({
-  props,
-  holder,
-}: {
-  props: HookProps;
-  holder: HookHolder;
-}) {
+function HookProbe({ props, holder }: { props: HookProps; holder: HookHolder }) {
   const value = useCardsConnection(props);
   // Synchronously expose the latest value so test assertions read the freshest
   // snapshot (mirrors @testing-library/react's renderHook semantics).
@@ -324,7 +314,9 @@ describe("useCardsConnection", () => {
   });
 
   it("in-flight guard prevents a second fetchMore while the first is in flight", async () => {
-    let resolvePage2: ((value: { data: { cardsByCardgroupConnection: CardConnectionData } }) => void) | undefined;
+    let resolvePage2:
+      | ((value: { data: { cardsByCardgroupConnection: CardConnectionData } }) => void)
+      | undefined;
     const page2Promise = new Promise<{ data: { cardsByCardgroupConnection: CardConnectionData } }>(
       (resolve) => {
         resolvePage2 = resolve;
@@ -618,27 +610,6 @@ describe("useCardsConnection", () => {
       expect(result.current.fetchingMore).toBe(false);
     });
     expect(result.current.networkStatus).toBe(NetworkStatus.ready);
-  });
-
-  it("setFetchMoreError exposes a controllable setter for the banner state", async () => {
-    const { result } = renderUseCardsConnection({
-      mocks: [],
-      seedCards: [CARD_1, CARD_2],
-    });
-
-    expect(result.current.fetchMoreError).toBeNull();
-
-    act(() => {
-      result.current.setFetchMoreError("manual banner");
-    });
-
-    expect(result.current.fetchMoreError).toBe("manual banner");
-
-    act(() => {
-      result.current.setFetchMoreError(null);
-    });
-
-    expect(result.current.fetchMoreError).toBeNull();
   });
 
   it("queryError is non-null when the initial query fails with a network error", async () => {

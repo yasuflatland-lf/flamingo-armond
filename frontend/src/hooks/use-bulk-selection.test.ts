@@ -167,24 +167,6 @@ describe("useBulkSelection", () => {
       expect(result.current.isSelected(2)).toBe(true);
       expect(result.current.isSelected(3)).toBe(false);
     });
-
-    it("works with custom type parameter", () => {
-      const { result } = renderHook(() =>
-        useBulkSelection<{ id: string }>()
-      );
-
-      const obj1 = { id: "a" };
-      const obj2 = { id: "b" };
-
-      act(() => {
-        result.current.toggleSelected(obj1);
-        result.current.toggleSelected(obj2);
-      });
-
-      expect(result.current.count).toBe(2);
-      expect(result.current.isSelected(obj1)).toBe(true);
-      expect(result.current.isSelected(obj2)).toBe(true);
-    });
   });
 
   describe("count derivation", () => {

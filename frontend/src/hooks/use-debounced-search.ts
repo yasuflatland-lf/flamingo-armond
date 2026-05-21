@@ -15,9 +15,7 @@ export interface UseDebouncedSearchResult {
 // trimmed query value. The "immediate-reset" effect for caller-side IO state
 // (fetchingRef, fetchMoreError) belongs in the caller hook, not here.
 // See docs/pagination/split-debounce-from-immediate-reset.md.
-export function useDebouncedSearch(
-  opts?: UseDebouncedSearchInput
-): UseDebouncedSearchResult {
+export function useDebouncedSearch(opts?: UseDebouncedSearchInput): UseDebouncedSearchResult {
   const delayMs = opts?.delayMs ?? 300;
 
   const [input, setStateInput] = useState<string>("");

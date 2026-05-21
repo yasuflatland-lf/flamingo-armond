@@ -138,6 +138,7 @@ export function CardsClient({
     edges,
     pageInfo,
     totalCount,
+    loading,
     fetchingMore,
     fetchMoreError,
     retryFetchMore,
@@ -338,18 +339,24 @@ export function CardsClient({
             {edges.map((edge) => {
               const card = edge.node;
               return editingId === card.id ? (
-                <EditCardRow
+                // biome-ignore lint/a11y/useKeyWithClickEvents: stopPropagation prevents bubbling to the parent's edit-toggle handler; this <li> is not interactive while CardForm is shown.
+                <li
                   key={card.id}
-                  card={card}
-                  submit={(values) => handleUpdate(card.id, values)}
-                  submitting={updating}
-                  error={updateError}
-                  validationError={rowValidationError}
-                  onCancel={() => {
-                    setRowValidationError(null);
-                    setEditingId(null);
-                  }}
-                />
+                  className="rounded-md border border-border p-4"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <EditCardRow
+                    card={card}
+                    submit={(values) => handleUpdate(card.id, values)}
+                    submitting={updating}
+                    error={updateError}
+                    validationError={rowValidationError}
+                    onCancel={() => {
+                      setRowValidationError(null);
+                      setEditingId(null);
+                    }}
+                  />
+                </li>
               ) : (
                 <li key={card.id} className="rounded-md border border-border overflow-hidden">
                   <CardRow
@@ -379,9 +386,11 @@ export function CardsClient({
 
         <div ref={sentinelRef} aria-hidden="true" data-testid="cards-sentinel" />
         {fetchMoreError && <FetchMoreError message={fetchMoreError} onRetry={retryFetchMore} />}
-        {!fetchMoreError && fetchingMore && pageInfo.hasNextPage && (
-          <p className="mt-3 text-center text-xs text-muted-foreground">Loading more cards...</p>
-        )}
+        {!fetchMoreError &&
+          (fetchingMore || (loading && edges.length > 0)) &&
+          pageInfo.hasNextPage && (
+            <p className="mt-3 text-center text-xs text-muted-foreground">Loading more cards...</p>
+          )}
       </section>
     </div>
   );
