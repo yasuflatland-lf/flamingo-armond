@@ -71,24 +71,32 @@ type CardgroupConnectionOutput struct {
 	EndCur     string
 }
 
-// CardgroupUsecase implements the cardgroup application logic.
-type CardgroupUsecase struct {
+// CardgroupUsecase is the application interface for cardgroup-related operations.
+type CardgroupUsecase interface {
+	Cardgroup(ctx context.Context, id string) (*domain.Cardgroup, error)
+	Create(ctx context.Context, in CreateCardgroupInput) (CreateCardgroupOutcome, error)
+	Update(ctx context.Context, id string, in UpdateCardgroupInput) (UpdateCardgroupOutcome, error)
+	Delete(ctx context.Context, id string) error
+	ListCardgroupsByOwnerConnection(ctx context.Context, in CardgroupConnectionInput) (*CardgroupConnectionOutput, error)
+}
+
+type cardgroupUsecase struct {
 	repo   CardgroupRepository
 	logger *slog.Logger
 }
 
 // NewCardgroupUsecase constructs a CardgroupUsecase backed by the given repository.
-func NewCardgroupUsecase(repo CardgroupRepository, logger *slog.Logger) *CardgroupUsecase {
+func NewCardgroupUsecase(repo CardgroupRepository, logger *slog.Logger) CardgroupUsecase {
 	if logger == nil {
 		panic("usecase: cardgroup: logger is required")
 	}
-	return &CardgroupUsecase{repo: repo, logger: logger}
+	return &cardgroupUsecase{repo: repo, logger: logger}
 }
 
 // Cardgroup returns a single cardgroup by id. Non-owners receive UNAUTHENTICATED
 // rather than NOT_FOUND so the caller cannot probe existence via ID enumeration.
 // A missing row returns (nil, nil) so the nullable GraphQL field resolves to null.
-func (u *CardgroupUsecase) Cardgroup(ctx context.Context, id string) (*domain.Cardgroup, error) {
+func (u *cardgroupUsecase) Cardgroup(ctx context.Context, id string) (*domain.Cardgroup, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
 		return nil, ucerr.ErrUnauthenticated
@@ -120,7 +128,7 @@ type CreateCardgroupOutcome struct {
 }
 
 // Create creates a new cardgroup owned by the authenticated caller.
-func (u *CardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) (CreateCardgroupOutcome, error) {
+func (u *cardgroupUsecase) Create(ctx context.Context, in CreateCardgroupInput) (CreateCardgroupOutcome, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
 		return CreateCardgroupOutcome{}, ucerr.ErrUnauthenticated
@@ -172,7 +180,7 @@ type UpdateCardgroupOutcome struct {
 // Non-owners and missing rows both return UNAUTHENTICATED to prevent ID enumeration.
 // A nil Name field is treated as an empty patch: the existing row is returned
 // without any database write.
-func (u *CardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardgroupInput) (UpdateCardgroupOutcome, error) {
+func (u *cardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardgroupInput) (UpdateCardgroupOutcome, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
 		return UpdateCardgroupOutcome{}, ucerr.ErrUnauthenticated
@@ -217,7 +225,7 @@ func (u *CardgroupUsecase) Update(ctx context.Context, id string, in UpdateCardg
 
 // Delete removes the cardgroup identified by id.
 // Non-owners and missing rows both return UNAUTHENTICATED to prevent ID enumeration.
-func (u *CardgroupUsecase) Delete(ctx context.Context, id string) error {
+func (u *cardgroupUsecase) Delete(ctx context.Context, id string) error {
 	user := auth.UserFrom(ctx)
 	if user == nil {
 		return ucerr.ErrUnauthenticated
@@ -248,7 +256,7 @@ func (u *CardgroupUsecase) Delete(ctx context.Context, id string) error {
 // reference a cardgroup belonging to another owner are also rejected as
 // BAD_USER_INPUT (returning UNAUTHENTICATED would leak existence of other
 // users' cardgroups).
-func (u *CardgroupUsecase) ListCardgroupsByOwnerConnection(
+func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 	ctx context.Context, in CardgroupConnectionInput,
 ) (*CardgroupConnectionOutput, error) {
 	user := auth.UserFrom(ctx)
@@ -419,7 +427,7 @@ func resolveCardgroupPageSize(first, last *int) (int, int, error) {
 // hydrate). Without it, an attacker could probe for the existence of foreign
 // cardgroups by paging past a guessed cursor and observing whether any rows
 // come back.
-func (u *CardgroupUsecase) resolveCardgroupCursor(
+func (u *cardgroupUsecase) resolveCardgroupCursor(
 	ctx context.Context,
 	cursorStr *string,
 	ownerID string,

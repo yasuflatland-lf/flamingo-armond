@@ -42,7 +42,12 @@ type UserCardFSRSRepoForSwipe interface {
 	FindByUserAndCardIDsTx(ctx context.Context, tx *gorm.DB, userID string, cardIDs []string) (map[string]*domain.UserCardFSRS, error)
 }
 
-type SwipeUsecase struct {
+// SwipeUsecase is the application interface for swipe session operations.
+type SwipeUsecase interface {
+	HandleSwipe(ctx context.Context, in HandleSwipeInput) (HandleSwipeOutcome, error)
+}
+
+type swipeUsecase struct {
 	cardRepo       CardRepoForSwipe
 	cardgroupRepo  CardgroupRepoForSwipe
 	swipeRepo      SwipeRecordRepoForSwipe
@@ -90,7 +95,7 @@ func NewSwipeUsecase(
 	nextBatchSize int,
 	userCardFSRSRepo UserCardFSRSRepoForSwipe,
 	logger *slog.Logger,
-) *SwipeUsecase {
+) SwipeUsecase {
 	if logger == nil {
 		panic("usecase: swipe: logger is required")
 	}
@@ -100,7 +105,7 @@ func NewSwipeUsecase(
 	if nextBatchSize <= 0 {
 		nextBatchSize = defaultSwipeNextBatchSize
 	}
-	uc := &SwipeUsecase{
+	uc := &swipeUsecase{
 		cardRepo:      cardRepo,
 		cardgroupRepo: cardgroupRepo,
 		swipeRepo:     swipeRepo,
@@ -134,16 +139,37 @@ func NewSwipeUsecaseWithTx(
 	tx txRunner,
 	userCardFSRSRepo UserCardFSRSRepoForSwipe,
 	logger *slog.Logger,
-) *SwipeUsecase {
+) SwipeUsecase {
 	if logger == nil {
 		panic("usecase: swipe: logger is required")
 	}
-	uc := NewSwipeUsecase(nil, cardRepo, cardgroupRepo, swipeRepo, scheduler, nextBatchSize, userCardFSRSRepo, logger)
-	uc.tx = tx
-	return uc
+	if scheduler == nil {
+		scheduler = service.NewFSRSScheduler()
+	}
+	if nextBatchSize <= 0 {
+		nextBatchSize = defaultSwipeNextBatchSize
+	}
+	return &swipeUsecase{
+		cardRepo:      cardRepo,
+		cardgroupRepo: cardgroupRepo,
+		swipeRepo:     swipeRepo,
+		userFSRSRepo:  userCardFSRSRepo,
+		scheduler:     scheduler,
+		ordering:      service.NewOrderingPolicy(),
+		randSource: func() *rand.Rand {
+			return rand.New(rand.NewSource(time.Now().UnixNano()))
+		},
+		applyRating: func(current *domain.UserCardFSRS, scheduler domain.FSRSScheduler, rating domain.Rating, now time.Time) error {
+			return current.ApplyRating(scheduler, rating, now)
+		},
+		newSwipeRecord: domain.NewSwipeRecord,
+		nextBatchSize:  nextBatchSize,
+		tx:             tx,
+		logger:         logger,
+	}
 }
 
-func (u *SwipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (HandleSwipeOutcome, error) {
+func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (HandleSwipeOutcome, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
 		return HandleSwipeOutcome{}, ucerr.ErrUnauthenticated

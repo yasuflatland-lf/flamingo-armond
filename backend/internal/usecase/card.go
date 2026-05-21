@@ -61,7 +61,17 @@ func normalizeCardObserver(observer CardObserver) CardObserver {
 	return observer
 }
 
-type CardUsecase struct {
+// CardUsecase is the application interface for card-related operations.
+type CardUsecase interface {
+	Card(ctx context.Context, id string) (*domain.Card, error)
+	Create(ctx context.Context, in CreateCardInput) (CreateCardOutcome, error)
+	Update(ctx context.Context, id string, in UpdateCardInput) (UpdateCardOutcome, error)
+	Delete(ctx context.Context, id string) error
+	ListCardsByCardgroupConnection(ctx context.Context, in CardConnectionInput) (*CardConnectionOutput, error)
+	BulkDelete(ctx context.Context, ids []string) (int64, error)
+}
+
+type cardUsecase struct {
 	cardRepo      CardRepository
 	cardgroupRepo CardgroupRepositoryForCard
 	userFSRSRepo  UserCardFSRSRepositoryForCard
@@ -77,11 +87,11 @@ func NewCardUsecase(
 	userCardFSRSRepo UserCardFSRSRepositoryForCard,
 	observer CardObserver,
 	logger *slog.Logger,
-) *CardUsecase {
+) CardUsecase {
 	if logger == nil {
 		panic("usecase: card: logger is required")
 	}
-	uc := &CardUsecase{
+	uc := &cardUsecase{
 		cardRepo:      cardRepo,
 		cardgroupRepo: cardgroupRepo,
 		userFSRSRepo:  userCardFSRSRepo,
@@ -106,11 +116,11 @@ func NewCardUsecaseWithTx(
 	userCardFSRSRepo UserCardFSRSRepositoryForCard,
 	observer CardObserver,
 	logger *slog.Logger,
-) *CardUsecase {
+) CardUsecase {
 	if logger == nil {
 		panic("usecase: card: logger is required")
 	}
-	return &CardUsecase{
+	return &cardUsecase{
 		cardRepo:      cardRepo,
 		cardgroupRepo: cardgroupRepo,
 		tx:            tx,
@@ -210,7 +220,7 @@ const (
 	maxBulkDelete   = 100
 )
 
-func (u *CardUsecase) Card(ctx context.Context, id string) (*domain.Card, error) {
+func (u *cardUsecase) Card(ctx context.Context, id string) (*domain.Card, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
 		return nil, ucerr.ErrUnauthenticated
@@ -233,7 +243,7 @@ func (u *CardUsecase) Card(ctx context.Context, id string) (*domain.Card, error)
 // Real failures — unauthenticated caller, validation, infrastructure — are still
 // returned as the second return value so the resolver can wrap them via
 // gqlerr.FromUsecaseError into the wire-format GraphQL error.
-func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCardOutcome, error) {
+func (u *cardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCardOutcome, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
 		return CreateCardOutcome{}, ucerr.ErrUnauthenticated
@@ -285,7 +295,7 @@ func (u *CardUsecase) Create(ctx context.Context, in CreateCardInput) (CreateCar
 	return CreateCardOutcome{Card: card}, nil
 }
 
-func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput) (UpdateCardOutcome, error) {
+func (u *cardUsecase) Update(ctx context.Context, id string, in UpdateCardInput) (UpdateCardOutcome, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
 		return UpdateCardOutcome{}, ucerr.ErrUnauthenticated
@@ -348,7 +358,7 @@ func (u *CardUsecase) Update(ctx context.Context, id string, in UpdateCardInput)
 	return UpdateCardOutcome{Card: updated}, nil
 }
 
-func (u *CardUsecase) Delete(ctx context.Context, id string) error {
+func (u *cardUsecase) Delete(ctx context.Context, id string) error {
 	user := auth.UserFrom(ctx)
 	if user == nil {
 		return ucerr.ErrUnauthenticated
@@ -371,7 +381,7 @@ func (u *CardUsecase) Delete(ctx context.Context, id string) error {
 
 // ListCardsByCardgroupConnection paginates a cardgroup's cards using
 // Relay-style forward (first/after) or backward (last/before) cursors.
-func (u *CardUsecase) ListCardsByCardgroupConnection(
+func (u *cardUsecase) ListCardsByCardgroupConnection(
 	ctx context.Context, in CardConnectionInput,
 ) (*CardConnectionOutput, error) {
 	user := auth.UserFrom(ctx)
@@ -512,7 +522,7 @@ func resolvePageSize(first, last *int) (int, int, error) {
 // the backward-compatibility window. Returns BAD_USER_INPUT when the cursor
 // cannot be decoded, the card cannot be found, or the card belongs to a
 // different cardgroup.
-func (u *CardUsecase) resolveCursor(
+func (u *cardUsecase) resolveCursor(
 	ctx context.Context,
 	cursorStr *string,
 	cardgroupID string,
@@ -571,7 +581,7 @@ func (u *CardUsecase) resolveCursor(
 // foreign-owned ids are silently skipped at the SQL layer. Returns the number
 // of rows actually deleted. At most maxBulkDelete ids may be supplied per call;
 // exceeding the cap returns BAD_USER_INPUT.
-func (u *CardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, error) {
+func (u *cardUsecase) BulkDelete(ctx context.Context, ids []string) (int64, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
 		return 0, ucerr.ErrUnauthenticated
