@@ -214,8 +214,7 @@ func TestCardUpdateFront(t *testing.T) {
 			err := card.UpdateFront(tc.newFront)
 
 			if tc.wantErr != nil {
-				require.Error(t, err)
-				require.True(t, errors.Is(err, tc.wantErr), "got %v", err)
+				require.ErrorIs(t, err, tc.wantErr)
 			} else {
 				require.NoError(t, err)
 			}
@@ -263,8 +262,7 @@ func TestCardUpdateBack(t *testing.T) {
 			err := card.UpdateBack(tc.newBack)
 
 			if tc.wantErr != nil {
-				require.Error(t, err)
-				require.True(t, errors.Is(err, tc.wantErr), "got %v", err)
+				require.ErrorIs(t, err, tc.wantErr)
 			} else {
 				require.NoError(t, err)
 			}
