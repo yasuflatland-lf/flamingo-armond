@@ -16,7 +16,7 @@ func NewSuperUserPromoter(emails map[string]struct{}, adminRoleID string,
 }
 ```
 
-The pattern only applies to config-shaped constructors where one branch (here, the OFF branch) legitimately accepts zero values. Constructors whose contract is "always need these deps" should use a regular nil-check + return-error.
+The pattern only applies to config-shaped constructors where one branch (here, the OFF branch) legitimately accepts zero values. For constructors whose contract is "always need these deps" (no OFF branch), panic is equally correct — a nil required dep is still an operator-visible wiring bug, not a runtime input, and the process should crash at boot before accepting requests. See `NewAdminGate` (`backend/internal/usecase/admin_gate.go`) and `NewLearnUsecase` (`backend/internal/usecase/learn.go`) for examples of unconditional nil-guards that panic.
 
 ## Asymmetric guards: panic only when the wire consequence is unrecoverable
 

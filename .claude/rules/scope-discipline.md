@@ -82,3 +82,19 @@ grep -rn <NewHelperName> backend/ --include='*.go' | grep -v _test.go | grep -v 
 ```
 
 A count of `0` means delete the helper. A count below the planned target means investigate why route-through stopped short. A count matching the plan means the helper is wired correctly.
+
+## Constructor-signature migration: include resolver-layer test files in the pre-flight grep
+
+When a migration changes a usecase constructor signature (e.g. replacing a raw `AdminChecker` interface with a `*AdminGate` wrapper), the pre-flight grep must include `backend/graph/resolver/` in addition to `backend/internal/usecase/`. Resolver test files (`backend/graph/resolver/*_test.go`) instantiate usecase constructors directly to build integration-level harnesses; they are call sites in exactly the same sense as `*_test.go` files under `internal/usecase/`.
+
+A grep scoped only to `backend/internal/usecase/` will show N sites and miss any resolver test that constructs the usecase under test. The migration lands, tests in `internal/usecase/` pass, and then the resolver test fails to compile.
+
+The authoritative pre-flight grep for a constructor change:
+
+```bash
+grep -rnE 'New<UsecaseName>\(' backend/ --include='*.go'
+```
+
+This covers `internal/usecase/`, `cmd/server/`, and `graph/resolver/` in one pass. Any file that calls the constructor — production or test — must be updated.
+
+**Worked example.** An `AdminChecker` → `*AdminGate` migration grepped only `backend/internal/usecase/*.go` (12 sites) and listed the files to update. `backend/graph/resolver/dictionary_resolver_test.go:42` was not in scope. The test constructed `NewDictionaryUsecaseWithTx(authSvc, ...)` directly and failed to compile after the signature changed. The fix was a one-line wrap (`usecase.NewAdminGate(authSvc)`), but the gap required a follow-up commit. A full-tree grep before writing the migration plan would have enumerated 13 sites and the resolver file would have been in scope from the start.
