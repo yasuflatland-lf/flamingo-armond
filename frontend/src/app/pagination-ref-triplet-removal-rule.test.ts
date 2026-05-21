@@ -8,8 +8,13 @@
  *      React 19.2 Effect Event pattern to read the latest cursor/page state
  *      inside an IntersectionObserver callback without capturing stale values.
  *   2. The deprecated `endCursorRef` / `hasNextPageRef` / `searchQueryRef`
- *      ref-triplet identifiers are absent — these were the old same-tick mutex
- *      approach and must not re-appear after the migration landed.
+ *      ref-triplet identifiers are absent — these were the pre-migration
+ *      stale-value capture refs (replaced by useEffectEvent latest-value reads)
+ *      and must not re-appear after the migration landed.
+ *
+ * NOTE: `fetchingRef` is INTENTIONALLY retained in production as the same-tick
+ * in-flight mutex, per `.claude/rules/pagination.md`. This rule does not assert
+ * anything about `fetchingRef`.
  *
  * WHAT THIS FILE DOES NOT TEST
  * ----------------------------
@@ -59,7 +64,8 @@ describe("pagination ref-triplet removal regression rule", () => {
       expect(source).toContain("useEffectEvent");
 
       // Rule 2: the old ref-triplet identifiers must not reappear — these were
-      // the pre-migration same-tick mutex approach and are now deleted.
+      // the pre-migration stale-value capture refs, replaced by useEffectEvent
+      // latest-value reads, and are now deleted.
       expect(source).not.toMatch(/\b(endCursorRef|hasNextPageRef|searchQueryRef)\b/);
     },
   );
