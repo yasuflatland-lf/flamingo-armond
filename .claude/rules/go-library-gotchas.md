@@ -104,6 +104,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [CI bash `rc=$?` is dead code under `set -e` — use `cmd || rc=$?`](../../docs/backend/library-gotchas/ci-bash-rc-capture-under-set-e.md)
 - [Walker / parser positive-discovery guards — silent zero disables enforcement](../../docs/backend/library-gotchas/walker-parser-positive-discovery-guards.md)
 - [Resolver-injected usecase: interface field unlocks unit tests for outcome-union guards](../../docs/backend/library-gotchas/resolver-usecase-interface-vs-concrete-testability.md)
+- [Usecase interface promotion: three-part template, same-package type assertions, `WithTx` refactoring, pointer-to-interface anti-pattern](../../docs/backend/library-gotchas/usecase-interface-promotion-pattern.md)
 - [go-arch-lint v3: every `deps` entry must declare at least one permission flag (`anyVendorDeps: true` for leaf components)](../../docs/backend/library-gotchas/go-arch-lint-v3-anyvendordeps-required.md)
 - [go-arch-lint `commonComponents` is the only universal-import mechanism — cross-cutting packages still need explicit `mayDependOn`](../../docs/backend/library-gotchas/go-arch-lint-commoncomponents-not-universal.md)
 - [go-arch-lint violation output format and import-graph scope (binary vs. archfile version; what AST shapes it cannot enforce)](../../docs/backend/library-gotchas/go-arch-lint-violation-output-and-scope.md)

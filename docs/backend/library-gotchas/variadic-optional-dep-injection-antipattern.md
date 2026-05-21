@@ -12,7 +12,7 @@ to the first request that exercises the code path rather than surfacing at boot.
 // WRONG — variadic silently admits nil
 func NewResolver(
     user *usecase.UserUsecase,
-    learnUC ...*usecase.LearnUsecase, // ← caller can omit, leaving r.LearnUC == nil
+    learnUC ...usecase.LearnUsecase, // ← caller can omit, leaving r.LearnUC == nil
 ) *Resolver {
     r := &Resolver{UserUC: user}
     if len(learnUC) > 0 {
@@ -36,7 +36,7 @@ call site rather than hiding it behind variadic omission:
 func NewResolver(
     user *usecase.UserUsecase,
     // ... other deps ...
-    learnUC *usecase.LearnUsecase, // ← tests that skip this feature pass nil
+    learnUC usecase.LearnUsecase, // ← tests that skip this feature pass nil
 ) *Resolver {
     return &Resolver{
         UserUC:  user,
@@ -66,7 +66,7 @@ produces the same nil-deref hazard at the first request that touches that path
 rather than surfacing at the call site.
 
 **Reference:** `backend/graph/resolver/resolver.go` — `NewResolver` accepts
-`learnUC *usecase.LearnUsecase` as a required positional parameter; the comment
+`learnUC usecase.LearnUsecase` as a required positional parameter; the comment
 "Tests may pass nil for unused dependencies; do not pass nil from production
 wiring" documents the nil-explicit contract. `backend/cmd/server/main.go` —
 `newRouter` accepts `swipeRecordRepo repository.SwipeRecordRepository` as a

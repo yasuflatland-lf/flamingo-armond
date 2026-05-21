@@ -124,6 +124,10 @@ every production call site that constructs a Resolver. Out of scope for an
 outcome-union promotion PR — the 800-line ceiling in
 [`.claude/rules/pr-sizing.md`](../../../.claude/rules/pr-sizing.md) excludes
 unrelated shape changes.
+For the step-by-step mechanics of that promotion — the interface + unexported struct template,
+type assertions for private access in same-package tests, `WithTx` constructor refactoring,
+and the pointer-to-interface anti-pattern — see
+[`usecase-interface-promotion-pattern.md`](usecase-interface-promotion-pattern.md).
 
 ## References
 
