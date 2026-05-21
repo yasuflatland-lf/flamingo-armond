@@ -37,7 +37,6 @@ describe("newRequestId", () => {
 });
 
 describe("newRequestId — Web Crypto fallback path", () => {
-  // Save a reference to the real crypto object so we can restore it after each test.
   const realCrypto = globalThis.crypto;
 
   beforeEach(() => {
@@ -47,24 +46,23 @@ describe("newRequestId — Web Crypto fallback path", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    // Restore the real crypto global in case a test replaced it.
     vi.stubGlobal("crypto", realCrypto);
   });
 
-  it("emits the module-load warn exactly once when crypto is undefined and still returns a UUID v7 string", async () => {
-    // Remove the crypto global so the re-imported module sees it as unavailable.
+  async function loadFresh(): Promise<typeof import("./request-id")["newRequestId"]> {
     vi.stubGlobal("crypto", undefined);
+    const { newRequestId: fn } = await import("./request-id");
+    return fn;
+  }
 
-    // Dynamic import after resetModules() triggers a fresh module evaluation.
-    const { newRequestId: newRequestIdFresh } = await import("./request-id");
+  it("emits the module-load warn exactly once when crypto is undefined and still returns a UUID v7 string", async () => {
+    const newRequestIdFresh = await loadFresh();
 
-    // The module-load warn must have fired exactly once.
     expect(console.warn).toHaveBeenCalledTimes(1);
     expect(console.warn).toHaveBeenCalledWith(
       "[request-id] Web Crypto unavailable; falling back to Math.random-derived IDs (collision resistance reduced)",
     );
 
-    // The function must still return a string matching the UUID v7 format.
     const id = newRequestIdFresh();
     expect(id).toMatch(UUID_V7_RE);
     expect(id[14]).toBe("7");
@@ -72,22 +70,18 @@ describe("newRequestId — Web Crypto fallback path", () => {
   });
 
   it("produces 20 unique values on the fallback path", async () => {
-    vi.stubGlobal("crypto", undefined);
-    const { newRequestId: newRequestIdFresh } = await import("./request-id");
+    const newRequestIdFresh = await loadFresh();
 
     const ids = Array.from({ length: 20 }, newRequestIdFresh);
-    const unique = new Set(ids);
-    expect(unique.size).toBe(20);
+    expect(new Set(ids).size).toBe(20);
   });
 
   it("timestamp prefix is non-decreasing across 100 calls on the fallback path", async () => {
-    vi.stubGlobal("crypto", undefined);
-    const { newRequestId: newRequestIdFresh } = await import("./request-id");
+    const newRequestIdFresh = await loadFresh();
 
     const ids = Array.from({ length: 100 }, newRequestIdFresh);
-    // The first 12 hex chars encode the 48-bit timestamp; they must be monotonically
-    // non-decreasing. This guards against a future refactor that accidentally moves
-    // the lastTimestampMs monotonicity guard inside the if (_cryptoAvailable) block.
+    // Guards against accidentally moving the lastTimestampMs monotonicity guard
+    // inside the if (_cryptoAvailable) block.
     const prefixes = ids.map((id) => id.replace(/-/g, "").slice(0, 12));
     for (let i = 1; i < prefixes.length; i++) {
       const curr = prefixes[i] ?? "";

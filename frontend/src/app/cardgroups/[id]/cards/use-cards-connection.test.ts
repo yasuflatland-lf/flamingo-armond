@@ -651,7 +651,6 @@ describe("useCardsConnection", () => {
       expect(result.current.loading).toBe(true);
     });
     expect(result.current.networkStatus).toBe(NetworkStatus.setVariables);
-    expect(result.current.networkStatus).not.toBe(NetworkStatus.fetchMore);
     expect(result.current.edges.length).toBeGreaterThan(0);
     expect(result.current.fetchingMore).toBe(true);
 
