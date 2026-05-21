@@ -39,7 +39,7 @@ type hasRoleChecker interface {
 // validateDictionary resolver is exercised here.
 func newDictOnlySrv(roleRepo hasRoleChecker) *handler.Server {
 	authSvc := auth.NewService(roleRepo)
-	dictUC := usecase.NewDictionaryUsecaseWithTx(authSvc, nil, nil, newDiscardLogger())
+	dictUC := usecase.NewDictionaryUsecaseWithTx(usecase.NewAdminGate(authSvc), nil, nil, newDiscardLogger())
 	r := resolver.NewResolver(nil, nil, nil, nil, authSvc, dictUC, nil, nil, nil, nil)
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: r}))
 	srv.AddTransport(transport.POST{})

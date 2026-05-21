@@ -115,7 +115,7 @@ func buildAdminRoleUC(
 	if authChk == nil {
 		authChk = &adminAuthChecker{}
 	}
-	return NewAdminRoleWithDeps(roles, authChk, newTestLogger()), roles
+	return NewAdminRoleWithDeps(roles, NewAdminGate(authChk), newTestLogger()), roles
 }
 
 // ---------------------------------------------------------------------------
@@ -852,7 +852,7 @@ func TestAdminRole_Delete_RepoInternalError(t *testing.T) {
 // TestAdminRole_Update_RepoInternalError surfaces a generic repository error
 // from the roles.Update call (anything other than the classified sentinels) as
 // INTERNAL with the eris chain attached. The pattern mirrors
-// TestAdminRole_Delete_RepoInternalError: requireAdmin OK, domain.ParseRoleName OK,
+// TestAdminRole_Delete_RepoInternalError: adminGate.Require OK, domain.ParseRoleName OK,
 // FindByID returns a non-system role, roles.Update returns a non-sentinel error.
 func TestAdminRole_Update_RepoInternalError(t *testing.T) {
 	t.Parallel()
