@@ -13,6 +13,36 @@ import (
 	"backend/internal/usecase/ucerr"
 )
 
+// validateRelayArgs enforces Relay pagination argument coherence.
+// The Relay spec pairs after with first (forward direction) and before with
+// last (backward direction). The five guards below reject every other
+// combination before any repository call is made, so callers never receive a
+// silently re-interpreted page boundary.
+//
+// Returns a *ucerr.ValidationError on violation; nil otherwise.
+func validateRelayArgs(first, last *int, after, before *string) error {
+	// Mutual exclusion: cursors from opposite directions cannot coexist.
+	if after != nil && before != nil {
+		return ucerr.NewValidationError("after", "after and before are mutually exclusive")
+	}
+	// Direction mismatch: first (forward count) paired with before (backward cursor).
+	if first != nil && *first > 0 && before != nil {
+		return ucerr.NewValidationError("before", "before requires last, not first")
+	}
+	// Direction mismatch: last (backward count) paired with after (forward cursor).
+	if last != nil && *last > 0 && after != nil {
+		return ucerr.NewValidationError("after", "after requires first, not last")
+	}
+	// Cursor without companion count: page size and direction are unresolvable.
+	if before != nil && (first == nil || *first <= 0) && (last == nil || *last <= 0) {
+		return ucerr.NewValidationError("before", "before requires last")
+	}
+	if after != nil && (first == nil || *first <= 0) && (last == nil || *last <= 0) {
+		return ucerr.NewValidationError("after", "after requires first")
+	}
+	return nil
+}
+
 // translateBioErr maps domain Bio sentinels into usecase-layer typed errors.
 // Unexpected errors are wrapped with eris. Returns nil when err is nil.
 func translateBioErr(err error) error {
