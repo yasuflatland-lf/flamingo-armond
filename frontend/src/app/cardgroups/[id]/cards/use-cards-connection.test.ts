@@ -598,6 +598,105 @@ describe("useCardsConnection", () => {
     expect(result.current.networkStatus).toBe(NetworkStatus.ready);
   });
 
+  it("sets fetchingMore=true during cache-and-network re-fetch when edges are already present", async () => {
+    // Primary scenario: hook has cached edges (edges.length > 0) and the user
+    // changes searchQuery, causing Apollo to fire a new request with
+    // networkStatus=setVariables (NOT NetworkStatus.fetchMore). The OR branch
+    // `loading && edges.length > 0` must make fetchingMore=true during that
+    // in-flight window.
+    const page1 = connection([CARD_1, CARD_2], false);
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: DEFAULT_VARS,
+      data: { cardsByCardgroupConnection: page1 },
+    });
+
+    // Long delay keeps the loading window observable.
+    const searchMock = {
+      request: {
+        query: CardsByCardgroupConnectionDocument,
+        variables: { ...DEFAULT_VARS, search: "hello" },
+      },
+      delay: 300,
+      result: { data: { cardsByCardgroupConnection: connection([CARD_3]) } },
+    };
+
+    const { result, rerender } = renderUseCardsConnection({
+      mocks: [searchMock],
+      cache,
+      seedCards: [CARD_1, CARD_2],
+      seedHasNext: false,
+      initialSearchQuery: null,
+    });
+
+    // Sanity: initial state has edges; fetchingMore is false.
+    expect(result.current.edges).toHaveLength(2);
+    expect(result.current.fetchingMore).toBe(false);
+
+    // Change searchQuery — Apollo switches variables (networkStatus=setVariables,
+    // loading=true). No cache entry exists for `search: "hello"`, so
+    // `data=undefined` and `edges` falls back to `initialEdges` (length > 0).
+    rerender({
+      cardgroupId: CG_ID,
+      searchQuery: "hello",
+      initialEdges: page1.edges,
+      initialPageInfo: page1.pageInfo,
+      initialTotalCount: page1.totalCount,
+    });
+
+    // During the in-flight window: networkStatus is setVariables (not fetchMore),
+    // loading=true, edges.length > 0 → the OR branch fires → fetchingMore=true.
+    await waitFor(() => {
+      expect(result.current.loading).toBe(true);
+    });
+    expect(result.current.networkStatus).toBe(NetworkStatus.setVariables);
+    expect(result.current.networkStatus).not.toBe(NetworkStatus.fetchMore);
+    expect(result.current.edges.length).toBeGreaterThan(0);
+    expect(result.current.fetchingMore).toBe(true);
+
+    // After mock resolves: loading clears and fetchingMore returns to false.
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(result.current.fetchingMore).toBe(false);
+  });
+
+  it("fetchingMore stays false during initial load when no edges are cached yet", async () => {
+    // Complementary case: loading=true but edges.length === 0 (cold cache, no
+    // initialEdges). The `loading && edges.length > 0` branch must NOT fire.
+    const coldCache = new InMemoryCache();
+
+    const initialLoadMock = {
+      request: { query: CardsByCardgroupConnectionDocument, variables: DEFAULT_VARS },
+      delay: 300,
+      result: { data: { cardsByCardgroupConnection: connection([CARD_1]) } },
+    };
+
+    // seedCards=[] so the harness writes an empty connection to the cache and
+    // passes empty initialEdges to the hook. No SSR seed → Apollo fires a
+    // network fetch (networkStatus=loading), and edges.length === 0.
+    const { result } = renderUseCardsConnection({
+      mocks: [initialLoadMock],
+      cache: coldCache,
+      seedCards: [],
+    });
+
+    // During the initial load: loading=true, edges=[] → fetchingMore=false.
+    await waitFor(() => {
+      expect(result.current.loading).toBe(true);
+    });
+    expect(result.current.networkStatus).toBe(NetworkStatus.loading);
+    expect(result.current.edges).toHaveLength(0);
+    expect(result.current.fetchingMore).toBe(false);
+
+    // After the mock resolves: loading clears normally.
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(result.current.fetchingMore).toBe(false);
+  });
+
   it("queryError is non-null when the initial query fails with a network error", async () => {
     // Use an empty cache (no SSR seed) so the query fires against the mock
     // rather than resolving from cache. The network-error mock sets the
