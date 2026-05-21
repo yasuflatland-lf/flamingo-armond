@@ -138,7 +138,6 @@ export function CardsClient({
     edges,
     pageInfo,
     totalCount,
-    loading,
     fetchingMore,
     fetchMoreError,
     retryFetchMore,
@@ -386,11 +385,9 @@ export function CardsClient({
 
         <div ref={sentinelRef} aria-hidden="true" data-testid="cards-sentinel" />
         {fetchMoreError && <FetchMoreError message={fetchMoreError} onRetry={retryFetchMore} />}
-        {!fetchMoreError &&
-          (fetchingMore || (loading && edges.length > 0)) &&
-          pageInfo.hasNextPage && (
-            <p className="mt-3 text-center text-xs text-muted-foreground">Loading more cards...</p>
-          )}
+        {!fetchMoreError && fetchingMore && pageInfo.hasNextPage && (
+          <p className="mt-3 text-center text-xs text-muted-foreground">Loading more cards...</p>
+        )}
       </section>
     </div>
   );

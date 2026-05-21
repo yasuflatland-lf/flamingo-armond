@@ -8,17 +8,12 @@ import {
   type CardsByCardgroupConnectionQueryVariables,
 } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import type { FetchNextPageInput } from "@/lib/pagination/types";
 import { cardsDefaultVars } from "./queries";
 
 type CardEdge = CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"]["edges"][number];
 type CardConnectionPageInfo =
   CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"]["pageInfo"];
-
-interface FetchNextPageInput {
-  hasNextPage: boolean;
-  endCursor: string | null;
-  searchQuery: string | null;
-}
 
 export interface UseCardsConnectionInput {
   cardgroupId: string;
@@ -97,8 +92,7 @@ export function useCardsConnection(input: UseCardsConnectionInput): UseCardsConn
 
   const fetchNextPage = useCallback(
     ({ hasNextPage, endCursor, searchQuery }: FetchNextPageInput) => {
-      if (fetchingRef.current) return;
-      if (!hasNextPage) return;
+      if (fetchingRef.current || !hasNextPage) return;
 
       fetchingRef.current = true;
       fetchMore({
@@ -160,9 +154,7 @@ export function useCardsConnection(input: UseCardsConnectionInput): UseCardsConn
     if (!node) return;
 
     const observer = new IntersectionObserver((entries) => {
-      const entry = entries[0];
-      if (!entry?.isIntersecting) return;
-      if (fetchingRef.current) return;
+      if (!entries[0]?.isIntersecting || fetchingRef.current) return;
       requestNextPageFromObserver();
     });
 
@@ -179,7 +171,7 @@ export function useCardsConnection(input: UseCardsConnectionInput): UseCardsConn
     });
   }, [fetchNextPage, pageInfo.endCursor, pageInfo.hasNextPage, searchQuery]);
 
-  const fetchingMore = networkStatus === NetworkStatus.fetchMore;
+  const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
 
   return {
     edges,

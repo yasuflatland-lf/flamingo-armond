@@ -7,7 +7,7 @@ import { gqlFetch } from "@/lib/apollo/server";
 import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { AdminRolesQuery, AdminUserQuery } from "../../queries";
-import { AdminUserEditClient, type RoleOption, type UserForEdit } from "./AdminUserEditClient";
+import { AdminUserEditClient, type RoleOption, type UserForEdit } from "./admin-user-edit-client";
 
 /**
  * Redirect to "/" when the error carries an UNAUTHENTICATED (session expired)

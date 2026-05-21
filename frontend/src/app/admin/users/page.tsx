@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { AdminUsersClient } from "./AdminUsersClient";
+import { AdminUsersClient } from "./admin-users-client";
 
 export default async function AdminUsersPage() {
   const supabase = await createSupabaseServerClient();

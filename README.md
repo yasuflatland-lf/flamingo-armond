@@ -32,7 +32,7 @@ Local development does not require any of these — `make setup` boots a local S
 | **mise** | Pins Go, Node, pnpm, and the Supabase CLI to the versions in `.tool-versions` files | `curl https://mise.run \| sh` |
 | **Docker** | Backs `supabase start` (Postgres + Auth running locally) | Docker Desktop / OrbStack / colima |
 
-Do not install pnpm via `npm i -g pnpm` or `brew install pnpm` — a PATH-level binary shadows the mise shim and silently breaks version pinning. See `docs/dev-setup.md` § "Tools".
+Do not install pnpm via `npm i -g pnpm` or `brew install pnpm` — a PATH-level binary shadows the mise shim and silently breaks version pinning. See [`docs/dev-setup.md` § "Tools"](docs/dev-setup.md#tools).
 
 ### 2. Initial setup
 
@@ -43,7 +43,7 @@ make setup
 # → check-docker → mise install → pnpm install → supabase start → sync-env → check-google-oauth
 ```
 
-The **only manual step** is editing `./.env` to add Google OAuth client credentials. `frontend/.env.local` and `backend/.env.local` are auto-generated and re-running `make setup` is safe. Full procedure (Cloud Console steps, `127.0.0.1`-vs-`localhost` rule) in `docs/dev-setup.md` § "Supabase CLI".
+The **only manual step** is editing `./.env` to add Google OAuth client credentials. `frontend/.env.local` and `backend/.env.local` are auto-generated and re-running `make setup` is safe. Full procedure (Cloud Console steps, `127.0.0.1`-vs-`localhost` rule) in [`docs/dev-setup.md` § "Supabase CLI"](docs/dev-setup.md#supabase-cli).
 
 ### 3. Run locally
 
@@ -114,5 +114,6 @@ Project-wide guidance for AI assistants lives in `CLAUDE.md`.
 | `docs/backend.md` | Backend runtime notes (Echo v5, GORM, graceful shutdown, env vars) |
 | `frontend/CLAUDE.md` | Frontend notes (commands, routing, Apollo cache patterns) |
 | `docs/ci.md` | CI configuration and workflow reference |
-| `docs/observability.md` | Logging and structured error reporting |
+| `docs/observability.md` | Tracing (OTel), request-ID propagation, and Automatic Persisted Queries wire contract |
+| `docs/playbook-patterns.md` | Ansible playbook patterns and migration recovery runbook for production operations |
 | `docs/e2e.md` | End-to-end test setup and conventions |

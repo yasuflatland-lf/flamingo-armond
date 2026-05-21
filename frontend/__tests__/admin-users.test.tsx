@@ -27,7 +27,7 @@ import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AdminUsersClient } from "@/app/admin/users/AdminUsersClient";
+import { AdminUsersClient } from "@/app/admin/users/admin-users-client";
 import { ADMIN_USERS_PAGE_SIZE } from "@/app/admin/users/queries";
 import { AdminUsersDocument } from "@/generated/graphql";
 import {

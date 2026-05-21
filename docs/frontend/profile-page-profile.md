@@ -85,7 +85,7 @@ if (banner) setError(banner);
 if (!banner && Object.keys(fields).length === 0) setError(toMessage(err));  // fallback
 ```
 
-The fallback to `toMessage(err)` ensures the user is never shown a silent failure. Render the field error directly under the offending input with `aria-invalid` + `aria-describedby` pointing at a `<p role="alert">` so screen readers announce the violation. See `frontend/src/app/admin/roles/AdminRolesClient.tsx` for the reference implementation.
+The fallback to `toMessage(err)` ensures the user is never shown a silent failure. Render the field error directly under the offending input with `aria-invalid` + `aria-describedby` pointing at a `<p role="alert">` so screen readers announce the violation. See `frontend/src/app/admin/roles/admin-roles-client.tsx` for the reference implementation.
 
 ### RSC FORBIDDEN redirect pattern
 

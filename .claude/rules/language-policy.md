@@ -35,6 +35,21 @@ grep -rn <DeletedSymbol> backend/ frontend/src/ docs/ .claude/rules/
 
 A `uuidV7` → `domain.NewID` rename left a stale identifier in [`.claude/rules/subagent-dispatch.md`](subagent-dispatch.md) under the "Symbol moves must be atomic" section; the grep over `docs/` and `backend/` alone missed it because rules live under `.claude/rules/`.
 
+**The same post-refactor grep applies after a TypeScript/TSX file is renamed.** When you rename a component file (e.g. PascalCase → kebab-case: `AdminUsersClient.tsx` → `admin-users-client.tsx`), run:
+
+```bash
+grep -rn 'OldFileName' frontend/ docs/ .claude/rules/
+```
+
+Two distinct hit categories need updating:
+
+1. **Import statements in test files that used the old path.** TypeScript does not enforce these automatically on case-insensitive file systems (macOS HFS+) — local tests pass but CI on Linux (case-sensitive ext4) fails with `tsc --noEmit` exit 2 and uncollected vitest suites.
+2. **Doc prose that cited the old path as a worked example.** These rot silently — readers grep the referenced path and find nothing.
+
+Both categories were missed in the initial kebab-case rename of `AdminUsersClient.tsx` / `AdminRolesClient.tsx` / `AdminUserEditClient.tsx` on this branch, requiring a two-commit follow-up (`fix(tests): update admin client imports to kebab-case paths` and `docs: update stale admin client paths after kebab-case rename`). Always run `npx tsc --noEmit` immediately after a file rename — case-insensitive local file systems silently accept the stale imports.
+
+Component-identifier references (e.g. `<AdminUsersClient />` JSX, `AdminUsersClient` as a TypeScript identifier) stay as-is — React convention keeps component names PascalCase even when the filename is kebab-case. Only file-path references convert.
+
 **Mechanical rewrites preserve broken `§` anchors silently.** A regex/sed replacement that swaps `docs/foo.md` → `bar/CLAUDE.md` across N files preserves the `§ "X"` suffix on every site. If `## X` was only ever a heading in `docs/foo.md` and the new target is a different document, the anchor falls through silently — GitHub resolves unknown fragments to the page top without a 404. The verification gate is to walk each rewritten line and confirm the heading the `§` suffix names exists in the new target, before committing. A worked example from this repository: nine sites preserved `frontend/CLAUDE.md § "X"` anchors during the `docs/frontend.md` → `frontend/CLAUDE.md` migration. The target was a 49-line orientation hub with three `##` headings; none of the nine `X` strings matched. Each site was repointed at the actual `docs/frontend/<chapter>.md` file with the verified GitHub slug.
 
 ## Markdown anchor links over bare-text references

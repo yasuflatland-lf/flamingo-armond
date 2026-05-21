@@ -50,7 +50,7 @@ useEffect(() => {
 
 `useEffectEvent` reads the latest committed `hasNextPage`, `endCursor`, and `searchQuery`, but it is not a stable callback identity. That is fine here because the observer callback is created inside the `useEffect` that owns the subscription. The Effect Event must only be called from Effects or callbacks registered by Effects; do not call it from UI event handlers like Retry buttons.
 
-Keep `fetchingRef` as the explicit same-tick in-flight mutex. `useEffectEvent` does not serialize overlapping `fetchMore` calls, and `useTransition` would not guard synchronous repeated observer fires before pending state commits.
+Keep `fetchingRef` as the explicit same-tick in-flight mutex. `useEffectEvent` does not serialize overlapping `fetchMore` calls, and `useTransition` would not guard synchronous repeated observer fires before pending state commits. `fetchingRef` is retained because it addresses the same-tick serialization problem (preventing duplicate in-flight `fetchMore` calls within a single render tick), which `useEffectEvent` does not solve. The trio (`endCursorRef`, `hasNextPageRef`, `searchQueryRef`) addressed only the stale-closure problem.
 
 Retry should call the parameterized helper directly, not the Effect Event:
 
@@ -62,4 +62,4 @@ const retryFetchMore = useCallback(() => {
 
 The observer effect keeps structural deps such as `hasNextPage` / `pageInfo.hasNextPage` and `fetchMoreError`. It should not depend on the Effect Event's latest-value reads.
 
-**How to apply:** any paginated hook or client component that subscribes to an IntersectionObserver and advances via `fetchMore` should use this pattern. Today's call sites are `frontend/src/app/cardgroups/cardgroups-client.tsx`, `frontend/src/app/cardgroups/[id]/cards/use-cards-connection.ts` (consumed by `cards-client.tsx`), and `frontend/src/app/admin/users/AdminUsersClient.tsx`. New paginated hooks should keep the helper parameterized and keep the observer path Effect-owned; do not reintroduce the cursor/search/hasNextPage ref triplet unless you are in a non-Effect callback that cannot call an Effect Event.
+**How to apply:** any paginated hook or client component that subscribes to an IntersectionObserver and advances via `fetchMore` should use this pattern. Today's call sites are `frontend/src/app/cardgroups/cardgroups-client.tsx`, `frontend/src/app/cardgroups/[id]/cards/use-cards-connection.ts` (consumed by `cards-client.tsx`), and `frontend/src/app/admin/users/admin-users-client.tsx`. New paginated hooks should keep the helper parameterized and keep the observer path Effect-owned; do not reintroduce the cursor/search/hasNextPage ref triplet unless you are in a non-Effect callback that cannot call an Effect Event.

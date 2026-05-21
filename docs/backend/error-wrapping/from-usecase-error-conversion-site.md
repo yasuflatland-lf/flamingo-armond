@@ -21,9 +21,9 @@ Before this helper existed, resolvers wrapped errors ad-hoc: some called `gqlerr
 `FromUsecaseError` checks in this order:
 
 1. `errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)` → `Cancelled(ctx, err)`
-2. `errors.Is(err, usecase.ErrUnauthenticated)` → `Unauthenticated()`
-3. `errors.As(err, &ve)` where `ve` is `*usecase.ValidationError` → `BadUserInput(ve.Field, ve.Message)`
-4. `errors.As(err, &fe)` where `fe` is `*usecase.ForbiddenError` → `NewForbidden(fe.Message)`
+2. `errors.Is(err, ucerr.ErrUnauthenticated)` → `Unauthenticated()`
+3. `errors.As(err, &ve)` where `ve` is `*ucerr.ValidationError` → `BadUserInput(ve.Field, ve.Message)`
+4. `errors.As(err, &fe)` where `fe` is `*ucerr.ForbiddenError` → `NewForbidden(fe.Message)`
 5. default → `Internal(ctx, err)`
 
 Cancel is checked first because a cancelled context is observed before any application-level guard runs — treating a deadline-exceeded request as `UNAUTHENTICATED` would be a misclassification. Authentication comes before validation because an unauthenticated caller should not receive field-level error detail.
@@ -36,12 +36,12 @@ Cancel is checked first because a cancelled context is observed before any appli
 | Repository miss | `repository.ErrNotFound` (sentinel) | `Internal` unless the usecase re-wraps it into a `ValidationError` |
 | Repository conflict | `ErrCardDuplicateFront` etc. (sentinels) | Resolver maps directly when the error is part of an outcome union |
 | Outcome union | `CardDuplicateFrontError` (union variant struct returned in CreateCardResult) | Resolver maps directly — **not** via `FromUsecaseError` (see below) |
-| Field-scoped validation | `*usecase.ValidationError` | `BadUserInput` |
-| Auth (identity missing) | `usecase.ErrUnauthenticated` (sentinel) | `Unauthenticated` |
-| Authz (permission denied) | `*usecase.ForbiddenError` | `NewForbidden` |
+| Field-scoped validation | `*ucerr.ValidationError` | `BadUserInput` |
+| Auth (identity missing) | `ucerr.ErrUnauthenticated` (sentinel) | `Unauthenticated` |
+| Authz (permission denied) | `*ucerr.ForbiddenError` | `NewForbidden` |
 | Infrastructure (DB, tx) | unwrapped `error` | `Internal` |
 
-Domain-level sentinels that callers should surface as user-facing validation errors are re-wrapped into `*usecase.ValidationError` at the usecase layer before returning, so the conversion site sees the typed wrapper rather than a raw sentinel.
+Domain-level sentinels that callers should surface as user-facing validation errors are re-wrapped into `*ucerr.ValidationError` at the usecase layer before returning, so the conversion site sees the typed wrapper rather than a raw sentinel.
 
 ## Asserting in usecase tests
 
@@ -50,10 +50,10 @@ Usecase tests assert the typed value, not the gqlerror message:
 ```go
 // Sentinel — use errors.Is
 err := uc.DoSomething(ctx, input)
-assert.True(t, errors.Is(err, usecase.ErrUnauthenticated))
+assert.True(t, errors.Is(err, ucerr.ErrUnauthenticated))
 
 // Structured type — use errors.As (works through eris.Wrap chains)
-var ve *usecase.ValidationError
+var ve *ucerr.ValidationError
 assert.True(t, errors.As(err, &ve))
 assert.Equal(t, "front", ve.Field)
 assert.Contains(t, ve.Message, "required")

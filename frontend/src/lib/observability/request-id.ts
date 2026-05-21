@@ -1,5 +1,18 @@
 export const REQUEST_ID_HEADER = "X-Request-ID";
 
+// Detect Web Crypto availability once at module load. Older Safari, certain
+// JSDOM configurations, and some Node environments expose a `crypto` global
+// without `getRandomValues`, so we check the callable, not just the object.
+const _cryptoAvailable =
+  typeof globalThis.crypto !== "undefined" &&
+  typeof globalThis.crypto.getRandomValues === "function";
+
+if (!_cryptoAvailable) {
+  console.warn(
+    "[request-id] Web Crypto unavailable; falling back to Math.random-derived IDs (collision resistance reduced)",
+  );
+}
+
 let lastTimestampMs = 0;
 
 export function newRequestId(): string {
@@ -18,6 +31,14 @@ export function newRequestId(): string {
 
 function randomHex(byteLength: number): string {
   const bytes = new Uint8Array(byteLength);
-  globalThis.crypto.getRandomValues(bytes);
+  if (_cryptoAvailable) {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    // Fallback: fill bytes with Math.random()-derived values. Collision
+    // resistance is reduced, but the UUID v7 format contract is preserved.
+    for (let i = 0; i < bytes.length; i++) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
