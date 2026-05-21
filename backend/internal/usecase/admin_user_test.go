@@ -144,9 +144,10 @@ func (m *mockAdminUserRoleRepository) RevokeFromUser(_ context.Context, userID, 
 	return m.revokeErr
 }
 
-// adminAuthChecker is a stand-alone admin checker for AdminUser tests. It
-// reuses the same shape as mockAdminChecker but is keyed on userID so the
-// self-demotion test can return true for one caller and false for another.
+// adminAuthChecker is a stand-alone AdminChecker stub for AdminUser tests. It
+// is keyed on userID so the self-demotion test can return true for one caller
+// and false for another. Tests pass it to buildAdminUC, which wraps it in
+// NewAdminGate before constructing the usecase.
 type adminAuthChecker struct {
 	admins map[string]bool
 	err    error
@@ -167,7 +168,8 @@ func (a *adminAuthChecker) IsAdmin(_ context.Context, userID string) (bool, erro
 
 // buildAdminUC wires a usecase with the supplied stubs. nil arguments are
 // replaced with empty defaults so individual tests need only specify what
-// they exercise.
+// they exercise. authChk is wrapped in NewAdminGate before being passed to
+// the constructor.
 func buildAdminUC(
 	users *mockAdminUserRepository,
 	roles *mockAdminRoleRepository,
@@ -186,7 +188,7 @@ func buildAdminUC(
 	if authChk == nil {
 		authChk = &adminAuthChecker{}
 	}
-	uc := NewAdminUserWithDeps(users, roles, userRoles, authChk, newTestLogger())
+	uc := NewAdminUserWithDeps(users, roles, userRoles, NewAdminGate(authChk), newTestLogger())
 	return uc, users, roles, userRoles
 }
 

@@ -8,7 +8,6 @@ import (
 
 	"github.com/rotisserie/eris"
 
-	"backend/internal/auth"
 	"backend/internal/domain"
 	"backend/internal/repository"
 	"backend/internal/usecase/ucerr"
@@ -137,13 +136,13 @@ type adminUserRoleRepository interface {
 	RevokeFromUser(ctx context.Context, userID, roleID string) error
 }
 
-// adminUserUsecase wires the auth service, the user repository, the role
+// adminUserUsecase wires the admin gate, the user repository, the role
 // repository, and the user-role repository behind the admin-only management API.
 type adminUserUsecase struct {
 	users     adminUserRepository
 	roles     adminRoleRepository     // FindByIDs (self-demotion guard in RevokeRole)
 	userRoles adminUserRoleRepository // AssignToUser, RevokeFromUser
-	auth      AdminChecker
+	adminGate *AdminGate
 	logger    *slog.Logger
 }
 
@@ -155,13 +154,13 @@ func NewAdminUser(
 	users repository.UserRepository,
 	roles repository.RoleRepository,
 	userRoles repository.UserRoleRepository,
-	authSvc *auth.Service,
+	adminGate *AdminGate,
 	logger *slog.Logger,
 ) AdminUserUsecase {
 	if logger == nil {
 		panic("usecase: admin user: logger is required")
 	}
-	return &adminUserUsecase{users: users, roles: roles, userRoles: userRoles, auth: authSvc, logger: logger}
+	return &adminUserUsecase{users: users, roles: roles, userRoles: userRoles, adminGate: adminGate, logger: logger}
 }
 
 // NewAdminUserWithDeps is the test-time constructor that accepts the narrow
@@ -170,13 +169,13 @@ func NewAdminUserWithDeps(
 	users adminUserRepository,
 	roles adminRoleRepository,
 	userRoles adminUserRoleRepository,
-	authSvc AdminChecker,
+	adminGate *AdminGate,
 	logger *slog.Logger,
 ) AdminUserUsecase {
 	if logger == nil {
 		panic("usecase: admin user: logger is required")
 	}
-	return &adminUserUsecase{users: users, roles: roles, userRoles: userRoles, auth: authSvc, logger: logger}
+	return &adminUserUsecase{users: users, roles: roles, userRoles: userRoles, adminGate: adminGate, logger: logger}
 }
 
 // List paginates the users table with Relay-style cursors. Forward paging
@@ -194,8 +193,8 @@ func (u *adminUserUsecase) List(
 	first, last *int,
 	after, before, search *string,
 ) (*AdminUserConnection, error) {
-	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return nil, wrapAdminGateError(err, "usecase: admin user: check admin")
+	if _, err := u.adminGate.Require(ctx, "usecase: admin user: check admin"); err != nil {
+		return nil, err
 	}
 
 	if after != nil && before != nil {
@@ -274,8 +273,8 @@ func (u *adminUserUsecase) List(
 // Get returns a single user by id. Missing rows resolve to (nil, nil) so the
 // resolver renders the GraphQL field as null without erroring.
 func (u *adminUserUsecase) Get(ctx context.Context, id string) (*domain.User, error) {
-	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return nil, wrapAdminGateError(err, "usecase: admin user: check admin")
+	if _, err := u.adminGate.Require(ctx, "usecase: admin user: check admin"); err != nil {
+		return nil, err
 	}
 	user, err := u.users.FindByID(ctx, id)
 	if err != nil {
@@ -297,8 +296,8 @@ func (u *adminUserUsecase) Get(ctx context.Context, id string) (*domain.User, er
 // outcome's Validation slot ("errors as data") so the resolver maps them to
 // the AdminUpdateUserResult union's InputValidationError variant.
 func (u *adminUserUsecase) Update(ctx context.Context, id string, input AdminUpdateUserInput) (AdminUpdateUserOutcome, error) {
-	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return AdminUpdateUserOutcome{}, wrapAdminGateError(err, "usecase: admin user: check admin")
+	if _, err := u.adminGate.Require(ctx, "usecase: admin user: check admin"); err != nil {
+		return AdminUpdateUserOutcome{}, err
 	}
 
 	patch := repository.UserUpdate{}
@@ -353,8 +352,8 @@ func (u *adminUserUsecase) Update(ctx context.Context, id string, input AdminUpd
 // failures surface via outcome.Validation; infrastructure and cancellation
 // errors surface via the error return.
 func (u *adminUserUsecase) AssignRole(ctx context.Context, userID, roleID string) (AssignRoleOutcome, error) {
-	if _, err := requireAdmin(ctx, u.auth); err != nil {
-		return AssignRoleOutcome{}, wrapAdminGateError(err, "usecase: admin user: check admin")
+	if _, err := u.adminGate.Require(ctx, "usecase: admin user: check admin"); err != nil {
+		return AssignRoleOutcome{}, err
 	}
 	if err := u.userRoles.AssignToUser(ctx, userID, roleID); err != nil {
 		info, perr := mapRoleAssignmentError(err, "usecase: admin user assign role")
@@ -375,9 +374,9 @@ func (u *adminUserUsecase) AssignRole(ctx context.Context, userID, roleID string
 // CannotRevokeOwnAdminRoleError union variant (domain invariant as data,
 // not as an error). Idempotent at the repository layer otherwise.
 func (u *adminUserUsecase) RevokeRole(ctx context.Context, userID, roleID string) (RevokeRoleOutcome, error) {
-	callerID, err := requireAdmin(ctx, u.auth)
+	callerID, err := u.adminGate.Require(ctx, "usecase: admin user: check admin")
 	if err != nil {
-		return RevokeRoleOutcome{}, wrapAdminGateError(err, "usecase: admin user: check admin")
+		return RevokeRoleOutcome{}, err
 	}
 
 	// Self-demotion guard: only blocks revoking the *admin* role from the
