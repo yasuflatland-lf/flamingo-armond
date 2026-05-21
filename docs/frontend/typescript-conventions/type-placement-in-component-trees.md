@@ -73,4 +73,16 @@ If the grep returns anything other than expected feature siblings, move the type
 
 **Adjacent rule — discriminated unions over flat DTOs.** When the type being colocated is a discriminated union, the [§ "Discriminated union over flat DTO when consumers must branch on the variant"](./discriminated-union-over-flat-dto.md) rule governs the **shape** of the type, while this rule governs the **location** of its declaration. The two compose: a `FabAction` union declared at `frontend/src/components/nav/fab-action.ts` follows both — the shape is a discriminated union and the file is colocated at the deepest common ancestor of `global-fab.tsx` and `fab-action.test.ts`. Reach for both rules when introducing a new feature-scoped type.
 
+### Sibling subtrees with no shared route ancestor
+
+When the same type is consumed by sibling feature directories with no common route ancestor below `frontend/src/`
+(e.g. `app/cardgroups/[id]/cards/` and `app/admin/users/`), the deepest common ancestor would be `frontend/src/app/`
+itself — too high. In that case, the type belongs in `frontend/src/lib/<domain>/types.ts`. This is the `lib`-level
+analogue of the per-feature `types.ts` and follows the same single-purpose rule: pure type exports, no runtime values.
+
+Reference: `frontend/src/lib/pagination/types.ts` exports `FetchNextPageInput`, consumed by both the cards
+connection hook (`app/cardgroups/[id]/cards/use-cards-connection.ts`) and the admin users client
+(`app/admin/users/admin-users-client.tsx`). Before extraction, the interface was declared identically in
+three call sites — three places to maintain, three places for the shape to silently drift.
+
 Reference: `frontend/src/components/learn/types.ts` (`SwipeDirection`), imported by `swipe-card.tsx`, `animated-card.tsx`, `swipe-progress-overlay.tsx`, `learn-action-bar.tsx`, `swipe-card-stack.tsx`, and the route-level `learn-client.tsx`.
