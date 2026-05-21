@@ -54,6 +54,35 @@ useEffect(() => {
 
 Callers do not need to manage flush lifecycle themselves — mounting `<UndoDeleteProvider>` is sufficient.
 
+### Testing `useUndoDelete` with `renderHook` + wrapper
+
+`useUndoDelete()` calls `useContext(UndoDeleteContext)` and throws if called outside `<UndoDeleteProvider>`. Testing it in isolation requires a React Context wrapper. Use `renderHook` from `@testing-library/react` with a `wrapper` option that renders `<UndoDeleteProvider>` around the hook:
+
+```ts
+import { renderHook, act } from "@testing-library/react";
+import { UndoDeleteProvider, useUndoDelete } from "@/lib/undo-delete";
+
+function wrapper({ children }: { children: React.ReactNode }) {
+  return <UndoDeleteProvider>{children}</UndoDeleteProvider>;
+}
+
+it("scheduleDelete adds a pending entry", async () => {
+  const { result } = renderHook(() => useUndoDelete(), { wrapper });
+  expect(result.current.pendingCount()).toBe(0);
+  act(() => {
+    result.current.scheduleDelete({
+      id: "card-1",
+      label: "Card deleted",
+      optimisticRollback: vi.fn(),
+      commitDelete: vi.fn().mockResolvedValue(undefined),
+    });
+  });
+  expect(result.current.pendingCount()).toBe(1);
+});
+```
+
+**Why:** `renderHook` without a `wrapper` leaves the hook outside its Provider, causing the context read to return `undefined` and the hook to throw. The `wrapper` option is the idiomatic Testing Library way to mount a Provider for a hook test — it avoids wrapping the hook call in a full component and keeps the test focused on the hook's return value. The same `wrapper` pattern applies to any custom hook that reads from a React Context.
+
 ### Bulk delete keeps AlertDialog
 
 Rolling back N concurrent optimistic removes (one per selected card) is more complex than the single-row case: the pre-delete snapshot grows with selection size and concurrent bulk + per-row interleaving creates hard-to-reason-about states. The cost/benefit favours an `AlertDialog` confirm for bulk delete paths.
