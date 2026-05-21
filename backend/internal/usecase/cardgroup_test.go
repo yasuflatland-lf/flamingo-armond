@@ -23,6 +23,11 @@ type mockCardgroupRepository struct {
 	// by the cross-orderBy cursor-hydration tests).
 	findByIDFn func(id string) (*domain.Cardgroup, error)
 
+	// lastFoundCardgroup is set to the aggregate returned by the most recent
+	// successful FindByID call. Update tests use this to verify that the
+	// aggregate's Name was mutated by Rename before repo.Update is called.
+	lastFoundCardgroup *domain.Cardgroup
+
 	// Create
 	createErr      error
 	capturedCreate *domain.Cardgroup
@@ -68,7 +73,14 @@ type countByOwnerCall struct {
 
 func (m *mockCardgroupRepository) FindByID(_ context.Context, id string) (*domain.Cardgroup, error) {
 	if m.findByIDFn != nil {
-		return m.findByIDFn(id)
+		cg, err := m.findByIDFn(id)
+		if err == nil {
+			m.lastFoundCardgroup = cg
+		}
+		return cg, err
+	}
+	if m.findErr == nil {
+		m.lastFoundCardgroup = m.findResult
 	}
 	return m.findResult, m.findErr
 }
@@ -372,6 +384,17 @@ func TestCardgroupUsecase_Update_NameChange_Success(t *testing.T) {
 	}
 	if repo.capturedPatch.Name == nil || *repo.capturedPatch.Name != "New" {
 		t.Fatalf("expected patch.Name=%q, got %v", "New", repo.capturedPatch.Name)
+	}
+	// Verify that the aggregate's Name field was mutated by Rename before
+	// repo.Update was invoked. lastFoundCardgroup captures the pointer returned
+	// by FindByID; if Rename ran in-place on that pointer, its Name must equal
+	// the new name at the moment Update is called.
+	if repo.lastFoundCardgroup == nil {
+		t.Fatal("expected FindByID to have been called and captured the aggregate")
+	}
+	if repo.lastFoundCardgroup.Name != domain.CardgroupName("New") {
+		t.Fatalf("expected aggregate.Name=%q after Rename (before repo.Update), got %q",
+			"New", repo.lastFoundCardgroup.Name)
 	}
 }
 
