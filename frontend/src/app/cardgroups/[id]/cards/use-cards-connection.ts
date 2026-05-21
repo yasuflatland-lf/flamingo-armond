@@ -1,7 +1,7 @@
 import { type ErrorLike, NetworkStatus } from "@apollo/client";
 import { useQuery } from "@apollo/client/react";
 import type { RefObject } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import {
   CardsByCardgroupConnectionDocument,
   type CardsByCardgroupConnectionQuery,
@@ -13,6 +13,12 @@ import { cardsDefaultVars } from "./queries";
 type CardEdge = CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"]["edges"][number];
 type CardConnectionPageInfo =
   CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"]["pageInfo"];
+
+interface FetchNextPageInput {
+  hasNextPage: boolean;
+  endCursor: string | null;
+  searchQuery: string | null;
+}
 
 export interface UseCardsConnectionInput {
   cardgroupId: string;
@@ -39,9 +45,8 @@ export interface UseCardsConnectionResult {
 // Apollo connection + fetchMore + IntersectionObserver hook for the
 // cards-by-cardgroup paginated query. Preserves three invariants from
 // .claude/rules/pagination.md: the IO in-flight guard (useRef<boolean>), the
-// cursor/search/hasNextPage ref triplet that keeps requestNextPage's identity
-// stable across page advances, and the split debounce-vs-immediate-reset
-// effects driven by searchQuery changes.
+// React 19.2 useEffectEvent observer advance path, and the split
+// debounce-vs-immediate-reset effects driven by searchQuery changes.
 export function useCardsConnection(input: UseCardsConnectionInput): UseCardsConnectionResult {
   const { cardgroupId, searchQuery, initialEdges, initialPageInfo, initialTotalCount } = input;
 
@@ -90,67 +95,62 @@ export function useCardsConnection(input: UseCardsConnectionInput): UseCardsConn
   const pageInfo = connection?.pageInfo ?? initialPageInfo;
   const totalCount = connection?.totalCount ?? initialTotalCount;
 
-  // Mirror cursor-related page state into refs so requestNextPage can read them
-  // without being listed as a dep. This prevents the IO observer effect from
-  // disconnecting/reconnecting every time a page loads (which updates endCursor).
-  // See docs/pagination/stabilise-request-next-page-ref-triplet.md.
-  const endCursorRef = useRef(pageInfo.endCursor);
-  const hasNextPageRef = useRef(pageInfo.hasNextPage);
-  const searchQueryRef = useRef(searchQuery);
-  useEffect(() => {
-    endCursorRef.current = pageInfo.endCursor;
-  }, [pageInfo.endCursor]);
-  useEffect(() => {
-    hasNextPageRef.current = pageInfo.hasNextPage;
-  }, [pageInfo.hasNextPage]);
-  useEffect(() => {
-    searchQueryRef.current = searchQuery;
-  }, [searchQuery]);
+  const fetchNextPage = useCallback(
+    ({ hasNextPage, endCursor, searchQuery }: FetchNextPageInput) => {
+      if (fetchingRef.current) return;
+      if (!hasNextPage) return;
 
-  const requestNextPage = useCallback(() => {
-    if (fetchingRef.current) return;
-    if (!hasNextPageRef.current) return;
-
-    fetchingRef.current = true;
-    fetchMore({
-      variables: {
-        ...cardsDefaultVars(cardgroupId),
-        after: endCursorRef.current,
-        search: searchQueryRef.current,
-      },
-      updateQuery: (prev, { fetchMoreResult }) => {
-        if (!fetchMoreResult) return prev;
-        return {
-          cardsByCardgroupConnection: {
-            ...fetchMoreResult.cardsByCardgroupConnection,
-            edges: [
-              ...prev.cardsByCardgroupConnection.edges,
-              ...fetchMoreResult.cardsByCardgroupConnection.edges,
-            ],
-          },
-        };
-      },
-    })
-      .then(() => {
-        // Clear any previous fetchMore error on success so the observer can resume.
-        setFetchMoreError(null);
+      fetchingRef.current = true;
+      fetchMore({
+        variables: {
+          ...cardsDefaultVars(cardgroupId),
+          after: endCursor,
+          search: searchQuery,
+        },
+        updateQuery: (prev, { fetchMoreResult }) => {
+          if (!fetchMoreResult) return prev;
+          return {
+            cardsByCardgroupConnection: {
+              ...fetchMoreResult.cardsByCardgroupConnection,
+              edges: [
+                ...prev.cardsByCardgroupConnection.edges,
+                ...fetchMoreResult.cardsByCardgroupConnection.edges,
+              ],
+            },
+          };
+        },
       })
-      .catch((err) => {
-        // Structured warn for operator triage: name + request context only.
-        // err.message is omitted — backend messages may carry user-authored content.
-        // See docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
-        console.warn("[cards-client] fetchMore failed", {
-          name: err instanceof Error ? err.name : "unknown",
-          searchQuery: searchQueryRef.current ?? null,
-          endCursor: endCursorRef.current ?? null,
+        .then(() => {
+          // Clear any previous fetchMore error on success so the observer can resume.
+          setFetchMoreError(null);
+        })
+        .catch((err) => {
+          // Structured warn for operator triage: name + request context only.
+          // err.message is omitted — backend messages may carry user-authored content.
+          // See docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
+          console.warn("[cards-client] fetchMore failed", {
+            name: err instanceof Error ? err.name : "unknown",
+            searchQuery,
+            endCursor,
+          });
+          const banner =
+            getBackendErrorBanner(err) ?? "Could not load more cards. Please try again.";
+          setFetchMoreError(banner);
+        })
+        .finally(() => {
+          fetchingRef.current = false;
         });
-        const banner = getBackendErrorBanner(err) ?? "Could not load more cards. Please try again.";
-        setFetchMoreError(banner);
-      })
-      .finally(() => {
-        fetchingRef.current = false;
-      });
-  }, [cardgroupId, fetchMore]);
+    },
+    [cardgroupId, fetchMore],
+  );
+
+  const requestNextPageFromObserver = useEffectEvent(() => {
+    fetchNextPage({
+      hasNextPage: pageInfo.hasNextPage,
+      endCursor: pageInfo.endCursor ?? null,
+      searchQuery,
+    });
+  });
 
   useEffect(() => {
     if (!pageInfo.hasNextPage) return;
@@ -163,18 +163,21 @@ export function useCardsConnection(input: UseCardsConnectionInput): UseCardsConn
       const entry = entries[0];
       if (!entry?.isIntersecting) return;
       if (fetchingRef.current) return;
-      if (!hasNextPageRef.current) return;
-      requestNextPage();
+      requestNextPageFromObserver();
     });
 
     observer.observe(node);
     return () => observer.disconnect();
-  }, [pageInfo.hasNextPage, fetchMoreError, requestNextPage]);
+  }, [pageInfo.hasNextPage, fetchMoreError]);
 
   const retryFetchMore = useCallback(() => {
     setFetchMoreError(null);
-    requestNextPage();
-  }, [requestNextPage]);
+    fetchNextPage({
+      hasNextPage: pageInfo.hasNextPage,
+      endCursor: pageInfo.endCursor ?? null,
+      searchQuery,
+    });
+  }, [fetchNextPage, pageInfo.endCursor, pageInfo.hasNextPage, searchQuery]);
 
   const fetchingMore = networkStatus === NetworkStatus.fetchMore;
 
