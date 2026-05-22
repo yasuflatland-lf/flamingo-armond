@@ -116,7 +116,7 @@ export default function CardgroupPickerSheet({
                         onClick={() => handleSelect(cg.id)}
                         className={cn(
                           "flex w-full items-center justify-between rounded-md px-3 py-3 text-left text-sm",
-                          "transition-colors hover:bg-accent active:bg-accent hover:text-accent-foreground active:text-accent-foreground",
+                          "transition-colors hover:bg-accent hover:text-accent-foreground active:bg-accent active:text-accent-foreground",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                           isSelected && "font-medium",
                         )}
