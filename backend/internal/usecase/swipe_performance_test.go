@@ -76,8 +76,6 @@ func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
 					ID:          "card-1",
 					CardgroupID: "cg-1",
 				},
-				// State: FSRSStateReview exercises the review-bucket path in OrderingPolicy.Apply.
-				findDueRows: []domain.DueCard{{Card: &domain.Card{ID: "next-1", CardgroupID: "cg-1"}, State: domain.FSRSStateReview}},
 			}
 			cardgroupRepo := &mockCardgroupRepoForCard{
 				findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
@@ -94,7 +92,6 @@ func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
 				cardgroupRepo,
 				swipeRepo,
 				service.NewFSRSScheduler(),
-				10,
 				tx,
 				userFSRSRepo,
 				newTestLogger(),
@@ -130,9 +127,6 @@ func TestSwipeUsecase_HandleSwipePerformanceMode(t *testing.T) {
 			if swipeRepo.listLimit != swipePerformanceSampleLimit {
 				t.Fatalf("ListRecentByUser limit=%d, want %d", swipeRepo.listLimit, swipePerformanceSampleLimit)
 			}
-			if len(outcome.Swipe.NextCards) != 1 || outcome.Swipe.NextCards[0].ID != "next-1" {
-				t.Fatalf("unexpected next cards: %+v", outcome.Swipe.NextCards)
-			}
 		})
 	}
 }
@@ -145,8 +139,6 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 			ID:          "card-1",
 			CardgroupID: "cg-1",
 		},
-		// State: FSRSStateReview exercises the review-bucket path in OrderingPolicy.Apply.
-		findDueRows: []domain.DueCard{{Card: &domain.Card{ID: "next-1", CardgroupID: "cg-1"}, State: domain.FSRSStateReview}},
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
 		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
@@ -159,7 +151,6 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 		cardgroupRepo,
 		swipeRepo,
 		service.NewFSRSScheduler(),
-		10,
 		tx,
 		userFSRSRepo,
 		newTestLogger(),
@@ -192,9 +183,6 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 	if swipeRepo.created.CardgroupID != "cg-1" {
 		t.Fatalf("created swipe cardgroup=%q, want cg-1", swipeRepo.created.CardgroupID)
 	}
-	if len(outcome.Swipe.NextCards) != 1 || outcome.Swipe.NextCards[0].ID != "next-1" {
-		t.Fatalf("unexpected next cards: %+v", outcome.Swipe.NextCards)
-	}
 }
 
 // TestSwipeUsecase_HandleSwipe_NonOwner_Unauthenticated verifies that
@@ -214,7 +202,6 @@ func TestSwipeUsecase_HandleSwipe_NonOwner_Unauthenticated(t *testing.T) {
 		cardgroupRepo,
 		&mockSwipeRecordRepoForSwipe{},
 		service.NewFSRSScheduler(),
-		10,
 		tx,
 		&mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}},
 		newTestLogger(),
@@ -264,7 +251,6 @@ func TestSwipeUsecase_HandleSwipe_PropagatesUpsertError(t *testing.T) {
 			ID:          "card-1",
 			CardgroupID: "cg-1",
 		},
-		findDueRows: []domain.DueCard{},
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
 		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
@@ -281,7 +267,6 @@ func TestSwipeUsecase_HandleSwipe_PropagatesUpsertError(t *testing.T) {
 		cardgroupRepo,
 		swipeRepo,
 		service.NewFSRSScheduler(),
-		10,
 		tx,
 		userFSRSRepo,
 		newTestLogger(),
@@ -315,7 +300,6 @@ func TestSwipeUsecase_HandleSwipe_InvalidMode_ValidationVariant(t *testing.T) {
 		cardgroupRepo,
 		&mockSwipeRecordRepoForSwipe{},
 		service.NewFSRSScheduler(),
-		10,
 		tx,
 		&mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}},
 		newTestLogger(),
@@ -362,7 +346,6 @@ func TestSwipeUsecase_HandleSwipe_CardNotFound_ValidationVariant(t *testing.T) {
 		cardgroupRepo,
 		swipeRepo,
 		service.NewFSRSScheduler(),
-		10,
 		tx,
 		&mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}},
 		newTestLogger(),
@@ -406,7 +389,6 @@ func TestSwipeUsecase_HandleSwipe_CardgroupNotFound_ValidationVariant(t *testing
 		cardgroupRepo,
 		&mockSwipeRecordRepoForSwipe{},
 		service.NewFSRSScheduler(),
-		10,
 		tx,
 		&mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}},
 		newTestLogger(),
@@ -459,7 +441,6 @@ func TestSwipeUsecase_HandleSwipe_CardCrossCardgroup_ValidationVariant(t *testin
 		cardgroupRepo,
 		&mockSwipeRecordRepoForSwipe{},
 		service.NewFSRSScheduler(),
-		10,
 		tx,
 		&mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}},
 		newTestLogger(),

@@ -38,8 +38,6 @@ type mockCardRepository struct {
 	findPageRows  []*domain.Card
 	findPageTotal int64
 	findPageErr   error
-	findDueRows   []domain.DueCard
-	findDueErr    error
 	// captured arguments from the most recent FindPageByCardgroup call.
 	capturedFindPage struct {
 		cardgroupID string
@@ -86,9 +84,6 @@ func (m *mockCardRepository) Update(_ context.Context, _ string, patch repositor
 func (m *mockCardRepository) Delete(_ context.Context, _ string) error {
 	m.deleteCalled = true
 	return m.deleteErr
-}
-func (m *mockCardRepository) FindDueCardsForUserTx(_ context.Context, _ *gorm.DB, _ string, _ string, _ time.Time, _ int) ([]domain.DueCard, error) {
-	return m.findDueRows, m.findDueErr
 }
 func (m *mockCardRepository) FindPageByCardgroupForUser(
 	_ context.Context,

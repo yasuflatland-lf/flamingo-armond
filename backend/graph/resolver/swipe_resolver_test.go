@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
@@ -23,18 +22,12 @@ import (
 
 // swipeCardRepo satisfies usecase.CardRepoForSwipe.
 type swipeCardRepo struct {
-	findByIDTxResult         *domain.Card
-	findByIDTxErr            error
-	findDueCardsForUserTxRes []domain.DueCard
-	findDueCardsForUserTxErr error
+	findByIDTxResult *domain.Card
+	findByIDTxErr    error
 }
 
 func (m *swipeCardRepo) FindByIDTx(_ context.Context, _ *gorm.DB, _ string) (*domain.Card, error) {
 	return m.findByIDTxResult, m.findByIDTxErr
-}
-
-func (m *swipeCardRepo) FindDueCardsForUserTx(_ context.Context, _ *gorm.DB, _, _ string, _ time.Time, _ int) ([]domain.DueCard, error) {
-	return m.findDueCardsForUserTxRes, m.findDueCardsForUserTxErr
 }
 
 // swipeCGRepo satisfies usecase.CardgroupRepoForSwipe.
@@ -108,7 +101,6 @@ func newSwipeSrv(
 		cgRepo,
 		swipeRepo,
 		nil, // scheduler — nil uses default FSRSScheduler
-		10,  // nextBatchSize
 		swipeFakeTx(),
 		userFSRSRepo,
 		newDiscardLogger(),
@@ -128,7 +120,6 @@ func handleSwipeMutation(cardID, cardgroupID string, mode int) string {
 				__typename
 				... on HandleSwipeSuccess {
 					response {
-						nextCards { id }
 						performanceMode
 						metrics { successRate avgDifficulty retentionRate studyStreak lapseRate reviewCount }
 					}
@@ -157,13 +148,9 @@ func TestResolver_HandleSwipe_HappyPath(t *testing.T) {
 	t.Parallel()
 
 	card := &domain.Card{ID: "c-1", CardgroupID: "cg-1", Front: "Q", Back: "A"}
-	nextCard := &domain.Card{ID: "c-2", CardgroupID: "cg-1", Front: "Q2", Back: "A2"}
 
 	cardRepo := &swipeCardRepo{
 		findByIDTxResult: card,
-		findDueCardsForUserTxRes: []domain.DueCard{
-			{Card: nextCard, State: domain.FSRSStateNew, Due: nextCard.CreatedAt},
-		},
 	}
 	cgRepo := &swipeCGRepo{
 		findByIDResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"},
@@ -194,14 +181,6 @@ func TestResolver_HandleSwipe_HappyPath(t *testing.T) {
 	response, _ := payload["response"].(map[string]any)
 	if response == nil {
 		t.Fatalf("expected response in HandleSwipeSuccess, got nil; response: %v", resp)
-	}
-	nextCards, _ := response["nextCards"].([]any)
-	if len(nextCards) != 1 {
-		t.Fatalf("expected 1 next card, got %d; response: %v", len(nextCards), resp)
-	}
-	nextCardPayload, _ := nextCards[0].(map[string]any)
-	if nextCardPayload["id"] != "c-2" {
-		t.Fatalf("expected next card id=c-2, got %v", nextCardPayload["id"])
 	}
 }
 
@@ -282,7 +261,6 @@ func TestResolver_HandleSwipe_InfrastructureError_ReturnsInternal(t *testing.T) 
 		},
 		&swipeRecordRepo{},
 		nil,
-		10,
 		nil, // nil tx runner → INTERNAL
 		&userCardFSRSRepo{},
 		newDiscardLogger(),
