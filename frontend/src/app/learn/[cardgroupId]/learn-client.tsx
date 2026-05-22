@@ -56,10 +56,6 @@ function modeFromDirection(direction: SwipeDirection): 1 | 2 | 4 {
   }
 }
 
-function withTypename(card: LearnCard): LearnCard & { __typename: "Card" } {
-  return { ...card, __typename: "Card" };
-}
-
 type Props = {
   cardgroupId: string;
   initialCards: LearnCard[];
@@ -69,10 +65,6 @@ type Props = {
 
 export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }: Props) {
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
-  const queueRef = useRef(queue);
-  useEffect(() => {
-    queueRef.current = queue;
-  }, [queue]);
   const [completed, setCompleted] = useState(0);
   const [localError, setLocalError] = useState<string | null>(null);
   const swipeStackRef = useRef<SwipeCardStackHandle | null>(null);
@@ -154,27 +146,29 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
       });
   }, [cardgroupId, lastViewedCardgroupId, client]);
 
-  // Background prefetch: when the queue drops to PREFETCH_THRESHOLD or below
-  // (but is non-empty — an empty queue means the user has finished), fetch
-  // the next batch of due cards via a side-channel `client.query` and merge
-  // them onto the tail by id. The effect re-fires whenever `queue.length`
-  // changes, so a successful handleSwipe response that shrinks the queue
-  // triggers another prefetch attempt naturally.
+  // Background prefetch: the ONLY mechanism that refills the queue.
+  //
+  // Contract:
+  // - The optimistic `setQueue` in `onSwipe` is the sole queue-advance step;
+  //   the `handleSwipe` mutation response does NOT modify the queue.
+  // - When `queue.length` drops to PREFETCH_THRESHOLD or below (but is
+  //   non-zero — empty queue means finished), a side-channel `client.query`
+  //   fetches the next batch of FSRS-scheduled cards and merges them onto the
+  //   tail by id, deduplicating against what is already in the queue.
+  // - The effect re-fires on every `queue.length` change, so each optimistic
+  //   delete naturally re-evaluates whether another prefetch is needed.
   //
   // - fetchPolicy: "network-only" prevents stale data from the Apollo cache.
   // - prefetchInFlightRef guards against double-firing while the previous
   //   request is still pending. Reset in `finally` so a failed attempt does
   //   not block the next threshold crossing.
-  // - handleSwipe.nextCards remains the authoritative replace (FSRS-scheduled
-  //   from the server). The natural re-fire on the next queue.length change
-  //   re-evaluates whether we still need a prefetch.
   // - Failures are silent (console.warn only) so learning can continue on the
   //   current queue. The warn payload omits err.message — backend messages
   //   may carry user-authored content. See
   //   docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
-  // isMountedRef guards against calling `setQueue` on an unmounted component
-  // when a prefetch resolves after unmount. The cleanup sets it to false; the
-  // setup sets it back to true so React 18 StrictMode double-mount works correctly.
+  // - isMountedRef guards against calling `setQueue` on an unmounted component
+  //   when a prefetch resolves after unmount. The cleanup sets it to false; the
+  //   setup sets it back to true so React 18 StrictMode double-mount works correctly.
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;
@@ -227,23 +221,21 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
       setQueue((current) => current.filter((candidate) => candidate.id !== card.id));
       setCompleted((current) => current + 1);
 
-      const remaining = queueRef.current
-        .filter((candidate) => candidate.id !== card.id)
-        .map(withTypename);
-
       const result = await handleSwipe({
         variables: { input: { cardId: card.id, cardgroupId, mode } },
         // performanceMode and metrics are optimistic placeholders. The HandleSwipeSuccess
         // shape now wraps SwipeResponse inside `response`. We write zero/no-op values
         // here until the server reconciles the cache. No UI consumer reads them today,
         // but omitting them from the optimistic write would break the codegen type contract.
+        // nextCards is intentionally absent: the queue is managed locally via optimistic
+        // delete and background prefetch; the mutation response is not authoritative for
+        // the queue.
         optimisticResponse: {
           __typename: "Mutation",
           handleSwipe: {
             __typename: "HandleSwipeSuccess" as const,
             response: {
               __typename: "SwipeResponse" as const,
-              nextCards: remaining,
               performanceMode: 1,
               metrics: DEFAULT_METRICS,
             },
@@ -267,7 +259,8 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
 
       const payload = result.data?.handleSwipe;
       if (payload?.__typename === "HandleSwipeSuccess") {
-        setQueue(payload.response.nextCards);
+        // Optimistic delete already advanced the queue; the mutation response carries
+        // only performance telemetry which no UI consumer reads today.
       } else if (payload?.__typename === "InputValidationError") {
         // Server rejected the swipe (stale card, cardgroup mismatch, invalid mode).
         // The optimistic queue advanced so learning continues, but we surface to

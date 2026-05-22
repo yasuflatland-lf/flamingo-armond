@@ -24,16 +24,6 @@ export const HandleSwipeMutation = graphql(`
       __typename
       ... on HandleSwipeSuccess {
         response {
-          nextCards {
-            id
-            front
-            back
-            userCardState {
-              due
-              state
-            }
-            cardgroupId
-          }
           performanceMode
           metrics {
             successRate
