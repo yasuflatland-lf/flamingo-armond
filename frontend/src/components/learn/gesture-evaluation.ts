@@ -16,9 +16,9 @@ export const HORIZONTAL_FLICK_MIN_PX = 40;
 
 // Vertical (down) commit thresholds — unchanged from the original tuning.
 // "Hard" / unsure-of-answer gesture stays forgiving on purpose.
-export const DOWN_COMMIT_PY = 96;
-export const DOWN_COMMIT_VY = 0.35;
-export const DOWN_COMMIT_YDIR = 0.9;
+const DOWN_COMMIT_PY = 96;
+const DOWN_COMMIT_VY = 0.35;
+const DOWN_COMMIT_YDIR = 0.9;
 
 export type GestureInput = {
   active: boolean;
