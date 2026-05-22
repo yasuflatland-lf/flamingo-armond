@@ -26,7 +26,7 @@ export function CardRow({
 }: CardRowProps) {
   return (
     <SwipeableRow ref={rowRef} onDelete={onDelete} disabled={disabled} ariaLabel="Delete card">
-      <div className="group flex items-start justify-between gap-4 px-4 py-3 hover:bg-accent transition-colors">
+      <div className="group flex items-start justify-between gap-4 px-4 py-3 hover:bg-accent active:bg-accent transition-colors">
         {/* biome-ignore lint/a11y/noStaticElementInteractions: span is a click/keydown stopper, not an interactive element; the inner <input> is the actual control. */}
         <span
           onClick={(e) => e.stopPropagation()}

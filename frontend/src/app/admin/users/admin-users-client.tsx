@@ -26,7 +26,7 @@ function UserRow({ edge }: { edge: Edge }) {
   return (
     <li
       key={user.id}
-      className="flex rounded-md border border-border hover:bg-accent transition-colors"
+      className="flex rounded-md border border-border hover:bg-accent active:bg-accent transition-colors"
       data-testid={`admin-user-row-${user.id}`}
     >
       <Link

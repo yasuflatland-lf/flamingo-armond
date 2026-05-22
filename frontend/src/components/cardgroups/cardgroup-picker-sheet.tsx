@@ -116,7 +116,7 @@ export default function CardgroupPickerSheet({
                         onClick={() => handleSelect(cg.id)}
                         className={cn(
                           "flex w-full items-center justify-between rounded-md px-3 py-3 text-left text-sm",
-                          "transition-colors hover:bg-accent hover:text-accent-foreground",
+                          "transition-colors hover:bg-accent hover:text-accent-foreground active:bg-accent active:text-accent-foreground",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                           isSelected && "font-medium",
                         )}
@@ -142,7 +142,7 @@ export default function CardgroupPickerSheet({
               <Link
                 href={`/cardgroups/new?returnTo=${encodeURIComponent(createReturnTo)}`}
                 onClick={() => onOpenChange(false)}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-3 text-sm text-brand-primary hover:bg-accent transition-colors"
+                className="flex w-full items-center gap-2 rounded-md px-3 py-3 text-sm text-brand-primary hover:bg-accent active:bg-accent transition-colors"
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 Create new cardgroup…
