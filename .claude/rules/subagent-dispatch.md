@@ -41,6 +41,16 @@ A migration that applies the same substitution across N files (e.g. swapping eve
 
 The post-conditions are the same as in [`docs/doc-organization.md` § "Parallel agent safety for doc splits"](../../docs/doc-organization.md#parallel-agent-safety-for-doc-splits) — single source ownership, no cross-agent edits — but the workflow is named differently (mechanical code migration vs. doc tree split) because the verification harness is `go build && go vet` rather than `markdown-link-check`.
 
+### When per-concern split forces same-file overlap, consolidate into one agent
+
+The natural split for a multi-aspect migration is by concern: one agent for production code changes, one for assertion updates, one for test fixture rewrites. When a constructor-signature change affects many files in the same package, this per-concern split forces two agents to touch the same file — for example, an "assertion-stripping" agent and a "constructor-call-stripping" agent both editing `swipe_performance_test.go`. The conflict-avoidance rule from this section then demands a different split shape.
+
+The fix is to collapse the per-concern agents into a single per-package "mega" agent that owns all edits to its files. This is slower (the agent runs serially across N files) but eliminates the race entirely. Concerns that do not overlap with the mega agent's file set can still run in parallel alongside it.
+
+Worked example from issue #229: a 22-call-site `nextBatchSize int` parameter drop affected 7 files (`swipe.go`, `main.go`, `main_test.go`, `swipe_resolver_test.go`, `swipe_error_test.go`, `swipe_performance_test.go`, `card_test.go`). The original plan split work into 5 parallel agents by concern (1 for production code, 1 for resolver tests, 3 for usecase test sub-concerns). The conflict: an assertion-stripping agent and a constructor-call-stripping agent both targeted `swipe_performance_test.go` and `swipe_resolver_test.go`. The fix consolidated all 5 agents into a single "T2a-mega" agent owning all 7 files, completing serially in one pass with no conflicts. The remaining backend work (`mapper.go`) and frontend work (3 files) ran in parallel because they had no file overlap with T2a-mega.
+
+**Decision criterion**: if the per-concern split would assign two agents to the same file, choose one of: (a) consolidate the concerns into one agent for that file's package — the default; (b) serialize the concerns with explicit dependency ordering — slower, but use this when one concern is qualitatively riskier and benefits from a dedicated reviewer before the next concern runs. Default to (a) for mechanical parameter-drop or signature-change migrations where all edits are similarly low-risk.
+
 ### Scope `git add` to a known file list — never `git add <directory>` while siblings are mid-edit
 
 The per-file fan-out above keeps source edits non-conflicting, but the commit

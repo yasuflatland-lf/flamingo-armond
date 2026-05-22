@@ -136,13 +136,24 @@ is to feed the service its own input.
 ### Caller-truncate contract for domain services
 
 `OrderingPolicy.Apply` returns all cards it processed; each caller
-(`LearnUsecase.NextDueCards`, `SwipeUsecase.HandleSwipe`) truncates to its own
-per-session limit immediately after. The contract is documented on the
-service signature; the truncate is mirrored at every call site so a future
-ordering policy that emits more rows than it received cannot exceed the
-caller's cap.
+truncates to its own per-session limit immediately after. The contract is
+documented on the service signature; the truncate is mirrored at every call
+site so a future ordering policy that emits more rows than it received cannot
+exceed the caller's cap. The current caller is `LearnUsecase.NextDueCards`.
 
 [`docs/backend/ddd-patterns/caller-truncate-contract.md`](../../docs/backend/ddd-patterns/caller-truncate-contract.md)
+
+### Mutation response must not carry a client-managed collection
+
+A write mutation should return only data scoped to the write (the affected
+entity, an outcome enum, telemetry, validation errors). Embedding a
+freshly-computed collection snapshot creates a dual-source-of-truth: the
+client either overwrites its in-memory order with the server's snapshot
+(causing visible reshuffles when the computation is non-deterministic) or
+ignores the snapshot entirely (dead bytes). Collection refills belong in a
+separate query the client triggers on its own lifecycle.
+
+[`docs/backend/ddd-patterns/mutation-response-must-not-carry-client-managed-collection.md`](../../docs/backend/ddd-patterns/mutation-response-must-not-carry-client-managed-collection.md)
 
 ## Further reading (on-demand)
 
@@ -160,3 +171,4 @@ caller's cap.
 - [Patch DTOs keep primitive types, not the VO](../../docs/backend/ddd-patterns/patch-dto-primitive-not-vo.md)
 - [View-level value in the domain package](../../docs/backend/ddd-patterns/view-level-value-in-domain-package.md)
 - [Caller-truncate contract for domain services](../../docs/backend/ddd-patterns/caller-truncate-contract.md)
+- [Mutation response must not carry a client-managed collection](../../docs/backend/ddd-patterns/mutation-response-must-not-carry-client-managed-collection.md)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"math/rand"
 	"time"
 
 	"github.com/rotisserie/eris"
@@ -18,13 +17,11 @@ import (
 )
 
 const (
-	defaultSwipeNextBatchSize   = 10
 	swipePerformanceSampleLimit = 100
 )
 
 type CardRepoForSwipe interface {
 	FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*domain.Card, error)
-	FindDueCardsForUserTx(ctx context.Context, tx *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error)
 }
 
 type CardgroupRepoForSwipe interface {
@@ -53,12 +50,9 @@ type swipeUsecase struct {
 	swipeRepo      SwipeRecordRepoForSwipe
 	userFSRSRepo   UserCardFSRSRepoForSwipe
 	scheduler      *service.FSRSScheduler
-	ordering       *service.OrderingPolicy
-	randSource     func() *rand.Rand
 	applyRating    func(current *domain.UserCardFSRS, scheduler domain.FSRSScheduler, rating domain.Rating, now time.Time) error
 	newSwipeRecord func(userID, cardID, cardgroupID string, rating domain.Rating, reviewedAt time.Time, stateAfter domain.FSRSState) (*domain.SwipeRecord, error)
 	tx             txRunner
-	nextBatchSize  int
 	logger         *slog.Logger
 }
 
@@ -69,14 +63,13 @@ type HandleSwipeInput struct {
 }
 
 type SwipeOutput struct {
-	NextCards       []*domain.Card
 	PerformanceMode int
 	Metrics         service.PerformanceMetrics
 }
 
 // HandleSwipeOutcome is the result of SwipeUsecase.HandleSwipe. Exactly one of
 // Swipe or Validation is non-nil on a nil-error return.
-//   - Swipe holds the success result (next cards + performance metrics + completion state).
+//   - Swipe holds the success result (performance metrics).
 //   - Validation holds field-level user-input errors: invalid mode, an unknown card, or
 //     an unknown cardgroup. Validation.Field will be one of "mode", "cardId", or "cardgroupId".
 //   - Authorization failures (caller does not own the cardgroup) and infrastructure errors
@@ -92,7 +85,6 @@ func NewSwipeUsecase(
 	cardgroupRepo CardgroupRepoForSwipe,
 	swipeRepo SwipeRecordRepoForSwipe,
 	scheduler *service.FSRSScheduler,
-	nextBatchSize int,
 	userCardFSRSRepo UserCardFSRSRepoForSwipe,
 	logger *slog.Logger,
 ) SwipeUsecase {
@@ -102,24 +94,16 @@ func NewSwipeUsecase(
 	if scheduler == nil {
 		scheduler = service.NewFSRSScheduler()
 	}
-	if nextBatchSize <= 0 {
-		nextBatchSize = defaultSwipeNextBatchSize
-	}
 	uc := &swipeUsecase{
 		cardRepo:      cardRepo,
 		cardgroupRepo: cardgroupRepo,
 		swipeRepo:     swipeRepo,
 		userFSRSRepo:  userCardFSRSRepo,
 		scheduler:     scheduler,
-		ordering:      service.NewOrderingPolicy(),
-		randSource: func() *rand.Rand {
-			return rand.New(rand.NewSource(time.Now().UnixNano()))
-		},
 		applyRating: func(current *domain.UserCardFSRS, scheduler domain.FSRSScheduler, rating domain.Rating, now time.Time) error {
 			return current.ApplyRating(scheduler, rating, now)
 		},
 		newSwipeRecord: domain.NewSwipeRecord,
-		nextBatchSize:  nextBatchSize,
 		logger:         logger,
 	}
 	if db != nil {
@@ -135,12 +119,11 @@ func NewSwipeUsecaseWithTx(
 	cardgroupRepo CardgroupRepoForSwipe,
 	swipeRepo SwipeRecordRepoForSwipe,
 	scheduler *service.FSRSScheduler,
-	nextBatchSize int,
 	tx txRunner,
 	userCardFSRSRepo UserCardFSRSRepoForSwipe,
 	logger *slog.Logger,
 ) SwipeUsecase {
-	uc := NewSwipeUsecase(nil, cardRepo, cardgroupRepo, swipeRepo, scheduler, nextBatchSize, userCardFSRSRepo, logger).(*swipeUsecase)
+	uc := NewSwipeUsecase(nil, cardRepo, cardgroupRepo, swipeRepo, scheduler, userCardFSRSRepo, logger).(*swipeUsecase)
 	uc.tx = tx
 	return uc
 }
@@ -169,7 +152,6 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 		}
 	}
 
-	var nextCards []*domain.Card
 	var now time.Time
 	if u.tx == nil {
 		return HandleSwipeOutcome{}, eris.New("usecase: swipe: transaction runner is not configured")
@@ -223,17 +205,6 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			}
 			return eris.Wrap(err, "usecase: swipe: insert swipe record")
 		}
-		due, err := u.cardRepo.FindDueCardsForUserTx(ctx, tx, user.Sub, in.CardgroupID, now, u.nextBatchSize)
-		if err != nil {
-			if isContextDone(err) {
-				return err
-			}
-			return eris.Wrap(err, "usecase: swipe: find due cards")
-		}
-		nextCards = u.ordering.Apply(due, u.randSource())
-		if len(nextCards) > u.nextBatchSize {
-			nextCards = nextCards[:u.nextBatchSize]
-		}
 		return nil
 	})
 	if err != nil {
@@ -257,7 +228,6 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 	}
 	metrics := service.ComputeMetrics(swipeRecordsByValue(recentSwipes), now)
 	return HandleSwipeOutcome{Swipe: &SwipeOutput{
-		NextCards:       nextCards,
 		PerformanceMode: service.ModeFromMetrics(metrics),
 		Metrics:         metrics,
 	}}, nil

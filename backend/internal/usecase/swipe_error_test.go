@@ -34,7 +34,6 @@ func TestSwipeUsecase_HandleSwipe_FindCardByIDError_PinsChain(t *testing.T) {
 		cardgroupRepo,
 		&mockSwipeRecordRepoForSwipe{},
 		service.NewFSRSScheduler(),
-		10,
 		tx,
 		&mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}},
 		newTestLogger(),
@@ -76,7 +75,6 @@ func TestSwipeUsecase_HandleSwipe_FindUserCardFSRSError_PinsChain(t *testing.T) 
 		cardgroupRepo,
 		&mockSwipeRecordRepoForSwipe{},
 		service.NewFSRSScheduler(),
-		10,
 		tx,
 		userFSRSRepo,
 		newTestLogger(),
@@ -117,7 +115,6 @@ func TestSwipeUsecase_HandleSwipe_ApplyRatingError_PinsChain(t *testing.T) {
 		cardgroupRepo,
 		&mockSwipeRecordRepoForSwipe{},
 		service.NewFSRSScheduler(),
-		10,
 		tx,
 		userFSRSRepo,
 		newTestLogger(),
@@ -133,50 +130,6 @@ func TestSwipeUsecase_HandleSwipe_ApplyRatingError_PinsChain(t *testing.T) {
 	})
 
 	assertInternalChain(t, err, "usecase: swipe: apply rating")
-	require.ErrorIs(t, err, infraErr, "error chain must preserve injected root sentinel")
-}
-
-// TestSwipeUsecase_HandleSwipe_FindDueCardsError_PinsChain verifies that an
-// infrastructure error from FindDueCardsForUserTx (the final step that fetches
-// the next batch of due cards) is wrapped with the canonical
-// "usecase: swipe: find due cards" prefix.  This is the central new path
-// introduced by the ordering-policy refactor.
-func TestSwipeUsecase_HandleSwipe_FindDueCardsError_PinsChain(t *testing.T) {
-	t.Parallel()
-
-	infraErr := eris.New("storage: simulated find-due-cards infra failure")
-	cardRepo := &mockCardRepository{
-		findResult: &domain.Card{
-			ID:          "card-1",
-			CardgroupID: "cg-1",
-		},
-		findDueErr: infraErr,
-	}
-	cardgroupRepo := &mockCardgroupRepoForCard{
-		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
-	}
-	userFSRSRepo := &mockUserCardFSRSRepository{
-		byCardID: map[string]*domain.UserCardFSRS{},
-	}
-	tx, _ := fakeTxRunner()
-	uc := NewSwipeUsecaseWithTx(
-		cardRepo,
-		cardgroupRepo,
-		&mockSwipeRecordRepoForSwipe{},
-		service.NewFSRSScheduler(),
-		10,
-		tx,
-		userFSRSRepo,
-		newTestLogger(),
-	)
-
-	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
-		CardID:      "card-1",
-		CardgroupID: "cg-1",
-		Mode:        int(domain.RatingEasy),
-	})
-
-	assertInternalChain(t, err, "usecase: swipe: find due cards")
 	require.ErrorIs(t, err, infraErr, "error chain must preserve injected root sentinel")
 }
 
@@ -205,7 +158,6 @@ func TestSwipeUsecase_HandleSwipe_NewSwipeRecordError_PinsChain(t *testing.T) {
 		cardgroupRepo,
 		&mockSwipeRecordRepoForSwipe{},
 		service.NewFSRSScheduler(),
-		10,
 		tx,
 		userFSRSRepo,
 		newTestLogger(),
@@ -252,7 +204,6 @@ func TestSwipeUsecase_HandleSwipe_InsertSwipeRecordError_PinsChain(t *testing.T)
 		cardgroupRepo,
 		swipeRepo,
 		service.NewFSRSScheduler(),
-		10,
 		tx,
 		userFSRSRepo,
 		newTestLogger(),
@@ -284,7 +235,6 @@ func TestSwipeUsecase_HandleSwipe_FindCardByID_PropagatesCancelled(t *testing.T)
 		cardgroupRepo,
 		&mockSwipeRecordRepoForSwipe{},
 		service.NewFSRSScheduler(),
-		10,
 		tx,
 		&mockUserCardFSRSRepository{byCardID: map[string]*domain.UserCardFSRS{}},
 		newTestLogger(),
@@ -325,7 +275,6 @@ func TestSwipeUsecase_HandleSwipe_FindUserCardFSRS_PropagatesCancelled(t *testin
 		cardgroupRepo,
 		&mockSwipeRecordRepoForSwipe{},
 		service.NewFSRSScheduler(),
-		10,
 		tx,
 		userFSRSRepo,
 		newTestLogger(),
@@ -365,7 +314,6 @@ func TestSwipeUsecase_HandleSwipe_UpsertUserCardFSRS_PropagatesCancelled(t *test
 		cardgroupRepo,
 		&mockSwipeRecordRepoForSwipe{},
 		service.NewFSRSScheduler(),
-		10,
 		tx,
 		userFSRSRepo,
 		newTestLogger(),
@@ -407,7 +355,6 @@ func TestSwipeUsecase_HandleSwipe_InsertSwipeRecord_PropagatesCancelled(t *testi
 		cardgroupRepo,
 		swipeRepo,
 		service.NewFSRSScheduler(),
-		10,
 		tx,
 		userFSRSRepo,
 		newTestLogger(),
@@ -422,21 +369,25 @@ func TestSwipeUsecase_HandleSwipe_InsertSwipeRecord_PropagatesCancelled(t *testi
 	assertCancelled(t, err)
 }
 
-// TestSwipeUsecase_HandleSwipe_FindDueCards_PropagatesCancelled verifies that
-// context.Canceled returned from FindDueCardsForUserTx passes through unwrapped
-// after the insert step succeeds.
-func TestSwipeUsecase_HandleSwipe_FindDueCards_PropagatesCancelled(t *testing.T) {
+// TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PinsChain verifies that an
+// infrastructure error from ListRecentByUser is wrapped with the canonical
+// "usecase: swipe: list recent swipes" prefix so the error_chain log attribute
+// points at the correct post-transaction operation.
+func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PinsChain(t *testing.T) {
 	t.Parallel()
 
+	infraErr := eris.New("storage: simulated list-recent infra failure")
 	cardRepo := &mockCardRepository{
 		findResult: &domain.Card{
 			ID:          "card-1",
 			CardgroupID: "cg-1",
 		},
-		findDueErr: context.Canceled,
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
 		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+	}
+	swipeRepo := &mockSwipeRecordRepoForSwipe{
+		listErr: infraErr,
 	}
 	userFSRSRepo := &mockUserCardFSRSRepository{
 		byCardID: map[string]*domain.UserCardFSRS{},
@@ -445,9 +396,50 @@ func TestSwipeUsecase_HandleSwipe_FindDueCards_PropagatesCancelled(t *testing.T)
 	uc := NewSwipeUsecaseWithTx(
 		cardRepo,
 		cardgroupRepo,
-		&mockSwipeRecordRepoForSwipe{},
+		swipeRepo,
 		service.NewFSRSScheduler(),
-		10,
+		tx,
+		userFSRSRepo,
+		newTestLogger(),
+	)
+
+	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+		CardID:      "card-1",
+		CardgroupID: "cg-1",
+		Mode:        int(domain.RatingEasy),
+	})
+
+	assertInternalChain(t, err, "usecase: swipe: list recent swipes")
+	require.ErrorIs(t, err, infraErr, "error chain must preserve injected root sentinel")
+}
+
+// TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesCancelled verifies
+// that context.Canceled returned from ListRecentByUser passes through unwrapped
+// after the transaction commits successfully.
+func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &mockCardRepository{
+		findResult: &domain.Card{
+			ID:          "card-1",
+			CardgroupID: "cg-1",
+		},
+	}
+	cardgroupRepo := &mockCardgroupRepoForCard{
+		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+	}
+	swipeRepo := &mockSwipeRecordRepoForSwipe{
+		listErr: context.Canceled,
+	}
+	userFSRSRepo := &mockUserCardFSRSRepository{
+		byCardID: map[string]*domain.UserCardFSRS{},
+	}
+	tx, _ := fakeTxRunner()
+	uc := NewSwipeUsecaseWithTx(
+		cardRepo,
+		cardgroupRepo,
+		swipeRepo,
+		service.NewFSRSScheduler(),
 		tx,
 		userFSRSRepo,
 		newTestLogger(),
@@ -460,6 +452,7 @@ func TestSwipeUsecase_HandleSwipe_FindDueCards_PropagatesCancelled(t *testing.T)
 	})
 
 	assertCancelled(t, err)
+	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
 }
 
 // TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesDeadlineExceeded
@@ -473,7 +466,6 @@ func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesDeadlineExceeded(t 
 			ID:          "card-1",
 			CardgroupID: "cg-1",
 		},
-		findDueRows: []domain.DueCard{},
 	}
 	cardgroupRepo := &mockCardgroupRepoForCard{
 		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
@@ -490,7 +482,6 @@ func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesDeadlineExceeded(t 
 		cardgroupRepo,
 		swipeRepo,
 		service.NewFSRSScheduler(),
-		10,
 		tx,
 		userFSRSRepo,
 		newTestLogger(),

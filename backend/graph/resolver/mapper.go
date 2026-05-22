@@ -122,12 +122,11 @@ func toUsecaseSortOrder(d *model.SortOrder) *usecase.SortOrder {
 	return &v
 }
 
-func toSwipeResponseModel(ctx context.Context, out *usecase.SwipeOutput) *model.SwipeResponse {
+func toSwipeResponseModel(out *usecase.SwipeOutput) *model.SwipeResponse {
 	if out == nil {
 		return nil
 	}
 	return &model.SwipeResponse{
-		NextCards:       toCardModels(ctx, out.NextCards),
 		PerformanceMode: out.PerformanceMode,
 		Metrics: &model.PerformanceMetrics{
 			SuccessRate:   out.Metrics.SuccessRate,

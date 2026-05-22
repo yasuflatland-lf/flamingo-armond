@@ -14,36 +14,17 @@ import { LearnActionBar } from "@/components/learn/learn-action-bar";
 import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
 import type { SwipeDirection } from "@/components/learn/types";
-import type {
-  HandleSwipeMutation as HandleSwipeMutationType,
-  LearnNextDueCardsQuery,
-} from "@/generated/graphql";
+import type { LearnNextDueCardsQuery } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 
 type LearnCard = LearnNextDueCardsQuery["learnNextDueCards"][number];
-// Derived from the generated HandleSwipeMutationType so schema changes stay in sync automatically.
-type PerformanceMetrics = Extract<
-  HandleSwipeMutationType["handleSwipe"],
-  { __typename: "HandleSwipeSuccess" }
->["response"]["metrics"];
-
 /**
  * When `queue.length` falls to this value (or below) and is still non-zero,
  * the background prefetch effect fires another `LearnNextDueCards` request
  * to keep the swipe queue full ahead of the user.
  */
 export const PREFETCH_THRESHOLD = 5;
-
-const DEFAULT_METRICS: PerformanceMetrics = {
-  __typename: "PerformanceMetrics",
-  successRate: 0.5,
-  avgDifficulty: 0.5,
-  retentionRate: 0.5,
-  studyStreak: 0,
-  lapseRate: 0,
-  reviewCount: 0,
-};
 
 function modeFromDirection(direction: SwipeDirection): 1 | 2 | 4 {
   switch (direction) {
@@ -56,10 +37,6 @@ function modeFromDirection(direction: SwipeDirection): 1 | 2 | 4 {
   }
 }
 
-function withTypename(card: LearnCard): LearnCard & { __typename: "Card" } {
-  return { ...card, __typename: "Card" };
-}
-
 type Props = {
   cardgroupId: string;
   initialCards: LearnCard[];
@@ -69,10 +46,6 @@ type Props = {
 
 export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }: Props) {
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
-  const queueRef = useRef(queue);
-  useEffect(() => {
-    queueRef.current = queue;
-  }, [queue]);
   const [completed, setCompleted] = useState(0);
   const [localError, setLocalError] = useState<string | null>(null);
   const swipeStackRef = useRef<SwipeCardStackHandle | null>(null);
@@ -154,27 +127,29 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
       });
   }, [cardgroupId, lastViewedCardgroupId, client]);
 
-  // Background prefetch: when the queue drops to PREFETCH_THRESHOLD or below
-  // (but is non-empty — an empty queue means the user has finished), fetch
-  // the next batch of due cards via a side-channel `client.query` and merge
-  // them onto the tail by id. The effect re-fires whenever `queue.length`
-  // changes, so a successful handleSwipe response that shrinks the queue
-  // triggers another prefetch attempt naturally.
+  // Background prefetch: the ONLY mechanism that refills the queue.
+  //
+  // Contract:
+  // - The optimistic `setQueue` in `onSwipe` is the sole queue-advance step;
+  //   the `handleSwipe` mutation response does NOT modify the queue.
+  // - When `queue.length` drops to PREFETCH_THRESHOLD or below (but is
+  //   non-zero — empty queue means finished), a side-channel `client.query`
+  //   fetches the next batch of FSRS-scheduled cards and merges them onto the
+  //   tail by id, deduplicating against what is already in the queue.
+  // - The effect re-fires on every `queue.length` change, so each optimistic
+  //   delete naturally re-evaluates whether another prefetch is needed.
   //
   // - fetchPolicy: "network-only" prevents stale data from the Apollo cache.
   // - prefetchInFlightRef guards against double-firing while the previous
   //   request is still pending. Reset in `finally` so a failed attempt does
   //   not block the next threshold crossing.
-  // - handleSwipe.nextCards remains the authoritative replace (FSRS-scheduled
-  //   from the server). The natural re-fire on the next queue.length change
-  //   re-evaluates whether we still need a prefetch.
   // - Failures are silent (console.warn only) so learning can continue on the
   //   current queue. The warn payload omits err.message — backend messages
   //   may carry user-authored content. See
   //   docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
-  // isMountedRef guards against calling `setQueue` on an unmounted component
-  // when a prefetch resolves after unmount. The cleanup sets it to false; the
-  // setup sets it back to true so React 18 StrictMode double-mount works correctly.
+  // - isMountedRef guards against calling `setQueue` on an unmounted component
+  //   when a prefetch resolves after unmount. The cleanup sets it to false; the
+  //   setup sets it back to true so React 18 StrictMode double-mount works correctly.
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;
@@ -227,28 +202,13 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
       setQueue((current) => current.filter((candidate) => candidate.id !== card.id));
       setCompleted((current) => current + 1);
 
-      const remaining = queueRef.current
-        .filter((candidate) => candidate.id !== card.id)
-        .map(withTypename);
-
       const result = await handleSwipe({
         variables: { input: { cardId: card.id, cardgroupId, mode } },
-        // performanceMode and metrics are optimistic placeholders. The HandleSwipeSuccess
-        // shape now wraps SwipeResponse inside `response`. We write zero/no-op values
-        // here until the server reconciles the cache. No UI consumer reads them today,
-        // but omitting them from the optimistic write would break the codegen type contract.
-        optimisticResponse: {
-          __typename: "Mutation",
-          handleSwipe: {
-            __typename: "HandleSwipeSuccess" as const,
-            response: {
-              __typename: "SwipeResponse" as const,
-              nextCards: remaining,
-              performanceMode: 1,
-              metrics: DEFAULT_METRICS,
-            },
-          },
-        },
+        // optimisticResponse intentionally omitted — handleSwipe can return InputValidationError
+        // and Apollo v3 does not reliably roll back optimistic writes on typed GraphQL errors.
+        // See .claude/rules/pagination.md § "Drop `optimisticResponse` for mutations that can
+        // fail with typed GraphQL errors". The optimistic queue advance above (via setQueue)
+        // is React state and is unaffected.
       }).catch((err) => {
         // err.message is omitted — backend messages may echo user-authored content.
         // See docs/frontend/rsc-error-handling/substring-matching-sdk-error-strings.md.
@@ -265,10 +225,13 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
 
       if (!result) return;
 
+      // HandleSwipeSuccess is a no-op: the optimistic delete already advanced
+      // the queue and the response carries only performance telemetry that no
+      // UI consumer reads today. Only the non-success branches need handling.
       const payload = result.data?.handleSwipe;
-      if (payload?.__typename === "HandleSwipeSuccess") {
-        setQueue(payload.response.nextCards);
-      } else if (payload?.__typename === "InputValidationError") {
+      if (payload?.__typename === "HandleSwipeSuccess") return;
+
+      if (payload?.__typename === "InputValidationError") {
         // Server rejected the swipe (stale card, cardgroup mismatch, invalid mode).
         // The optimistic queue advanced so learning continues, but we surface to
         // operator telemetry — repeated firing indicates a stale prefetch.
@@ -279,17 +242,18 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
           cardgroupId,
           field: payload.field,
         });
-      } else {
-        // Unknown variant or null/undefined payload — optimistic queue is now source of truth.
-        // Cast through unknown because TypeScript narrows the else branch to `never` once all
-        // discriminated union members are handled above.
-        const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
-        console.warn("[LearnClient] handleSwipe unexpected payload", {
-          typename: unknownPayload?.__typename ?? null,
-          cardId: card.id,
-          cardgroupId,
-        });
+        return;
       }
+
+      // Unknown variant or null/undefined payload — optimistic queue is now source of truth.
+      // Cast through unknown because TypeScript narrows this branch to `never` once all
+      // discriminated union members are handled above.
+      const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
+      console.warn("[LearnClient] handleSwipe unexpected payload", {
+        typename: unknownPayload?.__typename ?? null,
+        cardId: card.id,
+        cardgroupId,
+      });
     },
     [cardgroupId, handleSwipe],
   );

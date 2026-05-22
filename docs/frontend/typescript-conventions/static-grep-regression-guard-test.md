@@ -113,3 +113,29 @@ describe("pagination ref-triplet removal regression rule", () => {
 - `frontend/src/app/pagination-ref-triplet-removal-rule.test.ts` — canonical example.
 - [`.claude/rules/pagination.md`](../../../.claude/rules/pagination.md) — the rule this guard enforces (no ref-triplet identifiers; `fetchingRef` intentionally retained).
 - [`useEffectEvent` replaces ref mirrors for Effect-owned callbacks](useeffectevent-replaces-ref-mirror.md) — the migration this guard locks in.
+
+## Second worked example: negative-pattern enforcement via `Component.toString()`
+
+`frontend/src/app/learn/[cardgroupId]/learn-client.test.tsx` — `"does not carry optimisticResponse in the handleSwipe mutation"` — applies the same technique to enforce the Apollo `optimisticResponse` rule (see [`.claude/rules/pagination.md`](../../../.claude/rules/pagination.md) § "Drop `optimisticResponse` for mutations that can fail with typed GraphQL errors").
+
+The difference from the `readFileSync` form: when the component is a named export available in the test module, `Component.toString()` retrieves the source without a filesystem path. The region-slice pins to the mutation call site rather than the whole file, keeping the assertion tight:
+
+```ts
+it("does not carry optimisticResponse in the handleSwipe mutation", () => {
+  // handleSwipe can return InputValidationError (a typed GraphQL error variant).
+  // Apollo v3 does not reliably roll back optimistic writes on typed errors —
+  // only on network errors — so no `optimisticResponse` must appear in the call.
+  const source = LearnClient.toString();
+
+  const swipeStart = source.indexOf("handleSwipe({");
+  expect(swipeStart).toBeGreaterThan(-1);
+
+  const swipeCatchIdx = source.indexOf(".catch(", swipeStart);
+  expect(swipeCatchIdx).toBeGreaterThan(-1);
+
+  const swipeBlock = source.slice(swipeStart, swipeCatchIdx);
+  expect(swipeBlock).not.toContain("optimisticResponse");
+});
+```
+
+**Rationale.** This is negative-pattern enforcement at the source level — the same technique as the `endCursorRef` example, applied to a different concern. Where the ref-triplet guard asserts that a deprecated identifier stays absent after a migration, this guard asserts that a forbidden Apollo option never appears in a typed-error-capable mutation call. Both tests are structural, not behavioral: they fail on reintroduction without requiring any runtime mock setup. The `Component.toString()` variant avoids a hard-coded file path and works as long as the component is a module-level named export accessible in the test file.

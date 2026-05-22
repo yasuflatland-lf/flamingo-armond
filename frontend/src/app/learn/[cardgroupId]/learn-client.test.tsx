@@ -162,15 +162,6 @@ const CARD_2 = {
   cardgroupId: CG_ID,
 };
 
-const SERVER_CARD = {
-  __typename: "Card" as const,
-  id: "c-3",
-  front: "Server next",
-  back: "Siguiente",
-  userCardState: userCardState("2026-04-30T00:00:00Z", 1),
-  cardgroupId: CG_ID,
-};
-
 const DEFAULT_METRICS = {
   __typename: "PerformanceMetrics" as const,
   successRate: 0.5,
@@ -240,7 +231,7 @@ function renderLearnClient(
   );
 }
 
-function makeSwipeMock(mode: 1 | 2 | 4, nextCards: (typeof CARD_1)[] = []) {
+function makeSwipeMock(mode: 1 | 2 | 4) {
   let called = false;
   return {
     mock: {
@@ -256,7 +247,6 @@ function makeSwipeMock(mode: 1 | 2 | 4, nextCards: (typeof CARD_1)[] = []) {
               __typename: "HandleSwipeSuccess" as const,
               response: {
                 __typename: "SwipeResponse" as const,
-                nextCards,
                 performanceMode: 0,
                 metrics: DEFAULT_METRICS,
               },
@@ -290,24 +280,70 @@ describe("<LearnClient>", () => {
     });
   });
 
-  it("updates the queue optimistically then reconciles with server nextCards", async () => {
+  it("advances the queue via optimistic delete; server response does not replace the queue", async () => {
     const user = userEvent.setup();
-    const swipe = makeSwipeMock(4, [SERVER_CARD]);
+    const swipe = makeSwipeMock(4);
     renderLearnClient([swipe.mock], [CARD_1, CARD_2]);
 
     await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
 
+    // The swiped card is removed.
     expect(screen.queryByText("Hello")).not.toBeInTheDocument();
 
+    // The next card in the original queue is now active — no server-supplied
+    // replacement card appears; the queue retains its original tail order.
     await waitFor(() => {
-      expect(screen.getByText("Server next")).toBeInTheDocument();
+      expect(screen.getByText("Bye")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Bye")).not.toBeInTheDocument();
+    // The mutation was called.
+    await waitFor(() => {
+      expect(swipe.wasCalled()).toBe(true);
+    });
+
+    // After the server reconciles, the visible queue is still the retained
+    // tail — exactly [CARD_2]. No card was injected by the server response.
+    const latest = capturedCardSnapshots.at(-1);
+    expect(latest).toBeDefined();
+    expect(latest?.map((c) => c.id)).toEqual([CARD_2.id]);
+  });
+
+  it("queue order is stable across handleSwipe — same-due cards do not reshuffle on swipe", async () => {
+    // Regression guard for issue #229: when the user swipes the first card of a
+    // multi-card queue, the remaining cards must keep their original relative
+    // order. Prior to the fix, the HandleSwipe response carried a FSRS-rescored
+    // replacement array that the client applied to the local queue, which
+    // could re-order same-due cards on every swipe. The new contract drops
+    // that field; the queue is advanced exclusively by the optimistic delete
+    // and refilled exclusively by the background prefetch.
+    const user = userEvent.setup();
+    const cards = [
+      CARD_1,
+      { ...CARD_2, id: "c-2", front: "Card2" },
+      { ...CARD_2, id: "c-3", front: "Card3" },
+      { ...CARD_2, id: "c-4", front: "Card4" },
+    ];
+    const swipe = makeSwipeMock(4);
+    renderLearnClient([swipe.mock], cards);
+
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+    await waitFor(() => {
+      expect(swipe.wasCalled()).toBe(true);
+    });
+
+    // After the swipe + server reconciliation, the visible queue must be
+    // exactly [c-2, c-3, c-4] — same order as the input minus the swiped card.
+    // No card from a later position has jumped to the front.
+    await waitFor(() => {
+      const latest = capturedCardSnapshots.at(-1);
+      expect(latest).toBeDefined();
+      expect(latest?.map((c) => c.id)).toEqual(["c-2", "c-3", "c-4"]);
+    });
   });
 
   it("renders the caught-up state after the queue empties", async () => {
     const user = userEvent.setup();
-    const swipe = makeSwipeMock(4, []);
+    const swipe = makeSwipeMock(4);
     renderLearnClient([swipe.mock], [CARD_1]);
 
     await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
@@ -704,12 +740,12 @@ describe("<LearnClient> persist-last-viewed path", () => {
     // `optimisticResponse` inside the SetLastViewedCardgroup mutate call.
     // The comment block in learn-client.tsx explains why — typed errors from
     // @apollo/client v3.x are not reliably rolled back from optimistic writes
-    // (see docs/pagination/drop-optimistic-response-typed-errors.md).
+    // (see .claude/rules/pagination.md § "Drop `optimisticResponse` for mutations
+    // that can fail with typed GraphQL errors").
     //
     // Strategy: find the section of source between `SetLastViewedCardgroup` and
     // the next `.catch(` that follows it, and assert no `optimisticResponse`
-    // key appears there. `handleSwipe` is the only call that legitimately
-    // uses `optimisticResponse` and it appears earlier in the source.
+    // key appears there.
     const source = LearnClient.toString();
 
     const persistStart = source.indexOf("SetLastViewedCardgroup");
@@ -722,6 +758,29 @@ describe("<LearnClient> persist-last-viewed path", () => {
     const persistBlock = source.slice(persistStart, persistCatchIdx);
     expect(persistBlock).not.toContain("optimisticResponse");
   });
+
+  it("does not carry optimisticResponse in the handleSwipe mutation", () => {
+    // Static assertion: handleSwipe can return InputValidationError (a typed
+    // GraphQL error variant). Apollo v3 does not reliably roll back optimistic
+    // writes on typed GraphQL errors — only on network errors. So no
+    // `optimisticResponse` must appear in the handleSwipe call.
+    // See .claude/rules/pagination.md § "Drop `optimisticResponse` for mutations
+    // that can fail with typed GraphQL errors".
+    //
+    // Strategy: the handleSwipe call is in the `onSwipe` callback. Find the
+    // region between `handleSwipe({` and the `.catch(` that follows it, and
+    // assert no `optimisticResponse` key appears there.
+    const source = LearnClient.toString();
+
+    const swipeStart = source.indexOf("handleSwipe({");
+    expect(swipeStart).toBeGreaterThan(-1);
+
+    const swipeCatchIdx = source.indexOf(".catch(", swipeStart);
+    expect(swipeCatchIdx).toBeGreaterThan(-1);
+
+    const swipeBlock = source.slice(swipeStart, swipeCatchIdx);
+    expect(swipeBlock).not.toContain("optimisticResponse");
+  });
 });
 
 describe("<LearnClient> LearnActionBar integration", () => {
@@ -732,7 +791,7 @@ describe("<LearnClient> LearnActionBar integration", () => {
 
   it("removes LearnActionBar when the session queue empties", async () => {
     const user = userEvent.setup();
-    const swipe = makeSwipeMock(4, []);
+    const swipe = makeSwipeMock(4);
     renderLearnClient([swipe.mock]);
 
     expect(screen.getByTestId("learn-action-bar")).toHaveAttribute("data-disabled", "false");
@@ -746,7 +805,7 @@ describe("<LearnClient> LearnActionBar integration", () => {
 
   it("does not render rating buttons once the caught-up state is reached", async () => {
     const user = userEvent.setup();
-    const swipe = makeSwipeMock(4, []);
+    const swipe = makeSwipeMock(4);
     renderLearnClient([swipe.mock], [CARD_1]);
 
     await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
@@ -767,10 +826,12 @@ describe("<LearnClient> LearnActionBar integration", () => {
 // keeps the same reference across re-renders caused by queue state updates.
 //
 // Regression guard: onSwipe must keep a stable callback identity across
-// re-renders caused by queue mutations. The implementation uses a `queueRef`
-// instead of putting `queue` in the useCallback dep array, so the callback
-// is created once. If a future change adds `queue` to the deps, every swipe
-// would mint a fresh function and this assertion would fail.
+// re-renders caused by queue mutations. The callback's dep array is
+// `[cardgroupId, handleSwipe]` — it does not include `queue`. Queue mutations
+// are performed via `setQueue((current) => ...)` functional-update callbacks
+// that always read the latest state, so no `queue` closure capture is needed.
+// If a future change adds `queue` to the deps, every swipe would mint a fresh
+// function and this assertion would fail.
 //
 // The SwipeCardStack module mock at the top of this file captures the
 // `onCardSwiped` reference on every render into `capturedOnCardSwiped`. The
@@ -792,7 +853,6 @@ describe("<LearnClient> onSwipe identity stability", () => {
             __typename: "HandleSwipeSuccess" as const,
             response: {
               __typename: "SwipeResponse" as const,
-              nextCards: [CARD_2],
               performanceMode: 0,
               metrics: DEFAULT_METRICS,
             },
@@ -834,9 +894,9 @@ describe("<LearnClient> onSwipe identity stability", () => {
     const secondRef = capturedOnCardSwiped[capturedOnCardSwiped.length - 1];
 
     // The core assertion: onSwipe must be the same function object across
-    // re-renders. If `queue` were in the useCallback dep array (instead of the
-    // queueRef pattern), every queue state update would produce a new function
-    // and this assertion would fail.
+    // re-renders. If `queue` were added to the useCallback dep array, every
+    // queue state update would produce a new function and this assertion would
+    // fail. Queue mutations use functional setState so no `queue` dep is needed.
     expect(Object.is(firstRef, secondRef)).toBe(true);
   });
 });
@@ -921,8 +981,10 @@ describe("<LearnClient> queue prefetch", () => {
     // Hold the response open long enough for a re-render to fire the effect
     // again before the in-flight ref clears in `finally`.
     const prefetch = makePrefetchMock(incoming, { delay: 50 });
-    // The first card's swipe will fire HandleSwipe — provide a mock that
-    // returns nextCards: [] so the post-swipe queue is just the leftover four.
+    // The first card's swipe will fire HandleSwipe. Under the new contract the
+    // server response does NOT carry a replacement queue; the optimistic delete
+    // is the sole driver of queue advancement, so the post-swipe queue is just
+    // the leftover four.
     const swipe = {
       request: {
         query: HandleSwipeDocument,
@@ -934,7 +996,6 @@ describe("<LearnClient> queue prefetch", () => {
             __typename: "HandleSwipeSuccess" as const,
             response: {
               __typename: "SwipeResponse" as const,
-              nextCards: initial.slice(1),
               performanceMode: 0,
               metrics: DEFAULT_METRICS,
             },
@@ -1060,7 +1121,6 @@ describe("<LearnClient> queue prefetch", () => {
             __typename: "HandleSwipeSuccess" as const,
             response: {
               __typename: "SwipeResponse" as const,
-              nextCards: initial.slice(1),
               performanceMode: 0,
               metrics: DEFAULT_METRICS,
             },

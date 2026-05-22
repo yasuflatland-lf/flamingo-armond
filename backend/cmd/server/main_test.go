@@ -560,7 +560,7 @@ func newGraphQLTestServerWithUserRepo(t *testing.T, f *jwtFixture, userRepo repo
 	userUC := usecase.NewUserUsecase(userRepo, userRoleRepo, nil, logger)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, nil, logger)
-	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10, userCardFSRSRepo, logger)
+	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	userPreferenceRepo := repository.NewUserPreferenceRepository(db.GORM)
 	e := newRouter(resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, nil, nil, nil, nil, nil, nil), mw, auth.NewSuperUserPromoter(nil, "", nil, nil), userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, userCardFSRSRepo, ping.New(pingRecordRepo, "test-token"), nil, swipeRecordRepo)
@@ -1655,7 +1655,7 @@ func newLastViewedGraphQLTestServer(t *testing.T, f *jwtFixture) (*httptest.Serv
 	userUC := usecase.NewUserUsecase(userRepo, userRoleRepo, nil, logger)
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, nil, logger)
-	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), 10, userCardFSRSRepo, logger)
+	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
 	lastViewedUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo, logger)
 	pingRecordRepo := repository.NewPingRecordRepository(db.GORM)
 	e := newRouter(
@@ -1804,7 +1804,6 @@ func TestGraphQL_HandleSwipe_HappyPath(t *testing.T) {
 
 	cgID := createTestCardgroup(t, ts.URL, tok, "Swipe")
 	firstID := createTestCard(t, ts.URL, tok, cgID, "front 1", "back 1")
-	secondID := createTestCard(t, ts.URL, tok, cgID, "front 2", "back 2")
 
 	gqlQuery := fmt.Sprintf(`mutation {
 		handleSwipe(input: {cardId: %s, cardgroupId: %s, mode: 4}) {
@@ -1813,7 +1812,6 @@ func TestGraphQL_HandleSwipe_HappyPath(t *testing.T) {
 				response {
 					performanceMode
 					metrics { reviewCount successRate }
-					nextCards { id }
 				}
 			}
 			... on InputValidationError { field message }
@@ -1847,19 +1845,6 @@ func TestGraphQL_HandleSwipe_HappyPath(t *testing.T) {
 	}
 	if metrics["successRate"] != float64(1) {
 		t.Fatalf("metrics.successRate=%v, want 1", metrics["successRate"])
-	}
-	nextCards, _ := swipeResp["nextCards"].([]any)
-	for _, item := range nextCards {
-		card, _ := item.(map[string]any)
-		if card["id"] == firstID {
-			t.Fatalf("nextCards included swiped card %q: %v", firstID, nextCards)
-		}
-	}
-	if len(nextCards) > 0 {
-		card, _ := nextCards[0].(map[string]any)
-		if card["id"] != secondID {
-			t.Fatalf("expected due sibling card first, got %v", card)
-		}
 	}
 
 	var swipeCount int64
@@ -1997,7 +1982,6 @@ func TestHandleSwipe_RollsBackWhenSwipeRecordInsertFails(t *testing.T) {
 		cardgroupRepo,
 		failingSwipeRepo{err: errors.New("forced swipe insert failure")},
 		service.NewFSRSScheduler(),
-		10,
 		userCardFSRSRepo,
 		logger,
 	)
@@ -2567,42 +2551,6 @@ func TestServerConfigFromEnv(t *testing.T) {
 			}
 			if tc.wantLog == "" && buf.Len() > 0 {
 				t.Errorf("expected no log output, got %q", buf.String())
-			}
-		})
-	}
-}
-
-func TestServerConfig_SwipeNextBatchSize(t *testing.T) {
-	cases := []struct {
-		name        string
-		env         string
-		want        int
-		wantLog     string
-		wantErrAttr bool
-	}{
-		{"empty uses default", "", 10, "", false},
-		{"valid positive", "20", 20, "", false},
-		{"invalid string uses default", "bad", 10, "invalid SWIPE_NEXT_BATCH_SIZE", true},
-		{"zero uses default", "0", 10, "non-positive SWIPE_NEXT_BATCH_SIZE", false},
-		{"negative uses default", "-5", 10, "non-positive SWIPE_NEXT_BATCH_SIZE", false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("SWIPE_NEXT_BATCH_SIZE", tc.env)
-			var buf bytes.Buffer
-			logger := slog.New(slog.NewJSONHandler(&buf, nil))
-			cfg := serverConfigFromEnv(logger)
-			if cfg.swipeNextBatchSize != tc.want {
-				t.Errorf("swipeNextBatchSize = %d, want %d", cfg.swipeNextBatchSize, tc.want)
-			}
-			if tc.wantLog != "" && !strings.Contains(buf.String(), tc.wantLog) {
-				t.Errorf("expected log to contain %q, got %q", tc.wantLog, buf.String())
-			}
-			if tc.wantLog == "" && buf.Len() > 0 {
-				t.Errorf("expected no log output, got %q", buf.String())
-			}
-			if tc.wantErrAttr && !strings.Contains(buf.String(), `"err":`) {
-				t.Errorf("expected log to contain %q attribute, got %q", `"err":`, buf.String())
 			}
 		})
 	}
