@@ -18,7 +18,7 @@ interface LogoDrawerProps {
 }
 
 const NAV_LINK_CLASS =
-  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground";
+  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent active:bg-accent hover:text-accent-foreground active:text-accent-foreground";
 
 export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
   const pathname = usePathname();
