@@ -3,9 +3,16 @@
 import { animated, useSpring } from "@react-spring/web";
 import { useDrag } from "@use-gesture/react";
 import { useCallback } from "react";
+import { evaluateSwipeGesture } from "./gesture-evaluation";
 import type { SwipeCardData } from "./swipe-card";
 import { CardContent } from "./swipe-card";
 import type { SwipeDirection } from "./types";
+
+// Minimum movement (px) before `@use-gesture` considers the pointer to be in a
+// drag. Raised above the previous 4px to stop a steady-finger pointer-down
+// from registering a drag — the old threshold combined with the immediate
+// scale jump (1 → 1.02) made the card visibly jitter on touch.
+const USE_GESTURE_THRESHOLD = 12;
 
 type Props = {
   card: SwipeCardData;
@@ -53,37 +60,31 @@ export function AnimatedCard({ card, isActive, onSwipe, onSwipeProgress }: Props
     ({ active, movement: [mx, my], direction: [, yDir], velocity: [vx, vy] }) => {
       if (!isActive) return;
 
-      const xAbs = Math.abs(mx);
-      const yAbs = Math.abs(my);
-      let direction: SwipeDirection | null = null;
-      let progress = 0;
-
-      if (xAbs >= yAbs && xAbs > 8) {
-        direction = mx < 0 ? "left" : "right";
-        progress = Math.min(xAbs / 120, 1);
-      } else if (my > 8) {
-        direction = "down";
-        progress = Math.min(yAbs / 96, 1);
-      }
+      const { direction, progress, shouldSwipe } = evaluateSwipeGesture({
+        active,
+        mx,
+        my,
+        vx,
+        vy,
+        yDir,
+      });
       onSwipeProgress?.(active ? direction : null, active ? progress : 0);
-
-      const shouldSwipe =
-        !active &&
-        direction &&
-        ((direction === "down" && (yAbs > 96 || vy > 0.35 || yDir > 0.9)) ||
-          (direction !== "down" && (xAbs > 120 || vx > 0.45)));
 
       if (shouldSwipe && direction) {
         completeSwipe(direction);
         return;
       }
 
+      // `immediate` is restricted to transform-axis keys (x/y/rotate) so the
+      // card tracks the pointer with no spring lag, while `scale` always
+      // animates through the spring — that prevents the 1 → 1.02 jump on
+      // drag-start which used to look like the card was "twitching".
       api.start({
         x: active ? mx : 0,
         y: active ? Math.max(my, -40) : 0,
         rotate: active ? mx / 16 : 0,
         scale: active ? 1.02 : 1,
-        immediate: active,
+        immediate: (key) => active && key !== "scale",
       });
     },
     {
@@ -91,7 +92,7 @@ export function AnimatedCard({ card, isActive, onSwipe, onSwipeProgress }: Props
       filterTaps: true,
       pointer: { capture: false },
       rubberband: true,
-      threshold: 4,
+      threshold: USE_GESTURE_THRESHOLD,
     },
   );
 

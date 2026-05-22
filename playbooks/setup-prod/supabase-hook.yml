@@ -1,0 +1,79 @@
+---
+# Enable the custom_access_token hook on the production Supabase project via
+# the Management API. Invoked automatically as Phase 7 of `make setup-prod`
+# (after postapply confirms the Render service is live and migrations have run),
+# and standalone via `make supabase-hooks`.
+#
+# Reads:  .setup-prod.state.yml (supabase_project_ref)
+#         SUPABASE_ACCESS_TOKEN environment variable
+# Writes: Supabase project auth config (idempotent PATCH)
+#
+# Safe to re-run at any time. The PATCH is idempotent — re-enabling an already-
+# enabled hook is a no-op on the Supabase side.
+#
+# Why this step matters: the frontend reads app_metadata.role from the JWT to
+# gate the Admin nav item. The hook is the only path that injects that claim;
+# without it every user degrades to isAdmin=false regardless of user_roles state.
+
+- name: Stat state file (supabase-hooks)
+  ansible.builtin.stat:
+    path: "{{ state_file }}"
+  register: _hook_state_stat
+
+- name: Load state file (supabase-hooks)
+  ansible.builtin.include_vars:
+    file: "{{ state_file }}"
+  when: _hook_state_stat.stat.exists
+
+- name: Assert supabase_project_ref is present (supabase-hooks)
+  ansible.builtin.assert:
+    that:
+      - _hook_state_stat.stat.exists
+      - supabase_project_ref is defined and (supabase_project_ref | length) > 0
+    fail_msg: |
+      State file is missing or lacks supabase_project_ref.
+      Run the Supabase phase first:
+        ansible-playbook -i playbooks/inventory.local playbooks/setup-prod.yml --tags supabase
+
+- name: Read SUPABASE_ACCESS_TOKEN from environment (supabase-hooks)
+  ansible.builtin.set_fact:
+    _hook_supabase_pat: "{{ lookup('env', 'SUPABASE_ACCESS_TOKEN') }}"
+  no_log: true
+
+- name: Assert SUPABASE_ACCESS_TOKEN is set (supabase-hooks)
+  ansible.builtin.assert:
+    that:
+      - _hook_supabase_pat | length > 0
+    fail_msg: |
+      SUPABASE_ACCESS_TOKEN is not set in the environment.
+      Export it before running:
+        export SUPABASE_ACCESS_TOKEN=<from https://supabase.com/dashboard/account/tokens>
+
+- name: Enable custom_access_token hook via Supabase Management API
+  ansible.builtin.uri:
+    url: "https://api.supabase.com/v1/projects/{{ supabase_project_ref }}/config/auth"
+    method: PATCH
+    headers:
+      Authorization: "Bearer {{ _hook_supabase_pat }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      hook_custom_access_token_enabled: true
+      hook_custom_access_token_uri: "pg-functions://postgres/public/custom_access_token_hook"
+    status_code: [200]
+  register: _hook_patch_result
+  no_log: true
+  changed_when: true
+
+- name: Verify hook is enabled in PATCH response
+  ansible.builtin.assert:
+    that:
+      - _hook_patch_result.json.hook_custom_access_token_enabled == true
+      - _hook_patch_result.json.hook_custom_access_token_uri == "pg-functions://postgres/public/custom_access_token_hook"
+    fail_msg: |
+      Supabase Management API accepted the PATCH but the response does not confirm
+      the hook is enabled. Check Authentication -> Hooks in the Supabase dashboard.
+
+- name: Report hook enabled
+  ansible.builtin.debug:
+    msg: "custom_access_token hook enabled at pg-functions://postgres/public/custom_access_token_hook"

@@ -570,6 +570,10 @@
           - "ON_ERROR_STOP=1"
           - -c
           - >-
+            INSERT INTO public.users (id)
+            SELECT u.id FROM auth.users u
+            WHERE u.email = '{{ item | replace("'", "''") }}'
+            ON CONFLICT (id) DO NOTHING;
             INSERT INTO public.user_roles (user_id, role_id)
             SELECT u.id, r.id FROM auth.users u, public.roles r
             WHERE u.email = '{{ item | replace("'", "''") }}' AND r.name = 'admin'
@@ -631,6 +635,10 @@
           - "ON_ERROR_STOP=1"
           - -c
           - >-
+            INSERT INTO public.users (id)
+            SELECT u.id FROM auth.users u
+            WHERE u.email = '{{ admin_email | replace("'", "''") }}'
+            ON CONFLICT (id) DO NOTHING;
             INSERT INTO public.user_roles (user_id, role_id)
             SELECT u.id, r.id FROM auth.users u, public.roles r
             WHERE u.email = '{{ admin_email | replace("'", "''") }}' AND r.name = 'admin'

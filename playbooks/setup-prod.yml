@@ -20,6 +20,7 @@
 #   vercel          -> Phase 4  (runbook Step 3: Vercel project import)
 #   loopback        -> Phase 5  (runbook Step 4: Supabase loopback env wiring)
 #   postapply       -> Phase 6  (post-bring-up deploy kick + smoke)
+#   supabase-hooks  -> Phase 7  (enable custom_access_token hook via Management API)
 #   seed-admin-prod -> one-shot admin promotion from SUPER_USER_EMAILS (re-runnable)
 #
 # supabase.yml is imported twice with different `step` vars so that
@@ -65,6 +66,10 @@
     - name: Phase 6 - Render deploy kick + smoke
       ansible.builtin.import_tasks: setup-prod/postapply.yml
       tags: [postapply]
+
+    - name: Phase 7 - Enable Supabase custom access token hook
+      ansible.builtin.import_tasks: setup-prod/supabase-hook.yml
+      tags: [supabase-hooks]
 
     - name: Seed admin role from SUPER_USER_EMAILS in production DB
       ansible.builtin.import_tasks: setup-prod/seed-admin-prod.yml
