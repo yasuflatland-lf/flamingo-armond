@@ -3,6 +3,7 @@ package resolver_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/99designs/gqlgen/graphql/handler"
@@ -275,6 +276,64 @@ func TestResolver_HandleSwipe_InfrastructureError_ReturnsInternal(t *testing.T) 
 	code := errCode(t, resp)
 	if code != "INTERNAL" {
 		t.Fatalf("expected INTERNAL, got %q; response: %v", code, resp)
+	}
+}
+
+// TestResolver_HandleSwipe_SchemaRejectsNextCardsSelection verifies that the
+// schema no longer exposes a nextCards field on SwipeResponse. A mutation that
+// selects nextCards must be rejected at schema-validation time so that any
+// future reintroduction of the field is caught on the wire, not just at
+// gqlgen compile time.
+func TestResolver_HandleSwipe_SchemaRejectsNextCardsSelection(t *testing.T) {
+	t.Parallel()
+
+	// Repos are not reached — schema validation fires before any resolver call.
+	srv := newSwipeSrv(
+		&swipeCardRepo{},
+		&swipeCGRepo{},
+		&swipeRecordRepo{},
+		&userCardFSRSRepo{},
+	)
+
+	b, _ := json.Marshal(map[string]any{
+		"query": `mutation($input: HandleSwipeInput!) {
+			handleSwipe(input: $input) {
+				__typename
+				... on HandleSwipeSuccess {
+					response {
+						nextCards { id }
+					}
+				}
+			}
+		}`,
+		"variables": map[string]any{
+			"input": map[string]any{
+				"cardId":      "c-1",
+				"cardgroupId": "cg-1",
+				"mode":        1,
+			},
+		},
+	})
+
+	resp := gqlRequest(t, srv, authedCtx("u-1"), string(b))
+
+	errs, hasErrs := resp["errors"].([]any)
+	if !hasErrs || len(errs) == 0 {
+		t.Fatalf("expected schema validation error for nextCards selection, got resp: %v", resp)
+	}
+	// The error must reference nextCards or SwipeResponse to confirm the rejection
+	// is for the non-existent field, not an unrelated error.
+	found := false
+	for _, e := range errs {
+		em, _ := e.(map[string]any)
+		msg, _ := em["message"].(string)
+		if strings.Contains(msg, "nextCards") || strings.Contains(msg, "SwipeResponse") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected error mentioning nextCards or SwipeResponse, got errors: %v", errs)
 	}
 }
 

@@ -369,6 +369,92 @@ func TestSwipeUsecase_HandleSwipe_InsertSwipeRecord_PropagatesCancelled(t *testi
 	assertCancelled(t, err)
 }
 
+// TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PinsChain verifies that an
+// infrastructure error from ListRecentByUser is wrapped with the canonical
+// "usecase: swipe: list recent swipes" prefix so the error_chain log attribute
+// points at the correct post-transaction operation.
+func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PinsChain(t *testing.T) {
+	t.Parallel()
+
+	infraErr := eris.New("storage: simulated list-recent infra failure")
+	cardRepo := &mockCardRepository{
+		findResult: &domain.Card{
+			ID:          "card-1",
+			CardgroupID: "cg-1",
+		},
+	}
+	cardgroupRepo := &mockCardgroupRepoForCard{
+		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+	}
+	swipeRepo := &mockSwipeRecordRepoForSwipe{
+		listErr: infraErr,
+	}
+	userFSRSRepo := &mockUserCardFSRSRepository{
+		byCardID: map[string]*domain.UserCardFSRS{},
+	}
+	tx, _ := fakeTxRunner()
+	uc := NewSwipeUsecaseWithTx(
+		cardRepo,
+		cardgroupRepo,
+		swipeRepo,
+		service.NewFSRSScheduler(),
+		tx,
+		userFSRSRepo,
+		newTestLogger(),
+	)
+
+	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+		CardID:      "card-1",
+		CardgroupID: "cg-1",
+		Mode:        int(domain.RatingEasy),
+	})
+
+	assertInternalChain(t, err, "usecase: swipe: list recent swipes")
+	require.ErrorIs(t, err, infraErr, "error chain must preserve injected root sentinel")
+}
+
+// TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesCancelled verifies
+// that context.Canceled returned from ListRecentByUser passes through unwrapped
+// after the transaction commits successfully.
+func TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &mockCardRepository{
+		findResult: &domain.Card{
+			ID:          "card-1",
+			CardgroupID: "cg-1",
+		},
+	}
+	cardgroupRepo := &mockCardgroupRepoForCard{
+		findResult: &domain.Cardgroup{ID: "cg-1", OwnerID: "user-1"},
+	}
+	swipeRepo := &mockSwipeRecordRepoForSwipe{
+		listErr: context.Canceled,
+	}
+	userFSRSRepo := &mockUserCardFSRSRepository{
+		byCardID: map[string]*domain.UserCardFSRS{},
+	}
+	tx, _ := fakeTxRunner()
+	uc := NewSwipeUsecaseWithTx(
+		cardRepo,
+		cardgroupRepo,
+		swipeRepo,
+		service.NewFSRSScheduler(),
+		tx,
+		userFSRSRepo,
+		newTestLogger(),
+	)
+
+	_, err := uc.HandleSwipe(authedCtx("user-1"), HandleSwipeInput{
+		CardID:      "card-1",
+		CardgroupID: "cg-1",
+		Mode:        int(domain.RatingEasy),
+	})
+
+	assertCancelled(t, err)
+	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
+}
+
 // TestSwipeUsecase_HandleSwipe_ListRecentSwipes_PropagatesDeadlineExceeded
 // verifies that context.DeadlineExceeded returned from ListRecentByUser passes
 // through unwrapped after the transaction commits successfully.
