@@ -27,7 +27,7 @@ export type RoleListItemProps = {
 export function RoleListItem({ id, name, isSystem, busy, onDelete }: RoleListItemProps) {
   const wrapperClasses = isSystem
     ? "flex items-center gap-2 rounded-lg border border-border pr-2 opacity-60"
-    : "flex items-center gap-2 rounded-lg border border-border pr-2 hover:bg-accent transition-colors";
+    : "flex items-center gap-2 rounded-lg border border-border pr-2 hover:bg-accent active:bg-accent transition-colors";
 
   return (
     <li className={wrapperClasses} data-testid={`admin-role-row-${id}`}>
