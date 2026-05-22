@@ -136,11 +136,10 @@ is to feed the service its own input.
 ### Caller-truncate contract for domain services
 
 `OrderingPolicy.Apply` returns all cards it processed; each caller
-(`LearnUsecase.NextDueCards`, `SwipeUsecase.HandleSwipe`) truncates to its own
-per-session limit immediately after. The contract is documented on the
-service signature; the truncate is mirrored at every call site so a future
-ordering policy that emits more rows than it received cannot exceed the
-caller's cap.
+truncates to its own per-session limit immediately after. The contract is
+documented on the service signature; the truncate is mirrored at every call
+site so a future ordering policy that emits more rows than it received cannot
+exceed the caller's cap. The current caller is `LearnUsecase.NextDueCards`.
 
 [`docs/backend/ddd-patterns/caller-truncate-contract.md`](../../docs/backend/ddd-patterns/caller-truncate-contract.md)
 

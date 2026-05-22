@@ -259,8 +259,9 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
 
       const payload = result.data?.handleSwipe;
       if (payload?.__typename === "HandleSwipeSuccess") {
-        // Optimistic delete already advanced the queue; the mutation response carries
-        // only performance telemetry which no UI consumer reads today.
+        // Optimistic delete already advanced the queue. `performanceMode` and
+        // `metrics` remain in the response (and in the optimistic shape above) to
+        // satisfy the codegen type contract; no UI component reads them today.
       } else if (payload?.__typename === "InputValidationError") {
         // Server rejected the swipe (stale card, cardgroup mismatch, invalid mode).
         // The optimistic queue advanced so learning continues, but we surface to

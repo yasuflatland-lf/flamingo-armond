@@ -803,10 +803,12 @@ describe("<LearnClient> LearnActionBar integration", () => {
 // keeps the same reference across re-renders caused by queue state updates.
 //
 // Regression guard: onSwipe must keep a stable callback identity across
-// re-renders caused by queue mutations. The implementation uses a `queueRef`
-// instead of putting `queue` in the useCallback dep array, so the callback
-// is created once. If a future change adds `queue` to the deps, every swipe
-// would mint a fresh function and this assertion would fail.
+// re-renders caused by queue mutations. The callback's dep array is
+// `[cardgroupId, handleSwipe]` — it does not include `queue`. Queue mutations
+// are performed via `setQueue((current) => ...)` functional-update callbacks
+// that always read the latest state, so no `queue` closure capture is needed.
+// If a future change adds `queue` to the deps, every swipe would mint a fresh
+// function and this assertion would fail.
 //
 // The SwipeCardStack module mock at the top of this file captures the
 // `onCardSwiped` reference on every render into `capturedOnCardSwiped`. The
@@ -869,9 +871,9 @@ describe("<LearnClient> onSwipe identity stability", () => {
     const secondRef = capturedOnCardSwiped[capturedOnCardSwiped.length - 1];
 
     // The core assertion: onSwipe must be the same function object across
-    // re-renders. If `queue` were in the useCallback dep array (instead of the
-    // queueRef pattern), every queue state update would produce a new function
-    // and this assertion would fail.
+    // re-renders. If `queue` were added to the useCallback dep array, every
+    // queue state update would produce a new function and this assertion would
+    // fail. Queue mutations use functional setState so no `queue` dep is needed.
     expect(Object.is(firstRef, secondRef)).toBe(true);
   });
 });

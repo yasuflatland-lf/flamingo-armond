@@ -7,10 +7,9 @@
 A domain service that applies session-local ordering (shuffle, interleave,
 priority weighting) operates on a slice of candidate cards already filtered
 and capped at the repository boundary. The service does not know the
-per-session limit a particular caller wants to enforce — different transports
-(`learnNextDueCards` query, `handleSwipe` mutation) may want different caps,
-or the same transport may pass a user-supplied `limit` that is lower than the
-repository's request size.
+per-session limit a particular caller wants to enforce — different callers
+may want different caps, or the same caller may pass a user-supplied `limit`
+that is lower than the repository's request size.
 
 Two valid placements:
 
@@ -44,12 +43,6 @@ ordered := u.ordering.Apply(due, u.randSource())
 if len(ordered) > n {
     ordered = ordered[:n]
 }
-
-// backend/internal/usecase/swipe.go
-nextCards = u.ordering.Apply(due, u.randSource())
-if len(nextCards) > u.nextBatchSize {
-    nextCards = nextCards[:u.nextBatchSize]
-}
 ```
 
 ## Failure mode and mitigations
@@ -81,7 +74,6 @@ to flip to service-truncates.
 
 - `backend/internal/domain/service/due_card_ordering.go` — `Apply`
   docstring states the caller-truncate contract.
-- `backend/internal/usecase/learn.go` and `backend/internal/usecase/swipe.go`
-  — both callers truncate after `Apply`. A grep for `ordering.Apply` returns
-  exactly these two sites today; either one missing the truncate is a
-  review-time defect.
+- `backend/internal/usecase/learn.go` — the current caller truncates after
+  `Apply`. A grep for `ordering.Apply` names every active call site; any
+  new caller missing the truncate is a review-time defect.
