@@ -225,12 +225,13 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
 
       if (!result) return;
 
+      // HandleSwipeSuccess is a no-op: the optimistic delete already advanced
+      // the queue and the response carries only performance telemetry that no
+      // UI consumer reads today. Only the non-success branches need handling.
       const payload = result.data?.handleSwipe;
-      if (payload?.__typename === "HandleSwipeSuccess") {
-        // Optimistic delete already advanced the queue. No further action — the
-        // mutation response carries only performance telemetry which no UI
-        // consumer reads today.
-      } else if (payload?.__typename === "InputValidationError") {
+      if (payload?.__typename === "HandleSwipeSuccess") return;
+
+      if (payload?.__typename === "InputValidationError") {
         // Server rejected the swipe (stale card, cardgroup mismatch, invalid mode).
         // The optimistic queue advanced so learning continues, but we surface to
         // operator telemetry — repeated firing indicates a stale prefetch.
@@ -241,17 +242,18 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
           cardgroupId,
           field: payload.field,
         });
-      } else {
-        // Unknown variant or null/undefined payload — optimistic queue is now source of truth.
-        // Cast through unknown because TypeScript narrows the else branch to `never` once all
-        // discriminated union members are handled above.
-        const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
-        console.warn("[LearnClient] handleSwipe unexpected payload", {
-          typename: unknownPayload?.__typename ?? null,
-          cardId: card.id,
-          cardgroupId,
-        });
+        return;
       }
+
+      // Unknown variant or null/undefined payload — optimistic queue is now source of truth.
+      // Cast through unknown because TypeScript narrows this branch to `never` once all
+      // discriminated union members are handled above.
+      const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
+      console.warn("[LearnClient] handleSwipe unexpected payload", {
+        typename: unknownPayload?.__typename ?? null,
+        cardId: card.id,
+        cardgroupId,
+      });
     },
     [cardgroupId, handleSwipe],
   );
