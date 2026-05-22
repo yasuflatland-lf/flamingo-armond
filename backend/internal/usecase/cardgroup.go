@@ -264,24 +264,12 @@ func (u *cardgroupUsecase) ListCardgroupsByOwnerConnection(
 		return nil, ucerr.ErrUnauthenticated
 	}
 
-	// Five mixed-direction guards. The Relay spec pairs after with first
-	// (forward) and before with last (backward); any other combination is
-	// either contradictory or ambiguous. Reject before the repo is touched
-	// so the failure mode is observable rather than a silent page-1 reset.
-	if in.After != nil && in.Before != nil {
-		return nil, ucerr.NewValidationError("after", "after and before are mutually exclusive")
-	}
-	if in.First != nil && *in.First > 0 && in.Before != nil {
-		return nil, ucerr.NewValidationError("before", "last must be > 0 when before is set (received first, not last)")
-	}
-	if in.Last != nil && *in.Last > 0 && in.After != nil {
-		return nil, ucerr.NewValidationError("after", "first must be > 0 when after is set (received last, not first)")
-	}
-	if in.Before != nil && (in.First == nil || *in.First <= 0) && (in.Last == nil || *in.Last <= 0) {
-		return nil, ucerr.NewValidationError("before", "last must be > 0 when before is set")
-	}
-	if in.After != nil && (in.First == nil || *in.First <= 0) && (in.Last == nil || *in.Last <= 0) {
-		return nil, ucerr.NewValidationError("after", "first must be > 0 when after is set")
+	// Relay argument coherence: after pairs with first (forward) and before
+	// pairs with last (backward). Reject any other combination before the repo
+	// is touched so the failure mode is observable rather than a silent
+	// page-1 reset.
+	if err := validateRelayArgs(in.First, in.Last, in.After, in.Before); err != nil {
+		return nil, err
 	}
 
 	orderBy, dir, err := resolveCardgroupOrderBy(in.OrderBy, in.OrderDirection)

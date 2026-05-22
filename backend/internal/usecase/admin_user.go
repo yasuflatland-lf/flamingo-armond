@@ -203,23 +203,11 @@ func (u *adminUserUsecase) List(
 		return nil, err
 	}
 
-	if after != nil && before != nil {
-		return nil, ucerr.NewValidationError("after", "after and before are mutually exclusive")
-	}
-	if first != nil && *first > 0 && before != nil {
-		return nil, ucerr.NewValidationError("before", "before requires last, not first")
-	}
-	if last != nil && *last > 0 && after != nil {
-		return nil, ucerr.NewValidationError("after", "after requires first, not last")
-	}
-	// A cursor without its companion count is ambiguous: the server cannot
-	// determine page size or direction. Reject early so the repository is
-	// never called with an uninterpretable combination.
-	if before != nil && (first == nil || *first <= 0) && (last == nil || *last <= 0) {
-		return nil, ucerr.NewValidationError("before", "before requires last")
-	}
-	if after != nil && (first == nil || *first <= 0) && (last == nil || *last <= 0) {
-		return nil, ucerr.NewValidationError("after", "after requires first")
+	// Relay argument coherence: after pairs with first (forward) and before
+	// pairs with last (backward). A cursor without its companion count is also
+	// rejected — page size and direction would be unresolvable.
+	if err := validateRelayArgs(first, last, after, before); err != nil {
+		return nil, err
 	}
 
 	wantFirst, wantLast, err := resolveAdminPageSize(first, last)
@@ -268,10 +256,8 @@ func (u *adminUserUsecase) List(
 		out.Edges[i] = AdminUserEdge{Cursor: user.ID, Node: user}
 	}
 	if len(users) > 0 {
-		start := users[0].ID
-		end := users[len(users)-1].ID
-		out.PageInfo.StartCursor = &start
-		out.PageInfo.EndCursor = &end
+		out.PageInfo.StartCursor = &users[0].ID
+		out.PageInfo.EndCursor = &users[len(users)-1].ID
 	}
 	return out, nil
 }

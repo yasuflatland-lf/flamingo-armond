@@ -60,8 +60,8 @@ func NewAdminGate(checker AdminChecker) *AdminGate {
 // errors.Is / errors.AsType and an additional wrap would defeat that.
 func (g *AdminGate) Require(ctx context.Context, callerPrefix string) (callerID string, err error) {
 	caller := auth.UserFrom(ctx)
-	if caller == nil || caller.Sub == "" {
-		return "", ucerr.ErrUnauthenticated
+	if err := requireCallerSub(caller); err != nil {
+		return "", err
 	}
 	isAdmin, err := g.checker.IsAdmin(ctx, caller.Sub)
 	if err != nil {
