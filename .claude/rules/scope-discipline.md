@@ -58,6 +58,26 @@ The boundary: same file, same pattern, same edit-shape. Going beyond is the clea
 
 The same principle applies to **test files**. When a PR introduces a new test file for a function (rather than appending to an existing one), pre-existing untested branches of that function become the new file's responsibility — even if the PR's stated intent only covered one new branch. The new file is now the canonical location for testing the function; leaving other branches uncovered sends the signal that the file is complete when it is not. A concrete example: a new `ownership_test.go` added tests for the context-pass-through branch of `authorizeCardgroupOrBadInput` and `authorizeCardgroupOrUnauthenticated`; a reviewer found that the success path and the generic infrastructure-error wrap path were also untested. Because the new file was the only test coverage for those helpers, those branches became in-scope for the same PR. See [`docs/backend/library-gotchas/direct-unit-test-for-shared-helper.md`](../../docs/backend/library-gotchas/direct-unit-test-for-shared-helper.md) for the branch-map technique.
 
+The same principle applies to **env-var and constant deletions**. When a production constant or env-var read is removed from the codebase, any place that documents or sets that variable becomes inconsistent: `backend/.env.example`, `docs/backend.md` (table rows or prose), and infra configs (`render.yaml`, `cloudbuild.yaml`, terraform). Those references should be cleaned in the same PR as the code deletion — the inconsistency is surfaced by the adjacent code change, so the scope boundary is the same as for style-fix and test-file cases above.
+
+A worked example: deleting `cfg.swipeNextBatchSize` from `backend/cmd/server/main.go` left `SWIPE_NEXT_BATCH_SIZE` referenced in `backend/.env.example` (line 4) and `docs/backend.md` (table row and prose mention). Both were removed in the same PR via a separate `chore(env)` commit. The grep that discovers the stragglers is:
+
+```bash
+grep -rn 'SWIPE_NEXT_BATCH_SIZE' backend/ docs/ render.yaml cloudbuild.yaml
+```
+
+The boundary: infra configs (`render.yaml`, `cloudbuild.yaml`, terraform) may require operator sign-off if removing the variable from deployed services. Surface those separately and ask — do not auto-remove without confirmation.
+
+### Code-path deletion obliges test deletion in the same PR
+
+When a production code path is removed (not just renamed or moved), the tests that exercised it become dead. Dead tests must be deleted in full, not gutted — leaving them as no-ops or orphan assertion shells pollutes the suite with assertions that prove nothing and silently signal "this path is still covered" when it is not.
+
+Gutting a test is the harder-to-detect failure mode: the test file compiles, CI is green, and a future reader cannot tell at a glance whether the assertion still exercises real code. A fully deleted test is unambiguous — it is simply gone.
+
+Worked example: `backend/internal/usecase/swipe.go` lost its `FindDueCardsForUserTx` call and its `ordering.Apply` step. The two tests that targeted those paths — `TestSwipeUsecase_HandleSwipe_FindDueCardsError_PinsChain` and `TestSwipeUsecase_HandleSwipe_FindDueCards_PropagatesCancelled` — were deleted in full, not converted to no-ops. A test for the dropped env-var read (`TestServerConfig_SwipeNextBatchSize`) was also deleted because the env-var read no longer exists in `backend/cmd/server/main.go`.
+
+The boundary: this rule applies only when the **code path** is gone. If the path is renamed or refactored, update the test to match the new shape. Cross-reference: see [`docs/backend/error-wrapping/redundant-tests-after-alias-bridge-deletion.md`](../../docs/backend/error-wrapping/redundant-tests-after-alias-bridge-deletion.md) for the symbol-removal variant.
+
 ## Re-verify call-site count before sizing
 
 Before estimating migration cost in a plan, grep the production tree directly. Issue-body estimates are written at a point in time and become stale as prior work lands. The canonical check:
