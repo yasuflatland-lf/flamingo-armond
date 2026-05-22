@@ -14,36 +14,17 @@ import { LearnActionBar } from "@/components/learn/learn-action-bar";
 import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
 import type { SwipeDirection } from "@/components/learn/types";
-import type {
-  HandleSwipeMutation as HandleSwipeMutationType,
-  LearnNextDueCardsQuery,
-} from "@/generated/graphql";
+import type { LearnNextDueCardsQuery } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 
 type LearnCard = LearnNextDueCardsQuery["learnNextDueCards"][number];
-// Derived from the generated HandleSwipeMutationType so schema changes stay in sync automatically.
-type PerformanceMetrics = Extract<
-  HandleSwipeMutationType["handleSwipe"],
-  { __typename: "HandleSwipeSuccess" }
->["response"]["metrics"];
-
 /**
  * When `queue.length` falls to this value (or below) and is still non-zero,
  * the background prefetch effect fires another `LearnNextDueCards` request
  * to keep the swipe queue full ahead of the user.
  */
 export const PREFETCH_THRESHOLD = 5;
-
-const DEFAULT_METRICS: PerformanceMetrics = {
-  __typename: "PerformanceMetrics",
-  successRate: 0.5,
-  avgDifficulty: 0.5,
-  retentionRate: 0.5,
-  studyStreak: 0,
-  lapseRate: 0,
-  reviewCount: 0,
-};
 
 function modeFromDirection(direction: SwipeDirection): 1 | 2 | 4 {
   switch (direction) {
@@ -223,24 +204,11 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
 
       const result = await handleSwipe({
         variables: { input: { cardId: card.id, cardgroupId, mode } },
-        // performanceMode and metrics are optimistic placeholders. The HandleSwipeSuccess
-        // shape now wraps SwipeResponse inside `response`. We write zero/no-op values
-        // here until the server reconciles the cache. No UI consumer reads them today,
-        // but omitting them from the optimistic write would break the codegen type contract.
-        // nextCards is intentionally absent: the queue is managed locally via optimistic
-        // delete and background prefetch; the mutation response is not authoritative for
-        // the queue.
-        optimisticResponse: {
-          __typename: "Mutation",
-          handleSwipe: {
-            __typename: "HandleSwipeSuccess" as const,
-            response: {
-              __typename: "SwipeResponse" as const,
-              performanceMode: 1,
-              metrics: DEFAULT_METRICS,
-            },
-          },
-        },
+        // optimisticResponse intentionally omitted — handleSwipe can return InputValidationError
+        // and Apollo v3 does not reliably roll back optimistic writes on typed GraphQL errors.
+        // See .claude/rules/pagination.md § "Drop `optimisticResponse` for mutations that can
+        // fail with typed GraphQL errors". The optimistic queue advance above (via setQueue)
+        // is React state and is unaffected.
       }).catch((err) => {
         // err.message is omitted — backend messages may echo user-authored content.
         // See docs/frontend/rsc-error-handling/substring-matching-sdk-error-strings.md.
@@ -259,9 +227,9 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
 
       const payload = result.data?.handleSwipe;
       if (payload?.__typename === "HandleSwipeSuccess") {
-        // Optimistic delete already advanced the queue. `performanceMode` and
-        // `metrics` remain in the response (and in the optimistic shape above) to
-        // satisfy the codegen type contract; no UI component reads them today.
+        // Optimistic delete already advanced the queue. No further action — the
+        // mutation response carries only performance telemetry which no UI
+        // consumer reads today.
       } else if (payload?.__typename === "InputValidationError") {
         // Server rejected the swipe (stale card, cardgroup mismatch, invalid mode).
         // The optimistic queue advanced so learning continues, but we surface to

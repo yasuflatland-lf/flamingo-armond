@@ -740,12 +740,12 @@ describe("<LearnClient> persist-last-viewed path", () => {
     // `optimisticResponse` inside the SetLastViewedCardgroup mutate call.
     // The comment block in learn-client.tsx explains why — typed errors from
     // @apollo/client v3.x are not reliably rolled back from optimistic writes
-    // (see docs/pagination/drop-optimistic-response-typed-errors.md).
+    // (see .claude/rules/pagination.md § "Drop `optimisticResponse` for mutations
+    // that can fail with typed GraphQL errors").
     //
     // Strategy: find the section of source between `SetLastViewedCardgroup` and
     // the next `.catch(` that follows it, and assert no `optimisticResponse`
-    // key appears there. `handleSwipe` is the only call that legitimately
-    // uses `optimisticResponse` and it appears earlier in the source.
+    // key appears there.
     const source = LearnClient.toString();
 
     const persistStart = source.indexOf("SetLastViewedCardgroup");
@@ -757,6 +757,29 @@ describe("<LearnClient> persist-last-viewed path", () => {
 
     const persistBlock = source.slice(persistStart, persistCatchIdx);
     expect(persistBlock).not.toContain("optimisticResponse");
+  });
+
+  it("does not carry optimisticResponse in the handleSwipe mutation", () => {
+    // Static assertion: handleSwipe can return InputValidationError (a typed
+    // GraphQL error variant). Apollo v3 does not reliably roll back optimistic
+    // writes on typed GraphQL errors — only on network errors. So no
+    // `optimisticResponse` must appear in the handleSwipe call.
+    // See .claude/rules/pagination.md § "Drop `optimisticResponse` for mutations
+    // that can fail with typed GraphQL errors".
+    //
+    // Strategy: the handleSwipe call is in the `onSwipe` callback. Find the
+    // region between `handleSwipe({` and the `.catch(` that follows it, and
+    // assert no `optimisticResponse` key appears there.
+    const source = LearnClient.toString();
+
+    const swipeStart = source.indexOf("handleSwipe({");
+    expect(swipeStart).toBeGreaterThan(-1);
+
+    const swipeCatchIdx = source.indexOf(".catch(", swipeStart);
+    expect(swipeCatchIdx).toBeGreaterThan(-1);
+
+    const swipeBlock = source.slice(swipeStart, swipeCatchIdx);
+    expect(swipeBlock).not.toContain("optimisticResponse");
   });
 });
 
