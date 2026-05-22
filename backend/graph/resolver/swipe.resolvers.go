@@ -38,5 +38,5 @@ func (r *mutationResolver) HandleSwipe(ctx context.Context, input model.HandleSw
 		return nil, gqlerr.Internal(ctx,
 			eris.New("resolver: HandleSwipeOutcome has no variant set"))
 	}
-	return model.HandleSwipeSuccess{Response: toSwipeResponseModel(ctx, outcome.Swipe)}, nil
+	return model.HandleSwipeSuccess{Response: toSwipeResponseModel(outcome.Swipe)}, nil
 }

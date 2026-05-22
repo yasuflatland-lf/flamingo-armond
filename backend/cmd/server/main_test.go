@@ -1804,10 +1804,6 @@ func TestGraphQL_HandleSwipe_HappyPath(t *testing.T) {
 
 	cgID := createTestCardgroup(t, ts.URL, tok, "Swipe")
 	firstID := createTestCard(t, ts.URL, tok, cgID, "front 1", "back 1")
-	// A sibling card exercises the previous next-cards path; it stays in the
-	// fixture because deleting it would alter the dataset shape, but the
-	// response selection no longer surfaces sibling cards.
-	_ = createTestCard(t, ts.URL, tok, cgID, "front 2", "back 2")
 
 	gqlQuery := fmt.Sprintf(`mutation {
 		handleSwipe(input: {cardId: %s, cardgroupId: %s, mode: 4}) {

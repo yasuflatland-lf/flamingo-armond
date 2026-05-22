@@ -122,7 +122,7 @@ func toUsecaseSortOrder(d *model.SortOrder) *usecase.SortOrder {
 	return &v
 }
 
-func toSwipeResponseModel(_ context.Context, out *usecase.SwipeOutput) *model.SwipeResponse {
+func toSwipeResponseModel(out *usecase.SwipeOutput) *model.SwipeResponse {
 	if out == nil {
 		return nil
 	}
