@@ -15,18 +15,19 @@ The stack splits across three providers, each owning a distinct concern:
 A thin Ansible-driven layer wraps this manual runbook with prerequisite checks, value-derivation, GitHub Secret registration, deploy-trigger, and smoke tests. It does **not** replace the dashboard work below — operators still create the Supabase project, the Render web service, and the Vercel project by hand. The remainder of this document is the authoritative manual procedure; refer to it for what each phase is doing under the hood.
 
 ```bash
-make setup-prod              # full guided run: preflight + 4 dashboard steps + smoke
+make setup-prod              # full guided run: preflight + 4 dashboard steps + smoke + hook
 make setup-prod-preflight    # ~10s scanner: tokens + auth + manual-prereq reminders
 make setup-prod-postapply    # re-runnable: kick first Render deploy + smoke tests
+make supabase-hooks          # re-runnable: enable custom_access_token hook (standalone)
 ```
 
 ### Why guided, not fully automated
 
 The earlier Terraform implementation was deleted **as an intentional IaC-abandonment decision**, not as tech-debt cleanup — the bring-up runs once per environment per lifetime, so the ROI of full API automation is low and the maintenance cost of mirroring three providers' APIs in a stateful tool is high. The playbook re-introduces the layer where humans actually make mistakes (token expiry, missed GitHub App installs, copy-paste of derived URLs, forgetting to register the deploy-hook secret) without re-introducing IaC. Reach for `--tags <phase>` or hand-runs of the manual procedure when you need to deviate; the playbook is a convenience, not a contract.
 
-### Three Make targets, six phases
+### Make targets and phases
 
-The Makefile exposes only `setup-prod`, `setup-prod-preflight`, and `setup-prod-postapply` because the four dashboard phases (`supabase`, `render`, `vercel`, `loopback`) must run in order and giving each its own target invites order-of-operation mistakes. When intentional partial runs are needed, drive them via `--tags` directly:
+The Makefile exposes `setup-prod`, `setup-prod-preflight`, `setup-prod-postapply`, and `supabase-hooks`. The four dashboard phases (`supabase`, `render`, `vercel`, `loopback`) must run in order; giving each its own target invites order-of-operation mistakes, so partial runs are driven via `--tags` directly:
 
 ```bash
 ansible-playbook playbooks/setup-prod.yml --tags <phase>
@@ -40,6 +41,7 @@ ansible-playbook playbooks/setup-prod.yml --tags <phase>
 | `vercel` | 4 | Step 3 — Vercel project import |
 | `loopback` | 5 | Step 4 — Supabase loopback |
 | `postapply` | 6 | Post-bring-up + smoke |
+| `supabase-hooks` | 7 | Enable custom_access_token hook via Management API |
 
 `supabase.yml` is imported twice from the entry playbook with different `step` vars (`create` vs `loopback`), gated by `when: step == ...` blocks inside the file. This keeps the tag → step mapping 1:1 (`--tags supabase` runs only Step 1, `--tags loopback` only Step 4) while avoiding two near-duplicate task files.
 
@@ -165,6 +167,8 @@ Four steps across the three providers. Allow about 30 minutes total; Supabase pr
    | Backend `SUPABASE_JWT_AUDIENCE` | `authenticated` | Supabase default. |
 
 4. **Connect** (top of any page) → **Session pooler** tab → copy the `postgres://...?sslmode=require` DSN → backend `SUPABASE_DB_URL`. Use session pooler, not transaction pooler — `golang-migrate` issues advisory locks that need a real session.
+
+The `custom_access_token_hook` (the Postgres function that injects `app_metadata.role` into the JWT so the frontend can show the Admin nav) is enabled automatically by Phase 7 (`supabase-hooks`) of `make setup-prod`, after the first Render deploy lands and migrations have run. No manual dashboard step is required. To enable it on an existing environment, run `make supabase-hooks`.
 
 ### Step 2 — Render
 

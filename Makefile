@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend dump-data import-data codegen codegen-yacc test clean clean-frontend clean-backend doctor db-reset setup-prod setup-prod-preflight setup-prod-postapply teardown-prod teardown-prod-preflight seed-admin seed-admin-prod sync-notion-secrets sync-notion-preflight notion-env-init notion-local-setup notion-local-run
+.PHONY: help setup notice-prereqs check-docker mise-install supabase-restart supabase-stop sync-env install supabase-start check-google-oauth dev dev-backend dev-frontend dump-data import-data codegen codegen-yacc test clean clean-frontend clean-backend doctor db-reset setup-prod setup-prod-preflight setup-prod-postapply supabase-hooks teardown-prod teardown-prod-preflight seed-admin seed-admin-prod sync-notion-secrets sync-notion-preflight notion-env-init notion-local-setup notion-local-run
 
 # Ensure every ansible-playbook invocation picks up playbooks/ansible.cfg.
 # Ansible does not search the inventory directory for ansible.cfg — it walks
@@ -129,6 +129,9 @@ setup-prod-preflight: mise-install ## Verify tokens and GitHub App installations
 
 setup-prod-postapply: mise-install ## Trigger first Render deploy + smoke tests (re-runnable from .state.yml)
 	@$(ANSIBLE_PROD) --tags postapply
+
+supabase-hooks: mise-install ## Enable Supabase custom_access_token hook in production (idempotent; re-runnable)
+	@$(ANSIBLE_PROD) --tags supabase-hooks
 
 seed-admin-prod: mise-install ## Grant admin role to SUPER_USER_EMAILS in production DB (idempotent; re-runnable)
 	@$(ANSIBLE_PROD) --tags seed-admin-prod
