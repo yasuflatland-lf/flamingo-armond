@@ -4,8 +4,8 @@ import { loginAs, seedUser } from "./_auth";
 
 // Scenario: a brand-new user (zero cardgroups, no last_viewed) is funnelled
 // into onboarding (/cardgroups/new?welcome=1), creates their first cardgroup,
-// and the global FAB takes them to /cards/new where the chip is pre-selected
-// to that newly-created cardgroup.
+// and the global FAB opens the inline "Add card" FormSheet on the cardgroup
+// edit page (no navigation to /cards/new).
 
 const runId = randomUUID().slice(0, 8);
 const newcomer = {
@@ -38,7 +38,7 @@ test.describe
       });
     });
 
-    test("welcome page → create cardgroup → FAB lands on /cards/new with chip pre-selected", async ({
+    test("welcome page → create cardgroup → FAB opens inline Add card sheet", async ({
       context,
       page,
     }) => {
@@ -51,45 +51,36 @@ test.describe
         page.getByRole("heading", { name: /Welcome!.*create your first cardgroup/i }),
       ).toBeVisible();
 
-      // 2. Submit the create-cardgroup form. onCompleted pushes /cardgroups/<newId>;
-      // wait for the navigation rather than a fixed URL so we can capture the new id.
+      // 2. Submit the create-cardgroup form. onCompleted pushes /cardgroups/<newId>,
+      // which redirects server-side to /cardgroups/<newId>/edit. Wait for the
+      // /edit form so we can capture the new id from the URL.
       await page.getByLabel("Name").fill(cardgroupName);
       await page.getByRole("button", { name: "Create" }).click();
-      await page.waitForURL(/\/cardgroups\/[0-9a-f-]{36}$/, { timeout: 15_000 });
-      const newCardgroupId = page.url().split("/").pop() ?? "";
+      await page.waitForURL(/\/cardgroups\/[0-9a-f-]{36}\/edit$/, { timeout: 15_000 });
+      const newCardgroupId = page.url().split("/").slice(-2, -1)[0] ?? "";
       expect(newCardgroupId).toMatch(UUID_RE);
       await expect(page.getByRole("heading", { name: cardgroupName })).toBeVisible();
 
-      // 3. Click the global "+ Card" FAB. On a /cardgroups/<id> page,
-      // resolveFabAction returns kind: "card-with-group" so the FAB href is
-      // /cards/new?cardgroup=<id> — no picker dialog, the chip is pre-selected
-      // from the URL. The FAB renders at the root layout level and is hidden on
-      // /learn/*, /admin/*, /cards/new, /cardgroups/new; /cardgroups/<id> is
-      // not on the hidden list so the FAB must be present here.
+      // 3. Click the global "+ Card" FAB. On /cardgroups/<id>/edit, the FAB
+      // dispatches `flamingo:add-card`; CardsClient (mounted by the edit page)
+      // intercepts the event, calls preventDefault, and opens the "Add card"
+      // FormSheet inline — no navigation. The FAB renders at the root layout
+      // level and is hidden on /learn/*, /admin/*, /cards/new, /cardgroups/new;
+      // /cardgroups/<id>/edit is not on the hidden list so the FAB is present.
       const fab = page.getByRole("button", { name: "Add new card" });
       await expect(fab).toBeVisible();
       await fab.click();
 
-      // 4. URL carries ?cardgroup=<id> from the moment we land — no picker
-      // round-trip needed because the cardgroup id was propagated via the FAB
-      // href.
-      await page.waitForURL(`**/cards/new?cardgroup=${newCardgroupId}`, {
-        timeout: 10_000,
-      });
+      // 4. FormSheet opens inline. On mobile (390x844, below md=768) FormSheet
+      // renders as a vaul Drawer with DrawerTitle "Add card".
+      await expect(page.getByRole("heading", { name: "Add card" })).toBeVisible();
 
-      await expect(page.getByRole("heading", { name: "New card" })).toBeVisible();
-
-      // The CardgroupChip's aria-label is "Change cardgroup (currently \"<name>\")"
-      // when populated; the "Select cardgroup" placeholder means none selected.
-      await expect(
-        page.getByRole("button", {
-          name: `Change cardgroup (currently "${cardgroupName}")`,
-        }),
-      ).toBeVisible();
-
-      // CardForm renders only when currentId != null — Front being interactable
-      // is a stronger signal than chip text alone that the resolved cardgroupId
-      // reached CardsNewClient.
+      // CardForm in mode="create" renders the Front field; its visibility is a
+      // stronger signal than the heading alone that the sheet content mounted.
       await expect(page.getByLabel("Front")).toBeVisible();
+
+      // URL must NOT have navigated to /cards/new — the inline-sheet path is
+      // the entire point of the FormSheet migration. Stay on /edit.
+      expect(page.url()).toMatch(/\/cardgroups\/[0-9a-f-]{36}\/edit$/);
     });
   });
