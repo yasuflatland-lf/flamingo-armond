@@ -2,20 +2,19 @@
 
 import { useMutation } from "@apollo/client/react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { UpdateCardgroupMutation } from "@/app/cardgroups/queries";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 
 type Props = {
   cardgroup: { id: string; name: string };
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onSaved: () => void;
+  onSubmittingChange?: (submitting: boolean) => void;
 };
 
-export function RenameCardgroupDialog({ cardgroup, open, onOpenChange }: Props) {
+export function CardgroupRenameForm({ cardgroup, onSaved, onSubmittingChange }: Props) {
   const router = useRouter();
 
   // Typed InputValidationError variant — field-level validation failure
@@ -30,6 +29,17 @@ export function RenameCardgroupDialog({ cardgroup, open, onOpenChange }: Props) 
 
   const [updateCardgroup, { loading: updating }] = useMutation(UpdateCardgroupMutation);
 
+  useEffect(() => {
+    onSubmittingChange?.(updating);
+  }, [onSubmittingChange, updating]);
+
+  useEffect(
+    () => () => {
+      onSubmittingChange?.(false);
+    },
+    [onSubmittingChange],
+  );
+
   async function handleSave(values: { name: string }) {
     setValidationError(null);
     setBannerMessage(null);
@@ -37,7 +47,7 @@ export function RenameCardgroupDialog({ cardgroup, open, onOpenChange }: Props) 
     const result = await updateCardgroup({
       variables: { id: cardgroup.id, input: { name: values.name } },
     }).catch((err) => {
-      console.error("[RenameCardgroupDialog] update rejection", {
+      console.error("[CardgroupRenameForm] update rejection", {
         name: err instanceof Error ? err.name : "unknown",
         cardgroupId: cardgroup.id,
       });
@@ -61,7 +71,7 @@ export function RenameCardgroupDialog({ cardgroup, open, onOpenChange }: Props) 
     }
 
     if (payload?.__typename === "UpdateCardgroupSuccess") {
-      onOpenChange(false);
+      onSaved();
       // Refresh the RSC tree so the h1 and Badge reflect the new name immediately.
       router.refresh();
       return;
@@ -70,31 +80,26 @@ export function RenameCardgroupDialog({ cardgroup, open, onOpenChange }: Props) 
     // Unknown variant: null payload or a future union variant the client was not
     // regenerated against.
     const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
-    console.warn("[RenameCardgroupDialog] unexpected updateCardgroup payload", {
+    console.warn("[CardgroupRenameForm] unexpected updateCardgroup payload", {
       typename: unknownPayload?.__typename ?? null,
     });
     setBannerMessage("Something went wrong. Please try again.");
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Rename cardgroup</DialogTitle>
-        </DialogHeader>
-        {bannerMessage ? (
-          <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-            {bannerMessage}
-          </div>
-        ) : null}
-        <CardgroupForm
-          mode="edit"
-          defaultValues={{ name: cardgroup.name }}
-          submit={handleSave}
-          submitting={updating}
-          validationError={validationError}
-        />
-      </DialogContent>
-    </Dialog>
+    <div className="space-y-4">
+      {bannerMessage ? (
+        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
+          {bannerMessage}
+        </div>
+      ) : null}
+      <CardgroupForm
+        mode="edit"
+        defaultValues={{ name: cardgroup.name }}
+        submit={handleSave}
+        submitting={updating}
+        validationError={validationError}
+      />
+    </div>
   );
 }

@@ -5,7 +5,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DeleteCardgroupDocument } from "@/generated/graphql";
+import { DeleteCardgroupDocument, UpdateCardgroupDocument } from "@/generated/graphql";
 import { CardgroupHeader } from "./cardgroup-header";
 
 const mockPush = vi.fn();
@@ -22,6 +22,14 @@ function makeDeleteMock(
   result: MockedResponse["result"],
 ): MockedResponse {
   return { request: { query: DeleteCardgroupDocument, variables }, result };
+}
+
+function makeUpdateMock(
+  variables: { id: string; input: { name: string } },
+  result: MockedResponse["result"],
+  delay?: MockedResponse["delay"],
+): MockedResponse {
+  return { request: { query: UpdateCardgroupDocument, variables }, result, delay };
 }
 
 function renderHeader(
@@ -70,7 +78,7 @@ describe("<CardgroupHeader>", () => {
     });
   });
 
-  it("clicking Rename opens the RenameCardgroupDialog", async () => {
+  it("clicking Rename opens the Rename cardgroup FormSheet", async () => {
     const user = userEvent.setup();
     renderHeader();
 
@@ -83,6 +91,43 @@ describe("<CardgroupHeader>", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: /rename cardgroup/i })).toBeInTheDocument();
     });
+  });
+
+  it("does not dismiss the rename FormSheet while save is submitting", async () => {
+    const user = userEvent.setup();
+    renderHeader([
+      makeUpdateMock(
+        { id: "cg-1", input: { name: "Spanish Vocab" } },
+        {
+          data: {
+            updateCardgroup: {
+              __typename: "UpdateCardgroupSuccess" as const,
+              cardgroup: {
+                __typename: "Cardgroup" as const,
+                id: "cg-1",
+                name: "Spanish Vocab",
+                updatedAt: "2024-06-15T10:00:00.000Z",
+              },
+            },
+          },
+        },
+        Infinity,
+      ),
+    ]);
+
+    await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("menuitem", { name: /rename/i })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("menuitem", { name: /rename/i }));
+    await user.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /saving/i })).toBeInTheDocument();
+    });
+    await user.keyboard("{Escape}");
+
+    expect(screen.getByRole("heading", { name: /rename cardgroup/i })).toBeInTheDocument();
   });
 
   it("clicking Delete cardgroup opens the AlertDialog", async () => {

@@ -76,16 +76,41 @@ describe("<GlobalFAB>", () => {
     expect(router.push).toHaveBeenCalledWith("/cardgroups/new");
   });
 
-  it("click on /cardgroups/abc123/edit navigates to /cards/new?cardgroup=abc123", async () => {
+  it("click on /cardgroups/abc123/edit dispatches an in-context add-card event and falls back when unhandled", async () => {
     const user = userEvent.setup();
     const router = makeRouter();
+    const listener = vi.fn();
+    window.addEventListener("flamingo:add-card", listener);
     vi.mocked(useRouter).mockReturnValue(router as never);
     vi.mocked(usePathname).mockReturnValue("/cardgroups/abc123/edit");
 
     render(<GlobalFAB />);
     await user.click(screen.getByRole("button", { name: "Add new card" }));
 
+    expect(listener).toHaveBeenCalledTimes(1);
+    const event = listener.mock.calls[0]?.[0] as CustomEvent<{ cardgroupId: string }>;
+    expect(event.cancelable).toBe(true);
+    expect(event.detail).toEqual({ cardgroupId: "abc123" });
     expect(router.push).toHaveBeenCalledWith("/cards/new?cardgroup=abc123");
+
+    window.removeEventListener("flamingo:add-card", listener);
+  });
+
+  it("click on /cardgroups/abc123/edit does not navigate when the in-context event is handled", async () => {
+    const user = userEvent.setup();
+    const router = makeRouter();
+    const listener = vi.fn((event: Event) => event.preventDefault());
+    window.addEventListener("flamingo:add-card", listener);
+    vi.mocked(useRouter).mockReturnValue(router as never);
+    vi.mocked(usePathname).mockReturnValue("/cardgroups/abc123/edit");
+
+    render(<GlobalFAB />);
+    await user.click(screen.getByRole("button", { name: "Add new card" }));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(router.push).not.toHaveBeenCalled();
+
+    window.removeEventListener("flamingo:add-card", listener);
   });
 
   it("click on / navigates to /cards/new", async () => {
