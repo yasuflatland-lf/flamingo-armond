@@ -7,7 +7,7 @@ import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AdminUsersClient } from "@/app/admin/users/admin-users-client";
 import { ADMIN_USERS_PAGE_SIZE } from "@/app/admin/users/queries";
-import { AdminUsersDocument } from "@/generated/graphql";
+import { AdminRolesDocument, AdminUsersDocument } from "@/generated/graphql";
 
 // ---------------------------------------------------------------------------
 // Next.js stubs
@@ -15,6 +15,9 @@ import { AdminUsersDocument } from "@/generated/graphql";
 
 vi.mock("next/navigation", () => ({
   redirect: vi.fn(),
+  usePathname: () => "/admin/users",
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(""),
 }));
 
 vi.mock("next/link", () => ({
@@ -69,6 +72,15 @@ type UserEdge = {
   __typename: "UserEdge";
   cursor: string;
   node: UserNode;
+};
+
+const ADMIN_ROLES_MOCK = {
+  request: { query: AdminRolesDocument, variables: {} },
+  result: {
+    data: {
+      roles: [{ __typename: "Role" as const, id: "role-general", name: "general" }],
+    },
+  },
 };
 
 function makeUser(i: number): UserNode {
@@ -171,12 +183,13 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("AdminUsersClient", () => {
-  // T1: Initial render — edges, display names, role badges, and totalCount shown.
-  test("renders edges with display name and role badges and shows totalCount", async () => {
+  // T1: Initial render — edges, display names, inline role toggles, and totalCount shown.
+  test("renders edges with display name and inline role toggles and shows totalCount", async () => {
     const users = Array.from({ length: 3 }, (_, i) => makeUser(i + 1));
     const connection = makeConnection(users, false);
 
     const mocks = [
+      ADMIN_ROLES_MOCK,
       {
         request: {
           query: AdminUsersDocument,
@@ -204,9 +217,12 @@ describe("AdminUsersClient", () => {
     expect(screen.getByText("User 2")).toBeInTheDocument();
     expect(screen.getByText("User 3")).toBeInTheDocument();
 
-    // Role badges visible for each user.
-    const roleBadges = screen.getAllByText("general");
-    expect(roleBadges.length).toBe(3);
+    // Inline role toggles are visible for each user.
+    const roleCheckboxes = await screen.findAllByRole("checkbox", { name: "general" });
+    expect(roleCheckboxes).toHaveLength(3);
+    for (const checkbox of roleCheckboxes) {
+      expect(checkbox).toBeChecked();
+    }
 
     // totalCount shown (3 in parens).
     expect(screen.getByText("(3)")).toBeInTheDocument();
@@ -236,6 +252,7 @@ describe("AdminUsersClient", () => {
     });
 
     const mocks = [
+      ADMIN_ROLES_MOCK,
       {
         request: {
           query: AdminUsersDocument,
@@ -299,6 +316,7 @@ describe("AdminUsersClient", () => {
     });
 
     const mocks = [
+      ADMIN_ROLES_MOCK,
       {
         request: {
           query: AdminUsersDocument,
@@ -387,6 +405,7 @@ describe("AdminUsersClient", () => {
     };
 
     const mocks = [
+      ADMIN_ROLES_MOCK,
       {
         request: {
           query: AdminUsersDocument,
@@ -459,6 +478,7 @@ describe("AdminUsersClient", () => {
     const endCursor = `user-${firstBatch.length}`;
 
     const mocks = [
+      ADMIN_ROLES_MOCK,
       {
         request: {
           query: AdminUsersDocument,
@@ -519,6 +539,7 @@ describe("AdminUsersClient", () => {
     expect(NetworkStatus.fetchMore).toBe(3);
 
     const mocks = [
+      ADMIN_ROLES_MOCK,
       {
         request: {
           query: AdminUsersDocument,
@@ -577,6 +598,7 @@ describe("AdminUsersClient", () => {
   // T7: FORBIDDEN query error — non-retry permission banner; no Retry button.
   test("renders permission-denied banner without Retry when AdminUsers returns FORBIDDEN", async () => {
     const mocks = [
+      ADMIN_ROLES_MOCK,
       {
         request: {
           query: AdminUsersDocument,

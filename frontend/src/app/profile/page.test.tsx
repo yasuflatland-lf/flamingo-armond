@@ -24,11 +24,11 @@ vi.mock("@/lib/apollo/server", () => ({
   gqlFetch: vi.fn(),
 }));
 
-// Stub ProfileForm — it is a "use client" component that requires an Apollo
-// Provider. The RSC page test only needs to verify props are forwarded
-// correctly; the client component has its own dedicated test file.
-vi.mock("./profile-form", () => ({
-  ProfileForm: ({
+// Stub ProfilePageClient — it is a "use client" component that requires the
+// routing/search-param hooks. The RSC page test only needs to verify props are
+// forwarded correctly; the client component has its own dedicated test file.
+vi.mock("./profile-page-client", () => ({
+  ProfilePageClient: ({
     email,
     initial,
   }: {
@@ -40,7 +40,7 @@ vi.mock("./profile-form", () => ({
       data-email={email ?? ""}
       data-display-name={initial.displayName}
     >
-      ProfileForm
+      ProfilePageClient
     </div>
   ),
 }));
@@ -237,7 +237,7 @@ type ProfileFormProps = {
 };
 
 /**
- * Recursively search a React element tree for the ProfileForm stub element and
+ * Recursively search a React element tree for the ProfilePageClient stub element and
  * return it so tests can inspect the props forwarded from the page.
  */
 function findProfileFormElement(node: unknown): { props: ProfileFormProps } | null {
@@ -248,7 +248,7 @@ function findProfileFormElement(node: unknown): { props: ProfileFormProps } | nu
     "type" in el &&
     "props" in el &&
     typeof el.type === "function" &&
-    (el.type as { name?: string; displayName?: string }).name === "ProfileForm"
+    (el.type as { name?: string; displayName?: string }).name === "ProfilePageClient"
   ) {
     return { props: el.props as ProfileFormProps };
   }

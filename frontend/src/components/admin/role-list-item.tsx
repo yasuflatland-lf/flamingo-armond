@@ -1,7 +1,6 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
-import Link from "next/link";
 import { SwipeableRow } from "@/components/cardgroups/swipeable-row";
 import { Button } from "@/components/ui/button";
 
@@ -12,6 +11,7 @@ export type RoleListItemProps = {
   isSystem: boolean;
   /** Disables the delete button while a delete (or any sibling) mutation is in flight. */
   busy: boolean;
+  onEdit: (id: string) => void;
   onDelete: (id: string) => void;
 };
 
@@ -25,7 +25,7 @@ export type RoleListItemProps = {
  * not consume the delete affordance — same pattern as
  * frontend/src/components/cardgroups/cardgroup-list-item.tsx.
  */
-export function RoleListItem({ id, name, isSystem, busy, onDelete }: RoleListItemProps) {
+export function RoleListItem({ id, name, isSystem, busy, onEdit, onDelete }: RoleListItemProps) {
   if (isSystem) {
     return (
       <li
@@ -48,11 +48,16 @@ export function RoleListItem({ id, name, isSystem, busy, onDelete }: RoleListIte
         className="group flex items-center gap-2 rounded-lg border border-border pr-2 hover:bg-accent active:bg-accent transition-colors"
         data-testid={`admin-role-row-${id}`}
       >
-        <Link href={`/admin/roles/${id}/edit`} className="flex min-w-0 flex-1 flex-col gap-1 p-4">
+        <button
+          type="button"
+          onClick={() => onEdit(id)}
+          aria-label={`Edit role ${name}`}
+          className="flex min-w-0 flex-1 flex-col gap-1 p-4 text-left"
+        >
           <span className="truncate font-medium text-foreground" data-testid="admin-role-name">
             {name}
           </span>
-        </Link>
+        </button>
         <Button
           type="button"
           variant="outline"

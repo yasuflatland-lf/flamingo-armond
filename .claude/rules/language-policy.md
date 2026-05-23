@@ -46,7 +46,7 @@ Two distinct hit categories need updating:
 1. **Import statements in test files that used the old path.** TypeScript does not enforce these automatically on case-insensitive file systems (macOS HFS+) — local tests pass but CI on Linux (case-sensitive ext4) fails with `tsc --noEmit` exit 2 and uncollected vitest suites.
 2. **Doc prose that cited the old path as a worked example.** These rot silently — readers grep the referenced path and find nothing.
 
-Both categories were missed in the initial kebab-case rename of `AdminUsersClient.tsx` / `AdminRolesClient.tsx` / `AdminUserEditClient.tsx` on this branch, requiring a two-commit follow-up (`fix(tests): update admin client imports to kebab-case paths` and `docs: update stale admin client paths after kebab-case rename`). Always run `npx tsc --noEmit` immediately after a file rename — case-insensitive local file systems silently accept the stale imports.
+Both categories were missed in the initial kebab-case rename of `AdminUsersClient.tsx` / `AdminRolesClient.tsx` and an admin user edit client on this branch, requiring a two-commit follow-up (`fix(tests): update admin client imports to kebab-case paths` and `docs: update stale admin client paths after kebab-case rename`). Always run `npx tsc --noEmit` immediately after a file rename — case-insensitive local file systems silently accept the stale imports.
 
 Component-identifier references (e.g. `<AdminUsersClient />` JSX, `AdminUsersClient` as a TypeScript identifier) stay as-is — React convention keeps component names PascalCase even when the filename is kebab-case. Only file-path references convert.
 

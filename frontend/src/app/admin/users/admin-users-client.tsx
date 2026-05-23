@@ -1,85 +1,82 @@
 "use client";
 
 import { NetworkStatus } from "@apollo/client";
-import { useQuery } from "@apollo/client/react";
-import Image from "next/image";
+import { useLazyQuery, useQuery } from "@apollo/client/react";
 import Link from "next/link";
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useFragment } from "@/generated/fragment-masking";
 import type { AdminUsersQuery as AdminUsersQueryResult } from "@/generated/graphql";
-import { classifyQueryError, getBackendErrorBanner } from "@/lib/apollo/errors";
+import {
+  classifyQueryError,
+  getBackendErrorBanner,
+  type QueryErrorKind,
+} from "@/lib/apollo/errors";
 import type { FetchNextPageInput } from "@/lib/pagination/types";
+import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
+import { AdminUserProfileSheet } from "./admin-user-profile-sheet";
+import { type AdminUserListItem, AdminUserRoleRow } from "./admin-user-role-row";
 import {
   ADMIN_USERS_PAGE_SIZE,
   AdminRoleFieldsFragment,
+  AdminRolesQuery,
   AdminUserFieldsFragment,
+  AdminUserQuery,
   AdminUsersQuery,
 } from "./queries";
 
 type Connection = AdminUsersQueryResult["users"];
 type Edge = Connection["edges"][number];
 
-function UserRow({ edge }: { edge: Edge }) {
+function UserRow({
+  edge,
+  allRoles,
+  rolesLoading,
+  onEdit,
+}: {
+  edge: Edge;
+  allRoles: AdminUserListItem["roles"];
+  rolesLoading: boolean;
+  onEdit: (id: string) => void;
+}) {
   const user = useFragment(AdminUserFieldsFragment, edge.node);
   const roles = useFragment(AdminRoleFieldsFragment, edge.node.roles);
+  const rowUser: AdminUserListItem = {
+    id: user.id,
+    displayName: user.displayName ?? null,
+    bio: user.bio ?? null,
+    avatarUrl: user.avatarUrl ?? null,
+    roles: roles.map((role) => ({ id: role.id, name: role.name })),
+  };
 
   return (
-    <li
-      key={user.id}
-      className="flex rounded-md border border-border hover:bg-accent active:bg-accent transition-colors"
-      data-testid={`admin-user-row-${user.id}`}
-    >
-      <Link
-        href={`/admin/users/${user.id}/edit`}
-        aria-label={`Edit ${user.displayName ?? "user"}`}
-        className="flex min-w-0 flex-1 items-start gap-4 px-4 py-3"
-      >
-        {/* Avatar */}
-        {user.avatarUrl ? (
-          <Image
-            src={user.avatarUrl}
-            alt={user.displayName ?? "User avatar"}
-            width={40}
-            height={40}
-            className="h-10 w-10 shrink-0 rounded-full object-cover"
-          />
-        ) : (
-          <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-muted-foreground"
-            aria-hidden="true"
-          >
-            {(user.displayName ?? "?").charAt(0).toUpperCase()}
-          </div>
-        )}
-
-        {/* Name, bio, roles */}
-        <div className="min-w-0 flex-1 space-y-1">
-          <p className="text-sm font-medium">
-            {user.displayName ?? <span className="italic text-muted-foreground">No name</span>}
-          </p>
-          {user.bio && <p className="truncate text-sm text-muted-foreground">{user.bio}</p>}
-          {roles.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {roles.map((role) => (
-                <span
-                  key={role.id}
-                  className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
-                >
-                  {role.name}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-      </Link>
-    </li>
+    <AdminUserRoleRow
+      user={rowUser}
+      allRoles={allRoles}
+      rolesLoading={rolesLoading}
+      onEdit={onEdit}
+    />
   );
+}
+
+// Flatten the three-branch `classifyQueryError` result into a single banner
+// string for the edit sheet. Returns null when there is no error.
+function formatEditUserBannerError(kind: QueryErrorKind | null): string | null {
+  if (!kind) return null;
+  switch (kind.kind) {
+    case "forbidden":
+      return "You do not have permission to edit this user.";
+    case "unauthenticated":
+      return "Your session has expired. Sign in again.";
+    case "banner":
+      return kind.message;
+  }
 }
 
 export function AdminUsersClient() {
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
+  const sheet = useSheetSearchParam();
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   // In-flight guard MUST be useRef<boolean>, not useState — see
@@ -116,15 +113,30 @@ export function AdminUsersClient() {
     fetchPolicy: "cache-first",
     notifyOnNetworkStatusChange: true,
   });
+  const {
+    data: rolesData,
+    loading: rolesLoading,
+    error: rolesError,
+  } = useQuery(AdminRolesQuery, {
+    fetchPolicy: "cache-first",
+  });
+  const [
+    loadAdminUser,
+    {
+      data: editUserData,
+      loading: editUserLoading,
+      error: editUserError,
+      called: editUserCalled,
+      variables: editUserVariables,
+    },
+  ] = useLazyQuery(AdminUserQuery, {
+    fetchPolicy: "network-only",
+    notifyOnNetworkStatusChange: true,
+  });
 
+  // Fan out into three render branches: forbidden, unauthenticated, banner.
+  // See `classifyQueryError` for the source of the discriminated kinds.
   const queryErrorKind = classifyQueryError(queryError);
-
-  // UNAUTHENTICATED post-mount means the session expired while the page was
-  // open. The server-side gate in page.tsx + the admin layout already block
-  // the initial load (which redirects to "/"), so this only fires mid-session.
-  // Render a degraded banner pointing to /login rather than calling
-  // `redirect()` from a client component — see
-  // .claude/rules/frontend-rsc-error-handling.md.
   const queryBannerError = queryErrorKind?.kind === "banner" ? queryErrorKind.message : undefined;
 
   const connection = data?.users;
@@ -132,6 +144,34 @@ export function AdminUsersClient() {
   const hasNextPage = connection?.pageInfo.hasNextPage ?? false;
   const endCursor = connection?.pageInfo.endCursor ?? null;
   const totalCount = connection?.totalCount ?? 0;
+  const allRoles = useFragment(AdminRoleFieldsFragment, rolesData?.roles ?? []);
+  const roleOptions = useMemo(
+    () => allRoles.map((role) => ({ id: role.id, name: role.name })),
+    [allRoles],
+  );
+  const rolesBannerError = getBackendErrorBanner(rolesError);
+
+  const editUserId = sheet.state.mode === "edit" ? sheet.state.id : null;
+  const editUserFields = useFragment(AdminUserFieldsFragment, editUserData?.adminUser ?? null);
+  const editUserRoles = useFragment(AdminRoleFieldsFragment, editUserData?.adminUser?.roles ?? []);
+  const editUser: AdminUserListItem | null = editUserFields
+    ? {
+        id: editUserFields.id,
+        displayName: editUserFields.displayName ?? null,
+        bio: editUserFields.bio ?? null,
+        avatarUrl: editUserFields.avatarUrl ?? null,
+        roles: editUserRoles.map((role) => ({ id: role.id, name: role.name })),
+      }
+    : null;
+  const sheetUser = editUser?.id === editUserId ? editUser : null;
+  const editUserResultMatchesSheet = editUserId !== null && editUserVariables?.id === editUserId;
+  const editUserErrorKind = classifyQueryError(editUserError);
+  const editUserBannerError = formatEditUserBannerError(editUserErrorKind);
+
+  useEffect(() => {
+    if (!editUserId) return;
+    void loadAdminUser({ variables: { id: editUserId } });
+  }, [editUserId, loadAdminUser]);
 
   const fetchNextPage = useCallback(
     ({ hasNextPage, endCursor, searchQuery }: FetchNextPageInput) => {
@@ -160,7 +200,7 @@ export function AdminUsersClient() {
         .catch((err) => {
           // Structured warn for operator triage: name + request context only.
           // err.message is omitted — backend messages may carry user-authored content.
-          // See docs/frontend/typescript-conventions.md § "expect.objectContaining".
+          // See docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
           console.warn("[admin-users] fetchMore failed", {
             name: err instanceof Error ? err.name : "unknown",
             searchQuery,
@@ -230,7 +270,14 @@ export function AdminUsersClient() {
         </div>
       )}
 
-      {/* UNAUTHENTICATED mid-session banner — degraded UI pointing at /login. */}
+      {/*
+        UNAUTHENTICATED post-mount means the session expired while the page was
+        open. The server-side gate in page.tsx + the admin layout already block
+        the initial load (which redirects to "/"), so this only fires mid-session.
+        Render a degraded banner pointing to /login rather than calling
+        `redirect()` from a client component — see
+        .claude/rules/frontend-rsc-error-handling.md.
+      */}
       {queryErrorKind?.kind === "unauthenticated" && (
         <div
           className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
@@ -258,6 +305,16 @@ export function AdminUsersClient() {
         </div>
       )}
 
+      {rolesBannerError && (
+        <div
+          className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+          role="alert"
+          data-testid="admin-users-roles-error"
+        >
+          {rolesBannerError}
+        </div>
+      )}
+
       {/* Loading state */}
       {initialLoading && (
         <p className="text-sm text-muted-foreground" data-testid="admin-users-loading">
@@ -276,7 +333,13 @@ export function AdminUsersClient() {
       {edges.length > 0 && (
         <ul className="space-y-3" data-testid="admin-users-list">
           {edges.map((edge) => (
-            <UserRow key={edge.cursor} edge={edge} />
+            <UserRow
+              key={edge.cursor}
+              edge={edge}
+              allRoles={roleOptions}
+              rolesLoading={rolesLoading}
+              onEdit={(id) => sheet.open({ mode: "edit", id })}
+            />
           ))}
         </ul>
       )}
@@ -314,6 +377,18 @@ export function AdminUsersClient() {
           Loading more users...
         </p>
       )}
+
+      <AdminUserProfileSheet
+        open={editUserId !== null}
+        user={sheetUser}
+        loading={
+          editUserLoading ||
+          (editUserId !== null && (!editUserCalled || !editUserResultMatchesSheet))
+        }
+        queryError={editUserBannerError}
+        onDismiss={() => sheet.close()}
+        onSaved={() => sheet.close({ refresh: true })}
+      />
     </main>
   );
 }

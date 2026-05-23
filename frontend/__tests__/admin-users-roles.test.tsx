@@ -3,9 +3,31 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RoleOption, UserForEdit } from "@/app/admin/users/[id]/edit/admin-user-edit-client";
-import { AdminUserEditClient } from "@/app/admin/users/[id]/edit/admin-user-edit-client";
+import {
+  type AdminUserListItem,
+  type AdminUserRole,
+  AdminUserRoleRow,
+} from "@/app/admin/users/admin-user-role-row";
 import { AdminAssignRoleDocument, AdminRevokeRoleDocument } from "@/generated/graphql";
+
+vi.mock("next/image", () => ({
+  default: ({
+    src,
+    alt,
+    width,
+    height,
+    ...rest
+  }: {
+    src: string;
+    alt: string;
+    width: number;
+    height: number;
+    [key: string]: unknown;
+  }) => (
+    // biome-ignore lint/performance/noImgElement: deliberate next/image stub for tests
+    <img src={src} alt={alt} width={width} height={height} {...rest} />
+  ),
+}));
 
 // ---------------------------------------------------------------------------
 // Fixture IDs
@@ -21,12 +43,12 @@ const ROLE_ADMIN_ID = "role-admin";
 // Shared fixture data
 // ---------------------------------------------------------------------------
 
-const ALL_ROLES: RoleOption[] = [
+const ALL_ROLES: AdminUserRole[] = [
   { id: ROLE_GENERAL_ID, name: "general" },
   { id: ROLE_ADMIN_ID, name: "admin" },
 ];
 
-function makeUser(userId: string, roleNames: string[]): UserForEdit {
+function makeUser(userId: string, roleNames: string[]): AdminUserListItem {
   const roleMap: Record<string, string> = {
     general: ROLE_GENERAL_ID,
     admin: ROLE_ADMIN_ID,
@@ -64,10 +86,14 @@ afterEach(() => {
 // Helper renderer — SSR-props mode (no AdminUserQuery / AdminRolesQuery needed)
 // ---------------------------------------------------------------------------
 
-function renderEdit(mocks: object[], user: UserForEdit, allRoles: RoleOption[] = ALL_ROLES) {
+function renderRow(
+  mocks: object[],
+  user: AdminUserListItem,
+  allRoles: AdminUserRole[] = ALL_ROLES,
+) {
   render(
     <MockedProvider mocks={mocks as never}>
-      <AdminUserEditClient user={user} allRoles={allRoles} />
+      <AdminUserRoleRow user={user} allRoles={allRoles} onEdit={vi.fn()} />
     </MockedProvider>,
   );
 }
@@ -76,10 +102,10 @@ function renderEdit(mocks: object[], user: UserForEdit, allRoles: RoleOption[] =
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("AdminUserEditClient — role assign / revoke flow", () => {
+describe("AdminUserRoleRow — role assign / revoke flow", () => {
   // T1: Initial render — user has ["general"] role
   it("renders general checkbox checked and admin checkbox unchecked for a user with only general role", async () => {
-    renderEdit([], makeUser(USER_ID, ["general"]));
+    renderRow([], makeUser(USER_ID, ["general"]));
 
     const generalCheckbox = screen.getByRole("checkbox", { name: /general/i });
     const adminCheckbox = screen.getByRole("checkbox", { name: /admin/i });
@@ -123,7 +149,7 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
       result: assignResult,
     };
 
-    renderEdit([assignMock], makeUser(USER_ID, ["general"]));
+    renderRow([assignMock], makeUser(USER_ID, ["general"]));
 
     const adminCheckbox = screen.getByRole("checkbox", { name: /admin/i });
     expect(adminCheckbox).not.toBeChecked();
@@ -172,7 +198,7 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
       result: revokeResult,
     };
 
-    renderEdit([revokeMock], makeUser(USER_ID, ["general", "admin"]));
+    renderRow([revokeMock], makeUser(USER_ID, ["general", "admin"]));
 
     // Both checkboxes should be checked
     const generalCheckbox = screen.getByRole("checkbox", { name: /general/i });
@@ -213,7 +239,7 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
       },
     };
 
-    renderEdit([selfDemotionRevokeMock], makeUser(SELF_ADMIN_USER_ID, ["admin"]));
+    renderRow([selfDemotionRevokeMock], makeUser(SELF_ADMIN_USER_ID, ["admin"]));
 
     // Admin checkbox should be checked initially
     const adminCheckbox = screen.getByRole("checkbox", { name: /admin/i });
@@ -262,7 +288,7 @@ describe("AdminUserEditClient — role assign / revoke flow", () => {
       },
     };
 
-    renderEdit([assignMock], makeUser(USER_ID, ["general"]));
+    renderRow([assignMock], makeUser(USER_ID, ["general"]));
 
     const adminCheckbox = screen.getByRole("checkbox", { name: /admin/i });
     await user.click(adminCheckbox);
