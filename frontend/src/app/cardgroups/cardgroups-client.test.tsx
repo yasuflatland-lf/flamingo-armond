@@ -1,17 +1,32 @@
 // @vitest-environment jsdom
 import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
+import { DeleteCardgroupDocument, MyCardgroupsConnectionDocument } from "@/generated/graphql";
+import { UndoDeleteProvider } from "@/lib/undo-delete";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
 } from "../../../__tests__/utils/mock-apollo-paginated";
 import CardgroupsClient from "./cardgroups-client";
 import { CARDGROUPS_DEFAULT_VARS, CARDGROUPS_PAGE_SIZE } from "./queries";
+
+// ---------------------------------------------------------------------------
+// sonner mock — capture Undo action callback for programmatic invocation.
+// ---------------------------------------------------------------------------
+let lastToastLabel: string | undefined;
+let lastUndoAction: (() => void) | undefined;
+vi.mock("sonner", () => ({
+  toast: vi.fn((label: string, opts?: { action?: { onClick?: () => void } }) => {
+    lastToastLabel = label;
+    lastUndoAction = opts?.action?.onClick;
+    return "toast-id";
+  }),
+  Toaster: () => null,
+}));
 
 // ---------------------------------------------------------------------------
 // Stub next/navigation and next/link
@@ -22,6 +37,7 @@ vi.mock("next/navigation", () => ({
   redirect: vi.fn((path: string) => {
     throw new Error(`REDIRECT:${path}`);
   }),
+  usePathname: () => "/cardgroups",
 }));
 
 vi.mock("next/link", () => ({
@@ -121,17 +137,17 @@ function fireIntersect() {
 let leakSpy: ApolloMockLeakSpyResult;
 
 beforeEach(() => {
-  // installApolloMockLeakSpy in beforeEach — see
-  // docs/pagination/capture-mockedprovider-warn-leaks.md.
-  leakSpy = installApolloMockLeakSpy({ operationNames: ["MyCardgroupsConnection"] });
+  leakSpy = installApolloMockLeakSpy({
+    operationNames: ["MyCardgroupsConnection", "DeleteCardgroup"],
+  });
   ioCallbacks = [];
+  lastToastLabel = undefined;
+  lastUndoAction = undefined;
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
 });
 
 afterEach(() => {
-  // LIFO per the Spy stacking rule in
-  // docs/pagination/capture-mockedprovider-warn-leaks.md: assert + teardown
-  // the leak spy last.
+  // Spy teardown: unstub globals first, then assert + tear down the leak spy last.
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -150,7 +166,9 @@ function renderClient(
 ) {
   render(
     <MockedProvider mocks={mocks as never} cache={cache}>
-      <CardgroupsClient initialConnection={initialConnection} />
+      <UndoDeleteProvider>
+        <CardgroupsClient initialConnection={initialConnection} />
+      </UndoDeleteProvider>
     </MockedProvider>,
   );
 }
@@ -386,9 +404,8 @@ describe("<CardgroupsClient>", () => {
     });
   });
 
-  // S5b: in-flight guard — fireIntersect called twice in the same tick fires
-  //      fetchMore only once. The second call must be swallowed by fetchingRef.
-  //      The LeakSpy detects any leaked second fetchMore request.
+  // S5b: useRef<boolean> in-flight guard swallows the second intersection call.
+  // A leaked second fetchMore request would surface as an unmatched mock in afterEach.
   it("does not fire fetchMore twice when sentinel intersects in the same animation frame", async () => {
     const cache = new InMemoryCache();
     const page1Conn = makeConnection([CG_1, CG_2], true, 3);
@@ -446,16 +463,11 @@ describe("<CardgroupsClient>", () => {
     expect(nextPageCalls).toBe(1);
   });
 
-  // S6: halts IO loop on fetchMore error, shows retry, succeeds after retry
-  //
-  // Two MockedResponse entries for fetchMore per docs/pagination/two-mocked-responses-for-retry-test.md:
-  // first is an error, second is success for the retry.
+  // S6: fetchMore error halts the IO loop; Retry clears the error and retries.
+  // Two mocked responses: first errors, second succeeds on retry.
   it("halts IO loop on fetchMore error and shows retry banner, succeeds after retry", async () => {
-    // Forwarding spy: do NOT call `mockImplementation(() => {})` here. Per
-    // docs/pagination/capture-mockedprovider-warn-leaks.md § "Spy stacking",
-    // this spy is the OUTER spy (installed after the file-wide leak spy in
-    // beforeEach) and must forward every `console.warn` call so the leak spy
-    // still records MockedProvider leaks.
+    // Forwarding spy: do NOT use mockImplementation(() => {}) — this outer spy
+    // must forward calls so the file-wide leak spy still records MockedProvider leaks.
     const consoleWarnSpy = vi.spyOn(console, "warn");
 
     const cache = new InMemoryCache();
@@ -520,7 +532,7 @@ describe("<CardgroupsClient>", () => {
       expect(screen.getByTestId("cardgroups-fetch-more-error")).toBeInTheDocument();
     });
 
-    // PII redaction contract — docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
+    // err.message is omitted from the warn payload to avoid leaking user-authored content.
     const warnCall = consoleWarnSpy.mock.calls.find(
       (call) => call[0] === "[cardgroups] fetchMore failed",
     );
@@ -547,23 +559,346 @@ describe("<CardgroupsClient>", () => {
 });
 
 // ---------------------------------------------------------------------------
+// S-delete: optimistic remove + scheduleDelete invocation
+//
+// handleDelete reads the active-query cache entry (queryVariables), filters the
+// edge out, decrements totalCount, then delegates to scheduleDelete for the
+// undo window and eventual commit. The rollback restores the same cache entry.
+// ---------------------------------------------------------------------------
+
+describe("<CardgroupsClient> delete — optimistic cache update and scheduleDelete", () => {
+  it("optimistically removes the edge from the cache and decrements totalCount on delete", async () => {
+    const user = userEvent.setup();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    const cache = new InMemoryCache();
+    const conn = makeConnection([CG_1, CG_2], false, 2);
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+      data: { myCardgroupsConnection: conn },
+    });
+
+    // The DeleteCardgroup mutation mock — consumed when the undo window elapses.
+    const deleteMock = {
+      request: {
+        query: DeleteCardgroupDocument,
+        variables: { id: CG_1.id },
+      },
+      result: { data: { deleteCardgroup: true } },
+    };
+
+    const initialMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: CARDGROUPS_DEFAULT_VARS,
+      },
+      result: { data: { myCardgroupsConnection: conn } },
+    };
+
+    renderClient([initialMock, deleteMock], null, cache);
+
+    // Wait for the list to render.
+    expect(await screen.findByText("Spanish Vocab")).toBeInTheDocument();
+
+    // Click the delete button for CG_1.
+    const deleteBtn = screen.getByRole("button", {
+      name: new RegExp(`delete cardgroup ${CG_1.name}`, "i"),
+    });
+    await user.click(deleteBtn);
+
+    // Edge is removed optimistically: CG_1 is gone, CG_2 still visible.
+    await waitFor(() => {
+      expect(screen.queryByText("Spanish Vocab")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("Math Formulas")).toBeInTheDocument();
+
+    // Verify the cache reflects the optimistic removal.
+    const afterDelete = cache.readQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+    });
+    expect(afterDelete?.myCardgroupsConnection.edges).toHaveLength(1);
+    expect(afterDelete?.myCardgroupsConnection.totalCount).toBe(1);
+
+    // Advance past the 5-second undo window so the commit mock is consumed.
+    vi.advanceTimersByTime(5100);
+    vi.useRealTimers();
+
+    await waitFor(() => {
+      // After commit: the remaining edge is still CG_2 only.
+      const afterCommit = cache.readQuery({
+        query: MyCardgroupsConnectionDocument,
+        variables: CARDGROUPS_DEFAULT_VARS,
+      });
+      expect(afterCommit?.myCardgroupsConnection.edges.map((e) => e.node.id)).not.toContain(
+        CG_1.id,
+      );
+    });
+  });
+
+  it("calls scheduleDelete (shows toast) when delete is triggered", async () => {
+    const user = userEvent.setup();
+
+    const cache = new InMemoryCache();
+    const conn = makeConnection([CG_1]);
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+      data: { myCardgroupsConnection: conn },
+    });
+
+    const initialMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: CARDGROUPS_DEFAULT_VARS,
+      },
+      result: { data: { myCardgroupsConnection: conn } },
+    };
+
+    // The DeleteCardgroup mutation mock — keep available so the leak spy does not fail.
+    const deleteMock = {
+      request: {
+        query: DeleteCardgroupDocument,
+        variables: { id: CG_1.id },
+      },
+      result: { data: { deleteCardgroup: true } },
+    };
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    renderClient([initialMock, deleteMock], null, cache);
+
+    expect(await screen.findByText("Spanish Vocab")).toBeInTheDocument();
+
+    const deleteBtn = screen.getByRole("button", {
+      name: new RegExp(`delete cardgroup ${CG_1.name}`, "i"),
+    });
+    await user.click(deleteBtn);
+
+    // scheduleDelete calls sonner toast — the mock captures the label.
+    expect(lastToastLabel).toBe(`Cardgroup "${CG_1.name}" deleted`);
+    // The Undo callback must be present.
+    expect(lastUndoAction).toBeInstanceOf(Function);
+
+    // Advance to consume the pending timer so no leak is recorded.
+    vi.advanceTimersByTime(5100);
+    vi.useRealTimers();
+    await waitFor(() => {});
+  });
+
+  it("shows delete-error banner and restores row when commit fails with FORBIDDEN", async () => {
+    const user = userEvent.setup();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    const cache = new InMemoryCache();
+    const conn = makeConnection([CG_1, CG_2], false, 2);
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+      data: { myCardgroupsConnection: conn },
+    });
+
+    const initialMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: CARDGROUPS_DEFAULT_VARS,
+      },
+      result: { data: { myCardgroupsConnection: conn } },
+    };
+
+    const forbiddenMock = {
+      request: {
+        query: DeleteCardgroupDocument,
+        variables: { id: CG_1.id },
+      },
+      result: {
+        errors: [
+          new GraphQLError("Forbidden", {
+            extensions: { code: "FORBIDDEN" },
+          }),
+        ],
+      },
+    };
+
+    renderClient([initialMock, forbiddenMock], null, cache);
+
+    expect(await screen.findByText("Spanish Vocab")).toBeInTheDocument();
+
+    const deleteBtn = screen.getByRole("button", {
+      name: new RegExp(`delete cardgroup ${CG_1.name}`, "i"),
+    });
+    await user.click(deleteBtn);
+
+    // Row is removed optimistically
+    await waitFor(() => {
+      expect(screen.queryByText("Spanish Vocab")).not.toBeInTheDocument();
+    });
+
+    // Advance past the 5-second undo window to trigger commitDelete
+    act(() => vi.advanceTimersByTime(5100));
+    vi.useRealTimers();
+
+    // Row reappears after rollback triggered by FORBIDDEN failure
+    await waitFor(() => {
+      expect(screen.getByText("Spanish Vocab")).toBeInTheDocument();
+    });
+
+    // Error banner is visible
+    expect(screen.getByTestId("cardgroups-delete-error")).toBeInTheDocument();
+  });
+
+  it("restores the edge in the cache when Undo is invoked within the window", async () => {
+    const user = userEvent.setup();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    const cache = new InMemoryCache();
+    const conn = makeConnection([CG_1, CG_2], false, 2);
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+      data: { myCardgroupsConnection: conn },
+    });
+
+    const initialMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: CARDGROUPS_DEFAULT_VARS,
+      },
+      result: { data: { myCardgroupsConnection: conn } },
+    };
+
+    // No DeleteCardgroup mock: Undo cancels the commit so the mutation must NOT fire.
+    renderClient([initialMock], null, cache);
+
+    expect(await screen.findByText("Spanish Vocab")).toBeInTheDocument();
+
+    const deleteBtn = screen.getByRole("button", {
+      name: new RegExp(`delete cardgroup ${CG_1.name}`, "i"),
+    });
+    await user.click(deleteBtn);
+
+    // Row is gone optimistically.
+    await waitFor(() => {
+      expect(screen.queryByText("Spanish Vocab")).not.toBeInTheDocument();
+    });
+
+    // Invoke Undo within the 5-second window.
+    expect(lastUndoAction).toBeInstanceOf(Function);
+    lastUndoAction?.();
+
+    // The optimistic rollback restores the snapshot in the cache.
+    await waitFor(() => {
+      const afterUndo = cache.readQuery({
+        query: MyCardgroupsConnectionDocument,
+        variables: CARDGROUPS_DEFAULT_VARS,
+      });
+      expect(afterUndo?.myCardgroupsConnection.edges).toHaveLength(2);
+      expect(afterUndo?.myCardgroupsConnection.totalCount).toBe(2);
+    });
+
+    vi.useRealTimers();
+  });
+
+  // S-delete-search: handleDelete uses active search variables, not default vars.
+  // A delete while a search is active must read/write the search-keyed cache entry.
+  it("optimistically removes the edge from the search-keyed cache entry when a search is active", async () => {
+    const user = userEvent.setup({ delay: null });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    const cache = new InMemoryCache();
+    const searchVars = { ...CARDGROUPS_DEFAULT_VARS, search: "Spanish" };
+
+    // Seed the search-keyed cache entry (mirrors what queryVariables resolves to
+    // after the 300ms debounce when "Spanish" is the active search).
+    const searchConn = makeConnection([CG_1], false, 1);
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: searchVars,
+      data: { myCardgroupsConnection: searchConn },
+    });
+
+    // Also seed default vars so the SSR path does not warn.
+    const defaultConn = makeConnection([CG_1, CG_2], false, 2);
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+      data: { myCardgroupsConnection: defaultConn },
+    });
+
+    const initialMock = {
+      request: { query: MyCardgroupsConnectionDocument, variables: CARDGROUPS_DEFAULT_VARS },
+      result: { data: { myCardgroupsConnection: defaultConn } },
+    };
+    const searchMock = {
+      request: { query: MyCardgroupsConnectionDocument, variables: searchVars },
+      result: { data: { myCardgroupsConnection: searchConn } },
+    };
+    const deleteMock = {
+      request: { query: DeleteCardgroupDocument, variables: { id: CG_1.id } },
+      result: { data: { deleteCardgroup: true } },
+    };
+
+    renderClient([initialMock, searchMock, deleteMock], null, cache);
+
+    // Advance through the 300ms debounce after typing the search term.
+    const searchInput = screen.getByRole("searchbox");
+    await user.type(searchInput, "Spanish");
+    vi.advanceTimersByTime(300);
+    vi.useRealTimers();
+
+    // Wait for the search result to render.
+    await waitFor(() => {
+      expect(screen.getByText("Spanish Vocab")).toBeInTheDocument();
+    });
+
+    // Delete CG_1 while the search is active.
+    const deleteBtn = screen.getByRole("button", {
+      name: new RegExp(`delete cardgroup ${CG_1.name}`, "i"),
+    });
+    await user.click(deleteBtn);
+
+    // Optimistic removal: the edge is gone from the UI immediately.
+    await waitFor(() => {
+      expect(screen.queryByText("Spanish Vocab")).not.toBeInTheDocument();
+    });
+
+    // The search-keyed cache entry must be updated, not the default-vars entry.
+    const searchAfter = cache.readQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: searchVars,
+    });
+    expect(searchAfter?.myCardgroupsConnection.edges).toHaveLength(0);
+    expect(searchAfter?.myCardgroupsConnection.totalCount).toBe(0);
+
+    // Default-vars entry must be untouched (still has both CG_1 and CG_2).
+    const defaultAfter = cache.readQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+    });
+    expect(defaultAfter?.myCardgroupsConnection.edges).toHaveLength(2);
+
+    // Advance past the undo window to consume the delete mock.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.advanceTimersByTime(5100);
+    vi.useRealTimers();
+    await waitFor(() => {});
+  });
+});
+
+// ---------------------------------------------------------------------------
 // S7: connection cache update — readQuery + writeQuery (not cache.modify)
 // ---------------------------------------------------------------------------
 //
-// These pure InMemoryCache tests verify that the update logic in
-// new-cardgroup-client.tsx uses readQuery + writeQuery per
-// docs/pagination/cache-modify-skips-nonexistent-fields.md. cache.modify skips
-// non-existent fields on cold cache; readQuery + writeQuery handles both warm
-// and cold paths correctly.
+// cache.modify skips non-existent fields on a cold cache; readQuery + writeQuery
+// handles both the warm-cache and cold-cache paths correctly.
 
 describe("<CardgroupsClient> connection cache update (readQuery + writeQuery)", () => {
   it("prepends new cardgroup into MyCardgroupsConnection cache using readQuery + writeQuery", () => {
     const cache = new InMemoryCache();
 
-    // Pre-seed both the connection cache and the flat list cache.
-    // CARDGROUPS_DEFAULT_VARS keeps the cache key identical to what
-    // new-cardgroup-client.tsx and the SSR seed write — any mismatch
-    // would make this read invisible (cache miss).
+    // CARDGROUPS_DEFAULT_VARS keeps the cache key identical to the SSR seed and
+    // the client useQuery — any mismatch produces a silent cache miss.
     cache.writeQuery({
       query: MyCardgroupsConnectionDocument,
       variables: CARDGROUPS_DEFAULT_VARS,

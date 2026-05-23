@@ -28,6 +28,18 @@ vi.mock("@apollo/client/react", () => ({
   useMutation: vi.fn(() => [vi.fn(), { loading: false }]),
 }));
 
+// useUndoDelete requires <UndoDeleteProvider> in the tree; stub the hook so
+// the RSC-rendered tree mounts without a real provider.
+vi.mock("@/lib/undo-delete", () => ({
+  useUndoDelete: vi.fn(() => ({ scheduleDelete: vi.fn() })),
+  UndoDeleteProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
+// usePathname is consumed by UndoDeleteProvider for flush-on-navigation.
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/admin/roles",
+}));
+
 // ---------------------------------------------------------------------------
 // Imports — after vi.mock declarations
 // ---------------------------------------------------------------------------

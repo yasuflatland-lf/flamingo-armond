@@ -8,6 +8,7 @@ import { RoleListItem } from "@/components/admin/role-list-item";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { Button } from "@/components/ui/button";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { useUndoDelete } from "@/lib/undo-delete";
 import { AdminDeleteRoleMutation, SYSTEM_ROLE_NAMES } from "./queries";
 
 export type RoleItem = { id: string; name: string };
@@ -35,15 +36,26 @@ export function AdminRolesClient({ initialRoles }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const [deleteRoleMutate, { loading: deleting }] = useMutation(AdminDeleteRoleMutation);
+  const { scheduleDelete } = useUndoDelete();
 
-  async function handleDelete(id: string) {
+  function handleDelete(id: string) {
+    const index = roles.findIndex((r) => r.id === id);
+    const role = roles[index];
+    if (!role) return;
+
+    // Clear any stale error banner so a new attempt starts clean.
     setError(null);
-    try {
-      await deleteRoleMutate({ variables: { id } });
-      setRoles((prev) => prev.filter((r) => r.id !== id));
-    } catch (err) {
-      setError(toMessage(err));
-    }
+    setRoles((prev) => prev.filter((r) => r.id !== id));
+
+    scheduleDelete({
+      id,
+      label: `Role "${role.name}" deleted`,
+      optimisticRollback: () => {
+        setRoles((prev) => [...prev.slice(0, index), role, ...prev.slice(index)]);
+      },
+      commitDelete: () => deleteRoleMutate({ variables: { id } }),
+      onCommitFailed: (err) => setError(toMessage(err)),
+    });
   }
 
   return (

@@ -6,4 +6,17 @@ A `cardsDefaultVars(cardgroupId)` factory produces the cache vars for the unfilt
 
 **Why:** Apollo's cache key is the canonical-stringified variables object. The default-vars factory and the active-query variables are only equal when no filter is active; as soon as `searchQuery !== null`, they diverge and target different cache entries. This is the dual of [`variables-shape-must-match.md` § "Variables shape MUST match between SSR seed and client cache reads"](variables-shape-must-match.md): that rule governs the three SSR-seed/client-query/update call sites all agreeing on the *default* key; this rule governs mutation `update` and optimistic-rollback callbacks agreeing with the *active* key.
 
-**How to apply:** derive the snapshot read and rollback `writeQuery` vars from the same `queryVariables` memo that the component's active `useQuery` uses. Add `queryVariables` to the `useCallback` dep array. Reserve the default-vars factory for SSR seed and cold-cache base reads only. Reference: `frontend/src/app/cardgroups/[id]/cards/cards-client.tsx` `handleDeleteRow` and the bulk-delete `update` callback — both switched from `cardsDefaultVars(cardgroupId)` to `queryVariables`.
+**How to apply:** derive the snapshot read and rollback `writeQuery` vars from the same `queryVariables` memo that the component's active `useQuery` uses. Add `queryVariables` to the `useCallback` dep array. Reserve the default-vars factory for SSR seed and cold-cache base reads only. References: `frontend/src/app/cardgroups/[id]/cards/cards-client.tsx` `handleDeleteRow` and the bulk-delete `update` callback — both switched from `cardsDefaultVars(cardgroupId)` to `queryVariables`. The same fix landed in `frontend/src/app/cardgroups/cardgroups-client.tsx` `handleDelete`, which previously hard-coded `CARDGROUPS_DEFAULT_VARS` and silently skipped the optimistic remove during any active search.
+
+**Surface cold-cache misses — never swallow them.** When `readQuery` returns `null` (the active query has not yet been fetched into cache, e.g. a direct-navigation cold load), the snapshot branch must surface the miss to the user and return early rather than silently proceeding with a partial or stale write. A silent skip leaves the deleted row visible until the next server round-trip completes, with no feedback to the user:
+
+```ts
+const snapshot = apollo.cache.readQuery({ query: ..., variables: activeVars });
+if (!snapshot) {
+  console.warn("[scope] handleDelete: cache miss on snapshot read", { id });
+  setDeleteError("Could not delete. Please reload and try again.");
+  return;
+}
+```
+
+A cold-cache miss is an edge case (direct navigation without SSR seed), not an error — but it should be surfaced with a banner, not silently dropped.

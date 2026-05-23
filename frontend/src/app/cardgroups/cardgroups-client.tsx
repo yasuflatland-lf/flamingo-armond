@@ -1,7 +1,7 @@
 "use client";
 
 import { NetworkStatus } from "@apollo/client";
-import { useApolloClient, useQuery } from "@apollo/client/react";
+import { useApolloClient, useMutation, useQuery } from "@apollo/client/react";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
@@ -15,7 +15,8 @@ import {
 } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import type { FetchNextPageInput } from "@/lib/pagination/types";
-import { CARDGROUPS_DEFAULT_VARS } from "./queries";
+import { useUndoDelete } from "@/lib/undo-delete";
+import { CARDGROUPS_DEFAULT_VARS, DeleteCardgroupMutation } from "./queries";
 
 type Connection = MyCardgroupsConnectionQuery["myCardgroupsConnection"];
 
@@ -42,6 +43,10 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
+  const [deleteCommitError, setDeleteCommitError] = useState<string | null>(null);
+
+  const { scheduleDelete } = useUndoDelete();
+  const [deleteCardgroup] = useMutation(DeleteCardgroupMutation);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   // In-flight guard MUST be useRef<boolean>, not useState — see
@@ -109,6 +114,58 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   const edges = connection?.edges ?? [];
   const hasNextPage = connection?.pageInfo.hasNextPage ?? false;
   const endCursor = connection?.pageInfo.endCursor ?? null;
+
+  function handleDelete(id: string, name: string) {
+    // Clear any stale delete-error banner so a new attempt starts clean.
+    setDeleteCommitError(null);
+    // Use queryVariables (the active search variables) so the cache key matches
+    // the currently rendered query. Using CARDGROUPS_DEFAULT_VARS here would
+    // silently read/write the wrong cache entry when a search is active.
+    const activeVars = queryVariables;
+    const snapshot = apollo.cache.readQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: activeVars,
+    });
+    if (!snapshot) {
+      console.warn("[cardgroups] handleDelete: cache miss on snapshot read", { id });
+      setDeleteCommitError("Could not delete cardgroup. Please reload and try again.");
+      return;
+    }
+
+    apollo.cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: activeVars,
+      data: {
+        myCardgroupsConnection: {
+          ...snapshot.myCardgroupsConnection,
+          edges: snapshot.myCardgroupsConnection.edges.filter((e) => e.node.id !== id),
+          totalCount: Math.max(0, snapshot.myCardgroupsConnection.totalCount - 1),
+        },
+      },
+    });
+
+    scheduleDelete({
+      id,
+      label: `Cardgroup "${name}" deleted`,
+      optimisticRollback: () => {
+        apollo.cache.writeQuery({
+          query: MyCardgroupsConnectionDocument,
+          variables: activeVars,
+          data: snapshot,
+        });
+      },
+      commitDelete: async () => {
+        await deleteCardgroup({ variables: { id } });
+        apollo.cache.evict({ id: apollo.cache.identify({ __typename: "Cardgroup", id }) });
+        apollo.cache.gc();
+      },
+      onCommitFailed: (err) => {
+        setDeleteCommitError(
+          getBackendErrorBanner(err) ?? "Could not delete cardgroup. Please try again.",
+        );
+      },
+    });
+  }
 
   const fetchNextPage = useCallback(
     ({ hasNextPage, endCursor, searchQuery }: FetchNextPageInput) => {
@@ -217,9 +274,20 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
               id={edge.node.id}
               name={edge.node.name}
               updatedAt={edge.node.updatedAt as string}
+              onDelete={handleDelete}
             />
           ))}
         </ul>
+      )}
+
+      {deleteCommitError && (
+        <div
+          className="mt-3 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+          role="alert"
+          data-testid="cardgroups-delete-error"
+        >
+          {deleteCommitError}
+        </div>
       )}
 
       <div ref={sentinelRef} aria-hidden="true" data-testid="cardgroups-sentinel" />
