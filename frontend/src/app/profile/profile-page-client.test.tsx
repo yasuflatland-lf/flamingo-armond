@@ -54,7 +54,7 @@ function makeUpdateProfileMock(variables: { input: { displayName: string; bio?: 
 describe("<ProfilePageClient>", () => {
   const initial = { displayName: "Alice", bio: "hello" };
 
-  it("Edit profile button pushes ?edit=true", async () => {
+  it("Edit profile button pushes ?edit=self", async () => {
     const user = userEvent.setup();
     mockSearchParamsValue = "";
 
@@ -66,11 +66,11 @@ describe("<ProfilePageClient>", () => {
 
     await user.click(screen.getByRole("button", { name: /edit profile/i }));
 
-    expect(mockPush).toHaveBeenCalledWith("/profile?edit=true", { scroll: false });
+    expect(mockPush).toHaveBeenCalledWith("/profile?edit=self", { scroll: false });
   });
 
-  it("opens the sheet when edit=true is present in the query", () => {
-    mockSearchParamsValue = "edit=true";
+  it("opens the sheet when ?edit=self (singleton sentinel) is present in the query", () => {
+    mockSearchParamsValue = "edit=self";
 
     render(
       <MockedProvider mocks={[]}>
@@ -83,7 +83,7 @@ describe("<ProfilePageClient>", () => {
 
   it("successful save closes the sheet, replaces to /profile, and refreshes", async () => {
     const user = userEvent.setup();
-    mockSearchParamsValue = "edit=true";
+    mockSearchParamsValue = "edit=self";
     const mocks = [makeUpdateProfileMock({ input: { displayName: "Alice", bio: "hello" } })];
 
     render(
@@ -102,7 +102,7 @@ describe("<ProfilePageClient>", () => {
 
   it("Change email closes the sheet URL before navigating to the email-change route", async () => {
     const user = userEvent.setup();
-    mockSearchParamsValue = "edit=true";
+    mockSearchParamsValue = "edit=self";
 
     render(
       <MockedProvider mocks={[]}>
@@ -118,7 +118,7 @@ describe("<ProfilePageClient>", () => {
 
   it("Change email does not navigate while the profile save is submitting", async () => {
     const user = userEvent.setup();
-    mockSearchParamsValue = "edit=true";
+    mockSearchParamsValue = "edit=self";
     const mocks = [
       {
         request: {

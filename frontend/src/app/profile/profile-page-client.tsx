@@ -44,13 +44,20 @@ function ProfileSheetBody({
   );
 }
 
+// `/profile` edits a singleton aggregate (the signed-in user's own profile)
+// that has no per-entity id in the URL space. `useSheetSearchParam` expects an
+// `id` for `mode: "edit"`, so this page uses a fixed sentinel that cannot
+// collide with any real entity id (no other admin surface routes "self" to an
+// entity). The contract is local to this page; the hook stays unaware.
+const PROFILE_SHEET_SENTINEL_ID = "self";
+
 export function ProfilePageClient({ email, initial }: Props) {
   const router = useRouter();
   const sheet = useSheetSearchParam();
   const [dirty, setDirty] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const resetProfileFormRef = useRef<() => void>(() => {});
-  const open = sheet.state.mode === "edit" && sheet.state.id === "true";
+  const open = sheet.state.mode === "edit" && sheet.state.id === PROFILE_SHEET_SENTINEL_ID;
 
   const resetBeforeClose = useCallback(() => {
     resetProfileFormRef.current();
@@ -61,7 +68,7 @@ export function ProfilePageClient({ email, initial }: Props) {
   const handleSheetOpenChange = useCallback(
     (nextOpen: boolean) => {
       if (nextOpen) {
-        sheet.open({ mode: "edit", id: "true" });
+        sheet.open({ mode: "edit", id: PROFILE_SHEET_SENTINEL_ID });
         return;
       }
 
@@ -115,7 +122,7 @@ export function ProfilePageClient({ email, initial }: Props) {
           <Button
             type="button"
             variant="outline"
-            onClick={() => sheet.open({ mode: "edit", id: "true" })}
+            onClick={() => sheet.open({ mode: "edit", id: PROFILE_SHEET_SENTINEL_ID })}
           >
             <Pencil className="h-4 w-4" />
             Edit profile
