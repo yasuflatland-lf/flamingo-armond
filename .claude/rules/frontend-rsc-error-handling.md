@@ -81,3 +81,4 @@ Use `isUnauthenticatedGraphQLError` for all code paths — including simple redi
 - [`supabase.auth.getClaims()` has a three-way return — branch on `claimsData == null`](../../docs/frontend/rsc-error-handling/getclaims-three-way-return.md)
 - [`isUnauthenticatedGraphQLError` matches gqlFetch — not Apollo Client runtime errors](../../docs/frontend/rsc-error-handling/apollo-runtime-vs-gqlfetch-error-shape.md)
 - [Fire-and-forget mutation: structured warn for null payload, non-success variant, and rejection](../../docs/frontend/rsc-error-handling/fire-and-forget-mutation-warn-on-null-and-non-success.md)
+- [`UNAUTHENTICATED` collapses to generic copy; `FORBIDDEN` preserves the server's specific reason](../../docs/frontend/rsc-error-handling/unauthenticated-vs-forbidden-message-asymmetry.md)

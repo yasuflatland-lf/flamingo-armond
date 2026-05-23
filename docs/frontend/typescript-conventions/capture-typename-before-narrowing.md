@@ -63,9 +63,10 @@ Every client component that dispatches on a GraphQL union's `__typename`:
 The unknown-variant branch is load-bearing precisely because GraphQL unions are
 additive — the backend may ship a new variant before the frontend regenerates,
 and the fallthrough is what surfaces the version skew in operator logs instead
-of letting it surface as a blank UI. Reference: `frontend/src/app/admin/users/[id]/edit/admin-user-edit-client.tsx`
-(`handleSave`, `handleRoleToggle`), `frontend/src/app/admin/roles/[id]/edit/edit-role-client.tsx`,
-`frontend/src/app/admin/roles/new/new-role-client.tsx`, and
+of letting it surface as a blank UI. Reference: `frontend/src/app/admin/users/admin-user-profile-sheet.tsx`
+(`handleSave`), `frontend/src/app/admin/users/admin-user-role-row.tsx`
+(`handleRoleToggle`), `frontend/src/app/admin/roles/admin-roles-client.tsx`
+(`handleCreateSubmit`, `handleEditSubmit`), and
 `frontend/src/app/cardgroups/new/new-cardgroup-client.tsx` — all follow the
 `const typename = result?.__typename ?? null;` pattern verbatim.
 

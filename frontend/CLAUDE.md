@@ -43,6 +43,7 @@ The frontend package manager is **pnpm** (pinned via `package.json` engines + `p
 - [`docs/frontend/testing-convention-narrow-vs-broad-page-tests.md`](../docs/frontend/testing-convention-narrow-vs-broad-page-tests.md) — Narrow vs broad page tests.
 - [`docs/frontend/typescript-conventions.md`](../docs/frontend/typescript-conventions.md) — Type-design rules: required nullable props, JSDoc sanitization contracts, assertion discriminating keys, TanStack Form re-throw.
 - [`docs/frontend/undo-toast.md`](../docs/frontend/undo-toast.md) — Delayed-DELETE undo toast, SwipeableRow, `useReducedMotion`.
+- [`docs/frontend/url-backed-sheet-state.md`](../docs/frontend/url-backed-sheet-state.md) — `useSheetSearchParam` drawer state in `?new=true` / `?edit=<id>`; singleton sentinel, lazy-query called gate, race guard.
 
 ## Cross-cutting rules already in context
 

@@ -42,7 +42,7 @@ Role changes take effect when the user's JWT is re-minted — at sign-in or at t
 <p>Role changes take effect within one hour.</p>
 ```
 
-Reference: `frontend/src/app/admin/users/[id]/edit/admin-user-edit-client.tsx` (the role-multiselect helper text).
+Reference: `frontend/src/app/admin/users/admin-user-role-row.tsx` (the role-multiselect helper text).
 
 ### Gotchas
 
