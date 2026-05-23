@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AdminAssignRoleDocument,
   AdminRolesDocument,
+  AdminUserDocument,
   AdminUsersDocument,
 } from "@/generated/graphql";
 import {
@@ -213,6 +214,119 @@ describe("<AdminUsersClient> sheet and inline roles", () => {
     await waitFor(() => {
       expect(screen.getByRole("checkbox", { name: /moderator/i })).toBeChecked();
     });
+  });
+});
+
+describe("<AdminUsersClient> edit-sheet lazy query", () => {
+  function makeAdminUserMock(
+    id: string,
+    overrides: { error?: Error; result?: { data: { adminUser: typeof USER_1 | null } } } = {},
+  ) {
+    const base = {
+      request: { query: AdminUserDocument, variables: { id } },
+    };
+    if (overrides.error) return { ...base, error: overrides.error };
+    return {
+      ...base,
+      result: overrides.result ?? { data: { adminUser: { ...USER_1, id } } },
+    };
+  }
+
+  it("FORBIDDEN on the admin-user lazy query renders the permission banner inside the sheet", async () => {
+    mockSearchParamsValue = "edit=u-1";
+    leakSpy.teardown();
+    leakSpy = installApolloMockLeakSpy({
+      operationNames: ["AdminUsers", "AdminRoles", "AdminUser"],
+    });
+
+    const forbiddenError = new GraphQLError("forbidden", {
+      extensions: { code: "FORBIDDEN" },
+    });
+    const userMock = {
+      request: { query: AdminUserDocument, variables: { id: "u-1" } },
+      result: { errors: [forbiddenError] },
+    };
+
+    render(
+      <MockedProvider mocks={[makeUsersMock(), makeRolesMock(), userMock]}>
+        <AdminUsersClient />
+      </MockedProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/do not have permission to edit this user/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText(/display name/i)).not.toBeInTheDocument();
+  });
+
+  it("UNAUTHENTICATED on the admin-user lazy query renders the session-expired banner", async () => {
+    mockSearchParamsValue = "edit=u-1";
+    leakSpy.teardown();
+    leakSpy = installApolloMockLeakSpy({
+      operationNames: ["AdminUsers", "AdminRoles", "AdminUser"],
+    });
+
+    const unauthError = new GraphQLError("expired", {
+      extensions: { code: "UNAUTHENTICATED" },
+    });
+    const userMock = {
+      request: { query: AdminUserDocument, variables: { id: "u-1" } },
+      result: { errors: [unauthError] },
+    };
+
+    render(
+      <MockedProvider mocks={[makeUsersMock(), makeRolesMock(), userMock]}>
+        <AdminUsersClient />
+      </MockedProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/session has expired/i)).toBeInTheDocument();
+    });
+  });
+
+  it("race-guard: stale lazy-query response for the previously-open user is dropped", async () => {
+    const user = userEvent.setup();
+    leakSpy.teardown();
+    leakSpy = installApolloMockLeakSpy({
+      operationNames: ["AdminUsers", "AdminRoles", "AdminUser"],
+    });
+
+    // Initially open edit for u-1
+    mockSearchParamsValue = "edit=u-1";
+
+    // Provide a fast resolution for u-1 (the stale one) and a different shape
+    // for u-2, so we can prove the sheet shows u-2's data, not u-1's, after switching.
+    const u1Mock = makeAdminUserMock("u-1", {
+      result: { data: { adminUser: { ...USER_1, id: "u-1", displayName: "Stale Alice" } } },
+    });
+    const u2Mock = makeAdminUserMock("u-2", {
+      result: { data: { adminUser: { ...USER_2, id: "u-2", displayName: "Fresh Bob" } } },
+    });
+
+    const { rerender } = render(
+      <MockedProvider mocks={[makeUsersMock([USER_1, USER_2]), makeRolesMock(), u1Mock, u2Mock]}>
+        <AdminUsersClient />
+      </MockedProvider>,
+    );
+
+    await screen.findByDisplayValue("Stale Alice");
+
+    // Simulate a navigation/search-param change to edit=u-2 (user clicks Edit on Bob)
+    mockSearchParamsValue = "edit=u-2";
+    rerender(
+      <MockedProvider mocks={[makeUsersMock([USER_1, USER_2]), makeRolesMock(), u1Mock, u2Mock]}>
+        <AdminUsersClient />
+      </MockedProvider>,
+    );
+
+    // The sheet must show u-2's data once the new query settles, never u-1's stale data
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("Fresh Bob")).toBeInTheDocument();
+    });
+    expect(screen.queryByDisplayValue("Stale Alice")).not.toBeInTheDocument();
+    // Silence the unused-binding warning from setup helpers
+    void user;
   });
 });
 

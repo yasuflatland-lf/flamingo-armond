@@ -440,4 +440,56 @@ describe("AdminUserRoleRow", () => {
       expect.objectContaining({ typename: null }),
     );
   });
+
+  it("in-flight ref guard coalesces rapid double-clicks into a single mutation", async () => {
+    // Only one mock is provided. If the in-flight guard fails, the second
+    // click would fire a second mutation, MockedProvider would have no match,
+    // and the second mutation would reject with "No more mocked responses".
+    // We assert (a) the success path completes (checkbox checked) and
+    // (b) the rejection-path warn was NEVER logged.
+    const mocks = [
+      {
+        request: {
+          query: AdminAssignRoleDocument,
+          variables: { userId: "u-1", roleId: MOD_ROLE.id },
+        },
+        delay: 50,
+        result: {
+          data: {
+            assignRole: {
+              __typename: "AssignRoleSuccess" as const,
+              user: {
+                __typename: "User" as const,
+                id: "u-1",
+                displayName: "Alice",
+                bio: "bio text",
+                avatarUrl: null,
+                roles: [ADMIN_ROLE, MOD_ROLE],
+              },
+            },
+          },
+        },
+      },
+    ];
+
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const userActor = userEvent.setup({ delay: null });
+    renderRow({ mocks });
+
+    const moderatorCheckbox = screen.getByRole("checkbox", { name: /moderator/i });
+    // Two rapid clicks within the same tick — the ref guard must coalesce them.
+    await userActor.click(moderatorCheckbox);
+    await userActor.click(moderatorCheckbox);
+
+    await waitFor(() => {
+      expect(screen.getByRole("checkbox", { name: /moderator/i })).toBeChecked();
+    });
+
+    // Proof the second click did NOT fire a second mutation — the rejection
+    // warn from a "No more mocked responses" rejection would have landed here.
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("role-toggle rejected"),
+      expect.anything(),
+    );
+  });
 });

@@ -14,11 +14,16 @@ export type AdminUserRole = {
   name: string;
 };
 
+/**
+ * Display shape for an admin user row. Nullable string fields are `string |
+ * null` (required, nullable), not `string | null | undefined` — see
+ * docs/frontend/typescript-conventions/required-string-null-over-optional-string-null.md.
+ */
 export type AdminUserListItem = {
   id: string;
-  displayName?: string | null;
-  bio?: string | null;
-  avatarUrl?: string | null;
+  displayName: string | null;
+  bio: string | null;
+  avatarUrl: string | null;
   roles: AdminUserRole[];
 };
 
@@ -33,6 +38,13 @@ const ERR_FORBIDDEN = "You do not have permission.";
 const ERR_UNAUTHENTICATED = "Your session has expired. Sign in again.";
 const ERR_UNEXPECTED = "An unexpected error occurred. Please try again.";
 const ERR_SOMETHING_WRONG = "Something went wrong. Please try again.";
+
+/** Pick the user-facing message for a thrown role-toggle error. */
+function pickAuthErrorMessage(codes: readonly string[]): string {
+  if (codes.includes("FORBIDDEN")) return ERR_FORBIDDEN;
+  if (codes.includes("UNAUTHENTICATED")) return ERR_UNAUTHENTICATED;
+  return ERR_UNEXPECTED;
+}
 
 export function AdminUserRoleRow({ user, allRoles, rolesLoading = false, onEdit }: Props) {
   const [roleBanners, setRoleBanners] = useState<Record<string, string>>({});
@@ -86,23 +98,22 @@ export function AdminUserRoleRow({ user, allRoles, rolesLoading = false, onEdit 
         return;
       }
       console.warn("[admin/users] unexpected role-toggle payload", {
+        userId: user.id,
+        roleId,
+        operation: currentlyAssigned ? "revoke" : "assign",
         typename: roleTypename,
       });
       setRoleBanner(roleId, ERR_SOMETHING_WRONG);
     } catch (err) {
       const codes = liftGraphQLCodes(err);
       console.warn("[admin/users] role-toggle rejected", {
+        userId: user.id,
+        roleId,
+        operation: currentlyAssigned ? "revoke" : "assign",
         name: err instanceof Error ? err.name : "unknown",
         codes,
       });
-      setRoleBanner(
-        roleId,
-        codes.includes("FORBIDDEN")
-          ? ERR_FORBIDDEN
-          : codes.includes("UNAUTHENTICATED")
-            ? ERR_UNAUTHENTICATED
-            : ERR_UNEXPECTED,
-      );
+      setRoleBanner(roleId, pickAuthErrorMessage(codes));
     } finally {
       roleInflightRef.current.delete(roleId);
       setRoleInflight((prev) => ({ ...prev, [roleId]: false }));

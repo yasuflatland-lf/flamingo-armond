@@ -6,7 +6,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useFragment } from "@/generated/fragment-masking";
 import type { AdminUsersQuery as AdminUsersQueryResult } from "@/generated/graphql";
-import { classifyQueryError, getBackendErrorBanner } from "@/lib/apollo/errors";
+import {
+  classifyQueryError,
+  getBackendErrorBanner,
+  type QueryErrorKind,
+} from "@/lib/apollo/errors";
 import type { FetchNextPageInput } from "@/lib/pagination/types";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
 import { AdminUserProfileSheet } from "./admin-user-profile-sheet";
@@ -38,9 +42,9 @@ function UserRow({
   const roles = useFragment(AdminRoleFieldsFragment, edge.node.roles);
   const rowUser: AdminUserListItem = {
     id: user.id,
-    displayName: user.displayName,
-    bio: user.bio,
-    avatarUrl: user.avatarUrl,
+    displayName: user.displayName ?? null,
+    bio: user.bio ?? null,
+    avatarUrl: user.avatarUrl ?? null,
     roles: roles.map((role) => ({ id: role.id, name: role.name })),
   };
 
@@ -52,6 +56,20 @@ function UserRow({
       onEdit={onEdit}
     />
   );
+}
+
+// Flatten the three-branch `classifyQueryError` result into a single banner
+// string for the edit sheet. Returns null when there is no error.
+function formatEditUserBannerError(kind: QueryErrorKind | null): string | null {
+  if (!kind) return null;
+  switch (kind.kind) {
+    case "forbidden":
+      return "You do not have permission to edit this user.";
+    case "unauthenticated":
+      return "Your session has expired. Sign in again.";
+    case "banner":
+      return kind.message;
+  }
 }
 
 export function AdminUsersClient() {
@@ -116,14 +134,9 @@ export function AdminUsersClient() {
     notifyOnNetworkStatusChange: true,
   });
 
+  // Fan out into three render branches: forbidden, unauthenticated, banner.
+  // See `classifyQueryError` for the source of the discriminated kinds.
   const queryErrorKind = classifyQueryError(queryError);
-
-  // UNAUTHENTICATED post-mount means the session expired while the page was
-  // open. The server-side gate in page.tsx + the admin layout already block
-  // the initial load (which redirects to "/"), so this only fires mid-session.
-  // Render a degraded banner pointing to /login rather than calling
-  // `redirect()` from a client component — see
-  // .claude/rules/frontend-rsc-error-handling.md.
   const queryBannerError = queryErrorKind?.kind === "banner" ? queryErrorKind.message : undefined;
 
   const connection = data?.users;
@@ -141,26 +154,19 @@ export function AdminUsersClient() {
   const editUserId = sheet.state.mode === "edit" ? sheet.state.id : null;
   const editUserFields = useFragment(AdminUserFieldsFragment, editUserData?.adminUser ?? null);
   const editUserRoles = useFragment(AdminRoleFieldsFragment, editUserData?.adminUser?.roles ?? []);
-  const editUser = editUserFields
+  const editUser: AdminUserListItem | null = editUserFields
     ? {
         id: editUserFields.id,
-        displayName: editUserFields.displayName,
-        bio: editUserFields.bio,
-        avatarUrl: editUserFields.avatarUrl,
+        displayName: editUserFields.displayName ?? null,
+        bio: editUserFields.bio ?? null,
+        avatarUrl: editUserFields.avatarUrl ?? null,
         roles: editUserRoles.map((role) => ({ id: role.id, name: role.name })),
       }
     : null;
   const sheetUser = editUser?.id === editUserId ? editUser : null;
   const editUserResultMatchesSheet = editUserId !== null && editUserVariables?.id === editUserId;
   const editUserErrorKind = classifyQueryError(editUserError);
-  const editUserBannerError =
-    editUserErrorKind?.kind === "forbidden"
-      ? "You do not have permission to edit this user."
-      : editUserErrorKind?.kind === "unauthenticated"
-        ? "Your session has expired. Sign in again."
-        : editUserErrorKind?.kind === "banner"
-          ? editUserErrorKind.message
-          : null;
+  const editUserBannerError = formatEditUserBannerError(editUserErrorKind);
 
   useEffect(() => {
     if (!editUserId) return;
@@ -194,7 +200,7 @@ export function AdminUsersClient() {
         .catch((err) => {
           // Structured warn for operator triage: name + request context only.
           // err.message is omitted — backend messages may carry user-authored content.
-          // See docs/frontend/typescript-conventions.md § "expect.objectContaining".
+          // See docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
           console.warn("[admin-users] fetchMore failed", {
             name: err instanceof Error ? err.name : "unknown",
             searchQuery,
@@ -264,7 +270,14 @@ export function AdminUsersClient() {
         </div>
       )}
 
-      {/* UNAUTHENTICATED mid-session banner — degraded UI pointing at /login. */}
+      {/*
+        UNAUTHENTICATED post-mount means the session expired while the page was
+        open. The server-side gate in page.tsx + the admin layout already block
+        the initial load (which redirects to "/"), so this only fires mid-session.
+        Render a degraded banner pointing to /login rather than calling
+        `redirect()` from a client component — see
+        .claude/rules/frontend-rsc-error-handling.md.
+      */}
       {queryErrorKind?.kind === "unauthenticated" && (
         <div
           className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"

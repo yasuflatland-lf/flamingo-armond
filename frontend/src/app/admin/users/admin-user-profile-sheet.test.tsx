@@ -327,4 +327,58 @@ describe("AdminUserProfileSheet", () => {
       expect.objectContaining({ typename: null }),
     );
   });
+
+  it("shows the loading indicator while the lazy query is in flight (user=null, loading=true)", () => {
+    render(
+      <MockedProvider mocks={[]}>
+        <AdminUserProfileSheet
+          open
+          user={null}
+          loading
+          queryError={null}
+          onDismiss={vi.fn()}
+          onSaved={vi.fn()}
+        />
+      </MockedProvider>,
+    );
+
+    expect(screen.getByTestId("admin-user-sheet-loading")).toHaveTextContent(/loading user/i);
+    expect(screen.queryByLabelText(/display name/i)).not.toBeInTheDocument();
+  });
+
+  it("renders the queryError banner without the form when the lazy query rejects", () => {
+    render(
+      <MockedProvider mocks={[]}>
+        <AdminUserProfileSheet
+          open
+          user={null}
+          loading={false}
+          queryError="You do not have permission to edit this user."
+          onDismiss={vi.fn()}
+          onSaved={vi.fn()}
+        />
+      </MockedProvider>,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/do not have permission to edit/i);
+    expect(screen.queryByLabelText(/display name/i)).not.toBeInTheDocument();
+  });
+
+  it("renders 'User not found' when the lazy query settles with a null user", () => {
+    render(
+      <MockedProvider mocks={[]}>
+        <AdminUserProfileSheet
+          open
+          user={null}
+          loading={false}
+          queryError={null}
+          onDismiss={vi.fn()}
+          onSaved={vi.fn()}
+        />
+      </MockedProvider>,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/user not found/i);
+    expect(screen.queryByLabelText(/display name/i)).not.toBeInTheDocument();
+  });
 });

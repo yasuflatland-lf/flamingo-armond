@@ -25,6 +25,13 @@ const ERR_UNAUTHENTICATED = "Your session has expired. Sign in again.";
 const ERR_UNEXPECTED = "An unexpected error occurred. Please try again.";
 const ERR_SOMETHING_WRONG = "Something went wrong. Please try again.";
 
+/** Pick the user-facing message for a thrown mutation error. */
+function pickAuthErrorMessage(codes: readonly string[]): string {
+  if (codes.includes("FORBIDDEN")) return ERR_FORBIDDEN;
+  if (codes.includes("UNAUTHENTICATED")) return ERR_UNAUTHENTICATED;
+  return ERR_UNEXPECTED;
+}
+
 export function AdminUserProfileSheet({
   open,
   user,
@@ -95,22 +102,18 @@ export function AdminUserProfileSheet({
         return;
       }
       console.warn("[admin/users] unexpected save payload", {
+        userId: user.id,
         typename: saveTypename,
       });
       setSaveError(ERR_SOMETHING_WRONG);
     } catch (err) {
       const codes = liftGraphQLCodes(err);
       console.warn("[admin/users] adminUpdateUser rejected", {
+        userId: user.id,
         name: err instanceof Error ? err.name : "unknown",
         codes,
       });
-      setSaveError(
-        codes.includes("FORBIDDEN")
-          ? ERR_FORBIDDEN
-          : codes.includes("UNAUTHENTICATED")
-            ? ERR_UNAUTHENTICATED
-            : ERR_UNEXPECTED,
-      );
+      setSaveError(pickAuthErrorMessage(codes));
     }
   }
 
