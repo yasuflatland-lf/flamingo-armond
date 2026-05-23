@@ -133,6 +133,7 @@ export function CardgroupHeader({ cardgroup, totalCount }: Props) {
         title="Rename cardgroup"
         confirmOnDismiss={false}
         submitting={renaming}
+        size="sm"
       >
         <CardgroupRenameForm
           cardgroup={cardgroup}
