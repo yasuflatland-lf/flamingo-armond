@@ -80,10 +80,4 @@ const DrawerDescription = React.forwardRef<
 ));
 DrawerDescription.displayName = DrawerPrimitive.Description.displayName;
 
-export {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-};
+export { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle };
