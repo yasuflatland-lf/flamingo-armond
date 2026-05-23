@@ -98,8 +98,11 @@ const SwipeableRowInner = forwardRef<SwipeableRowHandle, SwipeableRowProps>(
           .then(() => {
             onComplete();
           })
-          .catch(() => {
-            // Animation interrupted (e.g. component unmounted) — no-op.
+          .catch((err) => {
+            console.warn("[swipeable-row] delete animation interrupted; committing anyway", {
+              name: err instanceof Error ? err.name : "unknown",
+            });
+            onComplete();
           });
       },
       [api],

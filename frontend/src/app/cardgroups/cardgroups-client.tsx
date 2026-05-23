@@ -120,7 +120,11 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
       query: MyCardgroupsConnectionDocument,
       variables: CARDGROUPS_DEFAULT_VARS,
     });
-    if (!snapshot) return;
+    if (!snapshot) {
+      console.warn("[cardgroups] handleDelete: cache miss on snapshot read", { id });
+      setDeleteCommitError("Could not delete cardgroup. Please reload and try again.");
+      return;
+    }
 
     apollo.cache.writeQuery({
       query: MyCardgroupsConnectionDocument,
