@@ -108,6 +108,7 @@ function CreateRoleSheetBody({
 
 function EditRoleSheetBody({
   role,
+  loading,
   submitting,
   mutationError,
   authError,
@@ -117,6 +118,7 @@ function EditRoleSheetBody({
   submit,
 }: {
   role: RoleItem | null;
+  loading: boolean;
   submitting: boolean;
   mutationError: unknown;
   authError: "unauthenticated" | "forbidden" | null;
@@ -134,8 +136,16 @@ function EditRoleSheetBody({
           <div role="alert" className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
             {queryErrorBanner}
           </div>
-        ) : (
+        ) : loading ? (
           <p className="text-sm text-muted-foreground">Loading role...</p>
+        ) : (
+          <div
+            role="alert"
+            data-testid="admin-role-edit-not-found"
+            className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+          >
+            Role not found.
+          </div>
         )}
       </div>
     );
@@ -217,8 +227,16 @@ export function AdminRolesClient({ initialRoles }: Props) {
   const [updateRole, { loading: updating, error: updateMutationError, reset: resetUpdateRole }] =
     useMutation(AdminUpdateRoleMutation);
   const [deleteRoleMutate, { loading: deleting }] = useMutation(AdminDeleteRoleMutation);
-  const [loadRole, { data: editRoleData, loading: loadingEditRole, error: editRoleQueryError }] =
-    useLazyQuery(AdminRoleQuery, { fetchPolicy: "no-cache" });
+  const [
+    loadRole,
+    {
+      data: editRoleData,
+      loading: loadingEditRole,
+      error: editRoleQueryError,
+      called: loadRoleCalled,
+      variables: loadRoleVariables,
+    },
+  ] = useLazyQuery(AdminRoleQuery, { fetchPolicy: "no-cache" });
   const { scheduleDelete } = useUndoDelete();
   const { state, open, close } = useSheetSearchParam();
   const sheetMode = state.mode;
@@ -247,29 +265,43 @@ export function AdminRolesClient({ initialRoles }: Props) {
     if (!editId) {
       return;
     }
-    void loadRole({ variables: { id: editId } });
+    void loadRole({ variables: { id: editId } }).catch((err) => {
+      const codes = liftGraphQLCodes(err);
+      console.warn("[admin/roles] loadRole rejected", {
+        roleId: editId,
+        name: err instanceof Error ? err.name : "unknown",
+        codes,
+      });
+    });
   }, [editId, loadRole]);
 
+  // Reset the create-sheet state on every sheet transition so a stale
+  // validation banner from a previous attempt does not leak into the next open.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `sheetMode` is a trigger-only dependency; the effect resets derived state and does not reference it in its body.
   useEffect(() => {
-    switch (sheetMode) {
-      case "new":
-      case "closed":
-      case "edit":
-        resetCreateSheetState();
-        break;
-    }
+    resetCreateSheetState();
   }, [resetCreateSheetState, sheetMode]);
 
+  // Reset the edit-sheet state on every sheet transition. `editId` and
+  // `sheetMode` are intentional trigger dependencies: re-opening the edit sheet
+  // with a different id (or switching modes) is a fresh attempt that must clear
+  // any stale banner from a previous attempt.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `editId` and `sheetMode` are trigger-only dependencies; the effect resets derived state and does not reference them in its body.
   useEffect(() => {
-    if (sheetMode === "edit" && editId === null) {
-      return;
-    }
     resetEditSheetState();
   }, [editId, resetEditSheetState, sheetMode]);
 
   const loadedEditRole = editRoleData?.role as unknown as RoleItem | undefined;
   const editRole = state.mode === "edit" && loadedEditRole?.id === state.id ? loadedEditRole : null;
   const editQueryErrorBanner = getBackendErrorBanner(editRoleQueryError);
+  // The lazy query is fired inside a `useEffect`, so on the first render
+  // after `?edit=<id>` lands, `loadingEditRole` is still false. Treat the
+  // "called for the current id" gap as loading so the body does not flash
+  // its `Role not found` branch before the query is in flight.
+  // Mirror of admin-users-client.tsx's `editUserCalled` / `editUserResultMatchesSheet` gate.
+  const loadRoleMatchesSheet = editId !== null && loadRoleVariables?.id === editId;
+  const editRoleLoading =
+    loadingEditRole || (editId !== null && (!loadRoleCalled || !loadRoleMatchesSheet));
 
   function handleDelete(id: string) {
     const index = roles.findIndex((r) => r.id === id);
@@ -287,7 +319,25 @@ export function AdminRolesClient({ initialRoles }: Props) {
         setRoles((prev) => [...prev.slice(0, index), role, ...prev.slice(index)]);
       },
       commitDelete: () => deleteRoleMutate({ variables: { id } }),
-      onCommitFailed: (err) => setDeleteError(toMessage(err)),
+      onCommitFailed: (err) => {
+        const codes = liftGraphQLCodes(err);
+        // UNAUTHENTICATED collapses to a generic sign-in prompt — the user has
+        // no actionable detail to recover from. FORBIDDEN keeps the server's
+        // specific reason because the same code covers system-role races where
+        // the backend message ("cannot delete a protected role") is what the
+        // operator needs to see.
+        if (codes.includes("UNAUTHENTICATED")) {
+          setDeleteError("Your session has expired. Please sign in again.");
+          console.warn("[admin/roles] deleteRole auth failure", { roleId: id, codes });
+          return;
+        }
+        console.warn("[admin/roles] deleteRole rejected", {
+          roleId: id,
+          name: err instanceof Error ? err.name : "unknown",
+          codes,
+        });
+        setDeleteError(toMessage(err));
+      },
     });
   }
 
@@ -473,6 +523,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
         {state.mode === "edit" ? (
           <EditRoleSheetBody
             role={editRole}
+            loading={editRoleLoading}
             submitting={updating}
             mutationError={updateMutationError}
             authError={editAuthError}
