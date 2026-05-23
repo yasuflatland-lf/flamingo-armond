@@ -2,8 +2,8 @@
 
 import { Trash2 } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { SwipeableRow } from "@/components/cardgroups/swipeable-row";
+import { Button } from "@/components/ui/button";
 
 export type RoleListItemProps = {
   id: string;
@@ -43,11 +43,7 @@ export function RoleListItem({ id, name, isSystem, busy, onDelete }: RoleListIte
   }
 
   return (
-    <SwipeableRow
-      onDelete={() => onDelete(id)}
-      disabled={busy}
-      ariaLabel={`Delete role ${name}`}
-    >
+    <SwipeableRow onDelete={() => onDelete(id)} disabled={busy} ariaLabel={`Delete role ${name}`}>
       <li
         className="group flex items-center gap-2 rounded-lg border border-border pr-2 hover:bg-accent active:bg-accent transition-colors"
         data-testid={`admin-role-row-${id}`}
