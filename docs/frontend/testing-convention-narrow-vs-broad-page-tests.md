@@ -460,6 +460,46 @@ This applies to any file that touches fake timers — or *might* touch them afte
 
 Note: `vi.useFakeTimers()` / `vi.useRealTimers()` is complementary to — not a replacement for — the `vi.spyOn` + `vi.restoreAllMocks()` pair documented in the [`vi.spyOn` section above](#vispyon-requires-virestoreallmocks-in-aftereach). Run both pairs when a file uses both spies and timers.
 
+### Testing a 5-second undo-toast window: `shouldAdvanceTime` + `advanceTimers`
+
+`UndoDeleteProvider` schedules the `commitDelete` call 5 000 ms after `scheduleDelete` fires. Testing the timer elapse requires fake timers, but `userEvent` relies on its own internal `setTimeout(0)` calls to flush pointer-event queues. A plain `vi.useFakeTimers()` freezes those internal timers and hangs any `await user.click(...)` before the undo window can be advanced.
+
+The correct combination is `shouldAdvanceTime: true` (lets real-time progress drive fake-timer advancement, so `userEvent`'s internal delays still resolve) paired with `userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) })` (bridges userEvent's internal scheduler to Vitest's fake clock):
+
+```ts
+beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+it("commits delete after the undo window", async () => {
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
+  // ... render, click delete button ...
+  vi.advanceTimersByTime(5100); // advance past the 5 s window
+  await waitFor(() => {
+    expect(deleteMock.result).toHaveBeenCalled();
+  });
+});
+```
+
+Call `vi.advanceTimersByTime(5100)` (100 ms buffer beyond the 5 000 ms window) after the user interaction settles; then use `waitFor` to let the mock consume the mutation response asynchronously.
+
+### `UndoDeleteProvider` wrapping is required for components that call `useUndoDelete()`
+
+A component that calls `useUndoDelete()` reads from `UndoDeleteContext`. Any test that renders the component without `<UndoDeleteProvider>` around it throws at context initialisation — not at the assertion — which produces a misleading "context is undefined" error that points at `undo-delete.tsx` rather than the test's missing wrapper.
+
+Additionally, `UndoDeleteProvider` calls `usePathname()` internally (to flush pending deletes on navigation). Tests that wrap with `UndoDeleteProvider` must also mock `next/navigation`:
+
+```ts
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/admin/roles",
+}));
+```
+
+Include the mock at the top of the test file, before any `beforeEach` or `describe` blocks, so the mock is in place when `UndoDeleteProvider` mounts during the first `render(...)` call.
+
 ### ref-as-prop mock strategy for React 19 components
 
 React 19 adopts the `ref`-as-prop pattern: components that expose an imperative handle declare `ref?: RefObject<H | null>` in their props interface rather than using `forwardRef`. Mocking such a component in Vitest requires `useImperativeHandle` inside the mock factory so the test can exercise the handle's methods:
@@ -500,6 +540,18 @@ Key constraints:
 - The mock factory's `props` type annotation must include `ref?: RefObject<H | null>` explicitly; without it TypeScript infers `props` as `{}` and the `useImperativeHandle` call cannot reference `props.ref`.
 
 Reference: `frontend/src/app/learn/[cardgroupId]/learn-client.test.tsx` mocking `swipe-card-stack` with a `triggerSwipe` spy exposed via `useImperativeHandle`.
+
+### `queryBy*` for absence assertions, `getBy*` for presence assertions
+
+`getBy*` queries throw immediately when the element is not found, which makes them unsuitable for asserting that an element is absent — the thrown error kills the test before the `.not.toBeInTheDocument()` assertion can run. `queryBy*` returns `null` on a miss and lets `.not.toBeInTheDocument()` execute correctly.
+
+Rule:
+- Asserting **absence**: always use `queryBy*`. Example: `expect(screen.queryByRole("button", { name: /delete admin/i })).toBeNull()`.
+- Asserting **presence**: always use `getBy*`. Example: `expect(screen.getByText("System role")).toBeInTheDocument()`.
+
+`findBy*` is the async variant of `getBy*` — use it when the element appears after an async operation (query resolution, timer, animation), not for static renders.
+
+Never use `getBy*` with a `.not.toBeInTheDocument()` assertion: the test will always fail with a "not found" error rather than a clean assertion failure, hiding the real intent.
 
 ### Assert `role="alert"` absence on clean render paths
 

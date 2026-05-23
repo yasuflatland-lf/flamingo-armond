@@ -28,10 +28,11 @@ scheduleDelete({
 
 **Caller responsibility — sequencing:**
 
-1. Apply the optimistic Apollo cache update (remove the edge, decrement `totalCount`) using `readQuery + writeQuery`. See [`.claude/rules/pagination.md` § "Frontend cache patterns"](../../.claude/rules/pagination.md#frontend-cache-patterns) for the "Connection delete" cache pattern.
-2. Call `scheduleDelete(...)` with the rollback and commit closures. The helper does not touch the cache itself.
-3. On Undo click, `optimisticRollback` is invoked to restore the snapshot.
-4. On timer elapse, `commitDelete()` runs. Rejection triggers `optimisticRollback` then `onCommitFailed`.
+1. Clear any stale error banner from a prior failed attempt (`setError(null)`) before applying any optimistic update. A banner left over from the previous attempt would mislead the user into thinking the new attempt also failed.
+2. Apply the optimistic Apollo cache update (remove the edge, decrement `totalCount`) using `readQuery + writeQuery`. See [`.claude/rules/pagination.md` § "Frontend cache patterns"](../../.claude/rules/pagination.md#frontend-cache-patterns) for the "Connection delete" cache pattern.
+3. Call `scheduleDelete(...)` with the rollback and commit closures. The helper does not touch the cache itself.
+4. On Undo click, `optimisticRollback` is invoked to restore the snapshot.
+5. On timer elapse, `commitDelete()` runs. Rejection triggers `optimisticRollback` then `onCommitFailed`.
 
 **Re-schedule guard.** A second call with the same `id` before the first timer elapses immediately commits the prior delete (to avoid leaving a dangling optimistic remove), then starts a new timer. A `console.warn` fires for operator triage.
 
@@ -121,11 +122,42 @@ interface SwipeableRowHandle {
 
 | Release fraction | Outcome |
 |---|---|
-| ≥ 60% of row width | Row slides off screen; `onDelete()` fires |
-| 30%–60% | Snaps to half-open; Delete button revealed |
-| < 30% or vertical | Snaps back |
+| ≥ 40% of row width | Row flies off screen; `onDelete()` fires |
+| < 40% or vertical | Snaps back; `onDelete()` not called |
 
 Vertical scroll is never intercepted — the component detects horizontal vs. vertical movement and hands vertical gestures to the browser.
+
+**Why a single commit threshold, not a half-open reveal.** A half-open state (swipe to 30–60% → button revealed → tap to confirm) forces the user to perform two distinct gestures for one action. Mobile users read the partial reveal as a broken gesture and abandon before tapping the button. A single threshold that commits on release — with a 5-second undo toast as the safety net — completes the delete in one gesture and keeps the recovery path clearly visible for the 5-second window. The half-open state also requires the parent to manage closing logic across rows; the single-threshold design eliminates it.
+
+### Animation Promise: always commit on rejection
+
+The fly-off animation (`Promise.all(api.start({ x: -rowWidth }))`) can be interrupted by a component unmount (e.g. fast navigation during the gesture). An empty `.catch(() => {})` silently drops the commit — `onDelete()` never fires, the undo timer never starts, and the user's gesture produces no effect with no feedback.
+
+Always call `onComplete()` inside the `.catch` branch as well, and log a structured warning for triage:
+
+```ts
+.catch((err) => {
+  console.warn("[swipeable-row] delete animation interrupted; committing anyway", {
+    name: err instanceof Error ? err.name : "unknown",
+  });
+  onComplete(); // animation interrupted ≠ intent cancelled
+});
+```
+
+### System entity guard: skip SwipeableRow for non-interactive rows
+
+When a list contains both editable and system-owned entities (e.g. user-created roles vs. built-in `admin`/`general` roles), only editable rows get the swipe wrapper. System rows render as non-interactive markup — no `SwipeableRow`, no Trash icon, no delete button. The `isSystem` flag is the branching criterion; applying `SwipeableRow` to a system row would expose a gesture that fires `onDelete()` against a protected entity, relying solely on a server rejection rather than preventing the gesture at the UI layer.
+
+```tsx
+if (isSystem) {
+  return <li className="opacity-60">{/* name + "System role" caption, no affordances */}</li>;
+}
+return (
+  <SwipeableRow onDelete={...} ariaLabel={...}>
+    <li className="group ...">...</li>
+  </SwipeableRow>
+);
+```
 
 ### `disabled` and reduced-motion behaviour
 
