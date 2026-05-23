@@ -3,8 +3,7 @@
 import { useMutation } from "@apollo/client/react";
 import { useForm } from "@tanstack/react-form";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,11 +38,38 @@ type Props = {
   /** The user's email address. Required — callers must pass the value or explicit null; never collapse to "". */
   email: string | null;
   initial: { displayName: string; bio: string };
+  onChangeEmail?: () => void;
+  onCancel?: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  onRegisterReset?: (reset: () => void) => void;
+  onSaved?: () => void;
+  onSubmittingChange?: (submitting: boolean) => void;
 };
 
-export function ProfileForm({ email, initial }: Props) {
-  const router = useRouter();
+function DirtyStateBridge({
+  dirty,
+  onDirtyChange,
+}: {
+  dirty: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
+  return null;
+}
+
+export function ProfileForm({
+  email,
+  initial,
+  onCancel,
+  onChangeEmail,
+  onDirtyChange,
+  onRegisterReset,
+  onSaved,
+  onSubmittingChange,
+}: Props) {
   // Typed InputValidationError variant — field-level validation failure
   // surfaced by the server via the outcome union. Cleared on each new submission.
   const [validationError, setValidationError] = useState<{
@@ -54,7 +80,21 @@ export function ProfileForm({ email, initial }: Props) {
   // Mid-session auth failures or unexpected payloads. Cleared on each submission.
   const [bannerMessage, setBannerMessage] = useState<string | null>(null);
 
-  const [updateProfile, { loading }] = useMutation(UpdateProfileMutation);
+  const [updateProfile, { loading, reset }] = useMutation(UpdateProfileMutation);
+
+  const resetLocalState = useCallback(() => {
+    setValidationError(null);
+    setBannerMessage(null);
+    reset();
+  }, [reset]);
+
+  useEffect(() => {
+    onRegisterReset?.(resetLocalState);
+  }, [onRegisterReset, resetLocalState]);
+
+  useEffect(() => {
+    onSubmittingChange?.(loading);
+  }, [loading, onSubmittingChange]);
 
   const displayNameSchema = updateProfileSchema.shape.displayName;
   const bioSchema = updateProfileSchema.shape.bio;
@@ -97,7 +137,7 @@ export function ProfileForm({ email, initial }: Props) {
       }
 
       if (payload?.__typename === "UpdateProfileSuccess") {
-        router.refresh();
+        onSaved?.();
         return;
       }
 
@@ -138,7 +178,15 @@ export function ProfileForm({ email, initial }: Props) {
       <div className="mb-4 space-y-2">
         <Label>Email</Label>
         {email !== null ? <p>{email}</p> : <p className="italic">No email on this account</p>}
-        <Link href="/profile/change-email" className="text-sm underline">
+        <Link
+          href="/profile/change-email"
+          className="text-sm underline"
+          onClick={(event) => {
+            if (!onChangeEmail) return;
+            event.preventDefault();
+            onChangeEmail();
+          }}
+        >
           Change email
         </Link>
       </div>
@@ -191,15 +239,25 @@ export function ProfileForm({ email, initial }: Props) {
         )}
       </form.Field>
 
-      <Button type="submit" variant="brand" disabled={loading}>
-        {loading ? "Saving..." : "Save"}
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button type="submit" variant="brand" disabled={loading}>
+          {loading ? "Saving..." : "Save"}
+        </Button>
+        {onCancel ? (
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+        ) : null}
+      </div>
 
       {/* Hidden sentinel used by tests to observe formState.isSubmitSuccessful */}
       <form.Subscribe selector={(state) => state.isSubmitSuccessful}>
         {(isSubmitSuccessful) => (
           <span data-testid="is-submit-successful" data-value={String(isSubmitSuccessful)} hidden />
         )}
+      </form.Subscribe>
+      <form.Subscribe selector={(state) => state.isDirty}>
+        {(dirty) => <DirtyStateBridge dirty={dirty} onDirtyChange={onDirtyChange} />}
       </form.Subscribe>
     </form>
   );

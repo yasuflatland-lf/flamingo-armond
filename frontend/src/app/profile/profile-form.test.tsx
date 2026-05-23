@@ -4,6 +4,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { describe, expect, it, vi } from "vitest";
+import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import { UpdateProfileDocument } from "@/generated/graphql";
 import { ProfileForm } from "./profile-form";
 
@@ -11,6 +12,23 @@ import { ProfileForm } from "./profile-form";
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
+
+function ProfileFormSheetHarness(props: {
+  email: string | null;
+  initial: { displayName: string; bio: string };
+  onSaved?: () => void;
+}) {
+  const close = useFormSheetClose();
+
+  return (
+    <ProfileForm
+      email={props.email}
+      initial={props.initial}
+      onCancel={close}
+      onSaved={props.onSaved}
+    />
+  );
+}
 
 function makeMutationMock(
   variables: { input: { displayName: string; bio?: string | null } },
@@ -63,6 +81,26 @@ describe("<ProfileForm>", () => {
     expect(screen.getByText("alice@example.com")).toBeInTheDocument();
     const changeEmailLink = screen.getByRole("link", { name: /change email/i });
     expect(changeEmailLink).toHaveAttribute("href", "/profile/change-email");
+  });
+
+  it("Cancel button closes the surrounding FormSheet via useFormSheetClose", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+
+    render(
+      <MockedProvider mocks={[]}>
+        <FormSheet open onOpenChange={onOpenChange} title="Edit profile" size="md">
+          <ProfileFormSheetHarness
+            email="alice@example.com"
+            initial={{ displayName: "Alice", bio: "hi" }}
+          />
+        </FormSheet>
+      </MockedProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it("renders fallback text when email is null", () => {

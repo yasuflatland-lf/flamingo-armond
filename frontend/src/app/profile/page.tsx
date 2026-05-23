@@ -5,7 +5,7 @@ import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { ProfileForm } from "./profile-form";
+import { ProfilePageClient } from "./profile-page-client";
 
 const MeQuery = graphql(`
   query Me {
@@ -47,15 +47,12 @@ export default async function ProfilePage() {
   }
 
   return (
-    <main className="p-8">
-      <h1 className="mb-6 text-2xl font-semibold">Edit profile</h1>
-      <ProfileForm
-        email={user.email ?? null}
-        initial={{
-          displayName: data.me.displayName ?? "",
-          bio: data.me.bio ?? "",
-        }}
-      />
-    </main>
+    <ProfilePageClient
+      email={user.email ?? null}
+      initial={{
+        displayName: data.me.displayName ?? "",
+        bio: data.me.bio ?? "",
+      }}
+    />
   );
 }
