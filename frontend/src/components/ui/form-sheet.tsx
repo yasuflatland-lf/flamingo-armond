@@ -143,10 +143,7 @@ function FormSheet({
             {a11yDescription}
           </SheetDescription>
         </SheetHeader>
-        <div
-          className="-mx-2 flex-1 overflow-y-auto px-2"
-          data-testid="form-sheet-body"
-        >
+        <div className="-mx-2 flex-1 overflow-y-auto px-2" data-testid="form-sheet-body">
           {children}
         </div>
       </SheetContent>
