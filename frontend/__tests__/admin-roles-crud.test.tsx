@@ -22,10 +22,16 @@ import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminRolesClient } from "@/app/admin/roles/admin-roles-client";
 import { AdminDeleteRoleDocument } from "@/generated/graphql";
+import { UndoDeleteProvider } from "@/lib/undo-delete";
 
 // ---------------------------------------------------------------------------
 // Module mocks
 // ---------------------------------------------------------------------------
+
+// usePathname is used by UndoDeleteProvider for flush-on-navigation.
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/admin/roles",
+}));
 
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
@@ -61,7 +67,9 @@ afterEach(() => {
 function renderClient(initialRoles: RoleItem[], mocks: object[]) {
   return render(
     <MockedProvider mocks={mocks as never}>
-      <AdminRolesClient initialRoles={initialRoles} />
+      <UndoDeleteProvider>
+        <AdminRolesClient initialRoles={initialRoles} />
+      </UndoDeleteProvider>
     </MockedProvider>,
   );
 }
@@ -105,7 +113,7 @@ describe("AdminRolesClient", () => {
   // 2. System-role guard (admin + general)
   // -------------------------------------------------------------------------
 
-  it("renders system rows without an edit link and disables delete", () => {
+  it("renders system rows without an edit link or delete button", () => {
     renderClient([ADMIN_ROLE, GENERAL_ROLE, MOD_ROLE], []);
 
     // Locate each system row by data-testid and assert no anchor inside.
@@ -114,9 +122,9 @@ describe("AdminRolesClient", () => {
     expect(within(adminRow).queryByRole("link")).toBeNull();
     expect(within(generalRow).queryByRole("link")).toBeNull();
 
-    // Delete buttons are disabled for both system roles.
-    expect(within(adminRow).getByRole("button", { name: /delete admin/i })).toBeDisabled();
-    expect(within(generalRow).getByRole("button", { name: /delete general/i })).toBeDisabled();
+    // System roles have no delete button at all (isSystem branch is non-interactive).
+    expect(within(adminRow).queryByRole("button", { name: /delete admin/i })).toBeNull();
+    expect(within(generalRow).queryByRole("button", { name: /delete general/i })).toBeNull();
 
     // System rows render a "System role" caption.
     expect(within(adminRow).getByText("System role")).toBeInTheDocument();
@@ -137,54 +145,81 @@ describe("AdminRolesClient", () => {
   // 3. Delete
   // -------------------------------------------------------------------------
 
-  it("removes the role from the list on successful delete", async () => {
-    const user = userEvent.setup();
-    const deleteMock = {
-      request: { query: AdminDeleteRoleDocument, variables: { id: "r-mod" } },
-      result: vi.fn(() => ({ data: { deleteRole: true } })),
-    };
-
-    renderClient([ADMIN_ROLE, MOD_ROLE], [deleteMock]);
-
-    await user.click(screen.getByRole("button", { name: /delete moderator/i }));
-
-    await waitFor(() => {
-      expect(screen.queryByText("moderator")).toBeNull();
+  describe("delete", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
     });
 
-    expect(deleteMock.result).toHaveBeenCalledTimes(1);
-    // admin still present
-    expect(screen.getByText("admin")).toBeInTheDocument();
-  });
-
-  it("shows an error banner when deleteRole returns FORBIDDEN", async () => {
-    // Exercises the FORBIDDEN error path. Even though the UI disables delete
-    // for system roles, a race (e.g. a concurrent role promotion) could cause
-    // the server to return FORBIDDEN for a role that appeared deletable at
-    // render time.
-    const user = userEvent.setup();
-    const deleteMock = {
-      request: { query: AdminDeleteRoleDocument, variables: { id: "r-mod" } },
-      result: () => ({
-        data: null,
-        errors: [
-          new GraphQLError("cannot delete a protected role", {
-            extensions: { code: "FORBIDDEN" },
-          }),
-        ],
-      }),
-    };
-
-    renderClient([ADMIN_ROLE, MOD_ROLE], [deleteMock]);
-
-    await user.click(screen.getByRole("button", { name: /delete moderator/i }));
-
-    await waitFor(() => {
-      const alert = screen.getByRole("alert");
-      expect(alert).toHaveTextContent(/cannot delete a protected role/i);
+    afterEach(() => {
+      vi.useRealTimers();
     });
 
-    // Role is still in the list — server truth was not changed.
-    expect(screen.getByText("moderator")).toBeInTheDocument();
+    it("removes the role from the list on successful delete", async () => {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
+      const deleteMock = {
+        request: { query: AdminDeleteRoleDocument, variables: { id: "r-mod" } },
+        result: vi.fn(() => ({ data: { deleteRole: true } })),
+      };
+
+      renderClient([ADMIN_ROLE, MOD_ROLE], [deleteMock]);
+
+      await user.click(screen.getByRole("button", { name: /delete moderator/i }));
+
+      // Optimistic removal hides the row immediately.
+      await waitFor(() => {
+        expect(screen.queryByTestId("admin-role-row-r-mod")).toBeNull();
+      });
+
+      // Advance past the 5-second undo window so the mutation is committed.
+      vi.advanceTimersByTime(5100);
+      vi.useRealTimers();
+      await waitFor(() => {
+        expect(deleteMock.result).toHaveBeenCalledTimes(1);
+      });
+
+      // admin still present
+      expect(screen.getByText("admin")).toBeInTheDocument();
+    });
+
+    it("shows an error banner when deleteRole returns FORBIDDEN", async () => {
+      // Exercises the FORBIDDEN error path. Even though the UI disables delete
+      // for system roles, a race (e.g. a concurrent role promotion) could cause
+      // the server to return FORBIDDEN for a role that appeared deletable at
+      // render time.
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
+      const deleteMock = {
+        request: { query: AdminDeleteRoleDocument, variables: { id: "r-mod" } },
+        result: () => ({
+          data: null,
+          errors: [
+            new GraphQLError("cannot delete a protected role", {
+              extensions: { code: "FORBIDDEN" },
+            }),
+          ],
+        }),
+      };
+
+      renderClient([ADMIN_ROLE, MOD_ROLE], [deleteMock]);
+
+      await user.click(screen.getByRole("button", { name: /delete moderator/i }));
+
+      // Optimistic removal hides the row immediately.
+      await waitFor(() => {
+        expect(screen.queryByTestId("admin-role-row-r-mod")).toBeNull();
+      });
+
+      // Advance past the 5-second undo window so the mutation fires and
+      // FORBIDDEN triggers the rollback + error banner.
+      vi.advanceTimersByTime(5100);
+      vi.useRealTimers();
+
+      await waitFor(() => {
+        const alert = screen.getByRole("alert");
+        expect(alert).toHaveTextContent(/cannot delete a protected role/i);
+      });
+
+      // Role is still in the list — server truth was not changed.
+      expect(screen.getByText("moderator")).toBeInTheDocument();
+    });
   });
 });
