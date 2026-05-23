@@ -33,8 +33,6 @@ beforeEach(() => {
 
   // jsdom does not compute layout: stub offsetWidth to 300px so threshold
   // calculations are deterministic.
-  //   40% commit threshold = 120px
-  //   <40% snap-back     =  any delta < 120px
   Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
     configurable: true,
     get() {
@@ -130,7 +128,7 @@ describe("<SwipeableRow>", () => {
       </SwipeableRow>,
     );
 
-    // 130px left swipe exceeds 40% of 300px (120px threshold).
+    // Swipe past the commit threshold so onDelete fires.
     await act(async () => {
       simulateSwipe(getSwipeTarget(), -130);
     });
@@ -148,7 +146,7 @@ describe("<SwipeableRow>", () => {
       </SwipeableRow>,
     );
 
-    // 100px left swipe is below 120px (40%) threshold.
+    // Swipe below the commit threshold so the row snaps back without firing onDelete.
     await act(async () => {
       simulateSwipe(getSwipeTarget(), -100);
     });
@@ -228,7 +226,7 @@ describe("<SwipeableRow>", () => {
       </SwipeableRow>,
     );
 
-    // Partially drag the row (below commit threshold so onDelete is not fired).
+    // Partially drag the row without reaching the commit threshold.
     await act(async () => {
       simulateSwipe(getSwipeTarget(), -100);
     });

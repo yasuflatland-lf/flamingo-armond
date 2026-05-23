@@ -171,10 +171,7 @@ describe("AdminRolesClient", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Spec § Testing: SwipeableRow wrapping
-//
-// "verify system roles are NOT wrapped in SwipeableRow"
-// "editable role → SwipeableRow wrap"
+// Verify editable roles are wrapped in SwipeableRow and system roles are not.
 // ---------------------------------------------------------------------------
 
 describe("AdminRolesClient — SwipeableRow wrapping", () => {
@@ -202,7 +199,8 @@ describe("AdminRolesClient — SwipeableRow wrapping", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Spec § Testing: scheduleDelete invocation
+// Verify scheduleDelete is invoked with the role's optimistic snapshot and
+// that optimistic removal, undo, and commit paths all behave correctly.
 // ---------------------------------------------------------------------------
 
 describe("AdminRolesClient — scheduleDelete invocation", () => {
@@ -288,13 +286,9 @@ describe("AdminRolesClient — scheduleDelete invocation", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Spec § Error handling / edge cases — commit failure with FORBIDDEN
-//
-// Simulates a mid-flow permission loss: the delete mutation returns FORBIDDEN
-// (the operator's admin privilege was revoked between the swipe and the 5-second
-// commit). The expected behaviour is:
-//   1. The role row is restored via optimisticRollback.
-//   2. An error banner is displayed so the user understands the action failed.
+// Simulates mid-flow permission loss: delete mutation returns FORBIDDEN after
+// the undo window expires. Verifies that optimisticRollback restores the row
+// and an error banner is displayed so the user understands the action failed.
 // ---------------------------------------------------------------------------
 
 describe("AdminRolesClient — commit failure with FORBIDDEN", () => {
