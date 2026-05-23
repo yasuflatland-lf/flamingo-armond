@@ -116,9 +116,13 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   const endCursor = connection?.pageInfo.endCursor ?? null;
 
   function handleDelete(id: string, name: string) {
+    // Use queryVariables (the active search variables) so the cache key matches
+    // the currently rendered query. Using CARDGROUPS_DEFAULT_VARS here would
+    // silently read/write the wrong cache entry when a search is active.
+    const activeVars = queryVariables;
     const snapshot = apollo.cache.readQuery({
       query: MyCardgroupsConnectionDocument,
-      variables: CARDGROUPS_DEFAULT_VARS,
+      variables: activeVars,
     });
     if (!snapshot) {
       console.warn("[cardgroups] handleDelete: cache miss on snapshot read", { id });
@@ -128,7 +132,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
 
     apollo.cache.writeQuery({
       query: MyCardgroupsConnectionDocument,
-      variables: CARDGROUPS_DEFAULT_VARS,
+      variables: activeVars,
       data: {
         myCardgroupsConnection: {
           ...snapshot.myCardgroupsConnection,
@@ -144,7 +148,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
       optimisticRollback: () => {
         apollo.cache.writeQuery({
           query: MyCardgroupsConnectionDocument,
-          variables: CARDGROUPS_DEFAULT_VARS,
+          variables: activeVars,
           data: snapshot,
         });
       },
