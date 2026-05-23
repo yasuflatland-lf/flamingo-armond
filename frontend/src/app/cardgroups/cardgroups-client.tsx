@@ -116,6 +116,8 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   const endCursor = connection?.pageInfo.endCursor ?? null;
 
   function handleDelete(id: string, name: string) {
+    // Clear any stale delete-error banner so a new attempt starts clean.
+    setDeleteCommitError(null);
     // Use queryVariables (the active search variables) so the cache key matches
     // the currently rendered query. Using CARDGROUPS_DEFAULT_VARS here would
     // silently read/write the wrong cache entry when a search is active.
