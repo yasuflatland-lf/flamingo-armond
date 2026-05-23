@@ -2,6 +2,7 @@
 
 import { animated, useSpring } from "@react-spring/web";
 import { useDrag } from "@use-gesture/react";
+import { Trash2 } from "lucide-react";
 import { forwardRef, useCallback, useImperativeHandle, useRef } from "react";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
 
@@ -154,10 +155,21 @@ const SwipeableRowInner = forwardRef<SwipeableRowHandle, SwipeableRowProps>(
 
     return (
       <div ref={rowRef} className="relative overflow-hidden" data-testid="swipeable-row-container">
+        {/* Reveal layer — visual feedback only, not interactive */}
+        {!disabled && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 flex items-center justify-end bg-destructive pr-6"
+          >
+            <Trash2 className="h-5 w-5 text-destructive-foreground" />
+          </div>
+        )}
+
+        {/* Moving row — slides left to reveal the layer behind it */}
         <animated.div
           {...bind()}
-          style={{ x, touchAction: "pan-y" }}
-          className="relative bg-background"
+          style={{ x, touchAction: "pan-y", position: "relative" }}
+          className="bg-background"
           data-testid="swipeable-row"
         >
           {children}

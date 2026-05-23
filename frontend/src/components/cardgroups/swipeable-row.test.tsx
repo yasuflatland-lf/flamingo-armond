@@ -216,6 +216,35 @@ describe("<SwipeableRow>", () => {
     expect(onDelete).not.toHaveBeenCalled();
   });
 
+  it("renders the reveal layer with a destructive background and Trash icon", () => {
+    const { container } = render(
+      <SwipeableRow onDelete={vi.fn()} ariaLabel={null}>
+        <span>Card front</span>
+      </SwipeableRow>,
+    );
+
+    // The reveal layer must carry bg-destructive.
+    const revealLayer = container.querySelector(".bg-destructive");
+    expect(revealLayer).toBeInTheDocument();
+
+    // A Trash2 SVG icon must be present inside the reveal layer.
+    const trashIcon = revealLayer?.querySelector("svg");
+    expect(trashIcon).not.toBeNull();
+  });
+
+  it("does not render the reveal layer when reduced-motion is on", () => {
+    stubMatchMedia(true);
+
+    const { container } = render(
+      <SwipeableRow onDelete={vi.fn()} ariaLabel={null}>
+        <span>Card front</span>
+      </SwipeableRow>,
+    );
+
+    expect(container.querySelector(".bg-destructive")).not.toBeInTheDocument();
+    expect(container.querySelector("svg")).not.toBeInTheDocument();
+  });
+
   it("close() imperative handle → snaps row back to x=0 without calling onDelete", async () => {
     const onDelete = vi.fn();
     const ref = createRef<SwipeableRowHandle>();
