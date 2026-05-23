@@ -107,4 +107,33 @@ describe("useSheetSearchParam", () => {
     expect(mockReplace).toHaveBeenCalledWith("/admin/users", { scroll: false });
     expect(mockRefresh).toHaveBeenCalledTimes(1);
   });
+
+  it("returns closed and warns when ?edit= has an empty value", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockSearchParamsValue = "edit=";
+
+    const { result } = renderHook(() => useSheetSearchParam());
+
+    expect(result.current.state).toEqual({ mode: "closed" });
+    expect(warnSpy).toHaveBeenCalledWith("[useSheetSearchParam] ignoring empty ?edit= value");
+    warnSpy.mockRestore();
+  });
+
+  it("returns closed when ?new is not exactly 'true'", () => {
+    mockSearchParamsValue = "new=false";
+
+    const { result } = renderHook(() => useSheetSearchParam());
+
+    expect(result.current.state).toEqual({ mode: "closed" });
+  });
+
+  it("throws when open() is called with an empty edit id", () => {
+    mockSearchParamsValue = "";
+    const { result } = renderHook(() => useSheetSearchParam());
+
+    expect(() => act(() => result.current.open({ mode: "edit", id: "" }))).toThrowError(
+      /requires a non-empty id/,
+    );
+    expect(mockPush).not.toHaveBeenCalled();
+  });
 });
