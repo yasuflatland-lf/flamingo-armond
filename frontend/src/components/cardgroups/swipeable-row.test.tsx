@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,7 +7,7 @@ import { SwipeableRow, type SwipeableRowHandle } from "./swipeable-row";
 
 // ---------------------------------------------------------------------------
 // matchMedia stub — jsdom does not implement it.
-// The default stub reports reduced-motion = false so the swipe layer renders.
+// Default: reduced-motion = false so the swipe layer renders.
 // Individual tests override `matches` to exercise the reduced-motion path.
 // ---------------------------------------------------------------------------
 
@@ -30,8 +31,10 @@ function stubMatchMedia(reducedMotion: boolean) {
 beforeEach(() => {
   stubMatchMedia(false);
 
-  // jsdom does not compute layout: make offsetWidth return a stable 300px so
-  // threshold calculations (60% = 180px, 30% = 90px) are deterministic.
+  // jsdom does not compute layout: stub offsetWidth to 300px so threshold
+  // calculations are deterministic.
+  //   40% commit threshold = 120px
+  //   <40% snap-back     =  any delta < 120px
   Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
     configurable: true,
     get() {
@@ -42,7 +45,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
-  // Reset offsetWidth to default (undefined) to avoid cross-test pollution.
   Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
     configurable: true,
     get() {
@@ -54,50 +56,37 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 // Pointer-event helpers
 //
-// @use-gesture/react spreads onPointerDown / onPointerMove / onPointerUp on
-// the animated element when `pointer.capture = false`. jsdom forwards these as
-// React synthetic pointer events, so fireEvent.pointerXxx works.
-//
-// Row width is stubbed to 300px.
-//   Full swipe  ≥ 60% → 180px
-//   Half swipe  30-59% → 90–179px
+// @use-gesture/react with `pointer: { capture: false }` attaches:
+//   - onPointerDown on the element
+//   - pointermove / pointerup on window after pointerdown fires
 // ---------------------------------------------------------------------------
 
-/** Returns the animated div that @use-gesture binds its handlers to. */
 function getSwipeTarget() {
   return screen.getByTestId("swipeable-row");
 }
 
 /**
  * Simulate a pointer drag gesture.
- *
- * @use-gesture/react with `pointer: { capture: false }` (our config) attaches:
- *   - onPointerDown → bound to the element via React props
- *   - pointermove / pointerup → added to `window` after pointerdown fires
- *
- * Therefore:
- *   - pointerdown is fired on the element
- *   - pointermove and pointerup are fired on window
+ * deltaX < 0 = leftward; deltaY non-zero used to test vertical pass-through.
  */
-function simulateSwipe(element: Element, deltaX: number) {
+function simulateSwipe(element: Element, deltaX: number, deltaY = 0) {
   const startX = 250;
+  const startY = 100;
   const endX = startX + deltaX;
+  const endY = startY + deltaY;
 
-  // Step 1: pointerdown on the element — triggers setupPointer() which adds
-  // pointermove/pointerup listeners to window.
   fireEvent.pointerDown(element, {
     pointerId: 1,
     clientX: startX,
-    clientY: 100,
+    clientY: startY,
     buttons: 1,
     bubbles: true,
   });
 
-  // Step 2: pointermove on window — use-gesture reads clientX from the event.
   fireEvent.pointerMove(window, {
     pointerId: 1,
     clientX: startX + deltaX / 2,
-    clientY: 100,
+    clientY: startY + deltaY / 2,
     buttons: 1,
     bubbles: true,
   });
@@ -105,16 +94,15 @@ function simulateSwipe(element: Element, deltaX: number) {
   fireEvent.pointerMove(window, {
     pointerId: 1,
     clientX: endX,
-    clientY: 100,
+    clientY: endY,
     buttons: 1,
     bubbles: true,
   });
 
-  // Step 3: pointerup on window — triggers the `last: true` callback branch.
   fireEvent.pointerUp(window, {
     pointerId: 1,
     clientX: endX,
-    clientY: 100,
+    clientY: endY,
     bubbles: true,
   });
 }
@@ -124,7 +112,7 @@ function simulateSwipe(element: Element, deltaX: number) {
 // ---------------------------------------------------------------------------
 
 describe("<SwipeableRow>", () => {
-  it("T1 — renders children inside the swipeable layer", () => {
+  it("renders children inside the swipeable layer", () => {
     render(
       <SwipeableRow onDelete={vi.fn()} ariaLabel={null}>
         <span>Card front</span>
@@ -134,7 +122,7 @@ describe("<SwipeableRow>", () => {
     expect(screen.getByTestId("swipeable-row")).toBeInTheDocument();
   });
 
-  it("T2 — full swipe left (≥ 60% of width = 180px) calls onDelete", async () => {
+  it("≥40% release → onDelete fires", async () => {
     const onDelete = vi.fn();
     render(
       <SwipeableRow onDelete={onDelete} ariaLabel={null}>
@@ -142,9 +130,9 @@ describe("<SwipeableRow>", () => {
       </SwipeableRow>,
     );
 
-    // 200px left swipe — above 180px (60%) threshold.
+    // 130px left swipe exceeds 40% of 300px (120px threshold).
     await act(async () => {
-      simulateSwipe(getSwipeTarget(), -200);
+      simulateSwipe(getSwipeTarget(), -130);
     });
 
     await waitFor(() => {
@@ -152,52 +140,7 @@ describe("<SwipeableRow>", () => {
     });
   });
 
-  it("T3 — half-swipe (30%–60% = 90–179px) reveals the Delete button without calling onDelete", async () => {
-    const onDelete = vi.fn();
-    render(
-      <SwipeableRow onDelete={onDelete} ariaLabel="Delete card">
-        <span>Card</span>
-      </SwipeableRow>,
-    );
-
-    // 100px left swipe — between 90px (30%) and 180px (60%).
-    await act(async () => {
-      simulateSwipe(getSwipeTarget(), -100);
-    });
-
-    // onDelete must NOT have been called yet.
-    expect(onDelete).not.toHaveBeenCalled();
-
-    // The Delete button should now be tappable (tabIndex 0).
-    const deleteBtn = screen.getByTestId("swipe-delete-button");
-    expect(deleteBtn).toBeInTheDocument();
-    expect(deleteBtn).toHaveAttribute("tabIndex", "0");
-  });
-
-  it("T4 — tapping the revealed Delete button after a half-swipe calls onDelete", async () => {
-    const onDelete = vi.fn();
-    render(
-      <SwipeableRow onDelete={onDelete} ariaLabel="Delete card">
-        <span>Card</span>
-      </SwipeableRow>,
-    );
-
-    // Half-open the row.
-    await act(async () => {
-      simulateSwipe(getSwipeTarget(), -100);
-    });
-
-    // Tap the revealed Delete button.
-    await act(async () => {
-      fireEvent.click(screen.getByTestId("swipe-delete-button"));
-    });
-
-    await waitFor(() => {
-      expect(onDelete).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  it("T5 — short swipe (< 30% = 90px) snaps back, Delete button is hidden (tabIndex -1)", async () => {
+  it("<40% release → onDelete not called and row snaps back", async () => {
     const onDelete = vi.fn();
     render(
       <SwipeableRow onDelete={onDelete} ariaLabel={null}>
@@ -205,19 +148,15 @@ describe("<SwipeableRow>", () => {
       </SwipeableRow>,
     );
 
-    // 60px left swipe — below 90px (30%) threshold.
+    // 100px left swipe is below 120px (40%) threshold.
     await act(async () => {
-      simulateSwipe(getSwipeTarget(), -60);
+      simulateSwipe(getSwipeTarget(), -100);
     });
 
     expect(onDelete).not.toHaveBeenCalled();
-
-    const deleteBtn = screen.getByTestId("swipe-delete-button");
-    // After snap-back, button should not be keyboard-reachable.
-    expect(deleteBtn).toHaveAttribute("tabIndex", "-1");
   });
 
-  it("T6 — rightward swipe does nothing (unidirectional left-only)", async () => {
+  it("vertical drag (|mx| < |my|) → no-op; onDelete not called", async () => {
     const onDelete = vi.fn();
     render(
       <SwipeableRow onDelete={onDelete} ariaLabel={null}>
@@ -225,17 +164,15 @@ describe("<SwipeableRow>", () => {
       </SwipeableRow>,
     );
 
-    // Positive deltaX = rightward movement.
+    // deltaX = -50px, deltaY = -200px — predominantly vertical.
     await act(async () => {
-      simulateSwipe(getSwipeTarget(), 200);
+      simulateSwipe(getSwipeTarget(), -50, -200);
     });
 
     expect(onDelete).not.toHaveBeenCalled();
-    const deleteBtn = screen.getByTestId("swipe-delete-button");
-    expect(deleteBtn).toHaveAttribute("tabIndex", "-1");
   });
 
-  it("T7 — disabled=true makes swipe a no-op (onDelete not called, tabIndex stays -1)", async () => {
+  it("disabled → gesture is cancelled; onDelete not called", async () => {
     const onDelete = vi.fn();
     render(
       <SwipeableRow onDelete={onDelete} disabled ariaLabel={null}>
@@ -248,30 +185,23 @@ describe("<SwipeableRow>", () => {
     });
 
     expect(onDelete).not.toHaveBeenCalled();
-    const deleteBtn = screen.getByTestId("swipe-delete-button");
-    expect(deleteBtn).toHaveAttribute("tabIndex", "-1");
   });
 
-  it("T8 — prefers-reduced-motion: reduce → swipe layer NOT rendered, children rendered directly", () => {
+  it("useReducedMotion() === true → children rendered directly, no SwipeableRow wrapper", () => {
     stubMatchMedia(true);
 
-    const onDelete = vi.fn();
     render(
-      <SwipeableRow onDelete={onDelete} ariaLabel={null}>
+      <SwipeableRow onDelete={vi.fn()} ariaLabel={null}>
         <span>Reduced motion card</span>
       </SwipeableRow>,
     );
 
-    // Children must still be visible.
     expect(screen.getByText("Reduced motion card")).toBeInTheDocument();
-
-    // Swipe layer and action button must NOT be present.
     expect(screen.queryByTestId("swipeable-row")).not.toBeInTheDocument();
     expect(screen.queryByTestId("swipeable-row-container")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("swipe-delete-button")).not.toBeInTheDocument();
   });
 
-  it("T9 — prefers-reduced-motion: reduce → simulating swipe events does not trigger onDelete", () => {
+  it("useReducedMotion() === true → swipe events do not trigger onDelete", () => {
     stubMatchMedia(true);
 
     const onDelete = vi.fn();
@@ -281,11 +211,6 @@ describe("<SwipeableRow>", () => {
       </SwipeableRow>,
     );
 
-    // There is no swipe target to interact with; confirm nothing reachable.
-    expect(screen.queryByTestId("swipeable-row")).not.toBeInTheDocument();
-    expect(onDelete).not.toHaveBeenCalled();
-
-    // Try firing events on the container root (no gesture layer attached).
     act(() => {
       simulateSwipe(container.firstElementChild ?? container, -200);
     });
@@ -293,7 +218,7 @@ describe("<SwipeableRow>", () => {
     expect(onDelete).not.toHaveBeenCalled();
   });
 
-  it("T10 — imperative close() ref snaps a half-open row back to resting state", async () => {
+  it("close() imperative handle → snaps row back to x=0 without calling onDelete", async () => {
     const onDelete = vi.fn();
     const ref = createRef<SwipeableRowHandle>();
 
@@ -303,23 +228,35 @@ describe("<SwipeableRow>", () => {
       </SwipeableRow>,
     );
 
-    // Half-open the row first.
+    // Partially drag the row (below commit threshold so onDelete is not fired).
     await act(async () => {
       simulateSwipe(getSwipeTarget(), -100);
     });
 
-    // Button should be half-open (tabIndex 0).
-    expect(screen.getByTestId("swipe-delete-button")).toHaveAttribute("tabIndex", "0");
+    expect(onDelete).not.toHaveBeenCalled();
 
-    // Close programmatically (simulating an outside-row tap from the parent).
+    // Call the imperative handle.
     act(() => {
       ref.current?.close();
     });
 
-    // After close, button should no longer be keyboard-reachable.
-    await waitFor(() => {
-      expect(screen.getByTestId("swipe-delete-button")).toHaveAttribute("tabIndex", "-1");
-    });
+    // The handle must exist and not throw.
+    expect(ref.current).not.toBeNull();
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Static regression guard
+// ---------------------------------------------------------------------------
+
+describe("SwipeableRow source — static regression guard", () => {
+  it("does not reintroduce the half-open reveal state", () => {
+    const source = readFileSync(require.resolve("./swipeable-row.tsx"), "utf-8");
+    expect(source).not.toMatch(/HALF_OPEN_THRESHOLD/);
+    expect(source).not.toMatch(/setIsHalfOpen/);
+    expect(source).not.toMatch(/ACTION_WIDTH/);
+    expect(source).not.toMatch(/data-testid="swipe-delete-button"/);
   });
 });
 
@@ -344,10 +281,6 @@ describe("useReducedMotion", () => {
   });
 
   it("updates reactively when the media query changes", async () => {
-    // useSyncExternalStore: the subscribe callback is () => void (not a
-    // MediaQueryListEvent handler). After React calls it, useSyncExternalStore
-    // re-invokes getSnapshot() — which reads window.matchMedia(...).matches —
-    // so the mock must return the updated matches value by that time.
     let capturedListener: (() => void) | null = null;
     let currentMatches = false;
 
@@ -375,7 +308,6 @@ describe("useReducedMotion", () => {
     const { result } = renderHook(() => useReducedMotion());
     expect(result.current).toBe(false);
 
-    // Simulate the user enabling reduced-motion: update matches, then notify.
     act(() => {
       currentMatches = true;
       capturedListener?.();

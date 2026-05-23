@@ -1,14 +1,42 @@
 // @vitest-environment jsdom
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CardgroupListItem } from "./cardgroup-list-item";
 
-function renderItem(props: { id: string; name: string; updatedAt: string }) {
+// SwipeableRow uses useReducedMotion which reads matchMedia.
+// Default stub: reduced-motion = false so the swipe layer renders and
+// SwipeableRow wraps children in the animated div tree.
+function stubMatchMedia(reducedMotion: boolean) {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    configurable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes("prefers-reduced-motion") ? reducedMotion : false,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+}
+
+stubMatchMedia(false);
+
+function renderItem(props: {
+  id: string;
+  name: string;
+  updatedAt: string;
+  onDelete?: (id: string, name: string) => void;
+}) {
+  const { onDelete = vi.fn(), ...rest } = props;
   render(
     <MockedProvider mocks={[]}>
       <ul>
-        <CardgroupListItem {...props} />
+        <CardgroupListItem {...rest} onDelete={onDelete} />
       </ul>
     </MockedProvider>,
   );
@@ -42,5 +70,28 @@ describe("<CardgroupListItem>", () => {
     const deleteBtn = screen.getByRole("button", { name: /delete cardgroup my flashcards/i });
     expect(deleteBtn).toBeInTheDocument();
     expect(nameLink.contains(deleteBtn)).toBe(false);
+  });
+
+  // -------------------------------------------------------------------------
+  // Spec § Testing: "Verify SwipeableRow wrapping"
+  // -------------------------------------------------------------------------
+
+  it("wraps the list item in a SwipeableRow (data-testid swipeable-row present)", () => {
+    // SwipeableRow renders a container div with data-testid="swipeable-row-container"
+    // when reduced-motion is false (the default stub above).
+    renderItem({ id: "cg-1", name: "My Flashcards", updatedAt: fixedDate });
+    expect(screen.getByTestId("swipeable-row-container")).toBeInTheDocument();
+  });
+
+  // -------------------------------------------------------------------------
+  // Spec § Testing: "Trash button className includes `motion-reduce:opacity-100`"
+  // -------------------------------------------------------------------------
+
+  it("Trash button className includes motion-reduce:opacity-100", () => {
+    renderItem({ id: "cg-1", name: "My Flashcards", updatedAt: fixedDate });
+    const deleteBtn = screen.getByRole("button", { name: /delete cardgroup my flashcards/i });
+    // The className must carry motion-reduce:opacity-100 so reduced-motion users
+    // always see the affordance, matching the spec Architecture section.
+    expect(deleteBtn.className).toContain("motion-reduce:opacity-100");
   });
 });

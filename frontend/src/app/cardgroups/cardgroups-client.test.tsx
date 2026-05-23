@@ -5,13 +5,28 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
+import { DeleteCardgroupDocument, MyCardgroupsConnectionDocument } from "@/generated/graphql";
+import { UndoDeleteProvider } from "@/lib/undo-delete";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
 } from "../../../__tests__/utils/mock-apollo-paginated";
 import CardgroupsClient from "./cardgroups-client";
 import { CARDGROUPS_DEFAULT_VARS, CARDGROUPS_PAGE_SIZE } from "./queries";
+
+// ---------------------------------------------------------------------------
+// sonner mock — capture Undo action callback for programmatic invocation.
+// ---------------------------------------------------------------------------
+let lastToastLabel: string | undefined;
+let lastUndoAction: (() => void) | undefined;
+vi.mock("sonner", () => ({
+  toast: vi.fn((label: string, opts?: { action?: { onClick?: () => void } }) => {
+    lastToastLabel = label;
+    lastUndoAction = opts?.action?.onClick;
+    return "toast-id";
+  }),
+  Toaster: () => null,
+}));
 
 // ---------------------------------------------------------------------------
 // Stub next/navigation and next/link
@@ -22,6 +37,7 @@ vi.mock("next/navigation", () => ({
   redirect: vi.fn((path: string) => {
     throw new Error(`REDIRECT:${path}`);
   }),
+  usePathname: () => "/cardgroups",
 }));
 
 vi.mock("next/link", () => ({
@@ -123,8 +139,12 @@ let leakSpy: ApolloMockLeakSpyResult;
 beforeEach(() => {
   // installApolloMockLeakSpy in beforeEach — see
   // docs/pagination/capture-mockedprovider-warn-leaks.md.
-  leakSpy = installApolloMockLeakSpy({ operationNames: ["MyCardgroupsConnection"] });
+  leakSpy = installApolloMockLeakSpy({
+    operationNames: ["MyCardgroupsConnection", "DeleteCardgroup"],
+  });
   ioCallbacks = [];
+  lastToastLabel = undefined;
+  lastUndoAction = undefined;
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
 });
 
@@ -150,7 +170,9 @@ function renderClient(
 ) {
   render(
     <MockedProvider mocks={mocks as never} cache={cache}>
-      <CardgroupsClient initialConnection={initialConnection} />
+      <UndoDeleteProvider>
+        <CardgroupsClient initialConnection={initialConnection} />
+      </UndoDeleteProvider>
     </MockedProvider>,
   );
 }
@@ -543,6 +565,187 @@ describe("<CardgroupsClient>", () => {
 
     // Error banner should be gone
     expect(screen.queryByTestId("cardgroups-fetch-more-error")).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S-delete: optimistic remove + scheduleDelete invocation
+//
+// Spec § Testing: "Verify readQuery + writeQuery optimistic remove + scheduleDelete
+// invocation. Wrap with <UndoDeleteProvider> per docs/frontend/undo-toast.md."
+// ---------------------------------------------------------------------------
+
+describe("<CardgroupsClient> delete — optimistic cache update and scheduleDelete", () => {
+  it("optimistically removes the edge from the cache and decrements totalCount on delete", async () => {
+    const user = userEvent.setup();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    const cache = new InMemoryCache();
+    const conn = makeConnection([CG_1, CG_2], false, 2);
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+      data: { myCardgroupsConnection: conn },
+    });
+
+    // The DeleteCardgroup mutation mock — consumed when the undo window elapses.
+    const deleteMock = {
+      request: {
+        query: DeleteCardgroupDocument,
+        variables: { id: CG_1.id },
+      },
+      result: { data: { deleteCardgroup: true } },
+    };
+
+    const initialMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: CARDGROUPS_DEFAULT_VARS,
+      },
+      result: { data: { myCardgroupsConnection: conn } },
+    };
+
+    renderClient([initialMock, deleteMock], null, cache);
+
+    // Wait for the list to render.
+    expect(await screen.findByText("Spanish Vocab")).toBeInTheDocument();
+
+    // Click the delete button for CG_1.
+    const deleteBtn = screen.getByRole("button", {
+      name: new RegExp(`delete cardgroup ${CG_1.name}`, "i"),
+    });
+    await user.click(deleteBtn);
+
+    // Edge is removed optimistically: CG_1 is gone, CG_2 still visible.
+    await waitFor(() => {
+      expect(screen.queryByText("Spanish Vocab")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("Math Formulas")).toBeInTheDocument();
+
+    // Verify the cache reflects the optimistic removal.
+    const afterDelete = cache.readQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+    });
+    expect(afterDelete?.myCardgroupsConnection.edges).toHaveLength(1);
+    expect(afterDelete?.myCardgroupsConnection.totalCount).toBe(1);
+
+    // Advance past the 5-second undo window so the commit mock is consumed.
+    vi.advanceTimersByTime(5100);
+    vi.useRealTimers();
+
+    await waitFor(() => {
+      // After commit: the remaining edge is still CG_2 only.
+      const afterCommit = cache.readQuery({
+        query: MyCardgroupsConnectionDocument,
+        variables: CARDGROUPS_DEFAULT_VARS,
+      });
+      expect(afterCommit?.myCardgroupsConnection.edges.map((e) => e.node.id)).not.toContain(
+        CG_1.id,
+      );
+    });
+  });
+
+  it("calls scheduleDelete (shows toast) when delete is triggered", async () => {
+    const user = userEvent.setup();
+
+    const cache = new InMemoryCache();
+    const conn = makeConnection([CG_1]);
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+      data: { myCardgroupsConnection: conn },
+    });
+
+    const initialMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: CARDGROUPS_DEFAULT_VARS,
+      },
+      result: { data: { myCardgroupsConnection: conn } },
+    };
+
+    // The DeleteCardgroup mutation mock — keep available so the leak spy does not fail.
+    const deleteMock = {
+      request: {
+        query: DeleteCardgroupDocument,
+        variables: { id: CG_1.id },
+      },
+      result: { data: { deleteCardgroup: true } },
+    };
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    renderClient([initialMock, deleteMock], null, cache);
+
+    expect(await screen.findByText("Spanish Vocab")).toBeInTheDocument();
+
+    const deleteBtn = screen.getByRole("button", {
+      name: new RegExp(`delete cardgroup ${CG_1.name}`, "i"),
+    });
+    await user.click(deleteBtn);
+
+    // scheduleDelete calls sonner toast — the mock captures the label.
+    expect(lastToastLabel).toBe(`Cardgroup "${CG_1.name}" deleted`);
+    // The Undo callback must be present.
+    expect(lastUndoAction).toBeInstanceOf(Function);
+
+    // Advance to consume the pending timer so no leak is recorded.
+    vi.advanceTimersByTime(5100);
+    vi.useRealTimers();
+    await waitFor(() => {});
+  });
+
+  it("restores the edge in the cache when Undo is invoked within the window", async () => {
+    const user = userEvent.setup();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    const cache = new InMemoryCache();
+    const conn = makeConnection([CG_1, CG_2], false, 2);
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+      data: { myCardgroupsConnection: conn },
+    });
+
+    const initialMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: CARDGROUPS_DEFAULT_VARS,
+      },
+      result: { data: { myCardgroupsConnection: conn } },
+    };
+
+    // No DeleteCardgroup mock: Undo cancels the commit so the mutation must NOT fire.
+    renderClient([initialMock], null, cache);
+
+    expect(await screen.findByText("Spanish Vocab")).toBeInTheDocument();
+
+    const deleteBtn = screen.getByRole("button", {
+      name: new RegExp(`delete cardgroup ${CG_1.name}`, "i"),
+    });
+    await user.click(deleteBtn);
+
+    // Row is gone optimistically.
+    await waitFor(() => {
+      expect(screen.queryByText("Spanish Vocab")).not.toBeInTheDocument();
+    });
+
+    // Invoke Undo within the 5-second window.
+    expect(lastUndoAction).toBeInstanceOf(Function);
+    lastUndoAction?.();
+
+    // The optimistic rollback restores the snapshot in the cache.
+    await waitFor(() => {
+      const afterUndo = cache.readQuery({
+        query: MyCardgroupsConnectionDocument,
+        variables: CARDGROUPS_DEFAULT_VARS,
+      });
+      expect(afterUndo?.myCardgroupsConnection.edges).toHaveLength(2);
+      expect(afterUndo?.myCardgroupsConnection.totalCount).toBe(2);
+    });
+
+    vi.useRealTimers();
   });
 });
 
