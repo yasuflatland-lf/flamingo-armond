@@ -52,7 +52,13 @@ export function CardgroupCardsSection({
             <Play aria-hidden="true" className="ml-1.5 h-4 w-4" />
           </Link>
         </Button>
-        <Button type="button" variant="brand" size="sm" onClick={onAddCard}>
+        <Button
+          type="button"
+          variant="brand"
+          size="sm"
+          className="hidden md:inline-flex"
+          onClick={onAddCard}
+        >
           Add card
           <Plus aria-hidden="true" className="ml-1.5 h-4 w-4" />
         </Button>
