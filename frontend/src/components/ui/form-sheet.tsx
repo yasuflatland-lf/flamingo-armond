@@ -12,20 +12,29 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Drawer,
   DrawerContent,
   DrawerDescription,
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
+
+type FormSheetSize = "sm" | "md" | "lg";
+
+const desktopWidthBySize: Record<FormSheetSize, string> = {
+  sm: "sm:max-w-md",
+  md: "sm:max-w-lg",
+  lg: "sm:max-w-2xl",
+};
 
 type FormSheetProps = {
   open: boolean;
@@ -36,6 +45,7 @@ type FormSheetProps = {
   confirmOnDismiss?: boolean;
   confirmMessage?: string;
   submitting?: boolean;
+  size?: FormSheetSize;
   children: React.ReactNode;
 };
 
@@ -60,6 +70,7 @@ function FormSheet({
   confirmOnDismiss = false,
   confirmMessage = "Your unsaved changes will be lost.",
   submitting = false,
+  size = "md",
   children,
 }: FormSheetProps) {
   const a11yDescription = description ?? `${title} form`;
@@ -124,17 +135,19 @@ function FormSheet({
       </DrawerContent>
     </Drawer>
   ) : (
-    <Dialog open={open} onOpenChange={requestOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription className={description ? undefined : "sr-only"}>
+    <Sheet open={open} onOpenChange={requestOpenChange}>
+      <SheetContent side="right" className={cn("flex w-full flex-col", desktopWidthBySize[size])}>
+        <SheetHeader>
+          <SheetTitle>{title}</SheetTitle>
+          <SheetDescription className={description ? undefined : "sr-only"}>
             {a11yDescription}
-          </DialogDescription>
-        </DialogHeader>
-        {children}
-      </DialogContent>
-    </Dialog>
+          </SheetDescription>
+        </SheetHeader>
+        <div className="flex-1 overflow-y-auto" data-testid="form-sheet-body">
+          {children}
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 
   return (

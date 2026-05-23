@@ -39,16 +39,52 @@ describe("<FormSheet>", () => {
     vi.clearAllMocks();
   });
 
-  it("renders a desktop dialog when useIsMobile returns false", () => {
+  it("renders a desktop right sheet when useIsMobile returns false", () => {
     render(
       <FormSheet open onOpenChange={vi.fn()} title="Edit card">
         <p>Form body</p>
       </FormSheet>,
     );
 
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    const sheet = screen.getByRole("dialog");
+    expect(sheet).toBeInTheDocument();
+    expect(sheet).toHaveClass("data-[state=open]:slide-in-from-right");
     expect(screen.getByRole("heading", { name: "Edit card" })).toBeInTheDocument();
     expect(screen.getByText("Form body")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["sm", "sm:max-w-md"],
+    ["md", "sm:max-w-lg"],
+    ["lg", "sm:max-w-2xl"],
+  ] as const)("applies the size=%s width to the desktop sheet", (size, expectedClass) => {
+    render(
+      <FormSheet open onOpenChange={vi.fn()} title="Edit card" size={size}>
+        <p>Form body</p>
+      </FormSheet>,
+    );
+
+    expect(screen.getByRole("dialog")).toHaveClass(expectedClass);
+  });
+
+  it("defaults to the medium width when size is not provided", () => {
+    render(
+      <FormSheet open onOpenChange={vi.fn()} title="Edit card">
+        <p>Form body</p>
+      </FormSheet>,
+    );
+
+    expect(screen.getByRole("dialog")).toHaveClass("sm:max-w-lg");
+  });
+
+  it("constrains the desktop sheet body so tall forms can scroll", () => {
+    render(
+      <FormSheet open onOpenChange={vi.fn()} title="Edit card">
+        <div style={{ height: 2000 }}>Tall form</div>
+      </FormSheet>,
+    );
+
+    expect(screen.getByTestId("form-sheet-body")).toHaveClass("flex-1", "overflow-y-auto");
   });
 
   it("renders a mobile drawer dialog when useIsMobile returns true", () => {
