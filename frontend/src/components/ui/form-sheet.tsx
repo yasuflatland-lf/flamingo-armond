@@ -11,14 +11,27 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 type FormSheetProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
+  description?: string;
   dirty?: boolean;
   confirmOnDismiss?: boolean;
   confirmMessage?: string;
@@ -42,12 +55,14 @@ function FormSheet({
   open,
   onOpenChange,
   title,
+  description,
   dirty = false,
   confirmOnDismiss = false,
   confirmMessage = "Your unsaved changes will be lost.",
   submitting = false,
   children,
 }: FormSheetProps) {
+  const a11yDescription = description ?? `${title} form`;
   const isMobile = useIsMobile();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
 
@@ -93,9 +108,12 @@ function FormSheet({
 
   const body = isMobile ? (
     <Drawer open={open} onOpenChange={requestOpenChange}>
-      <DrawerContent aria-describedby={undefined}>
+      <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>{title}</DrawerTitle>
+          <DrawerDescription className={description ? undefined : "sr-only"}>
+            {a11yDescription}
+          </DrawerDescription>
         </DrawerHeader>
         <div
           className="flex max-h-[calc(100dvh-7rem)] flex-col gap-4 overflow-y-auto px-4 pb-4"
@@ -107,9 +125,12 @@ function FormSheet({
     </Drawer>
   ) : (
     <Dialog open={open} onOpenChange={requestOpenChange}>
-      <DialogContent aria-describedby={undefined}>
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
+          <DialogDescription className={description ? undefined : "sr-only"}>
+            {a11yDescription}
+          </DialogDescription>
         </DialogHeader>
         {children}
       </DialogContent>
@@ -120,7 +141,7 @@ function FormSheet({
     <FormSheetCloseContext.Provider value={close}>
       {body}
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="z-[60]">
           <AlertDialogHeader>
             <AlertDialogTitle>Discard your changes?</AlertDialogTitle>
             <AlertDialogDescription>{confirmMessage}</AlertDialogDescription>

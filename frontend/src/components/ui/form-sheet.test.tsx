@@ -191,6 +191,22 @@ describe("<FormSheet>", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  it("closes immediately when confirmOnDismiss is true but the form is clean", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+
+    render(
+      <FormSheet open onOpenChange={onOpenChange} title="Edit card" confirmOnDismiss>
+        <ContextCancelButton />
+      </FormSheet>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
   it("opens discard confirmation instead of closing when dirty confirmOnDismiss is true", async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
