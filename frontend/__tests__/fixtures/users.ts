@@ -12,7 +12,7 @@ import type { Role, User } from "@/generated/graphql";
 // ---------------------------------------------------------------------------
 
 /** System admin role — protected; cannot be deleted or reassigned away from the last admin. */
-export const adminRoleFixture: Role = {
+const adminRoleFixture: Role = {
   __typename: "Role",
   id: "role-admin",
   name: "admin",
