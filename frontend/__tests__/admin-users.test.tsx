@@ -13,29 +13,19 @@
  *   1. AdminUsersPage RSC auth gate (Supabase no-user → redirect "/").
  *   2. AdminUsersPage RSC auth gate (Supabase error → rethrow).
  *   3. AdminUsersPage RSC renders AdminUsersClient for an authenticated user.
- *   4. User rows contain "Edit" links pointing at /admin/users/<id>/edit.
+ *   4. User rows expose an Edit affordance that opens `?edit=<id>`.
  *   5. Empty list: edges = [] → "No users found." empty-state copy renders.
- *   6. AdminUserEditPage RSC: no-user → redirect "/login".
- *   7. AdminUserEditPage RSC: Supabase auth error → rethrow.
- *   8. AdminUserEditPage RSC: user not found (adminUser null) → redirect "/admin/users".
- *   9. AdminUserEditPage RSC: renders edit form with seeded displayName / bio.
- *  10. AdminUserEditPage RSC: UNAUTHENTICATED gqlFetch error → redirect "/".
- *  11. AdminUserEditPage RSC: FORBIDDEN gqlFetch error → redirect "/".
  */
 
 import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminUsersClient } from "@/app/admin/users/admin-users-client";
 import { ADMIN_USERS_PAGE_SIZE } from "@/app/admin/users/queries";
-import { AdminUsersDocument } from "@/generated/graphql";
-import {
-  adminRoleFixture,
-  adminUserFixture,
-  generalUserFixture,
-  userWithoutRolesFixture,
-} from "./fixtures/users";
+import { AdminRolesDocument, AdminUsersDocument } from "@/generated/graphql";
+import { adminUserFixture, generalUserFixture, userWithoutRolesFixture } from "./fixtures/users";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
@@ -52,12 +42,21 @@ import {
 // ---------------------------------------------------------------------------
 
 const REDIRECT_PREFIX = "REDIRECT:";
+const mockPush = vi.fn();
+const mockReplace = vi.fn();
+const mockRefresh = vi.fn();
 
 vi.mock("next/navigation", () => ({
   redirect: vi.fn((path: string) => {
     throw new Error(`${REDIRECT_PREFIX}${path}`);
   }),
   usePathname: vi.fn(() => "/admin/users"),
+  useRouter: () => ({
+    push: mockPush,
+    refresh: mockRefresh,
+    replace: mockReplace,
+  }),
+  useSearchParams: () => new URLSearchParams(""),
 }));
 
 vi.mock("next/link", () => ({
@@ -108,9 +107,7 @@ vi.mock("@/lib/apollo/server", () => ({
 // ---------------------------------------------------------------------------
 
 import { redirect } from "next/navigation";
-import AdminUserEditPage from "@/app/admin/users/[id]/edit/page";
 import AdminUsersPage from "@/app/admin/users/page";
-import { gqlFetch } from "@/lib/apollo/server";
 
 // ---------------------------------------------------------------------------
 // IntersectionObserver stub (required by AdminUsersClient)
@@ -185,6 +182,10 @@ const generalUserNode = generalUserFixture as unknown as UserNode;
 const noroleUserNode = userWithoutRolesFixture as unknown as UserNode;
 
 const ADMIN_USERS_VARIABLES = { first: ADMIN_USERS_PAGE_SIZE, search: null };
+const ADMIN_ROLES_MOCK = {
+  request: { query: AdminRolesDocument, variables: {} },
+  result: { data: { roles: [] } },
+};
 
 /**
  * Build a `MockedProvider`-ready `{ cache, mocks }` pair pre-seeded with the
@@ -205,6 +206,7 @@ function seedAdminUsersConnection(users: UserNode[], hasNextPage = false) {
       request: { query: AdminUsersDocument, variables: ADMIN_USERS_VARIABLES },
       result: { data: { users: connection } },
     },
+    ADMIN_ROLES_MOCK,
   ];
   return { cache, mocks };
 }
@@ -218,8 +220,11 @@ let leakSpy: ApolloMockLeakSpyResult;
 beforeEach(() => {
   resetMockSupabase();
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
-  leakSpy = installApolloMockLeakSpy({ operationNames: ["AdminUsers"] });
+  leakSpy = installApolloMockLeakSpy({ operationNames: ["AdminUsers", "AdminRoles"] });
   vi.spyOn(console, "error").mockImplementation(() => {});
+  mockPush.mockReset();
+  mockReplace.mockReset();
+  mockRefresh.mockReset();
   vi.clearAllMocks();
 });
 
@@ -279,8 +284,9 @@ describe("AdminUsersPage (RSC auth gate)", () => {
 // (aspects not covered by admin-users-list.test.tsx)
 // ---------------------------------------------------------------------------
 
-describe("AdminUsersClient — edit links and empty state", () => {
-  it("each user row has an Edit link pointing to /admin/users/<id>/edit", async () => {
+describe("AdminUsersClient — edit affordance and empty state", () => {
+  it("each user row has an Edit button that opens ?edit=<id>", async () => {
+    const user = userEvent.setup();
     const users: UserNode[] = [adminUserNode, generalUserNode, noroleUserNode];
     const { cache, mocks } = seedAdminUsersConnection(users);
 
@@ -293,15 +299,13 @@ describe("AdminUsersClient — edit links and empty state", () => {
     // Wait for at least one display name to confirm the list has rendered.
     await screen.findByText(adminUserFixture.displayName as string);
 
-    // Every user row must have an Edit link pointing at the correct edit page.
-    // The link is icon-only, so the accessible name is the aria-label rather
-    // than text content.
     for (const userNode of users) {
       const row = screen.getByTestId(`admin-user-row-${userNode.id}`);
-      const editLink = row.querySelector<HTMLAnchorElement>("a");
-      expect(editLink).not.toBeNull();
-      expect(editLink?.href).toContain(`/admin/users/${userNode.id}/edit`);
-      expect(editLink?.getAttribute("aria-label")).toMatch(/edit/i);
+      await user.click(screen.getByRole("button", { name: `Edit ${userNode.displayName}` }));
+      expect(row).toBeInTheDocument();
+      expect(mockPush).toHaveBeenLastCalledWith(`/admin/users?edit=${userNode.id}`, {
+        scroll: false,
+      });
     }
   });
 
@@ -318,110 +322,5 @@ describe("AdminUsersClient — edit links and empty state", () => {
     expect(empty).toHaveTextContent("No users found.");
     // The user list must not appear.
     expect(screen.queryByTestId("admin-users-list")).not.toBeInTheDocument();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// AdminUserEditPage RSC — auth gate, user-not-found, seeded form data
-// ---------------------------------------------------------------------------
-
-describe("AdminUserEditPage (RSC)", () => {
-  const PARAMS = Promise.resolve({ id: adminUserFixture.id });
-
-  it("redirects to '/login' when no user is signed in", async () => {
-    setMockSupabaseUser(null);
-
-    await expect(AdminUserEditPage({ params: PARAMS })).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
-
-    expect(redirect).toHaveBeenCalledWith("/login");
-  });
-
-  it("rethrows when Supabase getUser returns an auth error", async () => {
-    const boom = new Error("supabase rsc error");
-    setMockSupabaseUserError(boom);
-
-    await expect(AdminUserEditPage({ params: PARAMS })).rejects.toBe(boom);
-
-    expect(redirect).not.toHaveBeenCalled();
-  });
-
-  it("redirects to '/admin/users' when adminUser is null (user not found)", async () => {
-    setMockSupabaseUser({ id: "u-1", email: "admin@test.test" });
-    vi.mocked(gqlFetch)
-      // First call → AdminUserQuery returns null user; second → AdminRolesQuery
-      .mockResolvedValueOnce({ adminUser: null } as never)
-      .mockResolvedValueOnce({ roles: [] } as never);
-
-    await expect(AdminUserEditPage({ params: PARAMS })).rejects.toThrow(
-      `${REDIRECT_PREFIX}/admin/users`,
-    );
-
-    expect(redirect).toHaveBeenCalledWith("/admin/users");
-  });
-
-  it("redirects to '/' on UNAUTHENTICATED gqlFetch error", async () => {
-    setMockSupabaseUser({ id: "u-1", email: "admin@test.test" });
-    vi.mocked(gqlFetch).mockRejectedValue(
-      new Error('GraphQL errors: [{"message":"UNAUTHENTICATED: session expired"}]'),
-    );
-
-    await expect(AdminUserEditPage({ params: PARAMS })).rejects.toThrow(`${REDIRECT_PREFIX}/`);
-
-    expect(redirect).toHaveBeenCalledWith("/");
-  });
-
-  it("redirects to '/' on FORBIDDEN gqlFetch error", async () => {
-    setMockSupabaseUser({ id: "u-1", email: "admin@test.test" });
-    vi.mocked(gqlFetch).mockRejectedValue(
-      new Error('GraphQL errors: [{"message":"FORBIDDEN: admin only"}]'),
-    );
-
-    await expect(AdminUserEditPage({ params: PARAMS })).rejects.toThrow(`${REDIRECT_PREFIX}/`);
-
-    expect(redirect).toHaveBeenCalledWith("/");
-  });
-
-  it("rethrows non-auth gqlFetch errors so the error boundary handles them", async () => {
-    setMockSupabaseUser({ id: "u-1", email: "admin@test.test" });
-    const networkErr = new Error("network down");
-    vi.mocked(gqlFetch).mockRejectedValue(networkErr);
-
-    await expect(AdminUserEditPage({ params: PARAMS })).rejects.toBe(networkErr);
-
-    expect(redirect).not.toHaveBeenCalled();
-  });
-
-  it("renders the edit form pre-populated with the seeded user displayName and bio", async () => {
-    setMockSupabaseUser({ id: "u-1", email: "admin@test.test" });
-
-    const seededUser = {
-      ...adminUserFixture,
-      bio: "Seeded bio text",
-      roles: [{ __typename: "Role", id: adminRoleFixture.id, name: adminRoleFixture.name }],
-    };
-
-    // gqlFetch is called twice in parallel: AdminUserQuery + AdminRolesQuery.
-    vi.mocked(gqlFetch)
-      .mockResolvedValueOnce({ adminUser: seededUser } as never)
-      .mockResolvedValueOnce({ roles: [adminRoleFixture] } as never);
-
-    const tree = await AdminUserEditPage({ params: PARAMS });
-
-    render(<MockedProvider mocks={[]}>{tree as React.ReactElement}</MockedProvider>);
-
-    // The display name field must be pre-populated.
-    const displayNameInput = screen.getByLabelText<HTMLInputElement>(/display name/i);
-    expect(displayNameInput.value).toBe(seededUser.displayName);
-
-    // The bio textarea must be pre-populated.
-    const bioTextarea = screen.getByLabelText<HTMLTextAreaElement>(/bio/i);
-    expect(bioTextarea.value).toBe(seededUser.bio);
-
-    // The roles section must show the admin role checkbox (checked state is
-    // tested in admin-users-roles.test.tsx; here we verify it is rendered).
-    expect(screen.getByRole("checkbox", { name: /admin/i })).toBeInTheDocument();
-
-    // Cancel link returns the user to the users list without saving.
-    expect(screen.getByRole("link", { name: /cancel/i })).toHaveAttribute("href", "/admin/users");
   });
 });
