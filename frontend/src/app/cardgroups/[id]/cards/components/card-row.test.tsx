@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { SwipeableRowHandle } from "@/components/cardgroups/swipeable-row";
 
 // Mock SwipeableRow as a plain div to avoid gesture library dependencies.
+// The `disabled` prop is forwarded as a data attribute so tests can assert
+// that selection mode propagates correctly.
 // swipeable-row.test.tsx is the canonical test for gesture behaviour.
 vi.mock("@/components/cardgroups/swipeable-row", async () => {
   const { forwardRef } = await import("react");
@@ -12,6 +14,7 @@ vi.mock("@/components/cardgroups/swipeable-row", async () => {
     SwipeableRow: forwardRef(function SwipeableRowMock(
       {
         children,
+        disabled,
       }: {
         children: React.ReactNode;
         disabled?: boolean;
@@ -20,7 +23,11 @@ vi.mock("@/components/cardgroups/swipeable-row", async () => {
       },
       _ref: React.Ref<{ close(): void }>,
     ) {
-      return <div data-testid="swipeable-row-mock">{children}</div>;
+      return (
+        <div data-testid="swipeable-row-mock" data-disabled={disabled ? "true" : "false"}>
+          {children}
+        </div>
+      );
     }),
   };
 });
@@ -55,5 +62,19 @@ describe("<CardRow>", () => {
     expect(cls).toContain("opacity-0");
     expect(cls).toContain("sm:group-hover:opacity-100");
     expect(cls).toContain("motion-reduce:opacity-100");
+  });
+
+  it("wraps the row content in SwipeableRow", () => {
+    renderCardRow();
+
+    expect(screen.getByTestId("swipeable-row-mock")).toBeInTheDocument();
+  });
+
+  it("passes disabled=true to SwipeableRow when selection mode is active", () => {
+    // Selection mode is signalled to CardRow by the parent via disabled=true
+    // (set when selectedIds.size > 0 in CardsClient).
+    renderCardRow({ disabled: true });
+
+    expect(screen.getByTestId("swipeable-row-mock")).toHaveAttribute("data-disabled", "true");
   });
 });

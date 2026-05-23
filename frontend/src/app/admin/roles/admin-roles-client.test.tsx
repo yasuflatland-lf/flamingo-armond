@@ -3,6 +3,7 @@
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AdminDeleteRoleDocument } from "@/generated/graphql";
@@ -283,5 +284,64 @@ describe("AdminRolesClient — scheduleDelete invocation", () => {
     });
 
     vi.useRealTimers();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Spec § Error handling / edge cases — commit failure with FORBIDDEN
+//
+// Simulates a mid-flow permission loss: the delete mutation returns FORBIDDEN
+// (the operator's admin privilege was revoked between the swipe and the 5-second
+// commit). The expected behaviour is:
+//   1. The role row is restored via optimisticRollback.
+//   2. An error banner is displayed so the user understands the action failed.
+// ---------------------------------------------------------------------------
+
+describe("AdminRolesClient — commit failure with FORBIDDEN", () => {
+  it("rolls back the optimistic removal and shows an error banner when delete returns FORBIDDEN", async () => {
+    const user = userEvent.setup();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    const forbiddenError = new GraphQLError("You do not have permission to delete this role.", {
+      extensions: { code: "FORBIDDEN" },
+    });
+
+    const mocks = [
+      {
+        request: { query: AdminDeleteRoleDocument, variables: { id: CUSTOM_ROLE.id } },
+        result: { errors: [forbiddenError] },
+      },
+    ];
+
+    renderRoles([CUSTOM_ROLE], mocks);
+
+    // Row is visible before delete.
+    expect(screen.getByTestId(`admin-role-row-${CUSTOM_ROLE.id}`)).toBeInTheDocument();
+
+    // Trigger delete — the row is removed optimistically.
+    await user.click(screen.getByTestId(`admin-role-delete-btn-${CUSTOM_ROLE.id}`));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId(`admin-role-row-${CUSTOM_ROLE.id}`)).not.toBeInTheDocument();
+    });
+
+    // Advance past the 5-second undo window so the mutation is committed.
+    // The mutation returns FORBIDDEN, triggering optimisticRollback + onCommitFailed.
+    vi.advanceTimersByTime(5100);
+    vi.useRealTimers();
+
+    // 1. The role row must reappear (rollback ran).
+    await waitFor(() => {
+      expect(screen.getByTestId(`admin-role-row-${CUSTOM_ROLE.id}`)).toBeInTheDocument();
+    });
+
+    // 2. An error banner must be visible with the FORBIDDEN message.
+    await waitFor(() => {
+      expect(screen.getByTestId("admin-roles-error")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("admin-roles-error")).toHaveAttribute("role", "alert");
+    expect(screen.getByTestId("admin-roles-error").textContent).toContain(
+      "You do not have permission to delete this role.",
+    );
   });
 });

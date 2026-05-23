@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -694,6 +694,67 @@ describe("<CardgroupsClient> delete — optimistic cache update and scheduleDele
     vi.advanceTimersByTime(5100);
     vi.useRealTimers();
     await waitFor(() => {});
+  });
+
+  it("shows delete-error banner and restores row when commit fails with FORBIDDEN", async () => {
+    const user = userEvent.setup();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    const cache = new InMemoryCache();
+    const conn = makeConnection([CG_1, CG_2], false, 2);
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: CARDGROUPS_DEFAULT_VARS,
+      data: { myCardgroupsConnection: conn },
+    });
+
+    const initialMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: CARDGROUPS_DEFAULT_VARS,
+      },
+      result: { data: { myCardgroupsConnection: conn } },
+    };
+
+    const forbiddenMock = {
+      request: {
+        query: DeleteCardgroupDocument,
+        variables: { id: CG_1.id },
+      },
+      result: {
+        errors: [
+          new GraphQLError("Forbidden", {
+            extensions: { code: "FORBIDDEN" },
+          }),
+        ],
+      },
+    };
+
+    renderClient([initialMock, forbiddenMock], null, cache);
+
+    expect(await screen.findByText("Spanish Vocab")).toBeInTheDocument();
+
+    const deleteBtn = screen.getByRole("button", {
+      name: new RegExp(`delete cardgroup ${CG_1.name}`, "i"),
+    });
+    await user.click(deleteBtn);
+
+    // Row is removed optimistically
+    await waitFor(() => {
+      expect(screen.queryByText("Spanish Vocab")).not.toBeInTheDocument();
+    });
+
+    // Advance past the 5-second undo window to trigger commitDelete
+    act(() => vi.advanceTimersByTime(5100));
+    vi.useRealTimers();
+
+    // Row reappears after rollback triggered by FORBIDDEN failure
+    await waitFor(() => {
+      expect(screen.getByText("Spanish Vocab")).toBeInTheDocument();
+    });
+
+    // Error banner is visible
+    expect(screen.getByTestId("cardgroups-delete-error")).toBeInTheDocument();
   });
 
   it("restores the edge in the cache when Undo is invoked within the window", async () => {
