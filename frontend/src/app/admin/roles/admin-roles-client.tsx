@@ -39,12 +39,14 @@ export function AdminRolesClient({ initialRoles }: Props) {
   const { scheduleDelete } = useUndoDelete();
 
   function handleDelete(id: string) {
-    // Clear any stale error banner so a new attempt starts clean.
-    setError(null);
     const index = roles.findIndex((r) => r.id === id);
     if (index < 0) return;
     const role = roles[index];
+
+    // Clear any stale error banner so a new attempt starts clean.
+    setError(null);
     setRoles((prev) => prev.filter((r) => r.id !== id));
+
     scheduleDelete({
       id,
       label: `Role "${role.name}" deleted`,

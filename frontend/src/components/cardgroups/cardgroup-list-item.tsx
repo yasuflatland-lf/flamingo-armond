@@ -13,8 +13,10 @@ export type CardgroupListItemProps = {
 };
 
 export function CardgroupListItem({ id, name, updatedAt, busy = false, onDelete }: CardgroupListItemProps) {
+  const deleteLabel = `Delete cardgroup ${name}`;
+  const requestDelete = () => onDelete(id, name);
   return (
-    <SwipeableRow onDelete={() => onDelete(id, name)} disabled={busy} ariaLabel={`Delete cardgroup ${name}`}>
+    <SwipeableRow onDelete={requestDelete} disabled={busy} ariaLabel={deleteLabel}>
       <li className="group flex items-center gap-2 rounded-lg border border-border pr-2 hover:bg-accent active:bg-accent transition-colors bg-background">
         <Link href={`/cardgroups/${id}/edit`} className="flex min-w-0 flex-1 flex-col gap-1 p-4">
           <span className="truncate font-medium text-foreground">{name}</span>
@@ -24,9 +26,9 @@ export function CardgroupListItem({ id, name, updatedAt, busy = false, onDelete 
           variant="outline"
           size="icon"
           className="opacity-0 sm:group-hover:opacity-100 motion-reduce:opacity-100 transition-opacity"
-          onClick={() => onDelete(id, name)}
+          onClick={requestDelete}
           disabled={busy}
-          aria-label={`Delete cardgroup ${name}`}
+          aria-label={deleteLabel}
         >
           <Trash2 className="h-4 w-4" />
         </Button>
