@@ -1,8 +1,7 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
-import type React from "react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,9 +20,24 @@ type RoleFormProps = {
   error?: unknown;
   /** When true, the input + submit button are disabled with no path back to enabled. */
   readOnly?: boolean;
-  /** Extra controls rendered next to the submit button (e.g. Cancel link). */
-  secondarySlot?: React.ReactNode;
+  /** Optional cancel action rendered next to the submit button. */
+  onCancel?: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 };
+
+function DirtyStateBridge({
+  dirty,
+  onDirtyChange,
+}: {
+  dirty: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  return null;
+}
 
 export function RoleForm({
   defaultValues,
@@ -32,7 +46,8 @@ export function RoleForm({
   submitting = false,
   error,
   readOnly = false,
-  secondarySlot,
+  onCancel,
+  onDirtyChange,
 }: RoleFormProps) {
   const nameSchema = roleSchema.shape.name;
 
@@ -97,8 +112,15 @@ export function RoleForm({
         <Button type="submit" variant="brand" disabled={submitting || readOnly}>
           {submitting ? "Saving..." : submitLabel}
         </Button>
-        {secondarySlot}
+        {onCancel ? (
+          <Button type="button" variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+        ) : null}
       </div>
+      <form.Subscribe selector={(state) => state.isDirty}>
+        {(dirty) => <DirtyStateBridge dirty={dirty} onDirtyChange={onDirtyChange} />}
+      </form.Subscribe>
     </form>
   );
 }

@@ -25,7 +25,8 @@ vi.mock("@/lib/apollo/server", () => ({
 // AdminRolesClient uses Apollo mutations via useMutation; stub the provider so
 // the client component mounts without a real Apollo client in scope.
 vi.mock("@apollo/client/react", () => ({
-  useMutation: vi.fn(() => [vi.fn(), { loading: false }]),
+  useLazyQuery: vi.fn(() => [vi.fn(), { data: null, error: null, loading: false }]),
+  useMutation: vi.fn(() => [vi.fn(), { error: null, loading: false, reset: vi.fn() }]),
 }));
 
 // useUndoDelete requires <UndoDeleteProvider> in the tree; stub the hook so
@@ -38,6 +39,8 @@ vi.mock("@/lib/undo-delete", () => ({
 // usePathname is consumed by UndoDeleteProvider for flush-on-navigation.
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/roles",
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(""),
 }));
 
 // ---------------------------------------------------------------------------

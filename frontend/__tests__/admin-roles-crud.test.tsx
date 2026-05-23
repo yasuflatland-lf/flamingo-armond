@@ -5,13 +5,12 @@
  * Scope:
  *   - List rendering of editable + system roles
  *   - System-role guard: rows are non-clickable, delete button is disabled
- *   - Custom roles: row links to /admin/roles/:id/edit
+ *   - Custom roles: row opens ?edit=<id>
  *   - Delete mutation: success removes from list, FORBIDDEN surfaces banner
- *   - "New role" CTA wires to /admin/roles/new
+ *   - "New role" CTA opens ?new=true
  *
  * NOT covered here:
- *   - Create form (owned by src/app/admin/roles/new/new-role-client.test.tsx)
- *   - Edit form (owned by src/app/admin/roles/[id]/edit/edit-role-client.test.tsx)
+ *   - Create/edit sheet form flows (owned by src/app/admin/roles/admin-roles-client.test.tsx)
  *   - Page-level SSR seed (owned by admin-roles.test.tsx)
  */
 
@@ -29,8 +28,18 @@ import { UndoDeleteProvider } from "@/lib/undo-delete";
 // ---------------------------------------------------------------------------
 
 // usePathname is used by UndoDeleteProvider for flush-on-navigation.
+const mockPush = vi.fn();
+const mockReplace = vi.fn();
+const mockRefresh = vi.fn();
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/roles",
+  useRouter: () => ({
+    push: mockPush,
+    refresh: mockRefresh,
+    replace: mockReplace,
+  }),
+  useSearchParams: () => new URLSearchParams(""),
 }));
 
 vi.mock("next/link", () => ({
@@ -53,6 +62,9 @@ let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  mockPush.mockReset();
+  mockReplace.mockReset();
+  mockRefresh.mockReset();
 });
 
 afterEach(() => {
@@ -99,14 +111,16 @@ describe("AdminRolesClient", () => {
     expect(screen.getByText("moderator")).toBeInTheDocument();
   });
 
-  it("links the 'New role' CTA to /admin/roles/new", () => {
+  it("opens the New role sheet query from the CTA", async () => {
+    const user = userEvent.setup();
     renderClient([], []);
 
-    // Button uses asChild + <Link>: the testid is forwarded to the
-    // rendered <a>, so the testid handle IS the anchor element itself.
     const cta = screen.getByTestId("admin-roles-new-btn");
-    expect(cta.tagName).toBe("A");
-    expect(cta).toHaveAttribute("href", "/admin/roles/new");
+    expect(cta.tagName).toBe("BUTTON");
+
+    await user.click(cta);
+
+    expect(mockPush).toHaveBeenCalledWith("/admin/roles?new=true", { scroll: false });
   });
 
   // -------------------------------------------------------------------------
@@ -131,12 +145,14 @@ describe("AdminRolesClient", () => {
     expect(within(generalRow).getByText("System role")).toBeInTheDocument();
   });
 
-  it("renders custom rows as a link to the edit page with delete enabled", () => {
+  it("renders custom rows with an edit button and delete enabled", async () => {
+    const user = userEvent.setup();
     renderClient([ADMIN_ROLE, MOD_ROLE], []);
 
     const modRow = screen.getByTestId("admin-role-row-r-mod");
-    const link = within(modRow).getByRole("link", { name: /moderator/i });
-    expect(link).toHaveAttribute("href", "/admin/roles/r-mod/edit");
+    await user.click(within(modRow).getByRole("button", { name: /edit role moderator/i }));
+
+    expect(mockPush).toHaveBeenCalledWith("/admin/roles?edit=r-mod", { scroll: false });
 
     expect(within(modRow).getByRole("button", { name: /delete moderator/i })).not.toBeDisabled();
   });
