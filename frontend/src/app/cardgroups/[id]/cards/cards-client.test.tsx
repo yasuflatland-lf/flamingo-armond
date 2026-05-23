@@ -7,6 +7,7 @@ import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CardsByCardgroupConnectionDocument,
+  CreateCardDocument,
   DeleteCardDocument,
   DeleteCardsDocument,
   UpdateCardDocument,
@@ -168,10 +169,61 @@ function makeUpdateMock(id: string, input: { front: string; back: string }, card
   };
 }
 
+function makeCreateMock(args: {
+  front: string;
+  back: string;
+  cardId?: string;
+  duplicateMessage?: string;
+  errors?: GraphQLError[];
+}) {
+  const { front, back, cardId = "c-new", duplicateMessage, errors } = args;
+  return {
+    request: {
+      query: CreateCardDocument,
+      variables: { input: { cardgroupId: CG_ID, front, back } },
+    },
+    result: () => {
+      if (errors) return { errors };
+      if (duplicateMessage) {
+        return {
+          data: {
+            createCard: {
+              __typename: "CardDuplicateFrontError" as const,
+              message: duplicateMessage,
+              existingCardId: "c-existing",
+              existingBack: "Existing back",
+            },
+          },
+        };
+      }
+      return {
+        data: {
+          createCard: {
+            __typename: "CreateCardSuccess" as const,
+            card: {
+              __typename: "Card" as const,
+              id: cardId,
+              front,
+              back,
+              userCardState: userCardState("2026-05-23T00:00:00Z", 0),
+              cardgroupId: CG_ID,
+            },
+          },
+        },
+      };
+    },
+  };
+}
+
 function renderClient(
   mocks: unknown[],
   initialCards = [CARD_1, CARD_2],
-  options: { errorPolicy?: boolean; cache?: InMemoryCache; skipSeed?: boolean } = {},
+  options: {
+    errorPolicy?: boolean;
+    cache?: InMemoryCache;
+    skipSeed?: boolean;
+    sectionHeader?: React.ComponentProps<typeof CardsClient>["sectionHeader"];
+  } = {},
 ) {
   const defaultOptions = options.errorPolicy
     ? { mutate: { errorPolicy: "all" as const } }
@@ -206,9 +258,27 @@ function renderClient(
           initialEdges={initialConn.edges}
           initialPageInfo={initialConn.pageInfo}
           initialTotalCount={initialConn.totalCount}
+          sectionHeader={options.sectionHeader}
         />
       </UndoDeleteProvider>
     </MockedProvider>,
+  );
+}
+
+function addButtonHeader({
+  totalCount,
+  onAddCard,
+}: {
+  totalCount: number;
+  onAddCard?: () => void;
+}) {
+  return (
+    <div>
+      <span>Cards ({totalCount})</span>
+      <button type="button" onClick={onAddCard}>
+        Add card
+      </button>
+    </div>
   );
 }
 
@@ -270,19 +340,236 @@ describe("<CardsClient>", () => {
     expect(screen.getByText("Bye")).toBeInTheDocument();
   });
 
+  it("section Add card button opens the Add card sheet with empty defaults", async () => {
+    const user = userEvent.setup();
+    renderClient([], [], { sectionHeader: addButtonHeader });
+
+    await user.click(screen.getByRole("button", { name: /add card/i }));
+
+    expect(screen.getByRole("heading", { name: /add card/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/front/i)).toHaveValue("");
+    expect(screen.getByLabelText(/back/i)).toHaveValue("");
+  });
+
+  it("clean Add card dismiss closes without asking before discarding", async () => {
+    const user = userEvent.setup();
+    renderClient([], [], { sectionHeader: addButtonHeader });
+
+    await user.click(screen.getByRole("button", { name: /add card/i }));
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: /add card/i })).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("dirty Add card dismiss asks before discarding", async () => {
+    const user = userEvent.setup();
+    renderClient([], [], { sectionHeader: addButtonHeader });
+
+    await user.click(screen.getByRole("button", { name: /add card/i }));
+    await user.type(screen.getByLabelText(/front/i), "Hello");
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Hello")).toBeInTheDocument();
+  });
+
+  it("successful create inserts the card into the active connection and closes the sheet", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: DEFAULT_VARS,
+      data: { cardsByCardgroupConnection: connection([CARD_1, CARD_2]) },
+    });
+
+    renderClient([makeCreateMock({ front: "New front", back: "New back" })], [CARD_1, CARD_2], {
+      cache,
+      sectionHeader: addButtonHeader,
+    });
+
+    await user.click(screen.getByRole("button", { name: /add card/i }));
+    await user.type(screen.getByLabelText(/front/i), "New front");
+    await user.type(screen.getByLabelText(/back/i), "New back");
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
+
+    expect(await screen.findByText("New front")).toBeInTheDocument();
+    expect(screen.getByText("Cards (3)")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: /add card/i })).not.toBeInTheDocument();
+    });
+    expect(
+      cache.readQuery({
+        query: CardsByCardgroupConnectionDocument,
+        variables: DEFAULT_VARS,
+      })?.cardsByCardgroupConnection.totalCount,
+    ).toBe(3);
+  });
+
+  it("successful create while search is active updates the unfiltered cache without polluting filtered results", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime.bind(vi) });
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: DEFAULT_VARS,
+      data: { cardsByCardgroupConnection: connection([CARD_1, CARD_2]) },
+    });
+    cache.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables: { ...DEFAULT_VARS, search: "hello" },
+      data: { cardsByCardgroupConnection: connection([CARD_1]) },
+    });
+
+    renderClient([makeCreateMock({ front: "Zebra", back: "Cebra" })], [CARD_1, CARD_2], {
+      cache,
+      sectionHeader: addButtonHeader,
+    });
+
+    await user.type(screen.getByTestId("cards-search-input"), "hello");
+    await vi.advanceTimersByTimeAsync(300);
+    await waitFor(() => {
+      expect(screen.queryByText("Bye")).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /add card/i }));
+    await user.type(screen.getByLabelText(/front/i), "Zebra");
+    await user.type(screen.getByLabelText(/back/i), "Cebra");
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: /add card/i })).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText("Zebra")).not.toBeInTheDocument();
+    expect(screen.getByText("Cards (1)")).toBeInTheDocument();
+
+    await user.clear(screen.getByTestId("cards-search-input"));
+    await vi.advanceTimersByTimeAsync(300);
+
+    await waitFor(() => {
+      expect(screen.getByText("Zebra")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Cards (3)")).toBeInTheDocument();
+  });
+
+  it("CardDuplicateFrontError keeps Add card open and surfaces the front validation error", async () => {
+    const user = userEvent.setup();
+    renderClient(
+      [
+        makeCreateMock({
+          front: "Hello",
+          back: "Hola",
+          duplicateMessage: "A card with this front already exists in this cardgroup",
+        }),
+      ],
+      [],
+      { sectionHeader: addButtonHeader },
+    );
+
+    await user.click(screen.getByRole("button", { name: /add card/i }));
+    await user.type(screen.getByLabelText(/front/i), "Hello");
+    await user.type(screen.getByLabelText(/back/i), "Hola");
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
+
+    expect(
+      await screen.findByText("A card with this front already exists in this cardgroup"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /add card/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/front/i)).toHaveValue("Hello");
+  });
+
+  it("create mutation thrown errors keep Add card open and show the CardForm error banner", async () => {
+    const user = userEvent.setup();
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    renderClient(
+      [
+        makeCreateMock({
+          front: "Hello",
+          back: "Hola",
+          errors: [new GraphQLError("backend exploded", { extensions: { code: "INTERNAL" } })],
+        }),
+      ],
+      [],
+      { sectionHeader: addButtonHeader },
+    );
+
+    await user.click(screen.getByRole("button", { name: /add card/i }));
+    await user.type(screen.getByLabelText(/front/i), "Hello");
+    await user.type(screen.getByLabelText(/back/i), "Hola");
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("backend exploded");
+    expect(screen.getByRole("heading", { name: /add card/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/front/i)).toHaveValue("Hello");
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("clears a thrown create error after closing and reopening the Add card sheet", async () => {
+    const user = userEvent.setup();
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    renderClient(
+      [
+        makeCreateMock({
+          front: "Hello",
+          back: "Hola",
+          errors: [new GraphQLError("backend exploded", { extensions: { code: "INTERNAL" } })],
+        }),
+      ],
+      [],
+      { sectionHeader: addButtonHeader },
+    );
+
+    await user.click(screen.getByRole("button", { name: /add card/i }));
+    await user.type(screen.getByLabelText(/front/i), "Hello");
+    await user.type(screen.getByLabelText(/back/i), "Hola");
+    await user.click(screen.getByRole("button", { name: /^add$/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("backend exploded");
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+    await user.click(screen.getByRole("button", { name: /discard/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: /add card/i })).not.toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /add card/i }));
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("matching flamingo:add-card event opens the Add card sheet and prevents navigation fallback", async () => {
+    renderClient([]);
+
+    const event = new CustomEvent("flamingo:add-card", {
+      cancelable: true,
+      detail: { cardgroupId: CG_ID },
+    });
+    const dispatchResult = window.dispatchEvent(event);
+
+    expect(dispatchResult).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+    expect(await screen.findByRole("heading", { name: /add card/i })).toBeInTheDocument();
+  });
+
   it("does not render a create form (Add a card heading absent)", () => {
     renderClient([]);
     expect(screen.queryByText(/add a card/i)).toBeNull();
     expect(screen.queryByRole("button", { name: /^add$/i })).toBeNull();
   });
 
-  // Row click enters edit mode.
-  it("clicking the row text enters edit mode and Cancel reverts to view", async () => {
+  // Row click opens the edit sheet while keeping the list visible.
+  it("clicking the row text opens edit mode in a sheet and Cancel reverts to view", async () => {
     const user = userEvent.setup();
     renderClient([]);
 
     await user.click(screen.getByTestId("card-edit-target-c-1"));
 
+    expect(screen.getByRole("heading", { name: /edit card/i })).toBeInTheDocument();
+    expect(screen.getAllByTestId("swipeable-row-mock")).toHaveLength(2);
     const editFrontInput = screen.getByLabelText(/front/i) as HTMLElement;
     expect(editFrontInput).toHaveValue("Hello");
 
@@ -358,6 +645,8 @@ describe("<CardsClient>", () => {
 
     await user.click(screen.getByTestId("card-edit-target-c-1"));
 
+    expect(screen.getByRole("heading", { name: /edit card/i })).toBeInTheDocument();
+    expect(screen.getAllByTestId("swipeable-row-mock")).toHaveLength(2);
     const editFrontInput = screen.getByLabelText(/front/i) as HTMLElement;
     await user.clear(editFrontInput);
     await user.type(editFrontInput, "Hello updated");
@@ -369,11 +658,12 @@ describe("<CardsClient>", () => {
     await user.click(screen.getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("Hello updated")).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /edit card/i })).not.toBeInTheDocument();
     });
+    expect(screen.getByText("Hello updated")).toBeInTheDocument();
   });
 
-  it("edit save failure keeps the row in edit mode and shows the inline error", async () => {
+  it("edit save failure keeps the sheet open and shows the inline error", async () => {
     const user = userEvent.setup();
 
     const mock = {
@@ -393,6 +683,8 @@ describe("<CardsClient>", () => {
     renderClient([mock], [CARD_1], { errorPolicy: true });
 
     await user.click(screen.getByTestId("card-edit-target-c-1"));
+    expect(screen.getByRole("heading", { name: /edit card/i })).toBeInTheDocument();
+    expect(screen.getAllByTestId("swipeable-row-mock")).toHaveLength(1);
 
     const editFrontInput = screen.getByLabelText(/front/i) as HTMLElement;
     await user.clear(editFrontInput);
@@ -403,6 +695,7 @@ describe("<CardsClient>", () => {
       expect(screen.getByText("front is required")).toBeInTheDocument();
     });
 
+    expect(screen.getByRole("heading", { name: /edit card/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/front/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument();
   });
@@ -852,13 +1145,15 @@ describe("<CardsClient>", () => {
     // unconditionally, so the edit target remains accessible).
     await user.click(screen.getByTestId("card-edit-target-c-1"));
 
-    // CARD_1 row is now in edit mode — its SwipeableRow wrapper should be gone
-    // (the editing branch renders a plain <li> without SwipeableRow). Only
-    // CARD_2's wrapper remains.
-    const wrappers = screen.getAllByTestId("swipeable-row-mock");
-    // Only the non-editing card still has a SwipeableRow wrapper.
-    expect(wrappers).toHaveLength(1);
-    expect(wrappers[0]).toHaveAttribute("data-disabled", "false");
+    const editingRow = screen
+      .getByTestId("card-edit-target-c-1")
+      .closest('[data-testid="swipeable-row-mock"]');
+    const idleRow = screen
+      .getByTestId("card-edit-target-c-2")
+      .closest('[data-testid="swipeable-row-mock"]');
+
+    expect(editingRow).toHaveAttribute("data-disabled", "true");
+    expect(idleRow).toHaveAttribute("data-disabled", "false");
   });
 
   // Tapping a row's text region closes other half-open rows.
@@ -1290,7 +1585,7 @@ describe("<CardsClient>", () => {
   // covered in swipeable-row.test.tsx (T10). Limitation documented here.
 
   // Union-data path: server returns InputValidationError as data (not errors[]).
-  // The row must stay in edit mode and display the validation message inline.
+  // The sheet must stay open and display the validation message inline.
   // Fix #1 (sibling agent) wires a `validationError` prop from CardsClient into
   // CardForm so the union-data path surfaces the message the same way the
   // error-channel path does.
@@ -1317,6 +1612,7 @@ describe("<CardsClient>", () => {
 
     // Enter edit mode for CARD_1.
     await user.click(screen.getByTestId("card-edit-target-c-1"));
+    expect(screen.getByRole("heading", { name: /edit card/i })).toBeInTheDocument();
 
     // Clear the front field so it submits an empty value.
     const editFrontInput = screen.getByLabelText(/front/i) as HTMLElement;
@@ -1329,7 +1625,8 @@ describe("<CardsClient>", () => {
       expect(screen.getByText("front is required")).toBeInTheDocument();
     });
 
-    // The form is still mounted — both the field input and the Save button remain.
+    // The sheet is still mounted — both the field input and the Save button remain.
+    expect(screen.getByRole("heading", { name: /edit card/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/front/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^save$/i })).toBeInTheDocument();
     // No spinner — the mutation has resolved, not pending.

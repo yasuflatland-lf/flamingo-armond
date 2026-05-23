@@ -3,17 +3,21 @@
 import { useApolloClient, useMutation } from "@apollo/client/react";
 import { Search } from "lucide-react";
 import type { ReactNode, RefObject } from "react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  CreateCardMutation,
   DeleteCardMutation,
   DeleteCardsMutation,
   UpdateCardMutation,
 } from "@/app/cardgroups/queries";
+import { CardForm } from "@/components/cardgroups/card-form";
 import type { SwipeableRowHandle } from "@/components/cardgroups/swipeable-row";
 import { Button } from "@/components/ui/button";
+import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import {
   CardsByCardgroupConnectionDocument,
   type CardsByCardgroupConnectionQuery,
+  type CardsByCardgroupConnectionQueryVariables,
 } from "@/generated/graphql";
 import { useBulkSelection } from "@/hooks/use-bulk-selection";
 import { useDebouncedSearch } from "@/hooks/use-debounced-search";
@@ -21,7 +25,7 @@ import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { useUndoDelete } from "@/lib/undo-delete";
 import { BulkActionBar } from "./components/bulk-action-bar";
 import { CardRow } from "./components/card-row";
-import { EditCardRow } from "./components/edit-card-row";
+import { cardsDefaultVars } from "./queries";
 import { useCardsConnection } from "./use-cards-connection";
 
 type Connection = CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"];
@@ -71,6 +75,67 @@ const SearchInput = ({ value, onChange }: { value: string; onChange: (next: stri
   </div>
 );
 
+function EditCardSheetContent({
+  card,
+  submit,
+  submitting,
+  error,
+  validationError,
+}: {
+  card: { id: string; front: string; back: string };
+  submit: (values: { front: string; back: string }) => Promise<void>;
+  submitting: boolean;
+  error: unknown;
+  validationError: { field: string; message: string } | null;
+}) {
+  const close = useFormSheetClose();
+
+  return (
+    <CardForm
+      mode="edit"
+      idPrefix={`edit-${card.id}-`}
+      defaultValues={{ front: card.front, back: card.back }}
+      submit={submit}
+      submitLabel="Save"
+      submitting={submitting}
+      error={error}
+      validationError={validationError}
+      onCancel={close}
+    />
+  );
+}
+
+function AddCardSheetContent({
+  submit,
+  submitting,
+  error,
+  validationError,
+  onDirty,
+}: {
+  submit: (values: { front: string; back: string }) => Promise<void>;
+  submitting: boolean;
+  error: unknown;
+  validationError: { field: string; message: string } | null;
+  onDirty: () => void;
+}) {
+  const close = useFormSheetClose();
+
+  return (
+    <div onInput={onDirty}>
+      <CardForm
+        mode="create"
+        idPrefix="add-card-"
+        defaultValues={{ front: "", back: "" }}
+        submit={submit}
+        submitting={submitting}
+        error={error}
+        validationError={validationError}
+        onCancel={close}
+      />
+    </div>
+  );
+}
+
 const EmptyState = ({ search, onClear }: { search: string | null; onClear: () => void }) =>
   search !== null ? (
     <div
@@ -97,6 +162,11 @@ const EmptyState = ({ search, onClear }: { search: string | null; onClear: () =>
     </div>
   );
 
+type SectionHeaderArgs = {
+  totalCount: number;
+  onAddCard: () => void;
+};
+
 type Props = {
   cardgroupId: string;
   initialEdges: CardEdge[];
@@ -108,7 +178,7 @@ type Props = {
    * it entirely, or a render function to access the live `totalCount` from
    * Apollo cache without spinning up a second `useQuery` in the parent.
    */
-  sectionHeader?: ReactNode | ((args: { totalCount: number }) => ReactNode);
+  sectionHeader?: ReactNode | ((args: SectionHeaderArgs) => ReactNode);
 };
 
 export function CardsClient({
@@ -120,6 +190,12 @@ export function CardsClient({
 }: Props) {
   const apollo = useApolloClient();
   const { scheduleDelete } = useUndoDelete();
+  const [addOpen, setAddOpen] = useState(false);
+  const [addDirty, setAddDirty] = useState(false);
+  const [createValidationError, setCreateValidationError] = useState<{
+    field: string;
+    message: string;
+  } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   // Field-level error for the editing row (from updateCard's outcome-union).
   const [rowValidationError, setRowValidationError] = useState<{
@@ -160,6 +236,10 @@ export function CardsClient({
     }
   }, []);
 
+  const editingCard = edges.find((edge) => edge.node.id === editingId)?.node;
+
+  const [createCard, { loading: creating, error: createError, reset: resetCreateCard }] =
+    useMutation(CreateCardMutation);
   // Updates propagate automatically via Apollo cache normalization (Card has id).
   const [updateCard, { loading: updating, error: updateError }] = useMutation(UpdateCardMutation);
   // scheduleDelete (5s undo window) fires the per-row mutation imperatively.
@@ -203,6 +283,102 @@ export function CardsClient({
   );
 
   const bulkDeleteBannerError = getBackendErrorBanner(bulkDeleteError);
+
+  const openAddSheet = useCallback(() => {
+    resetCreateCard();
+    setCreateValidationError(null);
+    setAddDirty(false);
+    setAddOpen(true);
+  }, [resetCreateCard]);
+
+  useEffect(() => {
+    function handleAddCardEvent(event: Event) {
+      if (!(event instanceof CustomEvent)) return;
+      const detail = event.detail as { cardgroupId?: unknown } | null;
+      if (detail?.cardgroupId !== cardgroupId) return;
+
+      event.preventDefault();
+      openAddSheet();
+    }
+
+    window.addEventListener("flamingo:add-card", handleAddCardEvent);
+    return () => window.removeEventListener("flamingo:add-card", handleAddCardEvent);
+  }, [cardgroupId, openAddSheet]);
+
+  function cardMatchesSearch(
+    card: CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"]["edges"][number]["node"],
+    searchValue: string,
+  ) {
+    const normalized = searchValue.trim().toLowerCase();
+    if (normalized === "") return true;
+    return (
+      card.front.toLowerCase().includes(normalized) || card.back.toLowerCase().includes(normalized)
+    );
+  }
+
+  function writeCreatedCardToConnection(
+    card: CardsByCardgroupConnectionQuery["cardsByCardgroupConnection"]["edges"][number]["node"],
+    variables: CardsByCardgroupConnectionQueryVariables,
+  ) {
+    const existing = apollo.readQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables,
+    });
+    if (!existing) return;
+
+    const next = existing.cardsByCardgroupConnection;
+    if (next.edges.some((edge) => edge.node.id === card.id)) return;
+
+    apollo.writeQuery({
+      query: CardsByCardgroupConnectionDocument,
+      variables,
+      data: {
+        cardsByCardgroupConnection: {
+          ...next,
+          edges: [{ __typename: "CardEdge" as const, cursor: card.id, node: card }, ...next.edges],
+          totalCount: next.totalCount + 1,
+        },
+      },
+    });
+  }
+
+  async function handleCreate(values: { front: string; back: string }) {
+    resetCreateCard();
+    setCreateValidationError(null);
+    const result = await createCard({
+      variables: { input: { cardgroupId, front: values.front, back: values.back } },
+    }).catch((err) => {
+      console.error("[CardsClient] create rejection", {
+        name: err instanceof Error ? err.name : "unknown",
+        cardgroupId,
+      });
+      return null;
+    });
+    if (!result) return;
+
+    const payload = result.data?.createCard;
+    if (payload?.__typename === "CreateCardSuccess") {
+      writeCreatedCardToConnection(payload.card, cardsDefaultVars(cardgroupId));
+      if (
+        typeof queryVariables.search === "string" &&
+        cardMatchesSearch(payload.card, queryVariables.search)
+      ) {
+        writeCreatedCardToConnection(payload.card, queryVariables);
+      }
+      setAddDirty(false);
+      setCreateValidationError(null);
+      setAddOpen(false);
+    } else if (payload?.__typename === "CardDuplicateFrontError") {
+      setCreateValidationError({ field: "front", message: payload.message });
+    } else {
+      const unknownPayload = payload as unknown as { __typename?: string } | null | undefined;
+      console.warn("[CardsClient] unexpected createCard payload", {
+        typename: unknownPayload?.__typename ?? null,
+        cardgroupId,
+      });
+      setCreateValidationError({ field: "front", message: "Add failed. Please try again." });
+    }
+  }
 
   async function handleBulkDelete() {
     const ids = Array.from(selection.selectedIds);
@@ -315,7 +491,7 @@ export function CardsClient({
             Cards ({totalCount})
           </h2>
         ) : typeof sectionHeader === "function" ? (
-          sectionHeader({ totalCount })
+          sectionHeader({ totalCount, onAddCard: openAddSheet })
         ) : (
           sectionHeader
         )}
@@ -337,26 +513,7 @@ export function CardsClient({
           <ul className="space-y-3">
             {edges.map((edge) => {
               const card = edge.node;
-              return editingId === card.id ? (
-                // biome-ignore lint/a11y/useKeyWithClickEvents: stopPropagation prevents bubbling to the parent's edit-toggle handler; this <li> is not interactive while CardForm is shown.
-                <li
-                  key={card.id}
-                  className="rounded-md border border-border p-4"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <EditCardRow
-                    card={card}
-                    submit={(values) => handleUpdate(card.id, values)}
-                    submitting={updating}
-                    error={updateError}
-                    validationError={rowValidationError}
-                    onCancel={() => {
-                      setRowValidationError(null);
-                      setEditingId(null);
-                    }}
-                  />
-                </li>
-              ) : (
+              return (
                 <li key={card.id} className="rounded-md border border-border overflow-hidden">
                   <CardRow
                     card={card}
@@ -382,6 +539,53 @@ export function CardsClient({
             })}
           </ul>
         )}
+
+        <FormSheet
+          title="Add card"
+          open={addOpen}
+          onOpenChange={(nextOpen) => {
+            setAddOpen(nextOpen);
+            if (!nextOpen) {
+              resetCreateCard();
+              setAddDirty(false);
+              setCreateValidationError(null);
+            }
+          }}
+          submitting={creating}
+          dirty={addDirty}
+          confirmOnDismiss
+        >
+          <AddCardSheetContent
+            submit={handleCreate}
+            submitting={creating}
+            error={createError}
+            validationError={createValidationError}
+            onDirty={() => setAddDirty(true)}
+          />
+        </FormSheet>
+
+        <FormSheet
+          title="Edit card"
+          open={editingCard !== undefined}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) {
+              setRowValidationError(null);
+              setEditingId(null);
+            }
+          }}
+          submitting={updating}
+          confirmOnDismiss={false}
+        >
+          {editingCard ? (
+            <EditCardSheetContent
+              card={editingCard}
+              submit={(values) => handleUpdate(editingCard.id, values)}
+              submitting={updating}
+              error={updateError}
+              validationError={rowValidationError}
+            />
+          ) : null}
+        </FormSheet>
 
         <div ref={sentinelRef} aria-hidden="true" data-testid="cards-sentinel" />
         {fetchMoreError && <FetchMoreError message={fetchMoreError} onRetry={retryFetchMore} />}

@@ -3,9 +3,9 @@
 import { useMutation } from "@apollo/client/react";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { CARDGROUPS_DEFAULT_VARS, DeleteCardgroupMutation } from "@/app/cardgroups/queries";
-import { RenameCardgroupDialog } from "@/components/cardgroups/rename-cardgroup-dialog";
+import { CardgroupRenameForm } from "@/components/cardgroups/cardgroup-rename-form";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,6 +25,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { FormSheet } from "@/components/ui/form-sheet";
 import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 
@@ -36,12 +37,17 @@ type Props = {
 export function CardgroupHeader({ cardgroup, totalCount }: Props) {
   const router = useRouter();
   const [renameOpen, setRenameOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const [deleteCardgroup, { loading: deleting, error: deleteError }] =
     useMutation(DeleteCardgroupMutation);
 
   const deleteBannerError = getBackendErrorBanner(deleteError);
+
+  const handleRenameSubmittingChange = useCallback((submitting: boolean) => {
+    setRenaming(submitting);
+  }, []);
 
   async function handleDelete() {
     const result = await deleteCardgroup({
@@ -121,7 +127,23 @@ export function CardgroupHeader({ cardgroup, totalCount }: Props) {
         </div>
       </div>
 
-      <RenameCardgroupDialog cardgroup={cardgroup} open={renameOpen} onOpenChange={setRenameOpen} />
+      <FormSheet
+        open={renameOpen}
+        onOpenChange={setRenameOpen}
+        title="Rename cardgroup"
+        confirmOnDismiss={false}
+        submitting={renaming}
+        size="sm"
+      >
+        <CardgroupRenameForm
+          cardgroup={cardgroup}
+          onSaved={() => {
+            setRenaming(false);
+            setRenameOpen(false);
+          }}
+          onSubmittingChange={handleRenameSubmittingChange}
+        />
+      </FormSheet>
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>

@@ -22,13 +22,29 @@ export function GlobalFAB() {
   if (action === null) {
     return null;
   }
+  const resolvedAction = action;
+
+  function handleClick() {
+    if (resolvedAction.kind === "card-with-group") {
+      const event = new CustomEvent("flamingo:add-card", {
+        cancelable: true,
+        detail: { cardgroupId: resolvedAction.cardgroupId },
+      });
+      if (window.dispatchEvent(event)) {
+        router.push(resolvedAction.href);
+      }
+      return;
+    }
+
+    router.push(resolvedAction.href);
+  }
 
   return (
     <div className="md:hidden">
       <button
         type="button"
-        aria-label={action.label}
-        onClick={() => router.push(action.href)}
+        aria-label={resolvedAction.label}
+        onClick={handleClick}
         className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-brand-primary text-brand-primary-foreground shadow-lg"
       >
         <Plus className="h-6 w-6" aria-hidden="true" />

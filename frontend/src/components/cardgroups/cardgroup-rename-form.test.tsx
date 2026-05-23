@@ -5,13 +5,12 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UpdateCardgroupDocument } from "@/generated/graphql";
-import { RenameCardgroupDialog } from "./rename-cardgroup-dialog";
+import { CardgroupRenameForm } from "./cardgroup-rename-form";
 
-const mockPush = vi.fn();
 const mockRefresh = vi.fn();
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
+  useRouter: () => ({ refresh: mockRefresh }),
 }));
 
 const CARDGROUP = { id: "cg-1", name: "Spanish Vocab" };
@@ -23,35 +22,24 @@ function makeUpdateMock(
   return { request: { query: UpdateCardgroupDocument, variables }, result };
 }
 
-function renderDialog(mocks: MockedResponse[] = [], open = true) {
-  const onOpenChange = vi.fn();
+function renderForm(mocks: MockedResponse[] = []) {
+  const onSaved = vi.fn();
   render(
     <MockedProvider mocks={mocks}>
-      <RenameCardgroupDialog cardgroup={CARDGROUP} open={open} onOpenChange={onOpenChange} />
+      <CardgroupRenameForm cardgroup={CARDGROUP} onSaved={onSaved} />
     </MockedProvider>,
   );
-  return { onOpenChange };
+  return { onSaved };
 }
 
-describe("<RenameCardgroupDialog>", () => {
+describe("<CardgroupRenameForm>", () => {
   beforeEach(() => {
-    mockPush.mockClear();
     mockRefresh.mockClear();
   });
 
-  it("renders the dialog title when open", () => {
-    renderDialog();
-    expect(screen.getByRole("heading", { name: /rename cardgroup/i })).toBeInTheDocument();
-  });
-
-  it("does not render dialog content when closed", () => {
-    renderDialog([], false);
-    expect(screen.queryByRole("heading", { name: /rename cardgroup/i })).not.toBeInTheDocument();
-  });
-
-  it("save success closes dialog and refreshes the route", async () => {
+  it("save success calls onSaved and refreshes the route", async () => {
     const user = userEvent.setup();
-    const { onOpenChange } = renderDialog([
+    const { onSaved } = renderForm([
       makeUpdateMock(
         { id: "cg-1", input: { name: "Spanish Vocab" } },
         {
@@ -75,13 +63,12 @@ describe("<RenameCardgroupDialog>", () => {
     await waitFor(() => {
       expect(mockRefresh).toHaveBeenCalledTimes(1);
     });
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-    expect(mockPush).not.toHaveBeenCalled();
+    expect(onSaved).toHaveBeenCalledTimes(1);
   });
 
-  it("InputValidationError field=name shows inline error and does not close", async () => {
+  it("InputValidationError field=name renders the inline name error and keeps the form open", async () => {
     const user = userEvent.setup();
-    const { onOpenChange } = renderDialog([
+    const { onSaved } = renderForm([
       makeUpdateMock(
         { id: "cg-1", input: { name: "Spanish Vocab" } },
         {
@@ -102,12 +89,12 @@ describe("<RenameCardgroupDialog>", () => {
       expect(screen.getByText("name already exists")).toBeInTheDocument();
     });
     expect(mockRefresh).not.toHaveBeenCalled();
-    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    expect(onSaved).not.toHaveBeenCalled();
   });
 
-  it("network rejection shows error banner and does not close", async () => {
+  it("network rejection shows the banner and keeps the form open", async () => {
     const user = userEvent.setup();
-    const { onOpenChange } = renderDialog([
+    const { onSaved } = renderForm([
       {
         request: {
           query: UpdateCardgroupDocument,
@@ -123,6 +110,6 @@ describe("<RenameCardgroupDialog>", () => {
       expect(screen.getByText("Could not reach the server. Please try again.")).toBeInTheDocument();
     });
     expect(mockRefresh).not.toHaveBeenCalled();
-    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    expect(onSaved).not.toHaveBeenCalled();
   });
 });

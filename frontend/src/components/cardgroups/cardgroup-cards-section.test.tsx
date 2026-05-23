@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CardgroupCardsSection } from "./cardgroup-cards-section";
+
+const onAddCard = vi.fn();
 
 // Stub CardsClient so this test focuses on the section header (the only piece
 // CardgroupCardsSection actually owns) and how the render-prop is invoked.
@@ -11,10 +14,14 @@ vi.mock("@/app/cardgroups/[id]/cards/cards-client", () => ({
   CardsClient: ({
     sectionHeader,
   }: {
-    sectionHeader?: ReactNode | ((args: { totalCount: number }) => ReactNode);
+    sectionHeader?:
+      | ReactNode
+      | ((args: { totalCount: number; onAddCard: () => void }) => ReactNode);
   }) => (
     <div data-testid="cards-client-stub">
-      {typeof sectionHeader === "function" ? sectionHeader({ totalCount: 12 }) : sectionHeader}
+      {typeof sectionHeader === "function"
+        ? sectionHeader({ totalCount: 12, onAddCard })
+        : sectionHeader}
     </div>
   ),
 }));
@@ -42,6 +49,10 @@ function renderSection(
   );
 }
 
+beforeEach(() => {
+  onAddCard.mockClear();
+});
+
 describe("<CardgroupCardsSection>", () => {
   it("renders the toolbar buttons without a count chip", () => {
     // The count chip was removed — count is now shown in the page-level Badge
@@ -49,7 +60,7 @@ describe("<CardgroupCardsSection>", () => {
     // learning and Add card.
     renderSection("cg-1", 7);
     expect(screen.getByRole("link", { name: /start learning/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /add card/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add card/i })).toBeInTheDocument();
     // No h2 "Cards (N)" heading in the toolbar row.
     expect(screen.queryByRole("heading", { name: /cards \(/i })).not.toBeInTheDocument();
   });
@@ -74,21 +85,18 @@ describe("<CardgroupCardsSection>", () => {
     expect(link).toHaveAttribute("href", "/learn/cg-1");
   });
 
-  it("renders an Add card link with cardgroup and return params", () => {
+  it("renders an Add card button that opens the in-context sheet", async () => {
+    const user = userEvent.setup();
     renderSection("cg-1");
-    const link = screen.getByRole("link", { name: /add card/i });
-    expect(link).toHaveAttribute("href", "/cards/new?cardgroup=cg-1&return=/cardgroups/cg-1/edit");
+    await user.click(screen.getByRole("button", { name: /add card/i }));
+    expect(onAddCard).toHaveBeenCalledTimes(1);
   });
 
-  it("URL-encodes ampersand characters in the cardgroup id for both links", () => {
+  it("URL-encodes ampersand characters in the cardgroup id for the Start learning link", () => {
     renderSection("cg&evil");
     expect(screen.getByRole("link", { name: /start learning/i })).toHaveAttribute(
       "href",
       "/learn/cg%26evil",
-    );
-    expect(screen.getByRole("link", { name: /add card/i })).toHaveAttribute(
-      "href",
-      "/cards/new?cardgroup=cg%26evil&return=/cardgroups/cg%26evil/edit",
     );
   });
 
@@ -96,6 +104,6 @@ describe("<CardgroupCardsSection>", () => {
     renderSection();
     const stub = screen.getByTestId("cards-client-stub");
     expect(stub).toContainElement(screen.getByRole("link", { name: /start learning/i }));
-    expect(stub).toContainElement(screen.getByRole("link", { name: /add card/i }));
+    expect(stub).toContainElement(screen.getByRole("button", { name: /add card/i }));
   });
 });

@@ -31,15 +31,18 @@ export function CardgroupCardsSection({
   initialTotalCount,
   renderPageHeader,
 }: Props) {
-  const addCardHref = `/cards/new?cardgroup=${encodeURIComponent(
-    cardgroupId,
-  )}&return=/cardgroups/${encodeURIComponent(cardgroupId)}/edit`;
   const learnHref = `/learn/${encodeURIComponent(cardgroupId)}`;
 
   // The render-prop form lets CardsClient pass its live totalCount (read from
   // Apollo cache, kept in sync with delete/bulk-delete/fetchMore) into the
   // heading and any parent-level header without running a duplicate useQuery.
-  const renderHeader = ({ totalCount }: { totalCount: number }) => (
+  const renderHeader = ({
+    totalCount,
+    onAddCard,
+  }: {
+    totalCount: number;
+    onAddCard: () => void;
+  }) => (
     <div>
       {renderPageHeader ? renderPageHeader({ totalCount }) : null}
       <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
@@ -49,11 +52,15 @@ export function CardgroupCardsSection({
             <Play aria-hidden="true" className="ml-1.5 h-4 w-4" />
           </Link>
         </Button>
-        <Button asChild variant="brand" size="sm">
-          <Link href={addCardHref}>
-            Add card
-            <Plus aria-hidden="true" className="ml-1.5 h-4 w-4" />
-          </Link>
+        <Button
+          type="button"
+          variant="brand"
+          size="sm"
+          className="hidden md:inline-flex"
+          onClick={onAddCard}
+        >
+          Add card
+          <Plus aria-hidden="true" className="ml-1.5 h-4 w-4" />
         </Button>
       </div>
     </div>

@@ -13,12 +13,13 @@
  *   - IntersectionObserver pagination / fetchMore  → cards-pagination.test.tsx
  *   - Bulk-delete selection + mutation              → cards-bulk-delete.test.tsx
  *   - Mutation success/error branches               → cardgroup-settings-card.test.tsx
- *   - Section header link assertions                → cardgroup-cards-section.test.tsx
+ *   - Section header control assertions             → cardgroup-cards-section.test.tsx
  */
 
 import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CardsByCardgroupConnectionDocument } from "@/generated/graphql";
 import { cardsConnectionFixture, cardsFixture } from "./fixtures/cardgroups";
@@ -167,7 +168,8 @@ describe("EditCardgroupPage — broad integration (RSC + management screen)", ()
     expect(screen.getByText("3 cards")).toBeInTheDocument();
   });
 
-  it("renders Start learning and Add card section-header links with correct hrefs", async () => {
+  it("renders Start learning link and opens the in-context Add card sheet", async () => {
+    const user = userEvent.setup();
     setMockSupabaseUser({ id: "user-admin-1" });
 
     mockEditPageGql(POPULATED_CONNECTION);
@@ -177,10 +179,8 @@ describe("EditCardgroupPage — broad integration (RSC + management screen)", ()
       "href",
       `/learn/${CG_ID}`,
     );
-    expect(screen.getByRole("link", { name: /add card/i })).toHaveAttribute(
-      "href",
-      `/cards/new?cardgroup=${CG_ID}&return=/cardgroups/${CG_ID}/edit`,
-    );
+    await user.click(screen.getByRole("button", { name: /add card/i }));
+    expect(screen.getByRole("heading", { name: /add card/i })).toBeInTheDocument();
   });
 
   it("shows the empty-state copy when gqlFetch returns an empty connection", async () => {
