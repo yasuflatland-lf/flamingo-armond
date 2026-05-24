@@ -302,6 +302,80 @@ describe("AdminUserProfileSheet", () => {
     );
   });
 
+  it("UNAUTHENTICATED transport rejection shows session-expired copy", async () => {
+    const user = userEvent.setup();
+    const mocks = [
+      {
+        request: {
+          query: AdminEditUserDocument,
+          variables: {
+            id: "u-1",
+            input: { displayName: "Alice 2", bio: "bio text", roleIds: [ADMIN_ROLE.id] },
+          },
+        },
+        error: makeCodedError("UNAUTHENTICATED"),
+      },
+    ];
+
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    renderSheet({ mocks });
+
+    await user.clear(screen.getByLabelText(/display name/i));
+    await user.type(screen.getByLabelText(/display name/i), "Alice 2");
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/session has expired/i);
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("adminEditUser rejected"),
+      expect.objectContaining({ codes: ["UNAUTHENTICATED"] }),
+    );
+    // Mirror the FORBIDDEN test's negative assertion: err.message must not
+    // leak into structured logs per the redact-err-message rule.
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: expect.anything() }),
+    );
+  });
+
+  it("unrecognized error code falls back to generic unexpected-error copy", async () => {
+    const user = userEvent.setup();
+    const mocks = [
+      {
+        request: {
+          query: AdminEditUserDocument,
+          variables: {
+            id: "u-1",
+            input: { displayName: "Alice 2", bio: "bio text", roleIds: [ADMIN_ROLE.id] },
+          },
+        },
+        error: makeCodedError("SOME_NEW_CODE"),
+      },
+    ];
+
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    renderSheet({ mocks });
+
+    await user.clear(screen.getByLabelText(/display name/i));
+    await user.type(screen.getByLabelText(/display name/i), "Alice 2");
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/unexpected error/i);
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("adminEditUser rejected"),
+      expect.objectContaining({ codes: ["SOME_NEW_CODE"] }),
+    );
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: expect.anything() }),
+    );
+  });
+
   it("shows the loading indicator while the lazy query is in flight", () => {
     render(
       <MockedProvider mocks={[]}>

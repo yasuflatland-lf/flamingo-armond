@@ -117,24 +117,22 @@ export function AdminUserProfileSheet({
         },
       });
       const payload = result.data?.adminEditUser;
-      const saveTypename = payload?.__typename ?? null;
-      if (payload?.__typename === "InputValidationError") {
-        setSaveError(payload.message);
-        return;
+      const typename = payload?.__typename ?? null;
+      switch (payload?.__typename) {
+        case "AdminEditUserSuccess":
+          onSaved();
+          return;
+        case "InputValidationError":
+        case "CannotRevokeOwnAdminRoleError":
+          setSaveError(payload.message);
+          return;
+        default:
+          console.warn("[admin/users] unexpected save payload", {
+            userId: user.id,
+            typename,
+          });
+          setSaveError(ERR_SOMETHING_WRONG);
       }
-      if (payload?.__typename === "CannotRevokeOwnAdminRoleError") {
-        setSaveError(payload.message);
-        return;
-      }
-      if (payload?.__typename === "AdminEditUserSuccess") {
-        onSaved();
-        return;
-      }
-      console.warn("[admin/users] unexpected save payload", {
-        userId: user.id,
-        typename: saveTypename,
-      });
-      setSaveError(ERR_SOMETHING_WRONG);
     } catch (err) {
       const codes = liftGraphQLCodes(err);
       console.warn("[admin/users] adminEditUser rejected", {
