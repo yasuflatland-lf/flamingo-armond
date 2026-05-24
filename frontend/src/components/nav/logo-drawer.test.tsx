@@ -226,6 +226,48 @@ describe("<LogoDrawer>", () => {
     window.removeEventListener("flamingo:add-card", listener);
   });
 
+  it("S-E1b: on /cardgroups/:id/edit the '+' does not navigate when the add-card event is handled", async () => {
+    const user = userEvent.setup();
+    mockUsePathname.mockReturnValue("/cardgroups/abc-123/edit");
+    const listener = vi.fn((event: Event) => event.preventDefault());
+    window.addEventListener("flamingo:add-card", listener);
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+    await user.click(screen.getByRole("button", { name: /add new card/i }));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(mockPush).not.toHaveBeenCalled();
+
+    window.removeEventListener("flamingo:add-card", listener);
+  });
+
+  it("edit-route special-char encoding: percent-encoded id is decoded for the event and re-encoded in the fallback href", async () => {
+    const user = userEvent.setup();
+    // %26 decodes to & — the raw cardgroupId must be "abc&evil" and href must re-encode it.
+    mockUsePathname.mockReturnValue("/cardgroups/abc%26evil/edit");
+    const listener = vi.fn();
+    window.addEventListener("flamingo:add-card", listener);
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+    await user.click(screen.getByRole("button", { name: /add new card/i }));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    const event = listener.mock.calls[0]?.[0] as CustomEvent<{ cardgroupId: string }>;
+    // cardgroupId carries the raw (decoded) value.
+    expect(event.detail).toEqual({ cardgroupId: "abc&evil" });
+    // Fallback href must re-encode the id so the URL is safe.
+    expect(mockPush).toHaveBeenCalledWith("/cards/new?cardgroup=abc%26evil");
+
+    window.removeEventListener("flamingo:add-card", listener);
+  });
+
+  it("malformed edit path: '+' button is not rendered when the segment is a malformed percent-escape", () => {
+    // safeDecodePathSegment returns null for %ZZ -> resolver returns null -> no '+' rendered.
+    mockUsePathname.mockReturnValue("/cardgroups/abc%ZZ/edit");
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    expect(screen.queryByRole("button", { name: /add new/i })).toBeNull();
+  });
+
   it("S-L1: on /learn/:id the '+' (Add new card) dispatches a cancelable add-card event and falls back to /cards/new with a return param when unhandled", async () => {
     const user = userEvent.setup();
     mockUsePathname.mockReturnValue("/learn/abc-123");

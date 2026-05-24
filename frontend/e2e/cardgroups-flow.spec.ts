@@ -84,8 +84,13 @@ test.describe
 
     // ── Scenario 2 ──────────────────────────────────────────────────────────────
     // Empty-state on /cardgroups: with zero cardgroups the "No cardgroups yet"
-    // copy is shown. The primary action button in the page-shell header is the
-    // only "New cardgroup" affordance (the dashed empty-state CTA was removed).
+    // copy is shown. Two "New cardgroup" affordances coexist in this branch:
+    //   - the page-shell header primary action (`cardgroups-header-new-btn`,
+    //     `hidden md:inline-flex`, visible at md+), and
+    //   - the empty-state CTA (`cardgroups-empty-cta`), which renders only when
+    //     the list is empty and is breakpoint-agnostic (visible at all widths).
+    // Both carry the text "New cardgroup", so a `/New cardgroup/` name regex
+    // matches both. Target each by data-testid to keep the assertions unambiguous.
     test("empty state on /cardgroups shows the empty-state copy and primary action", async ({
       context,
       page,
@@ -99,14 +104,21 @@ test.describe
       // After the listing-page-shell refactor the copy is "No cardgroups yet".
       await expect(page.getByText("No cardgroups yet")).toBeVisible();
 
-      // The primary action button is rendered in the page-shell header even in
-      // the empty state. The mobile nav-header "+" carries aria-label "Add new
-      // cardgroup" (lowercase a), so the capital-N regex matches only this button.
-      const newCardgroupButton = page.getByRole("button", { name: /New cardgroup/ });
-      await expect(newCardgroupButton).toBeVisible();
+      // The page-shell header primary action carries `hidden md:inline-flex`;
+      // Playwright's Desktop Chrome viewport (1280px) is above the md breakpoint
+      // so the desktop header button is visible. (The nav-header "+" carries
+      // aria-label "Add new cardgroup", distinguished from the `/New cardgroup/`
+      // regex by the lowercase 'n' in "new" — it is not asserted here.)
+      await expect(page.getByTestId("cardgroups-header-new-btn")).toBeVisible();
 
-      // There is exactly one "New cardgroup" button (the dashed empty-state CTA was removed).
-      await expect(newCardgroupButton).toHaveCount(1);
+      // The empty-state CTA also renders in the zero-cardgroup branch and is
+      // breakpoint-agnostic, so it is likewise visible at the desktop viewport.
+      await expect(page.getByTestId("cardgroups-empty-cta")).toBeVisible();
+
+      // The FAB was abolished by the create-navigation refactor: the only "New
+      // cardgroup" buttons in the empty state are the desktop header button and
+      // the empty-state CTA (exactly two, both matched by the name regex).
+      await expect(page.getByRole("button", { name: /New cardgroup/ })).toHaveCount(2);
     });
 
     // ── Scenario 3 ──────────────────────────────────────────────────────────────

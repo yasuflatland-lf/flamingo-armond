@@ -63,9 +63,9 @@ test.describe
       // 3. Click the nav-header "+" button. On /cardgroups/<id>/edit its
       // aria-label is "Add new card"; clicking it opens the "Add card"
       // FormSheet inline — no navigation to /cards/new.
-      const fab = page.getByRole("button", { name: "Add new card" });
-      await expect(fab).toBeVisible();
-      await fab.click();
+      const addCardButton = page.getByRole("button", { name: "Add new card" });
+      await expect(addCardButton).toBeVisible();
+      await addCardButton.click();
 
       // 4. FormSheet opens inline. On mobile (390x844, below md=768) FormSheet
       // renders as a vaul Drawer with DrawerTitle "Add card".
