@@ -86,17 +86,19 @@ func (m *mockAdminUserRepository) ListPage(
 	return m.listResult, m.listTotal, nil
 }
 
-// mockAdminRoleRepository implements the narrow adminRoleRepository surface
-// (CRUD lookup only, after the RoleRepository split).
+// mockAdminRoleRepository implements the narrow adminRoleRepository surface.
+// The lookup is the tx-scoped, row-locking FindByIDsTx; the fake tx runner
+// passes a non-nil *gorm.DB into the callback so the stub is reached on the
+// in-transaction self-demotion-guard path.
 type mockAdminRoleRepository struct {
-	// FindByIDs
+	// FindByIDsTx
 	roles       map[string]*domain.Role
 	findErr     error
 	findCalls   int
 	lastFindIDs []string
 }
 
-func (m *mockAdminRoleRepository) FindByIDs(_ context.Context, ids []string) (map[string]*domain.Role, error) {
+func (m *mockAdminRoleRepository) FindByIDsTx(_ context.Context, _ *gorm.DB, ids []string) (map[string]*domain.Role, error) {
 	m.findCalls++
 	m.lastFindIDs = append([]string(nil), ids...)
 	if m.findErr != nil {
@@ -768,8 +770,11 @@ func TestAdminUser_EditUser_CannotRevokeOwnAdmin(t *testing.T) {
 	if !outcome.CannotRevokeOwnAdmin {
 		t.Fatalf("CannotRevokeOwnAdmin = false, want true")
 	}
-	if *txCalls != 0 {
-		t.Fatalf("tx calls = %d, want 0", *txCalls)
+	// The guard now runs at the front of the transaction (FOR UPDATE lock on
+	// the role rows), so the tx runner is invoked once; the closure aborts via
+	// errGuardAbort before any write, rolling the transaction back.
+	if *txCalls != 1 {
+		t.Fatalf("tx calls = %d, want 1 (guard runs inside tx, then rolls back)", *txCalls)
 	}
 	if userRoles.setCalls != 0 {
 		t.Fatalf("SetUserRolesTx calls = %d, want 0", userRoles.setCalls)
@@ -1031,10 +1036,10 @@ func TestAdminUser_EditUser_UserNotFoundValidation(t *testing.T) {
 	}
 }
 
-// TestAdminUser_EditUser_Self_FindByIDsInfraError pins the new self-edit
-// lookup branch: when callerID == id and roleIDs is non-empty, FindByIDs is
-// invoked outside the transaction. A non-cancellation infra error must
-// surface as INTERNAL with the documented wrap prefix.
+// TestAdminUser_EditUser_Self_FindByIDsInfraError pins the self-edit lookup
+// branch: when callerID == id and roleIDs is non-empty, FindByIDsTx is invoked
+// at the front of the transaction (FOR UPDATE lock). A non-cancellation infra
+// error must surface as INTERNAL with the documented wrap prefix.
 func TestAdminUser_EditUser_Self_FindByIDsInfraError(t *testing.T) {
 	t.Parallel()
 
@@ -1049,8 +1054,13 @@ func TestAdminUser_EditUser_Self_FindByIDsInfraError(t *testing.T) {
 		RoleIDs: []string{"r-admin"},
 	})
 	assertInternalChain(t, err, "usecase: admin user edit: lookup roles")
-	if *txCalls != 0 {
-		t.Fatalf("tx calls = %d, want 0", *txCalls)
+	// The lookup is now inside the transaction, so the tx runner is invoked
+	// once; the infra error propagates out of the closure and rolls back.
+	if *txCalls != 1 {
+		t.Fatalf("tx calls = %d, want 1 (lookup runs inside tx)", *txCalls)
+	}
+	if userRoles.setCalls != 0 {
+		t.Fatalf("SetUserRolesTx calls = %d, want 0 (lookup failed before write)", userRoles.setCalls)
 	}
 	if outcome.User != nil || outcome.Validation != nil || outcome.CannotRevokeOwnAdmin {
 		t.Fatalf("expected zero-value outcome on infra error, got %+v", outcome)
@@ -1079,10 +1089,12 @@ func TestAdminUser_EditUser_Self_FindByIDsCancelled(t *testing.T) {
 
 // TestAdminUser_EditUser_Self_UnknownRoleIDValidation pins the misclassified-
 // outcome fix: when the self-edit roleIDs set contains an unknown id (and
-// thus FindByIDs returns a partial map), the user receives an InputValidation
+// thus FindByIDsTx returns a partial map), the user receives an InputValidation
 // error pointing at roleIds, NOT a CannotRevokeOwnAdmin outcome. Without the
 // fix, the keepsAdmin loop would still report the missing role as a
-// self-demotion attempt and surface the wrong banner.
+// self-demotion attempt and surface the wrong banner. The partial-map check now
+// runs inside the transaction via the FOR UPDATE lookup, so the guard aborts the
+// tx (via errGuardAbort) before any write.
 func TestAdminUser_EditUser_Self_UnknownRoleIDValidation(t *testing.T) {
 	t.Parallel()
 
@@ -1110,11 +1122,58 @@ func TestAdminUser_EditUser_Self_UnknownRoleIDValidation(t *testing.T) {
 	if outcome.CannotRevokeOwnAdmin {
 		t.Fatalf("CannotRevokeOwnAdmin = true, want false (the issue is unknown role, not self-demotion)")
 	}
-	if *txCalls != 0 {
-		t.Fatalf("tx calls = %d, want 0", *txCalls)
+	// The partial-map check runs inside the transaction, so the tx runner is
+	// invoked once; the guard aborts via errGuardAbort before any write.
+	if *txCalls != 1 {
+		t.Fatalf("tx calls = %d, want 1 (guard runs inside tx, then rolls back)", *txCalls)
 	}
 	if userRoles.setCalls != 0 {
 		t.Fatalf("SetUserRolesTx calls = %d, want 0", userRoles.setCalls)
+	}
+}
+
+// TestAdminUser_EditUser_Self_UnknownRoleViaTxLookup proves the unknown-role
+// self-edit path (len(roles) != len(roleIDs)) is driven by the in-transaction,
+// row-locking FindByIDsTx lookup. The role stub must be reached exactly once
+// via the tx-scoped lookup, the partial map must yield a roleIds validation
+// outcome, and the errGuardAbort sentinel that rolled the tx back must never
+// escape EditUser (err is nil; the outcome carries the result).
+func TestAdminUser_EditUser_Self_UnknownRoleViaTxLookup(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"admin-1": {ID: "admin-1"}}}
+	roles := &mockAdminRoleRepository{
+		roles: map[string]*domain.Role{
+			"r-admin": {ID: "r-admin", Name: domain.AdminRoleName},
+		},
+	}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	tx, txCalls := countingAdminUserTxRunner()
+	uc, _, _, _ := buildAdminUCWithTx(users, roles, userRoles, tx, authChk)
+
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "admin-1", AdminEditUserInput{
+		RoleIDs: []string{"r-admin", "r-missing"},
+	})
+	// The control-flow sentinel must not leak to the caller.
+	if err != nil {
+		t.Fatalf("unexpected error (errGuardAbort must not escape): %v", err)
+	}
+	assertAdminEditUserOutcomeXOR(t, outcome)
+	if outcome.Validation == nil || outcome.Validation.Field != "roleIds" {
+		t.Fatalf("outcome.Validation = %+v, want field=roleIds", outcome.Validation)
+	}
+	// Proof the lookup ran through the tx-scoped, locking method: the stub was
+	// reached exactly once, with the submitted role IDs, inside the single tx.
+	if roles.findCalls != 1 {
+		t.Fatalf("FindByIDsTx calls = %d, want 1 (in-tx FOR UPDATE lookup)", roles.findCalls)
+	}
+	assertStringSliceEqual(t, roles.lastFindIDs, []string{"r-admin", "r-missing"})
+	if *txCalls != 1 {
+		t.Fatalf("tx calls = %d, want 1 (lookup + guard run inside tx)", *txCalls)
+	}
+	if userRoles.setCalls != 0 {
+		t.Fatalf("SetUserRolesTx calls = %d, want 0 (guard aborts before write)", userRoles.setCalls)
 	}
 }
 
