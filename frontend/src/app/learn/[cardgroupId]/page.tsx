@@ -12,6 +12,7 @@ import { gqlFetch } from "@/lib/apollo/server";
 import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { LEARN_PAGE_LIMIT, LearnNextDueCardsQuery } from "../queries";
+import { LearnAddCardSheet } from "./_components/learn-add-card-sheet";
 import { LearnSkeleton } from "./_components/learn-skeleton";
 import { LearnClient } from "./learn-client";
 
@@ -40,6 +41,9 @@ export default async function LearnPage({ params }: { params: Promise<{ cardgrou
           <LearnContent cardgroupId={cardgroupId} />
         </Suspense>
       </div>
+      {/* Mounted outside the Suspense boundary so the '+' add-card drawer works
+          regardless of the queue state (including the AllCaughtUp empty state). */}
+      <LearnAddCardSheet cardgroupId={cardgroupId} />
     </main>
   );
 }
