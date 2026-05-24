@@ -48,8 +48,9 @@ type RoleRepository interface {
 	// FindByIDsTx returns the roles for ids inside the supplied transaction,
 	// locking the matched rows FOR UPDATE so a concurrent rename/delete of any
 	// returned role blocks until the caller's transaction commits. Used by the
-	// self-demotion guard, which must read role names atomically with the
-	// user_roles write that follows.
+	// self-demotion guard, which must read role names so no other transaction
+	// can rename or delete them before the user_roles write that follows.
+	// An empty ids slice returns an empty map with no SQL and no lock acquired.
 	FindByIDsTx(ctx context.Context, tx *gorm.DB, ids []string) (map[string]*domain.Role, error)
 
 	// Create inserts a new role with the given name. The name is normalised
@@ -107,14 +108,15 @@ func (r *roleRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*dom
 
 func (r *roleRepo) FindByIDsTx(ctx context.Context, tx *gorm.DB, ids []string) (map[string]*domain.Role, error) {
 	if tx == nil {
-		return nil, eris.New("repository: role: find by ids tx is nil")
+		return nil, eris.New("repository: find roles by ids tx is nil")
 	}
 	return findRolesByIDs(ctx, tx, ids, true)
 }
 
 // findRolesByIDs is shared by FindByIDs (pool, no lock) and FindByIDsTx
 // (transaction, FOR UPDATE). lock=true acquires a row lock on the matched
-// rows so the caller can read role names atomically with a following write.
+// rows so no other transaction can rename or delete them before the caller's
+// write commits.
 func findRolesByIDs(ctx context.Context, db *gorm.DB, ids []string, lock bool) (map[string]*domain.Role, error) {
 	if len(ids) == 0 {
 		return map[string]*domain.Role{}, nil
