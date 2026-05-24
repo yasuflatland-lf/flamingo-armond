@@ -41,24 +41,22 @@ export function LearnActionBar({ onRate, disabled = false }: Props) {
     <div className="pointer-events-none z-40 flex justify-center px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
       <div className="pointer-events-auto flex items-center gap-4">
         {DIRECTIONS.map(({ direction, label, Icon, shortcut, colorClass }) => (
-          <div key={direction} className="flex flex-col items-center gap-1">
-            <button
-              type="button"
-              aria-label={`Rate as ${label}`}
-              aria-keyshortcuts={shortcut}
-              disabled={disabled}
-              onClick={() => onRate(direction)}
-              className={cn(
-                "inline-flex h-14 w-14 items-center justify-center rounded-full border-2 bg-transparent transition active:scale-95",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
-                "disabled:cursor-not-allowed disabled:opacity-50",
-                colorClass,
-              )}
-            >
-              <Icon className="h-6 w-6" aria-hidden="true" />
-            </button>
-            <span className="text-xs text-muted-foreground">{label}</span>
-          </div>
+          <button
+            key={direction}
+            type="button"
+            aria-label={`Rate as ${label}`}
+            aria-keyshortcuts={shortcut}
+            disabled={disabled}
+            onClick={() => onRate(direction)}
+            className={cn(
+              "inline-flex h-14 w-14 items-center justify-center rounded-full border-2 bg-transparent transition active:scale-95",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
+              "disabled:cursor-not-allowed disabled:opacity-50",
+              colorClass,
+            )}
+          >
+            <Icon className="h-6 w-6" aria-hidden="true" />
+          </button>
         ))}
       </div>
     </div>

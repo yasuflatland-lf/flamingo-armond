@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { LearnActionBar } from "./learn-action-bar";
 
 describe("<LearnActionBar>", () => {
-  it("renders the three rating buttons with labels and shortcuts", () => {
+  it("renders the three rating buttons with accessible labels and shortcuts but no visible text labels", () => {
     render(<LearnActionBar onRate={vi.fn()} />);
 
     expect(screen.getByRole("button", { name: "Rate as Again" })).toHaveAttribute(
@@ -20,9 +20,11 @@ describe("<LearnActionBar>", () => {
       "aria-keyshortcuts",
       "ArrowRight",
     );
-    expect(screen.getByText("Again")).toBeInTheDocument();
-    expect(screen.getByText("Hard")).toBeInTheDocument();
-    expect(screen.getByText("Easy")).toBeInTheDocument();
+    // The visible "Again"/"Hard"/"Easy" text labels were removed; the rating is
+    // conveyed only via the button aria-label and color. The buttons remain.
+    expect(screen.queryByText("Again")).not.toBeInTheDocument();
+    expect(screen.queryByText("Hard")).not.toBeInTheDocument();
+    expect(screen.queryByText("Easy")).not.toBeInTheDocument();
   });
 
   it.each([
