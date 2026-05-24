@@ -132,9 +132,44 @@ describe("AdminRolesClient", () => {
 
     renderRoles([]);
 
-    await user.click(screen.getByRole("button", { name: /new role/i }));
+    // With an empty list two "New role" buttons are rendered (header + empty-state CTA).
+    // Use the testid to target the header button specifically.
+    await user.click(screen.getByTestId("admin-roles-new-btn"));
 
     expect(mockPush).toHaveBeenCalledWith("/admin/roles?new=true", { scroll: false });
+  });
+
+  it("header 'New role' button is desktop-only (hidden md:inline-flex)", () => {
+    renderRoles([CUSTOM_ROLE]);
+
+    const btn = screen.getByTestId("admin-roles-new-btn");
+    expect(btn.className).toContain("hidden");
+    expect(btn.className).toContain("md:inline-flex");
+  });
+
+  describe("empty state", () => {
+    it("renders the empty-state block when roles list is empty", () => {
+      renderRoles([]);
+
+      expect(screen.getByTestId("admin-roles-empty")).toBeInTheDocument();
+      expect(screen.getByTestId("admin-roles-empty-cta")).toBeInTheDocument();
+      expect(screen.getByText("No roles yet")).toBeInTheDocument();
+    });
+
+    it("does NOT render the empty-state block when roles exist", () => {
+      renderRoles([CUSTOM_ROLE]);
+
+      expect(screen.queryByTestId("admin-roles-empty")).toBeNull();
+    });
+
+    it("empty-state CTA opens ?new=true", async () => {
+      const user = userEvent.setup();
+      renderRoles([]);
+
+      await user.click(screen.getByTestId("admin-roles-empty-cta"));
+
+      expect(mockPush).toHaveBeenCalledWith("/admin/roles?new=true", { scroll: false });
+    });
   });
 
   it("editable rows open ?edit=<id>", async () => {

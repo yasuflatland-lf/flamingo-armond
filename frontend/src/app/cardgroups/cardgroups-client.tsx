@@ -115,9 +115,10 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   const [deleteCardgroup] = useMutation(DeleteCardgroupMutation);
 
   // Create-cardgroup drawer (FormSheet → bottom drawer on mobile, right panel
-  // on desktop). Opened by the mobile FAB via the flamingo:add-cardgroup event
-  // and by the desktop "New cardgroup" button. The full-page /cardgroups/new
-  // route stays for the onboarding (welcome) and returnTo flows.
+  // on desktop). Opened by the nav-header "+" button via the
+  // flamingo:add-cardgroup event, by the desktop "New cardgroup" button, and
+  // by the empty-state CTA. The full-page /cardgroups/new route stays for the
+  // onboarding (welcome) and returnTo flows.
   const { create: createCardgroup, loading: creating } = useCreateCardgroup();
   const [addOpen, setAddOpen] = useState(false);
   const [addDirty, setAddDirty] = useState(false);
@@ -138,7 +139,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
 
   useEffect(() => {
     function handleAddCardgroupEvent(event: Event) {
-      // Cancel the FAB's fallback navigation to /cardgroups/new and open the
+      // Cancel any default navigation to /cardgroups/new and open the
       // drawer in place instead.
       event.preventDefault();
       openAddSheet();
@@ -372,6 +373,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
           variant="brand"
           className="hidden md:inline-flex"
           onClick={openAddSheet}
+          data-testid="cardgroups-header-new-btn"
         >
           <span>New cardgroup</span>
           <Plus aria-hidden="true" />
@@ -386,9 +388,21 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
       )}
 
       {!initialLoading && edges.length === 0 && !hasSearch && (
-        <p className="text-sm text-muted-foreground" data-testid="cardgroups-empty">
-          No cardgroups yet
-        </p>
+        <div
+          className="flex flex-col items-center gap-3 py-8 text-center"
+          data-testid="cardgroups-empty"
+        >
+          <p className="text-sm text-muted-foreground">No cardgroups yet</p>
+          <Button
+            type="button"
+            variant="brand"
+            onClick={openAddSheet}
+            data-testid="cardgroups-empty-cta"
+          >
+            <span>New cardgroup</span>
+            <Plus aria-hidden="true" />
+          </Button>
+        </div>
       )}
 
       {!initialLoading && edges.length === 0 && hasSearch && (

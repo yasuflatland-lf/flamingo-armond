@@ -137,8 +137,9 @@ describe("AdminRolesPage (page-level SSR seed)", () => {
     // No role-name spans
     expect(screen.queryAllByTestId("admin-role-name")).toHaveLength(0);
 
-    // The list container itself is still rendered.
-    expect(screen.getByTestId("admin-roles-list")).toBeInTheDocument();
+    // The empty-state container is shown instead of the list.
+    expect(screen.getByTestId("admin-roles-empty")).toBeInTheDocument();
+    expect(screen.queryByTestId("admin-roles-list")).toBeNull();
 
     // The top-right "New role" CTA is always present.
     expect(screen.getByTestId("admin-roles-new-btn")).toBeInTheDocument();
