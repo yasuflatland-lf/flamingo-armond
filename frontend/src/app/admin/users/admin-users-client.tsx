@@ -17,10 +17,10 @@ import { AdminUserProfileSheet } from "./admin-user-profile-sheet";
 import { type AdminUserListItem, AdminUserRow } from "./admin-user-row";
 import {
   ADMIN_USERS_PAGE_SIZE,
-  AdminUserProfileFieldsFragment,
   AdminRoleFieldsFragment,
   AdminRolesQuery,
   AdminUserFieldsFragment,
+  AdminUserProfileFieldsFragment,
   AdminUserQuery,
   AdminUsersQuery,
 } from "./queries";
