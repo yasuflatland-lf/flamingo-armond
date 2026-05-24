@@ -12,6 +12,16 @@ export const AdminUserFieldsFragment = graphql(`
   }
 `);
 
+export const AdminUserProfileFieldsFragment = graphql(`
+  fragment AdminUserProfileFields on User {
+    id
+    version
+    displayName
+    bio
+    avatarUrl
+  }
+`);
+
 export const AdminRoleFieldsFragment = graphql(`
   fragment AdminRoleFields on Role {
     id
@@ -51,7 +61,7 @@ export const AdminUsersQuery = graphql(`
 export const AdminUserQuery = graphql(`
   query AdminUser($id: ID!) {
     adminUser(id: $id) {
-      ...AdminUserFields
+      ...AdminUserProfileFields
       roles {
         ...AdminRoleFields
       }
@@ -68,12 +78,26 @@ export const AdminRolesQuery = graphql(`
 `);
 
 export const AdminEditUserMutation = graphql(`
-  mutation AdminEditUser($id: ID!, $input: AdminEditUserInput!) {
-    adminEditUser(id: $id, input: $input) {
+  mutation AdminEditUser(
+    $id: ID!
+    $expectedVersion: Int!
+    $displayName: String
+    $bio: String
+    $roleIds: [ID!]!
+  ) {
+    adminEditUser(
+      id: $id
+      input: {
+        expectedVersion: $expectedVersion
+        displayName: $displayName
+        bio: $bio
+        roleIds: $roleIds
+      }
+    ) {
       __typename
       ... on AdminEditUserSuccess {
         user {
-          ...AdminUserFields
+          ...AdminUserProfileFields
           roles {
             ...AdminRoleFields
           }
@@ -84,6 +108,9 @@ export const AdminEditUserMutation = graphql(`
         message
       }
       ... on CannotRevokeOwnAdminRoleError {
+        message
+      }
+      ... on ConcurrentUpdateError {
         message
       }
     }

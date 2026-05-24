@@ -16,6 +16,7 @@ type Props = {
   queryError: string | null;
   onDismiss: () => void;
   onSaved: () => void;
+  onReloadRequested?: () => void;
 };
 
 const DISPLAY_NAME_MAX = 50;
@@ -25,6 +26,7 @@ const ERR_FORBIDDEN = "You do not have permission.";
 const ERR_UNAUTHENTICATED = "Your session has expired. Sign in again.";
 const ERR_UNEXPECTED = "An unexpected error occurred. Please try again.";
 const ERR_SOMETHING_WRONG = "Something went wrong. Please try again.";
+const ERR_CONCURRENT = "This user was changed by someone else. Reload and try again.";
 
 /** Pick the user-facing message for a thrown mutation error. */
 function pickAuthErrorMessage(codes: readonly string[]): string {
@@ -49,6 +51,7 @@ export function AdminUserProfileSheet({
   queryError,
   onDismiss,
   onSaved,
+  onReloadRequested,
 }: Props) {
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
@@ -104,16 +107,13 @@ export function AdminUserProfileSheet({
     }
 
     clearSaveStatus();
-    const input = {
-      ...(profileDirty ? { displayName: displayName.trim(), bio: bio || null } : {}),
-      roleIds: Array.from(stagedRoleIds),
-    };
-
     try {
       const result = await runEdit({
         variables: {
           id: user.id,
-          input,
+          expectedVersion: user.version,
+          ...(profileDirty ? { displayName: displayName.trim(), bio: bio || null } : {}),
+          roleIds: Array.from(stagedRoleIds),
         },
       });
       const payload = result.data?.adminEditUser;
@@ -125,6 +125,10 @@ export function AdminUserProfileSheet({
         case "InputValidationError":
         case "CannotRevokeOwnAdminRoleError":
           setSaveError(payload.message);
+          return;
+        case "ConcurrentUpdateError":
+          setSaveError(ERR_CONCURRENT);
+          onReloadRequested?.();
           return;
         default:
           console.warn("[admin/users] unexpected save payload", {

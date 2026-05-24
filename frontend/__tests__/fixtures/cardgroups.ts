@@ -35,6 +35,7 @@ const cardgroupFixture: Cardgroup = {
   owner: {
     __typename: "User",
     id: "user-admin-1",
+    version: 0,
     displayName: "Admin User",
     bio: null,
     avatarUrl: null,

@@ -26,6 +26,7 @@ const adminRoleFixture: Role = {
 export const adminUserFixture: User = {
   __typename: "User",
   id: "user-admin-1",
+  version: 0,
   displayName: "Admin User",
   bio: null,
   avatarUrl: null,
@@ -36,6 +37,7 @@ export const adminUserFixture: User = {
 export const generalUserFixture: User = {
   __typename: "User",
   id: "user-general-1",
+  version: 0,
   displayName: "General User",
   bio: null,
   avatarUrl: null,
@@ -46,6 +48,7 @@ export const generalUserFixture: User = {
 export const userWithoutRolesFixture: User = {
   __typename: "User",
   id: "user-noroles-1",
+  version: 0,
   displayName: "No Roles User",
   bio: null,
   avatarUrl: null,

@@ -17,6 +17,7 @@ import { AdminUserProfileSheet } from "./admin-user-profile-sheet";
 import { type AdminUserListItem, AdminUserRow } from "./admin-user-row";
 import {
   ADMIN_USERS_PAGE_SIZE,
+  AdminUserProfileFieldsFragment,
   AdminRoleFieldsFragment,
   AdminRolesQuery,
   AdminUserFieldsFragment,
@@ -32,6 +33,7 @@ function UserRow({ edge, onEdit }: { edge: Edge; onEdit: (id: string) => void })
   const roles = useFragment(AdminRoleFieldsFragment, edge.node.roles);
   const rowUser: AdminUserListItem = {
     id: user.id,
+    version: 0,
     displayName: user.displayName ?? null,
     bio: user.bio ?? null,
     avatarUrl: user.avatarUrl ?? null,
@@ -131,11 +133,15 @@ export function AdminUsersClient() {
   const rolesBannerError = getBackendErrorBanner(rolesError);
 
   const editUserId = sheet.state.mode === "edit" ? sheet.state.id : null;
-  const editUserFields = useFragment(AdminUserFieldsFragment, editUserData?.adminUser ?? null);
+  const editUserFields = useFragment(
+    AdminUserProfileFieldsFragment,
+    editUserData?.adminUser ?? null,
+  );
   const editUserRoles = useFragment(AdminRoleFieldsFragment, editUserData?.adminUser?.roles ?? []);
   const editUser: AdminUserListItem | null = editUserFields
     ? {
         id: editUserFields.id,
+        version: editUserFields.version,
         displayName: editUserFields.displayName ?? null,
         bio: editUserFields.bio ?? null,
         avatarUrl: editUserFields.avatarUrl ?? null,
@@ -151,6 +157,12 @@ export function AdminUsersClient() {
     if (!editUserId) return;
     void loadAdminUser({ variables: { id: editUserId } });
   }, [editUserId, loadAdminUser]);
+
+  const reloadEditedUser = useCallback(() => {
+    void refetch();
+    if (!editUserId) return;
+    void loadAdminUser({ variables: { id: editUserId } });
+  }, [editUserId, loadAdminUser, refetch]);
 
   const fetchNextPage = useCallback(
     ({ hasNextPage, endCursor, searchQuery }: FetchNextPageInput) => {
@@ -366,6 +378,7 @@ export function AdminUsersClient() {
         queryError={editUserBannerError}
         onDismiss={() => sheet.close()}
         onSaved={() => sheet.close({ refresh: true })}
+        onReloadRequested={reloadEditedUser}
       />
     </main>
   );

@@ -17,6 +17,7 @@ export type AdminUserRole = {
  */
 export type AdminUserListItem = {
   id: string;
+  version: number;
   displayName: string | null;
   bio: string | null;
   avatarUrl: string | null;

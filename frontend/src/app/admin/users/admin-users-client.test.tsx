@@ -64,6 +64,7 @@ const MOD_ROLE = {
 const USER_1 = {
   __typename: "User" as const,
   id: "u-1",
+  version: 41,
   displayName: "Alice",
   bio: null,
   avatarUrl: null,
@@ -73,6 +74,7 @@ const USER_1 = {
 const USER_2 = {
   __typename: "User" as const,
   id: "u-2",
+  version: 7,
   displayName: "Bob",
   bio: null,
   avatarUrl: null,

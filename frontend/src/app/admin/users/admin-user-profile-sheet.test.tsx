@@ -23,6 +23,7 @@ function makeCodedError(code: string): CombinedGraphQLErrors {
 function makeUser(overrides: Partial<AdminUserListItem> = {}): AdminUserListItem {
   return {
     id: "u-1",
+    version: 41,
     displayName: "Alice",
     bio: "bio text",
     avatarUrl: null,
@@ -42,6 +43,7 @@ function successPayload(roleIds: string[] = [ADMIN_ROLE.id]) {
     user: {
       __typename: "User" as const,
       id: "u-1",
+      version: 42,
       displayName: "Alice 2",
       bio: "bio text",
       avatarUrl: null,
@@ -56,12 +58,14 @@ function renderSheet({
   mocks = [],
   onDismiss = vi.fn(),
   onSaved = vi.fn(),
+  onReloadRequested = vi.fn(),
 }: {
   user?: AdminUserListItem | null;
   allRoles?: AdminUserRole[];
   mocks?: React.ComponentProps<typeof MockedProvider>["mocks"];
   onDismiss?: () => void;
   onSaved?: () => void;
+  onReloadRequested?: () => void;
 } = {}) {
   render(
     <MockedProvider mocks={mocks}>
@@ -73,10 +77,11 @@ function renderSheet({
         queryError={null}
         onDismiss={onDismiss}
         onSaved={onSaved}
+        onReloadRequested={onReloadRequested}
       />
     </MockedProvider>,
   );
-  return { onDismiss, onSaved };
+  return { onDismiss, onSaved, onReloadRequested };
 }
 
 describe("AdminUserProfileSheet", () => {
@@ -124,7 +129,10 @@ describe("AdminUserProfileSheet", () => {
           query: AdminEditUserDocument,
           variables: {
             id: "u-1",
-            input: { displayName: "Alice 2", bio: "bio text", roleIds: [ADMIN_ROLE.id] },
+            expectedVersion: 41,
+            displayName: "Alice 2",
+            bio: "bio text",
+            roleIds: [ADMIN_ROLE.id],
           },
         },
         result: { data: { adminEditUser: successPayload() } },
@@ -142,6 +150,46 @@ describe("AdminUserProfileSheet", () => {
     });
   });
 
+  it("ConcurrentUpdateError renders stale-edit copy and requests reload", async () => {
+    const user = userEvent.setup();
+    const onReloadRequested = vi.fn();
+    const mocks = [
+      {
+        request: {
+          query: AdminEditUserDocument,
+          variables: {
+            id: "u-1",
+            expectedVersion: 41,
+            displayName: "Alice 2",
+            bio: "bio text",
+            roleIds: [ADMIN_ROLE.id],
+          },
+        },
+        result: {
+          data: {
+            adminEditUser: {
+              __typename: "ConcurrentUpdateError" as const,
+              message: "user has changed",
+            },
+          },
+        },
+      },
+    ];
+
+    renderSheet({ mocks, onReloadRequested });
+
+    await user.clear(screen.getByLabelText(/display name/i));
+    await user.type(screen.getByLabelText(/display name/i), "Alice 2");
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "This user was changed by someone else. Reload and try again.",
+      );
+    });
+    expect(onReloadRequested).toHaveBeenCalledTimes(1);
+  });
+
   it("roles-only dirty save omits profile fields and sends final roleIds", async () => {
     const user = userEvent.setup();
     const onSaved = vi.fn();
@@ -151,7 +199,8 @@ describe("AdminUserProfileSheet", () => {
           query: AdminEditUserDocument,
           variables: {
             id: "u-1",
-            input: { roleIds: [ADMIN_ROLE.id, MOD_ROLE.id] },
+            expectedVersion: 41,
+            roleIds: [ADMIN_ROLE.id, MOD_ROLE.id],
           },
         },
         result: { data: { adminEditUser: successPayload([ADMIN_ROLE.id, MOD_ROLE.id]) } },
@@ -177,11 +226,10 @@ describe("AdminUserProfileSheet", () => {
           query: AdminEditUserDocument,
           variables: {
             id: "u-1",
-            input: {
-              displayName: "Alice 2",
-              bio: "bio text",
-              roleIds: [ADMIN_ROLE.id, MOD_ROLE.id],
-            },
+            expectedVersion: 41,
+            displayName: "Alice 2",
+            bio: "bio text",
+            roleIds: [ADMIN_ROLE.id, MOD_ROLE.id],
           },
         },
         result: { data: { adminEditUser: successPayload([ADMIN_ROLE.id, MOD_ROLE.id]) } },
@@ -208,7 +256,10 @@ describe("AdminUserProfileSheet", () => {
           query: AdminEditUserDocument,
           variables: {
             id: "u-1",
-            input: { displayName: "Alice 2", bio: "bio text", roleIds: [ADMIN_ROLE.id] },
+            expectedVersion: 41,
+            displayName: "Alice 2",
+            bio: "bio text",
+            roleIds: [ADMIN_ROLE.id],
           },
         },
         result: {
@@ -242,7 +293,8 @@ describe("AdminUserProfileSheet", () => {
           query: AdminEditUserDocument,
           variables: {
             id: "u-1",
-            input: { roleIds: [] },
+            expectedVersion: 41,
+            roleIds: [],
           },
         },
         result: {
@@ -274,7 +326,10 @@ describe("AdminUserProfileSheet", () => {
           query: AdminEditUserDocument,
           variables: {
             id: "u-1",
-            input: { displayName: "Alice 2", bio: "bio text", roleIds: [ADMIN_ROLE.id] },
+            expectedVersion: 41,
+            displayName: "Alice 2",
+            bio: "bio text",
+            roleIds: [ADMIN_ROLE.id],
           },
         },
         error: makeCodedError("FORBIDDEN"),
@@ -310,7 +365,10 @@ describe("AdminUserProfileSheet", () => {
           query: AdminEditUserDocument,
           variables: {
             id: "u-1",
-            input: { displayName: "Alice 2", bio: "bio text", roleIds: [ADMIN_ROLE.id] },
+            expectedVersion: 41,
+            displayName: "Alice 2",
+            bio: "bio text",
+            roleIds: [ADMIN_ROLE.id],
           },
         },
         error: makeCodedError("UNAUTHENTICATED"),
@@ -348,7 +406,10 @@ describe("AdminUserProfileSheet", () => {
           query: AdminEditUserDocument,
           variables: {
             id: "u-1",
-            input: { displayName: "Alice 2", bio: "bio text", roleIds: [ADMIN_ROLE.id] },
+            expectedVersion: 41,
+            displayName: "Alice 2",
+            bio: "bio text",
+            roleIds: [ADMIN_ROLE.id],
           },
         },
         error: makeCodedError("SOME_NEW_CODE"),
