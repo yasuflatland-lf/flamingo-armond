@@ -14,7 +14,7 @@ import {
 import type { FetchNextPageInput } from "@/lib/pagination/types";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
 import { AdminUserProfileSheet } from "./admin-user-profile-sheet";
-import { type AdminUserListItem, AdminUserRoleRow } from "./admin-user-role-row";
+import { type AdminUserListItem, AdminUserRow } from "./admin-user-row";
 import {
   ADMIN_USERS_PAGE_SIZE,
   AdminRoleFieldsFragment,
@@ -27,17 +27,7 @@ import {
 type Connection = AdminUsersQueryResult["users"];
 type Edge = Connection["edges"][number];
 
-function UserRow({
-  edge,
-  allRoles,
-  rolesLoading,
-  onEdit,
-}: {
-  edge: Edge;
-  allRoles: AdminUserListItem["roles"];
-  rolesLoading: boolean;
-  onEdit: (id: string) => void;
-}) {
+function UserRow({ edge, onEdit }: { edge: Edge; onEdit: (id: string) => void }) {
   const user = useFragment(AdminUserFieldsFragment, edge.node);
   const roles = useFragment(AdminRoleFieldsFragment, edge.node.roles);
   const rowUser: AdminUserListItem = {
@@ -48,14 +38,7 @@ function UserRow({
     roles: roles.map((role) => ({ id: role.id, name: role.name })),
   };
 
-  return (
-    <AdminUserRoleRow
-      user={rowUser}
-      allRoles={allRoles}
-      rolesLoading={rolesLoading}
-      onEdit={onEdit}
-    />
-  );
+  return <AdminUserRow user={rowUser} onEdit={onEdit} />;
 }
 
 // Flatten the three-branch `classifyQueryError` result into a single banner
@@ -113,11 +96,7 @@ export function AdminUsersClient() {
     fetchPolicy: "cache-first",
     notifyOnNetworkStatusChange: true,
   });
-  const {
-    data: rolesData,
-    loading: rolesLoading,
-    error: rolesError,
-  } = useQuery(AdminRolesQuery, {
+  const { data: rolesData, error: rolesError } = useQuery(AdminRolesQuery, {
     fetchPolicy: "cache-first",
   });
   const [
@@ -336,8 +315,6 @@ export function AdminUsersClient() {
             <UserRow
               key={edge.cursor}
               edge={edge}
-              allRoles={roleOptions}
-              rolesLoading={rolesLoading}
               onEdit={(id) => sheet.open({ mode: "edit", id })}
             />
           ))}
@@ -385,6 +362,7 @@ export function AdminUsersClient() {
           editUserLoading ||
           (editUserId !== null && (!editUserCalled || !editUserResultMatchesSheet))
         }
+        allRoles={roleOptions}
         queryError={editUserBannerError}
         onDismiss={() => sheet.close()}
         onSaved={() => sheet.close({ refresh: true })}

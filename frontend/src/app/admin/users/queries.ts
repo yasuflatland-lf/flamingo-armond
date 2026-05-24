@@ -67,51 +67,11 @@ export const AdminRolesQuery = graphql(`
   }
 `);
 
-export const AdminUpdateUserMutation = graphql(`
-  mutation AdminUpdateUser($id: ID!, $input: AdminUpdateUserInput!) {
-    adminUpdateUser(id: $id, input: $input) {
+export const AdminEditUserMutation = graphql(`
+  mutation AdminEditUser($id: ID!, $input: AdminEditUserInput!) {
+    adminEditUser(id: $id, input: $input) {
       __typename
-      ... on AdminUpdateUserSuccess {
-        user {
-          ...AdminUserFields
-          roles {
-            ...AdminRoleFields
-          }
-        }
-      }
-      ... on InputValidationError {
-        field
-        message
-      }
-    }
-  }
-`);
-
-export const AdminAssignRoleMutation = graphql(`
-  mutation AdminAssignRole($userId: ID!, $roleId: ID!) {
-    assignRole(userId: $userId, roleId: $roleId) {
-      __typename
-      ... on AssignRoleSuccess {
-        user {
-          ...AdminUserFields
-          roles {
-            ...AdminRoleFields
-          }
-        }
-      }
-      ... on InputValidationError {
-        field
-        message
-      }
-    }
-  }
-`);
-
-export const AdminRevokeRoleMutation = graphql(`
-  mutation AdminRevokeRole($userId: ID!, $roleId: ID!) {
-    revokeRole(userId: $userId, roleId: $roleId) {
-      __typename
-      ... on RevokeRoleSuccess {
+      ... on AdminEditUserSuccess {
         user {
           ...AdminUserFields
           roles {

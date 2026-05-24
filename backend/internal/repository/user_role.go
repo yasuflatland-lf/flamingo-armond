@@ -45,6 +45,11 @@ type UserRoleRepository interface {
 	// returns nil without error (idempotent on the assignment row).
 	RevokeFromUser(ctx context.Context, userID, roleID string) error
 
+	// SetUserRolesTx replaces the user's role set inside the supplied
+	// transaction. roleIDs is the final declarative state; an empty slice
+	// removes every role assignment for the user.
+	SetUserRolesTx(ctx context.Context, tx *gorm.DB, userID string, roleIDs []string) error
+
 	// ListByUser returns all roles assigned to the given user, ordered by
 	// role name ascending. Returns an empty slice (not nil, not an error) when
 	// the user has no roles.
@@ -89,8 +94,12 @@ func (r *userRoleRepo) HasRole(ctx context.Context, userID string, roleName doma
 // underlying COUNT query itself fails. notFound is the sentinel returned for
 // the zero-count case.
 func (r *userRoleRepo) requireExists(ctx context.Context, table, id, wrap string, notFound error) error {
+	return requireExistsOn(ctx, r.db, table, id, wrap, notFound)
+}
+
+func requireExistsOn(ctx context.Context, db *gorm.DB, table, id, wrap string, notFound error) error {
 	var count int64
-	if err := r.db.WithContext(ctx).
+	if err := db.WithContext(ctx).
 		Table(table).
 		Where("id = ?", id).
 		Count(&count).Error; err != nil {
@@ -142,6 +151,55 @@ func (r *userRoleRepo) RevokeFromUser(ctx context.Context, userID, roleID string
 		Where("user_id = ? AND role_id = ?", userID, roleID).
 		Delete(&gormUserRole{}).Error; err != nil {
 		return eris.Wrap(err, "repository: user role: revoke from user")
+	}
+	return nil
+}
+
+func (r *userRoleRepo) SetUserRolesTx(ctx context.Context, tx *gorm.DB, userID string, roleIDs []string) error {
+	if tx == nil {
+		return eris.New("repository: user role: set tx is nil")
+	}
+	if err := requireExistsOn(ctx, tx, "users", userID, "repository: user role: set: check user", ErrUserNotFound); err != nil {
+		return err
+	}
+
+	uniqueRoleIDs := make([]string, 0, len(roleIDs))
+	seen := make(map[string]bool, len(roleIDs))
+	for _, roleID := range roleIDs {
+		if seen[roleID] {
+			continue
+		}
+		seen[roleID] = true
+		uniqueRoleIDs = append(uniqueRoleIDs, roleID)
+	}
+	for _, roleID := range uniqueRoleIDs {
+		if err := requireExistsOn(ctx, tx, "roles", roleID, "repository: user role: set: check role", ErrRoleNotFound); err != nil {
+			return err
+		}
+	}
+
+	q := tx.WithContext(ctx).Where("user_id = ?", userID)
+	if len(uniqueRoleIDs) > 0 {
+		q = q.Where("role_id NOT IN ?", uniqueRoleIDs)
+	}
+	if err := q.Delete(&gormUserRole{}).Error; err != nil {
+		return eris.Wrap(err, "repository: user role: set: delete removed roles")
+	}
+
+	if len(uniqueRoleIDs) == 0 {
+		return nil
+	}
+	rows := make([]gormUserRole, 0, len(uniqueRoleIDs))
+	for _, roleID := range uniqueRoleIDs {
+		rows = append(rows, gormUserRole{UserID: userID, RoleID: roleID})
+	}
+	if err := tx.WithContext(ctx).
+		Clauses(clause.OnConflict{DoNothing: true}).
+		Create(&rows).Error; err != nil {
+		if classified := classifyFKError(err); classified != nil {
+			return classified
+		}
+		return eris.Wrap(err, "repository: user role: set: insert roles")
 	}
 	return nil
 }

@@ -183,8 +183,8 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("AdminUsersClient", () => {
-  // T1: Initial render — edges, display names, inline role toggles, and totalCount shown.
-  test("renders edges with display name and inline role toggles and shows totalCount", async () => {
+  // T1: Initial render — edges, display names, edit affordances, and totalCount shown.
+  test("renders edges with display name and edit affordances and shows totalCount", async () => {
     const users = Array.from({ length: 3 }, (_, i) => makeUser(i + 1));
     const connection = makeConnection(users, false);
 
@@ -217,12 +217,9 @@ describe("AdminUsersClient", () => {
     expect(screen.getByText("User 2")).toBeInTheDocument();
     expect(screen.getByText("User 3")).toBeInTheDocument();
 
-    // Inline role toggles are visible for each user.
-    const roleCheckboxes = await screen.findAllByRole("checkbox", { name: "general" });
-    expect(roleCheckboxes).toHaveLength(3);
-    for (const checkbox of roleCheckboxes) {
-      expect(checkbox).toBeChecked();
-    }
+    // Inline role toggles moved into the edit sheet.
+    expect(screen.queryByRole("checkbox", { name: "general" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /edit user/i })).toHaveLength(3);
 
     // totalCount shown (3 in parens).
     expect(screen.getByText("(3)")).toBeInTheDocument();

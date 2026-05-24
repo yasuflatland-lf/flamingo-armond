@@ -125,7 +125,12 @@ describe("<ProfilePageClient>", () => {
           query: UpdateProfileDocument,
           variables: { input: { displayName: "Alice", bio: "hello" } },
         },
-        delay: 100,
+        // Long delay keeps the mutation pending throughout the test assertions
+        // so `submitting` stays `true` while we click Change email. A short
+        // delay races the user-event click chain on slow CI and lets
+        // `handleSaved` fire mid-click, calling `mockReplace` before the
+        // assertion runs.
+        delay: 30_000,
         result: {
           data: {
             updateProfile: {

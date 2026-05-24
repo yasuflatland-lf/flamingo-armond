@@ -1,16 +1,17 @@
 "use client";
 
 import { useMutation } from "@apollo/client/react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
-import type { AdminUserListItem } from "./admin-user-role-row";
-import { AdminUpdateUserMutation } from "./queries";
+import type { AdminUserListItem, AdminUserRole } from "./admin-user-row";
+import { AdminEditUserMutation } from "./queries";
 
 type Props = {
   open: boolean;
   user: AdminUserListItem | null;
+  allRoles: AdminUserRole[];
   loading: boolean;
   queryError: string | null;
   onDismiss: () => void;
@@ -32,9 +33,18 @@ function pickAuthErrorMessage(codes: readonly string[]): string {
   return ERR_UNEXPECTED;
 }
 
+function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const value of a) {
+    if (!b.has(value)) return false;
+  }
+  return true;
+}
+
 export function AdminUserProfileSheet({
   open,
   user,
+  allRoles,
   loading,
   queryError,
   onDismiss,
@@ -43,15 +53,24 @@ export function AdminUserProfileSheet({
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [saveError, setSaveError] = useState("");
-  const [runUpdate, { loading: saving, reset: resetUpdate }] = useMutation(AdminUpdateUserMutation);
+  const [stagedRoleIds, setStagedRoleIds] = useState<Set<string>>(() => new Set());
+  const [runEdit, { loading: saving, reset: resetEdit }] = useMutation(AdminEditUserMutation);
+
+  const initialRoleIds = useMemo(() => new Set(user?.roles.map((role) => role.id) ?? []), [user]);
+  const displayNameDirty = displayName !== (user?.displayName ?? "");
+  const bioDirty = bio !== (user?.bio ?? "");
+  const profileDirty = displayNameDirty || bioDirty;
+  const rolesDirty = !sameSet(stagedRoleIds, initialRoleIds);
+  const dirty = profileDirty || rolesDirty;
 
   useEffect(() => {
     if (!user) return;
     setDisplayName(user.displayName ?? "");
     setBio(user.bio ?? "");
+    setStagedRoleIds(new Set(user.roles.map((role) => role.id)));
     setSaveError("");
-    resetUpdate();
-  }, [user, resetUpdate]);
+    resetEdit();
+  }, [user, resetEdit]);
 
   function clearSaveStatus(): void {
     setSaveError("");
@@ -60,11 +79,12 @@ export function AdminUserProfileSheet({
   function handleOpenChange(nextOpen: boolean) {
     if (nextOpen) return;
     setSaveError("");
-    resetUpdate();
+    resetEdit();
     onDismiss();
   }
 
   function validate(): string {
+    if (!profileDirty) return "";
     const trimmed = displayName.trim();
     if (trimmed.length < 1) return "Display name is required.";
     if (trimmed.length > DISPLAY_NAME_MAX) {
@@ -84,37 +104,57 @@ export function AdminUserProfileSheet({
     }
 
     clearSaveStatus();
+    const input = {
+      ...(profileDirty ? { displayName: displayName.trim(), bio: bio || null } : {}),
+      roleIds: Array.from(stagedRoleIds),
+    };
+
     try {
-      const result = await runUpdate({
+      const result = await runEdit({
         variables: {
           id: user.id,
-          input: { displayName: displayName.trim(), bio: bio || null },
+          input,
         },
       });
-      const payload = result.data?.adminUpdateUser;
-      const saveTypename = payload?.__typename ?? null;
-      if (payload?.__typename === "InputValidationError") {
-        setSaveError(payload.message);
-        return;
+      const payload = result.data?.adminEditUser;
+      const typename = payload?.__typename ?? null;
+      switch (payload?.__typename) {
+        case "AdminEditUserSuccess":
+          onSaved();
+          return;
+        case "InputValidationError":
+        case "CannotRevokeOwnAdminRoleError":
+          setSaveError(payload.message);
+          return;
+        default:
+          console.warn("[admin/users] unexpected save payload", {
+            userId: user.id,
+            typename,
+          });
+          setSaveError(ERR_SOMETHING_WRONG);
       }
-      if (payload?.__typename === "AdminUpdateUserSuccess") {
-        onSaved();
-        return;
-      }
-      console.warn("[admin/users] unexpected save payload", {
-        userId: user.id,
-        typename: saveTypename,
-      });
-      setSaveError(ERR_SOMETHING_WRONG);
     } catch (err) {
       const codes = liftGraphQLCodes(err);
-      console.warn("[admin/users] adminUpdateUser rejected", {
+      console.warn("[admin/users] adminEditUser rejected", {
         userId: user.id,
         name: err instanceof Error ? err.name : "unknown",
         codes,
       });
       setSaveError(pickAuthErrorMessage(codes));
     }
+  }
+
+  function toggleRole(roleId: string): void {
+    setStagedRoleIds((current) => {
+      const next = new Set(current);
+      if (next.has(roleId)) {
+        next.delete(roleId);
+      } else {
+        next.add(roleId);
+      }
+      return next;
+    });
+    clearSaveStatus();
   }
 
   return (
@@ -124,15 +164,19 @@ export function AdminUserProfileSheet({
       title="Edit user"
       size="md"
       submitting={saving}
-      confirmOnDismiss={false}
+      dirty={dirty}
+      confirmOnDismiss
     >
       <AdminUserProfileSheetBody
+        allRoles={allRoles}
         bio={bio}
         displayName={displayName}
         loading={loading}
+        open={open}
         queryError={queryError}
         saveError={saveError}
         saving={saving}
+        stagedRoleIds={stagedRoleIds}
         user={user}
         onBioChange={(nextBio) => {
           setBio(nextBio);
@@ -142,6 +186,7 @@ export function AdminUserProfileSheet({
           setDisplayName(nextDisplayName);
           clearSaveStatus();
         }}
+        onRoleToggle={toggleRole}
         onSave={handleSave}
       />
     </FormSheet>
@@ -149,26 +194,34 @@ export function AdminUserProfileSheet({
 }
 
 function AdminUserProfileSheetBody({
+  allRoles,
   bio,
   displayName,
   loading,
+  open,
   queryError,
   saveError,
   saving,
+  stagedRoleIds,
   user,
   onBioChange,
   onDisplayNameChange,
+  onRoleToggle,
   onSave,
 }: {
+  allRoles: AdminUserRole[];
   bio: string;
   displayName: string;
   loading: boolean;
+  open: boolean;
   queryError: string | null;
   saveError: string;
   saving: boolean;
+  stagedRoleIds: ReadonlySet<string>;
   user: AdminUserListItem | null;
   onBioChange: (bio: string) => void;
   onDisplayNameChange: (displayName: string) => void;
+  onRoleToggle: (roleId: string) => void;
   onSave: () => void;
 }) {
   const close = useFormSheetClose();
@@ -187,7 +240,7 @@ function AdminUserProfileSheetBody({
         </div>
       )}
 
-      {!loading && !queryError && !user && (
+      {open && !loading && !queryError && !user && (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
           User not found.
         </div>
@@ -238,6 +291,35 @@ function AdminUserProfileSheetBody({
             <p className="text-xs text-muted-foreground">
               {bio.length}/{BIO_MAX}
             </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-sm font-medium">Roles</p>
+            {allRoles.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No roles available.</p>
+            ) : (
+              <div className="grid gap-2">
+                {allRoles.map((role) => {
+                  const checkboxId = `admin-user-sheet-role-${user.id}-${role.id}`;
+                  return (
+                    <label
+                      key={role.id}
+                      htmlFor={checkboxId}
+                      className="flex items-center gap-2 text-sm"
+                    >
+                      <input
+                        id={checkboxId}
+                        type="checkbox"
+                        checked={stagedRoleIds.has(role.id)}
+                        onChange={() => onRoleToggle(role.id)}
+                        className="h-4 w-4 rounded border-input accent-brand"
+                      />
+                      <span>{role.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">

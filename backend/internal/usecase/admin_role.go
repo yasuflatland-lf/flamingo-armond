@@ -243,7 +243,7 @@ func (u *adminRoleUsecase) Delete(ctx context.Context, id string) error {
 
 // mapAdminRoleError classifies the role-repository sentinel set into either
 // input-validation data (first slot non-nil) or a propagating error (second
-// slot non-nil). The shape mirrors mapRoleAssignmentError so promoted
+// slot non-nil). The shape mirrors mapAdminEditMutationError so promoted
 // outcome-bearing callers can route validation refusals into outcome data
 // uniformly:
 //   - repository.ErrRoleNotFound            -> InputValidationInfo{Field: notFoundField}

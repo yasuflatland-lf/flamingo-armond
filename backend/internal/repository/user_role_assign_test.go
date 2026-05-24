@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"backend/internal/domain"
 	"backend/internal/repository"
@@ -290,6 +291,128 @@ func TestUserRoleRepository_RevokeFromUser_UserNotFoundDistinct(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// SetUserRolesTx
+// ---------------------------------------------------------------------------
+
+func TestUserRoleRepository_SetUserRolesTx_ReplacesRoleSet(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	userID := insertAuthUser(t, ctx)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
+
+	adminID := insertRole(t, ctx, "admin")
+	generalID := insertRole(t, ctx, "general")
+	reviewerID := insertRole(t, ctx, "reviewer")
+
+	for _, roleID := range []string{adminID, generalID} {
+		if err := repo.AssignToUser(ctx, userID, roleID); err != nil {
+			t.Fatalf("AssignToUser(%s): %v", roleID, err)
+		}
+	}
+
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.SetUserRolesTx(ctx, tx, userID, []string{generalID, reviewerID})
+	})
+	if err != nil {
+		t.Fatalf("SetUserRolesTx: %v", err)
+	}
+
+	assertUserRoleIDs(t, ctx, repo, userID, []string{generalID, reviewerID})
+}
+
+func TestUserRoleRepository_SetUserRolesTx_EmptyTargetClearsAllRoles(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	userID := insertAuthUser(t, ctx)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
+
+	adminID := insertRole(t, ctx, "admin")
+	generalID := insertRole(t, ctx, "general")
+	for _, roleID := range []string{adminID, generalID} {
+		if err := repo.AssignToUser(ctx, userID, roleID); err != nil {
+			t.Fatalf("AssignToUser(%s): %v", roleID, err)
+		}
+	}
+
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.SetUserRolesTx(ctx, tx, userID, nil)
+	})
+	if err != nil {
+		t.Fatalf("SetUserRolesTx(empty): %v", err)
+	}
+
+	assertUserRoleIDs(t, ctx, repo, userID, nil)
+}
+
+func TestUserRoleRepository_SetUserRolesTx_IdempotentSameSet(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	userID := insertAuthUser(t, ctx)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
+
+	adminID := insertRole(t, ctx, "admin")
+	generalID := insertRole(t, ctx, "general")
+
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.SetUserRolesTx(ctx, tx, userID, []string{adminID, generalID})
+	})
+	if err != nil {
+		t.Fatalf("SetUserRolesTx(first): %v", err)
+	}
+	err = testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.SetUserRolesTx(ctx, tx, userID, []string{generalID, adminID})
+	})
+	if err != nil {
+		t.Fatalf("SetUserRolesTx(second): %v", err)
+	}
+
+	assertUserRoleIDs(t, ctx, repo, userID, []string{adminID, generalID})
+}
+
+func TestUserRoleRepository_SetUserRolesTx_UserNotFound(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewUserRoleRepository(testDB.GORM)
+	adminID := insertRole(t, ctx, "admin")
+	missingUser := uuid.NewString()
+
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.SetUserRolesTx(ctx, tx, missingUser, []string{adminID})
+	})
+	if !errors.Is(err, repository.ErrUserNotFound) {
+		t.Fatalf("SetUserRolesTx(missing user): want ErrUserNotFound, got %v", err)
+	}
+	if !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("SetUserRolesTx(missing user): want ErrNotFound, got %v", err)
+	}
+}
+
+func TestUserRoleRepository_SetUserRolesTx_RoleNotFoundRollsBack(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	userID := insertAuthUser(t, ctx)
+	repo := repository.NewUserRoleRepository(testDB.GORM)
+
+	adminID := insertRole(t, ctx, "admin")
+	if err := repo.AssignToUser(ctx, userID, adminID); err != nil {
+		t.Fatalf("AssignToUser: %v", err)
+	}
+
+	missingRole := uuid.NewString()
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.SetUserRolesTx(ctx, tx, userID, []string{missingRole})
+	})
+	if !errors.Is(err, repository.ErrRoleNotFound) {
+		t.Fatalf("SetUserRolesTx(missing role): want ErrRoleNotFound, got %v", err)
+	}
+	if !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("SetUserRolesTx(missing role): want ErrNotFound, got %v", err)
+	}
+
+	assertUserRoleIDs(t, ctx, repo, userID, []string{adminID})
+}
+
+// ---------------------------------------------------------------------------
 // ListByUser
 // ---------------------------------------------------------------------------
 
@@ -340,6 +463,32 @@ func TestUserRoleRepository_ListByUser_OrderedByNameAsc(t *testing.T) {
 	for i, r := range roles {
 		if r.Name != want[i] {
 			t.Errorf("roles[%d].Name = %q, want %q", i, r.Name, want[i])
+		}
+	}
+}
+
+func assertUserRoleIDs(
+	t *testing.T,
+	ctx context.Context,
+	repo repository.UserRoleRepository,
+	userID string,
+	want []string,
+) {
+	t.Helper()
+	roles, err := repo.ListByUser(ctx, userID)
+	if err != nil {
+		t.Fatalf("ListByUser: %v", err)
+	}
+	got := make(map[string]bool, len(roles))
+	for _, role := range roles {
+		got[role.ID] = true
+	}
+	if len(got) != len(want) {
+		t.Fatalf("role IDs len = %d, want %d (got=%v want=%v)", len(got), len(want), got, want)
+	}
+	for _, roleID := range want {
+		if !got[roleID] {
+			t.Fatalf("missing role ID %q in got=%v", roleID, got)
 		}
 	}
 }

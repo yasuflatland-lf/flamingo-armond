@@ -106,14 +106,14 @@ This three-state pointer distinction is preserved end-to-end: schema (`bio: Stri
 
 ### Per-field "null vs. empty" semantics on partial-update inputs
 
-A single uniform statement on the input type ("null = unchanged, empty = clear") lies the moment the input mixes optional clearable fields with optional required-when-present fields. `AdminUpdateUserInput` is the canonical example:
+A single uniform statement on the input type ("null = unchanged, empty = clear") lies the moment the input mixes optional clearable fields with optional required-when-present fields. `AdminEditUserInput` is the canonical example:
 
 | Field | `nil` (omitted) | `""` (present, empty) |
 |---|---|---|
 | `bio` | leave unchanged | explicit clear |
 | `displayName` | leave unchanged | rejected as `BAD_USER_INPUT` (the field has a 1-char minimum) |
 
-The schema docstring on each `*string` field must state which of the two empty-string semantics applies. Clients reading a generic "null = unchanged, empty = clear" rule will write `displayName: ""` to mean "clear" and the mutation will fail at runtime with a confusing validation error. State the per-field contract on the field, not on the input type.
+`AdminEditUserInput.roleIds` is separate: it is a required final role set, and an empty list means "remove all roles" unless the self-demotion guard blocks the caller. The schema docstring on each `*string` field must state which of the two empty-string semantics applies. Clients reading a generic "null = unchanged, empty = clear" rule will write `displayName: ""` to mean "clear" and the mutation will fail at runtime with a confusing validation error. State the per-field contract on the field, not on the input type.
 
 ### Layering rule
 

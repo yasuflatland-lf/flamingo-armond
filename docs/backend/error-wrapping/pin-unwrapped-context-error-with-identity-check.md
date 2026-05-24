@@ -85,3 +85,64 @@ Before merging a cancellation test, complete this sentence: "If a future
 refactor wraps the context error with `eris.Wrap`, this test will ___." If
 the answer is "still pass", and the test exercises a usecase boundary, add
 the `require.Equal` identity pin.
+
+## Per-sub-op wrap inside a tx callback must skip context errors
+
+When a tx callback wraps each sub-call with its own operation prefix to
+preserve `error_chain` attribution (see [Nested wraps inside a single error
+each need their own pin](test-error-chain-shape-not-presence.md#nested-wraps-inside-a-single-error-each-need-their-own-pin)),
+the wrap MUST be skipped for `context.Canceled` / `context.DeadlineExceeded`
+so the identity contract above survives across the tx layer. The canonical
+shape is:
+
+```go
+err = u.tx(ctx, func(tx *gorm.DB) error {
+    if err := u.users.UpdateTx(ctx, tx, id, patch); err != nil {
+        if isContextDone(err) {
+            return err  // bare identity preserved through tx
+        }
+        return eris.Wrap(err, "usecase: admin user edit: update profile")
+    }
+    if err := u.userRoles.SetUserRolesTx(ctx, tx, id, roleIDs); err != nil {
+        if isContextDone(err) {
+            return err
+        }
+        return eris.Wrap(err, "usecase: admin user edit: replace roles")
+    }
+    return nil
+})
+if err != nil {
+    if isContextDone(err) {
+        return AdminEditUserOutcome{}, err  // bare identity returned to caller
+    }
+    // ... wrap or classify ...
+}
+```
+
+Two independent guarantees combine here:
+
+- **Identity preservation across the tx layer.** Without the inner
+  `isContextDone` check, a cancellation that fires inside `UpdateTx` would
+  surface to the outer `if err != nil` branch as
+  `eris.Wrap(context.Canceled, "...update profile")`. `errors.Is` still
+  detects the cancellation, but the value returned to the resolver is no
+  longer the bare sentinel — breaking any downstream consumer that compares
+  via `==`. The inner short-circuit keeps the wrap convention applied only to
+  infra-class errors.
+- **Outer fallback wrap also skips ctx-done.** The post-tx classification
+  branch (`mapAdminEditMutationError` in the worked example) likewise checks
+  `isContextDone` before its `eris.Wrap` default — without this the outer
+  fallback would re-wrap the bare sentinel.
+
+Pin the contract with two tests per sub-op:
+
+| Test | Asserts |
+|---|---|
+| `TestAdminUser_EditUser_UpdateTxCancelled` | `context.Canceled` identity (`err == context.Canceled`) on the profile branch |
+| `TestAdminUser_EditUser_CancelledFromRoleSet` | Same identity on the roles branch |
+
+A single cancellation test that only checks chain shape (`assertCancelled`)
+passes even when the inner wrap snuck in. The dual-assertion pattern from
+[The dual assertion](#the-dual-assertion) above applies inside the tx-callback
+too — each sub-op branch that can carry a context error needs its own
+identity pin, not a chain-shape pin shared with the others.

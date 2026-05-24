@@ -135,7 +135,7 @@ func TestToCamelCase(t *testing.T) {
 		{"UpdateRole", "updateRole"},
 		{"HandleSwipe", "handleSwipe"},
 		{"CreateCard", "createCard"},
-		{"AdminUpdateUser", "adminUpdateUser"},
+		{"AdminEditUser", "adminEditUser"},
 		{"SetLastViewedCardgroup", "setLastViewedCardgroup"},
 		{"", ""},
 	}

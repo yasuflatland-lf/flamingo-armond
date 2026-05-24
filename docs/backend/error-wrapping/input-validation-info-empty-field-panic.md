@@ -39,13 +39,13 @@ func NewInputValidationInfo(field, message string) *InputValidationInfo {
 
 ```go
 // Correct
-return AssignRoleOutcome{
-    Validation: usecase.NewInputValidationInfo("userId", "user not found"),
+return AdminEditUserOutcome{
+    Validation: usecase.NewInputValidationInfo("roleIds", "role not found"),
 }, nil
 
 // Forbidden — empty field silently reaches the frontend and the banner has
 // no input to bind to.
-return AssignRoleOutcome{
+return AdminEditUserOutcome{
     Validation: &usecase.InputValidationInfo{Field: "", Message: "..."},
 }, nil
 ```
@@ -67,6 +67,6 @@ production code.
   exemption in [`.claude/rules/error-wrapping.md`](../../../.claude/rules/error-wrapping.md):
   tests legitimately construct invalid shapes to verify classifier coverage.
 - Reference: `backend/internal/usecase/admin_user.go` (`NewInputValidationInfo`,
-  `liftValidationErr`, `mapRoleAssignmentError`) and `backend/internal/usecase/admin_role.go`
+  `liftValidationErr`, `mapAdminEditMutationError`) and `backend/internal/usecase/admin_role.go`
   (`mapAdminRoleError`, `translateRoleNameErr`) — all production
   construction sites flow through the constructor.

@@ -63,17 +63,13 @@ emission outside the same function body is a known false-negative; its profile
 is low today (verified via grep). Extend the walker if a future helper
 extraction produces a real miss.
 
-**Worked example of the helper-delegated false-negative.** `adminUserUsecase.AssignRole`
-and `adminRoleUsecase.Create` were never on the allowlist before [#171] even though
-both ultimately surfaced typed `ucerr.NewValidationError` values to the resolver.
-The classifier missed them because both methods routed validation through helper
-functions (`mapRoleAssignmentError`, `mapAdminRoleError`, `domain.ParseRoleName`)
-that themselves called `ucerr.New*` — the helpers lived outside the methods'
-function bodies, so the body-only `ast.Inspect` saw zero direct constructor
-references and treated `emitsTypedError = false`. The promotion still landed
-cleanly (no allowlist edit was required for either mutation), but a maintainer
-relying on the allowlist as ground truth for "what is bare-emit today" would be
-misled. When a future audit needs the true bare-emit set, grep the production
+**Worked example of the helper-delegated false-negative.** `adminUserUsecase.EditUser`
+and `adminRoleUsecase.Create` route input-validation classification through
+helper functions before returning typed outcome data. A body-only AST walk can
+miss this shape when the helper, not the top-level method body, constructs or
+translates the validation carrier. The promotion can still land cleanly, but a
+maintainer relying on the allowlist as ground truth for "what is bare-emit
+today" would be misled. When a future audit needs the true bare-emit set, grep the production
 tree directly per
 [`.claude/rules/pr-sizing.md` § "Re-verify call-site count before sizing"](../../../.claude/rules/pr-sizing.md#re-verify-call-site-count-before-sizing)
 rather than treating the allowlist as exhaustive. The walker's positive-discovery
@@ -233,7 +229,7 @@ unrelated PR until it is cleaned up.
 
 ## Back-links
 
-- [`result-union-errors-as-data.md`](result-union-errors-as-data.md) — pattern reference; `createCard` is the canonical worked example; `updateRole`, `revokeRole`, `assignRole`, `adminUpdateUser`, and `createRole` are subsequent precedents that follow the same shape.
+- [`result-union-errors-as-data.md`](result-union-errors-as-data.md) — pattern reference; `createCard` is the canonical worked example; `updateRole`, `adminEditUser`, and `createRole` are subsequent precedents that follow the same shape.
 - [`input-validation-info-empty-field-panic.md`](input-validation-info-empty-field-panic.md) — construction invariant for the `InputValidationInfo` carrier shared across promoted outcomes.
 - [`inverse-helper-for-partial-promotion.md`](inverse-helper-for-partial-promotion.md) — `lower*` / `lift*` pattern for sharing an error classifier between promoted and unpromoted callers in the same package.
 - [`.claude/rules/error-wrapping.md` § "Errors as data — detailed cases"](../../../.claude/rules/error-wrapping.md#errors-as-data--detailed-cases-on-demand) — rule layer this doc supports.

@@ -105,11 +105,11 @@ The "self or admin" check is the right granularity for fields where the owning u
 
 ### Self-demotion guard
 
-A user who is allowed to assign and revoke roles can also revoke their own admin role and lock the system out of admin operations. The usecase layer must reject "the caller is removing the admin role from themselves" before the DB write:
+A user who is allowed to edit final role sets can remove their own admin role and lock the system out of admin operations. The usecase layer must reject "the caller is removing the admin role from themselves" before the DB write:
 
 1. Compare `callerID == targetUserID`.
-2. Look up the role being revoked and check whether its name is `"admin"`.
-3. If both, return `gqlerr.NewForbidden("cannot remove your own admin role")`.
+2. Resolve the submitted final `roleIds` to role names.
+3. If the final set for the caller no longer contains the `"admin"` role, return the `CannotRevokeOwnAdminRoleError` union variant from `adminEditUser`.
 
 This guard belongs in the usecase, not in the UI: the UI is one of N possible callers, and a CLI / API consumer / Apollo Studio request can hit the resolver directly. The role-name lookup is mandatory — comparing role IDs would couple the guard to seed data that varies between environments. The hardcoded `"admin"` matches `auth.Service.IsAdmin`'s same hardcoded literal; both move together when a second privileged role is introduced.
 
@@ -119,7 +119,7 @@ A fresh deployment has zero admin rows, but every existing admin-management muta
 
 **`email_verified=true` is a mandatory security gate, not a heuristic.** Supabase only sets the claim once the OAuth provider has confirmed the user controls the address. Promoting on email-match alone would let any account that *claims* an env-listed address (e.g. via a misconfigured identity provider) inherit admin. The middleware reads the claim from `AuthUser.EmailVerified` (threaded through `supabaseClaims.EmailVerified` and `auth/middleware.go`'s `AuthUser` constructor) and returns `next(c)` without any DB call when the claim is missing or false. Because `encoding/json` leaves an absent boolean at zero (`false`), the absence-equals-deny posture is automatic — the JSON `omitempty` tag on `EmailVerified` only affects marshal output and never the decode path.
 
-**No automatic revocation.** Removing an email from `SUPER_USER_EMAILS` does not strip the role; the existing `revokeRole` mutation remains the only path. This is deliberate: a typo in the env var should not silently lock the service out of every admin operation on the next deploy.
+**No automatic revocation.** Removing an email from `SUPER_USER_EMAILS` does not strip the role; an admin must update the user's final role set through `adminEditUser`. This is deliberate: a typo in the env var should not silently lock the service out of every admin operation on the next deploy.
 
 **Failure mode: WARN + continue, never 5xx.** Both `IsAdmin` and `AssignToUser` failures are logged via `logging.LogWarn` (carrying the eris `error_chain`) and the middleware falls through to `next(c)`. The promotion is best-effort — a transient DB blip during a routine page load should not surface as a user-facing error. Any downstream resolver that actually requires admin remains protected by `AdminGate.Require`, which is fail-closed.
 
@@ -178,4 +178,3 @@ Authorization rules implemented at the usecase level need tests at **both** the 
 ### Custom access token hook
 
 The Supabase Custom Access Token Hook (`public.custom_access_token_hook`) joins `public.user_roles` at JWT mint time and emits `app_metadata.role = "admin"` into the access token. The frontend root layout reads this via `supabase.auth.getClaims()` and forwards `isAdmin` to `AppShell` without a GraphQL round-trip. See [`docs/backend/custom-access-token-hook.md`](backend/custom-access-token-hook.md) for the design decisions (join-at-mint vs sync-trigger, fail-closed on malformed events, stale-claim removal, canonical return shape, DROP-auto-revoke, operator precondition for the down migration). The consumer side is documented in [`docs/frontend/auth-supabase.md`](frontend/auth-supabase.md).
-

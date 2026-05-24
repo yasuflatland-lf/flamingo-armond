@@ -200,7 +200,7 @@ func TestIntegration_PromotedMutations_NotInAllowlist_NotViolation(t *testing.T)
 
 	violations, _ := runLivePipeline(t, al)
 
-	promoted := []string{"updateRole", "revokeRole", "adminUpdateUser", "updateProfile", "updateCardgroup", "updateCard", "handleSwipe"}
+	promoted := []string{"updateRole", "adminEditUser", "updateProfile", "updateCardgroup", "updateCard", "handleSwipe"}
 	for _, mutation := range promoted {
 		t.Run(mutation, func(t *testing.T) {
 			if _, present := al[mutation]; present {
