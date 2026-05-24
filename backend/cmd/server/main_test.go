@@ -601,6 +601,9 @@ func (c *countingUserRepo) Update(ctx context.Context, id string, patch reposito
 func (c *countingUserRepo) UpdateTx(ctx context.Context, tx *gorm.DB, id string, patch repository.UserUpdate) error {
 	return c.inner.UpdateTx(ctx, tx, id, patch)
 }
+func (c *countingUserRepo) UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string, patch repository.UserUpdate, expectedVersion int64) error {
+	return c.inner.UpdateTxVersioned(ctx, tx, id, patch, expectedVersion)
+}
 
 // ListPage forwards to the inner repository so any future test that exercises
 // the cursor-paginated user list keeps working.
