@@ -26,10 +26,11 @@ type mockAdminUserRepository struct {
 	findCalls  int
 	lastFindID string
 
-	updateTxErr     error
-	capturedTxPatch repository.UserUpdate
-	updateTxCalls   int
-	lastUpdateTxID  string
+	updateTxErr                 error
+	capturedTxPatch             repository.UserUpdate
+	updateTxCalls               int
+	lastUpdateTxID              string
+	lastUpdateTxExpectedVersion int64
 
 	// ListPage
 	listResult     []*domain.User
@@ -55,10 +56,11 @@ func (m *mockAdminUserRepository) FindByID(_ context.Context, id string) (*domai
 	return nil, repository.ErrNotFound
 }
 
-func (m *mockAdminUserRepository) UpdateTx(_ context.Context, _ *gorm.DB, id string, patch repository.UserUpdate) error {
+func (m *mockAdminUserRepository) UpdateTxVersioned(_ context.Context, _ *gorm.DB, id string, patch repository.UserUpdate, expectedVersion int64) error {
 	m.updateTxCalls++
 	m.lastUpdateTxID = id
 	m.capturedTxPatch = patch
+	m.lastUpdateTxExpectedVersion = expectedVersion
 	if m.updateTxErr != nil {
 		return m.updateTxErr
 	}
@@ -615,7 +617,7 @@ func TestAdminUser_Get_Missing(t *testing.T) {
 func TestAdminUser_EditUser_ProfileAndRolesHappy(t *testing.T) {
 	t.Parallel()
 
-	target := &domain.User{ID: "u-target", DisplayName: dnPtr("Bob")}
+	target := &domain.User{ID: "u-target", DisplayName: dnPtr("Bob"), Version: 41}
 	users := &mockAdminUserRepository{users: map[string]*domain.User{"u-target": target}}
 	userRoles := &mockAdminUserRoleRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
@@ -623,9 +625,10 @@ func TestAdminUser_EditUser_ProfileAndRolesHappy(t *testing.T) {
 	uc, _, _, _ := buildAdminUCWithTx(users, nil, userRoles, tx, authChk)
 
 	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
-		DisplayName: ptr("  Bob  "),
-		Bio:         ptr(""),
-		RoleIDs:     []string{"r-admin", "r-general"},
+		DisplayName:     ptr("  Bob  "),
+		Bio:             ptr(""),
+		RoleIDs:         []string{"r-admin", "r-general"},
+		ExpectedVersion: 41,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -638,7 +641,13 @@ func TestAdminUser_EditUser_ProfileAndRolesHappy(t *testing.T) {
 		t.Fatalf("tx calls = %d, want 1", *txCalls)
 	}
 	if users.updateTxCalls != 1 {
-		t.Fatalf("UpdateTx calls = %d, want 1", users.updateTxCalls)
+		t.Fatalf("UpdateTxVersioned calls = %d, want 1", users.updateTxCalls)
+	}
+	if users.lastUpdateTxID != "u-target" {
+		t.Fatalf("UpdateTxVersioned id = %q, want u-target", users.lastUpdateTxID)
+	}
+	if users.lastUpdateTxExpectedVersion != 41 {
+		t.Fatalf("UpdateTxVersioned expectedVersion = %d, want 41", users.lastUpdateTxExpectedVersion)
 	}
 	if users.capturedTxPatch.DisplayName == nil || *users.capturedTxPatch.DisplayName != "Bob" {
 		t.Fatalf("DisplayName patch = %v, want Bob", users.capturedTxPatch.DisplayName)
@@ -658,10 +667,10 @@ func TestAdminUser_EditUser_ProfileAndRolesHappy(t *testing.T) {
 	}
 }
 
-func TestAdminUser_EditUser_RolesOnlySkipsProfileUpdate(t *testing.T) {
+func TestAdminUser_EditUser_RolesOnlyStillBumpsUserVersion(t *testing.T) {
 	t.Parallel()
 
-	target := &domain.User{ID: "u-target"}
+	target := &domain.User{ID: "u-target", Version: 7}
 	users := &mockAdminUserRepository{users: map[string]*domain.User{"u-target": target}}
 	userRoles := &mockAdminUserRoleRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
@@ -669,7 +678,8 @@ func TestAdminUser_EditUser_RolesOnlySkipsProfileUpdate(t *testing.T) {
 	uc, _, _, _ := buildAdminUCWithTx(users, nil, userRoles, tx, authChk)
 
 	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
-		RoleIDs: []string{"r-general"},
+		RoleIDs:         []string{"r-general"},
+		ExpectedVersion: 7,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -681,8 +691,14 @@ func TestAdminUser_EditUser_RolesOnlySkipsProfileUpdate(t *testing.T) {
 	if *txCalls != 1 {
 		t.Fatalf("tx calls = %d, want 1", *txCalls)
 	}
-	if users.updateTxCalls != 0 {
-		t.Fatalf("UpdateTx calls = %d, want 0", users.updateTxCalls)
+	if users.updateTxCalls != 1 {
+		t.Fatalf("UpdateTxVersioned calls = %d, want 1", users.updateTxCalls)
+	}
+	if users.lastUpdateTxExpectedVersion != 7 {
+		t.Fatalf("UpdateTxVersioned expectedVersion = %d, want 7", users.lastUpdateTxExpectedVersion)
+	}
+	if users.capturedTxPatch.DisplayName != nil || users.capturedTxPatch.Bio != nil || users.capturedTxPatch.AvatarURL != nil {
+		t.Fatalf("UpdateTxVersioned patch = %+v, want empty patch for role-only edit", users.capturedTxPatch)
 	}
 	if userRoles.setCalls != 1 {
 		t.Fatalf("SetUserRolesTx calls = %d, want 1", userRoles.setCalls)
@@ -693,14 +709,16 @@ func TestAdminUser_EditUser_RolesOnlySkipsProfileUpdate(t *testing.T) {
 func TestAdminUser_EditUser_EmptyRoleIDsAllowedForOtherUser(t *testing.T) {
 	t.Parallel()
 
-	target := &domain.User{ID: "u-target"}
+	target := &domain.User{ID: "u-target", Version: 9}
 	users := &mockAdminUserRepository{users: map[string]*domain.User{"u-target": target}}
 	userRoles := &mockAdminUserRoleRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	tx, txCalls := countingAdminUserTxRunner()
 	uc, _, _, _ := buildAdminUCWithTx(users, nil, userRoles, tx, authChk)
 
-	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{})
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		ExpectedVersion: 9,
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -710,6 +728,12 @@ func TestAdminUser_EditUser_EmptyRoleIDsAllowedForOtherUser(t *testing.T) {
 	}
 	if *txCalls != 1 {
 		t.Fatalf("tx calls = %d, want 1", *txCalls)
+	}
+	if users.updateTxCalls != 1 {
+		t.Fatalf("UpdateTxVersioned calls = %d, want 1", users.updateTxCalls)
+	}
+	if users.lastUpdateTxExpectedVersion != 9 {
+		t.Fatalf("UpdateTxVersioned expectedVersion = %d, want 9", users.lastUpdateTxExpectedVersion)
 	}
 	if userRoles.setCalls != 1 {
 		t.Fatalf("SetUserRolesTx calls = %d, want 1", userRoles.setCalls)
@@ -880,6 +904,47 @@ func TestAdminUser_EditUser_RoleNotFoundValidation(t *testing.T) {
 	assertAdminEditUserOutcomeXOR(t, outcome)
 	if outcome.Validation == nil || outcome.Validation.Field != "roleIds" {
 		t.Fatalf("outcome.Validation = %+v, want field=roleIds", outcome.Validation)
+	}
+}
+
+func TestAdminUser_EditUser_ConcurrentUpdateOutcome(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{
+		users:       map[string]*domain.User{"u-target": {ID: "u-target", Version: 8}},
+		updateTxErr: repository.ErrConcurrentUpdate,
+	}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	tx, txCalls := countingAdminUserTxRunner()
+	uc, _, _, _ := buildAdminUCWithTx(users, nil, userRoles, tx, authChk)
+
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		DisplayName:     ptr("Alice"),
+		RoleIDs:         []string{"r-general"},
+		ExpectedVersion: 8,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertAdminEditUserOutcomeXOR(t, outcome)
+	if !outcome.ConcurrentUpdate {
+		t.Fatalf("ConcurrentUpdate = false, want true")
+	}
+	if *txCalls != 1 {
+		t.Fatalf("tx calls = %d, want 1", *txCalls)
+	}
+	if users.updateTxCalls != 1 {
+		t.Fatalf("UpdateTxVersioned calls = %d, want 1", users.updateTxCalls)
+	}
+	if users.lastUpdateTxExpectedVersion != 8 {
+		t.Fatalf("UpdateTxVersioned expectedVersion = %d, want 8", users.lastUpdateTxExpectedVersion)
+	}
+	if userRoles.setCalls != 0 {
+		t.Fatalf("SetUserRolesTx calls = %d, want 0 (conflict aborts before role write)", userRoles.setCalls)
+	}
+	if users.findCalls != 0 {
+		t.Fatalf("FindByID calls = %d, want 0 (conflict skips refetch)", users.findCalls)
 	}
 }
 
@@ -1249,8 +1314,12 @@ func TestAdminUser_EditUser_TxRunnerNotConfigured(t *testing.T) {
 func TestAdminUser_EditUser_RefetchUserDisappeared(t *testing.T) {
 	t.Parallel()
 
-	// users.users intentionally empty so FindByID after the tx returns ErrNotFound.
-	users := &mockAdminUserRepository{users: map[string]*domain.User{}}
+	// UpdateTxVersioned sees the row, but FindByID after the tx returns
+	// ErrNotFound to simulate a post-commit disappearance.
+	users := &mockAdminUserRepository{
+		users:   map[string]*domain.User{"u-target": {ID: "u-target"}},
+		findErr: repository.ErrNotFound,
+	}
 	userRoles := &mockAdminUserRoleRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
@@ -1258,10 +1327,9 @@ func TestAdminUser_EditUser_RefetchUserDisappeared(t *testing.T) {
 	_, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
 		RoleIDs: []string{"r-general"},
 	})
-	// UpdateTx is skipped because no profile patch was supplied, so only
-	// SetUserRolesTx runs in the tx, which succeeds. The refetch then hits
-	// the empty store and returns ErrNotFound, which is wrapped with the
-	// 'user disappeared' message.
+	// UpdateTxVersioned and SetUserRolesTx run in the tx and succeed. The
+	// refetch then returns ErrNotFound, which is wrapped with the 'user
+	// disappeared' message.
 	assertInternalChain(t, err, "usecase: admin user edit: refetch: user disappeared")
 	if !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("expected repository.ErrNotFound in chain, got %T: %v", err, err)
@@ -1273,7 +1341,10 @@ func TestAdminUser_EditUser_RefetchUserDisappeared(t *testing.T) {
 func TestAdminUser_EditUser_RefetchCancelled(t *testing.T) {
 	t.Parallel()
 
-	users := &mockAdminUserRepository{findErr: context.Canceled}
+	users := &mockAdminUserRepository{
+		users:   map[string]*domain.User{"u-target": {ID: "u-target"}},
+		findErr: context.Canceled,
+	}
 	userRoles := &mockAdminUserRoleRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
@@ -1290,7 +1361,10 @@ func TestAdminUser_EditUser_RefetchCancelled(t *testing.T) {
 func TestAdminUser_EditUser_RefetchInfraError(t *testing.T) {
 	t.Parallel()
 
-	users := &mockAdminUserRepository{findErr: errors.New("db down")}
+	users := &mockAdminUserRepository{
+		users:   map[string]*domain.User{"u-target": {ID: "u-target"}},
+		findErr: errors.New("db down"),
+	}
 	userRoles := &mockAdminUserRoleRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
@@ -1386,8 +1460,8 @@ func TestAdminUser_Get_Cancelled(t *testing.T) {
 // XOR-invariant outcome assertions
 // ---------------------------------------------------------------------------
 
-// assertAdminEditUserOutcomeXOR asserts that exactly one of User,
-// Validation, or CannotRevokeOwnAdmin is set in the outcome.
+// assertAdminEditUserOutcomeXOR asserts that exactly one of User, Validation,
+// CannotRevokeOwnAdmin, or ConcurrentUpdate is set in the outcome.
 func assertAdminEditUserOutcomeXOR(t *testing.T, outcome AdminEditUserOutcome) {
 	t.Helper()
 	set := 0
@@ -1398,6 +1472,9 @@ func assertAdminEditUserOutcomeXOR(t *testing.T, outcome AdminEditUserOutcome) {
 		set++
 	}
 	if outcome.CannotRevokeOwnAdmin {
+		set++
+	}
+	if outcome.ConcurrentUpdate {
 		set++
 	}
 	if set != 1 {

@@ -56,9 +56,10 @@ type PageInfo struct {
 // AdminEditUserInput captures the atomic admin edit shape. DisplayName and
 // Bio are patch fields; RoleIDs is the final declarative role set.
 type AdminEditUserInput struct {
-	DisplayName *string
-	Bio         *string
-	RoleIDs     []string
+	DisplayName     *string
+	Bio             *string
+	RoleIDs         []string
+	ExpectedVersion int64
 }
 
 // InputValidationInfo carries an input-validation failure as a typed value
@@ -82,11 +83,13 @@ func NewInputValidationInfo(field, message string) *InputValidationInfo {
 }
 
 // AdminEditUserOutcome is the result of adminUserUsecase.EditUser. Exactly one
-// of User, Validation, or CannotRevokeOwnAdmin is active on a nil-error return.
+// of User, Validation, CannotRevokeOwnAdmin, or ConcurrentUpdate is active on
+// a nil-error return.
 type AdminEditUserOutcome struct {
 	User                 *domain.User
 	Validation           *InputValidationInfo
 	CannotRevokeOwnAdmin bool
+	ConcurrentUpdate     bool
 }
 
 // AdminUserUsecase is the admin-only user management surface.
@@ -105,7 +108,7 @@ type AdminUserUsecase interface {
 // usecase test scaffolding small.
 type adminUserRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.User, error)
-	UpdateTx(ctx context.Context, tx *gorm.DB, id string, patch repository.UserUpdate) error
+	UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string, patch repository.UserUpdate, expectedVersion int64) error
 	ListPage(
 		ctx context.Context,
 		after, before *string,
@@ -307,7 +310,6 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 	}
 
 	patch := repository.UserUpdate{}
-	profilePatch := false
 	if input.DisplayName != nil {
 		dn, err := domain.ParseDisplayName(*input.DisplayName)
 		if err != nil {
@@ -319,7 +321,6 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 		}
 		s := string(dn)
 		patch.DisplayName = &s
-		profilePatch = true
 	}
 	if input.Bio != nil {
 		bio, err := domain.ParseBio(input.Bio)
@@ -331,7 +332,6 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 			return AdminEditUserOutcome{Validation: info}, nil
 		}
 		patch.Bio = bio.Ptr()
-		profilePatch = true
 	}
 
 	roleIDs, validation := normalizeAdminEditRoleIDs(input.RoleIDs)
@@ -383,13 +383,11 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 			}
 		}
 
-		if profilePatch {
-			if uerr := u.users.UpdateTx(ctx, tx, id, patch); uerr != nil {
-				if isContextDone(uerr) {
-					return uerr
-				}
-				return eris.Wrap(uerr, "usecase: admin user edit: update profile")
+		if uerr := u.users.UpdateTxVersioned(ctx, tx, id, patch, input.ExpectedVersion); uerr != nil {
+			if isContextDone(uerr) {
+				return uerr
 			}
+			return eris.Wrap(uerr, "usecase: admin user edit: update profile")
 		}
 		if serr := u.userRoles.SetUserRolesTx(ctx, tx, id, roleIDs); serr != nil {
 			if isContextDone(serr) {
@@ -407,6 +405,9 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 	if err != nil {
 		if isContextDone(err) {
 			return AdminEditUserOutcome{}, err
+		}
+		if errors.Is(err, repository.ErrConcurrentUpdate) {
+			return AdminEditUserOutcome{ConcurrentUpdate: true}, nil
 		}
 		info, perr := mapAdminEditMutationError(err)
 		if perr != nil {
