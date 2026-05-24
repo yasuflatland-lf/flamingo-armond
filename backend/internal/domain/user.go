@@ -14,6 +14,7 @@ type User struct {
 	DisplayName *DisplayName
 	Bio         Bio
 	AvatarURL   *string
+	Version     int64
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }

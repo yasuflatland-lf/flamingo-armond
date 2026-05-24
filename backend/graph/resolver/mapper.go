@@ -18,6 +18,7 @@ func toUserModel(user *domain.User) *model.User {
 		DisplayName: (*string)(user.DisplayName),
 		Bio:         user.Bio.Ptr(),
 		AvatarURL:   user.AvatarURL,
+		Version:     int(user.Version),
 	}
 }
 

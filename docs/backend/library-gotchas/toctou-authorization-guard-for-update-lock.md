@@ -4,6 +4,8 @@
 
 This is the authorization-guard extension of [Transactional read-modify-write must use the `tx` handle, not `r.db`](gorm-tx-read-modify-write.md). That rule covers a read → compute → write where two concurrent writers race the same row. This one covers a read that informs an **authorization or branching decision** which a later write depends on — a check-then-act (TOCTOU) sequence — where the data being read is owned by a *different* aggregate that a concurrent transaction can mutate.
 
+For the complementary cross-request lost-update hazard on the same `adminEditUser` flow — two admins editing the same user across separate `GET`/mutation requests — see [Optimistic version concurrency for cross-request edits](optimistic-version-concurrency-cross-request.md). That uses an optimistic `version` token (not a `FOR UPDATE` lock) precisely because the hazard spans two requests with human think-time, where no transaction-scoped lock can reach.
+
 ## Why moving the read into the tx is necessary but not sufficient
 
 A self-demotion guard for `adminEditUser` must read the names of the submitted roles to decide whether the caller keeps the admin role, then write the new role membership. The first instinct — move the role-name read inside the transaction so it shares the write's snapshot — does not close the window under Postgres's default `READ COMMITTED` isolation. `READ COMMITTED` takes a **fresh snapshot at the start of each statement**, not once per transaction. A concurrent admin who renames or deletes the admin role and commits *between* the in-tx `SELECT` and the membership write is visible to the write; the guard's decision is already made against the stale name, and the demotion slips through.

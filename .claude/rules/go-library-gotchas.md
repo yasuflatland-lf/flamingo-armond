@@ -80,6 +80,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Channel-based "never called" assertion via `select` + `time.After`](../../docs/backend/library-gotchas/channel-based-never-called-assertion.md)
 - [Transactional read-modify-write must use the `tx` handle, not `r.db`](../../docs/backend/library-gotchas/gorm-tx-read-modify-write.md)
 - [TOCTOU authorization guard: lock the read rows with `FOR UPDATE`, abort via a control-flow sentinel](../../docs/backend/library-gotchas/toctou-authorization-guard-for-update-lock.md)
+- [Optimistic version concurrency for cross-request edits (vs. `FOR UPDATE` for in-tx guards)](../../docs/backend/library-gotchas/optimistic-version-concurrency-cross-request.md)
 - [GORM `Updates(map) + RowsAffected + FindByID` for race-free single-field updates (replaces `Take + Save`)](../../docs/backend/library-gotchas/gorm-update-via-updates-rowsaffected-findbyid.md)
 - [Int-typed domain enums need `IsValid()` on DB reconstitution](../../docs/backend/library-gotchas/gorm-enum-cast-isvalid.md)
 - [GraphQL resolver: synthesized domain values must be deterministic](../../docs/backend/library-gotchas/graphql-resolver-stable-synthesis.md)

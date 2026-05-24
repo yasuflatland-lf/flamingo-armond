@@ -1,3 +1,4 @@
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import type { ReactNode } from "react";
@@ -25,6 +26,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       <html lang="en">
         <body suppressHydrationWarning>
           <Providers>{children}</Providers>
+          <SpeedInsights />
         </body>
       </html>
     );
@@ -106,6 +108,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <Toaster />
           </AppShell>
         </Providers>
+        <SpeedInsights />
       </body>
     </html>
   );

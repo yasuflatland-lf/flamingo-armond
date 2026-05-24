@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation } from "@apollo/client/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
@@ -16,6 +16,7 @@ type Props = {
   queryError: string | null;
   onDismiss: () => void;
   onSaved: () => void;
+  onReloadRequested?: () => void;
 };
 
 const DISPLAY_NAME_MAX = 50;
@@ -25,6 +26,7 @@ const ERR_FORBIDDEN = "You do not have permission.";
 const ERR_UNAUTHENTICATED = "Your session has expired. Sign in again.";
 const ERR_UNEXPECTED = "An unexpected error occurred. Please try again.";
 const ERR_SOMETHING_WRONG = "Something went wrong. Please try again.";
+const ERR_CONCURRENT = "This user was changed by someone else. Reload and try again.";
 
 /** Pick the user-facing message for a thrown mutation error. */
 function pickAuthErrorMessage(codes: readonly string[]): string {
@@ -49,12 +51,20 @@ export function AdminUserProfileSheet({
   queryError,
   onDismiss,
   onSaved,
+  onReloadRequested,
 }: Props) {
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [saveError, setSaveError] = useState("");
   const [stagedRoleIds, setStagedRoleIds] = useState<Set<string>>(() => new Set());
   const [runEdit, { loading: saving, reset: resetEdit }] = useMutation(AdminEditUserMutation);
+  // Tracks the id whose data the form last synced to. A ConcurrentUpdateError
+  // auto-triggers a parent refetch that re-delivers the *same* user with fresh
+  // server values (possibly across several object-identity swaps, since the list
+  // refetch and detail reload both rewrite the shared cache entity). We must keep
+  // the conflict banner across those same-id reloads and only clear it when the
+  // form switches to a *different* user.
+  const lastSyncedId = useRef<string | null>(null);
 
   const initialRoleIds = useMemo(() => new Set(user?.roles.map((role) => role.id) ?? []), [user]);
   const displayNameDirty = displayName !== (user?.displayName ?? "");
@@ -64,11 +74,21 @@ export function AdminUserProfileSheet({
   const dirty = profileDirty || rolesDirty;
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      // Reset on close so reopening the *same* user is treated as a fresh sync
+      // (id differs from null) and clears any leftover banner.
+      lastSyncedId.current = null;
+      return;
+    }
     setDisplayName(user.displayName ?? "");
     setBio(user.bio ?? "");
     setStagedRoleIds(new Set(user.roles.map((role) => role.id)));
-    setSaveError("");
+    // Only clear the banner when switching to a different user. A same-id reload
+    // (the concurrent-update refresh) keeps the conflict banner visible.
+    if (lastSyncedId.current !== user.id) {
+      setSaveError("");
+    }
+    lastSyncedId.current = user.id;
     resetEdit();
   }, [user, resetEdit]);
 
@@ -104,16 +124,13 @@ export function AdminUserProfileSheet({
     }
 
     clearSaveStatus();
-    const input = {
-      ...(profileDirty ? { displayName: displayName.trim(), bio: bio || null } : {}),
-      roleIds: Array.from(stagedRoleIds),
-    };
-
     try {
       const result = await runEdit({
         variables: {
           id: user.id,
-          input,
+          expectedVersion: user.version,
+          ...(profileDirty ? { displayName: displayName.trim(), bio: bio || null } : {}),
+          roleIds: Array.from(stagedRoleIds),
         },
       });
       const payload = result.data?.adminEditUser;
@@ -125,6 +142,12 @@ export function AdminUserProfileSheet({
         case "InputValidationError":
         case "CannotRevokeOwnAdminRoleError":
           setSaveError(payload.message);
+          return;
+        case "ConcurrentUpdateError":
+          // The banner survives the same-id reload triggered here — see the
+          // form-sync effect's last-synced-id guard.
+          setSaveError(ERR_CONCURRENT);
+          onReloadRequested?.();
           return;
         default:
           console.warn("[admin/users] unexpected save payload", {

@@ -16,6 +16,7 @@ vi.mock("next/image", () => ({
 function makeUser(overrides: Partial<AdminUserListItem> = {}): AdminUserListItem {
   return {
     id: "u-1",
+    version: 41,
     displayName: "Alice",
     bio: "bio text",
     avatarUrl: null,

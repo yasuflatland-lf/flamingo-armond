@@ -32,6 +32,7 @@ const GENERAL_ROLE: AdminUserRole = { id: "role-general", name: "general" };
 function makeUser(overrides: Partial<AdminUserListItem> = {}): AdminUserListItem {
   return {
     id: "user-1",
+    version: 0,
     displayName: "User 1",
     bio: null,
     avatarUrl: null,
