@@ -30,3 +30,44 @@ Tests that assert "the chain contains a frame whose message includes substring `
 - **Substring that matches multiple production wraps.** `"usecase: card"` matches every wrap in `card.go`, so a test that intended to pin one call site silently passes for an error originating at a different one. The bug only surfaces when a code rename moves the matched site but the wrong site keeps emitting the substring.
 
 Pick the substring to match exactly one `eris.Wrap` / `eris.Errorf` call in the production package under test. Grep the production source for the proposed substring before committing the test; if it appears in more than one wrap message, lengthen it until it does not.
+
+## Nested wraps inside a single error each need their own pin
+
+When a tx callback (or any nested-call site) wraps each sub-call independently AND the outer caller wraps the whole tx with a different message, a single `assertInternalChain` call on the OUTER wrap silently accepts an inner wrap that has been dropped — the outer frame keeps matching even when the inner sub-op annotation has rotted away.
+
+Concrete: `EditUser` in `backend/internal/usecase/admin_user.go` wraps each sub-call inside its tx callback:
+
+```go
+err = u.tx(ctx, func(tx *gorm.DB) error {
+    if profilePatch {
+        if err := u.users.UpdateTx(...); err != nil {
+            if isContextDone(err) { return err }
+            return eris.Wrap(err, "usecase: admin user edit: update profile")
+        }
+    }
+    if err := u.userRoles.SetUserRolesTx(...); err != nil {
+        if isContextDone(err) { return err }
+        return eris.Wrap(err, "usecase: admin user edit: replace roles")
+    }
+    return nil
+})
+if err != nil {
+    // mapAdminEditMutationError default branch wraps the whole tx with
+    // "usecase: admin user edit: tx".
+    ...
+}
+```
+
+The pre-existing `TestAdminUser_EditUser_InfraErrorFromTx` only asserted the outer `"...edit: tx"` frame. A future refactor that dropped the inner `eris.Wrap(err, "...edit: replace roles")` would still pass the test — the outer frame keeps matching — but the log line would lose which sub-op failed (visible only in the `error_chain` JSON, which is what operators triage on).
+
+The fix: assert BOTH frames in the same test (or split into a dedicated test per sub-op):
+
+```go
+// backend/internal/usecase/admin_user_test.go
+assertInternalChain(t, err, "usecase: admin user edit: tx")
+assertInternalChain(t, err, "usecase: admin user edit: replace roles")
+```
+
+And a sibling test exercises the OTHER sub-op (`TestAdminUser_EditUser_UpdateTxInfraError_PinsUpdateProfileWrap`) so each per-sub-op wrap has its own pin. Without both pins, only one of the two inner wraps can drift before any test goes red.
+
+The principle generalises: any production wrap that exists primarily to annotate the chain (not to convert sentinel identity, not to add a stack frame at the originating call site) needs its own substring pin. Nested wraps that share an outer frame cannot rely on the outer frame's pin for coverage.
