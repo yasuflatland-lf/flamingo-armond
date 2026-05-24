@@ -4,6 +4,7 @@ import { BookOpen, Plus, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/app/_components/logout-button";
+import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import { MobileMenuTrigger } from "@/components/nav/mobile-menu-trigger";
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { safeDecodePathSegment } from "@/lib/safe-decode-path-segment";
@@ -35,7 +36,7 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
         aria-label="Flamingo home"
         className="rounded-md p-2 hover:bg-accent font-semibold"
       >
-        🦩
+        <FlamingoMark className="size-7" aria-hidden="true" />
       </Link>
       <div className="flex items-center gap-1">
         {learnCardgroupId && (

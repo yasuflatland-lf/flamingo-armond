@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import { isIgnorableAuthError } from "@/lib/supabase/auth-errors";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { LoginButton } from "./login-button";
@@ -28,9 +29,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
           data-testid="form-brand-header"
           className="lg:hidden flex items-center justify-center gap-2 pt-8"
         >
-          <span className="text-2xl" role="img" aria-label="Flamingo">
-            🦩
-          </span>
+          <FlamingoMark className="size-7" />
           <span className="text-base font-medium">flamingo-armond</span>
         </div>
 
@@ -71,9 +70,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
         data-testid="brand-panel"
         className="max-lg:hidden relative flex flex-col items-center justify-center gap-4 overflow-hidden bg-gradient-to-br from-brand-tint via-brand-tint to-brand-tint/70"
       >
-        <span className="text-8xl drop-shadow-sm" role="img" aria-label="Flamingo">
-          🦩
-        </span>
+        <FlamingoMark className="size-28 drop-shadow-sm" />
         <div className="flex flex-col items-center gap-1 text-center">
           <span className="text-3xl font-semibold tracking-tight text-brand-tint-foreground">
             flamingo-armond
