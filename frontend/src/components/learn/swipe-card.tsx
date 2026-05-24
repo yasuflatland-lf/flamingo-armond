@@ -1,7 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { RefObject } from "react";
+import type { AnimatedCardHandle } from "./animated-card";
 import type { SwipeDirection } from "./types";
+
+export type { AnimatedCardHandle } from "./animated-card";
 
 export type SwipeCardData = {
   id: string;
@@ -19,6 +23,10 @@ type Props = {
   isActive: boolean;
   onSwipe: (card: SwipeCardData, direction: SwipeDirection) => void;
   onSwipeProgress?: (direction: SwipeDirection | null, progress: number) => void;
+  // Travels as a normal prop (not React `ref`) so it survives the next/dynamic
+  // boundary — see animated-card.tsx for the rationale. SwipeCard spreads
+  // {...props} onto AnimatedCard, so handleRef forwards automatically.
+  handleRef?: RefObject<AnimatedCardHandle | null>;
 };
 
 // AnimatedCard ships @react-spring/web + @use-gesture/react, which both

@@ -4,17 +4,9 @@ import type { RefObject } from "react";
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
-import { SwipeCard, type SwipeCardData } from "./swipe-card";
+import { type AnimatedCardHandle, SwipeCard, type SwipeCardData } from "./swipe-card";
 import { SwipeDirectionOverlay } from "./swipe-direction-overlay";
 import type { SwipeDirection } from "./types";
-
-/**
- * Delay between painting the swipe-progress overlay at full intensity and
- * firing onCardSwiped for programmatic (rating button / keyboard) commits.
- * Matches the previous parent-driven cadence so the overlay paints, then
- * the card flies out without the queue mutating mid-paint.
- */
-const PROGRAMMATIC_COMMIT_DELAY_MS = 180;
 
 /**
  * Imperative handle exposed by SwipeCardStack so parents can trigger a swipe
@@ -65,17 +57,14 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
     activeCardRef.current = activeCard;
   }, [activeCard]);
 
-  // Track any pending programmatic commit so unmount or a new triggerSwipe
-  // call can cancel it cleanly — avoids firing onCardSwiped after unmount.
-  const pendingCommitRef = useRef<number | null>(null);
-  useEffect(() => {
-    return () => {
-      if (pendingCommitRef.current != null) {
-        window.clearTimeout(pendingCommitRef.current);
-        pendingCommitRef.current = null;
-      }
-    };
-  }, []);
+  // Imperative handle of the active (index 0) card. triggerSwipe drives the
+  // fly-off through this; AnimatedCard commits onSwipe when its spring settles.
+  const activeCardHandleRef = useRef<AnimatedCardHandle | null>(null);
+
+  // Per-card once-guard: the gesture path and the programmatic flyOut path both
+  // funnel their committed onSwipe through commitCard. The guard keyed on the
+  // card id prevents a gesture + rating-button double-commit on the same card.
+  const exitingCardIdRef = useRef<string | null>(null);
 
   // Use a ref for the commit callback so the imperative handle stays stable
   // even when the parent passes a freshly-created onCardSwiped each render.
@@ -89,66 +78,59 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
     setSwipeProgress(progress);
   }, []);
 
-  // Gesture-completed swipes take precedence over any pending programmatic
-  // commit on the same card. Without this, a user who taps a rating button
-  // and then flicks the card before the PROGRAMMATIC_COMMIT_DELAY_MS timer
-  // fires would see onCardSwiped called twice for the same card — once via
-  // the gesture path, once via the late-firing timer — producing a duplicate
-  // mutation and an off-by-one completed counter. Clearing the timer here
-  // makes the gesture path absorb the queued programmatic commit.
+  // Single commit funnel. Both the gesture path and the programmatic flyOut
+  // path deliver their committed onSwipe here (the gesture at pointer-release,
+  // the fly-off when AnimatedCard's spring settles). The once-guard keyed on
+  // the card id makes a gesture + rating-button double-commit on the same card
+  // collapse to a single onCardSwiped call.
+  const commitCard = useCallback((card: SwipeCardData, direction: SwipeDirection) => {
+    if (exitingCardIdRef.current === card.id) return;
+    exitingCardIdRef.current = card.id;
+    setSwipeDirection(null);
+    setSwipeProgress(0);
+    onCardSwipedRef.current(card as TCard, direction);
+  }, []);
+
+  // onSwipe sink passed to every SwipeCard. The gesture path reaches it on
+  // pointer-release; the fly-off path reaches it when the spring settles.
   const handleGestureCommit = useCallback(
     (swipedCard: SwipeCardData, direction: SwipeDirection) => {
-      if (pendingCommitRef.current != null) {
-        window.clearTimeout(pendingCommitRef.current);
-        pendingCommitRef.current = null;
-      }
-      setSwipeDirection(null);
-      setSwipeProgress(0);
-      onCardSwipedRef.current(swipedCard as TCard, direction);
+      commitCard(swipedCard, direction);
     },
-    [],
+    [commitCard],
   );
 
-  const triggerSwipe = useCallback((direction: SwipeDirection) => {
-    const card = activeCardRef.current;
-    if (!card) return;
+  const triggerSwipe = useCallback(
+    (direction: SwipeDirection) => {
+      const card = activeCardRef.current;
+      if (!card) return;
+      // Already flying off this card — ignore repeat triggers.
+      if (exitingCardIdRef.current === card.id) return;
 
-    // Paint the overlay at full progress so a programmatic swipe (rating
-    // button / keyboard) shares the same visual affordance as a gesture
-    // commit. With reduced motion, fire onCardSwiped immediately; otherwise
-    // wait so the overlay paints before the queue mutates.
-    setSwipeDirection(direction);
-    setSwipeProgress(1);
+      // Reduced motion: skip the animation and commit instantly.
+      if (reducedMotionRef.current) {
+        commitCard(card, direction);
+        return;
+      }
 
-    if (pendingCommitRef.current != null) {
-      window.clearTimeout(pendingCommitRef.current);
-      pendingCommitRef.current = null;
-    }
-
-    if (reducedMotionRef.current) {
-      onCardSwipedRef.current(card, direction);
-      return;
-    }
-
-    // Capture the card at trigger time so rapid clicks during the delay
-    // window cannot route the commit at a card the user did not target.
-    // The active-card id guard is a belt-and-suspenders defence on top of
-    // handleGestureCommit clearing this timer when a gesture wins the race.
-    pendingCommitRef.current = window.setTimeout(() => {
-      pendingCommitRef.current = null;
-      if (activeCardRef.current?.id !== card.id) return;
-      onCardSwipedRef.current(card, direction);
-    }, PROGRAMMATIC_COMMIT_DELAY_MS);
-  }, []);
+      // Paint the rating label at full intensity while the card flies, then
+      // drive the fly-off — AnimatedCard commits via onSwipe on spring rest.
+      setSwipeDirection(direction);
+      setSwipeProgress(1);
+      activeCardHandleRef.current?.flyOut(direction);
+    },
+    [commitCard],
+  );
 
   useImperativeHandle(ref, () => ({ triggerSwipe }), [triggerSwipe]);
 
-  // Reset overlay state whenever the active card changes so a programmatic
-  // triggerSwipe paint does not leak into the next card's gesture.
+  // Reset overlay state and the exiting guard whenever the active card changes
+  // so a programmatic triggerSwipe paint does not leak into the next card.
   // biome-ignore lint/correctness/useExhaustiveDependencies: tracking only the id of the active card is intentional — full-object deps would reset on referential changes to the same card.
   useEffect(() => {
     setSwipeDirection(null);
     setSwipeProgress(0);
+    exitingCardIdRef.current = null;
   }, [activeCard?.id]);
 
   useEffect(() => {
@@ -211,6 +193,7 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
             isActive={index === 0}
             onSwipe={handleGestureCommit}
             onSwipeProgress={handleSwipeProgress}
+            handleRef={index === 0 ? activeCardHandleRef : undefined}
           />
         </div>
       ))}

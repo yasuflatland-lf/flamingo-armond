@@ -6,37 +6,79 @@ import type { SwipeCardData } from "./swipe-card";
 import type { SwipeCardStackHandle } from "./swipe-card-stack";
 import { SwipeCardStack } from "./swipe-card-stack";
 
+// Module-scoped queue that simulates the AnimatedCard spring reaching "rest".
+// The real AnimatedCard defers its onSwipe commit until the fly-off spring
+// settles; the stub mirrors that by queuing the commit and letting tests
+// settle it deterministically — no fake-timer advancement needed for the
+// programmatic commit path.
+let pendingFlyOuts: Array<() => void> = [];
+function settleFlyOuts() {
+  const fns = pendingFlyOuts;
+  pendingFlyOuts = [];
+  for (const fn of fns) fn();
+}
+beforeEach(() => {
+  pendingFlyOuts = [];
+});
+
 // SwipeCard loads AnimatedCard via next/dynamic (ssr: false).
 // In jsdom the dynamic import always resolves to the loading fallback (null),
 // so we replace the whole module with a thin stub that exposes the same props
-// and lets tests call onSwipeProgress / onSwipe directly via data-testid.
+// and lets tests call onSwipeProgress / onSwipe / the handleRef.flyOut handle.
 vi.mock("./swipe-card", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./swipe-card")>();
+  const { useEffect, useImperativeHandle, useRef } = await import("react");
   return {
     ...actual,
     SwipeCard: ({
       card,
+      handleRef,
       onSwipe,
       onSwipeProgress,
     }: {
       card: SwipeCardData;
       isActive: boolean;
+      handleRef?: React.RefObject<import("./swipe-card").AnimatedCardHandle | null>;
       onSwipe: (card: SwipeCardData, direction: "left" | "down" | "right") => void;
       onSwipeProgress?: (direction: "left" | "down" | "right" | null, progress: number) => void;
-    }) => (
-      <div
-        data-testid="swipe-card-stub"
-        data-card-id={card.id}
-        // Attach helpers so tests can simulate gesture events.
-        onPointerDown={() => onSwipeProgress?.("right", 0.5)}
-        onPointerUp={() => {
-          onSwipeProgress?.(null, 0);
-          onSwipe(card, "right");
-        }}
-      >
-        {card.front}
-      </div>
-    ),
+    }) => {
+      const mounted = useRef(true);
+      useEffect(
+        () => () => {
+          mounted.current = false;
+        },
+        [],
+      );
+      useImperativeHandle(
+        handleRef,
+        () => ({
+          // flyOut defers the commit to "rest" (settleFlyOuts), mirroring the
+          // real AnimatedCard which commits onSwipe from the spring settle,
+          // mount-guarded so a settle after unmount is a no-op.
+          flyOut: (direction: "left" | "down" | "right") => {
+            pendingFlyOuts.push(() => {
+              if (mounted.current) onSwipe(card, direction);
+            });
+          },
+        }),
+        [card, onSwipe],
+      );
+      return (
+        <div
+          data-testid="swipe-card-stub"
+          data-card-id={card.id}
+          // Attach helpers so tests can simulate gesture events. pointerUp
+          // calls onSwipe directly — that is the gesture reaching the stack.
+          onPointerDown={() => onSwipeProgress?.("right", 0.5)}
+          onPointerUp={() => {
+            onSwipeProgress?.(null, 0);
+            onSwipe(card, "right");
+          }}
+        >
+          {card.front}
+        </div>
+      );
+    },
   };
 });
 
@@ -103,13 +145,6 @@ describe("SwipeCardStack — Session-complete count line", () => {
 // ---------------------------------------------------------------------------
 
 describe("SwipeCardStack — keydown listener stability (activeCardRef)", () => {
-  beforeEach(() => {
-    vi.useFakeTimers({ shouldAdvanceTime: false });
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it("registers the keydown listener exactly once even after activeCard changes via rerender", () => {
     const addSpy = vi.spyOn(window, "addEventListener");
     const removeSpy = vi.spyOn(window, "removeEventListener");
@@ -144,9 +179,13 @@ describe("SwipeCardStack — keydown listener stability (activeCardRef)", () => 
       <SwipeCardStack cards={[cardA, cardB]} onCardSwiped={onCardSwiped} />,
     );
 
-    // First ArrowLeft — activeCard is cardA. triggerSwipe sets a 180ms timeout.
+    // First ArrowLeft — activeCard is cardA. triggerSwipe drives the fly-off,
+    // which commits when the spring settles.
     fireEvent.keyDown(document, { key: "ArrowLeft" });
-    vi.runAllTimers();
+    expect(onCardSwiped).not.toHaveBeenCalled();
+    act(() => {
+      settleFlyOuts();
+    });
     expect(onCardSwiped).toHaveBeenCalledTimes(1);
     expect(onCardSwiped).toHaveBeenNthCalledWith(1, cardA, "left");
 
@@ -155,25 +194,20 @@ describe("SwipeCardStack — keydown listener stability (activeCardRef)", () => 
 
     // Second ArrowLeft — activeCardRef must now point to cardB, not cardA.
     fireEvent.keyDown(document, { key: "ArrowLeft" });
-    vi.runAllTimers();
+    act(() => {
+      settleFlyOuts();
+    });
     expect(onCardSwiped).toHaveBeenCalledTimes(2);
     expect(onCardSwiped).toHaveBeenNthCalledWith(2, cardB, "left");
   });
 });
 
 // ---------------------------------------------------------------------------
-// describe: triggerSwipe via imperative ref
+// describe: triggerSwipe via imperative ref (fly-off model)
 // ---------------------------------------------------------------------------
 
 describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
-  beforeEach(() => {
-    vi.useFakeTimers({ shouldAdvanceTime: false });
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("calls onCardSwiped with (activeCard, direction) after the commit delay", () => {
+  it("commits on spring rest, not before: onCardSwiped fires once after settle", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
@@ -182,17 +216,17 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     act(() => {
       ref.current?.triggerSwipe("right");
     });
-    // Not fired yet — 180ms pending.
+    // Fly-off queued but not yet settled — no commit.
     expect(onCardSwiped).not.toHaveBeenCalled();
 
     act(() => {
-      vi.runAllTimers();
+      settleFlyOuts();
     });
     expect(onCardSwiped).toHaveBeenCalledTimes(1);
     expect(onCardSwiped).toHaveBeenCalledWith(cardA, "right");
   });
 
-  it("calls onCardSwiped with 'right' direction via triggerSwipe", () => {
+  it("commits with the 'right' direction via triggerSwipe", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
@@ -202,45 +236,14 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
       ref.current?.triggerSwipe("right");
     });
     act(() => {
-      vi.runAllTimers();
+      settleFlyOuts();
     });
 
     expect(onCardSwiped).toHaveBeenCalledTimes(1);
     expect(onCardSwiped).toHaveBeenCalledWith(cardA, "right");
   });
 
-  it("cancels the first pending commit when triggerSwipe is called again before it fires", () => {
-    const onCardSwiped = vi.fn();
-    const ref = createRef<SwipeCardStackHandle | null>();
-
-    render(<SwipeCardStack cards={[cardA, cardB]} onCardSwiped={onCardSwiped} ref={ref} />);
-
-    // First programmatic swipe — schedules a 180ms commit.
-    act(() => {
-      ref.current?.triggerSwipe("right");
-    });
-    // Advance 100ms — first commit not yet fired.
-    act(() => {
-      vi.advanceTimersByTime(100);
-    });
-    expect(onCardSwiped).not.toHaveBeenCalled();
-
-    // Second swipe before the first fires — should cancel the first timer and
-    // schedule a new one for "left".
-    act(() => {
-      ref.current?.triggerSwipe("left");
-    });
-    // Advance another 180ms (280ms total from start).
-    act(() => {
-      vi.advanceTimersByTime(180);
-    });
-
-    // Only the second swipe should have committed, exactly once.
-    expect(onCardSwiped).toHaveBeenCalledTimes(1);
-    expect(onCardSwiped).toHaveBeenCalledWith(cardA, "left");
-  });
-
-  it("does not call onCardSwiped when unmount races a pending triggerSwipe timer", () => {
+  it("does not call onCardSwiped when unmount races a pending fly-off", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
@@ -248,30 +251,25 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
       <SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />,
     );
 
-    // Schedule a commit but do not advance past the delay yet.
+    // Queue a fly-off but do not settle it yet.
     act(() => {
       ref.current?.triggerSwipe("right");
     });
-    // Advance 100ms — commit is still pending.
-    act(() => {
-      vi.advanceTimersByTime(100);
-    });
     expect(onCardSwiped).not.toHaveBeenCalled();
 
-    // Unmount while the timer is still pending.
+    // Unmount while the fly-off is still pending.
     act(() => {
       unmount();
     });
 
-    // Advance well past the 180ms threshold — the timer must have been cleared.
+    // Settling now must be a no-op — the stub's mount guard drops the commit.
     act(() => {
-      vi.advanceTimersByTime(200);
+      settleFlyOuts();
     });
-
     expect(onCardSwiped).not.toHaveBeenCalled();
   });
 
-  it("shows overlay at progress=1 immediately after triggerSwipe before commit fires", () => {
+  it("shows overlay at full intensity immediately after triggerSwipe, before the commit settles", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
@@ -281,13 +279,13 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
       ref.current?.triggerSwipe("right");
     });
 
-    // Overlay label "Easy" should be visible at full opacity before the timeout.
+    // Overlay label "Easy" should be visible at full intensity before settle.
     expect(screen.getByText("Easy")).toBeInTheDocument();
     // Commit has NOT fired yet.
     expect(onCardSwiped).not.toHaveBeenCalled();
 
     act(() => {
-      vi.runAllTimers();
+      settleFlyOuts();
     });
     expect(onCardSwiped).toHaveBeenCalledTimes(1);
   });
@@ -306,9 +304,56 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     expect(onCardSwiped).not.toHaveBeenCalled();
 
     act(() => {
-      vi.runAllTimers();
+      settleFlyOuts();
     });
     expect(onCardSwiped).toHaveBeenCalledWith(cardA, "left");
+  });
+
+  it("shows overlay with 'Hard' label when triggerSwipe('down') is called", () => {
+    const onCardSwiped = vi.fn();
+    const ref = createRef<SwipeCardStackHandle | null>();
+
+    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+
+    act(() => {
+      ref.current?.triggerSwipe("down");
+    });
+
+    expect(screen.getByText("Hard")).toBeInTheDocument();
+    expect(onCardSwiped).not.toHaveBeenCalled();
+
+    act(() => {
+      settleFlyOuts();
+    });
+    expect(onCardSwiped).toHaveBeenCalledWith(cardA, "down");
+  });
+
+  it("commits exactly once when a gesture and a programmatic flyOut hit the same card", () => {
+    const onCardSwiped = vi.fn();
+    const ref = createRef<SwipeCardStackHandle | null>();
+
+    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+
+    const stub = screen.getByTestId("swipe-card-stub");
+
+    // Programmatic trigger queues a fly-off (deferred to settle).
+    act(() => {
+      ref.current?.triggerSwipe("right");
+    });
+    // Gesture commit reaches the stack synchronously via pointerUp.
+    act(() => {
+      fireEvent.pointerUp(stub);
+    });
+
+    // The gesture has already committed once through commitCard's once-guard.
+    expect(onCardSwiped).toHaveBeenCalledTimes(1);
+
+    // Settling the queued fly-off must NOT commit again (same card id guard).
+    act(() => {
+      settleFlyOuts();
+    });
+    expect(onCardSwiped).toHaveBeenCalledTimes(1);
+    expect(onCardSwiped).toHaveBeenCalledWith(cardA, "right");
   });
 
   it("is a no-op when there is no active card", () => {
@@ -322,34 +367,10 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
       ref.current?.triggerSwipe("right");
     });
     act(() => {
-      vi.runAllTimers();
+      settleFlyOuts();
     });
 
     expect(onCardSwiped).not.toHaveBeenCalled();
-  });
-
-  it("fires onCardSwiped after exactly 180ms in normal motion mode", () => {
-    const onCardSwiped = vi.fn();
-    const ref = createRef<SwipeCardStackHandle | null>();
-
-    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
-
-    act(() => {
-      ref.current?.triggerSwipe("down");
-    });
-
-    // 179ms — not yet committed.
-    act(() => {
-      vi.advanceTimersByTime(179);
-    });
-    expect(onCardSwiped).not.toHaveBeenCalled();
-
-    // 1ms more — now committed.
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-    expect(onCardSwiped).toHaveBeenCalledTimes(1);
-    expect(onCardSwiped).toHaveBeenCalledWith(cardA, "down");
   });
 });
 
@@ -358,13 +379,6 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
 // ---------------------------------------------------------------------------
 
 describe("SwipeCardStack — gesture-driven overlay via SwipeCard callbacks", () => {
-  beforeEach(() => {
-    vi.useFakeTimers({ shouldAdvanceTime: false });
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it("shows the overlay when onSwipeProgress fires right/0.5 (pointer-down), hides it when progress resets", () => {
     const onCardSwiped = vi.fn();
 
@@ -381,12 +395,12 @@ describe("SwipeCardStack — gesture-driven overlay via SwipeCard callbacks", ()
     expect(screen.getByText("Easy")).toBeInTheDocument();
 
     // Simulate drag release — the mock calls onSwipeProgress(null, 0) then onSwipe.
-    // onSwipe goes through handleGestureCommit which clears the overlay immediately.
+    // onSwipe goes through handleGestureCommit → commitCard which clears the overlay.
     act(() => {
       fireEvent.pointerUp(stub);
     });
 
-    // onSwipe commits synchronously via handleGestureCommit, so overlay is gone.
+    // onSwipe commits synchronously via commitCard, so overlay is gone.
     expect(screen.queryByText("Easy")).not.toBeInTheDocument();
     // The gesture commit fires onCardSwiped immediately (no delay for gesture path).
     expect(onCardSwiped).toHaveBeenCalledTimes(1);
@@ -406,11 +420,9 @@ describe("SwipeCardStack — triggerSwipe with reduced motion", () => {
   afterEach(async () => {
     const mod = await import("@/lib/use-reduced-motion");
     vi.mocked(mod.useReducedMotion).mockReturnValue(false);
-    vi.useRealTimers();
   });
 
-  it("fires onCardSwiped synchronously (0ms) when reduced motion is active", () => {
-    vi.useFakeTimers({ shouldAdvanceTime: false });
+  it("fires onCardSwiped synchronously and does not invoke flyOut when reduced motion is active", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
@@ -420,9 +432,17 @@ describe("SwipeCardStack — triggerSwipe with reduced motion", () => {
       ref.current?.triggerSwipe("left");
     });
 
-    // With reduced motion, onCardSwiped fires immediately — no timer advance needed.
+    // With reduced motion, onCardSwiped fires immediately — no settle needed.
     expect(onCardSwiped).toHaveBeenCalledTimes(1);
     expect(onCardSwiped).toHaveBeenCalledWith(cardA, "left");
+    // flyOut must NOT have been queued — the reduced-motion path bypasses it.
+    expect(pendingFlyOuts).toHaveLength(0);
+
+    // Settling confirms nothing else commits.
+    act(() => {
+      settleFlyOuts();
+    });
+    expect(onCardSwiped).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -431,30 +451,28 @@ describe("SwipeCardStack — triggerSwipe with reduced motion", () => {
 // ---------------------------------------------------------------------------
 
 describe("SwipeCardStack — keyboard triggers all three directions", () => {
-  beforeEach(() => {
-    vi.useFakeTimers({ shouldAdvanceTime: false });
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it.each([
     ["ArrowLeft", "left"],
     ["ArrowRight", "right"],
     ["ArrowDown", "down"],
-  ] as const)("fires onCardSwiped with direction '%s' → '%s' when the key is pressed", (key, expectedDirection) => {
-    const onCardSwiped = vi.fn();
+  ] as const)(
+    "commits onCardSwiped with direction '%s' → '%s' on spring rest after the key is pressed",
+    (key, expectedDirection) => {
+      const onCardSwiped = vi.fn();
 
-    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} />);
+      render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} />);
 
-    fireEvent.keyDown(document, { key });
-    act(() => {
-      vi.runAllTimers();
-    });
+      fireEvent.keyDown(document, { key });
+      // Commit is deferred to the fly-off spring rest — not yet fired.
+      expect(onCardSwiped).not.toHaveBeenCalled();
+      act(() => {
+        settleFlyOuts();
+      });
 
-    expect(onCardSwiped).toHaveBeenCalledTimes(1);
-    expect(onCardSwiped).toHaveBeenCalledWith(cardA, expectedDirection);
-  });
+      expect(onCardSwiped).toHaveBeenCalledTimes(1);
+      expect(onCardSwiped).toHaveBeenCalledWith(cardA, expectedDirection);
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -462,13 +480,6 @@ describe("SwipeCardStack — keyboard triggers all three directions", () => {
 // ---------------------------------------------------------------------------
 
 describe("SwipeCardStack — overlay state resets on active card change", () => {
-  beforeEach(() => {
-    vi.useFakeTimers({ shouldAdvanceTime: false });
-  });
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it("clears swipeDirection and swipeProgress when active card advances", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
@@ -483,9 +494,9 @@ describe("SwipeCardStack — overlay state resets on active card change", () => 
     });
     expect(screen.getByText("Easy")).toBeInTheDocument();
 
-    // Advance timers so onCardSwiped fires; parent then re-renders with cardB first.
+    // Settle so onCardSwiped fires; parent then re-renders with cardB first.
     act(() => {
-      vi.runAllTimers();
+      settleFlyOuts();
     });
 
     // Simulate parent removing the swiped card from the deck.
