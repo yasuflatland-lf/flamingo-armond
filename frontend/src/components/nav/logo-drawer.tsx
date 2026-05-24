@@ -61,6 +61,11 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
         open({ mode: "new" });
         return;
       }
+      default: {
+        const _exhaustive: never = createAction;
+        console.error("[LogoDrawer] unhandled createAction kind", createAction);
+        return;
+      }
     }
   }
 
