@@ -395,6 +395,24 @@ describe("AdminUserProfileSheet", () => {
     expect(screen.queryByLabelText(/display name/i)).not.toBeInTheDocument();
   });
 
+  it("does not flash 'User not found.' while the sheet is closing", () => {
+    render(
+      <MockedProvider mocks={[]}>
+        <AdminUserProfileSheet
+          open={false}
+          user={null}
+          allRoles={[]}
+          loading={false}
+          queryError={null}
+          onDismiss={vi.fn()}
+          onSaved={vi.fn()}
+        />
+      </MockedProvider>,
+    );
+
+    expect(screen.queryByText(/user not found/i)).not.toBeInTheDocument();
+  });
+
   it("does not configure optimisticResponse for adminEditUser", () => {
     const source = readFileSync(
       join(process.cwd(), "src/app/admin/users/admin-user-profile-sheet.tsx"),

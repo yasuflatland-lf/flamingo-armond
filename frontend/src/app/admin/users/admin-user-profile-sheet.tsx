@@ -172,6 +172,7 @@ export function AdminUserProfileSheet({
         bio={bio}
         displayName={displayName}
         loading={loading}
+        open={open}
         queryError={queryError}
         saveError={saveError}
         saving={saving}
@@ -197,6 +198,7 @@ function AdminUserProfileSheetBody({
   bio,
   displayName,
   loading,
+  open,
   queryError,
   saveError,
   saving,
@@ -211,6 +213,7 @@ function AdminUserProfileSheetBody({
   bio: string;
   displayName: string;
   loading: boolean;
+  open: boolean;
   queryError: string | null;
   saveError: string;
   saving: boolean;
@@ -237,7 +240,7 @@ function AdminUserProfileSheetBody({
         </div>
       )}
 
-      {!loading && !queryError && !user && (
+      {open && !loading && !queryError && !user && (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
           User not found.
         </div>
