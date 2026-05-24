@@ -118,3 +118,16 @@ grep -rnE 'New<UsecaseName>\(' backend/ --include='*.go'
 This covers `internal/usecase/`, `cmd/server/`, and `graph/resolver/` in one pass. Any file that calls the constructor — production or test — must be updated.
 
 **Worked example.** An `AdminChecker` → `*AdminGate` migration grepped only `backend/internal/usecase/*.go` (12 sites) and listed the files to update. `backend/graph/resolver/dictionary_resolver_test.go:42` was not in scope. The test constructed `NewDictionaryUsecaseWithTx(authSvc, ...)` directly and failed to compile after the signature changed. The fix was a one-line wrap (`usecase.NewAdminGate(authSvc)`), but the gap required a follow-up commit. A full-tree grep before writing the migration plan would have enumerated 13 sites and the resolver file would have been in scope from the start.
+
+### Adding a method to a repository interface fans out to every implementer, including test fakes
+
+The same pre-flight discipline applies to **adding a method to an interface** — the interface-method-addition sibling of the constructor-signature case. When a method is added to a repository interface (e.g. `FindByIDsTx` on `repository.RoleRepository`), every type that implements the interface must gain the method or it stops satisfying it. The production repo is the obvious implementer; the easy-to-miss ones are the **test fakes and stubs** scattered across `internal/loader`, `cmd/server`, and `graph/resolver/*_test.go` that implement the same interface to build harnesses. A grep scoped to the production repo file misses all of them.
+
+The authoritative discovery is the compiler — `go build ./...` names every type that no longer satisfies the interface. A grep complement enumerates the fakes directly:
+
+```bash
+grep -rn 'repository.RoleRepository' backend/ --include='*.go'   # production + every fake
+go build ./...                                                    # names each non-implementer
+```
+
+Enumerate all implementers before writing the change, not after the first build failure: a fake hidden in a resolver test is in scope for the same change that adds the method.
