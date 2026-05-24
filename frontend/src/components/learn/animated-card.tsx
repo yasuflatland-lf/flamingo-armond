@@ -1,6 +1,6 @@
 "use client";
 
-import { animated, useSpring } from "@react-spring/web";
+import { animated, useSpring, useSpringRef } from "@react-spring/web";
 import { useDrag } from "@use-gesture/react";
 import { type RefObject, useCallback, useEffect, useImperativeHandle, useRef } from "react";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
@@ -40,12 +40,26 @@ type Props = {
 };
 
 export function AnimatedCard({ card, isActive, onSwipe, onSwipeProgress, handleRef }: Props) {
-  const [{ x, y, rotate, scale }, api] = useSpring(() => ({
+  // Drive the spring through an explicit `useSpringRef` rather than the api
+  // returned by `useSpring(() => …)`. With the bare function form, react-spring
+  // leaves the controller's internal `ctrl.ref` unset, so its per-commit layout
+  // effect re-applies the initializer props (`x: 0`, default config) on EVERY
+  // render. That is a no-op while the card rests at centre, but when a render
+  // lands mid-fly-off (the release frame calls `onSwipeProgress(null, 0)`, which
+  // re-renders the parent stack) it re-targets the in-flight spring back to
+  // `x: 0` with the default config — the card snaps to centre, the fly-off
+  // resolves `finished: false`, the deferred commit is dropped, and `exitingRef`
+  // stays latched so every later gesture bails. Attaching an explicit ref makes
+  // that layout effect queue the initializer instead of starting it, leaving the
+  // imperative fly-off the sole driver. See @react-spring/core useSprings.
+  const api = useSpringRef();
+  const [{ x, y, rotate, scale }] = useSpring(() => ({
     x: 0,
     y: 0,
     rotate: 0,
     scale: 1,
     config: { tension: 520, friction: 38 },
+    ref: api,
   }));
 
   // Guards against committing the same card twice (a second gesture or flyOut
@@ -118,6 +132,7 @@ export function AnimatedCard({ card, isActive, onSwipe, onSwipeProgress, handleR
           y: flyY,
           rotate: flyRotate,
           scale: 0.92,
+          immediate: false,
           config: { duration: FLY_OFF_DURATION_MS },
         }),
       )

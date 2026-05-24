@@ -245,6 +245,36 @@ describe("<AnimatedCard> — re-grab during fly-off must not interrupt the exit"
   });
 });
 
+describe("<AnimatedCard> — a re-render must not re-apply the spring initializer", () => {
+  // Root-cause regression for the real-browser fly-off-snap-back bug. With the
+  // bare `useSpring(() => …)` function form, react-spring leaves the
+  // controller's `ctrl.ref` unset, so its per-commit layout effect re-applies
+  // the initializer props (`x: 0`, default config) on EVERY render via
+  // `Controller.start`. While the card rests at centre that is a silent no-op,
+  // but a render landing mid-fly-off (the release frame re-renders the parent
+  // stack through `onSwipeProgress(null, 0)`) re-targets the in-flight spring
+  // back to `x: 0`: the card snaps to centre, the fly-off resolves
+  // `finished: false`, the deferred commit is dropped, and `exitingRef` latches
+  // so every later gesture bails. Attaching an explicit `useSpringRef` makes
+  // the layout effect QUEUE the initializer instead of starting it.
+  //
+  // This is timing-independent in jsdom: the layout effect re-applies on every
+  // commit regardless of spring state. With no gesture and no flyOut, the only
+  // way a `config`-carrying Controller.start can appear is the initializer
+  // re-application (it carries the `{ tension, friction }` config). Pre-fix that
+  // call is present on mount and on every re-render; post-fix the only start is
+  // react-spring's benign `{ default: context }` propagation, which carries no
+  // config. So "no config-carrying start from a gesture-free render" pins the bug.
+  it("issues no initializer re-apply (config-carrying start) when a resting card re-renders", () => {
+    const calls = spyControllerStart();
+    const onSwipe = vi.fn();
+    const { rerender } = render(<AnimatedCard card={CARD} isActive onSwipe={onSwipe} />);
+    // Force a fresh commit with no gesture and no flyOut (new onSwipe identity).
+    rerender(<AnimatedCard card={CARD} isActive onSwipe={vi.fn()} />);
+    expect(calls.some((call) => call.hasConfig)).toBe(false);
+  });
+});
+
 describe("<AnimatedCard> — fly-off spring rejection still commits", () => {
   it("commits anyway (and warns) when the fly-off spring rejects on a teardown race", async () => {
     // The animation is cosmetic; the commit is the load-bearing side effect.
