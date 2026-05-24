@@ -266,6 +266,10 @@ func (r *countingRepo) UpdateTx(_ context.Context, _ *gorm.DB, _ string, _ repos
 	panic("countingRepo.UpdateTx not configured")
 }
 
+func (r *countingRepo) UpdateTxVersioned(_ context.Context, _ *gorm.DB, _ string, _ repository.UserUpdate, _ int64) error {
+	panic("countingRepo.UpdateTxVersioned not configured")
+}
+
 // ListPage satisfies repository.UserRepository. The loader-layer tests never
 // hit cursor pagination, so this fixture panics if called — surfacing any
 // accidental coupling instead of silently returning a fabricated empty page.

@@ -11,7 +11,6 @@ import (
 	"backend/internal/domain"
 	"backend/internal/loader"
 	"backend/internal/repository"
-	"gorm.io/gorm"
 )
 
 func loadAllCards(ctx context.Context, l *loader.Loaders, ids []string) ([]*domain.Card, []error) {
@@ -99,8 +98,4 @@ func TestCardLoader_PartialNotFound(t *testing.T) {
 	if results[1] != nil {
 		t.Fatalf("missing: want nil result, got %+v", results[1])
 	}
-}
-
-func (r *countingRepo) UpdateTxVersioned(_ context.Context, _ *gorm.DB, _ string, _ repository.UserUpdate, _ int64) error {
-	panic("countingRepo.UpdateTxVersioned not configured")
 }
