@@ -12,7 +12,7 @@ Design and constraints for the Go / Echo v5 backend that are not obvious from th
 
 The server entry (`backend/cmd/server/main.go`) is deliberately split thin so tests can drive the full lifecycle without spawning a subprocess:
 
-- `newRouter()` — builds `*echo.Echo` with `RequestLogger` + `Recover` middleware and exposes `GET /` and `GET /health`. Tests hit it directly via `httptest.NewServer`.
+- `newRouter()` — builds `*echo.Echo` with `RequestID` → `Recover` → `RequestLogger` middleware (in that registration order) and exposes `GET /` and `GET /health`. Tests hit it directly via `httptest.NewServer`.
 - `run(ctx, logger) error` — owns the `http.Server` and the shutdown goroutine. Reads `PORT` and `SHUTDOWN_TIMEOUT` here.
 - `main()` — wires `slog.NewJSONHandler(os.Stderr, ...)` and `signal.NotifyContext(SIGTERM, SIGINT)`, then calls `run`. Exits 1 on error.
 
@@ -196,12 +196,12 @@ The middleware lives at `backend/internal/middleware/request_id.go` and reads `X
 **Middleware position.**
 
 ```go
-e.Use(middleware.RequestLogger())
-e.Use(middleware.Recover())
-e.Use(internalmw.RequestID())  // third — runs on every route
+e.Use(internalmw.RequestID())     // first — establishes the request ID for everything downstream
+e.Use(middleware.Recover())        // second — its panic-recovery context already carries the ID
+e.Use(middleware.RequestLogger())  // third — logs with the ID already in context
 ```
 
-`RequestID` is registered immediately after `Recover` so that even error responses produced by panicking handlers carry the header. It applies globally — `/health`, `/playground`, and `/query` all receive it. The middleware sets `X-Request-ID` on the **response** before calling `next(c)`, so error paths also expose the header to callers.
+`RequestID` is registered **first** so the request ID is established before any other middleware runs. Because `Recover` and `RequestLogger` are registered after it, both see the ID already in context — panic-recovery error responses and request log lines all carry it. It applies globally — `/health`, `/playground`, and `/query` all receive it. The middleware sets `X-Request-ID` on the **response** before calling `next(c)`, so error paths also expose the header to callers.
 
 **slog integration.** `main()` wires the request-aware logger:
 
