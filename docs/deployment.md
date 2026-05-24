@@ -220,7 +220,7 @@ When `render.yaml` itself changes (e.g. you bump `buildCommand`), reapply via **
 
 #### Bootstrap admin (production)
 
-Run this procedure only on the very first admin bootstrap for a fresh environment, or when an existing environment has lost its last admin and the `assignRole` mutation is unreachable. Day-to-day admin grants and revocations go through the GraphQL `assignRole` / `revokeRole` mutations and do not require any change to `SUPER_USER_EMAILS`.
+Run this procedure only on the very first admin bootstrap for a fresh environment, or when an existing environment has lost its last admin and admin-only GraphQL mutations are unreachable. Day-to-day admin grants and revocations go through the Admin Users UI backed by the GraphQL `adminEditUser` mutation and do not require any change to `SUPER_USER_EMAILS`.
 
 1. Confirm `render.yaml` declares `SUPER_USER_EMAILS` with `sync: false` under the `flamingo-backend` service. If it does not, land that change on `main` first.
 2. In the Render dashboard, open **Blueprints → flamingo-armond → Manual Sync** so the `sync: false` placeholder for `SUPER_USER_EMAILS` shows up on the service's environment page.
@@ -228,9 +228,9 @@ Run this procedure only on the very first admin bootstrap for a fresh environmen
 4. Save. Render auto-redeploys the service when an environment variable changes; no Manual Deploy click is needed.
 5. Once the new instance is live, tail the service logs and confirm a JSON line with `"msg":"super-user bootstrap enabled"` and `"email_count":N` appears exactly once, where `N` matches the number of comma-separated entries you set. If `N` does not match, the value was mistyped — common causes are a trailing comma, duplicate addresses that collapse to one entry, or two entries that differ only in case. Fix it in step 3 and let the redeploy roll.
 6. Have each listed user sign in to the production frontend via Google OAuth. The promotion is best-effort and runs on the first authenticated request the backend sees from each verified email; loading any page that issues a GraphQL `me` query is sufficient.
-7. For each promoted account, confirm a JSON line with `"msg":"superuser: promoted to admin"` and a `"user_id"` field carrying that user's Supabase `sub` appears exactly once in the backend logs. From this point onward the user can use the GraphQL `assignRole` / `revokeRole` mutations to manage other admins.
+7. For each promoted account, confirm a JSON line with `"msg":"superuser: promoted to admin"` and a `"user_id"` field carrying that user's Supabase `sub` appears exactly once in the backend logs. From this point onward the user can use the Admin Users UI, backed by `adminEditUser`, to manage other admins.
 
-Removing an email from `SUPER_USER_EMAILS` does **not** revoke a previously granted admin role — the `revokeRole` mutation is the only revocation path. See [`docs/backend-auth.md` § "Bootstrap admin via `SUPER_USER_EMAILS`"](backend-auth.md#bootstrap-admin-via-super_user_emails) for the design rationale (security gate on `email_verified=true`, no automatic revocation).
+Removing an email from `SUPER_USER_EMAILS` does **not** revoke a previously granted admin role — an admin must update the user's final role set through `adminEditUser`. See [`docs/backend-auth.md` § "Bootstrap admin via `SUPER_USER_EMAILS`"](backend-auth.md#bootstrap-admin-via-super_user_emails) for the design rationale (security gate on `email_verified=true`, no automatic revocation).
 
 ### Step 3 — Vercel
 

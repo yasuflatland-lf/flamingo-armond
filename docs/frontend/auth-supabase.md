@@ -42,7 +42,7 @@ Role changes take effect when the user's JWT is re-minted — at sign-in or at t
 <p>Role changes take effect within one hour.</p>
 ```
 
-Reference: `frontend/src/app/admin/users/admin-user-role-row.tsx` (the role-multiselect helper text).
+Reference: `frontend/src/app/admin/users/admin-user-profile-sheet.tsx` (the role-multiselect helper text).
 
 ### Gotchas
 
@@ -52,4 +52,3 @@ Reference: `frontend/src/app/admin/users/admin-user-role-row.tsx` (the role-mult
 - **OAuth redirect: 127.0.0.1 vs localhost**: Google treats them as separate origins. Match what `supabase start` prints (`127.0.0.1`).
 - **`createSupabaseServerClient` `setAll` catch is scoped to Server Components.** The helper is also used by Route Handlers (e.g. `auth/callback/route.ts`) where cookie writes DO succeed. The `try/catch` in `setAll` silently swallows errors in both paths; a failure inside a Route Handler would be invisible. Do not repurpose `createSupabaseServerClient` in contexts where a write failure must surface (e.g. a middleware-like flow) without removing or re-throwing from that catch.
 - **Open redirect via `?next=`.** `WHATWG URL` accepts absolute URLs and protocol-relative paths even when given a base-URL argument; a bare `startsWith("/")` check is insufficient. The correct guard: `value.startsWith("/") && !value.startsWith("//") && !value.includes("\\")`. The backslash variant bypasses naive checks because http(s) special-scheme parsers normalize `\` → `/`.
-

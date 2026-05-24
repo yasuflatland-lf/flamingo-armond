@@ -14,7 +14,7 @@ diagnostic signal.
 Capture the value to a local string **before** the first narrowing check:
 
 ```ts
-const payload = result.data?.adminUpdateUser;
+const payload = result.data?.adminEditUser;
 // Capture before narrowing so the unknown-variant branch still has access
 // (TypeScript narrows to `never` after the known cases).
 const saveTypename = payload?.__typename ?? null;
@@ -22,13 +22,13 @@ if (payload?.__typename === "InputValidationError") {
   setSaveError(payload.message);
   return;
 }
-if (payload?.__typename === "AdminUpdateUserSuccess") {
+if (payload?.__typename === "AdminEditUserSuccess") {
   setSaveBanner("Changes saved.");
   return;
 }
 // Unknown variant: null payload, partial-response null bubble, or a future
 // variant the client was not regenerated against.
-console.warn("[admin/users/:id/edit] unexpected save payload", {
+console.warn("[admin/users] unexpected save payload", {
   typename: saveTypename,
 });
 setSaveError(ERR_SOMETHING_WRONG);
@@ -64,8 +64,7 @@ The unknown-variant branch is load-bearing precisely because GraphQL unions are
 additive — the backend may ship a new variant before the frontend regenerates,
 and the fallthrough is what surfaces the version skew in operator logs instead
 of letting it surface as a blank UI. Reference: `frontend/src/app/admin/users/admin-user-profile-sheet.tsx`
-(`handleSave`), `frontend/src/app/admin/users/admin-user-role-row.tsx`
-(`handleRoleToggle`), `frontend/src/app/admin/roles/admin-roles-client.tsx`
+(`handleSave`), `frontend/src/app/admin/roles/admin-roles-client.tsx`
 (`handleCreateSubmit`, `handleEditSubmit`), and
 `frontend/src/app/cardgroups/new/new-cardgroup-client.tsx` — all follow the
 `const typename = result?.__typename ?? null;` pattern verbatim.
