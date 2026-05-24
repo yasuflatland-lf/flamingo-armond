@@ -49,6 +49,13 @@ func (r *countingRoleRepo) FindByIDs(ctx context.Context, ids []string) (map[str
 	return r.findByIDs(ctx, ids)
 }
 
+func (r *countingRoleRepo) FindByIDsTx(ctx context.Context, _ *gorm.DB, ids []string) (map[string]*domain.Role, error) {
+	if r.findByIDs == nil {
+		panic("countingRoleRepo.FindByIDsTx not configured")
+	}
+	return r.findByIDs(ctx, ids)
+}
+
 func (r *countingRoleRepo) Create(_ context.Context, _ string) (*domain.Role, error) {
 	panic("countingRoleRepo.Create not configured")
 }

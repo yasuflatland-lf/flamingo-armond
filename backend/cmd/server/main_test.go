@@ -2028,6 +2028,9 @@ func (panicRoleRepo) FindByName(_ context.Context, _ domain.RoleName) (*domain.R
 func (panicRoleRepo) FindByIDs(_ context.Context, _ []string) (map[string]*domain.Role, error) {
 	panic("not used in this test")
 }
+func (panicRoleRepo) FindByIDsTx(_ context.Context, _ *gorm.DB, _ []string) (map[string]*domain.Role, error) {
+	panic("not used in this test")
+}
 func (panicRoleRepo) Create(_ context.Context, _ string) (*domain.Role, error) {
 	panic("not used in this test")
 }

@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 
 	"backend/internal/domain"
 	"backend/internal/repository"
@@ -57,6 +59,66 @@ func TestRoleRepository_FindByID_NotFound(t *testing.T) {
 	if !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("FindByID(missing): want errors.Is(_, ErrNotFound) true, got %v", err)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// FindByIDsTx
+// ---------------------------------------------------------------------------
+
+func TestRoleRepository_FindByIDsTx_ReturnsRolesInTx(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewRoleRepository(testDB.GORM)
+
+	roleAID := insertRole(t, ctx, "find-ids-tx-a-"+uuid.NewString())
+	roleBID := insertRole(t, ctx, "find-ids-tx-b-"+uuid.NewString())
+	missing := uuid.NewString()
+
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		got, err := repo.FindByIDsTx(ctx, tx, []string{roleAID, missing, roleBID})
+		require.NoError(t, err)
+		require.Len(t, got, 2)
+		require.NotNil(t, got[roleAID])
+		require.Nil(t, got[missing])
+		require.NotNil(t, got[roleBID])
+		return nil
+	})
+	require.NoError(t, err)
+}
+
+func TestRoleRepository_FindByIDsTx_NilTx(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewRoleRepository(testDB.GORM)
+
+	_, err := repo.FindByIDsTx(ctx, nil, []string{uuid.NewString()})
+	require.Error(t, err)
+}
+
+// TestRoleRepository_FindByIDsTx_LocksRowsForUpdate proves FindByIDsTx acquires
+// a FOR UPDATE row lock on the matched roles: a second transaction issuing a
+// SELECT ... FOR UPDATE NOWAIT against the same row must fail to acquire the
+// lock. Mirrors TestCardRepository_FindByIDTx_LocksRowForUpdate.
+func TestRoleRepository_FindByIDsTx_LocksRowsForUpdate(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewRoleRepository(testDB.GORM)
+
+	roleID := insertRole(t, ctx, "find-ids-tx-lock-"+uuid.NewString())
+
+	tx1 := testDB.GORM.WithContext(ctx).Begin()
+	require.NoError(t, tx1.Error)
+	defer tx1.Rollback()
+	got, err := repo.FindByIDsTx(ctx, tx1, []string{roleID})
+	require.NoError(t, err)
+	require.NotNil(t, got[roleID])
+
+	tx2 := testDB.GORM.WithContext(ctx).Begin()
+	require.NoError(t, tx2.Error)
+	defer tx2.Rollback()
+	var id string
+	err = tx2.Raw("SELECT id FROM roles WHERE id = ? FOR UPDATE NOWAIT", roleID).Scan(&id).Error
+	require.Error(t, err, "second transaction should fail to acquire a NOWAIT lock on the row held by FindByIDsTx")
 }
 
 // ---------------------------------------------------------------------------
