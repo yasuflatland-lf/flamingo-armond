@@ -190,6 +190,73 @@ describe("AdminUserProfileSheet", () => {
     expect(onReloadRequested).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the conflict banner when the reloaded user prop replaces the form", async () => {
+    const user = userEvent.setup();
+    const onReloadRequested = vi.fn();
+    const mocks = [
+      {
+        request: {
+          query: AdminEditUserDocument,
+          variables: {
+            id: "u-1",
+            expectedVersion: 41,
+            displayName: "Alice 2",
+            bio: "bio text",
+            roleIds: [ADMIN_ROLE.id],
+          },
+        },
+        result: {
+          data: {
+            adminEditUser: {
+              __typename: "ConcurrentUpdateError" as const,
+              message: "user has changed",
+            },
+          },
+        },
+      },
+    ];
+
+    const renderTree = (u: AdminUserListItem) => (
+      <MockedProvider mocks={mocks}>
+        <AdminUserProfileSheet
+          open
+          user={u}
+          allRoles={[ADMIN_ROLE, MOD_ROLE]}
+          loading={false}
+          queryError={null}
+          onDismiss={vi.fn()}
+          onSaved={vi.fn()}
+          onReloadRequested={onReloadRequested}
+        />
+      </MockedProvider>
+    );
+
+    const { rerender } = render(renderTree(makeUser()));
+
+    await user.clear(screen.getByLabelText(/display name/i));
+    await user.type(screen.getByLabelText(/display name/i), "Alice 2");
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "This user was changed by someone else. Reload and try again.",
+      );
+    });
+    expect(onReloadRequested).toHaveBeenCalledTimes(1);
+
+    // The parent refetch resolves: a fresh user object (bumped version, server
+    // values) swaps into the form. The banner must survive that swap so the
+    // admin still understands why their staged edits were replaced.
+    rerender(renderTree(makeUser({ version: 99, displayName: "Server Name" })));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/display name/i)).toHaveValue("Server Name");
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "This user was changed by someone else. Reload and try again.",
+    );
+  });
+
   it("roles-only dirty save omits profile fields and sends final roleIds", async () => {
     const user = userEvent.setup();
     const onSaved = vi.fn();

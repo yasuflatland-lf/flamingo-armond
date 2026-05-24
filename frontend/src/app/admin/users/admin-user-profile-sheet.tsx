@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation } from "@apollo/client/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
@@ -58,6 +58,11 @@ export function AdminUserProfileSheet({
   const [saveError, setSaveError] = useState("");
   const [stagedRoleIds, setStagedRoleIds] = useState<Set<string>>(() => new Set());
   const [runEdit, { loading: saving, reset: resetEdit }] = useMutation(AdminEditUserMutation);
+  // A ConcurrentUpdateError auto-triggers a parent refetch. When the refreshed
+  // `user` prop arrives, the sync effect below resets the form to server values;
+  // this ref tells it to re-show the conflict banner instead of clearing it, so
+  // the explanation survives the user-object swap that the reload causes.
+  const conflictReloadPending = useRef(false);
 
   const initialRoleIds = useMemo(() => new Set(user?.roles.map((role) => role.id) ?? []), [user]);
   const displayNameDirty = displayName !== (user?.displayName ?? "");
@@ -71,7 +76,12 @@ export function AdminUserProfileSheet({
     setDisplayName(user.displayName ?? "");
     setBio(user.bio ?? "");
     setStagedRoleIds(new Set(user.roles.map((role) => role.id)));
-    setSaveError("");
+    if (conflictReloadPending.current) {
+      setSaveError(ERR_CONCURRENT);
+      conflictReloadPending.current = false;
+    } else {
+      setSaveError("");
+    }
     resetEdit();
   }, [user, resetEdit]);
 
@@ -81,6 +91,7 @@ export function AdminUserProfileSheet({
 
   function handleOpenChange(nextOpen: boolean) {
     if (nextOpen) return;
+    conflictReloadPending.current = false;
     setSaveError("");
     resetEdit();
     onDismiss();
@@ -128,7 +139,12 @@ export function AdminUserProfileSheet({
           return;
         case "ConcurrentUpdateError":
           setSaveError(ERR_CONCURRENT);
-          onReloadRequested?.();
+          if (onReloadRequested) {
+            // The refreshed user prop will fire the sync effect, which would
+            // otherwise clear this banner — flag it to be re-shown after reload.
+            conflictReloadPending.current = true;
+            onReloadRequested();
+          }
           return;
         default:
           console.warn("[admin/users] unexpected save payload", {
