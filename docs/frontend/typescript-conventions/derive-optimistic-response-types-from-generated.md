@@ -26,8 +26,8 @@ modes:
    stale shape; the `optimisticResponse` write is silently incomplete.
 
 2. **Union-variant promotion changes the path.** When a mutation is
-   promoted from a bare payload (`HandleSwipe { performanceMode, metrics, nextCards }`)
-   to a union (`HandleSwipe { ... on HandleSwipeSuccess { response { performanceMode, metrics, nextCards } } }`),
+   promoted from a bare payload (`HandleSwipe { performanceMode, metrics }`)
+   to a union (`HandleSwipe { ... on HandleSwipeSuccess { response { performanceMode, metrics } } }`),
    the field that used to live one hop from the mutation root now lives
    two hops deep. An inline duplicate captures the old shape; the
    promoted shape requires a manual rewrite of every reference to the
@@ -64,7 +64,6 @@ handleSwipe({
       __typename: "HandleSwipeSuccess" as const,
       response: {
         __typename: "SwipeResponse" as const,
-        nextCards: remaining,
         performanceMode: 1,
         metrics: DEFAULT_METRICS,
       },
