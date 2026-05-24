@@ -776,11 +776,13 @@ describe("AdminRolesClient — delete failure", () => {
       act(() => vi.advanceTimersByTime(5100));
       vi.useRealTimers();
 
-      // After rollback: deleteError is set, so roles.length === 0 && !deleteError is FALSE.
-      // The else branch renders the list (not the empty-state).
+      // After rollback: the deleted role is restored (roles.length === 1), so the
+      // list is non-empty and the empty-state condition is false regardless of
+      // deleteError. The error banner renders inside the (non-empty) list.
       await waitFor(() => {
-        expect(screen.queryByTestId("admin-roles-empty")).toBeNull();
+        expect(screen.getByTestId(`admin-role-row-${CUSTOM_ROLE.id}`)).toBeInTheDocument();
       });
+      expect(screen.queryByTestId("admin-roles-empty")).toBeNull();
       expect(screen.getByTestId("admin-roles-error")).toBeInTheDocument();
     } finally {
       warnSpy.mockRestore();

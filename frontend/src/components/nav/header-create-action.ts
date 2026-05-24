@@ -17,10 +17,9 @@ export type HeaderCreateAction =
        */
       cardgroupId: string;
     }
-  | {
-      kind: "role";
-      label: "Add new role" /* No href: role creation opens a sheet via URL search param (?new=true), not router.push. */;
-    };
+  // No href: role creation has no separate-page target — it opens the create
+  // sheet by appending ?new=true to the current path (via useSheetSearchParam).
+  | { kind: "role"; label: "Add new role" };
 
 /**
  * Build a `card-with-group` action for the /cardgroups/:id/edit route.
