@@ -17,9 +17,10 @@ import (
 // AdminEditUser is the resolver for the adminEditUser field.
 func (r *mutationResolver) AdminEditUser(ctx context.Context, id string, input model.AdminEditUserInput) (model.AdminEditUserResult, error) {
 	outcome, err := r.AdminUserUC.EditUser(ctx, id, usecase.AdminEditUserInput{
-		DisplayName: input.DisplayName,
-		Bio:         input.Bio,
-		RoleIDs:     input.RoleIds,
+		DisplayName:     input.DisplayName,
+		Bio:             input.Bio,
+		RoleIDs:         input.RoleIds,
+		ExpectedVersion: int64(input.ExpectedVersion),
 	})
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
@@ -33,6 +34,11 @@ func (r *mutationResolver) AdminEditUser(ctx context.Context, id string, input m
 	if outcome.CannotRevokeOwnAdmin {
 		return model.CannotRevokeOwnAdminRoleError{
 			Message: "Cannot revoke your own admin role",
+		}, nil
+	}
+	if outcome.ConcurrentUpdate {
+		return model.ConcurrentUpdateError{
+			Message: "This user was changed by someone else. Reload and try again.",
 		}, nil
 	}
 	if outcome.User == nil {

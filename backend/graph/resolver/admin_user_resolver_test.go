@@ -24,12 +24,14 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockAdminUserUsecase struct {
-	listResult  *usecase.AdminUserConnection
-	listErr     error
-	getResult   *domain.User
-	getErr      error
-	editOutcome usecase.AdminEditUserOutcome
-	editErr     error
+	listResult    *usecase.AdminUserConnection
+	listErr       error
+	getResult     *domain.User
+	getErr        error
+	editOutcome   usecase.AdminEditUserOutcome
+	editErr       error
+	lastEditID    string
+	lastEditInput usecase.AdminEditUserInput
 }
 
 func (m *mockAdminUserUsecase) List(_ context.Context, _, _ *int, _, _, _ *string) (*usecase.AdminUserConnection, error) {
@@ -38,7 +40,10 @@ func (m *mockAdminUserUsecase) List(_ context.Context, _, _ *int, _, _, _ *strin
 func (m *mockAdminUserUsecase) Get(_ context.Context, _ string) (*domain.User, error) {
 	return m.getResult, m.getErr
 }
-func (m *mockAdminUserUsecase) EditUser(_ context.Context, _ string, _ usecase.AdminEditUserInput) (usecase.AdminEditUserOutcome, error) {
+
+func (m *mockAdminUserUsecase) EditUser(_ context.Context, id string, input usecase.AdminEditUserInput) (usecase.AdminEditUserOutcome, error) {
+	m.lastEditID = id
+	m.lastEditInput = input
 	return m.editOutcome, m.editErr
 }
 
@@ -460,9 +465,13 @@ func TestAdminUserResolver_AdminUser_Forbidden(t *testing.T) {
 // Mutation.adminEditUser tests
 // ---------------------------------------------------------------------------
 
-const adminEditUserMutation = `{"query":"mutation { adminEditUser(id: \"u-target\", input: { displayName: \"Dana\", bio: \"A short bio.\", roleIds: [\"r-admin\", \"r-general\"] }) { __typename ... on AdminEditUserSuccess { user { id displayName bio roles { id name } } } ... on InputValidationError { field message } ... on CannotRevokeOwnAdminRoleError { message } } }"}`
+const adminEditUserMutation = `{"query":"mutation { adminEditUser(id: \"u-target\", input: { displayName: \"Dana\", bio: \"A short bio.\", roleIds: [\"r-admin\", \"r-general\"], expectedVersion: 41 }) { __typename ... on AdminEditUserSuccess { user { id displayName bio version roles { id name } } } ... on InputValidationError { field message } ... on CannotRevokeOwnAdminRoleError { message } ... on ConcurrentUpdateError { message } } }"}`
 
-const adminEditUserForbiddenMutation = `{"query":"mutation { adminEditUser(id: \"u-target\", input: { roleIds: [] }) { __typename ... on AdminEditUserSuccess { user { id } } ... on InputValidationError { field message } ... on CannotRevokeOwnAdminRoleError { message } } }"}`
+const adminEditUserMutationWithExpectedVersion = `{"query":"mutation { adminEditUser(id: \"u-target\", input: { displayName: \"Dana\", bio: \"A short bio.\", roleIds: [\"r-admin\", \"r-general\"], expectedVersion: 41 }) { __typename ... on AdminEditUserSuccess { user { id displayName bio version roles { id name } } } ... on InputValidationError { field message } ... on CannotRevokeOwnAdminRoleError { message } ... on ConcurrentUpdateError { message } } }"}`
+
+const adminEditUserConcurrentMutation = `{"query":"mutation { adminEditUser(id: \"u-target\", input: { displayName: \"Dana\", roleIds: [], expectedVersion: 41 }) { __typename ... on AdminEditUserSuccess { user { id version } } ... on InputValidationError { field message } ... on CannotRevokeOwnAdminRoleError { message } ... on ConcurrentUpdateError { message } } }"}`
+
+const adminEditUserForbiddenMutation = `{"query":"mutation { adminEditUser(id: \"u-target\", input: { roleIds: [], expectedVersion: 41 }) { __typename ... on AdminEditUserSuccess { user { id } } ... on InputValidationError { field message } ... on CannotRevokeOwnAdminRoleError { message } ... on ConcurrentUpdateError { message } } }"}`
 
 func TestAdminUserResolver_AdminEditUser_HappyPath(t *testing.T) {
 	t.Parallel()
@@ -506,6 +515,76 @@ func TestAdminUserResolver_AdminEditUser_HappyPath(t *testing.T) {
 	roles, _ := user["roles"].([]any)
 	if len(roles) != 2 {
 		t.Fatalf("expected 2 roles, got %d", len(roles))
+	}
+}
+
+func TestAdminUserResolver_AdminEditUser_MapsExpectedVersionAndUserVersion(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminUserUsecase{
+		editOutcome: usecase.AdminEditUserOutcome{
+			User: &domain.User{
+				ID:          "u-target",
+				DisplayName: dnPtr("Dana"),
+				Bio:         domain.BioFromPtr(ptr("A short bio.")),
+				Version:     41,
+			},
+		},
+	}
+	rolesByUser := map[string][]*domain.Role{
+		"u-target": {
+			{ID: "r-admin", Name: "admin"},
+			{ID: "r-general", Name: "general"},
+		},
+	}
+	srv := newAdminUserSrvWithAuth(mock, true, rolesByUser)
+	resp := gqlRequest(t, srv, authedCtx("admin"), adminEditUserMutationWithExpectedVersion)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	if mock.lastEditID != "u-target" {
+		t.Fatalf("expected EditUser id=u-target, got %q", mock.lastEditID)
+	}
+	if mock.lastEditInput.ExpectedVersion != 41 {
+		t.Fatalf("expected ExpectedVersion=41, got %d", mock.lastEditInput.ExpectedVersion)
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["adminEditUser"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.adminEditUser, got nil; response: %v", resp)
+	}
+	user, _ := payload["user"].(map[string]any)
+	if user == nil {
+		t.Fatalf("expected payload.user, got nil; response: %v", resp)
+	}
+	if version, _ := user["version"].(float64); int(version) != 41 {
+		t.Fatalf("expected version=41, got %v", user["version"])
+	}
+}
+
+func TestAdminUserResolver_AdminEditUser_ConcurrentUpdate(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockAdminUserUsecase{
+		editOutcome: usecase.AdminEditUserOutcome{ConcurrentUpdate: true},
+	}
+	srv := newAdminUserSrv(mock)
+	resp := gqlRequest(t, srv, authedCtx("admin"), adminEditUserConcurrentMutation)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	payload, _ := data["adminEditUser"].(map[string]any)
+	if payload == nil {
+		t.Fatalf("expected data.adminEditUser, got nil; response: %v", resp)
+	}
+	if payload["__typename"] != "ConcurrentUpdateError" {
+		t.Fatalf("expected __typename=ConcurrentUpdateError, got %v", payload["__typename"])
+	}
+	if payload["message"] != "This user was changed by someone else. Reload and try again." {
+		t.Fatalf("expected concurrent update message, got %v", payload["message"])
 	}
 }
 
