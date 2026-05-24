@@ -37,6 +37,9 @@ describe("<GlobalFAB>", () => {
       ["/learn"],
       ["/learn/abc-123"],
       ["/learn/abc-123/"],
+      // "/" is a server-redirect-only hub (HomePage always redirects); the FAB
+      // there is only a transition flash during /learn -> "/" -> /learn.
+      ["/"],
     ])("renders nothing on %s", (path) => {
       vi.mocked(usePathname).mockReturnValue(path);
       const { container } = render(<GlobalFAB />);
@@ -56,7 +59,6 @@ describe("<GlobalFAB>", () => {
     it.each([
       ["/cardgroups/abc123/edit"],
       ["/cardgroups/abc123/edit/"],
-      ["/"],
     ])("renders 'Add new card' button on %s", (path) => {
       vi.mocked(usePathname).mockReturnValue(path);
       render(<GlobalFAB />);
@@ -113,11 +115,11 @@ describe("<GlobalFAB>", () => {
     window.removeEventListener("flamingo:add-card", listener);
   });
 
-  it("click on / navigates to /cards/new", async () => {
+  it("click on a cardgroup detail path navigates to /cards/new", async () => {
     const user = userEvent.setup();
     const router = makeRouter();
     vi.mocked(useRouter).mockReturnValue(router as never);
-    vi.mocked(usePathname).mockReturnValue("/");
+    vi.mocked(usePathname).mockReturnValue("/cardgroups/abc123");
 
     render(<GlobalFAB />);
     await user.click(screen.getByRole("button", { name: "Add new card" }));

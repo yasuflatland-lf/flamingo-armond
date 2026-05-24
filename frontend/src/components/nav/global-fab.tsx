@@ -14,7 +14,11 @@ export function GlobalFAB() {
   const pathname = usePathname();
   const router = useRouter();
 
-  if (HIDDEN_PATH_RE.test(pathname)) {
+  // "/" is a server-redirect-only hub — HomePage always redirects (to /learn,
+  // /cardgroups, /login, or /onboarding) and never renders content. Rendering
+  // the FAB there only produces a flash during transitions that pass through
+  // it (e.g. tapping the logo from /learn routes /learn -> "/" -> /learn).
+  if (pathname === "/" || HIDDEN_PATH_RE.test(pathname)) {
     return null;
   }
 
