@@ -157,17 +157,17 @@ With `noUncheckedIndexedAccess` on, `arr[i]` is typed as `T | undefined`, so `ca
 When a client component contains a pure mapping function — e.g. a pathname → action lookup, a route → label lookup, a state → CSS-class lookup — lifting that function into a sibling module enables testing it under `// @vitest-environment node`. The node environment skips jsdom setup, React mock plumbing, and `next/navigation` mocks; the test runs as a plain function-call assertion against a string input.
 
 ```ts
-// frontend/src/components/nav/fab-action.ts — pure helper, no React, no next/navigation imports.
-export function resolveFabAction(pathname: string): FabAction | null { /* ... */ }
+// frontend/src/components/nav/header-create-action.ts — pure helper, no React, no next/navigation imports.
+export function resolveHeaderCreateAction(pathname: string): HeaderCreateAction | null { /* ... */ }
 
-// frontend/src/components/nav/fab-action.test.ts
+// frontend/src/components/nav/header-create-action.test.ts
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { resolveFabAction } from "./fab-action";
+import { resolveHeaderCreateAction } from "./header-create-action";
 
-describe("resolveFabAction", () => {
+describe("resolveHeaderCreateAction", () => {
   it("returns Add new cardgroup href for exact /cardgroups", () => {
-    expect(resolveFabAction("/cardgroups")).toEqual({ kind: "cardgroup", /* ... */ });
+    expect(resolveHeaderCreateAction("/cardgroups")).toEqual({ kind: "cardgroup", /* ... */ });
   });
 });
 ```
@@ -175,14 +175,14 @@ describe("resolveFabAction", () => {
 The component then becomes a thin shell that calls the helper:
 
 ```tsx
-// frontend/src/components/nav/global-fab.tsx
-const action = resolveFabAction(pathname);
+// frontend/src/components/nav/logo-drawer.tsx
+const action = resolveHeaderCreateAction(pathname);
 if (action === null) return null;
 ```
 
 **Why:** pure logic + jsdom is wasted overhead — every test pays for the DOM environment to assert a string-in-string-out result. Node tests are faster (no jsdom bootstrap), clearer (no `vi.mock` of `next/navigation`), and the production code gets a forcing function to keep the helper React-free. The same testability-extraction principle is documented for the backend in [`docs/backend/library-gotchas/testable-startup-helpers.md`](../backend/library-gotchas/testable-startup-helpers.md).
 
-**How to apply:** when a client component's render function or hook callback contains branching logic that depends only on its arguments (not on React state, refs, or router objects), lift that logic into a sibling `.ts` file with no React or Next.js imports, and write its tests under `// @vitest-environment node`. The component imports the helper and calls it. Reference: `frontend/src/components/nav/fab-action.ts` consumed by `global-fab.tsx`; the test file `fab-action.test.ts` runs under the node environment while the component tests stay on jsdom.
+**How to apply:** when a client component's render function or hook callback contains branching logic that depends only on its arguments (not on React state, refs, or router objects), lift that logic into a sibling `.ts` file with no React or Next.js imports, and write its tests under `// @vitest-environment node`. The component imports the helper and calls it. Reference: `frontend/src/components/nav/header-create-action.ts` consumed by `logo-drawer.tsx`; the test file `header-create-action.test.ts` runs under the node environment while the component tests stay on jsdom.
 
 ### Co-located component-level test for prop-guard branches the integration path cannot reach
 
@@ -363,27 +363,6 @@ expect(onRate).not.toHaveBeenCalled();  // behavioral check
 
 Reference: `frontend/src/components/learn/learn-action-bar.test.tsx` — the disabled test asserts both `.toBeDisabled()`
 and that `onRate` is not called after clicking all three buttons.
-
-### Mobile and PC entry points for the same action must produce matching hrefs
-
-When a feature has two surfaces that construct the same href (e.g. a mobile in-header button that decodes
-`usePathname()` and a desktop floating button that receives the already-decoded id as a prop), assert that the
-constructed URLs are identical for the same logical input. The mismatch is invisible for plain alphanumeric UUIDs
-but real for any special-character-bearing id:
-
-```ts
-// mobile path: decodes usePathname() → re-encodes at href construction
-const mobileHref = `/cards/new?cardgroup=${encodeURIComponent(rawId)}&return=/learn/${encodeURIComponent(rawId)}`;
-
-// desktop path: receives decoded prop → encodes at href construction
-const encodedId = encodeURIComponent(cardgroupId);
-const desktopHref = `/cards/new?cardgroup=${encodedId}&return=/learn/${encodedId}`;
-
-expect(desktopHref).toBe(mobileHref);
-```
-
-Reference: `frontend/src/components/nav/logo-drawer.tsx` (mobile `+` link, decodes from `usePathname()`) and
-`frontend/src/components/nav/learn-add-card-floating.tsx` (PC ghost icon, receives decoded `cardgroupId` prop).
 
 ### Add `vi.mock` for every new child component at the top of the test file
 
