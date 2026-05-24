@@ -11,13 +11,13 @@ const hints: Record<SwipeDirection, { label: string; className: string }> = {
 
 type Props = {
   direction: SwipeDirection | null;
-  progress: number;
+  intensity: number;
 };
 
-export function SwipeProgressOverlay({ direction, progress }: Props) {
+export function SwipeDirectionOverlay({ direction, intensity }: Props) {
   if (!direction) return null;
   const hint = hints[direction];
-  const clamped = Math.max(0, Math.min(progress, 1));
+  const clamped = Math.max(0, Math.min(intensity, 1));
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">

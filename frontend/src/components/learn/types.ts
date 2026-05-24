@@ -6,7 +6,7 @@
  * - "right" -> Easy
  *
  * Owned by the learn component layer so low-level UI primitives
- * (SwipeCardStack, AnimatedCard, SwipeProgressOverlay, LearnActionBar)
+ * (SwipeCardStack, AnimatedCard, SwipeDirectionOverlay, LearnActionBar)
  * do not depend on the higher-level route client.
  */
 export type SwipeDirection = "left" | "right" | "down";

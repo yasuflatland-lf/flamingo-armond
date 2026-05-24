@@ -5,7 +5,7 @@ import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "r
 import { Button } from "@/components/ui/button";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
 import { SwipeCard, type SwipeCardData } from "./swipe-card";
-import { SwipeProgressOverlay } from "./swipe-progress-overlay";
+import { SwipeDirectionOverlay } from "./swipe-direction-overlay";
 import type { SwipeDirection } from "./types";
 
 /**
@@ -214,7 +214,7 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
           />
         </div>
       ))}
-      <SwipeProgressOverlay direction={swipeDirection} progress={swipeProgress} />
+      <SwipeDirectionOverlay direction={swipeDirection} intensity={swipeProgress} />
     </div>
   );
 }
