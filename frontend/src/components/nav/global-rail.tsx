@@ -126,7 +126,7 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
       onPointerLeave={handlePointerLeave}
     >
       <SidebarHeader>
-        <div className="flex h-8 items-center px-2">
+        <div className="flex size-8 items-center justify-center">
           <Link href="/" aria-label="Flamingo home" className="shrink-0 leading-none">
             <FlamingoMark className="size-7" aria-hidden="true" />
           </Link>

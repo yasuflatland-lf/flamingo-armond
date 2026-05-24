@@ -2,15 +2,17 @@
 
 > Part of [`frontend/CLAUDE.md`](../../frontend/CLAUDE.md). See the index for related chapters.
 
-### Page pattern (RSC + client form)
+### Page pattern (RSC seed → client wrapper → FormSheet drawer → form)
 
 `frontend/src/app/profile/page.tsx` is a React Server Component. It:
 
-1. Calls `createSupabaseServerClient().auth.getUser()` and redirects to `/login` when no session exists.
-2. Calls `gqlFetch(MeQuery, { revalidate: 0 })` — `revalidate: 0` opts the response out of the Next cache to avoid serving stale PII.
-3. Passes the fetched values as `initial` props to the client component `ProfileForm`.
+1. Calls `createSupabaseServerClient().auth.getUser()` and redirects to `/login` when no session exists (or the session is stale for a deleted user).
+2. Calls `gqlFetch(MeQuery, { revalidate: 0 })` — the `Me` query selects `id`, `displayName`, `bio`, and `avatarUrl`; `revalidate: 0` opts the response out of the Next cache to avoid serving stale PII.
+3. Renders the client wrapper `ProfilePageClient`, passing the user's `email` and an `initial` object (`{ displayName, bio }` derived from `data.me`) as props.
 
-`frontend/src/app/profile/profile-form.tsx` is a Client Component (`"use client"`). It uses `@tanstack/react-form` with field-level Zod validators (no adapter needed) for client-side validation and Apollo's `useMutation` to call `updateProfile`. On a successful mutation `router.refresh()` is called — this re-evaluates the current RSC subtree and allows client mutations to invalidate server-rendered data without manual cache surgery. Combined with `revalidate: 0` on the server fetch, this gives a simple mutate-then-redisplay flow.
+`frontend/src/app/profile/profile-page-client.tsx` (`ProfilePageClient`, `"use client"`) renders a read-only profile summary plus an "Edit profile" button. The edit affordance opens a `FormSheet` drawer (`@/components/ui/form-sheet`) whose open/close state is backed by the URL via `useSheetSearchParam` (`@/lib/url/use-sheet-search-param`) rather than component-local state. `/profile` edits a singleton aggregate (the signed-in user's own profile) with no per-entity id in the URL space, so the wrapper uses a fixed sentinel id (`"self"`) for the hook's `mode: "edit"` contract; the drawer is `open` exactly when `sheet.state` is `{ mode: "edit", id: "self" }`. Closing the sheet on a successful save calls `sheet.close({ refresh: true })`, which triggers a Next.js RSC re-fetch so the summary re-renders with the updated values. See [URL-backed sheet state](./url-backed-sheet-state.md) for the hook's URL contract, the singleton sentinel, and the confirm-on-dismiss wiring.
+
+`frontend/src/app/profile/profile-form.tsx` (`ProfileForm`) is the Client Component the drawer wraps. It uses `@tanstack/react-form` with field-level Zod validators (no adapter needed) for client-side validation and Apollo's `useMutation` to call `updateProfile`. It reports dirty/submitting state and registers a reset closure back up to `ProfilePageClient` (which the wrapper forwards to `FormSheet` for confirm-on-dismiss and reset-on-close), and calls the `onSaved` callback on a successful mutation. Combined with `revalidate: 0` on the server fetch and the `refresh: true` close, this gives a mutate-then-redisplay flow without manual cache surgery.
 
 ### Authorization forwarding in `gqlFetch`
 

@@ -68,6 +68,6 @@ useEffect(() => {
 
 The prefetch's `.then()` merges incoming cards into the existing queue by id (`seen = new Set(current.map(c => c.id))`), appending only cards whose id is not already present. This deduplicates cards that the server returns on multiple consecutive fetches (e.g. due cards that were not swiped yet appear in both the initial SSR batch and the background refetch).
 
-The `handleSwipe` mutation's `nextCards` response, by contrast, is an authoritative full replace — the server FSRS scheduler owns the queue state after each swipe, so the client writes `nextCards` directly into the queue without merging. The two update strategies coexist in the same component: prefetch merges, swipe replaces. The natural re-fire of the prefetch effect on the next `queue.length` change re-evaluates whether a top-up is still needed.
+The swipe path, by contrast, is a client-authoritative local mutation — `handleSwipe` returns only a performance snapshot (`SwipeResponse`), so the client owns its queue state and removes the just-swiped card directly without merging any server-supplied list. The two update strategies coexist in the same component: prefetch merges incoming cards by id, swipe mutates the local queue. The natural re-fire of the prefetch effect on the next `queue.length` change re-evaluates whether a top-up is still needed.
 
 Reference: `frontend/src/app/learn/[cardgroupId]/learn-client.tsx` (both the `setLastViewedCardgroup` persist effect and the background prefetch effect).
