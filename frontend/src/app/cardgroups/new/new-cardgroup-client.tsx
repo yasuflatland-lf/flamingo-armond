@@ -1,14 +1,11 @@
 "use client";
 
-import { useMutation } from "@apollo/client/react";
 import { Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { CARDGROUPS_DEFAULT_VARS, CreateCardgroupMutation } from "@/app/cardgroups/queries";
+import { useCreateCardgroup } from "@/app/cardgroups/use-create-cardgroup";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
-import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
-import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 
 interface NewCardgroupClientProps {
   showWelcome?: boolean;
@@ -39,118 +36,39 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
   // <Link href="/login">, not redirect()".
   const [authError, setAuthError] = useState<"unauthenticated" | "forbidden" | null>(null);
 
-  // No optimisticResponse: typed errors (FORBIDDEN, InputValidationError for
-  // duplicate name) can fail the mutation, and Apollo does not consistently
-  // roll back optimistic writes for typed GraphQL errors. The user pays one
-  // round-trip of latency in exchange for a truthful cache.
-  const [createCardgroup, { loading }] = useMutation(CreateCardgroupMutation, {
-    update(cache, { data }) {
-      // Narrow on __typename before accessing .cardgroup so an InputValidationError
-      // or unknown variant does not silently mutate the cache.
-      if (data?.createCardgroup?.__typename !== "CreateCardgroupSuccess") return;
-      const created = data.createCardgroup.cardgroup;
-
-      // Update the Connection cache so the /cardgroups listing page
-      // shows the new entry without a refetch when the user returns there.
-      // cache.modify is forbidden — use readQuery + writeQuery so cold-cache
-      // entries are also handled correctly. See .claude/rules/pagination.md
-      // § "cache.modify skips non-existent fields".
-      // CARDGROUPS_DEFAULT_VARS keeps the cache key in sync with the SSR seed
-      // and the client useQuery — any mismatch makes this write invisible.
-      const existingConnection = cache.readQuery({
-        query: MyCardgroupsConnectionDocument,
-        variables: CARDGROUPS_DEFAULT_VARS,
-      });
-      const newEdge = {
-        __typename: "CardgroupEdge" as const,
-        cursor: created.id,
-        node: created,
-      };
-      const nextConnection = existingConnection
-        ? {
-            ...existingConnection.myCardgroupsConnection,
-            edges: [newEdge, ...existingConnection.myCardgroupsConnection.edges],
-            totalCount: existingConnection.myCardgroupsConnection.totalCount + 1,
-          }
-        : {
-            // Cold cache: build a minimal connection so the listing page can render
-            // the new edge immediately when the user lands there.
-            __typename: "CardgroupConnection" as const,
-            edges: [newEdge],
-            pageInfo: {
-              __typename: "PageInfo" as const,
-              hasNextPage: false,
-              hasPreviousPage: false,
-              startCursor: created.id,
-              endCursor: created.id,
-            },
-            totalCount: 1,
-          };
-      cache.writeQuery({
-        query: MyCardgroupsConnectionDocument,
-        variables: CARDGROUPS_DEFAULT_VARS,
-        data: { myCardgroupsConnection: nextConnection },
-      });
-    },
-  });
+  const { create, loading } = useCreateCardgroup();
 
   async function handleSubmit(values: { name: string }) {
     setValidationError(null);
     setUnexpectedPayloadError(null);
     setAuthError(null);
 
-    const result = await createCardgroup({
-      variables: { input: { name: values.name } },
-    }).catch((err) => {
-      const codes = liftGraphQLCodes(err);
-      if (codes.includes("UNAUTHENTICATED")) {
-        setAuthError("unauthenticated");
-        return null;
-      }
-      if (codes.includes("FORBIDDEN")) {
-        setAuthError("forbidden");
-        return null;
-      }
-      // err.message is omitted — backend messages may echo user input.
-      // codes is safe to log (fixed enum of GraphQL extension codes).
-      console.warn("[cardgroups-new] createCardgroup rejected", {
-        name: err instanceof Error ? err.name : "unknown",
-        codes,
-      });
-      return null;
-    });
+    const outcome = await create(values.name);
 
-    if (!result) return;
-
-    const payload = result.data?.createCardgroup;
-    // Capture typename before narrowing so the unknown-variant branch still
-    // has access to it (TypeScript narrows to `never` after the known cases).
-    const typename = payload?.__typename ?? null;
-
-    if (payload?.__typename === "InputValidationError") {
-      setValidationError({ field: payload.field, message: payload.message });
-      return;
-    }
-
-    if (payload?.__typename === "CreateCardgroupSuccess") {
-      const created = payload.cardgroup;
-      if (returnTo) {
-        const sep = returnTo.includes("?") ? "&" : "?";
-        router.push(`${returnTo}${sep}cardgroup=${created.id}`);
+    switch (outcome.status) {
+      case "validation":
+        setValidationError({ field: outcome.field, message: outcome.message });
         return;
-      }
-      router.push(`/cardgroups/${created.id}`);
-      router.refresh();
-      return;
+      case "auth":
+        setAuthError(outcome.kind);
+        return;
+      case "unexpected":
+        setUnexpectedPayloadError("Something went wrong. Please try again.");
+        return;
+      case "rejected":
+        // Transport/network failure: the hook already warned. Stay silent (no
+        // banner) to preserve the established full-page behavior.
+        return;
+      case "success":
+        if (returnTo) {
+          const sep = returnTo.includes("?") ? "&" : "?";
+          router.push(`${returnTo}${sep}cardgroup=${outcome.cardgroupId}`);
+          return;
+        }
+        router.push(`/cardgroups/${outcome.cardgroupId}`);
+        router.refresh();
+        return;
     }
-
-    // Unknown variant: null payload, partial-response null bubble, or a future
-    // union variant the client was not regenerated against. Warn loudly and
-    // show a degraded banner.
-    console.warn("[cardgroups-new] unexpected createCardgroup payload", {
-      typename,
-    });
-    setUnexpectedPayloadError("Something went wrong. Please try again.");
   }
 
   return (
@@ -173,12 +91,7 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
           </div>
         </section>
       ) : (
-        <div className="mb-6 flex items-center gap-4">
-          <Link href="/cardgroups" className="text-sm text-muted-foreground hover:underline">
-            &larr; Back
-          </Link>
-          <h1 className="text-2xl font-semibold">New cardgroup</h1>
-        </div>
+        <h1 className="mb-6 text-2xl font-semibold">New cardgroup</h1>
       )}
 
       {authError ? (

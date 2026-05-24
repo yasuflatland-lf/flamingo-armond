@@ -3,6 +3,7 @@
 import { Plus } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { resolveFabAction } from "./fab-action";
+import { useFabSuppressed } from "./fab-suppression";
 
 // Hidden on /login (anonymous-only), /admin (different audience),
 // /cards/new + /cardgroups/new (FAB target — would loop),
@@ -13,12 +14,15 @@ const HIDDEN_PATH_RE = /^\/(login|admin|cards\/new|cardgroups\/new|profile|learn
 export function GlobalFAB() {
   const pathname = usePathname();
   const router = useRouter();
+  // A page can opt out of the FAB while mounted (e.g. not-found.tsx, which has
+  // an arbitrary path that the pathname guard below cannot match).
+  const suppressed = useFabSuppressed();
 
   // "/" is a server-redirect-only hub — HomePage always redirects (to /learn,
   // /cardgroups, /login, or /onboarding) and never renders content. Rendering
   // the FAB there only produces a flash during transitions that pass through
   // it (e.g. tapping the logo from /learn routes /learn -> "/" -> /learn).
-  if (pathname === "/" || HIDDEN_PATH_RE.test(pathname)) {
+  if (suppressed || pathname === "/" || HIDDEN_PATH_RE.test(pathname)) {
     return null;
   }
 
@@ -34,6 +38,16 @@ export function GlobalFAB() {
         cancelable: true,
         detail: { cardgroupId: resolvedAction.cardgroupId },
       });
+      if (window.dispatchEvent(event)) {
+        router.push(resolvedAction.href);
+      }
+      return;
+    }
+
+    if (resolvedAction.kind === "cardgroup") {
+      // CardgroupsClient (mounted on /cardgroups) cancels this to open the
+      // create drawer in place; when unhandled we fall back to the full page.
+      const event = new CustomEvent("flamingo:add-cardgroup", { cancelable: true });
       if (window.dispatchEvent(event)) {
         router.push(resolvedAction.href);
       }

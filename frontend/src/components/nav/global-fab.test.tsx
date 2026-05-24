@@ -9,7 +9,13 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { usePathname, useRouter } from "next/navigation";
+import { FabSuppressionProvider, useSuppressFab } from "./fab-suppression";
 import { GlobalFAB } from "./global-fab";
+
+function FabSuppressor() {
+  useSuppressFab();
+  return null;
+}
 
 function makeRouter() {
   return { push: vi.fn(), replace: vi.fn() };
@@ -66,16 +72,50 @@ describe("<GlobalFAB>", () => {
     });
   });
 
-  it("click on /cardgroups navigates to /cardgroups/new", async () => {
+  it("click on /cardgroups dispatches a cancelable add-cardgroup event and falls back to /cardgroups/new when unhandled", async () => {
     const user = userEvent.setup();
     const router = makeRouter();
+    const listener = vi.fn();
+    window.addEventListener("flamingo:add-cardgroup", listener);
     vi.mocked(useRouter).mockReturnValue(router as never);
     vi.mocked(usePathname).mockReturnValue("/cardgroups");
 
     render(<GlobalFAB />);
     await user.click(screen.getByRole("button", { name: "Add new cardgroup" }));
 
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect((listener.mock.calls[0]?.[0] as Event).cancelable).toBe(true);
     expect(router.push).toHaveBeenCalledWith("/cardgroups/new");
+
+    window.removeEventListener("flamingo:add-cardgroup", listener);
+  });
+
+  it("click on /cardgroups does not navigate when the add-cardgroup event is handled", async () => {
+    const user = userEvent.setup();
+    const router = makeRouter();
+    const listener = vi.fn((event: Event) => event.preventDefault());
+    window.addEventListener("flamingo:add-cardgroup", listener);
+    vi.mocked(useRouter).mockReturnValue(router as never);
+    vi.mocked(usePathname).mockReturnValue("/cardgroups");
+
+    render(<GlobalFAB />);
+    await user.click(screen.getByRole("button", { name: "Add new cardgroup" }));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(router.push).not.toHaveBeenCalled();
+
+    window.removeEventListener("flamingo:add-cardgroup", listener);
+  });
+
+  it("renders nothing when a mounted component suppresses the FAB", () => {
+    vi.mocked(usePathname).mockReturnValue("/cardgroups");
+    render(
+      <FabSuppressionProvider>
+        <FabSuppressor />
+        <GlobalFAB />
+      </FabSuppressionProvider>,
+    );
+    expect(screen.queryByRole("button", { name: "Add new cardgroup" })).toBeNull();
   });
 
   it("click on /cardgroups/abc123/edit dispatches an in-context add-card event and falls back when unhandled", async () => {

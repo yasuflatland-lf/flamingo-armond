@@ -109,11 +109,12 @@ describe("<NewCardgroupPage> (client)", () => {
     expect(screen.getByRole("button", { name: /create/i })).toBeInTheDocument();
   });
 
-  it("renders page header and back link", () => {
+  it("renders page header without a back link", () => {
     renderPage();
     expect(screen.getByRole("heading", { name: /new cardgroup/i })).toBeInTheDocument();
-    const backLink = screen.getByRole("link");
-    expect(backLink).toHaveAttribute("href", "/cardgroups");
+    // The "← Back" link was removed; the drawer-based create flow and the app
+    // shell nav provide navigation instead.
+    expect(screen.queryByRole("link", { name: /back/i })).not.toBeInTheDocument();
   });
 
   it("welcome mode renders the welcome H1 and hides Back / 'New cardgroup'", () => {
