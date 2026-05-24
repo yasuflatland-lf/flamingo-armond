@@ -255,6 +255,18 @@ describe("AdminUserProfileSheet", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "This user was changed by someone else. Reload and try again.",
     );
+
+    // In production both the list refetch and the detail reload rewrite the
+    // shared user cache entity, so the same-id user object can swap more than
+    // once. The banner must survive every such swap, not just the first.
+    rerender(renderTree(makeUser({ version: 100, displayName: "Server Name 2" })));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/display name/i)).toHaveValue("Server Name 2");
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "This user was changed by someone else. Reload and try again.",
+    );
   });
 
   it("roles-only dirty save omits profile fields and sends final roleIds", async () => {

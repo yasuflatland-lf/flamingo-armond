@@ -6,7 +6,12 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AdminRolesDocument, AdminUserDocument, AdminUsersDocument } from "@/generated/graphql";
+import {
+  AdminEditUserDocument,
+  AdminRolesDocument,
+  AdminUserDocument,
+  AdminUsersDocument,
+} from "@/generated/graphql";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
@@ -221,7 +226,9 @@ describe("<AdminUsersClient> edit-sheet lazy query", () => {
     );
 
     expect(await screen.findByDisplayValue("Alice")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: /moderator/i })).toBeInTheDocument();
+    // findByRole (not getByRole): the roles query may settle a tick after the
+    // user query, so await the checkbox rather than asserting synchronously.
+    expect(await screen.findByRole("checkbox", { name: /moderator/i })).toBeInTheDocument();
   });
 
   it("FORBIDDEN on the admin-user lazy query renders the permission banner inside the sheet", async () => {
@@ -275,6 +282,67 @@ describe("<AdminUsersClient> edit-sheet lazy query", () => {
     await waitFor(() => {
       expect(screen.getByText(/session has expired/i)).toBeInTheDocument();
     });
+  });
+
+  it("ConcurrentUpdateError save reloads the list and the sheet, preserving the banner", async () => {
+    const user = userEvent.setup();
+    mockSearchParamsValue = "edit=u-1";
+    leakSpy.teardown();
+    leakSpy = installApolloMockLeakSpy({
+      operationNames: ["AdminUsers", "AdminRoles", "AdminUser"],
+    });
+
+    const reloadedUser = { ...USER_1, version: 50, displayName: "Reloaded Alice" };
+    // Keep the list empty so the shared User:u-1 cache entity is written only by
+    // the detail query — otherwise list cache broadcasts race the typed input.
+    const mocks = [
+      makeUsersMock([]), // initial list query (empty)
+      makeUsersMock([]), // refetch fired by reloadEditedUser
+      makeRolesMock(),
+      makeAdminUserMock("u-1"), // mount lazy load (v41 "Alice")
+      {
+        // Save with no edits — profileDirty is false, so the mutation omits the
+        // profile fields. This keeps the form untouched and avoids racing the
+        // typed input against cache re-broadcasts during the test.
+        request: {
+          query: AdminEditUserDocument,
+          variables: {
+            id: "u-1",
+            expectedVersion: 41,
+            roleIds: [],
+          },
+        },
+        result: {
+          data: {
+            adminEditUser: {
+              __typename: "ConcurrentUpdateError" as const,
+              message: "user has changed",
+            },
+          },
+        },
+      },
+      makeAdminUserMock("u-1", { result: { data: { adminUser: reloadedUser } } }), // reload
+    ];
+
+    render(
+      <MockedProvider mocks={mocks}>
+        <AdminUsersClient />
+      </MockedProvider>,
+    );
+
+    await screen.findByDisplayValue("Alice");
+
+    await user.click(screen.getByRole("button", { name: /save changes/i }));
+
+    // reloadEditedUser must re-issue the detail query (proving the reload wiring
+    // fires); the latest server value swaps into the form and the conflict
+    // banner survives the swap.
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("Reloaded Alice")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "This user was changed by someone else. Reload and try again.",
+    );
   });
 
   it("race-guard: stale lazy-query response for the previously-open user is dropped", async () => {

@@ -58,11 +58,13 @@ export function AdminUserProfileSheet({
   const [saveError, setSaveError] = useState("");
   const [stagedRoleIds, setStagedRoleIds] = useState<Set<string>>(() => new Set());
   const [runEdit, { loading: saving, reset: resetEdit }] = useMutation(AdminEditUserMutation);
-  // A ConcurrentUpdateError auto-triggers a parent refetch. When the refreshed
-  // `user` prop arrives, the sync effect below resets the form to server values;
-  // this ref tells it to re-show the conflict banner instead of clearing it, so
-  // the explanation survives the user-object swap that the reload causes.
-  const conflictReloadPending = useRef(false);
+  // Tracks the id whose data the form last synced to. A ConcurrentUpdateError
+  // auto-triggers a parent refetch that re-delivers the *same* user with fresh
+  // server values (possibly across several object-identity swaps, since the list
+  // refetch and detail reload both rewrite the shared cache entity). We must keep
+  // the conflict banner across those same-id reloads and only clear it when the
+  // form switches to a *different* user.
+  const lastSyncedId = useRef<string | null>(null);
 
   const initialRoleIds = useMemo(() => new Set(user?.roles.map((role) => role.id) ?? []), [user]);
   const displayNameDirty = displayName !== (user?.displayName ?? "");
@@ -72,16 +74,21 @@ export function AdminUserProfileSheet({
   const dirty = profileDirty || rolesDirty;
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      // Reset on close so reopening the *same* user is treated as a fresh sync
+      // (id differs from null) and clears any leftover banner.
+      lastSyncedId.current = null;
+      return;
+    }
     setDisplayName(user.displayName ?? "");
     setBio(user.bio ?? "");
     setStagedRoleIds(new Set(user.roles.map((role) => role.id)));
-    if (conflictReloadPending.current) {
-      setSaveError(ERR_CONCURRENT);
-      conflictReloadPending.current = false;
-    } else {
+    // Only clear the banner when switching to a different user. A same-id reload
+    // (the concurrent-update refresh) keeps the conflict banner visible.
+    if (lastSyncedId.current !== user.id) {
       setSaveError("");
     }
+    lastSyncedId.current = user.id;
     resetEdit();
   }, [user, resetEdit]);
 
@@ -91,7 +98,6 @@ export function AdminUserProfileSheet({
 
   function handleOpenChange(nextOpen: boolean) {
     if (nextOpen) return;
-    conflictReloadPending.current = false;
     setSaveError("");
     resetEdit();
     onDismiss();
@@ -138,13 +144,10 @@ export function AdminUserProfileSheet({
           setSaveError(payload.message);
           return;
         case "ConcurrentUpdateError":
+          // The banner survives the same-id reload triggered here — see the
+          // form-sync effect's last-synced-id guard.
           setSaveError(ERR_CONCURRENT);
-          if (onReloadRequested) {
-            // The refreshed user prop will fire the sync effect, which would
-            // otherwise clear this banner — flag it to be re-shown after reload.
-            conflictReloadPending.current = true;
-            onReloadRequested();
-          }
+          onReloadRequested?.();
           return;
         default:
           console.warn("[admin/users] unexpected save payload", {
