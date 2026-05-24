@@ -100,8 +100,8 @@ test.describe
       await expect(page.getByText("No cardgroups yet")).toBeVisible();
 
       // The primary action button is rendered in the page-shell header even in
-      // the empty state. The mobile FAB carries a lowercase "Add new cardgroup"
-      // label, so the capital-N regex matches only this button.
+      // the empty state. The mobile nav-header "+" carries aria-label "Add new
+      // cardgroup" (lowercase a), so the capital-N regex matches only this button.
       const newCardgroupButton = page.getByRole("button", { name: /New cardgroup/ });
       await expect(newCardgroupButton).toBeVisible();
 

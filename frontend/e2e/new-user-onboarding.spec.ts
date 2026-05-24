@@ -4,8 +4,8 @@ import { loginAs, seedUser } from "./_auth";
 
 // Scenario: a brand-new user (zero cardgroups, no last_viewed) is funnelled
 // into onboarding (/cardgroups/new?welcome=1), creates their first cardgroup,
-// and the global FAB opens the inline "Add card" FormSheet on the cardgroup
-// edit page (no navigation to /cards/new).
+// and the nav-header "+" button opens the inline "Add card" FormSheet on the
+// cardgroup edit page (no navigation to /cards/new).
 
 const runId = randomUUID().slice(0, 8);
 const newcomer = {
@@ -17,14 +17,13 @@ const UUID_RE = /^[0-9a-f-]{36}$/;
 
 test.describe
   .serial("new user onboarding", () => {
-    // The global FAB is intentionally hidden at >= md (`md:hidden` in
-    // GlobalFAB) because desktop users get the same affordance via the
-    // header "Add card" link. This scenario is specifically the FAB path,
-    // so shrink the viewport below the md breakpoint (768px). We only
-    // override viewport here — spreading a full devices[...] descriptor
-    // includes defaultBrowserType, which Playwright forbids inside a
-    // describe group ("forces a new worker") and would also require a
-    // matching project entry, neither of which we want here.
+    // The nav-header "+" button is rendered inside the `md:hidden` mobile
+    // header and is not present at >= md viewports. This scenario exercises
+    // the mobile path, so shrink the viewport below the md breakpoint (768px).
+    // We only override viewport here — spreading a full devices[...] descriptor
+    // includes defaultBrowserType, which Playwright forbids inside a describe
+    // group ("forces a new worker") and would also require a matching project
+    // entry, neither of which we want here.
     test.use({ viewport: { width: 390, height: 844 } });
 
     test.beforeAll(async () => {
@@ -38,7 +37,7 @@ test.describe
       });
     });
 
-    test("welcome page → create cardgroup → FAB opens inline Add card sheet", async ({
+    test("welcome page → create cardgroup → nav-header '+' opens inline Add card sheet", async ({
       context,
       page,
     }) => {
@@ -61,12 +60,9 @@ test.describe
       expect(newCardgroupId).toMatch(UUID_RE);
       await expect(page.getByRole("heading", { name: cardgroupName })).toBeVisible();
 
-      // 3. Click the global "+ Card" FAB. On /cardgroups/<id>/edit, the FAB
-      // dispatches `flamingo:add-card`; CardsClient (mounted by the edit page)
-      // intercepts the event, calls preventDefault, and opens the "Add card"
-      // FormSheet inline — no navigation. The FAB renders at the root layout
-      // level and is hidden on /learn/*, /admin/*, /cards/new, /cardgroups/new;
-      // /cardgroups/<id>/edit is not on the hidden list so the FAB is present.
+      // 3. Click the nav-header "+" button. On /cardgroups/<id>/edit its
+      // aria-label is "Add new card"; clicking it opens the "Add card"
+      // FormSheet inline — no navigation to /cards/new.
       const fab = page.getByRole("button", { name: "Add new card" });
       await expect(fab).toBeVisible();
       await fab.click();
