@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"gorm.io/gorm"
@@ -198,8 +199,8 @@ func countingAdminUserTxRunner() (txRunner, *int) {
 	}, &calls
 }
 
-// adminCallerCtx returns a context whose AuthUser sub matches a caller marked
-// as admin in the supplied checker.
+// adminCallerCtx returns a context whose AuthUser sub is uid. Tests pair it
+// with an adminAuthChecker whose admins map keys on the same uid.
 func adminCallerCtx(uid string) context.Context {
 	return authedCtx(uid)
 }
@@ -860,10 +861,337 @@ func TestAdminUser_EditUser_InfraErrorFromTx(t *testing.T) {
 	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
 		RoleIDs: []string{"r-general"},
 	})
+	// Pin both the outer "tx" wrap and the inner "replace roles" sub-op wrap
+	// so a regression that drops either is caught. assertInternalChain matches
+	// any frame; the two calls together prove both wraps fire.
 	assertInternalChain(t, err, "usecase: admin user edit: tx")
+	assertInternalChain(t, err, "usecase: admin user edit: replace roles")
 	if outcome.User != nil || outcome.Validation != nil || outcome.CannotRevokeOwnAdmin {
 		t.Fatalf("expected zero-value outcome on infra error, got %+v", outcome)
 	}
+}
+
+// TestAdminUser_EditUser_UpdateTxInfraError_PinsUpdateProfileWrap fires the
+// profile branch of the tx callback and asserts that the inner per-sub-op
+// wrap ("update profile") is present in the chain. Without this test, a
+// future regression that drops the inner wrap on UpdateTx would still pass
+// TestAdminUser_EditUser_InfraErrorFromTx because the outer "tx" frame
+// continues to match.
+func TestAdminUser_EditUser_UpdateTxInfraError_PinsUpdateProfileWrap(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{
+		users:       map[string]*domain.User{"u-target": {ID: "u-target"}},
+		updateTxErr: errors.New("db down"),
+	}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
+
+	_, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		DisplayName: ptr("Alice"),
+		RoleIDs:     []string{"r-general"},
+	})
+	assertInternalChain(t, err, "usecase: admin user edit: update profile")
+	assertInternalChain(t, err, "usecase: admin user edit: tx")
+}
+
+// TestAdminUser_EditUser_UpdateTxCancelled pins the inner isContextDone
+// short-circuit on the profile branch of the tx callback. context.Canceled
+// must propagate as bare-identity (not wrapped), per
+// pin-unwrapped-context-error-with-identity-check.
+func TestAdminUser_EditUser_UpdateTxCancelled(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{
+		users:       map[string]*domain.User{"u-target": {ID: "u-target"}},
+		updateTxErr: context.Canceled,
+	}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
+
+	_, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		DisplayName: ptr("Alice"),
+		RoleIDs:     []string{"r-general"},
+	})
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("context.Canceled identity (UpdateTx branch): got %T %v", err, err)
+	}
+}
+
+// TestAdminUser_EditUser_DisplayNameTooLongValidation pins the display-name
+// validation branch surfaced via outcome.Validation. The plan explicitly
+// required the displayName-too-long case; once the validators move to the
+// domain layer or change their return type, this test catches the misroute.
+func TestAdminUser_EditUser_DisplayNameTooLongValidation(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	tx, txCalls := countingAdminUserTxRunner()
+	uc, _, _, _ := buildAdminUCWithTx(users, nil, userRoles, tx, authChk)
+
+	long := strings.Repeat("a", domain.DisplayNameMax+1)
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		DisplayName: ptr(long),
+		RoleIDs:     []string{"r-general"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertAdminEditUserOutcomeXOR(t, outcome)
+	if outcome.Validation == nil || outcome.Validation.Field != "displayName" {
+		t.Fatalf("outcome.Validation = %+v, want field=displayName", outcome.Validation)
+	}
+	if *txCalls != 0 {
+		t.Fatalf("tx calls = %d, want 0 (validation must short-circuit)", *txCalls)
+	}
+	if userRoles.setCalls != 0 {
+		t.Fatalf("SetUserRolesTx calls = %d, want 0", userRoles.setCalls)
+	}
+}
+
+// TestAdminUser_EditUser_BioTooLongValidation pins the bio validation branch
+// surfaced via outcome.Validation. Symmetric to the displayName case.
+func TestAdminUser_EditUser_BioTooLongValidation(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	tx, txCalls := countingAdminUserTxRunner()
+	uc, _, _, _ := buildAdminUCWithTx(users, nil, userRoles, tx, authChk)
+
+	long := strings.Repeat("a", domain.BioMax+1)
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		Bio:     ptr(long),
+		RoleIDs: []string{"r-general"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertAdminEditUserOutcomeXOR(t, outcome)
+	if outcome.Validation == nil || outcome.Validation.Field != "bio" {
+		t.Fatalf("outcome.Validation = %+v, want field=bio", outcome.Validation)
+	}
+	if *txCalls != 0 {
+		t.Fatalf("tx calls = %d, want 0 (validation must short-circuit)", *txCalls)
+	}
+}
+
+// TestAdminUser_EditUser_EmptyStringRoleIDValidation pins the empty-string
+// branch of normalizeAdminEditRoleIDs. Duplicates are covered separately by
+// TestAdminUser_EditUser_DuplicateRoleIDsValidation.
+func TestAdminUser_EditUser_EmptyStringRoleIDValidation(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
+
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		RoleIDs: []string{"r-general", ""},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertAdminEditUserOutcomeXOR(t, outcome)
+	if outcome.Validation == nil || outcome.Validation.Field != "roleIds" {
+		t.Fatalf("outcome.Validation = %+v, want field=roleIds", outcome.Validation)
+	}
+	if userRoles.setCalls != 0 {
+		t.Fatalf("SetUserRolesTx calls = %d, want 0", userRoles.setCalls)
+	}
+}
+
+// TestAdminUser_EditUser_UserNotFoundValidation covers the ErrUserNotFound
+// branch of mapAdminEditMutationError. The SetUserRolesTx sentinel surfaces
+// as an InputValidationError on field=id.
+func TestAdminUser_EditUser_UserNotFoundValidation(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"u-target": {ID: "u-target"}}}
+	userRoles := &mockAdminUserRoleRepository{setErr: repository.ErrUserNotFound}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
+
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		RoleIDs: []string{"r-general"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertAdminEditUserOutcomeXOR(t, outcome)
+	if outcome.Validation == nil || outcome.Validation.Field != "id" {
+		t.Fatalf("outcome.Validation = %+v, want field=id", outcome.Validation)
+	}
+}
+
+// TestAdminUser_EditUser_Self_FindByIDsInfraError pins the new self-edit
+// lookup branch: when callerID == id and roleIDs is non-empty, FindByIDs is
+// invoked outside the transaction. A non-cancellation infra error must
+// surface as INTERNAL with the documented wrap prefix.
+func TestAdminUser_EditUser_Self_FindByIDsInfraError(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"admin-1": {ID: "admin-1"}}}
+	roles := &mockAdminRoleRepository{findErr: errors.New("db down")}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	tx, txCalls := countingAdminUserTxRunner()
+	uc, _, _, _ := buildAdminUCWithTx(users, roles, userRoles, tx, authChk)
+
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "admin-1", AdminEditUserInput{
+		RoleIDs: []string{"r-admin"},
+	})
+	assertInternalChain(t, err, "usecase: admin user edit: lookup roles")
+	if *txCalls != 0 {
+		t.Fatalf("tx calls = %d, want 0", *txCalls)
+	}
+	if outcome.User != nil || outcome.Validation != nil || outcome.CannotRevokeOwnAdmin {
+		t.Fatalf("expected zero-value outcome on infra error, got %+v", outcome)
+	}
+}
+
+// TestAdminUser_EditUser_Self_FindByIDsCancelled verifies that a cancelled
+// context from the self-edit lookup propagates as CANCELLED, not INTERNAL.
+func TestAdminUser_EditUser_Self_FindByIDsCancelled(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"admin-1": {ID: "admin-1"}}}
+	roles := &mockAdminRoleRepository{findErr: context.Canceled}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
+
+	_, err := uc.EditUser(adminCallerCtx("admin-1"), "admin-1", AdminEditUserInput{
+		RoleIDs: []string{"r-admin"},
+	})
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("context.Canceled identity: got %T %v", err, err)
+	}
+}
+
+// TestAdminUser_EditUser_Self_UnknownRoleIDValidation pins the misclassified-
+// outcome fix: when the self-edit roleIDs set contains an unknown id (and
+// thus FindByIDs returns a partial map), the user receives an InputValidation
+// error pointing at roleIds, NOT a CannotRevokeOwnAdmin outcome. Without the
+// fix, the keepsAdmin loop would still report the missing role as a
+// self-demotion attempt and surface the wrong banner.
+func TestAdminUser_EditUser_Self_UnknownRoleIDValidation(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"admin-1": {ID: "admin-1"}}}
+	roles := &mockAdminRoleRepository{
+		roles: map[string]*domain.Role{
+			"r-admin": {ID: "r-admin", Name: domain.AdminRoleName},
+		},
+	}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	tx, txCalls := countingAdminUserTxRunner()
+	uc, _, _, _ := buildAdminUCWithTx(users, roles, userRoles, tx, authChk)
+
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "admin-1", AdminEditUserInput{
+		RoleIDs: []string{"r-admin", "r-unknown"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertAdminEditUserOutcomeXOR(t, outcome)
+	if outcome.Validation == nil || outcome.Validation.Field != "roleIds" {
+		t.Fatalf("outcome.Validation = %+v, want field=roleIds", outcome.Validation)
+	}
+	if outcome.CannotRevokeOwnAdmin {
+		t.Fatalf("CannotRevokeOwnAdmin = true, want false (the issue is unknown role, not self-demotion)")
+	}
+	if *txCalls != 0 {
+		t.Fatalf("tx calls = %d, want 0", *txCalls)
+	}
+	if userRoles.setCalls != 0 {
+		t.Fatalf("SetUserRolesTx calls = %d, want 0", userRoles.setCalls)
+	}
+}
+
+// TestAdminUser_EditUser_TxRunnerNotConfigured covers the defensive branch
+// triggered when NewAdminUser is constructed with a nil *gorm.DB. EditUser
+// surfaces a wrapped 'tx runner not configured' error rather than panicking.
+func TestAdminUser_EditUser_TxRunnerNotConfigured(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	// Pass tx=nil explicitly to mirror NewAdminUser(db=nil) behaviour.
+	uc, _, _, _ := buildAdminUCWithTx(users, nil, userRoles, nil, authChk)
+
+	_, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		RoleIDs: []string{"r-general"},
+	})
+	assertInternalChain(t, err, "usecase: admin user edit: tx runner not configured")
+}
+
+// TestAdminUser_EditUser_RefetchUserDisappeared covers the unusual race
+// between tx-commit and refetch: the row vanished after the mutation
+// succeeded. The error chain preserves ErrNotFound for downstream checks.
+func TestAdminUser_EditUser_RefetchUserDisappeared(t *testing.T) {
+	t.Parallel()
+
+	// users.users intentionally empty so FindByID after the tx returns ErrNotFound.
+	users := &mockAdminUserRepository{users: map[string]*domain.User{}}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
+
+	_, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		RoleIDs: []string{"r-general"},
+	})
+	// UpdateTx is skipped because no profile patch was supplied, so only
+	// SetUserRolesTx runs in the tx, which succeeds. The refetch then hits
+	// the empty store and returns ErrNotFound, which is wrapped with the
+	// 'user disappeared' message.
+	assertInternalChain(t, err, "usecase: admin user edit: refetch: user disappeared")
+	if !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("expected repository.ErrNotFound in chain, got %T: %v", err, err)
+	}
+}
+
+// TestAdminUser_EditUser_RefetchCancelled verifies that a cancelled context
+// from refetchUser propagates as CANCELLED, not INTERNAL.
+func TestAdminUser_EditUser_RefetchCancelled(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{findErr: context.Canceled}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
+
+	_, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		RoleIDs: []string{"r-general"},
+	})
+	assertCancelled(t, err)
+}
+
+// TestAdminUser_EditUser_RefetchInfraError covers the generic-infra branch of
+// refetchUser. The wrap pins the operation context so log readers can trace
+// which sub-op failed.
+func TestAdminUser_EditUser_RefetchInfraError(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{findErr: errors.New("db down")}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
+
+	_, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		RoleIDs: []string{"r-general"},
+	})
+	assertInternalChain(t, err, "usecase: admin user edit: refetch")
 }
 
 // ---------------------------------------------------------------------------

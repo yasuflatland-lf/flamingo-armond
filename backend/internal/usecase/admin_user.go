@@ -117,7 +117,8 @@ type adminUserRoleRepository interface {
 }
 
 // adminUserUsecase wires the admin gate, the user repository, the role
-// repository, and the user-role repository behind the admin-only management API.
+// repository, the user-role repository, and the transaction runner that scopes
+// the atomic profile+roles write inside EditUser.
 type adminUserUsecase struct {
 	users     adminUserRepository
 	roles     adminRoleRepository
@@ -271,9 +272,16 @@ func (u *adminUserUsecase) Get(ctx context.Context, id string) (*domain.User, er
 }
 
 // EditUser atomically patches profile fields and replaces the user's role set.
-// Validation failures surface as outcome data. The transaction covers both the
-// profile update and role replacement; the returned user is refetched after the
-// transaction commits so role loaders see the final state.
+// Validation failures surface as outcome data; when the caller is editing
+// their own row and the submitted final role set drops the admin role,
+// outcome.CannotRevokeOwnAdmin is set instead. The transaction covers both
+// the profile update and role replacement; the returned user is refetched
+// after the transaction commits so role loaders see the final state.
+//
+// The transaction runner is required for any patch that goes past validation.
+// NewAdminUser leaves tx unwired when constructed with a nil db; in that case
+// EditUser surfaces a wrapped 'tx runner not configured' error rather than
+// panicking, since the wiring gap is recoverable per-request.
 func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminEditUserInput) (AdminEditUserOutcome, error) {
 	callerID, err := u.adminGate.Require(ctx, "usecase: admin user: check admin")
 	if err != nil {
@@ -323,6 +331,15 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 				}
 				return AdminEditUserOutcome{}, eris.Wrap(err, "usecase: admin user edit: lookup roles")
 			}
+			// If any submitted roleId is unknown, surface that as a validation
+			// failure rather than misclassifying the request as a self-demotion.
+			// The downstream SetUserRolesTx would also reject the unknown id,
+			// but only after passing the keepsAdmin check on the partial map.
+			if len(roles) != len(roleIDs) {
+				return AdminEditUserOutcome{
+					Validation: NewInputValidationInfo("roleIds", "role not found"),
+				}, nil
+			}
 			for _, roleID := range roleIDs {
 				if role, ok := roles[roleID]; ok && role.Name == domain.AdminRoleName {
 					keepsAdmin = true
@@ -342,11 +359,17 @@ func (u *adminUserUsecase) EditUser(ctx context.Context, id string, input AdminE
 	err = u.tx(ctx, func(tx *gorm.DB) error {
 		if profilePatch {
 			if err := u.users.UpdateTx(ctx, tx, id, patch); err != nil {
-				return err
+				if isContextDone(err) {
+					return err
+				}
+				return eris.Wrap(err, "usecase: admin user edit: update profile")
 			}
 		}
 		if err := u.userRoles.SetUserRolesTx(ctx, tx, id, roleIDs); err != nil {
-			return err
+			if isContextDone(err) {
+				return err
+			}
+			return eris.Wrap(err, "usecase: admin user edit: replace roles")
 		}
 		return nil
 	})

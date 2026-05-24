@@ -47,6 +47,12 @@ type UserRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.User, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.User, error)
 	Update(ctx context.Context, id string, patch UserUpdate) (*domain.User, error)
+	// UpdateTx applies the patch inside the caller-provided transaction. Unlike
+	// Update, it does not re-fetch the row — callers that need the updated
+	// value should refetch after the transaction commits. A patch with no
+	// non-nil fields returns nil without touching the database. A patch that
+	// targets a missing row returns ErrNotFound so the surrounding transaction
+	// rolls back atomically.
 	UpdateTx(ctx context.Context, tx *gorm.DB, id string, patch UserUpdate) error
 	// ListPage returns a page of users ordered by created_at DESC with id ASC
 	// as a stable tiebreaker. The cursor is the user UUID. Forward paging uses

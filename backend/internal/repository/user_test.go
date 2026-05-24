@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"gorm.io/gorm"
 
 	"backend/internal/database"
 	"backend/internal/repository"
@@ -374,6 +375,83 @@ func TestUpdate_EmptyPatchReturnsCurrentRow(t *testing.T) {
 	}
 	if after.ID != before.ID {
 		t.Errorf("ID mismatch")
+	}
+}
+
+// TestUpdateTx_Success_DisplayNameOnly exercises the happy path of the
+// transactional variant. Unlike Update, UpdateTx does not re-fetch and
+// returns no value — callers refetch after the transaction commits.
+func TestUpdateTx_Success_DisplayNameOnly(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	id := insertAuthUser(t, ctx)
+	repo := repository.NewUserRepository(testDB.GORM)
+
+	name := "AliceTx"
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.UpdateTx(ctx, tx, id, repository.UserUpdate{DisplayName: &name})
+	})
+	if err != nil {
+		t.Fatalf("UpdateTx: %v", err)
+	}
+
+	got, err := repo.FindByID(ctx, id)
+	if err != nil {
+		t.Fatalf("FindByID after UpdateTx: %v", err)
+	}
+	if got.DisplayName == nil || string(*got.DisplayName) != name {
+		t.Fatalf("DisplayName: got %v, want %q", got.DisplayName, name)
+	}
+}
+
+// TestUpdateTx_NotFound asserts that targeting a missing row returns
+// ErrNotFound so the surrounding transaction can roll back atomically.
+// This is load-bearing for adminUserUsecase.EditUser which classifies the
+// sentinel into an InputValidationError on field=id.
+func TestUpdateTx_NotFound(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewUserRepository(testDB.GORM)
+
+	name := "nobody"
+	missing := uuid.NewString()
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.UpdateTx(ctx, tx, missing, repository.UserUpdate{DisplayName: &name})
+	})
+	if !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("UpdateTx(missing): want ErrNotFound, got %v", err)
+	}
+}
+
+// TestUpdateTx_EmptyPatchNoOp verifies that a patch with no non-nil fields
+// returns nil without touching the database (no UPDATE issued). This matches
+// adminUserUsecase.EditUser's profile-omitted branch where UpdateTx must not
+// be called or, if called defensively, must be a no-op.
+func TestUpdateTx_EmptyPatchNoOp(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	id := insertAuthUser(t, ctx)
+	repo := repository.NewUserRepository(testDB.GORM)
+
+	before, err := repo.FindByID(ctx, id)
+	if err != nil {
+		t.Fatalf("FindByID (before): %v", err)
+	}
+	beforeUpdated := before.UpdatedAt
+
+	err = testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.UpdateTx(ctx, tx, id, repository.UserUpdate{})
+	})
+	if err != nil {
+		t.Fatalf("UpdateTx (empty patch): %v", err)
+	}
+
+	after, err := repo.FindByID(ctx, id)
+	if err != nil {
+		t.Fatalf("FindByID (after): %v", err)
+	}
+	if !after.UpdatedAt.Equal(beforeUpdated) {
+		t.Errorf("empty patch must not bump updated_at; before=%v after=%v", beforeUpdated, after.UpdatedAt)
 	}
 }
 
