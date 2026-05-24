@@ -14,66 +14,13 @@ import (
 	"github.com/rotisserie/eris"
 )
 
-// AdminUpdateUser is the resolver for the adminUpdateUser field.
-//
-// Returns a union: `model.AdminUpdateUserSuccess` on the happy path, or
-// `model.InputValidationError` when the input fails validation (e.g.
-// displayName length, missing target user). Validation is "errors as data" —
-// the second return value is reserved for real errors (auth, internal).
-func (r *mutationResolver) AdminUpdateUser(ctx context.Context, id string, input model.AdminUpdateUserInput) (model.AdminUpdateUserResult, error) {
-	outcome, err := r.AdminUserUC.Update(ctx, id, usecase.AdminUpdateUserInput{
+// AdminEditUser is the resolver for the adminEditUser field.
+func (r *mutationResolver) AdminEditUser(ctx context.Context, id string, input model.AdminEditUserInput) (model.AdminEditUserResult, error) {
+	outcome, err := r.AdminUserUC.EditUser(ctx, id, usecase.AdminEditUserInput{
 		DisplayName: input.DisplayName,
 		Bio:         input.Bio,
+		RoleIDs:     input.RoleIds,
 	})
-	if err != nil {
-		return nil, gqlerr.FromUsecaseError(ctx, err)
-	}
-	if outcome.Validation != nil {
-		return model.InputValidationError{
-			Field:   outcome.Validation.Field,
-			Message: outcome.Validation.Message,
-		}, nil
-	}
-	if outcome.User == nil {
-		return nil, gqlerr.Internal(ctx,
-			eris.New("resolver: AdminUpdateUserOutcome has no variant set"))
-	}
-	return model.AdminUpdateUserSuccess{User: toUserModel(outcome.User)}, nil
-}
-
-// AssignRole is the resolver for the assignRole field.
-//
-// Returns a union: `model.AssignRoleSuccess` on the happy path, or
-// `model.InputValidationError` when the userId or roleId fails validation
-// (e.g. unknown user / unknown role). Validation failures are returned as
-// data; the error return is reserved for auth and infrastructure failures.
-func (r *mutationResolver) AssignRole(ctx context.Context, userID string, roleID string) (model.AssignRoleResult, error) {
-	outcome, err := r.AdminUserUC.AssignRole(ctx, userID, roleID)
-	if err != nil {
-		return nil, gqlerr.FromUsecaseError(ctx, err)
-	}
-	if outcome.Validation != nil {
-		return model.InputValidationError{
-			Field:   outcome.Validation.Field,
-			Message: outcome.Validation.Message,
-		}, nil
-	}
-	if outcome.User == nil {
-		return nil, gqlerr.Internal(ctx,
-			eris.New("resolver: AssignRoleOutcome has no variant set"))
-	}
-	return model.AssignRoleSuccess{User: toUserModel(outcome.User)}, nil
-}
-
-// RevokeRole is the resolver for the revokeRole field.
-//
-// Returns a union: `model.RevokeRoleSuccess` on the happy path,
-// `model.InputValidationError` when the userId or roleId fails validation, or
-// `model.CannotRevokeOwnAdminRoleError` when the caller attempts to revoke the
-// admin role from themselves. Both typed variants are returned as data; the
-// error return is reserved for auth and infrastructure failures.
-func (r *mutationResolver) RevokeRole(ctx context.Context, userID string, roleID string) (model.RevokeRoleResult, error) {
-	outcome, err := r.AdminUserUC.RevokeRole(ctx, userID, roleID)
 	if err != nil {
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
@@ -90,9 +37,9 @@ func (r *mutationResolver) RevokeRole(ctx context.Context, userID string, roleID
 	}
 	if outcome.User == nil {
 		return nil, gqlerr.Internal(ctx,
-			eris.New("resolver: RevokeRoleOutcome has no variant set"))
+			eris.New("resolver: AdminEditUserOutcome has no variant set"))
 	}
-	return model.RevokeRoleSuccess{User: toUserModel(outcome.User)}, nil
+	return model.AdminEditUserSuccess{User: toUserModel(outcome.User)}, nil
 }
 
 // CreateRole is the resolver for the createRole field.

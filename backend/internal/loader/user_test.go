@@ -86,6 +86,9 @@ func (emptyUserRoleRepoStub) AssignToUser(_ context.Context, _, _ string) error 
 func (emptyUserRoleRepoStub) RevokeFromUser(_ context.Context, _, _ string) error {
 	panic("emptyUserRoleRepoStub.RevokeFromUser not expected")
 }
+func (emptyUserRoleRepoStub) SetUserRolesTx(_ context.Context, _ *gorm.DB, _ string, _ []string) error {
+	panic("emptyUserRoleRepoStub.SetUserRolesTx not expected")
+}
 func (emptyUserRoleRepoStub) ListByUser(_ context.Context, _ string) ([]*domain.Role, error) {
 	panic("emptyUserRoleRepoStub.ListByUser not expected")
 }
@@ -250,6 +253,10 @@ func (r *countingRepo) Update(ctx context.Context, id string, patch repository.U
 		panic("countingRepo.Update not configured")
 	}
 	return r.update(ctx, id, patch)
+}
+
+func (r *countingRepo) UpdateTx(_ context.Context, _ *gorm.DB, _ string, _ repository.UserUpdate) error {
+	panic("countingRepo.UpdateTx not configured")
 }
 
 // ListPage satisfies repository.UserRepository. The loader-layer tests never

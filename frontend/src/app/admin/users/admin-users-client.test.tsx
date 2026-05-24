@@ -6,12 +6,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  AdminAssignRoleDocument,
-  AdminRolesDocument,
-  AdminUserDocument,
-  AdminUsersDocument,
-} from "@/generated/graphql";
+import { AdminRolesDocument, AdminUserDocument, AdminUsersDocument } from "@/generated/graphql";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
@@ -146,7 +141,7 @@ let leakSpy: ApolloMockLeakSpyResult;
 
 beforeEach(() => {
   leakSpy = installApolloMockLeakSpy({
-    operationNames: ["AdminUsers", "AdminRoles", "AdminAssignRole"],
+    operationNames: ["AdminUsers", "AdminRoles"],
   });
   ioCallbacks = [];
   mockPush.mockReset();
@@ -164,7 +159,7 @@ afterEach(() => {
   leakSpy.teardown();
 });
 
-describe("<AdminUsersClient> sheet and inline roles", () => {
+describe("<AdminUsersClient> sheet", () => {
   it("pushes ?edit=<id> when the row Edit affordance is clicked", async () => {
     const user = userEvent.setup();
 
@@ -181,39 +176,15 @@ describe("<AdminUsersClient> sheet and inline roles", () => {
     expect(mockPush).toHaveBeenCalledWith("/admin/users?edit=u-1", { scroll: false });
   });
 
-  it("fires assignRole when an inline role checkbox is checked", async () => {
-    const user = userEvent.setup();
-    const assignMock = {
-      request: {
-        query: AdminAssignRoleDocument,
-        variables: { userId: "u-1", roleId: MOD_ROLE.id },
-      },
-      result: {
-        data: {
-          assignRole: {
-            __typename: "AssignRoleSuccess" as const,
-            user: {
-              ...USER_1,
-              roles: [MOD_ROLE],
-            },
-          },
-        },
-      },
-    };
-
+  it("does not render inline role checkboxes in the user list", async () => {
     render(
-      <MockedProvider mocks={[makeUsersMock(), makeRolesMock(), assignMock]}>
+      <MockedProvider mocks={[makeUsersMock(), makeRolesMock()]}>
         <AdminUsersClient />
       </MockedProvider>,
     );
 
     expect(await screen.findByText("Alice")).toBeInTheDocument();
-
-    await user.click(await screen.findByRole("checkbox", { name: /moderator/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("checkbox", { name: /moderator/i })).toBeChecked();
-    });
+    expect(screen.queryByRole("checkbox", { name: /moderator/i })).not.toBeInTheDocument();
   });
 });
 
@@ -231,6 +202,25 @@ describe("<AdminUsersClient> edit-sheet lazy query", () => {
       result: overrides.result ?? { data: { adminUser: { ...USER_1, id } } },
     };
   }
+
+  it("passes all roles to the edit sheet", async () => {
+    mockSearchParamsValue = "edit=u-1";
+    leakSpy.teardown();
+    leakSpy = installApolloMockLeakSpy({
+      operationNames: ["AdminUsers", "AdminRoles", "AdminUser"],
+    });
+
+    const userMock = makeAdminUserMock("u-1");
+
+    render(
+      <MockedProvider mocks={[makeUsersMock(), makeRolesMock(), userMock]}>
+        <AdminUsersClient />
+      </MockedProvider>,
+    );
+
+    expect(await screen.findByDisplayValue("Alice")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /moderator/i })).toBeInTheDocument();
+  });
 
   it("FORBIDDEN on the admin-user lazy query renders the permission banner inside the sheet", async () => {
     mockSearchParamsValue = "edit=u-1";

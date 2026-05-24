@@ -47,6 +47,7 @@ type UserRepository interface {
 	FindByID(ctx context.Context, id string) (*domain.User, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.User, error)
 	Update(ctx context.Context, id string, patch UserUpdate) (*domain.User, error)
+	UpdateTx(ctx context.Context, tx *gorm.DB, id string, patch UserUpdate) error
 	// ListPage returns a page of users ordered by created_at DESC with id ASC
 	// as a stable tiebreaker. The cursor is the user UUID. Forward paging uses
 	// `after` (exclusive); backward paging uses `before` (exclusive). `first`
@@ -104,16 +105,7 @@ func (r *userRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*dom
 }
 
 func (r *userRepo) Update(ctx context.Context, id string, patch UserUpdate) (*domain.User, error) {
-	updates := map[string]any{}
-	if patch.DisplayName != nil {
-		updates["display_name"] = *patch.DisplayName
-	}
-	if patch.Bio != nil {
-		updates["bio"] = *patch.Bio
-	}
-	if patch.AvatarURL != nil {
-		updates["avatar_url"] = *patch.AvatarURL
-	}
+	updates := userUpdates(patch)
 	if len(updates) == 0 {
 		// No-op patch: return current value rather than touching DB.
 		return r.FindByID(ctx, id)
@@ -128,6 +120,35 @@ func (r *userRepo) Update(ctx context.Context, id string, patch UserUpdate) (*do
 	}
 	// Re-fetch so callers see the trigger-refreshed updated_at.
 	return r.FindByID(ctx, id)
+}
+
+func (r *userRepo) UpdateTx(ctx context.Context, tx *gorm.DB, id string, patch UserUpdate) error {
+	updates := userUpdates(patch)
+	if len(updates) == 0 {
+		return nil
+	}
+	res := tx.WithContext(ctx).Model(&gormUser{}).Where("id = ?", id).Updates(updates)
+	if res.Error != nil {
+		return eris.Wrap(res.Error, "repository: update user tx")
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func userUpdates(patch UserUpdate) map[string]any {
+	updates := map[string]any{}
+	if patch.DisplayName != nil {
+		updates["display_name"] = *patch.DisplayName
+	}
+	if patch.Bio != nil {
+		updates["bio"] = *patch.Bio
+	}
+	if patch.AvatarURL != nil {
+		updates["avatar_url"] = *patch.AvatarURL
+	}
+	return updates
 }
 
 // ListPage implements the cursor-paginated user list. Order is fixed at

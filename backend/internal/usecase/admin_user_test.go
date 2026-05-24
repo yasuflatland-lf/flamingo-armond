@@ -3,8 +3,9 @@ package usecase
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
+
+	"gorm.io/gorm"
 
 	"backend/internal/domain"
 	"backend/internal/repository"
@@ -24,12 +25,10 @@ type mockAdminUserRepository struct {
 	findCalls  int
 	lastFindID string
 
-	// Update
-	updateResult  *domain.User
-	updateErr     error
-	capturedPatch repository.UserUpdate
-	updateCalls   int
-	lastUpdateID  string
+	updateTxErr     error
+	capturedTxPatch repository.UserUpdate
+	updateTxCalls   int
+	lastUpdateTxID  string
 
 	// ListPage
 	listResult     []*domain.User
@@ -55,22 +54,17 @@ func (m *mockAdminUserRepository) FindByID(_ context.Context, id string) (*domai
 	return nil, repository.ErrNotFound
 }
 
-func (m *mockAdminUserRepository) Update(_ context.Context, id string, patch repository.UserUpdate) (*domain.User, error) {
-	m.updateCalls++
-	m.lastUpdateID = id
-	m.capturedPatch = patch
-	if m.updateErr != nil {
-		return nil, m.updateErr
+func (m *mockAdminUserRepository) UpdateTx(_ context.Context, _ *gorm.DB, id string, patch repository.UserUpdate) error {
+	m.updateTxCalls++
+	m.lastUpdateTxID = id
+	m.capturedTxPatch = patch
+	if m.updateTxErr != nil {
+		return m.updateTxErr
 	}
-	if m.updateResult != nil {
-		return m.updateResult, nil
+	if _, ok := m.users[id]; ok {
+		return nil
 	}
-	// Default behaviour: return the seeded user (when present) so refetch-style
-	// flows downstream get a non-nil row.
-	if u, ok := m.users[id]; ok {
-		return u, nil
-	}
-	return nil, repository.ErrNotFound
+	return repository.ErrNotFound
 }
 
 func (m *mockAdminUserRepository) ListPage(
@@ -119,29 +113,17 @@ func (m *mockAdminRoleRepository) FindByIDs(_ context.Context, ids []string) (ma
 // mockAdminUserRoleRepository implements the narrow adminUserRoleRepository
 // surface (membership write operations).
 type mockAdminUserRoleRepository struct {
-	assignErr     error
-	assignCalls   int
-	lastAssignUID string
-	lastAssignRID string
-
-	revokeErr     error
-	revokeCalls   int
-	lastRevokeUID string
-	lastRevokeRID string
+	setErr         error
+	setCalls       int
+	lastSetUID     string
+	lastSetRoleIDs []string
 }
 
-func (m *mockAdminUserRoleRepository) AssignToUser(_ context.Context, userID, roleID string) error {
-	m.assignCalls++
-	m.lastAssignUID = userID
-	m.lastAssignRID = roleID
-	return m.assignErr
-}
-
-func (m *mockAdminUserRoleRepository) RevokeFromUser(_ context.Context, userID, roleID string) error {
-	m.revokeCalls++
-	m.lastRevokeUID = userID
-	m.lastRevokeRID = roleID
-	return m.revokeErr
+func (m *mockAdminUserRoleRepository) SetUserRolesTx(_ context.Context, _ *gorm.DB, userID string, roleIDs []string) error {
+	m.setCalls++
+	m.lastSetUID = userID
+	m.lastSetRoleIDs = append([]string(nil), roleIDs...)
+	return m.setErr
 }
 
 // adminAuthChecker is a stand-alone AdminChecker stub for AdminUser tests. It
@@ -176,6 +158,16 @@ func buildAdminUC(
 	userRoles *mockAdminUserRoleRepository,
 	authChk AdminChecker,
 ) (AdminUserUsecase, *mockAdminUserRepository, *mockAdminRoleRepository, *mockAdminUserRoleRepository) {
+	return buildAdminUCWithTx(users, roles, userRoles, adminUserTxRunner(), authChk)
+}
+
+func buildAdminUCWithTx(
+	users *mockAdminUserRepository,
+	roles *mockAdminRoleRepository,
+	userRoles *mockAdminUserRoleRepository,
+	tx txRunner,
+	authChk AdminChecker,
+) (AdminUserUsecase, *mockAdminUserRepository, *mockAdminRoleRepository, *mockAdminUserRoleRepository) {
 	if users == nil {
 		users = &mockAdminUserRepository{}
 	}
@@ -188,8 +180,22 @@ func buildAdminUC(
 	if authChk == nil {
 		authChk = &adminAuthChecker{}
 	}
-	uc := NewAdminUserWithDeps(users, roles, userRoles, NewAdminGate(authChk), newTestLogger())
+	uc := NewAdminUserWithDeps(users, roles, userRoles, tx, NewAdminGate(authChk), newTestLogger())
 	return uc, users, roles, userRoles
+}
+
+func adminUserTxRunner() txRunner {
+	return func(_ context.Context, fn func(tx *gorm.DB) error) error {
+		return fn(&gorm.DB{})
+	}
+}
+
+func countingAdminUserTxRunner() (txRunner, *int) {
+	calls := 0
+	return func(_ context.Context, fn func(tx *gorm.DB) error) error {
+		calls++
+		return fn(&gorm.DB{})
+	}, &calls
 }
 
 // adminCallerCtx returns a context whose AuthUser sub matches a caller marked
@@ -227,23 +233,9 @@ func TestAdminUser_NonAdminForbidden(t *testing.T) {
 			},
 		},
 		{
-			name: "Update",
+			name: "EditUser",
 			call: func(uc AdminUserUsecase) error {
-				_, err := uc.Update(adminCallerCtx("u1"), "any", AdminUpdateUserInput{})
-				return err
-			},
-		},
-		{
-			name: "AssignRole",
-			call: func(uc AdminUserUsecase) error {
-				_, err := uc.AssignRole(adminCallerCtx("u1"), "u2", "r1")
-				return err
-			},
-		},
-		{
-			name: "RevokeRole",
-			call: func(uc AdminUserUsecase) error {
-				_, err := uc.RevokeRole(adminCallerCtx("u1"), "u2", "r1")
+				_, err := uc.EditUser(adminCallerCtx("u1"), "any", AdminEditUserInput{})
 				return err
 			},
 		},
@@ -260,13 +252,12 @@ func TestAdminUser_NonAdminForbidden(t *testing.T) {
 			err := tc.call(uc)
 			assertForbidden(t, err, "")
 
-			if users.findCalls+users.updateCalls+users.listCalls != 0 {
-				t.Fatalf("expected no user repo calls, got find=%d update=%d list=%d",
-					users.findCalls, users.updateCalls, users.listCalls)
+			if users.findCalls+users.updateTxCalls+users.listCalls != 0 {
+				t.Fatalf("expected no user repo calls, got find=%d updateTx=%d list=%d",
+					users.findCalls, users.updateTxCalls, users.listCalls)
 			}
-			if userRoles.assignCalls+userRoles.revokeCalls != 0 {
-				t.Fatalf("expected no role repo writes, got assign=%d revoke=%d",
-					userRoles.assignCalls, userRoles.revokeCalls)
+			if userRoles.setCalls != 0 {
+				t.Fatalf("expected no role repo writes, got set=%d", userRoles.setCalls)
 			}
 		})
 	}
@@ -615,359 +606,263 @@ func TestAdminUser_Get_Missing(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Update
+// EditUser
 // ---------------------------------------------------------------------------
 
-// TestAdminUser_Update_DisplayName persists the patched display name (with
-// surrounding whitespace trimmed) and returns the refreshed user via the
-// outcome's User slot. Validation is nil on the happy path.
-func TestAdminUser_Update_DisplayName(t *testing.T) {
+func TestAdminUser_EditUser_ProfileAndRolesHappy(t *testing.T) {
 	t.Parallel()
 
-	updated := &domain.User{ID: "u-target", DisplayName: dnPtr("Bob")}
-	users := &mockAdminUserRepository{updateResult: updated}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
-
-	outcome, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
-		DisplayName: ptr("  Bob  "),
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	assertAdminUpdateUserOutcomeXOR(t, outcome)
-	if outcome.User != updated {
-		t.Fatalf("outcome.User = %p, want %p", outcome.User, updated)
-	}
-	if users.capturedPatch.DisplayName == nil || *users.capturedPatch.DisplayName != "Bob" {
-		t.Fatalf("repo patch DisplayName = %v, want Bob", users.capturedPatch.DisplayName)
-	}
-	if users.capturedPatch.Bio != nil {
-		t.Fatalf("repo patch Bio = %v, want nil", users.capturedPatch.Bio)
-	}
-}
-
-// TestAdminUser_Update_BioClear covers the explicit-clear branch: bio == &""
-// is forwarded as a non-nil pointer to "".
-func TestAdminUser_Update_BioClear(t *testing.T) {
-	t.Parallel()
-
-	updated := &domain.User{ID: "u-target"}
-	users := &mockAdminUserRepository{updateResult: updated}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
-
-	outcome, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
-		Bio: ptr(""),
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	assertAdminUpdateUserOutcomeXOR(t, outcome)
-	if outcome.User != updated {
-		t.Fatalf("outcome.User = %p, want %p", outcome.User, updated)
-	}
-	if users.capturedPatch.Bio == nil {
-		t.Fatal("expected non-nil Bio in patch (explicit clear), got nil")
-	}
-	if *users.capturedPatch.Bio != "" {
-		t.Fatalf("Bio = %q, want \"\"", *users.capturedPatch.Bio)
-	}
-}
-
-// TestAdminUser_Update_Validation_DisplayNameEmpty rejects an empty (post-trim)
-// display name as outcome.Validation (errors-as-data). The repo Update must
-// not be called.
-func TestAdminUser_Update_Validation_DisplayNameEmpty(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
-
-	outcome, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
-		DisplayName: ptr("   "),
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	assertAdminUpdateUserOutcomeXOR(t, outcome)
-	if outcome.Validation == nil || outcome.Validation.Field != "displayName" {
-		t.Fatalf("outcome.Validation = %+v, want field=displayName", outcome.Validation)
-	}
-	if users.updateCalls != 0 {
-		t.Fatalf("expected no repo update on validation failure, got %d", users.updateCalls)
-	}
-}
-
-// TestAdminUser_Update_Validation_DisplayNameOverMax rejects a 51-char display
-// name as outcome.Validation.
-func TestAdminUser_Update_Validation_DisplayNameOverMax(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
-
-	overMax := strings.Repeat("a", 51)
-	outcome, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
-		DisplayName: ptr(overMax),
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	assertAdminUpdateUserOutcomeXOR(t, outcome)
-	if outcome.Validation == nil || outcome.Validation.Field != "displayName" {
-		t.Fatalf("outcome.Validation = %+v, want field=displayName", outcome.Validation)
-	}
-	if users.updateCalls != 0 {
-		t.Fatalf("expected no repo update on validation failure, got %d", users.updateCalls)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// AssignRole
-// ---------------------------------------------------------------------------
-
-// TestAdminUser_AssignRole_Idempotent calls AssignRole twice with the same
-// (userID, roleID) pair and asserts that the usecase issues two repo calls
-// (the repo handles ON CONFLICT DO NOTHING internally) without surfacing an
-// error to the caller. The outcome's User slot carries the refetched row;
-// Validation is nil on the happy path.
-func TestAdminUser_AssignRole_Idempotent(t *testing.T) {
-	t.Parallel()
-
-	target := &domain.User{ID: "u-target", DisplayName: dnPtr("Carol")}
+	target := &domain.User{ID: "u-target", DisplayName: dnPtr("Bob")}
 	users := &mockAdminUserRepository{users: map[string]*domain.User{"u-target": target}}
 	userRoles := &mockAdminUserRoleRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
+	tx, txCalls := countingAdminUserTxRunner()
+	uc, _, _, _ := buildAdminUCWithTx(users, nil, userRoles, tx, authChk)
 
-	for i := 0; i < 2; i++ {
-		outcome, err := uc.AssignRole(adminCallerCtx("admin-1"), "u-target", "r-admin")
-		if err != nil {
-			t.Fatalf("call %d: unexpected error: %v", i, err)
-		}
-		assertAssignRoleOutcomeXOR(t, outcome)
-		if outcome.User != target {
-			t.Fatalf("call %d: outcome.User = %p, want %p", i, outcome.User, target)
-		}
-	}
-	if userRoles.assignCalls != 2 {
-		t.Fatalf("expected 2 assign calls, got %d", userRoles.assignCalls)
-	}
-	if userRoles.lastAssignUID != "u-target" || userRoles.lastAssignRID != "r-admin" {
-		t.Fatalf("repo assign args = (%q,%q), want (u-target, r-admin)",
-			userRoles.lastAssignUID, userRoles.lastAssignRID)
-	}
-}
-
-// TestAdminUser_AssignRole_Validation_UserNotFound asserts that a missing
-// user surfaces via outcome.Validation keyed on userId — not on roleId. The
-// repository must emit ErrUserNotFound for this branch to trigger.
-func TestAdminUser_AssignRole_Validation_UserNotFound(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{}
-	userRoles := &mockAdminUserRoleRepository{assignErr: repository.ErrUserNotFound}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
-
-	outcome, err := uc.AssignRole(adminCallerCtx("admin-1"), "missing-user", "r-admin")
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		DisplayName: ptr("  Bob  "),
+		Bio:         ptr(""),
+		RoleIDs:     []string{"r-admin", "r-general"},
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assertAssignRoleOutcomeXOR(t, outcome)
-	if outcome.Validation == nil || outcome.Validation.Field != "userId" {
-		t.Fatalf("outcome.Validation = %+v, want field=userId", outcome.Validation)
-	}
-}
-
-// TestAdminUser_AssignRole_Validation_RoleNotFound asserts that a missing
-// role surfaces via outcome.Validation keyed on roleId — the previous
-// behaviour blamed userId for both cases, which broke the frontend
-// banner-by-field.
-func TestAdminUser_AssignRole_Validation_RoleNotFound(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{}
-	userRoles := &mockAdminUserRoleRepository{assignErr: repository.ErrRoleNotFound}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
-
-	outcome, err := uc.AssignRole(adminCallerCtx("admin-1"), "u-target", "missing-role")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	assertAssignRoleOutcomeXOR(t, outcome)
-	if outcome.Validation == nil || outcome.Validation.Field != "roleId" {
-		t.Fatalf("outcome.Validation = %+v, want field=roleId", outcome.Validation)
-	}
-}
-
-// TestAdminUser_AssignRole_Validation_LegacyErrNotFound covers the fallback
-// branch: a repository that surfaces only the legacy ErrNotFound (e.g. a
-// stub that has not been migrated) keeps the existing userId field so older
-// callers do not regress to INTERNAL.
-func TestAdminUser_AssignRole_Validation_LegacyErrNotFound(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{}
-	userRoles := &mockAdminUserRoleRepository{assignErr: repository.ErrNotFound}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
-
-	outcome, err := uc.AssignRole(adminCallerCtx("admin-1"), "u-target", "r-admin")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	assertAssignRoleOutcomeXOR(t, outcome)
-	if outcome.Validation == nil || outcome.Validation.Field != "userId" {
-		t.Fatalf("outcome.Validation = %+v, want field=userId", outcome.Validation)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// RevokeRole
-// ---------------------------------------------------------------------------
-
-// TestAdminUser_RevokeRole_Happy covers a clean revoke: caller is an admin,
-// target is someone else, role lookup is skipped, refetched user is returned
-// via outcome.User; Validation and CannotRevokeOwnAdmin are inactive.
-func TestAdminUser_RevokeRole_Happy(t *testing.T) {
-	t.Parallel()
-
-	target := &domain.User{ID: "u-victim"}
-	users := &mockAdminUserRepository{users: map[string]*domain.User{"u-victim": target}}
-	roles := &mockAdminRoleRepository{}
-	userRoles := &mockAdminUserRoleRepository{}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
-
-	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "u-victim", "r-some")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	assertRevokeRoleOutcomeXOR(t, outcome)
+	assertAdminEditUserOutcomeXOR(t, outcome)
 	if outcome.User != target {
 		t.Fatalf("outcome.User = %p, want %p", outcome.User, target)
 	}
-	if userRoles.revokeCalls != 1 {
-		t.Fatalf("expected 1 revoke call, got %d", userRoles.revokeCalls)
+	if *txCalls != 1 {
+		t.Fatalf("tx calls = %d, want 1", *txCalls)
 	}
-	// Self-demotion guard does not fire when caller != target, so the role
-	// lookup must not have been issued.
-	if roles.findCalls != 0 {
-		t.Fatalf("expected 0 role lookups for non-self target, got %d", roles.findCalls)
+	if users.updateTxCalls != 1 {
+		t.Fatalf("UpdateTx calls = %d, want 1", users.updateTxCalls)
+	}
+	if users.capturedTxPatch.DisplayName == nil || *users.capturedTxPatch.DisplayName != "Bob" {
+		t.Fatalf("DisplayName patch = %v, want Bob", users.capturedTxPatch.DisplayName)
+	}
+	if users.capturedTxPatch.Bio == nil || *users.capturedTxPatch.Bio != "" {
+		t.Fatalf("Bio patch = %v, want explicit empty string", users.capturedTxPatch.Bio)
+	}
+	if userRoles.setCalls != 1 {
+		t.Fatalf("SetUserRolesTx calls = %d, want 1", userRoles.setCalls)
+	}
+	if userRoles.lastSetUID != "u-target" {
+		t.Fatalf("SetUserRolesTx userID = %q, want u-target", userRoles.lastSetUID)
+	}
+	assertStringSliceEqual(t, userRoles.lastSetRoleIDs, []string{"r-admin", "r-general"})
+	if users.findCalls != 1 || users.lastFindID != "u-target" {
+		t.Fatalf("refetch calls/id = %d/%q, want 1/u-target", users.findCalls, users.lastFindID)
 	}
 }
 
-// TestAdminUser_RevokeRole_CannotRevokeOwnAdmin_True covers the self-demotion
-// guard: an admin who tries to revoke the admin role from themselves receives
-// outcome.CannotRevokeOwnAdmin=true (errors-as-data; the resolver maps this to
-// the CannotRevokeOwnAdminRoleError union variant). The role lookup must
-// classify the role as the admin role (by name) before the variant is set.
-func TestAdminUser_RevokeRole_CannotRevokeOwnAdmin_True(t *testing.T) {
+func TestAdminUser_EditUser_RolesOnlySkipsProfileUpdate(t *testing.T) {
 	t.Parallel()
 
-	users := &mockAdminUserRepository{users: map[string]*domain.User{
-		"admin-1": {ID: "admin-1"},
-	}}
+	target := &domain.User{ID: "u-target"}
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"u-target": target}}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	tx, txCalls := countingAdminUserTxRunner()
+	uc, _, _, _ := buildAdminUCWithTx(users, nil, userRoles, tx, authChk)
+
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		RoleIDs: []string{"r-general"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertAdminEditUserOutcomeXOR(t, outcome)
+	if outcome.User != target {
+		t.Fatalf("outcome.User = %p, want %p", outcome.User, target)
+	}
+	if *txCalls != 1 {
+		t.Fatalf("tx calls = %d, want 1", *txCalls)
+	}
+	if users.updateTxCalls != 0 {
+		t.Fatalf("UpdateTx calls = %d, want 0", users.updateTxCalls)
+	}
+	if userRoles.setCalls != 1 {
+		t.Fatalf("SetUserRolesTx calls = %d, want 1", userRoles.setCalls)
+	}
+	assertStringSliceEqual(t, userRoles.lastSetRoleIDs, []string{"r-general"})
+}
+
+func TestAdminUser_EditUser_EmptyRoleIDsAllowedForOtherUser(t *testing.T) {
+	t.Parallel()
+
+	target := &domain.User{ID: "u-target"}
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"u-target": target}}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	tx, txCalls := countingAdminUserTxRunner()
+	uc, _, _, _ := buildAdminUCWithTx(users, nil, userRoles, tx, authChk)
+
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertAdminEditUserOutcomeXOR(t, outcome)
+	if outcome.User != target {
+		t.Fatalf("outcome.User = %p, want %p", outcome.User, target)
+	}
+	if *txCalls != 1 {
+		t.Fatalf("tx calls = %d, want 1", *txCalls)
+	}
+	if userRoles.setCalls != 1 {
+		t.Fatalf("SetUserRolesTx calls = %d, want 1", userRoles.setCalls)
+	}
+	if len(userRoles.lastSetRoleIDs) != 0 {
+		t.Fatalf("roleIDs = %v, want empty final set", userRoles.lastSetRoleIDs)
+	}
+}
+
+func TestAdminUser_EditUser_DuplicateRoleIDsValidation(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	tx, txCalls := countingAdminUserTxRunner()
+	uc, _, _, _ := buildAdminUCWithTx(users, nil, userRoles, tx, authChk)
+
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		RoleIDs: []string{"r-general", "r-general"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertAdminEditUserOutcomeXOR(t, outcome)
+	if outcome.Validation == nil || outcome.Validation.Field != "roleIds" {
+		t.Fatalf("outcome.Validation = %+v, want field=roleIds", outcome.Validation)
+	}
+	if *txCalls != 0 {
+		t.Fatalf("tx calls = %d, want 0", *txCalls)
+	}
+	if userRoles.setCalls != 0 {
+		t.Fatalf("SetUserRolesTx calls = %d, want 0", userRoles.setCalls)
+	}
+}
+
+func TestAdminUser_EditUser_CannotRevokeOwnAdmin(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"admin-1": {ID: "admin-1"}}}
 	roles := &mockAdminRoleRepository{
 		roles: map[string]*domain.Role{
-			"r-admin": {ID: "r-admin", Name: "admin"},
+			"r-general": {ID: "r-general", Name: "general"},
 		},
 	}
 	userRoles := &mockAdminUserRoleRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
+	tx, txCalls := countingAdminUserTxRunner()
+	uc, _, _, _ := buildAdminUCWithTx(users, roles, userRoles, tx, authChk)
 
-	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "admin-1", "r-admin")
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "admin-1", AdminEditUserInput{
+		RoleIDs: []string{"r-general"},
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assertRevokeRoleOutcomeXOR(t, outcome)
+	assertAdminEditUserOutcomeXOR(t, outcome)
 	if !outcome.CannotRevokeOwnAdmin {
-		t.Fatalf("expected outcome.CannotRevokeOwnAdmin=true, got %+v", outcome)
+		t.Fatalf("CannotRevokeOwnAdmin = false, want true")
 	}
-	if userRoles.revokeCalls != 0 {
-		t.Fatalf("expected 0 revoke calls on self-demotion, got %d", userRoles.revokeCalls)
+	if *txCalls != 0 {
+		t.Fatalf("tx calls = %d, want 0", *txCalls)
 	}
-	if roles.findCalls != 1 {
-		t.Fatalf("expected 1 role lookup for self-demotion check, got %d", roles.findCalls)
+	if userRoles.setCalls != 0 {
+		t.Fatalf("SetUserRolesTx calls = %d, want 0", userRoles.setCalls)
 	}
 }
 
-// TestAdminUser_RevokeRole_SelfNonAdminAllowed covers the "self-revoke is
-// allowed when the role isn't admin" branch: the self-demotion guard names
-// the admin role specifically, so revoking a different role from yourself
-// must succeed via outcome.User.
-func TestAdminUser_RevokeRole_SelfNonAdminAllowed(t *testing.T) {
+func TestAdminUser_EditUser_SelfKeepingAdminAllowed(t *testing.T) {
 	t.Parallel()
 
 	caller := &domain.User{ID: "admin-1"}
 	users := &mockAdminUserRepository{users: map[string]*domain.User{"admin-1": caller}}
 	roles := &mockAdminRoleRepository{
 		roles: map[string]*domain.Role{
-			"r-other": {ID: "r-other", Name: "moderator"},
+			"r-admin":   {ID: "r-admin", Name: "admin"},
+			"r-general": {ID: "r-general", Name: "general"},
 		},
 	}
 	userRoles := &mockAdminUserRoleRepository{}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, roles, userRoles, authChk)
+	tx, txCalls := countingAdminUserTxRunner()
+	uc, _, _, _ := buildAdminUCWithTx(users, roles, userRoles, tx, authChk)
 
-	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "admin-1", "r-other")
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "admin-1", AdminEditUserInput{
+		RoleIDs: []string{"r-admin", "r-general"},
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assertRevokeRoleOutcomeXOR(t, outcome)
+	assertAdminEditUserOutcomeXOR(t, outcome)
 	if outcome.User != caller {
 		t.Fatalf("outcome.User = %p, want %p", outcome.User, caller)
 	}
-	if userRoles.revokeCalls != 1 {
-		t.Fatalf("expected 1 revoke call, got %d", userRoles.revokeCalls)
+	if *txCalls != 1 {
+		t.Fatalf("tx calls = %d, want 1", *txCalls)
+	}
+	if userRoles.setCalls != 1 {
+		t.Fatalf("SetUserRolesTx calls = %d, want 1", userRoles.setCalls)
 	}
 }
 
-// TestAdminUser_RevokeRole_Validation_UserNotFound asserts that a missing user
-// surfaces via outcome.Validation keyed on userId — mirrors the AssignRole
-// mapping for the symmetric Revoke path.
-func TestAdminUser_RevokeRole_Validation_UserNotFound(t *testing.T) {
+func TestAdminUser_EditUser_RoleNotFoundValidation(t *testing.T) {
 	t.Parallel()
 
-	users := &mockAdminUserRepository{}
-	userRoles := &mockAdminUserRoleRepository{revokeErr: repository.ErrUserNotFound}
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"u-target": {ID: "u-target"}}}
+	userRoles := &mockAdminUserRoleRepository{setErr: repository.ErrRoleNotFound}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
 
-	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "missing-user", "r-some")
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		RoleIDs: []string{"missing-role"},
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assertRevokeRoleOutcomeXOR(t, outcome)
-	if outcome.Validation == nil || outcome.Validation.Field != "userId" {
-		t.Fatalf("outcome.Validation = %+v, want field=userId", outcome.Validation)
+	assertAdminEditUserOutcomeXOR(t, outcome)
+	if outcome.Validation == nil || outcome.Validation.Field != "roleIds" {
+		t.Fatalf("outcome.Validation = %+v, want field=roleIds", outcome.Validation)
 	}
 }
 
-// TestAdminUser_RevokeRole_Validation_RoleNotFound asserts that a missing role
-// surfaces via outcome.Validation keyed on roleId.
-func TestAdminUser_RevokeRole_Validation_RoleNotFound(t *testing.T) {
+func TestAdminUser_EditUser_CancelledFromRoleSet(t *testing.T) {
 	t.Parallel()
 
-	target := &domain.User{ID: "u-victim"}
-	users := &mockAdminUserRepository{users: map[string]*domain.User{"u-victim": target}}
-	userRoles := &mockAdminUserRoleRepository{revokeErr: repository.ErrRoleNotFound}
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"u-target": {ID: "u-target"}}}
+	userRoles := &mockAdminUserRoleRepository{setErr: context.Canceled}
 	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
 	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
 
-	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "u-victim", "missing-role")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		RoleIDs: []string{"r-general"},
+	})
+	assertCancelled(t, err)
+	if err != context.Canceled {
+		t.Fatalf("context.Canceled identity: got %T %v", err, err)
 	}
-	assertRevokeRoleOutcomeXOR(t, outcome)
-	if outcome.Validation == nil || outcome.Validation.Field != "roleId" {
-		t.Fatalf("outcome.Validation = %+v, want field=roleId", outcome.Validation)
+	if outcome.User != nil || outcome.Validation != nil || outcome.CannotRevokeOwnAdmin {
+		t.Fatalf("expected zero-value outcome on cancellation, got %+v", outcome)
+	}
+}
+
+func TestAdminUser_EditUser_InfraErrorFromTx(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"u-target": {ID: "u-target"}}}
+	userRoles := &mockAdminUserRoleRepository{setErr: errors.New("db down")}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
+
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "u-target", AdminEditUserInput{
+		RoleIDs: []string{"r-general"},
+	})
+	assertInternalChain(t, err, "usecase: admin user edit: tx")
+	if outcome.User != nil || outcome.Validation != nil || outcome.CannotRevokeOwnAdmin {
+		t.Fatalf("expected zero-value outcome on infra error, got %+v", outcome)
 	}
 }
 
@@ -1005,21 +900,6 @@ func TestAdminUser_List_CancelledFromRepo(t *testing.T) {
 	assertCancelled(t, err)
 }
 
-// TestAdminUser_Update_CancelledFromRepo covers cancellation surfacing through
-// the Update repo call.
-func TestAdminUser_Update_CancelledFromRepo(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{updateErr: context.Canceled}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
-
-	_, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
-		DisplayName: ptr("Alice"),
-	})
-	assertCancelled(t, err)
-}
-
 // ---------------------------------------------------------------------------
 // Auth gate edge cases
 // ---------------------------------------------------------------------------
@@ -1054,59 +934,6 @@ func TestAdminUser_IsAdminInternalError(t *testing.T) {
 	assertInternalChain(t, err, "usecase: admin user: check admin")
 }
 
-// ---------------------------------------------------------------------------
-// Update edge cases (I8)
-// ---------------------------------------------------------------------------
-
-// TestAdminUser_Update_Validation_NotFound verifies that when the user
-// repository returns ErrNotFound from Update, the usecase surfaces it via
-// outcome.Validation keyed on "id" (errors-as-data). The caller supplied an
-// unknown user ID.
-func TestAdminUser_Update_Validation_NotFound(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{updateErr: repository.ErrNotFound}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
-
-	outcome, err := uc.Update(adminCallerCtx("admin-1"), "missing-user", AdminUpdateUserInput{
-		DisplayName: ptr("Valid Name"),
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	assertAdminUpdateUserOutcomeXOR(t, outcome)
-	if outcome.Validation == nil || outcome.Validation.Field != "id" {
-		t.Fatalf("outcome.Validation = %+v, want field=id", outcome.Validation)
-	}
-}
-
-// TestAdminUser_Update_Validation_BioOverMax verifies that a bio of 501
-// grapheme clusters is surfaced via outcome.Validation keyed on "bio" before
-// the repository is reached.
-func TestAdminUser_Update_Validation_BioOverMax(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, nil, authChk)
-
-	overMax := strings.Repeat("b", 501)
-	outcome, err := uc.Update(adminCallerCtx("admin-1"), "u-target", AdminUpdateUserInput{
-		Bio: ptr(overMax),
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	assertAdminUpdateUserOutcomeXOR(t, outcome)
-	if outcome.Validation == nil || outcome.Validation.Field != "bio" {
-		t.Fatalf("outcome.Validation = %+v, want field=bio", outcome.Validation)
-	}
-	if users.updateCalls != 0 {
-		t.Fatalf("expected no repo update on validation failure, got %d", users.updateCalls)
-	}
-}
-
 // TestAdminUser_Get_Cancelled verifies that a cancelled context from the
 // repository FindByID call propagates as CANCELLED rather than INTERNAL.
 func TestAdminUser_Get_Cancelled(t *testing.T) {
@@ -1121,160 +948,12 @@ func TestAdminUser_Get_Cancelled(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// AssignRole — cancellation and infra-error paths
-// ---------------------------------------------------------------------------
-
-// TestAdminUser_AssignRole_CancelledFromRepo verifies that context.Canceled
-// from roles.AssignToUser propagates unchanged as a cancelled error. The
-// outcome must be zero-value (no variant slot set) because the operation did
-// not complete.
-func TestAdminUser_AssignRole_CancelledFromRepo(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{}
-	userRoles := &mockAdminUserRoleRepository{assignErr: context.Canceled}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
-
-	outcome, err := uc.AssignRole(adminCallerCtx("admin-1"), "u-target", "r-admin")
-	assertCancelled(t, err)
-	if err != context.Canceled {
-		t.Fatalf("context.Canceled identity: got %T %v", err, err)
-	}
-	if outcome.User != nil || outcome.Validation != nil {
-		t.Fatalf("expected zero-value outcome on cancellation, got %+v", outcome)
-	}
-}
-
-// TestAdminUser_AssignRole_InfraError verifies that a non-sentinel error from
-// roles.AssignToUser surfaces via the error return (not via outcome.Validation)
-// and carries the "usecase: admin user assign role" wrap prefix. The outcome
-// must be zero-value.
-func TestAdminUser_AssignRole_InfraError(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{}
-	userRoles := &mockAdminUserRoleRepository{assignErr: errors.New("db down")}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
-
-	outcome, err := uc.AssignRole(adminCallerCtx("admin-1"), "u-target", "r-admin")
-	assertInternalChain(t, err, "usecase: admin user assign role")
-	if outcome.User != nil || outcome.Validation != nil {
-		t.Fatalf("expected zero-value outcome on infra error, got %+v", outcome)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// RevokeRole — cancellation and infra-error paths
-// ---------------------------------------------------------------------------
-
-// TestAdminUser_RevokeRole_CancelledFromRepo verifies that context.Canceled
-// from roles.RevokeFromUser (on a non-self target, so the self-demotion path
-// is not taken) propagates unchanged. The outcome must be zero-value.
-func TestAdminUser_RevokeRole_CancelledFromRepo(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{}
-	userRoles := &mockAdminUserRoleRepository{revokeErr: context.Canceled}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
-
-	// userID != callerID so the self-demotion path and FindByIDs are skipped.
-	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "u-other", "r-some")
-	assertCancelled(t, err)
-	if err != context.Canceled {
-		t.Fatalf("context.Canceled identity: got %T %v", err, err)
-	}
-	if outcome.User != nil || outcome.Validation != nil || outcome.CannotRevokeOwnAdmin {
-		t.Fatalf("expected zero-value outcome on cancellation, got %+v", outcome)
-	}
-}
-
-// TestAdminUser_RevokeRole_InfraError verifies that a non-sentinel error from
-// roles.RevokeFromUser surfaces via the error return and carries the
-// "usecase: admin user revoke role" wrap prefix. The outcome must be
-// zero-value.
-func TestAdminUser_RevokeRole_InfraError(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{}
-	userRoles := &mockAdminUserRoleRepository{revokeErr: errors.New("db down")}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, nil, userRoles, authChk)
-
-	// userID != callerID so the self-demotion path is not taken.
-	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "u-other", "r-some")
-	assertInternalChain(t, err, "usecase: admin user revoke role")
-	if outcome.User != nil || outcome.Validation != nil || outcome.CannotRevokeOwnAdmin {
-		t.Fatalf("expected zero-value outcome on infra error, got %+v", outcome)
-	}
-}
-
-// TestAdminUser_RevokeRole_LookupRoleCancelled covers the self-demotion path
-// (userID == callerID): context.Canceled from roles.FindByIDs propagates
-// unchanged. The outcome must be zero-value.
-func TestAdminUser_RevokeRole_LookupRoleCancelled(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{}
-	roles := &mockAdminRoleRepository{findErr: context.Canceled}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, roles, nil, authChk)
-
-	// userID == callerID triggers the self-demotion FindByIDs path.
-	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "admin-1", "r-admin")
-	assertCancelled(t, err)
-	if outcome.User != nil || outcome.Validation != nil || outcome.CannotRevokeOwnAdmin {
-		t.Fatalf("expected zero-value outcome on lookup cancellation, got %+v", outcome)
-	}
-}
-
-// TestAdminUser_RevokeRole_LookupRoleInfraError covers the self-demotion path
-// (userID == callerID): a non-sentinel error from roles.FindByIDs surfaces via
-// the error return and carries the "usecase: admin user revoke role: lookup
-// role" wrap prefix. The outcome must be zero-value.
-func TestAdminUser_RevokeRole_LookupRoleInfraError(t *testing.T) {
-	t.Parallel()
-
-	users := &mockAdminUserRepository{}
-	roles := &mockAdminRoleRepository{findErr: errors.New("db down")}
-	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
-	uc, _, _, _ := buildAdminUC(users, roles, nil, authChk)
-
-	// userID == callerID triggers the self-demotion FindByIDs path.
-	outcome, err := uc.RevokeRole(adminCallerCtx("admin-1"), "admin-1", "r-admin")
-	assertInternalChain(t, err, "usecase: admin user revoke role: lookup role")
-	if outcome.User != nil || outcome.Validation != nil || outcome.CannotRevokeOwnAdmin {
-		t.Fatalf("expected zero-value outcome on lookup infra error, got %+v", outcome)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // XOR-invariant outcome assertions
 // ---------------------------------------------------------------------------
 
-// assertAssignRoleOutcomeXOR asserts that exactly one of User or Validation is
-// set in the outcome. Used at every nil-error return site so a future variant
-// addition cannot accidentally produce a multi-variant or zero-variant
-// outcome.
-func assertAssignRoleOutcomeXOR(t *testing.T, outcome AssignRoleOutcome) {
-	t.Helper()
-	set := 0
-	if outcome.User != nil {
-		set++
-	}
-	if outcome.Validation != nil {
-		set++
-	}
-	if set != 1 {
-		t.Fatalf("AssignRoleOutcome XOR: expected exactly one variant set, got %d (outcome=%+v)", set, outcome)
-	}
-}
-
-// assertRevokeRoleOutcomeXOR asserts that exactly one of User, Validation, or
-// CannotRevokeOwnAdmin is set in the outcome.
-func assertRevokeRoleOutcomeXOR(t *testing.T, outcome RevokeRoleOutcome) {
+// assertAdminEditUserOutcomeXOR asserts that exactly one of User,
+// Validation, or CannotRevokeOwnAdmin is set in the outcome.
+func assertAdminEditUserOutcomeXOR(t *testing.T, outcome AdminEditUserOutcome) {
 	t.Helper()
 	set := 0
 	if outcome.User != nil {
@@ -1287,22 +966,18 @@ func assertRevokeRoleOutcomeXOR(t *testing.T, outcome RevokeRoleOutcome) {
 		set++
 	}
 	if set != 1 {
-		t.Fatalf("RevokeRoleOutcome XOR: expected exactly one variant set, got %d (outcome=%+v)", set, outcome)
+		t.Fatalf("AdminEditUserOutcome XOR: expected exactly one variant set, got %d (outcome=%+v)", set, outcome)
 	}
 }
 
-// assertAdminUpdateUserOutcomeXOR asserts that exactly one of User or
-// Validation is set in the outcome.
-func assertAdminUpdateUserOutcomeXOR(t *testing.T, outcome AdminUpdateUserOutcome) {
+func assertStringSliceEqual(t *testing.T, got, want []string) {
 	t.Helper()
-	set := 0
-	if outcome.User != nil {
-		set++
+	if len(got) != len(want) {
+		t.Fatalf("slice len = %d, want %d (got=%v want=%v)", len(got), len(want), got, want)
 	}
-	if outcome.Validation != nil {
-		set++
-	}
-	if set != 1 {
-		t.Fatalf("AdminUpdateUserOutcome XOR: expected exactly one variant set, got %d (outcome=%+v)", set, outcome)
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("slice[%d] = %q, want %q (got=%v want=%v)", i, got[i], want[i], got, want)
+		}
 	}
 }

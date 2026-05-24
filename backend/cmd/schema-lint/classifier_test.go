@@ -568,7 +568,7 @@ updateRole    # inline comment
 createRole
 
 # section header
-assignRole
+deleteRole
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write temp file: %v", err)
@@ -579,7 +579,7 @@ assignRole
 		t.Fatalf("LoadAllowlist: %v", err)
 	}
 
-	want := makeAllowlist("updateRole", "createRole", "assignRole")
+	want := makeAllowlist("updateRole", "createRole", "deleteRole")
 	if diff := cmp.Diff(want, al); diff != "" {
 		t.Errorf("allowlist mismatch (-want +got):\n%s", diff)
 	}

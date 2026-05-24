@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"gorm.io/gorm"
+
 	"backend/internal/domain"
 	"backend/internal/loader"
 	"backend/internal/repository"
@@ -29,6 +31,10 @@ func (s *roleBatchRepoStub) AssignToUser(_ context.Context, _, _ string) error {
 
 func (s *roleBatchRepoStub) RevokeFromUser(_ context.Context, _, _ string) error {
 	panic("roleBatchRepoStub.RevokeFromUser not configured")
+}
+
+func (s *roleBatchRepoStub) SetUserRolesTx(_ context.Context, _ *gorm.DB, _ string, _ []string) error {
+	panic("roleBatchRepoStub.SetUserRolesTx not configured")
 }
 
 func (s *roleBatchRepoStub) ListByUser(_ context.Context, _ string) ([]*domain.Role, error) {

@@ -30,38 +30,20 @@ CannotModifySystemRoleError describing the system-role guard.
 union UpdateRoleResult = UpdateRoleSuccess | CannotModifySystemRoleError
 
 """
-Typed business error returned by `revokeRole` when the caller attempts to
-revoke the admin role from their own account. Self-demotion is rejected by
-the server regardless of caller privilege.
+Typed business error returned by `adminEditUser` when the caller attempts to
+remove the admin role from their own account. Self-demotion is rejected by the
+server regardless of caller privilege.
 """
 type CannotRevokeOwnAdminRoleError implements UserError {
   message: String!
 }
 
 """
-Returned by `revokeRole` when the target user's admin role was successfully
-revoked. Carries the updated `user` so clients can refresh their role view
+Returned by `adminEditUser` when the admin's profile and role edit succeeded.
+Carries the updated `user` so clients can refresh the profile and role view
 without a follow-up query.
 """
-type RevokeRoleSuccess {
-  user: User!
-}
-
-"""
-Returned by `assignRole` when the target user was successfully granted the
-requested role. Carries the updated `user` so clients can refresh their role
-view without a follow-up query.
-"""
-type AssignRoleSuccess {
-  user: User!
-}
-
-"""
-Returned by `adminUpdateUser` when the admin's update to a target user
-succeeded. Carries the updated `user` so clients can refresh the profile
-view without a follow-up query.
-"""
-type AdminUpdateUserSuccess {
+type AdminEditUserSuccess {
   user: User!
 }
 
@@ -75,23 +57,14 @@ type CreateRoleSuccess {
 }
 
 """
-Result of `revokeRole`. Either the updated user, an input-validation failure,
-or a CannotRevokeOwnAdminRoleError when the caller tries to demote themselves.
+Result of `adminEditUser`. Either the updated user, an input-validation
+failure, or a CannotRevokeOwnAdminRoleError when the caller tries to demote
+themselves.
 """
-union RevokeRoleResult =
-    RevokeRoleSuccess
+union AdminEditUserResult =
+    AdminEditUserSuccess
   | InputValidationError
   | CannotRevokeOwnAdminRoleError
-
-"""Result of `assignRole`. Either the updated user or an input-validation failure."""
-union AssignRoleResult =
-    AssignRoleSuccess
-  | InputValidationError
-
-"""Result of `adminUpdateUser`. Either the updated user or an input-validation failure."""
-union AdminUpdateUserResult =
-    AdminUpdateUserSuccess
-  | InputValidationError
 
 """Result of `createRole`. Either the new role or an input-validation failure."""
 union CreateRoleResult =
@@ -129,21 +102,19 @@ extend type Query {
   role(id: ID!): Role
 }
 
-"""Input for admin-edited user fields."""
-input AdminUpdateUserInput {
+"""Input for atomically editing admin-managed user fields and final roles."""
+input AdminEditUserInput {
   """null/omitted = unchanged. Non-null = set; must be 1-50 grapheme clusters after trim. Empty string is rejected with BAD_USER_INPUT."""
   displayName: String
   """null/omitted = unchanged. Empty string clears the field. Non-empty must be <= 500 grapheme clusters."""
   bio: String
+  """Declarative final role set. Empty list removes all roles unless self-demotion guard blocks it."""
+  roleIds: [ID!]!
 }
 
 extend type Mutation {
-  """Admin-only. Edit display_name / bio of any user."""
-  adminUpdateUser(id: ID!, input: AdminUpdateUserInput!): AdminUpdateUserResult!
-  """Admin-only. Assign a role to a user. Idempotent."""
-  assignRole(userId: ID!, roleId: ID!): AssignRoleResult!
-  """Admin-only. Revoke a role from a user. Self-demotion of admin role is returned as CannotRevokeOwnAdminRoleError."""
-  revokeRole(userId: ID!, roleId: ID!): RevokeRoleResult!
+  """Admin-only. Atomically edit display_name / bio and replace the user's role set."""
+  adminEditUser(id: ID!, input: AdminEditUserInput!): AdminEditUserResult!
   """Admin-only. Create a new role. Names are normalized to lowercase. Duplicates are returned as InputValidationError."""
   createRole(name: String!): CreateRoleResult!
   """
