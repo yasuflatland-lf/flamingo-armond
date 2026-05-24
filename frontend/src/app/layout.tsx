@@ -1,7 +1,7 @@
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import type { ReactNode } from "react";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AppShell } from "@/components/nav/app-shell";
 import { GlobalFAB } from "@/components/nav/global-fab";
 import { Toaster } from "@/components/ui/sonner";
