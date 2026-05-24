@@ -39,6 +39,14 @@ type CannotRevokeOwnAdminRoleError implements UserError {
 }
 
 """
+Returned by `adminEditUser` when the submitted expected version does not
+match the target user's current optimistic-concurrency token.
+"""
+type ConcurrentUpdateError implements UserError {
+  message: String!
+}
+
+"""
 Returned by `adminEditUser` when the admin's profile and role edit succeeded.
 Carries the updated `user` so clients can refresh the profile and role view
 without a follow-up query.
@@ -58,13 +66,14 @@ type CreateRoleSuccess {
 
 """
 Result of `adminEditUser`. Either the updated user, an input-validation
-failure, or a CannotRevokeOwnAdminRoleError when the caller tries to demote
-themselves.
+failure, a CannotRevokeOwnAdminRoleError when the caller tries to demote
+themselves, or a ConcurrentUpdateError when the submitted version is stale.
 """
 union AdminEditUserResult =
     AdminEditUserSuccess
   | InputValidationError
   | CannotRevokeOwnAdminRoleError
+  | ConcurrentUpdateError
 
 """Result of `createRole`. Either the new role or an input-validation failure."""
 union CreateRoleResult =
@@ -104,6 +113,8 @@ extend type Query {
 
 """Input for atomically editing admin-managed user fields and final roles."""
 input AdminEditUserInput {
+  """Current `User.version` observed by the client; stale values return `ConcurrentUpdateError`."""
+  expectedVersion: Int!
   """null/omitted = unchanged. Non-null = set; must be 1-50 grapheme clusters after trim. Empty string is rejected with BAD_USER_INPUT."""
   displayName: String
   """null/omitted = unchanged. Empty string clears the field. Non-empty must be <= 500 grapheme clusters."""

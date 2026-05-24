@@ -10,8 +10,8 @@ Updated: 2026-05-24 13:47:19 JST
 
 | # | Task | Impact | Change size | Owner cluster |
 |---|---|---|---|---|
-| [ ] 1 | Add `users.version` migration and roundtrip coverage | High | Small | DB schema |
-| [ ] 2 | Thread version through domain, repository, and usecase precondition handling | High | Small | Backend core |
+| [x] 1 | Add `users.version` migration and roundtrip coverage | High | Small | DB schema |
+| [x] 2 | Thread version through domain, repository, and usecase precondition handling | High | Small | Backend core |
 | [ ] 3 | Extend GraphQL schema and regenerate backend/frontend consumers | High | Small | API contracts |
 | [ ] 4 | Map `ConcurrentUpdateError` through the resolver and UI save flow | High | Small | Frontend + resolver |
 | [ ] 5 | Add optimistic-concurrency tests across migration, repository, usecase, and UI | High | Medium | Test coverage |
@@ -38,7 +38,9 @@ Updated: 2026-05-24 13:47:19 JST
 
 ### Progress log
 
-- [ ] 2026-05-24 13:47 JST - Tracking added; implementation is starting.
+- [x] 2026-05-24 13:47 JST - Tracking added; implementation is starting.
+- [x] 2026-05-24 - Task completed: migration + database roundtrip test. Files: `backend/internal/database/migrations/20260521090000_add_version_to_users.{up,down}.sql`, `backend/internal/database/users_version_roundtrip_test.go`. Verification passed: `rtk go test ./internal/database -run TestUsersVersionDownUpRoundtrip -count=1`; full `rtk go test ./internal/database -count=1` passed.
+- [x] 2026-05-24 - Task completed: GraphQL schema + backend gqlgen. Files: `schema/user.graphql`, `schema/admin.graphql`, generated backend gqlgen outputs. Verification passed: `rtk go tool gqlgen generate`, `rtk git diff --check -- schema/user.graphql schema/admin.graphql`.
 
 ## Context
 

@@ -2,6 +2,8 @@
 type User {
   """Matches auth.users.id (UUID v4)."""
   id: ID!
+  """Optimistic-concurrency token; pass as `AdminEditUserInput.expectedVersion`. A mismatch yields `ConcurrentUpdateError`."""
+  version: Int!
   displayName: String
   bio: String
   avatarUrl: String
