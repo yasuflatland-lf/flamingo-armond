@@ -14,10 +14,14 @@ vi.mock("next/link", () => ({
 }));
 
 // Mock next/navigation — GlobalRail calls usePathname for active-state resolution.
+// LogoDrawer calls useSheetSearchParam() → useSearchParams(); return an empty
+// URLSearchParams so AppShell tests that do not exercise sheet behaviour remain
+// unaffected.
 const mockUsePathname = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: vi.fn(() => ({ replace: vi.fn(), refresh: vi.fn(), push: vi.fn() })),
   usePathname: () => mockUsePathname(),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 // LogoutButton reaches into Supabase. Stub it to keep the test self-contained.

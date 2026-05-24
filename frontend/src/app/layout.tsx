@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/nav/app-shell";
-import { GlobalFAB } from "@/components/nav/global-fab";
 import { Toaster } from "@/components/ui/sonner";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Providers } from "./providers";
@@ -98,7 +97,6 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <Providers>
           <AppShell user={shellUser} isAdmin={isAdmin}>
             {children}
-            <GlobalFAB />
             {/*
               Toaster must live inside AppShell (a client-boundary component) because
               sonner requires a client rendering context. Placing it here ensures the

@@ -1,15 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useSuppressFab } from "@/components/nav/fab-suppression";
 import { Button } from "@/components/ui/button";
 
 export default function NotFound() {
-  // The global FAB has no meaningful "add" action on a 404; hide it while this
-  // page is shown. A 404 has an arbitrary path the FAB's pathname guard cannot
-  // match, so suppression is the explicit opt-out.
-  useSuppressFab();
-
   return (
     <main className="flex min-h-[calc(100dvh-3rem)] w-full flex-col items-center justify-center gap-6 p-8 text-center">
       <div className="space-y-2">
