@@ -113,11 +113,22 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
         return;
       }
 
+      // The handle is null until the next/dynamic (ssr: false) AnimatedCard
+      // chunk has loaded and attached its imperative handle. A button press or
+      // arrow key during that window must NOT be silently dropped: commit the
+      // card directly so the rating is never lost. The fly-off animation is
+      // skipped in this rare case, which is preferable to a dead key/button.
+      const handle = activeCardHandleRef.current;
+      if (!handle) {
+        commitCard(card, direction);
+        return;
+      }
+
       // Paint the rating label at full intensity while the card flies, then
       // drive the fly-off — AnimatedCard commits via onSwipe on spring rest.
       setSwipeDirection(direction);
       setSwipeProgress(1);
-      activeCardHandleRef.current?.flyOut(direction);
+      handle.flyOut(direction);
     },
     [commitCard],
   );

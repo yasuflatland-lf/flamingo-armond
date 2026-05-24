@@ -17,8 +17,16 @@ function settleFlyOuts() {
   pendingFlyOuts = [];
   for (const fn of fns) fn();
 }
+
+// When true, the SwipeCard stub does NOT attach an imperative handle —
+// mirroring the real-world window where the next/dynamic (ssr: false)
+// AnimatedCard chunk has not loaded yet, so activeCardHandleRef.current is
+// null. The stack's triggerSwipe must then fall back to committing directly.
+let suppressHandle = false;
+
 beforeEach(() => {
   pendingFlyOuts = [];
+  suppressHandle = false;
 });
 
 // SwipeCard loads AnimatedCard via next/dynamic (ssr: false).
@@ -51,16 +59,23 @@ vi.mock("./swipe-card", async (importOriginal) => {
       );
       useImperativeHandle(
         handleRef,
-        () => ({
-          // flyOut defers the commit to "rest" (settleFlyOuts), mirroring the
-          // real AnimatedCard which commits onSwipe from the spring settle,
-          // mount-guarded so a settle after unmount is a no-op.
-          flyOut: (direction: "left" | "down" | "right") => {
-            pendingFlyOuts.push(() => {
-              if (mounted.current) onSwipe(card, direction);
-            });
-          },
-        }),
+        () =>
+          // When the handle is suppressed, return null so the parent's
+          // activeCardHandleRef.current stays null — the un-loaded-chunk case.
+          // The cast keeps useImperativeHandle's factory type happy; the parent
+          // tolerates a null current (it falls back to committing directly).
+          (suppressHandle
+            ? null
+            : {
+                // flyOut defers the commit to "rest" (settleFlyOuts), mirroring
+                // the real AnimatedCard which commits onSwipe from the spring
+                // settle, mount-guarded so a settle after unmount is a no-op.
+                flyOut: (direction: "left" | "down" | "right") => {
+                  pendingFlyOuts.push(() => {
+                    if (mounted.current) onSwipe(card, direction);
+                  });
+                },
+              }) as import("./swipe-card").AnimatedCardHandle,
         [card, onSwipe],
       );
       return (
@@ -372,6 +387,33 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
 
     expect(onCardSwiped).not.toHaveBeenCalled();
   });
+
+  it("commits directly when the card handle is null (dynamic chunk not yet attached)", () => {
+    // Regression: a rating button or arrow key pressed before the next/dynamic
+    // AnimatedCard chunk has attached its handle must NOT be silently dropped.
+    // triggerSwipe falls back to commitCard so the press always lands.
+    suppressHandle = true;
+    const onCardSwiped = vi.fn();
+    const ref = createRef<SwipeCardStackHandle | null>();
+
+    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+
+    act(() => {
+      ref.current?.triggerSwipe("right");
+    });
+
+    // No handle to defer through — the commit fires synchronously.
+    expect(onCardSwiped).toHaveBeenCalledTimes(1);
+    expect(onCardSwiped).toHaveBeenCalledWith(cardA, "right");
+    // No fly-off was queued.
+    expect(pendingFlyOuts).toHaveLength(0);
+
+    // Settling confirms nothing double-commits.
+    act(() => {
+      settleFlyOuts();
+    });
+    expect(onCardSwiped).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -455,24 +497,21 @@ describe("SwipeCardStack — keyboard triggers all three directions", () => {
     ["ArrowLeft", "left"],
     ["ArrowRight", "right"],
     ["ArrowDown", "down"],
-  ] as const)(
-    "commits onCardSwiped with direction '%s' → '%s' on spring rest after the key is pressed",
-    (key, expectedDirection) => {
-      const onCardSwiped = vi.fn();
+  ] as const)("commits onCardSwiped with direction '%s' → '%s' on spring rest after the key is pressed", (key, expectedDirection) => {
+    const onCardSwiped = vi.fn();
 
-      render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} />);
+    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} />);
 
-      fireEvent.keyDown(document, { key });
-      // Commit is deferred to the fly-off spring rest — not yet fired.
-      expect(onCardSwiped).not.toHaveBeenCalled();
-      act(() => {
-        settleFlyOuts();
-      });
+    fireEvent.keyDown(document, { key });
+    // Commit is deferred to the fly-off spring rest — not yet fired.
+    expect(onCardSwiped).not.toHaveBeenCalled();
+    act(() => {
+      settleFlyOuts();
+    });
 
-      expect(onCardSwiped).toHaveBeenCalledTimes(1);
-      expect(onCardSwiped).toHaveBeenCalledWith(cardA, expectedDirection);
-    },
-  );
+    expect(onCardSwiped).toHaveBeenCalledTimes(1);
+    expect(onCardSwiped).toHaveBeenCalledWith(cardA, expectedDirection);
+  });
 });
 
 // ---------------------------------------------------------------------------

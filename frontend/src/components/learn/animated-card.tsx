@@ -55,6 +55,12 @@ export function AnimatedCard({ card, isActive, onSwipe, onSwipeProgress, handleR
   const exitingRef = useRef(false);
   const mountedRef = useRef(true);
   useEffect(() => {
+    // Reset to true in the effect body so React StrictMode's deliberate
+    // setup → cleanup → setup cycle (and genuine remounts) leave the flag
+    // true for the live component. Without this reset the cleanup sets the
+    // flag false and the second setup never restores it, so the deferred
+    // fly-off commit is silently dropped.
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
     };
@@ -114,11 +120,23 @@ export function AnimatedCard({ card, isActive, onSwipe, onSwipeProgress, handleR
           scale: 0.92,
           config: { duration: FLY_OFF_DURATION_MS },
         }),
-      ).then((results) => {
-        if (mountedRef.current && results.every((result) => result.finished)) {
-          onSwipe(card, direction);
-        }
-      });
+      )
+        .then((results) => {
+          if (mountedRef.current && results.every((result) => result.finished)) {
+            onSwipe(card, direction);
+          }
+        })
+        .catch((error) => {
+          // The fly-off spring can reject on a teardown race (a frozen
+          // SpringValue mid-animation). The animation is cosmetic but the
+          // commit is the load-bearing side effect — dropping it would strand
+          // the card in the deck. Log for visibility, then commit anyway
+          // (mount-guarded so a post-unmount commit is still skipped).
+          console.warn("[learn] fly-off spring rejected; committing anyway:", error);
+          if (mountedRef.current) {
+            onSwipe(card, direction);
+          }
+        });
     },
     [api, card, onSwipe],
   );
@@ -141,7 +159,15 @@ export function AnimatedCard({ card, isActive, onSwipe, onSwipeProgress, handleR
 
   const bind = useDrag(
     ({ active, movement: [mx, my], direction: [, yDir], velocity: [vx, vy] }) => {
-      if (!isActive) return;
+      // Once the exit fly-off has begun the card is committed and inert to
+      // further drag handling. Without this guard a re-grab (the finger never
+      // lifts, so @use-gesture starts a fresh gesture during the ~200 ms
+      // fly-off) falls through to the spring-reset `else` below and calls
+      // `api.start({ x: 0 })`, which interrupts the in-flight fly-off: the card
+      // animates back to centre AND the fly-off spring resolves `finished:
+      // false`, so the deferred `onSwipe` commit is dropped and the card is
+      // stranded in the deck. Bailing here keeps the fly-off uninterrupted.
+      if (!isActive || exitingRef.current) return;
 
       const { direction, progress, shouldSwipe } = evaluateSwipeGesture({
         active,
