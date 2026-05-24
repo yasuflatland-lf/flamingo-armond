@@ -8,15 +8,15 @@ type ToasterProps = React.ComponentProps<typeof Sonner>;
 // Default ("normal") toast styling is driven through sonner's own CSS custom
 // properties, not Tailwind `classNames`: sonner's [data-sonner-toast][data-styled]
 // rules out-specify any utility class, so utility-class colours never take effect.
-// Repointing the normal-* variables turns the delete/undo popup into a deep
-// brand-coral accent surface with legible white text, and the Undo pill inherits
-// the inverse (white fill, coral text) from sonner's [data-button] rule.
-// Rich-colour typed toasts (success/error/…) read their own --success-*/--error-*
-// vars, so this only recolours the default toast.
+// Repointing the normal-* variables turns the delete/undo popup into a brand-coral
+// (accent) surface with white text, and the Undo pill inherits the inverse (white
+// fill, coral text) from sonner's [data-button] rule. Rich-colour typed toasts
+// (success/error/…) read their own --success-*/--error-* vars, so this only
+// recolours the default toast.
 const brandToastStyle = {
-  "--normal-bg": "var(--brand-primary-strong)",
+  "--normal-bg": "var(--brand-primary)",
   "--normal-text": "var(--brand-primary-foreground)",
-  "--normal-border": "var(--brand-primary-strong)",
+  "--normal-border": "var(--brand-primary)",
   // Close button sits on sonner's neutral gray ramp; repoint glyph/border/hover at
   // translucent white so the "✕" stays visible on the coral surface.
   "--gray12": "var(--brand-primary-foreground)",
