@@ -781,6 +781,49 @@ func TestAdminUser_EditUser_CannotRevokeOwnAdmin(t *testing.T) {
 	}
 }
 
+// TestAdminUser_EditUser_Self_NoRolesSubmitted_CannotRevokeOwnAdmin covers the
+// zero-roleIDs sub-path of the self-demotion guard: when callerID == id and the
+// submitted final role set is empty, FindByIDsTx is skipped (len(roleIDs) == 0),
+// keepsAdmin stays false, and the guard aborts the transaction via errGuardAbort
+// before any write. The sentinel must not escape — err is nil and the outcome
+// carries CannotRevokeOwnAdmin.
+func TestAdminUser_EditUser_Self_NoRolesSubmitted_CannotRevokeOwnAdmin(t *testing.T) {
+	t.Parallel()
+
+	users := &mockAdminUserRepository{users: map[string]*domain.User{"admin-1": {ID: "admin-1"}}}
+	roles := &mockAdminRoleRepository{}
+	userRoles := &mockAdminUserRoleRepository{}
+	authChk := &adminAuthChecker{admins: map[string]bool{"admin-1": true}}
+	tx, txCalls := countingAdminUserTxRunner()
+	uc, _, _, _ := buildAdminUCWithTx(users, roles, userRoles, tx, authChk)
+
+	// Empty/nil RoleIDs: the final declarative role set is empty, so the caller
+	// drops their own admin role.
+	outcome, err := uc.EditUser(adminCallerCtx("admin-1"), "admin-1", AdminEditUserInput{
+		RoleIDs: nil,
+	})
+	// The control-flow sentinel must not leak to the caller.
+	if err != nil {
+		t.Fatalf("unexpected error (errGuardAbort must not escape): %v", err)
+	}
+	assertAdminEditUserOutcomeXOR(t, outcome)
+	if !outcome.CannotRevokeOwnAdmin {
+		t.Fatalf("CannotRevokeOwnAdmin = false, want true")
+	}
+	// The guard runs at the front of the transaction, so the tx runner is
+	// invoked once; the closure aborts via errGuardAbort before any write.
+	if *txCalls != 1 {
+		t.Fatalf("tx calls = %d, want 1 (guard runs inside tx, then rolls back)", *txCalls)
+	}
+	// With zero roleIDs the locking lookup is skipped entirely.
+	if roles.findCalls != 0 {
+		t.Fatalf("FindByIDsTx calls = %d, want 0 (lookup skipped on empty role set)", roles.findCalls)
+	}
+	if userRoles.setCalls != 0 {
+		t.Fatalf("SetUserRolesTx calls = %d, want 0 (guard aborts before write)", userRoles.setCalls)
+	}
+}
+
 func TestAdminUser_EditUser_SelfKeepingAdminAllowed(t *testing.T) {
 	t.Parallel()
 
@@ -809,6 +852,11 @@ func TestAdminUser_EditUser_SelfKeepingAdminAllowed(t *testing.T) {
 	}
 	if *txCalls != 1 {
 		t.Fatalf("tx calls = %d, want 1", *txCalls)
+	}
+	// The locking FOR UPDATE lookup must be traversed before the write so the
+	// keepsAdmin decision reads role names under the row lock.
+	if roles.findCalls != 1 {
+		t.Fatalf("FindByIDsTx calls = %d, want 1 (locking lookup before write)", roles.findCalls)
 	}
 	if userRoles.setCalls != 1 {
 		t.Fatalf("SetUserRolesTx calls = %d, want 1", userRoles.setCalls)

@@ -17,7 +17,11 @@ import (
 // errGuardAbort is a control-flow-only sentinel used to roll back the EditUser
 // transaction when the self-demotion guard decides the edit must not proceed.
 // It never escapes EditUser: the caller-visible result travels in the
-// closure-captured guard outcome, not in this error.
+// closure-captured guard outcome, not in this error. The guarantee holds
+// because every `return errGuardAbort` site also sets guardHit = true, and the
+// post-tx `if guardHit { return guard, nil }` check runs before the `if err !=
+// nil` branch — so the sentinel is consumed and a nil error is returned to the
+// caller.
 var errGuardAbort = errors.New("usecase: admin user edit: guard abort")
 
 // adminUserMaxPageSize is the user-facing cap on AdminUser.List page size.
@@ -111,8 +115,9 @@ type adminUserRepository interface {
 }
 
 // adminRoleRepository is the subset of repository.RoleRepository used by the
-// AdminUser usecase. The lookup is tx-scoped and row-locking (FOR UPDATE) so
-// the self-demotion guard reads role names atomically with the role-set write.
+// EditUser self-demotion guard. The lookup is tx-scoped and row-locking (FOR
+// UPDATE) so role names are read without risk of a concurrent rename/delete
+// between the guard check and the role-set write.
 type adminRoleRepository interface {
 	FindByIDsTx(ctx context.Context, tx *gorm.DB, ids []string) (map[string]*domain.Role, error)
 }
