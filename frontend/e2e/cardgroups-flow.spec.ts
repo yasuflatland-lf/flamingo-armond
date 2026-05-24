@@ -48,11 +48,12 @@ test.describe
     });
 
     // ── Scenario 1 ──────────────────────────────────────────────────────────────
-    // Primary action on /cardgroups: with at least one cardgroup the "+ New
-    // cardgroup" link is visible in the page-shell header (primaryActions).
-    // Clicking it lands on /cardgroups/new with no returnTo, and the form is
-    // interactive.
-    test("primary action on /cardgroups leads to /cardgroups/new without returnTo", async ({
+    // Primary action on /cardgroups: with at least one cardgroup the "New
+    // cardgroup" button is visible in the page-shell header (primaryActions).
+    // Clicking it opens the create-cardgroup drawer (FormSheet) in place — no
+    // navigation. The full-page /cardgroups/new route is reserved for the
+    // onboarding (welcome) and picker returnTo flows (Scenario 3).
+    test("primary action on /cardgroups opens the create-cardgroup drawer in place", async ({
       context,
       page,
     }) => {
@@ -64,23 +65,26 @@ test.describe
       // The seeded cardgroup must be visible, confirming the non-empty branch renders.
       await expect(page.getByText(seededCardgroupName)).toBeVisible();
 
-      // The primary "+ New cardgroup" action in the page-shell header.
-      // After the listing-page-shell refactor it lives in primaryActions, not the footer.
-      const newCardgroupLink = page.getByRole("link", { name: /New cardgroup/ });
-      await expect(newCardgroupLink).toBeVisible();
-      await expect(newCardgroupLink).toHaveAttribute("href", "/cardgroups/new");
+      // The primary "New cardgroup" action is a button (not a link) — it opens
+      // the drawer in place rather than navigating. The desktop button carries
+      // `hidden md:inline-flex`; Playwright's Desktop Chrome viewport (1280px) is
+      // above the md breakpoint so the button is visible.
+      const newCardgroupButton = page.getByRole("button", { name: /New cardgroup/ });
+      await expect(newCardgroupButton).toBeVisible();
 
-      // Click it and verify we land on /cardgroups/new with the form interactive.
-      await newCardgroupLink.click();
-      await page.waitForURL("**/cardgroups/new", { timeout: 10_000 });
+      // Click it and verify the FormSheet opens in place with the form interactive.
+      await newCardgroupButton.click();
       await expect(page.getByRole("heading", { name: "New cardgroup" })).toBeVisible();
       await expect(page.getByLabel("Name")).toBeVisible();
       await expect(page.getByRole("button", { name: "Create" })).toBeVisible();
+
+      // The URL must NOT have navigated — the in-place drawer is the entire point.
+      expect(new URL(page.url()).pathname).toBe("/cardgroups");
     });
 
     // ── Scenario 2 ──────────────────────────────────────────────────────────────
     // Empty-state on /cardgroups: with zero cardgroups the "No cardgroups yet"
-    // copy is shown. The primary action link in the page-shell header is the
+    // copy is shown. The primary action button in the page-shell header is the
     // only "New cardgroup" affordance (the dashed empty-state CTA was removed).
     test("empty state on /cardgroups shows the empty-state copy and primary action", async ({
       context,
@@ -95,12 +99,14 @@ test.describe
       // After the listing-page-shell refactor the copy is "No cardgroups yet".
       await expect(page.getByText("No cardgroups yet")).toBeVisible();
 
-      // The primary action link is rendered in the page-shell header even in the empty state.
-      const newCardgroupLink = page.getByRole("link", { name: /New cardgroup/ });
-      await expect(newCardgroupLink).toBeVisible();
+      // The primary action button is rendered in the page-shell header even in
+      // the empty state. The mobile FAB carries a lowercase "Add new cardgroup"
+      // label, so the capital-N regex matches only this button.
+      const newCardgroupButton = page.getByRole("button", { name: /New cardgroup/ });
+      await expect(newCardgroupButton).toBeVisible();
 
-      // There is exactly one "New cardgroup" link (the dashed empty-state CTA was removed).
-      await expect(newCardgroupLink).toHaveCount(1);
+      // There is exactly one "New cardgroup" button (the dashed empty-state CTA was removed).
+      await expect(newCardgroupButton).toHaveCount(1);
     });
 
     // ── Scenario 3 ──────────────────────────────────────────────────────────────

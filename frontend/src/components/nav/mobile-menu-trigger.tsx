@@ -1,6 +1,6 @@
 "use client";
 
-import { Settings } from "lucide-react";
+import { Menu } from "lucide-react";
 import { SheetTrigger } from "@/components/ui/sheet";
 
 export function MobileMenuTrigger() {
@@ -11,7 +11,7 @@ export function MobileMenuTrigger() {
         aria-label="Open menu"
         className="rounded-md p-2 hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring"
       >
-        <Settings className="h-5 w-5" aria-hidden="true" />
+        <Menu className="h-5 w-5" aria-hidden="true" />
       </button>
     </SheetTrigger>
   );

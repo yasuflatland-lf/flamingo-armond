@@ -200,9 +200,65 @@ describe("<CardgroupsClient>", () => {
 
     renderClient([initialMock], null, cache);
 
-    const link = await screen.findByRole("link", { name: /new cardgroup/i });
-    expect(link.className).toContain("hidden");
-    expect(link.className).toContain("md:inline-flex");
+    const button = await screen.findByRole("button", { name: /new cardgroup/i });
+    expect(button.className).toContain("hidden");
+    expect(button.className).toContain("md:inline-flex");
+  });
+
+  // The desktop "New cardgroup" button and the mobile FAB (via the
+  // flamingo:add-cardgroup event) both open the in-list create drawer instead
+  // of navigating to /cardgroups/new.
+  it("opens the create-cardgroup drawer when the desktop 'New cardgroup' button is clicked", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    const emptyConn = makeConnection([]);
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: { first: CARDGROUPS_PAGE_SIZE, search: null },
+      data: { myCardgroupsConnection: emptyConn },
+    });
+    const initialMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: { first: CARDGROUPS_PAGE_SIZE, search: null },
+      },
+      result: { data: { myCardgroupsConnection: emptyConn } },
+    };
+
+    renderClient([initialMock], null, cache);
+
+    await user.click(await screen.findByRole("button", { name: /new cardgroup/i }));
+
+    expect(await screen.findByRole("textbox", { name: /name/i })).toBeInTheDocument();
+  });
+
+  it("opens the create-cardgroup drawer on the flamingo:add-cardgroup event (mobile FAB)", async () => {
+    const cache = new InMemoryCache();
+    const emptyConn = makeConnection([]);
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: { first: CARDGROUPS_PAGE_SIZE, search: null },
+      data: { myCardgroupsConnection: emptyConn },
+    });
+    const initialMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: { first: CARDGROUPS_PAGE_SIZE, search: null },
+      },
+      result: { data: { myCardgroupsConnection: emptyConn } },
+    };
+
+    renderClient([initialMock], null, cache);
+    // Let the initial query settle before dispatching the open event.
+    await screen.findByRole("button", { name: /new cardgroup/i });
+
+    const event = new CustomEvent("flamingo:add-cardgroup", { cancelable: true });
+    act(() => {
+      window.dispatchEvent(event);
+    });
+    // The listener cancels the FAB's fallback navigation.
+    expect(event.defaultPrevented).toBe(true);
+    expect(await screen.findByRole("textbox", { name: /name/i })).toBeInTheDocument();
   });
 
   // S1: empty state — no cardgroups, no active search

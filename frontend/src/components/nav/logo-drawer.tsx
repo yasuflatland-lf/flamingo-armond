@@ -2,7 +2,7 @@
 
 import { BookOpen, Plus, User } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { LogoutButton } from "@/app/_components/logout-button";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import { MobileMenuTrigger } from "@/components/nav/mobile-menu-trigger";
@@ -23,11 +23,26 @@ const NAV_LINK_CLASS =
 
 export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const learnMatch = pathname.match(/^\/learn\/([^/]+)$/);
-  // null on malformed %XX — conditional JSX below skips the '+' link rather than
+  // null on malformed %XX — conditional JSX below skips the '+' button rather than
   // propagating a URIError that would escape layout.tsx's error boundary.
   const learnCardgroupId =
     user && learnMatch ? safeDecodePathSegment(learnMatch[1] as string) : null;
+
+  // The '+' opens the in-context add-card drawer (LearnAddCardSheet listens for
+  // this event and calls preventDefault). When no listener is mounted the event
+  // is uncancelled and we fall back to the full-page /cards/new route.
+  function handleAddCard(rawCardgroupId: string) {
+    const event = new CustomEvent("flamingo:add-card", {
+      cancelable: true,
+      detail: { cardgroupId: rawCardgroupId },
+    });
+    if (window.dispatchEvent(event)) {
+      const encodedId = encodeURIComponent(rawCardgroupId);
+      router.push(`/cards/new?cardgroup=${encodedId}&return=/learn/${encodedId}`);
+    }
+  }
 
   return (
     <Sheet>
@@ -40,13 +55,14 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
       </Link>
       <div className="flex items-center gap-1">
         {learnCardgroupId && (
-          <Link
-            href={`/cards/new?cardgroup=${encodeURIComponent(learnCardgroupId)}&return=/learn/${encodeURIComponent(learnCardgroupId)}`}
+          <button
+            type="button"
+            onClick={() => handleAddCard(learnCardgroupId)}
             aria-label="Add a new card to this cardgroup"
             className="rounded-md p-2 hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <Plus className="h-5 w-5" aria-hidden="true" />
-          </Link>
+          </button>
         )}
         <MobileMenuTrigger />
       </div>

@@ -5,10 +5,12 @@ import { useApolloClient, useMutation, useQuery } from "@apollo/client/react";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
 import { CardgroupListItem } from "@/components/cardgroups/cardgroup-list-item";
 import { CardgroupsToolbar } from "@/components/cardgroups/cardgroups-toolbar";
 import { ListingPageShell } from "@/components/layout/listing-page-shell";
 import { Button } from "@/components/ui/button";
+import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import {
   MyCardgroupsConnectionDocument,
   type MyCardgroupsConnectionQuery,
@@ -17,11 +19,75 @@ import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import type { FetchNextPageInput } from "@/lib/pagination/types";
 import { useUndoDelete } from "@/lib/undo-delete";
 import { CARDGROUPS_DEFAULT_VARS, DeleteCardgroupMutation } from "./queries";
+import { useCreateCardgroup } from "./use-create-cardgroup";
 
 type Connection = MyCardgroupsConnectionQuery["myCardgroupsConnection"];
 
 interface CardgroupsClientProps {
   initialConnection: Connection | null;
+}
+
+function CreateCardgroupSheetContent({
+  submit,
+  submitting,
+  validationError,
+  authError,
+  unexpectedError,
+  onDirty,
+}: {
+  submit: (values: { name: string }) => Promise<void>;
+  submitting: boolean;
+  validationError: { field: string; message: string } | null;
+  authError: "unauthenticated" | "forbidden" | null;
+  unexpectedError: string | null;
+  onDirty: () => void;
+}) {
+  const close = useFormSheetClose();
+
+  return (
+    <div onInput={onDirty} className="space-y-4">
+      {authError ? (
+        <div
+          role="alert"
+          data-testid="cardgroup-create-auth-error"
+          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          <span>
+            {authError === "unauthenticated"
+              ? "Your session has expired. "
+              : "You do not have permission. "}
+          </span>
+          <Link href="/login" className="underline">
+            Sign in again
+          </Link>
+          .
+        </div>
+      ) : null}
+
+      {unexpectedError ? (
+        <div
+          role="alert"
+          data-testid="cardgroup-create-unexpected-error"
+          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          {unexpectedError}
+        </div>
+      ) : null}
+
+      <CardgroupForm
+        mode="create"
+        defaultValues={{ name: "" }}
+        submit={submit}
+        submitting={submitting}
+        validationError={validationError}
+        secondarySlot={
+          <Button type="button" variant="outline" onClick={close}>
+            Cancel
+          </Button>
+        }
+      />
+    </div>
+  );
 }
 
 /**
@@ -47,6 +113,68 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
 
   const { scheduleDelete } = useUndoDelete();
   const [deleteCardgroup] = useMutation(DeleteCardgroupMutation);
+
+  // Create-cardgroup drawer (FormSheet → bottom drawer on mobile, right panel
+  // on desktop). Opened by the mobile FAB via the flamingo:add-cardgroup event
+  // and by the desktop "New cardgroup" button. The full-page /cardgroups/new
+  // route stays for the onboarding (welcome) and returnTo flows.
+  const { create: createCardgroup, loading: creating } = useCreateCardgroup();
+  const [addOpen, setAddOpen] = useState(false);
+  const [addDirty, setAddDirty] = useState(false);
+  const [addValidationError, setAddValidationError] = useState<{
+    field: string;
+    message: string;
+  } | null>(null);
+  const [addAuthError, setAddAuthError] = useState<"unauthenticated" | "forbidden" | null>(null);
+  const [addUnexpectedError, setAddUnexpectedError] = useState<string | null>(null);
+
+  const openAddSheet = useCallback(() => {
+    setAddValidationError(null);
+    setAddAuthError(null);
+    setAddUnexpectedError(null);
+    setAddDirty(false);
+    setAddOpen(true);
+  }, []);
+
+  useEffect(() => {
+    function handleAddCardgroupEvent(event: Event) {
+      // Cancel the FAB's fallback navigation to /cardgroups/new and open the
+      // drawer in place instead.
+      event.preventDefault();
+      openAddSheet();
+    }
+    window.addEventListener("flamingo:add-cardgroup", handleAddCardgroupEvent);
+    return () => window.removeEventListener("flamingo:add-cardgroup", handleAddCardgroupEvent);
+  }, [openAddSheet]);
+
+  async function handleCreateCardgroup(values: { name: string }) {
+    setAddValidationError(null);
+    setAddAuthError(null);
+    setAddUnexpectedError(null);
+
+    const outcome = await createCardgroup(values.name);
+
+    switch (outcome.status) {
+      case "validation":
+        setAddValidationError({ field: outcome.field, message: outcome.message });
+        return;
+      case "auth":
+        setAddAuthError(outcome.kind);
+        return;
+      case "unexpected":
+      case "rejected":
+        // The drawer is modal, so surface a banner for both an unparseable
+        // payload and a transport failure rather than failing silently.
+        setAddUnexpectedError("Something went wrong. Please try again.");
+        return;
+      case "success":
+        // The connection cache is updated inside useCreateCardgroup, so the new
+        // row appears in the list without a refetch. Just close the drawer.
+        setAddDirty(false);
+        setAddOpen(false);
+        return;
+    }
+  }
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   // In-flight guard MUST be useRef<boolean>, not useState — see
@@ -239,11 +367,14 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
       title="My cardgroups"
       description="Browse and manage the cardgroups you have created."
       primaryActions={
-        <Button asChild variant="brand" className="hidden md:inline-flex">
-          <Link href="/cardgroups/new">
-            <span>New cardgroup</span>
-            <Plus aria-hidden="true" />
-          </Link>
+        <Button
+          type="button"
+          variant="brand"
+          className="hidden md:inline-flex"
+          onClick={openAddSheet}
+        >
+          <span>New cardgroup</span>
+          <Plus aria-hidden="true" />
         </Button>
       }
       toolbar={<CardgroupsToolbar searchInput={searchInput} onSearchInputChange={setSearchInput} />}
@@ -321,6 +452,33 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
           Loading more cardgroups...
         </p>
       )}
+
+      <FormSheet
+        title="New cardgroup"
+        open={addOpen}
+        onOpenChange={(nextOpen) => {
+          setAddOpen(nextOpen);
+          if (!nextOpen) {
+            setAddDirty(false);
+            setAddValidationError(null);
+            setAddAuthError(null);
+            setAddUnexpectedError(null);
+          }
+        }}
+        submitting={creating}
+        dirty={addDirty}
+        confirmOnDismiss
+        size="sm"
+      >
+        <CreateCardgroupSheetContent
+          submit={handleCreateCardgroup}
+          submitting={creating}
+          validationError={addValidationError}
+          authError={addAuthError}
+          unexpectedError={addUnexpectedError}
+          onDirty={() => setAddDirty(true)}
+        />
+      </FormSheet>
     </ListingPageShell>
   );
 }

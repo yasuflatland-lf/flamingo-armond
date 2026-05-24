@@ -2,7 +2,6 @@
 
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { useLazyQuery, useMutation, useQuery } from "@apollo/client/react";
-import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
@@ -136,11 +135,6 @@ export function DictionaryImportClient() {
 
   return (
     <main className="p-8">
-      <div className="mb-4">
-        <Link href="/cardgroups" className="text-sm text-muted-foreground hover:underline">
-          &larr; Back
-        </Link>
-      </div>
       <h1 className="mb-6 text-2xl font-semibold">Dictionary Import</h1>
 
       {cardgroupsErrorBanner && (
