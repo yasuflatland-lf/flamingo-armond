@@ -6,21 +6,26 @@ import { toast } from "sonner";
 import { describe, expect, it } from "vitest";
 import { Toaster } from "./sonner";
 
-// Static regression guard: read the sonner.tsx source and assert that the
-// actionButton className contains bg-brand-primary. This pins the brand
-// accent decision without requiring a runtime render of Toaster.
+// Regression guard for the brand-accent decision: the default toast surface is the
+// deep brand coral, driven through sonner's --normal-* CSS custom properties (utility
+// classes lose to sonner's own selectors, so the colour MUST flow through the vars).
 describe("Toaster (sonner.tsx) brand accent regression guard", () => {
-  it("actionButton className contains bg-brand-primary", () => {
+  it("drives the default toast surface off the brand palette (source guard)", () => {
     const source = readFileSync(resolve(__dirname, "./sonner.tsx"), "utf-8");
-    expect(source).toMatch(/bg-brand-primary/);
+    expect(source).toMatch(/--normal-bg["']?\s*:\s*["']?var\(--brand-primary/);
+    expect(source).toMatch(/--normal-text["']?\s*:\s*["']?var\(--brand-primary-foreground/);
   });
 
-  it("renders action button with brand-primary accent at runtime", async () => {
+  it("applies the brand-coral surface vars to the rendered toast", async () => {
     render(<Toaster />);
     act(() => {
       toast("Test", { action: { label: "Undo", onClick: () => {} } });
     });
-    const undoBtn = await screen.findByRole("button", { name: /undo/i });
-    expect(undoBtn.className).toMatch(/bg-brand-primary/);
+    const surface = (await screen.findByText("Test")).closest(
+      "[data-sonner-toast]",
+    ) as HTMLElement | null;
+    expect(surface).not.toBeNull();
+    expect(surface?.style.getPropertyValue("--normal-bg")).toContain("brand-primary");
+    expect(surface?.style.getPropertyValue("--normal-text")).toContain("brand-primary-foreground");
   });
 });
