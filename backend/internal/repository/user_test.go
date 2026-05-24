@@ -455,6 +455,89 @@ func TestUpdateTx_EmptyPatchNoOp(t *testing.T) {
 	}
 }
 
+func TestUpdateTxVersioned_EmptyPatchIncrementsVersion(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	id := insertAuthUser(t, ctx)
+	repo := repository.NewUserRepository(testDB.GORM)
+
+	before, err := repo.FindByID(ctx, id)
+	if err != nil {
+		t.Fatalf("FindByID (before): %v", err)
+	}
+	if before.Version != 0 {
+		t.Fatalf("initial Version = %d, want 0", before.Version)
+	}
+	time.Sleep(5 * time.Millisecond)
+
+	err = testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.UpdateTxVersioned(ctx, tx, id, repository.UserUpdate{}, 0)
+	})
+	if err != nil {
+		t.Fatalf("UpdateTxVersioned: %v", err)
+	}
+
+	after, err := repo.FindByID(ctx, id)
+	if err != nil {
+		t.Fatalf("FindByID (after): %v", err)
+	}
+	if after.Version != 1 {
+		t.Fatalf("Version = %d, want 1", after.Version)
+	}
+	if !after.UpdatedAt.After(before.UpdatedAt) {
+		t.Fatalf("UpdatedAt should advance on empty versioned update: before=%v after=%v", before.UpdatedAt, after.UpdatedAt)
+	}
+}
+
+func TestUpdateTxVersioned_StaleVersionReturnsConcurrentUpdate(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	id := insertAuthUser(t, ctx)
+	repo := repository.NewUserRepository(testDB.GORM)
+
+	firstName := "first"
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.UpdateTxVersioned(ctx, tx, id, repository.UserUpdate{DisplayName: &firstName}, 0)
+	})
+	if err != nil {
+		t.Fatalf("UpdateTxVersioned (first): %v", err)
+	}
+
+	staleName := "stale"
+	err = testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.UpdateTxVersioned(ctx, tx, id, repository.UserUpdate{DisplayName: &staleName}, 0)
+	})
+	if !errors.Is(err, repository.ErrConcurrentUpdate) {
+		t.Fatalf("UpdateTxVersioned stale: want ErrConcurrentUpdate, got %v", err)
+	}
+
+	got, err := repo.FindByID(ctx, id)
+	if err != nil {
+		t.Fatalf("FindByID: %v", err)
+	}
+	if got.Version != 1 {
+		t.Fatalf("Version after stale update = %d, want 1", got.Version)
+	}
+	if got.DisplayName == nil || string(*got.DisplayName) != firstName {
+		t.Fatalf("DisplayName after stale update = %v, want %q", got.DisplayName, firstName)
+	}
+}
+
+func TestUpdateTxVersioned_NotFound(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewUserRepository(testDB.GORM)
+
+	name := "nobody"
+	missing := uuid.NewString()
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return repo.UpdateTxVersioned(ctx, tx, missing, repository.UserUpdate{DisplayName: &name}, 0)
+	})
+	if !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("UpdateTxVersioned(missing): want ErrNotFound, got %v", err)
+	}
+}
+
 // insertNAuthUsers inserts n auth users and returns their ids.
 func insertNAuthUsers(t *testing.T, ctx context.Context, n int) []string {
 	t.Helper()

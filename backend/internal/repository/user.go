@@ -19,6 +19,7 @@ type gormUser struct {
 	DisplayName *string   `gorm:"column:display_name"`
 	Bio         *string   `gorm:"column:bio"`
 	AvatarURL   *string   `gorm:"column:avatar_url"`
+	Version     int64     `gorm:"column:version"`
 	CreatedAt   time.Time `gorm:"column:created_at"`
 	UpdatedAt   time.Time `gorm:"column:updated_at"`
 }
@@ -28,6 +29,10 @@ func (gormUser) TableName() string { return "users" }
 // ErrNotFound is returned when a lookup or update targets a row that does not
 // exist.
 var ErrNotFound = errors.New("repository: not found")
+
+// ErrConcurrentUpdate is returned when a versioned update targets an existing
+// row whose version no longer matches the caller's expected version.
+var ErrConcurrentUpdate = errors.New("repository: concurrent update")
 
 // ErrCursorNotFound is returned by paginated queries when the supplied cursor
 // references a user that no longer exists (e.g. deleted between page fetches).
@@ -54,6 +59,12 @@ type UserRepository interface {
 	// targets a missing row returns ErrNotFound so the surrounding transaction
 	// rolls back atomically.
 	UpdateTx(ctx context.Context, tx *gorm.DB, id string, patch UserUpdate) error
+	// UpdateTxVersioned applies the patch inside the caller-provided
+	// transaction only when the row's current version matches expectedVersion.
+	// It always issues an UPDATE and bumps version, even for an empty patch.
+	// A missing row returns ErrNotFound; an existing row with a different
+	// version returns ErrConcurrentUpdate.
+	UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string, patch UserUpdate, expectedVersion int64) error
 	// ListPage returns a page of users ordered by created_at DESC with id ASC
 	// as a stable tiebreaker. The cursor is the user UUID. Forward paging uses
 	// `after` (exclusive); backward paging uses `before` (exclusive). `first`
@@ -141,6 +152,32 @@ func (r *userRepo) UpdateTx(ctx context.Context, tx *gorm.DB, id string, patch U
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (r *userRepo) UpdateTxVersioned(ctx context.Context, tx *gorm.DB, id string, patch UserUpdate, expectedVersion int64) error {
+	updates := userUpdates(patch)
+	updates["version"] = gorm.Expr("version + 1")
+
+	res := tx.WithContext(ctx).
+		Model(&gormUser{}).
+		Where("id = ? AND version = ?", id, expectedVersion).
+		Updates(updates)
+	if res.Error != nil {
+		return eris.Wrap(res.Error, "repository: update user tx versioned")
+	}
+	if res.RowsAffected > 0 {
+		return nil
+	}
+
+	var row gormUser
+	err := tx.WithContext(ctx).Select("id").Where("id = ?", id).Take(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrNotFound
+		}
+		return eris.Wrap(err, "repository: update user tx versioned: probe user")
+	}
+	return ErrConcurrentUpdate
 }
 
 func userUpdates(patch UserUpdate) map[string]any {
@@ -312,6 +349,7 @@ func userToDomain(g gormUser) *domain.User {
 		DisplayName: (*domain.DisplayName)(g.DisplayName),
 		Bio:         domain.BioFromPtr(g.Bio),
 		AvatarURL:   g.AvatarURL,
+		Version:     g.Version,
 		CreatedAt:   g.CreatedAt,
 		UpdatedAt:   g.UpdatedAt,
 	}
