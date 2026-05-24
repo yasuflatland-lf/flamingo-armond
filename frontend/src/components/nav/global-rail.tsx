@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { LogoutButton } from "@/app/_components/logout-button";
+import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import {
   Sidebar,
   SidebarContent,
@@ -126,8 +127,8 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
     >
       <SidebarHeader>
         <div className="flex h-8 items-center px-2">
-          <Link href="/" aria-label="Flamingo home" className="shrink-0 text-lg leading-none">
-            🦩
+          <Link href="/" aria-label="Flamingo home" className="shrink-0 leading-none">
+            <FlamingoMark className="size-7" aria-hidden="true" />
           </Link>
         </div>
       </SidebarHeader>
