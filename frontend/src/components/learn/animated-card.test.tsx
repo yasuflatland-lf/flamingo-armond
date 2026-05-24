@@ -168,7 +168,15 @@ describe("<AnimatedCard> — committing gesture commits exactly once", () => {
         buttons: 1,
         bubbles: true,
       });
-      // Under the 160px commit and not a flick.
+      // Release under HORIZONTAL_FLICK_MIN_PX (40px): synchronous fireEvent yields a
+      // huge synthetic velocity, so any larger drag would trip the flick-commit path.
+      fireEvent.pointerMove(window, {
+        pointerId: 1,
+        clientX: 118,
+        clientY: 300,
+        buttons: 1,
+        bubbles: true,
+      });
       fireEvent.pointerMove(window, {
         pointerId: 1,
         clientX: 130,
@@ -176,16 +184,9 @@ describe("<AnimatedCard> — committing gesture commits exactly once", () => {
         buttons: 1,
         bubbles: true,
       });
-      fireEvent.pointerMove(window, {
-        pointerId: 1,
-        clientX: 180,
-        clientY: 300,
-        buttons: 1,
-        bubbles: true,
-      });
       fireEvent.pointerUp(window, {
         pointerId: 1,
-        clientX: 180,
+        clientX: 130,
         clientY: 300,
         bubbles: true,
       });
