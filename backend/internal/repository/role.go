@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/rotisserie/eris"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"backend/internal/domain"
 )
@@ -43,6 +44,14 @@ type RoleRepository interface {
 
 	FindByName(ctx context.Context, name domain.RoleName) (*domain.Role, error)
 	FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Role, error)
+
+	// FindByIDsTx returns the roles for ids inside the supplied transaction,
+	// locking the matched rows FOR UPDATE so a concurrent rename/delete of any
+	// returned role blocks until the caller's transaction commits. Used by the
+	// self-demotion guard, which must read role names so no other transaction
+	// can rename or delete them before the user_roles write that follows.
+	// An empty ids slice returns an empty map with no SQL and no lock acquired.
+	FindByIDsTx(ctx context.Context, tx *gorm.DB, ids []string) (map[string]*domain.Role, error)
 
 	// Create inserts a new role with the given name. The name is normalised
 	// (lower-cased, trimmed) before insertion. Returns ErrRoleDuplicate when a
@@ -94,11 +103,30 @@ func (r *roleRepo) FindByName(ctx context.Context, name domain.RoleName) (*domai
 }
 
 func (r *roleRepo) FindByIDs(ctx context.Context, ids []string) (map[string]*domain.Role, error) {
+	return findRolesByIDs(ctx, r.db, ids, false)
+}
+
+func (r *roleRepo) FindByIDsTx(ctx context.Context, tx *gorm.DB, ids []string) (map[string]*domain.Role, error) {
+	if tx == nil {
+		return nil, eris.New("repository: find roles by ids tx is nil")
+	}
+	return findRolesByIDs(ctx, tx, ids, true)
+}
+
+// findRolesByIDs is shared by FindByIDs (pool, no lock) and FindByIDsTx
+// (transaction, FOR UPDATE). lock=true acquires a row lock on the matched
+// rows so no other transaction can rename or delete them before the caller's
+// write commits.
+func findRolesByIDs(ctx context.Context, db *gorm.DB, ids []string, lock bool) (map[string]*domain.Role, error) {
 	if len(ids) == 0 {
 		return map[string]*domain.Role{}, nil
 	}
+	q := db.WithContext(ctx).Where("id IN ?", ids)
+	if lock {
+		q = q.Clauses(clause.Locking{Strength: "UPDATE"})
+	}
 	var rows []gormRole
-	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
+	if err := q.Find(&rows).Error; err != nil {
 		return nil, eris.Wrap(err, "repository: find roles by ids")
 	}
 	out := make(map[string]*domain.Role, len(rows))
