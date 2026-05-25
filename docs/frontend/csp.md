@@ -8,11 +8,10 @@ The frontend ships a **report-only** CSP for HTML responses, a **static offline-
 
 ## Policy builders
 
-[`frontend/src/lib/security/csp.ts`](../../frontend/src/lib/security/csp.ts) exports three public pieces:
+[`frontend/src/lib/security/csp.ts`](../../frontend/src/lib/security/csp.ts) exports two public pieces:
 
 1. `serializeCsp(directives)` takes a directive map and turns it into a stable header string. It drops `null` / `undefined` / `false`, trims sources, removes duplicates, and emits directives in the configured order with any unknown directives sorted alphabetically after the known ones.
 2. `buildHtmlReportOnlyCsp({ nonce, supabaseUrl, reportUri?, reportTo?, speedInsightsOrigin? })` builds the policy used for HTML routes. It requires a non-empty nonce, derives the Supabase HTTPS origin plus the matching realtime WebSocket origin from `supabaseUrl`, and includes the default reporting endpoints.
-3. `buildOfflineCsp({ reportUri?, reportTo? })` builds a stricter offline-page policy shape for tests and code-level callers. The static `/offline.html` response itself is configured separately in [`frontend/next.config.ts`](../../frontend/next.config.ts).
 
 The HTML policy currently allows:
 
@@ -48,6 +47,8 @@ The shipped `/offline.html` CSP in [`frontend/next.config.ts`](../../frontend/ne
 
 The middleware also forwards `x-pathname` for server components and preserves the same forwarded CSP / nonce headers when the Supabase client refreshes cookies.
 
+If `buildHtmlReportOnlyCsp` throws (e.g., malformed `NEXT_PUBLIC_SUPABASE_URL`), the middleware logs via `console.error` and omits both CSP headers rather than crashing all requests. Auth, cookie rotation, and routing continue to work; only the report-only observation is absent.
+
 This is intentionally **report-only** today. There is no production CSP enforcement header on HTML responses yet.
 
 ## Static headers
@@ -61,14 +62,14 @@ This is intentionally **report-only** today. There is no production CSP enforcem
    - `X-Content-Type-Options: nosniff`
    - `X-Frame-Options: DENY`
    - `Reporting-Endpoints: csp-endpoint="/api/csp-report"`
-2. `/offline.html` receives the same shared header set plus the static offline CSP from `buildOfflineCsp`.
+2. `/offline.html` receives the same shared header set plus a hardcoded inline CSP string (see `next.config.ts` line 61 — this is separate from any builder function).
 3. `/sw.js` receives `Content-Type`, a no-cache `Cache-Control`, and `X-Content-Type-Options`.
 
 The HSTS choice is deliberately conservative: it ships without preload and without subdomain coverage. `Reporting-Endpoints` is already shipped so user agents that prefer the Reporting API can map the `csp-endpoint` token to `/api/csp-report`.
 
 ## Report endpoint contract
 
-[`frontend/src/app/api/csp-report/route.ts`](../../frontend/src/app/api/csp-report/route.ts) reads the request body as text, lowercases the top-level content type for logging, parses JSON-shaped payloads, normalizes them, logs them with `console.warn`, and always returns `204`.
+[`frontend/src/app/api/csp-report/route.ts`](../../frontend/src/app/api/csp-report/route.ts) reads the request body as text, lowercases the top-level content type for logging, parses JSON-shaped payloads, normalizes them, logs valid reports with `console.error` (security signal), and always returns `204`.
 
 Current tests cover `application/csp-report`, `application/reports+json`, and generic `application/json` payloads. The route does not branch on content type; it accepts either a single object or an array of objects, and it also accepts the legacy nested `{"csp-report": ...}` shape. Both dash-case and camelCase field names are normalized into a compact log envelope with:
 
