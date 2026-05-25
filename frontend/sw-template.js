@@ -124,5 +124,4 @@ self.addEventListener("fetch", (event) => {
 
   // Anything else (e.g. non-navigate document subresources we do not classify
   // as static assets) passes through to the network untouched.
-  return;
 });
