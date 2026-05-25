@@ -130,9 +130,7 @@ describe("POST /api/csp-report", () => {
   });
 
   it("returns 204 and logs a warning for malformed payloads", async () => {
-    const response = await POST(
-      makeRequest("application/csp-report", "{not-json"),
-    );
+    const response = await POST(makeRequest("application/csp-report", "{not-json"));
 
     expect(response.status).toBe(204);
     expect(consoleWarnSpy).toHaveBeenCalledWith("[csp-report] invalid report payload", {

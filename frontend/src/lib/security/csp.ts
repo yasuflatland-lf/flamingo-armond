@@ -58,7 +58,10 @@ function normalizeSources(sources: readonly CspSource[] | undefined): string[] {
   return normalized;
 }
 
-function serializeDirective(name: string, sources: readonly CspSource[] | undefined): string | null {
+function serializeDirective(
+  name: string,
+  sources: readonly CspSource[] | undefined,
+): string | null {
   const normalized = normalizeSources(sources);
   if (normalized.length === 0) {
     return null;

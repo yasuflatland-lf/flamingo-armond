@@ -91,10 +91,18 @@ describe("updateSession", () => {
     const secondBytes = Uint8Array.from({ length: 18 }, (_, index) => 17 - index);
     const getRandomValuesSpy = vi.spyOn(globalThis.crypto, "getRandomValues");
     getRandomValuesSpy.mockImplementationOnce((bytes) => {
+      if (!(bytes instanceof Uint8Array)) {
+        throw new TypeError("expected Uint8Array");
+      }
+
       bytes.set(firstBytes);
       return bytes;
     });
     getRandomValuesSpy.mockImplementationOnce((bytes) => {
+      if (!(bytes instanceof Uint8Array)) {
+        throw new TypeError("expected Uint8Array");
+      }
+
       bytes.set(secondBytes);
       return bytes;
     });

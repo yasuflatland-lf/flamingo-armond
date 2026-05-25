@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  buildHtmlReportOnlyCsp,
-  buildOfflineCsp,
-  serializeCsp,
-} from "./csp";
+import { buildHtmlReportOnlyCsp, buildOfflineCsp, serializeCsp } from "./csp";
 
 describe("serializeCsp", () => {
   it("serializes directives in a stable order and removes duplicate or empty sources", () => {
@@ -14,7 +10,9 @@ describe("serializeCsp", () => {
       "style-src": ["'self'", "'unsafe-inline'", "'self'", undefined],
     });
 
-    expect(policy).toBe("default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'");
+    expect(policy).toBe(
+      "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'",
+    );
   });
 });
 
@@ -50,7 +48,9 @@ describe("buildHtmlReportOnlyCsp", () => {
       reportUri: "/api/csp-report",
     });
 
-    expect(policy).toContain("connect-src 'self' https://foo.supabase.co wss://foo.supabase.co https://vitals.vercel-insights.com");
+    expect(policy).toContain(
+      "connect-src 'self' https://foo.supabase.co wss://foo.supabase.co https://vitals.vercel-insights.com",
+    );
   });
 
   it("includes reporting directives for the reporting-endpoints rollout", () => {

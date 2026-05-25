@@ -48,9 +48,7 @@ function normalizeBody(source: Record<string, unknown>): NormalizedReportBody {
   const documentUrl = getString(source.documentUrl ?? source["document-uri"] ?? source.documentURL);
   if (documentUrl !== undefined) body.documentUrl = documentUrl;
 
-  const effectiveDirective = getString(
-    source.effectiveDirective ?? source["effective-directive"],
-  );
+  const effectiveDirective = getString(source.effectiveDirective ?? source["effective-directive"]);
   if (effectiveDirective !== undefined) body.effectiveDirective = effectiveDirective;
 
   const lineNumber = getNumber(source.lineNumber ?? source["line-number"]);
@@ -68,9 +66,7 @@ function normalizeBody(source: Record<string, unknown>): NormalizedReportBody {
   const statusCode = getNumber(source.statusCode ?? source["status-code"]);
   if (statusCode !== undefined) body.statusCode = statusCode;
 
-  const violatedDirective = getString(
-    source.violatedDirective ?? source["violated-directive"],
-  );
+  const violatedDirective = getString(source.violatedDirective ?? source["violated-directive"]);
   if (violatedDirective !== undefined) body.violatedDirective = violatedDirective;
 
   return body;
@@ -81,14 +77,17 @@ function normalizeSingleReport(
   payload: Record<string, unknown>,
 ): ReportEnvelope | null {
   const cspReport = payload["csp-report"];
-  const source = cspReport && typeof cspReport === "object" ? (cspReport as Record<string, unknown>) : payload;
+  const source =
+    cspReport && typeof cspReport === "object" ? (cspReport as Record<string, unknown>) : payload;
 
   if (!source || typeof source !== "object") {
     return null;
   }
 
   const body = normalizeBody(source);
-  const url = getString(source.url ?? source["document-uri"] ?? source.documentURL ?? body.documentUrl) ?? null;
+  const url =
+    getString(source.url ?? source["document-uri"] ?? source.documentURL ?? body.documentUrl) ??
+    null;
   const userAgent = getString(source.userAgent ?? source.user_agent) ?? null;
   const type = getString(source.type) ?? "csp-violation";
   const age = getNumber(source.age);
