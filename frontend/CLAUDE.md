@@ -33,6 +33,7 @@ The frontend package manager is **pnpm** (pinned via `package.json` engines + `p
 - [`docs/frontend/onboarding-gate.md`](../docs/frontend/onboarding-gate.md) — `displayName`-required gate ownership.
 - [`docs/frontend/route-handler-conventions.md`](../docs/frontend/route-handler-conventions.md) — Per-route layout for `app/api/**/route.ts`.
 - [`docs/frontend/auth-supabase.md`](../docs/frontend/auth-supabase.md) — Supabase SSR client and middleware cookie rotation.
+- [`docs/frontend/csp.md`](../docs/frontend/csp.md) — CSP builders, middleware nonce flow, static headers, and violation reporting.
 - [`docs/frontend/pwa.md`](../docs/frontend/pwa.md) — Installable PWA, static service worker, auth-safe fetch guards, and version-stamped update propagation.
 - [`docs/frontend/profile-page-profile.md`](../docs/frontend/profile-page-profile.md) — `/profile` RSC + client form.
 - [`docs/frontend/shadcnui.md`](../docs/frontend/shadcnui.md) — Committed `components.json` and `cn()` helper.
