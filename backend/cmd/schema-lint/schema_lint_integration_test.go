@@ -67,7 +67,7 @@ func runLivePipeline(t *testing.T, al Allowlist) ([]Violation, []Drift) {
 	}
 	resolverResult, err := ResolverWalkFiles(resolverPaths)
 	if err != nil {
-		t.Fatalf("ResolverWalk: %v", err)
+		t.Fatalf("ResolverWalkFiles: %v", err)
 	}
 	usecaseMethods, err := UsecaseWalk(usecaseDir)
 	if err != nil {
@@ -163,7 +163,7 @@ func TestIntegration_LiveTree_NoAllowlistRot(t *testing.T) {
 	}
 	resolverResult, err := ResolverWalkFiles(resolverPaths)
 	if err != nil {
-		t.Fatalf("ResolverWalk: %v", err)
+		t.Fatalf("ResolverWalkFiles: %v", err)
 	}
 	usecaseMethods, err := UsecaseWalk(usecaseDir)
 	if err != nil {

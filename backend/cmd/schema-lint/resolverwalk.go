@@ -38,13 +38,6 @@ type ResolverWalkResult struct {
 	Mappings []ResolverMapping
 }
 
-// ResolverWalk parses the Go source file at resolverPath and extracts every
-// method on *mutationResolver (or mutationResolver) together with the
-// usecase call(s) found in its body.
-func ResolverWalk(resolverPath string) (ResolverWalkResult, error) {
-	return ResolverWalkFiles([]string{resolverPath})
-}
-
 // ResolverWalkFiles parses one or more Go source files and extracts every
 // method on *mutationResolver (or mutationResolver) together with the usecase
 // call(s) found in its body. Mappings are appended in the order paths are
