@@ -128,6 +128,29 @@ describe("<AppleInstallHint>", () => {
     });
   });
 
+  describe("when navigator.standalone is true (iOS Safari installed mode)", () => {
+    beforeEach(() => {
+      mockUserAgent(
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+      );
+      // display-mode media query reports false (not yet installed via that path)
+      mockMatchMedia(false);
+      // iOS Safari sets navigator.standalone = true when running from home screen
+      Object.defineProperty(navigator, "standalone", {
+        value: true,
+        writable: true,
+        configurable: true,
+      });
+      localStorage.removeItem(DISMISSED_KEY);
+    });
+
+    it("does not render the install banner", async () => {
+      render(<AppleInstallHint />);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(screen.queryByLabelText("Install hint")).not.toBeInTheDocument();
+    });
+  });
+
   describe("when the user has already dismissed the hint", () => {
     beforeEach(() => {
       mockUserAgent(

@@ -43,10 +43,34 @@ describe("<SwRegister>", () => {
       const { container } = render(<SwRegister />);
       expect(container.firstChild).toBeNull();
     });
+
+    it("warns via console.warn and does not re-throw when register rejects", async () => {
+      // Override the register mock to reject for this test.
+      registerMock = vi.fn().mockRejectedValue(new Error("SW install blocked"));
+      Object.defineProperty(navigator, "serviceWorker", {
+        value: { register: registerMock },
+        writable: true,
+        configurable: true,
+      });
+
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      // Must not throw even though register() rejects.
+      expect(() => render(<SwRegister />)).not.toThrow();
+
+      // Flush the micro-task queue so the .catch callback fires.
+      await vi.waitFor(() => {
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining("[pwa] service worker registration failed:"),
+          expect.any(Error),
+        );
+      });
+    });
   });
 
   describe("when serviceWorker is NOT in navigator", () => {
     let originalDescriptor: PropertyDescriptor | undefined;
+    let registerMock: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
       Object.defineProperty(window, "isSecureContext", {
@@ -55,23 +79,15 @@ describe("<SwRegister>", () => {
         configurable: true,
       });
 
+      // Track any accidental registration attempt via a spy on the instance.
+      registerMock = vi.fn();
+
       // Save the current descriptor so we can restore it in afterEach.
-      // jsdom adds serviceWorker on the Navigator prototype; we shadow it on
-      // the navigator instance with a stub that has no `register` to verify the
-      // component's `"serviceWorker" in navigator` guard path. We provide a
-      // stub object without `register` so the guard evaluates true but any
-      // accidental call to `.register` would surface immediately.
-      // A cleaner approach: temporarily replace with a stub that tracks calls.
+      // jsdom adds serviceWorker on the Navigator prototype; we remove the
+      // getter entirely so that `"serviceWorker" in navigator` evaluates to
+      // false, exercising the feature-detect guard path.
       originalDescriptor = Object.getOwnPropertyDescriptor(Navigator.prototype, "serviceWorker");
 
-      // Provide an empty stub so the component's `"serviceWorker" in navigator`
-      // branch evaluates true but there is no `register` method — the component
-      // must not call it because the feature-detect inside useEffect checks
-      // `"serviceWorker" in navigator`. Since we want to test the branch where
-      // the whole feature is absent, we override the property to be truly absent
-      // by using a non-enumerable configurable deletion approach:
-      // We mock navigator.serviceWorker as a plain object without `register` to
-      // prove no accidental call occurs (register would throw if invoked).
       Object.defineProperty(Navigator.prototype, "serviceWorker", {
         get: undefined,
         configurable: true,
@@ -85,11 +101,15 @@ describe("<SwRegister>", () => {
       }
     });
 
-    it("does not throw and does not attempt registration", () => {
+    it("does not throw and does not attempt registration", async () => {
       // With serviceWorker getter removed from Navigator.prototype,
-      // "serviceWorker" in navigator is now false — the component's guard
+      // "serviceWorker" in navigator is false — the component's guard
       // short-circuits and no registration is attempted.
       expect(() => render(<SwRegister />)).not.toThrow();
+
+      // Flush effects to ensure the useEffect has run before asserting.
+      await new Promise((r) => setTimeout(r, 0));
+      expect(registerMock).not.toHaveBeenCalled();
     });
   });
 
