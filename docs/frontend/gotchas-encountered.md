@@ -18,6 +18,8 @@
 
 **Next.js `Metadata` type import**: `Metadata` (and `MetadataRoute`, `Viewport`, etc.) must be imported from `"next"`, not `"react"`. `ReactNode` stays in `"react"`. The two are easy to conflate when working in the App Router.
 
+**Next 15+/16 — `themeColor` is a `Viewport` field, not a `Metadata` field.** Putting `themeColor` inside `export const metadata: Metadata` is silently ignored since Next moved viewport-affecting fields (`themeColor`, `width`, `initialScale`, etc.) out of `Metadata`. It must live in a separate `export const viewport: Viewport = { themeColor }` in the same layout/page. `appleWebApp` stays in `metadata`. Reference: `frontend/src/app/layout.tsx`; see [`pwa.md`](pwa.md) for the PWA context.
+
 **`@t3-oss/env-nextjs` peer on Zod**: `@t3-oss/env-nextjs@0.12.0` requires `zod@^3.24.0`. Zod 3.23.x emits a peer-dependency warning that can obscure real errors. Pin Zod to `>=3.24.0` when using this package.
 
 **Apollo imports — use `@apollo/client-integration-nextjs` for `ApolloClient` and `InMemoryCache` in browser code.** Importing those two symbols from the base `@apollo/client` package produces a client that does not handle Next.js SSR streaming and breaks hydration.
