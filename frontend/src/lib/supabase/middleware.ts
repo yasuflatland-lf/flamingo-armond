@@ -1,18 +1,53 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import { env } from "@/env";
+import { buildHtmlReportOnlyCsp } from "@/lib/security/csp";
 import { isIgnorableAuthError } from "@/lib/supabase/auth-errors";
+
+const NONCE_BYTES = 18;
+const BASE64URL_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+function generateNonce() {
+  const bytes = new Uint8Array(NONCE_BYTES);
+  crypto.getRandomValues(bytes);
+
+  let nonce = "";
+  for (let index = 0; index < bytes.length; index += 3) {
+    const chunk =
+      ((bytes[index] ?? 0) << 16) | ((bytes[index + 1] ?? 0) << 8) | (bytes[index + 2] ?? 0);
+    nonce += BASE64URL_CHARS.charAt((chunk >> 18) & 63);
+    nonce += BASE64URL_CHARS.charAt((chunk >> 12) & 63);
+    nonce += BASE64URL_CHARS.charAt((chunk >> 6) & 63);
+    nonce += BASE64URL_CHARS.charAt(chunk & 63);
+  }
+
+  return nonce;
+}
+
+function createMiddlewareResponse(requestHeaders: Headers, reportOnlyPolicy: string) {
+  const response = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
+  response.headers.set("Content-Security-Policy-Report-Only", reportOnlyPolicy);
+  return response;
+}
 
 export async function updateSession(request: NextRequest) {
   // Forward the request pathname as a header so server components can read it
   // via `next/headers` (no usePathname in RSC). AppShell uses this to skip the
   // navigation rail on /login.
   const requestHeaders = new Headers(request.headers);
+  const nonce = generateNonce();
+  const reportOnlyPolicy = buildHtmlReportOnlyCsp({
+    nonce,
+    supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL,
+  });
+
+  requestHeaders.set("Content-Security-Policy", reportOnlyPolicy);
+  requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("x-pathname", request.nextUrl.pathname);
 
-  let supabaseResponse = NextResponse.next({
-    request: { headers: requestHeaders },
-  });
+  let supabaseResponse = createMiddlewareResponse(requestHeaders, reportOnlyPolicy);
 
   const supabase = createServerClient(
     env.NEXT_PUBLIC_SUPABASE_URL,
@@ -27,10 +62,8 @@ export async function updateSession(request: NextRequest) {
             request.cookies.set(name, value);
           }
           // Re-create the response after cookie writes; pass the same modified
-          // request headers so x-pathname survives.
-          supabaseResponse = NextResponse.next({
-            request: { headers: requestHeaders },
-          });
+          // request headers so x-pathname, nonce, and CSP survive.
+          supabaseResponse = createMiddlewareResponse(requestHeaders, reportOnlyPolicy);
           for (const { name, value, options } of cookiesToSet) {
             supabaseResponse.cookies.set(name, value, options);
           }
