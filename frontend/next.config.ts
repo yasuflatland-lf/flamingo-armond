@@ -21,9 +21,10 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  // Serve sw.js with no-store so the browser re-fetches it on every page load
-  // and can byte-compare the response to detect Service Worker updates immediately,
-  // rather than waiting for the default 24-hour HTTP cache TTL.
+  // Serve sw.js with no-cache so the browser revalidates it on every page load and
+  // can byte-compare the response to detect Service Worker updates immediately.
+  // Without no-cache the SW update algorithm throttles re-checks to at most once per
+  // 24 hours (a Service Worker spec rule, independent of any HTTP cache TTL).
   async headers() {
     return [
       {
