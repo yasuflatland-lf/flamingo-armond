@@ -7,7 +7,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestResolverWalk(t *testing.T) {
+func TestResolverWalkFiles_PerFile(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -78,18 +78,18 @@ func TestResolverWalk(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := ResolverWalk(tc.file)
+			got, err := ResolverWalkFiles([]string{tc.file})
 			if tc.wantErr {
 				if err == nil {
-					t.Fatal("ResolverWalk: expected error, got nil")
+					t.Fatal("ResolverWalkFiles: expected error, got nil")
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("ResolverWalk: unexpected error: %v", err)
+				t.Fatalf("ResolverWalkFiles: unexpected error: %v", err)
 			}
 			if diff := cmp.Diff(tc.wantMappings, got.Mappings); diff != "" {
-				t.Errorf("ResolverWalk Mappings mismatch (-want +got):\n%s", diff)
+				t.Errorf("ResolverWalkFiles Mappings mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
