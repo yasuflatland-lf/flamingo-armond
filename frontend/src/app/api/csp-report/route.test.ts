@@ -13,13 +13,16 @@ function makeRequest(contentType: string, body: unknown) {
 
 describe("POST /api/csp-report", () => {
   let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
     consoleWarnSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
     vi.clearAllMocks();
   });
 
@@ -40,7 +43,7 @@ describe("POST /api/csp-report", () => {
     );
 
     expect(response.status).toBe(204);
-    expect(consoleWarnSpy).toHaveBeenCalledWith("[csp-report] received report", {
+    expect(consoleErrorSpy).toHaveBeenCalledWith("[csp-report] received report", {
       contentType: "application/csp-report",
       report: {
         type: "csp-violation",
@@ -82,7 +85,7 @@ describe("POST /api/csp-report", () => {
     );
 
     expect(response.status).toBe(204);
-    expect(consoleWarnSpy).toHaveBeenCalledWith("[csp-report] received report", {
+    expect(consoleErrorSpy).toHaveBeenCalledWith("[csp-report] received report", {
       contentType: "application/reports+json",
       report: {
         type: "csp-violation",
@@ -114,7 +117,7 @@ describe("POST /api/csp-report", () => {
     );
 
     expect(response.status).toBe(204);
-    expect(consoleWarnSpy).toHaveBeenCalledWith("[csp-report] received report", {
+    expect(consoleErrorSpy).toHaveBeenCalledWith("[csp-report] received report", {
       contentType: "application/json",
       report: {
         type: "csp-violation",
@@ -133,9 +136,32 @@ describe("POST /api/csp-report", () => {
     const response = await POST(makeRequest("application/csp-report", "{not-json"));
 
     expect(response.status).toBe(204);
+    expect(consoleWarnSpy).toHaveBeenCalledWith("[csp-report] failed to parse request body", {
+      error: expect.any(String),
+    });
     expect(consoleWarnSpy).toHaveBeenCalledWith("[csp-report] invalid report payload", {
       contentType: "application/csp-report",
       reason: "invalid_json",
+    });
+  });
+
+  it("returns 204 and logs a warning for an empty body", async () => {
+    const response = await POST(makeRequest("application/csp-report", ""));
+
+    expect(response.status).toBe(204);
+    expect(consoleWarnSpy).toHaveBeenCalledWith("[csp-report] invalid report payload", {
+      contentType: "application/csp-report",
+      reason: "empty_body",
+    });
+  });
+
+  it("returns 204 and logs a warning for a whitespace-only body", async () => {
+    const response = await POST(makeRequest("application/csp-report", "   "));
+
+    expect(response.status).toBe(204);
+    expect(consoleWarnSpy).toHaveBeenCalledWith("[csp-report] invalid report payload", {
+      contentType: "application/csp-report",
+      reason: "empty_body",
     });
   });
 });

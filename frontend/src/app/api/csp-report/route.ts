@@ -105,7 +105,7 @@ function normalizeSingleReport(
 }
 
 function logReport(envelope: ReportEnvelope) {
-  console.warn("[csp-report] received report", envelope);
+  console.error("[csp-report] received report", envelope);
 }
 
 function logInvalid(contentType: string, reason: string) {
@@ -116,14 +116,26 @@ function logInvalid(contentType: string, reason: string) {
 }
 
 async function readBody(request: Request) {
-  const raw = await request.text();
+  let raw: string;
+  try {
+    raw = await request.text();
+  } catch (err) {
+    console.warn("[csp-report] failed to read request body", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false as const, reason: "read_error" };
+  }
+
   if (!raw.trim()) {
     return { ok: false as const, reason: "empty_body" };
   }
 
   try {
     return { ok: true as const, value: JSON.parse(raw) as unknown };
-  } catch {
+  } catch (err) {
+    console.warn("[csp-report] failed to parse request body", {
+      error: err instanceof Error ? err.message : String(err),
+    });
     return { ok: false as const, reason: "invalid_json" };
   }
 }
