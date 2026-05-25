@@ -134,4 +134,3 @@ export function buildHtmlReportOnlyCsp({
     "report-to": [reportTo],
   });
 }
-
