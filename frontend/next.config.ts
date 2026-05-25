@@ -21,6 +21,21 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // Serve sw.js with no-store so the browser re-fetches it on every page load
+  // and can byte-compare the response to detect Service Worker updates immediately,
+  // rather than waiting for the default 24-hour HTTP cache TTL.
+  async headers() {
+    return [
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
