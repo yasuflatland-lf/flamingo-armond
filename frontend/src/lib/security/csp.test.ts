@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildHtmlReportOnlyCsp, buildOfflineCsp, serializeCsp } from "./csp";
+import { buildHtmlReportOnlyCsp, serializeCsp } from "./csp";
 
 describe("serializeCsp", () => {
   it("serializes directives in a stable order and removes duplicate or empty sources", () => {
@@ -64,28 +64,25 @@ describe("buildHtmlReportOnlyCsp", () => {
     expect(policy).toContain("report-uri /api/csp-report");
     expect(policy).toContain("report-to csp-endpoint");
   });
-});
 
-describe("buildOfflineCsp", () => {
-  it("returns a script-free static page policy shape for offline.html", () => {
-    const policy = buildOfflineCsp({
-      reportTo: "csp-endpoint",
-      reportUri: "/api/csp-report",
+  it("throws when nonce is empty", () => {
+    expect(() =>
+      buildHtmlReportOnlyCsp({ nonce: "", supabaseUrl: "https://project-ref.supabase.co" }),
+    ).toThrow("nonce is required");
+  });
+
+  it("throws when nonce is whitespace-only", () => {
+    expect(() =>
+      buildHtmlReportOnlyCsp({ nonce: "   ", supabaseUrl: "https://project-ref.supabase.co" }),
+    ).toThrow("nonce is required");
+  });
+
+  it("converts http:// supabaseUrl to ws:// in connect-src", () => {
+    const policy = buildHtmlReportOnlyCsp({
+      nonce: "abc123",
+      supabaseUrl: "http://127.0.0.1:54321",
     });
 
-    expect(policy).toBe(
-      [
-        "default-src 'self'",
-        "base-uri 'self'",
-        "object-src 'none'",
-        "frame-ancestors 'none'",
-        "form-action 'self'",
-        "img-src 'self' data:",
-        "style-src 'self' 'unsafe-inline'",
-        "script-src 'none'",
-        "report-uri /api/csp-report",
-        "report-to csp-endpoint",
-      ].join("; "),
-    );
+    expect(policy).toContain("http://127.0.0.1:54321 ws://127.0.0.1:54321");
   });
 });

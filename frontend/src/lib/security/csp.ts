@@ -10,11 +10,6 @@ type HtmlReportOnlyCspOptions = {
   speedInsightsOrigin?: string;
 };
 
-type OfflineCspOptions = {
-  reportUri?: string;
-  reportTo?: string;
-};
-
 const DEFAULT_REPORT_URI = "/api/csp-report";
 const DEFAULT_REPORT_TO = "csp-endpoint";
 const DEFAULT_SPEED_INSIGHTS_ORIGIN = "https://vitals.vercel-insights.com";
@@ -89,18 +84,25 @@ export function serializeCsp(directives: CspDirectiveMap): string {
   return serialized.join("; ");
 }
 
+function parseSupabaseUrl(url: string): URL {
+  try {
+    return new URL(url);
+  } catch {
+    throw new Error(`[csp] invalid supabaseUrl — not a valid URL: ${JSON.stringify(url)}`);
+  }
+}
+
 function toOrigin(url: string): string {
-  return new URL(url).origin;
+  return parseSupabaseUrl(url).origin;
 }
 
 function toWebSocketOrigin(url: string): string {
-  const parsed = new URL(url);
+  const parsed = parseSupabaseUrl(url);
   if (parsed.protocol === "https:") {
     parsed.protocol = "wss:";
   } else if (parsed.protocol === "http:") {
     parsed.protocol = "ws:";
   }
-
   return parsed.origin;
 }
 
@@ -133,20 +135,3 @@ export function buildHtmlReportOnlyCsp({
   });
 }
 
-export function buildOfflineCsp({
-  reportUri = DEFAULT_REPORT_URI,
-  reportTo = DEFAULT_REPORT_TO,
-}: OfflineCspOptions = {}): string {
-  return serializeCsp({
-    "default-src": ["'self'"],
-    "base-uri": ["'self'"],
-    "object-src": ["'none'"],
-    "frame-ancestors": ["'none'"],
-    "form-action": ["'self'"],
-    "img-src": ["'self'", "data:"],
-    "style-src": ["'self'", "'unsafe-inline'"],
-    "script-src": ["'none'"],
-    "report-uri": [reportUri],
-    "report-to": [reportTo],
-  });
-}
