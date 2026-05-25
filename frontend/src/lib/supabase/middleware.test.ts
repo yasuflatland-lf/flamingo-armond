@@ -164,4 +164,34 @@ describe("updateSession", () => {
     // No new cookies were set by the mock SDK, so response cookies should be empty
     expect(response.cookies.get("existing-cookie")).toBeUndefined();
   });
+
+  it("logs console.error when getUser() returns a non-ignorable error", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: null },
+      error: { name: "AuthError", message: "network failure" },
+    });
+
+    await updateSession(makeRequest());
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[supabase/middleware] getUser() failed:",
+      "AuthError",
+      "network failure",
+    );
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("does not log an error when getUser() returns AuthSessionMissingError", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: null },
+      error: { name: "AuthSessionMissingError", message: "missing session" },
+    });
+
+    await updateSession(makeRequest());
+
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
+  });
 });

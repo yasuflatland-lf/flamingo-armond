@@ -24,11 +24,13 @@ function generateNonce() {
   return nonce;
 }
 
-function createMiddlewareResponse(requestHeaders: Headers, reportOnlyPolicy: string) {
+function createMiddlewareResponse(requestHeaders: Headers, reportOnlyPolicy: string | null) {
   const response = NextResponse.next({
     request: { headers: requestHeaders },
   });
-  response.headers.set("Content-Security-Policy-Report-Only", reportOnlyPolicy);
+  if (reportOnlyPolicy != null) {
+    response.headers.set("Content-Security-Policy-Report-Only", reportOnlyPolicy);
+  }
   return response;
 }
 
@@ -38,13 +40,28 @@ export async function updateSession(request: NextRequest) {
   // navigation rail on /login.
   const requestHeaders = new Headers(request.headers);
   const nonce = generateNonce();
-  const reportOnlyPolicy = buildHtmlReportOnlyCsp({
-    nonce,
-    supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL,
-  });
 
-  requestHeaders.set("Content-Security-Policy", reportOnlyPolicy);
-  requestHeaders.set("x-nonce", nonce);
+  let reportOnlyPolicy: string | null = null;
+  try {
+    reportOnlyPolicy = buildHtmlReportOnlyCsp({
+      nonce,
+      supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL,
+    });
+  } catch (err) {
+    console.error(
+      "[supabase/middleware] buildHtmlReportOnlyCsp failed, CSP header will be omitted:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+
+  if (reportOnlyPolicy != null) {
+    // Named "Content-Security-Policy" so Next's SSR pipeline can extract the
+    // nonce for <script nonce="..."> injection — this is an internal forwarding
+    // header, not an enforcement policy. The browser-visible header is set on
+    // the response as Content-Security-Policy-Report-Only below.
+    requestHeaders.set("Content-Security-Policy", reportOnlyPolicy);
+    requestHeaders.set("x-nonce", nonce);
+  }
   requestHeaders.set("x-pathname", request.nextUrl.pathname);
 
   let supabaseResponse = createMiddlewareResponse(requestHeaders, reportOnlyPolicy);
