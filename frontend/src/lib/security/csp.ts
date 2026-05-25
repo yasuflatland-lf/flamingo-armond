@@ -2,7 +2,7 @@ type CspSource = string | null | undefined | false;
 
 type CspDirectiveMap = Partial<Record<string, readonly CspSource[]>>;
 
-type HtmlReportOnlyCspOptions = {
+type HtmlCspOptions = {
   nonce: string;
   supabaseUrl: string;
   reportUri?: string;
@@ -106,13 +106,13 @@ function toWebSocketOrigin(url: string): string {
   return parsed.origin;
 }
 
-export function buildHtmlReportOnlyCsp({
+export function buildHtmlCsp({
   nonce,
   supabaseUrl,
   reportUri = DEFAULT_REPORT_URI,
   reportTo = DEFAULT_REPORT_TO,
   speedInsightsOrigin = DEFAULT_SPEED_INSIGHTS_ORIGIN,
-}: HtmlReportOnlyCspOptions): string {
+}: HtmlCspOptions): string {
   if (nonce.trim().length === 0) {
     throw new Error("nonce is required");
   }

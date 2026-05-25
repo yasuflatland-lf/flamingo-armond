@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildHtmlReportOnlyCsp, serializeCsp } from "./csp";
+import { buildHtmlCsp, serializeCsp } from "./csp";
 
 describe("serializeCsp", () => {
   it("serializes directives in a stable order and removes duplicate or empty sources", () => {
@@ -16,9 +16,9 @@ describe("serializeCsp", () => {
   });
 });
 
-describe("buildHtmlReportOnlyCsp", () => {
+describe("buildHtmlCsp", () => {
   it("injects the nonce and includes the HTML policy directives the app needs", () => {
-    const policy = buildHtmlReportOnlyCsp({
+    const policy = buildHtmlCsp({
       nonce: "abc123",
       supabaseUrl: "https://project-ref.supabase.co",
     });
@@ -41,7 +41,7 @@ describe("buildHtmlReportOnlyCsp", () => {
   });
 
   it("keeps the same-origin /api/graphql path covered by connect-src 'self' and derives the Supabase realtime origin", () => {
-    const policy = buildHtmlReportOnlyCsp({
+    const policy = buildHtmlCsp({
       nonce: "nonce-value",
       supabaseUrl: "https://foo.supabase.co",
       reportTo: "csp-endpoint",
@@ -54,7 +54,7 @@ describe("buildHtmlReportOnlyCsp", () => {
   });
 
   it("includes reporting directives for the reporting-endpoints rollout", () => {
-    const policy = buildHtmlReportOnlyCsp({
+    const policy = buildHtmlCsp({
       nonce: "nonce-value",
       supabaseUrl: "https://foo.supabase.co",
       reportTo: "csp-endpoint",
@@ -67,18 +67,18 @@ describe("buildHtmlReportOnlyCsp", () => {
 
   it("throws when nonce is empty", () => {
     expect(() =>
-      buildHtmlReportOnlyCsp({ nonce: "", supabaseUrl: "https://project-ref.supabase.co" }),
+      buildHtmlCsp({ nonce: "", supabaseUrl: "https://project-ref.supabase.co" }),
     ).toThrow("nonce is required");
   });
 
   it("throws when nonce is whitespace-only", () => {
     expect(() =>
-      buildHtmlReportOnlyCsp({ nonce: "   ", supabaseUrl: "https://project-ref.supabase.co" }),
+      buildHtmlCsp({ nonce: "   ", supabaseUrl: "https://project-ref.supabase.co" }),
     ).toThrow("nonce is required");
   });
 
   it("converts http:// supabaseUrl to ws:// in connect-src", () => {
-    const policy = buildHtmlReportOnlyCsp({
+    const policy = buildHtmlCsp({
       nonce: "abc123",
       supabaseUrl: "http://127.0.0.1:54321",
     });

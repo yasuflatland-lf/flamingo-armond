@@ -68,18 +68,17 @@ describe("updateSession", () => {
     expect(response.cookies.get("sb-auth-token")?.value).toBe("refreshed");
   });
 
-  it("adds a report-only CSP response header while forwarding a nonce-bearing CSP for Next rendering", async () => {
+  it("adds an enforcing CSP response header while forwarding a nonce-bearing CSP for Next rendering", async () => {
     const response = await updateSession(makeRequest("http://localhost/dashboard"));
 
-    const reportOnlyPolicy = response.headers.get("Content-Security-Policy-Report-Only");
-    expect(reportOnlyPolicy).toContain("script-src 'self' 'nonce-");
-    expect(response.headers.get("Content-Security-Policy")).toBeNull();
+    const cspPolicy = response.headers.get("Content-Security-Policy");
+    expect(cspPolicy).toContain("script-src 'self' 'nonce-");
 
-    const nonce = nonceFromPolicy(reportOnlyPolicy ?? "");
+    const nonce = nonceFromPolicy(cspPolicy ?? "");
     expect(nonce).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(nonce).not.toMatch(/[<>&]/);
 
-    expect(forwardedRequestHeader(response, "content-security-policy")).toBe(reportOnlyPolicy);
+    expect(forwardedRequestHeader(response, "content-security-policy")).toBe(cspPolicy);
     expect(forwardedRequestHeader(response, "x-nonce")).toBe(nonce);
     expect(forwardedRequestHeaderNames(response)).toEqual(
       expect.arrayContaining(["content-security-policy", "x-nonce"]),
@@ -111,10 +110,10 @@ describe("updateSession", () => {
     const secondResponse = await updateSession(makeRequest("http://localhost/dashboard"));
 
     const firstNonce = nonceFromPolicy(
-      firstResponse.headers.get("Content-Security-Policy-Report-Only") ?? "",
+      firstResponse.headers.get("Content-Security-Policy") ?? "",
     );
     const secondNonce = nonceFromPolicy(
-      secondResponse.headers.get("Content-Security-Policy-Report-Only") ?? "",
+      secondResponse.headers.get("Content-Security-Policy") ?? "",
     );
 
     expect(firstNonce).not.toBe(secondNonce);
@@ -135,11 +134,11 @@ describe("updateSession", () => {
       makeRequest("http://localhost/dashboard", { "sb-auth-token": "old" }),
     );
 
-    const reportOnlyPolicy = response.headers.get("Content-Security-Policy-Report-Only");
-    const nonce = nonceFromPolicy(reportOnlyPolicy ?? "");
+    const cspPolicy = response.headers.get("Content-Security-Policy");
+    const nonce = nonceFromPolicy(cspPolicy ?? "");
 
     expect(response.cookies.get("sb-auth-token")?.value).toBe("refreshed");
-    expect(forwardedRequestHeader(response, "content-security-policy")).toBe(reportOnlyPolicy);
+    expect(forwardedRequestHeader(response, "content-security-policy")).toBe(cspPolicy);
     expect(forwardedRequestHeader(response, "x-nonce")).toBe(nonce);
     expect(mockGetUser).toHaveBeenCalledTimes(1);
   });
