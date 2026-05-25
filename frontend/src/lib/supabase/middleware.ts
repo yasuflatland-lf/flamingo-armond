@@ -5,23 +5,11 @@ import { buildHtmlReportOnlyCsp } from "@/lib/security/csp";
 import { isIgnorableAuthError } from "@/lib/supabase/auth-errors";
 
 const NONCE_BYTES = 18;
-const BASE64URL_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
-function generateNonce() {
+function generateNonce(): string {
   const bytes = new Uint8Array(NONCE_BYTES);
   crypto.getRandomValues(bytes);
-
-  let nonce = "";
-  for (let index = 0; index < bytes.length; index += 3) {
-    const chunk =
-      ((bytes[index] ?? 0) << 16) | ((bytes[index + 1] ?? 0) << 8) | (bytes[index + 2] ?? 0);
-    nonce += BASE64URL_CHARS.charAt((chunk >> 18) & 63);
-    nonce += BASE64URL_CHARS.charAt((chunk >> 12) & 63);
-    nonce += BASE64URL_CHARS.charAt((chunk >> 6) & 63);
-    nonce += BASE64URL_CHARS.charAt(chunk & 63);
-  }
-
-  return nonce;
+  return Buffer.from(bytes).toString("base64url");
 }
 
 function createMiddlewareResponse(requestHeaders: Headers, reportOnlyPolicy: string | null) {
