@@ -4,14 +4,14 @@
 
 ## Scope
 
-The frontend ships a **report-only** CSP for HTML responses, a **static offline-page CSP**, and a small reporting endpoint that accepts browser violation payloads and logs them server-side. The policy builders live in [`frontend/src/lib/security/csp.ts`](../../frontend/src/lib/security/csp.ts), the middleware hook is in [`frontend/src/lib/supabase/middleware.ts`](../../frontend/src/lib/supabase/middleware.ts), the static header split is defined in [`frontend/next.config.ts`](../../frontend/next.config.ts), and the report sink is [`frontend/src/app/api/csp-report/route.ts`](../../frontend/src/app/api/csp-report/route.ts).
+The frontend ships an **enforcing** CSP for HTML responses, a **static offline-page CSP**, and a small reporting endpoint that accepts browser violation payloads and logs them server-side. The policy builders live in [`frontend/src/lib/security/csp.ts`](../../frontend/src/lib/security/csp.ts), the middleware hook is in [`frontend/src/lib/supabase/middleware.ts`](../../frontend/src/lib/supabase/middleware.ts), the static header split is defined in [`frontend/next.config.ts`](../../frontend/next.config.ts), and the report sink is [`frontend/src/app/api/csp-report/route.ts`](../../frontend/src/app/api/csp-report/route.ts).
 
 ## Policy builders
 
 [`frontend/src/lib/security/csp.ts`](../../frontend/src/lib/security/csp.ts) exports two public pieces:
 
 1. `serializeCsp(directives)` takes a directive map and turns it into a stable header string. It drops `null` / `undefined` / `false`, trims sources, removes duplicates, and emits directives in the configured order with any unknown directives sorted alphabetically after the known ones.
-2. `buildHtmlReportOnlyCsp({ nonce, supabaseUrl, reportUri?, reportTo?, speedInsightsOrigin? })` builds the policy used for HTML routes. It requires a non-empty nonce, derives the Supabase HTTPS origin plus the matching realtime WebSocket origin from `supabaseUrl`, and includes the default reporting endpoints.
+2. `buildHtmlCsp({ nonce, supabaseUrl, reportUri?, reportTo?, speedInsightsOrigin? })` builds the policy used for HTML routes. It requires a non-empty nonce, derives the Supabase HTTPS origin plus the matching realtime WebSocket origin from `supabaseUrl`, and includes the default reporting endpoints.
 
 The HTML policy currently allows:
 
@@ -40,16 +40,16 @@ The shipped `/offline.html` CSP in [`frontend/next.config.ts`](../../frontend/ne
 
 ## Middleware flow
 
-[`frontend/src/lib/supabase/middleware.ts`](../../frontend/src/lib/supabase/middleware.ts) generates a fresh nonce per request, builds the HTML report-only policy, and does two different things with it:
+[`frontend/src/lib/supabase/middleware.ts`](../../frontend/src/lib/supabase/middleware.ts) generates a fresh nonce per request, builds the HTML policy, and does two different things with it:
 
 1. It forwards the policy into the request headers as `Content-Security-Policy` and exposes the nonce as `x-nonce`. That forwarded header is for Next's server-side rendering path, where the nonce is extracted for script tags before the browser ever sees the response.
-2. It sets the browser-visible response header to `Content-Security-Policy-Report-Only`, so the policy is observed and reported without blocking production traffic.
+2. It sets the browser-visible response header to `Content-Security-Policy`, so the policy is enforced and violations are reported to the configured endpoint.
 
 The middleware also forwards `x-pathname` for server components and preserves the same forwarded CSP / nonce headers when the Supabase client refreshes cookies.
 
-If `buildHtmlReportOnlyCsp` throws (e.g., malformed `NEXT_PUBLIC_SUPABASE_URL`), the middleware logs via `console.error` and omits both CSP headers rather than crashing all requests. Auth, cookie rotation, and routing continue to work; only the report-only observation is absent.
+If `buildHtmlCsp` throws (e.g., malformed `NEXT_PUBLIC_SUPABASE_URL`), the middleware logs via `console.error` and omits both CSP headers rather than crashing all requests. Auth, cookie rotation, and routing continue to work; only the CSP observation and enforcement is absent.
 
-This is intentionally **report-only** today. There is no production CSP enforcement header on HTML responses yet.
+The policy is now **enforcing** on HTML responses. Violations are blocked and reported to the configured endpoint.
 
 ## Static headers
 
@@ -85,7 +85,7 @@ Malformed JSON, empty bodies, and unexpected shapes are still answered with `204
 
 These are the decisions currently shipped in code:
 
-- CSP is report-only for HTML routes.
+- CSP is enforcing for HTML routes.
 - `style-src 'unsafe-inline'` is retained.
 - Supabase uses both its HTTPS origin and its WSS realtime origin in `connect-src`.
 - Vercel Speed Insights is allowed in `connect-src`.
@@ -106,7 +106,7 @@ rtk pnpm --filter frontend test src/lib/security/csp.test.ts src/lib/supabase/mi
 Manual checks to run in a local environment that can actually reach the dev server:
 
 1. Start `pnpm --filter frontend dev`.
-2. Open a page that renders HTML and confirm the response carries `Content-Security-Policy-Report-Only` plus the forwarded `Content-Security-Policy` and `x-nonce` middleware headers.
+2. Open a page that renders HTML and confirm the response carries `Content-Security-Policy` plus the forwarded `Content-Security-Policy` and `x-nonce` middleware headers.
 3. Confirm `/offline.html` serves the static CSP and `/sw.js` serves the no-cache worker headers.
 4. Trigger a CSP violation and confirm the browser POSTs to `/api/csp-report` and the server logs a normalized report.
 
