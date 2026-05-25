@@ -1,8 +1,10 @@
 import { SpeedInsights } from "@vercel/speed-insights/next";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/nav/app-shell";
+import { AppleInstallHint } from "@/components/pwa/apple-install-hint";
+import { SwRegister } from "@/components/pwa/sw-register";
 import { Toaster } from "@/components/ui/sonner";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { Providers } from "./providers";
@@ -11,6 +13,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "flamingo-armond",
   description: "Swiping flashcard app.",
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "flamingo" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#FF6F79",
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
@@ -26,6 +33,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <body suppressHydrationWarning>
           <Providers>{children}</Providers>
           <SpeedInsights />
+          <SwRegister />
         </body>
       </html>
     );
@@ -107,6 +115,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           </AppShell>
         </Providers>
         <SpeedInsights />
+        <SwRegister />
+        <AppleInstallHint />
       </body>
     </html>
   );

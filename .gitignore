@@ -90,6 +90,11 @@ backend/server
 # invocation; see docs/dev-setup.md §"Policy on generated files".
 /frontend/next-env.d.ts
 
+# Generated Service Worker. Produced by `frontend/scripts/stamp-sw-version.mjs`
+# from `sw-template.js`; regenerated on every dev/build with a deterministic
+# version hash. Edit the template, never this output.
+/frontend/public/sw.js
+
 # Supabase CLI local state
 supabase/.branches/
 supabase/.temp/

@@ -1,5 +1,10 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
+  // `sw-template.js` is the Service Worker source. It is never imported — the
+  // pre-build script `scripts/stamp-sw-version.mjs` reads it via `readFileSync`
+  // and writes the stamped `public/sw.js`. knip only traces the module-import
+  // graph, so it falsely reports the template as an unused file.
+  "ignore": ["sw-template.js"],
   // `@graphql-typed-document-node/core` is consumed only via `import type { ... }`
   // inside graphql-codegen output under `src/generated/`. knip does not trace
   // type-only imports through generated files, so it falsely reports the package

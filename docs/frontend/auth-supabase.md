@@ -20,7 +20,7 @@ Backend JWT verification is enabled. Without a Supabase session, only unauthenti
 
 ### Middleware cookie rotation
 
-`src/middleware.ts` calls `updateSession(request)` from `lib/supabase/middleware.ts`. The implementation MUST call `supabase.auth.getUser()` once — without it Supabase does not refresh expiring tokens and the session silently drops. The `matcher` excludes `_next/static`, `_next/image`, `favicon.ico`, and common image extensions.
+`src/middleware.ts` calls `updateSession(request)` from `lib/supabase/middleware.ts`. The implementation MUST call `supabase.auth.getUser()` once — without it Supabase does not refresh expiring tokens and the session silently drops. The `matcher` excludes `_next/static`, `_next/image`, `favicon.ico`, common image extensions, and the static PWA endpoints `sw.js`, `offline.html`, and `manifest.webmanifest`. The PWA exclusions exist because those endpoints carry no session to rotate, so running `getUser()` / cookie-rotation on them is wasted work — `sw.js` especially, since it is re-fetched on every page load due to its `no-cache` header. See [`pwa.md`](pwa.md) for the full PWA context.
 
 The `matcher` must also explicitly exclude `/api/:path*` and `/auth/callback`. Without the `/api` exclusion, every Apollo browser POST to `/api/graphql` triggers a full Supabase token-refresh round-trip in middleware, adding latency per GraphQL call. Without the `/auth/callback` exclusion, middleware cookie writes race against the route handler's own `exchangeCodeForSession` and can corrupt the new session.
 
