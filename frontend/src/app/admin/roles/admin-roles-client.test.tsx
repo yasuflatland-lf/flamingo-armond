@@ -2,8 +2,9 @@
 
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -132,9 +133,44 @@ describe("AdminRolesClient", () => {
 
     renderRoles([]);
 
-    await user.click(screen.getByRole("button", { name: /new role/i }));
+    // With an empty list two "New role" buttons are rendered (header + empty-state CTA).
+    // Use the testid to target the header button specifically.
+    await user.click(screen.getByTestId("admin-roles-new-btn"));
 
     expect(mockPush).toHaveBeenCalledWith("/admin/roles?new=true", { scroll: false });
+  });
+
+  it("header 'New role' button is desktop-only (hidden md:inline-flex)", () => {
+    renderRoles([CUSTOM_ROLE]);
+
+    const btn = screen.getByTestId("admin-roles-new-btn");
+    expect(btn.className).toContain("hidden");
+    expect(btn.className).toContain("md:inline-flex");
+  });
+
+  describe("empty state", () => {
+    it("renders the empty-state block when roles list is empty", () => {
+      renderRoles([]);
+
+      expect(screen.getByTestId("admin-roles-empty")).toBeInTheDocument();
+      expect(screen.getByTestId("admin-roles-empty-cta")).toBeInTheDocument();
+      expect(screen.getByText("No roles yet")).toBeInTheDocument();
+    });
+
+    it("does NOT render the empty-state block when roles exist", () => {
+      renderRoles([CUSTOM_ROLE]);
+
+      expect(screen.queryByTestId("admin-roles-empty")).toBeNull();
+    });
+
+    it("empty-state CTA opens ?new=true", async () => {
+      const user = userEvent.setup();
+      renderRoles([]);
+
+      await user.click(screen.getByTestId("admin-roles-empty-cta"));
+
+      expect(mockPush).toHaveBeenCalledWith("/admin/roles?new=true", { scroll: false });
+    });
   });
 
   it("editable rows open ?edit=<id>", async () => {
@@ -645,6 +681,109 @@ describe("AdminRolesClient — edit role sheet", () => {
         expect.stringContaining("unexpected updateRole payload"),
         expect.objectContaining({ typename: null }),
       );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AdminRolesClient — delete failure (onCommitFailed path)
+// ---------------------------------------------------------------------------
+
+describe("AdminRolesClient — delete failure", () => {
+  it("shows error banner and restores row when commit fails with FORBIDDEN", async () => {
+    const user = userEvent.setup();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const mocks = [
+        {
+          request: { query: AdminDeleteRoleDocument, variables: { id: CUSTOM_ROLE.id } },
+          result: {
+            errors: [
+              new GraphQLError("Forbidden", {
+                extensions: { code: "FORBIDDEN" },
+              }),
+            ],
+          },
+        },
+      ];
+
+      // Start from a non-empty list so the list view renders initially.
+      renderRoles([CUSTOM_ROLE], mocks);
+
+      // Trigger optimistic delete — row disappears immediately.
+      await user.click(screen.getByTestId(`admin-role-delete-btn-${CUSTOM_ROLE.id}`));
+
+      await waitFor(() => {
+        expect(screen.queryByTestId(`admin-role-row-${CUSTOM_ROLE.id}`)).toBeNull();
+      });
+
+      // Advance past the 5-second undo window so commitDelete fires and fails.
+      act(() => vi.advanceTimersByTime(5100));
+      vi.useRealTimers();
+
+      // optimisticRollback restores the row.
+      await waitFor(() => {
+        expect(screen.getByTestId(`admin-role-row-${CUSTOM_ROLE.id}`)).toBeInTheDocument();
+      });
+
+      // Error banner is visible inside the list.
+      expect(screen.getByTestId("admin-roles-error")).toBeInTheDocument();
+
+      // The list container is shown (not the empty-state) because deleteError is set.
+      expect(screen.getByTestId("admin-roles-list")).toBeInTheDocument();
+      expect(screen.queryByTestId("admin-roles-empty")).toBeNull();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("shows error banner (not empty-state) when the last role is deleted and commit fails", async () => {
+    const user = userEvent.setup();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const mocks = [
+        {
+          request: { query: AdminDeleteRoleDocument, variables: { id: CUSTOM_ROLE.id } },
+          result: {
+            errors: [
+              new GraphQLError("Forbidden", {
+                extensions: { code: "FORBIDDEN" },
+              }),
+            ],
+          },
+        },
+      ];
+
+      // Single custom (deletable) role — deleting it empties `roles` optimistically.
+      renderRoles([CUSTOM_ROLE], mocks);
+
+      await user.click(screen.getByTestId(`admin-role-delete-btn-${CUSTOM_ROLE.id}`));
+
+      // Optimistic removal empties the list; empty-state appears briefly
+      // (roles.length === 0 && !deleteError is true at this point).
+      await waitFor(() => {
+        expect(screen.queryByTestId(`admin-role-row-${CUSTOM_ROLE.id}`)).toBeNull();
+      });
+
+      // Advance past the undo window — commit fires, fails, rollback restores the role,
+      // and deleteError is set.
+      act(() => vi.advanceTimersByTime(5100));
+      vi.useRealTimers();
+
+      // After rollback: the deleted role is restored (roles.length === 1), so the
+      // list is non-empty and the empty-state condition is false regardless of
+      // deleteError. The error banner renders inside the (non-empty) list.
+      await waitFor(() => {
+        expect(screen.getByTestId(`admin-role-row-${CUSTOM_ROLE.id}`)).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId("admin-roles-empty")).toBeNull();
+      expect(screen.getByTestId("admin-roles-error")).toBeInTheDocument();
     } finally {
       warnSpy.mockRestore();
     }

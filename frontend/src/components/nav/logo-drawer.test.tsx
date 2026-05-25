@@ -7,10 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // non-/login pathname (the link self-suppresses on /login).
 const mockUsePathname = vi.fn();
 // Stable router.push spy so the '+' button's fallback navigation is assertable.
+// useSheetSearchParam (called unconditionally for the role-create branch) reads
+// useSearchParams and writes via router.push; the role test asserts on the URL.
 const mockPush = vi.fn();
+const mockSearchParams = new URLSearchParams("");
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush, replace: vi.fn() }),
   usePathname: () => mockUsePathname(),
+  useSearchParams: () => mockSearchParams,
 }));
 
 // Mock LogoutButton — it reaches into Supabase/router which are not needed here.
@@ -171,14 +175,107 @@ describe("<LogoDrawer>", () => {
     expect(screen.getByTestId("logout-button")).toBeInTheDocument();
   });
 
-  it("S-L1: on /learn/:id the '+' is a button that dispatches a cancelable add-card event and falls back to /cards/new when unhandled", async () => {
+  it("S-C1: on /cardgroups the '+' (Add new cardgroup) dispatches a cancelable add-cardgroup event and falls back to /cardgroups/new when unhandled", async () => {
+    const user = userEvent.setup();
+    mockUsePathname.mockReturnValue("/cardgroups");
+    const listener = vi.fn();
+    window.addEventListener("flamingo:add-cardgroup", listener);
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+    await user.click(screen.getByRole("button", { name: /add new cardgroup/i }));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    const event = listener.mock.calls[0]?.[0] as CustomEvent;
+    expect(event.cancelable).toBe(true);
+    expect(event.detail).toBeNull();
+    expect(mockPush).toHaveBeenCalledWith("/cardgroups/new");
+
+    window.removeEventListener("flamingo:add-cardgroup", listener);
+  });
+
+  it("S-C1b: on /cardgroups the '+' does not navigate when the add-cardgroup event is handled", async () => {
+    const user = userEvent.setup();
+    mockUsePathname.mockReturnValue("/cardgroups");
+    const listener = vi.fn((event: Event) => event.preventDefault());
+    window.addEventListener("flamingo:add-cardgroup", listener);
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+    await user.click(screen.getByRole("button", { name: /add new cardgroup/i }));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(mockPush).not.toHaveBeenCalled();
+
+    window.removeEventListener("flamingo:add-cardgroup", listener);
+  });
+
+  it("S-E1: on /cardgroups/:id/edit the '+' (Add new card) dispatches add-card with the decoded id and falls back to an encoded /cards/new href", async () => {
+    const user = userEvent.setup();
+    mockUsePathname.mockReturnValue("/cardgroups/abc-123/edit");
+    const listener = vi.fn();
+    window.addEventListener("flamingo:add-card", listener);
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+    await user.click(screen.getByRole("button", { name: /add new card/i }));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    const event = listener.mock.calls[0]?.[0] as CustomEvent<{ cardgroupId: string }>;
+    expect(event.cancelable).toBe(true);
+    expect(event.detail).toEqual({ cardgroupId: "abc-123" });
+    expect(mockPush).toHaveBeenCalledWith("/cards/new?cardgroup=abc-123");
+
+    window.removeEventListener("flamingo:add-card", listener);
+  });
+
+  it("S-E1b: on /cardgroups/:id/edit the '+' does not navigate when the add-card event is handled", async () => {
+    const user = userEvent.setup();
+    mockUsePathname.mockReturnValue("/cardgroups/abc-123/edit");
+    const listener = vi.fn((event: Event) => event.preventDefault());
+    window.addEventListener("flamingo:add-card", listener);
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+    await user.click(screen.getByRole("button", { name: /add new card/i }));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(mockPush).not.toHaveBeenCalled();
+
+    window.removeEventListener("flamingo:add-card", listener);
+  });
+
+  it("edit-route special-char encoding: percent-encoded id is decoded for the event and re-encoded in the fallback href", async () => {
+    const user = userEvent.setup();
+    // %26 decodes to & — the raw cardgroupId must be "abc&evil" and href must re-encode it.
+    mockUsePathname.mockReturnValue("/cardgroups/abc%26evil/edit");
+    const listener = vi.fn();
+    window.addEventListener("flamingo:add-card", listener);
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+    await user.click(screen.getByRole("button", { name: /add new card/i }));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    const event = listener.mock.calls[0]?.[0] as CustomEvent<{ cardgroupId: string }>;
+    // cardgroupId carries the raw (decoded) value.
+    expect(event.detail).toEqual({ cardgroupId: "abc&evil" });
+    // Fallback href must re-encode the id so the URL is safe.
+    expect(mockPush).toHaveBeenCalledWith("/cards/new?cardgroup=abc%26evil");
+
+    window.removeEventListener("flamingo:add-card", listener);
+  });
+
+  it("malformed edit path: '+' button is not rendered when the segment is a malformed percent-escape", () => {
+    // safeDecodePathSegment returns null for %ZZ -> resolver returns null -> no '+' rendered.
+    mockUsePathname.mockReturnValue("/cardgroups/abc%ZZ/edit");
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    expect(screen.queryByRole("button", { name: /add new/i })).toBeNull();
+  });
+
+  it("S-L1: on /learn/:id the '+' (Add new card) dispatches a cancelable add-card event and falls back to /cards/new with a return param when unhandled", async () => {
     const user = userEvent.setup();
     mockUsePathname.mockReturnValue("/learn/abc-123");
     const listener = vi.fn();
     window.addEventListener("flamingo:add-card", listener);
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
-    await user.click(screen.getByRole("button", { name: /add a new card to this cardgroup/i }));
+    await user.click(screen.getByRole("button", { name: /add new card/i }));
 
     expect(listener).toHaveBeenCalledTimes(1);
     const event = listener.mock.calls[0]?.[0] as CustomEvent<{ cardgroupId: string }>;
@@ -196,7 +293,7 @@ describe("<LogoDrawer>", () => {
     window.addEventListener("flamingo:add-card", listener);
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
-    await user.click(screen.getByRole("button", { name: /add a new card to this cardgroup/i }));
+    await user.click(screen.getByRole("button", { name: /add new card/i }));
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(mockPush).not.toHaveBeenCalled();
@@ -204,18 +301,36 @@ describe("<LogoDrawer>", () => {
     window.removeEventListener("flamingo:add-card", listener);
   });
 
-  it("S-L2: on a non-learn route the '+' button is not rendered", () => {
-    mockUsePathname.mockReturnValue("/cardgroups");
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
-    expect(screen.queryByRole("button", { name: /add a new card to this cardgroup/i })).toBeNull();
+  it("S-R1: on /admin/roles the '+' (Add new role) opens the create sheet by writing ?new=true to the URL", async () => {
+    const user = userEvent.setup();
+    mockUsePathname.mockReturnValue("/admin/roles");
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={true} />);
+
+    await user.click(screen.getByRole("button", { name: /add new role/i }));
+
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    const target = mockPush.mock.calls[0]?.[0] as string;
+    expect(target).toContain("new=true");
   });
 
-  it("S-L3: on /learn/:id the '+' button receives keyboard focus before the menu trigger", async () => {
+  it("S-G1: on an unknown route (/profile) the '+' button is not rendered", () => {
+    mockUsePathname.mockReturnValue("/profile");
+    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    expect(screen.queryByRole("button", { name: /add new/i })).toBeNull();
+  });
+
+  it("S-G2: anonymous user (user === null) sees no '+' button on any create route", () => {
+    mockUsePathname.mockReturnValue("/cardgroups");
+    render(<LogoDrawer user={null} isAdmin={false} />);
+    expect(screen.queryByRole("button", { name: /add new/i })).toBeNull();
+  });
+
+  it("S-G3: the '+' button receives keyboard focus before the menu trigger (order: logo · + · menu)", async () => {
     const user = userEvent.setup();
-    mockUsePathname.mockReturnValue("/learn/abc-123");
+    mockUsePathname.mockReturnValue("/cardgroups");
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
-    const addButton = screen.getByRole("button", { name: /add a new card to this cardgroup/i });
+    const addButton = screen.getByRole("button", { name: /add new cardgroup/i });
     const menuButton = screen.getByRole("button", { name: "Open menu" });
 
     addButton.focus();
@@ -224,44 +339,10 @@ describe("<LogoDrawer>", () => {
     expect(menuButton).toHaveFocus();
   });
 
-  it("S-L4: cardgroupId with special characters — event carries the raw decoded id, fallback href is single-encoded", async () => {
-    // usePathname returns the percent-encoded pathname as delivered by the browser.
-    // The component decodes the segment for the event detail, then re-encodes once
-    // via encodeURIComponent so the fallback href is correctly single-encoded.
-    const user = userEvent.setup();
-    mockUsePathname.mockReturnValue("/learn/abc%26evil");
-    const listener = vi.fn();
-    window.addEventListener("flamingo:add-card", listener);
+  it("S-G4: the menu trigger renders alongside the '+' on create routes", () => {
+    mockUsePathname.mockReturnValue("/cardgroups");
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
-
-    await user.click(screen.getByRole("button", { name: /add a new card to this cardgroup/i }));
-
-    const event = listener.mock.calls[0]?.[0] as CustomEvent<{ cardgroupId: string }>;
-    expect(event.detail).toEqual({ cardgroupId: "abc&evil" });
-    expect(mockPush).toHaveBeenCalledWith(
-      "/cards/new?cardgroup=abc%26evil&return=/learn/abc%26evil",
-    );
-
-    window.removeEventListener("flamingo:add-card", listener);
-  });
-
-  it("S-L5: anonymous user on /learn/:id does not see the '+' button", () => {
-    mockUsePathname.mockReturnValue("/learn/abc-123");
-    render(<LogoDrawer user={null} isAdmin={false} />);
-    expect(screen.queryByRole("button", { name: /add a new card to this cardgroup/i })).toBeNull();
-  });
-
-  it("S-L6: regex rejects /learn/:id sub-routes — '+' button is absent on /learn/abc-123/edit", () => {
-    mockUsePathname.mockReturnValue("/learn/abc-123/edit");
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
-    expect(screen.queryByRole("button", { name: /add a new card to this cardgroup/i })).toBeNull();
-  });
-
-  it("S-L7: malformed percent-escape in /learn/:id does not crash — '+' button is absent", () => {
-    // safeDecodePathSegment returns null for malformed %XX sequences; the conditional
-    // JSX skips the '+' button rather than throwing URIError and crashing the layout shell.
-    mockUsePathname.mockReturnValue("/learn/abc%XX");
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
-    expect(screen.queryByRole("button", { name: /add a new card to this cardgroup/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /add new cardgroup/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open menu" })).toBeInTheDocument();
   });
 });

@@ -444,6 +444,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
         <Button
           type="button"
           variant="brand"
+          className="hidden md:inline-flex"
           data-testid="admin-roles-new-btn"
           onClick={() => open({ mode: "new" })}
         >
@@ -452,30 +453,48 @@ export function AdminRolesClient({ initialRoles }: Props) {
         </Button>
       }
     >
-      <ul className="space-y-3" data-testid="admin-roles-list">
-        {deleteError ? (
-          <li>
-            <div
-              role="alert"
-              data-testid="admin-roles-error"
-              className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-            >
-              {deleteError}
-            </div>
-          </li>
-        ) : null}
-        {roles.map((role) => (
-          <RoleListItem
-            key={role.id}
-            id={role.id}
-            name={role.name}
-            isSystem={SYSTEM_ROLE_NAMES.has(role.name)}
-            busy={deleting}
-            onEdit={(roleId) => open({ mode: "edit", id: roleId })}
-            onDelete={handleDelete}
-          />
-        ))}
-      </ul>
+      {roles.length === 0 && !deleteError ? (
+        <div
+          className="flex flex-col items-center gap-3 py-8 text-center"
+          data-testid="admin-roles-empty"
+        >
+          <p className="text-sm text-muted-foreground">No roles yet</p>
+          <Button
+            type="button"
+            variant="brand"
+            onClick={() => open({ mode: "new" })}
+            data-testid="admin-roles-empty-cta"
+          >
+            <span>New role</span>
+            <Plus aria-hidden="true" />
+          </Button>
+        </div>
+      ) : (
+        <ul className="space-y-3" data-testid="admin-roles-list">
+          {deleteError ? (
+            <li>
+              <div
+                role="alert"
+                data-testid="admin-roles-error"
+                className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+              >
+                {deleteError}
+              </div>
+            </li>
+          ) : null}
+          {roles.map((role) => (
+            <RoleListItem
+              key={role.id}
+              id={role.id}
+              name={role.name}
+              isSystem={SYSTEM_ROLE_NAMES.has(role.name)}
+              busy={deleting}
+              onEdit={(roleId) => open({ mode: "edit", id: roleId })}
+              onDelete={handleDelete}
+            />
+          ))}
+        </ul>
+      )}
 
       <FormSheet
         title="New role"

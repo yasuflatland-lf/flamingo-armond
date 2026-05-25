@@ -21,6 +21,22 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // Serve sw.js with no-cache so the browser revalidates it on every page load and
+  // can byte-compare the response to detect Service Worker updates immediately.
+  // Without no-cache the SW update algorithm throttles re-checks to at most once per
+  // 24 hours (a Service Worker spec rule, independent of any HTTP cache TTL).
+  async headers() {
+    return [
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

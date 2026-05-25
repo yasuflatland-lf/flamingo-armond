@@ -18,7 +18,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: mockCreateSupabaseServerClient,
 }));
 
-// AppShell, Providers, and GlobalFAB are opaque to this test — we do not need
+// AppShell and Providers are opaque to this test — we do not need
 // to render them; we only need to inspect the props the layout passes to AppShell.
 // Stubs are defined as minimal functions so React's JSX type system is satisfied.
 vi.mock("@/components/nav/app-shell", () => ({
@@ -27,10 +27,6 @@ vi.mock("@/components/nav/app-shell", () => ({
 
 vi.mock("@/app/providers", () => ({
   Providers: ({ children }: { children?: React.ReactNode }) => children,
-}));
-
-vi.mock("@/components/nav/global-fab", () => ({
-  GlobalFAB: () => null,
 }));
 
 // next/navigation — the root layout does not redirect, but transitive imports

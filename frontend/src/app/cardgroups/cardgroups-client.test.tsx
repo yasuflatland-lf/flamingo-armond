@@ -178,10 +178,10 @@ function renderClient(
 // ---------------------------------------------------------------------------
 
 describe("<CardgroupsClient>", () => {
-  // "New cardgroup" header button is hidden on mobile because GlobalFAB
-  // provides the same action at <md breakpoints. Mirrors the
-  // `learn-add-card-floating` PC-only pattern.
-  it("hides the 'New cardgroup' header button below md (mobile uses GlobalFAB)", async () => {
+  // The desktop "New cardgroup" header button is hidden below md; on mobile the
+  // nav-header "+" dispatches flamingo:add-cardgroup and the empty-state CTA
+  // calls openAddSheet directly.
+  it("hides the 'New cardgroup' header button below md", async () => {
     const cache = new InMemoryCache();
     const emptyConn = makeConnection([]);
     cache.writeQuery({
@@ -200,13 +200,12 @@ describe("<CardgroupsClient>", () => {
 
     renderClient([initialMock], null, cache);
 
-    const button = await screen.findByRole("button", { name: /new cardgroup/i });
+    const button = await screen.findByTestId("cardgroups-header-new-btn");
     expect(button.className).toContain("hidden");
     expect(button.className).toContain("md:inline-flex");
   });
 
-  // The desktop "New cardgroup" button and the mobile FAB (via the
-  // flamingo:add-cardgroup event) both open the in-list create drawer instead
+  // The desktop "New cardgroup" button opens the in-list create drawer instead
   // of navigating to /cardgroups/new.
   it("opens the create-cardgroup drawer when the desktop 'New cardgroup' button is clicked", async () => {
     const user = userEvent.setup();
@@ -227,12 +226,12 @@ describe("<CardgroupsClient>", () => {
 
     renderClient([initialMock], null, cache);
 
-    await user.click(await screen.findByRole("button", { name: /new cardgroup/i }));
+    await user.click(await screen.findByTestId("cardgroups-header-new-btn"));
 
     expect(await screen.findByRole("textbox", { name: /name/i })).toBeInTheDocument();
   });
 
-  it("opens the create-cardgroup drawer on the flamingo:add-cardgroup event (mobile FAB)", async () => {
+  it("opens the create-cardgroup drawer on the flamingo:add-cardgroup event (nav-header +)", async () => {
     const cache = new InMemoryCache();
     const emptyConn = makeConnection([]);
     cache.writeQuery({
@@ -250,13 +249,13 @@ describe("<CardgroupsClient>", () => {
 
     renderClient([initialMock], null, cache);
     // Let the initial query settle before dispatching the open event.
-    await screen.findByRole("button", { name: /new cardgroup/i });
+    await screen.findByTestId("cardgroups-header-new-btn");
 
     const event = new CustomEvent("flamingo:add-cardgroup", { cancelable: true });
     act(() => {
       window.dispatchEvent(event);
     });
-    // The listener cancels the FAB's fallback navigation.
+    // The listener cancels any default navigation.
     expect(event.defaultPrevented).toBe(true);
     expect(await screen.findByRole("textbox", { name: /name/i })).toBeInTheDocument();
   });
@@ -284,6 +283,40 @@ describe("<CardgroupsClient>", () => {
     expect(await screen.findByTestId("cardgroups-empty")).toBeInTheDocument();
     expect(screen.getByText("No cardgroups yet")).toBeInTheDocument();
     expect(screen.queryByTestId("cardgroups-list")).not.toBeInTheDocument();
+  });
+
+  // S4a: empty-state CTA opens the create drawer (replaces the removed FAB for mobile discoverability)
+  it("opens the create-cardgroup drawer when the empty-state CTA button is clicked", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    const emptyConn = makeConnection([]);
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: { first: CARDGROUPS_PAGE_SIZE, search: null },
+      data: { myCardgroupsConnection: emptyConn },
+    });
+
+    const initialMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: { first: CARDGROUPS_PAGE_SIZE, search: null },
+      },
+      result: { data: { myCardgroupsConnection: emptyConn } },
+    };
+
+    renderClient([initialMock], null, cache);
+
+    // Wait for the empty state to render.
+    await screen.findByTestId("cardgroups-empty");
+
+    // The CTA inside the empty state must be present.
+    const ctaButton = screen.getByTestId("cardgroups-empty-cta");
+    expect(ctaButton).toBeInTheDocument();
+
+    // Clicking the CTA opens the create drawer.
+    await user.click(ctaButton);
+
+    expect(await screen.findByRole("textbox", { name: /name/i })).toBeInTheDocument();
   });
 
   // S4: renders list when query returns edges

@@ -67,5 +67,5 @@ crashes the whole shell. See
 
 - `frontend/src/components/nav/logo-drawer.tsx` — extracts the `/learn/[id]` segment from `usePathname()`,
   decodes via `safeDecodePathSegment`, then re-encodes at href construction.
-- `frontend/src/components/nav/fab-action.ts` — same pattern for both the `/learn/[id]` and
-  `/cardgroups/[id]/edit` branches.
+- `frontend/src/components/nav/header-create-action.ts` — same pattern for both the `/learn/[id]` and
+  `/cardgroups/[id]/edit` branches (via `resolveHeaderCreateAction`).
