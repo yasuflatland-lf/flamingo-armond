@@ -7,11 +7,12 @@
 const SW_VERSION = "__SW_VERSION__";
 const PRECACHE = `flamingo-precache-${SW_VERSION}`;
 const RUNTIME = "flamingo-runtime";
-// `cache.addAll` is atomic: if any single URL fails to fetch, the whole
-// install rejects and the precache is left empty. `/manifest.webmanifest`
-// must therefore be reachable as a static asset at install time, or the SW
-// never activates.
-const PRECACHE_URLS = ["/offline.html", "/icon-192.png", "/icon-512.png", "/manifest.webmanifest"];
+// `cache.addAll` is atomic: if any single URL fails to fetch, the whole install
+// rejects and the precache is left empty. Every entry here is a real static file
+// under `public/`, so a fetch only fails when the network itself is down — never
+// because of a dynamically-rendered route. The web app manifest is a dynamic
+// Next.js route (`src/app/manifest.ts`), so it is deliberately NOT precached.
+const PRECACHE_URLS = ["/offline.html", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -64,10 +65,43 @@ self.addEventListener("fetch", (event) => {
   //    they carry one-time codes and set session cookies. Pass them through.
   if (url.pathname.startsWith("/auth/")) return;
 
-  // 5. STATIC ASSETS — cache-first against RUNTIME. `/_next/static/` paths are
-  //    content-hashed and immutable, as are the listed file extensions, so a
-  //    cached copy is always safe and the cache is self-versioning (a new hash
-  //    is a new URL). No authenticated content lives here.
+  // 5. NAVIGATIONS — network-only with an offline fallback. Checked BEFORE the
+  //    static-asset rule below: a top-level navigation is always a document load
+  //    (never a subresource), and its URL may end in a static-like suffix (e.g. a
+  //    dynamic route segment such as `/learn/abc.js`). Handling navigations first
+  //    guarantees authenticated page HTML is NEVER written to a cache and replayed
+  //    to another user. On a network failure we serve the precached `/offline.html`.
+  if (request.mode === "navigate") {
+    event.respondWith(
+      (async () => {
+        try {
+          return await fetch(request);
+        } catch {
+          // The precache write may not have completed (first-install race), so
+          // `caches.match` can resolve to undefined. Returning undefined to
+          // respondWith() throws and surfaces the browser's raw error page, so
+          // fall back to a minimal synthetic response instead.
+          const offline = await caches.match("/offline.html");
+          return (
+            offline ??
+            new Response("You are offline. Please reload when connected.", {
+              status: 503,
+              headers: { "Content-Type": "text/plain; charset=utf-8" },
+            })
+          );
+        }
+      })(),
+    );
+    return;
+  }
+
+  // 6. STATIC ASSETS — cache-first against RUNTIME. `/_next/static/` URLs are
+  //    content-hashed by the bundler and therefore immutable: the same URL always
+  //    returns the same bytes. The extension list (.png/.svg/.ico/.woff2/.css/.js)
+  //    also catches `public/` assets (icons, fonts) served at stable, non-hashed
+  //    URLs; those are static enough to serve from cache offline. Guards 1–5 above
+  //    already diverted every non-GET, cross-origin, GraphQL, auth, and navigation
+  //    request, so no authenticated content reaches this branch.
   const isStaticAsset =
     url.pathname.startsWith("/_next/static/") ||
     [".png", ".svg", ".ico", ".woff2", ".css", ".js"].some((ext) => url.pathname.endsWith(ext));
@@ -83,23 +117,6 @@ self.addEventListener("fetch", (event) => {
           cache.put(request, response.clone());
         }
         return response;
-      })(),
-    );
-    return;
-  }
-
-  // 6. NAVIGATIONS — network-only with an offline fallback. Page HTML is NEVER
-  //    cached: an authenticated page rendered for user A must not be replayed
-  //    to user B offline. On a network failure we serve the precached static
-  //    `/offline.html` shell instead.
-  if (request.mode === "navigate") {
-    event.respondWith(
-      (async () => {
-        try {
-          return await fetch(request);
-        } catch {
-          return await caches.match("/offline.html");
-        }
       })(),
     );
     return;
