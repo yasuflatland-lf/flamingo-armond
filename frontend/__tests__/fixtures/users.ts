@@ -5,7 +5,7 @@
  * No runtime randomness or dynamic dates are used here.
  */
 
-import type { Role, User } from "@/generated/graphql";
+import type { Role, User } from "@/generated/base-types";
 
 // ---------------------------------------------------------------------------
 // Role fixtures
@@ -30,6 +30,7 @@ export const adminUserFixture: User = {
   displayName: "Admin User",
   bio: null,
   avatarUrl: null,
+  lastViewedCardgroup: null,
   roles: [adminRoleFixture],
 };
 
@@ -41,6 +42,7 @@ export const generalUserFixture: User = {
   displayName: "General User",
   bio: null,
   avatarUrl: null,
+  lastViewedCardgroup: null,
   roles: [{ __typename: "Role", id: "role-general", name: "general" }],
 };
 
@@ -52,5 +54,6 @@ export const userWithoutRolesFixture: User = {
   displayName: "No Roles User",
   bio: null,
   avatarUrl: null,
+  lastViewedCardgroup: null,
   roles: [],
 };

@@ -27,6 +27,7 @@ vi.mock("@/app/cardgroups/[id]/cards/cards-client", () => ({
 }));
 
 const PAGE_INFO = {
+  __typename: "PageInfo" as const,
   hasNextPage: false,
   hasPreviousPage: false,
   startCursor: null,
