@@ -151,6 +151,9 @@ describe("RootLayout — structural branch selection", () => {
     const suspenseChildren = suspenseEl?.props?.children;
     const authShellEl = findElement(suspenseChildren, byName("AuthShell"));
     expect(authShellEl).not.toBeNull();
+
+    // (4) AuthShell receives the layout's children as its own children prop.
+    expect(authShellEl?.props?.children).toBeDefined();
   });
 
   // Case: /login route — the bypass branch. No AuthShell, no Suspense,
