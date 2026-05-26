@@ -80,6 +80,8 @@ Use `isUnauthenticatedGraphQLError` for all code paths — including simple redi
 - [Apollo `client.query()` is not cancelled on unmount — guard `setState` with `isMountedRef`](../../docs/frontend/rsc-error-handling/apollo-client-query-unmount-guard.md)
 - [`supabase.auth.getClaims()` has a three-way return — branch on `claimsData == null`](../../docs/frontend/rsc-error-handling/getclaims-three-way-return.md)
 - [`isUnauthenticatedGraphQLError` matches gqlFetch — not Apollo Client runtime errors](../../docs/frontend/rsc-error-handling/apollo-runtime-vs-gqlfetch-error-shape.md)
+- [`useMutation` rejects while `useLazyQuery` resolves — `result.error` after a mutation is dead code](../../docs/frontend/rsc-error-handling/mutate-rejects-while-lazyquery-resolves.md)
 - [Fire-and-forget mutation: structured warn for null payload, non-success variant, and rejection](../../docs/frontend/rsc-error-handling/fire-and-forget-mutation-warn-on-null-and-non-success.md)
 - [`UNAUTHENTICATED` collapses to generic copy; `FORBIDDEN` preserves the server's specific reason](../../docs/frontend/rsc-error-handling/unauthenticated-vs-forbidden-message-asymmetry.md)
+- [Owner-gated mutation: no FORBIDDEN-specific banner — the route gate makes the usecase owner-check a backstop](../../docs/frontend/rsc-error-handling/owner-gated-mutation-no-forbidden-banner.md)
 - [Suspense fallback does not catch thrown errors — wrap async server components in try/catch](../../docs/frontend/rsc-error-handling/suspense-does-not-catch-thrown-errors.md)
