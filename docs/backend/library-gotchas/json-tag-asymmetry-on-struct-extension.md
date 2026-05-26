@@ -10,7 +10,7 @@ The fix is to tag every field when any field needs a tag, normalizing all keys t
 
 ```go
 // Before (mixed casing on the wire when this struct is c.JSON'd)
-type DictionaryValidationError struct {
+type CardImportError struct {
     Line    int    // -> "Line"
     Message string // -> "Message"
     Front   string `json:"front,omitempty"` // -> "front"
@@ -18,7 +18,7 @@ type DictionaryValidationError struct {
 }
 
 // After
-type DictionaryValidationError struct {
+type CardImportError struct {
     Line    int    `json:"line"`
     Message string `json:"message"`
     Front   string `json:"front,omitempty"`

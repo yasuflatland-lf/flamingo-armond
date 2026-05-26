@@ -40,7 +40,6 @@ The guard pattern applies to every consumer of a non-null Connection field. Toda
 - `frontend/src/app/cards/new/page.tsx` — cards/new RSC (throw branch).
 - `frontend/src/app/cardgroups/page.tsx` — cardgroups RSC (throw branch).
 - `frontend/src/components/cards/cardgroup-picker-sheet.tsx` — picker sheet client component (warn-and-degrade branch).
-- `frontend/src/app/admin/dictionary/dictionary-client.tsx` — admin dictionary client component (warn-and-degrade branch).
 
 A new consumer of any non-null Connection field must pick a branch from the table above based on whether it is an RSC or a client component. The grep audit `grep -rn "Connection?\\.edges\\?\\.map\\|Connection\\.edges\\?\\.map" frontend/src/` should return zero results — the `?.` chaining is the smoking gun for an unguarded consumer.
 

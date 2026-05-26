@@ -117,7 +117,7 @@ grep -rnE 'New<UsecaseName>\(' backend/ --include='*.go'
 
 This covers `internal/usecase/`, `cmd/server/`, and `graph/resolver/` in one pass. Any file that calls the constructor — production or test — must be updated.
 
-**Worked example.** An `AdminChecker` → `*AdminGate` migration grepped only `backend/internal/usecase/*.go` (12 sites) and listed the files to update. `backend/graph/resolver/dictionary_resolver_test.go:42` was not in scope. The test constructed `NewDictionaryUsecaseWithTx(authSvc, ...)` directly and failed to compile after the signature changed. The fix was a one-line wrap (`usecase.NewAdminGate(authSvc)`), but the gap required a follow-up commit. A full-tree grep before writing the migration plan would have enumerated 13 sites and the resolver file would have been in scope from the start.
+**Worked example.** A constructor migration grepped only `backend/internal/usecase/*.go` and listed the files to update. `backend/graph/resolver/card_import_resolver_test.go` was not in scope. The test constructed `NewCardImportUsecaseWithTx(...)` directly and failed to compile after the signature changed. The fix was small, but the gap required a follow-up commit. A full-tree grep before writing the migration plan would have enumerated every call site and the resolver file would have been in scope from the start.
 
 ### Adding a method to a repository interface fans out to every implementer, including test fakes
 

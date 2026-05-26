@@ -42,40 +42,40 @@ type ValidationError struct {
 }
 
 // --- outer layer: usecase package (application boundary) ---
-// backend/internal/usecase/dictionary.go
+// backend/internal/usecase/card_import.go
 
-// DictionaryErrorKind is a string-typed alias whose values mirror the
+// CardImportErrorKind is a string-typed alias whose values mirror the
 // inner SkipKind.String() output, making it wire-ready for JSON and GraphQL.
-type DictionaryErrorKind string
+type CardImportErrorKind string
 
 const (
-    DictErrKindUnknown      DictionaryErrorKind = "UNKNOWN"
-    DictErrKindHard         DictionaryErrorKind = "HARD"
-    DictErrKindFrontOnly    DictionaryErrorKind = "FRONT_ONLY"
-    DictErrKindBackOnly     DictionaryErrorKind = "BACK_ONLY"
-    DictErrKindUnrecognized DictionaryErrorKind = "UNRECOGNIZED"
-    DictErrKindDuplicate    DictionaryErrorKind = "DUPLICATE"
+    CardImportErrKindUnknown      CardImportErrorKind = "UNKNOWN"
+    CardImportErrKindHard         CardImportErrorKind = "HARD"
+    CardImportErrKindFrontOnly    CardImportErrorKind = "FRONT_ONLY"
+    CardImportErrKindBackOnly     CardImportErrorKind = "BACK_ONLY"
+    CardImportErrKindUnrecognized CardImportErrorKind = "UNRECOGNIZED"
+    CardImportErrKindDuplicate    CardImportErrorKind = "DUPLICATE"
 )
 
-type DictionaryValidationError struct {
+type CardImportError struct {
     Line    int                 `json:"line"`
     Message string              `json:"message"`
-    Kind    DictionaryErrorKind `json:"kind"` // wire-ready string; callers branch on the typed constant
+    Kind    CardImportErrorKind `json:"kind"` // wire-ready string; callers branch on the typed constant
     Snippet string              `json:"snippet,omitempty"`
 }
 
-// --- conversion site: dictionary.go mapping loop ---
-// backend/internal/usecase/dictionary.go
+// --- conversion site: card_import.go mapping loop ---
+// backend/internal/usecase/card_import.go
 
-// DictionaryErrorKind(e.Kind.String()) casts the inner uint8 enum to the
+// CardImportErrorKind(e.Kind.String()) casts the inner uint8 enum to the
 // outer string alias in one step. If SkipKind.String() ever returns a value
 // not listed in the constants above, the outer type still carries it
 // correctly and the mismatch surfaces in tests.
 for _, e := range parseErrs {
-    mappedErrs = append(mappedErrs, DictionaryValidationError{
+    mappedErrs = append(mappedErrs, CardImportError{
         Line:    e.Line,
         Message: e.Message,
-        Kind:    DictionaryErrorKind(e.Kind.String()),
+        Kind:    CardImportErrorKind(e.Kind.String()),
         Snippet: e.Snippet,
     })
 }
@@ -97,5 +97,5 @@ A typed enum field with a wire-aligned `String()` method:
 Any conversion boundary where an internal type must carry a discriminated category to an outer type:
 
 1. Package-internal `parseError` → public `textdic.ValidationError` (`backend/internal/textdic/service.go`).
-2. `textdic.ValidationError` → `usecase.DictionaryValidationError` (`backend/internal/usecase/dictionary.go`, `notion_sync.go`).
+2. `textdic.ValidationError` → `usecase.CardImportError` (`backend/internal/usecase/card_import.go`, `notion_sync.go`).
 3. Any future parser or validator whose callers need to distinguish multiple failure modes without re-parsing the message.
