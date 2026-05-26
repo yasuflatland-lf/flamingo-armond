@@ -32,9 +32,11 @@ import { getBackendErrorBanner } from "@/lib/apollo/errors";
 type Props = {
   cardgroup: { id: string; name: string };
   totalCount: number;
+  /** Called when the user selects "Batch import" from the mobile options menu. */
+  onBatchImport?: () => void;
 };
 
-export function CardgroupHeader({ cardgroup, totalCount }: Props) {
+export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props) {
   const router = useRouter();
   const [renameOpen, setRenameOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -109,6 +111,16 @@ export function CardgroupHeader({ cardgroup, totalCount }: Props) {
                 <Pencil className="h-4 w-4" />
                 Rename
               </DropdownMenuItem>
+              {onBatchImport && (
+                <>
+                  <DropdownMenuSeparator />
+                  {/* Batch import is shown here for mobile users;
+                      the desktop split button (hidden md:inline-flex) covers desktop. */}
+                  <DropdownMenuItem onSelect={onBatchImport} className="gap-2 md:hidden">
+                    Batch import
+                  </DropdownMenuItem>
+                </>
+              )}
               <DropdownMenuSeparator />
               {/* Future reserved items (not yet implemented):
                   <DropdownMenuItem disabled>Export to TextDic</DropdownMenuItem>

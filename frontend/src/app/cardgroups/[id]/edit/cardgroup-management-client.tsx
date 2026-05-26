@@ -28,11 +28,16 @@ export function CardgroupManagementClient({
 
       <CardgroupCardsSection
         cardgroupId={cardgroup.id}
+        cardgroupName={cardgroup.name}
         initialEdges={initialEdges}
         initialPageInfo={initialPageInfo}
         initialTotalCount={initialTotalCount}
-        renderPageHeader={({ totalCount }) => (
-          <CardgroupHeader cardgroup={cardgroup} totalCount={totalCount} />
+        renderPageHeader={({ totalCount, onBatchImport }) => (
+          <CardgroupHeader
+            cardgroup={cardgroup}
+            totalCount={totalCount}
+            onBatchImport={onBatchImport}
+          />
         )}
       />
     </main>

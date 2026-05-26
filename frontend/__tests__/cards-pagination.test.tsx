@@ -202,6 +202,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
         <UndoDeleteProvider>
           <CardsClient
             cardgroupId={CG_ID}
+            cardgroupName="Test Cardgroup"
             initialEdges={initialEdges}
             initialPageInfo={initialPageInfo}
             initialTotalCount={initialTotalCount}
@@ -291,6 +292,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
         <UndoDeleteProvider>
           <CardsClient
             cardgroupId={CG_ID}
+            cardgroupName="Test Cardgroup"
             initialEdges={initialEdges}
             initialPageInfo={initialPageInfo}
             initialTotalCount={initialTotalCount}
@@ -384,6 +386,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
         <UndoDeleteProvider>
           <CardsClient
             cardgroupId={CG_ID}
+            cardgroupName="Test Cardgroup"
             initialEdges={initialEdges}
             initialPageInfo={initialPageInfo}
             initialTotalCount={initialTotalCount}
@@ -467,6 +470,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
         <UndoDeleteProvider>
           <CardsClient
             cardgroupId={CG_ID}
+            cardgroupName="Test Cardgroup"
             initialEdges={initialEdges}
             initialPageInfo={initialPageInfo}
             initialTotalCount={initialTotalCount}
@@ -547,6 +551,7 @@ describe("CardsClient pagination via IntersectionObserver", () => {
         <UndoDeleteProvider>
           <CardsClient
             cardgroupId={CG_ID}
+            cardgroupName="Test Cardgroup"
             initialEdges={initialEdges}
             initialPageInfo={initialPageInfo}
             initialTotalCount={initialTotalCount}

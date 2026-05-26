@@ -122,6 +122,7 @@ function renderCardsClient(cards: Card[], mocks: object[]) {
       <UndoDeleteProvider>
         <CardsClient
           cardgroupId={CG_ID}
+          cardgroupName="Test Cardgroup"
           initialEdges={connection.edges}
           initialPageInfo={connection.pageInfo}
           initialTotalCount={connection.totalCount}
@@ -276,6 +277,7 @@ describe("CardsClient — bulk delete", () => {
         <UndoDeleteProvider>
           <CardsClient
             cardgroupId={CG_ID}
+            cardgroupName="Test Cardgroup"
             initialEdges={connection.edges}
             initialPageInfo={connection.pageInfo}
             initialTotalCount={connection.totalCount}
@@ -335,6 +337,7 @@ describe("CardsClient — bulk delete", () => {
         <UndoDeleteProvider>
           <CardsClient
             cardgroupId={CG_ID}
+            cardgroupName="Test Cardgroup"
             initialEdges={connection.edges}
             initialPageInfo={connection.pageInfo}
             initialTotalCount={connection.totalCount}
