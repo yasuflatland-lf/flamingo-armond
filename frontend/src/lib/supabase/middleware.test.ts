@@ -12,9 +12,7 @@ vi.mock("@supabase/ssr", () => ({
   }),
 }));
 
-const mockBuildHtmlCsp = vi.hoisted(() =>
-  vi.fn<() => string>(),
-);
+const mockBuildHtmlCsp = vi.hoisted(() => vi.fn<() => string>());
 
 vi.mock("@/lib/security/csp", async (importOriginal) => {
   const mod = await importOriginal<typeof import("@/lib/security/csp")>();
@@ -120,9 +118,7 @@ describe("updateSession", () => {
     const firstResponse = await updateSession(makeRequest("http://localhost/dashboard"));
     const secondResponse = await updateSession(makeRequest("http://localhost/dashboard"));
 
-    const firstNonce = nonceFromPolicy(
-      firstResponse.headers.get("Content-Security-Policy") ?? "",
-    );
+    const firstNonce = nonceFromPolicy(firstResponse.headers.get("Content-Security-Policy") ?? "");
     const secondNonce = nonceFromPolicy(
       secondResponse.headers.get("Content-Security-Policy") ?? "",
     );
