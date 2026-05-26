@@ -338,7 +338,7 @@
 - name: Reconcile dynamic Render env vars from state
   tags: [notion, notion-secrets, postapply]
   block:
-    - name: "PUT /v1/services/{{ render_service_id }}/env-vars/{{ item.key }}"
+    - name: "PUT dynamic env var to Render service {{ render_service_id }}"
       ansible.builtin.uri:
         url: "https://api.render.com/v1/services/{{ render_service_id }}/env-vars/{{ item.key }}"
         method: PUT
