@@ -166,6 +166,27 @@ afterEach(() => {
   leakSpy.teardown();
 });
 
+describe("<AdminUsersClient> initial loading", () => {
+  it("renders the skeleton immediately on first render then hides it once data arrives", async () => {
+    render(
+      <MockedProvider mocks={[makeUsersMock(), makeRolesMock()]}>
+        <AdminUsersClient />
+      </MockedProvider>,
+    );
+
+    // Synchronous assertion: Apollo starts with networkStatus === loading (1) and
+    // no data, so initialLoading is true and the skeleton must be in the DOM
+    // before any microtask resolves the mock response.
+    expect(screen.getByTestId("admin-users-skeleton")).toBeInTheDocument();
+
+    // Wait for the mock to resolve and the list to appear.
+    expect(await screen.findByTestId("admin-users-list")).toBeInTheDocument();
+
+    // Once data has arrived the skeleton must be gone.
+    expect(screen.queryByTestId("admin-users-skeleton")).not.toBeInTheDocument();
+  });
+});
+
 describe("<AdminUsersClient> sheet", () => {
   it("pushes ?edit=<id> when the row Edit affordance is clicked", async () => {
     const user = userEvent.setup();
