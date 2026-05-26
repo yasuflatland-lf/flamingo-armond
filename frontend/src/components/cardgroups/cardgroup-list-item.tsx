@@ -33,7 +33,7 @@ export function CardgroupListItem({
         <Button
           variant="outline"
           size="icon"
-          className="opacity-0 sm:group-hover:opacity-100 motion-reduce:opacity-100 transition-opacity"
+          className="pointer-events-none opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 motion-reduce:pointer-events-auto motion-reduce:opacity-100 transition-opacity"
           onClick={requestDelete}
           disabled={busy}
           aria-label={deleteLabel}

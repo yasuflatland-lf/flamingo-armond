@@ -26,12 +26,12 @@ export function CardRow({
 }: CardRowProps) {
   return (
     <SwipeableRow ref={rowRef} onDelete={onDelete} disabled={disabled} ariaLabel="Delete card">
-      <div className="group flex items-start justify-between gap-4 px-4 py-3 hover:bg-accent active:bg-accent transition-colors">
+      <div className="group flex items-center justify-between gap-4 px-4 py-3 hover:bg-accent active:bg-accent transition-colors">
         {/* biome-ignore lint/a11y/noStaticElementInteractions: span is a click/keydown stopper, not an interactive element; the inner <input> is the actual control. */}
         <span
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
-          className="mt-0.5 shrink-0"
+          className="shrink-0"
         >
           <input
             type="checkbox"
@@ -72,7 +72,7 @@ export function CardRow({
             aria-label="Delete card"
             onClick={onDelete}
             data-testid={`card-delete-${card.id}`}
-            className="opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 motion-reduce:opacity-100 transition-opacity"
+            className="pointer-events-none opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 motion-reduce:pointer-events-auto motion-reduce:opacity-100 transition-opacity"
           >
             <Trash2 aria-hidden="true" className="h-4 w-4" />
           </Button>

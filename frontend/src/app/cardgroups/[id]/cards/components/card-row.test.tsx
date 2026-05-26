@@ -64,6 +64,20 @@ describe("<CardRow>", () => {
     expect(cls).toContain("motion-reduce:opacity-100");
   });
 
+  it("gates pointer-events on the same variants as opacity (hidden button is non-clickable)", () => {
+    // opacity:0 alone leaves the button clickable, so on a narrow viewport (sm:
+    // hover variant inactive) the invisible Delete button would steal a row tap
+    // and delete the card. pointer-events must track the exact opacity variants
+    // so "visible ⟺ clickable" holds at every breakpoint.
+    renderCardRow();
+
+    const cls = screen.getByTestId(`card-delete-${CARD.id}`).className;
+    expect(cls).toContain("pointer-events-none");
+    expect(cls).toContain("sm:group-hover:pointer-events-auto");
+    expect(cls).toContain("sm:group-focus-within:pointer-events-auto");
+    expect(cls).toContain("motion-reduce:pointer-events-auto");
+  });
+
   it("wraps the row content in SwipeableRow", () => {
     renderCardRow();
 
