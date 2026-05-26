@@ -59,4 +59,4 @@ expect(Object.keys(warnPayload)).not.toContain("display_name");
 
 The `toHaveBeenCalledTimes(1)` assertion is load-bearing: `mock.calls[0][1]` silently picks the first call without bounding the count, so a regression that emits a second warn (e.g. a refactor that double-fires the branch) would pass the PII assertion. See [`docs/frontend/typescript-conventions/tohavebeencalledtimes-before-mock-calls-access.md`](../typescript-conventions/tohavebeencalledtimes-before-mock-calls-access.md).
 
-Reference: `frontend/src/app/layout.tsx` (the three-branch `getClaims()` consumer), `frontend/src/app/layout.test.tsx` (Case 6b and Case 7 cover the null-data and error branches respectively).
+Reference: `frontend/src/components/auth-shell.tsx` (the three-branch `getClaims()` consumer), `frontend/src/components/auth-shell.test.tsx` (Case 6b and Case 7 cover the null-data and error branches respectively).

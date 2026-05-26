@@ -11,4 +11,4 @@ if (error && error.name !== "AuthSessionMissingError") {
 }
 ```
 
-The `[scope]` prefix is the route or component name (`[home]`, `[login]`, `[layout]`, `[cards-new]`, `[cardgroups-new]`, `[healthz]`) so the log is greppable. Used today in `frontend/src/app/page.tsx`, `frontend/src/app/login/page.tsx`, `frontend/src/app/layout.tsx`, `frontend/src/app/cards/new/page.tsx`, `frontend/src/app/cardgroups/new/page.tsx`, and `frontend/src/app/api/healthz/route.ts`.
+The `[scope]` prefix is the route or component name (`[home]`, `[login]`, `[layout]`, `[cards-new]`, `[cardgroups-new]`, `[healthz]`) so the log is greppable. Used today in `frontend/src/app/page.tsx`, `frontend/src/app/login/page.tsx`, `frontend/src/components/auth-shell.tsx` (logs with the `[layout]` prefix for operator and test continuity — the prefix is preserved even though the code moved from `app/layout.tsx`), `frontend/src/app/cards/new/page.tsx`, `frontend/src/app/cardgroups/new/page.tsx`, and `frontend/src/app/api/healthz/route.ts`.
