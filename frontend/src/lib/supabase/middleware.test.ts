@@ -218,10 +218,13 @@ describe("updateSession", () => {
     expect(response.headers.get("Content-Security-Policy-Report-Only")).toBeNull();
     expect(forwardedRequestHeader(response, "content-security-policy")).toBeNull();
     expect(forwardedRequestHeader(response, "x-nonce")).toBeNull();
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       expect.stringContaining("[supabase/middleware] buildHtmlCsp failed"),
       expect.any(Error),
     );
+    expect(forwardedRequestHeader(response, "x-pathname")).toBe("/dashboard");
+    expect(mockGetUser).toHaveBeenCalledTimes(1);
 
     consoleErrorSpy.mockRestore();
   });
