@@ -90,16 +90,15 @@ export function resolveStep1Button(state: Step1ButtonState): Step1ButtonSpec {
 /** Breadcrumb showing the two import steps with a back affordance on step 2. */
 function ImportStepper(props: {
   current: 1 | 2;
-  done: boolean;
   importing: boolean;
   onBack: () => void;
 }): JSX.Element {
-  const { current, done, importing, onBack } = props;
+  const { current, importing, onBack } = props;
   return (
     <nav aria-label="Import steps" className="flex items-center justify-between gap-3 text-sm">
       <ol className="flex items-center gap-2">
         <li>
-          {current === 2 && done ? (
+          {current === 2 ? (
             <button
               type="button"
               onClick={onBack}
@@ -141,6 +140,27 @@ function ImportStepper(props: {
   );
 }
 
+/** Renders a list of line-level import/validation errors. */
+function ErrorList(props: {
+  errors: Array<{ line: number; message: string }>;
+  className?: string;
+  role?: string;
+}): JSX.Element {
+  const { errors, className, role } = props;
+  return (
+    <ul className={cn("space-y-1", className)} role={role}>
+      {errors.map((err) => (
+        <li
+          key={`${err.line}-${err.message}`}
+          className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          <span className="font-medium">Line {err.line}:</span> {err.message}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /**
  * Unified collapsible for the validate result: a preview table when valid, an
  * error list when invalid. Collapsed when valid, open when invalid.
@@ -149,11 +169,14 @@ function ValidateResult(props: { result: ValidationResult }): JSX.Element {
   const { result } = props;
   const [open, setOpen] = useState<boolean>(!result.valid);
 
-  const triggerLabel = result.valid
-    ? `Show preview (${result.parsedCards.length})`
-    : open
-      ? "Hide errors"
-      : `Show errors (${result.errors.length})`;
+  let triggerLabel: string;
+  if (result.valid) {
+    triggerLabel = `Show preview (${result.parsedCards.length})`;
+  } else if (open) {
+    triggerLabel = "Hide errors";
+  } else {
+    triggerLabel = `Show errors (${result.errors.length})`;
+  }
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="rounded-md border border-border">
@@ -187,16 +210,7 @@ function ValidateResult(props: { result: ValidationResult }): JSX.Element {
             </table>
           </div>
         ) : (
-          <ul className="space-y-1 border-t border-border p-3" role="alert">
-            {result.errors.map((err) => (
-              <li
-                key={`${err.line}-${err.message}`}
-                className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
-              >
-                <span className="font-medium">Line {err.line}:</span> {err.message}
-              </li>
-            ))}
-          </ul>
+          <ErrorList errors={result.errors} className="border-t border-border p-3" role="alert" />
         )}
       </CollapsibleContent>
     </Collapsible>
@@ -318,12 +332,7 @@ export function CardgroupBatchImportForm(props: {
 
   return (
     <div className="space-y-6">
-      <ImportStepper
-        current={step}
-        done={step === 2}
-        importing={importing}
-        onBack={goBackToStep1}
-      />
+      <ImportStepper current={step} importing={importing} onBack={goBackToStep1} />
 
       {bannerError && (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
@@ -415,18 +424,7 @@ export function CardgroupBatchImportForm(props: {
                   </div>
                 )}
               </div>
-              {importResult.errors.length > 0 && (
-                <ul className="space-y-1">
-                  {importResult.errors.map((err) => (
-                    <li
-                      key={`${err.line}-${err.message}`}
-                      className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
-                    >
-                      <span className="font-medium">Line {err.line}:</span> {err.message}
-                    </li>
-                  ))}
-                </ul>
-              )}
+              {importResult.errors.length > 0 && <ErrorList errors={importResult.errors} />}
               <div className="flex gap-3">
                 <Button type="button" variant="outline" onClick={goBackToStep1}>
                   ← Back to edit
