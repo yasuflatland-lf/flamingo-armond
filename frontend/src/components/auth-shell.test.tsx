@@ -315,4 +315,86 @@ describe("AuthShell — error handling and AppShell prop wiring", () => {
     expect(props.user).toBeNull();
     expect(props.isAdmin).toBe(false);
   });
+
+  // Case 9: Authenticated user but getClaims returns the fourth return shape:
+  // `{ data: { claims: null }, error: null }`. This is the forward-compatibility
+  // / mock-robustness defence branch (`claimsData.claims == null`) in auth-shell.tsx.
+  // AuthShell must:
+  //   - emit console.warn with "[layout] getClaims() returned data without claims"
+  //   - include a structured payload with a discriminating key (user_id)
+  //   - NOT include email or display_name in the payload (PII protection)
+  //   - degrade to isAdmin=false without throwing
+  //   - still pass user.email to AppShell (shellUser is intact — only the admin
+  //     flag degrades when claims itself is null inside a non-null data wrapper)
+  //
+  // Driver: `setMockSupabaseClaims(null)` sets `state.claims = null`, which
+  // makes the factory return `{ data: { claims: null }, error: null }` — exactly
+  // the shape that hits the `claimsData.claims == null` branch.
+  test("authenticated user + getClaims returns { data: { claims: null }, error: null }: console.warn with PII-free payload, isAdmin=false, shellUser intact", async () => {
+    const userId = "u-claims-null";
+    setMockSupabaseUser({ id: userId, email: "claimsnull@example.com" });
+    // setMockSupabaseClaims(null) produces { data: { claims: null }, error: null }
+    // from the mock factory — the fourth return shape in auth-shell.tsx's getClaims
+    // block (`claimsData.claims == null`).
+    setMockSupabaseClaims(null);
+
+    const props = await renderAuthShellAndGetShellProps();
+
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "[layout] getClaims() returned data without claims",
+      expect.objectContaining({
+        user_id: userId,
+      }),
+    );
+
+    // Exactly-one assertion: silently picking `mock.calls[0][1]` without first
+    // asserting call-count would let a regression that emits a second warn
+    // slip through. The PII-absence check below must inspect the single
+    // intended warn payload, not the first of many.
+    expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
+    // PII absence: email and display_name must NOT appear in the warn payload.
+    const warnPayload = consoleWarnSpy.mock.calls[0][1] as Record<string, unknown>;
+    expect(Object.keys(warnPayload)).not.toContain("email");
+    expect(Object.keys(warnPayload)).not.toContain("display_name");
+
+    expect(props.isAdmin).toBe(false);
+    // user.email is still wired to AppShell — only the admin flag degrades when
+    // getClaims returns a non-null data wrapper with a null claims payload.
+    expect(props.user).toEqual({ email: "claimsnull@example.com" });
+  });
+
+  // Case 10: Transport-level rejection — `createSupabaseServerClient()` itself
+  // rejects (e.g. DNS failure, connection refused, cold-start JWKS hang).
+  // AuthShell MUST NOT propagate the rejection: Suspense does not catch thrown
+  // errors and there is no root error boundary in the app layout, so a thrown
+  // auth rejection would 500 the entire site. Instead, AuthShell's outer
+  // try/catch must degrade to the anonymous shell and log a console.error.
+  //
+  // Driver: `mockCreateSupabaseServerClient.mockRejectedValueOnce(...)` makes
+  // the awaited factory call reject, exercising the catch block that logs
+  // "[layout] auth resolution threw; degrading to anonymous shell:" and resets
+  // shellUser/isAdmin to their anonymous defaults.
+  test("createSupabaseServerClient rejects: AuthShell resolves to anonymous shell, console.error with thrown-degrade prefix", async () => {
+    const transportErr = new Error("connection refused");
+    // mockCreateSupabaseServerClient is a vi.fn() wrapping Promise.resolve();
+    // mockRejectedValueOnce makes the next call return a rejected promise,
+    // which the try/catch in AuthShell catches without re-throwing.
+    mockCreateSupabaseServerClient.mockRejectedValueOnce(transportErr);
+
+    // The await must resolve — if AuthShell propagates the rejection, the test
+    // itself rejects and fails, which is the exact regression this test guards.
+    const props = await renderAuthShellAndGetShellProps();
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[layout] auth resolution threw; degrading to anonymous shell:",
+      transportErr,
+    );
+    // Anonymous shell: null user, isAdmin=false.
+    expect(props.user).toBeNull();
+    expect(props.isAdmin).toBe(false);
+    // console.warn must not have fired — the catch branch logs only console.error.
+    expect(consoleWarnSpy).not.toHaveBeenCalled();
+  });
 });
