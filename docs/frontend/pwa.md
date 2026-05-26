@@ -48,7 +48,13 @@ In `frontend/src/app/layout.tsx`, `appleWebApp` belongs in the `metadata` export
 
 ## Registration and the iOS install hint
 
-`frontend/src/components/pwa/sw-register.tsx` registers `/sw.js` once after mount, guarded by both `"serviceWorker" in navigator` (skip unsupported browsers) and `window.isSecureContext` (skip plain HTTP, which would otherwise throw `SecurityError`). Registration failures are **warn-only** (`console.warn`), never thrown — a failed worker registration must not break the app.
+`frontend/src/components/pwa/sw-register.tsx` runs once after mount and applies three guards in order:
+
+1. **Unsupported browser** (`"serviceWorker" not in navigator`) → no-op.
+2. **Non-production** (`process.env.NODE_ENV !== "production"`, i.e. `next dev`) → does **not** register; instead calls `navigator.serviceWorker.getRegistrations()` and unregisters every existing worker so the browser self-heals. Failures are `console.warn("[pwa] service worker cleanup failed:", ...)`, never thrown.
+3. **Production + secure context** (`window.isSecureContext`) → registers `/sw.js`. Failures are `console.warn(...)`, never thrown — a failed worker registration must not break the app.
+
+**Why production-only?** The cache-first static-asset rule in `sw-template.js` assumes `/_next/static/` URLs are content-hashed and therefore immutable. That holds for `next build` output but not for `next dev`: Turbopack reuses stable dev chunk URLs for HMR, so a service worker in dev serves a stale client chunk and causes React hydration mismatches. The SW provides no dev value (its runtime behavior cannot be tested in dev or CI anyway — that requires a real HTTPS deployment), so registration is intentionally skipped in development.
 
 iOS Safari has no `beforeinstallprompt` event, so installability cannot be surfaced through the standard prompt. `frontend/src/components/pwa/apple-install-hint.tsx` instead shows an add-to-home-screen hint. It is **hydration-safe**: it starts hidden (`useState(false)`) and only decides visibility in a post-mount `useEffect`, because the server cannot know the UA or dismissal state. The decision checks **both** standalone signals — the `(display-mode: standalone)` media query AND `navigator.standalone` — plus a `localStorage` dismissal flag, all wrapped in `try/catch` so a missing browser API never throws.
 
@@ -58,7 +64,7 @@ The Supabase auth middleware matcher in `frontend/src/middleware.ts` excludes `s
 
 ## Verification note
 
-Unit and component tests cover the registration guard and the install-hint logic (`frontend/src/components/pwa/sw-register.test.tsx`, `frontend/src/components/pwa/apple-install-hint.test.tsx`). The service worker's *runtime* behaviour — offline-fallback rendering, install-time precache population, the actual install flow — cannot be exercised in the test environment because service workers require a secure context. Validating that path requires a real HTTPS device or a deployment.
+Unit and component tests cover the registration guard, the production gate, and the dev-cleanup path (`frontend/src/components/pwa/sw-register.test.tsx`), as well as the install-hint logic (`frontend/src/components/pwa/apple-install-hint.test.tsx`). The service worker's *runtime* behaviour — offline-fallback rendering, install-time precache population, the actual install flow — cannot be exercised in the test environment because service workers require a secure context. Validating that path requires a real HTTPS device or a deployment.
 
 ## PWA white-screen fix: de-blocking the root layout (Interval B)
 
