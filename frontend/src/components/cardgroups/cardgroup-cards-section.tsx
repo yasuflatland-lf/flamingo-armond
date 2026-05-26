@@ -54,7 +54,7 @@ export function CardgroupCardsSection({
     onBatchImport: () => void;
   }) => (
     <div>
-      {renderPageHeader ? renderPageHeader({ totalCount, onBatchImport }) : null}
+      {renderPageHeader?.({ totalCount, onBatchImport })}
       <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
         <Button asChild variant="outline" size="sm">
           <Link href={learnHref}>
