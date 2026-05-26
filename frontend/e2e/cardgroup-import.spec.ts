@@ -61,16 +61,25 @@ test.describe
       await page.getByLabel("Cards to import").fill(payload);
       await page.getByRole("button", { name: "Validate" }).click();
 
-      await expect(page.getByRole("status").filter({ hasText: /^Valid.*2/ })).toBeVisible();
+      // Status line now starts with a "✓ " glyph; omit the "^" anchor so the
+      // regex matches anywhere in the text content.
+      await expect(page.getByRole("status").filter({ hasText: /Valid.*2/ })).toBeVisible();
+
+      // The parse preview is collapsed by default; expand it to verify the cells.
+      await page.getByRole("button", { name: /Show preview/ }).click();
       await expect(page.getByRole("cell", { name: frontA })).toBeVisible();
       await expect(page.getByRole("cell", { name: frontB })).toBeVisible();
 
-      await page.getByRole("button", { name: "Import" }).click();
+      // Advance from step 1 "Paste & review" to step 2 "Import".
+      await page.getByRole("button", { name: /Continue/ }).click();
 
-      // A full-success import closes the sheet (onImported); the cards list then
-      // refetches and shows the imported rows. The "Import complete" banner is not
-      // asserted because it unmounts with the sheet before it can be read.
-      await expect(page.getByLabel("Cards to import")).toBeHidden();
+      // Step 2: confirm heading and click the import button.
+      await page.getByRole("button", { name: /Import 2 cards/ }).click();
+
+      // A full-success import closes the sheet; the whole stepper unmounts so
+      // step 2's button disappears. The step-1 textarea is already gone at this
+      // point (step 1 unmounts on advancing), so it is not a valid closed signal.
+      await expect(page.getByRole("button", { name: /Import 2 cards/ })).toBeHidden();
       await expect(page.getByText(frontA, { exact: true })).toBeVisible();
       await expect(page.getByText(frontB, { exact: true })).toBeVisible();
       await expect(page.getByText(defA, { exact: true })).toBeVisible();
@@ -83,10 +92,14 @@ test.describe
       // rows are updated rather than duplicated.
       await page.getByLabel("Cards to import").fill(updatedPayload);
       await page.getByRole("button", { name: "Validate" }).click();
-      await expect(page.getByRole("status").filter({ hasText: /^Valid.*2/ })).toBeVisible();
 
-      await page.getByRole("button", { name: "Import" }).click();
-      await expect(page.getByLabel("Cards to import")).toBeHidden();
+      // Status line now starts with a "✓ " glyph; omit the "^" anchor.
+      await expect(page.getByRole("status").filter({ hasText: /Valid.*2/ })).toBeVisible();
+
+      // Advance to step 2 and import.
+      await page.getByRole("button", { name: /Continue/ }).click();
+      await page.getByRole("button", { name: /Import 2 cards/ }).click();
+      await expect(page.getByRole("button", { name: /Import 2 cards/ })).toBeHidden();
 
       // The backs were overwritten (update), and each front still appears exactly
       // once (no duplicate insert).
