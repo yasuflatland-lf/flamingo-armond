@@ -8,6 +8,8 @@ export type HtmlCspOptions = {
   reportUri?: string;
   reportTo?: string;
   speedInsightsOrigin?: string;
+  // Turbopack/React dev mode needs the 'unsafe-eval' source for HMR and React refresh; production never does.
+  allowUnsafeEval?: boolean;
 };
 
 const DEFAULT_REPORT_URI = "/api/csp-report";
@@ -112,6 +114,7 @@ export function buildHtmlCsp({
   reportUri = DEFAULT_REPORT_URI,
   reportTo = DEFAULT_REPORT_TO,
   speedInsightsOrigin = DEFAULT_SPEED_INSIGHTS_ORIGIN,
+  allowUnsafeEval = false,
 }: HtmlCspOptions): string {
   if (nonce.trim().length === 0) {
     throw new Error("nonce is required");
@@ -128,7 +131,7 @@ export function buildHtmlCsp({
     "form-action": ["'self'"],
     "img-src": ["'self'", "data:", "blob:", "https://lh3.googleusercontent.com"],
     "style-src": ["'self'", "'unsafe-inline'"],
-    "script-src": ["'self'", `'nonce-${nonce}'`],
+    "script-src": ["'self'", `'nonce-${nonce}'`, allowUnsafeEval && "'unsafe-eval'"],
     "connect-src": ["'self'", supabaseOrigin, supabaseRealtimeOrigin, speedInsightsOrigin],
     "report-uri": [reportUri],
     "report-to": [reportTo],

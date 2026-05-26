@@ -34,6 +34,7 @@ export async function updateSession(request: NextRequest) {
     cspPolicy = buildHtmlCsp({
       nonce,
       supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL,
+      allowUnsafeEval: process.env.NODE_ENV !== "production",
     });
   } catch (err) {
     console.error(

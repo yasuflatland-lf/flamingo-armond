@@ -65,6 +65,26 @@ describe("buildHtmlCsp", () => {
     expect(policy).toContain("report-to csp-endpoint");
   });
 
+  it("omits 'unsafe-eval' from script-src by default (production-safe)", () => {
+    const policy = buildHtmlCsp({
+      nonce: "abc123",
+      supabaseUrl: "https://project-ref.supabase.co",
+    });
+
+    expect(policy).toContain("script-src 'self' 'nonce-abc123'");
+    expect(policy).not.toContain("'unsafe-eval'");
+  });
+
+  it("adds 'unsafe-eval' to script-src when allowUnsafeEval is true (dev only)", () => {
+    const policy = buildHtmlCsp({
+      nonce: "abc123",
+      supabaseUrl: "https://project-ref.supabase.co",
+      allowUnsafeEval: true,
+    });
+
+    expect(policy).toContain("script-src 'self' 'nonce-abc123' 'unsafe-eval'");
+  });
+
   it("throws when nonce is empty", () => {
     expect(() =>
       buildHtmlCsp({ nonce: "", supabaseUrl: "https://project-ref.supabase.co" }),
