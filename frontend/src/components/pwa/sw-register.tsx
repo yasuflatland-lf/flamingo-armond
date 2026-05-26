@@ -11,8 +11,11 @@ import { useEffect } from "react";
 // We therefore register only in production, and in dev actively unregister any
 // worker left behind by a prior dev session so the cache self-heals.
 //
-// Guards: "serviceWorker" in navigator — skips unsupported browsers.
-//         window.isSecureContext       — skips plain HTTP (avoids SecurityError).
+// Guards, in order:
+//   "serviceWorker" in navigator — skips unsupported browsers (both modes).
+//   process.env.NODE_ENV          — dev/test unregisters instead of registering.
+//   window.isSecureContext        — production register path only; skips plain
+//                                   HTTP (avoids SecurityError).
 // Failures are warned, never thrown.
 export function SwRegister() {
   useEffect(() => {
