@@ -56,7 +56,7 @@ vi.mock("@vercel/speed-insights/next", () => ({
 // Import after mocks are registered.
 // ---------------------------------------------------------------------------
 
-import RootLayout from "@/app/layout";
+import RootLayout, { viewport } from "@/app/layout";
 
 // ---------------------------------------------------------------------------
 // Helper: recursive element finder
@@ -188,5 +188,17 @@ describe("RootLayout — structural branch selection", () => {
 
     const suspenseEl = findElement(tree, isSuspense);
     expect(suspenseEl).toBeNull();
+  });
+});
+
+describe("viewport metadata", () => {
+  // Pins the iOS dark-mode black-flash fix: a light-only app must declare
+  // color-scheme: light so the standalone PWA canvas stays light on dark devices.
+  test("pins the scheme to light so a dark-mode iOS PWA does not flash a black canvas", () => {
+    expect(viewport.colorScheme).toBe("light");
+  });
+
+  test("keeps the brand theme color", () => {
+    expect(viewport.themeColor).toBe("#FF6F79");
   });
 });

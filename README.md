@@ -2,10 +2,14 @@
 
 [![backend CI](https://github.com/yasuflatland-lf/flamingo-armond/actions/workflows/backend.yml/badge.svg?branch=main)](https://github.com/yasuflatland-lf/flamingo-armond/actions/workflows/backend.yml)
 [![frontend CI](https://github.com/yasuflatland-lf/flamingo-armond/actions/workflows/frontend.yml/badge.svg?branch=main)](https://github.com/yasuflatland-lf/flamingo-armond/actions/workflows/frontend.yml)
-[![codecov backend](https://codecov.io/gh/yasuflatland-lf/flamingo-armond/branch/main/graph/badge.svg?flag=backend)](https://codecov.io/gh/yasuflatland-lf/flamingo-armond)
-[![codecov frontend](https://codecov.io/gh/yasuflatland-lf/flamingo-armond/branch/main/graph/badge.svg?flag=frontend)](https://codecov.io/gh/yasuflatland-lf/flamingo-armond)
+[![backend coverage](https://img.shields.io/codecov/c/github/yasuflatland-lf/flamingo-armond?flag=backend&label=backend%20coverage)](https://codecov.io/gh/yasuflatland-lf/flamingo-armond)
+[![frontend coverage](https://img.shields.io/codecov/c/github/yasuflatland-lf/flamingo-armond?flag=frontend&label=frontend%20coverage)](https://codecov.io/gh/yasuflatland-lf/flamingo-armond)
 
-🦩 Swiping Flashcard app — a Go (Echo) backend, a Next.js 16 frontend, and a shared GraphQL schema, with Supabase for Postgres + Auth, and optional Notion page sync that imports cards from Notion pages on a 6-hourly schedule.
+🦩 Swiping Flashcard app (installable PWA) — a Go (Echo) backend, a Next.js 16 frontend, and a shared GraphQL schema, with Supabase for Postgres + Auth, and optional Notion page sync that imports cards from Notion pages on a 6-hourly schedule.
+
+## Why Flamingo Armond?
+
+When my child was about one year old, we were playing make-believe, and they handed me a pretend drink. I asked, "What is this drink called?" and without missing a beat, she answered, "Flamingo Armond." The name stuck. It came up again during bath time and kept popping up in our play over the next few years. I loved how it sounded, and I promised myself that if I ever built my own app, I would use that name. This is that app.
 
 ## Architecture
 

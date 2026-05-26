@@ -66,6 +66,25 @@ The Supabase auth middleware matcher in `frontend/src/middleware.ts` excludes `s
 
 Unit and component tests cover the registration guard, the production gate, and the dev-cleanup path (`frontend/src/components/pwa/sw-register.test.tsx`), as well as the install-hint logic (`frontend/src/components/pwa/apple-install-hint.test.tsx`). The service worker's *runtime* behaviour — offline-fallback rendering, install-time precache population, the actual install flow — cannot be exercised in the test environment because service workers require a secure context. Validating that path requires a real HTTPS device or a deployment.
 
+## PWA black-flash on dark-mode iOS — `color-scheme: light`
+
+### Root cause
+
+The app currently renders light-only — no `ThemeProvider` or `prefers-color-scheme` toggle is wired, so the dormant `.dark` block in `globals.css` is never activated and `--background` stays `oklch(1 0 0)`. But the document declared no `color-scheme`. On an iOS standalone PWA whose device is in **dark mode**, Safari applies the system dark appearance to the UA *canvas* — the backdrop painted before `<body>`'s `bg-background` white (and the coral `BootSplash`) reach the screen. The result is a black flash on every launch, even though every painted surface is light or coral.
+
+### Fix
+
+Declare the scheme as light in two places, both correct for a light-only app:
+
+- `frontend/src/app/layout.tsx` — sets `colorScheme: "light"` in the `viewport` export, which emits `<meta name="color-scheme" content="light">`. The meta is parsed in `<head>` before first paint, so it governs the pre-paint canvas appearance — the exact interval where the black flash occurs.
+- `frontend/src/app/globals.css` — `:root { color-scheme: light; }`, the CSS-level declaration that keeps the canvas, scrollbars, and form controls light once styles apply.
+
+This is correct precisely because the app is light-only; it never wants the dark canvas. `frontend/src/app/layout.test.tsx` pins `viewport.colorScheme === "light"` so the meta cannot silently regress.
+
+### Why not the apple-touch-startup-image
+
+A mismatched `apple-touch-startup-image` produces a *sustained* black launch screen, not a brief flash. The observed symptom was a brief black flash that resolved into the app — the canvas-appearance issue above, not startup-image coverage. The startup images remain a separate concern (see the Interval A section).
+
 ## PWA white-screen fix: de-blocking the root layout (Interval B)
 
 ### Root cause

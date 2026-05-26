@@ -80,6 +80,10 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#FF6F79",
+  // The app ships a single light theme. Without this, an iOS standalone PWA on a
+  // device in dark mode paints the UA canvas dark, producing a black flash before
+  // the body/BootSplash paint. Pinning the scheme to light keeps the canvas light.
+  colorScheme: "light",
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {

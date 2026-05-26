@@ -4,6 +4,9 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* Light-only app: keep the UA canvas light so an iOS standalone PWA on a
+     dark-mode device does not flash a black backdrop before the page paints. */
+  color-scheme: light;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
