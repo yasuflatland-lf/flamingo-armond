@@ -60,7 +60,7 @@ function findElementProps(node: unknown, componentName: string): AppShellProps |
     "type" in el &&
     "props" in el &&
     typeof el.type === "function" &&
-    (el.type as { name?: string; displayName?: string }).name === componentName
+    (el.type as { name?: string }).name === componentName
   ) {
     return el.props as AppShellProps;
   }

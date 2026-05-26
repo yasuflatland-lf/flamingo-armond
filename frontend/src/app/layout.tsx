@@ -1,8 +1,7 @@
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
-import type { ReactNode } from "react";
-import { Suspense } from "react";
+import { type ReactNode, Suspense } from "react";
 import { AuthShell } from "@/components/auth-shell";
 import { BootSplash } from "@/components/boot-splash";
 import { AppleInstallHint } from "@/components/pwa/apple-install-hint";
