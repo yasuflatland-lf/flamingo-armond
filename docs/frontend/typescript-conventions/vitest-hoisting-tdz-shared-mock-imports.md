@@ -63,3 +63,19 @@ Pattern 1 is preferred when the spy is genuinely shared across test files (so it
 **The consumer of the mocked module (e.g. `import RootLayout from "@/app/layout"`) MUST come after the `vi.mock` call.** If the consumer is imported above the `vi.mock` line, the module graph resolves before the mock is registered and the real implementation leaks through. This is a separate constraint from the TDZ issue — see also [`docs/frontend/testing-convention-narrow-vs-broad-page-tests.md` § "Add `vi.mock` for every new child component at the top of the test file"](../testing-convention-narrow-vs-broad-page-tests.md).
 
 Reference: `frontend/src/app/layout.test.tsx` (the import-then-`vi.mock`-then-import-consumer ordering at the top of the file).
+
+## Partial module replacement: `vi.hoisted` + `async importOriginal`
+
+When only one named export needs to be controllable (e.g. to inject a throw) while all other exports remain real, combine `vi.hoisted` with `async (importOriginal)`:
+
+```ts
+const mockBuildHtmlCsp = vi.hoisted(() => vi.fn<() => string>());
+
+vi.mock("@/lib/security/csp", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/lib/security/csp")>();
+  mockBuildHtmlCsp.mockImplementation(mod.buildHtmlCsp);
+  return { ...mod, buildHtmlCsp: mockBuildHtmlCsp };
+});
+```
+
+`vi.hoisted` creates the spy before the mock factory runs; `importOriginal` loads the real module so its other exports (e.g. `serializeCsp`) stay unaffected. The `mockImplementation` call inside the factory wires the real function as the default behaviour, allowing individual tests to override with `mockImplementationOnce(() => { throw ... })`. Use this shape instead of a full module replacement when the module has multiple exports and only one needs control. Reference: `frontend/src/lib/supabase/middleware.test.ts`.
