@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import { env } from "@/env";
-import { buildHtmlReportOnlyCsp } from "@/lib/security/csp";
+import { buildHtmlCsp } from "@/lib/security/csp";
 import { isIgnorableAuthError } from "@/lib/supabase/auth-errors";
 
 const NONCE_BYTES = 18;
@@ -12,12 +12,12 @@ function generateNonce(): string {
   return Buffer.from(bytes).toString("base64url");
 }
 
-function createMiddlewareResponse(requestHeaders: Headers, reportOnlyPolicy: string | null) {
+function createMiddlewareResponse(requestHeaders: Headers, cspPolicy: string | null) {
   const response = NextResponse.next({
     request: { headers: requestHeaders },
   });
-  if (reportOnlyPolicy != null) {
-    response.headers.set("Content-Security-Policy-Report-Only", reportOnlyPolicy);
+  if (cspPolicy != null) {
+    response.headers.set("Content-Security-Policy", cspPolicy);
   }
   return response;
 }
@@ -29,30 +29,32 @@ export async function updateSession(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   const nonce = generateNonce();
 
-  let reportOnlyPolicy: string | null = null;
+  let cspPolicy: string | null = null;
   try {
-    reportOnlyPolicy = buildHtmlReportOnlyCsp({
+    cspPolicy = buildHtmlCsp({
       nonce,
       supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL,
     });
   } catch (err) {
     console.error(
-      "[supabase/middleware] buildHtmlReportOnlyCsp failed, CSP header will be omitted:",
-      err instanceof Error ? err.message : String(err),
+      "[supabase/middleware] buildHtmlCsp failed — enforcing Content-Security-Policy and x-nonce omitted from this response:",
+      err,
     );
   }
 
-  if (reportOnlyPolicy != null) {
-    // Named "Content-Security-Policy" so Next's SSR pipeline can extract the
-    // nonce for <script nonce="..."> injection — this is an internal forwarding
-    // header, not an enforcement policy. The browser-visible header is set on
-    // the response as Content-Security-Policy-Report-Only below.
-    requestHeaders.set("Content-Security-Policy", reportOnlyPolicy);
+  if (cspPolicy != null) {
+    // Forward the policy as a request header so Next's SSR pipeline can extract
+    // the nonce for <script nonce="..."> injection. This is an internal header
+    // consumed by the rendering pipeline; the browser never sees it. The
+    // enforcing response header is set in createMiddlewareResponse() below.
+    // When cspPolicy is null (buildHtmlCsp threw), both headers are omitted and
+    // auth/routing/cookie refresh continue normally.
+    requestHeaders.set("Content-Security-Policy", cspPolicy);
     requestHeaders.set("x-nonce", nonce);
   }
   requestHeaders.set("x-pathname", request.nextUrl.pathname);
 
-  let supabaseResponse = createMiddlewareResponse(requestHeaders, reportOnlyPolicy);
+  let supabaseResponse = createMiddlewareResponse(requestHeaders, cspPolicy);
 
   const supabase = createServerClient(
     env.NEXT_PUBLIC_SUPABASE_URL,
@@ -68,7 +70,7 @@ export async function updateSession(request: NextRequest) {
           }
           // Re-create the response after cookie writes; pass the same modified
           // request headers so x-pathname, nonce, and CSP survive.
-          supabaseResponse = createMiddlewareResponse(requestHeaders, reportOnlyPolicy);
+          supabaseResponse = createMiddlewareResponse(requestHeaders, cspPolicy);
           for (const { name, value, options } of cookiesToSet) {
             supabaseResponse.cookies.set(name, value, options);
           }

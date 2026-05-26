@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { HtmlCspOptions } from "@/lib/security/csp";
 import { updateSession } from "./middleware";
 
 const mockGetUser = vi.hoisted(() =>
@@ -11,6 +12,14 @@ vi.mock("@supabase/ssr", () => ({
     auth: { getUser: mockGetUser },
   }),
 }));
+
+const mockBuildHtmlCsp = vi.hoisted(() => vi.fn<(opts: HtmlCspOptions) => string>());
+
+vi.mock("@/lib/security/csp", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/lib/security/csp")>();
+  mockBuildHtmlCsp.mockImplementation(mod.buildHtmlCsp);
+  return { ...mod, buildHtmlCsp: mockBuildHtmlCsp };
+});
 
 function makeRequest(url = "http://localhost/", cookies: Record<string, string> = {}) {
   const req = new NextRequest(new URL(url));
@@ -68,18 +77,18 @@ describe("updateSession", () => {
     expect(response.cookies.get("sb-auth-token")?.value).toBe("refreshed");
   });
 
-  it("adds a report-only CSP response header while forwarding a nonce-bearing CSP for Next rendering", async () => {
+  it("adds an enforcing CSP response header while forwarding a nonce-bearing CSP for Next rendering", async () => {
     const response = await updateSession(makeRequest("http://localhost/dashboard"));
 
-    const reportOnlyPolicy = response.headers.get("Content-Security-Policy-Report-Only");
-    expect(reportOnlyPolicy).toContain("script-src 'self' 'nonce-");
-    expect(response.headers.get("Content-Security-Policy")).toBeNull();
+    const cspPolicy = response.headers.get("Content-Security-Policy");
+    expect(cspPolicy).toContain("script-src 'self' 'nonce-");
+    expect(response.headers.get("Content-Security-Policy-Report-Only")).toBeNull();
 
-    const nonce = nonceFromPolicy(reportOnlyPolicy ?? "");
+    const nonce = nonceFromPolicy(cspPolicy ?? "");
     expect(nonce).toMatch(/^[A-Za-z0-9_-]+$/);
     expect(nonce).not.toMatch(/[<>&]/);
 
-    expect(forwardedRequestHeader(response, "content-security-policy")).toBe(reportOnlyPolicy);
+    expect(forwardedRequestHeader(response, "content-security-policy")).toBe(cspPolicy);
     expect(forwardedRequestHeader(response, "x-nonce")).toBe(nonce);
     expect(forwardedRequestHeaderNames(response)).toEqual(
       expect.arrayContaining(["content-security-policy", "x-nonce"]),
@@ -110,11 +119,9 @@ describe("updateSession", () => {
     const firstResponse = await updateSession(makeRequest("http://localhost/dashboard"));
     const secondResponse = await updateSession(makeRequest("http://localhost/dashboard"));
 
-    const firstNonce = nonceFromPolicy(
-      firstResponse.headers.get("Content-Security-Policy-Report-Only") ?? "",
-    );
+    const firstNonce = nonceFromPolicy(firstResponse.headers.get("Content-Security-Policy") ?? "");
     const secondNonce = nonceFromPolicy(
-      secondResponse.headers.get("Content-Security-Policy-Report-Only") ?? "",
+      secondResponse.headers.get("Content-Security-Policy") ?? "",
     );
 
     expect(firstNonce).not.toBe(secondNonce);
@@ -135,11 +142,11 @@ describe("updateSession", () => {
       makeRequest("http://localhost/dashboard", { "sb-auth-token": "old" }),
     );
 
-    const reportOnlyPolicy = response.headers.get("Content-Security-Policy-Report-Only");
-    const nonce = nonceFromPolicy(reportOnlyPolicy ?? "");
+    const cspPolicy = response.headers.get("Content-Security-Policy");
+    const nonce = nonceFromPolicy(cspPolicy ?? "");
 
     expect(response.cookies.get("sb-auth-token")?.value).toBe("refreshed");
-    expect(forwardedRequestHeader(response, "content-security-policy")).toBe(reportOnlyPolicy);
+    expect(forwardedRequestHeader(response, "content-security-policy")).toBe(cspPolicy);
     expect(forwardedRequestHeader(response, "x-nonce")).toBe(nonce);
     expect(mockGetUser).toHaveBeenCalledTimes(1);
   });
@@ -192,6 +199,30 @@ describe("updateSession", () => {
     await updateSession(makeRequest());
 
     expect(consoleErrorSpy).not.toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("omits CSP headers and x-nonce and logs console.error when buildHtmlCsp throws", async () => {
+    mockBuildHtmlCsp.mockImplementationOnce(() => {
+      throw new Error("invalid supabaseUrl");
+    });
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await updateSession(makeRequest("http://localhost/dashboard"));
+
+    expect(response).toBeInstanceOf(NextResponse);
+    expect(response.headers.get("Content-Security-Policy")).toBeNull();
+    expect(response.headers.get("Content-Security-Policy-Report-Only")).toBeNull();
+    expect(forwardedRequestHeader(response, "content-security-policy")).toBeNull();
+    expect(forwardedRequestHeader(response, "x-nonce")).toBeNull();
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[supabase/middleware] buildHtmlCsp failed"),
+      expect.any(Error),
+    );
+    expect(forwardedRequestHeader(response, "x-pathname")).toBe("/dashboard");
+    expect(mockGetUser).toHaveBeenCalledTimes(1);
+
     consoleErrorSpy.mockRestore();
   });
 });
