@@ -59,3 +59,94 @@ The Supabase auth middleware matcher in `frontend/src/middleware.ts` excludes `s
 ## Verification note
 
 Unit and component tests cover the registration guard and the install-hint logic (`frontend/src/components/pwa/sw-register.test.tsx`, `frontend/src/components/pwa/apple-install-hint.test.tsx`). The service worker's *runtime* behaviour — offline-fallback rendering, install-time precache population, the actual install flow — cannot be exercised in the test environment because service workers require a secure context. Validating that path requires a real HTTPS device or a deployment.
+
+## PWA white-screen fix: de-blocking the root layout (Interval B)
+
+### Root cause
+
+`frontend/src/app/layout.tsx` was an `async` server component that awaited the full Supabase auth waterfall (`getUser()` → `getClaims()`) before returning any JSX. During that await the server streamed zero bytes. The browser's body background (`oklch(1 0 0)`, pure white from `globals.css`) was visible for hundreds of milliseconds on cold start and on every service-worker-update reload.
+
+Adding `app/loading.tsx` alone does **not** fix this. `loading.tsx` wraps the `page` inside the layout in a Suspense boundary, but the Suspense fallback cannot render until the layout itself returns its first JSX chunk. The blocking await is in the layout, so the fallback is never streamed until after the delay has already occurred.
+
+### Fix: synchronous `<html><body>` + `AuthShell` inside `<Suspense>`
+
+The layout now returns `<html><body>` synchronously. Only `await headers()` remains in the layout function body — it reads a fast in-memory map that Next.js pre-populates before the component runs and does not block streaming. The `/login` and `/onboarding` fast-path branches (bare shell, no auth, no nav) retain their own early return.
+
+For all other routes the auth waterfall moved into a dedicated child server component `AuthShell` (`frontend/src/components/auth-shell.tsx`), which is wrapped in a `<Suspense>` with a `<BootSplash>` fallback:
+
+```tsx
+// frontend/src/app/layout.tsx (simplified)
+<body suppressHydrationWarning>
+  <Providers>
+    <Suspense fallback={<BootSplash />}>
+      <AuthShell>{children}</AuthShell>
+    </Suspense>
+  </Providers>
+  <SpeedInsights />
+  <SwRegister />
+  <AppleInstallHint />
+</body>
+```
+
+Next.js App Router streams the `<Suspense>` fallback with the first HTML flush — before `AuthShell` resolves. The browser paints the coral brand splash immediately instead of a white blank.
+
+### BootSplash component
+
+`frontend/src/components/boot-splash.tsx` is a server component with no `"use client"` directive. It renders a full-screen coral overlay (`bg-[#FF6F79]`) with the `FlamingoMark` SVG centered (`size-24`). Because it uses only Tailwind utility classes and an inline SVG, it requires no JavaScript to paint and is safe for the very first streamed chunk.
+
+### AuthShell degradation contract
+
+`AuthShell` wraps the entire auth resolution in a `try/catch`. Transport-level rejections from Supabase (DNS failure, connection refused, JWKS fetch hang) cause the SDK awaits to reject rather than return `{ error }`. `<Suspense>` does not catch thrown errors — only suspended promises. Without the try/catch, a transport rejection escapes the Suspense boundary and, with no root `error.tsx` / `global-error.tsx`, 500s the whole app. On catch, `AuthShell` degrades to `shellUser = null, isAdmin = false` and logs with the `[layout]` scope prefix. See [`docs/frontend/rsc-error-handling/suspense-does-not-catch-thrown-errors.md`](rsc-error-handling/suspense-does-not-catch-thrown-errors.md).
+
+### Log prefix continuity
+
+`AuthShell` logs with the `[layout]` prefix even though the code now lives in `auth-shell.tsx`. The prefix was preserved intentionally: operator runbooks and test assertions (`expect(consoleErrorSpy).toHaveBeenCalledWith("[layout] ...")`) pin to the string. Changing it would require coordinated updates across all call sites and tests.
+
+## iOS apple-touch-startup-image (Interval A)
+
+### Root cause
+
+iOS does not use the web app manifest's `background_color` for the standalone launch splash. Between the moment the user taps the home-screen icon and the moment WebView renders the first pixel, the OS shows a white screen. This is a distinct interval from the app-level delay described in the section above — it occurs before the app code runs at all, entirely within the OS.
+
+### Fix: `apple-touch-startup-image` meta tags via Next.js `metadata`
+
+The `metadata` export in `frontend/src/app/layout.tsx` declares 14 portrait-orientation splash PNGs via `appleWebApp.startupImage`. Each entry maps a CSS media query to a PNG file served from `frontend/public/splash/`. iOS Safari selects the entry whose media query matches the device's logical dimensions and device pixel ratio, then uses that PNG as the startup image.
+
+**Physical pixel naming:** the file naming convention is `splash-<physW>x<physH>.png`, where physical pixels equal logical pixels multiplied by the device pixel ratio. The media query uses logical pixels and DPR separately so Safari can match correctly.
+
+**Covered devices (portrait only; landscape is skipped — the app is portrait-oriented):**
+
+| Device | Logical WxH | DPR | Physical file |
+|---|---|---|---|
+| iPhone 16 Pro Max | 440×956 | 3 | `splash-1320x2868.png` |
+| iPhone 16 Pro | 402×874 | 3 | `splash-1206x2622.png` |
+| iPhone 16 Plus / 15 Plus | 430×932 | 3 | `splash-1290x2796.png` |
+| iPhone 16 / 15 / 14 Pro | 393×852 | 3 | `splash-1179x2556.png` |
+| iPhone 14 / 13 / 12 | 390×844 | 3 | `splash-1170x2532.png` |
+| iPhone 14 Plus / 13 Pro Max | 428×926 | 3 | `splash-1284x2778.png` |
+| iPhone 11 Pro Max / XS Max | 414×896 | 3 | `splash-1242x2688.png` |
+| iPhone 11 / XR | 414×896 | 2 | `splash-828x1792.png` |
+| iPhone SE 3rd gen | 375×667 | 2 | `splash-750x1334.png` |
+| iPad Pro 12.9" | 1024×1366 | 2 | `splash-2048x2732.png` |
+| iPad Pro 11" / Air 4–5 | 834×1194 | 2 | `splash-1668x2388.png` |
+| iPad Air 3 / Pro 10.5" | 834×1112 | 2 | `splash-1668x2224.png` |
+| iPad mini 6 | 744×1133 | 2 | `splash-1488x2266.png` |
+| iPad 9th/10th gen | 810×1080 | 2 | `splash-1620x2160.png` |
+
+The PNGs are committed to `frontend/public/splash/` (total ~428 KB). They are not included in the SW precache (`scripts/stamp-sw-version.mjs` does not hash them) and are not SW-cached at runtime — they are served as ordinary static assets by the CDN.
+
+### One-shot regeneration procedure
+
+The generation script `frontend/scripts/gen-ios-splash.mjs` uses Node.js built-ins and `rsvg-convert` (librsvg, Homebrew). It is **not wired into prebuild or any CI step** — the PNGs are committed and the script is only re-run when device coverage needs updating.
+
+```bash
+# Prerequisite: rsvg-convert at /opt/homebrew/bin/rsvg-convert
+brew install librsvg       # if not already installed
+
+# From the repo root:
+node frontend/scripts/gen-ios-splash.mjs
+```
+
+The script generates each PNG by building a wrapper SVG (coral full-bleed rect + flamingo logo paths extracted from `frontend/src/app/icon.svg`, scaled to ~40% of the shorter dimension, centered) and converting it with `rsvg-convert -w <W> -h <H> tmp.svg -o public/splash/splash-<W>x<H>.png`. On partial failure, `process.exitCode` is set to `1` so the caller can detect which devices failed; successfully-generated files are not rolled back.
+
+After regeneration, visually verify each PNG (open in a browser: coral fills to the edges, logo is centered) before committing.

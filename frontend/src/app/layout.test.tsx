@@ -1,28 +1,23 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import {
-  getMockGetClaimsSpy,
-  mockCreateSupabaseServerClient,
-  resetMockSupabase,
-  setMockSupabaseClaims,
-  setMockSupabaseClaimsDataNull,
-  setMockSupabaseClaimsError,
-  setMockSupabaseUser,
-  setMockSupabaseUserError,
-} from "../../__tests__/utils/mock-supabase";
+import { Suspense } from "react";
+import { describe, expect, test, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Module mocks — must be declared before any import of the module under test.
 // ---------------------------------------------------------------------------
 
-vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: mockCreateSupabaseServerClient,
+// AuthShell and BootSplash are opaque to this test; we only verify that the
+// correct elements appear in (or are absent from) the returned JSX tree.
+// Named functions are required so findElement can locate them by type.name.
+vi.mock("@/components/auth-shell", () => ({
+  AuthShell: function AuthShell(props: { children?: React.ReactNode }) {
+    return props as unknown as React.ReactElement;
+  },
 }));
 
-// AppShell and Providers are opaque to this test — we do not need
-// to render them; we only need to inspect the props the layout passes to AppShell.
-// Stubs are defined as minimal functions so React's JSX type system is satisfied.
-vi.mock("@/components/nav/app-shell", () => ({
-  AppShell: (props: unknown) => props,
+vi.mock("@/components/boot-splash", () => ({
+  BootSplash: function BootSplash() {
+    return null;
+  },
 }));
 
 vi.mock("@/app/providers", () => ({
@@ -39,11 +34,22 @@ vi.mock("next/navigation", () => ({
 }));
 
 // next/headers — middleware forwards the request pathname via x-pathname so
-// the server component can decide whether to mount AppShell. Tests override
-// the return value for the /login bypass case.
+// the layout can decide whether to mount AuthShell. Tests override the return
+// value per case.
 const mockGetHeader = vi.fn<(name: string) => string | null>(() => null);
 vi.mock("next/headers", () => ({
   headers: vi.fn(() => Promise.resolve({ get: mockGetHeader })),
+}));
+
+// PWA components — stubs to prevent transitive import errors.
+vi.mock("@/components/pwa/sw-register", () => ({
+  SwRegister: () => null,
+}));
+vi.mock("@/components/pwa/apple-install-hint", () => ({
+  AppleInstallHint: () => null,
+}));
+vi.mock("@vercel/speed-insights/next", () => ({
+  SpeedInsights: () => null,
 }));
 
 // ---------------------------------------------------------------------------
@@ -53,309 +59,134 @@ vi.mock("next/headers", () => ({
 import RootLayout from "@/app/layout";
 
 // ---------------------------------------------------------------------------
-// Helper: traverse the React element tree returned by RootLayout and find
-// the props passed to AppShell.
-// The layout returns: <html><body><Providers><AppShell ...>...</AppShell></Providers></body></html>
-// AppShell receives `user` and `isAdmin` — those are the values under test.
+// Helper: recursive element finder
+//
+// Traverses a React element tree and returns the first element that satisfies
+// the predicate. Recurses into both `props.children` (array or single) AND
+// `props.fallback` so Suspense boundaries are fully covered.
 // ---------------------------------------------------------------------------
 
-type AppShellProps = {
-  user: { email: string | null } | null;
-  isAdmin: boolean;
+type ReactElementLike = {
+  type: unknown;
+  props?: {
+    children?: unknown;
+    fallback?: unknown;
+  };
 };
 
-/**
- * Recursively walk a React element tree and return the props of the first
- * element whose `type` function is named `componentName`.
- */
-function findElementProps(node: unknown, componentName: string): AppShellProps | null {
+function findElement(
+  node: unknown,
+  predicate: (el: ReactElementLike) => boolean,
+): ReactElementLike | null {
   if (node == null || typeof node !== "object") return null;
-  const el = node as Record<string, unknown>;
-  if (
-    "type" in el &&
-    "props" in el &&
-    typeof el.type === "function" &&
-    (el.type as { name?: string; displayName?: string }).name === componentName
-  ) {
-    return el.props as AppShellProps;
+  const el = node as ReactElementLike;
+
+  if ("type" in el && predicate(el)) return el;
+
+  const props = el.props;
+  if (props == null) return null;
+
+  // Check fallback first (covers Suspense.fallback subtree).
+  if (props.fallback != null) {
+    const found = findElement(props.fallback, predicate);
+    if (found != null) return found;
   }
-  if ("props" in el && el.props != null) {
-    const children = (el.props as Record<string, unknown>).children;
-    if (Array.isArray(children)) {
-      for (const child of children) {
-        const found = findElementProps(child, componentName);
-        if (found != null) return found;
-      }
-    } else if (children != null) {
-      return findElementProps(children, componentName);
+
+  // Check children (array or single).
+  const { children } = props;
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      const found = findElement(child, predicate);
+      if (found != null) return found;
     }
+  } else if (children != null) {
+    const found = findElement(children, predicate);
+    if (found != null) return found;
   }
+
   return null;
 }
 
-/**
- * Invoke RootLayout and locate the props forwarded to AppShell. Throws if
- * AppShell is not found in the returned JSX tree (which would indicate the
- * layout structure changed in a way that breaks the test assumptions).
- */
-async function renderLayoutAndGetShellProps(
-  children: React.ReactNode = <div />,
-): Promise<AppShellProps> {
-  const tree = await RootLayout({ children });
-  const props = findElementProps(tree, "AppShell");
-  if (props == null) {
-    throw new Error(
-      "AppShell element not found in the RootLayout JSX tree — the layout structure may have changed.",
-    );
-  }
-  return props;
+/** Returns true when the element's type.name matches the given component name. */
+function byName(name: string): (el: ReactElementLike) => boolean {
+  return (el) => {
+    const t = el.type;
+    if (typeof t === "function") {
+      return (t as { name?: string }).name === name;
+    }
+    return false;
+  };
+}
+
+/** Returns true when the element's type is the React.Suspense symbol. */
+function isSuspense(el: ReactElementLike): boolean {
+  return el.type === Suspense;
 }
 
 // ---------------------------------------------------------------------------
-// Setup / teardown
+// Test suite: root layout structural routing
 // ---------------------------------------------------------------------------
 
-let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
-let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+describe("RootLayout — structural branch selection", () => {
+  // Case: default route (x-pathname absent / "/") — the non-bypass branch.
+  // The returned tree must contain a Suspense element whose fallback is a
+  // BootSplash element and whose child is an AuthShell element.
+  test("default route: Suspense wraps AuthShell with BootSplash as fallback", async () => {
+    // x-pathname absent; mockGetHeader returns null by default.
+    mockGetHeader.mockReturnValue(null);
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  resetMockSupabase();
-  // Default: x-pathname is absent, so layout falls through to the AppShell
-  // branch. The /login test overrides this per-case.
-  mockGetHeader.mockReturnValue(null);
-  consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-  consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-});
+    const tree = await RootLayout({ children: <div /> });
 
-afterEach(() => {
-  // Restore in LIFO order so each spy is unwound in the reverse of installation.
-  consoleWarnSpy.mockRestore();
-  consoleErrorSpy.mockRestore();
-});
+    // (1) A Suspense element exists somewhere in the tree.
+    const suspenseEl = findElement(tree, isSuspense);
+    expect(suspenseEl).not.toBeNull();
 
-// ---------------------------------------------------------------------------
-// Test suite: root layout degradation branches
-// ---------------------------------------------------------------------------
+    // (2) The Suspense fallback is a BootSplash element.
+    const fallbackEl = suspenseEl?.props?.fallback;
+    expect(fallbackEl).not.toBeNull();
+    const bootSplashEl = findElement(fallbackEl, byName("BootSplash"));
+    expect(bootSplashEl).not.toBeNull();
 
-describe("RootLayout — error handling and AppShell prop wiring", () => {
-  // Case 1: AuthSessionMissingError is the normal anonymous-request signal.
-  // The layout must NOT call getClaims, must NOT emit console.error, and must
-  // pass user=null / isAdmin=false to AppShell.
-  test("AuthSessionMissingError: no getClaims call, no console output, AppShell gets user=null isAdmin=false", async () => {
-    const noSession = new Error("Auth session missing!");
-    noSession.name = "AuthSessionMissingError";
-    setMockSupabaseUserError(noSession);
+    // (3) AuthShell is reachable inside the Suspense child.
+    const suspenseChildren = suspenseEl?.props?.children;
+    const authShellEl = findElement(suspenseChildren, byName("AuthShell"));
+    expect(authShellEl).not.toBeNull();
 
-    const props = await renderLayoutAndGetShellProps();
-
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
-    expect(consoleWarnSpy).not.toHaveBeenCalled();
-    // The layout reached createSupabaseServerClient() (auth check is required
-    // for non-bypass routes) but must short-circuit before getClaims().
-    expect(mockCreateSupabaseServerClient).toHaveBeenCalled();
-    expect(getMockGetClaimsSpy()).not.toHaveBeenCalled();
-    expect(props.user).toBeNull();
-    expect(props.isAdmin).toBe(false);
+    // (4) AuthShell receives the layout's children as its own children prop.
+    expect(authShellEl?.props?.children).toBeDefined();
   });
 
-  // Case 2: A non-AuthSessionMissingError from getUser() (e.g. a transport
-  // failure) must be logged with the [layout] prefix and degrade gracefully —
-  // AppShell receives a null user and false isAdmin, no getClaims is called.
-  test("non-AuthSessionMissingError from getUser: console.error with [layout] prefix, degraded shell, no getClaims", async () => {
-    const transportError = new Error("network failure");
-    transportError.name = "FetchError";
-    setMockSupabaseUserError(transportError);
-
-    const props = await renderLayoutAndGetShellProps();
-
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      "[layout] getUser() failed:",
-      transportError.name,
-      transportError.message,
-    );
-    // The layout reached createSupabaseServerClient() (auth check is required
-    // for non-bypass routes) but must short-circuit before getClaims().
-    expect(mockCreateSupabaseServerClient).toHaveBeenCalled();
-    expect(getMockGetClaimsSpy()).not.toHaveBeenCalled();
-    expect(props.user).toBeNull();
-    expect(props.isAdmin).toBe(false);
-  });
-
-  // Case 3: Authenticated user whose claims contain app_metadata.role === "admin".
-  // AppShell must receive user.email and isAdmin=true.
-  test("authenticated user + admin role in claims: AppShell gets user.email and isAdmin=true", async () => {
-    setMockSupabaseUser({ id: "u-3", email: "admin@example.com" });
-    setMockSupabaseClaims({ app_metadata: { role: "admin" } });
-
-    const props = await renderLayoutAndGetShellProps();
-
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
-    expect(consoleWarnSpy).not.toHaveBeenCalled();
-    expect(props.user).toEqual({ email: "admin@example.com" });
-    expect(props.isAdmin).toBe(true);
-  });
-
-  // Case 4: Authenticated user whose claims contain a non-admin role.
-  test("authenticated user + non-admin role in claims: isAdmin=false", async () => {
-    setMockSupabaseUser({ id: "u-4", email: "member@example.com" });
-    setMockSupabaseClaims({ app_metadata: { role: "member" } });
-
-    const props = await renderLayoutAndGetShellProps();
-
-    expect(props.isAdmin).toBe(false);
-    expect(props.user).toEqual({ email: "member@example.com" });
-  });
-
-  // Case 5: Authenticated user whose claims have app_metadata.role absent.
-  test("authenticated user + claims with role missing: isAdmin=false", async () => {
-    setMockSupabaseUser({ id: "u-5", email: "new@example.com" });
-    setMockSupabaseClaims({ app_metadata: {} });
-
-    const props = await renderLayoutAndGetShellProps();
-
-    expect(props.isAdmin).toBe(false);
-  });
-
-  // Case 6: Authenticated user whose claims have app_metadata absent entirely.
-  test("authenticated user + claims with app_metadata absent: isAdmin=false", async () => {
-    setMockSupabaseUser({ id: "u-6a", email: "bare@example.com" });
-    setMockSupabaseClaims({});
-
-    const props = await renderLayoutAndGetShellProps();
-
-    expect(props.isAdmin).toBe(false);
-  });
-
-  // Case 6b: Authenticated user but getClaims returns the SDK's third return
-  // shape `{ data: null, error: null }` — the TOCTOU race window where the
-  // session vanished between getUser() and getClaims(). The layout must:
-  //   - emit console.warn with "[layout] getClaims() returned null data without error"
-  //   - include a structured payload with a discriminating key (user_id)
-  //   - NOT include email or display_name in the payload (PII protection)
-  //   - degrade to isAdmin=false without throwing
-  //   - still pass user.email to AppShell (shellUser only degrades on a real
-  //     getUser() failure, not on a null-data getClaims response)
-  test("authenticated user + getClaims returns { data: null, error: null }: console.warn with PII-free payload, isAdmin=false, shellUser intact", async () => {
-    const userId = "u-6b";
-    setMockSupabaseUser({ id: userId, email: "toctou@example.com" });
-    setMockSupabaseClaimsDataNull();
-
-    const props = await renderLayoutAndGetShellProps();
-
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
-
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      "[layout] getClaims() returned null data without error",
-      expect.objectContaining({
-        user_id: userId,
-      }),
-    );
-
-    // Exactly-one assertion: silently picking `mock.calls[0][1]` without first
-    // asserting call-count would let a regression that emits a second warn
-    // slip through. The PII-absence check below must inspect the single
-    // intended warn payload, not the first of many.
-    expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
-    // PII absence: email and display_name must NOT appear in the warn payload.
-    const warnPayload = consoleWarnSpy.mock.calls[0][1] as Record<string, unknown>;
-    expect(Object.keys(warnPayload)).not.toContain("email");
-    expect(Object.keys(warnPayload)).not.toContain("display_name");
-
-    expect(props.isAdmin).toBe(false);
-    // user.email is still wired to AppShell — only the admin flag degrades when
-    // getClaims returns the null-data race shape.
-    expect(props.user).toEqual({ email: "toctou@example.com" });
-  });
-
-  // Case 7: Authenticated user but getClaims returns an error.
-  // The layout must:
-  //   - emit console.warn with "[layout] getClaims() failed"
-  //   - include a structured payload with a discriminating key (user_id) so
-  //     the assertion cannot be satisfied by a bare Error instance — per
-  //     docs/frontend/typescript-conventions.md "expect.objectContaining
-  //     ({ message }) is not enough"
-  //   - NOT include email or display_name in the payload (PII protection) — per
-  //     docs/backend/error-wrapping/assert-pii-absence-on-log-lines.md
-  //   - degrade to isAdmin=false without throwing
-  //   - still pass user.email to AppShell (only the admin flag is degraded)
-  test("authenticated user + getClaims error: console.warn with discriminating payload, PII absent, isAdmin=false", async () => {
-    const userId = "u-7";
-    setMockSupabaseUser({ id: userId, email: "private@example.com" });
-    const claimsErr = new Error("JWKS fetch failed");
-    claimsErr.name = "JWKSFetchError";
-    setMockSupabaseClaimsError(claimsErr);
-
-    const props = await renderLayoutAndGetShellProps();
-
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
-
-    // The warn must be called with the exact [layout] scope prefix.
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      "[layout] getClaims() failed",
-      // `user_id` is a discriminating own-property key that Error.prototype
-      // does not carry — it distinguishes the intended structured log object
-      // from a plain Error regression.
-      expect.objectContaining({
-        user_id: userId,
-      }),
-    );
-
-    // Exactly-one assertion: silently picking `mock.calls[0][1]` without first
-    // asserting call-count would let a regression that emits a second warn
-    // slip through.
-    expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
-    // PII absence: email and display_name must NOT appear in the warn payload.
-    const warnPayload = consoleWarnSpy.mock.calls[0][1] as Record<string, unknown>;
-    expect(Object.keys(warnPayload)).not.toContain("email");
-    expect(Object.keys(warnPayload)).not.toContain("display_name");
-
-    expect(props.isAdmin).toBe(false);
-    // user.email is still wired to AppShell — the shell is not degraded when
-    // only the claims lookup fails.
-    expect(props.user).toEqual({ email: "private@example.com" });
-  });
-
-  // Case 8: Anonymous user — user is null with no error (e.g. a clean
-  // signed-out state). The layout must short-circuit getClaims and pass
-  // null / false to AppShell.
-  test("anonymous user (user=null, no error): no getClaims call, AppShell gets user=null isAdmin=false", async () => {
-    setMockSupabaseUser(null); // explicit for readability; also the default after reset
-
-    const props = await renderLayoutAndGetShellProps();
-
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
-    expect(consoleWarnSpy).not.toHaveBeenCalled();
-    // The layout reached createSupabaseServerClient() (auth check is required
-    // for non-bypass routes) but must short-circuit before getClaims().
-    expect(mockCreateSupabaseServerClient).toHaveBeenCalled();
-    expect(getMockGetClaimsSpy()).not.toHaveBeenCalled();
-    expect(props.user).toBeNull();
-    expect(props.isAdmin).toBe(false);
-  });
-
-  // Case 9: /login route bypasses AppShell entirely. The layout must NOT call
-  // Supabase getUser() (the auth page handles its own session check) and the
-  // returned tree must NOT contain an AppShell element. The supabase server
-  // client mock would still be invocable, but the layout must short-circuit
-  // before reaching it.
-  test("/login: layout renders bare children without AppShell, no Supabase calls", async () => {
+  // Case: /login route — the bypass branch. No AuthShell, no Suspense,
+  // no BootSplash. Children render directly inside Providers.
+  test("/login: layout renders bare children without AuthShell or BootSplash", async () => {
     mockGetHeader.mockImplementation((name) => (name === "x-pathname" ? "/login" : null));
 
     const tree = await RootLayout({ children: <div data-testid="login-children" /> });
-    const appShellProps = findElementProps(tree, "AppShell");
 
-    expect(appShellProps).toBeNull();
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
-    expect(consoleWarnSpy).not.toHaveBeenCalled();
-    // The /login bypass short-circuits before reaching the supabase client at
-    // all. Asserting on `mockCreateSupabaseServerClient` is the load-bearing
-    // check: `getMockGetClaimsSpy()` lazily materialises an uncalled spy when
-    // the layout short-circuits before invoking the factory, so its
-    // `not.toHaveBeenCalled` assertion is trivially satisfied; only the
-    // factory-call assertion catches a regression where the layout starts
-    // calling supabase on /login.
-    expect(mockCreateSupabaseServerClient).not.toHaveBeenCalled();
-    expect(getMockGetClaimsSpy()).not.toHaveBeenCalled();
+    const authShellEl = findElement(tree, byName("AuthShell"));
+    expect(authShellEl).toBeNull();
+
+    const bootSplashEl = findElement(tree, byName("BootSplash"));
+    expect(bootSplashEl).toBeNull();
+
+    const suspenseEl = findElement(tree, isSuspense);
+    expect(suspenseEl).toBeNull();
+  });
+
+  // Case: /onboarding route — same bare-shell early return as /login.
+  // No AuthShell, no Suspense, no BootSplash.
+  test("/onboarding: layout renders bare children without AuthShell or BootSplash", async () => {
+    mockGetHeader.mockImplementation((name) => (name === "x-pathname" ? "/onboarding" : null));
+
+    const tree = await RootLayout({ children: <div data-testid="onboarding-children" /> });
+
+    const authShellEl = findElement(tree, byName("AuthShell"));
+    expect(authShellEl).toBeNull();
+
+    const bootSplashEl = findElement(tree, byName("BootSplash"));
+    expect(bootSplashEl).toBeNull();
+
+    const suspenseEl = findElement(tree, isSuspense);
+    expect(suspenseEl).toBeNull();
   });
 });

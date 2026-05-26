@@ -82,3 +82,4 @@ Use `isUnauthenticatedGraphQLError` for all code paths — including simple redi
 - [`isUnauthenticatedGraphQLError` matches gqlFetch — not Apollo Client runtime errors](../../docs/frontend/rsc-error-handling/apollo-runtime-vs-gqlfetch-error-shape.md)
 - [Fire-and-forget mutation: structured warn for null payload, non-success variant, and rejection](../../docs/frontend/rsc-error-handling/fire-and-forget-mutation-warn-on-null-and-non-success.md)
 - [`UNAUTHENTICATED` collapses to generic copy; `FORBIDDEN` preserves the server's specific reason](../../docs/frontend/rsc-error-handling/unauthenticated-vs-forbidden-message-asymmetry.md)
+- [Suspense fallback does not catch thrown errors — wrap async server components in try/catch](../../docs/frontend/rsc-error-handling/suspense-does-not-catch-thrown-errors.md)

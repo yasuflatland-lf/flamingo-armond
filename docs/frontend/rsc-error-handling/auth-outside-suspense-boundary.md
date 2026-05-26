@@ -73,3 +73,16 @@ it("passes connection edges to CardgroupsClient", async () => {
 Apply this split to every page that uses `loading.tsx` + `<Suspense>`: outer `page.tsx` handles auth and returns the Suspense shell; inner `*Content` handles data and is named-exported for direct test invocation. The `loading.tsx` file renders the skeleton that Next.js displays automatically during navigation to the route, so the `<Suspense fallback={...}>` covers in-page streaming while `loading.tsx` covers the initial route transition.
 
 Reference: `frontend/src/app/cardgroups/page.tsx`, `frontend/src/app/cardgroups/page.test.tsx`, `frontend/src/app/cards/new/page.tsx`, `frontend/src/app/learn/[cardgroupId]/page.tsx`.
+
+## Contrast: display-hint resolution that degrades (runs inside Suspense)
+
+The rule above applies specifically to auth *gates* that must `redirect()` on failure. A component whose auth failure mode is degradation rather than redirection may safely run inside a `<Suspense>` boundary — provided it wraps its awaits in `try/catch` so transport rejections do not escape.
+
+`frontend/src/components/auth-shell.tsx` is the canonical example: it resolves user identity for the nav shell (`shellUser`, `isAdmin`) and degrades to the anonymous shell on any failure. It runs inside `<Suspense fallback={<BootSplash />}>` in `app/layout.tsx` precisely so it does not block the initial HTML flush.
+
+The distinguishing question is: **what happens on failure?**
+
+- Failure → `redirect()`: run **outside** Suspense (a redirect from inside a suspended subtree flashes the fallback before navigating).
+- Failure → degrade to safe default: may run **inside** Suspense, but the component must `try/catch` all async work so transport errors degrade rather than escape.
+
+See [`suspense-does-not-catch-thrown-errors.md`](suspense-does-not-catch-thrown-errors.md) for the full explanation of why `<Suspense>` does not catch thrown errors and the try/catch pattern required for components that run inside the boundary.
