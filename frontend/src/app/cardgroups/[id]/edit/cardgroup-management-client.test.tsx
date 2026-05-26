@@ -40,6 +40,7 @@ vi.mock("@/components/cardgroups/cardgroup-cards-section", () => ({
 
 const CARDGROUP = { id: "cg-1", name: "Spanish Vocab" };
 const PAGE_INFO = {
+  __typename: "PageInfo" as const,
   hasNextPage: false,
   hasPreviousPage: false,
   startCursor: null,
