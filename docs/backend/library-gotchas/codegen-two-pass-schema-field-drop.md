@@ -88,3 +88,4 @@ This is a chicken-and-egg loop. Step 1 always fails because the struct literal i
 ## Related
 
 - [gqlgen wraps deleted-field resolvers in a `// !!! WARNING !!!` block — they are not auto-removed](gqlgen-warning-block-on-deleted-resolver.md) — a different gqlgen failure mode that applies after a successful regen (orphaned resolver bodies) rather than before regen (mapper struct literal mismatch).
+- [gqlgen `follow-schema` layout orphans the old resolver file when a schema FILE is renamed](gqlgen-schema-file-rename-orphans-resolver.md) — the file-rename sibling: a whole orphaned resolver file (duplicate-method build break) rather than a dropped field within a file.

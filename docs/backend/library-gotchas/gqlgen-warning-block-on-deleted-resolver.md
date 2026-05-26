@@ -72,3 +72,7 @@ The
 [outcome-union enforcement checklist](../error-wrapping/outcome-union-enforcement.md)
 captures the canonical commit ordering; this gotcha is the failure mode that
 ordering exists to prevent.
+
+## Related
+
+- [gqlgen `follow-schema` layout orphans the old resolver file when a schema FILE is renamed](gqlgen-schema-file-rename-orphans-resolver.md) — the file-rename sibling, which produces a whole orphaned file (a duplicate-method build break) rather than a WARNING-wrapped block within an existing file.
