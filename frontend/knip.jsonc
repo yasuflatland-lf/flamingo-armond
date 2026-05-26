@@ -4,7 +4,12 @@
   // pre-build script `scripts/stamp-sw-version.mjs` reads it via `readFileSync`
   // and writes the stamped `public/sw.js`. knip only traces the module-import
   // graph, so it falsely reports the template as an unused file.
-  "ignore": ["sw-template.js"],
+  //
+  // `scripts/gen-ios-splash.mjs` is a manually-run generator (Node built-ins
+  // only) that writes the apple-touch-startup-image PNGs into public/splash/.
+  // It is wired into neither prebuild nor CI, so knip's import-graph trace
+  // falsely reports it as an unused file.
+  "ignore": ["sw-template.js", "scripts/gen-ios-splash.mjs"],
   // `@graphql-typed-document-node/core` is consumed only via `import type { ... }`
   // inside graphql-codegen output under `src/generated/`. knip does not trace
   // type-only imports through generated files, so it falsely reports the package
