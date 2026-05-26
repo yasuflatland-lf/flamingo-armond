@@ -872,6 +872,34 @@ func TestCardImportUsecase_DuplicateFrontDeduplicatedAndSurfaced(t *testing.T) {
 	}
 }
 
+// TestCardImportUsecase_Import_ContextCancelledDuringUpsert verifies that a
+// context.Canceled surfaced by the card repository during UpsertManyTx is
+// returned to the caller without wrapping — errors.Is(err, context.Canceled)
+// must hold. The isContextDone guard in Import passes the raw error through
+// rather than wrapping it with eris.Wrap.
+func TestCardImportUsecase_Import_ContextCancelledDuringUpsert(t *testing.T) {
+	t.Parallel()
+
+	pairs := [][2]string{{"apple", jpRunes(3)}}
+	payload := buildPayload(t, pairs)
+
+	repo := &mockDictCardRepo{returnErr: context.Canceled}
+	tx, _ := dictTxRunner()
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+
+	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
+		CardgroupID: "cg-target",
+		Payload:     payload,
+	})
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected errors.Is(err, context.Canceled)=true, got %T: %v", err, err)
+	}
+	if repo.upsertCalls != 1 {
+		t.Fatalf("expected 1 UpsertManyTx call before cancellation, got %d", repo.upsertCalls)
+	}
+}
+
 // stringFront returns a deterministic front string of the form "<prefix>-<n>"
 // using only ASCII so the lexer treats it as a single WORD token.
 func stringFront(prefix string, n int) string {
