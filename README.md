@@ -7,6 +7,10 @@
 
 🦩 Swiping Flashcard app — a Go (Echo) backend, a Next.js 16 frontend, and a shared GraphQL schema, with Supabase for Postgres + Auth, and optional Notion page sync that imports cards from Notion pages on a 6-hourly schedule.
 
+## Why Flamingo Armond?
+
+When my child was about one year old, we were playing make-believe, and they handed me a pretend drink. I asked, "What is this drink called?" and without missing a beat, she answered, "Flamingo Armond." The name stuck. It came up again during bath time and kept popping up in our play over the next few years. I loved how it sounded, and I promised myself that if I ever built my own app, I would use that name. This is that app.
+
 ## Architecture
 
 ![Production architecture](docs/images/architecture.png)
