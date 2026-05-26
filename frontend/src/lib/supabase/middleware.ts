@@ -37,16 +37,19 @@ export async function updateSession(request: NextRequest) {
     });
   } catch (err) {
     console.error(
-      "[supabase/middleware] buildHtmlCsp failed, CSP header will be omitted:",
-      err instanceof Error ? err.message : String(err),
+      "[supabase/middleware] buildHtmlCsp failed — enforcing Content-Security-Policy and x-nonce omitted from this response:",
+      err,
     );
   }
 
+  // When cspPolicy is null (buildHtmlCsp threw), both CSP headers and x-nonce are
+  // intentionally omitted. Auth, routing, and cookie refresh continue normally.
   if (cspPolicy != null) {
     // Named "Content-Security-Policy" so Next's SSR pipeline can extract the
-    // nonce for <script nonce="..."> injection — this is an internal forwarding
-    // header, not an enforcement policy. The browser-visible header is set on
-    // the response as enforcing Content-Security-Policy below.
+    // nonce for <script nonce="..."> injection — this is an internal request-side
+    // forwarding header consumed by the rendering pipeline only. The browser never
+    // sees this request header; the enforcing response header is set by
+    // createMiddlewareResponse() below.
     requestHeaders.set("Content-Security-Policy", cspPolicy);
     requestHeaders.set("x-nonce", nonce);
   }

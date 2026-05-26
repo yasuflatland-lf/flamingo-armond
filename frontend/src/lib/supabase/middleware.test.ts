@@ -12,6 +12,16 @@ vi.mock("@supabase/ssr", () => ({
   }),
 }));
 
+const mockBuildHtmlCsp = vi.hoisted(() =>
+  vi.fn<() => string>(),
+);
+
+vi.mock("@/lib/security/csp", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/lib/security/csp")>();
+  mockBuildHtmlCsp.mockImplementation(mod.buildHtmlCsp);
+  return { ...mod, buildHtmlCsp: mockBuildHtmlCsp };
+});
+
 function makeRequest(url = "http://localhost/", cookies: Record<string, string> = {}) {
   const req = new NextRequest(new URL(url));
   for (const [name, value] of Object.entries(cookies)) {
@@ -73,6 +83,7 @@ describe("updateSession", () => {
 
     const cspPolicy = response.headers.get("Content-Security-Policy");
     expect(cspPolicy).toContain("script-src 'self' 'nonce-");
+    expect(response.headers.get("Content-Security-Policy-Report-Only")).toBeNull();
 
     const nonce = nonceFromPolicy(cspPolicy ?? "");
     expect(nonce).toMatch(/^[A-Za-z0-9_-]+$/);
@@ -191,6 +202,27 @@ describe("updateSession", () => {
     await updateSession(makeRequest());
 
     expect(consoleErrorSpy).not.toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("omits CSP headers and x-nonce and logs console.error when buildHtmlCsp throws", async () => {
+    mockBuildHtmlCsp.mockImplementationOnce(() => {
+      throw new Error("invalid supabaseUrl");
+    });
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await updateSession(makeRequest("http://localhost/dashboard"));
+
+    expect(response).toBeInstanceOf(NextResponse);
+    expect(response.headers.get("Content-Security-Policy")).toBeNull();
+    expect(response.headers.get("Content-Security-Policy-Report-Only")).toBeNull();
+    expect(forwardedRequestHeader(response, "content-security-policy")).toBeNull();
+    expect(forwardedRequestHeader(response, "x-nonce")).toBeNull();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[supabase/middleware] buildHtmlCsp failed"),
+      expect.any(Error),
+    );
+
     consoleErrorSpy.mockRestore();
   });
 });
