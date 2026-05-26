@@ -76,7 +76,7 @@ export function serializeCsp(directives: CspDirectiveMap): string {
   const serialized: string[] = [];
   for (const name of orderedNames) {
     const value = serializeDirective(name, directives[name]);
-    if (value) {
+    if (value !== null) {
       serialized.push(value);
     }
   }

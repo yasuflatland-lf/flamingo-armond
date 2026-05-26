@@ -42,14 +42,13 @@ export async function updateSession(request: NextRequest) {
     );
   }
 
-  // When cspPolicy is null (buildHtmlCsp threw), both CSP headers and x-nonce are
-  // intentionally omitted. Auth, routing, and cookie refresh continue normally.
   if (cspPolicy != null) {
-    // Named "Content-Security-Policy" so Next's SSR pipeline can extract the
-    // nonce for <script nonce="..."> injection — this is an internal request-side
-    // forwarding header consumed by the rendering pipeline only. The browser never
-    // sees this request header; the enforcing response header is set by
-    // createMiddlewareResponse() below.
+    // Forward the policy as a request header so Next's SSR pipeline can extract
+    // the nonce for <script nonce="..."> injection. This is an internal header
+    // consumed by the rendering pipeline; the browser never sees it. The
+    // enforcing response header is set in createMiddlewareResponse() below.
+    // When cspPolicy is null (buildHtmlCsp threw), both headers are omitted and
+    // auth/routing/cookie refresh continue normally.
     requestHeaders.set("Content-Security-Policy", cspPolicy);
     requestHeaders.set("x-nonce", nonce);
   }
