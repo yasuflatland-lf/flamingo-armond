@@ -142,7 +142,7 @@ CREATE TABLE IF NOT EXISTS public.cards (
 
 CREATE INDEX IF NOT EXISTS idx_cards_cardgroup_id  ON public.cards (cardgroup_id);
 
--- Unique index supporting the upsertDictionary pipeline's
+-- Unique index supporting the importCards pipeline's
 -- ON CONFLICT (cardgroup_id, front) clause.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_cards_cardgroup_front
     ON public.cards (cardgroup_id, front);

@@ -92,7 +92,7 @@ Usecases that need an injectable `txRunner` for resolver-level wire tests (e.g.,
 
 ### Consumer-defined narrow interfaces over re-using the full repository / service interface
 
-When a usecase only needs one or two methods of `repository.CardRepository` or `auth.Service`, declare a local interface in the usecase file (e.g. `dictionaryUsecase`'s `AdminChecker` and `DictionaryCardRepository`) that lists *only* those methods. The production constructor accepts the wide concrete type (`*auth.Service`, `repository.CardRepository`) and the compiler checks structural conformance; tests pass a stub that implements just the narrow surface. This avoids the secondary problem of having to mock every method on the full interface in every test, and keeps the seam clear about which methods the usecase actually depends on.
+When a usecase only needs one or two methods of a repository or service, declare a local interface in the usecase file that lists *only* those methods. For example, `cardImportUsecase` consumes `CardImportCardRepository` (`UpsertManyTx` only) plus the shared `CardgroupOwnershipFinder` (`FindByID` only), rather than depending on the full card and cardgroup repository surfaces. The production constructor accepts the wide concrete repositories and the compiler checks structural conformance; tests pass stubs that implement just the narrow surface. This avoids the secondary problem of having to mock every method on the full interface in every test, and keeps the seam clear about which methods the usecase actually depends on.
 
 ### Resolver-level wire tests
 
@@ -124,7 +124,7 @@ A repository `Update` that receives a no-op patch (all fields nil or unchanged) 
 
 ### Context cancellation propagation
 
-When a resolver calls a downstream service (DB, JWKS, role lookup) and the caller's context is cancelled, the returned error wraps `context.Canceled` or `context.DeadlineExceeded`. **Forward those errors as-is** rather than wrapping them with `gqlerr.Internal` — wrapping them logs an ERROR line and emits an `INTERNAL` envelope for what is actually a client-driven cancellation (browser closed, navigation away, deadline hit). The pattern in `validateDictionary`:
+When a resolver calls a downstream service (DB, JWKS, role lookup) and the caller's context is cancelled, the returned error wraps `context.Canceled` or `context.DeadlineExceeded`. **Forward those errors as-is** rather than wrapping them with `gqlerr.Internal` — wrapping them logs an ERROR line and emits an `INTERNAL` envelope for what is actually a client-driven cancellation (browser closed, navigation away, deadline hit). The pattern for blocking auth calls is:
 
 ```go
 isAdmin, err := r.AuthSvc.IsAdmin(ctx, caller.Sub)
@@ -138,7 +138,7 @@ if err != nil {
 
 Applies to every resolver that performs a blocking external call. Without this guard, `slog.ErrorContext` and any downstream alerting (Sentry, dashboards) get polluted by client cancellations that are not server bugs.
 
-The same rule extends to **usecases that wrap a `db.Transaction` or call an injected service** (e.g. `AdminChecker.IsAdmin`, `CardRepository.UpsertManyTx`). When a usecase is the layer that catches the error, route `context.Canceled` / `context.DeadlineExceeded` through `gqlerr.Cancelled` (WARN-level log) and everything else through `gqlerr.Internal` (ERROR-level log). `dictionaryUsecase.Upsert` shows both the auth-call site and the transaction-runner site applying this guard.
+The same rule extends to **usecases that wrap a `db.Transaction` or call an injected service** (e.g. `CardgroupOwnershipFinder.FindByID`, `CardRepository.UpsertManyTx`). When a usecase is the layer that catches the error, return `context.Canceled` / `context.DeadlineExceeded` as-is and wrap only the genuine residual errors with the usecase's `eris` prefix. `cardImportUsecase.Import` applies this at both the ownership lookup and transaction-runner boundaries: owner lookup context errors pass through from `authorizeCardgroupOrBadInput`, and transaction errors pass through when `isContextDone(err)` matches.
 
 ### Legacy ports: revisit boundaries before re-translating
 

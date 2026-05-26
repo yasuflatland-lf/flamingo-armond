@@ -45,7 +45,7 @@ import (
 var interfaceToImpl = map[string]string{
 	"AdminUserUsecase":           "adminUserUsecase",
 	"AdminRoleUsecase":           "adminRoleUsecase",
-	"DictionaryUsecase":          "dictionaryUsecase",
+	"CardImportUsecase":          "cardImportUsecase",
 	"LastViewedCardgroupUsecase": "lastViewedCardgroupUsecase",
 }
 

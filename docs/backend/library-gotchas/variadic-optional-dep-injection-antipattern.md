@@ -53,7 +53,7 @@ guarantees a non-nil value — either way the failure is explicit:
 // cmd/server/main.go wires non-nil for every production path
 resolvers := resolver.NewResolver(
     userUC, cardgroupUC, cardUC, swipeUC, authSvc,
-    dictionaryUC, adminUserUC, adminRoleUC, lastViewedCGUC,
+    cardImportUC, adminUserUC, adminRoleUC, lastViewedCGUC,
     learnUC, // always non-nil in production
 )
 ```

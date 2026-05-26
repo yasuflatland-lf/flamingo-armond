@@ -97,7 +97,7 @@ DROP TRIGGER IF EXISTS trg_users_set_updated_at         ON public.users;
 
 -- ---------------------------------------------------------------------------
 -- 6) Explicit index drop for indexes that should fail loudly if missing
---    (the unique index is the contract that backs the upsertDictionary
+--    (the unique index is the contract that backs the card import pipeline
 --    ON CONFLICT clause). Plain idx_* drops are implied by DROP TABLE.
 -- ---------------------------------------------------------------------------
 

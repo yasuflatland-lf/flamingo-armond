@@ -255,6 +255,7 @@ function renderClient(
       <UndoDeleteProvider>
         <CardsClient
           cardgroupId={CG_ID}
+          cardgroupName="Test Cardgroup"
           initialEdges={initialConn.edges}
           initialPageInfo={initialConn.pageInfo}
           initialTotalCount={initialConn.totalCount}
@@ -816,6 +817,7 @@ describe("<CardsClient>", () => {
       return (
         <CardsClient
           cardgroupId={CG_ID}
+          cardgroupName="Test Cardgroup"
           initialEdges={initialConn.edges}
           initialPageInfo={initialConn.pageInfo}
           initialTotalCount={initialConn.totalCount}

@@ -148,3 +148,19 @@ func TestAssertInternalChain_Passes(t *testing.T) {
 func newTestLogger() *slog.Logger {
 	return slog.New(slog.DiscardHandler)
 }
+
+// mockAdminChecker is a stub for the AdminChecker interface. Admin-facing
+// usecase tests wrap it via NewAdminGate(...).
+type mockAdminChecker struct {
+	isAdmin bool
+	err     error
+	calls   int
+}
+
+func (m *mockAdminChecker) IsAdmin(_ context.Context, _ string) (bool, error) {
+	m.calls++
+	if m.err != nil {
+		return false, m.err
+	}
+	return m.isAdmin, nil
+}

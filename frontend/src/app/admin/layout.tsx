@@ -20,8 +20,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
  * sending a logged-in non-admin to `/login` is awkward UX, and the home page
  * already routes anonymous visitors to a sign-in CTA.
  *
- * Per-page `getUser()` checks under `admin/dictionary/page.tsx` and
- * `admin/users/page.tsx` are intentionally retained as defense in depth.
+ * Per-page `getUser()` checks under `admin/users/page.tsx` are intentionally
+ * retained as defense in depth.
  */
 const AdminLayoutMeQuery = graphql(`
   query AdminLayoutMe {

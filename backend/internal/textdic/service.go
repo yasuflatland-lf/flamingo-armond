@@ -43,7 +43,7 @@ const (
 )
 
 // String returns the wire-aligned string representation, matching the
-// GraphQL DictionaryValidationKind enum literals.
+// GraphQL CardImportErrorKind enum literals.
 func (k SkipKind) String() string {
 	switch k {
 	case SkipKindHard:

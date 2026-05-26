@@ -74,6 +74,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [goyacc lexer: recover via NEWLINE to enable `error NEWLINE` grammar rules](../../docs/backend/library-gotchas/goyacc-lexer-recovery-via-newline.md)
 - [gqlgen `transport.POST` response headers must be set at construction time](../../docs/backend/library-gotchas/gqlgen-transport-post-response-headers.md)
 - [gqlgen wraps deleted-field resolvers in a `// !!! WARNING !!!` block — they are not auto-removed](../../docs/backend/library-gotchas/gqlgen-warning-block-on-deleted-resolver.md)
+- [gqlgen `follow-schema` layout orphans the old resolver file when a schema FILE is renamed](../../docs/backend/library-gotchas/gqlgen-schema-file-rename-orphans-resolver.md)
 - [Panic value format: `%T %v` vs `%T`-only — PII trade-off](../../docs/backend/library-gotchas/panic-value-format-pii-tradeoff.md)
 - [XOR-invariant outcome structs for mutually-exclusive results](../../docs/backend/library-gotchas/xor-invariant-outcome-struct.md)
 - [Fire-and-forget goroutine: detach context from request lifecycle](../../docs/backend/library-gotchas/fire-and-forget-goroutine-detached-context.md)

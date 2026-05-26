@@ -1,6 +1,6 @@
 "use client";
 
-import { Play, Plus } from "lucide-react";
+import { ChevronDown, Play } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import {
@@ -9,23 +9,31 @@ import {
   CardsClient,
 } from "@/app/cardgroups/[id]/cards/cards-client";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 type Props = {
   cardgroupId: string;
+  cardgroupName: string;
   initialEdges: CardEdge[];
   initialPageInfo: CardConnectionPageInfo;
   initialTotalCount: number;
   /**
    * Optional render prop that lets the parent render a page-level header with
    * the live totalCount sourced from the Apollo cache. When provided, the
-   * render prop receives `{ totalCount }` and is invoked above the toolbar row.
-   * When omitted, no page-level header is rendered by this component.
+   * render prop receives `{ totalCount, onBatchImport }` and is invoked above
+   * the toolbar row. When omitted, no page-level header is rendered.
    */
-  renderPageHeader?: (args: { totalCount: number }) => ReactNode;
+  renderPageHeader?: (args: { totalCount: number; onBatchImport: () => void }) => ReactNode;
 };
 
 export function CardgroupCardsSection({
   cardgroupId,
+  cardgroupName,
   initialEdges,
   initialPageInfo,
   initialTotalCount,
@@ -39,12 +47,14 @@ export function CardgroupCardsSection({
   const renderHeader = ({
     totalCount,
     onAddCard,
+    onBatchImport,
   }: {
     totalCount: number;
     onAddCard: () => void;
+    onBatchImport: () => void;
   }) => (
     <div>
-      {renderPageHeader ? renderPageHeader({ totalCount }) : null}
+      {renderPageHeader?.({ totalCount, onBatchImport })}
       <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
         <Button asChild variant="outline" size="sm">
           <Link href={learnHref}>
@@ -52,16 +62,35 @@ export function CardgroupCardsSection({
             <Play aria-hidden="true" className="ml-1.5 h-4 w-4" />
           </Link>
         </Button>
-        <Button
-          type="button"
-          variant="brand"
-          size="sm"
-          className="hidden md:inline-flex"
-          onClick={onAddCard}
-        >
-          Add card
-          <Plus aria-hidden="true" className="ml-1.5 h-4 w-4" />
-        </Button>
+        {/* Desktop split button: primary Add card + dropdown with Batch import */}
+        <div className="hidden md:inline-flex">
+          <Button
+            type="button"
+            variant="brand"
+            size="sm"
+            className="rounded-r-none"
+            onClick={onAddCard}
+          >
+            Add card +
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="brand"
+                size="sm"
+                className="rounded-l-none border-l px-2"
+                aria-label="More add options"
+              >
+                <ChevronDown aria-hidden="true" className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={onAddCard}>Add a card</DropdownMenuItem>
+              <DropdownMenuItem onSelect={onBatchImport}>Batch import</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </div>
   );
@@ -69,6 +98,7 @@ export function CardgroupCardsSection({
   return (
     <CardsClient
       cardgroupId={cardgroupId}
+      cardgroupName={cardgroupName}
       initialEdges={initialEdges}
       initialPageInfo={initialPageInfo}
       initialTotalCount={initialTotalCount}

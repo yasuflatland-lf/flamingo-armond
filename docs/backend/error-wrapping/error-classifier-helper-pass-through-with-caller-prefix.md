@@ -12,7 +12,6 @@ infrastructure errors wrapped with its own per-module prefix:
 ```
 "usecase: admin role: check admin"
 "usecase: admin user: check admin"
-"usecase: dictionary upsert: check admin"
 ```
 
 A naive approach embeds a fixed `eris.Wrap` inside the helper:
@@ -29,7 +28,7 @@ func checkAdmin(ctx context.Context, ...) (string, error) {
 
 Every caller now gets `"usecase: admin gate: check admin"` in the log chain
 regardless of which file or operation triggered the failure. The caller-specific
-module ("admin role", "admin user", "dictionary") is gone; `grep -n 'usecase: admin role:'`
+module ("admin role", "admin user") is gone; `grep -n 'usecase: admin role:'`
 returns nothing for these paths, and `assertInternalChain` cannot pin a stable
 per-file substring.
 
@@ -91,13 +90,8 @@ if _, err := u.adminGate.Require(ctx, "usecase: admin role: check admin"); err !
     return ..., err
 }
 
-// admin_user.go:202
+// admin_user.go:207
 if _, err := u.adminGate.Require(ctx, "usecase: admin user: check admin"); err != nil {
-    return ..., err
-}
-
-// dictionary.go:184
-if _, err := u.adminGate.Require(ctx, "usecase: dictionary upsert: check admin"); err != nil {
     return ..., err
 }
 ```

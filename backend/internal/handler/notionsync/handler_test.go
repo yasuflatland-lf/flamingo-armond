@@ -153,7 +153,7 @@ func TestHandlerSuccess_ParseErrorsJSONShape(t *testing.T) {
 
 	uc := &stubSyncUsecase{out: usecase.SyncFromNotionOutput{
 		CardgroupID: "cg-1",
-		ParseErrors: []usecase.DictionaryValidationError{
+		ParseErrors: []usecase.CardImportError{
 			{Line: 2, Message: "duplicate front in Notion pages (later occurrence wins)", Front: "apple", Back: "fruit"},
 			{Line: 3, Message: "syntax error: unexpected ..."},
 		},

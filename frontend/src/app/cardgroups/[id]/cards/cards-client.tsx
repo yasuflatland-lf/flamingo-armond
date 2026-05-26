@@ -11,6 +11,7 @@ import {
   UpdateCardMutation,
 } from "@/app/cardgroups/queries";
 import { CardForm } from "@/components/cardgroups/card-form";
+import { CardgroupBatchImportForm } from "@/components/cardgroups/cardgroup-batch-import-form";
 import type { SwipeableRowHandle } from "@/components/cardgroups/swipeable-row";
 import { Button } from "@/components/ui/button";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
@@ -165,10 +166,12 @@ const EmptyState = ({ search, onClear }: { search: string | null; onClear: () =>
 type SectionHeaderArgs = {
   totalCount: number;
   onAddCard: () => void;
+  onBatchImport: () => void;
 };
 
 type Props = {
   cardgroupId: string;
+  cardgroupName: string;
   initialEdges: CardEdge[];
   initialPageInfo: CardConnectionPageInfo;
   initialTotalCount: number;
@@ -183,6 +186,7 @@ type Props = {
 
 export function CardsClient({
   cardgroupId,
+  cardgroupName,
   initialEdges,
   initialPageInfo,
   initialTotalCount,
@@ -192,6 +196,7 @@ export function CardsClient({
   const { scheduleDelete } = useUndoDelete();
   const [addOpen, setAddOpen] = useState(false);
   const [addDirty, setAddDirty] = useState(false);
+  const [batchImportOpen, setBatchImportOpen] = useState(false);
   const [createValidationError, setCreateValidationError] = useState<{
     field: string;
     message: string;
@@ -290,6 +295,8 @@ export function CardsClient({
     setAddDirty(false);
     setAddOpen(true);
   }, [resetCreateCard]);
+
+  const openBatchImport = useCallback(() => setBatchImportOpen(true), []);
 
   useEffect(() => {
     function handleAddCardEvent(event: Event) {
@@ -491,7 +498,7 @@ export function CardsClient({
             Cards ({totalCount})
           </h2>
         ) : typeof sectionHeader === "function" ? (
-          sectionHeader({ totalCount, onAddCard: openAddSheet })
+          sectionHeader({ totalCount, onAddCard: openAddSheet, onBatchImport: openBatchImport })
         ) : (
           sectionHeader
         )}
@@ -561,6 +568,19 @@ export function CardsClient({
             error={createError}
             validationError={createValidationError}
             onDirty={() => setAddDirty(true)}
+          />
+        </FormSheet>
+
+        <FormSheet
+          title="Batch import"
+          open={batchImportOpen}
+          onOpenChange={setBatchImportOpen}
+          size="lg"
+        >
+          <CardgroupBatchImportForm
+            cardgroupId={cardgroupId}
+            cardgroupName={cardgroupName}
+            onImported={() => setBatchImportOpen(false)}
           />
         </FormSheet>
 

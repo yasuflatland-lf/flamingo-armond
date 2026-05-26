@@ -56,12 +56,12 @@ type ParsedRow struct {
 }
 
 type SyncFromNotionOutput struct {
-	CardgroupID string                      `json:"cardgroupId"`
-	Inserted    int64                       `json:"inserted"`
-	Updated     int64                       `json:"updated"`
-	Deleted     int64                       `json:"deleted"`
-	Parsed      []ParsedRow                 `json:"parsed"`
-	ParseErrors []DictionaryValidationError `json:"parseErrors"`
+	CardgroupID string            `json:"cardgroupId"`
+	Inserted    int64             `json:"inserted"`
+	Updated     int64             `json:"updated"`
+	Deleted     int64             `json:"deleted"`
+	Parsed      []ParsedRow       `json:"parsed"`
+	ParseErrors []CardImportError `json:"parseErrors"`
 }
 
 func NewNotionSyncUsecase(
@@ -145,10 +145,10 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 	//
 	// This short-circuit MUST run before dedupeParsedRows: dedupe appends
 	// non-skip "duplicate front" warnings to parseErrs, which would make
-	// allDictionaryErrorsSkipped return false for a skip-only payload that
+	// allCardImportErrorsSkipped return false for a skip-only payload that
 	// happens to also have duplicates added later in the pipeline.
 	if len(rows) == 0 && len(parseErrs) > 0 {
-		if allDictionaryErrorsSkipped(parseErrs) {
+		if allCardImportErrorsSkipped(parseErrs) {
 			u.logger.InfoContext(ctx, "notion sync: skip-only payload, no persistence",
 				"skipped_count", len(parseErrs),
 				"first_line", parseErrs[0].Line,
@@ -165,7 +165,7 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 		)
 		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncParse, "all rows failed to parse")
 	}
-	if len(rows) > dictionaryParsedRowCap {
+	if len(rows) > cardImportParsedRowCap {
 		return SyncFromNotionOutput{}, eris.Wrap(ErrNotionSyncInvalidInput, "parsed rows exceed cap")
 	}
 
@@ -219,7 +219,7 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 	return out, nil
 }
 
-// allDictionaryErrorsSkipped reports whether every error in errs originated
+// allCardImportErrorsSkipped reports whether every error in errs originated
 // from a grammar skip production safe to drop silently (lone front / lone back).
 //
 // Only FRONT_ONLY and BACK_ONLY are considered "skipped" for the purposes of
@@ -227,10 +227,10 @@ func (u *NotionSyncUsecase) Sync(ctx context.Context, input SyncFromNotionInput)
 // because it signals malformed payload the user likely didn't intend, and
 // silently dropping it would mask real corruption. DUPLICATE and HARD are
 // obviously hard. UNKNOWN indicates a bug and also falls into the hard branch.
-func allDictionaryErrorsSkipped(errs []DictionaryValidationError) bool {
+func allCardImportErrorsSkipped(errs []CardImportError) bool {
 	for _, e := range errs {
 		switch e.Kind {
-		case DictErrKindFrontOnly, DictErrKindBackOnly:
+		case CardImportErrKindFrontOnly, CardImportErrKindBackOnly:
 			continue
 		default:
 			return false
@@ -256,9 +256,9 @@ func normalizePageIDs(ids []string) []string {
 	return out
 }
 
-func parseNotionPages(ctx context.Context, logger *slog.Logger, pages []notion.Page) ([]ParsedRow, []DictionaryValidationError, error) {
+func parseNotionPages(ctx context.Context, logger *slog.Logger, pages []notion.Page) ([]ParsedRow, []CardImportError, error) {
 	rows := make([]ParsedRow, 0, len(pages))
-	errs := make([]DictionaryValidationError, 0, len(pages))
+	errs := make([]CardImportError, 0, len(pages))
 	for i, page := range pages {
 		words, parseErrs, err := textdic.Process(page.Text)
 		if err != nil {
@@ -283,10 +283,10 @@ func parseNotionPages(ctx context.Context, logger *slog.Logger, pages []notion.P
 			})
 		}
 		for _, e := range parseErrs {
-			errs = append(errs, DictionaryValidationError{
+			errs = append(errs, CardImportError{
 				Line:    e.Line,
 				Message: e.Message,
-				Kind:    DictionaryErrorKind(e.Kind.String()),
+				Kind:    CardImportErrorKind(e.Kind.String()),
 				Snippet: e.Snippet,
 			})
 		}
@@ -294,7 +294,7 @@ func parseNotionPages(ctx context.Context, logger *slog.Logger, pages []notion.P
 	return rows, errs, nil
 }
 
-func dedupeParsedRows(rows []ParsedRow, errs []DictionaryValidationError) ([]ParsedRow, []DictionaryValidationError) {
+func dedupeParsedRows(rows []ParsedRow, errs []CardImportError) ([]ParsedRow, []CardImportError) {
 	lastIndex := make(map[string]int, len(rows))
 	for i, row := range rows {
 		lastIndex[row.Front] = i
@@ -302,10 +302,10 @@ func dedupeParsedRows(rows []ParsedRow, errs []DictionaryValidationError) ([]Par
 	out := make([]ParsedRow, 0, len(rows))
 	for i, row := range rows {
 		if lastIndex[row.Front] != i {
-			errs = append(errs, DictionaryValidationError{
+			errs = append(errs, CardImportError{
 				Line:    row.Line,
 				Message: "duplicate front in Notion pages (later occurrence wins)",
-				Kind:    DictErrKindDuplicate,
+				Kind:    CardImportErrKindDuplicate,
 				Front:   row.Front,
 				Back:    row.Back,
 			})

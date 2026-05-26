@@ -1,0 +1,104 @@
+"""Base64-encoded card import text payload submitted for validation."""
+input ValidateCardImportInput {
+  """Base64-encoded text payload (standard alphabet, with padding). One front/back pair per line."""
+  payload: String!
+}
+
+"""Single parsed card import entry."""
+type ParsedCard {
+  """Front (term) text."""
+  front: String!
+  """Back (definition) text."""
+  back: String!
+  """1-based line number in the decoded payload where this entry was parsed."""
+  line: Int!
+}
+
+"""Classifier for a CardImportError. Closed enumeration; branch on this rather than substring-matching `message`."""
+enum CardImportErrorKind {
+  """Programming-error sentinel. Never returned by a healthy server. If a client observes this, file a bug: the server should be panicking or asserting before this value escapes."""
+  UNKNOWN
+  """Hard error: payload-level (oversized / empty) or grammar/lexer error not recovered by skip productions."""
+  HARD
+  """Skipped: a lone WORD line with no DEFINITION attached. The dropped front term is in `snippet`."""
+  FRONT_ONLY
+  """Skipped: a lone DEFINITION line with no preceding front. The dropped back text is in `snippet`."""
+  BACK_ONLY
+  """Skipped: an unrecognized character was encountered. The recovered line content is in `snippet`."""
+  UNRECOGNIZED
+  """Post-parse dedupe: a duplicate row was dropped. The dropped row's `front` and `back` are populated."""
+  DUPLICATE
+}
+
+"""Per-line parse failure surfaced by `validateCardImport` / `importCards`. Branch on `kind` rather than substring-matching `message`."""
+type CardImportError implements UserError {
+  """1-based line number where the error was detected, or 0 when the error applies to the payload as a whole (e.g. oversized or empty payload)."""
+  line: Int!
+  """Human-readable, English error message."""
+  message: String!
+  """Closed classifier for the parse event."""
+  kind: CardImportErrorKind!
+  """Parser-extracted snippet. Populated for FRONT_ONLY (the WORD token text), BACK_ONLY (the DEFINITION token text), and UNRECOGNIZED (the recovered malformed line). Null for HARD and DUPLICATE."""
+  snippet: String
+  """Dedupe-duplicate only: the front term of the dropped row. Null for every other kind."""
+  front: String
+  """Dedupe-duplicate only: the back text of the dropped row. Null for every other kind."""
+  back: String
+}
+
+"""
+Result of validating a card import payload. The resolver enforces the
+invariant valid = (len(errors) == 0 && len(parsedCards) > 0); conflicting
+states are representable but never emitted.
+"""
+type CardImportValidationResult {
+  """True iff the payload parsed without any errors and produced at least one card."""
+  valid: Boolean!
+  """Parsed cards preserving source order."""
+  parsedCards: [ParsedCard!]!
+  """Structured per-line errors, empty when valid is true."""
+  errors: [CardImportError!]!
+}
+
+extend type Query {
+  """
+  Validate a base64-encoded card import payload without persisting any cards.
+  Requires an authenticated user; no cardgroup ownership check is needed because
+  validation does not read or write a cardgroup.
+  """
+  validateCardImport(input: ValidateCardImportInput!): CardImportValidationResult!
+}
+
+"""
+Input for importing parsed cards into a target cardgroup.
+`ImportCardsInput` reuses the same base64 + tab/space-separated front/back format as `validateCardImport`.
+"""
+input ImportCardsInput {
+  """Target cardgroup ID. Must reference a cardgroup owned by the authenticated user; missing cardgroups return BAD_USER_INPUT."""
+  cardgroupId: ID!
+  """Base64-encoded payload (standard alphabet, with padding). Same format as validateCardImport."""
+  payload: String!
+}
+
+"""
+Result of an `importCards` call. `inserted + updated` is the number of rows that were processed successfully.
+`errors` carries per-line parse failures; the import proceeds with the valid rows when errors are non-empty.
+"""
+type ImportCardsPayload {
+  """Number of cards newly inserted."""
+  inserted: Int!
+  """Number of cards updated (back text changed via ON CONFLICT)."""
+  updated: Int!
+  """Per-line parse errors. Empty when the entire payload parsed cleanly."""
+  errors: [CardImportError!]!
+}
+
+extend type Mutation {
+  """
+  Persist parsed cards into the target cardgroup. Only authenticated owners of
+  the target cardgroup may import. Caps payload at 5,000 parsed rows; larger
+  payloads return BAD_USER_INPUT. Conflict key is (cardgroup_id, front);
+  conflicting rows have their `back` text updated, others are inserted.
+  """
+  importCards(input: ImportCardsInput!): ImportCardsPayload!
+}

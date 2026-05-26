@@ -2,7 +2,7 @@
 
 The E2E suite lives in `frontend/e2e/` and covers the two highest-value flows:
 
-- admin dictionary import (`/admin/dictionary`)
+- owner card batch import (`/cardgroups/[cardgroupId]/cards`)
 - learner swipe session (`/learn/[cardgroupId]`)
 
 ## Auth model

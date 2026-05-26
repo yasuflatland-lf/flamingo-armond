@@ -19,23 +19,6 @@ import (
 // Test doubles
 // ---------------------------------------------------------------------------
 
-// mockAdminChecker is a stub for the AdminChecker interface. Tests wrap
-// it via NewAdminGate(...) before constructing the dictionary usecase
-// (and analogous wraps live in admin_role_test.go / admin_user_test.go).
-type mockAdminChecker struct {
-	isAdmin bool
-	err     error
-	calls   int
-}
-
-func (m *mockAdminChecker) IsAdmin(_ context.Context, _ string) (bool, error) {
-	m.calls++
-	if m.err != nil {
-		return false, m.err
-	}
-	return m.isAdmin, nil
-}
-
 // mockDictCardRepo captures the cards passed to UpsertManyTx and returns a
 // caller-controlled split of inserts vs. updates. The split lets the unit
 // test drive exact assertions without a real Postgres backend.
@@ -77,6 +60,23 @@ func (m *mockDictCardRepo) UpsertManyTx(_ context.Context, _ *gorm.DB, cards []*
 		return repository.UpsertManyTxResult{Inserted: ins, Updated: upd}, nil
 	}
 	return repository.UpsertManyTxResult{Inserted: m.inserted, Updated: m.updated}, nil
+}
+
+type mockCardImportCardgroupRepo struct {
+	findResult *domain.Cardgroup
+	findErr    error
+	findCalls  int
+}
+
+func (m *mockCardImportCardgroupRepo) FindByID(_ context.Context, _ string) (*domain.Cardgroup, error) {
+	m.findCalls++
+	return m.findResult, m.findErr
+}
+
+func ownedCardImportCardgroupRepo(ownerID string) *mockCardImportCardgroupRepo {
+	return &mockCardImportCardgroupRepo{
+		findResult: &domain.Cardgroup{ID: "cg-target", OwnerID: ownerID},
+	}
 }
 
 // dictTxRunner returns a txRunner that invokes fn with a non-nil sentinel
@@ -143,14 +143,13 @@ func buildPayload(t *testing.T, pairs [][2]string) string {
 	return base64.StdEncoding.EncodeToString([]byte(b.String()))
 }
 
-func TestDictionaryUsecase_ValidateHappyPath(t *testing.T) {
+func TestCardImportUsecase_ValidateHappyPath(t *testing.T) {
 	t.Parallel()
 
 	payload := buildPayload(t, [][2]string{{"apple", jpRunes(3)}})
-	auth := &mockAdminChecker{isAdmin: true}
-	uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), nil, nil, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
 
-	out, err := uc.Validate(authedCtx("admin-1"), payload)
+	out, err := uc.Validate(authedCtx("user-1"), payload)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -158,88 +157,67 @@ func TestDictionaryUsecase_ValidateHappyPath(t *testing.T) {
 	if !out.Valid {
 		t.Fatalf("expected Valid=true, got false: %+v", out)
 	}
-	if len(out.ParsedWords) != 1 {
-		t.Fatalf("expected 1 parsed word, got %d", len(out.ParsedWords))
+	if len(out.ParsedCards) != 1 {
+		t.Fatalf("expected 1 parsed card, got %d", len(out.ParsedCards))
 	}
-	if out.ParsedWords[0].Front != "apple" || out.ParsedWords[0].Back == "" || out.ParsedWords[0].Line != 1 {
-		t.Fatalf("unexpected parsed word: %+v", out.ParsedWords[0])
+	if out.ParsedCards[0].Front != "apple" || out.ParsedCards[0].Back == "" || out.ParsedCards[0].Line != 1 {
+		t.Fatalf("unexpected parsed card: %+v", out.ParsedCards[0])
 	}
 	if len(out.Errors) != 0 {
 		t.Fatalf("expected no validation errors, got %+v", out.Errors)
 	}
-	if auth.calls != 1 {
-		t.Fatalf("expected 1 IsAdmin call, got %d", auth.calls)
-	}
 }
 
-func TestDictionaryUsecase_ValidateAuthGate(t *testing.T) {
+func TestCardImportUsecase_ValidateRequiresAuthenticatedUser(t *testing.T) {
 	t.Parallel()
 
 	payload := buildPayload(t, [][2]string{{"apple", jpRunes(3)}})
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
 
-	t.Run("anonymous", func(t *testing.T) {
-		t.Parallel()
-		auth := &mockAdminChecker{isAdmin: true}
-		uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), nil, nil, newTestLogger())
+	_, err := uc.Validate(anonCtx(), payload)
 
-		_, err := uc.Validate(anonCtx(), payload)
-
-		assertUnauthenticated(t, err)
-		if auth.calls != 0 {
-			t.Fatalf("expected 0 IsAdmin calls, got %d", auth.calls)
-		}
-	})
-
-	t.Run("non-admin", func(t *testing.T) {
-		t.Parallel()
-		auth := &mockAdminChecker{isAdmin: false}
-		uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), nil, nil, newTestLogger())
-
-		_, err := uc.Validate(authedCtx("user-1"), payload)
-
-		assertForbidden(t, err, "")
-		if auth.calls != 1 {
-			t.Fatalf("expected 1 IsAdmin call, got %d", auth.calls)
-		}
-	})
-
-	t.Run("admin-check error", func(t *testing.T) {
-		t.Parallel()
-		auth := &mockAdminChecker{err: errors.New("db died")}
-		uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), nil, nil, newTestLogger())
-
-		_, err := uc.Validate(authedCtx("admin-1"), payload)
-
-		assertInternalChain(t, err, "usecase: dictionary validate: check admin")
-	})
+	assertUnauthenticated(t, err)
 }
 
-func TestDictionaryUsecase_ValidatePayloadErrors(t *testing.T) {
+func TestCardImportUsecase_ValidateRequiresNonEmptyCallerSub(t *testing.T) {
+	t.Parallel()
+
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
+	uc.processCardImport = func(string) ([]textdic.ParsedWord, []textdic.ValidationError, error) {
+		t.Fatal("processCardImport should not be called for empty caller sub")
+		return nil, nil, nil
+	}
+
+	_, err := uc.Validate(authedCtx(""), "not-valid-base64")
+
+	assertUnauthenticated(t, err)
+}
+
+func TestCardImportUsecase_ValidatePayloadErrors(t *testing.T) {
 	t.Parallel()
 
 	t.Run("empty payload", func(t *testing.T) {
 		t.Parallel()
-		uc := NewDictionaryUsecaseWithTx(NewAdminGate(&mockAdminChecker{isAdmin: true}), nil, nil, newTestLogger())
-		_, err := uc.Validate(authedCtx("admin-1"), "")
+		uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
+		_, err := uc.Validate(authedCtx("user-1"), "")
 		assertValidationError(t, err, "payload", "payload must not be empty")
 	})
 
 	t.Run("bad base64", func(t *testing.T) {
 		t.Parallel()
-		uc := NewDictionaryUsecaseWithTx(NewAdminGate(&mockAdminChecker{isAdmin: true}), nil, nil, newTestLogger())
-		_, err := uc.Validate(authedCtx("admin-1"), "!!!not-base64!!!")
+		uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
+		_, err := uc.Validate(authedCtx("user-1"), "!!!not-base64!!!")
 		assertValidationError(t, err, "payload", "payload must be standard base64-encoded text")
 	})
 }
 
-func TestDictionaryUsecase_ValidateReturnsParserDiagnostics(t *testing.T) {
+func TestCardImportUsecase_ValidateReturnsParserDiagnostics(t *testing.T) {
 	t.Parallel()
 
-	auth := &mockAdminChecker{isAdmin: true}
-	uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), nil, nil, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
 	payload := base64.StdEncoding.EncodeToString([]byte("orphan"))
 
-	out, err := uc.Validate(authedCtx("admin-1"), payload)
+	out, err := uc.Validate(authedCtx("user-1"), payload)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -247,40 +225,39 @@ func TestDictionaryUsecase_ValidateReturnsParserDiagnostics(t *testing.T) {
 	if out.Valid {
 		t.Fatal("expected Valid=false for parser diagnostics")
 	}
-	if len(out.ParsedWords) != 0 {
-		t.Fatalf("expected no parsed words, got %+v", out.ParsedWords)
+	if len(out.ParsedCards) != 0 {
+		t.Fatalf("expected no parsed cards, got %+v", out.ParsedCards)
 	}
 	if len(out.Errors) != 1 {
 		t.Fatalf("expected 1 validation error, got %+v", out.Errors)
 	}
-	if out.Errors[0].Kind != DictErrKindFrontOnly || out.Errors[0].Snippet != "orphan" {
+	if out.Errors[0].Kind != CardImportErrKindFrontOnly || out.Errors[0].Snippet != "orphan" {
 		t.Fatalf("unexpected validation error: %+v", out.Errors[0])
 	}
 }
 
-func TestDictionaryUsecase_ValidateParserFailure(t *testing.T) {
+func TestCardImportUsecase_ValidateParserFailure(t *testing.T) {
 	t.Parallel()
 
-	auth := &mockAdminChecker{isAdmin: true}
-	uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), nil, nil, newTestLogger())
-	uc.processDictionary = func(string) ([]textdic.ParsedWord, []textdic.ValidationError, error) {
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), nil, nil, newTestLogger())
+	uc.processCardImport = func(string) ([]textdic.ParsedWord, []textdic.ValidationError, error) {
 		return nil, nil, errors.New("parser boom")
 	}
 	payload := base64.StdEncoding.EncodeToString([]byte("apple " + jpRunes(3)))
 
-	_, err := uc.Validate(authedCtx("admin-1"), payload)
+	_, err := uc.Validate(authedCtx("user-1"), payload)
 
-	assertInternalChain(t, err, "usecase: dictionary validate: parse")
+	assertInternalChain(t, err, "usecase: card import validate: parse")
 }
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-// TestDictionaryUsecase_AdminAllInserts covers the happy path where every row
+// TestCardImportUsecase_OwnerAllInserts covers the happy path where every row
 // in the payload is brand new for the target cardgroup. Inserted should equal
 // len(payload) and Updated should be zero.
-func TestDictionaryUsecase_AdminAllInserts(t *testing.T) {
+func TestCardImportUsecase_OwnerAllInserts(t *testing.T) {
 	t.Parallel()
 
 	const n = 100
@@ -291,11 +268,11 @@ func TestDictionaryUsecase_AdminAllInserts(t *testing.T) {
 	payload := buildPayload(t, pairs)
 
 	repo := &mockDictCardRepo{inserted: n, updated: 0}
-	auth := &mockAdminChecker{isAdmin: true}
+	cgRepo := ownedCardImportCardgroupRepo("user-1")
 	tx, calls := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx, newTestLogger())
 
-	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
+	out, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
@@ -320,8 +297,11 @@ func TestDictionaryUsecase_AdminAllInserts(t *testing.T) {
 	if len(repo.captured) != n {
 		t.Fatalf("expected %d captured cards, got %d", n, len(repo.captured))
 	}
-	// Dictionary imports are content-only. Per-user FSRS rows are created
-	// lazily on first swipe, outside the dictionary upsert path.
+	if cgRepo.findCalls != 1 {
+		t.Fatalf("expected 1 cardgroup ownership lookup, got %d", cgRepo.findCalls)
+	}
+	// Card imports are content-only. Per-user FSRS rows are created lazily on
+	// first swipe, outside the import path.
 	for i, c := range repo.captured {
 		if c.CardgroupID != "cg-target" {
 			t.Fatalf("captured[%d] CardgroupID=%q, want cg-target", i, c.CardgroupID)
@@ -329,12 +309,12 @@ func TestDictionaryUsecase_AdminAllInserts(t *testing.T) {
 	}
 }
 
-// TestDictionaryUsecase_AdminMixedInsertsAndUpdates covers the mixed case:
+// TestCardImportUsecase_OwnerMixedInsertsAndUpdates covers the mixed case:
 // 50 fronts already exist (with old backs), 50 fronts are new. The payload
 // supplies new backs for the first 50; the mock repo classifies each card by
 // looking up its front in preExisting. The test asserts the (50, 50) split
 // AND that the captured "shared" rows carry the *new* back text.
-func TestDictionaryUsecase_AdminMixedInsertsAndUpdates(t *testing.T) {
+func TestCardImportUsecase_OwnerMixedInsertsAndUpdates(t *testing.T) {
 	t.Parallel()
 
 	const n = 50
@@ -356,11 +336,10 @@ func TestDictionaryUsecase_AdminMixedInsertsAndUpdates(t *testing.T) {
 	payload := buildPayload(t, pairs)
 
 	repo := &mockDictCardRepo{preExisting: preExisting}
-	auth := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
 
-	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
+	out, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
@@ -400,67 +379,119 @@ func TestDictionaryUsecase_AdminMixedInsertsAndUpdates(t *testing.T) {
 	}
 }
 
-// TestDictionaryUsecase_NonAdminForbidden covers the auth gate: a non-admin
-// caller is rejected with FORBIDDEN before the parser or repo is touched.
-func TestDictionaryUsecase_NonAdminForbidden(t *testing.T) {
+// TestCardImportUsecase_NonOwnerUnauthenticated covers the ownership gate: an
+// authenticated user who does not own the target cardgroup is rejected before
+// the parser or repo is touched.
+func TestCardImportUsecase_NonOwnerUnauthenticated(t *testing.T) {
 	t.Parallel()
 
 	pairs := [][2]string{{"apple", jpRunes(3)}}
 	payload := buildPayload(t, pairs)
 
 	repo := &mockDictCardRepo{}
-	auth := &mockAdminChecker{isAdmin: false}
+	cgRepo := ownedCardImportCardgroupRepo("owner-2")
 	tx, calls := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx, newTestLogger())
 
-	_, err := uc.Upsert(authedCtx("user-1"), UpsertDictionaryInput{
-		CardgroupID: "cg-target",
-		Payload:     payload,
-	})
-	assertForbidden(t, err, "")
-	if auth.calls != 1 {
-		t.Fatalf("expected 1 IsAdmin call, got %d", auth.calls)
-	}
-	if repo.upsertCalls != 0 {
-		t.Fatalf("expected 0 repo calls on forbidden, got %d", repo.upsertCalls)
-	}
-	if *calls != 0 {
-		t.Fatalf("expected 0 tx invocations on forbidden, got %d", *calls)
-	}
-}
-
-// TestDictionaryUsecase_AnonymousUnauthenticated covers the auth gate: a
-// caller with no AuthUser in context is rejected with UNAUTHENTICATED before
-// the AdminChecker is consulted.
-func TestDictionaryUsecase_AnonymousUnauthenticated(t *testing.T) {
-	t.Parallel()
-
-	pairs := [][2]string{{"apple", jpRunes(3)}}
-	payload := buildPayload(t, pairs)
-
-	repo := &mockDictCardRepo{}
-	auth := &mockAdminChecker{isAdmin: true}
-	tx, _ := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), repo, tx, newTestLogger())
-
-	_, err := uc.Upsert(anonCtx(), UpsertDictionaryInput{
+	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
 	assertUnauthenticated(t, err)
-	if auth.calls != 0 {
-		t.Fatalf("expected 0 IsAdmin calls on anonymous, got %d", auth.calls)
+	if cgRepo.findCalls != 1 {
+		t.Fatalf("expected 1 cardgroup ownership lookup, got %d", cgRepo.findCalls)
+	}
+	if repo.upsertCalls != 0 {
+		t.Fatalf("expected 0 repo calls on unauthorized owner, got %d", repo.upsertCalls)
+	}
+	if *calls != 0 {
+		t.Fatalf("expected 0 tx invocations on unauthorized owner, got %d", *calls)
 	}
 }
 
-// TestDictionaryUsecase_PayloadOverCapBadInput covers the 5000-row cap: a
+func TestCardImportUsecase_MissingCardgroupBadInput(t *testing.T) {
+	t.Parallel()
+
+	payload := buildPayload(t, [][2]string{{"apple", jpRunes(3)}})
+	repo := &mockDictCardRepo{}
+	cgRepo := &mockCardImportCardgroupRepo{findErr: repository.ErrNotFound}
+	tx, calls := dictTxRunner()
+	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx, newTestLogger())
+
+	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
+		CardgroupID: "missing",
+		Payload:     payload,
+	})
+
+	assertValidationError(t, err, "cardgroupId", "cardgroup not found")
+	if cgRepo.findCalls != 1 {
+		t.Fatalf("expected 1 cardgroup lookup, got %d", cgRepo.findCalls)
+	}
+	if repo.upsertCalls != 0 {
+		t.Fatalf("expected 0 repo calls for missing cardgroup, got %d", repo.upsertCalls)
+	}
+	if *calls != 0 {
+		t.Fatalf("expected 0 tx invocations for missing cardgroup, got %d", *calls)
+	}
+}
+
+// TestCardImportUsecase_AnonymousUnauthenticated covers the auth gate: a
+// caller with no AuthUser in context is rejected with UNAUTHENTICATED before a
+// cardgroup ownership lookup.
+func TestCardImportUsecase_AnonymousUnauthenticated(t *testing.T) {
+	t.Parallel()
+
+	pairs := [][2]string{{"apple", jpRunes(3)}}
+	payload := buildPayload(t, pairs)
+
+	repo := &mockDictCardRepo{}
+	cgRepo := ownedCardImportCardgroupRepo("user-1")
+	tx, _ := dictTxRunner()
+	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx, newTestLogger())
+
+	_, err := uc.Import(anonCtx(), ImportCardsInput{
+		CardgroupID: "cg-target",
+		Payload:     payload,
+	})
+	assertUnauthenticated(t, err)
+	if cgRepo.findCalls != 0 {
+		t.Fatalf("expected 0 cardgroup lookups on anonymous, got %d", cgRepo.findCalls)
+	}
+}
+
+func TestCardImportUsecase_EmptyCallerSubUnauthenticated(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockDictCardRepo{}
+	cgRepo := ownedCardImportCardgroupRepo("user-1")
+	tx, calls := dictTxRunner()
+	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx, newTestLogger())
+
+	_, err := uc.Import(authedCtx(""), ImportCardsInput{
+		CardgroupID: "cg-target",
+		Payload:     "not-valid-base64",
+	})
+
+	assertUnauthenticated(t, err)
+	if cgRepo.findCalls != 0 {
+		t.Fatalf("expected 0 cardgroup lookups on empty caller sub, got %d", cgRepo.findCalls)
+	}
+	if repo.upsertCalls != 0 {
+		t.Fatalf("expected 0 repo calls on empty caller sub, got %d", repo.upsertCalls)
+	}
+	if *calls != 0 {
+		t.Fatalf("expected 0 tx invocations on empty caller sub, got %d", *calls)
+	}
+}
+
+// TestCardImportUsecase_PayloadOverCapBadInput covers the 5000-row cap: a
 // payload that parses to >5000 rows is rejected with BAD_USER_INPUT before
 // the repo is touched. Empty backs would surface as parse errors instead, so
 // the test uses well-formed rows to drive the parsed-row count past the cap.
-func TestDictionaryUsecase_PayloadOverCapBadInput(t *testing.T) {
+func TestCardImportUsecase_PayloadOverCapBadInput(t *testing.T) {
 	t.Parallel()
 
-	const n = dictionaryParsedRowCap + 1
+	const n = cardImportParsedRowCap + 1
 	pairs := make([][2]string, n)
 	for i := 0; i < n; i++ {
 		pairs[i] = [2]string{stringFront("front", i), uniqueBack(i)}
@@ -468,11 +499,10 @@ func TestDictionaryUsecase_PayloadOverCapBadInput(t *testing.T) {
 	payload := buildPayload(t, pairs)
 
 	repo := &mockDictCardRepo{}
-	auth := &mockAdminChecker{isAdmin: true}
 	tx, calls := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
 
-	_, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
+	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
@@ -485,7 +515,7 @@ func TestDictionaryUsecase_PayloadOverCapBadInput(t *testing.T) {
 	}
 }
 
-// TestDictionaryUsecase_BadRowsSurfaceAsErrors covers the partial-failure
+// TestCardImportUsecase_BadRowsSurfaceAsErrors covers the partial-failure
 // shape where lexer-level junk is reported as parse errors, but valid rows
 // before and after the junk still reach the repository.
 //
@@ -496,7 +526,7 @@ func TestDictionaryUsecase_PayloadOverCapBadInput(t *testing.T) {
 // path any more — they are matched by explicit `entry: WORD` / `entry:
 // DEFINITION` skip productions and surface as "FRONT_ONLY" / "BACK_ONLY"
 // entries without disturbing the accumulator.
-func TestDictionaryUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
+func TestCardImportUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
 	t.Parallel()
 
 	// Build a payload with three valid rows interleaved with lexer failures.
@@ -518,11 +548,10 @@ func TestDictionaryUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
 
 	// All three valid rows should survive the lexer errors.
 	repo := &mockDictCardRepo{inserted: 3}
-	authChk := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(NewAdminGate(authChk), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
 
-	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
+	out, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
@@ -556,12 +585,12 @@ func TestDictionaryUsecase_BadRowsSurfaceAsErrors(t *testing.T) {
 	}
 }
 
-// TestDictionaryUsecase_ValidSkipValidMixedPayload covers the GraphQL
-// upsertDictionary path with a payload that interleaves a valid row, a lone
+// TestCardImportUsecase_ValidSkipValidMixedPayload covers the GraphQL
+// importCards path with a payload that interleaves a valid row, a lone
 // front (skip), and another valid row. The two valid rows must be persisted
 // (Inserted == 2), the lone front surfaces as Errors[0] with Kind ==
 // "FRONT_ONLY" and an empty Front field, and no skip-only short-circuit fires.
-func TestDictionaryUsecase_ValidSkipValidMixedPayload(t *testing.T) {
+func TestCardImportUsecase_ValidSkipValidMixedPayload(t *testing.T) {
 	t.Parallel()
 
 	// buildPayload writes "front<space>back\n" per pair, matching the lexer's
@@ -578,11 +607,10 @@ func TestDictionaryUsecase_ValidSkipValidMixedPayload(t *testing.T) {
 	payload := base64.StdEncoding.EncodeToString([]byte(b.String()))
 
 	repo := &mockDictCardRepo{inserted: 2}
-	authChk := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(NewAdminGate(authChk), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
 
-	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
+	out, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
@@ -595,8 +623,8 @@ func TestDictionaryUsecase_ValidSkipValidMixedPayload(t *testing.T) {
 	if len(out.Errors) != 1 {
 		t.Fatalf("expected exactly 1 parse error, got %d: %+v", len(out.Errors), out.Errors)
 	}
-	if got := out.Errors[0].Kind; got != DictErrKindFrontOnly {
-		t.Fatalf("Errors[0].Kind = %q, want %q (lone front must be tagged as FRONT_ONLY)", got, DictErrKindFrontOnly)
+	if got := out.Errors[0].Kind; got != CardImportErrKindFrontOnly {
+		t.Fatalf("Errors[0].Kind = %q, want %q (lone front must be tagged as FRONT_ONLY)", got, CardImportErrKindFrontOnly)
 	}
 	if got := out.Errors[0].Snippet; got != "orphan" {
 		t.Fatalf("Errors[0].Snippet = %q, want %q (parser must capture the WORD token text)", got, "orphan")
@@ -612,20 +640,19 @@ func TestDictionaryUsecase_ValidSkipValidMixedPayload(t *testing.T) {
 	}
 }
 
-// TestDictionaryUsecase_SkippedLoneFrontDoesNotReachRepository pins the new
+// TestCardImportUsecase_SkippedLoneFrontDoesNotReachRepository pins the new
 // skip-production behavior: a lone front-only line is reported as a skipped
 // validation error and never becomes a card with an empty back.
-func TestDictionaryUsecase_SkippedLoneFrontDoesNotReachRepository(t *testing.T) {
+func TestCardImportUsecase_SkippedLoneFrontDoesNotReachRepository(t *testing.T) {
 	t.Parallel()
 
 	payload := base64.StdEncoding.EncodeToString([]byte("existing-front\n"))
 
 	repo := &mockDictCardRepo{}
-	authChk := &mockAdminChecker{isAdmin: true}
 	tx, calls := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(NewAdminGate(authChk), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
 
-	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
+	out, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
@@ -647,8 +674,8 @@ func TestDictionaryUsecase_SkippedLoneFrontDoesNotReachRepository(t *testing.T) 
 	if out.Errors[0].Message != "skipped: front-only line (no definition)" {
 		t.Fatalf("Errors[0].Message = %q, want skipped front-only line", out.Errors[0].Message)
 	}
-	if got := out.Errors[0].Kind; got != DictErrKindFrontOnly {
-		t.Fatalf("Errors[0].Kind = %q, want %q (lone front must be tagged as FRONT_ONLY)", got, DictErrKindFrontOnly)
+	if got := out.Errors[0].Kind; got != CardImportErrKindFrontOnly {
+		t.Fatalf("Errors[0].Kind = %q, want %q (lone front must be tagged as FRONT_ONLY)", got, CardImportErrKindFrontOnly)
 	}
 	if got := out.Errors[0].Snippet; got != "existing-front" {
 		t.Fatalf("Errors[0].Snippet = %q, want %q (parser must capture the WORD token text)", got, "existing-front")
@@ -664,38 +691,40 @@ func TestDictionaryUsecase_SkippedLoneFrontDoesNotReachRepository(t *testing.T) 
 	}
 }
 
-// TestDictionaryUsecase_AdminCheckerErrorBecomesInternal verifies that a
-// non-context-canceled error returned by IsAdmin maps to INTERNAL and never
-// reaches the repository. The eris chain is observed only in logs; the test
-// pins the wrap text returned to the caller.
-func TestDictionaryUsecase_AdminCheckerErrorBecomesInternal(t *testing.T) {
+// TestCardImportUsecase_CardgroupLookupErrorBecomesInternal verifies that a
+// non-context-canceled ownership lookup error maps to INTERNAL and never reaches
+// the card repository.
+func TestCardImportUsecase_CardgroupLookupErrorBecomesInternal(t *testing.T) {
 	t.Parallel()
 
 	pairs := [][2]string{{"apple", jpRunes(3)}}
 	payload := buildPayload(t, pairs)
 
 	repo := &mockDictCardRepo{}
-	auth := &mockAdminChecker{err: errors.New("db died")}
+	cgRepo := &mockCardImportCardgroupRepo{findErr: errors.New("db died")}
 	tx, calls := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(NewAdminGate(auth), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx, newTestLogger())
 
-	_, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
+	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
-	assertInternalChain(t, err, "dictionary upsert: check admin")
+	assertInternalChain(t, err, "usecase: authorize cardgroup: find by id")
+	if cgRepo.findCalls != 1 {
+		t.Fatalf("expected 1 cardgroup lookup, got %d", cgRepo.findCalls)
+	}
 	if repo.upsertCalls != 0 {
-		t.Fatalf("expected 0 repo calls when admin check fails, got %d", repo.upsertCalls)
+		t.Fatalf("expected 0 repo calls when ownership lookup fails, got %d", repo.upsertCalls)
 	}
 	if *calls != 0 {
-		t.Fatalf("expected 0 tx invocations when admin check fails, got %d", *calls)
+		t.Fatalf("expected 0 tx invocations when ownership lookup fails, got %d", *calls)
 	}
 }
 
-// TestDictionaryUsecase_RepoErrorBecomesInternal verifies that a repository
+// TestCardImportUsecase_RepoErrorBecomesInternal verifies that a repository
 // error (e.g. database failure) is surfaced as an INTERNAL GraphQL error. The
 // usecase must still invoke the repository exactly once before returning.
-func TestDictionaryUsecase_RepoErrorBecomesInternal(t *testing.T) {
+func TestCardImportUsecase_RepoErrorBecomesInternal(t *testing.T) {
 	t.Parallel()
 
 	pairs := [][2]string{
@@ -705,54 +734,55 @@ func TestDictionaryUsecase_RepoErrorBecomesInternal(t *testing.T) {
 	payload := buildPayload(t, pairs)
 
 	repo := &mockDictCardRepo{returnErr: errors.New("db: boom")}
-	authChk := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(NewAdminGate(authChk), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
 
-	_, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
+	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
-	assertInternalChain(t, err, "dictionary upsert: repo")
+	assertInternalChain(t, err, "usecase: card import: repo")
 	if repo.upsertCalls != 1 {
 		t.Fatalf("expected 1 UpsertManyTx call (repo was invoked), got %d", repo.upsertCalls)
 	}
 }
 
-// TestDictionaryUsecase_EmptyCardgroupIDBadInput verifies that an empty
+// TestCardImportUsecase_EmptyCardgroupIDBadInput verifies that an empty
 // cardgroupId is rejected with BAD_USER_INPUT before any repo activity occurs.
-func TestDictionaryUsecase_EmptyCardgroupIDBadInput(t *testing.T) {
+func TestCardImportUsecase_EmptyCardgroupIDBadInput(t *testing.T) {
 	t.Parallel()
 
 	pairs := [][2]string{{"apple", jpRunes(3)}}
 	payload := buildPayload(t, pairs)
 
 	repo := &mockDictCardRepo{}
-	authChk := &mockAdminChecker{isAdmin: true}
+	cgRepo := ownedCardImportCardgroupRepo("user-1")
 	tx, _ := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(NewAdminGate(authChk), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(cgRepo, repo, tx, newTestLogger())
 
-	_, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
+	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "",
 		Payload:     payload,
 	})
 	assertValidationError(t, err, "cardgroupId", "")
+	if cgRepo.findCalls != 0 {
+		t.Fatalf("expected 0 cardgroup lookups on empty cardgroupId, got %d", cgRepo.findCalls)
+	}
 	if repo.upsertCalls != 0 {
 		t.Fatalf("expected 0 repo calls on empty cardgroupId, got %d", repo.upsertCalls)
 	}
 }
 
-// TestDictionaryUsecase_EmptyPayloadBadInput verifies that an empty payload
+// TestCardImportUsecase_EmptyPayloadBadInput verifies that an empty payload
 // string is rejected with BAD_USER_INPUT before any repo activity occurs.
-func TestDictionaryUsecase_EmptyPayloadBadInput(t *testing.T) {
+func TestCardImportUsecase_EmptyPayloadBadInput(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockDictCardRepo{}
-	authChk := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(NewAdminGate(authChk), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
 
-	_, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
+	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
 		Payload:     "",
 	})
@@ -762,18 +792,17 @@ func TestDictionaryUsecase_EmptyPayloadBadInput(t *testing.T) {
 	}
 }
 
-// TestDictionaryUsecase_BadBase64BadInput verifies that a payload that is not
+// TestCardImportUsecase_BadBase64BadInput verifies that a payload that is not
 // valid standard base64 is rejected with BAD_USER_INPUT before any repo
 // activity occurs.
-func TestDictionaryUsecase_BadBase64BadInput(t *testing.T) {
+func TestCardImportUsecase_BadBase64BadInput(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockDictCardRepo{}
-	authChk := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(NewAdminGate(authChk), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
 
-	_, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
+	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
 		Payload:     "not-valid-base64-!@#$",
 	})
@@ -783,16 +812,16 @@ func TestDictionaryUsecase_BadBase64BadInput(t *testing.T) {
 	}
 }
 
-// TestDictionaryUsecase_DuplicateFrontDeduplicatedAndSurfaced verifies that
+// TestCardImportUsecase_DuplicateFrontDeduplicatedAndSurfaced verifies that
 // when the payload contains two lines with the same front, the later occurrence
 // wins (last-write-wins dedup) and the dropped earlier row surfaces as a
-// DictionaryValidationError with a "DUPLICATE" message. Exactly one card
+// CardImportError with a "DUPLICATE" message. Exactly one card
 // reaches the repository and its Back matches the last occurrence.
 //
 // Note: this test depends on usecase-level deduplication logic. If that logic
 // has not landed yet, the test will fail — that is correct behavior because it
 // documents the expected contract.
-func TestDictionaryUsecase_DuplicateFrontDeduplicatedAndSurfaced(t *testing.T) {
+func TestCardImportUsecase_DuplicateFrontDeduplicatedAndSurfaced(t *testing.T) {
 	t.Parallel()
 
 	// Two lines with the same front "apple"; the second occurrence ("rubbish")
@@ -805,11 +834,10 @@ func TestDictionaryUsecase_DuplicateFrontDeduplicatedAndSurfaced(t *testing.T) {
 	payload := base64.StdEncoding.EncodeToString([]byte(raw))
 
 	repo := &mockDictCardRepo{inserted: 1, updated: 0}
-	authChk := &mockAdminChecker{isAdmin: true}
 	tx, _ := dictTxRunner()
-	uc := NewDictionaryUsecaseWithTx(NewAdminGate(authChk), repo, tx, newTestLogger())
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
 
-	out, err := uc.Upsert(authedCtx("admin-1"), UpsertDictionaryInput{
+	out, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
 		CardgroupID: "cg-target",
 		Payload:     payload,
 	})
@@ -822,8 +850,8 @@ func TestDictionaryUsecase_DuplicateFrontDeduplicatedAndSurfaced(t *testing.T) {
 	if len(out.Errors) != 1 {
 		t.Fatalf("expected exactly 1 duplicate error, got %d: %+v", len(out.Errors), out.Errors)
 	}
-	if got := out.Errors[0].Kind; got != DictErrKindDuplicate {
-		t.Fatalf("Errors[0].Kind = %q, want %q (dropped duplicate must be tagged as DUPLICATE)", got, DictErrKindDuplicate)
+	if got := out.Errors[0].Kind; got != CardImportErrKindDuplicate {
+		t.Fatalf("Errors[0].Kind = %q, want %q (dropped duplicate must be tagged as DUPLICATE)", got, CardImportErrKindDuplicate)
 	}
 	if got := out.Errors[0].Front; got != "apple" {
 		t.Fatalf("Errors[0].Front = %q, want %q (the duplicate row's front)", got, "apple")
@@ -841,6 +869,34 @@ func TestDictionaryUsecase_DuplicateFrontDeduplicatedAndSurfaced(t *testing.T) {
 	}
 	if string(repo.captured[0].Back) != rubbishBack {
 		t.Fatalf("expected repo card Back=%q (last occurrence wins), got %q", rubbishBack, repo.captured[0].Back)
+	}
+}
+
+// TestCardImportUsecase_Import_ContextCancelledDuringUpsert verifies that a
+// context.Canceled surfaced by the card repository during UpsertManyTx is
+// returned to the caller without wrapping — errors.Is(err, context.Canceled)
+// must hold. The isContextDone guard in Import passes the raw error through
+// rather than wrapping it with eris.Wrap.
+func TestCardImportUsecase_Import_ContextCancelledDuringUpsert(t *testing.T) {
+	t.Parallel()
+
+	pairs := [][2]string{{"apple", jpRunes(3)}}
+	payload := buildPayload(t, pairs)
+
+	repo := &mockDictCardRepo{returnErr: context.Canceled}
+	tx, _ := dictTxRunner()
+	uc := NewCardImportUsecaseWithTx(ownedCardImportCardgroupRepo("user-1"), repo, tx, newTestLogger())
+
+	_, err := uc.Import(authedCtx("user-1"), ImportCardsInput{
+		CardgroupID: "cg-target",
+		Payload:     payload,
+	})
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected errors.Is(err, context.Canceled)=true, got %T: %v", err, err)
+	}
+	if repo.upsertCalls != 1 {
+		t.Fatalf("expected 1 UpsertManyTx call before cancellation, got %d", repo.upsertCalls)
 	}
 }
 

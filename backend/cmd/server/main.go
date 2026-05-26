@@ -268,7 +268,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 	cardgroupUC := usecase.NewCardgroupUsecase(cardgroupRepo, logger)
 	learnUC := usecase.NewLearnUsecase(cardRepo, cardgroupRepo, service.NewOrderingPolicy(), nil, 0, 0, nil, logger)
 	swipeUC := usecase.NewSwipeUsecase(db.GORM, cardRepo, cardgroupRepo, swipeRecordRepo, service.NewFSRSScheduler(), userCardFSRSRepo, logger)
-	dictionaryUC := usecase.NewDictionaryUsecase(adminGate, cardRepo, db.GORM, logger)
+	cardImportUC := usecase.NewCardImportUsecase(cardgroupRepo, cardRepo, db.GORM, logger)
 	adminUserUC := usecase.NewAdminUser(db.GORM, userRepo, roleRepo, userRoleRepo, adminGate, logger)
 	adminRoleUC := usecase.NewAdminRole(roleRepo, adminGate, logger)
 	lastViewedCardgroupUC := usecase.NewLastViewedCardgroup(userPreferenceRepo, userRepo, logger)
@@ -288,7 +288,7 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		notionSyncHandler = notionsync.New(notionSyncUC, notionEnv.HandlerConfig)
 	}
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, cardObserver, logger)
-	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, dictionaryUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, learnUC)
+	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, learnUC)
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
 	// telemetry.Init for the full ordering invariant.

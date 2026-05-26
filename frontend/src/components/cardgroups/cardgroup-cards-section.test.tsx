@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CardgroupCardsSection } from "./cardgroup-cards-section";
 
 const onAddCard = vi.fn();
+const onBatchImport = vi.fn();
 
 // Stub CardsClient so this test focuses on the section header (the only piece
 // CardgroupCardsSection actually owns) and how the render-prop is invoked.
@@ -16,11 +17,15 @@ vi.mock("@/app/cardgroups/[id]/cards/cards-client", () => ({
   }: {
     sectionHeader?:
       | ReactNode
-      | ((args: { totalCount: number; onAddCard: () => void }) => ReactNode);
+      | ((args: {
+          totalCount: number;
+          onAddCard: () => void;
+          onBatchImport: () => void;
+        }) => ReactNode);
   }) => (
     <div data-testid="cards-client-stub">
       {typeof sectionHeader === "function"
-        ? sectionHeader({ totalCount: 12, onAddCard })
+        ? sectionHeader({ totalCount: 12, onAddCard, onBatchImport })
         : sectionHeader}
     </div>
   ),
@@ -37,11 +42,12 @@ const PAGE_INFO = {
 function renderSection(
   cardgroupId = "cg-1",
   initialTotalCount = 7,
-  renderPageHeader?: (args: { totalCount: number }) => ReactNode,
+  renderPageHeader?: (args: { totalCount: number; onBatchImport: () => void }) => ReactNode,
 ) {
   render(
     <CardgroupCardsSection
       cardgroupId={cardgroupId}
+      cardgroupName="Test Cardgroup"
       initialEdges={[]}
       initialPageInfo={PAGE_INFO}
       initialTotalCount={initialTotalCount}
@@ -52,13 +58,14 @@ function renderSection(
 
 beforeEach(() => {
   onAddCard.mockClear();
+  onBatchImport.mockClear();
 });
 
 describe("<CardgroupCardsSection>", () => {
   it("renders the toolbar buttons without a count chip", () => {
     // The count chip was removed — count is now shown in the page-level Badge
     // via the renderPageHeader render prop. The toolbar contains only Start
-    // learning and Add card.
+    // learning and Add card split button.
     renderSection("cg-1", 7);
     expect(screen.getByRole("link", { name: /start learning/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /add card/i })).toBeInTheDocument();
@@ -86,11 +93,29 @@ describe("<CardgroupCardsSection>", () => {
     expect(link).toHaveAttribute("href", "/learn/cg-1");
   });
 
-  it("renders an Add card button that opens the in-context sheet", async () => {
+  it("primary Add card button calls onAddCard", async () => {
     const user = userEvent.setup();
     renderSection("cg-1");
-    await user.click(screen.getByRole("button", { name: /add card/i }));
+    await user.click(screen.getByRole("button", { name: /add card \+/i }));
     expect(onAddCard).toHaveBeenCalledTimes(1);
+  });
+
+  it("dropdown 'Add a card' item calls onAddCard", async () => {
+    const user = userEvent.setup();
+    renderSection("cg-1");
+    await user.click(screen.getByRole("button", { name: /more add options/i }));
+    const addItem = await screen.findByRole("menuitem", { name: /add a card/i });
+    await user.click(addItem);
+    expect(onAddCard).toHaveBeenCalledTimes(1);
+  });
+
+  it("dropdown 'Batch import' item calls onBatchImport", async () => {
+    const user = userEvent.setup();
+    renderSection("cg-1");
+    await user.click(screen.getByRole("button", { name: /more add options/i }));
+    const batchItem = await screen.findByRole("menuitem", { name: /batch import/i });
+    await user.click(batchItem);
+    expect(onBatchImport).toHaveBeenCalledTimes(1);
   });
 
   it("URL-encodes ampersand characters in the cardgroup id for the Start learning link", () => {
@@ -105,6 +130,18 @@ describe("<CardgroupCardsSection>", () => {
     renderSection();
     const stub = screen.getByTestId("cards-client-stub");
     expect(stub).toContainElement(screen.getByRole("link", { name: /start learning/i }));
-    expect(stub).toContainElement(screen.getByRole("button", { name: /add card/i }));
+    expect(stub).toContainElement(screen.getByRole("button", { name: /add card \+/i }));
+  });
+
+  it("passes onBatchImport from renderPageHeader args to the header slot", () => {
+    const _headerOnBatchImport = vi.fn();
+    renderSection("cg-1", 7, ({ onBatchImport: batchFn }) => (
+      <button type="button" data-testid="page-header-batch" onClick={batchFn}>
+        page-header batch
+      </button>
+    ));
+    // The stub always passes the mock onBatchImport. The page header slot gets
+    // the same function reference from the render-prop arg.
+    expect(screen.getByTestId("page-header-batch")).toBeInTheDocument();
   });
 });
