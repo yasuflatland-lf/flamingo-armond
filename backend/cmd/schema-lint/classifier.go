@@ -132,7 +132,7 @@ func extractTypeName(expr ast.Expr) string {
 		// Pointer type: *usecase.UserUsecase or *UserUsecase
 		return extractTypeName(t.X)
 	case *ast.SelectorExpr:
-		// Qualified name: usecase.DictionaryUsecase
+		// Qualified name: usecase.CardImportUsecase
 		// Return only the selector (type name), strip package prefix.
 		return t.Sel.Name
 	case *ast.Ident:

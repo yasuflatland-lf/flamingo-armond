@@ -17,39 +17,39 @@ func nilIfEmpty(s string) *string {
 	return &s
 }
 
-func dictionaryKindOrPanic(ctx context.Context, raw string) model.DictionaryValidationKind {
-	if raw == "" || raw == string(model.DictionaryValidationKindUnknown) {
-		slog.ErrorContext(ctx, "dictionary: UNKNOWN/empty Kind escaped to resolver - programmer bug",
+func cardImportKindOrPanic(ctx context.Context, raw string) model.CardImportErrorKind {
+	if raw == "" || raw == string(model.CardImportErrorKindUnknown) {
+		slog.ErrorContext(ctx, "card import: UNKNOWN/empty Kind escaped to resolver - programmer bug",
 			"raw", raw,
 		)
-		panic(eris.Errorf("dictionary: UNKNOWN/empty Kind escaped to resolver: %q", raw))
+		panic(eris.Errorf("card import: UNKNOWN/empty Kind escaped to resolver: %q", raw))
 	}
-	return model.DictionaryValidationKind(raw)
+	return model.CardImportErrorKind(raw)
 }
 
-func toDictionaryValidationErrorsFromUpsert(ctx context.Context, errs []usecase.DictionaryValidationError) []*model.DictionaryValidationError {
-	return toDictionaryValidationErrors(ctx, errs)
+func toCardImportErrorsFromImport(ctx context.Context, errs []usecase.CardImportError) []*model.CardImportError {
+	return toCardImportErrors(ctx, errs)
 }
 
-func toDictionaryValidationResultModel(ctx context.Context, out usecase.ValidateDictionaryOutcome) *model.DictionaryValidationResult {
-	parsed := make([]*model.ParsedWord, 0, len(out.ParsedWords))
-	for _, w := range out.ParsedWords {
-		parsed = append(parsed, &model.ParsedWord{Front: w.Front, Back: w.Back, Line: w.Line})
+func toCardImportValidationResultModel(ctx context.Context, out usecase.ValidateCardImportOutcome) *model.CardImportValidationResult {
+	parsed := make([]*model.ParsedCard, 0, len(out.ParsedCards))
+	for _, w := range out.ParsedCards {
+		parsed = append(parsed, &model.ParsedCard{Front: w.Front, Back: w.Back, Line: w.Line})
 	}
-	return &model.DictionaryValidationResult{
+	return &model.CardImportValidationResult{
 		Valid:       out.Valid,
-		ParsedWords: parsed,
-		Errors:      toDictionaryValidationErrors(ctx, out.Errors),
+		ParsedCards: parsed,
+		Errors:      toCardImportErrors(ctx, out.Errors),
 	}
 }
 
-func toDictionaryValidationErrors(ctx context.Context, errs []usecase.DictionaryValidationError) []*model.DictionaryValidationError {
-	out := make([]*model.DictionaryValidationError, 0, len(errs))
+func toCardImportErrors(ctx context.Context, errs []usecase.CardImportError) []*model.CardImportError {
+	out := make([]*model.CardImportError, 0, len(errs))
 	for _, e := range errs {
-		out = append(out, &model.DictionaryValidationError{
+		out = append(out, &model.CardImportError{
 			Line:    e.Line,
 			Message: e.Message,
-			Kind:    dictionaryKindOrPanic(ctx, string(e.Kind)),
+			Kind:    cardImportKindOrPanic(ctx, string(e.Kind)),
 			Snippet: nilIfEmpty(e.Snippet),
 			Front:   nilIfEmpty(e.Front),
 			Back:    nilIfEmpty(e.Back),
