@@ -72,7 +72,7 @@ export function CardRow({
             aria-label="Delete card"
             onClick={onDelete}
             data-testid={`card-delete-${card.id}`}
-            className="opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 motion-reduce:opacity-100 transition-opacity"
+            className="pointer-events-none opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 motion-reduce:pointer-events-auto motion-reduce:opacity-100 transition-opacity"
           >
             <Trash2 aria-hidden="true" className="h-4 w-4" />
           </Button>
