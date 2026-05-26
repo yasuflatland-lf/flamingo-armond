@@ -215,6 +215,31 @@ describe("<CardgroupBatchImportForm>", () => {
     );
   });
 
+  it("validate transport/network error shows a banner and leaves Import disabled", async () => {
+    const user = userEvent.setup();
+    renderForm([
+      {
+        request: {
+          query: ValidateCardImportDocument,
+          variables: { input: { payload: encodePayload(TWO_LINE_TEXT) } },
+        },
+        error: new Error("network error"),
+      },
+    ]);
+
+    await typePayload(user, TWO_LINE_TEXT);
+    await user.click(screen.getByRole("button", { name: /^validate$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+    // No preview rows should be rendered.
+    expect(screen.queryByText("apple")).not.toBeInTheDocument();
+    expect(screen.queryByText("banana")).not.toBeInTheDocument();
+    // Import must remain disabled because validation failed.
+    expect(screen.getByRole("button", { name: /^import$/i })).toBeDisabled();
+  });
+
   it("import with error rows keeps the form open and shows the result banner", async () => {
     const user = userEvent.setup();
     const { onImported } = renderForm([

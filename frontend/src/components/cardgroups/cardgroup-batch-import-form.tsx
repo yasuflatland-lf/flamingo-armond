@@ -1,6 +1,5 @@
 "use client";
 
-import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { useApolloClient, useLazyQuery, useMutation } from "@apollo/client/react";
 import type { JSX } from "react";
 import { useState } from "react";
@@ -35,19 +34,11 @@ type ImportResult = {
 };
 
 /**
- * Classify a raw Apollo error into a user-facing banner string. FORBIDDEN gets
- * a specific message because this form is owner-facing — a FORBIDDEN response
- * means the viewer does not own the target cardgroup.
+ * Classify a raw Apollo error into a user-facing banner string, delegating to
+ * the shared backend-error banner helper.
  */
 function classifyError(err: unknown): string {
   if (!err) return "";
-  if (CombinedGraphQLErrors.is(err)) {
-    for (const ge of err.errors) {
-      if (ge.extensions?.code === "FORBIDDEN") {
-        return "You can only import into a cardgroup you own.";
-      }
-    }
-  }
   return getBackendErrorBanner(err) ?? "An unexpected error occurred. Please try again.";
 }
 
@@ -105,16 +96,16 @@ export function CardgroupBatchImportForm(props: {
       const result = await runImport({
         variables: { input: { cardgroupId, payload } },
       });
-      if (result.error) {
-        setBannerError(classifyError(result.error));
-        return;
-      }
       const data = result.data?.importCards;
       if (!data) {
         setBannerError("An unexpected error occurred. Please try again.");
         return;
       }
       setImportResult(data);
+      // Reset the stale-guard so the user must re-validate before importing
+      // again — prevents accidental re-upsert of the same payload on a
+      // partial-success result where the sheet stays open.
+      setValidatedPayload(null);
       // Refresh the cards list so the background list and the "N cards" badge
       // reflect the freshly imported rows.
       try {
