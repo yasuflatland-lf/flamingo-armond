@@ -47,7 +47,7 @@ The shipped `/offline.html` CSP in [`frontend/next.config.ts`](../../frontend/ne
 
 The middleware also forwards `x-pathname` for server components and preserves the same forwarded CSP / nonce headers when the Supabase client refreshes cookies.
 
-If `buildHtmlCsp` throws (e.g., malformed `NEXT_PUBLIC_SUPABASE_URL`), the middleware logs via `console.error` and omits both CSP headers rather than crashing all requests. Auth, cookie rotation, and routing continue to work; only the CSP observation and enforcement is absent.
+If `buildHtmlCsp` throws (e.g., malformed `NEXT_PUBLIC_SUPABASE_URL`), the middleware logs via `console.error` and omits both CSP headers rather than crashing all requests. Auth, cookie rotation, and routing continue to work; only CSP enforcement and violation reporting is absent.
 
 The policy is now **enforcing** on HTML responses. Violations are blocked and reported to the configured endpoint.
 
@@ -62,7 +62,7 @@ The policy is now **enforcing** on HTML responses. Violations are blocked and re
    - `X-Content-Type-Options: nosniff`
    - `X-Frame-Options: DENY`
    - `Reporting-Endpoints: csp-endpoint="/api/csp-report"`
-2. `/offline.html` receives the same shared header set plus a hardcoded inline CSP string (see `next.config.ts` line 61 — this is separate from any builder function).
+2. `/offline.html` receives the same shared header set plus a hardcoded inline CSP string (this is separate from any builder function).
 3. `/sw.js` receives `Content-Type`, a no-cache `Cache-Control`, and `X-Content-Type-Options`.
 
 The HSTS choice is deliberately conservative: it ships without preload and without subdomain coverage. `Reporting-Endpoints` is already shipped so user agents that prefer the Reporting API can map the `csp-endpoint` token to `/api/csp-report`.
@@ -93,7 +93,7 @@ These are the decisions currently shipped in code:
 - `Reporting-Endpoints` is enabled in the static header set.
 - HSTS is present but conservative.
 
-Future enforcement or report aggregation work should stay brief in this doc until it is actually implemented. Today the system only logs violation reports; nothing aggregates or blocks on them yet.
+Future enforcement or report aggregation work should stay brief in this doc until it is actually implemented. Today the system only logs violation reports; nothing aggregates them or triggers alerts.
 
 ## Verification
 
