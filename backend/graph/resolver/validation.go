@@ -27,10 +27,6 @@ func cardImportKindOrPanic(ctx context.Context, raw string) model.CardImportErro
 	return model.CardImportErrorKind(raw)
 }
 
-func toCardImportErrorsFromImport(ctx context.Context, errs []usecase.CardImportError) []*model.CardImportError {
-	return toCardImportErrors(ctx, errs)
-}
-
 func toCardImportValidationResultModel(ctx context.Context, out usecase.ValidateCardImportOutcome) *model.CardImportValidationResult {
 	parsed := make([]*model.ParsedCard, 0, len(out.ParsedCards))
 	for _, w := range out.ParsedCards {

@@ -24,7 +24,7 @@ func (r *mutationResolver) ImportCards(ctx context.Context, input model.ImportCa
 	return &model.ImportCardsPayload{
 		Inserted: int(out.Inserted),
 		Updated:  int(out.Updated),
-		Errors:   toCardImportErrorsFromImport(ctx, out.Errors),
+		Errors:   toCardImportErrors(ctx, out.Errors),
 	}, nil
 }
 
