@@ -7,6 +7,26 @@ import type { NextConfig } from "next";
 // localhost fallback below never reaches a real environment.
 const backendUrl = process.env.BACKEND_URL ?? "http://localhost:1323";
 
+const htmlSecurityHeaders = [
+  {
+    key: "Strict-Transport-Security",
+    // Conservative baseline: no preload and no subdomain coverage until deployment
+    // ownership proves that scope is safe.
+    value: "max-age=31536000",
+  },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
+  },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "X-Frame-Options", value: "DENY" },
+  {
+    key: "Reporting-Endpoints",
+    value: 'csp-endpoint="/api/csp-report"',
+  },
+];
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   // Next 16's blockCrossSiteDEV allowlists `localhost` but not `127.0.0.1`,
@@ -27,6 +47,21 @@ const nextConfig: NextConfig = {
   // 24 hours (a Service Worker spec rule, independent of any HTTP cache TTL).
   async headers() {
     return [
+      {
+        source: "/((?!api/|_next/|sw\\.js$|offline\\.html$|.*\\.).*)",
+        headers: htmlSecurityHeaders,
+      },
+      {
+        source: "/offline.html",
+        headers: [
+          ...htmlSecurityHeaders,
+          {
+            key: "Content-Security-Policy",
+            value:
+              "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'",
+          },
+        ],
+      },
       {
         source: "/sw.js",
         headers: [

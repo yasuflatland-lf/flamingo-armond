@@ -30,6 +30,26 @@ A public, JSON, cache-bypassing health endpoint. Conventions baked in:
 3. **Status code, not body**: success is `200 + { ok: true, backend: <string> }`; failure is `503 + { ok: false, error: <string> }`. **Never** return `200` with `{ ok: false, ... }` embedded — generic monitors check status codes, not body parsers, and a 200-with-error silently passes every uptime check while the system is down.
 4. **Log before responding on failure**: `console.error("[healthz] backend health check failed:", err)` so an operator can correlate the 503 in logs with the cause.
 
+### Body read is fallible — wrap `request.text()` in try/catch
+
+`await request.text()` can throw in the Edge runtime on connection resets, truncated streams, or payloads that exceed the runtime's body size limit. It is **not** safe to assume the call succeeds simply because the HTTP method is POST. Callers that let the rejection escape get an unstructured 500 instead of the expected response code.
+
+Wrap the read in a try/catch that logs a structured warning and returns a clean fallback:
+
+```ts
+let raw: string;
+try {
+  raw = await request.text();
+} catch (err) {
+  console.warn("[scope] failed to read request body", {
+    error: err instanceof Error ? err.message : String(err),
+  });
+  return new Response(null, { status: 204 }); // or 400, depending on contract
+}
+```
+
+Separate the `request.text()` try/catch from the `JSON.parse` try/catch so the two failure modes produce distinct log reasons (`read_error` vs `invalid_json`) and can be triaged independently. Reference: `frontend/src/app/api/csp-report/route.ts` — `readBody`.
+
 ### `/api/ping` liveness probe
 
 A sibling to `/api/healthz`, deliberately thinner. The `readiness-ping` GitHub Actions workflow pings this URL on a 15-minute cron to keep Vercel's edge warm; the warm-up job must succeed whenever the Vercel edge is reachable, even if the backend is briefly down. Conventions:
