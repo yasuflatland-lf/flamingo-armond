@@ -2398,7 +2398,7 @@ func (panicQueryResolver) LearnNextDueCards(_ context.Context, _ string, _ *int)
 func (panicQueryResolver) CardsByCardgroupConnection(_ context.Context, _ string, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.CardOrderBy, _ *model.SortOrder) (*model.CardConnection, error) {
 	return nil, nil
 }
-func (panicQueryResolver) ValidateDictionary(_ context.Context, _ model.ValidateDictionaryInput) (*model.DictionaryValidationResult, error) {
+func (panicQueryResolver) ValidateCardImport(_ context.Context, _ model.ValidateCardImportInput) (*model.CardImportValidationResult, error) {
 	return nil, nil
 }
 func (panicQueryResolver) Users(_ context.Context, _ *int, _ *string, _ *int, _ *string, _ *string) (*model.UserConnection, error) {

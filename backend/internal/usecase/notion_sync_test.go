@@ -648,54 +648,54 @@ func TestNotionSyncUsecase_SkipOnlyLogFields(t *testing.T) {
 	}
 }
 
-// TestAllDictionaryErrorsSkipped verifies the allDictionaryErrorsSkipped
-// predicate across the full domain of DictionaryErrorKind values.
-func TestAllDictionaryErrorsSkipped(t *testing.T) {
+// TestAllCardImportErrorsSkipped verifies the allCardImportErrorsSkipped
+// predicate across the full domain of CardImportErrorKind values.
+func TestAllCardImportErrorsSkipped(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
 		name  string
-		input []DictionaryValidationError
+		input []CardImportError
 		want  bool
 	}{
 		{
 			name:  "empty slice",
-			input: []DictionaryValidationError{},
+			input: []CardImportError{},
 			want:  false,
 		},
 		{
 			name:  "FRONT_ONLY only",
-			input: []DictionaryValidationError{{Kind: DictErrKindFrontOnly}},
+			input: []CardImportError{{Kind: CardImportErrKindFrontOnly}},
 			want:  true,
 		},
 		{
 			name:  "BACK_ONLY only",
-			input: []DictionaryValidationError{{Kind: DictErrKindBackOnly}},
+			input: []CardImportError{{Kind: CardImportErrKindBackOnly}},
 			want:  true,
 		},
 		{
 			name:  "FRONT_ONLY and BACK_ONLY",
-			input: []DictionaryValidationError{{Kind: DictErrKindFrontOnly}, {Kind: DictErrKindBackOnly}},
+			input: []CardImportError{{Kind: CardImportErrKindFrontOnly}, {Kind: CardImportErrKindBackOnly}},
 			want:  true,
 		},
 		{
 			name:  "FRONT_ONLY and UNRECOGNIZED",
-			input: []DictionaryValidationError{{Kind: DictErrKindFrontOnly}, {Kind: DictErrKindUnrecognized}},
+			input: []CardImportError{{Kind: CardImportErrKindFrontOnly}, {Kind: CardImportErrKindUnrecognized}},
 			want:  false,
 		},
 		{
 			name:  "FRONT_ONLY and HARD",
-			input: []DictionaryValidationError{{Kind: DictErrKindFrontOnly}, {Kind: DictErrKindHard}},
+			input: []CardImportError{{Kind: CardImportErrKindFrontOnly}, {Kind: CardImportErrKindHard}},
 			want:  false,
 		},
 		{
 			name:  "DUPLICATE only",
-			input: []DictionaryValidationError{{Kind: DictErrKindDuplicate}},
+			input: []CardImportError{{Kind: CardImportErrKindDuplicate}},
 			want:  false,
 		},
 		{
 			name:  "UNKNOWN only — programming-error sentinel is not a skip",
-			input: []DictionaryValidationError{{Kind: DictErrKindUnknown}},
+			input: []CardImportError{{Kind: CardImportErrKindUnknown}},
 			want:  false,
 		},
 	}
@@ -704,8 +704,8 @@ func TestAllDictionaryErrorsSkipped(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := allDictionaryErrorsSkipped(tc.input); got != tc.want {
-				t.Errorf("allDictionaryErrorsSkipped(%v) = %v, want %v", tc.input, got, tc.want)
+			if got := allCardImportErrorsSkipped(tc.input); got != tc.want {
+				t.Errorf("allCardImportErrorsSkipped(%v) = %v, want %v", tc.input, got, tc.want)
 			}
 		})
 	}

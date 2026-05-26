@@ -115,9 +115,9 @@ func TestIntegration_AllowlistReleaseValve(t *testing.T) {
 		t.Fatalf("LoadAllowlist: %v", err)
 	}
 
-	// "upsertDictionary" is a known bare-emit mutation frozen in the allowlist.
+	// "importCards" is a known bare-emit mutation frozen in the allowlist.
 	// Remove it from the in-memory copy to simulate a line deletion.
-	const targetMutation = "upsertDictionary"
+	const targetMutation = "importCards"
 	if _, present := al[targetMutation]; !present {
 		t.Fatalf("test precondition failed: %q not found in allowlist; update the test if the mutation was promoted", targetMutation)
 	}
