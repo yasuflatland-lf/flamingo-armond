@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { HtmlCspOptions } from "@/lib/security/csp";
 import { updateSession } from "./middleware";
 
 const mockGetUser = vi.hoisted(() =>
@@ -12,7 +13,7 @@ vi.mock("@supabase/ssr", () => ({
   }),
 }));
 
-const mockBuildHtmlCsp = vi.hoisted(() => vi.fn<() => string>());
+const mockBuildHtmlCsp = vi.hoisted(() => vi.fn<(opts: HtmlCspOptions) => string>());
 
 vi.mock("@/lib/security/csp", async (importOriginal) => {
   const mod = await importOriginal<typeof import("@/lib/security/csp")>();

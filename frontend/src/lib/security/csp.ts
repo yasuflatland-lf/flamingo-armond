@@ -2,7 +2,7 @@ type CspSource = string | null | undefined | false;
 
 type CspDirectiveMap = Partial<Record<string, readonly CspSource[]>>;
 
-type HtmlCspOptions = {
+export type HtmlCspOptions = {
   nonce: string;
   supabaseUrl: string;
   reportUri?: string;
