@@ -82,7 +82,7 @@ function getFooter(container: HTMLElement): HTMLElement {
 
 describe("<GlobalRail>", () => {
   describe("S1 — items render when signed in", () => {
-    it("renders Cardgroups and the three admin items (Users / Roles / Dictionary) with correct hrefs when isAdmin=true", () => {
+    it("renders Cardgroups and the two admin items (Users / Roles) with correct hrefs when isAdmin=true", () => {
       mockUsePathname.mockReturnValue("/");
       renderRail({ user: { email: "u@example.com" }, isAdmin: true });
 
@@ -92,23 +92,18 @@ describe("<GlobalRail>", () => {
       );
       expect(screen.getByRole("link", { name: /users/i })).toHaveAttribute("href", "/admin/users");
       expect(screen.getByRole("link", { name: /roles/i })).toHaveAttribute("href", "/admin/roles");
-      expect(screen.getByRole("link", { name: /dictionary/i })).toHaveAttribute(
-        "href",
-        "/admin/dictionary",
-      );
       expect(screen.queryByRole("link", { name: /settings/i })).toBeNull();
     });
   });
 
   describe("S2 — Admin gate", () => {
-    it("does not render any of the three admin links when isAdmin=false", () => {
+    it("does not render any of the admin links when isAdmin=false", () => {
       mockUsePathname.mockReturnValue("/");
       renderRail({ user: { email: "u@example.com" }, isAdmin: false });
 
-      // The three admin links must be absent.
+      // The admin links must be absent.
       expect(screen.queryByRole("link", { name: /users/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /roles/i })).toBeNull();
-      expect(screen.queryByRole("link", { name: /dictionary/i })).toBeNull();
 
       // The non-admin items remain present.
       expect(screen.getByRole("link", { name: /cardgroups/i })).toBeInTheDocument();
@@ -128,7 +123,6 @@ describe("<GlobalRail>", () => {
       // Sibling items must not be marked as current.
       expect(screen.getByRole("link", { name: /users/i })).not.toHaveAttribute("aria-current");
       expect(screen.getByRole("link", { name: /roles/i })).not.toHaveAttribute("aria-current");
-      expect(screen.getByRole("link", { name: /dictionary/i })).not.toHaveAttribute("aria-current");
       expect(screen.getByRole("link", { name: /profile/i })).not.toHaveAttribute("aria-current");
     });
 
@@ -150,7 +144,6 @@ describe("<GlobalRail>", () => {
 
       // Sibling admin items must NOT be marked as current.
       expect(screen.getByRole("link", { name: /roles/i })).not.toHaveAttribute("aria-current");
-      expect(screen.getByRole("link", { name: /dictionary/i })).not.toHaveAttribute("aria-current");
       // Other non-admin items are also not current.
       expect(screen.getByRole("link", { name: /cardgroups/i })).not.toHaveAttribute("aria-current");
       expect(screen.getByRole("link", { name: /profile/i })).not.toHaveAttribute("aria-current");
@@ -162,7 +155,6 @@ describe("<GlobalRail>", () => {
 
       expect(screen.getByRole("link", { name: /users/i })).toHaveAttribute("aria-current", "page");
       expect(screen.getByRole("link", { name: /roles/i })).not.toHaveAttribute("aria-current");
-      expect(screen.getByRole("link", { name: /dictionary/i })).not.toHaveAttribute("aria-current");
     });
 
     it("marks Users as the current page when pathname is /admin/strange-unknown (F-1 fallback for unknown sub-routes)", () => {
@@ -171,7 +163,6 @@ describe("<GlobalRail>", () => {
 
       expect(screen.getByRole("link", { name: /users/i })).toHaveAttribute("aria-current", "page");
       expect(screen.getByRole("link", { name: /roles/i })).not.toHaveAttribute("aria-current");
-      expect(screen.getByRole("link", { name: /dictionary/i })).not.toHaveAttribute("aria-current");
     });
 
     it("marks Roles as the current page when pathname is /admin/roles (and Users is NOT current)", () => {
@@ -180,7 +171,6 @@ describe("<GlobalRail>", () => {
 
       expect(screen.getByRole("link", { name: /roles/i })).toHaveAttribute("aria-current", "page");
       expect(screen.getByRole("link", { name: /users/i })).not.toHaveAttribute("aria-current");
-      expect(screen.getByRole("link", { name: /dictionary/i })).not.toHaveAttribute("aria-current");
     });
 
     it("marks the footer Profile link as the current page when pathname is /profile", () => {
@@ -227,7 +217,6 @@ describe("<GlobalRail>", () => {
       expect(screen.queryByRole("link", { name: /profile/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /users/i })).toBeNull();
       expect(screen.queryByRole("link", { name: /roles/i })).toBeNull();
-      expect(screen.queryByRole("link", { name: /dictionary/i })).toBeNull();
 
       // Negative: anonymous users get neither the LogoutButton nor an email line.
       expect(screen.queryByTestId("logout-button")).toBeNull();

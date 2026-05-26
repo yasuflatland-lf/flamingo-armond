@@ -165,7 +165,7 @@ describe("<AppShell>", () => {
   });
 
   describe("S6 — isAdmin=true: Admin sub-links appear in both rail and drawer", () => {
-    it("the rail body contains the admin sub-links (Users, Roles, Dictionary) when isAdmin=true", () => {
+    it("the rail body contains the admin sub-links (Users, Roles) when isAdmin=true", () => {
       mockUsePathname.mockReturnValue("/");
       render(
         <AppShell user={SIGNED_IN_USER} isAdmin={true}>
@@ -173,14 +173,13 @@ describe("<AppShell>", () => {
         </AppShell>,
       );
 
-      // The rail container (always in DOM) must have all three admin sub-links.
+      // The rail container (always in DOM) must have all admin sub-links.
       const railContainer = screen.getByTestId("rail-container");
       expect(railContainer.querySelector("a[href='/admin/users']")).not.toBeNull();
       expect(railContainer.querySelector("a[href='/admin/roles']")).not.toBeNull();
-      expect(railContainer.querySelector("a[href='/admin/dictionary']")).not.toBeNull();
     });
 
-    it("the drawer body contains the admin sub-links (Users, Roles, Dictionary) when isAdmin=true", async () => {
+    it("the drawer body contains the admin sub-links (Users, Roles) when isAdmin=true", async () => {
       const user = userEvent.setup();
       mockUsePathname.mockReturnValue("/");
       render(
@@ -193,14 +192,10 @@ describe("<AppShell>", () => {
       const drawerTrigger = screen.getByRole("button", { name: /^open menu$/i });
       await user.click(drawerTrigger);
 
-      // The drawer body must have all three admin sub-links (portaled into
+      // The drawer body must have all admin sub-links (portaled into
       // document.body by the Sheet component — use screen to search the full document).
       expect(screen.getByRole("link", { name: /users/i })).toHaveAttribute("href", "/admin/users");
       expect(screen.getByRole("link", { name: /roles/i })).toHaveAttribute("href", "/admin/roles");
-      expect(screen.getByRole("link", { name: /dictionary/i })).toHaveAttribute(
-        "href",
-        "/admin/dictionary",
-      );
     });
   });
 });

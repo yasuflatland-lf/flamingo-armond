@@ -81,10 +81,9 @@ describe("<LogoDrawer>", () => {
 
     expect(screen.queryByRole("link", { name: /^users$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /^roles$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /^dictionary$/i })).not.toBeInTheDocument();
   });
 
-  it("isAdmin=true renders all three admin nav links with correct hrefs", async () => {
+  it("isAdmin=true renders the admin nav links with correct hrefs", async () => {
     const user = userEvent.setup();
     render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={true} />);
 
@@ -97,10 +96,6 @@ describe("<LogoDrawer>", () => {
     const rolesLink = screen.getByRole("link", { name: /^roles$/i });
     expect(rolesLink).toBeInTheDocument();
     expect(rolesLink).toHaveAttribute("href", "/admin/roles");
-
-    const dictionaryLink = screen.getByRole("link", { name: /^dictionary$/i });
-    expect(dictionaryLink).toBeInTheDocument();
-    expect(dictionaryLink).toHaveAttribute("href", "/admin/dictionary");
   });
 
   it("Profile link in the bottom block has href=/profile and is present for signed-in users", async () => {
