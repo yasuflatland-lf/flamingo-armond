@@ -63,3 +63,23 @@ export function cardsDefaultVars(cardgroupId: string): CardsByCardgroupConnectio
     search: null,
   };
 }
+
+export const ValidateCardImportQuery = graphql(`
+  query ValidateCardImport($input: ValidateCardImportInput!) {
+    validateCardImport(input: $input) {
+      valid
+      parsedCards { front back line }
+      errors { line message }
+    }
+  }
+`);
+
+export const ImportCardsMutation = graphql(`
+  mutation ImportCards($input: ImportCardsInput!) {
+    importCards(input: $input) {
+      inserted
+      updated
+      errors { line message }
+    }
+  }
+`);
