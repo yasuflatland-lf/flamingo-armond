@@ -40,8 +40,8 @@ export function AdminUserRow({ user, onEdit }: Props) {
       className="rounded-md border border-border transition-colors hover:bg-accent"
       data-testid={`admin-user-row-${user.id}`}
     >
-      <div className="flex flex-col gap-4 px-4 py-3 md:flex-row md:items-start">
-        <div className="flex min-w-0 flex-1 items-start gap-4">
+      <div className="flex items-center gap-4 px-4 py-3">
+        <div className="flex min-w-0 flex-1 items-center gap-4">
           {user.avatarUrl ? (
             <Image
               src={user.avatarUrl}
@@ -71,7 +71,7 @@ export function AdminUserRow({ user, onEdit }: Props) {
           type="button"
           variant="outline"
           size="sm"
-          className="self-start"
+          className="shrink-0"
           onClick={() => onEdit(user.id)}
           aria-label={`Edit ${user.displayName ?? "user"}`}
         >
