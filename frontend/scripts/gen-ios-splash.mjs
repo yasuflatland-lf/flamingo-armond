@@ -24,7 +24,7 @@ const RSVG_CONVERT = "/opt/homebrew/bin/rsvg-convert";
 
 // Physical pixel dimensions for each target device (portrait orientation only).
 // File name: splash-<physW>x<physH>.png
-// Source: plan section 5.1
+// Dimensions are in physical pixels; output is splash-<physW>x<physH>.png for each device.
 const DEVICES = [
   { w: 1320, h: 2868 }, // iPhone 16 Pro Max
   { w: 1206, h: 2622 }, // iPhone 16 Pro
@@ -152,6 +152,7 @@ function main() {
 
   console.log(`\nDone: ${successCount} generated, ${failCount} failed.`);
   console.log(`Output: ${splashDir}`);
+  if (failCount > 0) process.exitCode = 1;
 }
 
 main();
