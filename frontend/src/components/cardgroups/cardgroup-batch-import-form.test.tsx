@@ -10,7 +10,7 @@ import {
   ImportCardsDocument,
   ValidateCardImportDocument,
 } from "@/generated/graphql";
-import { CardgroupBatchImportForm } from "./cardgroup-batch-import-form";
+import { CardgroupBatchImportForm, resolveStep1Button } from "./cardgroup-batch-import-form";
 
 const CARDGROUP_ID = "cg-1";
 const CARDGROUP_NAME = "Spanish Vocab";
@@ -56,6 +56,23 @@ const VALID_RESULT: MockedResponse["result"] = {
   },
 };
 
+const INVALID_RESULT: MockedResponse["result"] = {
+  data: {
+    validateCardImport: {
+      __typename: "CardImportValidationResult" as const,
+      valid: false,
+      parsedCards: [],
+      errors: [
+        {
+          __typename: "CardImportError" as const,
+          line: 1,
+          message: "missing tab separator",
+        },
+      ],
+    },
+  },
+};
+
 function renderForm(mocks: MockedResponse[] = []) {
   const onImported = vi.fn();
   const utils = render(
@@ -78,6 +95,68 @@ async function typePayload(user: ReturnType<typeof userEvent.setup>, text: strin
   return textarea;
 }
 
+// Advance to step 2 by typing valid text, validating, and clicking Continue.
+async function advanceToStep2(user: ReturnType<typeof userEvent.setup>) {
+  await typePayload(user, TWO_LINE_TEXT);
+  await user.click(screen.getByRole("button", { name: /^validate$/i }));
+  const continueButton = await screen.findByRole("button", { name: /continue/i });
+  await waitFor(() => expect(continueButton).toBeEnabled());
+  await user.click(continueButton);
+}
+
+describe("resolveStep1Button", () => {
+  it("empty: text blank -> Validate, no action, disabled", () => {
+    expect(
+      resolveStep1Button({ hasText: false, validating: false, result: null, isStale: false }),
+    ).toEqual({ label: "Validate", action: null, disabled: true });
+  });
+
+  it("ready: text present, not yet validated -> Validate, validate action, enabled", () => {
+    expect(
+      resolveStep1Button({ hasText: true, validating: false, result: null, isStale: false }),
+    ).toEqual({ label: "Validate", action: "validate", disabled: false });
+  });
+
+  it("validating: request in flight -> Validating..., no action, disabled", () => {
+    expect(
+      resolveStep1Button({ hasText: true, validating: true, result: null, isStale: false }),
+    ).toEqual({ label: "Validating...", action: null, disabled: true });
+  });
+
+  it("valid + fresh: -> Continue, continue action, enabled", () => {
+    expect(
+      resolveStep1Button({
+        hasText: true,
+        validating: false,
+        result: { valid: true, parsedCards: [{ front: "a", back: "b", line: 1 }], errors: [] },
+        isStale: false,
+      }),
+    ).toEqual({ label: "Continue →", action: "continue", disabled: false });
+  });
+
+  it("valid but stale (edited since validate): -> Validate, validate action, enabled", () => {
+    expect(
+      resolveStep1Button({
+        hasText: true,
+        validating: false,
+        result: { valid: true, parsedCards: [{ front: "a", back: "b", line: 1 }], errors: [] },
+        isStale: true,
+      }),
+    ).toEqual({ label: "Validate", action: "validate", disabled: false });
+  });
+
+  it("invalid: -> Validate (re-run), validate action, enabled", () => {
+    expect(
+      resolveStep1Button({
+        hasText: true,
+        validating: false,
+        result: { valid: false, parsedCards: [], errors: [{ line: 1, message: "x" }] },
+        isStale: false,
+      }),
+    ).toEqual({ label: "Validate", action: "validate", disabled: false });
+  });
+});
+
 describe("<CardgroupBatchImportForm>", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -89,48 +168,46 @@ describe("<CardgroupBatchImportForm>", () => {
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
-  it("validate renders the preview rows", async () => {
+  it("empty state: the forward button reads Validate and is disabled", () => {
+    renderForm();
+    const button = screen.getByRole("button", { name: /^validate$/i });
+    expect(button).toBeDisabled();
+  });
+
+  it("valid validate: shows valid status, a collapsed preview, and a Continue button", async () => {
     const user = userEvent.setup();
     renderForm([validateMock(TWO_LINE_TEXT, VALID_RESULT)]);
 
     await typePayload(user, TWO_LINE_TEXT);
     await user.click(screen.getByRole("button", { name: /^validate$/i }));
 
+    // Valid status with the check glyph and parsed count.
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent(/✓ Valid — 2 cards parsed/i);
+    });
+    // Collapsible trigger is present and collapsed: the preview row is hidden.
+    const trigger = screen.getByRole("button", { name: /show preview \(2\)/i });
+    expect(trigger).toBeInTheDocument();
+    expect(screen.queryByText("apple")).not.toBeInTheDocument();
+    // Forward action is now Continue.
+    expect(screen.getByRole("button", { name: /continue/i })).toBeEnabled();
+
+    // Expanding the collapsible reveals the preview rows.
+    await user.click(trigger);
     await waitFor(() => {
       expect(screen.getByText("apple")).toBeInTheDocument();
     });
     expect(screen.getByText("banana")).toBeInTheDocument();
-    expect(screen.getByText(/2 cards parsed/i)).toBeInTheDocument();
   });
 
-  it("Import is disabled until a successful validate", async () => {
-    const user = userEvent.setup();
-    renderForm([validateMock(TWO_LINE_TEXT, VALID_RESULT)]);
-
-    const importButton = screen.getByRole("button", { name: /^import$/i });
-    expect(importButton).toBeDisabled();
-
-    await typePayload(user, TWO_LINE_TEXT);
-    // Still disabled before validation runs.
-    expect(importButton).toBeDisabled();
-
-    await user.click(screen.getByRole("button", { name: /^validate$/i }));
-
-    await waitFor(() => {
-      expect(importButton).toBeEnabled();
-    });
-  });
-
-  it("editing the textarea after validation re-disables Import (stale guard)", async () => {
+  it("editing the textarea after a valid validate reverts the button to Validate", async () => {
     const user = userEvent.setup();
     renderForm([validateMock(TWO_LINE_TEXT, VALID_RESULT)]);
 
     await typePayload(user, TWO_LINE_TEXT);
     await user.click(screen.getByRole("button", { name: /^validate$/i }));
-
-    const importButton = screen.getByRole("button", { name: /^import$/i });
     await waitFor(() => {
-      expect(importButton).toBeEnabled();
+      expect(screen.getByRole("button", { name: /continue/i })).toBeEnabled();
     });
 
     // Append text — validatedPayload now differs from payloadText.
@@ -138,40 +215,73 @@ describe("<CardgroupBatchImportForm>", () => {
     await user.paste("\ncherry\tcherry");
 
     await waitFor(() => {
-      expect(importButton).toBeDisabled();
+      expect(screen.queryByRole("button", { name: /continue/i })).not.toBeInTheDocument();
     });
+    expect(screen.getByRole("button", { name: /^validate$/i })).toBeEnabled();
   });
 
-  it("parse-error rows render with role=alert", async () => {
+  it("invalid validate: shows invalid status, an open collapsible, error rows, button stays Validate", async () => {
     const user = userEvent.setup();
-    const text = "broken line";
-    renderForm([
-      validateMock(text, {
-        data: {
-          validateCardImport: {
-            __typename: "CardImportValidationResult" as const,
-            valid: false,
-            parsedCards: [],
-            errors: [
-              {
-                __typename: "CardImportError" as const,
-                line: 1,
-                message: "missing tab separator",
-              },
-            ],
-          },
-        },
-      }),
-    ]);
+    renderForm([validateMock("broken line", INVALID_RESULT)]);
 
-    await typePayload(user, text);
+    await typePayload(user, "broken line");
     await user.click(screen.getByRole("button", { name: /^validate$/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/missing tab separator/i)).toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent(/✕ Invalid — 1 error/i);
     });
+    // Errors visible immediately (collapsible open by default when invalid).
+    expect(screen.getByText(/missing tab separator/i)).toBeInTheDocument();
     const alerts = screen.getAllByRole("alert");
     expect(alerts.some((el) => /missing tab separator/i.test(el.textContent ?? ""))).toBe(true);
+    // Forward action stays Validate; no Continue.
+    expect(screen.queryByRole("button", { name: /continue/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^validate$/i })).toBeEnabled();
+  });
+
+  it("Continue advances to step 2 with a confirm heading and a back affordance", async () => {
+    const user = userEvent.setup();
+    renderForm([validateMock(TWO_LINE_TEXT, VALID_RESULT)]);
+
+    await advanceToStep2(user);
+
+    // Confirm heading uses the parsed count + group name.
+    expect(
+      screen.getByRole("heading", { name: /import 2 cards into spanish vocab\?/i }),
+    ).toBeInTheDocument();
+    // Step counter reads 2 of 2.
+    expect(screen.getByText(/2 of 2/i)).toBeInTheDocument();
+    // The completed step 1 is a reachable back button in the breadcrumb.
+    expect(screen.getByRole("button", { name: /paste & review/i })).toBeInTheDocument();
+    // The import button reads "Import N cards".
+    expect(screen.getByRole("button", { name: /import 2 cards/i })).toBeEnabled();
+  });
+
+  it("the back link returns to step 1 preserving the textarea content", async () => {
+    const user = userEvent.setup();
+    renderForm([validateMock(TWO_LINE_TEXT, VALID_RESULT)]);
+
+    await advanceToStep2(user);
+
+    await user.click(screen.getByRole("button", { name: /back to edit/i }));
+
+    // Back on step 1: textarea content preserved.
+    const textarea = screen.getByLabelText(/cards to import/i);
+    expect(textarea).toHaveValue(TWO_LINE_TEXT);
+    expect(screen.getByText(/1 of 2/i)).toBeInTheDocument();
+  });
+
+  it("clicking the completed breadcrumb step also returns to step 1", async () => {
+    const user = userEvent.setup();
+    renderForm([validateMock(TWO_LINE_TEXT, VALID_RESULT)]);
+
+    await advanceToStep2(user);
+
+    await user.click(screen.getByRole("button", { name: /paste & review/i }));
+
+    const textarea = screen.getByLabelText(/cards to import/i);
+    expect(textarea).toHaveValue(TWO_LINE_TEXT);
+    expect(screen.getByText(/1 of 2/i)).toBeInTheDocument();
   });
 
   it("successful import calls onImported and refetches the cards list", async () => {
@@ -198,13 +308,8 @@ describe("<CardgroupBatchImportForm>", () => {
       }),
     ]);
 
-    await typePayload(user, TWO_LINE_TEXT);
-    await user.click(screen.getByRole("button", { name: /^validate$/i }));
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /^import$/i })).toBeEnabled();
-    });
-
-    await user.click(screen.getByRole("button", { name: /^import$/i }));
+    await advanceToStep2(user);
+    await user.click(screen.getByRole("button", { name: /import 2 cards/i }));
 
     await waitFor(() => {
       expect(onImported).toHaveBeenCalledTimes(1);
@@ -215,7 +320,7 @@ describe("<CardgroupBatchImportForm>", () => {
     );
   });
 
-  it("validate transport/network error shows a banner and leaves Import disabled", async () => {
+  it("validate transport/network error shows a banner and leaves the forward action disabled", async () => {
     const user = userEvent.setup();
     renderForm([
       {
@@ -236,11 +341,11 @@ describe("<CardgroupBatchImportForm>", () => {
     // No preview rows should be rendered.
     expect(screen.queryByText("apple")).not.toBeInTheDocument();
     expect(screen.queryByText("banana")).not.toBeInTheDocument();
-    // Import must remain disabled because validation failed.
-    expect(screen.getByRole("button", { name: /^import$/i })).toBeDisabled();
+    // No Continue forward action — validation failed, so we stay on step 1.
+    expect(screen.queryByRole("button", { name: /continue/i })).not.toBeInTheDocument();
   });
 
-  it("import with error rows keeps the form open and shows the result banner", async () => {
+  it("import with error rows stays on step 2 and shows the result banner; Done then closes", async () => {
     const user = userEvent.setup();
     const { onImported } = renderForm([
       validateMock(TWO_LINE_TEXT, VALID_RESULT),
@@ -262,21 +367,23 @@ describe("<CardgroupBatchImportForm>", () => {
       }),
     ]);
 
-    await typePayload(user, TWO_LINE_TEXT);
-    await user.click(screen.getByRole("button", { name: /^validate$/i }));
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /^import$/i })).toBeEnabled();
-    });
-
-    await user.click(screen.getByRole("button", { name: /^import$/i }));
+    await advanceToStep2(user);
+    await user.click(screen.getByRole("button", { name: /import 2 cards/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/duplicate front/i)).toBeInTheDocument();
     });
     expect(screen.getByText(/1 inserted, 0 updated/i)).toBeInTheDocument();
+    // onImported NOT called on a partial-failure import.
     expect(onImported).not.toHaveBeenCalled();
+    // Still on step 2.
+    expect(screen.getByText(/2 of 2/i)).toBeInTheDocument();
     // Result banner has role=status.
     const status = screen.getAllByRole("status");
     expect(status.some((el) => /1 inserted/i.test(el.textContent ?? ""))).toBe(true);
+
+    // Done closes the sheet.
+    await user.click(screen.getByRole("button", { name: /^done$/i }));
+    expect(onImported).toHaveBeenCalledTimes(1);
   });
 });
