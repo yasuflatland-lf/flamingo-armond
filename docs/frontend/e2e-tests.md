@@ -14,3 +14,9 @@ A `hidden md:inline-flex` desktop-only button and a breakpoint-agnostic empty-st
 
 Real instance: `frontend/e2e/cardgroups-flow.spec.ts`.
 
+## Multi-step form: assert the closed/done signal on a step-specific element, not the prior step's absence
+
+When advancing from step 1 to step 2 unmounts step 1's DOM nodes, any step-1 element immediately disappears — regardless of whether the whole form later closes. Asserting "step-1 textarea is hidden ⇒ the sheet closed" is invalid: the textarea is gone the moment step 2 renders, so it cannot distinguish "advanced to step 2" from "sheet closed". Target an element owned by the **final step** for the close/done signal.
+
+Worked example: `frontend/e2e/cardgroup-import.spec.ts` asserts `await expect(page.getByRole("button", { name: /Import 2 cards/ })).toBeHidden()` as the full-success close signal, because the step-2 import button disappears only when the sheet unmounts on close — the step-1 textarea had already disappeared when step 2 was reached and is therefore not a valid closed signal (see the inline comment at lines 79–82).
+

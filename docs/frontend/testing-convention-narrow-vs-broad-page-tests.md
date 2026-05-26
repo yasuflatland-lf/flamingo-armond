@@ -548,3 +548,26 @@ expect(screen.getByRole("alert")).toHaveTextContent(/sign-in failed/i);
 
 Reference: `frontend/src/app/login/page.test.tsx` lines 209–215 (absence) and 200–206 (presence).
 
+### Expand a Radix `Collapsible` before asserting its inner content
+
+Radix `CollapsibleContent` is `Presence`-based: when collapsed, its children are **unmounted** (removed from the DOM), not merely visually hidden. While collapsed, `screen.queryByText("apple")` returns `null` — the node does not exist. To assert the content, click the trigger first, then assert:
+
+```ts
+// Before clicking: content is absent — queryByText returns null.
+expect(screen.queryByText("apple")).not.toBeInTheDocument();
+
+// Click the trigger to expand.
+await user.click(screen.getByRole("button", { name: /show preview \(2\)/i }));
+
+// After expanding: content is mounted and queryable.
+await waitFor(() => {
+  expect(screen.getByText("apple")).toBeInTheDocument();
+});
+```
+
+To assert that content is hidden while collapsed, assert `not.toBeInTheDocument()` (absence), not `not.toBeVisible()` — the element is unmounted, so visibility-based assertions will throw "element not found" rather than failing cleanly.
+
+In Playwright, click the trigger before asserting cells: `await page.getByRole("button", { name: /Show preview/ }).click()`, then `await expect(page.getByRole("cell", { name: frontA })).toBeVisible()`.
+
+Worked example: `frontend/src/components/cardgroups/cardgroup-batch-import-form.test.tsx` (valid-validate test, lines 188–200) asserts `queryByText("apple")` is `null` before clicking the "Show preview (2)" trigger and present after. `frontend/e2e/cardgroup-import.spec.ts` (lines 69–71) clicks the trigger before asserting cells.
+
