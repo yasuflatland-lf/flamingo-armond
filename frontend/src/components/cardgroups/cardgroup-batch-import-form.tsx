@@ -214,10 +214,10 @@ export function CardgroupBatchImportForm(props: {
   const [payloadText, setPayloadText] = useState<string>("");
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   // validatedPayload tracks the payloadText value that was in effect when the
-  // last successful validate call completed. canImport checks this against the
-  // current payloadText to prevent importing a stale/edited payload without
-  // re-validating. It is also cleared after each import attempt so a re-import
-  // requires re-validation.
+  // last successful validate call completed. resolveStep1Button compares this
+  // against the current payloadText (the isStale flag) to prevent continuing to
+  // import a stale/edited payload without re-validating. It is also cleared after
+  // each import attempt so a re-import requires re-validation.
   const [validatedPayload, setValidatedPayload] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [bannerError, setBannerError] = useState<string>("");
@@ -240,7 +240,7 @@ export function CardgroupBatchImportForm(props: {
       const result = await runValidate({ variables: { input: { payload } } });
       if (result.data?.validateCardImport) {
         setValidationResult(result.data.validateCardImport);
-        // Record which payloadText was validated so canImport can detect stale edits.
+        // Record which payloadText was validated so resolveStep1Button can detect stale edits.
         setValidatedPayload(payloadText);
       }
       if (result.error) {
@@ -293,8 +293,6 @@ export function CardgroupBatchImportForm(props: {
   }
 
   const parsedCards = validationResult?.parsedCards ?? [];
-  const canImport =
-    validationResult?.valid === true && parsedCards.length > 0 && validatedPayload === payloadText;
 
   function goBackToStep1() {
     setBannerError("");
@@ -311,7 +309,7 @@ export function CardgroupBatchImportForm(props: {
   function onStep1ButtonClick() {
     if (buttonSpec.action === "validate") {
       void handleValidate();
-    } else if (buttonSpec.action === "continue" && canImport) {
+    } else if (buttonSpec.action === "continue") {
       setImportResult(null);
       setBannerError("");
       setStep(2);
@@ -322,7 +320,7 @@ export function CardgroupBatchImportForm(props: {
     <div className="space-y-6">
       <ImportStepper
         current={step}
-        done={canImport || step === 2}
+        done={step === 2}
         importing={importing}
         onBack={goBackToStep1}
       />
@@ -395,25 +393,28 @@ export function CardgroupBatchImportForm(props: {
       ) : (
         <div className="space-y-4">
           {importResult ? (
-            <section className="space-y-4" role="status">
-              {importResult.inserted === 0 &&
-              importResult.updated === 0 &&
-              importResult.errors.length > 0 ? (
-                <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                  Import failed: no cards persisted, {importResult.errors.length}{" "}
-                  {plural(importResult.errors.length, "error")}.
-                </div>
-              ) : (
-                <div className="rounded-md bg-green-50 p-3 text-sm text-green-800">
-                  Import complete — {importResult.inserted} inserted, {importResult.updated} updated
-                  {importResult.errors.length > 0 &&
-                    `, ${importResult.errors.length} ${plural(
-                      importResult.errors.length,
-                      "error",
-                    )}`}
-                  .
-                </div>
-              )}
+            <section className="space-y-4">
+              <div role="status">
+                {importResult.inserted === 0 &&
+                importResult.updated === 0 &&
+                importResult.errors.length > 0 ? (
+                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                    Import failed: no cards persisted, {importResult.errors.length}{" "}
+                    {plural(importResult.errors.length, "error")}.
+                  </div>
+                ) : (
+                  <div className="rounded-md bg-green-50 p-3 text-sm text-green-800">
+                    Import complete — {importResult.inserted} inserted, {importResult.updated}{" "}
+                    updated
+                    {importResult.errors.length > 0 &&
+                      `, ${importResult.errors.length} ${plural(
+                        importResult.errors.length,
+                        "error",
+                      )}`}
+                    .
+                  </div>
+                )}
+              </div>
               {importResult.errors.length > 0 && (
                 <ul className="space-y-1">
                   {importResult.errors.map((err) => (
