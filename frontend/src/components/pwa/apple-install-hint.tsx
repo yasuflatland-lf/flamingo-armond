@@ -56,7 +56,7 @@ export function AppleInstallHint() {
       aria-label="Install hint"
       className="fixed inset-x-0 bottom-0 z-50 mx-auto max-w-md rounded-t-2xl bg-brand-primary px-4 pb-[env(safe-area-inset-bottom,1rem)] pt-4 shadow-lg"
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-3 pb-4">
         <div className="flex flex-col gap-1">
           <p className="font-semibold text-brand-primary-foreground text-sm leading-snug">
             Install flamingo
