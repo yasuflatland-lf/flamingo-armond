@@ -11,7 +11,7 @@ The frontend ships an **enforcing** CSP for HTML responses, a **static offline-p
 [`frontend/src/lib/security/csp.ts`](../../frontend/src/lib/security/csp.ts) exports two public pieces:
 
 1. `serializeCsp(directives)` takes a directive map and turns it into a stable header string. It drops `null` / `undefined` / `false`, trims sources, removes duplicates, and emits directives in the configured order with any unknown directives sorted alphabetically after the known ones.
-2. `buildHtmlCsp({ nonce, supabaseUrl, reportUri?, reportTo?, speedInsightsOrigin? })` builds the policy used for HTML routes. It requires a non-empty nonce, derives the Supabase HTTPS origin plus the matching realtime WebSocket origin from `supabaseUrl`, and includes the default reporting endpoints.
+2. `buildHtmlCsp({ nonce, supabaseUrl, reportUri?, reportTo?, speedInsightsOrigin?, allowUnsafeEval? })` builds the policy used for HTML routes. It requires a non-empty nonce, derives the Supabase HTTPS origin plus the matching realtime WebSocket origin from `supabaseUrl`, and includes the default reporting endpoints. `allowUnsafeEval` defaults to `false`; when `true` it appends `'unsafe-eval'` to `script-src`.
 
 The HTML policy currently allows:
 
@@ -22,12 +22,14 @@ The HTML policy currently allows:
 - `form-action 'self'`
 - `img-src 'self' data: blob: https://lh3.googleusercontent.com`
 - `style-src 'self' 'unsafe-inline'`
-- `script-src 'self' 'nonce-<generated>'`
+- `script-src 'self' 'nonce-<generated>'` (plus `'unsafe-eval'` in development only — see below)
 - `connect-src 'self' <supabase https origin> <supabase wss origin> https://vitals.vercel-insights.com`
 - `report-uri /api/csp-report`
 - `report-to csp-endpoint`
 
 That is the current shipped policy shape. `style-src 'unsafe-inline'` remains because the existing animation and styling approach still depends on inline CSS. The Google avatar origin is intentionally whitelisted in `img-src`, and the Vercel Speed Insights origin is intentionally whitelisted in `connect-src`.
+
+The middleware passes `allowUnsafeEval: process.env.NODE_ENV !== "production"`, so `script-src` gains `'unsafe-eval'` in development only. Turbopack and React dev mode (HMR, React refresh) require the `'unsafe-eval'` source; without it the browser blocks dev tooling with an unsupported-environment error. Production builds never receive `'unsafe-eval'`.
 
 The shipped `/offline.html` CSP in [`frontend/next.config.ts`](../../frontend/next.config.ts) is:
 
@@ -87,6 +89,7 @@ These are the decisions currently shipped in code:
 
 - CSP is enforcing for HTML routes.
 - `style-src 'unsafe-inline'` is retained.
+- `script-src 'unsafe-eval'` is added in development only (`NODE_ENV !== "production"`) for Turbopack/React HMR; production omits it.
 - Supabase uses both its HTTPS origin and its WSS realtime origin in `connect-src`.
 - Vercel Speed Insights is allowed in `connect-src`.
 - Google avatar images from `https://lh3.googleusercontent.com` are allowed in `img-src`.

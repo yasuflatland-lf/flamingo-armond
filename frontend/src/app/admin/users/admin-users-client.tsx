@@ -15,6 +15,7 @@ import type { FetchNextPageInput } from "@/lib/pagination/types";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
 import { AdminUserProfileSheet } from "./admin-user-profile-sheet";
 import { type AdminUserListItem, AdminUserRow } from "./admin-user-row";
+import { AdminUsersSkeleton } from "./admin-users-skeleton";
 import {
   ADMIN_USERS_PAGE_SIZE,
   AdminRoleFieldsFragment,
@@ -229,7 +230,14 @@ export function AdminUsersClient() {
   }, [hasNextPage, fetchMoreError]);
 
   const fetchingMore = networkStatus === NetworkStatus.fetchMore || (loading && edges.length > 0);
-  const initialLoading = loading && edges.length === 0 && networkStatus !== NetworkStatus.fetchMore;
+  // Show the full-page skeleton only on the very first load (NetworkStatus.loading = 1).
+  // Refetch and setVariables must not re-trigger the skeleton — a refetch mid-session
+  // (e.g. after ConcurrentUpdateError) would unmount the open sheet and lose any banner.
+  const initialLoading = networkStatus === NetworkStatus.loading && edges.length === 0;
+
+  if (initialLoading) {
+    return <AdminUsersSkeleton />;
+  }
 
   return (
     <main className="p-8">
@@ -304,13 +312,6 @@ export function AdminUsersClient() {
         >
           {rolesBannerError}
         </div>
-      )}
-
-      {/* Loading state */}
-      {initialLoading && (
-        <p className="text-sm text-muted-foreground" data-testid="admin-users-loading">
-          Loading...
-        </p>
       )}
 
       {/* Empty state */}
