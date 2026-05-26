@@ -386,4 +386,127 @@ describe("<CardgroupBatchImportForm>", () => {
     await user.click(screen.getByRole("button", { name: /^done$/i }));
     expect(onImported).toHaveBeenCalledTimes(1);
   });
+
+  it("all-failed import shows the destructive 'no cards persisted' banner; Done still closes", async () => {
+    const user = userEvent.setup();
+    const refetchSpy = vi
+      .spyOn(ApolloClient.prototype, "refetchQueries")
+      // biome-ignore lint/suspicious/noExplicitAny: test stub for refetchQueries return
+      .mockResolvedValue([] as any);
+
+    const { onImported } = renderForm([
+      validateMock(TWO_LINE_TEXT, VALID_RESULT),
+      importMock(TWO_LINE_TEXT, {
+        data: {
+          importCards: {
+            __typename: "ImportCardsPayload" as const,
+            inserted: 0,
+            updated: 0,
+            errors: [
+              {
+                __typename: "CardImportError" as const,
+                line: 1,
+                message: "constraint violation",
+              },
+            ],
+          },
+        },
+      }),
+    ]);
+
+    await advanceToStep2(user);
+    await user.click(screen.getByRole("button", { name: /import 2 cards/i }));
+
+    // Destructive all-failed banner instead of the green partial-success one.
+    await waitFor(() => {
+      expect(screen.getByText(/import failed: no cards persisted/i)).toBeInTheDocument();
+    });
+    // The result section is announced as a status region.
+    const status = screen.getAllByRole("status");
+    expect(
+      status.some((el) => /import failed: no cards persisted/i.test(el.textContent ?? "")),
+    ).toBe(true);
+    // Error rows render.
+    expect(screen.getByText(/constraint violation/i)).toBeInTheDocument();
+    // onImported NOT called automatically on an all-failed import.
+    expect(onImported).not.toHaveBeenCalled();
+    expect(refetchSpy).toHaveBeenCalledTimes(1);
+
+    // Done is unconditional and closes the sheet.
+    await user.click(screen.getByRole("button", { name: /^done$/i }));
+    expect(onImported).toHaveBeenCalledTimes(1);
+  });
+
+  it("import transport/network error shows a banner and stays on step 2 for retry", async () => {
+    const user = userEvent.setup();
+    const { onImported } = renderForm([
+      validateMock(TWO_LINE_TEXT, VALID_RESULT),
+      {
+        request: {
+          query: ImportCardsDocument,
+          variables: {
+            input: { cardgroupId: CARDGROUP_ID, payload: encodePayload(TWO_LINE_TEXT) },
+          },
+        },
+        error: new Error("network error"),
+      },
+    ]);
+
+    await advanceToStep2(user);
+    await user.click(screen.getByRole("button", { name: /import 2 cards/i }));
+
+    // handleImport's outer catch sets bannerError -> role=alert banner.
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+    // No success callback on a rejected import.
+    expect(onImported).not.toHaveBeenCalled();
+    // Still on the confirm step.
+    expect(screen.getByText(/2 of 2/i)).toBeInTheDocument();
+    // The import button is still present and enabled for a retry.
+    expect(screen.getByRole("button", { name: /import 2 cards/i })).toBeEnabled();
+  });
+
+  it("post-import '← Back to edit' returns to step 1 and re-requires a validate", async () => {
+    const user = userEvent.setup();
+    renderForm([
+      validateMock(TWO_LINE_TEXT, VALID_RESULT),
+      importMock(TWO_LINE_TEXT, {
+        data: {
+          importCards: {
+            __typename: "ImportCardsPayload" as const,
+            inserted: 1,
+            updated: 0,
+            errors: [
+              {
+                __typename: "CardImportError" as const,
+                line: 2,
+                message: "duplicate front",
+              },
+            ],
+          },
+        },
+      }),
+    ]);
+
+    await advanceToStep2(user);
+    await user.click(screen.getByRole("button", { name: /import 2 cards/i }));
+
+    // Result banner visible on step 2 (partial failure).
+    await waitFor(() => {
+      expect(screen.getByText(/duplicate front/i)).toBeInTheDocument();
+    });
+
+    // The result panel's back button returns to step 1.
+    await user.click(screen.getByRole("button", { name: /back to edit/i }));
+
+    // Step 1, and the forward button reverted to Validate (stale guard cleared
+    // validatedPayload after the import).
+    expect(screen.getByText(/1 of 2/i)).toBeInTheDocument();
+    const validateButton = screen.getByRole("button", { name: /^validate$/i });
+    expect(validateButton).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /continue/i })).not.toBeInTheDocument();
+    // Textarea content preserved.
+    expect(screen.getByLabelText(/cards to import/i)).toHaveValue(TWO_LINE_TEXT);
+  });
 });

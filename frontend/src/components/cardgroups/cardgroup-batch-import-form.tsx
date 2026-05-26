@@ -88,8 +88,13 @@ export function resolveStep1Button(state: Step1ButtonState): Step1ButtonSpec {
 }
 
 /** Breadcrumb showing the two import steps with a back affordance on step 2. */
-function ImportStepper(props: { current: 1 | 2; done: boolean; onBack: () => void }): JSX.Element {
-  const { current, done, onBack } = props;
+function ImportStepper(props: {
+  current: 1 | 2;
+  done: boolean;
+  importing: boolean;
+  onBack: () => void;
+}): JSX.Element {
+  const { current, done, importing, onBack } = props;
   return (
     <nav aria-label="Import steps" className="flex items-center justify-between gap-3 text-sm">
       <ol className="flex items-center gap-2">
@@ -98,7 +103,8 @@ function ImportStepper(props: { current: 1 | 2; done: boolean; onBack: () => voi
             <button
               type="button"
               onClick={onBack}
-              className="inline-flex items-center gap-1 rounded-md font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              disabled={importing}
+              className="inline-flex items-center gap-1 rounded-md font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
             >
               <Check aria-hidden="true" className="size-4 text-green-600" />
               Paste &amp; review
@@ -210,7 +216,8 @@ export function CardgroupBatchImportForm(props: {
   // validatedPayload tracks the payloadText value that was in effect when the
   // last successful validate call completed. canImport checks this against the
   // current payloadText to prevent importing a stale/edited payload without
-  // re-validating.
+  // re-validating. It is also cleared after each import attempt so a re-import
+  // requires re-validation.
   const [validatedPayload, setValidatedPayload] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [bannerError, setBannerError] = useState<string>("");
@@ -260,7 +267,7 @@ export function CardgroupBatchImportForm(props: {
       setImportResult(data);
       // Reset the stale-guard so the user must re-validate before importing
       // again — prevents accidental re-upsert of the same payload on a
-      // partial-success result where the form stays open.
+      // partial-success result where the sheet stays open.
       setValidatedPayload(null);
       // Refresh the cards list so the background list and the "N cards" badge
       // reflect the freshly imported rows.
@@ -278,7 +285,7 @@ export function CardgroupBatchImportForm(props: {
         // Full success: close the sheet.
         onImported?.();
       }
-      // Partial failure (error rows present): keep the form open so the result
+      // Partial failure (error rows present): keep the sheet open so the result
       // banner and error rows stay visible.
     } catch (err) {
       setBannerError(classifyError(err));
@@ -290,6 +297,7 @@ export function CardgroupBatchImportForm(props: {
     validationResult?.valid === true && parsedCards.length > 0 && validatedPayload === payloadText;
 
   function goBackToStep1() {
+    setBannerError("");
     setStep(1);
   }
 
@@ -312,7 +320,12 @@ export function CardgroupBatchImportForm(props: {
 
   return (
     <div className="space-y-6">
-      <ImportStepper current={step} done={canImport || step === 2} onBack={goBackToStep1} />
+      <ImportStepper
+        current={step}
+        done={canImport || step === 2}
+        importing={importing}
+        onBack={goBackToStep1}
+      />
 
       {bannerError && (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
