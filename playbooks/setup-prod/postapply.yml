@@ -23,9 +23,14 @@
 #      capture the deploy id.
 #   6. Poll the Render deploy until it reaches "live" (max 15 min, fast-fail
 #      on build_failed / update_failed / canceled / deactivated /
-#      pre_deploy_failed).
-#   7. Smoke test backend /health, GraphQL /query, and the production URL HEAD.
-#   8. Print the three URLs and remind the operator that the /profile E2E
+#      pre_deploy_failed). Reaching "live" implies database.Migrate ran on
+#      boot, so the schema (incl. the handle_new_user trigger) now exists.
+#   7. Backfill public.users for any auth.users created before the backend's
+#      first boot applied migrations. The first operator signs in before this
+#      phase can boot the backend, so their auth.users row predates the bridge
+#      trigger and has no public.users row; this heals the gap idempotently.
+#   8. Smoke test backend /health, GraphQL /query, and the production URL HEAD.
+#   9. Print the three URLs and remind the operator that the /profile E2E
 #      check is a manual step (Google sign-in required).
 #
 # Re-run safety: this phase has no state writes, so re-running is harmless --
@@ -739,6 +744,46 @@
 
           Fix the underlying issue, then re-run:
             make setup-prod-postapply
+
+# ---------------------------------------------------------------------------
+# Backfill public.users rows for auth.users that predate the handle_new_user
+# trigger.
+#
+# Migrations -- which create public.users and the auth.users -> public.users
+# bridge trigger -- run only on backend boot (database.Migrate). On a fresh
+# bring-up the first operator MUST sign in before this phase completes: the
+# Notion owner step above gates on their auth.users row, and the backend
+# cannot boot (so cannot migrate) until this phase wires its env and triggers
+# the Render deploy. So the first operator's auth.users row is created before
+# the trigger exists, and no public.users bridge row is made. The Render
+# deploy verified live above has now booted the backend and applied
+# migrations, so the table and trigger exist; this task self-heals that gap
+# idempotently. Later signups are provisioned by the trigger directly.
+#
+# Without the bridge row, updateProfile (onboarding) fails with INTERNAL
+# (the UPDATE matches 0 rows -> ErrNotFound), and seed-admin-prod fails on the
+# user_roles -> public.users foreign key.
+# ---------------------------------------------------------------------------
+- name: Backfill public.users for auth.users created before the trigger existed
+  ansible.builtin.command:
+    argv:
+      - psql
+      - "{{ supabase_db_url }}"
+      - -v
+      - "ON_ERROR_STOP=1"
+      - -c
+      - >-
+        INSERT INTO public.users (id)
+        SELECT u.id FROM auth.users u
+        LEFT JOIN public.users p ON p.id = u.id
+        WHERE p.id IS NULL
+        ON CONFLICT (id) DO NOTHING;
+  register: _backfill_users_result
+  changed_when: "'INSERT 0 0' not in (_backfill_users_result.stdout | default(''))"
+
+- name: Report public.users backfill outcome
+  ansible.builtin.debug:
+    msg: "public.users backfill: {{ _backfill_users_result.stdout | default('(no output)') | trim }}"
 
 - name: Smoke 1 - backend /health returns 200
   block:
