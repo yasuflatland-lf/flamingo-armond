@@ -28,18 +28,24 @@
       production_url in {{ state_file }} and skip Phase 4 entirely with --skip-tags vercel.
   when: confirm | bool
 
-# Stat first so YAML parse errors fail loudly instead of being masked by
-# `failed_when: false` and surfacing as confusing "missing keys" later.
+# Stat first so an absent state file produces the clear assert below,
+# distinct from a corrupt-YAML parse error raised by from_yaml when the
+# file is present but malformed.
 - name: Stat state file (Phase 4)
   ansible.builtin.stat:
     path: "{{ state_file }}"
   register: _state_stat
 
+# Read via set_fact (not include_vars) so the load survives a full-sequence
+# `make setup-prod` run. An earlier phase set `existing_state = {}` via
+# set_fact, which outranks include_vars (set_fact > include_vars in Ansible
+# precedence) and would shadow a `include_vars name: existing_state` here,
+# leaving this phase with an empty dict. set_fact + lookup overwrites it.
 - name: Load state file (Phase 4 reads Phase 2/3 outputs)
-  ansible.builtin.include_vars:
-    file: "{{ state_file }}"
-    name: existing_state
-  when: _state_stat.stat.exists
+  ansible.builtin.set_fact:
+    existing_state: >-
+      {{ (lookup('file', state_file) | from_yaml)
+         if _state_stat.stat.exists else {} }}
 
 # Coerce to a mapping so `existing_state.<key>` access and `| default(...)`
 # behave consistently when the file is absent, empty, or YAML-null.
