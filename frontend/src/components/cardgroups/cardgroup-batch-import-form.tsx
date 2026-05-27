@@ -368,14 +368,12 @@ export function CardgroupBatchImportForm(props: {
       {step === 1 ? (
         <div className="space-y-4">
           <div className="space-y-2">
-            <div className="flex flex-wrap items-baseline gap-x-2">
-              <label htmlFor="batch-import-payload" className="text-sm font-medium">
-                Cards to import
-              </label>
-              <p id="batch-import-payload-help" className="text-xs text-muted-foreground">
-                Separate each pair with a Tab.
-              </p>
-            </div>
+            <label htmlFor="batch-import-payload" className="sr-only">
+              Cards to import
+            </label>
+            <p id="batch-import-payload-help" className="text-xs text-muted-foreground">
+              Separate each pair with a Tab.
+            </p>
             <Textarea
               id="batch-import-payload"
               aria-describedby="batch-import-payload-help"
