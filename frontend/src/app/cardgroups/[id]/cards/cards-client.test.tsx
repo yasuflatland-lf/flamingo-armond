@@ -219,16 +219,11 @@ function renderClient(
   mocks: unknown[],
   initialCards = [CARD_1, CARD_2],
   options: {
-    errorPolicy?: boolean;
     cache?: InMemoryCache;
     skipSeed?: boolean;
     sectionHeader?: React.ComponentProps<typeof CardsClient>["sectionHeader"];
   } = {},
 ) {
-  const defaultOptions = options.errorPolicy
-    ? { mutate: { errorPolicy: "all" as const } }
-    : undefined;
-
   const initialConn = connection(initialCards);
 
   // Seed an InMemoryCache with the initial connection by default. The leak spy
@@ -251,7 +246,7 @@ function renderClient(
     })();
 
   render(
-    <MockedProvider mocks={mocks as never} defaultOptions={defaultOptions} cache={cache}>
+    <MockedProvider mocks={mocks as never} cache={cache}>
       <UndoDeleteProvider>
         <CardsClient
           cardgroupId={CG_ID}
@@ -681,7 +676,7 @@ describe("<CardsClient>", () => {
       },
     };
 
-    renderClient([mock], [CARD_1], { errorPolicy: true });
+    renderClient([mock], [CARD_1]);
 
     await user.click(screen.getByTestId("card-edit-target-c-1"));
     expect(screen.getByRole("heading", { name: /edit card/i })).toBeInTheDocument();

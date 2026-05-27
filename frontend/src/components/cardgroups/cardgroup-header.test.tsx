@@ -32,14 +32,9 @@ function makeUpdateMock(
   return { request: { query: UpdateCardgroupDocument, variables }, result, delay };
 }
 
-function renderHeader(
-  mocks: MockedResponse[] = [],
-  totalCount = 5,
-  errorPolicy?: "all" | "none" | "ignore",
-) {
-  const defaultOptions = errorPolicy ? { mutate: { errorPolicy } } : undefined;
+function renderHeader(mocks: MockedResponse[] = [], totalCount = 5) {
   render(
-    <MockedProvider mocks={mocks} defaultOptions={defaultOptions}>
+    <MockedProvider mocks={mocks}>
       <CardgroupHeader cardgroup={CARDGROUP} totalCount={totalCount} />
     </MockedProvider>,
   );
@@ -227,7 +222,7 @@ describe("<CardgroupHeader>", () => {
         },
       ),
     ];
-    renderHeader(mocks, 5, "all");
+    renderHeader(mocks);
 
     await user.click(screen.getByRole("button", { name: /cardgroup options/i }));
     await waitFor(() =>
