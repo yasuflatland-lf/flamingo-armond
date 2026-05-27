@@ -297,6 +297,7 @@ export function CardsClient({
   }, [resetCreateCard]);
 
   const openBatchImport = useCallback(() => setBatchImportOpen(true), []);
+  const closeBatchImport = useCallback(() => setBatchImportOpen(false), []);
 
   useEffect(() => {
     function handleAddCardEvent(event: Event) {
@@ -580,8 +581,8 @@ export function CardsClient({
           <CardgroupBatchImportForm
             cardgroupId={cardgroupId}
             cardgroupName={cardgroupName}
-            onImported={() => setBatchImportOpen(false)}
-            onCancel={() => setBatchImportOpen(false)}
+            onImported={closeBatchImport}
+            onCancel={closeBatchImport}
           />
         </FormSheet>
 
