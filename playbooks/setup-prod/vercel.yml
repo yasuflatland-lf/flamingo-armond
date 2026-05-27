@@ -102,6 +102,8 @@
       1. Open https://vercel.com/new and import this repository.
       2. Set Framework Preset to: Next.js
       3. Set Root Directory to: frontend
+         The function region is pinned to sin1 (Singapore) by
+         frontend/vercel.json -- no dashboard region step is needed.
       4. SKIP the Environment Variables section -- leave it empty.
          The playbook registers the three required env vars via the Vercel
          API as soon as you provide the project ID below.

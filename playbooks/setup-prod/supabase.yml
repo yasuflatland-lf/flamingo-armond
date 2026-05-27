@@ -71,7 +71,7 @@
           --------------------------------
           1. Open https://supabase.com/dashboard and create a new project.
              Record the region (keep it close to the Render region; the
-             repo-wide default is ap-northeast-1) and the DB password.
+             repo-wide default is ap-southeast-1, Singapore) and the DB password.
              Store the DB password in your password manager - it is only
              shown once and is not retrievable from the dashboard later.
           2. In the new project, open Authentication -> Sign In / Up and

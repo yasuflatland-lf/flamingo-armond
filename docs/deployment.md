@@ -154,7 +154,7 @@ Four steps across the three providers. Allow about 30 minutes total; Supabase pr
 
 ### Step 1 — Supabase
 
-1. Create a new Supabase project (record region and DB password). Region matters for latency — keep it close to the Render region (the local default elsewhere in this repo is `ap-northeast-1`).
+1. Create a new Supabase project (record region and DB password). Region matters for latency — keep it close to the Render region (the repo-wide default is `ap-southeast-1`, Singapore, matching Render's `singapore` and Vercel's `sin1`).
 2. **Authentication → Sign In / Up**: enable Google OAuth. Paste the Client ID and secret from Manual prerequisites § 3.
 3. Capture the values that other providers need:
 
@@ -177,6 +177,7 @@ The structural config of the backend service lives in `render.yaml` at the repo 
 | Setting | Source |
 |---|---|
 | Root directory | `render.yaml` → `services[0].rootDir` (`backend`) |
+| Region | `render.yaml` → `services[0].region` (`singapore`) |
 | Build command | `render.yaml` → `services[0].buildCommand` (`go mod download && go tool gqlgen generate && go build -o main ./cmd/server`). The codegen step is required because `backend/graph/generated/` and `graph/model/models_gen.go` are gitignored; CI regenerates them the same way (see `.github/workflows/backend.yml`). |
 | Start command | `render.yaml` → `services[0].startCommand` (`./main`) |
 | Health check path | `render.yaml` → `services[0].healthCheckPath` (`/health`) |
@@ -234,7 +235,7 @@ Removing an email from `SUPER_USER_EMAILS` does **not** revoke a previously gran
 
 ### Step 3 — Vercel
 
-Import the repo with **Root Directory: `frontend`**, framework **Next.js**.
+Import the repo with **Root Directory: `frontend`**, framework **Next.js**. The function region is pinned to `sin1` (Singapore) by `frontend/vercel.json` → `regions` — no dashboard region step is required.
 
 Set these env vars (scopes given for the manual path; `make setup-prod` Phase 4 registers them via the Vercel API automatically — leave the wizard's Environment Variables section empty when running the automated path):
 

@@ -37,7 +37,7 @@ services:
   - type: web
     name: flamingo-backend
     runtime: go
-    region: oregon
+    region: singapore
     plan: free
     rootDir: backend
     # `go tool gqlgen generate` runs because backend/graph/generated/ and
