@@ -7,7 +7,7 @@
 #
 # Inputs (play vars, all defaulted in teardown-prod.yml):
 #   state_file   - path to .setup-prod.state.yml
-#   rescue       - bool; true switches to advisory mode when state file absent
+#   advisory_mode - bool; true switches to advisory mode when state file absent
 #   confirm      - bool; true suppresses the operator name-retype prompt
 #   testing      - bool; CI test sentinel; required when confirm=true
 #
@@ -69,15 +69,15 @@
         teardown_mode: strict
         original_state: "{{ lookup('file', state_file) | from_yaml }}"
 
-- name: "preflight | advisory mode: set teardown_mode=advisory when rescue=true"
+- name: "preflight | advisory mode: set teardown_mode=advisory when advisory_mode=true"
   ansible.builtin.set_fact:
     teardown_mode: advisory
     original_state: null
   when:
     - not _state_stat.stat.exists
-    - rescue | default(false) | bool
+    - advisory_mode | default(false) | bool
 
-- name: "preflight | fail: state file absent and rescue=false"
+- name: "preflight | fail: state file absent and advisory_mode=false"
   ansible.builtin.fail:
     msg: |
       State file not found: {{ state_file }}
@@ -86,10 +86,10 @@
       setup-prod and records the IDs of every provisioned resource.
 
       If the state file was lost but you know the resource IDs, activate
-      rescue mode and supply each in-scope ID as a -e override:
+      advisory mode and supply each in-scope ID as a -e override:
 
         ansible-playbook playbooks/teardown-prod.yml \
-          -e rescue=true \
+          -e advisory_mode=true \
           -e vercel_project_id=<id> \
           -e render_service_id=<id> \
           -e supabase_project_ref=<ref>
@@ -97,7 +97,7 @@
       Omit overrides for providers you are not targeting with --tags.
   when:
     - not _state_stat.stat.exists
-    - not (rescue | default(false) | bool)
+    - not (advisory_mode | default(false) | bool)
 
 # ── 3. Determine phases in scope from ansible_run_tags ─────────────────────────
 #

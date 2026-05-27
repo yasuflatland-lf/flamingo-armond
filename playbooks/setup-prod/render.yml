@@ -20,19 +20,24 @@
       backend_url in {{ state_file }} and skip Phase 3 entirely with --skip-tags render.
   when: confirm | bool
 
-# Stat first so YAML parse errors fail loudly instead of being masked by
-# `failed_when: false` on include_vars and surfacing as confusing
-# "missing keys" later in the assert.
+# Stat first so an absent state file produces the clear assert below,
+# distinct from a corrupt-YAML parse error raised by from_yaml when the
+# file is present but malformed.
 - name: Stat state file (Phase 3)
   ansible.builtin.stat:
     path: "{{ state_file }}"
   register: _state_stat
 
+# Read via set_fact (not include_vars) so the load survives a full-sequence
+# `make setup-prod` run. An earlier phase set `existing_state = {}` via
+# set_fact, which outranks include_vars (set_fact > include_vars in Ansible
+# precedence) and would shadow a `include_vars name: existing_state` here,
+# leaving this phase with an empty dict. set_fact + lookup overwrites it.
 - name: Load state file (Phase 3 reads Phase 2 outputs)
-  ansible.builtin.include_vars:
-    file: "{{ state_file }}"
-    name: existing_state
-  when: _state_stat.stat.exists
+  ansible.builtin.set_fact:
+    existing_state: >-
+      {{ (lookup('file', state_file) | from_yaml)
+         if _state_stat.stat.exists else {} }}
 
 # Coerce to a mapping so `existing_state.<key>` access and `| default(...)`
 # behave consistently when the file is absent, empty, or YAML-null.
@@ -79,16 +84,27 @@
 
       First-time setup:
         1. New > Blueprint, point at {{ repo }} on branch `main`.
-        2. Render reads render.yaml and creates the service
-           `flamingo-backend` with all structural config.
-        3. The static env vars (APP_ENV, GRAPHQL_INTROSPECTION,
+        2. Set Blueprint Name to `flamingo-armond`; leave Blueprint
+           Path blank (it defaults to render.yaml at the repo root).
+        3. Render reads render.yaml and creates the service
+           `flamingo-backend` with all structural config. The static
+           env vars (APP_ENV, GRAPHQL_INTROSPECTION,
            OTEL_TRACES_SAMPLER_ARG, SUPABASE_JWT_AUDIENCE) get their
            values from the Blueprint automatically.
-        4. The dashboard prompts for the `sync: false` placeholders
-           (SUPABASE_DB_URL, SUPABASE_JWKS_URL, SUPABASE_JWT_ISSUER,
-           OTEL_EXPORTER_OTLP_ENDPOINT). Leave them BLANK and click
-           Save - Phase 6 (postapply) writes the Supabase-derived
-           values via the Render API.
+        4. Under "Specified configurations", leave EVERY env-var Value
+           field BLANK - they are all `sync: false` placeholders. Then
+           click "Deploy Blueprint". Phase 6 (postapply) writes the
+           dynamic values (SUPABASE_DB_URL / SUPABASE_JWKS_URL /
+           SUPABASE_JWT_ISSUER, PING_TOKEN, SUPER_USER_EMAILS, NOTION_*)
+           via the Render API; OTEL_EXPORTER_OTLP_ENDPOINT stays empty
+           unless you opt into tracing.
+
+      If the Blueprint Name shows "Name already in use":
+        A `flamingo-armond` Blueprint already exists (a prior setup or
+        an incomplete teardown). Do NOT create a second one. Cancel this
+        form, open Blueprints -> flamingo-armond, confirm the
+        `flamingo-backend` service is present, and reuse it - collect
+        the service ID / URL / deploy hook from that existing service.
 
       Re-applying after render.yaml changes:
         Blueprints -> flamingo-armond -> Manual Sync.
@@ -103,22 +119,39 @@
     prompt: |
 
       Action required in the Render dashboard:
-        1. Apply the Blueprint as described above. Because
+        1. Apply the Blueprint as described above. This CREATES the
+           `flamingo-backend` service: set Blueprint Name to
+           `flamingo-armond`, leave EVERY env-var Value field BLANK,
+           then click "Deploy Blueprint". Because
            `autoDeployTrigger: "off"` is set in render.yaml, no deploy
-           will run yet - Phase 6 (postapply) triggers the first deploy
-           via the Render API. The next steps below do NOT require a
-           completed deploy.
-        2. Copy the service ID (srv-...) from Settings > General.
+           runs yet - Phase 6 (postapply) triggers the first deploy via
+           the Render API, so the steps below do NOT require a completed
+           deploy.
+
+           If "Name already in use" appears, the Blueprint already
+           exists: cancel, open Blueprints -> flamingo-armond, and reuse
+           its `flamingo-backend` service for the values below.
+        2. Copy the service ID (srv-...) from the service's
+           Settings > General.
         3. Copy the service URL (https://....onrender.com) from the top
-           of the page.
+           of the service page.
         4. Copy the deploy hook URL from Settings > Deploy Hook.
 
-      Press Enter when the service is created and you have all three values ready.
+      Press Enter when the service exists and you have all three values ready.
 
 # --- Collect render_service_id (empty input keeps existing) ---
 - name: Prompt for Render service ID
   ansible.builtin.pause:
-    prompt: "Render service ID [current: {{ existing_state.render_service_id | default('(none)') }}] (format: srv-<alphanumeric>; press Enter to keep current)"
+    prompt: |-
+      Render service ID (format: srv-<alphanumeric>).
+      Look on the `flamingo-backend` SERVICE page - NOT the Blueprint page:
+        Blueprints > flamingo-armond > Resources > open `flamingo-backend`
+        > Settings > General > "Service ID".
+      Shortcut: it is the srv-... in the service page URL
+        https://dashboard.render.com/web/srv-...
+      Do NOT paste the Blueprint ID (exs-...) or the Blueprint "Sync Hook".
+
+      Service ID [current: {{ existing_state.render_service_id | default('(none)') }}] (press Enter to keep current)
   register: _render_service_id_input
 
 - name: Resolve render_service_id (keep existing on empty input)
@@ -139,7 +172,13 @@
 # --- Collect backend_url (empty input keeps existing) ---
 - name: Prompt for Render backend URL
   ansible.builtin.pause:
-    prompt: "Render backend URL [current: {{ existing_state.backend_url | default('(none)') }}] (https://...; press Enter to keep current)"
+    prompt: |-
+      Render backend URL (https://...).
+      On the `flamingo-backend` SERVICE page, copy the URL shown at the top
+      of the page, e.g. https://flamingo-backend.onrender.com.
+      A custom domain is fine; it need not end in .onrender.com.
+
+      Backend URL [current: {{ existing_state.backend_url | default('(none)') }}] (press Enter to keep current)
   register: _backend_url_input
 
 - name: Resolve backend_url (keep existing on empty input)
@@ -177,7 +216,14 @@
 # --- Collect deploy hook URL (no_log; empty input keeps existing GH secret if registered) ---
 - name: Prompt for Render deploy hook URL
   ansible.builtin.pause:
-    prompt: "Render deploy hook URL [current: {{ '(registered in GitHub; press Enter to keep)' if deploy_hook_already_registered else '(not registered yet)' }}] (https://api.render.com/deploy/...)"
+    prompt: |-
+      Render deploy hook URL (https://api.render.com/deploy/...).
+      On the `flamingo-backend` SERVICE page: Settings > Deploy Hook.
+      This is the SERVICE deploy hook - NOT the Blueprint "Sync Hook"
+      on the Blueprint settings page (that one starts differently and
+      will be rejected by the format check below).
+
+      Deploy hook URL [current: {{ '(registered in GitHub; press Enter to keep)' if deploy_hook_already_registered else '(not registered yet)' }}]
   no_log: true
   register: _deploy_hook_input
 
