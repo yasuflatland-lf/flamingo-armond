@@ -97,13 +97,13 @@ async function typePayload(user: ReturnType<typeof userEvent.setup>, text: strin
   return textarea;
 }
 
-// Advance to step 2 by typing valid text, validating, and clicking Continue.
+// Advance to step 2 by typing valid text, validating, and clicking Import.
 async function advanceToStep2(user: ReturnType<typeof userEvent.setup>) {
   await typePayload(user, TWO_LINE_TEXT);
   await user.click(screen.getByRole("button", { name: /^validate$/i }));
-  const continueButton = await screen.findByRole("button", { name: /continue/i });
-  await waitFor(() => expect(continueButton).toBeEnabled());
-  await user.click(continueButton);
+  const importButton = await screen.findByRole("button", { name: /^import$/i });
+  await waitFor(() => expect(importButton).toBeEnabled());
+  await user.click(importButton);
 }
 
 describe("resolveStep1Button", () => {
@@ -125,7 +125,7 @@ describe("resolveStep1Button", () => {
     ).toEqual({ label: "Validating...", action: null, disabled: true });
   });
 
-  it("valid + fresh: -> Continue, continue action, enabled", () => {
+  it("valid + fresh: -> Import, continue action, enabled", () => {
     expect(
       resolveStep1Button({
         hasText: true,
@@ -133,7 +133,7 @@ describe("resolveStep1Button", () => {
         result: { valid: true, parsedCards: [{ front: "a", back: "b", line: 1 }], errors: [] },
         isStale: false,
       }),
-    ).toEqual({ label: "Continue →", action: "continue", disabled: false });
+    ).toEqual({ label: "Import", action: "continue", disabled: false });
   });
 
   it("valid but stale (edited since validate): -> Validate, validate action, enabled", () => {
@@ -176,7 +176,7 @@ describe("<CardgroupBatchImportForm>", () => {
     expect(button).toBeDisabled();
   });
 
-  it("valid validate: shows valid status, a collapsed preview, and a Continue button", async () => {
+  it("valid validate: shows valid status, a collapsed preview, and an Import button", async () => {
     const user = userEvent.setup();
     renderForm([validateMock(TWO_LINE_TEXT, VALID_RESULT)]);
 
@@ -191,8 +191,8 @@ describe("<CardgroupBatchImportForm>", () => {
     const trigger = screen.getByRole("button", { name: /show preview \(2\)/i });
     expect(trigger).toBeInTheDocument();
     expect(screen.queryByText("apple")).not.toBeInTheDocument();
-    // Forward action is now Continue.
-    expect(screen.getByRole("button", { name: /continue/i })).toBeEnabled();
+    // Forward action is now Import.
+    expect(screen.getByRole("button", { name: /^import$/i })).toBeEnabled();
 
     // Expanding the collapsible reveals the preview rows.
     await user.click(trigger);
@@ -209,7 +209,7 @@ describe("<CardgroupBatchImportForm>", () => {
     await typePayload(user, TWO_LINE_TEXT);
     await user.click(screen.getByRole("button", { name: /^validate$/i }));
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /continue/i })).toBeEnabled();
+      expect(screen.getByRole("button", { name: /^import$/i })).toBeEnabled();
     });
 
     // Append text — validatedPayload now differs from payloadText.
@@ -217,7 +217,7 @@ describe("<CardgroupBatchImportForm>", () => {
     await user.paste("\ncherry\tcherry");
 
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: /continue/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^import$/i })).not.toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: /^validate$/i })).toBeEnabled();
   });
@@ -236,12 +236,12 @@ describe("<CardgroupBatchImportForm>", () => {
     expect(screen.getByText(/missing tab separator/i)).toBeInTheDocument();
     const alerts = screen.getAllByRole("alert");
     expect(alerts.some((el) => /missing tab separator/i.test(el.textContent ?? ""))).toBe(true);
-    // Forward action stays Validate; no Continue.
-    expect(screen.queryByRole("button", { name: /continue/i })).not.toBeInTheDocument();
+    // Forward action stays Validate; no Import.
+    expect(screen.queryByRole("button", { name: /^import$/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^validate$/i })).toBeEnabled();
   });
 
-  it("Continue advances to step 2 with a confirm heading and a back affordance", async () => {
+  it("Import advances to step 2 with a confirm heading and a back affordance", async () => {
     const user = userEvent.setup();
     renderForm([validateMock(TWO_LINE_TEXT, VALID_RESULT)]);
 
@@ -343,8 +343,8 @@ describe("<CardgroupBatchImportForm>", () => {
     // No preview rows should be rendered.
     expect(screen.queryByText("apple")).not.toBeInTheDocument();
     expect(screen.queryByText("banana")).not.toBeInTheDocument();
-    // No Continue forward action — validation failed, so we stay on step 1.
-    expect(screen.queryByRole("button", { name: /continue/i })).not.toBeInTheDocument();
+    // No Import forward action — validation failed, so we stay on step 1.
+    expect(screen.queryByRole("button", { name: /^import$/i })).not.toBeInTheDocument();
   });
 
   it("import with error rows stays on step 2 and shows the result banner; Done then closes", async () => {
@@ -507,7 +507,7 @@ describe("<CardgroupBatchImportForm>", () => {
     expect(screen.getByText(/1 of 2/i)).toBeInTheDocument();
     const validateButton = screen.getByRole("button", { name: /^validate$/i });
     expect(validateButton).toBeEnabled();
-    expect(screen.queryByRole("button", { name: /continue/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^import$/i })).not.toBeInTheDocument();
     // Textarea content preserved.
     expect(screen.getByLabelText(/cards to import/i)).toHaveValue(TWO_LINE_TEXT);
   });

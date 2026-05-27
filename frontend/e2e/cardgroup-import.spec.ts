@@ -71,7 +71,7 @@ test.describe
       await expect(page.getByRole("cell", { name: frontB })).toBeVisible();
 
       // Advance from step 1 "Paste & review" to step 2 "Import".
-      await page.getByRole("button", { name: /Continue/ }).click();
+      await page.getByRole("button", { name: /^Import$/ }).click();
 
       // Step 2: confirm heading and click the import button.
       await page.getByRole("button", { name: /Import 2 cards/ }).click();
@@ -97,7 +97,7 @@ test.describe
       await expect(page.getByRole("status").filter({ hasText: /Valid.*2/ })).toBeVisible();
 
       // Advance to step 2 and import.
-      await page.getByRole("button", { name: /Continue/ }).click();
+      await page.getByRole("button", { name: /^Import$/ }).click();
       await page.getByRole("button", { name: /Import 2 cards/ }).click();
       await expect(page.getByRole("button", { name: /Import 2 cards/ })).toBeHidden();
 

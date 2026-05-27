@@ -90,7 +90,7 @@ export function resolveStep1Button(state: Step1ButtonState): Step1ButtonSpec {
     return { label: "Validating...", action: null, disabled: true };
   }
   if (state.result?.valid === true && !state.isStale) {
-    return { label: "Continue →", action: "continue", disabled: false };
+    return { label: "Import", action: "continue", disabled: false };
   }
   return { label: "Validate", action: "validate", disabled: false };
 }
