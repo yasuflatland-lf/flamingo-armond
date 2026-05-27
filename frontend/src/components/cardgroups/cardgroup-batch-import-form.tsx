@@ -371,12 +371,12 @@ export function CardgroupBatchImportForm(props: {
             <label htmlFor="batch-import-payload" className="block text-sm font-medium">
               Cards to import
             </label>
-            <p className="text-xs text-muted-foreground">
-              One card per line: an English word, a tab, then its Japanese translation (e.g. pasted
-              from a spreadsheet column pair).
+            <p id="batch-import-payload-help" className="text-xs text-muted-foreground">
+              English word, a Tab, then its Japanese translation — one per line.
             </p>
             <Textarea
               id="batch-import-payload"
+              aria-describedby="batch-import-payload-help"
               value={payloadText}
               onChange={(e) => setPayloadText(e.target.value)}
               rows={10}

@@ -175,6 +175,12 @@ describe("<CardgroupBatchImportForm>", () => {
     expect(button).toBeDisabled();
   });
 
+  it("associates the format hint with the textarea via aria-describedby", () => {
+    renderForm();
+    const textarea = screen.getByLabelText(/cards to import/i);
+    expect(textarea).toHaveAccessibleDescription(/one per line/i);
+  });
+
   it("valid validate: shows valid status, a collapsed preview, and an Import button", async () => {
     const user = userEvent.setup();
     renderForm([validateMock(TWO_LINE_TEXT, VALID_RESULT)]);
