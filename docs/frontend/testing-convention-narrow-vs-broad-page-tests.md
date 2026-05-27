@@ -331,6 +331,8 @@ This tests the behavioral contract (tab from `addLink` lands on `menuButton`) wi
 
 Use `await user.tab()` from a fixed anchor any time you need to assert that one interactive element is reachable immediately after another in keyboard navigation order.
 
+`compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING` is wrong for keyboard tab order — for exactly the reason above — but it is the correct, intended tool for asserting **visual left/right layout order** in a `flex justify-between` two-slot row. jsdom has no layout engine, so DOM source order is the right proxy for visual position in a standard LTR flex container where slots are fixed in source order. The assertion is wrong only for keyboard navigation (because `tabindex` decouples tab order from DOM order) and would also not catch a CSS-only `flex-row-reverse` regression (which jsdom cannot compute). For DOM-order-as-visual-order checks, the pattern is sound. Reference: the `describe("CardgroupBatchImportForm footer layout")` block in `frontend/src/components/cardgroups/cardgroup-batch-import-form.test.tsx` uses `compareDocumentPosition` to pin Cancel→primary, Back→Import, and Back→Done slot order in the `WizardFooter` component.
+
 ### Pin specific `indexOf` positions in DOM-order tests
 
 `expect(brandIndex).toBeGreaterThan(0)` is ambiguous in both failure directions: it passes when `brandIndex` is `2` (wrong order relative to form) and fails with a numeric mismatch when `brandIndex` is `-1` (element absent), with no message naming the missing element. Pin both positions explicitly and add a separate `-1` guard so each failure names its own problem:
