@@ -415,7 +415,7 @@ export function CardgroupBatchImportForm(props: {
             right={
               <Button
                 type="button"
-                variant={buttonSpec.action === "continue" ? "brand" : "outline"}
+                variant={buttonSpec.action !== null ? "brand" : "outline"}
                 onClick={onStep1ButtonClick}
                 disabled={buttonSpec.disabled}
               >
