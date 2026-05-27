@@ -225,12 +225,29 @@ function ValidateResult(props: { result: ValidationResult }): JSX.Element {
   );
 }
 
+/**
+ * Two-slot wizard footer: a secondary/back affordance on the left and the
+ * primary/forward action on the right. The primary stays pinned to the right
+ * edge even when `left` is omitted (the left cell is rendered empty), so the
+ * forward action keeps a stable position across every step.
+ */
+function WizardFooter(props: { left?: JSX.Element; right: JSX.Element }): JSX.Element {
+  const { left, right } = props;
+  return (
+    <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
+      <div>{left}</div>
+      <div>{right}</div>
+    </div>
+  );
+}
+
 export function CardgroupBatchImportForm(props: {
   cardgroupId: string;
   cardgroupName: string;
   onImported?: () => void;
+  onCancel?: () => void;
 }): JSX.Element {
-  const { cardgroupId, cardgroupName, onImported } = props;
+  const { cardgroupId, cardgroupName, onImported, onCancel } = props;
 
   const [step, setStep] = useState<1 | 2>(1);
   const [payloadText, setPayloadText] = useState<string>("");
@@ -396,16 +413,23 @@ export function CardgroupBatchImportForm(props: {
 
           {validationResult && <ValidateResult result={validationResult} />}
 
-          <div>
-            <Button
-              type="button"
-              variant={buttonSpec.action === "continue" ? "brand" : "outline"}
-              onClick={onStep1ButtonClick}
-              disabled={buttonSpec.disabled}
-            >
-              {buttonSpec.label}
-            </Button>
-          </div>
+          <WizardFooter
+            left={
+              <Button type="button" variant="ghost" onClick={() => onCancel?.()}>
+                Cancel
+              </Button>
+            }
+            right={
+              <Button
+                type="button"
+                variant={buttonSpec.action === "continue" ? "brand" : "outline"}
+                onClick={onStep1ButtonClick}
+                disabled={buttonSpec.disabled}
+              >
+                {buttonSpec.label}
+              </Button>
+            }
+          />
         </div>
       ) : (
         <div className="space-y-4">
@@ -433,14 +457,18 @@ export function CardgroupBatchImportForm(props: {
                 )}
               </div>
               {importResult.errors.length > 0 && <ErrorList errors={importResult.errors} />}
-              <div className="flex gap-3">
-                <Button type="button" variant="outline" onClick={goBackToStep1}>
-                  ← Back to edit
-                </Button>
-                <Button type="button" variant="brand" onClick={() => onImported?.()}>
-                  Done
-                </Button>
-              </div>
+              <WizardFooter
+                left={
+                  <Button type="button" variant="outline" onClick={goBackToStep1}>
+                    ← Back to edit
+                  </Button>
+                }
+                right={
+                  <Button type="button" variant="brand" onClick={() => onImported?.()}>
+                    Done
+                  </Button>
+                }
+              />
             </section>
           ) : (
             <>
@@ -451,21 +479,25 @@ export function CardgroupBatchImportForm(props: {
               <p className="text-sm text-muted-foreground">
                 New cards are inserted; existing fronts are updated.
               </p>
-              <div className="flex gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={goBackToStep1}
-                  disabled={importing}
-                >
-                  ← Back to edit
-                </Button>
-                <Button type="button" variant="brand" onClick={handleImport} disabled={importing}>
-                  {importing
-                    ? "Importing..."
-                    : `Import ${parsedCards.length} ${plural(parsedCards.length, "card")}`}
-                </Button>
-              </div>
+              <WizardFooter
+                left={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={goBackToStep1}
+                    disabled={importing}
+                  >
+                    ← Back to edit
+                  </Button>
+                }
+                right={
+                  <Button type="button" variant="brand" onClick={handleImport} disabled={importing}>
+                    {importing
+                      ? "Importing..."
+                      : `Import ${parsedCards.length} ${plural(parsedCards.length, "card")}`}
+                  </Button>
+                }
+              />
             </>
           )}
         </div>

@@ -75,16 +75,18 @@ const INVALID_RESULT: MockedResponse["result"] = {
 
 function renderForm(mocks: MockedResponse[] = []) {
   const onImported = vi.fn();
+  const onCancel = vi.fn();
   const utils = render(
     <MockedProvider mocks={mocks}>
       <CardgroupBatchImportForm
         cardgroupId={CARDGROUP_ID}
         cardgroupName={CARDGROUP_NAME}
         onImported={onImported}
+        onCancel={onCancel}
       />
     </MockedProvider>,
   );
-  return { onImported, ...utils };
+  return { onImported, onCancel, ...utils };
 }
 
 async function typePayload(user: ReturnType<typeof userEvent.setup>, text: string) {
@@ -508,5 +510,33 @@ describe("<CardgroupBatchImportForm>", () => {
     expect(screen.queryByRole("button", { name: /continue/i })).not.toBeInTheDocument();
     // Textarea content preserved.
     expect(screen.getByLabelText(/cards to import/i)).toHaveValue(TWO_LINE_TEXT);
+  });
+});
+
+describe("CardgroupBatchImportForm footer layout", () => {
+  it("step 1: renders a Cancel button that invokes onCancel", async () => {
+    const user = userEvent.setup();
+    const { onCancel } = renderForm();
+    await user.click(screen.getByRole("button", { name: /^cancel$/i }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("step 1: Cancel sits before the primary action in the DOM (left/right split)", () => {
+    renderForm();
+    const cancel = screen.getByRole("button", { name: /^cancel$/i });
+    const primary = screen.getByRole("button", { name: /^validate$/i });
+    // In an LTR justify-between footer, the left slot precedes the right slot.
+    expect(cancel.compareDocumentPosition(primary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("step 2 (confirm): Back to edit sits before the Import action (left/right split)", async () => {
+    const user = userEvent.setup();
+    renderForm([validateMock(TWO_LINE_TEXT, VALID_RESULT)]);
+    await advanceToStep2(user);
+    const back = screen.getByRole("button", { name: /back to edit/i });
+    const importBtn = screen.getByRole("button", { name: /import 2 cards/i });
+    expect(back).toBeInTheDocument();
+    expect(importBtn).toBeInTheDocument();
+    expect(back.compareDocumentPosition(importBtn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
