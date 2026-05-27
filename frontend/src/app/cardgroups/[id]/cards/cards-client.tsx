@@ -581,6 +581,7 @@ export function CardsClient({
             cardgroupId={cardgroupId}
             cardgroupName={cardgroupName}
             onImported={() => setBatchImportOpen(false)}
+            onCancel={() => setBatchImportOpen(false)}
           />
         </FormSheet>
 
