@@ -164,9 +164,8 @@ describe("<CardgroupBatchImportForm>", () => {
     vi.restoreAllMocks();
   });
 
-  it("shows the fixed target name and no cardgroup selector", () => {
+  it("has no cardgroup selector (destination is fixed, shown in the sheet subtitle)", () => {
     renderForm();
-    expect(screen.getByText(CARDGROUP_NAME)).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 

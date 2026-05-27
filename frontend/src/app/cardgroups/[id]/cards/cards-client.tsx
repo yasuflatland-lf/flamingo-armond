@@ -574,6 +574,7 @@ export function CardsClient({
 
         <FormSheet
           title="Batch import"
+          description={`into "${cardgroupName}"`}
           open={batchImportOpen}
           onOpenChange={setBatchImportOpen}
           size="lg"

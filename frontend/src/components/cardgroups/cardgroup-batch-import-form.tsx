@@ -143,7 +143,7 @@ function ImportStepper(props: {
           </span>
         </li>
       </ol>
-      <span className="text-xs text-muted-foreground">{current} of 2</span>
+      <span className="sr-only">{current} of 2</span>
     </nav>
   );
 }
@@ -367,13 +367,6 @@ export function CardgroupBatchImportForm(props: {
 
       {step === 1 ? (
         <div className="space-y-4">
-          <h2 className="text-base font-semibold">Paste your cards</h2>
-
-          <div className="text-sm">
-            <span className="font-medium">Target:</span>{" "}
-            <span className="text-muted-foreground">{cardgroupName}</span>
-          </div>
-
           <div className="space-y-2">
             <label htmlFor="batch-import-payload" className="block text-sm font-medium">
               Cards to import
