@@ -23,8 +23,8 @@
 #   postapply  -> Phase 5  (archive state file, summary)
 #
 # Mode flags:
-#   rescue=true   switches to advisory mode when the state file is absent;
-#                 requires operator to supply IDs via -e overrides.
+#   advisory_mode=true  switches to advisory mode when the state file is absent;
+#                       requires operator to supply IDs via -e overrides.
 #   confirm=true  suppresses the interactive name-retype prompt (CI use only).
 #                 confirm=true is REJECTED at preflight unless testing=true is
 #                 also set; this prevents CI from running a real teardown.
@@ -40,7 +40,7 @@
     repo: yasuflatland-lf/flamingo-armond
     state_file: "{{ playbook_dir }}/../.setup-prod.state.yml"
     archive_dir: "{{ playbook_dir }}/../.setup-prod-archive"
-    rescue: false
+    advisory_mode: false
     confirm: false
 
   tasks:

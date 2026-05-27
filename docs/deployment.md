@@ -393,7 +393,7 @@ ansible-playbook playbooks/teardown-prod.yml --tags <phase>   # single phase
 
 ### Mode flags
 
-- **`rescue=true`**: switches to advisory mode when `.setup-prod.state.yml` is missing (e.g. lost laptop or a different machine than the one used for bring-up). The operator must supply `vercel_project_id`, `render_service_id`, and `supabase_project_ref` via `-e` overrides on the `ansible-playbook` command line.
+- **`advisory_mode=true`**: switches to advisory mode when `.setup-prod.state.yml` is missing (e.g. lost laptop or a different machine than the one used for bring-up). The operator must supply `vercel_project_id`, `render_service_id`, and `supabase_project_ref` via `-e` overrides on the `ansible-playbook` command line.
 - **`confirm=true`**: bypasses the operator name-retype prompt. **Rejected at preflight unless `testing=true` is also set** — this is the hard barrier preventing CI from accidentally running a real teardown.
 
 ### The name-retype safety prompt
@@ -412,7 +412,7 @@ After a successful retype, the playbook also verifies that the bearer token's te
 | `resource_id` | Provider-assigned ID |
 | `name` | Resource name at time of deletion |
 | `team` | Team or org that owned the resource |
-| `teardown_mode` | `strict` (state file present) or `advisory` (rescue mode) |
+| `teardown_mode` | `strict` (state file present) or `advisory` (advisory_mode=true) |
 | `phase` | `vercel`, `render`, or `supabase` |
 | `delete_status` | `deleted`, `already_gone`, or `failed` |
 | `http_status` | HTTP status code returned by the provider |
