@@ -54,17 +54,25 @@ type Step1ButtonState = {
   hasText: boolean;
   validating: boolean;
   result: ValidationResult | null;
-  /** True when the textarea was edited since the last successful validate. */
+  /**
+   * True when the textarea was edited since the last successful validate. Only
+   * inspected when `result?.valid === true`; it is ignored on every other
+   * branch, so `{ result: null, isStale: true }` is a meaningless but harmless
+   * input combination.
+   */
   isStale: boolean;
 };
 
 type Step1ButtonAction = "validate" | "continue";
 
-type Step1ButtonSpec = {
-  label: string;
-  action: Step1ButtonAction | null;
-  disabled: boolean;
-};
+/**
+ * Discriminated on `action`: a button with no action is always disabled, and a
+ * button with an action is always enabled. This makes the phantom
+ * `{ action: null, disabled: false }` state unrepresentable.
+ */
+type Step1ButtonSpec =
+  | { action: null; label: string; disabled: true }
+  | { action: Step1ButtonAction; label: string; disabled: false };
 
 /**
  * Pure state machine for the step-1 forward button. A string discriminant for
