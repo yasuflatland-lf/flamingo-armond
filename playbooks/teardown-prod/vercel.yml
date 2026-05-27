@@ -98,16 +98,15 @@
 
     - name: "vercel teardown | verify identity before deletion"
       ansible.builtin.include_tasks: _lib/verify_identity.yml
+      # identity_name/team/owner_email/created_at and token_team_id are already
+      # set_fact'd above into play scope, satisfying verify_identity.yml's input
+      # contract. Re-passing them here as same-named include vars makes each var
+      # reference itself and trips ansible-core's recursive-loop detector.
       vars:
         provider: vercel
         resource_id: "{{ vercel_project_id }}"
         api_url: "https://api.vercel.com/v9/projects/{{ vercel_project_id }}"
         token: "{{ vercel_token }}"
-        identity_name: "{{ identity_name }}"
-        identity_team: "{{ identity_team }}"
-        identity_owner_email: "{{ identity_owner_email }}"
-        identity_created_at: "{{ identity_created_at }}"
-        token_team_id: "{{ token_team_id }}"
 
     - name: "vercel teardown | delete and archive (with rescue for failure)"
       block:
