@@ -539,4 +539,44 @@ describe("CardgroupBatchImportForm footer layout", () => {
     expect(importBtn).toBeInTheDocument();
     expect(back.compareDocumentPosition(importBtn) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  it("step 2 (result): Back to edit sits before Done (left/right split)", async () => {
+    const user = userEvent.setup();
+    renderForm([
+      validateMock(TWO_LINE_TEXT, VALID_RESULT),
+      importMock(TWO_LINE_TEXT, {
+        data: {
+          importCards: {
+            __typename: "ImportCardsPayload" as const,
+            inserted: 1,
+            updated: 0,
+            errors: [
+              {
+                __typename: "CardImportError" as const,
+                line: 2,
+                message: "duplicate front",
+              },
+            ],
+          },
+        },
+      }),
+    ]);
+    await advanceToStep2(user);
+    await user.click(screen.getByRole("button", { name: /import 2 cards/i }));
+    const done = await screen.findByRole("button", { name: /^done$/i });
+    const back = screen.getByRole("button", { name: /back to edit/i });
+    expect(back.compareDocumentPosition(done) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("step 1: clicking Cancel is crash-free when onCancel is omitted", async () => {
+    const user = userEvent.setup();
+    render(
+      <MockedProvider mocks={[]}>
+        <CardgroupBatchImportForm cardgroupId={CARDGROUP_ID} cardgroupName={CARDGROUP_NAME} />
+      </MockedProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: /^cancel$/i }));
+    // No throw; the wizard is still mounted on step 1.
+    expect(screen.getByText(/1 of 2/i)).toBeInTheDocument();
+  });
 });

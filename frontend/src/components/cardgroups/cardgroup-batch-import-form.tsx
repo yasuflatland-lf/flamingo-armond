@@ -2,7 +2,7 @@
 
 import { useApolloClient, useLazyQuery, useMutation } from "@apollo/client/react";
 import { Check, ChevronDown, ChevronRight } from "lucide-react";
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
 import { useState } from "react";
 import { ImportCardsMutation, ValidateCardImportQuery } from "@/app/cardgroups/[id]/cards/queries";
 import { Button } from "@/components/ui/button";
@@ -231,7 +231,7 @@ function ValidateResult(props: { result: ValidationResult }): JSX.Element {
  * edge even when `left` is omitted (the left cell is rendered empty), so the
  * forward action keeps a stable position across every step.
  */
-function WizardFooter(props: { left?: JSX.Element; right: JSX.Element }): JSX.Element {
+function WizardFooter(props: { left?: ReactNode; right: ReactNode }): JSX.Element {
   const { left, right } = props;
   return (
     <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
