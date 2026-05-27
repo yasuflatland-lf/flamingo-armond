@@ -7,17 +7,25 @@
 #
 # Flow:
 #   1. Load state and verify the keys this phase depends on.
-#   2. Pull RENDER_API_KEY and VERCEL_API_TOKEN from the environment.
+#   2. Pull RENDER_API_KEY and VERCEL_API_TOKEN from the environment, and
+#      validate that the required NOTION_* env vars are present in root .env.
 #   3. POST a deploy to Vercel (gitSource: main) so it rebuilds with the env
 #      vars Phase 4 registered. We don't poll Vercel: the build (~1-2 min) runs
 #      in parallel with the Render poll below, finishing well before the
 #      front-end HEAD probe.
-#   4. POST a deploy to Render and capture the deploy id.
-#   5. Poll the Render deploy until it reaches "live" (max 15 min, fast-fail
+#   4. Resolve the Notion owner UUID from NOTION_TARGET_OWNER_EMAIL against the
+#      production auth.users table. This runs AFTER the Vercel deploy on
+#      purpose: the email row only exists once the owner has signed in to the
+#      live frontend, so the deploy that enables sign-in must fire first. On a
+#      fresh bring-up the FIRST pass stops here (no row yet) -- sign in once,
+#      then re-run `make setup-prod-postapply` to complete in a second pass.
+#   5. Reconcile the dynamic Render env vars, then POST a deploy to Render and
+#      capture the deploy id.
+#   6. Poll the Render deploy until it reaches "live" (max 15 min, fast-fail
 #      on build_failed / update_failed / canceled / deactivated /
 #      pre_deploy_failed).
-#   6. Smoke test backend /health, GraphQL /query, and the production URL HEAD.
-#   7. Print the three URLs and remind the operator that the /profile E2E
+#   7. Smoke test backend /health, GraphQL /query, and the production URL HEAD.
+#   8. Print the three URLs and remind the operator that the /profile E2E
 #      check is a manual step (Google sign-in required).
 #
 # Re-run safety: this phase has no state writes, so re-running is harmless --
@@ -135,78 +143,6 @@
   tags: [preflight, notion-preflight, notion, notion-secrets, postapply]
 
 # ---------------------------------------------------------------------------
-# Resolve NOTION_TARGET_OWNER_ID.
-#
-# Two paths are supported:
-#   1. NOTION_TARGET_OWNER_EMAIL (preferred) -- psql queries the production
-#      Supabase auth.users table using supabase_db_url from the state file,
-#      resolves the email to a UUID, and stores it as _notion_owner_id.
-#      The target account must have signed in to the production app at least
-#      once so the row exists.
-#   2. NOTION_TARGET_OWNER_ID (manual fallback) -- operator supplies the UUID
-#      directly in root .env; _notion_owner_id is set from that value.
-#
-# When NOTION_TARGET_OWNER_EMAIL is set it takes precedence; the fallback is
-# only used when the email key is absent or blank.
-# ---------------------------------------------------------------------------
-- name: Resolve NOTION_TARGET_OWNER_EMAIL to a UUID
-  when: (lookup('env', 'NOTION_TARGET_OWNER_EMAIL') | default('')) | trim | length > 0
-  tags: [notion, notion-secrets, postapply]
-  block:
-    - name: Validate NOTION_TARGET_OWNER_EMAIL format
-      ansible.builtin.fail:
-        msg: |
-          NOTION_TARGET_OWNER_EMAIL does not look like a valid email address:
-            {{ lookup('env', 'NOTION_TARGET_OWNER_EMAIL') | trim }}
-          Fix the value in root .env and re-run.
-      when: >-
-        not (lookup('env', 'NOTION_TARGET_OWNER_EMAIL') | trim
-             | regex_search('^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$'))
-
-    - name: Resolve NOTION_TARGET_OWNER_EMAIL to UUID in auth.users
-      # psql interpolates `:'var'` only for queries read from stdin or -f,
-      # never for queries passed via -c. Pipe the SQL through stdin so the
-      # email is bound as a quoted literal (psql escapes it) instead of being
-      # string-concatenated into the query.
-      ansible.builtin.command:
-        argv:
-          - psql
-          - "{{ supabase_db_url }}"
-          - -v
-          - "ON_ERROR_STOP=1"
-          - -v
-          - "email={{ lookup('env', 'NOTION_TARGET_OWNER_EMAIL') | trim }}"
-          - -t
-          - -A
-        stdin: "SELECT id FROM auth.users WHERE lower(email) = lower(:'email');"
-      register: _notion_owner_uuid_result
-      changed_when: false
-
-    - name: Fail if email not found in auth.users
-      ansible.builtin.fail:
-        msg: |
-          No auth.users row for {{ lookup('env', 'NOTION_TARGET_OWNER_EMAIL') }}.
-          The account must have signed in to the production app at least once before this step.
-      when: (_notion_owner_uuid_result.stdout | trim) | length == 0
-
-    - name: Fail if duplicate email rows found in auth.users
-      ansible.builtin.fail:
-        msg: |
-          Duplicate email in production auth.users; manual review required.
-          Email: {{ lookup('env', 'NOTION_TARGET_OWNER_EMAIL') }}
-      when: (_notion_owner_uuid_result.stdout | trim).split('\n') | length > 1
-
-    - name: Store resolved owner UUID from email
-      ansible.builtin.set_fact:
-        _notion_owner_id: "{{ _notion_owner_uuid_result.stdout | trim }}"
-
-- name: Use NOTION_TARGET_OWNER_ID when email resolution is skipped
-  ansible.builtin.set_fact:
-    _notion_owner_id: "{{ lookup('env', 'NOTION_TARGET_OWNER_ID') | default('') }}"
-  when: (lookup('env', 'NOTION_TARGET_OWNER_EMAIL') | default('')) | trim | length == 0
-  tags: [notion, notion-secrets, postapply]
-
-# ---------------------------------------------------------------------------
 # Precheck: Blueprint Manual Sync has been run for the current render.yaml.
 #
 # render.yaml is the source of truth for static env-var values (APP_ENV,
@@ -313,6 +249,95 @@
 - name: Show the Vercel deploy id (operator can cross-check the dashboard)
   ansible.builtin.debug:
     msg: "Vercel deploy kicked: {{ vercel_deploy_id }} (build runs in parallel with Render poll)"
+
+# ---------------------------------------------------------------------------
+# Resolve NOTION_TARGET_OWNER_ID.
+#
+# This runs AFTER the Vercel deploy on purpose. Path 1 below resolves the
+# owner email against the production auth.users table, and that row only
+# exists once the owner has signed in to the live frontend. The deploy that
+# makes sign-in possible must therefore fire first; placing this block before
+# the deploy would dead-lock a fresh bring-up (no app -> no sign-in -> no row
+# -> the resolution fails before the deploy that would have unblocked it).
+#
+# Two paths are supported:
+#   1. NOTION_TARGET_OWNER_EMAIL (preferred) -- psql queries the production
+#      Supabase auth.users table using supabase_db_url from the state file,
+#      resolves the email to a UUID, and stores it as _notion_owner_id.
+#      The target account must have signed in to the production app at least
+#      once so the row exists.
+#   2. NOTION_TARGET_OWNER_ID (manual fallback) -- operator supplies the UUID
+#      directly in root .env; _notion_owner_id is set from that value.
+#
+# When NOTION_TARGET_OWNER_EMAIL is set it takes precedence; the fallback is
+# only used when the email key is absent or blank.
+# ---------------------------------------------------------------------------
+- name: Resolve NOTION_TARGET_OWNER_EMAIL to a UUID
+  when: (lookup('env', 'NOTION_TARGET_OWNER_EMAIL') | default('')) | trim | length > 0
+  tags: [notion, notion-secrets, postapply]
+  block:
+    - name: Validate NOTION_TARGET_OWNER_EMAIL format
+      ansible.builtin.fail:
+        msg: |
+          NOTION_TARGET_OWNER_EMAIL does not look like a valid email address:
+            {{ lookup('env', 'NOTION_TARGET_OWNER_EMAIL') | trim }}
+          Fix the value in root .env and re-run.
+      when: >-
+        not (lookup('env', 'NOTION_TARGET_OWNER_EMAIL') | trim
+             | regex_search('^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$'))
+
+    - name: Resolve NOTION_TARGET_OWNER_EMAIL to UUID in auth.users
+      # psql interpolates `:'var'` only for queries read from stdin or -f,
+      # never for queries passed via -c. Pipe the SQL through stdin so the
+      # email is bound as a quoted literal (psql escapes it) instead of being
+      # string-concatenated into the query.
+      ansible.builtin.command:
+        argv:
+          - psql
+          - "{{ supabase_db_url }}"
+          - -v
+          - "ON_ERROR_STOP=1"
+          - -v
+          - "email={{ lookup('env', 'NOTION_TARGET_OWNER_EMAIL') | trim }}"
+          - -t
+          - -A
+        stdin: "SELECT id FROM auth.users WHERE lower(email) = lower(:'email');"
+      register: _notion_owner_uuid_result
+      changed_when: false
+
+    - name: Fail if email not found in auth.users
+      ansible.builtin.fail:
+        msg: |
+          No auth.users row for {{ lookup('env', 'NOTION_TARGET_OWNER_EMAIL') }}.
+
+          The Vercel production deploy has already been kicked above, so the
+          frontend is (or will shortly be) live at:
+            {{ production_url }}
+
+          This is the expected first-pass stop on a fresh bring-up:
+            1. Wait for the Vercel build to finish, then sign in once with
+               {{ lookup('env', 'NOTION_TARGET_OWNER_EMAIL') }} so Supabase
+               creates the auth.users row.
+            2. Re-run: make setup-prod-postapply
+          The second pass resolves the UUID and finishes Notion + Render wiring.
+      when: (_notion_owner_uuid_result.stdout | trim) | length == 0
+
+    - name: Fail if duplicate email rows found in auth.users
+      ansible.builtin.fail:
+        msg: |
+          Duplicate email in production auth.users; manual review required.
+          Email: {{ lookup('env', 'NOTION_TARGET_OWNER_EMAIL') }}
+      when: (_notion_owner_uuid_result.stdout | trim).split('\n') | length > 1
+
+    - name: Store resolved owner UUID from email
+      ansible.builtin.set_fact:
+        _notion_owner_id: "{{ _notion_owner_uuid_result.stdout | trim }}"
+
+- name: Use NOTION_TARGET_OWNER_ID when email resolution is skipped
+  ansible.builtin.set_fact:
+    _notion_owner_id: "{{ lookup('env', 'NOTION_TARGET_OWNER_ID') | default('') }}"
+  when: (lookup('env', 'NOTION_TARGET_OWNER_EMAIL') | default('')) | trim | length == 0
+  tags: [notion, notion-secrets, postapply]
 
 # ---------------------------------------------------------------------------
 # Reconcile the dynamic Render env vars from state before triggering deploy.
