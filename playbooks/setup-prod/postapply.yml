@@ -3,7 +3,8 @@
 #
 # Reads:  state file (render_service_id, backend_url, production_url,
 #                     vercel_project_id, vercel_repo_id).
-# Writes: nothing (state is read-only here).
+# Writes: no state-file changes. DB writes: idempotent backfill of
+#         public.users and admin grant to public.user_roles (steps 7-8).
 #
 # Flow:
 #   1. Load state and verify the keys this phase depends on.
@@ -29,12 +30,16 @@
 #      first boot applied migrations. The first operator signs in before this
 #      phase can boot the backend, so their auth.users row predates the bridge
 #      trigger and has no public.users row; this heals the gap idempotently.
-#   8. Smoke test backend /health, GraphQL /query, and the production URL HEAD.
-#   9. Print the three URLs and remind the operator that the /profile E2E
+#   8. Grant the admin role to SUPER_USER_EMAILS now that the bridge row exists
+#      (idempotent). Addresses not yet in auth.users are skipped; the same step
+#      is also available standalone via `make seed-admin-prod`.
+#   9. Smoke test backend /health, GraphQL /query, and the production URL HEAD.
+#  10. Print the three URLs and remind the operator that the /profile E2E
 #      check is a manual step (Google sign-in required).
 #
-# Re-run safety: this phase has no state writes, so re-running is harmless --
-# every invocation triggers a fresh Vercel + Render deploy.
+# Re-run safety: this phase makes no state-file writes; its DB writes (steps
+# 7-8) are idempotent, so re-running is harmless -- every invocation triggers
+# a fresh Vercel + Render deploy.
 
 # Postapply cannot run before Phases 3 + 4 have written state, so a
 # missing file is itself a misuse. Stat first so a missing file vs.
@@ -784,6 +789,23 @@
 - name: Report public.users backfill outcome
   ansible.builtin.debug:
     msg: "public.users backfill: {{ _backfill_users_result.stdout | default('(no output)') | trim }}"
+
+# ---------------------------------------------------------------------------
+# Grant the admin role to SUPER_USER_EMAILS now that the bootstrap gap is
+# healed. The Notion owner gate above already blocked the bring-up until the
+# first operator signed in, and the backfill above guarantees the public.users
+# bridge row exists, so the user_roles -> public.users FK can no longer fail.
+# The grant is idempotent and silently skips any address not yet in auth.users,
+# preserving this phase's re-run safety.
+#
+# These tasks also remain available standalone via `make seed-admin-prod`, for
+# granting additional admins who sign in after this phase completes. The two
+# import sites are tag-isolated: this one inherits the `postapply` tag, while
+# the standalone import in setup-prod.yml carries `seed-admin-prod, never`, so
+# no invocation runs the grant twice.
+# ---------------------------------------------------------------------------
+- name: Seed admin role from SUPER_USER_EMAILS (postapply)
+  ansible.builtin.import_tasks: seed-admin-prod.yml
 
 - name: Smoke 1 - backend /health returns 200
   block:
