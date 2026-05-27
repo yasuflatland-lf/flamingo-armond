@@ -372,7 +372,7 @@ export function CardgroupBatchImportForm(props: {
               Cards to import
             </label>
             <p id="batch-import-payload-help" className="text-xs text-muted-foreground">
-              English word, a Tab, then its Japanese translation — one per line.
+              Separate each pair with a Tab.
             </p>
             <Textarea
               id="batch-import-payload"

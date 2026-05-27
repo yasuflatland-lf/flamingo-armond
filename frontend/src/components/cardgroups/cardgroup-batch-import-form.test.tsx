@@ -178,7 +178,7 @@ describe("<CardgroupBatchImportForm>", () => {
   it("associates the format hint with the textarea via aria-describedby", () => {
     renderForm();
     const textarea = screen.getByLabelText(/cards to import/i);
-    expect(textarea).toHaveAccessibleDescription(/one per line/i);
+    expect(textarea).toHaveAccessibleDescription(/separate each pair with a tab/i);
   });
 
   it("valid validate: shows valid status, a collapsed preview, and an Import button", async () => {
