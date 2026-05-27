@@ -133,7 +133,27 @@
 
     - name: Prompt for Supabase session-pooler DSN
       ansible.builtin.pause:
-        prompt: "Supabase DB URL (Connect -> Session pooler tab; postgres://...?sslmode=require)"
+        prompt: |
+          Supabase DB URL - session-pooler connection string
+          ---------------------------------------------------
+          Where to get it:
+            1. Click the green "Connect" button (top of the dashboard).
+            2. Open the "Direct / Connection string" tab.
+            3. Set Connection Method to "Session pooler"
+               (NOT "Direct connection", NOT "Transaction pooler").
+            4. Copy the string. It looks like:
+               postgres://postgres.<ref>:[YOUR-PASSWORD]@aws-0-<region>.pooler.supabase.com:5432/postgres
+
+          Before pasting, fix two things:
+            - Replace [YOUR-PASSWORD] with the DB password you set at
+              project creation (shown only once; from your password manager).
+            - Append ?sslmode=require to the end.
+
+          The DSN must contain "pooler" and port :5432 (session pooler).
+          Port :6543 is the transaction pooler and will be rejected -
+          golang-migrate's advisory locks need a real session.
+
+          Paste the final DSN here (input is hidden):
         echo: false
       register: db_url_prompt
       no_log: true

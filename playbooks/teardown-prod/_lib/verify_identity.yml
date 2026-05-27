@@ -111,6 +111,7 @@
           Owner    : {{ verified_identity.owner_email }}
 
           Retype the resource name exactly as shown above (case-sensitive)
+          Example — type exactly:  {{ verified_identity.name }}
           Resource name to confirm
         echo: true
       register: _retype_prompt
