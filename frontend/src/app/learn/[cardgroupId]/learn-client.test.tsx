@@ -173,6 +173,13 @@ const DEFAULT_METRICS = {
   reviewCount: 1,
 };
 
+// Post-swipe state with no stability gain — the reward overlay stays hidden.
+const NO_GAIN_USER_CARD_STATE = {
+  __typename: "UserCardState" as const,
+  stability: 0,
+  state: 0,
+};
+
 /**
  * Default `LearnNextDueCards` mocks returning `[]`.
  *
@@ -250,6 +257,7 @@ function makeSwipeMock(mode: 1 | 2 | 4) {
                 __typename: "SwipeResponse" as const,
                 performanceMode: 0,
                 metrics: DEFAULT_METRICS,
+                userCardState: NO_GAIN_USER_CARD_STATE,
               },
             },
           },
@@ -784,6 +792,118 @@ describe("<LearnClient> persist-last-viewed path", () => {
   });
 });
 
+describe("<LearnClient> memory-grew reward overlay", () => {
+  // The HandleSwipeSuccess branch maps the swiped card's resting stability
+  // (closure `card.userCardState.stability`) to the post-swipe stability from
+  // the mutation response (`payload.response.userCardState.stability`). When the
+  // post-swipe stability is higher, MemoryGrewOverlay surfaces "Memory +N%" and
+  // auto-dismisses after 1500ms. The card is optimistically removed before this
+  // resolves, so the overlay floats inside the relative card container.
+  //
+  // Forwarding spy: do NOT call `mockImplementation(() => {})`. Per
+  // docs/pagination/capture-mockedprovider-warn-leaks.md § "Spy stacking", this
+  // spy is the OUTER spy (installed after the file-wide leak spy) and must
+  // forward every console.warn through so MockedProvider leaks are still recorded.
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleWarnSpy = vi.spyOn(console, "warn");
+  });
+
+  afterEach(() => {
+    consoleWarnSpy.mockRestore();
+  });
+
+  it("shows Memory +N% on a stability gain and auto-dismisses it", async () => {
+    const user = userEvent.setup();
+    // Resting stability 2.5 days (12%); post-swipe 21 days (100%) → +88%.
+    const restingCard = {
+      ...CARD_1,
+      userCardState: userCardState("2026-04-30T00:00:00Z", 0, 2.5),
+    };
+    const swipeMock = {
+      request: {
+        query: HandleSwipeDocument,
+        variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, mode: 4 } },
+      },
+      result: {
+        data: {
+          handleSwipe: {
+            __typename: "HandleSwipeSuccess" as const,
+            response: {
+              __typename: "SwipeResponse" as const,
+              performanceMode: 0,
+              metrics: DEFAULT_METRICS,
+              userCardState: {
+                __typename: "UserCardState" as const,
+                stability: 21,
+                state: 2,
+              },
+            },
+          },
+        },
+      },
+    };
+
+    renderLearnClient([swipeMock], [restingCard, CARD_2]);
+
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Memory +88%")).toBeInTheDocument();
+    });
+
+    // The overlay auto-dismisses after 1500ms.
+    await waitFor(
+      () => {
+        expect(screen.queryByText("Memory +88%")).not.toBeInTheDocument();
+      },
+      { timeout: 2000 },
+    );
+  });
+
+  it("shows no reward overlay when stability does not increase", async () => {
+    const user = userEvent.setup();
+    const restingCard = {
+      ...CARD_1,
+      userCardState: userCardState("2026-04-30T00:00:00Z", 0, 21),
+    };
+    const swipeMock = {
+      request: {
+        query: HandleSwipeDocument,
+        variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, mode: 4 } },
+      },
+      result: {
+        data: {
+          handleSwipe: {
+            __typename: "HandleSwipeSuccess" as const,
+            response: {
+              __typename: "SwipeResponse" as const,
+              performanceMode: 0,
+              metrics: DEFAULT_METRICS,
+              userCardState: {
+                __typename: "UserCardState" as const,
+                stability: 21,
+                state: 2,
+              },
+            },
+          },
+        },
+      },
+    };
+
+    renderLearnClient([swipeMock], [restingCard, CARD_2]);
+
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+    // The next card advances, confirming the swipe resolved.
+    await waitFor(() => {
+      expect(screen.getByText("Bye")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Memory \+/)).not.toBeInTheDocument();
+  });
+});
+
 describe("<LearnClient> LearnActionBar integration", () => {
   it("renders LearnActionBar when cards exist", () => {
     renderLearnClient([]);
@@ -856,6 +976,7 @@ describe("<LearnClient> onSwipe identity stability", () => {
               __typename: "SwipeResponse" as const,
               performanceMode: 0,
               metrics: DEFAULT_METRICS,
+              userCardState: NO_GAIN_USER_CARD_STATE,
             },
           },
         },
@@ -999,6 +1120,7 @@ describe("<LearnClient> queue prefetch", () => {
               __typename: "SwipeResponse" as const,
               performanceMode: 0,
               metrics: DEFAULT_METRICS,
+              userCardState: NO_GAIN_USER_CARD_STATE,
             },
           },
         },
@@ -1124,6 +1246,7 @@ describe("<LearnClient> queue prefetch", () => {
               __typename: "SwipeResponse" as const,
               performanceMode: 0,
               metrics: DEFAULT_METRICS,
+              userCardState: NO_GAIN_USER_CARD_STATE,
             },
           },
         },

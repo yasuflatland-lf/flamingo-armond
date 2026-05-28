@@ -11,6 +11,7 @@ import {
 } from "@/app/learn/queries";
 import { AllCaughtUp } from "@/components/learn/all-caught-up";
 import { LearnActionBar } from "@/components/learn/learn-action-bar";
+import { MemoryGrewOverlay } from "@/components/learn/memory-grew-overlay";
 import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
 import type { SwipeDirection } from "@/components/learn/types";
@@ -48,6 +49,7 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
   const [completed, setCompleted] = useState(0);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [reward, setReward] = useState<{ from: number; to: number } | null>(null);
   const swipeStackRef = useRef<SwipeCardStackHandle | null>(null);
 
   const [handleSwipe, { error }] = useMutation(HandleSwipeMutation);
@@ -225,11 +227,18 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
 
       if (!result) return;
 
-      // HandleSwipeSuccess is a no-op: the optimistic delete already advanced
-      // the queue and the response carries only performance telemetry that no
-      // UI consumer reads today. Only the non-success branches need handling.
+      // On success the optimistic delete already advanced the queue. Surface a
+      // transient reward overlay when the post-swipe stability exceeds the
+      // card's resting stability — the overlay floats because the card is
+      // already gone from the queue.
       const payload = result.data?.handleSwipe;
-      if (payload?.__typename === "HandleSwipeSuccess") return;
+      if (payload?.__typename === "HandleSwipeSuccess") {
+        setReward({
+          from: card.userCardState.stability,
+          to: payload.response.userCardState.stability,
+        });
+        return;
+      }
 
       if (payload?.__typename === "InputValidationError") {
         // Server rejected the swipe (stale card, cardgroup mismatch, invalid mode).
@@ -293,6 +302,9 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
           onCardSwiped={onSwipe}
           completedCount={completed}
         />
+        {reward && (
+          <MemoryGrewOverlay from={reward.from} to={reward.to} onDone={() => setReward(null)} />
+        )}
       </div>
       <LearnActionBar onRate={handleRate} disabled={queue.length === 0} />
     </section>
