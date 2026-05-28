@@ -174,10 +174,10 @@ const DEFAULT_METRICS = {
 };
 
 // Post-swipe state with no stability gain — the reward overlay stays hidden.
+// The HandleSwipe success selection only reads `stability`, so the mock omits `state`.
 const NO_GAIN_USER_CARD_STATE = {
   __typename: "UserCardState" as const,
   stability: 0,
-  state: 0,
 };
 
 /**
@@ -837,7 +837,6 @@ describe("<LearnClient> memory-grew reward overlay", () => {
               userCardState: {
                 __typename: "UserCardState" as const,
                 stability: 21,
-                state: 2,
               },
             },
           },
@@ -884,7 +883,6 @@ describe("<LearnClient> memory-grew reward overlay", () => {
               userCardState: {
                 __typename: "UserCardState" as const,
                 stability: 21,
-                state: 2,
               },
             },
           },
@@ -901,6 +899,69 @@ describe("<LearnClient> memory-grew reward overlay", () => {
       expect(screen.getByText("Bye")).toBeInTheDocument();
     });
     expect(screen.queryByText(/Memory \+/)).not.toBeInTheDocument();
+  });
+
+  it("auto-dismisses the overlay even when a prefetch re-renders the parent mid-window", async () => {
+    // Regression guard for the stable-onDone fix: a background prefetch that
+    // resolves during the 1500ms reward window fires setQueue, re-rendering the
+    // parent. With an inline `() => setReward(null)` the overlay effect's dep
+    // would change identity and reset the auto-dismiss timer, so the overlay
+    // would never dismiss. The stable `handleRewardDone` keeps the timer alive.
+    const user = userEvent.setup();
+    // Resting stability 2.5 days (12%); post-swipe 21 days (100%) → +88%.
+    const restingCard = {
+      ...CARD_1,
+      userCardState: userCardState("2026-04-30T00:00:00Z", 0, 2.5),
+    };
+    const swipeMock = {
+      request: {
+        query: HandleSwipeDocument,
+        variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, mode: 4 } },
+      },
+      result: {
+        data: {
+          handleSwipe: {
+            __typename: "HandleSwipeSuccess" as const,
+            response: {
+              __typename: "SwipeResponse" as const,
+              performanceMode: 0,
+              metrics: DEFAULT_METRICS,
+              userCardState: {
+                __typename: "UserCardState" as const,
+                stability: 21,
+              },
+            },
+          },
+        },
+      },
+    };
+    // After the optimistic delete the queue is short (1 card), so the prefetch
+    // effect fires. Hold the response open ~700ms so it resolves inside the
+    // 1500ms reward window, forcing a mid-window parent re-render via setQueue.
+    const prefetch = makePrefetchMock(makeQueue(1, "p"), { delay: 700 });
+
+    renderLearnClient([swipeMock, prefetch.mock], [restingCard, CARD_2], {
+      skipDefaultPrefetchMocks: true,
+    });
+
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Memory +88%")).toBeInTheDocument();
+    });
+
+    // The prefetch must resolve mid-window and merge its card into the queue.
+    await waitFor(() => {
+      expect(prefetch.callCount()).toBe(1);
+    });
+
+    // Despite the mid-window re-render, the overlay still auto-dismisses.
+    await waitFor(
+      () => {
+        expect(screen.queryByText("Memory +88%")).not.toBeInTheDocument();
+      },
+      { timeout: 2500 },
+    );
   });
 });
 

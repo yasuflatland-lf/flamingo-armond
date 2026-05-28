@@ -36,7 +36,6 @@ export const HandleSwipeMutation = graphql(`
           }
           userCardState {
             stability
-            state
           }
         }
       }

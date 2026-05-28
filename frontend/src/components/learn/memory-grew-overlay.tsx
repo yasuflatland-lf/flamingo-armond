@@ -4,15 +4,15 @@ import { useEffect } from "react";
 import { stabilityToPercent } from "./fsrs-stability";
 
 export function MemoryGrewOverlay({
-  from,
-  to,
+  fromStability,
+  toStability,
   onDone,
 }: {
-  from: number;
-  to: number;
+  fromStability: number;
+  toStability: number;
   onDone: () => void;
 }) {
-  const delta = stabilityToPercent(to) - stabilityToPercent(from);
+  const delta = stabilityToPercent(toStability) - stabilityToPercent(fromStability);
 
   useEffect(() => {
     if (delta <= 0) {

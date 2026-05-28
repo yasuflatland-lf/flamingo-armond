@@ -49,7 +49,7 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
   const [completed, setCompleted] = useState(0);
   const [localError, setLocalError] = useState<string | null>(null);
-  const [reward, setReward] = useState<{ from: number; to: number } | null>(null);
+  const [reward, setReward] = useState<{ fromStability: number; toStability: number } | null>(null);
   const swipeStackRef = useRef<SwipeCardStackHandle | null>(null);
 
   const [handleSwipe, { error }] = useMutation(HandleSwipeMutation);
@@ -227,15 +227,15 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
 
       if (!result) return;
 
-      // On success the optimistic delete already advanced the queue. Surface a
-      // transient reward overlay when the post-swipe stability exceeds the
-      // card's resting stability — the overlay floats because the card is
-      // already gone from the queue.
+      // The optimistic delete already removed this card from the queue, so the
+      // reward is a floating overlay: MemoryGrewOverlay itself decides whether
+      // to show (delta > 0) and dismisses itself. We set the reward
+      // unconditionally with the before/after stability and let the overlay judge.
       const payload = result.data?.handleSwipe;
       if (payload?.__typename === "HandleSwipeSuccess") {
         setReward({
-          from: card.userCardState.stability,
-          to: payload.response.userCardState.stability,
+          fromStability: card.userCardState.stability,
+          toStability: payload.response.userCardState.stability,
         });
         return;
       }
@@ -266,6 +266,18 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
     },
     [cardgroupId, handleSwipe],
   );
+
+  // Clear any pending reward when the queue empties. The empty queue early-returns
+  // <AllCaughtUp /> and unmounts the overlay, so its onDone never fires; without
+  // this, a late prefetch that repopulates the queue would re-flash a stale reward.
+  useEffect(() => {
+    if (queue.length === 0) setReward(null);
+  }, [queue.length]);
+
+  // Stable onDone so a parent re-render mid-window (e.g. a prefetch resolving and
+  // calling setQueue) does not reset the overlay's auto-dismiss timer — the
+  // overlay's effect depends on this callback's identity.
+  const handleRewardDone = useCallback(() => setReward(null), []);
 
   // SwipeCardStack owns the overlay paint + commit-delay timing internally,
   // so handleRate only needs to forward the direction through the imperative
@@ -303,7 +315,11 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
           completedCount={completed}
         />
         {reward && (
-          <MemoryGrewOverlay from={reward.from} to={reward.to} onDone={() => setReward(null)} />
+          <MemoryGrewOverlay
+            fromStability={reward.fromStability}
+            toStability={reward.toStability}
+            onDone={handleRewardDone}
+          />
         )}
       </div>
       <LearnActionBar onRate={handleRate} disabled={queue.length === 0} />
