@@ -138,10 +138,11 @@ afterEach(() => {
 
 const CG_ID = "cg-1";
 
-const userCardState = (due: string, state: number) => ({
+const userCardState = (due: string, state: number, stability = 0) => ({
   __typename: "UserCardState" as const,
   due,
   state,
+  stability,
 });
 
 const CARD_1 = {

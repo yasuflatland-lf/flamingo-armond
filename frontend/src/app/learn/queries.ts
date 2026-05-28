@@ -12,6 +12,7 @@ export const LearnNextDueCardsQuery = graphql(`
       userCardState {
         due
         state
+        stability
       }
       cardgroupId
     }
@@ -32,6 +33,10 @@ export const HandleSwipeMutation = graphql(`
             studyStreak
             lapseRate
             reviewCount
+          }
+          userCardState {
+            stability
+            state
           }
         }
       }
