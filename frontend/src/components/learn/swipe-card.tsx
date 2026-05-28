@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import type { RefObject } from "react";
 import type { AnimatedCardHandle } from "./animated-card";
+import { MemoryBar } from "./memory-bar";
 import type { SwipeDirection } from "./types";
 
 export type { AnimatedCardHandle } from "./animated-card";
@@ -14,6 +15,7 @@ export type SwipeCardData = {
   userCardState: {
     due: string;
     state: number;
+    stability: number;
   };
   cardgroupId: string;
 };
@@ -48,7 +50,7 @@ const AnimatedCard = dynamic(() => import("./animated-card").then((m) => m.Anima
 // CardContent is exported so animated-card.tsx can share the same presentational layer.
 export function CardContent({ card }: { card: SwipeCardData }) {
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card p-6 shadow-lg">
+    <div className="relative flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card p-6 shadow-lg">
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 text-center">
         <p className="max-w-full break-words text-4xl font-semibold leading-tight text-foreground sm:text-5xl">
           {card.front}
@@ -57,6 +59,7 @@ export function CardContent({ card }: { card: SwipeCardData }) {
           {card.back}
         </p>
       </div>
+      <MemoryBar stability={card.userCardState.stability} />
     </div>
   );
 }

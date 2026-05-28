@@ -113,6 +113,7 @@ const makeCard = (id: string): SwipeCardData => ({
   userCardState: {
     due: "2026-01-01",
     state: 0,
+    stability: 2.5,
   },
   cardgroupId: "cg-1",
 });

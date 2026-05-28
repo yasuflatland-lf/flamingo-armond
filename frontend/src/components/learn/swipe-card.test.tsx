@@ -10,6 +10,7 @@ const CARD: SwipeCardData = {
   userCardState: {
     due: "2026-04-30T00:00:00Z",
     state: 0,
+    stability: 2.5,
   },
   cardgroupId: "cg-1",
 };
