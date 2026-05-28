@@ -65,6 +65,7 @@ type HandleSwipeInput struct {
 type SwipeOutput struct {
 	PerformanceMode int
 	Metrics         service.PerformanceMetrics
+	StateAfter      domain.FSRSState
 }
 
 // HandleSwipeOutcome is the result of SwipeUsecase.HandleSwipe. Exactly one of
@@ -153,6 +154,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 	}
 
 	var now time.Time
+	var stateAfter domain.FSRSState
 	if u.tx == nil {
 		return HandleSwipeOutcome{}, eris.New("usecase: swipe: transaction runner is not configured")
 	}
@@ -195,6 +197,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 			}
 			return eris.Wrap(err, "usecase: swipe: upsert user-card fsrs")
 		}
+		stateAfter = current.State
 		sr, err := u.newSwipeRecord(user.Sub, card.ID, card.CardgroupID, rating, now, current.State)
 		if err != nil {
 			return eris.Wrap(err, "usecase: swipe: new swipe record")
@@ -230,6 +233,7 @@ func (u *swipeUsecase) HandleSwipe(ctx context.Context, in HandleSwipeInput) (Ha
 	return HandleSwipeOutcome{Swipe: &SwipeOutput{
 		PerformanceMode: service.ModeFromMetrics(metrics),
 		Metrics:         metrics,
+		StateAfter:      stateAfter,
 	}}, nil
 }
 

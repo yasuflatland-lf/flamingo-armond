@@ -122,6 +122,7 @@ func handleSwipeMutation(cardID, cardgroupID string, mode int) string {
 					response {
 						performanceMode
 						metrics { successRate avgDifficulty retentionRate studyStreak lapseRate reviewCount }
+						userCardState { stability state }
 					}
 				}
 				... on InputValidationError { field message }
@@ -164,8 +165,9 @@ func TestResolver_HandleSwipe_HappyPath(t *testing.T) {
 
 	srv := newSwipeSrv(cardRepo, cgRepo, swipeRepo, fsrsRepo)
 
-	// Mode 1 = Again — a valid swipe mode.
-	resp := gqlRequest(t, srv, authedCtx("u-1"), handleSwipeMutation("c-1", "cg-1", 1))
+	// Mode 4 = Easy — a valid swipe mode that grows the new card's stability past
+	// its 2.5 baseline, exercising the post-swipe userCardState wiring.
+	resp := gqlRequest(t, srv, authedCtx("u-1"), handleSwipeMutation("c-1", "cg-1", 4))
 
 	if _, hasErrs := resp["errors"]; hasErrs {
 		t.Fatalf("unexpected errors: %v", resp["errors"])
@@ -181,6 +183,14 @@ func TestResolver_HandleSwipe_HappyPath(t *testing.T) {
 	response, _ := payload["response"].(map[string]any)
 	if response == nil {
 		t.Fatalf("expected response in HandleSwipeSuccess, got nil; response: %v", resp)
+	}
+	ucs, _ := response["userCardState"].(map[string]any)
+	if ucs == nil {
+		t.Fatalf("expected non-nil response.userCardState, got nil; response: %v", resp)
+	}
+	stability, _ := ucs["stability"].(float64)
+	if stability <= 2.5 {
+		t.Fatalf("expected post-swipe stability > 2.5 after an Easy rating, got %v", ucs["stability"])
 	}
 }
 

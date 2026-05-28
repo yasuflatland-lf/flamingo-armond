@@ -168,6 +168,12 @@ func TestSwipeUsecase_HandleSwipeCreatesUserFSRSStateForFirstSwipe(t *testing.T)
 	if outcome.Swipe == nil {
 		t.Fatal("expected non-nil Swipe on success")
 	}
+	if outcome.Swipe.StateAfter.Stability <= 2.5 {
+		t.Fatalf("expected post-swipe stability > 2.5 after an Easy rating on a new card, got %v", outcome.Swipe.StateAfter.Stability)
+	}
+	if outcome.Swipe.StateAfter.State != domain.FSRSStateReview {
+		t.Fatalf("expected post-swipe state Review, got %v", outcome.Swipe.StateAfter.State)
+	}
 	if userFSRSRepo.upserted == nil {
 		t.Fatal("expected per-user FSRS row to be upserted")
 	}

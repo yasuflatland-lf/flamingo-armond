@@ -6,11 +6,13 @@ input HandleSwipeInput {
   mode: Int!
 }
 
-"""Response returned by `handleSwipe` — the latest performance snapshot for the swipe flow."""
+"""Response returned by `handleSwipe` — the latest performance snapshot plus the reviewed card's post-swipe FSRS state."""
 type SwipeResponse {
   """Performance mode for the swipe flow, expressed as an Int in the 0..4 range."""
   performanceMode: Int!
   metrics: PerformanceMetrics!
+  """The reviewed card's FSRS scheduling state after this swipe was applied."""
+  userCardState: UserCardState!
 }
 
 """Per-viewer performance metrics returned alongside a swipe response."""
@@ -23,7 +25,7 @@ type PerformanceMetrics {
   reviewCount: Int!
 }
 
-"""Success variant returned by `handleSwipe` when the swipe was recorded. Carries the latest `SwipeResponse` (performance snapshot only — the client manages its own queue and prefetches the next page separately)."""
+"""Success variant returned by `handleSwipe` when the swipe was recorded. Carries the latest `SwipeResponse` (performance snapshot plus the reviewed card's post-swipe FSRS state — the client manages its own queue and prefetches the next page separately)."""
 type HandleSwipeSuccess {
   response: SwipeResponse!
 }

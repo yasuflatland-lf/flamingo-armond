@@ -66,6 +66,20 @@ func toModelUserCardState(ucs *domain.UserCardFSRS) *model.UserCardState {
 	}
 }
 
+func toModelUserCardStateFromFSRS(s domain.FSRSState) *model.UserCardState {
+	return &model.UserCardState{
+		Due:           s.Due,
+		Stability:     s.Stability,
+		Difficulty:    s.Difficulty,
+		State:         int(s.State),
+		Reps:          s.Reps,
+		Lapses:        s.Lapses,
+		LastReview:    s.LastReview,
+		ElapsedDays:   s.ElapsedDays,
+		ScheduledDays: s.ScheduledDays,
+	}
+}
+
 func toCardModels(ctx context.Context, cards []*domain.Card) []*model.Card {
 	out := make([]*model.Card, 0, len(cards))
 	for _, card := range cards {
@@ -137,5 +151,6 @@ func toSwipeResponseModel(out *usecase.SwipeOutput) *model.SwipeResponse {
 			LapseRate:     out.Metrics.LapseRate,
 			ReviewCount:   out.Metrics.ReviewCount,
 		},
+		UserCardState: toModelUserCardStateFromFSRS(out.StateAfter),
 	}
 }
