@@ -381,4 +381,90 @@ describe("<FormSheet>", () => {
       "overflow-y-auto",
     );
   });
+
+  it("renders a string-title desktop sheet with accessible description '<title> form'", () => {
+    render(
+      <FormSheet open onOpenChange={vi.fn()} title="Edit card">
+        <p>Body</p>
+      </FormSheet>,
+    );
+    // The SheetDescription carries "<title> form" so screen readers announce the form purpose.
+    expect(screen.getByRole("dialog")).toHaveAccessibleDescription("Edit card form");
+  });
+
+  describe.each([{ mobile: false }, { mobile: true }])("ReactNode title — mobile=$mobile", ({
+    mobile,
+  }) => {
+    beforeEach(() => {
+      vi.mocked(useIsMobile).mockReturnValue(mobile);
+    });
+
+    it("exposes both verb and destination in the heading textContent", () => {
+      const cardgroupName = "Yasu Cardgroup";
+      render(
+        <FormSheet
+          open
+          onOpenChange={vi.fn()}
+          title={
+            <span
+              className="block overflow-hidden text-ellipsis whitespace-nowrap"
+              title={cardgroupName}
+            >
+              <span className="sr-only">Batch import into </span>
+              {cardgroupName}
+            </span>
+          }
+        >
+          <p>Body</p>
+        </FormSheet>,
+      );
+
+      // textContent includes sr-only spans, so both the hidden prefix and the
+      // visible cardgroup name appear (this is NOT the ARIA-computed name).
+      const heading = screen.getByRole("heading");
+      expect(heading.textContent).toContain("Batch import into");
+      expect(heading.textContent).toContain(cardgroupName);
+      // The dialog is labelled by the title element via aria-labelledby; the
+      // computed accessible name therefore includes both parts.
+      expect(screen.getByRole("dialog")).toHaveAccessibleName(/batch import into.*yasu cardgroup/i);
+    });
+
+    it("title span carries truncation classes and tooltip attribute", () => {
+      const cardgroupName = "A Very Long Cardgroup Name That Should Truncate";
+      render(
+        <FormSheet
+          open
+          onOpenChange={vi.fn()}
+          title={
+            <span
+              className="block overflow-hidden text-ellipsis whitespace-nowrap"
+              title={cardgroupName}
+            >
+              <span className="sr-only">Batch import into </span>
+              {cardgroupName}
+            </span>
+          }
+        >
+          <p>Body</p>
+        </FormSheet>,
+      );
+
+      const heading = screen.getByRole("heading");
+      const titleSpan = heading.querySelector("span[title]");
+      expect(titleSpan).not.toBeNull();
+      expect(titleSpan).toHaveAttribute("title", cardgroupName);
+      expect(titleSpan).toHaveClass("overflow-hidden", "text-ellipsis", "whitespace-nowrap");
+    });
+
+    it("a11yDescription falls back to 'Form' when title is a ReactNode and no description is provided", () => {
+      render(
+        <FormSheet open onOpenChange={vi.fn()} title={<span>Some ReactNode title</span>}>
+          <p>Body</p>
+        </FormSheet>,
+      );
+
+      // The sr-only description element carries the fallback text "Form".
+      expect(screen.getByRole("dialog")).toHaveAccessibleDescription("Form");
+    });
+  });
 });

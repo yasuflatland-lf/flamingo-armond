@@ -244,7 +244,7 @@ func TestImportCards_ResolverMapsValidationErrorFrontBack(t *testing.T) {
 			Errors: []usecase.CardImportError{
 				{
 					Line:    3,
-					Message: "duplicate front in payload (later occurrence wins)",
+					Message: "duplicated front (apple) was overridden with the new back (fruit)",
 					Kind:    usecase.CardImportErrKindDuplicate,
 					Front:   "apple",
 					Back:    "fruit",
@@ -416,7 +416,7 @@ func TestImportCards_ResolverKindDuplicateSnippetNull(t *testing.T) {
 			Errors: []usecase.CardImportError{
 				{
 					Line:    1,
-					Message: "duplicate front in payload (later occurrence wins)",
+					Message: "duplicated front (apple) was overridden with the new back (fruit)",
 					Kind:    usecase.CardImportErrKindDuplicate,
 					Front:   "apple",
 					Back:    "fruit",

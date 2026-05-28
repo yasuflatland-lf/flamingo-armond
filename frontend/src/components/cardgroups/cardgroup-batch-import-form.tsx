@@ -1,14 +1,14 @@
 "use client";
 
 import { useApolloClient, useLazyQuery, useMutation } from "@apollo/client/react";
-import { Check, ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import type { JSX, ReactNode } from "react";
 import { useState } from "react";
 import { ImportCardsMutation, ValidateCardImportQuery } from "@/app/cardgroups/[id]/cards/queries";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
-import { CardsByCardgroupConnectionDocument } from "@/generated/graphql";
+import { type CardImportErrorKind, CardsByCardgroupConnectionDocument } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { cn } from "@/lib/utils";
 
@@ -33,8 +33,16 @@ type ValidationResult = {
 type ImportResult = {
   inserted: number;
   updated: number;
-  errors: Array<{ line: number; message: string }>;
+  errors: Array<{ line: number; message: string; kind: CardImportErrorKind }>;
 };
+
+/**
+ * `DUPLICATE` is non-fatal: the row still persisted via last-write-wins, so it
+ * reads as a warning. Every other kind dropped a row and reads as an error.
+ */
+function isWarningKind(kind: CardImportErrorKind | undefined): boolean {
+  return kind === "DUPLICATE";
+}
 
 /**
  * Classify a raw Apollo error into a user-facing banner string, delegating to
@@ -95,62 +103,46 @@ export function resolveStep1Button(state: Step1ButtonState): Step1ButtonSpec {
   return { label: "Validate", action: "validate", disabled: false };
 }
 
-/** Breadcrumb showing the two import steps with a back affordance on step 2. */
+/** Quiet 2-segment progress bar showing the two import steps with a back affordance on step 2. */
 function ImportStepper(props: {
   current: 1 | 2;
   importing: boolean;
   onBack: () => void;
 }): JSX.Element {
   const { current, importing, onBack } = props;
+  const caption = current === 1 ? "Paste & review" : "Import";
   return (
-    <nav aria-label="Import steps" className="flex items-center justify-between gap-3 text-sm">
-      <ol className="flex items-center gap-2">
-        <li>
-          {current === 2 ? (
-            <button
-              type="button"
-              onClick={onBack}
-              disabled={importing}
-              className="inline-flex items-center gap-1 rounded-md font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
-            >
-              <Check aria-hidden="true" className="size-4 text-green-600" />
-              Paste &amp; review
-            </button>
-          ) : (
-            <span
-              aria-current={current === 1 ? "step" : undefined}
-              className={cn(
-                "inline-flex items-center rounded-md px-2 py-0.5 font-medium",
-                current === 1 ? "bg-brand-primary/10 text-brand-primary" : "text-muted-foreground",
-              )}
-            >
-              Paste &amp; review
-            </span>
-          )}
-        </li>
-        <li aria-hidden="true">
-          <ChevronRight className="size-4 text-muted-foreground" />
-        </li>
-        <li>
-          <span
-            aria-current={current === 2 ? "step" : undefined}
-            className={cn(
-              "inline-flex items-center rounded-md px-2 py-0.5 font-medium",
-              current === 2 ? "bg-brand-primary/10 text-brand-primary" : "text-muted-foreground",
-            )}
-          >
-            Import
-          </span>
-        </li>
-      </ol>
-      <span className="text-xs text-muted-foreground">{current} of 2</span>
+    <nav aria-label="Import steps" className="flex items-center gap-2">
+      {current === 2 ? (
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={importing}
+          aria-label="Paste & review"
+          className="-my-2 py-2 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          <span className="block h-1 w-10 rounded-full bg-brand-primary" />
+        </button>
+      ) : (
+        <div className="h-1 w-10 rounded-full bg-brand-primary" />
+      )}
+      <div
+        className={cn("h-1 w-10 rounded-full", current === 2 ? "bg-brand-primary" : "bg-muted")}
+      />
+      <span className="ml-1 text-xs text-muted-foreground">{caption}</span>
+      <span className="sr-only">Step {current} of 2</span>
     </nav>
   );
 }
 
-/** Renders a list of line-level import/validation errors. */
+/**
+ * Renders a list of line-level import/validation messages. A `DUPLICATE`-kind
+ * row reads as a non-fatal warning (amber — the row still persisted via
+ * last-write-wins); every other kind, and any row without a kind (validation
+ * step), reads as a blocking error (red).
+ */
 function ErrorList(props: {
-  errors: Array<{ line: number; message: string }>;
+  errors: Array<{ line: number; message: string; kind?: CardImportErrorKind }>;
   className?: string;
   role?: string;
 }): JSX.Element {
@@ -160,7 +152,12 @@ function ErrorList(props: {
       {errors.map((err) => (
         <li
           key={`${err.line}-${err.message}`}
-          className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          className={cn(
+            "rounded-md px-3 py-2 text-sm",
+            isWarningKind(err.kind)
+              ? "bg-amber-50 text-amber-800"
+              : "bg-destructive/10 text-destructive",
+          )}
         >
           <span className="font-medium">Line {err.line}:</span> {err.message}
         </li>
@@ -332,6 +329,18 @@ export function CardgroupBatchImportForm(props: {
   }
 
   const parsedCards = validationResult?.parsedCards ?? [];
+  // Duplicate-front rows are non-fatal warnings (last-write-wins still
+  // persisted the row); every other kind is a genuine error.
+  const importWarningCount = importResult?.errors.filter((e) => isWarningKind(e.kind)).length ?? 0;
+  const importErrorCount = importResult?.errors.filter((e) => !isWarningKind(e.kind)).length ?? 0;
+  // "Failed" is keyed on genuine errors only: warnings never block a row from
+  // persisting, so a result with nothing persisted and only warnings is still
+  // a success (and in practice cannot occur — a warning implies a winner row).
+  const importAllFailed =
+    importResult != null &&
+    importResult.inserted === 0 &&
+    importResult.updated === 0 &&
+    importErrorCount > 0;
 
   function goBackToStep1() {
     setBannerError("");
@@ -367,21 +376,13 @@ export function CardgroupBatchImportForm(props: {
 
       {step === 1 ? (
         <div className="space-y-4">
-          <h2 className="text-base font-semibold">Paste your cards</h2>
-
-          <div className="text-sm">
-            <span className="font-medium">Target:</span>{" "}
-            <span className="text-muted-foreground">{cardgroupName}</span>
-          </div>
-
           <div className="space-y-2">
-            <label htmlFor="batch-import-payload" className="block text-sm font-medium">
-              Cards to import
+            <label htmlFor="batch-import-payload" className="block text-xs">
+              <span className="font-medium text-muted-foreground">Cards to import</span>
+              <span className="font-normal text-muted-foreground/70">
+                {" — separate each pair with a Tab"}
+              </span>
             </label>
-            <p className="text-xs text-muted-foreground">
-              One card per line: an English word, a tab, then its Japanese translation (e.g. pasted
-              from a spreadsheet column pair).
-            </p>
             <Textarea
               id="batch-import-payload"
               value={payloadText}
@@ -416,13 +417,13 @@ export function CardgroupBatchImportForm(props: {
           <WizardFooter
             left={
               <Button type="button" variant="ghost" onClick={() => onCancel?.()}>
-                Cancel
+                Back to Cardgroup
               </Button>
             }
             right={
               <Button
                 type="button"
-                variant={buttonSpec.action === "continue" ? "brand" : "outline"}
+                variant={buttonSpec.action !== null ? "brand" : "outline"}
                 onClick={onStep1ButtonClick}
                 disabled={buttonSpec.disabled}
               >
@@ -436,22 +437,19 @@ export function CardgroupBatchImportForm(props: {
           {importResult ? (
             <section className="space-y-4">
               <div role="status">
-                {importResult.inserted === 0 &&
-                importResult.updated === 0 &&
-                importResult.errors.length > 0 ? (
+                {importAllFailed ? (
                   <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                    Import failed: no cards persisted, {importResult.errors.length}{" "}
-                    {plural(importResult.errors.length, "error")}.
+                    Import failed: no cards persisted, {importErrorCount}{" "}
+                    {plural(importErrorCount, "error")}.
                   </div>
                 ) : (
                   <div className="rounded-md bg-green-50 p-3 text-sm text-green-800">
                     Import complete — {importResult.inserted} inserted, {importResult.updated}{" "}
                     updated
-                    {importResult.errors.length > 0 &&
-                      `, ${importResult.errors.length} ${plural(
-                        importResult.errors.length,
-                        "error",
-                      )}`}
+                    {importWarningCount > 0 &&
+                      `, ${importWarningCount} ${plural(importWarningCount, "warning")}`}
+                    {importErrorCount > 0 &&
+                      `, ${importErrorCount} ${plural(importErrorCount, "error")}`}
                     .
                   </div>
                 )}

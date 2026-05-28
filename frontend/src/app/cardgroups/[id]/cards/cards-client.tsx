@@ -572,8 +572,17 @@ export function CardsClient({
           />
         </FormSheet>
 
+        {/* Object-first: header shows only the destination cardgroup (the high-risk variable); the verb lives in the sr-only accessible name. Intentional deviation from the verb-first sheets. */}
         <FormSheet
-          title="Batch import"
+          title={
+            <span
+              className="block overflow-hidden text-ellipsis whitespace-nowrap"
+              title={cardgroupName}
+            >
+              <span className="sr-only">Batch import into </span>
+              {cardgroupName}
+            </span>
+          }
           open={batchImportOpen}
           onOpenChange={setBatchImportOpen}
           size="lg"

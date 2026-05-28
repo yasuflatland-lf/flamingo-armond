@@ -39,7 +39,7 @@ const desktopWidthBySize: Record<FormSheetSize, string> = {
 type FormSheetProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  title: string;
+  title: string | React.ReactNode;
   description?: string;
   dirty?: boolean;
   confirmOnDismiss?: boolean;
@@ -73,7 +73,7 @@ function FormSheet({
   size = "md",
   children,
 }: FormSheetProps) {
-  const a11yDescription = description ?? `${title} form`;
+  const a11yDescription = description ?? (typeof title === "string" ? `${title} form` : "Form");
   const isMobile = useIsMobile();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
 
@@ -121,7 +121,9 @@ function FormSheet({
     <Drawer open={open} onOpenChange={requestOpenChange}>
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>{title}</DrawerTitle>
+          <DrawerTitle className="overflow-hidden text-ellipsis whitespace-nowrap">
+            {title}
+          </DrawerTitle>
           <DrawerDescription className={description ? undefined : "sr-only"}>
             {a11yDescription}
           </DrawerDescription>
@@ -138,7 +140,9 @@ function FormSheet({
     <Sheet open={open} onOpenChange={requestOpenChange}>
       <SheetContent side="right" className={cn("flex w-full flex-col", desktopWidthBySize[size])}>
         <SheetHeader>
-          <SheetTitle>{title}</SheetTitle>
+          <SheetTitle className="overflow-hidden text-ellipsis whitespace-nowrap">
+            {title}
+          </SheetTitle>
           <SheetDescription className={description ? undefined : "sr-only"}>
             {a11yDescription}
           </SheetDescription>

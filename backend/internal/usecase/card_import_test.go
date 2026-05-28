@@ -859,6 +859,14 @@ func TestCardImportUsecase_DuplicateFrontDeduplicatedAndSurfaced(t *testing.T) {
 	if got := out.Errors[0].Back; got != fruitBack {
 		t.Fatalf("Errors[0].Back = %q, want %q (the dropped row's back)", got, fruitBack)
 	}
+	// The message names the duplicated front and the back that overrode it (the
+	// later, winning occurrence), not the dropped row's own back.
+	if msg := out.Errors[0].Message; !strings.Contains(msg, "apple") || !strings.Contains(msg, rubbishBack) {
+		t.Fatalf("Errors[0].Message = %q, want it to name front %q and winning back %q", msg, "apple", rubbishBack)
+	}
+	if msg := out.Errors[0].Message; strings.Contains(msg, fruitBack) {
+		t.Fatalf("Errors[0].Message = %q, must not embed the dropped back %q", msg, fruitBack)
+	}
 	// The dedupe path leaves Snippet empty by contract: the duplicate error
 	// carries Front + Back, not a raw snippet.
 	if got := out.Errors[0].Snippet; got != "" {
