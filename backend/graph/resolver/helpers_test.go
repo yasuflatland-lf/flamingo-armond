@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -74,6 +75,46 @@ func TestToRoleModels_Empty(t *testing.T) {
 	result := toRoleModels(context.Background(), roles)
 
 	assert.Empty(t, result)
+}
+
+// ---------------------------------------------------------------------------
+// toModelUserCardStateFromFSRS — field-by-field projection
+// ---------------------------------------------------------------------------
+
+// TestToModelUserCardStateFromFSRS_ProjectsEveryField asserts that each
+// model.UserCardState field maps to the matching domain.FSRSState field. Using
+// distinct non-zero values for every field catches transposition bugs that the
+// resolver integration test (which only selects { stability state }) cannot.
+// After the dedup, this also covers toModelUserCardState's projection.
+func TestToModelUserCardStateFromFSRS_ProjectsEveryField(t *testing.T) {
+	t.Parallel()
+
+	due := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	lastReview := time.Date(2025, 6, 7, 8, 9, 10, 0, time.UTC)
+	s := domain.FSRSState{
+		Due:           due,
+		Stability:     12.5,
+		Difficulty:    6.25,
+		ElapsedDays:   3,
+		ScheduledDays: 7,
+		Reps:          11,
+		Lapses:        2,
+		State:         domain.FSRSStateReview,
+		LastReview:    lastReview,
+	}
+
+	got := toModelUserCardStateFromFSRS(s)
+
+	require.NotNil(t, got)
+	assert.Equal(t, due, got.Due, "Due")
+	assert.Equal(t, 12.5, got.Stability, "Stability")
+	assert.Equal(t, 6.25, got.Difficulty, "Difficulty")
+	assert.Equal(t, int(domain.FSRSStateReview), got.State, "State")
+	assert.Equal(t, 11, got.Reps, "Reps")
+	assert.Equal(t, 2, got.Lapses, "Lapses")
+	assert.Equal(t, lastReview, got.LastReview, "LastReview")
+	assert.Equal(t, 3, got.ElapsedDays, "ElapsedDays")
+	assert.Equal(t, 7, got.ScheduledDays, "ScheduledDays")
 }
 
 // ---------------------------------------------------------------------------

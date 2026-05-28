@@ -53,17 +53,7 @@ func toModelUserCardState(ucs *domain.UserCardFSRS) *model.UserCardState {
 	if ucs == nil {
 		return nil
 	}
-	return &model.UserCardState{
-		Due:           ucs.State.Due,
-		Stability:     ucs.State.Stability,
-		Difficulty:    ucs.State.Difficulty,
-		State:         int(ucs.State.State),
-		Reps:          ucs.State.Reps,
-		Lapses:        ucs.State.Lapses,
-		LastReview:    ucs.State.LastReview,
-		ElapsedDays:   ucs.State.ElapsedDays,
-		ScheduledDays: ucs.State.ScheduledDays,
-	}
+	return toModelUserCardStateFromFSRS(ucs.State)
 }
 
 func toModelUserCardStateFromFSRS(s domain.FSRSState) *model.UserCardState {
