@@ -125,19 +125,26 @@ function ImportStepper(props: {
   );
 }
 
-/** Renders a list of line-level import/validation errors. */
+/**
+ * Renders a list of line-level import/validation messages. `variant` controls
+ * the severity color: `destructive` (red) for blocking errors, `warning`
+ * (amber) for non-fatal diagnostics emitted alongside a successful import.
+ */
 function ErrorList(props: {
   errors: Array<{ line: number; message: string }>;
   className?: string;
   role?: string;
+  variant?: "destructive" | "warning";
 }): JSX.Element {
-  const { errors, className, role } = props;
+  const { errors, className, role, variant = "destructive" } = props;
+  const rowClass =
+    variant === "warning" ? "bg-amber-50 text-amber-800" : "bg-destructive/10 text-destructive";
   return (
     <ul className={cn("space-y-1", className)} role={role}>
       {errors.map((err) => (
         <li
           key={`${err.line}-${err.message}`}
-          className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          className={cn("rounded-md px-3 py-2 text-sm", rowClass)}
         >
           <span className="font-medium">Line {err.line}:</span> {err.message}
         </li>
@@ -309,6 +316,13 @@ export function CardgroupBatchImportForm(props: {
   }
 
   const parsedCards = validationResult?.parsedCards ?? [];
+  // Total failure (nothing persisted) reads as destructive; a partial/full
+  // success treats its leftover error rows as non-fatal warnings.
+  const importAllFailed =
+    importResult != null &&
+    importResult.inserted === 0 &&
+    importResult.updated === 0 &&
+    importResult.errors.length > 0;
 
   function goBackToStep1() {
     setBannerError("");
@@ -405,9 +419,7 @@ export function CardgroupBatchImportForm(props: {
           {importResult ? (
             <section className="space-y-4">
               <div role="status">
-                {importResult.inserted === 0 &&
-                importResult.updated === 0 &&
-                importResult.errors.length > 0 ? (
+                {importAllFailed ? (
                   <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
                     Import failed: no cards persisted, {importResult.errors.length}{" "}
                     {plural(importResult.errors.length, "error")}.
@@ -425,7 +437,12 @@ export function CardgroupBatchImportForm(props: {
                   </div>
                 )}
               </div>
-              {importResult.errors.length > 0 && <ErrorList errors={importResult.errors} />}
+              {importResult.errors.length > 0 && (
+                <ErrorList
+                  errors={importResult.errors}
+                  variant={importAllFailed ? "destructive" : "warning"}
+                />
+              )}
               <WizardFooter
                 left={
                   <Button type="button" variant="outline" onClick={goBackToStep1}>

@@ -439,6 +439,10 @@ describe("<CardgroupBatchImportForm>", () => {
       expect(screen.getByText(/duplicate front/i)).toBeInTheDocument();
     });
     expect(screen.getByText(/1 inserted, 0 updated/i)).toBeInTheDocument();
+    // Partial success: leftover error rows are non-fatal warnings (amber), not red.
+    const warningRow = screen.getByText(/duplicate front/i).closest("li");
+    expect(warningRow).toHaveClass("bg-amber-50");
+    expect(warningRow).not.toHaveClass("bg-destructive/10");
     // onImported NOT called on a partial-failure import.
     expect(onImported).not.toHaveBeenCalled();
     // Still on step 2.
@@ -491,8 +495,11 @@ describe("<CardgroupBatchImportForm>", () => {
     expect(
       status.some((el) => /import failed: no cards persisted/i.test(el.textContent ?? "")),
     ).toBe(true);
-    // Error rows render.
+    // Error rows render, and stay destructive (red) because nothing persisted.
     expect(screen.getByText(/constraint violation/i)).toBeInTheDocument();
+    const failedRow = screen.getByText(/constraint violation/i).closest("li");
+    expect(failedRow).toHaveClass("bg-destructive/10");
+    expect(failedRow).not.toHaveClass("bg-amber-50");
     // onImported NOT called automatically on an all-failed import.
     expect(onImported).not.toHaveBeenCalled();
     expect(refetchSpy).toHaveBeenCalledTimes(1);
