@@ -1,7 +1,7 @@
 "use client";
 
 import { useApolloClient, useLazyQuery, useMutation } from "@apollo/client/react";
-import { Check, ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import type { JSX, ReactNode } from "react";
 import { useState } from "react";
 import { ImportCardsMutation, ValidateCardImportQuery } from "@/app/cardgroups/[id]/cards/queries";
@@ -95,55 +95,32 @@ export function resolveStep1Button(state: Step1ButtonState): Step1ButtonSpec {
   return { label: "Validate", action: "validate", disabled: false };
 }
 
-/** Breadcrumb showing the two import steps with a back affordance on step 2. */
+/** Quiet 2-segment progress bar showing the two import steps with a back affordance on step 2. */
 function ImportStepper(props: {
   current: 1 | 2;
   importing: boolean;
   onBack: () => void;
 }): JSX.Element {
   const { current, importing, onBack } = props;
+  const caption = current === 1 ? "Paste & review" : "Import";
   return (
-    <nav aria-label="Import steps" className="flex items-center justify-between gap-3 text-sm">
-      <ol className="flex items-center gap-2">
-        <li>
-          {current === 2 ? (
-            <button
-              type="button"
-              onClick={onBack}
-              disabled={importing}
-              className="inline-flex items-center gap-1 rounded-md font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
-            >
-              <Check aria-hidden="true" className="size-4 text-green-600" />
-              Paste &amp; review
-            </button>
-          ) : (
-            <span
-              aria-current={current === 1 ? "step" : undefined}
-              className={cn(
-                "inline-flex items-center rounded-md px-2 py-0.5 font-medium",
-                current === 1 ? "bg-brand-primary/10 text-brand-primary" : "text-muted-foreground",
-              )}
-            >
-              Paste &amp; review
-            </span>
-          )}
-        </li>
-        <li aria-hidden="true">
-          <ChevronRight className="size-4 text-muted-foreground" />
-        </li>
-        <li>
-          <span
-            aria-current={current === 2 ? "step" : undefined}
-            className={cn(
-              "inline-flex items-center rounded-md px-2 py-0.5 font-medium",
-              current === 2 ? "bg-brand-primary/10 text-brand-primary" : "text-muted-foreground",
-            )}
-          >
-            Import
-          </span>
-        </li>
-      </ol>
-      <span className="sr-only">{current} of 2</span>
+    <nav aria-label="Import steps" className="flex items-center gap-2">
+      {current === 2 ? (
+        <button
+          type="button"
+          onClick={onBack}
+          disabled={importing}
+          aria-label="Paste & review"
+          className="h-1 w-10 rounded-full bg-brand-primary disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        />
+      ) : (
+        <div className="h-1 w-10 rounded-full bg-brand-primary" />
+      )}
+      <div
+        className={cn("h-1 w-10 rounded-full", current === 2 ? "bg-brand-primary" : "bg-muted")}
+      />
+      <span className="ml-1 text-xs text-muted-foreground">{caption}</span>
+      <span className="sr-only">Step {current} of 2</span>
     </nav>
   );
 }
@@ -368,15 +345,14 @@ export function CardgroupBatchImportForm(props: {
       {step === 1 ? (
         <div className="space-y-4">
           <div className="space-y-2">
-            <label htmlFor="batch-import-payload" className="sr-only">
-              Cards to import
+            <label htmlFor="batch-import-payload" className="block text-xs">
+              <span className="font-medium text-muted-foreground">Cards to import</span>
+              <span className="font-normal text-muted-foreground/70">
+                {" — separate each pair with a Tab"}
+              </span>
             </label>
-            <p id="batch-import-payload-help" className="text-xs text-muted-foreground">
-              Separate each pair with a Tab.
-            </p>
             <Textarea
               id="batch-import-payload"
-              aria-describedby="batch-import-payload-help"
               value={payloadText}
               onChange={(e) => setPayloadText(e.target.value)}
               rows={10}

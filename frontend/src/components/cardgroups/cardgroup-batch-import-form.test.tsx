@@ -175,10 +175,23 @@ describe("<CardgroupBatchImportForm>", () => {
     expect(button).toBeDisabled();
   });
 
-  it("associates the format hint with the textarea via aria-describedby", () => {
+  it("accessible name of the textarea contains both the label and the separator rule", () => {
     renderForm();
     const textarea = screen.getByLabelText(/cards to import/i);
-    expect(textarea).toHaveAccessibleDescription(/separate each pair with a tab/i);
+    expect(textarea).toHaveAccessibleName(/cards to import.*separate each pair with a tab/i);
+    // The rule now lives in the label, not in a separate help paragraph.
+    const labels = document.querySelectorAll('label[for="batch-import-payload"]');
+    expect(labels).toHaveLength(1);
+  });
+
+  it("step 1 progress bar: seg1 is brand-colored, seg2 is muted, caption reads Paste & review", () => {
+    renderForm();
+    const segments = document.querySelectorAll(".h-1.w-10.rounded-full");
+    expect(segments).toHaveLength(2);
+    expect(segments[0]).toHaveClass("bg-brand-primary");
+    expect(segments[1]).toHaveClass("bg-muted");
+    expect(screen.getByText(/paste & review/i)).toBeInTheDocument();
+    expect(screen.getByText(/step 1 of 2/i)).toBeInTheDocument();
   });
 
   it("valid validate: shows valid status, a collapsed preview, and an Import button", async () => {
@@ -256,12 +269,57 @@ describe("<CardgroupBatchImportForm>", () => {
     expect(
       screen.getByRole("heading", { name: /import 2 cards into spanish vocab\?/i }),
     ).toBeInTheDocument();
-    // Step counter reads 2 of 2.
-    expect(screen.getByText(/2 of 2/i)).toBeInTheDocument();
-    // The completed step 1 is a reachable back button in the breadcrumb.
-    expect(screen.getByRole("button", { name: /paste & review/i })).toBeInTheDocument();
+    // Step counter sr-only reads "Step 2 of 2".
+    expect(screen.getByText(/step 2 of 2/i)).toBeInTheDocument();
+    // The completed step 1 is a reachable back button in the progress bar (aria-label).
+    const backSegment = screen.getByRole("button", { name: /paste & review/i });
+    expect(backSegment).toBeInTheDocument();
+    expect(backSegment).not.toBeDisabled();
+    // Segment bar: two segments with correct size classes.
+    const segments = document.querySelectorAll(".h-1.w-10.rounded-full");
+    expect(segments).toHaveLength(2);
+    // Both segments are brand-colored on step 2.
+    expect(segments[0]).toHaveClass("bg-brand-primary");
+    expect(segments[1]).toHaveClass("bg-brand-primary");
+    // Caption text reads "Import" on step 2.
+    expect(screen.getByText(/^import$/i)).toBeInTheDocument();
     // The import button reads "Import N cards".
     expect(screen.getByRole("button", { name: /import 2 cards/i })).toBeEnabled();
+  });
+
+  it("step 2 back button is disabled while the import mutation is in flight", async () => {
+    const user = userEvent.setup();
+    // Use a delayed mock so the importing state persists long enough to check.
+    const delayedImportMock = importMock(TWO_LINE_TEXT, {
+      data: {
+        importCards: {
+          __typename: "ImportCardsPayload" as const,
+          inserted: 2,
+          updated: 0,
+          errors: [],
+        },
+      },
+    });
+    const refetchSpy = vi
+      .spyOn(ApolloClient.prototype, "refetchQueries")
+      // biome-ignore lint/suspicious/noExplicitAny: test stub for refetchQueries return
+      .mockResolvedValue([] as any);
+    renderForm([validateMock(TWO_LINE_TEXT, VALID_RESULT), delayedImportMock]);
+    await advanceToStep2(user);
+    // Click import — the back button becomes disabled immediately.
+    const importBtn = screen.getByRole("button", { name: /import 2 cards/i });
+    // Assert back segment is enabled before clicking.
+    expect(screen.getByRole("button", { name: /paste & review/i })).not.toBeDisabled();
+    // Start the import.
+    void user.click(importBtn);
+    // After the click starts but before the mock resolves, the button is disabled.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /paste & review/i })).toBeDisabled();
+    });
+    // Wait for the import to finish so cleanup is clean.
+    await waitFor(() => {
+      expect(refetchSpy).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("the back link returns to step 1 preserving the textarea content", async () => {
@@ -275,10 +333,10 @@ describe("<CardgroupBatchImportForm>", () => {
     // Back on step 1: textarea content preserved.
     const textarea = screen.getByLabelText(/cards to import/i);
     expect(textarea).toHaveValue(TWO_LINE_TEXT);
-    expect(screen.getByText(/1 of 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/step 1 of 2/i)).toBeInTheDocument();
   });
 
-  it("clicking the completed breadcrumb step also returns to step 1", async () => {
+  it("clicking the completed progress-bar segment also returns to step 1", async () => {
     const user = userEvent.setup();
     renderForm([validateMock(TWO_LINE_TEXT, VALID_RESULT)]);
 
@@ -288,7 +346,7 @@ describe("<CardgroupBatchImportForm>", () => {
 
     const textarea = screen.getByLabelText(/cards to import/i);
     expect(textarea).toHaveValue(TWO_LINE_TEXT);
-    expect(screen.getByText(/1 of 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/step 1 of 2/i)).toBeInTheDocument();
   });
 
   it("successful import calls onImported and refetches the cards list", async () => {
@@ -384,7 +442,7 @@ describe("<CardgroupBatchImportForm>", () => {
     // onImported NOT called on a partial-failure import.
     expect(onImported).not.toHaveBeenCalled();
     // Still on step 2.
-    expect(screen.getByText(/2 of 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/step 2 of 2/i)).toBeInTheDocument();
     // Result banner has role=status.
     const status = screen.getAllByRole("status");
     expect(status.some((el) => /1 inserted/i.test(el.textContent ?? ""))).toBe(true);
@@ -469,7 +527,7 @@ describe("<CardgroupBatchImportForm>", () => {
     // No success callback on a rejected import.
     expect(onImported).not.toHaveBeenCalled();
     // Still on the confirm step.
-    expect(screen.getByText(/2 of 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/step 2 of 2/i)).toBeInTheDocument();
     // The import button is still present and enabled for a retry.
     expect(screen.getByRole("button", { name: /import 2 cards/i })).toBeEnabled();
   });
@@ -509,7 +567,7 @@ describe("<CardgroupBatchImportForm>", () => {
 
     // Step 1, and the forward button reverted to Validate (stale guard cleared
     // validatedPayload after the import).
-    expect(screen.getByText(/1 of 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/step 1 of 2/i)).toBeInTheDocument();
     const validateButton = screen.getByRole("button", { name: /^validate$/i });
     expect(validateButton).toBeEnabled();
     expect(screen.queryByRole("button", { name: /^import$/i })).not.toBeInTheDocument();
@@ -582,6 +640,6 @@ describe("CardgroupBatchImportForm footer layout", () => {
     );
     await user.click(screen.getByRole("button", { name: /^cancel$/i }));
     // No throw; the wizard is still mounted on step 1.
-    expect(screen.getByText(/1 of 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/step 1 of 2/i)).toBeInTheDocument();
   });
 });
