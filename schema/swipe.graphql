@@ -36,6 +36,6 @@ union HandleSwipeResult =
   | InputValidationError
 
 extend type Mutation {
-  """Apply one swipe rating, persist the SwipeRecord event, and return the latest performance snapshot."""
+  """Apply one swipe rating, persist the SwipeRecord event, and return the latest performance snapshot plus the reviewed card's post-swipe FSRS state."""
   handleSwipe(input: HandleSwipeInput!): HandleSwipeResult!
 }

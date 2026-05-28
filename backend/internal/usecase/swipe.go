@@ -70,7 +70,7 @@ type SwipeOutput struct {
 
 // HandleSwipeOutcome is the result of SwipeUsecase.HandleSwipe. Exactly one of
 // Swipe or Validation is non-nil on a nil-error return.
-//   - Swipe holds the success result (performance metrics).
+//   - Swipe holds the success result (performance metrics and the card's post-swipe FSRS state).
 //   - Validation holds field-level user-input errors: invalid mode, an unknown card, or
 //     an unknown cardgroup. Validation.Field will be one of "mode", "cardId", or "cardgroupId".
 //   - Authorization failures (caller does not own the cardgroup) and infrastructure errors
