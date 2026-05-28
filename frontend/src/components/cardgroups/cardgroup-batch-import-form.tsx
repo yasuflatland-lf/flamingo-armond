@@ -8,7 +8,7 @@ import { ImportCardsMutation, ValidateCardImportQuery } from "@/app/cardgroups/[
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Textarea } from "@/components/ui/textarea";
-import { CardsByCardgroupConnectionDocument } from "@/generated/graphql";
+import { type CardImportErrorKind, CardsByCardgroupConnectionDocument } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { cn } from "@/lib/utils";
 
@@ -33,8 +33,16 @@ type ValidationResult = {
 type ImportResult = {
   inserted: number;
   updated: number;
-  errors: Array<{ line: number; message: string }>;
+  errors: Array<{ line: number; message: string; kind: CardImportErrorKind }>;
 };
+
+/**
+ * `DUPLICATE` is non-fatal: the row still persisted via last-write-wins, so it
+ * reads as a warning. Every other kind dropped a row and reads as an error.
+ */
+function isWarningKind(kind: CardImportErrorKind | undefined): boolean {
+  return kind === "DUPLICATE";
+}
 
 /**
  * Classify a raw Apollo error into a user-facing banner string, delegating to
@@ -126,25 +134,28 @@ function ImportStepper(props: {
 }
 
 /**
- * Renders a list of line-level import/validation messages. `variant` controls
- * the severity color: `destructive` (red) for blocking errors, `warning`
- * (amber) for non-fatal diagnostics emitted alongside a successful import.
+ * Renders a list of line-level import/validation messages. A `DUPLICATE`-kind
+ * row reads as a non-fatal warning (amber — the row still persisted via
+ * last-write-wins); every other kind, and any row without a kind (validation
+ * step), reads as a blocking error (red).
  */
 function ErrorList(props: {
-  errors: Array<{ line: number; message: string }>;
+  errors: Array<{ line: number; message: string; kind?: CardImportErrorKind }>;
   className?: string;
   role?: string;
-  variant?: "destructive" | "warning";
 }): JSX.Element {
-  const { errors, className, role, variant = "destructive" } = props;
-  const rowClass =
-    variant === "warning" ? "bg-amber-50 text-amber-800" : "bg-destructive/10 text-destructive";
+  const { errors, className, role } = props;
   return (
     <ul className={cn("space-y-1", className)} role={role}>
       {errors.map((err) => (
         <li
           key={`${err.line}-${err.message}`}
-          className={cn("rounded-md px-3 py-2 text-sm", rowClass)}
+          className={cn(
+            "rounded-md px-3 py-2 text-sm",
+            isWarningKind(err.kind)
+              ? "bg-amber-50 text-amber-800"
+              : "bg-destructive/10 text-destructive",
+          )}
         >
           <span className="font-medium">Line {err.line}:</span> {err.message}
         </li>
@@ -316,13 +327,18 @@ export function CardgroupBatchImportForm(props: {
   }
 
   const parsedCards = validationResult?.parsedCards ?? [];
-  // Total failure (nothing persisted) reads as destructive; a partial/full
-  // success treats its leftover error rows as non-fatal warnings.
+  // Duplicate-front rows are non-fatal warnings (last-write-wins still
+  // persisted the row); every other kind is a genuine error.
+  const importWarningCount = importResult?.errors.filter((e) => isWarningKind(e.kind)).length ?? 0;
+  const importErrorCount = importResult?.errors.filter((e) => !isWarningKind(e.kind)).length ?? 0;
+  // "Failed" is keyed on genuine errors only: warnings never block a row from
+  // persisting, so a result with nothing persisted and only warnings is still
+  // a success (and in practice cannot occur — a warning implies a winner row).
   const importAllFailed =
     importResult != null &&
     importResult.inserted === 0 &&
     importResult.updated === 0 &&
-    importResult.errors.length > 0;
+    importErrorCount > 0;
 
   function goBackToStep1() {
     setBannerError("");
@@ -421,28 +437,22 @@ export function CardgroupBatchImportForm(props: {
               <div role="status">
                 {importAllFailed ? (
                   <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                    Import failed: no cards persisted, {importResult.errors.length}{" "}
-                    {plural(importResult.errors.length, "error")}.
+                    Import failed: no cards persisted, {importErrorCount}{" "}
+                    {plural(importErrorCount, "error")}.
                   </div>
                 ) : (
                   <div className="rounded-md bg-green-50 p-3 text-sm text-green-800">
                     Import complete — {importResult.inserted} inserted, {importResult.updated}{" "}
                     updated
-                    {importResult.errors.length > 0 &&
-                      `, ${importResult.errors.length} ${plural(
-                        importResult.errors.length,
-                        "error",
-                      )}`}
+                    {importWarningCount > 0 &&
+                      `, ${importWarningCount} ${plural(importWarningCount, "warning")}`}
+                    {importErrorCount > 0 &&
+                      `, ${importErrorCount} ${plural(importErrorCount, "error")}`}
                     .
                   </div>
                 )}
               </div>
-              {importResult.errors.length > 0 && (
-                <ErrorList
-                  errors={importResult.errors}
-                  variant={importAllFailed ? "destructive" : "warning"}
-                />
-              )}
+              {importResult.errors.length > 0 && <ErrorList errors={importResult.errors} />}
               <WizardFooter
                 left={
                   <Button type="button" variant="outline" onClick={goBackToStep1}>

@@ -425,6 +425,7 @@ describe("<CardgroupBatchImportForm>", () => {
                 __typename: "CardImportError" as const,
                 line: 2,
                 message: "duplicate front",
+                kind: "DUPLICATE" as const,
               },
             ],
           },
@@ -438,8 +439,9 @@ describe("<CardgroupBatchImportForm>", () => {
     await waitFor(() => {
       expect(screen.getByText(/duplicate front/i)).toBeInTheDocument();
     });
-    expect(screen.getByText(/1 inserted, 0 updated/i)).toBeInTheDocument();
-    // Partial success: leftover error rows are non-fatal warnings (amber), not red.
+    // Duplicate rows are counted and labelled as warnings, not errors.
+    expect(screen.getByText(/1 inserted, 0 updated, 1 warning/i)).toBeInTheDocument();
+    // Partial success: leftover duplicate rows are non-fatal warnings (amber), not red.
     const warningRow = screen.getByText(/duplicate front/i).closest("li");
     expect(warningRow).toHaveClass("bg-amber-50");
     expect(warningRow).not.toHaveClass("bg-destructive/10");
@@ -476,6 +478,7 @@ describe("<CardgroupBatchImportForm>", () => {
                 __typename: "CardImportError" as const,
                 line: 1,
                 message: "constraint violation",
+                kind: "HARD" as const,
               },
             ],
           },
@@ -554,6 +557,7 @@ describe("<CardgroupBatchImportForm>", () => {
                 __typename: "CardImportError" as const,
                 line: 2,
                 message: "duplicate front",
+                kind: "DUPLICATE" as const,
               },
             ],
           },
@@ -625,6 +629,7 @@ describe("CardgroupBatchImportForm footer layout", () => {
                 __typename: "CardImportError" as const,
                 line: 2,
                 message: "duplicate front",
+                kind: "DUPLICATE" as const,
               },
             ],
           },
