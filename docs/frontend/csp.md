@@ -78,12 +78,12 @@ Three files participate in threading the nonce from the middleware-forwarded hea
    ```
    This follows the same forwarded-header pattern already used for `x-pathname`. The nonce is then passed to `<Providers nonce={nonce}>` in both render branches (authenticated and unauthenticated).
 
-2. **`frontend/src/app/providers.tsx`** accepts `nonce?: string` as a prop and forwards it to `ApolloNextAppProvider`:
+2. **`frontend/src/app/providers.tsx`** accepts `nonce: string | undefined` as a prop and forwards it to `ApolloNextAppProvider`:
    ```ts
    <ApolloNextAppProvider extraScriptProps={nonce ? { nonce } : undefined}>
    ```
 
-3. **`ApolloNextAppProvider`** accepts `extraScriptProps` typed as `ScriptProps` (i.e., `SerializableProps<React.ScriptHTMLAttributes<HTMLScriptElement>>`, which includes `nonce?: string`) and passes those props through to the internal SSR transport component. Every transport `<script>` then carries `nonce="{N}"`, matching the `nonce-{N}` source in the CSP response header.
+3. **`ApolloNextAppProvider`** accepts `extraScriptProps` typed as `ScriptProps` (i.e., `SerializableProps<React.ScriptHTMLAttributes<HTMLScriptElement>>`, which includes `nonce?: string | undefined`) and passes those props through to the internal SSR transport component. Every transport `<script>` then carries `nonce="{N}"`, matching the `nonce-{N}` source in the CSP response header.
 
 ### Graceful degradation
 
