@@ -29,4 +29,14 @@ describe("<CardContent>", () => {
     expect(screen.queryByRole("button", { name: "Hard" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Easy" })).not.toBeInTheDocument();
   });
+
+  it("renders a mastery badge for state 2 (Learned)", () => {
+    const learnedCard: SwipeCardData = {
+      ...CARD,
+      userCardState: { ...CARD.userCardState, state: 2 },
+    };
+    render(<CardContent card={learnedCard} />);
+
+    expect(screen.getByLabelText("Mastery stage: Learned")).toBeInTheDocument();
+  });
 });

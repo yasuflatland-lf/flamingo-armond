@@ -45,10 +45,13 @@ const AnimatedCard = dynamic(() => import("./animated-card").then((m) => m.Anima
   ssr: false,
 });
 
+import { MasteryBadge } from "./mastery-badge";
+
 // CardContent is exported so animated-card.tsx can share the same presentational layer.
 export function CardContent({ card }: { card: SwipeCardData }) {
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card p-6 shadow-lg">
+    <div className="relative flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card p-6 shadow-lg">
+      <MasteryBadge state={card.userCardState.state} />
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 text-center">
         <p className="max-w-full break-words text-4xl font-semibold leading-tight text-foreground sm:text-5xl">
           {card.front}
