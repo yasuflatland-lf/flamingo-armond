@@ -21,7 +21,9 @@ vi.mock("@/components/boot-splash", () => ({
 }));
 
 vi.mock("@/app/providers", () => ({
-  Providers: ({ children }: { children?: React.ReactNode }) => children,
+  Providers: function Providers(props: { children?: React.ReactNode; nonce: string | undefined }) {
+    return props as unknown as React.ReactElement;
+  },
 }));
 
 // next/navigation — the root layout does not redirect, but transitive imports
@@ -71,6 +73,8 @@ type ReactElementLike = {
   props?: {
     children?: unknown;
     fallback?: unknown;
+    nonce?: unknown;
+    [key: string]: unknown;
   };
 };
 
@@ -188,6 +192,40 @@ describe("RootLayout — structural branch selection", () => {
 
     const suspenseEl = findElement(tree, isSuspense);
     expect(suspenseEl).toBeNull();
+  });
+
+  // Case: default route — nonce from x-nonce header is forwarded to Providers.
+  test("default route: nonce from x-nonce header is forwarded to Providers", async () => {
+    mockGetHeader.mockImplementation((name) => (name === "x-nonce" ? "test-nonce-value" : null));
+    const tree = await RootLayout({ children: <div /> });
+    const providersEl = findElement(tree, byName("Providers"));
+    expect(providersEl).not.toBeNull();
+    expect(providersEl?.props?.nonce).toBe("test-nonce-value");
+  });
+
+  // Case: bypass routes (/login, /onboarding) — nonce from x-nonce header is forwarded to Providers.
+  test.each([
+    "/login",
+    "/onboarding",
+  ])("%s: nonce from x-nonce header is forwarded to Providers", async (pathname: string) => {
+    mockGetHeader.mockImplementation((name) => {
+      if (name === "x-pathname") return pathname;
+      if (name === "x-nonce") return "test-nonce-value";
+      return null;
+    });
+    const tree = await RootLayout({ children: <div /> });
+    const providersEl = findElement(tree, byName("Providers"));
+    expect(providersEl).not.toBeNull();
+    expect(providersEl?.props?.nonce).toBe("test-nonce-value");
+  });
+
+  // Case: absent x-nonce header — nonce is undefined at Providers.
+  test("default route: absent x-nonce header passes undefined nonce to Providers", async () => {
+    mockGetHeader.mockReturnValue(null);
+    const tree = await RootLayout({ children: <div /> });
+    const providersEl = findElement(tree, byName("Providers"));
+    expect(providersEl).not.toBeNull();
+    expect(providersEl?.props?.nonce).toBeUndefined();
   });
 });
 
