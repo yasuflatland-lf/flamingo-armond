@@ -381,4 +381,68 @@ describe("<FormSheet>", () => {
       "overflow-y-auto",
     );
   });
+
+  it("ReactNode title with sr-only prefix exposes both verb and destination in the accessible name", () => {
+    const cardgroupName = "Yasu Cardgroup";
+    render(
+      <FormSheet
+        open
+        onOpenChange={vi.fn()}
+        title={
+          <span
+            className="block overflow-hidden text-ellipsis whitespace-nowrap"
+            title={cardgroupName}
+          >
+            <span className="sr-only">Batch import into </span>
+            {cardgroupName}
+          </span>
+        }
+      >
+        <p>Body</p>
+      </FormSheet>,
+    );
+
+    // The heading's accessible text includes both the sr-only prefix and the visible name.
+    const heading = screen.getByRole("heading");
+    expect(heading.textContent).toContain("Batch import into");
+    expect(heading.textContent).toContain(cardgroupName);
+  });
+
+  it("ReactNode title span carries truncation classes and tooltip attribute", () => {
+    const cardgroupName = "A Very Long Cardgroup Name That Should Truncate";
+    render(
+      <FormSheet
+        open
+        onOpenChange={vi.fn()}
+        title={
+          <span
+            className="block overflow-hidden text-ellipsis whitespace-nowrap"
+            title={cardgroupName}
+          >
+            <span className="sr-only">Batch import into </span>
+            {cardgroupName}
+          </span>
+        }
+      >
+        <p>Body</p>
+      </FormSheet>,
+    );
+
+    const heading = screen.getByRole("heading");
+    const titleSpan = heading.querySelector("span[title]");
+    expect(titleSpan).not.toBeNull();
+    expect(titleSpan).toHaveAttribute("title", cardgroupName);
+    expect(titleSpan).toHaveClass("overflow-hidden", "text-ellipsis", "whitespace-nowrap");
+  });
+
+  it("a11yDescription falls back to 'Form' when title is a ReactNode and no description is provided", () => {
+    render(
+      <FormSheet open onOpenChange={vi.fn()} title={<span>Some ReactNode title</span>}>
+        <p>Body</p>
+      </FormSheet>,
+    );
+
+    // The sr-only SheetDescription carries the fallback text "Form".
+    expect(document.body.textContent).toContain("Form");
+  });
 });
