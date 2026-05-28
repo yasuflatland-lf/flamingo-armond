@@ -21,6 +21,7 @@ describe("<CardContent>", () => {
 
     expect(screen.getByText("Hello")).toBeInTheDocument();
     expect(screen.getByText("Hola")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "12");
   });
 
   it("does not render rating buttons inside the card", () => {
