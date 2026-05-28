@@ -179,7 +179,7 @@ describe("<CardgroupBatchImportForm>", () => {
     renderForm();
     const textarea = screen.getByLabelText(/cards to import/i);
     expect(textarea).toHaveAccessibleName(/cards to import.*separate each pair with a tab/i);
-    // The rule now lives in the label, not in a separate help paragraph.
+    // The textarea's accessible description comes from a single <label> whose text includes the Tab-separator hint.
     const labels = document.querySelectorAll('label[for="batch-import-payload"]');
     expect(labels).toHaveLength(1);
   });
@@ -289,34 +289,33 @@ describe("<CardgroupBatchImportForm>", () => {
 
   it("step 2 back button is disabled while the import mutation is in flight", async () => {
     const user = userEvent.setup();
-    // Use a delayed mock so the importing state persists long enough to check.
-    const delayedImportMock = importMock(TWO_LINE_TEXT, {
-      data: {
-        importCards: {
-          __typename: "ImportCardsPayload" as const,
-          inserted: 2,
-          updated: 0,
-          errors: [],
+    // The 100 ms delay keeps `importing === true` long enough for waitFor to
+    // observe the disabled back button before the mutation resolves.
+    const delayedImportMock: MockedResponse = {
+      ...importMock(TWO_LINE_TEXT, {
+        data: {
+          importCards: {
+            __typename: "ImportCardsPayload" as const,
+            inserted: 2,
+            updated: 0,
+            errors: [],
+          },
         },
-      },
-    });
+      }),
+      delay: 100,
+    };
     const refetchSpy = vi
       .spyOn(ApolloClient.prototype, "refetchQueries")
       // biome-ignore lint/suspicious/noExplicitAny: test stub for refetchQueries return
       .mockResolvedValue([] as any);
     renderForm([validateMock(TWO_LINE_TEXT, VALID_RESULT), delayedImportMock]);
     await advanceToStep2(user);
-    // Click import — the back button becomes disabled immediately.
     const importBtn = screen.getByRole("button", { name: /import 2 cards/i });
-    // Assert back segment is enabled before clicking.
     expect(screen.getByRole("button", { name: /paste & review/i })).not.toBeDisabled();
-    // Start the import.
     void user.click(importBtn);
-    // After the click starts but before the mock resolves, the button is disabled.
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /paste & review/i })).toBeDisabled();
     });
-    // Wait for the import to finish so cleanup is clean.
     await waitFor(() => {
       expect(refetchSpy).toHaveBeenCalledTimes(1);
     });
@@ -588,16 +587,16 @@ describe("<CardgroupBatchImportForm>", () => {
 });
 
 describe("CardgroupBatchImportForm footer layout", () => {
-  it("step 1: renders a Cancel button that invokes onCancel", async () => {
+  it("step 1: renders a Back to Cardgroup button that invokes onCancel", async () => {
     const user = userEvent.setup();
     const { onCancel } = renderForm();
-    await user.click(screen.getByRole("button", { name: /^cancel$/i }));
+    await user.click(screen.getByRole("button", { name: /back to cardgroup/i }));
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
-  it("step 1: Cancel sits before the primary action in the DOM (left/right split)", () => {
+  it("step 1: Back to Cardgroup sits before the primary action in the DOM (left/right split)", () => {
     renderForm();
-    const cancel = screen.getByRole("button", { name: /^cancel$/i });
+    const cancel = screen.getByRole("button", { name: /back to cardgroup/i });
     const primary = screen.getByRole("button", { name: /^validate$/i });
     // In an LTR justify-between footer, the left slot precedes the right slot.
     expect(cancel.compareDocumentPosition(primary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -643,14 +642,14 @@ describe("CardgroupBatchImportForm footer layout", () => {
     expect(back.compareDocumentPosition(done) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("step 1: clicking Cancel is crash-free when onCancel is omitted", async () => {
+  it("step 1: clicking Back to Cardgroup is crash-free when onCancel is omitted", async () => {
     const user = userEvent.setup();
     render(
       <MockedProvider mocks={[]}>
         <CardgroupBatchImportForm cardgroupId={CARDGROUP_ID} cardgroupName={CARDGROUP_NAME} />
       </MockedProvider>,
     );
-    await user.click(screen.getByRole("button", { name: /^cancel$/i }));
+    await user.click(screen.getByRole("button", { name: /back to cardgroup/i }));
     // No throw; the wizard is still mounted on step 1.
     expect(screen.getByText(/step 1 of 2/i)).toBeInTheDocument();
   });
