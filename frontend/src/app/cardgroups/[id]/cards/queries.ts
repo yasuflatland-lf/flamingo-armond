@@ -79,7 +79,7 @@ export const ImportCardsMutation = graphql(`
     importCards(input: $input) {
       inserted
       updated
-      errors { line message }
+      errors { line message kind }
     }
   }
 `);
