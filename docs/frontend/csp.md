@@ -53,6 +53,49 @@ If `buildHtmlCsp` throws (e.g., malformed `NEXT_PUBLIC_SUPABASE_URL`), the middl
 
 The policy is now **enforcing** on HTML responses. Violations are blocked and reported to the configured endpoint.
 
+## Apollo streaming nonce wiring
+
+### Why Apollo needs the nonce
+
+Apollo Client's `ManualDataTransportSSRImpl` (from `@apollo/client-react-streaming`, consumed via `@apollo/client-integration-nextjs`) injects inline `<script>` tags that carry the SSR data transport — specifically `window[Symbol.for("ApolloSSRDataTransport")]` — during streaming server-side rendering. Under the enforcing CSP (`script-src 'self' 'nonce-{N}'`), any inline script that lacks a matching `nonce` attribute is blocked by the browser. Without a nonce, the Apollo streaming transport is silently dropped and the client must fall back to a full client-side fetch after hydration.
+
+### Why Next.js automatic nonce propagation misses these scripts
+
+Next.js reads the nonce from the forwarded `content-security-policy` request header (via `getScriptNonceFromHeader`) and applies it to:
+
+- The bootstrap and hydration scripts rendered by `renderToReadableStream`.
+- The RSC flight-data transport produced by `createInlinedDataStream`.
+
+However, the callbacks registered via `ServerInsertedHTMLContext` are rendered by `makeGetServerInsertedHTML`, which invokes `renderToReadableStream(...)` **without** a `nonce` option. Apollo registers its transport script through `ServerInsertedHTMLContext`, so the injected `<script>` elements never receive a nonce through Next.js's automatic path.
+
+### The fix: wiring path
+
+Three files participate in threading the nonce from the middleware-forwarded header down to Apollo:
+
+1. **`frontend/src/app/layout.tsx`** reads the middleware-forwarded `x-nonce` request header:
+   ```ts
+   const nonce = headersList.get("x-nonce") ?? undefined;
+   ```
+   This follows the same forwarded-header pattern already used for `x-pathname`. The nonce is then passed to `<Providers nonce={nonce}>` in both render branches (authenticated and unauthenticated).
+
+2. **`frontend/src/app/providers.tsx`** accepts `nonce?: string` as a prop and forwards it to `ApolloNextAppProvider`:
+   ```ts
+   <ApolloNextAppProvider extraScriptProps={nonce ? { nonce } : undefined}>
+   ```
+
+3. **`ApolloNextAppProvider`** accepts `extraScriptProps` typed as `ScriptProps` (i.e., `SerializableProps<React.ScriptHTMLAttributes<HTMLScriptElement>>`, which includes `nonce?: string`) and passes those props through to `ManualDataTransportSSRImpl`. Every transport `<script>` then carries `nonce="{N}"`, matching the `nonce-{N}` source in the CSP response header.
+
+### Graceful degradation
+
+When `buildHtmlCsp` throws — for example, when `NEXT_PUBLIC_SUPABASE_URL` is malformed — the middleware logs the error and omits both CSP headers. In that case:
+
+- `x-nonce` is absent from the request headers.
+- `headersList.get("x-nonce")` returns `null`, so `nonce` is `undefined`.
+- The `nonce ? { nonce } : undefined` conditional evaluates to `undefined`, so `extraScriptProps` is omitted entirely from `ApolloNextAppProvider`.
+- Apollo falls back to client-side re-fetch on hydration.
+
+This is consistent with the existing middleware error path: no CSP is enforced, so unnonce-bearing inline scripts are not blocked and the page continues to function.
+
 ## Static headers
 
 [`frontend/next.config.ts`](../../frontend/next.config.ts) splits headers by path:
