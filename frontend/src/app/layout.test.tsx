@@ -21,7 +21,7 @@ vi.mock("@/components/boot-splash", () => ({
 }));
 
 vi.mock("@/app/providers", () => ({
-  Providers: function Providers(props: { children?: React.ReactNode; nonce?: string }) {
+  Providers: function Providers(props: { children?: React.ReactNode; nonce: string | undefined }) {
     return props as unknown as React.ReactElement;
   },
 }));
