@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -227,9 +228,12 @@ func (u *cardImportUsecase) Import(ctx context.Context, input ImportCardsInput) 
 	deduped := make([]textdic.ParsedWord, 0, len(words))
 	for i, w := range words {
 		if lastIndex[w.Front] != i {
+			// w is the earlier (dropped) occurrence; the row that survives is at
+			// lastIndex, so its Back is the value that overrode this one.
+			winningBack := words[lastIndex[w.Front]].Back
 			mappedErrs = append(mappedErrs, CardImportError{
 				Line:    w.Line,
-				Message: "duplicate front in payload (later occurrence wins)",
+				Message: fmt.Sprintf("duplicated front (%s) was overridden with the new back (%s)", w.Front, winningBack),
 				Kind:    CardImportErrKindDuplicate,
 				Front:   w.Front,
 				Back:    w.Back,
