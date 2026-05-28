@@ -16,8 +16,6 @@ describe("<MasteryBadge>", () => {
 
   it("renders Learning with aria-label for state 1", () => {
     render(<MasteryBadge state={1} />);
-    expect(
-      screen.getByLabelText("Mastery stage: Learning"),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Mastery stage: Learning")).toBeInTheDocument();
   });
 });
