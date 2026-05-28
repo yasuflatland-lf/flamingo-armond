@@ -32,6 +32,14 @@ write and read lifecycles in a way the client cannot reliably consume.
 Write mutations should return only data that is scoped to the write itself:
 
 - The affected entity (the updated card, the new role assignment).
+- The affected entity's post-write state — a single record, not a collection.
+  `SwipeResponse.userCardState: UserCardState!` carries the reviewed card's
+  FSRS scheduling state *after* the swipe was applied. This is the positive
+  complement of the rule: one affected-entity snapshot lets the client render a
+  before/after delta (e.g. a "Memory +N%" badge) with no refetch, because the
+  client already holds the pre-write value from the row it acted on. A
+  *collection* snapshot fails for the dual-source-of-truth reasons above; a
+  single affected-entity record does not.
 - An outcome enum or union (`SwipeSuccess`, `ValidationError`, `Forbidden`).
 - Telemetry counts or timestamps belonging to the write (the FSRS rating
   stored, the timestamp recorded).
@@ -91,6 +99,7 @@ Ask these questions in order:
 | Question | Answer → action |
 |---|---|
 | Is the field scoped to this write? (affected entity, outcome enum, telemetry, validation error) | Yes → include it. |
+| Is the field the affected entity's post-write state — a single record, not a collection? (e.g. `userCardState`) | Yes → include it; the client can render a before/after delta with no refetch. |
 | Is the field a collection the client already manages? (queue, list, search results, pagination) | Yes → exclude it. Provide a separate query. |
 | Does the field's computation involve `time.Now()`, random state, or any non-deterministic input? | Yes → strong signal it does not belong in a write response; exclude it. |
 

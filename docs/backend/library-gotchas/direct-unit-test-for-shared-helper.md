@@ -101,6 +101,22 @@ This is the test-file variant of the "pre-existing inconsistency surfaced by an
 adjacent edit" rule in `.claude/rules/scope-discipline.md`: the new test file made
 the gap visible, so the same PR closes it.
 
+## Field-by-field projection: distinct values per field catch transposition
+
+A shared mapper that projects a domain struct onto a model struct field-by-field
+(`toModelUserCardStateFromFSRS` in `backend/graph/resolver/mapper.go`, which
+`toModelUserCardState` and `toSwipeResponseModel` both delegate to) has no
+trimming or boundary logic — its failure mode is a *transposition*: two fields of
+the same Go type (e.g. two `int`s, two `time.Time`s) swapped at the assignment
+site. An integration test that selects only `{ stability state }` cannot catch a
+swap among the fields it does not read.
+
+Pin the projection directly with a unit test that gives every source field a
+distinct non-zero value and asserts each target field equals its matching source,
+labelling each assertion with the field name. Distinct values are load-bearing:
+two fields holding the same value would let a transposition pass.
+`TestToModelUserCardStateFromFSRS_ProjectsEveryField` is the worked example.
+
 ## Checklist for shared helper unit tests
 
 1. **`want=0` (or zero-value sentinel)** — verify the bypass / no-op path.
@@ -113,6 +129,10 @@ the gap visible, so the same PR closes it.
 6. **Error-classifying sibling pair** — if the helper has an `Or<X>` / `Or<Y>`
    sibling, map every branch to the corresponding branch in the other and confirm
    each is covered (see "Symmetric branch coverage" above).
+7. **Field-by-field projection** — if the helper maps one struct onto another
+   field-by-field, give every source field a distinct non-zero value and assert
+   each target field individually to catch a transposition (see "Field-by-field
+   projection" above).
 
 ## Why not rely on integration tests alone
 
