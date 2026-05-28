@@ -119,8 +119,10 @@ function ImportStepper(props: {
           onClick={onBack}
           disabled={importing}
           aria-label="Paste & review"
-          className="h-1 w-10 rounded-full bg-brand-primary disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        />
+          className="-my-2 py-2 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          <span className="block h-1 w-10 rounded-full bg-brand-primary" />
+        </button>
       ) : (
         <div className="h-1 w-10 rounded-full bg-brand-primary" />
       )}
@@ -415,7 +417,7 @@ export function CardgroupBatchImportForm(props: {
           <WizardFooter
             left={
               <Button type="button" variant="ghost" onClick={() => onCancel?.()}>
-                Cancel
+                Back to Cardgroup
               </Button>
             }
             right={
