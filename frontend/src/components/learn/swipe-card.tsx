@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import type { RefObject } from "react";
 import type { AnimatedCardHandle } from "./animated-card";
+import { MasteryBadge } from "./mastery-badge";
 import type { SwipeDirection } from "./types";
 
 export type { AnimatedCardHandle } from "./animated-card";
@@ -44,8 +45,6 @@ type Props = {
 const AnimatedCard = dynamic(() => import("./animated-card").then((m) => m.AnimatedCard), {
   ssr: false,
 });
-
-import { MasteryBadge } from "./mastery-badge";
 
 // CardContent is exported so animated-card.tsx can share the same presentational layer.
 export function CardContent({ card }: { card: SwipeCardData }) {
