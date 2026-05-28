@@ -963,6 +963,78 @@ describe("<LearnClient> memory-grew reward overlay", () => {
       { timeout: 2500 },
     );
   });
+
+  it("does not flash a stale reward when the session-ending swipe is followed by a late prefetch", async () => {
+    // Regression guard for issue #277: swiping the FINAL card with a stability
+    // gain must NOT set a reward. The optimistic delete empties the queue, so
+    // <AllCaughtUp /> renders and the overlay unmounts. Without the source guard,
+    // setReward still runs after the empty-queue clear effect has already fired,
+    // leaving `reward` set; a late background prefetch then repopulates the queue
+    // and the overlay re-mounts, flashing the previous swipe's "Memory +N%" over
+    // an unrelated, freshly-fetched card.
+    const user = userEvent.setup();
+    // One-card queue: swiping it empties the session. Length 1 (≤ threshold) so
+    // the prefetch effect fires on mount; the delay holds the response open so
+    // it resolves AFTER the queue empties, reproducing the stale-reflash window.
+    const restingCard = {
+      ...CARD_1,
+      userCardState: userCardState("2026-04-30T00:00:00Z", 0, 2.5),
+    };
+    const swipeMock = {
+      request: {
+        query: HandleSwipeDocument,
+        variables: { input: { cardId: CARD_1.id, cardgroupId: CG_ID, mode: 4 } },
+      },
+      result: {
+        data: {
+          handleSwipe: {
+            __typename: "HandleSwipeSuccess" as const,
+            response: {
+              __typename: "SwipeResponse" as const,
+              performanceMode: 0,
+              metrics: DEFAULT_METRICS,
+              // Post-swipe stability 21 days vs resting 2.5 — a clear gain that
+              // WOULD render "Memory +N%" if the reward were set.
+              userCardState: {
+                __typename: "UserCardState" as const,
+                stability: 21,
+              },
+            },
+          },
+        },
+      },
+    };
+    const prefetch = makePrefetchMock(makeQueue(1, "p"), { delay: 200 });
+
+    renderLearnClient([swipeMock, prefetch.mock], [restingCard], {
+      skipDefaultPrefetchMocks: true,
+    });
+
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+
+    // The session-ending swipe empties the queue first: the caught-up screen renders.
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Today's learning is complete" }),
+      ).toBeInTheDocument();
+    });
+
+    // The late prefetch resolves and repopulates the queue — the card stack
+    // returns. Without the source guard, the overlay re-mounts here with the
+    // stale reward and flashes "Memory +N%" for up to 1500ms before its own
+    // auto-dismiss timer clears it. The assertion must therefore fire at the
+    // moment of repopulation, not after the dismiss window (a late check would
+    // pass even on the buggy code because the flash has already cleared).
+    await waitFor(() => {
+      expect(prefetch.callCount()).toBe(1);
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Front 1")).toBeInTheDocument();
+    });
+
+    // The repopulated card stack is on screen; no stale reward may accompany it.
+    expect(screen.queryByText(/Memory \+/)).not.toBeInTheDocument();
+  });
 });
 
 describe("<LearnClient> LearnActionBar integration", () => {

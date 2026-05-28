@@ -201,7 +201,16 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
     async (card: LearnCard, direction: SwipeDirection) => {
       const mode = modeFromDirection(direction);
       setLocalError(null);
-      setQueue((current) => current.filter((candidate) => candidate.id !== card.id));
+      // Capture whether this swipe empties the session from inside the updater
+      // so it reads the true current queue (robust to a prefetch resolving
+      // between this swipe and the previous one). A session-ending swipe must
+      // set no reward — see the HandleSwipeSuccess branch below.
+      let sessionEnded = false;
+      setQueue((current) => {
+        const next = current.filter((candidate) => candidate.id !== card.id);
+        sessionEnded = next.length === 0;
+        return next;
+      });
       setCompleted((current) => current + 1);
 
       const result = await handleSwipe({
@@ -229,14 +238,21 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
 
       // The optimistic delete already removed this card from the queue, so the
       // reward is a floating overlay: MemoryGrewOverlay itself decides whether
-      // to show (delta > 0) and dismisses itself. We set the reward
-      // unconditionally with the before/after stability and let the overlay judge.
+      // to show (delta > 0) and dismisses itself. We pass the before/after
+      // stability and let the overlay judge.
+      //
+      // A session-ending swipe sets no reward: the queue is empty, <AllCaughtUp />
+      // renders and the overlay unmounts, so the reward could never legitimately
+      // show. Setting it anyway would let a late prefetch repopulate the queue and
+      // re-flash the previous swipe's "Memory +N%" over an unrelated new card.
       const payload = result.data?.handleSwipe;
       if (payload?.__typename === "HandleSwipeSuccess") {
-        setReward({
-          fromStability: card.userCardState.stability,
-          toStability: payload.response.userCardState.stability,
-        });
+        if (!sessionEnded) {
+          setReward({
+            fromStability: card.userCardState.stability,
+            toStability: payload.response.userCardState.stability,
+          });
+        }
         return;
       }
 
