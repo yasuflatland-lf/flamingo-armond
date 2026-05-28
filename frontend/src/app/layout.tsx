@@ -92,12 +92,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // sign-in screen owns the entire viewport.
   const headersList = await headers();
   const pathname = headersList.get("x-pathname") ?? "/";
+  const nonce = headersList.get("x-nonce") ?? undefined;
 
   if (pathname === "/login" || pathname === "/onboarding") {
     return (
       <html lang="en">
         <body suppressHydrationWarning>
-          <Providers>{children}</Providers>
+          <Providers nonce={nonce}>{children}</Providers>
           <SpeedInsights />
           <SwRegister />
         </body>
@@ -114,7 +115,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         bugs in children still surface.
       */}
       <body suppressHydrationWarning>
-        <Providers>
+        <Providers nonce={nonce}>
           <Suspense fallback={<BootSplash />}>
             <AuthShell>{children}</AuthShell>
           </Suspense>

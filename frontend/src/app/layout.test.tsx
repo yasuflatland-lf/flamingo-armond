@@ -21,7 +21,9 @@ vi.mock("@/components/boot-splash", () => ({
 }));
 
 vi.mock("@/app/providers", () => ({
-  Providers: ({ children }: { children?: React.ReactNode }) => children,
+  Providers: function Providers(props: { children?: React.ReactNode; nonce?: string }) {
+    return props as unknown as React.ReactElement;
+  },
 }));
 
 // next/navigation — the root layout does not redirect, but transitive imports
@@ -71,6 +73,8 @@ type ReactElementLike = {
   props?: {
     children?: unknown;
     fallback?: unknown;
+    nonce?: unknown;
+    [key: string]: unknown;
   };
 };
 
@@ -188,6 +192,37 @@ describe("RootLayout — structural branch selection", () => {
 
     const suspenseEl = findElement(tree, isSuspense);
     expect(suspenseEl).toBeNull();
+  });
+
+  // Test A — default route forwards nonce.
+  test("default route: nonce from x-nonce header is forwarded to Providers", async () => {
+    mockGetHeader.mockImplementation((name) => (name === "x-nonce" ? "test-nonce-value" : null));
+    const tree = await RootLayout({ children: <div /> });
+    const providersEl = findElement(tree, byName("Providers"));
+    expect(providersEl).not.toBeNull();
+    expect(providersEl?.props?.nonce).toBe("test-nonce-value");
+  });
+
+  // Test B — /login bypass route forwards nonce.
+  test("/login: nonce from x-nonce header is forwarded to Providers", async () => {
+    mockGetHeader.mockImplementation((name) => {
+      if (name === "x-pathname") return "/login";
+      if (name === "x-nonce") return "test-nonce-value";
+      return null;
+    });
+    const tree = await RootLayout({ children: <div /> });
+    const providersEl = findElement(tree, byName("Providers"));
+    expect(providersEl).not.toBeNull();
+    expect(providersEl?.props?.nonce).toBe("test-nonce-value");
+  });
+
+  // Test C — absent x-nonce → undefined.
+  test("default route: absent x-nonce header passes undefined nonce to Providers", async () => {
+    mockGetHeader.mockReturnValue(null);
+    const tree = await RootLayout({ children: <div /> });
+    const providersEl = findElement(tree, byName("Providers"));
+    expect(providersEl).not.toBeNull();
+    expect(providersEl?.props?.nonce).toBeUndefined();
   });
 });
 

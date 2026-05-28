@@ -5,9 +5,17 @@ import type { ReactNode } from "react";
 import { makeClient } from "@/lib/apollo/client";
 import { UndoDeleteProvider } from "@/lib/undo-delete";
 
-export function Providers({ children }: { children: ReactNode }) {
+type ProvidersProps = {
+  children: ReactNode;
+  nonce?: string;
+};
+
+export function Providers({ children, nonce }: ProvidersProps) {
   return (
-    <ApolloNextAppProvider makeClient={makeClient}>
+    <ApolloNextAppProvider
+      makeClient={makeClient}
+      extraScriptProps={nonce ? { nonce } : undefined}
+    >
       <UndoDeleteProvider>{children}</UndoDeleteProvider>
     </ApolloNextAppProvider>
   );
