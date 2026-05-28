@@ -18,7 +18,7 @@ Files:
 - `frontend/src/lib/apollo/client.ts` — the `makeClient` factory.
 - `frontend/src/app/providers.tsx` — wraps the app in `ApolloNextAppProvider`.
 
-Browser code calls `/api/graphql` (same-origin via the Next rewrite — avoids CORS/cookie issues). `ApolloClient` and `InMemoryCache` come from `@apollo/client-integration-nextjs` (SSR-streaming-safe variants) — see Gotcha below.
+Browser code calls `/api/graphql` (same-origin via the Next rewrite — avoids CORS/cookie issues). `ApolloClient` and `InMemoryCache` come from `@apollo/client-integration-nextjs` (SSR-streaming-safe variants) — see Gotcha below. Under an enforcing CSP, the per-request nonce must be threaded to `ApolloNextAppProvider` via `extraScriptProps` so Apollo's streaming SSR `<script>` tags carry the matching nonce attribute and are not blocked; see [docs/frontend/csp.md § "Apollo streaming nonce wiring"](csp.md#apollo-streaming-nonce-wiring).
 
 ### Apollo cache mutation patterns
 
