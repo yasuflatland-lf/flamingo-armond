@@ -57,7 +57,7 @@ The policy is now **enforcing** on HTML responses. Violations are blocked and re
 
 ### Why Apollo needs the nonce
 
-Apollo Client's `ManualDataTransportSSRImpl` (from `@apollo/client-react-streaming`, consumed via `@apollo/client-integration-nextjs`) injects inline `<script>` tags that carry the SSR data transport — specifically `window[Symbol.for("ApolloSSRDataTransport")]` — during streaming server-side rendering. Under the enforcing CSP (`script-src 'self' 'nonce-{N}'`), any inline script that lacks a matching `nonce` attribute is blocked by the browser. Without a nonce, the Apollo streaming transport is silently dropped and the client must fall back to a full client-side fetch after hydration.
+Apollo's internal SSR data-transport component (`ManualDataTransportSSRImpl` in `@apollo/client-react-streaming`, consumed via `@apollo/client-integration-nextjs`) injects inline `<script>` tags that carry the SSR data transport — specifically `window[Symbol.for("ApolloSSRDataTransport")]` — during streaming server-side rendering. Under the enforcing CSP (`script-src 'self' 'nonce-{N}'`), any inline script that lacks a matching `nonce` attribute is blocked by the browser. Without a nonce, the Apollo streaming transport is silently dropped and the client must fall back to a full client-side fetch after hydration.
 
 ### Why Next.js automatic nonce propagation misses these scripts
 
@@ -83,7 +83,7 @@ Three files participate in threading the nonce from the middleware-forwarded hea
    <ApolloNextAppProvider extraScriptProps={nonce ? { nonce } : undefined}>
    ```
 
-3. **`ApolloNextAppProvider`** accepts `extraScriptProps` typed as `ScriptProps` (i.e., `SerializableProps<React.ScriptHTMLAttributes<HTMLScriptElement>>`, which includes `nonce?: string`) and passes those props through to `ManualDataTransportSSRImpl`. Every transport `<script>` then carries `nonce="{N}"`, matching the `nonce-{N}` source in the CSP response header.
+3. **`ApolloNextAppProvider`** accepts `extraScriptProps` typed as `ScriptProps` (i.e., `SerializableProps<React.ScriptHTMLAttributes<HTMLScriptElement>>`, which includes `nonce?: string`) and passes those props through to the internal SSR transport component. Every transport `<script>` then carries `nonce="{N}"`, matching the `nonce-{N}` source in the CSP response header.
 
 ### Graceful degradation
 
@@ -94,7 +94,7 @@ When `buildHtmlCsp` throws — for example, when `NEXT_PUBLIC_SUPABASE_URL` is m
 - The `nonce ? { nonce } : undefined` conditional evaluates to `undefined`, so `extraScriptProps` is omitted entirely from `ApolloNextAppProvider`.
 - Apollo falls back to client-side re-fetch on hydration.
 
-This is consistent with the existing middleware error path: no CSP is enforced, so unnonce-bearing inline scripts are not blocked and the page continues to function.
+This is consistent with the existing middleware error path: no CSP is enforced, so inline scripts without a nonce attribute are not blocked and the page continues to function.
 
 ## Static headers
 
