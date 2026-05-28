@@ -203,31 +203,21 @@ describe("RootLayout — structural branch selection", () => {
     expect(providersEl?.props?.nonce).toBe("test-nonce-value");
   });
 
-  // Case: /login bypass route — nonce from x-nonce header is forwarded to Providers.
-  test("/login: nonce from x-nonce header is forwarded to Providers", async () => {
-    mockGetHeader.mockImplementation((name) => {
-      if (name === "x-pathname") return "/login";
-      if (name === "x-nonce") return "test-nonce-value";
-      return null;
-    });
-    const tree = await RootLayout({ children: <div /> });
-    const providersEl = findElement(tree, byName("Providers"));
-    expect(providersEl).not.toBeNull();
-    expect(providersEl?.props?.nonce).toBe("test-nonce-value");
-  });
-
-  // Case: /onboarding bypass route — nonce from x-nonce header is forwarded to Providers.
-  test("/onboarding: nonce from x-nonce header is forwarded to Providers", async () => {
-    mockGetHeader.mockImplementation((name) => {
-      if (name === "x-pathname") return "/onboarding";
-      if (name === "x-nonce") return "test-nonce-value";
-      return null;
-    });
-    const tree = await RootLayout({ children: <div /> });
-    const providersEl = findElement(tree, byName("Providers"));
-    expect(providersEl).not.toBeNull();
-    expect(providersEl?.props?.nonce).toBe("test-nonce-value");
-  });
+  // Case: bypass routes (/login, /onboarding) — nonce from x-nonce header is forwarded to Providers.
+  test.each(["/login", "/onboarding"])(
+    "%s: nonce from x-nonce header is forwarded to Providers",
+    async (pathname: string) => {
+      mockGetHeader.mockImplementation((name) => {
+        if (name === "x-pathname") return pathname;
+        if (name === "x-nonce") return "test-nonce-value";
+        return null;
+      });
+      const tree = await RootLayout({ children: <div /> });
+      const providersEl = findElement(tree, byName("Providers"));
+      expect(providersEl).not.toBeNull();
+      expect(providersEl?.props?.nonce).toBe("test-nonce-value");
+    },
+  );
 
   // Case: absent x-nonce header — nonce is undefined at Providers.
   test("default route: absent x-nonce header passes undefined nonce to Providers", async () => {
