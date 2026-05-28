@@ -7,7 +7,7 @@ import { UndoDeleteProvider } from "@/lib/undo-delete";
 
 type ProvidersProps = {
   children: ReactNode;
-  nonce?: string;
+  nonce: string | undefined;
 };
 
 export function Providers({ children, nonce }: ProvidersProps) {
