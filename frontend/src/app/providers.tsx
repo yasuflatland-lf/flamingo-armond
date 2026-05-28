@@ -12,10 +12,7 @@ type ProvidersProps = {
 
 export function Providers({ children, nonce }: ProvidersProps) {
   return (
-    <ApolloNextAppProvider
-      makeClient={makeClient}
-      extraScriptProps={nonce ? { nonce } : undefined}
-    >
+    <ApolloNextAppProvider makeClient={makeClient} extraScriptProps={nonce ? { nonce } : undefined}>
       <UndoDeleteProvider>{children}</UndoDeleteProvider>
     </ApolloNextAppProvider>
   );
