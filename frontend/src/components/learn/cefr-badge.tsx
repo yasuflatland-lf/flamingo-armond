@@ -20,9 +20,9 @@ import { cn } from "@/lib/utils";
  * element is not reliably exposed to assistive tech.
  */
 
-// Band buckets the five CEFR levels into three color families.
-// Keep this an EXHAUSTIVE Record (not a switch with a default) so a future
-// `C2` value becomes a one-line compile error here rather than silently
+// Band buckets the six CEFR levels into three color families.
+// Keep this an EXHAUSTIVE Record (not a switch with a default) so any future
+// new level becomes a one-line compile error here rather than silently
 // falling into a default branch. `Record<CefrLevel, ...>` over the string
 // union is just as exhaustive as over the runtime enum.
 const bandOf: Record<CefrLevel, "a" | "b" | "c"> = {

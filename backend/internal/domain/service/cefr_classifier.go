@@ -6,11 +6,12 @@ import (
 	"backend/internal/domain"
 )
 
-// CEFRClassifier assigns a CEFR level to a card's front text using an Oxford
-// word list. It first attempts an exact whole-string match (catches idioms and
-// phrasal verbs stored as multi-word entries); a whole-string hit wins. It then
-// falls back to per-token matching and keeps the hardest matching level. A
-// front with no matching word classifies as CEFRUnknown.
+// CEFRClassifier assigns a CEFR level to a card's front text using a CEFR
+// word list (Oxford 3000/5000 plus Cambridge EVP C2). It first attempts an
+// exact whole-string match (catches idioms and phrasal verbs stored as
+// multi-word entries); a whole-string hit wins. It then falls back to
+// per-token matching and keeps the hardest matching level. A front with no
+// matching word classifies as CEFRUnknown.
 type CEFRClassifier struct {
 	words domain.CEFRWordList
 }
@@ -25,7 +26,7 @@ func NewCEFRClassifier(words domain.CEFRWordList) *CEFRClassifier {
 	return &CEFRClassifier{words: words}
 }
 
-// Classify returns the CEFR level for front and whether any Oxford word
+// Classify returns the CEFR level for front and whether any listed word
 // matched. When several tokens match in the per-token path, the hardest
 // (highest-ranked) level wins; a whole-string match returns immediately without
 // consulting the per-token path. The bool is false (and the level CEFRUnknown)

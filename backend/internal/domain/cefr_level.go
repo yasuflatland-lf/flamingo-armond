@@ -104,7 +104,7 @@ func NormalizeWord(s string) string {
 	return s
 }
 
-// CEFRWordList is the consumer-defined interface for the Oxford word-list
+// CEFRWordList is the consumer-defined interface for the CEFR word-list
 // lookup. The cefr adapter (*cefr.WordList) satisfies it implicitly. Lookup
 // expects an already-normalized key (see NormalizeWord) and reports the level
 // and whether the key was present.
