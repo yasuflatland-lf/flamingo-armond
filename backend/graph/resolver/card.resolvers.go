@@ -51,7 +51,8 @@ func (r *cardResolver) UserCardState(ctx context.Context, obj *model.Card) (*mod
 	return toModelUserCardState(ucs), nil
 }
 
-// CefrLevel is the resolver for the cefrLevel field. It classifies the card's front on read; returns null when no Oxford word matches.
+// CefrLevel is the resolver for the cefrLevel field. It classifies the card's
+// front text on read and returns null when no Oxford word matches.
 func (r *cardResolver) CefrLevel(_ context.Context, obj *model.Card) (*model.CEFRLevel, error) {
 	level, ok := r.CEFRUC.Classify(obj.Front)
 	if !ok {

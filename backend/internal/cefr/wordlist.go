@@ -12,10 +12,6 @@ import (
 //go:embed data/oxford-3000.md data/oxford-5000.md
 var dataFS embed.FS
 
-// dataFiles are the embedded word-list files, merged. Highest level wins on a
-// duplicate key (via Harder), so insertion order does not affect the result.
-var dataFiles = []string{"data/oxford-3000.md", "data/oxford-5000.md"}
-
 // WordList is an in-memory Oxford 3000/5000 lookup table keyed by normalized
 // word/phrase. It implements domain.CEFRWordList.
 type WordList struct {
@@ -39,7 +35,7 @@ func (w *WordList) Len() int { return len(w.levels) }
 // any failure is a build/release defect, never a runtime condition.
 func NewWordList() *WordList {
 	merged := make(map[string]domain.CEFRLevel)
-	for _, name := range dataFiles {
+	for _, name := range []string{"data/oxford-3000.md", "data/oxford-5000.md"} {
 		raw, err := dataFS.ReadFile(name)
 		if err != nil {
 			panic("cefr: read embedded word list " + name + ": " + err.Error())
