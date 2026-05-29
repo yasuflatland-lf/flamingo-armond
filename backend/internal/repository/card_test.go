@@ -872,6 +872,54 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 	})
 }
 
+// TestCardRepository_FindDueCards_PositionDoesNotOverrideDue proves that
+// cards.position is ONLY a tiebreaker after the FSRS due key.  A review card
+// with an earlier ucs.due must sort ahead of a new card even when the review
+// card has a HIGHER position value.  The ORDER BY is:
+//
+//	COALESCE(ucs.due, cards.created_at) ASC, cards.position ASC, cards.id ASC
+func TestCardRepository_FindDueCards_PositionDoesNotOverrideDue(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	// reviewEarly: has an FSRS row with due = now-2h (earlier than now).
+	// Position is set HIGH (100) so that position-first ordering would push it
+	// after newLowPos.
+	reviewEarly := newCard(cg.ID, "review-early", "back")
+	reviewEarly.Position = 100
+	require.NoError(t, repo.Create(ctx, reviewEarly))
+
+	// newLowPos: no FSRS row, so due key falls back to cards.created_at (= now).
+	// Position is LOW (0), which would sort it first if position were the
+	// primary sort key.
+	newLowPos := newCard(cg.ID, "new-low-pos", "back")
+	newLowPos.CreatedAt = now
+	newLowPos.Position = 0
+	require.NoError(t, repo.Create(ctx, newLowPos))
+
+	// Upsert the FSRS row for reviewEarly so its effective due is now-2h.
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		state := domain.NewUserCardFSRSForNewCard(ownerID, reviewEarly.ID, now)
+		state.State.Due = now.Add(-2 * time.Hour)
+		state.State.Reps = 1
+		return ucsRepo.UpsertTx(ctx, tx, state)
+	}))
+
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, 10)
+	require.NoError(t, err)
+	require.Equal(t,
+		[]string{reviewEarly.ID, newLowPos.ID},
+		repoCardIDs(got),
+		"reviewEarly (due=now-2h, pos=100) must sort before newLowPos (due=now, pos=0): "+
+			"earlier due overrides higher position",
+	)
+}
+
 // TestCardRepo_FindPageByCardgroup_Search_CrossTenantNonLeak verifies that a
 // search applied to one cardgroup does not surface rows from another cardgroup
 // even when both contain cards with the same front/back text. This is the

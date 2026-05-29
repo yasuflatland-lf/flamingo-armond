@@ -194,6 +194,11 @@ func TestNotionSyncUsecase_DuplicateFrontLastWins(t *testing.T) {
 	if len(cards.upserted) != 1 || string(cards.upserted[0].Back) != uniqueBack(2) {
 		t.Fatalf("upserted = %+v, want latest back", cards.upserted)
 	}
+	// After deduplication the surviving slice has exactly one card; its Position
+	// must be 0 (the first — and only — index in the deduped document-order slice).
+	if cards.upserted[0].Position != 0 {
+		t.Fatalf("upserted[0].Position = %d, want 0 (single surviving card after dedupe)", cards.upserted[0].Position)
+	}
 	// Partial success (rows>0, parseErrs>0): persistence must still run.
 	if cardgroups.calls != 1 {
 		t.Fatalf("EnsureByName calls = %d, want 1", cardgroups.calls)
@@ -778,6 +783,7 @@ func TestNotionSyncUsecase_WarnBranchLogFields(t *testing.T) {
 // receives a Position equal to its index (0..n-1) in the deduped document-order
 // slice, including rows that originate from more than one source page.
 func TestCardsFromParsedRows_AssignsContiguousPositions(t *testing.T) {
+	t.Parallel()
 	// Rows come from two different source pages, simulating a multi-page Notion
 	// sync.  After dedupe (already done before this call) these are the survivors.
 	rows := []ParsedRow{

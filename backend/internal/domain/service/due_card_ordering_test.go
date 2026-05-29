@@ -194,8 +194,9 @@ func TestOrderingPolicy_Apply_PanicsOnNilRng(t *testing.T) {
 }
 
 // TestOrderingPolicy_Apply_TrailingReviewAppend exercises the trailing-review
-// append path in interleave. Fixture: 1 new + 7 review, all with distinct Due
-// timestamps so shuffleSameDue is a no-op.
+// append path in interleave. Fixture: 1 new (Position 0, single-card run →
+// shuffleSamePosition no-op) + 7 review (distinct Due timestamps →
+// shuffleSameDue no-op).
 //
 // With ReviewCardRatio=4 and NewCardRatio=1 the outer loop runs one full cycle:
 // emit rev-0..rev-3 then new-0. After that cycle i=1 == len(newC)=1, so the
@@ -348,6 +349,50 @@ func TestOrderingPolicy_Apply_NewCards_DistinctPositions_Deterministic(t *testin
 	got2 := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(7)))
 	require.Equal(t, want, cardIDs(got2),
 		"distinct positions must be seed-independent (never reshuffled)")
+}
+
+// TestOrderingPolicy_Apply_NewCards_MultipleEqualPositionRuns verifies that
+// shuffleSamePosition correctly handles multiple disjoint equal-Position runs.
+// Fixture: pos0-a and pos0-b share Position 0; pos1-c and pos1-d share Position 1.
+// The inter-run order (pos-0 run before pos-1 run) must be preserved; within
+// each 2-card run the order is the deterministic seed-42 permutation.
+func TestOrderingPolicy_Apply_NewCards_MultipleEqualPositionRuns(t *testing.T) {
+	t.Parallel()
+
+	due := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
+	in := []domain.DueCard{
+		dueCardPos("pos0-a", domain.FSRSStateNew, due, 0),
+		dueCardPos("pos0-b", domain.FSRSStateNew, due, 0),
+		dueCardPos("pos1-c", domain.FSRSStateNew, due, 1),
+		dueCardPos("pos1-d", domain.FSRSStateNew, due, 1),
+	}
+
+	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)))
+	gotIDs := cardIDs(got)
+
+	require.Len(t, gotIDs, 4)
+
+	// Inter-run order preserved: all pos-0 cards appear before all pos-1 cards.
+	pos0Set := map[string]bool{"pos0-a": true, "pos0-b": true}
+	pos1Set := map[string]bool{"pos1-c": true, "pos1-d": true}
+	lastPos0Idx := -1
+	firstPos1Idx := len(gotIDs)
+	for i, id := range gotIDs {
+		if pos0Set[id] {
+			lastPos0Idx = i
+		}
+		if pos1Set[id] && i < firstPos1Idx {
+			firstPos1Idx = i
+		}
+	}
+	require.Less(t, lastPos0Idx, firstPos1Idx,
+		"all pos-0 cards must appear before all pos-1 cards")
+
+	// Pinned deterministic order for rand.NewSource(42):
+	// pos-0 run [pos0-a, pos0-b] shuffles to [pos0-b, pos0-a];
+	// pos-1 run [pos1-c, pos1-d] shuffles to [pos1-d, pos1-c].
+	require.Equal(t, []string{"pos0-b", "pos0-a", "pos1-d", "pos1-c"}, gotIDs,
+		"deterministic shuffle order for seed 42")
 }
 
 // TestOrderingPolicy_Apply_NewCards_EqualPositions_Shuffled verifies that new
