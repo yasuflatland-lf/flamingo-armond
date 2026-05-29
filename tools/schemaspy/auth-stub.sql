@@ -11,9 +11,10 @@
 -- Without this bootstrap applied first, the migration fails immediately on a
 -- vanilla Postgres container with "schema auth does not exist".
 --
--- APPLIED AS
---   psql -v ON_ERROR_STOP=1 -f tools/schemaspy/auth-stub.sql
+-- APPLIED AS (in CI, against the ephemeral "armond" database):
+--   psql -h localhost -U postgres -d armond -v ON_ERROR_STOP=1 -f tools/schemaspy/auth-stub.sql
 -- before the migration up-files are run in the SchemaSpy CI workflow.
+-- Adapt the -h / -U / -d flags when applying against a different local Postgres.
 --
 -- RELATIONSHIP TO INTEGRATION TESTS
 -- This SQL block is identical to the bootstrap executed by the four backend
