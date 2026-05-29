@@ -80,6 +80,8 @@ func toCEFRLevelModel(level domain.CEFRLevel) (model.CEFRLevel, bool) {
 		return model.CEFRLevelB2, true
 	case domain.CEFRC1:
 		return model.CEFRLevelC1, true
+	case domain.CEFRC2:
+		return model.CEFRLevelC2, true
 	default:
 		return "", false
 	}

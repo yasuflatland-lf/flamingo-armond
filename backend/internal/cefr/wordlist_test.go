@@ -70,3 +70,20 @@ func TestNewWordList_EmbeddedData(t *testing.T) {
 	// Sanity: a non-trivial number of entries loaded.
 	require.Greater(t, wl.Len(), 4000)
 }
+
+func TestNewWordList_CambridgeC2Data(t *testing.T) {
+	t.Parallel()
+	wl := NewWordList()
+
+	// Keys verified in data/cambridge-c2.md that are absent from the Oxford
+	// lists; each must resolve to exactly C2.
+	c2Keys := []string{"ambiguous", "negligible", "paradigm", "bribery", "abrupt"}
+	for _, key := range c2Keys {
+		lvl, ok := wl.Lookup(domain.NormalizeWord(key))
+		require.True(t, ok, "expected C2 key %q to be present", key)
+		require.Equal(t, domain.CEFRC2, lvl, "expected %q to map to C2", key)
+	}
+
+	// The list must be larger than the Oxford-only baseline (>4000 Oxford + 792 C2).
+	require.Greater(t, wl.Len(), 4792)
+}
