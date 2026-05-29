@@ -58,6 +58,7 @@ type gormCard struct {
 	Back        string    `gorm:"column:back"`
 	CreatedAt   time.Time `gorm:"column:created_at"`
 	UpdatedAt   time.Time `gorm:"column:updated_at"`
+	Position    int       `gorm:"column:position"`
 }
 
 func (gormCard) TableName() string { return "cards" }
@@ -126,7 +127,7 @@ type CardWriteRepository interface {
 	// See `.claude/rules/go-library-gotchas.md` § GORM empty IN.
 	DeleteByCardgroupAndFrontsTx(ctx context.Context, tx *gorm.DB, cardgroupID string, fronts []string) (int64, error)
 	// UpsertManyTx upserts cards by (cardgroup_id, front). Existing rows have
-	// their `back` and `updated_at` columns overwritten. Returns the
+	// their `back`, `updated_at`, and `position` columns overwritten. Returns the
 	// per-row split between Inserted and Updated. Empty input is a no-op.
 	UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domain.Card) (UpsertManyTxResult, error)
 }
@@ -384,6 +385,7 @@ type dueCardRow struct {
 	Back        string     `gorm:"column:back"`
 	CreatedAt   time.Time  `gorm:"column:created_at"`
 	UpdatedAt   time.Time  `gorm:"column:updated_at"`
+	Position    int        `gorm:"column:position"`
 	State       *int       `gorm:"column:state"`
 	Due         *time.Time `gorm:"column:due"`
 }
@@ -396,10 +398,10 @@ func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, now time.Time, limi
 	var rows []dueCardRow
 	if err := db.
 		Table("cards").
-		Select("cards.id, cards.cardgroup_id, cards.front, cards.back, cards.created_at, cards.updated_at, ucs.state, ucs.due").
+		Select("cards.id, cards.cardgroup_id, cards.front, cards.back, cards.created_at, cards.updated_at, cards.position, ucs.state, ucs.due").
 		Joins("LEFT JOIN user_card_fsrs ucs ON ucs.user_id = ? AND ucs.card_id = cards.id", userID).
 		Where("cards.cardgroup_id = ? AND (ucs.due IS NULL OR ucs.due <= ?)", cardgroupID, now).
-		Order("COALESCE(ucs.due, cards.created_at) ASC, cards.id ASC").
+		Order("COALESCE(ucs.due, cards.created_at) ASC, cards.position ASC, cards.id ASC").
 		Limit(limit).
 		Find(&rows).Error; err != nil {
 		return nil, eris.Wrap(err, "repository: card: find due cards")
@@ -413,6 +415,7 @@ func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, now time.Time, limi
 			Back:        domain.CardText(r.Back),
 			CreatedAt:   r.CreatedAt,
 			UpdatedAt:   r.UpdatedAt,
+			Position:    r.Position,
 		}
 		dc := domain.DueCard{Card: c, State: domain.FSRSStateNew, Due: r.CreatedAt}
 		if r.State != nil {
@@ -504,8 +507,8 @@ type UpsertManyTxResult struct {
 }
 
 // UpsertManyTx upserts cards by (cardgroup_id, front). Existing rows have
-// `back` and `updated_at` overwritten. The conflict key requires the unique index
-// `uq_cards_cardgroup_front` (migration 20260503000000).
+// `back`, `updated_at`, and `position` overwritten. The conflict key requires the
+// unique index `uq_cards_cardgroup_front` (migration 20260503000000).
 //
 // Counts are derived per-row from the PostgreSQL system column `xmax`. A
 // freshly inserted row has `xmax = 0` in the same transaction; a row updated
@@ -534,16 +537,16 @@ func (r *cardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domai
 		}
 	}
 
-	// Build a single multi-row INSERT. Each card contributes 6 placeholders
+	// Build a single multi-row INSERT. Each card contributes 7 placeholders
 	// matching the column list below.
-	const columns = `(id, cardgroup_id, front, back, created_at, updated_at)`
-	const rowPH = "(?, ?, ?, ?, ?, ?)"
+	const columns = `(id, cardgroup_id, front, back, created_at, updated_at, position)`
+	const rowPH = "(?, ?, ?, ?, ?, ?, ?)"
 
 	var sb strings.Builder
 	sb.WriteString("INSERT INTO cards ")
 	sb.WriteString(columns)
 	sb.WriteString(" VALUES ")
-	args := make([]any, 0, len(cards)*6)
+	args := make([]any, 0, len(cards)*7)
 	for i, c := range cards {
 		if i > 0 {
 			sb.WriteString(", ")
@@ -556,11 +559,12 @@ func (r *cardRepo) UpsertManyTx(ctx context.Context, tx *gorm.DB, cards []*domai
 			c.Back,
 			c.CreatedAt,
 			c.UpdatedAt,
+			c.Position,
 		)
 	}
 	sb.WriteString(`
         ON CONFLICT (cardgroup_id, front)
-        DO UPDATE SET back = EXCLUDED.back, updated_at = now()
+        DO UPDATE SET back = EXCLUDED.back, updated_at = now(), position = EXCLUDED.position
         RETURNING (xmax = 0) AS inserted`)
 
 	type returnedRow struct {
@@ -630,6 +634,7 @@ func cardToRow(card *domain.Card) *gormCard {
 		Back:        string(card.Back),
 		CreatedAt:   card.CreatedAt,
 		UpdatedAt:   card.UpdatedAt,
+		Position:    card.Position,
 	}
 }
 
@@ -641,5 +646,6 @@ func cardToDomain(row gormCard) *domain.Card {
 		Back:        domain.CardText(row.Back),
 		CreatedAt:   row.CreatedAt,
 		UpdatedAt:   row.UpdatedAt,
+		Position:    row.Position,
 	}
 }

@@ -162,3 +162,56 @@ func TestCardRepository_UpsertManyTx(t *testing.T) {
 		require.Equal(t, domain.CardText("back-B"), storedB[0].Back)
 	})
 }
+
+// TestCardRepository_UpsertManyTx_UpdatesPositionOnConflict proves the
+// ON CONFLICT DO UPDATE path refreshes `position`. The first batch writes
+// fronts F1,F2,F3 at positions 0,1,2; the second batch re-upserts the SAME
+// fronts at positions 10,11,12. Because cardToDomain carries Position, a read
+// after the second upsert must reflect the new positions.
+func TestCardRepository_UpsertManyTx_UpdatesPositionOnConflict(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewCardRepository(testDB.GORM)
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+
+	fronts := []string{"F1", "F2", "F3"}
+
+	makeBatch := func(positions []int) []*domain.Card {
+		batch := make([]*domain.Card, len(fronts))
+		for i, front := range fronts {
+			c := newCard(cg.ID, front, "back")
+			c.Position = positions[i]
+			batch[i] = c
+		}
+		return batch
+	}
+
+	// First batch: positions 0,1,2.
+	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		_, txErr := repo.UpsertManyTx(ctx, tx, makeBatch([]int{0, 1, 2}))
+		return txErr
+	})
+	require.NoError(t, err)
+
+	for i, front := range fronts {
+		got, err := repo.FindByCardgroupAndFront(ctx, cg.ID, front)
+		require.NoError(t, err)
+		require.Equal(t, i, got.Position, "initial position for %q", front)
+	}
+
+	// Second batch: SAME fronts, DIFFERENT positions 10,11,12. The conflict
+	// path must refresh position.
+	err = testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		_, txErr := repo.UpsertManyTx(ctx, tx, makeBatch([]int{10, 11, 12}))
+		return txErr
+	})
+	require.NoError(t, err)
+
+	for i, front := range fronts {
+		got, err := repo.FindByCardgroupAndFront(ctx, cg.ID, front)
+		require.NoError(t, err)
+		require.Equal(t, 10+i, got.Position,
+			"position for %q must be refreshed by the conflict path", front)
+	}
+}

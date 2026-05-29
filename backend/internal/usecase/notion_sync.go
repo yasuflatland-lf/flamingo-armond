@@ -319,11 +319,14 @@ func dedupeParsedRows(rows []ParsedRow, errs []CardImportError) ([]ParsedRow, []
 func cardsFromParsedRows(cardgroupID string, rows []ParsedRow) []*domain.Card {
 	now := time.Now().UTC()
 	cards := make([]*domain.Card, 0, len(rows))
-	for _, row := range rows {
+	// Position is the index in the deduped document-order slice (0..n-1), so the
+	// learn query can order new cards by their original Notion document position.
+	for i, row := range rows {
 		cards = append(cards, &domain.Card{
 			CardgroupID: cardgroupID,
 			Front:       domain.CardText(row.Front),
 			Back:        domain.CardText(row.Back),
+			Position:    i,
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		})

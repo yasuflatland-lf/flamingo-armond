@@ -12,9 +12,21 @@ import (
 )
 
 // dueCard builds a DueCard fixture with a Card carrying the given ID.
+// The Card's Position defaults to 0.
 func dueCard(id string, state domain.FSRSCardState, due time.Time) domain.DueCard {
 	return domain.DueCard{
 		Card:  &domain.Card{ID: id},
+		State: state,
+		Due:   due,
+	}
+}
+
+// dueCardPos builds a DueCard fixture with an explicit Card.Position. Use this
+// for new-card fixtures where a deterministic post-shuffle order is asserted:
+// distinct positions collapse to size-1 runs, so shuffleSamePosition is a no-op.
+func dueCardPos(id string, state domain.FSRSCardState, due time.Time, pos int) domain.DueCard {
+	return domain.DueCard{
+		Card:  &domain.Card{ID: id, Position: pos},
 		State: state,
 		Due:   due,
 	}
@@ -41,13 +53,13 @@ func TestOrderingPolicy_Apply_Empty(t *testing.T) {
 func TestOrderingPolicy_Apply_OnlyNew(t *testing.T) {
 	t.Parallel()
 
-	// All distinct Due timestamps so shuffleSameDue is a no-op and the
+	// Distinct positions (0,1,2) so shuffleSamePosition is a no-op and the
 	// post-partition order is identical to the input order.
 	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
 	in := []domain.DueCard{
-		dueCard("n1", domain.FSRSStateNew, base),
-		dueCard("n2", domain.FSRSStateNew, base.Add(time.Minute)),
-		dueCard("n3", domain.FSRSStateNew, base.Add(2*time.Minute)),
+		dueCardPos("n1", domain.FSRSStateNew, base, 0),
+		dueCardPos("n2", domain.FSRSStateNew, base.Add(time.Minute), 1),
+		dueCardPos("n3", domain.FSRSStateNew, base.Add(2*time.Minute), 2),
 	}
 
 	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)))
@@ -73,10 +85,10 @@ func TestOrderingPolicy_Apply_OnlyReview(t *testing.T) {
 func TestOrderingPolicy_Apply_MixedInterleaveRatio(t *testing.T) {
 	t.Parallel()
 
-	// 5 new + 20 review, all with distinct Due timestamps so the shuffle
-	// step is a no-op and we can assert the deterministic interleave order.
-	// Expected pattern: review-first, ReviewCardRatio (4) reviews then
-	// NewCardRatio (1) new, repeating until both buckets empty.
+	// 5 new (distinct positions 0..4) + 20 review (distinct Due timestamps)
+	// so both shuffle steps are no-ops and we can assert the deterministic
+	// interleave order. Expected pattern: review-first, ReviewCardRatio (4)
+	// reviews then NewCardRatio (1) new, repeating until both buckets empty.
 	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
 	in := make([]domain.DueCard, 0, 25)
 	for i := 0; i < 20; i++ {
@@ -87,10 +99,11 @@ func TestOrderingPolicy_Apply_MixedInterleaveRatio(t *testing.T) {
 		))
 	}
 	for i := 0; i < 5; i++ {
-		in = append(in, dueCard(
+		in = append(in, dueCardPos(
 			fmt.Sprintf("new-%d", i),
 			domain.FSRSStateNew,
 			base.Add(time.Duration(100+i)*time.Minute),
+			i, // distinct positions 0..4 => shuffleSamePosition is a no-op
 		))
 	}
 
@@ -181,8 +194,9 @@ func TestOrderingPolicy_Apply_PanicsOnNilRng(t *testing.T) {
 }
 
 // TestOrderingPolicy_Apply_TrailingReviewAppend exercises the trailing-review
-// append path in interleave. Fixture: 1 new + 7 review, all with distinct Due
-// timestamps so shuffleSameDue is a no-op.
+// append path in interleave. Fixture: 1 new (Position 0, single-card run →
+// shuffleSamePosition no-op) + 7 review (distinct Due timestamps →
+// shuffleSameDue no-op).
 //
 // With ReviewCardRatio=4 and NewCardRatio=1 the outer loop runs one full cycle:
 // emit rev-0..rev-3 then new-0. After that cycle i=1 == len(newC)=1, so the
@@ -219,8 +233,8 @@ func TestOrderingPolicy_Apply_TrailingReviewAppend(t *testing.T) {
 }
 
 // TestOrderingPolicy_Apply_TrailingNewAppend exercises the trailing-new append
-// path in interleave. Fixture: 5 new + 3 review, all with distinct Due
-// timestamps so shuffleSameDue is a no-op.
+// path in interleave. Fixture: 5 new (distinct positions 0..4) + 3 review
+// (distinct Due timestamps) so both shuffle steps are no-ops.
 //
 // With ReviewCardRatio=4 and NewCardRatio=1 the k-loop guard "j < len(reviewC)"
 // exits after emitting rev-0, rev-1, rev-2 (only 3 reviews exist), then new-0
@@ -239,10 +253,11 @@ func TestOrderingPolicy_Apply_TrailingNewAppend(t *testing.T) {
 		))
 	}
 	for i := 0; i < 5; i++ {
-		in = append(in, dueCard(
+		in = append(in, dueCardPos(
 			fmt.Sprintf("new-%d", i),
 			domain.FSRSStateNew,
 			base.Add(time.Duration(100+i)*time.Minute),
+			i, // distinct positions 0..4 => shuffleSamePosition is a no-op
 		))
 	}
 
@@ -304,5 +319,105 @@ func TestOrderingPolicy_Apply_MultipleSameDueRuns(t *testing.T) {
 	// With rand.NewSource(42) each 2-card run is shuffled deterministically.
 	// Probed result: run-1 permutes to [r1b, r1a]; run-2 permutes to [r2b, r2a].
 	require.Equal(t, []string{"r1b", "r1a", "r2b", "r2a"}, ids,
+		"deterministic shuffle order for seed 42")
+}
+
+// TestOrderingPolicy_Apply_NewCards_DistinctPositions_Deterministic verifies
+// that new cards with distinct positions are never reshuffled: distinct
+// positions collapse to size-1 runs, so shuffleSamePosition is a no-op and the
+// output equals position order regardless of the rng seed.
+func TestOrderingPolicy_Apply_NewCards_DistinctPositions_Deterministic(t *testing.T) {
+	t.Parallel()
+
+	// All cards share the same Due (the FSRS tie); the repository delivers them
+	// pre-sorted by position ASC. Distinct positions 0,1,2,3 => no shuffle.
+	due := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
+	in := []domain.DueCard{
+		dueCardPos("p0", domain.FSRSStateNew, due, 0),
+		dueCardPos("p1", domain.FSRSStateNew, due, 1),
+		dueCardPos("p2", domain.FSRSStateNew, due, 2),
+		dueCardPos("p3", domain.FSRSStateNew, due, 3),
+	}
+	want := []string{"p0", "p1", "p2", "p3"}
+
+	got1 := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)))
+	require.Equal(t, want, cardIDs(got1),
+		"distinct positions must stay in position order")
+
+	// A different seed must produce the identical order: distinct positions are
+	// never reshuffled.
+	got2 := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(7)))
+	require.Equal(t, want, cardIDs(got2),
+		"distinct positions must be seed-independent (never reshuffled)")
+}
+
+// TestOrderingPolicy_Apply_NewCards_MultipleEqualPositionRuns verifies that
+// shuffleSamePosition correctly handles multiple disjoint equal-Position runs.
+// Fixture: pos0-a and pos0-b share Position 0; pos1-c and pos1-d share Position 1.
+// The inter-run order (pos-0 run before pos-1 run) must be preserved; within
+// each 2-card run the order is the deterministic seed-42 permutation.
+func TestOrderingPolicy_Apply_NewCards_MultipleEqualPositionRuns(t *testing.T) {
+	t.Parallel()
+
+	due := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
+	in := []domain.DueCard{
+		dueCardPos("pos0-a", domain.FSRSStateNew, due, 0),
+		dueCardPos("pos0-b", domain.FSRSStateNew, due, 0),
+		dueCardPos("pos1-c", domain.FSRSStateNew, due, 1),
+		dueCardPos("pos1-d", domain.FSRSStateNew, due, 1),
+	}
+
+	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)))
+	gotIDs := cardIDs(got)
+
+	require.Len(t, gotIDs, 4)
+
+	// Inter-run order preserved: all pos-0 cards appear before all pos-1 cards.
+	pos0Set := map[string]bool{"pos0-a": true, "pos0-b": true}
+	pos1Set := map[string]bool{"pos1-c": true, "pos1-d": true}
+	lastPos0Idx := -1
+	firstPos1Idx := len(gotIDs)
+	for i, id := range gotIDs {
+		if pos0Set[id] {
+			lastPos0Idx = i
+		}
+		if pos1Set[id] && i < firstPos1Idx {
+			firstPos1Idx = i
+		}
+	}
+	require.Less(t, lastPos0Idx, firstPos1Idx,
+		"all pos-0 cards must appear before all pos-1 cards")
+
+	// Pinned deterministic order for rand.NewSource(42):
+	// pos-0 run [pos0-a, pos0-b] shuffles to [pos0-b, pos0-a];
+	// pos-1 run [pos1-c, pos1-d] shuffles to [pos1-d, pos1-c].
+	require.Equal(t, []string{"pos0-b", "pos0-a", "pos1-d", "pos1-c"}, gotIDs,
+		"deterministic shuffle order for seed 42")
+}
+
+// TestOrderingPolicy_Apply_NewCards_EqualPositions_Shuffled verifies that new
+// cards all sharing Position 0 (the non-Notion case) form a single equal-Position
+// run and are shuffled, preserving the "don't show the same first-N" property.
+func TestOrderingPolicy_Apply_NewCards_EqualPositions_Shuffled(t *testing.T) {
+	t.Parallel()
+
+	// Every card has Position 0 => one equal-Position run => shuffled.
+	due := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
+	in := []domain.DueCard{
+		dueCardPos("a", domain.FSRSStateNew, due, 0),
+		dueCardPos("b", domain.FSRSStateNew, due, 0),
+		dueCardPos("c", domain.FSRSStateNew, due, 0),
+		dueCardPos("d", domain.FSRSStateNew, due, 0),
+	}
+
+	got := NewOrderingPolicy().Apply(in, rand.New(rand.NewSource(42)))
+	gotIDs := cardIDs(got)
+
+	require.Len(t, gotIDs, 4)
+	require.NotEqual(t, []string{"a", "b", "c", "d"}, gotIDs,
+		"equal-Position run must be shuffled, not left in input order")
+	// With rand.NewSource(42), four identical-Position cards [a, b, c, d]
+	// shuffle to [c, d, a, b] (same permutation the same-Due shuffle produces).
+	require.Equal(t, []string{"c", "d", "a", "b"}, gotIDs,
 		"deterministic shuffle order for seed 42")
 }

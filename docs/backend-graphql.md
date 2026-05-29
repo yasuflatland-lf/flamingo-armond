@@ -329,8 +329,7 @@ The resolver layer for these operations lives in `backend/graph/resolver/card_im
 
 ```graphql
 """
-Next batch of cards due for review in this cardgroup, ordered by due-date with
-same-due ties shuffled per session. Returns an empty list when all cards are caught up.
+Next batch of cards due for review in this cardgroup, ordered by due-date. Among cards tied on due-date, those with a Notion-synced `position` are ordered by document position (with a per-session shuffle only within equal-position runs); manually created cards (all at position 0) are shuffled per session. Returns an empty list when all cards are caught up. See [`docs/backend/ddd-patterns/fsrs-compatible-secondary-ordering.md`](backend/ddd-patterns/fsrs-compatible-secondary-ordering.md) for the tiebreaker design.
 Limit defaults to 20 (clamped to 100). Returns UNAUTHENTICATED if the caller does not own
 the cardgroup; BAD_USER_INPUT if the cardgroup does not exist.
 """

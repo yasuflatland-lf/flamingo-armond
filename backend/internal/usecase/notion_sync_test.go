@@ -194,6 +194,11 @@ func TestNotionSyncUsecase_DuplicateFrontLastWins(t *testing.T) {
 	if len(cards.upserted) != 1 || string(cards.upserted[0].Back) != uniqueBack(2) {
 		t.Fatalf("upserted = %+v, want latest back", cards.upserted)
 	}
+	// After deduplication the surviving slice has exactly one card; its Position
+	// must be 0 (the first — and only — index in the deduped document-order slice).
+	if cards.upserted[0].Position != 0 {
+		t.Fatalf("upserted[0].Position = %d, want 0 (single surviving card after dedupe)", cards.upserted[0].Position)
+	}
 	// Partial success (rows>0, parseErrs>0): persistence must still run.
 	if cardgroups.calls != 1 {
 		t.Fatalf("EnsureByName calls = %d, want 1", cardgroups.calls)
@@ -771,5 +776,42 @@ func TestNotionSyncUsecase_WarnBranchLogFields(t *testing.T) {
 	}
 	if warnRec["first_error_snippet"] != "@broken" {
 		t.Errorf("first_error_snippet = %v, want %q", warnRec["first_error_snippet"], "@broken")
+	}
+}
+
+// TestCardsFromParsedRows_AssignsContiguousPositions verifies that each card
+// receives a Position equal to its index (0..n-1) in the deduped document-order
+// slice, including rows that originate from more than one source page.
+func TestCardsFromParsedRows_AssignsContiguousPositions(t *testing.T) {
+	t.Parallel()
+	// Rows come from two different source pages, simulating a multi-page Notion
+	// sync.  After dedupe (already done before this call) these are the survivors.
+	rows := []ParsedRow{
+		{Front: "apple", Back: "fruit", SourcePageID: "page-1", Line: 1},
+		{Front: "banana", Back: "fruit", SourcePageID: "page-1", Line: 2},
+		{Front: "carrot", Back: "vegetable", SourcePageID: "page-2", Line: 1},
+		{Front: "daikon", Back: "vegetable", SourcePageID: "page-2", Line: 2},
+	}
+
+	const cardgroupID = "cg-test"
+	cards := cardsFromParsedRows(cardgroupID, rows)
+
+	if len(cards) != len(rows) {
+		t.Fatalf("len(cards) = %d, want %d", len(cards), len(rows))
+	}
+
+	for i, card := range cards {
+		// Position must equal the index in the deduped slice.
+		if card.Position != i {
+			t.Errorf("cards[%d].Position = %d, want %d", i, card.Position, i)
+		}
+		// Front order must be preserved.
+		if string(card.Front) != rows[i].Front {
+			t.Errorf("cards[%d].Front = %q, want %q", i, card.Front, rows[i].Front)
+		}
+		// CardgroupID must be propagated.
+		if card.CardgroupID != cardgroupID {
+			t.Errorf("cards[%d].CardgroupID = %q, want %q", i, card.CardgroupID, cardgroupID)
+		}
 	}
 }
