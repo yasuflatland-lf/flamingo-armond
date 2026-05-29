@@ -33,8 +33,8 @@ func (w *WordList) Len() int { return len(w.levels) }
 // NewWordList parses all embedded word lists (Oxford 3000, Oxford 5000, and
 // Cambridge EVP C2) and merges them into one lookup table; on a duplicate key
 // the harder level wins. It panics if any embedded file is missing, malformed,
-// or empty — the data is compiled in, so any failure is a build/release
-// defect, never a runtime condition.
+// or produces zero entries — the data is compiled in, so any failure is a
+// build/release defect, never a runtime condition.
 func NewWordList() *WordList {
 	merged := make(map[string]domain.CEFRLevel)
 	for _, name := range []string{"data/oxford-3000.md", "data/oxford-5000.md", "data/cambridge-c2.md"} {
@@ -46,12 +46,12 @@ func NewWordList() *WordList {
 		if err != nil {
 			panic("cefr: parse embedded word list " + name + ": " + err.Error())
 		}
+		if len(parsed) == 0 {
+			panic("cefr: embedded word list " + name + " produced zero entries")
+		}
 		for key, level := range parsed {
 			merged[key] = merged[key].Harder(level)
 		}
-	}
-	if len(merged) == 0 {
-		panic("cefr: embedded word lists produced zero entries")
 	}
 	return &WordList{levels: merged}
 }
