@@ -13,8 +13,9 @@ the embedding of this derived data is acceptable.
 
 ## Format
 
-Each file has `## <LEVEL>` headings (`A1`..`C1`) followed by `- <key>` bullets,
-one normalized key per line. Keys are already lowercased, with curly
+Each file contains one or more `## <LEVEL>` headings (`A1`..`C1`) followed by
+`- <key>` bullets, one normalized key per line. `oxford-3000.md` covers A1–B2;
+`oxford-5000.md` covers B2–C1. Keys are already lowercased, with curly
 apostrophes folded to straight, sense disambiguators (`bank (money)`) and
 homograph superscripts (`do1`) removed, and comma-separated forms (`a, an`)
 split into separate keys. Multi-word entries ("ice cream", "no one") are kept

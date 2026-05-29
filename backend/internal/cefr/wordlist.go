@@ -12,8 +12,8 @@ import (
 //go:embed data/oxford-3000.md data/oxford-5000.md
 var dataFS embed.FS
 
-// dataFiles are the embedded word-list files, merged in order. Highest level
-// wins on a duplicate key, so order does not matter for correctness.
+// dataFiles are the embedded word-list files, merged. Highest level wins on a
+// duplicate key (via Harder), so insertion order does not affect the result.
 var dataFiles = []string{"data/oxford-3000.md", "data/oxford-5000.md"}
 
 // WordList is an in-memory Oxford 3000/5000 lookup table keyed by normalized
@@ -61,9 +61,10 @@ func NewWordList() *WordList {
 // ParseMarkdown reads a `## <LEVEL>` / `- <key>` formatted word list and returns
 // a map from normalized word/phrase to CEFR level. A `## <LEVEL>` heading sets
 // the active level for subsequent `-` bullets. Each bullet's text is normalized
-// via domain.NormalizeWord. A trailing `_(pos)_` annotation, if present, is
-// dropped. It returns an error on a bullet before any heading, or on an
-// unrecognised level token.
+// via domain.NormalizeWord. Text from the first `_(` annotation marker onward,
+// if present, is dropped (accommodates part-of-speech tags such as `_(n.)` in
+// alternative source formats). It returns an error on a bullet before any
+// heading, or on an unrecognised level token.
 func ParseMarkdown(src string) (map[string]domain.CEFRLevel, error) {
 	out := make(map[string]domain.CEFRLevel)
 	current := domain.CEFRUnknown

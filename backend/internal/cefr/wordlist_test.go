@@ -39,6 +39,17 @@ func TestParseMarkdown_BadHeading(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestParseMarkdown_AnnotationStripped(t *testing.T) {
+	t.Parallel()
+	src := "## B1\n- run _(verb)\n- carry on _(phrasal verb)\n"
+	out, err := ParseMarkdown(src)
+	require.NoError(t, err)
+	require.Equal(t, domain.CEFRB1, out["run"])
+	require.Equal(t, domain.CEFRB1, out["carry on"])
+	_, hasRaw := out["run _(verb)"]
+	require.False(t, hasRaw)
+}
+
 func TestNewWordList_EmbeddedData(t *testing.T) {
 	t.Parallel()
 	wl := NewWordList()

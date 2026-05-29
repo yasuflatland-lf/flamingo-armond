@@ -60,10 +60,18 @@ func TestNormalizeWord(t *testing.T) {
 		"(bank)":     "bank",
 		"ice cream":  "ice cream",
 		"Ice  Cream": "ice  cream", // internal whitespace preserved verbatim
-		"don't":      "don't",
-		"o'clock":    "o'clock", // curly apostrophe normalized to straight
-		"...":        "",
-		"":           "",
+		"don't":      "don't",      // ASCII apostrophe preserved internally
+		"o'clock":    "o'clock",    // ASCII apostrophe preserved internally
+		// Explicit unicode: U+2019 right curly apostrophe folded to straight.
+		// After folding the U+2019 → U+0027, TrimFunc strips a peripheral
+		// straight apostrophe; internal ones are kept.
+		"’clock":    "clock",     // U+2019 at start stripped after fold
+		"o’clock":   "o'clock",   // U+2019 inside word folded to straight
+		"don’t":     "don't",     // U+2019 inside word folded to straight
+		"don‘t":     "don't",     // U+2018 left single quote folded to straight
+		"carry’’on": "carry''on", // two consecutive curly apostrophes folded
+		"...":       "",
+		"":          "",
 	}
 	for in, want := range cases {
 		require.Equal(t, want, NormalizeWord(in), "input %q", in)

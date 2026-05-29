@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"backend/graph/model"
 	"backend/internal/domain"
 	"backend/internal/usecase"
 )
@@ -203,6 +204,30 @@ func TestToCardConnectionModel_FiltersNilNodes(t *testing.T) {
 	assert.NotNil(t, conn.Edges[0].Node, "edge.Node must be non-nil to satisfy schema constraint")
 	assert.Equal(t, "c1", conn.Edges[0].Node.ID)
 	assert.Equal(t, 1, conn.TotalCount, "TotalCount should pass through from output")
+}
+
+// TestToCEFRLevelModel_AllLevels verifies that toCEFRLevelModel maps every known
+// domain CEFR level to the correct GraphQL enum constant, and returns ok==false
+// for domain.CEFRUnknown.
+func TestToCEFRLevelModel_AllLevels(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in     domain.CEFRLevel
+		want   model.CEFRLevel
+		wantOK bool
+	}{
+		{domain.CEFRA1, model.CEFRLevelA1, true},
+		{domain.CEFRA2, model.CEFRLevelA2, true},
+		{domain.CEFRB1, model.CEFRLevelB1, true},
+		{domain.CEFRB2, model.CEFRLevelB2, true},
+		{domain.CEFRC1, model.CEFRLevelC1, true},
+		{domain.CEFRUnknown, "", false},
+	}
+	for _, tc := range cases {
+		m, ok := toCEFRLevelModel(tc.in)
+		require.Equal(t, tc.wantOK, ok, "level %v", tc.in)
+		require.Equal(t, tc.want, m, "level %v", tc.in)
+	}
 }
 
 // TestToCardgroupConnectionModel_FiltersNilNodes verifies that toCardgroupConnectionModel

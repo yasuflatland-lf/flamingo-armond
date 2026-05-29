@@ -59,6 +59,9 @@ func (r *cardResolver) CefrLevel(_ context.Context, obj *model.Card) (*model.CEF
 	}
 	m, ok := toCEFRLevelModel(level)
 	if !ok {
+		// Unreachable in practice: Classify returns ok==true only for
+		// A1..C1, all of which toCEFRLevelModel maps. Defensive guard for a
+		// future domain level added without a matching mapper arm.
 		return nil, nil
 	}
 	return &m, nil

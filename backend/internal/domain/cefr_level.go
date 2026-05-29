@@ -13,6 +13,7 @@ import (
 // A1..C1 set or check IsValid before relying on the level.
 type CEFRLevel int
 
+// Do not reorder: Rank and IsValid rely on the monotone ordering CEFRUnknown=0, A1=1 .. C1=5.
 const (
 	CEFRUnknown CEFRLevel = iota // zero value: not classified
 	CEFRA1
@@ -48,7 +49,8 @@ func (l CEFRLevel) String() string {
 }
 
 // Harder returns the harder (higher-ranked) of l and other. It is the tie-break
-// used when several candidate levels apply to one front string.
+// used when several candidate levels apply to one front string. Behaviour on a
+// CEFRLevel constructed by raw int cast outside the A1..C1 range is unspecified.
 func (l CEFRLevel) Harder(other CEFRLevel) CEFRLevel {
 	if other.Rank() > l.Rank() {
 		return other
@@ -81,7 +83,9 @@ func ParseCEFRLevel(s string) (CEFRLevel, bool) {
 // punctuation, symbols, and whitespace. Internal whitespace is preserved so
 // multi-word keys (idioms, phrasal verbs) round-trip. It is shared by the
 // markdown parser (key construction) and the classifier (query normalization)
-// so both sides agree on the canonical form.
+// so both sides agree on the canonical form. Note: after folding, a straight
+// apostrophe at the start or end is then stripped by the trailing-punctuation
+// trim; internal apostrophes are preserved.
 func NormalizeWord(s string) string {
 	s = norm.NFC.String(s)
 	s = strings.ToLower(s)

@@ -27,6 +27,15 @@ func TestCardResolver_CefrLevel_KnownWord(t *testing.T) {
 	lvl, err := r.Card().CefrLevel(context.Background(), &model.Card{Front: "water"})
 	require.NoError(t, err)
 	require.NotNil(t, lvl)
+	require.Equal(t, model.CEFRLevelB1, *lvl) // "water" is B1 in oxford-3000
+}
+
+func TestCardResolver_CefrLevel_EmptyFront(t *testing.T) {
+	t.Parallel()
+	r := newCEFRResolver(t)
+	lvl, err := r.Card().CefrLevel(context.Background(), &model.Card{Front: ""})
+	require.NoError(t, err)
+	require.Nil(t, lvl)
 }
 
 func TestCardResolver_CefrLevel_OffList(t *testing.T) {

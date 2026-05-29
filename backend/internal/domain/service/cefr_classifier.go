@@ -26,8 +26,10 @@ func NewCEFRClassifier(words domain.CEFRWordList) *CEFRClassifier {
 }
 
 // Classify returns the CEFR level for front and whether any Oxford word
-// matched. When several candidates apply, the hardest (highest-ranked) level
-// wins. The bool is false (and the level CEFRUnknown) when nothing matches.
+// matched. When several tokens match in the per-token path, the hardest
+// (highest-ranked) level wins; a whole-string match returns immediately without
+// consulting the per-token path. The bool is false (and the level CEFRUnknown)
+// when nothing matches.
 func (c *CEFRClassifier) Classify(front string) (domain.CEFRLevel, bool) {
 	// Whole-string match first: a multi-word key like "give up" only matches
 	// here, and a whole-string hit beats any token-level result.
