@@ -168,6 +168,18 @@ both the ordered (Notion) and shuffled (manual) cases.
 
 [`docs/backend/ddd-patterns/fsrs-compatible-secondary-ordering.md`](../../docs/backend/ddd-patterns/fsrs-compatible-secondary-ordering.md)
 
+### Append-only extension of a classification with a secondary, independently-graded source
+
+A second source (Cambridge EVP) grades the same domain (CEFR word levels) by a
+*different unit* — sense, not word — so most of its headwords are common words
+that already carry an authoritative Oxford A1..C1 level. Feeding them all into
+the harder-wins merge as C2 would override Oxford's correct judgments. The fix
+is to make the new tier purely additive: include only keys absent from the
+authoritative set, so `Oxford ∩ C2 = 0` by construction (asserted by a test) and
+the harder-wins merge has no shared keys to arbitrate.
+
+[`docs/backend/ddd-patterns/append-only-classification-extension.md`](../../docs/backend/ddd-patterns/append-only-classification-extension.md)
+
 ## Further reading (on-demand)
 
 - [Value object Parse pattern](../../docs/backend/ddd-patterns/value-object-parse-pattern.md)
@@ -186,3 +198,4 @@ both the ordered (Notion) and shuffled (manual) cases.
 - [Caller-truncate contract for domain services](../../docs/backend/ddd-patterns/caller-truncate-contract.md)
 - [Mutation response must not carry a client-managed collection](../../docs/backend/ddd-patterns/mutation-response-must-not-carry-client-managed-collection.md)
 - [FSRS-compatible secondary ordering (tiebreaker between primary key and id)](../../docs/backend/ddd-patterns/fsrs-compatible-secondary-ordering.md)
+- [Append-only extension of a classification with a secondary, independently-graded source](../../docs/backend/ddd-patterns/append-only-classification-extension.md)
