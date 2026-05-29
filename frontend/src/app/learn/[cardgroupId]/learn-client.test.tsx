@@ -149,6 +149,7 @@ const CARD_1 = {
   id: "c-1",
   front: "Hello",
   back: "Hola",
+  cefrLevel: null,
   userCardState: userCardState("2026-04-30T00:00:00Z", 0),
   cardgroupId: CG_ID,
 };
@@ -158,6 +159,7 @@ const CARD_2 = {
   id: "c-2",
   front: "Bye",
   back: "Adios",
+  cefrLevel: null,
   userCardState: userCardState("2026-04-30T00:00:00Z", 0),
   cardgroupId: CG_ID,
 };
@@ -918,6 +920,7 @@ function makeQueue(n: number, idPrefix = "q") {
     id: `${idPrefix}-${i + 1}`,
     front: `Front ${i + 1}`,
     back: `Back ${i + 1}`,
+    cefrLevel: null,
     userCardState: userCardState("2026-04-30T00:00:00Z", 0),
     cardgroupId: CG_ID,
   }));
@@ -1031,6 +1034,7 @@ describe("<LearnClient> queue prefetch", () => {
       id: "p-unique",
       front: "Prefetched New",
       back: "Prefetched Back",
+      cefrLevel: null,
       userCardState: userCardState("2026-04-30T00:00:00Z", 0),
       cardgroupId: CG_ID,
     };
