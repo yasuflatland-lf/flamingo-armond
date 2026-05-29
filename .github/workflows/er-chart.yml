@@ -61,6 +61,10 @@ jobs:
           count=$(psql -h localhost -U postgres -d armond -tAc \
             "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'")
           echo "public base tables: $count"
+          if [[ -z "$count" ]]; then
+            echo "::error::psql returned no output for the table-count query - connection or query failure." >&2
+            exit 1
+          fi
           if [[ "$count" -eq 0 ]]; then
             echo "::error::No tables in the public schema after migrations - refusing to publish an empty ER chart." >&2
             exit 1
