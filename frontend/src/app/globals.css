@@ -33,6 +33,15 @@
   --brand-tint: oklch(98.5% 0.012 18.45);
   --brand-tint-border: oklch(91% 0.04 18.45);
   --brand-tint-foreground: oklch(45% 0.13 18.45);
+  /* CEFR difficulty bands — saturated-but-soft fills on the white card surface.
+     Foregrounds verified WCAG AA >= 4.5:1 both on their own band fill and on
+     --card (#FFFFFF); see the contrast guard in cefr-badge.test.tsx. */
+  --cefr-a: oklch(92% 0.058 150);
+  --cefr-a-foreground: oklch(43% 0.14 150);
+  --cefr-b: oklch(92% 0.07 75);
+  --cefr-b-foreground: oklch(43% 0.13 75);
+  --cefr-c: oklch(91% 0.052 12);
+  --cefr-c-foreground: oklch(43% 0.16 12);
   --sidebar: hsl(0 0% 98%);
   --sidebar-foreground: hsl(240 5.3% 26.1%);
   --sidebar-primary: hsl(240 5.9% 10%);
@@ -104,6 +113,12 @@
   --color-brand-tint: var(--brand-tint);
   --color-brand-tint-border: var(--brand-tint-border);
   --color-brand-tint-foreground: var(--brand-tint-foreground);
+  --color-cefr-a: var(--cefr-a);
+  --color-cefr-a-foreground: var(--cefr-a-foreground);
+  --color-cefr-b: var(--cefr-b);
+  --color-cefr-b-foreground: var(--cefr-b-foreground);
+  --color-cefr-c: var(--cefr-c);
+  --color-cefr-c-foreground: var(--cefr-c-foreground);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

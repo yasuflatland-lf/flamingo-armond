@@ -9,6 +9,7 @@ export const LearnNextDueCardsQuery = graphql(`
       id
       front
       back
+      cefrLevel
       userCardState {
         due
         state
