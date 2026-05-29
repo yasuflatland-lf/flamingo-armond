@@ -66,6 +66,25 @@ func toModelUserCardState(ucs *domain.UserCardFSRS) *model.UserCardState {
 	}
 }
 
+// toCEFRLevelModel maps a domain CEFR level to the generated GraphQL enum. The
+// bool is false for domain.CEFRUnknown, signalling the resolver to return null.
+func toCEFRLevelModel(level domain.CEFRLevel) (model.CEFRLevel, bool) {
+	switch level {
+	case domain.CEFRA1:
+		return model.CEFRLevelA1, true
+	case domain.CEFRA2:
+		return model.CEFRLevelA2, true
+	case domain.CEFRB1:
+		return model.CEFRLevelB1, true
+	case domain.CEFRB2:
+		return model.CEFRLevelB2, true
+	case domain.CEFRC1:
+		return model.CEFRLevelC1, true
+	default:
+		return "", false
+	}
+}
+
 func toCardModels(ctx context.Context, cards []*domain.Card) []*model.Card {
 	out := make([]*model.Card, 0, len(cards))
 	for _, card := range cards {

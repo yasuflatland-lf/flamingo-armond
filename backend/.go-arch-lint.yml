@@ -15,6 +15,7 @@ excludeFiles:
 
 components:
   auth:                { in: internal/auth }
+  cefr:                { in: internal/cefr }
   cursor:              { in: internal/cursor }
   database:            { in: internal/database }
   domain:              { in: internal/domain }
@@ -44,6 +45,7 @@ commonComponents:
 
 deps:
   auth:               { mayDependOn: [domain, logging, repository] }
+  cefr:               { mayDependOn: [domain] }
   cursor:             { anyVendorDeps: true }           # leaf: vendor-only deps (eris, std)
   database:           { anyVendorDeps: true }           # leaf: vendor-only deps (gorm, pgx, migrate, eris)
   domain:             { anyVendorDeps: true }           # leaf: vendor-only deps (uuid, uniseg, eris)

@@ -11,6 +11,18 @@ type UserCardState {
   scheduledDays: Int!
 }
 
+"""
+Common European Framework of Reference level (A1 easiest .. C1 hardest),
+derived from the Oxford 3000/5000 word lists. Oxford lists top out at C1.
+"""
+enum CEFRLevel {
+  A1
+  A2
+  B1
+  B2
+  C1
+}
+
 """A flashcard with viewer-specific FSRS scheduling state."""
 type Card {
   id: ID!
@@ -27,6 +39,12 @@ type Card {
   resolves to a synthesized new-card state.
   """
   userCardState: UserCardState!
+  """
+  CEFR difficulty of `front`, derived on read from the Oxford 3000/5000 word
+  lists. `null` when no Oxford word matches. When several words match, the
+  hardest level is reported.
+  """
+  cefrLevel: CEFRLevel
   createdAt: Time!
   updatedAt: Time!
 }

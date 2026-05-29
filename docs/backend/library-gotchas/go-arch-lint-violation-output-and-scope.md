@@ -54,6 +54,14 @@ captures the current split:
 `depguard` (a `golangci-lint` linter) duplicates the import-graph check and
 adds no coverage over `go-arch-lint`; do not add it as a complementary tool.
 
+**Caveat — deepScan value-flow.** The "import statement only" framing above is
+the rule for *which CI grep gates can be retired*, not a complete description of
+deepScan. With `deepScan: true`, go-arch-lint also tracks the concrete type of a
+value flowing into a constructor at a wiring site and attributes a dependency
+edge to the producing component — so a `cmd/server` line can fail even when
+every individual import is legal. See
+[`go-arch-lint-deepscan-concrete-type-value-flow.md`](go-arch-lint-deepscan-concrete-type-value-flow.md).
+
 ## Cross-reference
 
 See [`.claude/rules/backend-layering.md`](../../../.claude/rules/backend-layering.md)
