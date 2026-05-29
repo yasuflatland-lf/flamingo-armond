@@ -62,3 +62,11 @@ interface it needs; the concrete implementation satisfies it without importing b
 The domain-level variant is stricter because the forbidden import (`domain →
 domain/service`) is architecturally enforced by `go-arch-lint`, not just a
 best-practice guideline.
+
+The CEFR classifier feature applies the same technique at two layers at once:
+`domain.CEFRWordList` is a domain-side port satisfied implicitly by
+`*cefr.WordList`, and `usecase.CEFRClassifier` is an application-layer port
+satisfied by `*service.CEFRClassifier` so the resolver injects the usecase
+without importing `domain/service`. Typing the value as the port at the wiring
+site is also what keeps `go-arch-lint`'s deepScan value-flow analysis happy —
+see [`docs/backend/library-gotchas/go-arch-lint-deepscan-concrete-type-value-flow.md`](../library-gotchas/go-arch-lint-deepscan-concrete-type-value-flow.md).
