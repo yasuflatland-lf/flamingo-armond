@@ -28,6 +28,11 @@ type Card struct {
 	Back        CardText
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	// Position is the card's place within its cardgroup's source document
+	// (Notion sync order). It defaults to 0 for cards not created via Notion
+	// sync; the ordering policy treats cards with equal Position as one
+	// shuffle group, preserving prior behavior for non-Notion groups.
+	Position int
 }
 
 // BelongsToCardgroup reports whether this card belongs to the cardgroup identified by
