@@ -7,7 +7,7 @@ import { GraphQLError } from "graphql";
 import { type RefObject, useImperativeHandle, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LEARN_PAGE_LIMIT } from "@/app/learn/queries";
-import type { SwipeCardData } from "@/components/learn/swipe-card";
+import { CardContent, type SwipeCardData } from "@/components/learn/swipe-card";
 import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import {
   HandleSwipeDocument,
@@ -78,11 +78,11 @@ vi.mock("@/components/learn/swipe-card-stack", () => ({
         </div>
       );
     }
-    return (
-      <div>
-        <p>{activeCard.front}</p>
-      </div>
-    );
+    // Render CardContent (the real presentational layer) so badge-render
+    // integration tests can assert the full LearnClient → SwipeCardStack →
+    // CardContent → CefrBadge pipeline without the next/dynamic AnimatedCard
+    // chunk. CardContent is purely presentational and needs no providers.
+    return <CardContent card={activeCard} />;
   },
 }));
 
@@ -538,6 +538,40 @@ describe("<LearnClient>", () => {
     await waitFor(() => {
       expect(swipe.wasCalled()).toBe(true);
     });
+  });
+
+  it("renders the CefrBadge for a card whose cefrLevel is non-null (end-to-end through CardContent)", async () => {
+    // End-to-end acceptance criterion: a card with a non-null cefrLevel must
+    // show a CEFR badge on the learn page. The path exercised here is:
+    //   LearnClient (state) → SwipeCardStack mock → CardContent → CefrBadge
+    // The SwipeCardStack mock renders the real CardContent component so the
+    // badge pipeline is exercised without the next/dynamic AnimatedCard chunk.
+    //
+    // `renderLearnClient`'s `initialCards` parameter is inferred from the
+    // default `[CARD_1]`, which narrows `cefrLevel` to `null`. Inline the render
+    // to pass a LearnClient-compatible card with a non-null level without fighting
+    // that inference — the same pattern used by the persist-last-viewed tests.
+    render(
+      <MockedProvider mocks={makeDefaultPrefetchMocks()}>
+        <LearnClient
+          cardgroupId={CG_ID}
+          initialCards={[
+            {
+              __typename: "Card",
+              id: "c-1",
+              front: "Hello",
+              back: "Hola",
+              cefrLevel: "B1",
+              userCardState: userCardState("2026-04-30T00:00:00Z", 0),
+              cardgroupId: CG_ID,
+            },
+          ]}
+          lastViewedCardgroupId={CG_ID}
+        />
+      </MockedProvider>,
+    );
+
+    expect(screen.getByLabelText("CEFR level B1")).toBeInTheDocument();
   });
 });
 

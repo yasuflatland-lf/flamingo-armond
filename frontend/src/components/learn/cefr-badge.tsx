@@ -56,11 +56,12 @@ export function CefrBadge({ level }: CefrBadgeProps) {
     return null;
   }
 
-  // The `| undefined` models the runtime-lie case only: TypeScript cannot
-  // enforce union membership at runtime, so a backend level not yet in the
-  // generated union (deploy skew) reads back as `undefined` here. `bandOf`
-  // stays typed as the exhaustive `Record<CefrLevel, ...>` so adding `C2`
-  // remains a compile error.
+  // Index access on `bandOf` yields `| undefined` under `noUncheckedIndexedAccess`
+  // (enabled in tsconfig), making the `| undefined` case unconditionally possible
+  // at the type level. It also covers the runtime-lie case where a backend level
+  // not yet in the generated union (deploy skew) reaches here. `bandOf` stays
+  // typed as the exhaustive `Record<CefrLevel, ...>` so adding `C2` remains a
+  // compile error.
   const band: "a" | "b" | "c" | undefined = bandOf[level];
   if (band === undefined) {
     // The union type can lie at runtime (a backend level not yet in the
