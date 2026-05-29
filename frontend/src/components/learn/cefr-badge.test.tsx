@@ -7,36 +7,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CefrLevel } from "@/generated/graphql";
 import { CefrBadge } from "./cefr-badge";
 
+const LEVEL_TO_BAND = [
+  { level: "A1", bg: "bg-cefr-a", fg: "text-cefr-a-foreground" },
+  { level: "A2", bg: "bg-cefr-a", fg: "text-cefr-a-foreground" },
+  { level: "B1", bg: "bg-cefr-b", fg: "text-cefr-b-foreground" },
+  { level: "B2", bg: "bg-cefr-b", fg: "text-cefr-b-foreground" },
+  { level: "C1", bg: "bg-cefr-c", fg: "text-cefr-c-foreground" },
+] as const;
+
 describe("<CefrBadge>", () => {
-  it("maps A1 to the a band with matching foreground", () => {
-    render(<CefrBadge level="A1" />);
-    const el = screen.getByLabelText("CEFR level A1");
-    expect(el).toHaveClass("bg-cefr-a", "text-cefr-a-foreground");
-  });
-
-  it("maps A2 to the a band with matching foreground", () => {
-    render(<CefrBadge level="A2" />);
-    const el = screen.getByLabelText("CEFR level A2");
-    expect(el).toHaveClass("bg-cefr-a", "text-cefr-a-foreground");
-  });
-
-  it("maps B1 to the b band with matching foreground", () => {
-    render(<CefrBadge level="B1" />);
-    const el = screen.getByLabelText("CEFR level B1");
-    expect(el).toHaveClass("bg-cefr-b", "text-cefr-b-foreground");
-  });
-
-  it("maps B2 to the b band with matching foreground", () => {
-    render(<CefrBadge level="B2" />);
-    const el = screen.getByLabelText("CEFR level B2");
-    expect(el).toHaveClass("bg-cefr-b", "text-cefr-b-foreground");
-  });
-
-  it("maps C1 to the c band with matching foreground", () => {
-    render(<CefrBadge level="C1" />);
-    const el = screen.getByLabelText("CEFR level C1");
-    expect(el).toHaveClass("bg-cefr-c", "text-cefr-c-foreground");
-  });
+  for (const { level, bg, fg } of LEVEL_TO_BAND) {
+    it(`maps ${level} to the correct band with matching foreground`, () => {
+      render(<CefrBadge level={level} />);
+      const el = screen.getByLabelText(`CEFR level ${level}`);
+      expect(el).toHaveClass(bg, fg);
+    });
+  }
 
   it("renders nothing when the level is null", () => {
     render(<CefrBadge level={null} />);
