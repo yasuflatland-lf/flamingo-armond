@@ -1,0 +1,62 @@
+name: er-chart
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/internal/database/migrations/**'
+      - 'tools/schemaspy/**'
+      - '.github/workflows/er-chart.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: er-chart-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write          # JamesIves pushes to the gh-pages branch
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:15          # matches supabase config major_version = 15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: armond
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Apply auth stub
+        env: { PGPASSWORD: postgres }
+        run: psql -h localhost -U postgres -d armond -v ON_ERROR_STOP=1 -f tools/schemaspy/auth-stub.sql
+
+      - name: Apply migrations (up files, in order)
+        env: { PGPASSWORD: postgres }
+        run: |
+          for f in $(ls -1 backend/internal/database/migrations/*.up.sql | sort); do
+            echo "applying $f"
+            psql -h localhost -U postgres -d armond -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Generate ER docs with SchemaSpy
+        run: |
+          mkdir -p erout
+          docker run --rm --network host -v "$PWD/erout:/output" \
+            schemaspy/schemaspy:7.0.2 \
+            -t pgsql11 -host localhost -port 5432 -db armond \
+            -u postgres -p postgres -s public
+
+      - name: Publish to gh-pages/er-chart
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: erout
+          target-folder: er-chart
+          clean: true
