@@ -106,9 +106,9 @@ function contrastRatio(hex1: string, hex2: string): number {
 const WHITE = "#ffffff";
 
 const BANDS = [
-  { band: "a", bg: "#d9f3dd", fg: "#00682a" },
-  { band: "b", bg: "#ffebce", fg: "#7b4800" },
-  { band: "c", bg: "#ffe2e5", fg: "#96233f" },
+  { band: "a", bg: "#caf0d1", fg: "#00631f" },
+  { band: "b", bg: "#ffdfb1", fg: "#784100" },
+  { band: "c", bg: "#ffd4d8", fg: "#921238" },
 ] as const;
 
 describe("CEFR token contrast", () => {
@@ -135,12 +135,12 @@ describe("CEFR token declarations in globals.css", () => {
   const globalsCss = readFileSync(path.resolve(here, "../../app/globals.css"), "utf8");
 
   const TOKEN_DECLARATIONS = [
-    "--cefr-a: oklch(94% 0.04 150)",
-    "--cefr-a-foreground: oklch(45% 0.13 150)",
-    "--cefr-b: oklch(95% 0.045 75)",
-    "--cefr-b-foreground: oklch(45% 0.12 75)",
-    "--cefr-c: oklch(94% 0.035 12)",
-    "--cefr-c-foreground: oklch(45% 0.15 12)",
+    "--cefr-a: oklch(92% 0.058 150)",
+    "--cefr-a-foreground: oklch(43% 0.14 150)",
+    "--cefr-b: oklch(92% 0.07 75)",
+    "--cefr-b-foreground: oklch(43% 0.13 75)",
+    "--cefr-c: oklch(91% 0.052 12)",
+    "--cefr-c-foreground: oklch(43% 0.16 12)",
   ] as const;
 
   for (const declaration of TOKEN_DECLARATIONS) {
