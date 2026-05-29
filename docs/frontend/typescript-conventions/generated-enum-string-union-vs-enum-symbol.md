@@ -32,20 +32,24 @@ interface CefrBadgeProps {
 }
 ```
 
-Keying an exhaustive `Record<CefrLevel, Band>` by string literals is **just as exhaustive** as keying it by the runtime enum — a future `C2` schema member is still a one-line compile error in the `Record`:
+Keying an exhaustive `Record<CefrLevel, Band>` by string literals is **just as exhaustive** as keying it by the runtime enum — a new schema member is still a one-line compile error in the `Record`:
 
 ```ts
-// Exhaustive over the union. Adding C2 to the schema breaks THIS line, not a default branch.
+// Exhaustive over the union. Adding a new level to the schema breaks THIS line, not a default branch.
 const bandOf: Record<CefrLevel, "a" | "b" | "c"> = {
-  A1: "a", A2: "a", B1: "b", B2: "b", C1: "c",
+  A1: "a", A2: "a", B1: "b", B2: "b", C1: "c", C2: "c",
 };
 ```
+
+### Adding a schema-enum value is a lockstep cross-stack change
+
+The exhaustive `Record` is the deliberate compile-time guard that makes a schema-enum extension safe. The moment frontend codegen regenerates the union with the new member (e.g. adding `C2` so the union becomes `'A1' | ... | 'C2'`), this `Record<CefrLevel, Band>` fails `tsc` until the consumer adds the matching key. So the schema/codegen change and every exhaustive-`Record` consumer MUST land together — the guard turns a forgotten consumer into a one-line build error rather than a silent runtime gap (an unkeyed level would otherwise reach the runtime `undefined` branch below and suppress the badge). Worked example: the `C2` level addition extended `bandOf` (`C2: "c"`, sharing the `c` band with `C1`) in the same change that grew the schema enum. Reference: `frontend/src/components/learn/cefr-badge.tsx`.
 
 This pairs with [required `string | null` over optional `?: string | null`](required-string-null-over-optional-string-null.md): `level: CefrLevel | null` is required-nullable, so a caller that forgets to wire the level fails to compile rather than silently passing `undefined`.
 
 ## Runtime-guard corollary: the union can lie at runtime
 
-TypeScript erases the union at compile time; it cannot enforce union membership on a value that arrives over the wire. During a backend/frontend **deploy-skew window** a level outside the generated union (e.g. a new `C2` the backend already emits) can reach the component. Index access then returns `undefined` — made unconditionally explicit by `noUncheckedIndexedAccess` (enabled in this repo's `tsconfig`):
+TypeScript erases the union at compile time; it cannot enforce union membership on a value that arrives over the wire. During a backend/frontend **deploy-skew window** a level outside the generated union (e.g. a new level the backend already emits but the frontend codegen has not yet regenerated) can reach the component. Index access then returns `undefined` — made unconditionally explicit by `noUncheckedIndexedAccess` (enabled in this repo's `tsconfig`):
 
 ```ts
 const band: "a" | "b" | "c" | undefined = bandOf[level];

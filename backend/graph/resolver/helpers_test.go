@@ -221,6 +221,7 @@ func TestToCEFRLevelModel_AllLevels(t *testing.T) {
 		{domain.CEFRB1, model.CEFRLevelB1, true},
 		{domain.CEFRB2, model.CEFRLevelB2, true},
 		{domain.CEFRC1, model.CEFRLevelC1, true},
+		{domain.CEFRC2, model.CEFRLevelC2, true},
 		{domain.CEFRUnknown, "", false},
 	}
 	for _, tc := range cases {

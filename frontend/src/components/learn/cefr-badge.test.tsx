@@ -13,6 +13,7 @@ const LEVEL_TO_BAND = [
   { level: "B1", bg: "bg-cefr-b", fg: "text-cefr-b-foreground" },
   { level: "B2", bg: "bg-cefr-b", fg: "text-cefr-b-foreground" },
   { level: "C1", bg: "bg-cefr-c", fg: "text-cefr-c-foreground" },
+  { level: "C2", bg: "bg-cefr-c", fg: "text-cefr-c-foreground" },
 ] as const;
 
 describe("<CefrBadge>", () => {
@@ -37,10 +38,10 @@ describe("<CefrBadge>", () => {
   it("suppresses the badge and warns for an out-of-union runtime level", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    render(<CefrBadge level={"C2" as unknown as CefrLevel} />);
+    render(<CefrBadge level={"D1" as unknown as CefrLevel} />);
 
     expect(screen.queryByLabelText(/CEFR level/)).toBeNull();
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("C2"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("D1"));
 
     warn.mockRestore();
   });

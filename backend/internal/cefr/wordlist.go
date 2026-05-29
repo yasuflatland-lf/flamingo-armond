@@ -9,11 +9,12 @@ import (
 	"github.com/rotisserie/eris"
 )
 
-//go:embed data/oxford-3000.md data/oxford-5000.md
+//go:embed data/oxford-3000.md data/oxford-5000.md data/cambridge-c2.md
 var dataFS embed.FS
 
-// WordList is an in-memory Oxford 3000/5000 lookup table keyed by normalized
-// word/phrase. It implements domain.CEFRWordList.
+// WordList is an in-memory lookup table covering the Oxford 3000, Oxford 5000,
+// and Cambridge EVP C2 word lists, keyed by normalized word/phrase. It
+// implements domain.CEFRWordList.
 type WordList struct {
 	levels map[string]domain.CEFRLevel
 }
@@ -29,13 +30,14 @@ func (w *WordList) Lookup(normalizedWord string) (domain.CEFRLevel, bool) {
 // checks.
 func (w *WordList) Len() int { return len(w.levels) }
 
-// NewWordList parses both embedded Oxford word lists and merges them into one
-// lookup table; on a duplicate key the harder level wins. It panics if either
-// embedded file is missing, malformed, or empty — the data is compiled in, so
-// any failure is a build/release defect, never a runtime condition.
+// NewWordList parses all embedded word lists (Oxford 3000, Oxford 5000, and
+// Cambridge EVP C2) and merges them into one lookup table; on a duplicate key
+// the harder level wins. It panics if any embedded file is missing, malformed,
+// or produces zero entries — the data is compiled in, so any failure is a
+// build/release defect, never a runtime condition.
 func NewWordList() *WordList {
 	merged := make(map[string]domain.CEFRLevel)
-	for _, name := range []string{"data/oxford-3000.md", "data/oxford-5000.md"} {
+	for _, name := range []string{"data/oxford-3000.md", "data/oxford-5000.md", "data/cambridge-c2.md"} {
 		raw, err := dataFS.ReadFile(name)
 		if err != nil {
 			panic("cefr: read embedded word list " + name + ": " + err.Error())
@@ -44,12 +46,12 @@ func NewWordList() *WordList {
 		if err != nil {
 			panic("cefr: parse embedded word list " + name + ": " + err.Error())
 		}
+		if len(parsed) == 0 {
+			panic("cefr: embedded word list " + name + " produced zero entries")
+		}
 		for key, level := range parsed {
 			merged[key] = merged[key].Harder(level)
 		}
-	}
-	if len(merged) == 0 {
-		panic("cefr: embedded word lists produced zero entries")
 	}
 	return &WordList{levels: merged}
 }

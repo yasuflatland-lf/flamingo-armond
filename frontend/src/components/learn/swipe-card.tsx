@@ -13,7 +13,7 @@ export type SwipeCardData = {
   id: string;
   front: string;
   back: string;
-  // CEFR level from the LearnNextDueCards query; `null` = no Oxford word match.
+  // CEFR level from the LearnNextDueCards query; `null` = no listed word match.
   cefrLevel: CefrLevel | null;
   userCardState: {
     due: string;

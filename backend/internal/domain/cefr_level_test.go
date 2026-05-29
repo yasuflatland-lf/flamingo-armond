@@ -11,9 +11,12 @@ func TestCEFRLevel_RankAndValid(t *testing.T) {
 	require.Equal(t, 0, CEFRUnknown.Rank())
 	require.Equal(t, 1, CEFRA1.Rank())
 	require.Equal(t, 5, CEFRC1.Rank())
+	require.Equal(t, 6, CEFRC2.Rank())
+	require.True(t, CEFRC2.Rank() > CEFRC1.Rank())
 	require.False(t, CEFRUnknown.IsValid())
 	require.True(t, CEFRA1.IsValid())
 	require.True(t, CEFRC1.IsValid())
+	require.True(t, CEFRC2.IsValid())
 }
 
 func TestCEFRLevel_String(t *testing.T) {
@@ -21,6 +24,7 @@ func TestCEFRLevel_String(t *testing.T) {
 	require.Equal(t, "A1", CEFRA1.String())
 	require.Equal(t, "B2", CEFRB2.String())
 	require.Equal(t, "C1", CEFRC1.String())
+	require.Equal(t, "C2", CEFRC2.String())
 	require.Equal(t, "", CEFRUnknown.String())
 }
 
@@ -30,6 +34,8 @@ func TestCEFRLevel_Harder(t *testing.T) {
 	require.Equal(t, CEFRB2, CEFRB2.Harder(CEFRA1))
 	require.Equal(t, CEFRA2, CEFRUnknown.Harder(CEFRA2))
 	require.Equal(t, CEFRC1, CEFRC1.Harder(CEFRC1))
+	require.Equal(t, CEFRC2, CEFRC1.Harder(CEFRC2))
+	require.Equal(t, CEFRC2, CEFRC2.Harder(CEFRC1))
 }
 
 func TestParseCEFRLevel(t *testing.T) {
@@ -41,8 +47,12 @@ func TestParseCEFRLevel(t *testing.T) {
 		"A1":   {CEFRA1, true},
 		"c1":   {CEFRC1, true},
 		" b1 ": {CEFRB1, true},
+		"C2":   {CEFRC2, true},
+		"c2":   {CEFRC2, true},
+		" C2 ": {CEFRC2, true},
 		"A0":   {CEFRUnknown, false},
-		"C2":   {CEFRUnknown, false},
+		"C3":   {CEFRUnknown, false},
+		"D1":   {CEFRUnknown, false},
 		"":     {CEFRUnknown, false},
 	}
 	for in, exp := range cases {

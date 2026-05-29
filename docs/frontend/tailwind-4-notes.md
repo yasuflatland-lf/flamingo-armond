@@ -18,7 +18,7 @@ The CEFR tokens are **light-only** — no `.dark` variants — because the app s
 
 ### Band-grouping and contrast decisions (the Why)
 
-- **Group by band, not per level.** The five CEFR levels (A1–C1) bucket into three HUE families — A = green, B = amber, C = rose — so the color carries a coarse difficulty signal while the badge text always shows the exact level. Color is therefore never the sole signal.
+- **Group by band, not per level.** The six CEFR levels (A1–C2) bucket into three HUE families — A = green, B = amber, C = rose — so the color carries a coarse difficulty signal while the badge text always shows the exact level. Color is therefore never the sole signal.
 - **Rose (not red) for the C band**, so an advanced word reads as "advanced", not "alarm".
 - **WCAG AA on the card surface.** Foregrounds are tuned to a contrast ratio ≥ 4.5:1 against the white card surface (`--card: oklch(1 0 0)`), not just against the band fill. The amber/B band is the at-risk one (smallest luminance margin) — verify with a real contrast calculation, never by eye.
 

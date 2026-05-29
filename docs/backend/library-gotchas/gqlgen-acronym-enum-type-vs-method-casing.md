@@ -10,7 +10,7 @@ For `enum CEFRLevel { A1 A2 ... }` exposed as the field `cefrLevel`, gqlgen
 v0.17.90 generates:
 
 - The Go **type** as `model.CEFRLevel` — the acronym stays uppercase.
-- The **constants** as `model.CEFRLevelA1` .. `model.CEFRLevelC1` — acronym
+- The **constants** as `model.CEFRLevelA1` .. `model.CEFRLevelC2` — acronym
   uppercase preserved.
 - The resolver-interface **method** for the field as `CefrLevel` — gqlgen
   lowercases the acronym tail when deriving the method name from the field
