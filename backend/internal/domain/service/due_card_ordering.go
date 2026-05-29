@@ -56,7 +56,7 @@ func (p *OrderingPolicy) Apply(due []domain.DueCard, rng *rand.Rand) []*domain.C
 }
 
 // partition splits due into new (FSRSStateNew) vs review (everything else),
-// preserving the input order. The repository pre-sorts by Due ASC, id ASC.
+// preserving the input order. The repository pre-sorts by Due ASC, position ASC, id ASC.
 func partition(due []domain.DueCard) (newC, reviewC []domain.DueCard) {
 	for _, d := range due {
 		if d.State == domain.FSRSStateNew {
@@ -87,12 +87,15 @@ func shuffleSameDue(cards []domain.DueCard, rng *rand.Rand) {
 }
 
 // shuffleSamePosition shuffles contiguous same-Position runs in place using
-// rng. Inputs are pre-sorted by position ASC (within the due tie), so a single
-// linear pass detects each equal-Position run; single-element runs are left
-// untouched. Only equal-Position runs are shuffled, which keeps Notion document
-// order deterministic (distinct positions => size-1 runs => no shuffle) while
-// preserving the "don't show the same first-N" property for non-Notion groups
-// (all Position 0 => one run => shuffled).
+// rng. Inputs are pre-sorted by Due ASC then position ASC, so contiguous
+// equal-Position cards are guaranteed only within a same-Due (same created_at)
+// group — a later re-sync whose new cards restart at position 0 forms a
+// separate due-tie group. Across due groups the run-detection is still
+// deterministic but does not impose a global position order. Single-element
+// runs are left untouched. Only equal-Position runs are shuffled, which keeps
+// Notion document order deterministic (distinct positions => size-1 runs => no
+// shuffle) while preserving the "don't show the same first-N" property for
+// non-Notion groups (all Position 0 => one run => shuffled).
 func shuffleSamePosition(cards []domain.DueCard, rng *rand.Rand) {
 	start := 0
 	// Loop runs through len(cards) inclusive so the trailing run is flushed
