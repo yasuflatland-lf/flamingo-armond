@@ -31,6 +31,7 @@ const bandOf: Record<CefrLevel, "a" | "b" | "c"> = {
   B1: "b",
   B2: "b",
   C1: "c",
+  C2: "c",
 };
 
 // Full literal class strings: Tailwind's scanner cannot see interpolated
