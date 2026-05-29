@@ -27,6 +27,7 @@ import (
 	"backend/graph/generated"
 	"backend/graph/resolver"
 	"backend/internal/auth"
+	"backend/internal/cefr"
 	"backend/internal/database"
 	"backend/internal/domain"
 	"backend/internal/domain/service"
@@ -288,7 +289,14 @@ func run(ctx context.Context, logger *slog.Logger) error {
 		notionSyncHandler = notionsync.New(notionSyncUC, notionEnv.HandlerConfig)
 	}
 	cardUC := usecase.NewCardUsecase(db.GORM, cardRepo, cardgroupRepo, userCardFSRSRepo, cardObserver, logger)
-	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, learnUC)
+	// Type the word list as the domain.CEFRWordList port so the dependency
+	// edge the constructor creates is domain_service -> domain (allowed),
+	// rather than attributing the concrete *cefr.WordList type to a
+	// cefr -> domain_service edge (which the layer model forbids).
+	var cefrWords domain.CEFRWordList = cefr.NewWordList()
+	cefrClassifier := service.NewCEFRClassifier(cefrWords)
+	cefrUC := usecase.NewCEFRUsecase(cefrClassifier)
+	resolvers := resolver.NewResolver(userUC, cardgroupUC, cardUC, swipeUC, authSvc, cardImportUC, adminUserUC, adminRoleUC, lastViewedCardgroupUC, learnUC, cefrUC)
 	// newRouter must be called after telemetry.Init: the otelhttp handler it
 	// constructs reads otel.GetTextMapPropagator() eagerly. See comment above
 	// telemetry.Init for the full ordering invariant.

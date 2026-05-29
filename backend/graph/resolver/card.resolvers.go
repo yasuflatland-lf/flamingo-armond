@@ -51,6 +51,19 @@ func (r *cardResolver) UserCardState(ctx context.Context, obj *model.Card) (*mod
 	return toModelUserCardState(ucs), nil
 }
 
+// CefrLevel is the resolver for the cefrLevel field. It classifies the card's front on read; returns null when no Oxford word matches.
+func (r *cardResolver) CefrLevel(_ context.Context, obj *model.Card) (*model.CEFRLevel, error) {
+	level, ok := r.CEFRUC.Classify(obj.Front)
+	if !ok {
+		return nil, nil
+	}
+	m, ok := toCEFRLevelModel(level)
+	if !ok {
+		return nil, nil
+	}
+	return &m, nil
+}
+
 // CreateCard is the resolver for the createCard field.
 //
 // Returns a union: `model.CreateCardSuccess` on the happy path, or

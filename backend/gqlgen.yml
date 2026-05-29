@@ -36,6 +36,8 @@ models:
         resolver: true
       userCardState:
         resolver: true
+      cefrLevel:
+        resolver: true
   User:
     fields:
       roles:
