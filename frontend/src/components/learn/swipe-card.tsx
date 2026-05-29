@@ -2,7 +2,10 @@
 
 import dynamic from "next/dynamic";
 import type { RefObject } from "react";
+import type { CefrLevel } from "@/generated/base-types";
+import type { CefrLevel as CefrLevelUnion } from "@/generated/graphql";
 import type { AnimatedCardHandle } from "./animated-card";
+import { CefrBadge } from "./cefr-badge";
 import type { SwipeDirection } from "./types";
 
 export type { AnimatedCardHandle } from "./animated-card";
@@ -11,6 +14,14 @@ export type SwipeCardData = {
   id: string;
   front: string;
   back: string;
+  // `cefrLevel` is typed with the string-union `CefrLevel` from
+  // `@/generated/graphql` (NOT the runtime enum in `@/generated/base-types`).
+  // The inbound `LearnNextDueCardsQuery` node types this field as the union,
+  // so this keeps the whole `query result -> SwipeCardData` chain assignable
+  // with no cast (the generic `SwipeCardStack<TCard extends SwipeCardData>`
+  // constraint relies on that). The single cast required to bridge the union
+  // back to `CefrBadge`'s enum-typed prop is isolated at the mount site below.
+  cefrLevel: CefrLevelUnion | null;
   userCardState: {
     due: string;
     state: number;
@@ -48,8 +59,27 @@ const AnimatedCard = dynamic(() => import("./animated-card").then((m) => m.Anima
 // CardContent is exported so animated-card.tsx can share the same presentational layer.
 export function CardContent({ card }: { card: SwipeCardData }) {
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card p-6 shadow-lg">
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 text-center">
+    // `relative` anchors the absolutely-positioned CefrBadge to this card.
+    // The TOP-RIGHT corner is reserved for the CEFR badge; future FSRS badges
+    // (#276 / #277) MUST claim a DIFFERENT corner so the two never collide.
+    <div className="relative flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card p-6 shadow-lg">
+      {/*
+        The badge is `position: absolute`, so it never participates in the
+        flow and CLS is zero by construction. `cefrLevel` is the string-union
+        from the query; CefrBadge's prop is the runtime enum from
+        `@/generated/base-types`. They share identical string values
+        ('A1'..'C1'), so this single cast is runtime-safe — it only bridges
+        TypeScript's nominal enum vs. structural union mismatch, isolated here
+        at the one presentation boundary where the two type worlds meet.
+      */}
+      <CefrBadge level={(card.cefrLevel ?? null) as CefrLevel | null} />
+      {/*
+        Reserve horizontal space (`px-10`) on the centered content block so a
+        long wrapped `front` term cannot slide UNDER the right-pinned badge on
+        a narrow (~320px) viewport. Padding does not reflow the absolute badge,
+        so CLS stays zero.
+      */}
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 px-10 text-center">
         <p className="max-w-full break-words text-4xl font-semibold leading-tight text-foreground sm:text-5xl">
           {card.front}
         </p>
