@@ -155,6 +155,19 @@ separate query the client triggers on its own lifecycle.
 
 [`docs/backend/ddd-patterns/mutation-response-must-not-carry-client-managed-collection.md`](../../docs/backend/ddd-patterns/mutation-response-must-not-carry-client-managed-collection.md)
 
+### FSRS-compatible secondary ordering (tiebreaker between primary key and id)
+
+A new deterministic ordering (Notion document order via `cards.position`) is
+layered *under* the existing FSRS due ordering by inserting it as a tiebreaker
+between the primary due key and the final `id` tiebreaker — so it only re-orders
+rows already tied on the due key and never lets a new card jump ahead of a due
+one. The in-memory `OrderingPolicy.Apply` mirrors the SQL tiebreaker with
+per-field run-shuffles named by their key (`shuffleSamePosition` vs
+`shuffleSameDue`), and the `NOT NULL DEFAULT 0` column makes one code path serve
+both the ordered (Notion) and shuffled (manual) cases.
+
+[`docs/backend/ddd-patterns/fsrs-compatible-secondary-ordering.md`](../../docs/backend/ddd-patterns/fsrs-compatible-secondary-ordering.md)
+
 ## Further reading (on-demand)
 
 - [Value object Parse pattern](../../docs/backend/ddd-patterns/value-object-parse-pattern.md)
@@ -172,3 +185,4 @@ separate query the client triggers on its own lifecycle.
 - [View-level value in the domain package](../../docs/backend/ddd-patterns/view-level-value-in-domain-package.md)
 - [Caller-truncate contract for domain services](../../docs/backend/ddd-patterns/caller-truncate-contract.md)
 - [Mutation response must not carry a client-managed collection](../../docs/backend/ddd-patterns/mutation-response-must-not-carry-client-managed-collection.md)
+- [FSRS-compatible secondary ordering (tiebreaker between primary key and id)](../../docs/backend/ddd-patterns/fsrs-compatible-secondary-ordering.md)
