@@ -45,7 +45,7 @@ randSource: func() *rand.Rand {
 and cannot be seeded from Go tests, making ordering assertions impossible.
 Pulling the shuffle into application code with an injected source keeps the
 database responsible only for fetching rows in stable due-date order
-(`ORDER BY COALESCE(ucs.due, cards.created_at) ASC, cards.id ASC`); the
+(`ORDER BY COALESCE(ucs.due, cards.created_at) ASC, cards.position ASC, cards.id ASC`); the
 application layer applies the within-tie shuffle on top.
 
 **Non-nil rng is enforced at the entry point.** Earlier iterations of the

@@ -64,6 +64,22 @@ func TestExtractUserPreferences_NullPrefHandledByDown(t *testing.T) {
 
 A roundtrip on a NULL-pref row is the migration analogue of "the empty string is also a valid value" — most data-shape bugs are at the boundary, not in the middle.
 
+## `Steps(-N)` is relative to latest — a newer migration silently retargets it
+
+`m.Steps(-1)` rolls back **one migration relative to the current latest version**, not relative to a named migration. A roundtrip test for migration X that uses `Steps(-1)` correctly targets X only while X is the newest migration. The moment a newer migration Y is added, `Steps(-1)` rolls back Y instead, and X's assertions (e.g. `requireColumnMissing` for X's column) fail because X is still applied — the schema no longer matches the expected rolled-back state.
+
+Concretely: adding the `cards.position` migration made it the newest, so `TestUsersVersionDownUpRoundtrip` — which used `Steps(-1)` expecting to drop `users.version` — began rolling back `cards.position` and left `users.version` in place. The fix was `Steps(-2)` to roll back past both Y and X, then `Steps(1)` to re-apply only X; `t.Cleanup` restores to latest. See `backend/internal/database/users_version_roundtrip_test.go`.
+
+**Operator instruction:** when you add a new migration, audit every existing down/up roundtrip test that steps by relative count:
+
+```bash
+grep -rn "Steps(-1)" backend/internal/database
+```
+
+For each hit, check whether a newer migration now sits above the one under test. If so, bump the rollback count (e.g. `-1` → `-2`) or add a preliminary `Steps(-1)` to step past the newer migration first, then restore with a matching extra `Steps(1)` in `t.Cleanup`. A more robust alternative is to migrate down to a named version rather than by relative count, but the existing tests use relative counts.
+
+This failure mode is the migration-ordering analogue of the broader "adjacent edit surfaces a pre-existing assumption" theme in [`.claude/rules/scope-discipline.md`](../../../.claude/rules/scope-discipline.md).
+
 ## Restore the suite state
 
 Both tests must end with the database migrated back up. A test that leaves the schema rolled back contaminates every downstream test in the same package. The pattern above re-applies the up migration at the end of each test; alternative shapes use `t.Cleanup` to centralise the restore.

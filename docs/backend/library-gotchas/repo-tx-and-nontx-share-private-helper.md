@@ -41,10 +41,10 @@ func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, now time.Time, limi
     var rows []dueCardRow
     if err := db.
         Table("cards").
-        Select("cards.id, cards.cardgroup_id, cards.front, cards.back, cards.created_at, cards.updated_at, ucs.state, ucs.due").
+        Select("cards.id, cards.cardgroup_id, cards.front, cards.back, cards.created_at, cards.updated_at, cards.position, ucs.state, ucs.due").
         Joins("LEFT JOIN user_card_fsrs ucs ON ucs.user_id = ? AND ucs.card_id = cards.id", userID).
         Where("cards.cardgroup_id = ? AND (ucs.due IS NULL OR ucs.due <= ?)", cardgroupID, now).
-        Order("COALESCE(ucs.due, cards.created_at) ASC, cards.id ASC").
+        Order("COALESCE(ucs.due, cards.created_at) ASC, cards.position ASC, cards.id ASC").
         Limit(limit).
         Find(&rows).Error; err != nil {
         return nil, eris.Wrap(err, "repository: card: find due cards")
