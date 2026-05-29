@@ -38,8 +38,12 @@ func TestUsersVersionDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	if err := m.Steps(-1); err != nil {
-		t.Fatalf("migrate down one step: %v", err)
+	// Step back past add_position_to_cards, then past add_version_to_users.
+	// Two steps are required because add_position_to_cards is now the newest
+	// migration; a single -1 only drops cards.position and leaves users.version
+	// in place.
+	if err := m.Steps(-2); err != nil {
+		t.Fatalf("migrate down two steps: %v", err)
 	}
 
 	requireColumnMissing(t, ctx, sqlDB, "users", "version")
