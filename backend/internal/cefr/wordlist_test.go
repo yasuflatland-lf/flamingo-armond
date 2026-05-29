@@ -67,8 +67,8 @@ func TestNewWordList_EmbeddedData(t *testing.T) {
 	_, ok = wl.Lookup(domain.NormalizeWord("cathedral"))
 	require.False(t, ok)
 
-	// Sanity: a non-trivial number of entries loaded.
-	require.Greater(t, wl.Len(), 4000)
+	// Sanity: a non-trivial number of entries loaded (Oxford + C2 combined).
+	require.Greater(t, wl.Len(), 7000)
 }
 
 func TestNewWordList_CambridgeC2Data(t *testing.T) {
@@ -84,6 +84,17 @@ func TestNewWordList_CambridgeC2Data(t *testing.T) {
 		require.Equal(t, domain.CEFRC2, lvl, "expected %q to map to C2", key)
 	}
 
-	// The list must be larger than the Oxford-only baseline (>4000 Oxford + 792 C2).
-	require.Greater(t, wl.Len(), 4792)
+	// The list must be larger than the combined baseline
+	// (~4949 Oxford + ~2748 C2, zero overlap, ~7697 merged).
+	require.Greater(t, wl.Len(), 7000)
+}
+
+func TestNewWordList_C2DoesNotElevateOxfordWord(t *testing.T) {
+	t.Parallel()
+	wl := NewWordList()
+	// "water" is an Oxford word; the append-only C2 list must not contain it,
+	// so the Harder merge must never promote it to C2.
+	lvl, ok := wl.Lookup(domain.NormalizeWord("water"))
+	require.True(t, ok)
+	require.NotEqual(t, domain.CEFRC2, lvl)
 }

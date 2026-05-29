@@ -45,3 +45,14 @@ func TestCardResolver_CefrLevel_OffList(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, lvl)
 }
+
+func TestCardResolver_CefrLevel_C2Word(t *testing.T) {
+	t.Parallel()
+	r := newCEFRResolver(t)
+	// "ambiguous" is present in cambridge-c2.md and absent from the Oxford lists,
+	// so it must classify as C2 through the full resolver chain.
+	lvl, err := r.Card().CefrLevel(context.Background(), &model.Card{Front: "ambiguous"})
+	require.NoError(t, err)
+	require.NotNil(t, lvl)
+	require.Equal(t, model.CEFRLevelC2, *lvl)
+}
