@@ -1,23 +1,41 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { CefrLevel } from "@/generated/base-types";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { CefrLevel } from "@/generated/graphql";
 import { CefrBadge } from "./cefr-badge";
 
 describe("<CefrBadge>", () => {
-  it("maps each level to its band color", () => {
-    render(<CefrBadge level={CefrLevel.A1} />);
-    expect(screen.getByLabelText("CEFR level A1")).toHaveClass("bg-cefr-a");
+  it("maps A1 to the a band with matching foreground", () => {
+    render(<CefrBadge level="A1" />);
+    const el = screen.getByLabelText("CEFR level A1");
+    expect(el).toHaveClass("bg-cefr-a", "text-cefr-a-foreground");
   });
 
-  it("maps B-band levels to the b color", () => {
-    render(<CefrBadge level={CefrLevel.B1} />);
-    expect(screen.getByLabelText("CEFR level B1")).toHaveClass("bg-cefr-b");
+  it("maps A2 to the a band with matching foreground", () => {
+    render(<CefrBadge level="A2" />);
+    const el = screen.getByLabelText("CEFR level A2");
+    expect(el).toHaveClass("bg-cefr-a", "text-cefr-a-foreground");
   });
 
-  it("maps C-band levels to the c color", () => {
-    render(<CefrBadge level={CefrLevel.C1} />);
-    expect(screen.getByLabelText("CEFR level C1")).toHaveClass("bg-cefr-c");
+  it("maps B1 to the b band with matching foreground", () => {
+    render(<CefrBadge level="B1" />);
+    const el = screen.getByLabelText("CEFR level B1");
+    expect(el).toHaveClass("bg-cefr-b", "text-cefr-b-foreground");
+  });
+
+  it("maps B2 to the b band with matching foreground", () => {
+    render(<CefrBadge level="B2" />);
+    const el = screen.getByLabelText("CEFR level B2");
+    expect(el).toHaveClass("bg-cefr-b", "text-cefr-b-foreground");
+  });
+
+  it("maps C1 to the c band with matching foreground", () => {
+    render(<CefrBadge level="C1" />);
+    const el = screen.getByLabelText("CEFR level C1");
+    expect(el).toHaveClass("bg-cefr-c", "text-cefr-c-foreground");
   });
 
   it("renders nothing when the level is null", () => {
@@ -30,15 +48,31 @@ describe("<CefrBadge>", () => {
     expect(screen.queryByLabelText(/CEFR level/)).toBeNull();
   });
 
-  it("exposes the exact accessible label for the level", () => {
-    render(<CefrBadge level={CefrLevel.B2} />);
-    expect(screen.getByLabelText("CEFR level B2")).toBeInTheDocument();
-    // The label text is exactly "CEFR level B2" — no more, no less.
-    expect(screen.queryByLabelText("CEFR level B2 ")).toBeNull();
+  it("suppresses the badge and warns for an out-of-union runtime level", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    render(<CefrBadge level={"C2" as unknown as CefrLevel} />);
+
+    expect(screen.queryByLabelText(/CEFR level/)).toBeNull();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("C2"));
+
+    warn.mockRestore();
+  });
+
+  it("exposes the exact accessible name for the level", () => {
+    render(<CefrBadge level="B2" />);
+    const el = screen.getByLabelText("CEFR level B2");
+    expect(el).toHaveAccessibleName("CEFR level B2");
+  });
+
+  it("carries role=img so the aria-label is reliably announced", () => {
+    render(<CefrBadge level="B2" />);
+    const el = screen.getByLabelText("CEFR level B2");
+    expect(el).toHaveAttribute("role", "img");
   });
 
   it("is non-interactive: no tabindex and no button role", () => {
-    render(<CefrBadge level={CefrLevel.A1} />);
+    render(<CefrBadge level="A1" />);
     const el = screen.getByLabelText("CEFR level A1");
     expect(el).not.toHaveAttribute("tabindex");
     expect(el).not.toHaveAttribute("role", "button");
@@ -101,4 +135,35 @@ describe("CEFR token contrast", () => {
       expect(contrastRatio(fg, WHITE)).toBeGreaterThanOrEqual(4.5);
     });
   }
+});
+
+// --- Token drift guard (static source) --------------------------------------
+//
+// The hex constants above are a hand-maintained mirror of the `--cefr-*`
+// oklch tokens in globals.css. Pin each token's exact committed declaration
+// so that a token change in globals.css fails this test loudly — forcing the
+// hex constants here to be re-derived and re-verified for contrast.
+
+describe("CEFR token declarations in globals.css", () => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const globalsCss = readFileSync(path.resolve(here, "../../app/globals.css"), "utf8");
+
+  const TOKEN_DECLARATIONS = [
+    "--cefr-a: oklch(94% 0.04 150)",
+    "--cefr-a-foreground: oklch(45% 0.13 150)",
+    "--cefr-b: oklch(95% 0.045 75)",
+    "--cefr-b-foreground: oklch(45% 0.12 75)",
+    "--cefr-c: oklch(94% 0.035 12)",
+    "--cefr-c-foreground: oklch(45% 0.15 12)",
+  ] as const;
+
+  for (const declaration of TOKEN_DECLARATIONS) {
+    it(`declares ${declaration} verbatim`, () => {
+      expect(globalsCss).toContain(declaration);
+    });
+  }
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });

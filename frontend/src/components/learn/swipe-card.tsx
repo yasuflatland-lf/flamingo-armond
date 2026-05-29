@@ -2,8 +2,7 @@
 
 import dynamic from "next/dynamic";
 import type { RefObject } from "react";
-import type { CefrLevel } from "@/generated/base-types";
-import type { CefrLevel as CefrLevelUnion } from "@/generated/graphql";
+import type { CefrLevel } from "@/generated/graphql";
 import type { AnimatedCardHandle } from "./animated-card";
 import { CefrBadge } from "./cefr-badge";
 import type { SwipeDirection } from "./types";
@@ -14,14 +13,8 @@ export type SwipeCardData = {
   id: string;
   front: string;
   back: string;
-  // `cefrLevel` is typed with the string-union `CefrLevel` from
-  // `@/generated/graphql` (NOT the runtime enum in `@/generated/base-types`).
-  // The inbound `LearnNextDueCardsQuery` node types this field as the union,
-  // so this keeps the whole `query result -> SwipeCardData` chain assignable
-  // with no cast (the generic `SwipeCardStack<TCard extends SwipeCardData>`
-  // constraint relies on that). The single cast required to bridge the union
-  // back to `CefrBadge`'s enum-typed prop is isolated at the mount site below.
-  cefrLevel: CefrLevelUnion | null;
+  // CEFR level from the LearnNextDueCards query; `null` = no Oxford word match.
+  cefrLevel: CefrLevel | null;
   userCardState: {
     due: string;
     state: number;
@@ -65,14 +58,9 @@ export function CardContent({ card }: { card: SwipeCardData }) {
     <div className="relative flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card p-6 shadow-lg">
       {/*
         The badge is `position: absolute`, so it never participates in the
-        flow and CLS is zero by construction. `cefrLevel` is the string-union
-        from the query; CefrBadge's prop is the runtime enum from
-        `@/generated/base-types`. They share identical string values
-        ('A1'..'C1'), so this single cast is runtime-safe — it only bridges
-        TypeScript's nominal enum vs. structural union mismatch, isolated here
-        at the one presentation boundary where the two type worlds meet.
+        flow and CLS is zero by construction.
       */}
-      <CefrBadge level={(card.cefrLevel ?? null) as CefrLevel | null} />
+      <CefrBadge level={card.cefrLevel} />
       {/*
         Reserve horizontal space (`px-10`) on the centered content block so a
         long wrapped `front` term cannot slide UNDER the right-pinned badge on

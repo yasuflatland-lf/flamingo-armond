@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { CefrLevel } from "@/generated/base-types";
+import type { CefrLevel } from "@/generated/graphql";
 import { cn } from "@/lib/utils";
 
 /**
@@ -13,20 +13,24 @@ import { cn } from "@/lib/utils";
  * through and let this component decide whether anything renders.
  *
  * The element is purely presentational: a labelled <div>, never a control
- * (no tabIndex / onClick / role). Text always accompanies the band color so
- * color is never the sole signal.
+ * (no tabIndex / onClick). Text always accompanies the band color so color
+ * is never the sole signal. It carries `role="img"` so the `aria-label` is
+ * reliably announced: shadcn's `Badge` renders a bare <div> (implicit ARIA
+ * role `generic`), and an `aria-label` on a name-prohibited `generic`
+ * element is not reliably exposed to assistive tech.
  */
 
 // Band buckets the five CEFR levels into three color families.
 // Keep this an EXHAUSTIVE Record (not a switch with a default) so a future
-// `C2` enum value becomes a one-line compile error here rather than silently
-// falling into a default branch.
+// `C2` value becomes a one-line compile error here rather than silently
+// falling into a default branch. `Record<CefrLevel, ...>` over the string
+// union is just as exhaustive as over the runtime enum.
 const bandOf: Record<CefrLevel, "a" | "b" | "c"> = {
-  [CefrLevel.A1]: "a",
-  [CefrLevel.A2]: "a",
-  [CefrLevel.B1]: "b",
-  [CefrLevel.B2]: "b",
-  [CefrLevel.C1]: "c",
+  A1: "a",
+  A2: "a",
+  B1: "b",
+  B2: "b",
+  C1: "c",
 };
 
 // Full literal class strings: Tailwind's scanner cannot see interpolated
@@ -39,8 +43,9 @@ const bandClass: Record<"a" | "b" | "c", string> = {
 
 interface CefrBadgeProps {
   /**
-   * The card's CEFR level. The key is REQUIRED; the value is nullable —
-   * `null` (or a stray `undefined`) renders nothing.
+   * The card's CEFR level. Required prop (no `?`): pass `null` explicitly
+   * when the level is absent. `undefined` also renders nothing via the loose
+   * `== null` guard.
    */
   level: CefrLevel | null;
 }
@@ -51,11 +56,24 @@ export function CefrBadge({ level }: CefrBadgeProps) {
     return null;
   }
 
-  const band = bandOf[level];
+  // The `| undefined` models the runtime-lie case only: TypeScript cannot
+  // enforce union membership at runtime, so a backend level not yet in the
+  // generated union (deploy skew) reads back as `undefined` here. `bandOf`
+  // stays typed as the exhaustive `Record<CefrLevel, ...>` so adding `C2`
+  // remains a compile error.
+  const band: "a" | "b" | "c" | undefined = bandOf[level];
+  if (band === undefined) {
+    // The union type can lie at runtime (a backend level not yet in the
+    // generated enum, during deploy skew). Suppress the unstyled badge and
+    // surface the gap to developers rather than rendering a colorless chip.
+    console.warn(`[CefrBadge] Unrecognized CEFR level "${level}" — badge suppressed.`);
+    return null;
+  }
 
   return (
     <Badge
       variant="outline"
+      role="img"
       aria-label={`CEFR level ${level}`}
       className={cn(
         // This badge owns the card's top-right corner; it assumes a

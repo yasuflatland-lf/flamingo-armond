@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { CefrLevel } from "@/generated/base-types";
 import { CardContent, type SwipeCardData } from "./swipe-card";
 
 const CARD: SwipeCardData = {
@@ -33,7 +32,7 @@ describe("<CardContent>", () => {
   });
 
   it("renders the CEFR badge alongside the front/back when the card has a level", () => {
-    render(<CardContent card={{ ...CARD, cefrLevel: CefrLevel.B1 }} />);
+    render(<CardContent card={{ ...CARD, cefrLevel: "B1" }} />);
 
     expect(screen.getByLabelText("CEFR level B1")).toBeInTheDocument();
     expect(screen.getByText("Hello")).toBeInTheDocument();
@@ -53,7 +52,7 @@ describe("<CardContent>", () => {
     // the centered content block must carry the horizontal-padding utility that
     // keeps a pathological single-token `front` clear of the right-pinned badge.
     const longFront = "Pneumonoultramicroscopicsilicovolcanoconiosis";
-    render(<CardContent card={{ ...CARD, front: longFront, cefrLevel: CefrLevel.C1 }} />);
+    render(<CardContent card={{ ...CARD, front: longFront, cefrLevel: "C1" }} />);
 
     // Both the long front term and the badge render.
     const frontEl = screen.getByText(longFront);
@@ -65,5 +64,12 @@ describe("<CardContent>", () => {
     const contentBlock = frontEl.parentElement;
     expect(contentBlock).not.toBeNull();
     expect(contentBlock).toHaveClass("px-10");
+
+    // The outer card container must carry `relative`: the absolutely-positioned
+    // badge anchors to it, so removing `relative` would dislocate the badge to
+    // the viewport. Navigate up from the content block to the outer card <div>.
+    const outerCard = contentBlock?.parentElement;
+    expect(outerCard).not.toBeNull();
+    expect(outerCard).toHaveClass("relative");
   });
 });
