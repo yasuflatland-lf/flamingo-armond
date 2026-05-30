@@ -41,7 +41,10 @@ jobs:
     env:
       BACKEND_URL: http://localhost:1323
       E2E_BASE_URL: http://localhost:3000
-      GRAPHQL_INTROSPECTION: on
+      # The e2e suite does not use introspection (__schema / __type); keep it
+      # disabled to match the fail-safe production default. Quoted so YAML does
+      # not coerce it to a boolean.
+      GRAPHQL_INTROSPECTION: "off"
       PING_TOKEN: ci-dummy
       SUPABASE_JWT_AUDIENCE: authenticated
       SUPABASE_JWT_ISSUER: http://127.0.0.1:54321/auth/v1
