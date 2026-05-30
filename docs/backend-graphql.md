@@ -75,7 +75,7 @@ gqlgen deletes `graph/model/models_gen.go` at the start of every run before rege
 
 ### Playground
 
-`GET /playground` exposes a browser UI for hand-crafted queries against `/query`. The route is registered only when introspection is enabled (it shares the `GRAPHQL_INTROSPECTION` switch): with `GRAPHQL_INTROSPECTION=off` the route is not registered and returns `404`, so production does not serve the developer UI. With the variable unset or any non-`off` value the route is registered and the playground loads. The UI is gated together with introspection because it is non-functional without `__schema` / `__type`. See [Introspection gating](#introspection-gating).
+`GET /playground` exposes a browser UI for hand-crafted queries against `/query`. The route is registered unless `GRAPHQL_INTROSPECTION=off`: with `GRAPHQL_INTROSPECTION=off` the route is not registered and returns `404` (production does not serve the developer UI); with the variable unset or any non-`off` value the route is registered and the playground loads. The route gate (`!= "off"`) is intentionally looser than the introspection gate (`== "on"`): with the variable unset the page loads but its introspection queries (`__schema` / `__type`) are disabled, since introspection itself is opt-in. See [Introspection gating](#introspection-gating).
 
 ### Resolver DI seam
 
@@ -484,20 +484,22 @@ setting it above 1000 without profiling.
 ### Introspection gating
 
 **Why:** Introspection exposes the full schema to anyone who can reach
-`/query`. Disabling it in production prevents schema enumeration by
-unauthenticated clients while keeping it on in dev for playground and
-codegen tooling.
+`/query`. The default is fail-safe (disabled), so a deploy target that forgets
+to set the variable cannot leak the schema to unauthenticated clients. Dev opts
+in (`GRAPHQL_INTROSPECTION=on`) to drive the playground against a live schema.
+Frontend codegen does not need it — it reads the static `schema/*.graphql` file,
+not backend introspection.
 
 Control is via the `GRAPHQL_INTROSPECTION` environment variable:
 
 | Value | Effect |
 |---|---|
-| `off` | Introspection disabled; `__schema` queries return a validation error |
-| anything else (including unset) | Introspection enabled |
+| `on` | Introspection enabled; `__schema` / `__type` queries succeed |
+| anything else (including unset) | Introspection disabled; `__schema` queries return a validation error |
 
-The `GET /playground` route shares this switch: when introspection is off the route is not registered and `GET /playground` returns `404`; when introspection is on the route is registered and serves the UI. (Beyond route registration, the `__schema` / `__type` queries are themselves blocked when introspection is off.)
+The `GET /playground` route is gated on the same variable but with a looser threshold: it is registered unless the value is `off` (so `off` → `404`; unset or any non-`off` value → registered). With the variable unset the route is registered and serves the UI, but the introspection queries it issues still fail because introspection itself requires `== "on"`.
 
-Production sets `GRAPHQL_INTROSPECTION=off` on the Render service (Settings → Environment), so neither introspection nor the playground UI is served. Dev and CI leave the variable unset, so the playground remains fully functional.
+Production keeps `GRAPHQL_INTROSPECTION=off` on the Render service (Settings → Environment), so neither introspection nor the playground UI is served. Dev sets `GRAPHQL_INTROSPECTION=on` (via `backend/.env.example` / `.env.local`) so both the playground and introspection queries work. CI (`.github/workflows/e2e.yml`) keeps it `off` — the e2e suite uses neither, matching the fail-safe production default.
 
 **Tip:** When introspection is disabled, the error message is exactly `"introspection disabled"` (lowercase, no trailing punctuation). Test assertions can match on this literal string.
 
