@@ -56,6 +56,15 @@ Accepted algorithms: ES256, RS256. A 30-second leeway is applied to `exp` to tol
 
 All 401 responses carry `WWW-Authenticate: Bearer realm="api"`. The header deliberately omits `error` and `error_description` parameters (RFC 6750 §3.1) to minimize information disclosure — callers learn only that a valid Bearer token is required, not why verification failed.
 
+### CSRF posture: bearer-only credential and CORS allowlist invariant
+
+The API is structurally immune to CSRF because authentication never reads a credential the browser attaches automatically. This immunity is **implicit** — it rests on the *absence* of cookie auth and the *absence* of permissive CORS — so a future change can silently lose it. The following four properties are standing invariants; preserve all of them.
+
+1. **Bearer-only credential.** The API authenticates **exclusively** via the `Authorization: Bearer <JWT>` header (`AuthMiddleware` in `backend/internal/auth/middleware.go`). The backend MUST NOT read any cookie, session, or other browser-auto-attached credential server-side. A header that the browser does not attach on its own for cross-origin requests is precisely what makes the API structurally CSRF-immune.
+2. **Explicit CORS allowlist only.** No CORS middleware is configured, so the browser same-origin policy already blocks cross-origin custom-header requests. If CORS is ever added, it MUST use an explicit origin allowlist. Never combine `Access-Control-Allow-Origin: *` with credentials, and never reflect the request `Origin` header back into the response.
+3. **Cookies break the immunity.** If any cookie-based credential is ever introduced, the CSRF immunity is lost. Explicit CSRF defenses then become mandatory: `SameSite=Lax|Strict` on the credential cookie plus either an anti-CSRF token or an `Origin` / `Sec-Fetch-Site` check on every state-changing route.
+4. **JSON-only POST transport.** The GraphQL POST transport accepts only `application/json` (gqlgen `transport.POST` in `backend/cmd/server/main.go`). Do not register `transport.GET` or any form transport for mutation-capable operations — both are reachable cross-origin without a CORS preflight and would reopen the CSRF surface.
+
 ### JWKS lifecycle
 
 `NewJWKSKeyfunc` wraps `MicahParks/keyfunc/v3` with `NoErrorReturnFirstHTTPReq: false`. This means:
