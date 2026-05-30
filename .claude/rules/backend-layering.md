@@ -37,6 +37,8 @@ The backend follows a DDD/layered architecture. The dependency arrow always poin
 
 **`internal/auth` lists `domain` in `mayDependOn`** — this is intentional and correct. `auth.Service.IsAdmin` compares a role membership query result against `domain.AdminRoleName`, a domain-owned constant that defines the canonical admin role name. Role membership is a domain concern; coupling the auth adapter to the canonical constant rather than a local string literal keeps the two in sync and prevents drift. The dependency arrow (`auth → domain`) is infrastructure importing domain, which is the normal inward direction.
 
+**The CSRF posture is a transport/presentation-layer invariant.** The bearer-only credential rule (no cookie/session auth read in `internal/auth`), the explicit CORS allowlist requirement, and the JSON-only gqlgen POST transport together make the API structurally CSRF-immune. Adding CORS middleware or a cookie credential touches that contract — see [`docs/backend-auth.md` § "CSRF posture: bearer-only credential and CORS allowlist invariant"](../../docs/backend-auth.md#csrf-posture-bearer-only-credential-and-cors-allowlist-invariant).
+
 ## What `go-arch-lint` covers vs. doesn't
 
 `go-arch-lint` operates at the **import-graph level only**. Even with `deepScan: true` it does not classify function-call, struct-literal, or string-literal shapes. The CI grep gates in [`.github/workflows/backend.yml`](../../.github/workflows/backend.yml) are evaluated against that capability:

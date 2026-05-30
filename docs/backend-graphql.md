@@ -6,6 +6,8 @@
 
 `POST /query` is served by gqlgen. The schema lives under `schema/*.graphql` at the repo root and is consumed by `backend/gqlgen.yml` via a relative glob (`../schema/*.graphql`), so both backend (gqlgen) and frontend (graphql-codegen) see the same source of truth.
 
+The transport accepts only `application/json` and registers no `transport.GET` — a deliberate part of the API's CSRF posture. See [`docs/backend-auth.md` § "CSRF posture: bearer-only credential and CORS allowlist invariant"](backend-auth.md#csrf-posture-bearer-only-credential-and-cors-allowlist-invariant) before adding a form transport or `transport.GET`.
+
 ### Schema extension rules
 
 - `extend type Query { ... }` works without ceremony — gqlgen merges all `extend type Query` blocks automatically. Use it freely when adding fields to the root query type.
