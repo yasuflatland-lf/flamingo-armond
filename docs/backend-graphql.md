@@ -73,7 +73,7 @@ gqlgen deletes `graph/model/models_gen.go` at the start of every run before rege
 
 ### Playground
 
-`GET /playground` exposes a browser UI for hand-crafted queries against `/query`. The route is enabled in all environments; the playground UI loads regardless of `GRAPHQL_INTROSPECTION`, but introspection queries (`__schema` / `__type`) are blocked when the variable is set to `off`. See [Introspection gating](#introspection-gating).
+`GET /playground` exposes a browser UI for hand-crafted queries against `/query`. The route is enabled in all environments; the playground UI loads regardless of `GRAPHQL_INTROSPECTION`, but introspection queries (`__schema` / `__type`) succeed only when the variable is set to `on` (disabled by default). See [Introspection gating](#introspection-gating).
 
 ### Resolver DI seam
 
@@ -482,21 +482,23 @@ setting it above 1000 without profiling.
 ### Introspection gating
 
 **Why:** Introspection exposes the full schema to anyone who can reach
-`/query`. Disabling it in production prevents schema enumeration by
-unauthenticated clients while keeping it on in dev for playground and
-codegen tooling.
+`/query`. The default is fail-safe (disabled), so a deploy target that forgets
+to set the variable cannot leak the schema to unauthenticated clients. Dev opts
+in (`GRAPHQL_INTROSPECTION=on`) to drive the playground against a live schema.
+Frontend codegen does not need it — it reads the static `schema/*.graphql` file,
+not backend introspection.
 
 Control is via the `GRAPHQL_INTROSPECTION` environment variable:
 
 | Value | Effect |
 |---|---|
-| `off` | Introspection disabled; `__schema` queries return a validation error |
-| anything else (including unset) | Introspection enabled |
+| `on` | Introspection enabled; `__schema` / `__type` queries succeed |
+| anything else (including unset) | Introspection disabled; `__schema` queries return a validation error |
 
 The `GET /playground` route is unaffected — the playground UI loads regardless.
-Only the `__schema` and `__type` queries are blocked when introspection is off.
+Only the `__schema` and `__type` queries are blocked when introspection is disabled.
 
-Production sets `GRAPHQL_INTROSPECTION=off` on the Render service (Settings → Environment). Dev and CI leave the variable unset, so the playground remains fully functional.
+Production keeps `GRAPHQL_INTROSPECTION=off` on the Render service (Settings → Environment); any value other than `on` disables introspection. Dev sets `GRAPHQL_INTROSPECTION=on` (via `backend/.env.example` / `.env.local`) so the playground and introspection queries work. CI (`.github/workflows/e2e.yml`) keeps it `off` — the e2e suite does not use introspection, matching the fail-safe production default.
 
 **Tip:** When introspection is disabled, the error message is exactly `"introspection disabled"` (lowercase, no trailing punctuation). Test assertions can match on this literal string.
 

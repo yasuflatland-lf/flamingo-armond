@@ -52,6 +52,8 @@ services:
     envVars:
       - key: APP_ENV
         value: production
+      # Introspection is opt-in: only "on" enables it; "off" (or any other
+      # value, including unset) keeps the schema hidden.
       - key: GRAPHQL_INTROSPECTION
         value: "off"
       - key: OTEL_TRACES_SAMPLER_ARG
