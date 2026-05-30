@@ -152,7 +152,14 @@ func newRouter(
 	)
 	q := e.Group("/query", authMW, promoter.Middleware(), loader.MiddlewareWithUserCardFSRS(userRepo, roleRepo, userRoleRepo, cardgroupRepo, cardRepo, userPreferenceRepo, swipeRecordRepo, userCardFSRSRepo))
 	q.POST("", echo.WrapHandler(otelGQLHandler))
-	e.GET("/playground", echo.WrapHandler(playground.Handler("GraphQL", "/query")))
+
+	// Gate the Playground UI on the same switch as introspection (main.go
+	// `extension.Introspection{}` gate): the UI is useless without
+	// introspection, so production (GRAPHQL_INTROSPECTION=off) does not serve
+	// it at all rather than serving a non-functional page.
+	if os.Getenv("GRAPHQL_INTROSPECTION") != "off" {
+		e.GET("/playground", echo.WrapHandler(playground.Handler("GraphQL", "/query")))
+	}
 
 	return e
 }

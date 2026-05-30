@@ -73,7 +73,7 @@ gqlgen deletes `graph/model/models_gen.go` at the start of every run before rege
 
 ### Playground
 
-`GET /playground` exposes a browser UI for hand-crafted queries against `/query`. The route is enabled in all environments; the playground UI loads regardless of `GRAPHQL_INTROSPECTION`, but introspection queries (`__schema` / `__type`) are blocked when the variable is set to `off`. See [Introspection gating](#introspection-gating).
+`GET /playground` exposes a browser UI for hand-crafted queries against `/query`. The route is registered only when introspection is enabled (it shares the `GRAPHQL_INTROSPECTION` switch): with `GRAPHQL_INTROSPECTION=off` the route is not registered and returns `404`, so production does not serve the developer UI. With the variable unset or any non-`off` value the route is registered and the playground loads. The UI is gated together with introspection because it is non-functional without `__schema` / `__type`. See [Introspection gating](#introspection-gating).
 
 ### Resolver DI seam
 
@@ -493,10 +493,9 @@ Control is via the `GRAPHQL_INTROSPECTION` environment variable:
 | `off` | Introspection disabled; `__schema` queries return a validation error |
 | anything else (including unset) | Introspection enabled |
 
-The `GET /playground` route is unaffected — the playground UI loads regardless.
-Only the `__schema` and `__type` queries are blocked when introspection is off.
+The `GET /playground` route shares this switch: when introspection is off the route is not registered and `GET /playground` returns `404`; when introspection is on the route is registered and serves the UI. (Beyond route registration, the `__schema` / `__type` queries are themselves blocked when introspection is off.)
 
-Production sets `GRAPHQL_INTROSPECTION=off` on the Render service (Settings → Environment). Dev and CI leave the variable unset, so the playground remains fully functional.
+Production sets `GRAPHQL_INTROSPECTION=off` on the Render service (Settings → Environment), so neither introspection nor the playground UI is served. Dev and CI leave the variable unset, so the playground remains fully functional.
 
 **Tip:** When introspection is disabled, the error message is exactly `"introspection disabled"` (lowercase, no trailing punctuation). Test assertions can match on this literal string.
 

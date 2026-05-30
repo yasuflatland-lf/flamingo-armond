@@ -870,6 +870,41 @@ func TestIntrospection_DefaultOn(t *testing.T) {
 	}
 }
 
+// getStatus issues a GET and returns only the HTTP status code. Used for
+// routes whose body is not JSON (the Playground UI serves HTML).
+func getStatus(t *testing.T, url string) int {
+	t.Helper()
+	res, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	defer res.Body.Close()
+	return res.StatusCode
+}
+
+// TestPlayground_GatedOff asserts that GRAPHQL_INTROSPECTION=off leaves the
+// /playground route unregistered (404). The Playground UI is useless without
+// introspection, so production (where introspection is off) does not serve it.
+func TestPlayground_GatedOff(t *testing.T) {
+	t.Setenv("GRAPHQL_INTROSPECTION", "off")
+	ts := newTestServer(t)
+
+	if got := getStatus(t, ts.URL+"/playground"); got != http.StatusNotFound {
+		t.Fatalf("GET /playground status = %d, want %d (route should be gated off)", got, http.StatusNotFound)
+	}
+}
+
+// TestPlayground_DefaultOn asserts that with introspection enabled (empty/unset
+// GRAPHQL_INTROSPECTION) the /playground route is registered and returns 200.
+func TestPlayground_DefaultOn(t *testing.T) {
+	t.Setenv("GRAPHQL_INTROSPECTION", "")
+	ts := newTestServer(t)
+
+	if got := getStatus(t, ts.URL+"/playground"); got != http.StatusOK {
+		t.Fatalf("GET /playground status = %d, want %d (route should be registered)", got, http.StatusOK)
+	}
+}
+
 // installInMemoryTracer wires a fresh in-memory exporter as the global
 // TracerProvider so individual tests can inspect emitted spans.
 // The returned flush function must be called before reading spans.
