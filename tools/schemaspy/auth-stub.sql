@@ -1,4 +1,3 @@
--- auth-stub.sql
 -- Auth-schema bootstrap for the SchemaSpy ephemeral Postgres instance.
 --
 -- WHY THIS FILE EXISTS
