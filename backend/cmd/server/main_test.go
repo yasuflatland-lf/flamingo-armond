@@ -827,8 +827,10 @@ func newIntrospectionTestServer(t *testing.T) *httptest.Server {
 
 const introspectionQuery = `{"query":"{ __schema { queryType { name } } }"}`
 
-func TestIntrospection_GatedOff(t *testing.T) {
-	t.Setenv("GRAPHQL_INTROSPECTION", "off")
+// assertIntrospectionDisabled posts an introspection query and asserts the
+// server rejects it with an "introspection disabled" validation error.
+func assertIntrospectionDisabled(t *testing.T) {
+	t.Helper()
 	ts := newIntrospectionTestServer(t)
 
 	raw := postRaw(t, ts.URL, introspectionQuery)
@@ -849,8 +851,10 @@ func TestIntrospection_GatedOff(t *testing.T) {
 	}
 }
 
-func TestIntrospection_DefaultOn(t *testing.T) {
-	t.Setenv("GRAPHQL_INTROSPECTION", "")
+// assertIntrospectionEnabled posts an introspection query and asserts the
+// server returns a populated __schema with no errors.
+func assertIntrospectionEnabled(t *testing.T) {
+	t.Helper()
 	ts := newIntrospectionTestServer(t)
 
 	raw := postRaw(t, ts.URL, introspectionQuery)
@@ -868,6 +872,24 @@ func TestIntrospection_DefaultOn(t *testing.T) {
 	if payload.Data["__schema"] == nil {
 		t.Fatalf("expected data.__schema to be non-nil; body=%q", raw)
 	}
+}
+
+// Introspection is fail-safe (opt-in): enabled only when GRAPHQL_INTROSPECTION
+// is set to exactly "on". An unset or any other value keeps it disabled.
+
+func TestIntrospection_UnsetDisabled(t *testing.T) {
+	t.Setenv("GRAPHQL_INTROSPECTION", "")
+	assertIntrospectionDisabled(t)
+}
+
+func TestIntrospection_OffDisabled(t *testing.T) {
+	t.Setenv("GRAPHQL_INTROSPECTION", "off")
+	assertIntrospectionDisabled(t)
+}
+
+func TestIntrospection_OnEnabled(t *testing.T) {
+	t.Setenv("GRAPHQL_INTROSPECTION", "on")
+	assertIntrospectionEnabled(t)
 }
 
 // installInMemoryTracer wires a fresh in-memory exporter as the global

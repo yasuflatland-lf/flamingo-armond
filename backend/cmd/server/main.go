@@ -84,7 +84,11 @@ func newGraphQLServer(r *resolver.Resolver) *handler.Server {
 
 	srv.Use(extension.FixedComplexityLimit(100))
 
-	if os.Getenv("GRAPHQL_INTROSPECTION") != "off" {
+	// Introspection is fail-safe: opt-in only. Enabled when
+	// GRAPHQL_INTROSPECTION is exactly "on"; unset or any other value keeps
+	// the schema hidden so a new deploy target cannot leak it by forgetting
+	// to set the variable.
+	if os.Getenv("GRAPHQL_INTROSPECTION") == "on" {
 		srv.Use(extension.Introspection{})
 	}
 
