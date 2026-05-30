@@ -1,0 +1,96 @@
+name: er-chart
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/internal/database/migrations/**'
+      - 'tools/schemaspy/**'
+      - '.github/workflows/er-chart.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: er-chart-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write          # github-pages-deploy-action needs push access to the gh-pages branch
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:15          # matches supabase config major_version = 15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: armond
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Apply auth stub
+        env: { PGPASSWORD: postgres }
+        run: psql -h localhost -U postgres -d armond -v ON_ERROR_STOP=1 -f tools/schemaspy/auth-stub.sql
+
+      - name: Apply migrations (up files, in order)
+        env: { PGPASSWORD: postgres }
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          # Glob expansion is already lexically sorted, and the 14-digit timestamp
+          # prefix makes lexical order == chronological order.
+          migrations=(backend/internal/database/migrations/*.up.sql)
+          if [[ ${#migrations[@]} -eq 0 ]]; then
+            echo "::error::No *.up.sql migration files found under backend/internal/database/migrations - aborting." >&2
+            exit 1
+          fi
+          for f in "${migrations[@]}"; do
+            echo "applying $f"
+            psql -h localhost -U postgres -d armond -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Verify the public schema is populated
+        env: { PGPASSWORD: postgres }
+        run: |
+          set -euo pipefail
+          count=$(psql -h localhost -U postgres -d armond -tAc \
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'")
+          echo "public base tables: $count"
+          if [[ -z "$count" ]]; then
+            echo "::error::psql returned no output for the table-count query - connection or query failure." >&2
+            exit 1
+          fi
+          if [[ "$count" -eq 0 ]]; then
+            echo "::error::No tables in the public schema after migrations - refusing to publish an empty ER chart." >&2
+            exit 1
+          fi
+
+      - name: Generate ER docs with SchemaSpy
+        run: |
+          set -euo pipefail
+          mkdir -p erout
+          docker run --rm --network host -v "$PWD/erout:/output" \
+            schemaspy/schemaspy:7.0.2 \
+            -t pgsql11 -host localhost -port 5432 -db armond \
+            -u postgres -p postgres -s public
+
+      - name: Verify ER docs were generated
+        run: |
+          set -euo pipefail
+          if [[ ! -f erout/index.html ]]; then
+            echo "::error::SchemaSpy did not produce erout/index.html - aborting publish." >&2
+            exit 1
+          fi
+
+      - name: Publish to gh-pages/er-chart
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: erout
+          target-folder: er-chart
+          clean: true

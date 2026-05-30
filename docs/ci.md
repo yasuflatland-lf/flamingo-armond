@@ -228,3 +228,66 @@ Production deploys to Vercel are managed by Vercel's native Git integration: pus
 #### Production env vars live only in the Vercel project
 
 `lint-test-build` sets `BACKEND_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to dummy values so `next build` can validate the env schema without real credentials. The Vercel project's own production environment configuration is the only source of truth for the real values — never copy production secrets into the workflow's `env:` block, since `NEXT_PUBLIC_*` vars are baked into the client-side JavaScript bundle at build time and a stray dummy would ship to users.
+
+## ER-chart workflow
+
+`.github/workflows/er-chart.yml` generates an entity-relationship diagram and table documentation from the live database schema using SchemaSpy, then publishes the output to GitHub Pages at `https://yasuflatland-lf.github.io/flamingo-armond/er-chart/`.
+
+### Why a live database, not the schema files
+
+SchemaSpy reads a live PostgreSQL instance - it does not parse GraphQL schema files under `schema/` or migration SQL files directly. The workflow therefore stands up an ephemeral `postgres:15` service container, applies the schema to it, and points SchemaSpy at the running database. This produces accurate FK relationships, index annotations, and column nullability that static file parsing cannot derive reliably.
+
+### The Supabase-coupling problem and the auth stub
+
+The consolidated initial migration is written for Supabase and references objects that vanilla Postgres does not provide:
+
+- a FK to `auth.users`
+- a trigger on `auth.users`
+- RLS policies that call `auth.uid()` in their `USING` expression
+
+`CREATE POLICY` validates its `USING` expression at creation time, so `auth.uid()` must already resolve before any migration runs. `tools/schemaspy/auth-stub.sql` satisfies this requirement by creating the `auth` schema, the `auth.users` table, the `auth.uid()` function, and the `authenticated` role before the migrations are applied.
+
+The bootstrap SQL in `tools/schemaspy/auth-stub.sql` is a faithful copy of the identical inline bootstrap embedded in four backend integration tests: `internal/database/pool_test.go`, `internal/repository/user_test.go`, `cmd/server/main_test.go`, and `cmd/seed/main_test.go`. The tests do not source from the shared file; deduplication is deliberately deferred. The bootstrap SQL therefore lives in five places. Changing it means updating all five copies - the tests do not pick up changes to `tools/schemaspy/auth-stub.sql` automatically.
+
+### Pipeline shape
+
+1. An ephemeral `postgres:15` service container starts with a known DSN.
+2. The auth stub (`tools/schemaspy/auth-stub.sql`) runs against the service database.
+3. All `backend/internal/database/migrations/*.up.sql` files are applied in lexical (chronological) order.
+4. `schemaspy/schemaspy:7.0.2` runs in Docker with:
+   - `-t pgsql11` - the `pgsql11` driver works for PG 11 and later, including PG 15.
+   - `--network host` - lets the container reach the service Postgres on `localhost:5432` (Linux CI runner only; see "Local reproduction" below).
+   - The output directory inside the image is always `/output`; the workflow bind-mounts a local `erout/` directory there and passes no `-o` flag.
+   - `-s public` - restricts analysis to the `public` schema.
+5. `JamesIves/github-pages-deploy-action@v4` publishes the `erout/` directory to the `gh-pages` branch under `er-chart/` with `clean: true` and `target-folder: er-chart`.
+
+### Fail-fast guards before publish
+
+`clean: true` replaces the entire `er-chart/` subtree on every publish. If generation produced nothing - for example because no migrations applied or the schema was empty - SchemaSpy can still exit 0, and an empty artifact would overwrite the previously-correct chart.
+
+Three guards abort the workflow before publishing:
+
+- No `*.up.sql` files found - the migration directory is missing or misconfigured.
+- The `public` schema has zero base tables after migrations - the schema did not apply correctly.
+- SchemaSpy did not produce `erout/index.html` - the generation run was empty.
+
+**Generalizable rule:** any `clean: true` publish step needs a pre-publish content guard, because the deploy is destructive and the generator's exit code alone does not prove non-empty output.
+
+### Trigger and permissions
+
+- Triggers on `push` to `main`, filtered to paths under `backend/internal/database/migrations/`, `tools/schemaspy/`, and the workflow file itself.
+- Also triggers on `workflow_dispatch` for manual reruns.
+- There is deliberately no `pull_request` trigger. The job pushes to `gh-pages`; running on PRs would publish intermediate or unreviewed schema states.
+- `permissions: contents: write` is required for the GitHub Pages deploy step.
+
+### Image pinning
+
+`schemaspy/schemaspy:7.0.2` is a pinned released tag. Never use `latest` or `snapshot`; those are moving tags that can change behavior silently between runs without any diff in the workflow file.
+
+### One-time operator setup
+
+After the first successful run creates the `gh-pages` branch, enable GitHub Pages in the repository settings: Settings -> Pages -> Source: "Deploy from a branch" -> Branch: `gh-pages`, folder `/ (root)`. The first run succeeds and creates the branch even before Pages is enabled; the site goes live only after this configuration step.
+
+### Local reproduction caveat
+
+The workflow passes `--network host` to the SchemaSpy Docker container, which is specific to Linux CI runners. On macOS with Docker Desktop, host networking is not available. To reproduce locally on macOS, create a user-defined Docker network, start the Postgres container on that network, and pass `-host <postgres-container-name>` to SchemaSpy instead of `--network host`. A host-networking failure on macOS is an environment limitation, not a workflow bug.
