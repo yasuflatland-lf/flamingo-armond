@@ -38,12 +38,14 @@ func TestUsersVersionDownUpRoundtrip(t *testing.T) {
 		}
 	}()
 
-	// Step back past add_position_to_cards, then past add_version_to_users.
-	// Two steps are required because add_position_to_cards is now the newest
-	// migration; a single -1 only drops cards.position and leaves users.version
-	// in place.
-	if err := m.Steps(-2); err != nil {
-		t.Fatalf("migrate down two steps: %v", err)
+	// Step back past the three migrations newer than add_position_to_cards
+	// (enable_rls_schema_migrations, pin_trigger_function_search_path,
+	// restrict_definer_function_exposure), then past add_position_to_cards, then
+	// past add_version_to_users itself. Five steps are required because
+	// add_version_to_users is no longer near the tail; bump this count when
+	// adding migrations after it.
+	if err := m.Steps(-5); err != nil {
+		t.Fatalf("migrate down to before add_version_to_users: %v", err)
 	}
 
 	requireColumnMissing(t, ctx, sqlDB, "users", "version")

@@ -34,16 +34,20 @@ Tests that invoke the migration runner must assert *post-conditions*, not just "
 
 #### `schema_migrations` and RLS
 
-`public.schema_migrations` is golang-migrate's internal bookkeeping table. It is intentionally **excluded from the RLS-enable migration** for two reasons: (a) golang-migrate connects as the table owner, which in PostgreSQL bypasses RLS unless `FORCE ROW LEVEL SECURITY` is set, so enabling RLS on `schema_migrations` adds no security value; (b) if ownership ever changes and RLS without policies takes effect, golang-migrate would be blocked from updating the version record, bricking future deploys. Leave `schema_migrations` without RLS.
+`public.schema_migrations` is golang-migrate's internal bookkeeping table. It lives in the `public` schema, which Supabase exposes through PostgREST, so the Supabase-default GRANTs let the `anon` and `authenticated` roles read **and write** it over the REST API unless RLS intervenes — an integrity risk, since a caller could corrupt the recorded version or set `dirty=true` and disrupt deploys. The "owner bypasses RLS" property protects only the backend's and golang-migrate's own owner-role connections; it says nothing about the PostgREST `anon` / `authenticated` path, which is the real exposure.
+
+The table therefore carries **deny-all RLS** — `ENABLE ROW LEVEL SECURITY` with no policy, plus an explicit `REVOKE ALL ... FROM anon, authenticated` (migration `20260603090000_enable_rls_schema_migrations`). `FORCE ROW LEVEL SECURITY` is deliberately **not** set, so the table owner (golang-migrate, and the backend) keeps bypassing RLS and version bookkeeping is unaffected. The resulting "RLS enabled, no policy" state is the intended posture for an internal table; it surfaces as a benign `rls_enabled_no_policy` **INFO** in the Supabase advisor rather than the `rls_disabled_in_public` **ERROR** the missing RLS previously raised. `TestMigrations_AllPublicTablesHaveRLSEnabled` asserts every public table — `schema_migrations` included — has RLS enabled.
 
 **Renaming or renumbering migration files is not transparent to the DB.** `golang-migrate` records the numeric version of each applied migration in `public.schema_migrations`. Renaming a file (e.g. `0001_create_profiles.up.sql` → `20250101000000_create_profiles.up.sql`) rewrites the source tree but **not** the DB row, so the next boot fails with `no migration found for version <N>: read down for version <N> migrations: file does not exist` — migrate's source-state reconciliation expects the recorded version to exist on disk. When the rename is identifier-only (up/down SQL bodies are byte-identical, `git log -M` reports an `R100` rename), the safe recovery is `UPDATE public.schema_migrations SET version = <new_version>, dirty = false WHERE version = <old_version>` against the production DB; the runbook lives in `playbooks/setup-prod/recover-migration-version-rebase.sql`. Do **not** apply this shortcut when the rename also changed migration content — in that case, squash the changes and use `migrate force <version>` against a known-good source state so the new content actually runs.
 
 #### SECURITY DEFINER helper recipe
 
-`SECURITY DEFINER` SQL functions used by RLS policies (e.g. `public.is_admin(uid uuid)`) must replicate this exact shape — each attribute has a load-bearing reason:
+`SECURITY DEFINER` SQL functions used by RLS policies (e.g. `private.is_admin(uid uuid)`) must replicate this exact shape — each attribute has a load-bearing reason:
 
 ```sql
-CREATE OR REPLACE FUNCTION public.is_admin(uid uuid)
+CREATE SCHEMA IF NOT EXISTS private;
+
+CREATE OR REPLACE FUNCTION private.is_admin(uid uuid)
 RETURNS boolean
 LANGUAGE sql
 STABLE
@@ -51,11 +55,12 @@ SECURITY DEFINER
 SET search_path = public
 AS $$ ... $$;
 
-REVOKE ALL ON FUNCTION public.is_admin(uuid) FROM PUBLIC;
+-- authenticated reaches the helper from RLS policies; anon never does.
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-        GRANT EXECUTE ON FUNCTION public.is_admin(uuid) TO authenticated;
+        GRANT USAGE ON SCHEMA private TO authenticated;
+        GRANT EXECUTE ON FUNCTION private.is_admin(uuid) TO authenticated;
     END IF;
 END
 $$;
@@ -64,8 +69,10 @@ $$;
 - `STABLE`, **not** `IMMUTABLE` — the function reads tables, and marking a table-reading function `IMMUTABLE` corrupts the planner's plan cache (the planner assumes the result is constant for fixed inputs).
 - `SECURITY DEFINER` — the function executes as its owner, so RLS-enabled callers can probe role membership without needing direct read on `roles` / `user_roles`.
 - `SET search_path = public` — neutralises the classic `SECURITY DEFINER` injection vector where an attacker creates a `pg_temp` shim function (e.g. their own `roles` table) that the function would otherwise resolve before the real one.
-- `REVOKE ALL FROM PUBLIC` then narrow `GRANT EXECUTE` — without revoking from `PUBLIC`, anonymous PostgREST callers (`anon` role) could invoke the helper as an oracle to enumerate role assignments. The grant is intentionally limited to the Supabase-managed `authenticated` role.
+- **Lives in the `private` schema, not `public`.** PostgREST exposes only the `public` schema (plus any explicitly configured), so a helper in `private` is never reachable as a `/rest/v1/rpc/...` endpoint — this is what clears the `anon_security_definer_function_executable` and `authenticated_security_definer_function_executable` advisor warnings. RLS policies resolve the function by OID regardless of its schema, and the `authenticated` role is granted `USAGE` on `private` so policy evaluation can still call it; `anon` is granted nothing. `is_admin` was retrofitted into `private` by migration `20260603090200_restrict_definer_function_exposure` via `ALTER FUNCTION ... SET SCHEMA private` (OID-preserving, so the existing policies kept resolving untouched).
 - `DO $$ ... IF EXISTS pg_roles ... GRANT END $$` portability guard — plain PostgreSQL does not include Supabase-managed roles (`authenticated`, `anon`, `service_role`) by default. Wrapping role-specific GRANTs in this conditional `DO` block keeps the migration applicable outside Supabase. Testcontainers create a minimal `authenticated` role fixture so RLS behavior can be exercised directly. The Go backend connects as the table owner and bypasses RLS, so the GRANT path is used only by direct PostgREST / Edge callers in production.
+
+Trigger functions such as the `set_*_updated_at` family are `SECURITY INVOKER` and need neither the `private`-schema move nor GRANT management, but they MUST still pin `SET search_path = ''` to satisfy the `function_search_path_mutable` advisor (migration `20260603090100_pin_trigger_function_search_path`).
 
 The same recipe applies to functions invoked by Supabase GoTrue at JWT mint time (the Custom Access Token Hook). See [`docs/backend/custom-access-token-hook.md`](backend/custom-access-token-hook.md) for the hook-specific design decisions — join-at-mint over sync-trigger, fail-closed on malformed events, stale-claim removal, canonical return shape, and the down-migration operator precondition.
 

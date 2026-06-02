@@ -51,7 +51,7 @@ func insertAuthUserForAdmin(t *testing.T, ctx context.Context, db *database.DB) 
 }
 
 // TestIsAdminFunction_True verifies that a user assigned the admin role is
-// reported as admin by public.is_admin.
+// reported as admin by private.is_admin.
 func TestIsAdminFunction_True(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)
@@ -75,7 +75,7 @@ func TestIsAdminFunction_True(t *testing.T) {
 
 	var got bool
 	if err := sqlDB.QueryRowContext(ctx,
-		`SELECT public.is_admin($1::uuid)`, userID).Scan(&got); err != nil {
+		`SELECT private.is_admin($1::uuid)`, userID).Scan(&got); err != nil {
 		t.Fatalf("query is_admin: %v", err)
 	}
 	if !got {
@@ -95,7 +95,7 @@ func TestIsAdminFunction_FalseWhenNoRole(t *testing.T) {
 
 	var got bool
 	if err := sqlDB.QueryRowContext(ctx,
-		`SELECT public.is_admin($1::uuid)`, userID).Scan(&got); err != nil {
+		`SELECT private.is_admin($1::uuid)`, userID).Scan(&got); err != nil {
 		t.Fatalf("query is_admin: %v", err)
 	}
 	if got {
@@ -115,7 +115,7 @@ func TestIsAdminFunction_FalseWhenUnknownUser(t *testing.T) {
 	const unknownUID = "00000000-0000-0000-0000-000000000000"
 	var got bool
 	if err := sqlDB.QueryRowContext(ctx,
-		`SELECT public.is_admin($1::uuid)`, unknownUID).Scan(&got); err != nil {
+		`SELECT private.is_admin($1::uuid)`, unknownUID).Scan(&got); err != nil {
 		t.Fatalf("query is_admin: %v", err)
 	}
 	if got {

@@ -194,7 +194,7 @@ Although authorization itself is not delegated to Postgres, every application ta
 - `roles`: selectable by all callers; mutations are admin-only.
 - `user_roles`: callers can read their own assignments; admins can read and mutate all assignments.
 
-The Go backend connects as the table-owner role, which bypasses RLS unless `FORCE ROW LEVEL SECURITY` is set, so application queries and migrations are unaffected. `FORCE ROW LEVEL SECURITY` is intentionally not enabled. The `schema_migrations` bookkeeping table is excluded from RLS — see `docs/backend-db.md` § "schema_migrations and RLS" for the rationale. If a future flow needs Supabase JS to read a new table directly, add a targeted policy alongside the access pattern; do not disable RLS to "make it work".
+The Go backend connects as the table-owner role, which bypasses RLS unless `FORCE ROW LEVEL SECURITY` is set, so application queries and migrations are unaffected. `FORCE ROW LEVEL SECURITY` is intentionally not enabled. The `schema_migrations` bookkeeping table carries deny-all RLS (enabled with no policy, API-role GRANTs revoked) so PostgREST callers cannot read or write it, while the table owner still bypasses RLS — see `docs/backend-db.md` § "schema_migrations and RLS" for the rationale. If a future flow needs Supabase JS to read a new table directly, add a targeted policy alongside the access pattern; do not disable RLS to "make it work".
 
 ### Role-based authorization (`auth.Service`)
 
@@ -209,7 +209,7 @@ The split is deliberate: the JWT does not carry roles in this project, so every 
 
 `auth.Service.IsAdmin(ctx, userID)` hardcodes the literal `"admin"` role name in the method body — callers cannot pass a role string. This prevents drift to bespoke role names; add a new dedicated method (e.g. `IsModerator`) when a second role is needed rather than parameterising `IsAdmin`. The same `"admin"` literal is exposed to the role-CRUD usecase as `domain.AdminRoleName` (see `internal/domain/role.go`) so the system-role rename / delete guards stay in lockstep with the auth-side check; both move together when a second privileged role is introduced.
 
-The DB side of the same check is `public.is_admin(uid uuid) RETURNS boolean`, defined in migration `20260502000000_add_rbac_helpers`. See `docs/backend-db.md` § "SECURITY DEFINER helper recipe" for the function shape RLS policies and future RBAC helpers must replicate.
+The DB side of the same check is `private.is_admin(uid uuid) RETURNS boolean`, created in migration `20260430080000_initial_schema` and moved out of the PostgREST-exposed `public` schema by `20260603090200_restrict_definer_function_exposure`. See `docs/backend-db.md` § "SECURITY DEFINER helper recipe" for the function shape RLS policies and future RBAC helpers must replicate.
 
 ### Admin usecase split: one auth gate, separate business surfaces
 

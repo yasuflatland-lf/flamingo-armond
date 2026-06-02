@@ -156,6 +156,15 @@ func TestRLSPolicies_AuthenticatedRole(t *testing.T) {
 				fx.userB, roleID), 1)
 		})
 	})
+
+	t.Run("schema_migrations", func(t *testing.T) {
+		// golang-migrate's bookkeeping table carries a deny-all posture: RLS is
+		// enabled with no policy and the API-role GRANTs are revoked, so an
+		// authenticated PostgREST caller is denied outright. The owner connection
+		// used by golang-migrate and the backend bypasses RLS and is unaffected.
+		execDeniedAs(t, ctx, authPool, fx.userA,
+			`SELECT version FROM public.schema_migrations`)
+	})
 }
 
 func createRLSFixture(t *testing.T, ctx context.Context, sqlDB *sql.DB) rlsFixture {
