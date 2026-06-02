@@ -209,7 +209,7 @@ The split is deliberate: the JWT does not carry roles in this project, so every 
 
 `auth.Service.IsAdmin(ctx, userID)` hardcodes the literal `"admin"` role name in the method body — callers cannot pass a role string. This prevents drift to bespoke role names; add a new dedicated method (e.g. `IsModerator`) when a second role is needed rather than parameterising `IsAdmin`. The same `"admin"` literal is exposed to the role-CRUD usecase as `domain.AdminRoleName` (see `internal/domain/role.go`) so the system-role rename / delete guards stay in lockstep with the auth-side check; both move together when a second privileged role is introduced.
 
-The DB side of the same check is `public.is_admin(uid uuid) RETURNS boolean`, defined in migration `20260502000000_add_rbac_helpers`. See `docs/backend-db.md` § "SECURITY DEFINER helper recipe" for the function shape RLS policies and future RBAC helpers must replicate.
+The DB side of the same check is `private.is_admin(uid uuid) RETURNS boolean`, created in migration `20260430080000_initial_schema` and moved out of the PostgREST-exposed `public` schema by `20260603090200_restrict_definer_function_exposure`. See `docs/backend-db.md` § "SECURITY DEFINER helper recipe" for the function shape RLS policies and future RBAC helpers must replicate.
 
 ### Admin usecase split: one auth gate, separate business surfaces
 

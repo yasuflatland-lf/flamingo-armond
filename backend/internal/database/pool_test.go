@@ -164,15 +164,16 @@ func TestMigrations_AllPublicTablesHaveRLSEnabled(t *testing.T) {
 
 	sqlDB := sqlDBForTest(t, db)
 
-	// schema_migrations is golang-migrate's bookkeeping table; its RLS status is
-	// a separate policy decision and is intentionally excluded from this assertion.
+	// Every public table must have RLS enabled, including golang-migrate's
+	// schema_migrations bookkeeping table. schema_migrations carries a deny-all
+	// posture (RLS enabled, no policy) so PostgREST callers cannot read or write
+	// it; see migration 20260603090000_enable_rls_schema_migrations.
 	rows, err := sqlDB.QueryContext(ctx, `
 		SELECT c.relname, c.relrowsecurity
 		FROM pg_class c
 		JOIN pg_namespace n ON n.oid = c.relnamespace
 		WHERE n.nspname = 'public'
 		  AND c.relkind = 'r'
-		  AND c.relname <> 'schema_migrations'
 	`)
 	if err != nil {
 		t.Fatalf("query pg_class for public tables: %v", err)
