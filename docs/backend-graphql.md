@@ -194,7 +194,7 @@ Although authorization itself is not delegated to Postgres, every application ta
 - `roles`: selectable by all callers; mutations are admin-only.
 - `user_roles`: callers can read their own assignments; admins can read and mutate all assignments.
 
-The Go backend connects as the table-owner role, which bypasses RLS unless `FORCE ROW LEVEL SECURITY` is set, so application queries and migrations are unaffected. `FORCE ROW LEVEL SECURITY` is intentionally not enabled. The `schema_migrations` bookkeeping table is excluded from RLS — see `docs/backend-db.md` § "schema_migrations and RLS" for the rationale. If a future flow needs Supabase JS to read a new table directly, add a targeted policy alongside the access pattern; do not disable RLS to "make it work".
+The Go backend connects as the table-owner role, which bypasses RLS unless `FORCE ROW LEVEL SECURITY` is set, so application queries and migrations are unaffected. `FORCE ROW LEVEL SECURITY` is intentionally not enabled. The `schema_migrations` bookkeeping table carries deny-all RLS (enabled with no policy, API-role GRANTs revoked) so PostgREST callers cannot read or write it, while the table owner still bypasses RLS — see `docs/backend-db.md` § "schema_migrations and RLS" for the rationale. If a future flow needs Supabase JS to read a new table directly, add a targeted policy alongside the access pattern; do not disable RLS to "make it work".
 
 ### Role-based authorization (`auth.Service`)
 
