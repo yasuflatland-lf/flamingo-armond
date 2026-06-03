@@ -91,9 +91,16 @@ export async function updateSession(request: NextRequest) {
     console.error("[supabase/middleware] getUser() failed:", error.name, error.message);
   }
 
-  // isAdmin is a UI hint only (real gate is app/admin/layout.tsx), read from the
-  // user record getUser() already returned — no extra auth round-trip.
-  const isAdmin = user?.app_metadata?.role === "admin";
+  // isAdmin is a UI hint only (real gate is app/admin/layout.tsx). The admin role
+  // claim is injected into the JWT by the Custom Access Token Hook and is NOT
+  // mirrored into auth.users app_metadata, so it must be read from the verified
+  // claims (getClaims), not from the getUser() user record. getClaims uses
+  // jose/WebCrypto and is Edge-compatible.
+  let isAdmin = false;
+  if (user) {
+    const { data: claimsData } = await supabase.auth.getClaims();
+    isAdmin = claimsData?.claims?.app_metadata?.role === "admin";
+  }
   const authStatus: AuthStatus = user
     ? "authenticated"
     : isStaleSessionError(error)

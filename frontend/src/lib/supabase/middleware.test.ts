@@ -7,9 +7,11 @@ const mockGetUser = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
 );
 
+const mockGetClaims = vi.hoisted(() => vi.fn().mockResolvedValue({ data: null, error: null }));
+
 vi.mock("@supabase/ssr", () => ({
   createServerClient: vi.fn().mockReturnValue({
-    auth: { getUser: mockGetUser },
+    auth: { getUser: mockGetUser, getClaims: mockGetClaims },
   }),
 }));
 
@@ -67,7 +69,7 @@ describe("updateSession", () => {
         // Simulate SDK calling setAll to persist refreshed auth cookies
         opts.cookies.setAll([{ name: "sb-auth-token", value: "refreshed", options: {} }]);
         // biome-ignore lint/suspicious/noExplicitAny: test-only stub return
-        return { auth: { getUser: mockGetUser } } as any;
+        return { auth: { getUser: mockGetUser, getClaims: mockGetClaims } } as any;
       },
     );
 
@@ -134,7 +136,7 @@ describe("updateSession", () => {
       (_url, _key, opts: any) => {
         opts.cookies.setAll([{ name: "sb-auth-token", value: "refreshed", options: {} }]);
         // biome-ignore lint/suspicious/noExplicitAny: test-only stub return
-        return { auth: { getUser: mockGetUser } } as any;
+        return { auth: { getUser: mockGetUser, getClaims: mockGetClaims } } as any;
       },
     );
 
@@ -234,8 +236,14 @@ describe("updateSession", () => {
   });
 
   it("forwards authenticated identity headers, isAdmin true for an admin user", async () => {
+    // The admin role lives in the verified JWT claims, NOT in the getUser()
+    // user record — the Custom Access Token Hook injects it into the JWT only.
     mockGetUser.mockResolvedValueOnce({
-      data: { user: { email: "admin@example.com", app_metadata: { role: "admin" } } },
+      data: { user: { email: "admin@example.com", app_metadata: {} } },
+      error: null,
+    });
+    mockGetClaims.mockResolvedValueOnce({
+      data: { claims: { app_metadata: { role: "admin" } } },
       error: null,
     });
     const response = await updateSession(makeRequest());
@@ -249,18 +257,25 @@ describe("updateSession", () => {
       data: { user: { email: "u@example.com", app_metadata: {} } },
       error: null,
     });
+    mockGetClaims.mockResolvedValueOnce({
+      data: { claims: { app_metadata: {} } },
+      error: null,
+    });
     const response = await updateSession(makeRequest());
     expect(forwardedRequestHeader(response, "x-auth-status")).toBe("authenticated");
     expect(forwardedRequestHeader(response, "x-user-is-admin")).toBe("false");
   });
 
   it("classifies a stale-session error", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     mockGetUser.mockResolvedValueOnce({
       data: { user: null },
       error: { name: "AuthApiError", message: "User from sub claim in JWT does not exist" },
     });
     const response = await updateSession(makeRequest());
     expect(forwardedRequestHeader(response, "x-auth-status")).toBe("stale");
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
   });
 
   it("classifies a non-ignorable error", async () => {
@@ -292,7 +307,7 @@ describe("updateSession", () => {
       (_url, _key, opts: any) => {
         opts.cookies.setAll([{ name: "sb-auth-token", value: "refreshed", options: {} }]);
         // biome-ignore lint/suspicious/noExplicitAny: test-only stub return
-        return { auth: { getUser: mockGetUser } } as any;
+        return { auth: { getUser: mockGetUser, getClaims: mockGetClaims } } as any;
       },
     );
     const response = await updateSession(
