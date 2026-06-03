@@ -948,3 +948,65 @@ func TestCardRepo_FindPageByCardgroup_Search_CrossTenantNonLeak(t *testing.T) {
 	require.Len(t, got, 1)
 	require.Equal(t, cardB.ID, got[0].ID, "must return cardgroup B's card, not cardgroup A's")
 }
+
+// TestCardRepository_FindDueCards_ReviewsNotStarvedByNewBacklog proves that a
+// large backlog of new (never-reviewed) cards does not evict now-due FSRS review
+// cards from the LIMIT window. Before the dual-fetch fix the combined query
+// ordered by COALESCE(ucs.due, cards.created_at) ASC, so new cards (old
+// created_at) always sorted ahead of review cards (newer due) and filled the
+// limit, starving reviews on large cardgroups.
+func TestCardRepository_FindDueCards_ReviewsNotStarvedByNewBacklog(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	// Five new cards with an OLD created_at and no user_card_fsrs row. Under the
+	// old combined ordering their created_at key sorts ahead of the reviews' due
+	// key, so a small limit would return only these.
+	oldCreated := now.Add(-240 * time.Hour)
+	for i := 0; i < 5; i++ {
+		c := newCard(cg.ID, "new-"+string(rune('0'+i)), "back")
+		c.CreatedAt = oldCreated
+		c.Position = i
+		require.NoError(t, repo.Create(ctx, c))
+	}
+
+	// Two review cards: each has a user_card_fsrs row that is now due
+	// (due <= now), with due timestamps NEWER than the new cards' created_at.
+	reviewEarlier := newCard(cg.ID, "review-earlier", "back")
+	reviewLater := newCard(cg.ID, "review-later", "back")
+	require.NoError(t, repo.Create(ctx, reviewEarlier))
+	require.NoError(t, repo.Create(ctx, reviewLater))
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for card, due := range map[*domain.Card]time.Time{
+			reviewEarlier: now.Add(-2 * time.Hour),
+			reviewLater:   now.Add(-1 * time.Hour),
+		} {
+			state := domain.NewUserCardFSRSForNewCard(ownerID, card.ID, now)
+			state.State.Due = due
+			if err := ucsRepo.UpsertTx(ctx, tx, state); err != nil {
+				return err
+			}
+		}
+		return nil
+	}))
+
+	// limit=2 is smaller than the new-card backlog. The fix fetches reviews and
+	// new cards in separate LIMIT windows, so both due reviews still surface.
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, 2)
+	require.NoError(t, err)
+	ids := repoCardIDs(got)
+
+	require.Contains(t, ids, reviewEarlier.ID,
+		"due review card must not be starved by the new-card backlog")
+	require.Contains(t, ids, reviewLater.ID,
+		"due review card must not be starved by the new-card backlog")
+	// Reviews are returned ahead of new cards, ordered by due ASC.
+	require.GreaterOrEqual(t, len(ids), 2)
+	require.Equal(t, []string{reviewEarlier.ID, reviewLater.ID}, ids[:2],
+		"due reviews come first, ordered by due ASC")
+}
