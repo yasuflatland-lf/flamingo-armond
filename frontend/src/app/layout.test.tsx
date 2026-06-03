@@ -1,22 +1,21 @@
-import { Suspense } from "react";
 import { describe, expect, test, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Module mocks — must be declared before any import of the module under test.
 // ---------------------------------------------------------------------------
 
-// AuthShell and BootSplash are opaque to this test; we only verify that the
-// correct elements appear in (or are absent from) the returned JSX tree.
+// AuthShell is opaque to this test; we only verify that the correct elements
+// appear in (or are absent from) the returned JSX tree, and that the forwarded
+// identity props reach it. Returning props as the element lets findElement
+// locate it by type.name and lets assertions read its props directly.
 // Named functions are required so findElement can locate them by type.name.
 vi.mock("@/components/auth-shell", () => ({
-  AuthShell: function AuthShell(props: { children?: React.ReactNode }) {
+  AuthShell: function AuthShell(props: {
+    user?: { email: string | null } | null;
+    isAdmin?: boolean;
+    children?: React.ReactNode;
+  }) {
     return props as unknown as React.ReactElement;
-  },
-}));
-
-vi.mock("@/components/boot-splash", () => ({
-  BootSplash: function BootSplash() {
-    return null;
   },
 }));
 
@@ -64,15 +63,13 @@ import RootLayout, { viewport } from "@/app/layout";
 // Helper: recursive element finder
 //
 // Traverses a React element tree and returns the first element that satisfies
-// the predicate. Recurses into both `props.children` (array or single) AND
-// `props.fallback` so Suspense boundaries are fully covered.
+// the predicate. Recurses into `props.children` (array or single).
 // ---------------------------------------------------------------------------
 
 type ReactElementLike = {
   type: unknown;
   props?: {
     children?: unknown;
-    fallback?: unknown;
     nonce?: unknown;
     [key: string]: unknown;
   };
@@ -89,12 +86,6 @@ function findElement(
 
   const props = el.props;
   if (props == null) return null;
-
-  // Check fallback first (covers Suspense.fallback subtree).
-  if (props.fallback != null) {
-    const found = findElement(props.fallback, predicate);
-    if (found != null) return found;
-  }
 
   // Check children (array or single).
   const { children } = props;
@@ -122,76 +113,74 @@ function byName(name: string): (el: ReactElementLike) => boolean {
   };
 }
 
-/** Returns true when the element's type is the React.Suspense symbol. */
-function isSuspense(el: ReactElementLike): boolean {
-  return el.type === Suspense;
-}
-
 // ---------------------------------------------------------------------------
 // Test suite: root layout structural routing
 // ---------------------------------------------------------------------------
 
 describe("RootLayout — structural branch selection", () => {
   // Case: default route (x-pathname absent / "/") — the non-bypass branch.
-  // The returned tree must contain a Suspense element whose fallback is a
-  // BootSplash element and whose child is an AuthShell element.
-  test("default route: Suspense wraps AuthShell with BootSplash as fallback", async () => {
+  // The returned tree must mount AuthShell directly (no async boundary) and
+  // forward the layout's children to it. With no identity headers set,
+  // readAuthContext classifies the request as anonymous, so AuthShell receives
+  // user={null} isAdmin={false}.
+  test("default route: AuthShell is mounted with the layout's children and anonymous identity", async () => {
     // x-pathname absent; mockGetHeader returns null by default.
     mockGetHeader.mockReturnValue(null);
 
     const tree = await RootLayout({ children: <div /> });
 
-    // (1) A Suspense element exists somewhere in the tree.
-    const suspenseEl = findElement(tree, isSuspense);
-    expect(suspenseEl).not.toBeNull();
-
-    // (2) The Suspense fallback is a BootSplash element.
-    const fallbackEl = suspenseEl?.props?.fallback;
-    expect(fallbackEl).not.toBeNull();
-    const bootSplashEl = findElement(fallbackEl, byName("BootSplash"));
-    expect(bootSplashEl).not.toBeNull();
-
-    // (3) AuthShell is reachable inside the Suspense child.
-    const suspenseChildren = suspenseEl?.props?.children;
-    const authShellEl = findElement(suspenseChildren, byName("AuthShell"));
+    const authShellEl = findElement(tree, byName("AuthShell"));
     expect(authShellEl).not.toBeNull();
 
-    // (4) AuthShell receives the layout's children as its own children prop.
+    // AuthShell receives the layout's children as its own children prop.
     expect(authShellEl?.props?.children).toBeDefined();
+
+    // Anonymous classification: null user, no admin hint.
+    expect(authShellEl?.props?.user).toBeNull();
+    expect(authShellEl?.props?.isAdmin).toBe(false);
   });
 
-  // Case: /login route — the bypass branch. No AuthShell, no Suspense,
-  // no BootSplash. Children render directly inside Providers.
-  test("/login: layout renders bare children without AuthShell or BootSplash", async () => {
+  // Case: default route — the middleware-forwarded identity headers reach
+  // AuthShell as typed props (the source of the navigation shell's display
+  // identity and admin nav hint).
+  test("passes middleware-forwarded identity into AuthShell", async () => {
+    const headerMap: Record<string, string> = {
+      "x-pathname": "/cardgroups",
+      "x-auth-status": "authenticated",
+      "x-user-email": "a@b.c",
+      "x-user-is-admin": "true",
+    };
+    mockGetHeader.mockImplementation((name: string) => headerMap[name] ?? null);
+
+    const tree = await RootLayout({ children: <p>child</p> });
+
+    const authShellEl = findElement(tree, byName("AuthShell"));
+    expect(authShellEl).not.toBeNull();
+    const props = authShellEl?.props as { user: { email: string | null }; isAdmin: boolean };
+    expect(props.user.email).toBe("a@b.c");
+    expect(props.isAdmin).toBe(true);
+  });
+
+  // Case: /login route — the bypass branch. No AuthShell; children render
+  // directly inside Providers.
+  test("/login: layout renders bare children without AuthShell", async () => {
     mockGetHeader.mockImplementation((name) => (name === "x-pathname" ? "/login" : null));
 
     const tree = await RootLayout({ children: <div data-testid="login-children" /> });
 
     const authShellEl = findElement(tree, byName("AuthShell"));
     expect(authShellEl).toBeNull();
-
-    const bootSplashEl = findElement(tree, byName("BootSplash"));
-    expect(bootSplashEl).toBeNull();
-
-    const suspenseEl = findElement(tree, isSuspense);
-    expect(suspenseEl).toBeNull();
   });
 
   // Case: /onboarding route — same bare-shell early return as /login.
-  // No AuthShell, no Suspense, no BootSplash.
-  test("/onboarding: layout renders bare children without AuthShell or BootSplash", async () => {
+  // No AuthShell.
+  test("/onboarding: layout renders bare children without AuthShell", async () => {
     mockGetHeader.mockImplementation((name) => (name === "x-pathname" ? "/onboarding" : null));
 
     const tree = await RootLayout({ children: <div data-testid="onboarding-children" /> });
 
     const authShellEl = findElement(tree, byName("AuthShell"));
     expect(authShellEl).toBeNull();
-
-    const bootSplashEl = findElement(tree, byName("BootSplash"));
-    expect(bootSplashEl).toBeNull();
-
-    const suspenseEl = findElement(tree, isSuspense);
-    expect(suspenseEl).toBeNull();
   });
 
   // Case: default route — nonce from x-nonce header is forwarded to Providers.
