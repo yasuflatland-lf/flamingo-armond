@@ -27,12 +27,6 @@ import AdminLayout from "./layout";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function setAuthStatus(status: string) {
-  vi.mocked(headers).mockResolvedValue(
-    new Headers({ "x-auth-status": status }) as Awaited<ReturnType<typeof headers>>,
-  );
-}
-
 /** Build a minimal AdminLayoutMe response with the given role names. */
 function makeAdminLayoutData(roleNames: string[]) {
   return {
@@ -50,9 +44,7 @@ function makeAdminLayoutData(roleNames: string[]) {
 beforeEach(() => {
   vi.clearAllMocks();
   // Default: authenticated.
-  vi.mocked(headers).mockResolvedValue(
-    new Headers({ "x-auth-status": "authenticated" }) as Awaited<ReturnType<typeof headers>>,
-  );
+  vi.mocked(headers).mockResolvedValue(new Headers({ "x-auth-status": "authenticated" }));
 });
 
 afterEach(() => {
@@ -65,7 +57,7 @@ afterEach(() => {
 
 describe("AdminLayout — Step 1: x-auth-status gate", () => {
   test("anonymous (x-auth-status: anonymous) → redirect /, gqlFetch not called", async () => {
-    setAuthStatus("anonymous");
+    vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "anonymous" }));
 
     await expect(AdminLayout({ children: null })).rejects.toThrow(`${REDIRECT_PREFIX}/`);
 
@@ -74,7 +66,7 @@ describe("AdminLayout — Step 1: x-auth-status gate", () => {
   });
 
   test("stale session (x-auth-status: stale) → redirect /, gqlFetch not called", async () => {
-    setAuthStatus("stale");
+    vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "stale" }));
 
     await expect(AdminLayout({ children: null })).rejects.toThrow(`${REDIRECT_PREFIX}/`);
 
@@ -83,7 +75,7 @@ describe("AdminLayout — Step 1: x-auth-status gate", () => {
   });
 
   test("error status (x-auth-status: error) → redirect /, gqlFetch not called", async () => {
-    setAuthStatus("error");
+    vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "error" }));
 
     await expect(AdminLayout({ children: null })).rejects.toThrow(`${REDIRECT_PREFIX}/`);
 
