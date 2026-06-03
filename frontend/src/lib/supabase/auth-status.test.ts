@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   AUTH_STATUS_HEADER,
   IDENTITY_HEADERS,
+  readAuthContext,
   USER_EMAIL_HEADER,
   USER_IS_ADMIN_HEADER,
-  readAuthContext,
 } from "./auth-status";
 
 function headersWith(entries: Record<string, string>): Headers {
@@ -34,7 +34,9 @@ describe("readAuthContext", () => {
 
   it("falls back to anonymous for a missing or invalid status header", () => {
     expect(readAuthContext(new Headers()).status).toBe("anonymous");
-    expect(readAuthContext(headersWith({ [AUTH_STATUS_HEADER]: "garbage" })).status).toBe("anonymous");
+    expect(readAuthContext(headersWith({ [AUTH_STATUS_HEADER]: "garbage" })).status).toBe(
+      "anonymous",
+    );
   });
 
   it("exposes the three identity header names for stripping", () => {

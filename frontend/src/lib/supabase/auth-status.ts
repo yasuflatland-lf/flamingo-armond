@@ -34,7 +34,8 @@ const VALID_STATUS: ReadonlySet<string> = new Set(["authenticated", "anonymous",
  */
 export function readAuthContext(headers: Headers): AuthContext {
   const raw = headers.get(AUTH_STATUS_HEADER);
-  const status: AuthStatus = raw != null && VALID_STATUS.has(raw) ? (raw as AuthStatus) : "anonymous";
+  const status: AuthStatus =
+    raw != null && VALID_STATUS.has(raw) ? (raw as AuthStatus) : "anonymous";
   const email = headers.get(USER_EMAIL_HEADER) || null;
   const isAdmin = headers.get(USER_IS_ADMIN_HEADER) === "true";
   return { status, email, isAdmin };
