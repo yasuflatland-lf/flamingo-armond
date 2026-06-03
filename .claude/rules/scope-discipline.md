@@ -131,3 +131,18 @@ go build ./...                                                    # names each n
 ```
 
 Enumerate all implementers before writing the change, not after the first build failure: a fake hidden in a resolver test is in scope for the same change that adds the method.
+
+### Frontend page-behavior changes: pre-flight grep BOTH frontend test trees
+
+The frontend sibling of the constructor-signature rule above. Frontend tests live in two trees, and a page-behavior change is exercised from either or both:
+
+- **Co-located narrow tests** under `frontend/src/app/**/*.test.tsx` (next to the source).
+- **Broad page tests** under `frontend/__tests__/*.test.tsx` (a separate top-level tree).
+
+The narrow/broad split is a contract — see [`docs/frontend/testing-convention-narrow-vs-broad-page-tests.md`](../../docs/frontend/testing-convention-narrow-vs-broad-page-tests.md). When changing a page's behavior, the pre-flight test-discovery grep MUST cover both trees, keyed on the route segment, not just the co-located file:
+
+```bash
+grep -rln "admin/users" frontend/src frontend/__tests__
+```
+
+A grep scoped to the co-located file alone (or an agent told to "update the test" that creates a fresh co-located test and stops) leaves any broad page test under `frontend/__tests__/` still pinned to the old behavior. That broad test breaks the full suite, and the gap surfaces only at the orchestrator's full-suite re-run — exactly the resolver-test-compile-failure shape of the backend rule, one tree over.

@@ -30,10 +30,10 @@ When a doc references a GraphQL mutation name, a Go function name, an env-var na
 **The same grep must cover `.claude/rules/` and the L3 chapters they link to.** Rule files teach patterns by citing real production symbols as worked examples. When a symbol used as a worked example in a rule file is renamed or deleted, the rule's worked example silently rots — a future reader who follows it will grep for the symbol and find nothing. The canonical post-refactor grep is therefore:
 
 ```bash
-grep -rn <DeletedSymbol> backend/ frontend/src/ docs/ .claude/rules/
+grep -rn <DeletedSymbol> backend/ frontend/src/ frontend/__tests__/ docs/ .claude/rules/
 ```
 
-A `uuidV7` → `domain.NewID` rename left a stale identifier in [`.claude/rules/subagent-dispatch.md`](subagent-dispatch.md) under the "Symbol moves must be atomic" section; the grep over `docs/` and `backend/` alone missed it because rules live under `.claude/rules/`.
+A `uuidV7` → `domain.NewID` rename left a stale identifier in [`.claude/rules/subagent-dispatch.md`](subagent-dispatch.md) under the "Symbol moves must be atomic" section; the grep over `docs/` and `backend/` alone missed it because rules live under `.claude/rules/`. The frontend test suite lives in two trees — co-located tests under `frontend/src/**` and broad page tests plus shared utilities/fixtures under `frontend/__tests__/` — so a grep scoped to `frontend/src/` alone misses a deleted test util cited by a worked example under `frontend/__tests__/utils/`; include both paths.
 
 **The same post-refactor grep applies after a TypeScript/TSX file is renamed.** When you rename a component file (e.g. PascalCase → kebab-case: `AdminUsersClient.tsx` → `admin-users-client.tsx`), run:
 
@@ -51,6 +51,12 @@ Both categories were missed in the initial kebab-case rename of `AdminUsersClien
 Component-identifier references (e.g. `<AdminUsersClient />` JSX, `AdminUsersClient` as a TypeScript identifier) stay as-is — React convention keeps component names PascalCase even when the filename is kebab-case. Only file-path references convert.
 
 **Mechanical rewrites preserve broken `§` anchors silently.** A regex/sed replacement that swaps `docs/foo.md` → `bar/CLAUDE.md` across N files preserves the `§ "X"` suffix on every site. If `## X` was only ever a heading in `docs/foo.md` and the new target is a different document, the anchor falls through silently — GitHub resolves unknown fragments to the page top without a 404. The verification gate is to walk each rewritten line and confirm the heading the `§` suffix names exists in the new target, before committing. A worked example from this repository: nine sites preserved `frontend/CLAUDE.md § "X"` anchors during the `docs/frontend.md` → `frontend/CLAUDE.md` migration. The target was a 49-line orientation hub with three `##` headings; none of the nine `X` strings matched. Each site was repointed at the actual `docs/frontend/<chapter>.md` file with the verified GitHub slug.
+
+**A docblock claim about a module's *consumers* must be verified by import-grep on the module, not API-grep on the wrapped API.** "Who uses this module" is answered only by grepping the module's path or name in import statements; grepping the API the module wraps answers a different question — "who calls the wrapped API" — and the two result sets diverge exactly when a consumer bypasses the module and talks to the wrapped API directly. A docblock that names its consumers off the wrong grep over-claims. A worked example from this repository: a shared test mock util's scope docblock claimed "the middleware consumes this factory" on the basis of `grep -rln "auth.getUser" frontend/src/` (callers of the Supabase API), but the middleware mocks `@supabase/ssr` directly and never imports the util — the authoritative check was `grep -rln "mock-supabase" frontend/` (importers of the module). Verify consumer claims with the module-import grep:
+
+```bash
+grep -rln '<module-path-or-name>' frontend/ backend/   # who imports this module
+```
 
 ## Markdown anchor links over bare-text references
 

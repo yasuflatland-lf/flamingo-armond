@@ -6,13 +6,12 @@ All tests live under `frontend/__tests__/` using Vitest + Testing Library. Two n
 
 **Narrow tests** (`<feature>-<flow>.test.tsx`) isolate a single user-facing flow introduced by a feature PR. Examples: `cards-pagination.test.tsx` (pagination + fetchMore only), `cards-bulk-delete.test.tsx` (selection and delete only), `admin-users-roles.test.tsx` (assign/revoke roles only), `admin-roles-crud.test.tsx` (create/update/delete only), `admin-layout.test.tsx` (admin gate only). Each narrow test is shipped by the feature PR that introduced its flow, locking in expected behaviour.
 
-**Broad tests** (`<page>.test.tsx`) guard the page-level composition and integration points across PRs. Examples: `cardgroups-list.test.tsx`, `cardgroups-detail.test.tsx`, `cards-list.test.tsx`, `admin-users.test.tsx`, `admin-roles.test.tsx`, `admin-users-list.test.tsx`. Each broad test covers SSR auth gate, initial render, empty state, and error boundaries — without duplicating the narrow test's flow-specific assertions.
+**Broad tests** (`<page>.test.tsx`) guard the page-level composition and integration points across PRs. Examples: `cardgroups-list.test.tsx`, `cardgroups-detail.test.tsx`, `cards-list.test.tsx`, `admin-roles.test.tsx`, `admin-users-list.test.tsx`. Each broad test covers SSR auth gate, initial render, empty state, and error boundaries — without duplicating the narrow test's flow-specific assertions.
 
 **Anti-pattern**: Do not name a flow-specific test with a page-level name. If a feature PR introduces a flow that is the only flow on its page, still name the test `<page>-<flow>.test.tsx` to reserve the `<page>.test.tsx` slot for the future broad test.
 
 **Shared utilities** live under `frontend/__tests__/utils/` and `frontend/__tests__/fixtures/`:
 
-- `mock-supabase.ts` — in-memory `getUser` mock for the Supabase server client. Used by tests for pages that still call `getUser()` directly: `app/admin/*`, `app/login/page.tsx`, and middleware tests. Standard protected pages mock `next/headers` instead (see the [RSC test rendering pattern](#rsc-test-rendering-pattern) section).
 - `mock-apollo-paginated.ts` — one-mock-per-fetchMore helper with inline documentation. Provides `installApolloMockLeakSpy`, which captures `console.warn` calls matching `"No more mocked responses for the query"`; calling `assertNoLeaks()` in `afterEach` throws if any were recorded, catching double-fetch regressions.
 - `fixtures/users.ts` and `fixtures/cardgroups.ts` — shared test data.
 
@@ -20,7 +19,7 @@ All tests live under `frontend/__tests__/` using Vitest + Testing Library. Two n
 
 ### The narrow / broad split is a contract
 
-Putting a flow-detail assertion in a broad-named file (e.g. a role-checkbox toggle inside `admin-users.test.tsx`) silently locks in implementation detail and forces the broad test to break on every refactor of the narrow flow. The narrow / broad split is not a guideline — it is a contract: broad tests assert only page-level composition (SSR auth gate, initial render, empty state, error boundaries); flow-specific assertions belong in their narrow companion file.
+Putting a flow-detail assertion in a broad-named file (e.g. a role-checkbox toggle inside `admin-users-list.test.tsx`) silently locks in implementation detail and forces the broad test to break on every refactor of the narrow flow. The narrow / broad split is not a guideline — it is a contract: broad tests assert only page-level composition (SSR auth gate, initial render, empty state, error boundaries); flow-specific assertions belong in their narrow companion file.
 
 A page can host **both** a co-located `<page>.test.tsx` (next to the source under `src/app/...`) and a `__tests__/<page>.test.tsx` (broad scope) file. The co-located test focuses on the page's local refactor surface (e.g. stubbing the client component); the `__tests__/` file mounts the full tree end-to-end. Coverage between the two MUST be deconflicted manually — the author of any new broad test must read both before adding assertions, otherwise duplicate redirect / auth-gate cases accumulate across the two files.
 
@@ -63,9 +62,9 @@ render(await CardgroupDetailPage({ params: Promise.resolve({ id: "cg-1" }) }));
 
 Pre-15 patterns that pass `{ params: { id } }` directly will not type-check or will misbehave at runtime.
 
-`createSupabaseServerClient` is server-only, so tests for pages that call `getUser()` directly must stub it. The repo has no MSW; the canonical pattern for those pages (`app/admin/*`, `app/login/page.tsx`) is a per-test `vi.mock("@/lib/supabase/server", ...)` factory backed by the shared `mockCreateSupabaseServerClient` spy, with per-case `setMockSupabaseUser(...)` calls in `beforeEach`. The `server-only` import is also stubbed at the Vitest config level (`vitest.config.ts`) so any module that pulls it in transitively does not crash the test runner.
+`createSupabaseServerClient` is server-only. The repo has no MSW; the `server-only` import is stubbed at the Vitest config level (`vitest.config.ts`) so any module that pulls it in transitively does not crash the test runner. Page-level tests no longer stub `@/lib/supabase/server` for the auth gate — every protected page (including `app/admin/*` and `app/login/page.tsx`) reads the middleware-forwarded `x-auth-status` header rather than calling `getUser()` at render time (see below). A direct `vi.mock("@/lib/supabase/server", ...)` factory survives only in route-handler and library tests that genuinely invoke the server client — e.g. `frontend/src/app/auth/callback/route.test.ts` and `frontend/src/lib/apollo/server.test.ts`.
 
-Standard protected pages read the middleware-forwarded `x-auth-status` header via `readAuthContext(await headers())` and do not call `getUser()` at render time. Their tests mock `next/headers` instead:
+Protected pages read the middleware-forwarded `x-auth-status` header via `readAuthContext(await headers())` and do not call `getUser()` at render time. Their tests mock `next/headers`:
 
 ```ts
 vi.mock("next/headers", () => ({

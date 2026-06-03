@@ -98,4 +98,4 @@ describe("newRequestId — Web Crypto fallback path", () => {
 ## See also
 
 - `frontend/src/lib/observability/request-id.test.ts` — canonical `loadFresh()` usage.
-- [`vitest-hoisting-tdz-shared-mock-imports.md`](vitest-hoisting-tdz-shared-mock-imports.md) — `vi.mock` hoisting and TDZ for shared mock factories.
+- `frontend/src/lib/supabase/middleware.test.ts` — `vi.hoisted` + `async importOriginal` partial module replacement: spy on a single named export (`buildHtmlCsp`) while keeping the module's other exports real.

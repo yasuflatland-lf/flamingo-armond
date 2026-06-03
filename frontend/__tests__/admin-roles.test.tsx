@@ -10,8 +10,8 @@
  *   - System-role Edit/Delete disabled state.
  *   - Mutation error banners and field-level errors.
  *
- * NOT covered here (owned by admin-layout.test.tsx):
- *   - Admin gate (Supabase auth, role check, redirect behaviour).
+ * NOT covered here (owned by src/app/admin/layout.test.tsx):
+ *   - Admin gate (x-auth-status header check, role check, redirect behaviour).
  */
 
 // ---------------------------------------------------------------------------
@@ -51,7 +51,6 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AdminRolesPage from "@/app/admin/roles/page";
 import { gqlFetch } from "@/lib/apollo/server";
-import { resetMockSupabase } from "./utils/mock-supabase";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -86,7 +85,6 @@ const EDITOR_ROLE = makeRole("role-editor", "editor");
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  resetMockSupabase();
   vi.clearAllMocks();
   consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 });

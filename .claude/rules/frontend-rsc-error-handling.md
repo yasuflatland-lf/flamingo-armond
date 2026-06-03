@@ -15,7 +15,7 @@ if (error && error.name !== "AuthSessionMissingError") {
 // `user` is `User | null` here — branch on it.
 ```
 
-The filter is keyed on `error.name` (string), not on `instanceof` — Supabase's class identity does not survive serialization across the SDK's internal boundaries reliably. The pattern applies to every caller of `supabase.auth.getUser()`. `getUser()` is called in exactly four places: the middleware (`frontend/src/lib/supabase/middleware.ts`), `app/admin/layout.tsx`, `app/admin/users/page.tsx`, and `app/login/page.tsx`. Every other protected page does **not** call `getUser()` — it reads the middleware-forwarded `x-auth-status` header via `readAuthContext(await headers())` (`frontend/src/lib/supabase/auth-status.ts`) and redirects to `/login` when the status is not `authenticated`:
+The filter is keyed on `error.name` (string), not on `instanceof` — Supabase's class identity does not survive serialization across the SDK's internal boundaries reliably. The pattern applies to every caller of `supabase.auth.getUser()`. `getUser()` is called only by the middleware (`frontend/src/lib/supabase/middleware.ts`). Every other protected page does **not** call `getUser()` — it reads the middleware-forwarded `x-auth-status` header via `readAuthContext(await headers())` (`frontend/src/lib/supabase/auth-status.ts`) and redirects when the status is not `authenticated`. Most pages redirect to `/login`; the admin pages (`app/admin/layout.tsx`, `app/admin/users/page.tsx`) redirect to `/` instead; and `app/login/page.tsx` inverts the check — an `authenticated` status redirects the visitor away to `/cardgroups`, while `anonymous`, `stale`, and `error` statuses all render the login form:
 
 ```ts
 import { headers } from "next/headers";
@@ -24,7 +24,7 @@ import { readAuthContext } from "@/lib/supabase/auth-status";
 if (readAuthContext(await headers()).status !== "authenticated") redirect("/login");
 ```
 
-To verify the current set of direct `getUser()` callers: `grep -rn "auth.getUser\|auth.getSession\|auth.getClaims" frontend/src/`. The result set is expected to be small (the four files above). Any new file added to those results must include the `AuthSessionMissingError` filter.
+To verify the current set of direct `getUser()` callers: `grep -rn "auth.getUser\|auth.getSession\|auth.getClaims" frontend/src/`. The result set is the middleware plus any Apollo server/link helpers that call `getSession()`. Any new file in those results that calls `auth.getUser()` during server render must include the `AuthSessionMissingError` filter; the `getSession()` hits in the Apollo helpers (`lib/apollo/server.ts`, `lib/apollo/auth-link.ts`) fetch the bearer token rather than gate on identity, and the filter does not apply to them.
 
 ## Header (root layout) MUST degrade on failure, never throw
 
