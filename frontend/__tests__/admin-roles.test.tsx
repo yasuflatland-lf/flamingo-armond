@@ -10,8 +10,8 @@
  *   - System-role Edit/Delete disabled state.
  *   - Mutation error banners and field-level errors.
  *
- * NOT covered here (owned by admin-layout.test.tsx):
- *   - Admin gate (Supabase auth, role check, redirect behaviour).
+ * NOT covered here (owned by src/app/admin/layout.test.tsx):
+ *   - Admin gate (x-auth-status header check, role check, redirect behaviour).
  */
 
 // ---------------------------------------------------------------------------

@@ -630,8 +630,7 @@ describe("AdminUsersClient", () => {
     expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
   });
 
-  // T8 (migrated from __tests__/admin-users.test.tsx): each user row exposes an
-  // Edit button that pushes ?edit=<id> via the router — URL-backed sheet state.
+  // T8: Each user row exposes an Edit button that pushes ?edit=<id> via the router, implementing URL-backed sheet state.
   test("each user row has an Edit button that pushes ?edit=<id>", async () => {
     const user = userEvent.setup({ delay: null });
 
@@ -678,8 +677,7 @@ describe("AdminUsersClient", () => {
     }
   });
 
-  // T9 (migrated from __tests__/admin-users.test.tsx): empty connection renders
-  // the empty-state copy and hides the user list.
+  // T9: An empty connection (edges = []) renders the "No users found." empty-state copy and hides the user list container.
   test("renders empty-state copy when the connection has no edges", async () => {
     const connection = makeConnection([], false);
     const cache = new InMemoryCache();

@@ -40,9 +40,10 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   // Step 1: session check via middleware-forwarded status.
   if (readAuthContext(await headers()).status !== "authenticated") redirect("/");
 
-  // Step 2: admin-role check via GraphQL. UNAUTHENTICATED can still happen
-  // here even after Supabase reports a user (e.g., expired access token that
-  // the server rejects), so it is folded into the same redirect path.
+  // Step 2: admin-role check via GraphQL. The middleware forwarded
+  // "authenticated", but the access token can expire between the middleware
+  // check and the GraphQL call; UNAUTHENTICATED / FORBIDDEN from the resolver
+  // folds into the same redirect path.
   let meData: AdminLayoutMeQueryType;
   try {
     meData = await gqlFetch(AdminLayoutMeQuery, { revalidate: 0 });

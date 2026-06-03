@@ -3,12 +3,11 @@ import { vi } from "vitest";
 /**
  * Shared mock factory for `@/lib/supabase/server` (`createSupabaseServerClient`).
  *
- * Scope: pages and middleware that call `createSupabaseServerClient()` followed
- * by `supabase.auth.getUser()` directly — currently `app/admin/*` page RSCs,
- * `app/login/page.tsx`, and the Next.js middleware. Standard protected pages
- * (e.g. `app/page.tsx`, `app/cardgroups/page.tsx`) read identity from
- * middleware-forwarded request headers via `readAuthContext` and do NOT use
- * this factory; those tests mock `next/headers` instead.
+ * Scope: the Next.js middleware (`src/lib/supabase/middleware.ts`) calls
+ * `createSupabaseServerClient()` followed by `supabase.auth.getUser()` directly.
+ * All page RSCs (including `app/admin/*` and `app/login/page.tsx`) now read
+ * identity from middleware-forwarded request headers via `readAuthContext` and
+ * do NOT use this factory; those tests mock `next/headers` instead.
  *
  * IMPORTANT: `vi.mock` must be invoked at the **top of each test file** because
  * Vitest hoists `vi.mock` calls above imports. This util therefore exports only
