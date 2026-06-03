@@ -10,32 +10,30 @@ This distinction matters most for transport-level failures. The Supabase SDK ret
 
 Async server components that perform network I/O inside a `<Suspense>` boundary must wrap their awaits in `try/catch` and degrade gracefully on transport rejections rather than re-throwing. Re-throwing escapes the boundary and, for root-level components with no parent `error.tsx`, 500s the entire site.
 
-The shipped implementation is `frontend/src/components/auth-shell.tsx`:
+A representative example is an async RSC data-loader component that runs inside a `<Suspense>` boundary and degrades to empty/default state on transport failure:
 
 ```tsx
-export async function AuthShell({ children }: { children: ReactNode }) {
-  let isAdmin = false;
-  let shellUser: { email: string | null } | null = null;
+// Hypothetical async RSC wrapped in <Suspense fallback={<Skeleton />}>
+export async function SomeDataContent() {
+  let data: SomeData | null = null;
 
   try {
-    const supabase = await createSupabaseServerClient();
-    const { data: { user }, error } = await supabase.auth.getUser();
-    // ... normal { error } handling ...
+    data = await fetchSomeData();
   } catch (err) {
-    // A transport-level rejection (DNS failure, connection refused, JWKS fetch
-    // hang) makes the Supabase awaits reject rather than return an { error }.
-    // Suspense does not catch thrown errors and there is no root error boundary,
-    // so degrade to the anonymous shell instead of 500-ing the whole app.
-    console.error("[layout] auth resolution threw; degrading to anonymous shell:", err);
-    shellUser = null;
-    isAdmin = false;
+    // A transport-level rejection (DNS failure, connection refused) makes
+    // the fetch reject rather than return an {error}.
+    // Suspense does not catch thrown errors and there may be no error.tsx
+    // ancestor — degrade to the empty state instead of 500-ing.
+    console.error("[some-data] fetch threw; degrading to empty state:", {
+      name: err instanceof Error ? err.name : "unknown",
+    });
   }
 
-  return <AppShell user={shellUser} isAdmin={isAdmin}>{children}</AppShell>;
+  return <SomeDataView data={data} />;
 }
 ```
 
-`AuthShell` is the `<Suspense>` child in `app/layout.tsx`. Without its try/catch, any Supabase transport failure would escape the Suspense boundary and crash the entire app. With it, the shell degrades to the anonymous state and the app stays up.
+Note: `frontend/src/components/auth-shell.tsx` previously held this pattern but is now a **synchronous prop-driven wrapper** (`{ user, isAdmin, children }`) that performs no auth I/O. The equivalent degradation logic moved to `frontend/src/lib/supabase/middleware.ts`, which wraps the `getClaims()` call in a try/catch and fails closed to `isAdmin=false` so the app stays up on transport failures. See [`getclaims-three-way-return.md`](getclaims-three-way-return.md).
 
 ## Relation to the "auth gate runs outside Suspense" rule
 
@@ -46,11 +44,11 @@ These two rules address **different components with different responsibilities**
 | Component | Role | Allowed to redirect? | Inside Suspense? |
 |---|---|---|---|
 | Route `page.tsx` outer RSC | Auth *gate* — must enforce access | Yes — redirects on failure | No — runs before the `<Suspense>` return |
-| `AuthShell` | Display-hint *resolution* — populates the nav shell | No — degrades to anonymous | Yes — `<Suspense fallback={<BootSplash />}>` wraps it |
+| Root layout + `AuthShell` | Display-hint *shell* — reads middleware-forwarded headers via `readAuthContext`; passes `user` / `isAdmin` props | No — degrades to anonymous | No — `AuthShell` is synchronous (no auth I/O); no Suspense boundary needed |
 
-The auth gate (page outer RSC) runs outside Suspense because it needs to redirect, and redirects from inside a suspended subtree flash the fallback first. `AuthShell` runs inside Suspense because it must not block the initial HTML flush — its job is to resolve user identity for UI purposes and degrade gracefully on failure, not to enforce access control.
+The auth gate (page outer RSC) runs outside Suspense because it needs to redirect, and redirects from inside a suspended subtree flash the fallback first. `AuthShell` is now a synchronous prop-driven wrapper — identity resolution moved to the middleware (out of the React render path entirely), so the root layout reads pre-computed headers via `readAuthContext` and the Suspense boundary was removed.
 
-Both rules share the same underlying constraint: `<Suspense>` does not catch thrown errors. The auth gate addresses this by staying outside Suspense entirely. `AuthShell` addresses it by catching inside the component. Which approach applies depends on whether the component's failure mode is "redirect" (stay outside) or "degrade" (stay inside, catch).
+Both rules share the same underlying constraint: `<Suspense>` does not catch thrown errors. The auth gate addresses this by staying outside Suspense entirely. Async RSC data-loaders that live inside Suspense boundaries address it by wrapping their awaits in `try/catch`. Which approach applies depends on whether the component's failure mode is "redirect" (stay outside) or "degrade" (stay inside, catch).
 
 ## Why `app/loading.tsx` does not solve the streaming problem
 

@@ -70,7 +70,7 @@ Unit and component tests cover the registration guard, the production gate, and 
 
 ### Root cause
 
-The app currently renders light-only — no `ThemeProvider` or `prefers-color-scheme` toggle is wired, so the dormant `.dark` block in `globals.css` is never activated and `--background` stays `oklch(1 0 0)`. But the document declared no `color-scheme`. On an iOS standalone PWA whose device is in **dark mode**, Safari applies the system dark appearance to the UA *canvas* — the backdrop painted before `<body>`'s `bg-background` white (and the coral `BootSplash`) reach the screen. The result is a black flash on every launch, even though every painted surface is light or coral.
+The app currently renders light-only — no `ThemeProvider` or `prefers-color-scheme` toggle is wired, so the dormant `.dark` block in `globals.css` is never activated and `--background` stays `oklch(1 0 0)`. But the document declared no `color-scheme`. On an iOS standalone PWA whose device is in **dark mode**, Safari applies the system dark appearance to the UA *canvas* — the backdrop painted before `<body>`'s `bg-background` white reaches the screen. The result is a black flash on every launch, even though every painted surface is light.
 
 ### Fix
 
@@ -89,23 +89,27 @@ A mismatched `apple-touch-startup-image` produces a *sustained* black launch scr
 
 ### Root cause
 
-`frontend/src/app/layout.tsx` was an `async` server component that awaited the full Supabase auth waterfall (`getUser()` → `getClaims()`) before returning any JSX. During that await the server streamed zero bytes. The browser's body background (`oklch(1 0 0)`, pure white from `globals.css`) was visible for hundreds of milliseconds on cold start and on every service-worker-update reload.
+`frontend/src/app/layout.tsx` was an `async` server component that awaited the full Supabase auth waterfall (`getUser()` → `getClaims()`) before returning any JSX. During that await the server streamed zero bytes. The browser's body background (`oklch(1 0 0)`, pure white from `globals.css`) was visible for hundreds of milliseconds on cold start and on every service-worker-update reload. Auth identity is now resolved by middleware and forwarded via request headers, so the layout is synchronous — but the historical root cause is preserved here because the fix follows directly from it.
 
 Adding `app/loading.tsx` alone does **not** fix this. `loading.tsx` wraps the `page` inside the layout in a Suspense boundary, but the Suspense fallback cannot render until the layout itself returns its first JSX chunk. The blocking await is in the layout, so the fallback is never streamed until after the delay has already occurred.
 
-### Fix: synchronous `<html><body>` + `AuthShell` inside `<Suspense>`
+### Fix: synchronous `<html><body>` + middleware-forwarded auth identity
 
-The layout now returns `<html><body>` synchronously. Only `await headers()` remains in the layout function body — it reads a fast in-memory map that Next.js pre-populates before the component runs and does not block streaming. The `/login` and `/onboarding` fast-path branches (bare shell, no auth, no nav) retain their own early return.
+The layout now returns `<html><body>` synchronously. Auth identity (`shellUser`, `isAdmin`) is resolved by the middleware and forwarded to the RSC render via request headers, so the layout reads it from a fast in-memory map that Next.js pre-populates before the component runs — no async Supabase await remains in the layout function body. The `/login` and `/onboarding` fast-path branches (bare shell, no auth, no nav) retain their own early return.
 
-For all other routes the auth waterfall moved into a dedicated child server component `AuthShell` (`frontend/src/components/auth-shell.tsx`), which is wrapped in a `<Suspense>` with a `<BootSplash>` fallback:
+For all other routes the layout reads the forwarded headers via `readAuthContext` and passes the resolved values synchronously into `AuthShell`:
 
 ```tsx
 // frontend/src/app/layout.tsx (simplified)
+const headersList = await headers();
+const { shellUser, isAdmin } = readAuthContext(headersList);
+
+// ...
 <body suppressHydrationWarning>
   <Providers>
-    <Suspense fallback={<BootSplash />}>
-      <AuthShell>{children}</AuthShell>
-    </Suspense>
+    <AuthShell user={shellUser} isAdmin={isAdmin}>
+      {children}
+    </AuthShell>
   </Providers>
   <SpeedInsights />
   <SwRegister />
@@ -113,19 +117,19 @@ For all other routes the auth waterfall moved into a dedicated child server comp
 </body>
 ```
 
-Next.js App Router streams the `<Suspense>` fallback with the first HTML flush — before `AuthShell` resolves. The browser paints the coral brand splash immediately instead of a white blank.
-
-### BootSplash component
-
-`frontend/src/components/boot-splash.tsx` is a server component with no `"use client"` directive. It renders a full-screen coral overlay (`bg-[#FF6F79]`) with the `FlamingoMark` SVG centered (`size-24`). Because it uses only Tailwind utility classes and an inline SVG, it requires no JavaScript to paint and is safe for the very first streamed chunk.
+The layout returns `<html><body>` synchronously because auth state is read from request headers set by middleware before the RSC render; no streaming-blocking await remains in the layout. The page skeleton streams immediately on every navigation.
 
 ### AuthShell degradation contract
 
-`AuthShell` wraps the entire auth resolution in a `try/catch`. Transport-level rejections from Supabase (DNS failure, connection refused, JWKS fetch hang) cause the SDK awaits to reject rather than return `{ error }`. `<Suspense>` does not catch thrown errors — only suspended promises. Without the try/catch, a transport rejection escapes the Suspense boundary and, with no root `error.tsx` / `global-error.tsx`, 500s the whole app. On catch, `AuthShell` degrades to `shellUser = null, isAdmin = false` and logs with the `[layout]` scope prefix. See [`docs/frontend/rsc-error-handling/suspense-does-not-catch-thrown-errors.md`](rsc-error-handling/suspense-does-not-catch-thrown-errors.md).
+`AuthShell` is now a synchronous prop-driven wrapper — it no longer performs any auth I/O. The degradation contract has moved to the middleware (`frontend/src/middleware.ts`): `getClaims()` is wrapped in a `try/catch` that fails closed to `isAdmin = false` on any exception, including non-`AuthError` throws from `validateExp` (plain `Error`) and WebCrypto (`DOMException`). The catch branch logs `err.name` only (no `err.message`, which may carry user-supplied content) and proceeds with the degraded identity. Because the middleware runs before the RSC tree, `AuthShell` always receives a fully-resolved `user` and `isAdmin` prop and never needs to handle an error path.
 
 ### Log prefix continuity
 
-`AuthShell` logs with the `[layout]` prefix even though the code now lives in `auth-shell.tsx`. The prefix was preserved intentionally: operator runbooks and test assertions (`expect(consoleErrorSpy).toHaveBeenCalledWith("[layout] ...")`) pin to the string. Changing it would require coordinated updates across all call sites and tests.
+Middleware logs the identity-resolution failure with the `[middleware]` scope prefix. `AuthShell` retains the `[layout]` prefix for any layout-level structural errors. Operator runbooks and test assertions pin to those strings; they are not interchangeable.
+
+### N5 — collapsing two loading states into one
+
+Two stacked Suspense boundaries reveal sequentially: auth (a fast local check) resolves before the page data batch, so the previous implementation showed brand splash → page skeleton → page content on each navigation. Resolving identity entirely out of the render path (in middleware, before the RSC tree runs) collapses the first loading state, leaving exactly one loading state per navigation: the page skeleton. PWA cold start still shows the native launch screen from `layout.tsx` `metadata.appleWebApp.startupImage` (see the Interval A section below) — that interval is handled by the OS before the RSC tree runs at all and is unaffected by this change.
 
 ## iOS apple-touch-startup-image (Interval A)
 

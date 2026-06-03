@@ -24,11 +24,25 @@ Backend JWT verification is enabled. Without a Supabase session, only unauthenti
 
 The `matcher` must also explicitly exclude `/api/:path*` and `/auth/callback`. Without the `/api` exclusion, every Apollo browser POST to `/api/graphql` triggers a full Supabase token-refresh round-trip in middleware, adding latency per GraphQL call. Without the `/auth/callback` exclusion, middleware cookie writes race against the route handler's own `exchangeCodeForSession` and can corrupt the new session.
 
-### `isAdmin` is read from the JWT claim, not from a GraphQL query
+#### Middleware-forwarded identity headers
 
-The root layout (`frontend/src/app/layout.tsx`) computes the `isAdmin` flag forwarded to `AppShell` from `claims.app_metadata?.role === "admin"` returned by `supabase.auth.getClaims()`. The claim is emitted at JWT mint time by the Supabase Custom Access Token Hook, which joins `public.user_roles` server-side — see [`docs/backend/custom-access-token-hook.md`](../backend/custom-access-token-hook.md). The frontend therefore reads the role from the cookie-side JWT (no network round-trip) and skips a GraphQL `me` query on every RSC navigation.
+`frontend/src/lib/supabase/middleware.ts` (`updateSession`) is the single source of auth identity for server-side rendering. After calling `getUser()` (which also rotates the session cookie), it derives three server-internal request headers and sets them before passing the request on:
 
-This is a deliberate split: the **layout** reads the JWT claim as a UI hint to decide nav visibility, and `frontend/src/app/admin/layout.tsx` enforces the gate with a `me`-query role check. A stale or missing JWT claim hides the admin rail but never grants access. See the failure-mode contract in [`.claude/rules/frontend-rsc-error-handling.md`](../../.claude/rules/frontend-rsc-error-handling.md) for the degraded-shell rule, and [`docs/frontend/rsc-error-handling/getclaims-three-way-return.md`](rsc-error-handling/getclaims-three-way-return.md) for the three-way return shape of `getClaims()`.
+| Header | Type | Source |
+|---|---|---|
+| `x-auth-status` | `authenticated\|anonymous\|stale\|error` | `getUser()` result + `isStaleSessionError` check |
+| `x-user-email` | string (empty when anonymous) | `user.email` from `getUser()` |
+| `x-user-is-admin` | `"true"\|"false"` | `getClaims()` → `claims.app_metadata.role === "admin"` |
+
+Any client-supplied copies of these headers are stripped at the top of `updateSession` before the middleware sets its own — a client must never be able to spoof them. The headers are set on the forwarded **request** (not on the response), so the browser never sees them; this is the same posture as `x-nonce` (see [`csp.md`](csp.md)). The root layout reads all three via `readAuthContext` (`frontend/src/lib/supabase/auth-status.ts`) and passes the derived `{ status, email, isAdmin }` props to `AuthShell`.
+
+### `isAdmin` is read from the JWT claim via the middleware, not from a GraphQL query
+
+The **middleware** (`frontend/src/lib/supabase/middleware.ts`) computes the `isAdmin` flag by calling `supabase.auth.getClaims()` (wrapped in try/catch, fails closed to `false`) and checking `claims.app_metadata?.role === "admin"`. It forwards the result as the `x-user-is-admin` request header. The root layout (`frontend/src/app/layout.tsx`) reads this header via `readAuthContext` (`frontend/src/lib/supabase/auth-status.ts`) and passes `isAdmin` as a prop to `AuthShell`. The claim is emitted at JWT mint time by the Supabase Custom Access Token Hook, which joins `public.user_roles` server-side — see [`docs/backend/custom-access-token-hook.md`](../backend/custom-access-token-hook.md). The frontend therefore reads the role from the cookie-side JWT (no network round-trip) and skips a GraphQL `me` query on every RSC navigation.
+
+The role lives **only** in the JWT claim — it is NOT mirrored into `auth.users.app_metadata` (the Custom Access Token Hook injects it at mint time without writing to `raw_app_meta_data`), so `getUser().user.app_metadata?.role` always returns `undefined`. Read it via `getClaims()`.
+
+This is a deliberate split: the **middleware + layout** reads the JWT claim as a UI hint to decide nav visibility, and `frontend/src/app/admin/layout.tsx` enforces the gate with a `me`-query role check. A stale or missing JWT claim hides the admin rail but never grants access. See the failure-mode contract in [`.claude/rules/frontend-rsc-error-handling.md`](../../.claude/rules/frontend-rsc-error-handling.md) for the degraded-shell rule, and [`docs/frontend/rsc-error-handling/getclaims-three-way-return.md`](rsc-error-handling/getclaims-three-way-return.md) for the three-way return shape of `getClaims()`.
 
 ### Role-change propagation copy: bound by token refresh, not a hardcoded interval
 
