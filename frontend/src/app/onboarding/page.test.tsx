@@ -1,10 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import {
-  mockCreateSupabaseServerClient,
-  resetMockSupabase,
-  setMockSupabaseUser,
-  setMockSupabaseUserError,
-} from "../../../__tests__/utils/mock-supabase";
 
 // next/navigation mock — redirect throws so the RSC aborts the same way
 // Next.js's server runtime does.
@@ -16,8 +10,8 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: mockCreateSupabaseServerClient,
+vi.mock("next/headers", () => ({
+  headers: vi.fn(async () => new Headers({ "x-auth-status": "authenticated" })),
 }));
 
 vi.mock("@/lib/apollo/server", () => ({
@@ -31,6 +25,7 @@ vi.mock("./onboarding-form", () => ({
   OnboardingForm: () => <div data-testid="onboarding-form">OnboardingForm</div>,
 }));
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import OnboardingPage from "@/app/onboarding/page";
 import { gqlFetch } from "@/lib/apollo/server";
@@ -52,12 +47,10 @@ function makeOnboardingData(opts: { displayName?: string | null } = {}) {
 // Setup / teardown
 // ---------------------------------------------------------------------------
 
-let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
-
 beforeEach(() => {
   vi.clearAllMocks();
-  resetMockSupabase();
-  consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  // Default: authenticated
+  vi.mocked(headers).mockResolvedValue(new Headers({ "x-auth-status": "authenticated" }));
 });
 
 afterEach(() => {
@@ -69,8 +62,8 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("OnboardingPage — auth branches", () => {
-  test("unauthenticated user (user=null, no error) → redirect /login, gqlFetch not called", async () => {
-    setMockSupabaseUser(null);
+  test("anonymous status → redirect /login, gqlFetch not called", async () => {
+    vi.mocked(headers).mockResolvedValue(new Headers({ "x-auth-status": "anonymous" }));
 
     await expect(OnboardingPage()).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
 
@@ -78,31 +71,22 @@ describe("OnboardingPage — auth branches", () => {
     expect(gqlFetch).not.toHaveBeenCalled();
   });
 
-  test("AuthSessionMissingError is silenced → redirect /login, no console.error", async () => {
-    const noSession = new Error("Auth session missing!");
-    noSession.name = "AuthSessionMissingError";
-    setMockSupabaseUserError(noSession);
+  test("stale status → redirect /login, gqlFetch not called", async () => {
+    vi.mocked(headers).mockResolvedValue(new Headers({ "x-auth-status": "stale" }));
 
     await expect(OnboardingPage()).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
 
     expect(redirect).toHaveBeenCalledWith("/login");
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
     expect(gqlFetch).not.toHaveBeenCalled();
   });
 
-  test("non-AuthSessionMissingError → console.error + rethrow", async () => {
-    const transportError = new Error("network failure");
-    transportError.name = "FetchError";
-    setMockSupabaseUserError(transportError);
+  test("authenticated status → gqlFetch is called", async () => {
+    vi.mocked(headers).mockResolvedValue(new Headers({ "x-auth-status": "authenticated" }));
+    vi.mocked(gqlFetch).mockResolvedValueOnce(makeOnboardingData({ displayName: null }) as never);
 
-    await expect(OnboardingPage()).rejects.toBe(transportError);
+    await OnboardingPage();
 
-    expect(redirect).not.toHaveBeenCalled();
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[onboarding]"),
-      transportError.name,
-      transportError.message,
-    );
+    expect(gqlFetch).toHaveBeenCalled();
   });
 });
 
@@ -111,8 +95,10 @@ describe("OnboardingPage — auth branches", () => {
 // ---------------------------------------------------------------------------
 
 describe("OnboardingPage — gqlFetch error branches", () => {
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
-    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   test("UNAUTHENTICATED from gqlFetch → redirect /login", async () => {
@@ -146,10 +132,6 @@ describe("OnboardingPage — gqlFetch error branches", () => {
 // ---------------------------------------------------------------------------
 
 describe("OnboardingPage — onboarding gate", () => {
-  beforeEach(() => {
-    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
-  });
-
   test("already-onboarded user (displayName: 'Alice') → redirect /", async () => {
     vi.mocked(gqlFetch).mockResolvedValueOnce(
       makeOnboardingData({ displayName: "Alice" }) as never,

@@ -1,27 +1,15 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { MeWithLastViewedQuery } from "@/app/queries";
 import type { MeWithLastViewedQuery as MeWithLastViewedQueryType } from "@/generated/graphql";
 import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { isUserOnboarded } from "@/lib/auth/onboarding";
-import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { readAuthContext } from "@/lib/supabase/auth-status";
 
 // Root redirect — see docs/frontend/routing-topology.md.
 export default async function HomePage() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
-
-  // AuthSessionMissingError = anonymous request; stale session = deleted user
-  // with a still-valid JWT. Both are handled by redirecting to /login.
-  if (authErr && !isIgnorableAuthError(authErr)) {
-    console.error("[home] getUser() failed:", authErr.name, authErr.message);
-    throw authErr;
-  }
-  if (!user || isStaleSessionError(authErr)) redirect("/login");
+  if (readAuthContext(await headers()).status !== "authenticated") redirect("/login");
 
   let data: MeWithLastViewedQueryType;
   try {

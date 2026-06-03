@@ -8,8 +8,8 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: vi.fn(),
+vi.mock("next/headers", () => ({
+  headers: vi.fn(async () => new Headers({ "x-auth-status": "authenticated" })),
 }));
 
 vi.mock("@/lib/apollo/server", () => ({
@@ -32,20 +32,9 @@ vi.mock("./cardgroup-management-client", () => ({
   ),
 }));
 
+import { headers } from "next/headers";
 import { gqlFetch } from "@/lib/apollo/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import EditCardgroupPage from "./page";
-
-function makeSupabaseMock(user: { id: string } | null) {
-  return {
-    auth: {
-      getUser: vi.fn().mockResolvedValue({
-        data: { user },
-        error: null,
-      }),
-    },
-  };
-}
 
 function makeParams(id: string) {
   return { params: Promise.resolve({ id }) };
@@ -73,15 +62,15 @@ const connectionResult = {
 };
 
 describe("EditCardgroupPage", () => {
-  it("redirects to /login when no user is authenticated", async () => {
-    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
+  it("redirects to /login when unauthenticated", async () => {
+    vi.mocked(headers).mockResolvedValue(new Headers({ "x-auth-status": "anonymous" }) as never);
 
     await expect(EditCardgroupPage(makeParams("cg-1"))).rejects.toThrow("REDIRECT:/login");
   });
 
   it("redirects to /cardgroups when cardgroup is null", async () => {
-    vi.mocked(createSupabaseServerClient).mockResolvedValue(
-      makeSupabaseMock({ id: "user-1" }) as never,
+    vi.mocked(headers).mockResolvedValue(
+      new Headers({ "x-auth-status": "authenticated" }) as never,
     );
     vi.mocked(gqlFetch)
       .mockResolvedValueOnce({ cardgroup: null } as never)
@@ -91,8 +80,8 @@ describe("EditCardgroupPage", () => {
   });
 
   it("redirects to /cardgroups on UNAUTHENTICATED gqlFetch error", async () => {
-    vi.mocked(createSupabaseServerClient).mockResolvedValue(
-      makeSupabaseMock({ id: "user-1" }) as never,
+    vi.mocked(headers).mockResolvedValue(
+      new Headers({ "x-auth-status": "authenticated" }) as never,
     );
     vi.mocked(gqlFetch).mockRejectedValue(
       new Error('GraphQL errors: [{"extensions":{"code":"UNAUTHENTICATED"}}]'),
@@ -102,8 +91,8 @@ describe("EditCardgroupPage", () => {
   });
 
   it("renders the management client with cardgroup data and initial connection counts", async () => {
-    vi.mocked(createSupabaseServerClient).mockResolvedValue(
-      makeSupabaseMock({ id: "user-1" }) as never,
+    vi.mocked(headers).mockResolvedValue(
+      new Headers({ "x-auth-status": "authenticated" }) as never,
     );
     vi.mocked(gqlFetch)
       .mockResolvedValueOnce(cardgroupResult as never)

@@ -15,7 +15,16 @@ if (error && error.name !== "AuthSessionMissingError") {
 // `user` is `User | null` here — branch on it.
 ```
 
-The filter is keyed on `error.name` (string), not on `instanceof` — Supabase's class identity does not survive serialization across the SDK's internal boundaries reliably. The pattern applies to every RSC, layout, route handler, or server action that calls `supabase.auth.getUser()`. To find all current call sites: `grep -rn "auth.getUser\|auth.getSession\|auth.getClaims" frontend/src/`. Any new file added to those results must include the filter — there is no per-file list to maintain because the list rotted before this entry was rewritten.
+The filter is keyed on `error.name` (string), not on `instanceof` — Supabase's class identity does not survive serialization across the SDK's internal boundaries reliably. The pattern applies to every caller of `supabase.auth.getUser()`. `getUser()` is called in exactly four places: the middleware (`frontend/src/lib/supabase/middleware.ts`), `app/admin/layout.tsx`, `app/admin/users/page.tsx`, and `app/login/page.tsx`. Every other protected page does **not** call `getUser()` — it reads the middleware-forwarded `x-auth-status` header via `readAuthContext(await headers())` (`frontend/src/lib/supabase/auth-status.ts`) and redirects to `/login` when the status is not `authenticated`:
+
+```ts
+import { headers } from "next/headers";
+import { readAuthContext } from "@/lib/supabase/auth-status";
+// ...
+if (readAuthContext(await headers()).status !== "authenticated") redirect("/login");
+```
+
+To verify the current set of direct `getUser()` callers: `grep -rn "auth.getUser\|auth.getSession\|auth.getClaims" frontend/src/`. The result set is expected to be small (the four files above). Any new file added to those results must include the `AuthSessionMissingError` filter.
 
 ## Header (root layout) MUST degrade on failure, never throw
 

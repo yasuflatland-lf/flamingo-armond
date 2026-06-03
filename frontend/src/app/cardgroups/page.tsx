@@ -1,30 +1,19 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import type { MyCardgroupsConnectionQuery as MyCardgroupsConnectionQueryType } from "@/generated/graphql";
 import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
-import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { readAuthContext } from "@/lib/supabase/auth-status";
 import { CardgroupsSkeleton } from "./_components/cardgroups-skeleton";
 import CardgroupsClient from "./cardgroups-client";
 import { CARDGROUPS_DEFAULT_VARS, MyCardgroupsConnectionQuery } from "./queries";
 
 export default async function CardgroupsPage() {
-  // Auth check runs OUTSIDE the Suspense boundary so a stale session redirects
-  // to /login before any streaming starts. If the redirect ran from within the
-  // suspended subtree, the skeleton would flash before the navigation.
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
-  // AuthSessionMissingError = anonymous request; stale session = deleted user
-  // with a still-valid JWT. Both are handled by redirecting to /login.
-  if (authErr && !isIgnorableAuthError(authErr)) {
-    console.error("[cardgroups] getUser() failed:", { name: authErr.name });
-    throw authErr;
-  }
-  if (!user || isStaleSessionError(authErr)) redirect("/login");
+  // Auth check runs OUTSIDE the Suspense boundary so an unauthenticated request
+  // redirects to /login before any streaming starts. If the redirect ran from
+  // within the suspended subtree, the skeleton would flash before the navigation.
+  if (readAuthContext(await headers()).status !== "authenticated") redirect("/login");
 
   return (
     <Suspense fallback={<CardgroupsSkeleton />}>

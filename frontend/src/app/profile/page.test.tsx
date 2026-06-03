@@ -1,10 +1,4 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import {
-  mockCreateSupabaseServerClient,
-  resetMockSupabase,
-  setMockSupabaseUser,
-  setMockSupabaseUserError,
-} from "../../../__tests__/utils/mock-supabase";
 
 // next/navigation mock — redirect throws so the RSC aborts the same way
 // Next.js's server runtime does.
@@ -16,8 +10,10 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: mockCreateSupabaseServerClient,
+vi.mock("next/headers", () => ({
+  headers: vi.fn(
+    async () => new Headers({ "x-auth-status": "authenticated", "x-user-email": "user@test.com" }),
+  ),
 }));
 
 vi.mock("@/lib/apollo/server", () => ({
@@ -45,6 +41,7 @@ vi.mock("./profile-page-client", () => ({
   ),
 }));
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import ProfilePage from "@/app/profile/page";
 import { gqlFetch } from "@/lib/apollo/server";
@@ -64,6 +61,14 @@ function makeMeData(opts: { displayName?: string; bio?: string } = {}) {
   };
 }
 
+function setAuthHeaders(status: string, email?: string | null) {
+  const h = new Headers({ "x-auth-status": status });
+  if (email !== undefined && email !== null) {
+    h.set("x-user-email", email);
+  }
+  vi.mocked(headers).mockResolvedValue(h as Awaited<ReturnType<typeof headers>>);
+}
+
 // ---------------------------------------------------------------------------
 // Setup / teardown
 // ---------------------------------------------------------------------------
@@ -72,7 +77,12 @@ let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resetMockSupabase();
+  // Default: authenticated with email
+  vi.mocked(headers).mockResolvedValue(
+    new Headers({ "x-auth-status": "authenticated", "x-user-email": "user@test.com" }) as Awaited<
+      ReturnType<typeof headers>
+    >,
+  );
   consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -85,8 +95,8 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("ProfilePage — auth branches", () => {
-  test("anonymous user (user=null, no error) → redirect /login, gqlFetch not called", async () => {
-    setMockSupabaseUser(null);
+  test("anonymous user (x-auth-status: anonymous) → redirect /login, gqlFetch not called", async () => {
+    setAuthHeaders("anonymous");
 
     await expect(ProfilePage()).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
 
@@ -94,31 +104,32 @@ describe("ProfilePage — auth branches", () => {
     expect(gqlFetch).not.toHaveBeenCalled();
   });
 
-  test("AuthSessionMissingError is silenced → redirect /login, no console.error", async () => {
-    const noSession = new Error("Auth session missing!");
-    noSession.name = "AuthSessionMissingError";
-    setMockSupabaseUserError(noSession);
+  test("stale session (x-auth-status: stale) → redirect /login, gqlFetch not called", async () => {
+    setAuthHeaders("stale");
 
     await expect(ProfilePage()).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
 
     expect(redirect).toHaveBeenCalledWith("/login");
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
     expect(gqlFetch).not.toHaveBeenCalled();
   });
 
-  test("non-AuthSessionMissingError → console.error + rethrow", async () => {
-    const transportError = new Error("network failure");
-    transportError.name = "FetchError";
-    setMockSupabaseUserError(transportError);
+  test("error status (x-auth-status: error) → redirect /login, gqlFetch not called", async () => {
+    setAuthHeaders("error");
 
-    await expect(ProfilePage()).rejects.toBe(transportError);
+    await expect(ProfilePage()).rejects.toThrow(`${REDIRECT_PREFIX}/login`);
+
+    expect(redirect).toHaveBeenCalledWith("/login");
+    expect(gqlFetch).not.toHaveBeenCalled();
+  });
+
+  test("authenticated (x-auth-status: authenticated) → proceeds to gqlFetch", async () => {
+    setAuthHeaders("authenticated", "user@test.com");
+    vi.mocked(gqlFetch).mockResolvedValueOnce(makeMeData() as never);
+
+    await ProfilePage();
 
     expect(redirect).not.toHaveBeenCalled();
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[profile]"),
-      transportError.name,
-      transportError.message,
-    );
+    expect(gqlFetch).toHaveBeenCalled();
   });
 });
 
@@ -127,10 +138,6 @@ describe("ProfilePage — auth branches", () => {
 // ---------------------------------------------------------------------------
 
 describe("ProfilePage — gqlFetch error branches", () => {
-  beforeEach(() => {
-    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
-  });
-
   test("UNAUTHENTICATED from gqlFetch → redirect /login (new branch under test)", async () => {
     vi.mocked(gqlFetch).mockRejectedValueOnce(
       new Error(`GraphQL errors: ${JSON.stringify([{ extensions: { code: "UNAUTHENTICATED" } }])}`),
@@ -159,11 +166,7 @@ describe("ProfilePage — gqlFetch error branches", () => {
 // ---------------------------------------------------------------------------
 
 describe("ProfilePage — happy path", () => {
-  beforeEach(() => {
-    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
-  });
-
-  test("renders ProfileForm with correct props when user and gqlFetch resolve", async () => {
+  test("renders ProfileForm with correct props when authenticated and gqlFetch resolves", async () => {
     // @vitest-environment jsdom is NOT used here — we avoid rendering to DOM
     // because ProfileForm is stubbed and we only check JSX props directly.
     vi.mocked(gqlFetch).mockResolvedValueOnce(
@@ -207,9 +210,9 @@ describe("ProfilePage — happy path", () => {
     expect(profileFormEl?.props.initial.bio).toBe("");
   });
 
-  test("user.email null → ProfileForm receives email=null", async () => {
-    // Supabase user without an email address (e.g. OAuth-only account).
-    setMockSupabaseUser({ id: "u-1" }); // no email field
+  test("no x-user-email header → ProfileForm receives email=null", async () => {
+    // Authenticated user without an email in the forwarded header (e.g. OAuth-only account).
+    setAuthHeaders("authenticated");
     vi.mocked(gqlFetch).mockResolvedValueOnce(makeMeData() as never);
 
     const result = await ProfilePage();

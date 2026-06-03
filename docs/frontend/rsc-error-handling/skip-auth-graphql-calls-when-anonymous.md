@@ -2,11 +2,17 @@
 
 > Part of the [frontend RSC error handling](../../../.claude/rules/frontend-rsc-error-handling.md) rules.
 
-When an RSC has already determined `user == null` from `supabase.auth.getUser()`, do not issue any GraphQL query that requires `Authorization`. The backend will return `UNAUTHENTICATED`, the call site has to special-case the error, and the warn log fills with expected-and-uninteresting noise. Gate the call:
+When an RSC has already determined the user is anonymous — either from `readAuthContext(await headers()).status` on standard pages, or from `supabase.auth.getUser()` on admin and login pages — do not issue any GraphQL query that requires `Authorization`. The backend will return `UNAUTHENTICATED`, the call site has to special-case the error, and the warn log fills with expected-and-uninteresting noise. Gate the call:
 
 ```ts
+import { headers } from "next/headers";
+import { readAuthContext } from "@/lib/supabase/auth-status";
+
+// Standard page — reads the middleware-forwarded x-auth-status header
+const { status } = readAuthContext(await headers());
+
 let data = null;
-if (user) {
+if (status === "authenticated") {
   try {
     data = await gqlFetch(SomeAuthRequiredQuery, { revalidate: 0 });
   } catch (err) { /* ... */ }

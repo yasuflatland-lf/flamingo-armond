@@ -6,7 +6,7 @@
 
 `frontend/src/app/profile/page.tsx` is a React Server Component. It:
 
-1. Calls `createSupabaseServerClient().auth.getUser()` and redirects to `/login` when no session exists (or the session is stale for a deleted user).
+1. Reads the middleware-forwarded `x-auth-status` header via `readAuthContext(await headers())` and redirects to `/login` when the status is not `authenticated`.
 2. Calls `gqlFetch(MeQuery, { revalidate: 0 })` — the `Me` query selects `id`, `displayName`, `bio`, and `avatarUrl`; `revalidate: 0` opts the response out of the Next cache to avoid serving stale PII.
 3. Renders the client wrapper `ProfilePageClient`, passing the user's `email` and an `initial` object (`{ displayName, bio }` derived from `data.me`) as props.
 
@@ -35,7 +35,7 @@ try {
 }
 ```
 
-The helper structurally parses `extensions.code` in the GraphQL error payload and returns `true` only for `UNAUTHENTICATED`; all other errors are rethrown to the nearest error boundary. Two redirect targets are in use: `/login` for session-expired or no-session cases (checked before `gqlFetch` via `supabase.auth.getUser()`), and `/cardgroups` for cross-user-access on inner pages. See [Backend error-code contract](#backend-error-code-contract) for why these two cases both surface as `UNAUTHENTICATED`.
+The helper structurally parses `extensions.code` in the GraphQL error payload and returns `true` only for `UNAUTHENTICATED`; all other errors are rethrown to the nearest error boundary. Two redirect targets are in use: `/login` for session-expired or no-session cases (checked before `gqlFetch` via `readAuthContext(await headers())`), and `/cardgroups` for cross-user-access on inner pages. See [Backend error-code contract](#backend-error-code-contract) for why these two cases both surface as `UNAUTHENTICATED`.
 
 ### Unified admin layout: server-side gate + sidebar
 

@@ -6,11 +6,11 @@ import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { headers } from "next/headers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CARDGROUPS_DEFAULT_VARS } from "@/app/cardgroups/queries";
 import { CreateCardgroupDocument, MyCardgroupsConnectionDocument } from "@/generated/graphql";
 import { sanitizeReturnTo } from "@/lib/sanitize-return-to";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { NewCardgroupClient } from "./new-cardgroup-client";
 import NewCardgroupPage from "./page";
 
@@ -34,17 +34,10 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-// Stub the Supabase server client — required because page.tsx imports it at
-// module-evaluation time (the import itself triggers the module graph).
-// Using vi.fn() so individual tests can override with mockResolvedValueOnce.
-vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: vi.fn(() =>
-    Promise.resolve({
-      auth: {
-        getUser: () => Promise.resolve({ data: { user: { id: "u-1" } }, error: null }),
-      },
-    }),
-  ),
+// Stub next/headers so the page can read the middleware-forwarded auth status.
+// Default: authenticated. Individual tests can override with mockResolvedValueOnce.
+vi.mock("next/headers", () => ({
+  headers: vi.fn(async () => new Headers({ "x-auth-status": "authenticated" })),
 }));
 
 const CREATED_CARDGROUP = {
@@ -588,56 +581,18 @@ describe("<NewCardgroupPage> (client)", () => {
 });
 
 describe("authentication boundary", () => {
-  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
-
   beforeEach(() => {
-    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     mockRedirect.mockClear();
   });
 
-  afterEach(() => {
-    consoleErrorSpy.mockRestore();
-  });
-
-  it("redirects to /login when getUser returns no user (AuthSessionMissingError)", async () => {
-    vi.mocked(createSupabaseServerClient).mockResolvedValueOnce({
-      auth: {
-        getUser: () =>
-          Promise.resolve({
-            data: { user: null },
-            error: { name: "AuthSessionMissingError", message: "Auth session missing!" },
-          }),
-      },
-    } as Awaited<ReturnType<typeof createSupabaseServerClient>>);
+  it("redirects to /login when x-auth-status is anonymous", async () => {
+    vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "anonymous" }));
 
     await expect(NewCardgroupPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
       "REDIRECT:/login",
     );
 
     expect(mockRedirect).toHaveBeenCalledWith("/login");
-  });
-
-  it("console.errors and rethrows on a non-AuthSessionMissingError getUser failure", async () => {
-    vi.mocked(createSupabaseServerClient).mockResolvedValueOnce({
-      auth: {
-        getUser: () =>
-          Promise.resolve({
-            data: { user: null },
-            error: { name: "SomeOtherError", message: "boom" },
-          }),
-      },
-    } as Awaited<ReturnType<typeof createSupabaseServerClient>>);
-
-    await expect(NewCardgroupPage({ searchParams: Promise.resolve({}) })).rejects.toMatchObject({
-      name: "SomeOtherError",
-      message: "boom",
-    });
-
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      "[cardgroups-new] getUser() failed:",
-      "SomeOtherError",
-      "boom",
-    );
   });
 });
 

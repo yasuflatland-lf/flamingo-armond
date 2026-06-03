@@ -1,11 +1,5 @@
 import { Suspense } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import {
-  mockCreateSupabaseServerClient,
-  resetMockSupabase,
-  setMockSupabaseUser,
-  setMockSupabaseUserError,
-} from "../../../../__tests__/utils/mock-supabase";
 
 // next/navigation mock — redirect throws so the RSC aborts the same way
 // Next.js's server runtime does.
@@ -17,8 +11,8 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: mockCreateSupabaseServerClient,
+vi.mock("next/headers", () => ({
+  headers: vi.fn(async () => new Headers({ "x-auth-status": "authenticated" })),
 }));
 
 vi.mock("@/lib/apollo/server", () => ({
@@ -47,6 +41,7 @@ vi.mock("./cards-new-client", () => ({
   ),
 }));
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { CardsNewSkeleton } from "@/app/cards/new/_components/cards-new-skeleton";
 import CardsNewPage, { CardsNewContent } from "@/app/cards/new/page";
@@ -91,7 +86,8 @@ let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  resetMockSupabase();
+  // Default: authenticated
+  vi.mocked(headers).mockResolvedValue(new Headers({ "x-auth-status": "authenticated" }));
   consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -104,8 +100,8 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("CardsNewPage — auth branches", () => {
-  test("anonymous user (user=null, no error) → redirect /login, gqlFetch not called", async () => {
-    setMockSupabaseUser(null);
+  test("redirects when unauthenticated (anonymous) → redirect /login, gqlFetch not called", async () => {
+    vi.mocked(headers).mockResolvedValue(new Headers({ "x-auth-status": "anonymous" }));
 
     await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
       `${REDIRECT_PREFIX}/login`,
@@ -115,55 +111,14 @@ describe("CardsNewPage — auth branches", () => {
     expect(gqlFetch).not.toHaveBeenCalled();
   });
 
-  test("AuthSessionMissingError is silenced → redirect /login, no console.error", async () => {
-    const noSession = new Error("Auth session missing!");
-    noSession.name = "AuthSessionMissingError";
-    setMockSupabaseUserError(noSession);
+  test("proceeds when authenticated → gqlFetch is not blocked by auth gate", async () => {
+    // gqlFetch will reject, but only AFTER the auth gate passes — proving the
+    // gate did not redirect.
+    vi.mocked(gqlFetch).mockRejectedValueOnce(new Error("network"));
 
-    await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
-      `${REDIRECT_PREFIX}/login`,
-    );
+    await expect(CardsNewContent({ cardgroupParam: undefined })).rejects.toThrow("network");
 
-    expect(redirect).toHaveBeenCalledWith("/login");
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
-    expect(gqlFetch).not.toHaveBeenCalled();
-  });
-
-  test("non-ignorable auth error → console.error (PII-redacted) + rethrow", async () => {
-    const transportError = new Error("network failure");
-    transportError.name = "FetchError";
-    setMockSupabaseUserError(transportError);
-
-    await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toBe(transportError);
-
-    expect(redirect).not.toHaveBeenCalled();
-    // PII-redacted payload: only `name` is logged inside an object, never `message`.
-    expect(consoleErrorSpy).toHaveBeenCalledWith("[cards-new] getUser() failed:", {
-      name: transportError.name,
-    });
-    // Assert that `message` (which may carry user-supplied content) is absent.
-    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ message: expect.anything() }),
-    );
-  });
-
-  test("stale-session (deleted user) auth error → redirect /login, no console.error", async () => {
-    // isStaleSessionError: name === "AuthApiError" AND message includes "does not exist".
-    // isIgnorableAuthError returns true for stale-session, so it does NOT throw;
-    // the subsequent `isStaleSessionError(authErr)` check redirects to /login.
-    const staleErr = new Error("User from sub claim does not exist");
-    staleErr.name = "AuthApiError";
-    setMockSupabaseUserError(staleErr);
-
-    await expect(CardsNewPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
-      `${REDIRECT_PREFIX}/login`,
-    );
-
-    expect(redirect).toHaveBeenCalledWith("/login");
-    // Stale-session is ignorable — must not log an error.
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
-    expect(gqlFetch).not.toHaveBeenCalled();
+    expect(redirect).not.toHaveBeenCalledWith("/login");
   });
 });
 
@@ -172,10 +127,6 @@ describe("CardsNewPage — auth branches", () => {
 // ---------------------------------------------------------------------------
 
 describe("CardsNewPage — Suspense boundary", () => {
-  beforeEach(() => {
-    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
-  });
-
   test("wraps the data-dependent subtree in <Suspense fallback={<CardsNewSkeleton />}>", async () => {
     // gqlFetch is unused here because we only inspect the synchronous JSX tree
     // returned by the page (we do not invoke CardsNewContent).
@@ -213,10 +164,6 @@ describe("CardsNewPage — Suspense boundary", () => {
 // ---------------------------------------------------------------------------
 
 describe("CardsNewPage — gqlFetch error branches", () => {
-  beforeEach(() => {
-    setMockSupabaseUser({ id: "u-1", email: "user@test.com" });
-  });
-
   test("UNAUTHENTICATED from gqlFetch → redirect /login", async () => {
     vi.mocked(gqlFetch).mockRejectedValueOnce(
       new Error(`GraphQL errors: ${JSON.stringify([{ extensions: { code: "UNAUTHENTICATED" } }])}`),

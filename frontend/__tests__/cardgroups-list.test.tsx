@@ -1,23 +1,13 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-// The mock-supabase import must precede the `vi.mock("@/lib/supabase/server", ...)`
-// factory below: the factory references `mockCreateSupabaseServerClient`, and
-// Vitest's hoisting of `vi.mock` produces a TDZ error if the binding is
-// imported later in source order than the factory that references it.
-import {
-  mockCreateSupabaseServerClient,
-  resetMockSupabase,
-  setMockSupabaseUser,
-  setMockSupabaseUserError,
-} from "./utils/mock-supabase";
 
 // ---------------------------------------------------------------------------
 // Module mocks — hoisted by Vitest before imports
 // ---------------------------------------------------------------------------
 
-vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: mockCreateSupabaseServerClient,
+vi.mock("next/headers", () => ({
+  headers: vi.fn(async () => new Headers({ "x-auth-status": "authenticated" })),
 }));
 
 vi.mock("@/lib/apollo/server", () => ({
@@ -73,6 +63,7 @@ vi.mock("@/app/cardgroups/cardgroups-client", () => ({
 // Imports — after vi.mock declarations
 // ---------------------------------------------------------------------------
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import CardgroupsPage, { CardgroupsContent } from "@/app/cardgroups/page";
 import { gqlFetch } from "@/lib/apollo/server";
@@ -116,7 +107,6 @@ function mockGqlFetchError(err: Error): void {
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
-  resetMockSupabase();
   vi.clearAllMocks();
 });
 
@@ -162,8 +152,7 @@ describe("CardgroupsPage", () => {
   });
 
   it("redirects to /login when no user is signed in", async () => {
-    // state.user remains null after resetMockSupabase — logged-out request
-    setMockSupabaseUser(null);
+    vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "anonymous" }));
 
     await expect(CardgroupsPage()).rejects.toThrow("REDIRECT:/login");
 
@@ -179,14 +168,6 @@ describe("CardgroupsPage", () => {
     mockGqlFetchError(networkErr);
 
     await expect(CardgroupsContent()).rejects.toBe(networkErr);
-
-    expect(redirect).not.toHaveBeenCalled();
-  });
-
-  it("rethrows when Supabase getUser() returns an error", async () => {
-    setMockSupabaseUserError(new Error("supabase boom"));
-
-    await expect(CardgroupsPage()).rejects.toThrow("supabase boom");
 
     expect(redirect).not.toHaveBeenCalled();
   });
