@@ -39,6 +39,11 @@ describe("readAuthContext", () => {
     );
   });
 
+  it("passes through the stale and error statuses unchanged", () => {
+    expect(readAuthContext(headersWith({ [AUTH_STATUS_HEADER]: "stale" })).status).toBe("stale");
+    expect(readAuthContext(headersWith({ [AUTH_STATUS_HEADER]: "error" })).status).toBe("error");
+  });
+
   it("exposes the three identity header names for stripping", () => {
     expect(IDENTITY_HEADERS).toEqual([AUTH_STATUS_HEADER, USER_EMAIL_HEADER, USER_IS_ADMIN_HEADER]);
   });
