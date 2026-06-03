@@ -41,10 +41,13 @@ function makeAdminLayoutData(roleNames: string[]) {
 // Setup / teardown
 // ---------------------------------------------------------------------------
 
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
 beforeEach(() => {
   vi.clearAllMocks();
   // Default: authenticated.
   vi.mocked(headers).mockResolvedValue(new Headers({ "x-auth-status": "authenticated" }));
+  consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -127,10 +130,73 @@ describe("AdminLayout — Step 2: GraphQL role check", () => {
     await expect(AdminLayout({ children: null })).rejects.toBe(networkErr);
 
     expect(redirect).not.toHaveBeenCalled();
+    // PII-redacted payload: only `name` is logged, never `message`.
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[admin-layout] gqlFetch failed:",
+      expect.objectContaining({ name: expect.any(String) }),
+    );
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: expect.anything() }),
+    );
+  });
+
+  test("raw error whose message contains 'UNAUTHENTICATED' → rethrows, no redirect", async () => {
+    const rawErr = new Error("action UNAUTHENTICATED somewhere");
+    vi.mocked(gqlFetch).mockRejectedValueOnce(rawErr);
+
+    await expect(AdminLayout({ children: null })).rejects.toBe(rawErr);
+
+    expect(redirect).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[admin-layout] gqlFetch failed:",
+      expect.objectContaining({ name: expect.any(String) }),
+    );
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: expect.anything() }),
+    );
+  });
+
+  test("raw error whose message contains 'FORBIDDEN' → rethrows, no redirect", async () => {
+    const rawErr = new Error("action FORBIDDEN for user");
+    vi.mocked(gqlFetch).mockRejectedValueOnce(rawErr);
+
+    await expect(AdminLayout({ children: null })).rejects.toBe(rawErr);
+
+    expect(redirect).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[admin-layout] gqlFetch failed:",
+      expect.objectContaining({ name: expect.any(String) }),
+    );
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: expect.anything() }),
+    );
+  });
+
+  test("non-Error rejection value → rethrows, logs name 'unknown'", async () => {
+    vi.mocked(gqlFetch).mockRejectedValueOnce("plain string failure" as never);
+
+    await expect(AdminLayout({ children: null })).rejects.toBe("plain string failure");
+
+    expect(redirect).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[admin-layout] gqlFetch failed:",
+      expect.objectContaining({ name: "unknown" }),
+    );
   });
 
   test("authenticated user without admin role → redirect /", async () => {
     vi.mocked(gqlFetch).mockResolvedValueOnce(makeAdminLayoutData(["viewer"]) as never);
+
+    await expect(AdminLayout({ children: null })).rejects.toThrow(`${REDIRECT_PREFIX}/`);
+
+    expect(redirect).toHaveBeenCalledWith("/");
+  });
+
+  test("authenticated user with zero roles → redirect /", async () => {
+    vi.mocked(gqlFetch).mockResolvedValueOnce(makeAdminLayoutData([]) as never);
 
     await expect(AdminLayout({ children: null })).rejects.toThrow(`${REDIRECT_PREFIX}/`);
 

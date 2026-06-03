@@ -3,6 +3,10 @@ import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { graphql } from "@/generated";
 import type { AdminLayoutMeQuery as AdminLayoutMeQueryType } from "@/generated/graphql";
+import {
+  isForbiddenGraphQLError,
+  isUnauthenticatedGraphQLError,
+} from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { readAuthContext } from "@/lib/supabase/auth-status";
 
@@ -48,8 +52,10 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   try {
     meData = await gqlFetch(AdminLayoutMeQuery, { revalidate: 0 });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("UNAUTHENTICATED") || msg.includes("FORBIDDEN")) redirect("/");
+    if (isUnauthenticatedGraphQLError(err) || isForbiddenGraphQLError(err)) redirect("/");
+    console.error("[admin-layout] gqlFetch failed:", {
+      name: err instanceof Error ? err.name : "unknown",
+    });
     throw err;
   }
 

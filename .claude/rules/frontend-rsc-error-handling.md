@@ -64,7 +64,7 @@ try {
 }
 ```
 
-Use `isUnauthenticatedGraphQLError` for all code paths — including simple redirect-only cases — as it performs a structural `extensions.code` check rather than substring matching and avoids false positives from user-supplied content or stack traces.
+Use `isUnauthenticatedGraphQLError` for all code paths — including simple redirect-only cases — as it performs a structural `extensions.code` check rather than substring matching and avoids false positives from user-supplied content or stack traces. When `UNAUTHENTICATED` and `FORBIDDEN` collapse to the same outcome, combine both helpers in one guard — `if (isUnauthenticatedGraphQLError(err) || isForbiddenGraphQLError(err)) redirect("/")` — as `app/admin/layout.tsx` does, where a logged-out session and a non-admin role both redirect to `/`. Where the two codes diverge in user-facing copy, keep them split (see [`docs/frontend/rsc-error-handling/unauthenticated-vs-forbidden-message-asymmetry.md`](../../docs/frontend/rsc-error-handling/unauthenticated-vs-forbidden-message-asymmetry.md)).
 
 ## Detailed cases (on-demand)
 
