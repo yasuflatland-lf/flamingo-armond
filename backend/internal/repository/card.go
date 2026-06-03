@@ -390,22 +390,76 @@ type dueCardRow struct {
 	Due         *time.Time `gorm:"column:due"`
 }
 
+// findDueCardsOn fetches the cards eligible for a learning session in two
+// independent LIMIT windows and concatenates them: now-due review cards first,
+// then new (never-reviewed) cards. Splitting the fetch is what keeps a large
+// new-card backlog from evicting due reviews under a single LIMIT — the bug that
+// made FSRS scheduling appear inert on big cardgroups. The returned slice may
+// hold up to 2*limit rows; OrderingPolicy (in the usecase) applies the final
+// interleave and truncation to the per-session limit.
 func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error) {
 	userID = coalesceUserIDForJoin(userID)
 	if limit <= 0 {
 		return []domain.DueCard{}, nil
 	}
+
+	// Review cards: an FSRS row exists and its due time has arrived. Ordered by
+	// due ASC so the most-overdue reviews lead.
+	reviewRows, err := dueRowsOn(db, userID,
+		"cards.cardgroup_id = ? AND ucs.due IS NOT NULL AND ucs.due <= ?",
+		[]any{cardgroupID, now},
+		"ucs.due ASC, cards.position ASC, cards.id ASC",
+		limit)
+	if err != nil {
+		return nil, err
+	}
+
+	// New cards: no FSRS row yet. Ordered to match the prior combined query,
+	// whose COALESCE(ucs.due, cards.created_at) key collapses to created_at for
+	// new cards — OrderingPolicy.shuffleSamePosition relies on this pre-sort.
+	newRows, err := dueRowsOn(db, userID,
+		"cards.cardgroup_id = ? AND ucs.due IS NULL",
+		[]any{cardgroupID},
+		"cards.created_at ASC, cards.position ASC, cards.id ASC",
+		limit)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]domain.DueCard, 0, len(reviewRows)+len(newRows))
+	for _, rows := range [][]dueCardRow{reviewRows, newRows} {
+		mapped, err := dueCardsFromRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, mapped...)
+	}
+	return out, nil
+}
+
+// dueRowsOn runs the cards-with-FSRS LEFT JOIN scoped to userID with the given
+// WHERE predicate, ORDER BY clause, and LIMIT. Shared by the review and new-card
+// fetches in findDueCardsOn so the SELECT/JOIN never drift between the two.
+func dueRowsOn(db *gorm.DB, userID, where string, whereArgs []any, order string, limit int) ([]dueCardRow, error) {
 	var rows []dueCardRow
 	if err := db.
 		Table("cards").
 		Select("cards.id, cards.cardgroup_id, cards.front, cards.back, cards.created_at, cards.updated_at, cards.position, ucs.state, ucs.due").
 		Joins("LEFT JOIN user_card_fsrs ucs ON ucs.user_id = ? AND ucs.card_id = cards.id", userID).
-		Where("cards.cardgroup_id = ? AND (ucs.due IS NULL OR ucs.due <= ?)", cardgroupID, now).
-		Order("COALESCE(ucs.due, cards.created_at) ASC, cards.position ASC, cards.id ASC").
+		Where(where, whereArgs...).
+		Order(order).
 		Limit(limit).
 		Find(&rows).Error; err != nil {
 		return nil, eris.Wrap(err, "repository: card: find due cards")
 	}
+	return rows, nil
+}
+
+// dueCardsFromRows maps raw dueCardRow scan results into domain.DueCard values,
+// defaulting State to FSRSStateNew and Due to created_at when the LEFT JOIN
+// produced NULL FSRS columns (a new card). Shared by both fetches in
+// findDueCardsOn.
+func dueCardsFromRows(rows []dueCardRow) ([]domain.DueCard, error) {
 	out := make([]domain.DueCard, len(rows))
 	for i, r := range rows {
 		c := &domain.Card{
