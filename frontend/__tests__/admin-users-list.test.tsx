@@ -8,15 +8,18 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AdminUsersClient } from "@/app/admin/users/admin-users-client";
 import { ADMIN_USERS_PAGE_SIZE } from "@/app/admin/users/queries";
 import { AdminRolesDocument, AdminUsersDocument } from "@/generated/graphql";
+import { adminUserFixture, generalUserFixture, userWithoutRolesFixture } from "./fixtures/users";
 
 // ---------------------------------------------------------------------------
 // Next.js stubs
 // ---------------------------------------------------------------------------
 
+const mockPush = vi.fn();
+
 vi.mock("next/navigation", () => ({
   redirect: vi.fn(),
   usePathname: () => "/admin/users",
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: mockPush, refresh: vi.fn(), replace: vi.fn() }),
   useSearchParams: () => new URLSearchParams(""),
 }));
 
@@ -167,6 +170,7 @@ let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   ioCallbacks = [];
+  mockPush.mockReset();
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -624,5 +628,85 @@ describe("AdminUsersClient", () => {
 
     // No Retry button — re-issuing the same query would fail again.
     expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
+  });
+
+  // T8 (migrated from __tests__/admin-users.test.tsx): each user row exposes an
+  // Edit button that pushes ?edit=<id> via the router — URL-backed sheet state.
+  test("each user row has an Edit button that pushes ?edit=<id>", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    // Cast shared fixtures to the internal UserNode shape (superset is safe).
+    const adminUserNode = adminUserFixture as unknown as UserNode;
+    const generalUserNode = generalUserFixture as unknown as UserNode;
+    const noroleUserNode = userWithoutRolesFixture as unknown as UserNode;
+    const users: UserNode[] = [adminUserNode, generalUserNode, noroleUserNode];
+
+    const connection = makeConnection(users, false);
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: AdminUsersDocument,
+      variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
+      data: { users: connection },
+    });
+    const mocks = [
+      {
+        request: {
+          query: AdminUsersDocument,
+          variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
+        },
+        result: { data: { users: connection } },
+      },
+      ADMIN_ROLES_MOCK,
+    ];
+
+    render(
+      <MockedProvider mocks={mocks as never} cache={cache}>
+        <AdminUsersClient />
+      </MockedProvider>,
+    );
+
+    // Wait for the first display name to confirm the list rendered.
+    await screen.findByText(adminUserFixture.displayName as string);
+
+    for (const userNode of users) {
+      const row = screen.getByTestId(`admin-user-row-${userNode.id}`);
+      await user.click(screen.getByRole("button", { name: `Edit ${userNode.displayName}` }));
+      expect(row).toBeInTheDocument();
+      expect(mockPush).toHaveBeenLastCalledWith(`/admin/users?edit=${userNode.id}`, {
+        scroll: false,
+      });
+    }
+  });
+
+  // T9 (migrated from __tests__/admin-users.test.tsx): empty connection renders
+  // the empty-state copy and hides the user list.
+  test("renders empty-state copy when the connection has no edges", async () => {
+    const connection = makeConnection([], false);
+    const cache = new InMemoryCache();
+    cache.writeQuery({
+      query: AdminUsersDocument,
+      variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
+      data: { users: connection },
+    });
+    const mocks = [
+      {
+        request: {
+          query: AdminUsersDocument,
+          variables: { first: ADMIN_USERS_PAGE_SIZE, search: null },
+        },
+        result: { data: { users: connection } },
+      },
+      ADMIN_ROLES_MOCK,
+    ];
+
+    render(
+      <MockedProvider mocks={mocks as never} cache={cache}>
+        <AdminUsersClient />
+      </MockedProvider>,
+    );
+
+    const empty = await screen.findByTestId("admin-users-empty");
+    expect(empty).toHaveTextContent("No users found.");
+    expect(screen.queryByTestId("admin-users-list")).not.toBeInTheDocument();
   });
 });
