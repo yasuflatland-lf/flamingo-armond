@@ -225,4 +225,80 @@ describe("updateSession", () => {
 
     consoleErrorSpy.mockRestore();
   });
+
+  it("forwards anonymous identity headers when there is no session", async () => {
+    const response = await updateSession(makeRequest());
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("anonymous");
+    expect(forwardedRequestHeader(response, "x-user-email")).toBe("");
+    expect(forwardedRequestHeader(response, "x-user-is-admin")).toBe("false");
+  });
+
+  it("forwards authenticated identity headers, isAdmin true for an admin user", async () => {
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: { email: "admin@example.com", app_metadata: { role: "admin" } } },
+      error: null,
+    });
+    const response = await updateSession(makeRequest());
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("authenticated");
+    expect(forwardedRequestHeader(response, "x-user-email")).toBe("admin@example.com");
+    expect(forwardedRequestHeader(response, "x-user-is-admin")).toBe("true");
+  });
+
+  it("forwards isAdmin false for a non-admin authenticated user", async () => {
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: { email: "u@example.com", app_metadata: {} } },
+      error: null,
+    });
+    const response = await updateSession(makeRequest());
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("authenticated");
+    expect(forwardedRequestHeader(response, "x-user-is-admin")).toBe("false");
+  });
+
+  it("classifies a stale-session error", async () => {
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: null },
+      error: { name: "AuthApiError", message: "User from sub claim in JWT does not exist" },
+    });
+    const response = await updateSession(makeRequest());
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("stale");
+  });
+
+  it("classifies a non-ignorable error", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: null },
+      error: { name: "AuthError", message: "network failure" },
+    });
+    const response = await updateSession(makeRequest());
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("error");
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("strips inbound (spoofed) identity headers", async () => {
+    const req = makeRequest();
+    req.headers.set("x-user-is-admin", "true");
+    req.headers.set("x-user-email", "evil@attacker.test");
+    req.headers.set("x-auth-status", "authenticated");
+    const response = await updateSession(req);
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("anonymous");
+    expect(forwardedRequestHeader(response, "x-user-email")).toBe("");
+    expect(forwardedRequestHeader(response, "x-user-is-admin")).toBe("false");
+  });
+
+  it("preserves refreshed auth cookies alongside identity headers", async () => {
+    const { createServerClient } = await import("@supabase/ssr");
+    vi.mocked(createServerClient).mockImplementationOnce(
+      // biome-ignore lint/suspicious/noExplicitAny: test-only cast to drive setAll
+      (_url, _key, opts: any) => {
+        opts.cookies.setAll([{ name: "sb-auth-token", value: "refreshed", options: {} }]);
+        // biome-ignore lint/suspicious/noExplicitAny: test-only stub return
+        return { auth: { getUser: mockGetUser } } as any;
+      },
+    );
+    const response = await updateSession(
+      makeRequest("http://localhost/", { "sb-auth-token": "old" }),
+    );
+    expect(response.cookies.get("sb-auth-token")?.value).toBe("refreshed");
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("anonymous");
+  });
 });
