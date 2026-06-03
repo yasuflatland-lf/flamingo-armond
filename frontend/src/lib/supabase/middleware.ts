@@ -88,7 +88,8 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
   const nonIgnorable = error != null && !isIgnorableAuthError(error);
   if (nonIgnorable) {
-    console.error("[supabase/middleware] getUser() failed:", error.name, error.message);
+    // err.message omitted — a Supabase auth error message may carry user-identifying content.
+    console.error("[supabase/middleware] getUser() failed:", error.name);
   }
 
   // isAdmin is a UI hint only (real gate is app/admin/layout.tsx). The admin role
@@ -101,10 +102,10 @@ export async function updateSession(request: NextRequest) {
     try {
       const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
       if (claimsError) {
+        // err.message omitted — a Supabase auth error message may carry user-identifying content.
         console.warn(
           "[supabase/middleware] getClaims() failed — isAdmin defaulting to false:",
           claimsError.name,
-          claimsError.message,
         );
       }
       isAdmin = claimsData?.claims?.app_metadata?.role === "admin";
@@ -114,7 +115,7 @@ export async function updateSession(request: NextRequest) {
       // isAdmin is a UI hint only (real gate is app/admin/layout.tsx), so fail closed.
       console.warn(
         "[supabase/middleware] getClaims() threw unexpectedly — isAdmin defaulting to false:",
-        err,
+        err instanceof Error ? err.name : "unknown",
       );
     }
   }

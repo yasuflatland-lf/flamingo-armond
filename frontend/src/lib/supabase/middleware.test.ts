@@ -186,7 +186,6 @@ describe("updateSession", () => {
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "[supabase/middleware] getUser() failed:",
       "AuthError",
-      "network failure",
     );
     consoleErrorSpy.mockRestore();
   });
