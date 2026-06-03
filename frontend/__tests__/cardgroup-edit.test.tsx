@@ -9,9 +9,14 @@
  * seed) is mocked; the client-side Apollo layer uses a seeded InMemoryCache
  * so CardsClient renders from SSR props immediately.
  *
+ * Auth is driven by the middleware-forwarded `x-auth-status` header via
+ * `readAuthContext(await headers())`. The default mock returns
+ * `x-auth-status: authenticated`; individual tests override with
+ * `vi.mocked(headers).mockResolvedValueOnce(...)`.
+ *
  * NOT covered here (owned by narrow tests):
  *   - IntersectionObserver pagination / fetchMore  → cards-pagination.test.tsx
- *   - Bulk-delete selection + mutation              → cards-bulk-delete.test.tsx
+ *   - Bulk-delete selection + mutation              → cardgroup-settings-card.test.tsx
  *   - Mutation success/error branches               → cardgroup-settings-card.test.tsx
  *   - Section header control assertions             → cardgroup-cards-section.test.tsx
  */
@@ -23,12 +28,6 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CardsByCardgroupConnectionDocument } from "@/generated/graphql";
 import { cardsConnectionFixture, cardsFixture } from "./fixtures/cardgroups";
-import {
-  mockCreateSupabaseServerClient,
-  resetMockSupabase,
-  setMockSupabaseUser,
-  setMockSupabaseUserError,
-} from "./utils/mock-supabase";
 
 vi.mock("next/navigation", () => ({
   redirect: vi.fn((url: string) => {
@@ -60,14 +59,15 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: mockCreateSupabaseServerClient,
+vi.mock("next/headers", () => ({
+  headers: vi.fn(async () => new Headers({ "x-auth-status": "authenticated" })),
 }));
 
 vi.mock("@/lib/apollo/server", () => ({
   gqlFetch: vi.fn(),
 }));
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cardsDefaultVars } from "@/app/cardgroups/[id]/cards/queries";
 import EditCardgroupPage from "@/app/cardgroups/[id]/edit/page";
@@ -123,7 +123,6 @@ async function renderPage(
 }
 
 beforeEach(() => {
-  resetMockSupabase();
   vi.clearAllMocks();
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
 });
@@ -134,8 +133,6 @@ afterEach(() => {
 
 describe("EditCardgroupPage — broad integration (RSC + management screen)", () => {
   it("renders the cardgroup name as the h1 page title", async () => {
-    setMockSupabaseUser({ id: "user-admin-1" });
-
     mockEditPageGql(POPULATED_CONNECTION);
     await renderPage(POPULATED_CONNECTION);
 
@@ -143,8 +140,6 @@ describe("EditCardgroupPage — broad integration (RSC + management screen)", ()
   });
 
   it("renders all SSR-seeded card front texts via the embedded CardsClient", async () => {
-    setMockSupabaseUser({ id: "user-admin-1" });
-
     mockEditPageGql(POPULATED_CONNECTION);
     await renderPage(POPULATED_CONNECTION);
 
@@ -157,8 +152,6 @@ describe("EditCardgroupPage — broad integration (RSC + management screen)", ()
     // Settings and Danger zone were moved into the kebab DropdownMenu (Task 1).
     // The count chip was removed from the toolbar (Task 2); count shows in the
     // page-level Badge next to the h1 instead.
-    setMockSupabaseUser({ id: "user-admin-1" });
-
     mockEditPageGql(POPULATED_CONNECTION);
     await renderPage(POPULATED_CONNECTION);
 
@@ -170,7 +163,6 @@ describe("EditCardgroupPage — broad integration (RSC + management screen)", ()
 
   it("renders Start learning link and opens the in-context Add card sheet", async () => {
     const user = userEvent.setup();
-    setMockSupabaseUser({ id: "user-admin-1" });
 
     mockEditPageGql(POPULATED_CONNECTION);
     await renderPage(POPULATED_CONNECTION);
@@ -184,8 +176,6 @@ describe("EditCardgroupPage — broad integration (RSC + management screen)", ()
   });
 
   it("shows the empty-state copy when gqlFetch returns an empty connection", async () => {
-    setMockSupabaseUser({ id: "user-admin-1" });
-
     mockEditPageGql(EMPTY_CONNECTION);
     await renderPage(EMPTY_CONNECTION);
 
@@ -193,23 +183,14 @@ describe("EditCardgroupPage — broad integration (RSC + management screen)", ()
   });
 
   it("redirects to /login when no user is authenticated", async () => {
-    setMockSupabaseUser(null);
+    vi.mocked(headers).mockResolvedValueOnce(
+      new Headers({ "x-auth-status": "anonymous" }) as never,
+    );
 
     await expect(EditCardgroupPage({ params: Promise.resolve({ id: CG_ID }) })).rejects.toThrow(
       "REDIRECT:/login",
     );
     expect(redirect).toHaveBeenCalledWith("/login");
-    expect(gqlFetch).not.toHaveBeenCalled();
-  });
-
-  it("rethrows when Supabase getUser() returns an error", async () => {
-    setMockSupabaseUserError(new Error("supabase boom"));
-
-    await expect(EditCardgroupPage({ params: Promise.resolve({ id: CG_ID }) })).rejects.toThrow(
-      "supabase boom",
-    );
-
-    expect(redirect).not.toHaveBeenCalled();
     expect(gqlFetch).not.toHaveBeenCalled();
   });
 });
