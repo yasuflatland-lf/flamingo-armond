@@ -175,6 +175,18 @@ describe("AdminLayout — Step 2: GraphQL role check", () => {
     );
   });
 
+  test("non-Error rejection value → rethrows, logs name 'unknown'", async () => {
+    vi.mocked(gqlFetch).mockRejectedValueOnce("plain string failure" as never);
+
+    await expect(AdminLayout({ children: null })).rejects.toBe("plain string failure");
+
+    expect(redirect).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[admin-layout] gqlFetch failed:",
+      expect.objectContaining({ name: "unknown" }),
+    );
+  });
+
   test("authenticated user without admin role → redirect /", async () => {
     vi.mocked(gqlFetch).mockResolvedValueOnce(makeAdminLayoutData(["viewer"]) as never);
 
