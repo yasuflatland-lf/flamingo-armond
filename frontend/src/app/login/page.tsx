@@ -1,25 +1,15 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
-import { isIgnorableAuthError } from "@/lib/supabase/auth-errors";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { readAuthContext } from "@/lib/supabase/auth-status";
 import { LoginButton } from "./login-button";
 
 type SearchParams = Promise<{ error?: string }>;
 
 export default async function LoginPage({ searchParams }: { searchParams: SearchParams }) {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
-  // AuthSessionMissingError = anonymous request; stale session = deleted user
-  // with a still-valid JWT. For the login page, stale session means user is
-  // null — no redirect to /cardgroups, so the page renders normally.
-  if (authErr && !isIgnorableAuthError(authErr)) {
-    console.error("[login] getUser() failed:", authErr.name, authErr.message);
-    throw authErr;
-  }
-  if (user) redirect("/cardgroups");
+  // Redirect an already-authenticated visitor away. The middleware forwards
+  // identity via x-auth-status; stale / anonymous / error all render the page.
+  if (readAuthContext(await headers()).status === "authenticated") redirect("/cardgroups");
 
   const { error } = await searchParams;
   return (

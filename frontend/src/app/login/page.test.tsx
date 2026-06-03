@@ -9,8 +9,8 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: vi.fn(),
+vi.mock("next/headers", () => ({
+  headers: vi.fn(async () => new Headers({ "x-auth-status": "anonymous" })),
 }));
 
 // Mock LoginButton to avoid pulling in the Supabase browser client
@@ -18,33 +18,52 @@ vi.mock("./login-button", () => ({
   LoginButton: () => <button type="button">Sign in</button>,
 }));
 
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { headers } from "next/headers";
 import LoginPage from "./page";
-
-function makeSupabaseMock(user: { id: string; email?: string } | null, error: Error | null = null) {
-  return {
-    auth: {
-      getUser: vi.fn().mockResolvedValue({
-        data: { user },
-        error,
-      }),
-    },
-  };
-}
 
 describe("LoginPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("anonymous user: renders LoginButton and no error banner", async () => {
-    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
+  it("authenticated user: redirects to /cardgroups", async () => {
+    vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "authenticated" }));
 
+    await expect(LoginPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
+      "REDIRECT:/cardgroups",
+    );
+  });
+
+  it("anonymous user: renders the Sign in heading", async () => {
+    const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
+    render(jsx);
+
+    expect(screen.getByRole("heading", { level: 1, name: /sign in/i })).toBeInTheDocument();
+  });
+
+  it("stale session: renders the Sign in heading (no redirect)", async () => {
+    vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "stale" }));
+
+    const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
+    render(jsx);
+
+    expect(screen.getByRole("heading", { level: 1, name: /sign in/i })).toBeInTheDocument();
+  });
+
+  it("error status: renders the Sign in heading (no redirect)", async () => {
+    vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "error" }));
+
+    const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
+    render(jsx);
+
+    expect(screen.getByRole("heading", { level: 1, name: /sign in/i })).toBeInTheDocument();
+  });
+
+  it("anonymous user: renders LoginButton and no error banner", async () => {
     const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
     render(jsx);
 
@@ -52,19 +71,7 @@ describe("LoginPage", () => {
     expect(screen.queryByText(/sign-in failed/i)).not.toBeInTheDocument();
   });
 
-  it("logged-in user: calls redirect to /cardgroups", async () => {
-    vi.mocked(createSupabaseServerClient).mockResolvedValue(
-      makeSupabaseMock({ id: "u-1", email: "user@example.com" }) as never,
-    );
-
-    await expect(LoginPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
-      "REDIRECT:/cardgroups",
-    );
-  });
-
   it("searchParams.error set: displays sign-in failed banner", async () => {
-    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
-
     const jsx = await LoginPage({ searchParams: Promise.resolve({ error: "access_denied" }) });
     render(jsx);
 
@@ -72,39 +79,10 @@ describe("LoginPage", () => {
     expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
   });
 
-  it("non-AuthSessionMissingError is rethrown", async () => {
-    const boom = new Error("network failure");
-    boom.name = "FetchError";
-    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null, boom) as never);
-
-    await expect(LoginPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
-      "network failure",
-    );
-    expect(console.error).toHaveBeenCalledWith(
-      "[login] getUser() failed:",
-      "FetchError",
-      "network failure",
-    );
-  });
-
-  it("AuthSessionMissingError is silenced and renders LoginButton", async () => {
-    const noSession = new Error("Auth session missing!");
-    noSession.name = "AuthSessionMissingError";
-    vi.mocked(createSupabaseServerClient).mockResolvedValue(
-      makeSupabaseMock(null, noSession) as never,
-    );
-
-    const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
-    render(jsx);
-
-    expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
-  });
-
   describe("split-screen layout (anonymous user)", () => {
     let container: HTMLElement;
 
     beforeEach(async () => {
-      vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
       const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
       ({ container } = render(jsx));
     });
@@ -186,8 +164,6 @@ describe("LoginPage", () => {
   });
 
   it("split-screen: error banner and brand panel both render when error param is set", async () => {
-    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
-
     const jsx = await LoginPage({ searchParams: Promise.resolve({ error: "access_denied" }) });
     const { container } = render(jsx);
 
@@ -198,8 +174,6 @@ describe("LoginPage", () => {
   });
 
   it("error banner has role='alert' so screen readers announce sign-in failure", async () => {
-    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
-
     const jsx = await LoginPage({ searchParams: Promise.resolve({ error: "access_denied" }) });
     render(jsx);
 
@@ -207,8 +181,6 @@ describe("LoginPage", () => {
   });
 
   it("no error param: role='alert' element is not present", async () => {
-    vi.mocked(createSupabaseServerClient).mockResolvedValue(makeSupabaseMock(null) as never);
-
     const jsx = await LoginPage({ searchParams: Promise.resolve({}) });
     render(jsx);
 
