@@ -2,23 +2,15 @@
 import { render, screen } from "@testing-library/react";
 import { Suspense } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  mockCreateSupabaseServerClient,
-  resetMockSupabase,
-  setMockSupabaseUser,
-  setMockSupabaseUserError,
-} from "../../../../__tests__/utils/mock-supabase";
+
+vi.mock("next/headers", () => ({
+  headers: vi.fn(async () => new Headers({ "x-auth-status": "authenticated" })),
+}));
 
 vi.mock("next/navigation", () => ({
   redirect: vi.fn((url: string) => {
     throw new Error(`REDIRECT:${url}`);
   }),
-}));
-
-// Mock createSupabaseServerClient using the shared utility so per-test state is
-// driven via setMockSupabaseUser / setMockSupabaseUserError.
-vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: mockCreateSupabaseServerClient,
 }));
 
 vi.mock("@/lib/apollo/server", () => ({
@@ -41,6 +33,7 @@ vi.mock("./learn-client", () => ({
   ),
 }));
 
+import { headers } from "next/headers";
 import { gqlFetch } from "@/lib/apollo/server";
 import { LearnSkeleton } from "./_components/learn-skeleton";
 import LearnPage from "./page";
@@ -92,86 +85,12 @@ function getSuspenseChild(jsx: unknown): {
 }
 
 // ---------------------------------------------------------------------------
-// AuthSessionMissingError filter — .claude/rules/frontend-rsc-error-handling.md
-// § "AuthSessionMissingError is the no session signal"
-// ---------------------------------------------------------------------------
-
-describe("LearnPage — AuthSessionMissingError filter", () => {
-  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
-
-  beforeEach(() => {
-    resetMockSupabase();
-    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    consoleErrorSpy.mockRestore();
-  });
-
-  it("redirects to /login on AuthSessionMissingError without calling console.error", async () => {
-    // AuthSessionMissingError is the normal anonymous-visitor signal; it must NOT
-    // be treated as a real failure (no console.error, just redirect).
-    const authMissing = new Error("Auth session missing!");
-    authMissing.name = "AuthSessionMissingError";
-    setMockSupabaseUserError(authMissing);
-
-    await expect(LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) })).rejects.toThrow(
-      "REDIRECT:/login",
-    );
-
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
-  });
-
-  it("calls console.error (PII-redacted) and rethrows when getUser returns a non-ignorable error", async () => {
-    // An AuthApiError whose message does NOT include "does not exist" is not a
-    // stale-session error, so isIgnorableAuthError returns false and it must
-    // bubble up so the error boundary handles it.
-    const fakeError = new Error("something broke");
-    fakeError.name = "AuthApiError";
-    setMockSupabaseUserError(fakeError);
-
-    await expect(
-      LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) }),
-    ).rejects.toMatchObject({
-      name: fakeError.name,
-      message: fakeError.message,
-    });
-
-    // PII-redacted payload: only `name` is logged inside an object, never `message`.
-    expect(consoleErrorSpy).toHaveBeenCalledWith("[learn] getUser() failed:", {
-      name: fakeError.name,
-    });
-    // Assert that `message` (which may carry user-supplied content) is absent.
-    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ message: expect.anything() }),
-    );
-  });
-
-  it("redirects to /login on stale-session (deleted user) auth error", async () => {
-    // isStaleSessionError: name === "AuthApiError" AND message includes "does not exist".
-    // isIgnorableAuthError returns true for stale-session, so it does NOT throw;
-    // the subsequent `isStaleSessionError(authErr)` check redirects to /login.
-    const staleErr = new Error("User from sub claim does not exist");
-    staleErr.name = "AuthApiError";
-    setMockSupabaseUserError(staleErr);
-
-    await expect(LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) })).rejects.toThrow(
-      "REDIRECT:/login",
-    );
-
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
-  });
-});
-
-// ---------------------------------------------------------------------------
 // LearnContent — non-UNAUTHENTICATED gqlFetch error rethrow with PII redaction
 // ---------------------------------------------------------------------------
 
 describe("LearnPage — LearnContent gqlFetch error branches", () => {
   beforeEach(() => {
-    resetMockSupabase();
-    setMockSupabaseUser({ id: "user-1" });
+    vi.mocked(headers).mockResolvedValue(new Headers({ "x-auth-status": "authenticated" }));
   });
 
   it("rethrows non-auth gqlFetch errors and logs PII-redacted payload", async () => {
@@ -202,12 +121,31 @@ describe("LearnPage — LearnContent gqlFetch error branches", () => {
 
 describe("LearnPage", () => {
   beforeEach(() => {
-    resetMockSupabase();
-    setMockSupabaseUser({ id: "user-1" });
+    vi.mocked(headers).mockResolvedValue(new Headers({ "x-auth-status": "authenticated" }));
   });
 
-  it("redirects to /login when no user is authenticated", async () => {
-    setMockSupabaseUser(null);
+  afterEach(() => {
+    vi.mocked(gqlFetch).mockReset();
+  });
+
+  it("redirects to /login when unauthenticated", async () => {
+    vi.mocked(headers).mockResolvedValue(new Headers({ "x-auth-status": "anonymous" }));
+
+    await expect(LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) })).rejects.toThrow(
+      "REDIRECT:/login",
+    );
+  });
+
+  it("redirects to /login when auth status is stale", async () => {
+    vi.mocked(headers).mockResolvedValue(new Headers({ "x-auth-status": "stale" }));
+
+    await expect(LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) })).rejects.toThrow(
+      "REDIRECT:/login",
+    );
+  });
+
+  it("redirects to /login when auth status is error", async () => {
+    vi.mocked(headers).mockResolvedValue(new Headers({ "x-auth-status": "error" }));
 
     await expect(LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) })).rejects.toThrow(
       "REDIRECT:/login",
