@@ -18,28 +18,38 @@
 -- surfaces as a benign rls_enabled_no_policy INFO in the Supabase advisor rather
 -- than the rls_disabled_in_public ERROR the missing RLS previously raised.
 --
+-- public.schema_migrations is created by golang-migrate itself, NOT by any
+-- migration SQL file. Harnesses that apply these up files directly with psql
+-- (e.g. the SchemaSpy ER-chart workflow in .github/workflows/er-chart.yml) never
+-- run golang-migrate, so the table is absent there. Every statement below is
+-- therefore guarded on the table's existence via to_regclass, making this
+-- migration a no-op in that case while still enabling deny-all RLS under
+-- golang-migrate (production, and the Go testcontainer suite). The guard also
+-- requires dynamic EXECUTE because ALTER TABLE / REVOKE cannot be made
+-- conditional otherwise.
+--
 -- golang-migrate pgx/v5 does NOT auto-wrap migrations in a transaction; the
 -- explicit BEGIN/COMMIT below ensures all-or-nothing execution.
 
 BEGIN;
 
-ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY;
-
--- Defense in depth: remove the PostgREST grant surface entirely. Guarded with
--- pg_roles probes so the migration stays portable to plain PostgreSQL
--- (testcontainers) where anon / authenticated may not exist.
 DO $$
 BEGIN
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
-        REVOKE ALL ON public.schema_migrations FROM anon;
+    IF to_regclass('public.schema_migrations') IS NULL THEN
+        RAISE NOTICE 'schema_migrations absent (non-golang-migrate harness); skipping RLS hardening';
+        RETURN;
     END IF;
-END
-$$;
 
-DO $$
-BEGIN
+    EXECUTE 'ALTER TABLE public.schema_migrations ENABLE ROW LEVEL SECURITY';
+
+    -- Defense in depth: remove the PostgREST grant surface entirely. Guarded
+    -- with pg_roles probes so the migration stays portable to plain PostgreSQL
+    -- (testcontainers) where anon / authenticated may not exist.
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        EXECUTE 'REVOKE ALL ON public.schema_migrations FROM anon';
+    END IF;
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-        REVOKE ALL ON public.schema_migrations FROM authenticated;
+        EXECUTE 'REVOKE ALL ON public.schema_migrations FROM authenticated';
     END IF;
 END
 $$;
