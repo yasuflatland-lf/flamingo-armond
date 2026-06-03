@@ -53,6 +53,9 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     meData = await gqlFetch(AdminLayoutMeQuery, { revalidate: 0 });
   } catch (err) {
     if (isUnauthenticatedGraphQLError(err) || isForbiddenGraphQLError(err)) redirect("/");
+    console.error("[admin-layout] gqlFetch failed:", {
+      name: err instanceof Error ? err.name : "unknown",
+    });
     throw err;
   }
 
