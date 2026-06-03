@@ -119,13 +119,16 @@ export async function updateSession(request: NextRequest) {
       );
     }
   }
-  const authStatus: AuthStatus = user
-    ? "authenticated"
-    : isStaleSessionError(error)
-      ? "stale"
-      : nonIgnorable
-        ? "error"
-        : "anonymous";
+  let authStatus: AuthStatus;
+  if (user) {
+    authStatus = "authenticated";
+  } else if (isStaleSessionError(error)) {
+    authStatus = "stale";
+  } else if (nonIgnorable) {
+    authStatus = "error";
+  } else {
+    authStatus = "anonymous";
+  }
 
   requestHeaders.set(AUTH_STATUS_HEADER, authStatus);
   requestHeaders.set(USER_EMAIL_HEADER, user?.email ?? "");
