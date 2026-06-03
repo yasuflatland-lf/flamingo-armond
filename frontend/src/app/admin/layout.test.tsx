@@ -183,6 +183,14 @@ describe("AdminLayout — Step 2: GraphQL role check", () => {
     expect(redirect).toHaveBeenCalledWith("/");
   });
 
+  test("authenticated user with zero roles → redirect /", async () => {
+    vi.mocked(gqlFetch).mockResolvedValueOnce(makeAdminLayoutData([]) as never);
+
+    await expect(AdminLayout({ children: null })).rejects.toThrow(`${REDIRECT_PREFIX}/`);
+
+    expect(redirect).toHaveBeenCalledWith("/");
+  });
+
   test("me is null (no roles) → redirect /", async () => {
     vi.mocked(gqlFetch).mockResolvedValueOnce({ me: null } as never);
 
