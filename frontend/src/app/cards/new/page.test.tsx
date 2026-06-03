@@ -112,7 +112,6 @@ describe("CardsNewPage — auth branches", () => {
   });
 
   test("proceeds when authenticated → gqlFetch is not blocked by auth gate", async () => {
-    vi.mocked(headers).mockResolvedValue(new Headers({ "x-auth-status": "authenticated" }));
     // gqlFetch will reject, but only AFTER the auth gate passes — proving the
     // gate did not redirect.
     vi.mocked(gqlFetch).mockRejectedValueOnce(new Error("network"));

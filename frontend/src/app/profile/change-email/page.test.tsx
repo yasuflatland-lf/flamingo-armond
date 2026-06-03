@@ -27,6 +27,7 @@ vi.mock("./change-email-client", () => ({
   ),
 }));
 
+import { headers } from "next/headers";
 import ChangeEmailPage from "./page";
 
 describe("ChangeEmailPage — auth gate", () => {
@@ -35,7 +36,6 @@ describe("ChangeEmailPage — auth gate", () => {
   });
 
   it("redirects to /login when not authenticated", async () => {
-    const { headers } = await import("next/headers");
     vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "anonymous" }));
 
     await expect(ChangeEmailPage()).rejects.toThrow("REDIRECT:/login");
@@ -44,7 +44,6 @@ describe("ChangeEmailPage — auth gate", () => {
   });
 
   it("renders with forwarded email when authenticated", async () => {
-    const { headers } = await import("next/headers");
     vi.mocked(headers).mockResolvedValueOnce(
       new Headers({ "x-auth-status": "authenticated", "x-user-email": "alice@example.com" }),
     );

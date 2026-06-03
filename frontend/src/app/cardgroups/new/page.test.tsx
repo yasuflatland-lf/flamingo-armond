@@ -6,6 +6,7 @@ import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { headers } from "next/headers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CARDGROUPS_DEFAULT_VARS } from "@/app/cardgroups/queries";
 import { CreateCardgroupDocument, MyCardgroupsConnectionDocument } from "@/generated/graphql";
@@ -585,7 +586,6 @@ describe("authentication boundary", () => {
   });
 
   it("redirects to /login when x-auth-status is anonymous", async () => {
-    const { headers } = await import("next/headers");
     vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "anonymous" }));
 
     await expect(NewCardgroupPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
