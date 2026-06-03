@@ -98,8 +98,25 @@ export async function updateSession(request: NextRequest) {
   // jose/WebCrypto and is Edge-compatible.
   let isAdmin = false;
   if (user) {
-    const { data: claimsData } = await supabase.auth.getClaims();
-    isAdmin = claimsData?.claims?.app_metadata?.role === "admin";
+    try {
+      const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+      if (claimsError) {
+        console.warn(
+          "[supabase/middleware] getClaims() failed — isAdmin defaulting to false:",
+          claimsError.name,
+          claimsError.message,
+        );
+      }
+      isAdmin = claimsData?.claims?.app_metadata?.role === "admin";
+    } catch (err) {
+      // getClaims() can throw non-AuthError exceptions (plain Error from validateExp,
+      // DOMException from WebCrypto) that escape the SDK's internal AuthError catch.
+      // isAdmin is a UI hint only (real gate is app/admin/layout.tsx), so fail closed.
+      console.warn(
+        "[supabase/middleware] getClaims() threw unexpectedly — isAdmin defaulting to false:",
+        err,
+      );
+    }
   }
   const authStatus: AuthStatus = user
     ? "authenticated"

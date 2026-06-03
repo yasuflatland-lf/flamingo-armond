@@ -289,6 +289,37 @@ describe("updateSession", () => {
     consoleErrorSpy.mockRestore();
   });
 
+  it("defaults isAdmin to false and warns when getClaims returns an error", async () => {
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: { email: "u@example.com", app_metadata: {} } },
+      error: null,
+    });
+    mockGetClaims.mockResolvedValueOnce({
+      data: null,
+      error: { name: "AuthApiError", message: "JWKS fetch failed" },
+    });
+    const response = await updateSession(makeRequest());
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("authenticated");
+    expect(forwardedRequestHeader(response, "x-user-is-admin")).toBe("false");
+    expect(consoleWarnSpy).toHaveBeenCalled();
+    consoleWarnSpy.mockRestore();
+  });
+
+  it("does not 500 when getClaims throws; isAdmin defaults to false", async () => {
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: { email: "u@example.com", app_metadata: {} } },
+      error: null,
+    });
+    mockGetClaims.mockRejectedValueOnce(new Error("JWT has expired"));
+    const response = await updateSession(makeRequest());
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("authenticated");
+    expect(forwardedRequestHeader(response, "x-user-is-admin")).toBe("false");
+    expect(consoleWarnSpy).toHaveBeenCalled();
+    consoleWarnSpy.mockRestore();
+  });
+
   it("strips inbound (spoofed) identity headers", async () => {
     const req = makeRequest();
     req.headers.set("x-user-is-admin", "true");
