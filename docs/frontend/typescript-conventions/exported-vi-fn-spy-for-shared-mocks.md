@@ -81,4 +81,4 @@ Inline `vi.fn()` per test file is fine when only one test needs the call-count a
 2. The factory is non-trivial (multiple state knobs, multiple return shapes — see the `setMockSupabaseClaimsDataNull()` setter for the TOCTOU race shape).
 3. Any test asserts call counts on the factory itself — the inline `vi.mock("path", () => ({ X: vi.fn(...) }))` form does not expose the captured spy to assertions outside the factory closure.
 
-Reference: `frontend/__tests__/utils/mock-supabase.ts` (the canonical implementation), `frontend/src/app/page.test.tsx` (the `/login` redirect test that demonstrates the factory spy assertion).
+Reference: `frontend/__tests__/utils/mock-supabase.ts` (the canonical implementation). `frontend/__tests__/admin-users.test.tsx` is the primary consumer — it wires `mockCreateSupabaseServerClient` into `vi.mock("@/lib/supabase/server", ...)` and exercises the auth-gate redirect path via `AdminUsersPage`.

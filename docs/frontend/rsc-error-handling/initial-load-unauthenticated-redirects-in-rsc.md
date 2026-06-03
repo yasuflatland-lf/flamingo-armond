@@ -8,16 +8,12 @@ The fix is to intercept the GraphQL error in the RSC `page.tsx` itself, before i
 
 ```tsx
 // frontend/src/app/profile/page.tsx
+import { headers } from "next/headers";
+import { readAuthContext } from "@/lib/supabase/auth-status";
 import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 
 export default async function ProfilePage() {
-  const supabase = await createSupabaseServerClient();
-  const { data: { user }, error: authErr } = await supabase.auth.getUser();
-  if (authErr && authErr.name !== "AuthSessionMissingError") {
-    console.error("[profile] getUser() failed:", authErr.name, authErr.message);
-    throw authErr;
-  }
-  if (!user) redirect("/login");
+  if (readAuthContext(await headers()).status !== "authenticated") redirect("/login");
 
   let data: MeQueryType;
   try {
@@ -26,7 +22,9 @@ export default async function ProfilePage() {
     if (isUnauthenticatedGraphQLError(err)) {
       redirect("/login");
     }
-    console.error("[profile] gqlFetch failed:", err);
+    console.error("[profile] gqlFetch failed:", {
+      name: err instanceof Error ? err.name : "unknown",
+    });
     throw err;
   }
   /* ...render with data... */
@@ -52,4 +50,4 @@ export default function ProfileError({ error, reset }: { error: Error & { digest
 
 **Why:** the RSC has the GraphQL error in scope at the `try/catch` boundary BEFORE the client component ever renders, so the `redirect()` happens server-side and the user navigates without seeing the error fallback. Moving the redirect to the RSC also removes the substring-match dependency: `isUnauthenticatedGraphQLError` parses the structured extension, so the routing decision is correct even when the upstream message text changes. Pin the structural log assertion in the boundary's test — `expect.objectContaining({ message: "...", digest: "..." })` — using `digest` as the discriminating key (`Error.prototype` does not have `digest`) per [`docs/frontend/typescript-conventions.md` § "`expect.objectContaining({ message })` is not enough — add a discriminating key"](../typescript-conventions/expect-objectcontaining-message-is-not-enough.md).
 
-**How to apply:** any RSC `page.tsx` whose data fetch can return GraphQL `UNAUTHENTICATED` (i.e. any auth-gated query) MUST intercept the error and `redirect("/login")` from the page itself, using `isUnauthenticatedGraphQLError`. The sibling `error.tsx` keeps a small log-and-retry shell for residual failure modes; do not put `router.replace` in `error.tsx`. Today's pattern: `frontend/src/app/profile/page.tsx` (RSC redirect) + `frontend/src/app/profile/error.tsx` (degraded boundary). This rule pairs with [§ "Structurally parse GraphQL `extensions.code`"](../../../.claude/rules/frontend-rsc-error-handling.md#structurally-parse-graphql-extensionscode--never-substring-match-the-message) — both eliminate substring-matching on error.message at the routing seam.
+**How to apply:** any RSC `page.tsx` whose data fetch can return GraphQL `UNAUTHENTICATED` (i.e. any auth-gated query) MUST intercept the error and `redirect("/login")` from the page itself, using `isUnauthenticatedGraphQLError`. The outer session gate uses `readAuthContext(await headers()).status !== "authenticated"` (standard pages) or `getUser()` (admin and login pages). The sibling `error.tsx` keeps a small log-and-retry shell for residual failure modes; do not put `router.replace` in `error.tsx`. Reference: `frontend/src/app/profile/page.tsx` (RSC redirect) + `frontend/src/app/profile/error.tsx` (degraded boundary). This rule pairs with [§ "Structurally parse GraphQL `extensions.code`"](../../../.claude/rules/frontend-rsc-error-handling.md#structurally-parse-graphql-extensionscode--never-substring-match-the-message) — both eliminate substring-matching on error.message at the routing seam.

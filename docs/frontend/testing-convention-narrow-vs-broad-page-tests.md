@@ -12,7 +12,7 @@ All tests live under `frontend/__tests__/` using Vitest + Testing Library. Two n
 
 **Shared utilities** live under `frontend/__tests__/utils/` and `frontend/__tests__/fixtures/`:
 
-- `mock-supabase.ts` — in-memory `getUser` mock for Supabase server client in RSC tests.
+- `mock-supabase.ts` — in-memory `getUser` mock for the Supabase server client. Used by tests for pages that still call `getUser()` directly: `app/admin/*`, `app/login/page.tsx`, and middleware tests. Standard protected pages mock `next/headers` instead (see the [RSC test rendering pattern](#rsc-test-rendering-pattern) section).
 - `mock-apollo-paginated.ts` — one-mock-per-fetchMore helper with inline documentation. Provides `installApolloMockLeakSpy`, which captures `console.warn` calls matching `"No more mocked responses for the query"`; calling `assertNoLeaks()` in `afterEach` throws if any were recorded, catching double-fetch regressions.
 - `fixtures/users.ts` and `fixtures/cardgroups.ts` — shared test data.
 
@@ -63,7 +63,36 @@ render(await CardgroupDetailPage({ params: Promise.resolve({ id: "cg-1" }) }));
 
 Pre-15 patterns that pass `{ params: { id } }` directly will not type-check or will misbehave at runtime.
 
-`createSupabaseServerClient` is server-only, so RSC tests must stub it. The repo has no MSW; the canonical pattern is a per-test `vi.mock("@/lib/supabase/server", ...)` factory backed by the shared `mockCreateSupabaseServerClient` spy, with per-case `setMockSupabaseUser(...)` calls in `beforeEach`. The `server-only` import is also stubbed at the Vitest config level (`vitest.config.ts`) so any module that pulls it in transitively does not crash the test runner.
+`createSupabaseServerClient` is server-only, so tests for pages that call `getUser()` directly must stub it. The repo has no MSW; the canonical pattern for those pages (`app/admin/*`, `app/login/page.tsx`) is a per-test `vi.mock("@/lib/supabase/server", ...)` factory backed by the shared `mockCreateSupabaseServerClient` spy, with per-case `setMockSupabaseUser(...)` calls in `beforeEach`. The `server-only` import is also stubbed at the Vitest config level (`vitest.config.ts`) so any module that pulls it in transitively does not crash the test runner.
+
+Standard protected pages read the middleware-forwarded `x-auth-status` header via `readAuthContext(await headers())` and do not call `getUser()` at render time. Their tests mock `next/headers` instead:
+
+```ts
+vi.mock("next/headers", () => ({
+  headers: vi.fn(async () => new Headers({ "x-auth-status": "authenticated" })),
+}));
+```
+
+Non-authenticated cases override the mock per-test:
+
+```ts
+vi.mocked(headers).mockResolvedValueOnce(new Headers({ "x-auth-status": "anonymous" }));
+```
+
+Do not reach for `@/lib/supabase/server` stubs when testing a page that uses `readAuthContext`; the `getUser()` path is not exercised and the factory mock is unused overhead.
+
+### Auth-gate migration touches both the narrow and broad test
+
+When a page's auth gate changes (e.g. from calling `getUser()` in the RSC body to reading `readAuthContext(await headers())`), the change requires updating **two** test files, not one:
+
+1. The co-located narrow test `frontend/src/app/<route>/page.test.tsx`.
+2. The broad integration test `frontend/__tests__/<feature>.test.tsx` that instantiates the same page.
+
+A grep scoped to `frontend/src/app/` misses the broad `frontend/__tests__/` test. Both must be updated — swapping the `@/lib/supabase/server` `getUser` mock for a `next/headers` mock — and both must pass before the change is complete. The broad test is not a duplicate: it exercises the page as a full route, not just its RSC function in isolation.
+
+Concrete examples: `app/cardgroups/page.tsx` is covered by both `src/app/cardgroups/page.test.tsx` and `__tests__/cardgroups-list.test.tsx`; `app/cardgroups/[id]/edit/page.tsx` by both `src/app/cardgroups/[id]/edit/page.test.tsx` and `__tests__/cardgroup-edit.test.tsx`.
+
+Failure mode if the broad test is missed: it still mocks `@/lib/supabase/server` while the page no longer calls `getUser()`, and the unmocked `headers()` call throws `` `headers` was called outside a request scope ``, failing CI with a confusing error unrelated to the auth logic under test.
 
 ### Assert queue contents via prop capture, not via rendered text
 
