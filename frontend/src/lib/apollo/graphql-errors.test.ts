@@ -125,6 +125,11 @@ describe("isUnauthenticatedGraphQLError", () => {
     ]);
     expect(isUnauthenticatedGraphQLError(err)).toBe(true);
   });
+
+  test("correct prefix + non-array JSON payload returns false", () => {
+    expect(isUnauthenticatedGraphQLError(new Error(`${PREFIX}{}`))).toBe(false);
+    expect(isUnauthenticatedGraphQLError(new Error(`${PREFIX}42`))).toBe(false);
+  });
 });
 
 describe("isForbiddenGraphQLError", () => {
@@ -135,6 +140,31 @@ describe("isForbiddenGraphQLError", () => {
 
   test("Error with wrong prefix returns false", () => {
     expect(isForbiddenGraphQLError(new Error("FORBIDDEN"))).toBe(false);
+  });
+
+  test("Error with correct prefix but malformed JSON returns false", () => {
+    expect(isForbiddenGraphQLError(new Error(`${PREFIX}not-json`))).toBe(false);
+    expect(isForbiddenGraphQLError(new Error(`${PREFIX}{unclosed`))).toBe(false);
+  });
+
+  test("malformed JSON logs console.warn with error name", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const result = isForbiddenGraphQLError(new Error(`${PREFIX}not-json`));
+    expect(result).toBe(false);
+    expect(warnSpy).toHaveBeenCalledWith("[graphql-errors] failed to parse GraphQL error message", {
+      name: "SyntaxError",
+    });
+    warnSpy.mockRestore();
+  });
+
+  test("Error with correct prefix + valid JSON array + entry missing extensions returns false", () => {
+    const err = makeErr([{ message: "something went wrong" }]);
+    expect(isForbiddenGraphQLError(err)).toBe(false);
+  });
+
+  test("correct prefix + non-array JSON payload returns false", () => {
+    expect(isForbiddenGraphQLError(new Error(`${PREFIX}{}`))).toBe(false);
+    expect(isForbiddenGraphQLError(new Error(`${PREFIX}42`))).toBe(false);
   });
 
   test("Error with UNAUTHENTICATED code (not FORBIDDEN) returns false", () => {
