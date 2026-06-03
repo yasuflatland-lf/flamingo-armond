@@ -1,17 +1,18 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { graphql } from "@/generated";
 import type { AdminLayoutMeQuery as AdminLayoutMeQueryType } from "@/generated/graphql";
 import { gqlFetch } from "@/lib/apollo/server";
-import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { readAuthContext } from "@/lib/supabase/auth-status";
 
 /**
  * Single source of truth admin gate. Runs entirely on the server before any
  * client component bootstraps, preventing a flash of admin content (FOAC).
  *
  * Order of checks:
- *   1. Supabase session — `redirect("/")` when no user is logged in.
+ *   1. Middleware-forwarded `x-auth-status` header — `redirect("/")` when the
+ *      status is not "authenticated" (anonymous, stale, or error).
  *   2. GraphQL `me` — `redirect("/")` when the resolver returns
  *      UNAUTHENTICATED / FORBIDDEN, or when the returned roles do not include
  *      "admin".
@@ -20,8 +21,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
  * sending a logged-in non-admin to `/login` is awkward UX, and the home page
  * already routes anonymous visitors to a sign-in CTA.
  *
- * Per-page `getUser()` checks under `admin/users/page.tsx` are intentionally
- * retained as defense in depth.
+ * Per-page `x-auth-status` checks under `admin/users/page.tsx` are
+ * intentionally retained as defense in depth.
  */
 const AdminLayoutMeQuery = graphql(`
   query AdminLayoutMe {
@@ -36,19 +37,8 @@ const AdminLayoutMeQuery = graphql(`
 `);
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
-  // Step 1: Supabase session check.
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
-  // AuthSessionMissingError = anonymous request; stale session = deleted user
-  // with a still-valid JWT. Both are handled by redirecting to /.
-  if (authErr && !isIgnorableAuthError(authErr)) {
-    console.error("[admin] getUser() failed:", authErr.name, authErr.message);
-    throw authErr;
-  }
-  if (!user || isStaleSessionError(authErr)) redirect("/");
+  // Step 1: session check via middleware-forwarded status.
+  if (readAuthContext(await headers()).status !== "authenticated") redirect("/");
 
   // Step 2: admin-role check via GraphQL. UNAUTHENTICATED can still happen
   // here even after Supabase reports a user (e.g., expired access token that
