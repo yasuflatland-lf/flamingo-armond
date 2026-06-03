@@ -129,6 +129,24 @@ describe("AdminLayout — Step 2: GraphQL role check", () => {
     expect(redirect).not.toHaveBeenCalled();
   });
 
+  test("raw error whose message contains 'UNAUTHENTICATED' → rethrows, no redirect", async () => {
+    const rawErr = new Error("action UNAUTHENTICATED somewhere");
+    vi.mocked(gqlFetch).mockRejectedValueOnce(rawErr);
+
+    await expect(AdminLayout({ children: null })).rejects.toBe(rawErr);
+
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  test("raw error whose message contains 'FORBIDDEN' → rethrows, no redirect", async () => {
+    const rawErr = new Error("action FORBIDDEN for user");
+    vi.mocked(gqlFetch).mockRejectedValueOnce(rawErr);
+
+    await expect(AdminLayout({ children: null })).rejects.toBe(rawErr);
+
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
   test("authenticated user without admin role → redirect /", async () => {
     vi.mocked(gqlFetch).mockResolvedValueOnce(makeAdminLayoutData(["viewer"]) as never);
 
