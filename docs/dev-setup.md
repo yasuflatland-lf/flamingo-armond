@@ -228,6 +228,12 @@ For the production setup of the same Google sign-in path (Supabase project, Verc
 - `go build ./...` — "no required module provides package backend/graph/generated"
 - `tsc --noEmit` / `pnpm vitest` — "Cannot find module '@/generated/...'"
 
+A fresh worktree also starts with the root `mise.toml` untrusted, so any `mise`-mediated command (including the `pnpm` shim) refuses to load its `[env]` block until you trust it once from the worktree root:
+
+```bash
+mise trust          # required once per new worktree before any pnpm / mise exec command
+```
+
 Run codegen once after creating or switching to a worktree:
 
 ```bash
