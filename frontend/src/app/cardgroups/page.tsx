@@ -10,9 +10,9 @@ import CardgroupsClient from "./cardgroups-client";
 import { CARDGROUPS_DEFAULT_VARS, MyCardgroupsConnectionQuery } from "./queries";
 
 export default async function CardgroupsPage() {
-  // Auth check runs OUTSIDE the Suspense boundary so a stale session redirects
-  // to /login before any streaming starts. If the redirect ran from within the
-  // suspended subtree, the skeleton would flash before the navigation.
+  // Auth check runs OUTSIDE the Suspense boundary so an unauthenticated request
+  // redirects to /login before any streaming starts. If the redirect ran from
+  // within the suspended subtree, the skeleton would flash before the navigation.
   if (readAuthContext(await headers()).status !== "authenticated") redirect("/login");
 
   return (
