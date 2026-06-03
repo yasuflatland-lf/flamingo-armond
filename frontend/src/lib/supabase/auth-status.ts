@@ -10,7 +10,7 @@ export const AUTH_STATUS_HEADER = "x-auth-status";
 export const USER_EMAIL_HEADER = "x-user-email";
 export const USER_IS_ADMIN_HEADER = "x-user-is-admin";
 
-/** The full set, in strip/iteration order. */
+/** The full set of forwarded identity header names (order pinned by auth-status.test.ts). */
 export const IDENTITY_HEADERS = [
   AUTH_STATUS_HEADER,
   USER_EMAIL_HEADER,
