@@ -2,7 +2,14 @@ import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import { env } from "@/env";
 import { buildHtmlCsp } from "@/lib/security/csp";
-import { isIgnorableAuthError } from "@/lib/supabase/auth-errors";
+import { isIgnorableAuthError, isStaleSessionError } from "@/lib/supabase/auth-errors";
+import {
+  AUTH_STATUS_HEADER,
+  type AuthStatus,
+  IDENTITY_HEADERS,
+  USER_EMAIL_HEADER,
+  USER_IS_ADMIN_HEADER,
+} from "@/lib/supabase/auth-status";
 
 const NONCE_BYTES = 18;
 
@@ -13,9 +20,7 @@ function generateNonce(): string {
 }
 
 function createMiddlewareResponse(requestHeaders: Headers, cspPolicy: string | null) {
-  const response = NextResponse.next({
-    request: { headers: requestHeaders },
-  });
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
   if (cspPolicy != null) {
     response.headers.set("Content-Security-Policy", cspPolicy);
   }
@@ -23,11 +28,14 @@ function createMiddlewareResponse(requestHeaders: Headers, cspPolicy: string | n
 }
 
 export async function updateSession(request: NextRequest) {
-  // Forward the request pathname as a header so server components can read it
-  // via `next/headers` (no usePathname in RSC). AppShell uses this to skip the
-  // navigation rail on /login.
   const requestHeaders = new Headers(request.headers);
   const nonce = generateNonce();
+
+  // Strip any client-supplied identity headers before we compute and set our
+  // own — a client must never be able to spoof these. Re-set on every path below.
+  for (const name of IDENTITY_HEADERS) {
+    requestHeaders.delete(name);
+  }
 
   let cspPolicy: string | null = null;
   try {
@@ -44,12 +52,6 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (cspPolicy != null) {
-    // Forward the policy as a request header so Next's SSR pipeline can extract
-    // the nonce for <script nonce="..."> injection. This is an internal header
-    // consumed by the rendering pipeline; the browser never sees it. The
-    // enforcing response header is set in createMiddlewareResponse() below.
-    // When cspPolicy is null (buildHtmlCsp threw), both headers are omitted and
-    // auth/routing/cookie refresh continue normally.
     requestHeaders.set("Content-Security-Policy", cspPolicy);
     requestHeaders.set("x-nonce", nonce);
   }
@@ -69,8 +71,6 @@ export async function updateSession(request: NextRequest) {
           for (const { name, value } of cookiesToSet) {
             request.cookies.set(name, value);
           }
-          // Re-create the response after cookie writes; pass the same modified
-          // request headers so x-pathname, nonce, and CSP survive.
           supabaseResponse = createMiddlewareResponse(requestHeaders, cspPolicy);
           for (const { name, value, options } of cookiesToSet) {
             supabaseResponse.cookies.set(name, value, options);
@@ -82,13 +82,63 @@ export async function updateSession(request: NextRequest) {
 
   // CRITICAL: getUser() is what triggers token refresh — removing this call
   // silently breaks session renewal, leaving users with expired tokens.
-  const { error } = await supabase.auth.getUser();
-  // AuthSessionMissingError = anonymous request (not actionable — would flood
-  // edge-runtime stderr). Stale session = deleted user with a still-valid JWT
-  // (RSC pages redirect to /login; no log needed at the middleware layer).
-  if (error && !isIgnorableAuthError(error)) {
-    console.error("[supabase/middleware] getUser() failed:", error.name, error.message);
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+  const nonIgnorable = error != null && !isIgnorableAuthError(error);
+  if (nonIgnorable) {
+    // err.message omitted — a Supabase auth error message may carry user-identifying content.
+    console.error("[supabase/middleware] getUser() failed:", error.name);
   }
 
-  return supabaseResponse;
+  // isAdmin is a UI hint only (real gate is app/admin/layout.tsx). The admin role
+  // claim is injected into the JWT by the Custom Access Token Hook and is NOT
+  // mirrored into auth.users app_metadata, so it must be read from the verified
+  // claims (getClaims), not from the getUser() user record. getClaims uses
+  // jose/WebCrypto and is Edge-compatible.
+  let isAdmin = false;
+  if (user) {
+    try {
+      const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+      if (claimsError) {
+        // err.message omitted — a Supabase auth error message may carry user-identifying content.
+        console.warn(
+          "[supabase/middleware] getClaims() failed — isAdmin defaulting to false:",
+          claimsError.name,
+        );
+      }
+      isAdmin = claimsData?.claims?.app_metadata?.role === "admin";
+    } catch (err) {
+      // getClaims() can throw non-AuthError exceptions (plain Error from validateExp,
+      // DOMException from WebCrypto) that escape the SDK's internal AuthError catch.
+      // isAdmin is a UI hint only (real gate is app/admin/layout.tsx), so fail closed.
+      console.warn(
+        "[supabase/middleware] getClaims() threw unexpectedly — isAdmin defaulting to false:",
+        err instanceof Error ? err.name : "unknown",
+      );
+    }
+  }
+  let authStatus: AuthStatus;
+  if (user) {
+    authStatus = "authenticated";
+  } else if (isStaleSessionError(error)) {
+    authStatus = "stale";
+  } else if (nonIgnorable) {
+    authStatus = "error";
+  } else {
+    authStatus = "anonymous";
+  }
+
+  requestHeaders.set(AUTH_STATUS_HEADER, authStatus);
+  requestHeaders.set(USER_EMAIL_HEADER, user?.email ?? "");
+  requestHeaders.set(USER_IS_ADMIN_HEADER, isAdmin ? "true" : "false");
+
+  // Rebuild the forwarded response from the now-complete request headers,
+  // preserving any auth cookies the token refresh wrote.
+  const finalResponse = createMiddlewareResponse(requestHeaders, cspPolicy);
+  for (const cookie of supabaseResponse.cookies.getAll()) {
+    finalResponse.cookies.set(cookie);
+  }
+  return finalResponse;
 }

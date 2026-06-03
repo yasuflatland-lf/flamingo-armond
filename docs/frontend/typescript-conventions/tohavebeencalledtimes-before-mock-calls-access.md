@@ -31,4 +31,4 @@ The same rule applies to any spy indexed by position: `mock.results[0]`, `mock.i
 
 The discriminating-key rule (see [`expect-objectcontaining-message-is-not-enough.md`](expect-objectcontaining-message-is-not-enough.md)) guards against a bare `Error` regression by adding a non-`Error.prototype` key to `expect.objectContaining(...)`. `toHaveBeenCalledTimes` is the count-bound complement: the discriminating key says "the right shape was logged at least once"; `toHaveBeenCalledTimes` says "and nothing else was logged in this branch". Apply both on warn / error assertions that carry PII-redaction or structured-shape guarantees.
 
-Reference: `frontend/src/app/layout.test.tsx` (Case 6b and Case 7 — `getClaims` null-data and error branches each assert `toHaveBeenCalledTimes(1)` before reading `consoleWarnSpy.mock.calls[0][1]` for the PII-absence check).
+Reference: `frontend/src/components/nav/logo-drawer.test.tsx` (multiple event-listener assertions that call `toHaveBeenCalledTimes(1)` before accessing `listener.mock.calls[0]` to inspect the event payload).

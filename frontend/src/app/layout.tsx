@@ -1,11 +1,11 @@
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
-import { type ReactNode, Suspense } from "react";
+import type { ReactNode } from "react";
 import { AuthShell } from "@/components/auth-shell";
-import { BootSplash } from "@/components/boot-splash";
 import { AppleInstallHint } from "@/components/pwa/apple-install-hint";
 import { SwRegister } from "@/components/pwa/sw-register";
+import { readAuthContext } from "@/lib/supabase/auth-status";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -82,7 +82,7 @@ export const viewport: Viewport = {
   themeColor: "#FF6F79",
   // The app ships a single light theme. Without this, an iOS standalone PWA on a
   // device in dark mode paints the UA canvas dark, producing a black flash before
-  // the body/BootSplash paint. Pinning the scheme to light keeps the canvas light.
+  // the first paint. Pinning the scheme to light keeps the canvas light.
   colorScheme: "light",
 };
 
@@ -93,6 +93,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const headersList = await headers();
   const pathname = headersList.get("x-pathname") ?? "/";
   const nonce = headersList.get("x-nonce") ?? undefined;
+
+  // Identity is resolved once by middleware and forwarded via request headers.
+  // The shell reads it synchronously here, so there is no auth I/O at render
+  // time and no async boundary, avoiding the double-load flash.
+  const auth = readAuthContext(headersList);
+  const shellUser = auth.status === "authenticated" ? { email: auth.email } : null;
+  const isAdmin = auth.status === "authenticated" && auth.isAdmin;
 
   if (pathname === "/login" || pathname === "/onboarding") {
     return (
@@ -116,9 +123,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       */}
       <body suppressHydrationWarning>
         <Providers nonce={nonce}>
-          <Suspense fallback={<BootSplash />}>
-            <AuthShell>{children}</AuthShell>
-          </Suspense>
+          <AuthShell user={shellUser} isAdmin={isAdmin}>
+            {children}
+          </AuthShell>
         </Providers>
         <SpeedInsights />
         <SwRegister />

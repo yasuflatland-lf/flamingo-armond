@@ -1,6 +1,6 @@
 # Supabase custom access token hook
 
-> Part of [`docs/backend-db.md`](../backend-db.md) and [`docs/backend-auth.md`](../backend-auth.md). Covers the design of `public.custom_access_token_hook` — the Postgres function GoTrue invokes at JWT mint time to inject `app_metadata.role` into the access token. The frontend reads the claim via `supabase.auth.getClaims()` and skips a GraphQL round-trip for header role gating. See [`docs/frontend/auth-supabase.md`](../frontend/auth-supabase.md) for the consumer side.
+> Part of [`docs/backend-db.md`](../backend-db.md) and [`docs/backend-auth.md`](../backend-auth.md). Covers the design of `public.custom_access_token_hook` — the Postgres function GoTrue invokes at JWT mint time to inject `app_metadata.role` into the access token. The Next.js middleware reads the claim via `supabase.auth.getClaims()` and forwards `isAdmin` as a request header; the layout reads that header and skips a GraphQL round-trip for header role gating. See [`docs/frontend/auth-supabase.md`](../frontend/auth-supabase.md) for the consumer side.
 
 The function lives at `backend/internal/database/migrations/20260514000000_add_custom_access_token_hook.up.sql` and is wired in `supabase/config.toml` under `[auth.hook.custom_access_token]`. Each subsection below isolates one design decision that is non-obvious from the Supabase docs.
 
@@ -87,3 +87,7 @@ The down migration's header must therefore carry a standing operator instruction
 ```
 
 Phrase the instruction as a standing rule, not a historical note about the migration's introduction — the reader who arrives during a rollback months later needs the precondition first, not provenance.
+
+## Frontend reads via getClaims in middleware, not getUser().app_metadata
+
+The hook injects `role` into the JWT only — it does not write to `auth.users.raw_app_meta_data`. As a result, `getUser()` on the frontend never carries the role: `getUser().user.app_metadata?.role` always returns `undefined`. The only correct read path is `supabase.auth.getClaims()`, which decodes the verified JWT and exposes `claims.app_metadata.role`. This read happens in the Next.js middleware (`frontend/src/lib/supabase/middleware.ts`), which forwards the derived `isAdmin` flag as the `x-user-is-admin` request header; the root layout reads that header and passes it to `AuthShell`. Nothing else in the frontend call chain needs to call `getClaims()` for the `isAdmin` value — the middleware is the single computation site.

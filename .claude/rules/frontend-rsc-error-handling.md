@@ -19,11 +19,10 @@ The filter is keyed on `error.name` (string), not on `instanceof` — Supabase's
 
 ## Header (root layout) MUST degrade on failure, never throw
 
-The `AppShell` component (`frontend/src/components/nav/app-shell.tsx`) is mounted in `app/layout.tsx`, so anything it throws escapes every route segment's `error.tsx` and surfaces as `app/global-error.tsx` (or Next's default 500 page). The degradation logic (auth check, `isAdmin` resolution, `console.error`/`console.warn` logging) lives in `app/layout.tsx` itself, which passes `user` and `isAdmin` down to `AppShell`. Throwing for a failed `me` fetch turns one stale role lookup into a site-wide 500. The layout + shell combination is the **display layer** and must:
+The `AppShell` component (`frontend/src/components/nav/app-shell.tsx`) is mounted in `app/layout.tsx` (via the synchronous `AuthShell` wrapper, `frontend/src/components/auth-shell.tsx`), so anything it throws escapes every route segment's `error.tsx` and surfaces as `app/global-error.tsx` (or Next's default 500 page). The degradation logic now lives in the Next.js middleware (`frontend/src/lib/supabase/middleware.ts`), which is the single source of identity. The layout does **no** auth I/O at render time: it reads the middleware-forwarded request headers via `readAuthContext` (`frontend/src/lib/supabase/auth-status.ts`) and passes `user` and `isAdmin` as props down through `AuthShell` to `AppShell`. The middleware classifies failures into an `x-auth-status` value (`authenticated` / `anonymous` / `stale` / `error`) and **fails closed** — a dropped or malformed header degrades to the anonymous shell, never a leaked authenticated view. The layout + shell combination is the **display layer** and must never throw; the middleware enforces this by:
 
-1. Render a degraded shell (logo only) when `getUser()` fails for a reason other than `AuthSessionMissingError`.
-2. Skip the GraphQL `me` call entirely when `user == null` — anonymous users do not have roles to load, and the call would spam `UNAUTHENTICATED` into the warn log (see "Skip auth-requiring GraphQL calls" below).
-3. On `me` failure, swallow `UNAUTHENTICATED` silently (Supabase session valid + GraphQL token rejected = expected race during clock skew or JWKS rotation), `console.warn` everything else, and fall back to `isAdmin = false`.
+1. Classifying a `getUser()` failure that is not an ignorable/anonymous error into `x-auth-status: stale` or `x-auth-status: error` (a degraded, logo-only shell), instead of throwing.
+2. Resolving `isAdmin` from the verified JWT claims (`getClaims()`), wrapped in `try`/`catch` — `getClaims()` can throw non-`AuthError` exceptions, so the middleware swallows them, `console.warn`s, and falls back to `isAdmin = false`. `isAdmin` is a UI hint only.
 
 The **authorization gate** is `app/admin/layout.tsx`, which redirects on failure. The two layers are deliberately asymmetric: Header is UI hint, admin layout is the enforcement boundary. A broken Header never grants access; an over-eager Header throw 500s the whole site.
 
@@ -78,7 +77,7 @@ Use `isUnauthenticatedGraphQLError` for all code paths — including simple redi
 - [Auth check runs outside the Suspense boundary — data fetch runs inside](../../docs/frontend/rsc-error-handling/auth-outside-suspense-boundary.md)
 - [GraphQL UNAUTHENTICATED must redirect to `/login`, not to an auth-required route](../../docs/frontend/rsc-error-handling/unauthenticated-redirect-target-must-be-login.md)
 - [Apollo `client.query()` is not cancelled on unmount — guard `setState` with `isMountedRef`](../../docs/frontend/rsc-error-handling/apollo-client-query-unmount-guard.md)
-- [`supabase.auth.getClaims()` has a three-way return — branch on `claimsData == null`](../../docs/frontend/rsc-error-handling/getclaims-three-way-return.md)
+- [`supabase.auth.getClaims()` has a three-way return AND can throw non-AuthError exceptions — use try/catch outside an error boundary (e.g. middleware)](../../docs/frontend/rsc-error-handling/getclaims-three-way-return.md)
 - [`isUnauthenticatedGraphQLError` matches gqlFetch — not Apollo Client runtime errors](../../docs/frontend/rsc-error-handling/apollo-runtime-vs-gqlfetch-error-shape.md)
 - [`useMutation` rejects while `useLazyQuery` resolves — `result.error` after a mutation is dead code](../../docs/frontend/rsc-error-handling/mutate-rejects-while-lazyquery-resolves.md)
 - [Fire-and-forget mutation: structured warn for null payload, non-success variant, and rejection](../../docs/frontend/rsc-error-handling/fire-and-forget-mutation-warn-on-null-and-non-success.md)

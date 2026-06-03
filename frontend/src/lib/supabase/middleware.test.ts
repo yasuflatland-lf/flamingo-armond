@@ -7,9 +7,11 @@ const mockGetUser = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
 );
 
+const mockGetClaims = vi.hoisted(() => vi.fn().mockResolvedValue({ data: null, error: null }));
+
 vi.mock("@supabase/ssr", () => ({
   createServerClient: vi.fn().mockReturnValue({
-    auth: { getUser: mockGetUser },
+    auth: { getUser: mockGetUser, getClaims: mockGetClaims },
   }),
 }));
 
@@ -67,7 +69,7 @@ describe("updateSession", () => {
         // Simulate SDK calling setAll to persist refreshed auth cookies
         opts.cookies.setAll([{ name: "sb-auth-token", value: "refreshed", options: {} }]);
         // biome-ignore lint/suspicious/noExplicitAny: test-only stub return
-        return { auth: { getUser: mockGetUser } } as any;
+        return { auth: { getUser: mockGetUser, getClaims: mockGetClaims } } as any;
       },
     );
 
@@ -134,7 +136,7 @@ describe("updateSession", () => {
       (_url, _key, opts: any) => {
         opts.cookies.setAll([{ name: "sb-auth-token", value: "refreshed", options: {} }]);
         // biome-ignore lint/suspicious/noExplicitAny: test-only stub return
-        return { auth: { getUser: mockGetUser } } as any;
+        return { auth: { getUser: mockGetUser, getClaims: mockGetClaims } } as any;
       },
     );
 
@@ -184,7 +186,6 @@ describe("updateSession", () => {
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "[supabase/middleware] getUser() failed:",
       "AuthError",
-      "network failure",
     );
     consoleErrorSpy.mockRestore();
   });
@@ -224,5 +225,125 @@ describe("updateSession", () => {
     expect(mockGetUser).toHaveBeenCalledTimes(1);
 
     consoleErrorSpy.mockRestore();
+  });
+
+  it("forwards anonymous identity headers when there is no session", async () => {
+    const response = await updateSession(makeRequest());
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("anonymous");
+    expect(forwardedRequestHeader(response, "x-user-email")).toBe("");
+    expect(forwardedRequestHeader(response, "x-user-is-admin")).toBe("false");
+  });
+
+  it("forwards authenticated identity headers, isAdmin true for an admin user", async () => {
+    // The admin role lives in the verified JWT claims, NOT in the getUser()
+    // user record — the Custom Access Token Hook injects it into the JWT only.
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: { email: "admin@example.com", app_metadata: {} } },
+      error: null,
+    });
+    mockGetClaims.mockResolvedValueOnce({
+      data: { claims: { app_metadata: { role: "admin" } } },
+      error: null,
+    });
+    const response = await updateSession(makeRequest());
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("authenticated");
+    expect(forwardedRequestHeader(response, "x-user-email")).toBe("admin@example.com");
+    expect(forwardedRequestHeader(response, "x-user-is-admin")).toBe("true");
+  });
+
+  it("forwards isAdmin false for a non-admin authenticated user", async () => {
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: { email: "u@example.com", app_metadata: {} } },
+      error: null,
+    });
+    mockGetClaims.mockResolvedValueOnce({
+      data: { claims: { app_metadata: {} } },
+      error: null,
+    });
+    const response = await updateSession(makeRequest());
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("authenticated");
+    expect(forwardedRequestHeader(response, "x-user-is-admin")).toBe("false");
+  });
+
+  it("classifies a stale-session error", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: null },
+      error: { name: "AuthApiError", message: "User from sub claim in JWT does not exist" },
+    });
+    const response = await updateSession(makeRequest());
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("stale");
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("classifies a non-ignorable error", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: null },
+      error: { name: "AuthError", message: "network failure" },
+    });
+    const response = await updateSession(makeRequest());
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("error");
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("defaults isAdmin to false and warns when getClaims returns an error", async () => {
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: { email: "u@example.com", app_metadata: {} } },
+      error: null,
+    });
+    mockGetClaims.mockResolvedValueOnce({
+      data: null,
+      error: { name: "AuthApiError", message: "JWKS fetch failed" },
+    });
+    const response = await updateSession(makeRequest());
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("authenticated");
+    expect(forwardedRequestHeader(response, "x-user-is-admin")).toBe("false");
+    expect(consoleWarnSpy).toHaveBeenCalled();
+    consoleWarnSpy.mockRestore();
+  });
+
+  it("does not 500 when getClaims throws; isAdmin defaults to false", async () => {
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: { email: "u@example.com", app_metadata: {} } },
+      error: null,
+    });
+    mockGetClaims.mockRejectedValueOnce(new Error("JWT has expired"));
+    const response = await updateSession(makeRequest());
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("authenticated");
+    expect(forwardedRequestHeader(response, "x-user-is-admin")).toBe("false");
+    expect(consoleWarnSpy).toHaveBeenCalled();
+    consoleWarnSpy.mockRestore();
+  });
+
+  it("strips inbound (spoofed) identity headers", async () => {
+    const req = makeRequest();
+    req.headers.set("x-user-is-admin", "true");
+    req.headers.set("x-user-email", "evil@attacker.test");
+    req.headers.set("x-auth-status", "authenticated");
+    const response = await updateSession(req);
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("anonymous");
+    expect(forwardedRequestHeader(response, "x-user-email")).toBe("");
+    expect(forwardedRequestHeader(response, "x-user-is-admin")).toBe("false");
+  });
+
+  it("preserves refreshed auth cookies alongside identity headers", async () => {
+    const { createServerClient } = await import("@supabase/ssr");
+    vi.mocked(createServerClient).mockImplementationOnce(
+      // biome-ignore lint/suspicious/noExplicitAny: test-only cast to drive setAll
+      (_url, _key, opts: any) => {
+        opts.cookies.setAll([{ name: "sb-auth-token", value: "refreshed", options: {} }]);
+        // biome-ignore lint/suspicious/noExplicitAny: test-only stub return
+        return { auth: { getUser: mockGetUser, getClaims: mockGetClaims } } as any;
+      },
+    );
+    const response = await updateSession(
+      makeRequest("http://localhost/", { "sb-auth-token": "old" }),
+    );
+    expect(response.cookies.get("sb-auth-token")?.value).toBe("refreshed");
+    expect(forwardedRequestHeader(response, "x-auth-status")).toBe("anonymous");
   });
 });
