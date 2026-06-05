@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { GraphQLError } from "graphql";
 import { type RefObject, useImperativeHandle, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CardContent, type SwipeCardData } from "@/components/learn/swipe-card";
@@ -141,6 +142,29 @@ function makePracticeErrorMock() {
       variables: { cardgroupId: CG_ID },
     },
     error: new Error("network down"),
+  };
+}
+
+/**
+ * Build a PracticeTodaysCards mock that fails with a FIELD-level BAD_USER_INPUT
+ * GraphQL error (e.g. opening practice for a deleted cardgroup, so the backend
+ * rejects with `extensions.field == "cardgroupId"`). For this shape
+ * `getBackendErrorBanner` returns `undefined`, so the component must render its
+ * own fallback copy instead of an empty banner.
+ */
+function makePracticeFieldErrorMock() {
+  return {
+    request: {
+      query: PracticeTodaysCardsDocument,
+      variables: { cardgroupId: CG_ID },
+    },
+    result: {
+      errors: [
+        new GraphQLError("cardgroup not found", {
+          extensions: { code: "BAD_USER_INPUT", field: "cardgroupId" },
+        }),
+      ],
+    },
   };
 }
 
@@ -345,6 +369,34 @@ describe("<PracticeClient>", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Practice complete" })).not.toBeInTheDocument();
 
+    const logCall = consoleErrorSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "[PracticeClient] query failed",
+    );
+    expect(logCall).toBeDefined();
+    expect(logCall?.[1] as Record<string, unknown>).not.toHaveProperty("message");
+
+    leakSpy.assertNoLeaks();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("renders fallback banner copy (not an empty box) on a field-level BAD_USER_INPUT error", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // A field-level BAD_USER_INPUT (e.g. deleted cardgroup) makes
+    // `getBackendErrorBanner` return undefined; the component must fall back to
+    // its own copy so the alert is never an empty red box.
+    renderPractice([makePracticeFieldErrorMock()]);
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+
+    // The banner shows the non-empty fallback string, and a Retry is offered.
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Could not load today's practice cards. Please try again.");
+    expect(alert.textContent?.trim().length ?? 0).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+
+    // The structured failure log still fires, keyed on the error, message-free.
     const logCall = consoleErrorSpy.mock.calls.find(
       (call: unknown[]) => call[0] === "[PracticeClient] query failed",
     );

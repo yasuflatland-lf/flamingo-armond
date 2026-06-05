@@ -73,10 +73,12 @@ export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
     setQueue([...pool]);
   }, [pool, loading]);
 
-  // Structured diagnostic log on any query/refetch failure. Keyed on `error`
-  // so it fires once per distinct failure, not on every render. Per the PII
-  // rule we log only the fixed `extensions.code` enum, never `error.message`,
-  // which may echo user-authored card content.
+  // Structured diagnostic log on any query/refetch failure. Keyed on the
+  // `[error, cardgroupId]` deps, so it fires once per distinct error object
+  // (and once per cardgroupId change, which in practice means a remount onto a
+  // different group), not on every render. Per the PII rule we log only the
+  // fixed `extensions.code` enum, never `error.message`, which may echo
+  // user-authored card content.
   useEffect(() => {
     if (!error) return;
     console.error("[PracticeClient] query failed", {
@@ -104,6 +106,13 @@ export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
     // array re-seeds the queue.
     seededForRef.current = null;
     setQueue([]);
+    // The refetch promise is intentionally discarded. Refetch failures surface
+    // via the hook's `error` state, not the promise: verified against
+    // @apollo/client v4 that the ObservableQuery emits the error to subscribers
+    // (ObservableQuery.js sets `result.error` / `networkStatus: error` /
+    // `loading: false` on a network "E" notification), while the promise
+    // rejection is pre-handled by Apollo's `preventUnhandledRejection`. So a
+    // failed restart renders the error banner + Retry, never a dead end.
     void refetch();
   }, [refetch]);
 
@@ -114,6 +123,9 @@ export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
     // queue was already cleared to `[]`). `seededForRef` is reset so the next
     // settled pool re-seeds even if it is the same array reference as before.
     seededForRef.current = null;
+    // Discarded promise — see `studyAgain`: a failed refetch surfaces via the
+    // hook's `error` state (verified @apollo/client v4 contract), so the banner
+    // re-renders rather than silently dropping the user on a dead screen.
     void refetch();
   }, [refetch]);
 
@@ -127,7 +139,10 @@ export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
           className="w-full max-w-xl rounded-md bg-destructive/10 p-3 text-sm text-destructive"
           role="alert"
         >
-          <p>{getBackendErrorBanner(error)}</p>
+          <p>
+            {getBackendErrorBanner(error) ??
+              "Could not load today's practice cards. Please try again."}
+          </p>
           <div className="mt-3">
             <Button type="button" variant="outline" onClick={retry}>
               Retry
