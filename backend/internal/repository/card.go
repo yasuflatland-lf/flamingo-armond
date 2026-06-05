@@ -447,6 +447,8 @@ func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, now, reviewedBefore
 // fetches in findDueCardsOn so the SELECT/JOIN never drift between the two.
 func dueRowsOn(db *gorm.DB, userID, where string, whereArgs []any, order string, limit int) ([]dueCardRow, error) {
 	var rows []dueCardRow
+	// ucs.last_review is used in the review-window WHERE clause but is not
+	// projected into dueCardRow — it is filter-only and not needed after scan.
 	if err := db.
 		Table("cards").
 		Select("cards.id, cards.cardgroup_id, cards.front, cards.back, cards.created_at, cards.updated_at, cards.position, ucs.state, ucs.due").

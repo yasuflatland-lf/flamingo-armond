@@ -141,6 +141,42 @@ func TestCardRepository_FindDueCards_UsesPerUserFSRSRows(t *testing.T) {
 	require.Equal(t, []string{dueCard.ID}, repoCardIDs(due))
 }
 
+// TestCardRepository_FindDueCards_IgnoresOtherUsersFSRSRows verifies that the
+// LEFT JOIN is scoped to the calling user via ucs.user_id = ?. A second user's
+// future-due FSRS row for the same card must not exclude that card from the
+// calling user's new-card window (their own JOIN slot produces NULL, so the
+// card falls through to the new window as expected).
+func TestCardRepository_FindDueCards_IgnoresOtherUsersFSRSRows(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	otherUserID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	card := newCard(cg.ID, "shared-card", "back")
+	require.NoError(t, repo.Create(ctx, card))
+
+	// Insert otherUser's FSRS row for card with due = tomorrow. If the JOIN
+	// leaked other users' rows, this would push the card into the review
+	// window (future due → not due for any user) or worse exclude it entirely.
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		state := domain.NewUserCardFSRSForNewCard(otherUserID, card.ID, now)
+		state.State.Due = now.Add(24 * time.Hour)
+		state.State.Reps = 1
+		return ucsRepo.UpsertTx(ctx, tx, state)
+	}))
+
+	// ownerID has no FSRS row for card → the JOIN for ownerID returns NULL →
+	// card surfaces through the new-card window.
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{card.ID}, repoCardIDs(got),
+		"otherUser's future-due row must not hide the card from the calling user's new-card window")
+}
+
 func TestCardRepository_FindByIDTx_LocksRowForUpdate(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -918,7 +954,8 @@ func TestCardRepository_FindDueCards_ReviewsNotStarvedByNewBacklog(t *testing.T)
 
 // TestCardRepository_FindDueCards_ExcludesCardsReviewedToday verifies the
 // reviewedBefore cutoff: a due card whose last_review is at or after the
-// boundary (i.e. swiped today) is excluded from the review window.
+// boundary (i.e. swiped today) is excluded from the review window. The
+// predicate is strict < so equality with the boundary also excludes the card.
 func TestCardRepository_FindDueCards_ExcludesCardsReviewedToday(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -931,28 +968,39 @@ func TestCardRepository_FindDueCards_ExcludesCardsReviewedToday(t *testing.T) {
 
 	reviewedYesterday := newCard(cg.ID, "reviewed-yesterday", "back")
 	reviewedToday := newCard(cg.ID, "reviewed-today", "back")
+	reviewedAtBoundary := newCard(cg.ID, "reviewed-at-boundary", "back")
 	require.NoError(t, repo.Create(ctx, reviewedYesterday))
 	require.NoError(t, repo.Create(ctx, reviewedToday))
+	require.NoError(t, repo.Create(ctx, reviewedAtBoundary))
 
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		old := domain.NewUserCardFSRSForNewCard(ownerID, reviewedYesterday.ID, now)
 		old.State.State = domain.FSRSStateLearning
 		old.State.Due = now.Add(-time.Hour)
-		old.State.LastReview = startOfToday.Add(-time.Hour) // before boundary
+		old.State.LastReview = startOfToday.Add(-time.Hour) // before boundary → included
 		if err := ucsRepo.UpsertTx(ctx, tx, old); err != nil {
 			return err
 		}
 		fresh := domain.NewUserCardFSRSForNewCard(ownerID, reviewedToday.ID, now)
 		fresh.State.State = domain.FSRSStateLearning
 		fresh.State.Due = now.Add(-time.Hour)
-		fresh.State.LastReview = startOfToday.Add(time.Hour) // at/after boundary
-		return ucsRepo.UpsertTx(ctx, tx, fresh)
+		fresh.State.LastReview = startOfToday.Add(time.Hour) // after boundary → excluded
+		if err := ucsRepo.UpsertTx(ctx, tx, fresh); err != nil {
+			return err
+		}
+		// Exact-boundary case: last_review == startOfToday; predicate is strict <
+		// so equality is false and the card must be excluded.
+		boundary := domain.NewUserCardFSRSForNewCard(ownerID, reviewedAtBoundary.ID, now)
+		boundary.State.State = domain.FSRSStateLearning
+		boundary.State.Due = now.Add(-time.Hour)
+		boundary.State.LastReview = startOfToday // exactly at boundary → excluded
+		return ucsRepo.UpsertTx(ctx, tx, boundary)
 	}))
 
 	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, startOfToday, 10)
 	require.NoError(t, err)
 	require.Equal(t, []string{reviewedYesterday.ID}, repoCardIDs(got),
-		"a card reviewed today must not re-enter today's queue")
+		"only cards reviewed strictly before the boundary enter the review window")
 }
 
 // TestCardRepository_FindDueCards_LearningPhaseWinsReviewSlots verifies that
