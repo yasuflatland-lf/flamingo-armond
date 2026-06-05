@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -99,7 +100,7 @@ type CardPageRepository interface {
 		dir SortOrder,
 		search *string,
 	) (cards []*domain.Card, totalCount int64, err error)
-	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error)
+	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now, reviewedBefore time.Time, limit int) ([]domain.DueCard, error)
 }
 
 type CardWriteRepository interface {
@@ -364,8 +365,8 @@ func cursorFieldValue(orderBy CardOrderBy, c *CardCursor) (any, error) {
 	return nil, eris.Errorf("cursor missing %s column", orderBy)
 }
 
-func (r *cardRepo) FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error) {
-	return findDueCardsOn(r.db.WithContext(ctx), userID, cardgroupID, now, limit)
+func (r *cardRepo) FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now, reviewedBefore time.Time, limit int) ([]domain.DueCard, error) {
+	return findDueCardsOn(r.db.WithContext(ctx), userID, cardgroupID, now, reviewedBefore, limit)
 }
 
 // dueCardRow is the raw scan target for findDueCardsOn. It holds all cards.*
@@ -386,36 +387,45 @@ type dueCardRow struct {
 }
 
 // findDueCardsOn fetches the cards eligible for a learning session in two
-// independent LIMIT windows and concatenates them: now-due review cards first,
-// then new (never-reviewed) cards. Splitting the fetch is what keeps a large
-// new-card backlog from evicting due reviews under a single LIMIT — the bug that
-// made FSRS scheduling appear inert on big cardgroups. The returned slice may
-// hold up to 2*limit rows; OrderingPolicy (in the usecase) applies the final
-// interleave and truncation to the per-session limit.
-func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error) {
+// independent LIMIT windows and concatenates them: review cards first, then
+// new (never-reviewed) cards. Splitting the fetch is what keeps a large
+// new-card backlog from evicting due reviews under a single LIMIT. The
+// returned slice may hold up to 2*limit rows; OrderingPolicy (in the
+// usecase) applies the final interleave and truncation per session.
+//
+// Review window: due has arrived AND the card was last reviewed before
+// reviewedBefore (the caller's local start-of-today) — a card swiped today
+// never re-enters today's queue. Learning-phase rows (latest rating
+// Again/Hard) outrank Review-state rows; random() varies the selection
+// inside each phase per session. The phase-first ORDER is a contract with
+// OrderingPolicy's shuffleWithinPhase.
+//
+// New window: no FSRS row yet; random() samples uniformly across the whole
+// unseen pool so consecutive sessions surface different cards instead of
+// walking the deterministic created_at/position (document) order.
+func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, now, reviewedBefore time.Time, limit int) ([]domain.DueCard, error) {
 	userID = coalesceUserIDForJoin(userID)
 	if limit <= 0 {
 		return []domain.DueCard{}, nil
 	}
 
-	// Review cards: an FSRS row exists and its due time has arrived. Ordered by
-	// due ASC so the most-overdue reviews lead.
+	reviewOrder := fmt.Sprintf(
+		"CASE WHEN ucs.state IN (%d, %d) THEN 0 ELSE 1 END, random()",
+		domain.FSRSStateLearning, domain.FSRSStateRelearning,
+	)
 	reviewRows, err := dueRowsOn(db, userID,
-		"cards.cardgroup_id = ? AND ucs.due IS NOT NULL AND ucs.due <= ?",
-		[]any{cardgroupID, now},
-		"ucs.due ASC, cards.position ASC, cards.id ASC",
+		"cards.cardgroup_id = ? AND ucs.due IS NOT NULL AND ucs.due <= ? AND ucs.last_review < ?",
+		[]any{cardgroupID, now, reviewedBefore},
+		reviewOrder,
 		limit)
 	if err != nil {
 		return nil, err
 	}
 
-	// New cards: no FSRS row yet. Ordered to match the prior combined query,
-	// whose COALESCE(ucs.due, cards.created_at) key collapses to created_at for
-	// new cards — OrderingPolicy.shuffleSamePosition relies on this pre-sort.
 	newRows, err := dueRowsOn(db, userID,
 		"cards.cardgroup_id = ? AND ucs.due IS NULL",
 		[]any{cardgroupID},
-		"cards.created_at ASC, cards.position ASC, cards.id ASC",
+		"random()",
 		limit)
 	if err != nil {
 		return nil, err

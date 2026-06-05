@@ -39,7 +39,7 @@ func startOfDayJST(now time.Time) time.Time {
 }
 
 type CardRepoForLearn interface {
-	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error)
+	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now, reviewedBefore time.Time, limit int) ([]domain.DueCard, error)
 }
 
 type CardgroupRepoForLearn interface {
@@ -146,7 +146,7 @@ func (u *learnUsecase) NextDueCards(ctx context.Context, cardgroupID string, lim
 	}
 	n = u.clampLimit(n)
 	now := u.clock.Now().UTC()
-	due, err := u.cardRepo.FindDueCardsForUser(ctx, user.Sub, cardgroupID, now, n)
+	due, err := u.cardRepo.FindDueCardsForUser(ctx, user.Sub, cardgroupID, now, startOfDayJST(now), n)
 	if err != nil {
 		if isContextDone(err) {
 			return nil, err

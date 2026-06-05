@@ -136,7 +136,7 @@ func TestCardRepository_FindDueCards_UsesPerUserFSRSRows(t *testing.T) {
 		return ucsRepo.UpsertTx(ctx, tx, state)
 	}))
 
-	due, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, 10)
+	due, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now, 10)
 	require.NoError(t, err)
 	require.Equal(t, []string{dueCard.ID}, repoCardIDs(due))
 }
@@ -164,7 +164,7 @@ func TestCardRepository_FindByIDTx_LocksRowForUpdate(t *testing.T) {
 	require.Error(t, err, "second transaction should fail to acquire a NOWAIT lock")
 }
 
-func TestCardRepository_FindDueCards_OrderedScopedAndLimited(t *testing.T) {
+func TestCardRepository_FindDueCards_ScopedAndLimited(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -173,6 +173,9 @@ func TestCardRepository_FindDueCards_OrderedScopedAndLimited(t *testing.T) {
 	repo := repository.NewCardRepository(testDB.GORM)
 	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
 	now := time.Now().UTC().Truncate(time.Microsecond)
+	// Fixtures carry LastReview == now (set by NewUserCardFSRSForNewCard); a
+	// cutoff strictly after now keeps every due review inside the window.
+	reviewedBefore := now.Add(time.Second)
 
 	dueNow := newCard(cg1.ID, "due-now", "back")
 	laterDue := newCard(cg1.ID, "later-due", "back")
@@ -199,75 +202,24 @@ func TestCardRepository_FindDueCards_OrderedScopedAndLimited(t *testing.T) {
 		return nil
 	}))
 
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg1.ID, now, 2)
+	// Selection within the review phase is random() now, so a small limit picks
+	// some two of the three due review cards (never future / other-group).
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg1.ID, now, reviewedBefore, 2)
 	require.NoError(t, err)
-	require.Equal(t, []string{earlierDue.ID, laterDue.ID}, repoCardIDs(got))
+	require.Len(t, got, 2)
+	due3 := map[string]bool{earlierDue.ID: true, laterDue.ID: true, dueNow.ID: true}
+	for _, id := range repoCardIDs(got) {
+		require.True(t, due3[id], "limit=2 must select from the due review set, got %q", id)
+	}
 
-	got, err = repo.FindDueCardsForUser(ctx, ownerID, cg1.ID, now, 10)
+	got, err = repo.FindDueCardsForUser(ctx, ownerID, cg1.ID, now, reviewedBefore, 10)
 	require.NoError(t, err)
-	require.Equal(t, []string{earlierDue.ID, laterDue.ID, dueNow.ID}, repoCardIDs(got))
+	require.ElementsMatch(t, []string{earlierDue.ID, laterDue.ID, dueNow.ID}, repoCardIDs(got))
 	require.NotContains(t, repoCardIDs(got), otherGroup.ID, "FindDueCards must not leak cards from another cardgroup")
 
-	empty, err := repo.FindDueCardsForUser(ctx, ownerID, cg1.ID, now, 0)
+	empty, err := repo.FindDueCardsForUser(ctx, ownerID, cg1.ID, now, reviewedBefore, 0)
 	require.NoError(t, err)
 	require.Empty(t, empty)
-}
-
-// TestCardRepository_FindDueCards_OrdersByPositionUnderLimit proves that
-// `position` decides SELECTION order — not merely in-set order — when the
-// limit is smaller than the new-card count. Every card shares an IDENTICAL
-// CreatedAt and has no user_card_fsrs row, so the due key collapses to
-// cards.created_at for all of them and position becomes the deciding
-// tiebreaker. Cards are inserted in a scrambled order so the result cannot
-// accidentally match insertion order.
-func TestCardRepository_FindDueCards_OrdersByPositionUnderLimit(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	cg := insertCardgroup(t, ctx, ownerID)
-	repo := repository.NewCardRepository(testDB.GORM)
-
-	shared := time.Now().UTC().Truncate(time.Microsecond)
-
-	// Build five cards with positions 0..4 mapped to distinct fronts.
-	byPosition := make([]*domain.Card, 5)
-	for pos := 0; pos < 5; pos++ {
-		c := newCard(cg.ID, "front-pos-"+string(rune('0'+pos)), "back")
-		c.CreatedAt = shared
-		c.Position = pos
-		byPosition[pos] = c
-	}
-
-	// Insert in a deliberately scrambled order [pos4, pos1, pos3, pos0, pos2].
-	for _, pos := range []int{4, 1, 3, 0, 2} {
-		require.NoError(t, repo.Create(ctx, byPosition[pos]))
-	}
-
-	// New cards (ucs.due IS NULL) are always eligible; now is at the shared
-	// CreatedAt.
-	now := shared
-
-	// Under a limit smaller than the card count, position decides WHICH cards
-	// are selected and in what order.
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, 3)
-	require.NoError(t, err)
-	require.Equal(t,
-		[]string{byPosition[0].ID, byPosition[1].ID, byPosition[2].ID},
-		repoCardIDs(got),
-		"limit=3 must return position 0,1,2 cards in that order",
-	)
-
-	// With a generous limit, all five come back in position 0..4 order.
-	got, err = repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, 10)
-	require.NoError(t, err)
-	require.Equal(t,
-		[]string{
-			byPosition[0].ID, byPosition[1].ID, byPosition[2].ID,
-			byPosition[3].ID, byPosition[4].ID,
-		},
-		repoCardIDs(got),
-		"limit=10 must return all five cards in position 0..4 order",
-	)
 }
 
 // TestCardRepository_FindDueCards_NoFSRSRow verifies that a card with no
@@ -284,7 +236,7 @@ func TestCardRepository_FindDueCards_NoFSRSRow(t *testing.T) {
 	card := newCard(cg.ID, "no-fsrs", "back")
 	require.NoError(t, repo.Create(ctx, card))
 
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, 10)
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now, 10)
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.Equal(t, card.ID, got[0].Card.ID)
@@ -332,7 +284,7 @@ func TestCardRepository_FindDueCards_FSRSStateMapping(t *testing.T) {
 		return nil
 	}))
 
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, 10)
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now.Add(time.Second), 10)
 	require.NoError(t, err)
 	require.Len(t, got, len(cases))
 
@@ -373,7 +325,7 @@ func TestCardRepository_FindDueCards_InvalidState(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, err = repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, 10)
+	_, err = repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now.Add(time.Second), 10)
 	require.ErrorContains(t, err, "repository: card: invalid FSRSCardState 99")
 }
 
@@ -825,13 +777,12 @@ func TestCardRepo_FindPageByCardgroup_Search(t *testing.T) {
 	})
 }
 
-// TestCardRepository_FindDueCards_PositionDoesNotOverrideDue proves that
-// cards.position is ONLY a tiebreaker after the FSRS due key.  A review card
-// with an earlier ucs.due must sort ahead of a new card even when the review
-// card has a HIGHER position value.  The ORDER BY is:
-//
-//	COALESCE(ucs.due, cards.created_at) ASC, cards.position ASC, cards.id ASC
-func TestCardRepository_FindDueCards_PositionDoesNotOverrideDue(t *testing.T) {
+// TestCardRepository_FindDueCards_ReviewRowsPrecedeNewRows proves the
+// window-concat contract: rows from the review window always precede rows from
+// the new-card window in the raw result, regardless of cards.position. The
+// usecase OrderingPolicy applies the final interleave; the repository only
+// guarantees the two windows are concatenated review-first.
+func TestCardRepository_FindDueCards_ReviewRowsPrecedeNewRows(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -841,21 +792,21 @@ func TestCardRepository_FindDueCards_PositionDoesNotOverrideDue(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 
 	// reviewEarly: has an FSRS row with due = now-2h (earlier than now).
-	// Position is set HIGH (100) so that position-first ordering would push it
-	// after newLowPos.
+	// Position is set HIGH (100); position plays no role in window ordering.
 	reviewEarly := newCard(cg.ID, "review-early", "back")
 	reviewEarly.Position = 100
 	require.NoError(t, repo.Create(ctx, reviewEarly))
 
-	// newLowPos: no FSRS row, so due key falls back to cards.created_at (= now).
-	// Position is LOW (0), which would sort it first if position were the
-	// primary sort key.
+	// newLowPos: no FSRS row, so it surfaces through the new-card window.
+	// Position is LOW (0); it must still come AFTER the review row.
 	newLowPos := newCard(cg.ID, "new-low-pos", "back")
 	newLowPos.CreatedAt = now
 	newLowPos.Position = 0
 	require.NoError(t, repo.Create(ctx, newLowPos))
 
 	// Upsert the FSRS row for reviewEarly so its effective due is now-2h.
+	// NewUserCardFSRSForNewCard sets LastReview == now; a cutoff strictly after
+	// now keeps the review row inside the window.
 	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		state := domain.NewUserCardFSRSForNewCard(ownerID, reviewEarly.ID, now)
 		state.State.Due = now.Add(-2 * time.Hour)
@@ -863,13 +814,12 @@ func TestCardRepository_FindDueCards_PositionDoesNotOverrideDue(t *testing.T) {
 		return ucsRepo.UpsertTx(ctx, tx, state)
 	}))
 
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, 10)
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now.Add(time.Second), 10)
 	require.NoError(t, err)
 	require.Equal(t,
 		[]string{reviewEarly.ID, newLowPos.ID},
 		repoCardIDs(got),
-		"reviewEarly (due=now-2h, pos=100) must sort before newLowPos (due=now, pos=0): "+
-			"earlier due overrides higher position",
+		"review-window rows always precede new-window rows in the raw result; position plays no role",
 	)
 }
 
@@ -950,7 +900,9 @@ func TestCardRepository_FindDueCards_ReviewsNotStarvedByNewBacklog(t *testing.T)
 
 	// limit=2 is smaller than the new-card backlog. The fix fetches reviews and
 	// new cards in separate LIMIT windows, so both due reviews still surface.
-	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, 2)
+	// NewUserCardFSRSForNewCard sets LastReview == now; a cutoff strictly after
+	// now keeps both due reviews inside the window.
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now.Add(time.Second), 2)
 	require.NoError(t, err)
 	ids := repoCardIDs(got)
 
@@ -958,8 +910,119 @@ func TestCardRepository_FindDueCards_ReviewsNotStarvedByNewBacklog(t *testing.T)
 		"due review card must not be starved by the new-card backlog")
 	require.Contains(t, ids, reviewLater.ID,
 		"due review card must not be starved by the new-card backlog")
-	// Reviews are returned ahead of new cards, ordered by due ASC.
+	// Reviews are returned ahead of new cards; their in-phase order is random().
 	require.GreaterOrEqual(t, len(ids), 2)
-	require.Equal(t, []string{reviewEarlier.ID, reviewLater.ID}, ids[:2],
-		"due reviews come first, ordered by due ASC")
+	require.ElementsMatch(t, []string{reviewEarlier.ID, reviewLater.ID}, ids[:2],
+		"due reviews come first; in-phase selection order is random")
+}
+
+// TestCardRepository_FindDueCards_ExcludesCardsReviewedToday verifies the
+// reviewedBefore cutoff: a due card whose last_review is at or after the
+// boundary (i.e. swiped today) is excluded from the review window.
+func TestCardRepository_FindDueCards_ExcludesCardsReviewedToday(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	startOfToday := now.Add(-6 * time.Hour) // arbitrary boundary for the test
+
+	reviewedYesterday := newCard(cg.ID, "reviewed-yesterday", "back")
+	reviewedToday := newCard(cg.ID, "reviewed-today", "back")
+	require.NoError(t, repo.Create(ctx, reviewedYesterday))
+	require.NoError(t, repo.Create(ctx, reviewedToday))
+
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		old := domain.NewUserCardFSRSForNewCard(ownerID, reviewedYesterday.ID, now)
+		old.State.State = domain.FSRSStateLearning
+		old.State.Due = now.Add(-time.Hour)
+		old.State.LastReview = startOfToday.Add(-time.Hour) // before boundary
+		if err := ucsRepo.UpsertTx(ctx, tx, old); err != nil {
+			return err
+		}
+		fresh := domain.NewUserCardFSRSForNewCard(ownerID, reviewedToday.ID, now)
+		fresh.State.State = domain.FSRSStateLearning
+		fresh.State.Due = now.Add(-time.Hour)
+		fresh.State.LastReview = startOfToday.Add(time.Hour) // at/after boundary
+		return ucsRepo.UpsertTx(ctx, tx, fresh)
+	}))
+
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, startOfToday, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{reviewedYesterday.ID}, repoCardIDs(got),
+		"a card reviewed today must not re-enter today's queue")
+}
+
+// TestCardRepository_FindDueCards_LearningPhaseWinsReviewSlots verifies that
+// learning-phase (Again/Hard) rows outrank Review-state rows in the review
+// window, both for SELECTION under a small limit and for ORDER in the
+// returned slice (the pre-sort contract shuffleWithinPhase relies on).
+func TestCardRepository_FindDueCards_LearningPhaseWinsReviewSlots(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	mk := func(front string, st domain.FSRSCardState) *domain.Card {
+		c := newCard(cg.ID, front, "back")
+		require.NoError(t, repo.Create(ctx, c))
+		require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			s := domain.NewUserCardFSRSForNewCard(ownerID, c.ID, now)
+			s.State.State = st
+			s.State.Due = now.Add(-time.Hour)
+			s.State.LastReview = now.Add(-24 * time.Hour)
+			return ucsRepo.UpsertTx(ctx, tx, s)
+		}))
+		return c
+	}
+	l1 := mk("learning-1", domain.FSRSStateLearning)
+	l2 := mk("relearning-1", domain.FSRSStateRelearning)
+	r1 := mk("review-1", domain.FSRSStateReview)
+	r2 := mk("review-2", domain.FSRSStateReview)
+
+	// Selection: limit=2 must pick the two learning-phase rows.
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now, 2)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{l1.ID, l2.ID}, repoCardIDs(got))
+
+	// Order: with all four returned, learning-phase rows come first.
+	got, err = repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now, 10)
+	require.NoError(t, err)
+	require.Len(t, got, 4)
+	require.ElementsMatch(t, []string{l1.ID, l2.ID}, repoCardIDs(got)[:2])
+	require.ElementsMatch(t, []string{r1.ID, r2.ID}, repoCardIDs(got)[2:])
+}
+
+// TestCardRepository_FindDueCards_SamplesNewCardsUnderLimit replaces the old
+// position-order selection test: new cards are now sampled randomly, so the
+// invariants are count, distinctness, and pool membership — not order.
+func TestCardRepository_FindDueCards_SamplesNewCardsUnderLimit(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	now := time.Now().UTC().Add(time.Hour)
+
+	pool := make(map[string]bool, 5)
+	for i := 0; i < 5; i++ {
+		c := newCard(cg.ID, "new-"+string(rune('0'+i)), "back")
+		require.NoError(t, repo.Create(ctx, c))
+		pool[c.ID] = true
+	}
+
+	got, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, now, 3)
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+	seen := map[string]bool{}
+	for _, dc := range got {
+		require.True(t, pool[dc.Card.ID], "returned card must come from the pool")
+		require.False(t, seen[dc.Card.ID], "no duplicates")
+		seen[dc.Card.ID] = true
+	}
 }
