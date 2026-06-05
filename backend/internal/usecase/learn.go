@@ -29,9 +29,9 @@ const (
 var jstZone = time.FixedZone("JST", 9*60*60)
 
 // startOfDayJST returns the JST midnight at or before now, as an absolute
-// instant. The learn queue's review slots exclude cards whose last_review is
-// at or after this boundary, so a card swiped today never re-enters today's
-// queue regardless of its FSRS re-due interval.
+// instant. The learn queue's review slots include only cards whose last_review
+// is strictly before this boundary, so a card swiped today never re-enters
+// today's queue regardless of its FSRS re-due interval.
 func startOfDayJST(now time.Time) time.Time {
 	local := now.In(jstZone)
 	y, m, d := local.Date()

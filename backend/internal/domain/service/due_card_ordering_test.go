@@ -176,6 +176,20 @@ func TestOrderingPolicy_Apply_PanicsOnNilRng(t *testing.T) {
 	)
 }
 
+func TestOrderingPolicy_Apply_PanicsOnNilCard(t *testing.T) {
+	t.Parallel()
+
+	due := []domain.DueCard{
+		{Card: nil, State: domain.FSRSStateNew},
+	}
+	require.PanicsWithValue(t,
+		"domain/service: OrderingPolicy.Apply: DueCard.Card must not be nil",
+		func() {
+			_ = NewOrderingPolicy().Apply(due, rand.New(rand.NewSource(42)))
+		},
+	)
+}
+
 // interleave is exercised directly for the trailing-append paths so the
 // assertions stay deterministic without depending on shuffle permutations.
 func TestInterleave_TrailingReviewAppend(t *testing.T) {
@@ -221,4 +235,17 @@ func TestInterleave_TrailingNewAppend(t *testing.T) {
 		"new-8", "new-9",
 	}
 	require.Equal(t, want, cardIDs(got))
+}
+
+func TestInterleave_PanicsOnNonPositiveRatios(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC)
+	newC := []domain.DueCard{dueCard("new-0", domain.FSRSStateNew, base)}
+	reviewC := []domain.DueCard{dueCard("rev-0", domain.FSRSStateReview, base)}
+
+	require.Panics(t, func() { interleave(newC, reviewC, 0, 1) },
+		"zero nRatio must panic")
+	require.Panics(t, func() { interleave(newC, reviewC, 4, 0) },
+		"zero rRatio must panic")
 }
