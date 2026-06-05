@@ -19,6 +19,30 @@ export const LearnNextDueCardsQuery = graphql(`
   }
 `);
 
+/**
+ * Read-only pool of cards already reviewed today, used by practice mode.
+ *
+ * Practice mode NEVER writes — swiping a practice card fires no mutation and has
+ * no FSRS impact. The selection set mirrors `SwipeCardData` (the shape consumed
+ * by `SwipeCardStack`), including `userCardState` because that component reads
+ * it; the practice client itself ignores the FSRS fields.
+ */
+export const PracticeTodaysCardsQuery = graphql(`
+  query PracticeTodaysCards($cardgroupId: ID!, $limit: Int = 100) {
+    practiceTodaysCards(cardgroupId: $cardgroupId, limit: $limit) {
+      id
+      front
+      back
+      cefrLevel
+      userCardState {
+        due
+        state
+      }
+      cardgroupId
+    }
+  }
+`);
+
 export const HandleSwipeMutation = graphql(`
   mutation HandleSwipe($input: HandleSwipeInput!) {
     handleSwipe(input: $input) {
