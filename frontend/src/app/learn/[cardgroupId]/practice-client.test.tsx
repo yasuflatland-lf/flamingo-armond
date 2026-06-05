@@ -176,6 +176,24 @@ function renderPractice(mocks: unknown[]) {
   );
 }
 
+/**
+ * Assert the structured `[PracticeClient] query failed` log fired and that its
+ * payload omits a `message` key (PII rule — backend messages may echo
+ * user-authored card content). Returns the payload so a caller can make
+ * additional shape assertions (e.g. `cardgroupId`).
+ */
+function expectMessageFreeFailureLog(
+  consoleErrorSpy: ReturnType<typeof vi.spyOn>,
+): Record<string, unknown> {
+  const logCall = consoleErrorSpy.mock.calls.find(
+    (call: unknown[]) => call[0] === "[PracticeClient] query failed",
+  );
+  expect(logCall).toBeDefined();
+  const payload = logCall?.[1] as Record<string, unknown>;
+  expect(payload).not.toHaveProperty("message");
+  return payload;
+}
+
 describe("<PracticeClient>", () => {
   it("renders the card stack and the persistent practice banner for a non-empty pool", async () => {
     const { mock } = makePracticeMock([
@@ -321,13 +339,7 @@ describe("<PracticeClient>", () => {
 
     // Structured log fired once, keyed on the error, WITHOUT a `message` key
     // (PII rule — backend messages may echo user-authored content).
-    const logCall = consoleErrorSpy.mock.calls.find(
-      (call: unknown[]) => call[0] === "[PracticeClient] query failed",
-    );
-    expect(logCall).toBeDefined();
-    const payload = logCall?.[1] as Record<string, unknown>;
-    expect(payload).toMatchObject({ cardgroupId: CG_ID });
-    expect(payload).not.toHaveProperty("message");
+    expect(expectMessageFreeFailureLog(consoleErrorSpy)).toMatchObject({ cardgroupId: CG_ID });
 
     // Retry re-runs the query; the second (successful) mock recovers the stack.
     const user = userEvent.setup();
@@ -369,11 +381,7 @@ describe("<PracticeClient>", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Practice complete" })).not.toBeInTheDocument();
 
-    const logCall = consoleErrorSpy.mock.calls.find(
-      (call: unknown[]) => call[0] === "[PracticeClient] query failed",
-    );
-    expect(logCall).toBeDefined();
-    expect(logCall?.[1] as Record<string, unknown>).not.toHaveProperty("message");
+    expectMessageFreeFailureLog(consoleErrorSpy);
 
     leakSpy.assertNoLeaks();
     consoleErrorSpy.mockRestore();
@@ -397,11 +405,7 @@ describe("<PracticeClient>", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
 
     // The structured failure log still fires, keyed on the error, message-free.
-    const logCall = consoleErrorSpy.mock.calls.find(
-      (call: unknown[]) => call[0] === "[PracticeClient] query failed",
-    );
-    expect(logCall).toBeDefined();
-    expect(logCall?.[1] as Record<string, unknown>).not.toHaveProperty("message");
+    expectMessageFreeFailureLog(consoleErrorSpy);
 
     leakSpy.assertNoLeaks();
     consoleErrorSpy.mockRestore();
