@@ -75,9 +75,11 @@ vi.mock("@/components/learn/learn-action-bar", () => ({
 
 // ---------------------------------------------------------------------------
 // File-wide MockedProvider leak spy. The PracticeClient must never fire any
-// mutation: by passing only "PracticeTodaysCards" in operationNames and
-// providing NO mutation mocks, any stray mutation surfaces as an unmatched
-// request that `assertNoLeaks` catches.
+// mutation. `operationNames` lists three names: the query "PracticeTodaysCards"
+// plus the two swipe-path mutations "HandleSwipe" and "SetLastViewedCardgroup".
+// The two mutation names are INCLUDED deliberately — with NO mutation mocks
+// provided, any stray mutation fired by the practice path surfaces as an
+// unmatched request that `assertNoLeaks` catches as a leak.
 // ---------------------------------------------------------------------------
 let leakSpy: ApolloMockLeakSpyResult;
 
@@ -115,19 +117,31 @@ function makeCard(id: string, front: string, back: string): SwipeCardData & { __
 }
 
 /** Build a PracticeTodaysCards mock returning `cards`, tracking call count. */
-function makePracticeMock(cards: ReturnType<typeof makeCard>[]) {
+function makePracticeMock(cards: ReturnType<typeof makeCard>[], opts?: { delay?: number }) {
   let calls = 0;
   const mock = {
     request: {
       query: PracticeTodaysCardsDocument,
       variables: { cardgroupId: CG_ID },
     },
+    ...(opts?.delay !== undefined ? { delay: opts.delay } : {}),
     result: () => {
       calls += 1;
       return { data: { practiceTodaysCards: cards } };
     },
   };
   return { mock, callCount: () => calls };
+}
+
+/** Build a PracticeTodaysCards mock that fails with a network error. */
+function makePracticeErrorMock() {
+  return {
+    request: {
+      query: PracticeTodaysCardsDocument,
+      variables: { cardgroupId: CG_ID },
+    },
+    error: new Error("network down"),
+  };
 }
 
 function renderPractice(mocks: unknown[]) {
@@ -245,6 +259,131 @@ describe("<PracticeClient>", () => {
     await waitFor(() => {
       expect(second.callCount()).toBe(1);
     });
+    await waitFor(() => {
+      expect(screen.getByText("Restart")).toBeInTheDocument();
+    });
+    leakSpy.assertNoLeaks();
+  });
+
+  it("renders the skeleton while the initial fetch is in flight, before data resolves", async () => {
+    // A delayed mock keeps the first request pending so the skeleton branch is
+    // observable before the card stack renders.
+    const { mock } = makePracticeMock([makeCard("c-1", "Hello", "Hola")], { delay: 30 });
+    renderPractice([mock]);
+
+    // While loading with an empty local queue, the LearnSkeleton is shown.
+    expect(screen.getByLabelText("Loading flashcards")).toBeInTheDocument();
+    expect(screen.queryByText("Hello")).not.toBeInTheDocument();
+
+    // Once the fetch settles, the stack replaces the skeleton.
+    await waitFor(() => {
+      expect(screen.getByText("Hello")).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText("Loading flashcards")).not.toBeInTheDocument();
+    leakSpy.assertNoLeaks();
+  });
+
+  it("shows an error banner with a Retry button on initial-load failure, and Retry recovers", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const success = makePracticeMock([makeCard("c-1", "Hello", "Hola")]);
+    // First request errors (initial load); the second satisfies the Retry.
+    renderPractice([makePracticeErrorMock(), success.mock]);
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+    const retry = screen.getByRole("button", { name: "Retry" });
+    expect(retry).toBeInTheDocument();
+
+    // Structured log fired once, keyed on the error, WITHOUT a `message` key
+    // (PII rule — backend messages may echo user-authored content).
+    const logCall = consoleErrorSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "[PracticeClient] query failed",
+    );
+    expect(logCall).toBeDefined();
+    const payload = logCall?.[1] as Record<string, unknown>;
+    expect(payload).toMatchObject({ cardgroupId: CG_ID });
+    expect(payload).not.toHaveProperty("message");
+
+    // Retry re-runs the query; the second (successful) mock recovers the stack.
+    const user = userEvent.setup();
+    await user.click(retry);
+
+    await waitFor(() => {
+      expect(screen.getByText("Hello")).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    leakSpy.assertNoLeaks();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("shows an error banner with Retry (not a silent completion screen) when Study-again refetch fails", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const user = userEvent.setup();
+    const first = makePracticeMock([makeCard("c-1", "Hello", "Hola")]);
+    // First mount succeeds; the Study-again refetch errors.
+    renderPractice([first.mock, makePracticeErrorMock()]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Hello")).toBeInTheDocument();
+    });
+
+    // Retire the only card → round complete.
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Practice complete" })).toBeInTheDocument();
+    });
+
+    // Study again triggers the failing refetch.
+    await user.click(screen.getByRole("button", { name: "Study again" }));
+
+    // The failure surfaces as the error banner + Retry, NOT a silent fall-back
+    // to the completion screen.
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Practice complete" })).not.toBeInTheDocument();
+
+    const logCall = consoleErrorSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "[PracticeClient] query failed",
+    );
+    expect(logCall).toBeDefined();
+    expect(logCall?.[1] as Record<string, unknown>).not.toHaveProperty("message");
+
+    leakSpy.assertNoLeaks();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("shows the skeleton (not the completion screen) while a Study-again restart is in flight", async () => {
+    const user = userEvent.setup();
+    const first = makePracticeMock([makeCard("c-1", "Hello", "Hola")]);
+    // The Study-again refetch is delayed so its in-flight window is observable.
+    const second = makePracticeMock([makeCard("c-9", "Restart", "Reinicio")], { delay: 40 });
+    renderPractice([first.mock, second.mock]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Hello")).toBeInTheDocument();
+    });
+
+    // Retire the only card → round complete.
+    await user.click(screen.getByRole("button", { name: "Rate as Easy" }));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Practice complete" })).toBeInTheDocument();
+    });
+
+    // Study again clears the queue and refetches. While the (delayed) refetch is
+    // in flight, the skeleton is shown — the stale completion screen must NOT
+    // reappear (that would make the button look like a no-op and invite a
+    // double-click).
+    await user.click(screen.getByRole("button", { name: "Study again" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Loading flashcards")).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("heading", { name: "Practice complete" })).not.toBeInTheDocument();
+
+    // The new round eventually renders once the refetch settles.
     await waitFor(() => {
       expect(screen.getByText("Restart")).toBeInTheDocument();
     });

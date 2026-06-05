@@ -8,8 +8,10 @@ import { LearnActionBar } from "@/components/learn/learn-action-bar";
 import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import { SwipeCardStack } from "@/components/learn/swipe-card-stack";
 import type { SwipeDirection } from "@/components/learn/types";
+import { Button } from "@/components/ui/button";
 import type { PracticeTodaysCardsQuery } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
+import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
 import { LearnSkeleton } from "./_components/learn-skeleton";
 import { advancePracticeQueue, outcomeFromDirection } from "./practice-queue";
 
@@ -35,6 +37,12 @@ const PRACTICE_BANNER = "Practice — swipes aren't recorded";
  * Data-loading is single-mode (query-driven). Each round fetches a fresh pool
  * with `fetchPolicy: "network-only"`; "Study again" on completion refetches and
  * re-seeds a new round.
+ *
+ * Failure handling: any query/refetch error renders a destructive banner with a
+ * Retry button (recovers from both initial-load and Study-again refetch
+ * failures) and emits one structured `console.error` keyed on the error. While a
+ * restart is in flight the skeleton is shown instead of the stale completion
+ * screen, so the button never looks like a no-op.
  */
 export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
   const { data, loading, error, refetch } = useQuery(PracticeTodaysCardsDocument, {
@@ -53,11 +61,29 @@ export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
 
   const pool = data?.practiceTodaysCards;
   useEffect(() => {
+    // Only seed from settled data. With `fetchPolicy: "network-only"`, an
+    // in-flight refetch keeps `data` pointing at the OLD pool; seeding while
+    // `loading` is true would flash the just-finished cards back in. The
+    // object-identity guard then ensures we seed each settled pool exactly once
+    // and never overwrite a swipe-shrunk queue on a same-reference re-render.
+    if (loading) return;
     if (!pool) return;
     if (seededForRef.current === pool) return;
     seededForRef.current = pool;
     setQueue([...pool]);
-  }, [pool]);
+  }, [pool, loading]);
+
+  // Structured diagnostic log on any query/refetch failure. Keyed on `error`
+  // so it fires once per distinct failure, not on every render. Per the PII
+  // rule we log only the fixed `extensions.code` enum, never `error.message`,
+  // which may echo user-authored card content.
+  useEffect(() => {
+    if (!error) return;
+    console.error("[PracticeClient] query failed", {
+      cardgroupId,
+      codes: liftGraphQLCodes(error),
+    });
+  }, [error, cardgroupId]);
 
   const swipeStackRef = useRef<SwipeCardStackHandle | null>(null);
 
@@ -81,11 +107,19 @@ export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
     void refetch();
   }, [refetch]);
 
-  // Initial load: no data yet and the first request is still in flight.
-  if (loading && !data) {
-    return <LearnSkeleton />;
-  }
+  const retry = useCallback(() => {
+    // Re-run the query after a failure. Works from BOTH failure paths: the
+    // initial-load failure (where `data` is undefined and the queue is empty)
+    // and a Study-again refetch failure (where stale `data` is retained but the
+    // queue was already cleared to `[]`). `seededForRef` is reset so the next
+    // settled pool re-seeds even if it is the same array reference as before.
+    seededForRef.current = null;
+    void refetch();
+  }, [refetch]);
 
+  // Error takes priority over the skeleton: a failed initial load OR a failed
+  // Study-again refetch both surface the destructive banner with a Retry
+  // affordance, never a dead end or a misleading completion screen.
   if (error) {
     return (
       <section className="flex flex-1 items-center justify-center">
@@ -93,10 +127,24 @@ export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
           className="w-full max-w-xl rounded-md bg-destructive/10 p-3 text-sm text-destructive"
           role="alert"
         >
-          {getBackendErrorBanner(error)}
+          <p>{getBackendErrorBanner(error)}</p>
+          <div className="mt-3">
+            <Button type="button" variant="outline" onClick={retry}>
+              Retry
+            </Button>
+          </div>
         </div>
       </section>
     );
+  }
+
+  // Skeleton while a request is in flight and the local queue is empty. This
+  // covers the initial load (no data yet) AND an in-flight Study-again restart
+  // (stale `data` still present but the queue was cleared) — in the restart
+  // case the stale `data` must NOT fall through to the completion screen, which
+  // would make the button look like a no-op and invite a double-click.
+  if (loading && queue.length === 0) {
+    return <LearnSkeleton />;
   }
 
   // Empty pool: the learner has not reviewed any cards today, so there is

@@ -61,7 +61,9 @@ export function outcomeFromDirection(direction: SwipeDirection): PracticeOutcome
  * Easy maps to "done for this round": the card is retired from the queue and
  * will not appear again until the next session.
  *
- * @param queue   Current ordered queue.  Never mutated.
+ * @param queue   Current ordered queue.  Never mutated.  Card IDs must be
+ *                unique within the queue: only the first match is moved, and
+ *                duplicate IDs are not supported.
  * @param cardId  ID of the card that was just rated.
  * @param outcome Result of the rating (again | hard | easy).
  * @returns       A new array representing the updated queue.
