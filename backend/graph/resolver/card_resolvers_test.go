@@ -30,6 +30,9 @@ type cardMockRepo struct {
 	findDueRows       []domain.DueCard
 	findDueErr        error
 	findDueLimit      int
+	findPracticeRows  []domain.DueCard
+	findPracticeErr   error
+	findPracticeLimit int
 
 	// Fields used by UpdateCard tests.
 	findByIDResult *domain.Card
@@ -44,6 +47,10 @@ func (m *cardMockRepo) FindByID(_ context.Context, _ string) (*domain.Card, erro
 func (m *cardMockRepo) FindDueCardsForUser(_ context.Context, _ string, _ string, _ time.Time, _ time.Time, limit int) ([]domain.DueCard, error) {
 	m.findDueLimit = limit
 	return m.findDueRows, m.findDueErr
+}
+func (m *cardMockRepo) FindPracticeCardsForUser(_ context.Context, _ string, _ string, _ time.Time, limit int) ([]domain.DueCard, error) {
+	m.findPracticeLimit = limit
+	return m.findPracticeRows, m.findPracticeErr
 }
 func (m *cardMockRepo) FindPageByCardgroupForUser(
 	_ context.Context,
@@ -490,5 +497,95 @@ func TestResolver_UpdateCard_NilVariant_ReturnsInternal(t *testing.T) {
 	code := errCode(t, resp)
 	if code != "INTERNAL" {
 		t.Fatalf("expected INTERNAL, got %q; response: %v", code, resp)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestResolver_PracticeTodaysCards_* — three-case coverage for the
+// practiceTodaysCards query (mirrors the LearnNextDueCards suite).
+// ---------------------------------------------------------------------------
+
+// TestResolver_PracticeTodaysCards_ReturnsCards verifies that an authenticated
+// owner receives the practice cards returned by the mock and that the limit
+// captured by the mock equals 100 when the caller omits the limit argument
+// (nil → clampPracticeLimit(0) → maxLimit=100 in newLearnSrv).
+func TestResolver_PracticeTodaysCards_ReturnsCards(t *testing.T) {
+	t.Parallel()
+
+	c1 := &domain.Card{ID: "p1", CardgroupID: "cg1", Front: "practice front 1", Back: "back 1"}
+	c2 := &domain.Card{ID: "p2", CardgroupID: "cg1", Front: "practice front 2", Back: "back 2"}
+	cardRepo := &cardMockRepo{
+		findPracticeRows: []domain.DueCard{
+			{Card: c1, State: domain.FSRSStateReview, Due: c1.CreatedAt},
+			{Card: c2, State: domain.FSRSStateReview, Due: c2.CreatedAt},
+		},
+	}
+	srv := newLearnSrv(
+		cardRepo,
+		&cardMockCGRepo{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+	)
+
+	// Omit limit to exercise the nil→100 clamp path.
+	body := `{"query":"query($cardgroupId: ID!) { practiceTodaysCards(cardgroupId: $cardgroupId) { id front back cardgroupId } }","variables":{"cardgroupId":"cg1"}}`
+	resp := gqlRequest(t, srv, authedCtx("u1"), body)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	cards, ok := data["practiceTodaysCards"].([]any)
+	if !ok || len(cards) != 2 {
+		t.Fatalf("expected 2 cards, got %T %v", data["practiceTodaysCards"], data["practiceTodaysCards"])
+	}
+	card0, _ := cards[0].(map[string]any)
+	if card0["id"] != "p1" || card0["front"] != "practice front 1" {
+		t.Fatalf("unexpected first card payload: %v", card0)
+	}
+	card1, _ := cards[1].(map[string]any)
+	if card1["id"] != "p2" {
+		t.Fatalf("unexpected second card id: %v", card1["id"])
+	}
+	// Limit omitted in query → nil → clampPracticeLimit(0) = maxLimit = 100.
+	if cardRepo.findPracticeLimit != 100 {
+		t.Fatalf("expected captured repo limit 100 (schema default), got %d", cardRepo.findPracticeLimit)
+	}
+}
+
+// TestResolver_PracticeTodaysCards_Anonymous verifies that an unauthenticated
+// request is rejected with extensions.code == "UNAUTHENTICATED".
+func TestResolver_PracticeTodaysCards_Anonymous(t *testing.T) {
+	t.Parallel()
+
+	srv := newLearnSrv(&cardMockRepo{}, &cardMockCGRepo{})
+
+	body := `{"query":"query { practiceTodaysCards(cardgroupId: \"cg1\") { id } }"}`
+	resp := gqlRequest(t, srv, context.Background(), body)
+
+	code := errCode(t, resp)
+	if code != "UNAUTHENTICATED" {
+		t.Fatalf("expected UNAUTHENTICATED, got %q", code)
+	}
+}
+
+// TestResolver_PracticeTodaysCards_EmptyListIsNormal verifies that a zero-row
+// result from the repository returns an empty array, not an error.
+func TestResolver_PracticeTodaysCards_EmptyListIsNormal(t *testing.T) {
+	t.Parallel()
+
+	srv := newLearnSrv(
+		&cardMockRepo{findPracticeRows: []domain.DueCard{}},
+		&cardMockCGRepo{findResult: &domain.Cardgroup{ID: "cg1", OwnerID: "u1"}},
+	)
+
+	body := `{"query":"query { practiceTodaysCards(cardgroupId: \"cg1\") { id } }"}`
+	resp := gqlRequest(t, srv, authedCtx("u1"), body)
+
+	if _, hasErrs := resp["errors"]; hasErrs {
+		t.Fatalf("unexpected errors: %v", resp["errors"])
+	}
+	data, _ := resp["data"].(map[string]any)
+	cards, _ := data["practiceTodaysCards"].([]any)
+	if len(cards) != 0 {
+		t.Fatalf("expected empty card list, got %v", data["practiceTodaysCards"])
 	}
 }
