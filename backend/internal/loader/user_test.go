@@ -208,9 +208,6 @@ func (r *countingCardRepo) FindPageByCardgroupForUser(
 ) ([]*domain.Card, int64, error) {
 	panic("countingCardRepo.FindPageByCardgroupForUser not configured")
 }
-func (r *countingCardRepo) FindDueCardsForUserTx(_ context.Context, _ *gorm.DB, _, _ string, _ time.Time, _ int) ([]*domain.Card, error) {
-	panic("countingCardRepo.FindDueCardsForUserTx not configured")
-}
 func (r *countingCardRepo) Create(_ context.Context, _ *domain.Card) error {
 	panic("countingCardRepo.Create not configured")
 }

@@ -100,7 +100,6 @@ type CardPageRepository interface {
 		search *string,
 	) (cards []*domain.Card, totalCount int64, err error)
 	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error)
-	FindDueCardsForUserTx(ctx context.Context, tx *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error)
 }
 
 type CardWriteRepository interface {
@@ -367,10 +366,6 @@ func cursorFieldValue(orderBy CardOrderBy, c *CardCursor) (any, error) {
 
 func (r *cardRepo) FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error) {
 	return findDueCardsOn(r.db.WithContext(ctx), userID, cardgroupID, now, limit)
-}
-
-func (r *cardRepo) FindDueCardsForUserTx(ctx context.Context, tx *gorm.DB, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error) {
-	return findDueCardsOn(tx.WithContext(ctx), userID, cardgroupID, now, limit)
 }
 
 // dueCardRow is the raw scan target for findDueCardsOn. It holds all cards.*

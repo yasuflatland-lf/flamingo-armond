@@ -113,7 +113,7 @@ func TestCardRepository_FindByIDs(t *testing.T) {
 	require.Empty(t, empty)
 }
 
-func TestCardRepository_FindDueCardsForUserTx_UsesPerUserFSRSRows(t *testing.T) {
+func TestCardRepository_FindDueCards_UsesPerUserFSRSRows(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	ownerID := insertAuthUser(t, ctx)
@@ -127,22 +127,18 @@ func TestCardRepository_FindDueCardsForUserTx_UsesPerUserFSRSRows(t *testing.T) 
 	require.NoError(t, repo.Create(ctx, dueCard))
 	require.NoError(t, repo.Create(ctx, futureCard))
 
-	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		got, err := repo.FindByIDTx(ctx, tx, dueCard.ID)
-		require.NoError(t, err)
-		require.Equal(t, dueCard.ID, got.ID)
-
+	// futureCard has THIS user's FSRS row scheduled tomorrow → not due.
+	// dueCard has no row → surfaces through the new-card window.
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		state := domain.NewUserCardFSRSForNewCard(ownerID, futureCard.ID, now)
 		state.State.Due = now.Add(24 * time.Hour)
 		state.State.Reps = 1
-		require.NoError(t, ucsRepo.UpsertTx(ctx, tx, state))
+		return ucsRepo.UpsertTx(ctx, tx, state)
+	}))
 
-		due, err := repo.FindDueCardsForUserTx(ctx, tx, ownerID, cg.ID, now, 10)
-		require.NoError(t, err)
-		require.Equal(t, []string{dueCard.ID}, repoCardIDs(due))
-		return nil
-	})
+	due, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, 10)
 	require.NoError(t, err)
+	require.Equal(t, []string{dueCard.ID}, repoCardIDs(due))
 }
 
 func TestCardRepository_FindByIDTx_LocksRowForUpdate(t *testing.T) {
@@ -166,49 +162,6 @@ func TestCardRepository_FindByIDTx_LocksRowForUpdate(t *testing.T) {
 	var id string
 	err = tx2.Raw("SELECT id FROM cards WHERE id = ? FOR UPDATE NOWAIT", card.ID).Scan(&id).Error
 	require.Error(t, err, "second transaction should fail to acquire a NOWAIT lock")
-}
-
-func TestCardRepository_FindDueCardsTx_OrderedAndScoped(t *testing.T) {
-	t.Parallel()
-	ctx := context.Background()
-	ownerID := insertAuthUser(t, ctx)
-	cg1 := insertCardgroup(t, ctx, ownerID)
-	cg2 := insertCardgroup(t, ctx, ownerID)
-	repo := repository.NewCardRepository(testDB.GORM)
-	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
-	now := time.Now().UTC().Truncate(time.Microsecond)
-
-	later := newCard(cg1.ID, "later", "back")
-	earlier := newCard(cg1.ID, "earlier", "back")
-	otherGroup := newCard(cg2.ID, "other", "back")
-	for _, card := range []*domain.Card{later, earlier, otherGroup} {
-		require.NoError(t, repo.Create(ctx, card))
-	}
-	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		for card, due := range map[*domain.Card]time.Time{
-			later:      now.Add(-time.Hour),
-			earlier:    now.Add(-2 * time.Hour),
-			otherGroup: now.Add(-3 * time.Hour),
-		} {
-			state := domain.NewUserCardFSRSForNewCard(ownerID, card.ID, now)
-			state.State.Due = due
-			if err := ucsRepo.UpsertTx(ctx, tx, state); err != nil {
-				return err
-			}
-		}
-		return nil
-	}))
-
-	var due []domain.DueCard
-	err := testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var err error
-		due, err = repo.FindDueCardsForUserTx(ctx, tx, ownerID, cg1.ID, now, 10)
-		return err
-	})
-	require.NoError(t, err)
-	require.Len(t, due, 2)
-	require.Equal(t, earlier.ID, due[0].Card.ID)
-	require.Equal(t, later.ID, due[1].Card.ID)
 }
 
 func TestCardRepository_FindDueCards_OrderedScopedAndLimited(t *testing.T) {
