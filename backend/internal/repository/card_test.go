@@ -1074,3 +1074,193 @@ func TestCardRepository_FindDueCards_SamplesNewCardsUnderLimit(t *testing.T) {
 		seen[dc.Card.ID] = true
 	}
 }
+
+// TestCardRepository_FindPracticeCards_BoundaryComplementarity is the critical
+// pin for the practice window. It shares ONE boundary value between the learn
+// window (FindDueCardsForUser) and the practice window (FindPracticeCardsForUser)
+// and proves the two are complementary: a card reviewed before the boundary
+// belongs to the learn queue, a card reviewed at-or-after the boundary belongs
+// to the practice pool, and never-reviewed cards belong to neither side's
+// last_review predicate (they surface only via the learn new-card window).
+//
+// Mutation-proof: flip the practice comparator `>=` to `>` in card.go and
+// reviewedAtBoundary vanishes from the practice result, failing this test.
+func TestCardRepository_FindPracticeCards_BoundaryComplementarity(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	boundary := now.Add(-6 * time.Hour) // arbitrary start-of-day cutoff for the test
+
+	reviewedYesterday := newCard(cg.ID, "reviewed-yesterday", "back")
+	reviewedAtBoundary := newCard(cg.ID, "reviewed-at-boundary", "back")
+	reviewedToday := newCard(cg.ID, "reviewed-today", "back")
+	neverReviewed := newCard(cg.ID, "never-reviewed", "back")
+	require.NoError(t, repo.Create(ctx, reviewedYesterday))
+	require.NoError(t, repo.Create(ctx, reviewedAtBoundary))
+	require.NoError(t, repo.Create(ctx, reviewedToday))
+	require.NoError(t, repo.Create(ctx, neverReviewed))
+
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		yesterday := domain.NewUserCardFSRSForNewCard(ownerID, reviewedYesterday.ID, now)
+		yesterday.State.State = domain.FSRSStateLearning
+		yesterday.State.Due = now.Add(-time.Hour)                  // due has arrived
+		yesterday.State.LastReview = boundary.Add(-24 * time.Hour) // before boundary → learn window
+		if err := ucsRepo.UpsertTx(ctx, tx, yesterday); err != nil {
+			return err
+		}
+		// Exact-boundary case: last_review == boundary. The practice predicate is
+		// `>=` so equality is TRUE and the card is part of the practice pool. This
+		// pins the inclusive comparator — flipping `>=` to `>` drops this card.
+		atBoundary := domain.NewUserCardFSRSForNewCard(ownerID, reviewedAtBoundary.ID, now)
+		atBoundary.State.State = domain.FSRSStateLearning
+		atBoundary.State.Due = now.Add(-time.Hour)
+		atBoundary.State.LastReview = boundary // exactly at boundary → practice pool (>=)
+		if err := ucsRepo.UpsertTx(ctx, tx, atBoundary); err != nil {
+			return err
+		}
+		today := domain.NewUserCardFSRSForNewCard(ownerID, reviewedToday.ID, now)
+		today.State.State = domain.FSRSStateLearning
+		today.State.Due = now.Add(-time.Hour)
+		today.State.LastReview = boundary.Add(time.Hour) // after boundary → practice pool
+		return ucsRepo.UpsertTx(ctx, tx, today)
+	}))
+
+	// Learn window: cards reviewed strictly before the boundary, plus the
+	// never-reviewed card via the new-card window. reviewedAtBoundary and
+	// reviewedToday are excluded (learn predicate is last_review < boundary).
+	learn, err := repo.FindDueCardsForUser(ctx, ownerID, cg.ID, now, boundary, 10)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{reviewedYesterday.ID, neverReviewed.ID}, repoCardIDs(learn),
+		"learn window holds cards reviewed before the boundary plus never-reviewed new cards")
+
+	// Practice window: exactly the cards reviewed at-or-after the boundary.
+	// reviewedYesterday (before boundary) and neverReviewed (NULL last_review)
+	// are excluded. Result order is randomized, so compare order-insensitive.
+	practice, err := repo.FindPracticeCardsForUser(ctx, ownerID, cg.ID, boundary, 10)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{reviewedAtBoundary.ID, reviewedToday.ID}, repoCardIDs(practice),
+		"practice pool holds exactly the cards reviewed at-or-after the boundary (inclusive >=)")
+}
+
+// TestCardRepository_FindPracticeCards_IgnoresOtherUsersFSRSRows verifies the
+// LEFT JOIN is scoped to the calling user via ucs.user_id = ?. Another user
+// reviewing the shared card today must not surface it in the querying user's
+// practice pool — the querying user has no FSRS row, so their JOIN slot is NULL
+// and the last_review >= predicate never matches. Mirrors
+// TestCardRepository_FindDueCards_IgnoresOtherUsersFSRSRows.
+func TestCardRepository_FindPracticeCards_IgnoresOtherUsersFSRSRows(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	otherUserID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	boundary := now.Add(-6 * time.Hour)
+
+	card := newCard(cg.ID, "shared-card", "back")
+	require.NoError(t, repo.Create(ctx, card))
+
+	// otherUser reviewed the card after the boundary (today). ownerID has no
+	// FSRS row for the card.
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		state := domain.NewUserCardFSRSForNewCard(otherUserID, card.ID, now)
+		state.State.LastReview = boundary.Add(time.Hour)
+		state.State.Reps = 1
+		return ucsRepo.UpsertTx(ctx, tx, state)
+	}))
+
+	got, err := repo.FindPracticeCardsForUser(ctx, ownerID, cg.ID, boundary, 10)
+	require.NoError(t, err)
+	require.Empty(t, got,
+		"otherUser's today-review must not surface in the calling user's practice pool")
+}
+
+// TestCardRepository_FindPracticeCards_CardgroupScoped verifies the
+// cards.cardgroup_id predicate: a card reviewed today in a DIFFERENT cardgroup
+// of the same user must not leak into the queried cardgroup's practice pool.
+func TestCardRepository_FindPracticeCards_CardgroupScoped(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg1 := insertCardgroup(t, ctx, ownerID)
+	cg2 := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	boundary := now.Add(-6 * time.Hour)
+
+	inGroup := newCard(cg1.ID, "in-group", "back")
+	otherGroup := newCard(cg2.ID, "other-group", "back")
+	require.NoError(t, repo.Create(ctx, inGroup))
+	require.NoError(t, repo.Create(ctx, otherGroup))
+
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, c := range []*domain.Card{inGroup, otherGroup} {
+			state := domain.NewUserCardFSRSForNewCard(ownerID, c.ID, now)
+			state.State.LastReview = boundary.Add(time.Hour) // reviewed today
+			state.State.Reps = 1
+			if err := ucsRepo.UpsertTx(ctx, tx, state); err != nil {
+				return err
+			}
+		}
+		return nil
+	}))
+
+	got, err := repo.FindPracticeCardsForUser(ctx, ownerID, cg1.ID, boundary, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{inGroup.ID}, repoCardIDs(got),
+		"practice pool must not leak a today-reviewed card from another cardgroup")
+}
+
+// TestCardRepository_FindPracticeCards_Limited verifies the LIMIT clause and the
+// limit<=0 short-circuit: with three reviewed-today cards a limit of 2 returns
+// exactly two of the pool, and limit 0 returns an empty (non-nil) slice without
+// executing SQL.
+func TestCardRepository_FindPracticeCards_Limited(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	ownerID := insertAuthUser(t, ctx)
+	cg := insertCardgroup(t, ctx, ownerID)
+	repo := repository.NewCardRepository(testDB.GORM)
+	ucsRepo := repository.NewUserCardFSRSRepository(testDB.GORM)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	boundary := now.Add(-6 * time.Hour)
+
+	pool := make(map[string]bool, 3)
+	cards := make([]*domain.Card, 3)
+	for i := 0; i < 3; i++ {
+		c := newCard(cg.ID, "reviewed-"+string(rune('0'+i)), "back")
+		require.NoError(t, repo.Create(ctx, c))
+		cards[i] = c
+		pool[c.ID] = true
+	}
+	require.NoError(t, testDB.GORM.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, c := range cards {
+			state := domain.NewUserCardFSRSForNewCard(ownerID, c.ID, now)
+			state.State.LastReview = boundary.Add(time.Hour) // reviewed today
+			state.State.Reps = 1
+			if err := ucsRepo.UpsertTx(ctx, tx, state); err != nil {
+				return err
+			}
+		}
+		return nil
+	}))
+
+	got, err := repo.FindPracticeCardsForUser(ctx, ownerID, cg.ID, boundary, 2)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	for _, id := range repoCardIDs(got) {
+		require.True(t, pool[id], "limit=2 must select from the reviewed-today pool, got %q", id)
+	}
+
+	empty, err := repo.FindPracticeCardsForUser(ctx, ownerID, cg.ID, boundary, 0)
+	require.NoError(t, err)
+	require.Empty(t, empty)
+	require.NotNil(t, empty, "limit 0 returns an empty non-nil slice")
+}
