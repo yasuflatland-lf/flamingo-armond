@@ -25,7 +25,7 @@ func (r *cardRepo) FindByIDTx(ctx context.Context, tx *gorm.DB, id string) (*dom
 // (from FindByIDTx) — the lock clause is applied by the caller, not here.
 func findCardByID(ctx context.Context, db *gorm.DB, id string) (*domain.Card, error) {
     var row gormCard
-    if err := db.WithContext(ctx).First(&row, "id = ?", id).Error; err != nil {
+    if err := db.WithContext(ctx).Where("id = ?", id).Take(&row).Error; err != nil {
         // ... map gorm.ErrRecordNotFound to repository.ErrNotFound, wrap others ...
     }
     // ... build *domain.Card from row ...
