@@ -371,3 +371,43 @@ func TestLearnUsecase_NextDueCards_FindDueCards_PropagatesDeadlineExceeded(t *te
 	_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", nil)
 	assertCancelled(t, err)
 }
+
+// TestStartOfDayJST pins the "previous day" boundary used by the review
+// slots: JST (UTC+9) midnight at or before now, returned as an instant.
+func TestStartOfDayJST(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		now  time.Time
+		want time.Time
+	}{
+		{
+			name: "just before JST midnight",
+			now:  time.Date(2026, 6, 5, 14, 59, 59, 0, time.UTC), // 23:59:59 JST
+			want: time.Date(2026, 6, 4, 15, 0, 0, 0, time.UTC),   // 2026-06-05 00:00 JST
+		},
+		{
+			name: "exactly JST midnight",
+			now:  time.Date(2026, 6, 5, 15, 0, 0, 0, time.UTC), // 2026-06-06 00:00 JST
+			want: time.Date(2026, 6, 5, 15, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "JST noon",
+			now:  time.Date(2026, 6, 5, 3, 0, 0, 0, time.UTC), // 12:00 JST
+			want: time.Date(2026, 6, 4, 15, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "input zone does not matter, only the instant",
+			now:  time.Date(2026, 6, 5, 12, 0, 0, 0, time.FixedZone("JST", 9*60*60)), // = 03:00 UTC
+			want: time.Date(2026, 6, 4, 15, 0, 0, 0, time.UTC),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := startOfDayJST(tc.now)
+			require.True(t, got.Equal(tc.want), "got %v, want instant %v", got, tc.want)
+		})
+	}
+}
