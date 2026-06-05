@@ -20,6 +20,13 @@ func (s FSRSCardState) IsValid() bool {
 	return s >= FSRSStateNew && s <= FSRSStateRelearning
 }
 
+// IsLearningPhase reports whether the card sits in a short-interval phase
+// (Learning or Relearning) — i.e. its latest rating was Again or Hard. The
+// learn queue's review slots prioritise these over long-interval Review cards.
+func (s FSRSCardState) IsLearningPhase() bool {
+	return s == FSRSStateLearning || s == FSRSStateRelearning
+}
+
 // FSRSState is an immutable value object. Repository code persists it as a
 // flat column block, but domain consumers treat it as one scheduling state.
 type FSRSState struct {
