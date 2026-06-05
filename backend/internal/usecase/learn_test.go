@@ -380,6 +380,50 @@ func TestLearnUsecase_NextDueCards_FindDueCards_PropagatesDeadlineExceeded(t *te
 	assertCancelled(t, err)
 }
 
+// TestLearnUsecaseNextDueCards_PassesJSTStartOfDayAsReviewedBefore pins the
+// contract that the usecase computes the JST previous-day boundary and the
+// repository receives it verbatim.
+func TestLearnUsecaseNextDueCards_PassesJSTStartOfDayAsReviewedBefore(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		now  time.Time
+		want time.Time
+	}{
+		{
+			name: "before JST midnight",
+			now:  time.Date(2026, 6, 5, 14, 59, 0, 0, time.UTC),
+			want: time.Date(2026, 6, 4, 15, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "after JST midnight",
+			now:  time.Date(2026, 6, 5, 15, 0, 0, 0, time.UTC),
+			want: time.Date(2026, 6, 5, 15, 0, 0, 0, time.UTC),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cardRepo := &mockLearnCardRepo{}
+			uc := NewLearnUsecase(
+				cardRepo,
+				&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+				service.NewOrderingPolicy(),
+				func() *rand.Rand { return rand.New(rand.NewSource(1)) },
+				20,
+				100,
+				fixedClock{now: tc.now},
+				newTestLogger(),
+			)
+			_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
+			require.NoError(t, err)
+			require.True(t, cardRepo.reviewedBefore.Equal(tc.want),
+				"reviewedBefore: got %v, want instant %v", cardRepo.reviewedBefore, tc.want)
+		})
+	}
+}
+
 // TestStartOfDayJST pins the "previous day" boundary used by the review
 // slots: JST (UTC+9) midnight at or before now, returned as an instant.
 func TestStartOfDayJST(t *testing.T) {
