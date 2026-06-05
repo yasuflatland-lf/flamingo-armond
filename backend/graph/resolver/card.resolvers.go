@@ -14,6 +14,7 @@ import (
 	"backend/internal/loader"
 	"backend/internal/usecase"
 	"context"
+	"fmt"
 
 	"github.com/rotisserie/eris"
 )
@@ -157,6 +158,11 @@ func (r *queryResolver) LearnNextDueCards(ctx context.Context, cardgroupID strin
 		return nil, gqlerr.FromUsecaseError(ctx, err)
 	}
 	return toCardModels(ctx, cards), nil
+}
+
+// PracticeTodaysCards is the resolver for the practiceTodaysCards field.
+func (r *queryResolver) PracticeTodaysCards(ctx context.Context, cardgroupID string, limit *int) ([]*model.Card, error) {
+	panic(fmt.Errorf("not implemented: PracticeTodaysCards - practiceTodaysCards"))
 }
 
 // CardsByCardgroupConnection is the resolver for the cardsByCardgroupConnection field.

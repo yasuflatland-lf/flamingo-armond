@@ -131,6 +131,15 @@ extend type Query {
   """
   learnNextDueCards(cardgroupId: ID!, limit: Int = 20): [Card!]!
   """
+  Cards the caller reviewed today (JST), for schedule-neutral practice.
+  Read-only: practice swipes are never recorded and never touch FSRS state.
+  Inverse window of learnNextDueCards: last_review >= start-of-today (JST).
+  Order is randomized per fetch. Limit defaults to 100 (clamped to 100).
+  Returns UNAUTHENTICATED if the caller does not own the cardgroup;
+  BAD_USER_INPUT if the cardgroup does not exist.
+  """
+  practiceTodaysCards(cardgroupId: ID!, limit: Int = 100): [Card!]!
+  """
   Paginated cards in a cardgroup. Forward pagination uses (first, after); backward uses (last, before).
   Cursor is the card UUID. Default page size is 20; max is 100.
   Optional case-insensitive substring search on front OR back (ILIKE partial match).
