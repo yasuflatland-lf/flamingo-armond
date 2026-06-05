@@ -40,6 +40,10 @@ func startOfDayJST(now time.Time) time.Time {
 
 type CardRepoForLearn interface {
 	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now, reviewedBefore time.Time, limit int) ([]domain.DueCard, error)
+	// FindPracticeCardsForUser returns cards the user reviewed today (the inverse
+	// window of FindDueCardsForUser): last_review at or after reviewedAfter. The
+	// server randomizes row order; the usecase preserves it verbatim.
+	FindPracticeCardsForUser(ctx context.Context, userID, cardgroupID string, reviewedAfter time.Time, limit int) ([]domain.DueCard, error)
 }
 
 type CardgroupRepoForLearn interface {
@@ -49,6 +53,11 @@ type CardgroupRepoForLearn interface {
 // LearnUsecase surfaces due-card retrieval for a learning session.
 type LearnUsecase interface {
 	NextDueCards(ctx context.Context, cardgroupID string, limit *int) ([]*domain.Card, error)
+	// PracticeTodaysCards returns the cards the caller already reviewed today
+	// (JST), the inverse window of NextDueCards. It is read-only: no FSRS
+	// schedule ordering is applied and nothing is written. Returns Unauthenticated
+	// when the caller does not own the cardgroup, BadUserInput when it is missing.
+	PracticeTodaysCards(ctx context.Context, cardgroupID string, limit *int) ([]*domain.Card, error)
 }
 
 type learnUsecase struct {
@@ -120,9 +129,12 @@ func NewLearnUsecase(
 	}
 }
 
-// NextDueCards returns up to limit due cards (clamped to [1, maxLimit]).
-// Returns Unauthenticated when the caller does not own the cardgroup, BadUserInput when the cardgroup is missing.
-func (u *learnUsecase) NextDueCards(ctx context.Context, cardgroupID string, limit *int) ([]*domain.Card, error) {
+// authorizeCardgroupForLearn resolves the cardgroup and verifies the caller owns
+// it. It is shared by NextDueCards and PracticeTodaysCards so the two windows
+// cannot drift in how they translate auth and cardgroup-lookup failures.
+// Returns the authenticated user on success; the cardgroup itself is discarded
+// (callers only need the ownership decision and the user's Sub).
+func (u *learnUsecase) authorizeCardgroupForLearn(ctx context.Context, cardgroupID string) (*auth.AuthUser, error) {
 	user := auth.UserFrom(ctx)
 	if user == nil {
 		return nil, ucerr.ErrUnauthenticated
@@ -139,6 +151,16 @@ func (u *learnUsecase) NextDueCards(ctx context.Context, cardgroupID string, lim
 	}
 	if !cg.IsOwnedBy(user.Sub) {
 		return nil, ucerr.ErrUnauthenticated
+	}
+	return user, nil
+}
+
+// NextDueCards returns up to limit due cards (clamped to [1, maxLimit]).
+// Returns Unauthenticated when the caller does not own the cardgroup, BadUserInput when the cardgroup is missing.
+func (u *learnUsecase) NextDueCards(ctx context.Context, cardgroupID string, limit *int) ([]*domain.Card, error) {
+	user, err := u.authorizeCardgroupForLearn(ctx, cardgroupID)
+	if err != nil {
+		return nil, err
 	}
 	n := 0
 	if limit != nil {
@@ -160,9 +182,57 @@ func (u *learnUsecase) NextDueCards(ctx context.Context, cardgroupID string, lim
 	return ordered, nil
 }
 
+// PracticeTodaysCards returns the cards the caller already reviewed today (JST),
+// the inverse window of NextDueCards. It is strictly read-only: it never invokes
+// OrderingPolicy (practice replay is not schedule ordering) and never writes.
+// The repository randomizes row order server-side; this method preserves that
+// order verbatim, mapping DueCards to their underlying *domain.Card.
+func (u *learnUsecase) PracticeTodaysCards(ctx context.Context, cardgroupID string, limit *int) ([]*domain.Card, error) {
+	user, err := u.authorizeCardgroupForLearn(ctx, cardgroupID)
+	if err != nil {
+		return nil, err
+	}
+	n := 0
+	if limit != nil {
+		n = *limit
+	}
+	n = u.clampPracticeLimit(n)
+	now := u.clock.Now().UTC()
+	boundary := startOfDayJST(now)
+	rows, err := u.cardRepo.FindPracticeCardsForUser(ctx, user.Sub, cardgroupID, boundary, n)
+	if err != nil {
+		if isContextDone(err) {
+			return nil, err
+		}
+		return nil, eris.Wrap(err, "usecase: learn: find practice cards")
+	}
+	// Preserve repository order (already randomized server-side); do not apply
+	// OrderingPolicy and do not truncate beyond the clamp. Empty stays non-nil.
+	cards := make([]*domain.Card, 0, len(rows))
+	for _, row := range rows {
+		cards = append(cards, row.Card)
+	}
+	return cards, nil
+}
+
 func (u *learnUsecase) clampLimit(limit int) int {
 	if limit <= 0 {
 		return u.defaultLimit
+	}
+	if limit > u.maxLimit {
+		return u.maxLimit
+	}
+	return limit
+}
+
+// clampPracticeLimit clamps the practice-mode limit. Unlike clampLimit, the
+// default IS the cap: a missing or non-positive limit yields the whole day's
+// pool (u.maxLimit), because the unit of practice is the entire set of cards
+// reviewed today, not a paged subset. The deliberate asymmetry with
+// clampLimit's default-20 is why this is a separate named method.
+func (u *learnUsecase) clampPracticeLimit(limit int) int {
+	if limit <= 0 {
+		return u.maxLimit
 	}
 	if limit > u.maxLimit {
 		return u.maxLimit
