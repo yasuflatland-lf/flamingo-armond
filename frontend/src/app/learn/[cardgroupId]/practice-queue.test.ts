@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  PRACTICE_REQUEUE_OFFSET,
   advancePracticeQueue,
   outcomeFromDirection,
+  PRACTICE_REQUEUE_OFFSET,
   type PracticeOutcome,
 } from "./practice-queue";
 
@@ -48,9 +48,11 @@ describe('advancePracticeQueue with outcome "again"', () => {
     const result = advancePracticeQueue(queue, "card-1", "again");
 
     // card-1 should no longer be at index 0
-    expect(result[0].id).not.toBe("card-1");
+    const head = result[0];
+    expect(head?.id).not.toBe("card-1");
     // card-1 should appear at index PRACTICE_REQUEUE_OFFSET (5)
-    expect(result[PRACTICE_REQUEUE_OFFSET].id).toBe("card-1");
+    const atOffset = result[PRACTICE_REQUEUE_OFFSET];
+    expect(atOffset?.id).toBe("card-1");
     // Length unchanged
     expect(result).toHaveLength(queue.length);
   });
@@ -63,7 +65,8 @@ describe('advancePracticeQueue with outcome "again"', () => {
     const result = advancePracticeQueue(queue, cardId, "again");
 
     expect(result).toHaveLength(queue.length);
-    expect(result[PRACTICE_REQUEUE_OFFSET].id).toBe(cardId);
+    const atOffset = result[PRACTICE_REQUEUE_OFFSET];
+    expect(atOffset?.id).toBe(cardId);
     // The removed card must not appear elsewhere
     const positions = result.reduce<number[]>((acc, c, i) => {
       if (c.id === cardId) acc.push(i);
@@ -82,8 +85,10 @@ describe('advancePracticeQueue with outcome "hard"', () => {
     const queue = makeCards(10);
     const result = advancePracticeQueue(queue, "card-1", "hard");
 
-    expect(result[0].id).not.toBe("card-1");
-    expect(result[PRACTICE_REQUEUE_OFFSET].id).toBe("card-1");
+    const head = result[0];
+    expect(head?.id).not.toBe("card-1");
+    const atOffset = result[PRACTICE_REQUEUE_OFFSET];
+    expect(atOffset?.id).toBe("card-1");
     expect(result).toHaveLength(queue.length);
   });
 });
@@ -123,7 +128,8 @@ describe("tail clamping when queue is shorter than offset after removal", () => 
 
     expect(result).toHaveLength(3);
     // card-1 should be at the last position
-    expect(result[result.length - 1].id).toBe("card-1");
+    const last = result[result.length - 1];
+    expect(last?.id).toBe("card-1");
   });
 });
 
@@ -137,7 +143,8 @@ describe("single-card queue with again", () => {
     const result = advancePracticeQueue(queue, "card-1", "again");
 
     expect(result).toHaveLength(1);
-    expect(result[0].id).toBe("card-1");
+    const only = result[0];
+    expect(only?.id).toBe("card-1");
   });
 });
 

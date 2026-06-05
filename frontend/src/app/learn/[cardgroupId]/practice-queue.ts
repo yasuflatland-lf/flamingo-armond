@@ -78,7 +78,15 @@ export function advancePracticeQueue<T extends { id: string }>(
     return [...queue];
   }
 
+  // Hoist to a checked local so the type is T, not T | undefined.
+  // idx is guaranteed to be a valid index because findIndex returned >= 0.
   const card = queue[idx];
+  if (card === undefined) {
+    // Structurally unreachable: findIndex only returns a non-negative index
+    // when an element exists at that position.  Guard is here solely to
+    // satisfy noUncheckedIndexedAccess without an unsafe cast.
+    return [...queue];
+  }
 
   // Remove the card from its current position.
   const without = [...queue.slice(0, idx), ...queue.slice(idx + 1)];
@@ -91,9 +99,5 @@ export function advancePracticeQueue<T extends { id: string }>(
   // again / hard: re-insert at min(PRACTICE_REQUEUE_OFFSET, without.length)
   // so the card always lands within bounds even when the queue is short.
   const insertAt = Math.min(PRACTICE_REQUEUE_OFFSET, without.length);
-  return [
-    ...without.slice(0, insertAt),
-    card,
-    ...without.slice(insertAt),
-  ];
+  return [...without.slice(0, insertAt), card, ...without.slice(insertAt)];
 }
