@@ -88,6 +88,7 @@ Use `isUnauthenticatedGraphQLError` for all code paths — including simple redi
 - [Apollo `client.query()` is not cancelled on unmount — guard `setState` with `isMountedRef`](../../docs/frontend/rsc-error-handling/apollo-client-query-unmount-guard.md)
 - [`supabase.auth.getClaims()` has a three-way return AND can throw non-AuthError exceptions — use try/catch outside an error boundary (e.g. middleware)](../../docs/frontend/rsc-error-handling/getclaims-three-way-return.md)
 - [`isUnauthenticatedGraphQLError` matches gqlFetch — not Apollo Client runtime errors](../../docs/frontend/rsc-error-handling/apollo-runtime-vs-gqlfetch-error-shape.md)
+- [A failed `void refetch()` surfaces via the `useQuery` hook's `error` state — no local transport-error machinery needed](../../docs/frontend/rsc-error-handling/apollo-v4-refetch-rejection-and-hook-error.md)
 - [`useMutation` rejects while `useLazyQuery` resolves — `result.error` after a mutation is dead code](../../docs/frontend/rsc-error-handling/mutate-rejects-while-lazyquery-resolves.md)
 - [Fire-and-forget mutation: structured warn for null payload, non-success variant, and rejection](../../docs/frontend/rsc-error-handling/fire-and-forget-mutation-warn-on-null-and-non-success.md)
 - [`UNAUTHENTICATED` collapses to generic copy; `FORBIDDEN` preserves the server's specific reason](../../docs/frontend/rsc-error-handling/unauthenticated-vs-forbidden-message-asymmetry.md)

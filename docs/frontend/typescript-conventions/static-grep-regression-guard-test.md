@@ -139,3 +139,31 @@ it("does not carry optimisticResponse in the handleSwipe mutation", () => {
 ```
 
 **Rationale.** This is negative-pattern enforcement at the source level — the same technique as the `endCursorRef` example, applied to a different concern. Where the ref-triplet guard asserts that a deprecated identifier stays absent after a migration, this guard asserts that a forbidden Apollo option never appears in a typed-error-capable mutation call. Both tests are structural, not behavioral: they fail on reintroduction without requiring any runtime mock setup. The `Component.toString()` variant avoids a hard-coded file path and works as long as the component is a module-level named export accessible in the test file.
+
+## Third worked example: forbidden-capability set via `readFileSync` (module read-only by construction)
+
+When the invariant is not "this one token stays absent" but "this module must **never acquire a whole capability**", grep the module source for the full set of tokens that capability would introduce. The capability is proven absent by construction: the import-statement absence is the compile-level half (the module cannot call what it never imports), and the source grep is the regression half (a future edit cannot smuggle the capability back in without tripping the test).
+
+Worked example: `frontend/src/app/learn/[cardgroupId]/practice-client.test.tsx` — the `"PracticeClient FSRS-safe source guards"` block. Practice mode must be FSRS-safe: it re-arranges a purely-local queue and must NEVER write through the swipe mutation, because a write would corrupt the card's review schedule. The guard reads the module source and asserts the whole swipe-mutation surface is absent:
+
+```ts
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const source = readFileSync(
+  join(process.cwd(), "src/app/learn/[cardgroupId]/practice-client.tsx"),
+  "utf8",
+);
+
+it("never references the HandleSwipe mutation", () => {
+  expect(source).not.toContain("HandleSwipeMutation");
+});
+it("never imports or calls useMutation", () => {
+  expect(source).not.toContain("useMutation");
+});
+it("never declares an optimisticResponse", () => {
+  expect(source).not.toContain("optimisticResponse");
+});
+```
+
+**Why `readFileSync`, not `Component.toString()`, for a forbidden-capability set.** The capability arrives through `import` statements (`import { useMutation } from "@apollo/client/react"`, the swipe-mutation document import). Imports are module-scoped — they live outside the component function body — so `Component.toString()` cannot see them and a `.toString()`-based grep would pass even if the module imported `useMutation`. Reading the source file is the only form that catches an import-level reintroduction. The three tokens (`HandleSwipeMutation`, `useMutation`, `optimisticResponse`) together cover the document, the hook, and the optimistic-write option; expand the set to any new token that would represent a path back to the forbidden capability.
