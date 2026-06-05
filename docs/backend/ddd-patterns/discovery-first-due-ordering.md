@@ -60,6 +60,12 @@ deterministic while the database does the sampling:
   JST observes no daylight saving, so a fixed offset is exact and avoids a
   tzdata dependency. The product currently assumes a Japan-resident learner;
   revisit with a per-user timezone preference if that assumption breaks.
+- **The review-window cutoff is strictly before the boundary.** The repository
+  predicate is `ucs.last_review < ?` (strict `<`), so a card whose `last_review`
+  equals the JST start-of-day exactly is excluded — a card swiped at local
+  midnight does not reappear in today's queue. The `<` vs `<=` choice is part of
+  the contract and is pinned by an exact-boundary fixture; see
+  [exact-boundary fixture for strict time-cutoff predicates](../library-gotchas/strict-cutoff-boundary-fixture-and-mutation-proof.md).
 
 ## Trade-off
 
