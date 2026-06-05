@@ -507,8 +507,10 @@ func TestResolver_UpdateCard_NilVariant_ReturnsInternal(t *testing.T) {
 
 // TestResolver_PracticeTodaysCards_ReturnsCards verifies that an authenticated
 // owner receives the practice cards returned by the mock and that the limit
-// captured by the mock equals 100 when the caller omits the limit argument
-// (nil → clampPracticeLimit(0) → maxLimit=100 in newLearnSrv).
+// captured by the mock equals 100 when the caller omits the limit argument.
+// The schema declares `limit: Int = 100` so gqlgen injects the default before
+// the resolver runs; the path is clampPracticeLimit(100) → 100 (in-range
+// pass-through), not nil → cap. The nil→cap branch is tested in learn_test.go.
 func TestResolver_PracticeTodaysCards_ReturnsCards(t *testing.T) {
 	t.Parallel()
 
@@ -545,7 +547,7 @@ func TestResolver_PracticeTodaysCards_ReturnsCards(t *testing.T) {
 	if card1["id"] != "p2" {
 		t.Fatalf("unexpected second card id: %v", card1["id"])
 	}
-	// Limit omitted in query → nil → clampPracticeLimit(0) = maxLimit = 100.
+	// Schema default 100 injected by gqlgen → clampPracticeLimit(100) = 100.
 	if cardRepo.findPracticeLimit != 100 {
 		t.Fatalf("expected captured repo limit 100 (schema default), got %d", cardRepo.findPracticeLimit)
 	}
@@ -587,5 +589,30 @@ func TestResolver_PracticeTodaysCards_EmptyListIsNormal(t *testing.T) {
 	cards, _ := data["practiceTodaysCards"].([]any)
 	if len(cards) != 0 {
 		t.Fatalf("expected empty card list, got %v", data["practiceTodaysCards"])
+	}
+}
+
+// TestResolver_PracticeTodaysCards_MissingCardgroup verifies that a
+// practiceTodaysCards request whose cardgroup does not exist is rejected with
+// extensions.code == "BAD_USER_INPUT" and extensions.field == "cardgroupId".
+func TestResolver_PracticeTodaysCards_MissingCardgroup(t *testing.T) {
+	t.Parallel()
+
+	srv := newLearnSrv(
+		&cardMockRepo{},
+		&cardMockCGRepo{findErr: repository.ErrNotFound},
+	)
+
+	body := `{"query":"query { practiceTodaysCards(cardgroupId: \"cg-missing\") { id } }"}`
+	resp := gqlRequest(t, srv, authedCtx("u1"), body)
+
+	ext := errExtensions(t, resp)
+	code, _ := ext["code"].(string)
+	if code != "BAD_USER_INPUT" {
+		t.Fatalf("expected BAD_USER_INPUT, got %q; response: %v", code, resp)
+	}
+	field, _ := ext["field"].(string)
+	if field != "cardgroupId" {
+		t.Fatalf("expected extensions.field=cardgroupId, got %q; ext: %v", field, ext)
 	}
 }

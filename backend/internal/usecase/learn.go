@@ -56,7 +56,7 @@ type LearnUsecase interface {
 	// PracticeTodaysCards returns the cards the caller already reviewed today
 	// (JST), the inverse window of NextDueCards. It is read-only: no FSRS
 	// schedule ordering is applied and nothing is written. Returns Unauthenticated
-	// when the caller does not own the cardgroup, BadUserInput when it is missing.
+	// when the caller does not own the cardgroup, BadUserInput when the cardgroup is missing.
 	PracticeTodaysCards(ctx context.Context, cardgroupID string, limit *int) ([]*domain.Card, error)
 }
 
@@ -155,7 +155,7 @@ func (u *learnUsecase) authorizeCardgroupForLearn(ctx context.Context, cardgroup
 	return user, nil
 }
 
-// NextDueCards returns up to limit due cards (clamped to [1, maxLimit]).
+// NextDueCards returns up to limit due cards (clamped to [1, maxLimit]; a nil or non-positive limit falls back to defaultLimit).
 // Returns Unauthenticated when the caller does not own the cardgroup, BadUserInput when the cardgroup is missing.
 func (u *learnUsecase) NextDueCards(ctx context.Context, cardgroupID string, limit *int) ([]*domain.Card, error) {
 	user, err := u.authorizeCardgroupForLearn(ctx, cardgroupID)
@@ -226,8 +226,8 @@ func (u *learnUsecase) clampLimit(limit int) int {
 }
 
 // clampPracticeLimit clamps the practice-mode limit. Unlike clampLimit, the
-// default IS the cap: a missing or non-positive limit yields the whole day's
-// pool (u.maxLimit), because the unit of practice is the entire set of cards
+// default IS the cap: a missing or non-positive limit yields the cap
+// (u.maxLimit), because the unit of practice is the entire set of cards
 // reviewed today, not a paged subset. The deliberate asymmetry with
 // clampLimit's default-20 is why this is a separate named method.
 func (u *learnUsecase) clampPracticeLimit(limit int) int {

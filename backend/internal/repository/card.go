@@ -395,11 +395,13 @@ type dueCardRow struct {
 	Due         *time.Time `gorm:"column:due"`
 }
 
-// Learn window:    last_review < boundary AND due arrived.
+// Learn window:    due IS NOT NULL AND due <= now AND last_review < boundary.
 // Practice window: last_review >= boundary; due not consulted.
-// The boundary is the same startOfDayJST value, computed once in the
-// usecase and passed to both windows. Changing one side without the other
-// makes a card vanish from (or appear in) both queues.
+// Both usecase methods (NextDueCards and PracticeTodaysCards) derive the
+// boundary from the same startOfDayJST formula, computed once per call
+// before hitting the repository. Changing the formula or comparator for
+// one window without the other makes a card vanish from (or appear in)
+// both queues.
 //
 // findDueCardsOn fetches the cards eligible for a learning session in two
 // independent LIMIT windows and concatenates them: review cards first, then
@@ -492,8 +494,9 @@ func findPracticeCardsOn(db *gorm.DB, userID, cardgroupID string, reviewedAfter 
 // a shared helper must not embed a caller-specific layer prefix.
 func dueRowsOn(db *gorm.DB, userID, where string, whereArgs []any, order string, limit int, wrapMsg string) ([]dueCardRow, error) {
 	var rows []dueCardRow
-	// ucs.last_review is used in the review-window WHERE clause but is not
-	// projected into dueCardRow — it is filter-only and not needed after scan.
+	// ucs.last_review is used in WHERE clauses by both callers (findDueCardsOn
+	// review window and findPracticeCardsOn) but is not projected into
+	// dueCardRow — it is filter-only and not needed after scan.
 	if err := db.
 		Table("cards").
 		Select("cards.id, cards.cardgroup_id, cards.front, cards.back, cards.created_at, cards.updated_at, cards.position, ucs.state, ucs.due").
