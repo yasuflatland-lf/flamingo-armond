@@ -331,7 +331,7 @@ The resolver layer for these operations lives in `backend/graph/resolver/card_im
 
 ```graphql
 """
-Next batch of cards due for review in this cardgroup, ordered by due-date. Among cards tied on due-date, those with a Notion-synced `position` are ordered by document position (with a per-session shuffle only within equal-position runs); manually created cards (all at position 0) are shuffled per session. Returns an empty list when all cards are caught up. See [`docs/backend/ddd-patterns/fsrs-compatible-secondary-ordering.md`](backend/ddd-patterns/fsrs-compatible-secondary-ordering.md) for the tiebreaker design.
+Next batch of cards for a learning session: randomly sampled never-seen cards interleaved 4:1 with review cards rated Again/Hard on a previous day (JST). Returns an empty list when the cardgroup has no eligible cards. See [`docs/backend/ddd-patterns/discovery-first-due-ordering.md`](backend/ddd-patterns/discovery-first-due-ordering.md) for the composition design.
 Limit defaults to 20 (clamped to 100). Returns UNAUTHENTICATED if the caller does not own
 the cardgroup; BAD_USER_INPUT if the cardgroup does not exist.
 """
@@ -414,7 +414,7 @@ as the input keys. dataloader/v7 enforces this 1:1 invariant at runtime.
 
 **Loader error wrapping:** Every resolver that calls `loaders.X.Load(ctx, key)()` must wrap the returned error via `gqlerr.Internal(ctx, err)` (or another typed gqlerr) before returning. Bare loader errors have no `extensions.code` and leak internal details.
 
-**Transactional usecases must not call DataLoader:** DataLoaders are request-scoped and use the normal repository DB handle, not the `*gorm.DB` transaction handle passed into `db.Transaction(...)`. A usecase that needs read-your-writes consistency must call transaction-aware repository methods such as `FindByIDTx`, `UpdateFSRSStateTx`, or `FindDueCardsForUserTx` directly with the `tx` argument. Keep `loader.For(ctx)` out of `internal/usecase/*` files.
+**Transactional usecases must not call DataLoader:** DataLoaders are request-scoped and use the normal repository DB handle, not the `*gorm.DB` transaction handle passed into `db.Transaction(...)`. A usecase that needs read-your-writes consistency must call transaction-aware repository methods such as `FindByIDTx`, `UpdateFSRSStateTx`, or `UpsertManyTx` directly with the `tx` argument. Keep `loader.For(ctx)` out of `internal/usecase/*` files.
 
 ### Error helpers (`backend/internal/gqlerr`)
 

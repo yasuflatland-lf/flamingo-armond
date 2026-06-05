@@ -22,8 +22,24 @@ const (
 	maxLearnNextDueLimit     = 100
 )
 
+// jstZone is the fixed UTC+9 offset used to compute the learner's
+// start-of-day boundary. JST observes no daylight saving, so a fixed offset
+// is exact and avoids a tzdata dependency. The product currently assumes a
+// Japan-resident learner; promote to a per-user preference if that breaks.
+var jstZone = time.FixedZone("JST", 9*60*60)
+
+// startOfDayJST returns the JST midnight at or before now, as an absolute
+// instant. The learn queue's review slots include only cards whose last_review
+// is strictly before this boundary, so a card swiped today never re-enters
+// today's queue regardless of its FSRS re-due interval.
+func startOfDayJST(now time.Time) time.Time {
+	local := now.In(jstZone)
+	y, m, d := local.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, jstZone)
+}
+
 type CardRepoForLearn interface {
-	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error)
+	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now, reviewedBefore time.Time, limit int) ([]domain.DueCard, error)
 }
 
 type CardgroupRepoForLearn interface {
@@ -130,7 +146,7 @@ func (u *learnUsecase) NextDueCards(ctx context.Context, cardgroupID string, lim
 	}
 	n = u.clampLimit(n)
 	now := u.clock.Now().UTC()
-	due, err := u.cardRepo.FindDueCardsForUser(ctx, user.Sub, cardgroupID, now, n)
+	due, err := u.cardRepo.FindDueCardsForUser(ctx, user.Sub, cardgroupID, now, startOfDayJST(now), n)
 	if err != nil {
 		if isContextDone(err) {
 			return nil, err

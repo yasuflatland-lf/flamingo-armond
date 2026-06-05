@@ -8,11 +8,12 @@ import (
 )
 
 // NewCardRatio and ReviewCardRatio define the new/review interleave ratio.
-// Fixed at 1:4 (one new per four reviews). Revisit if session queues
-// consistently balloon (too few news) or starve (too few reviews).
+// Fixed at 4:1 (four new per one review): a default 20-card session is 16
+// never-seen discoveries plus 4 reviews of cards rated Again/Hard on a
+// previous day. Revisit if discovery pace outruns retention.
 const (
-	NewCardRatio    = 1
-	ReviewCardRatio = 4
+	NewCardRatio    = 4
+	ReviewCardRatio = 1
 )
 
 // OrderingPolicy applies session-local ordering to due cards.
@@ -25,11 +26,13 @@ func NewOrderingPolicy() *OrderingPolicy { return &OrderingPolicy{} }
 
 // Apply orders due cards with a two-step policy:
 //
-//  1. Each partition is shuffled within equal-key runs so consecutive
-//     sessions do not see the same first-N order. The two partitions use
-//     different keys: new cards are ordered by Position (Notion document
-//     order) and only equal-Position runs are shuffled, whereas review
-//     cards keep the same-Due shuffle (only equal-Due runs are shuffled).
+//  1. The new partition is fully shuffled — the repository samples WHICH new
+//     cards enter the batch (uniformly, via SQL random()); this shuffle
+//     randomises their arrangement deterministically under an injected rng.
+//     The review partition is shuffled within same-phase runs: the repository
+//     pre-sorts learning-phase rows (Learning/Relearning) ahead of Review
+//     rows, and shuffling never crosses that boundary, so a Review-state
+//     filler can never displace a learning-phase card from the review slots.
 //  2. New and review cards are interleaved at NewCardRatio:ReviewCardRatio
 //     with review-first emission. When one bucket empties, the remaining
 //     cards from the other bucket are appended in their post-shuffle order.
@@ -50,13 +53,17 @@ func (p *OrderingPolicy) Apply(due []domain.DueCard, rng *rand.Rand) []*domain.C
 		}
 	}
 	newCards, reviewCards := partition(due)
-	shuffleSamePosition(newCards, rng)
-	shuffleSameDue(reviewCards, rng)
+	rng.Shuffle(len(newCards), func(a, b int) {
+		newCards[a], newCards[b] = newCards[b], newCards[a]
+	})
+	shuffleWithinPhase(reviewCards, rng)
 	return interleave(newCards, reviewCards, NewCardRatio, ReviewCardRatio)
 }
 
 // partition splits due into new (FSRSStateNew) vs review (everything else),
-// preserving the input order. The repository pre-sorts by Due ASC, position ASC, id ASC.
+// preserving the input order. The repository pre-sorts review rows
+// learning-phase first, then random() within each phase; new rows arrive in
+// random() sample order.
 func partition(due []domain.DueCard) (newC, reviewC []domain.DueCard) {
 	for _, d := range due {
 		if d.State == domain.FSRSStateNew {
@@ -68,40 +75,17 @@ func partition(due []domain.DueCard) (newC, reviewC []domain.DueCard) {
 	return
 }
 
-// shuffleSameDue shuffles contiguous same-Due runs in place using rng.
-// Inputs are pre-sorted by Due ASC so a single linear pass detects each run.
-// Single-card runs are untouched.
-func shuffleSameDue(cards []domain.DueCard, rng *rand.Rand) {
+// shuffleWithinPhase shuffles contiguous same-phase runs in place using rng.
+// The repository pre-sorts review cards learning-phase first (Learning and
+// Relearning before Review), so a single linear pass detects each phase run.
+// Scoping the shuffle to a run preserves the phase priority: a Review-state
+// filler card can never move ahead of a learning-phase card.
+func shuffleWithinPhase(cards []domain.DueCard, rng *rand.Rand) {
 	start := 0
 	// Loop runs through len(cards) inclusive so the trailing run is flushed
 	// without a tail handler.
 	for i := 1; i <= len(cards); i++ {
-		if i == len(cards) || !cards[i].Due.Equal(cards[start].Due) {
-			if i-start > 1 {
-				run := cards[start:i]
-				rng.Shuffle(len(run), func(a, b int) { run[a], run[b] = run[b], run[a] })
-			}
-			start = i
-		}
-	}
-}
-
-// shuffleSamePosition shuffles contiguous same-Position runs in place using
-// rng. Inputs are pre-sorted by Due ASC then position ASC, so contiguous
-// equal-Position cards are guaranteed only within a same-Due (same created_at)
-// group — a later re-sync whose new cards restart at position 0 forms a
-// separate due-tie group. Across due groups the run-detection is still
-// deterministic but does not impose a global position order. Single-element
-// runs are left untouched. Only equal-Position runs are shuffled, which keeps
-// Notion document order deterministic (distinct positions => size-1 runs => no
-// shuffle) while preserving the "don't show the same first-N" property for
-// non-Notion groups (all Position 0 => one run => shuffled).
-func shuffleSamePosition(cards []domain.DueCard, rng *rand.Rand) {
-	start := 0
-	// Loop runs through len(cards) inclusive so the trailing run is flushed
-	// without a tail handler.
-	for i := 1; i <= len(cards); i++ {
-		if i == len(cards) || cards[i].Card.Position != cards[start].Card.Position {
+		if i == len(cards) || cards[i].State.IsLearningPhase() != cards[start].State.IsLearningPhase() {
 			if i-start > 1 {
 				run := cards[start:i]
 				rng.Shuffle(len(run), func(a, b int) { run[a], run[b] = run[b], run[a] })

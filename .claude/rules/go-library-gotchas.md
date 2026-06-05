@@ -125,6 +125,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [Mock-pointer fixture pitfalls: directionality tautology and parallel sub-test races](../../docs/backend/library-gotchas/mock-pointer-fixture-pitfalls.md)
 - [GORM embedded struct with `TableName()` silently breaks the outer scan target](../../docs/backend/library-gotchas/gorm-embedded-tablename-scan-confusion.md)
 - [Interleave trailing-append paths need a non-divisible fixture per direction](../../docs/backend/library-gotchas/interleave-trailing-append-test-fixture.md)
+- [Exact-boundary fixture for strict time-cutoff predicates, proven by temporary mutation](../../docs/backend/library-gotchas/strict-cutoff-boundary-fixture-and-mutation-proof.md)
 - [Fat repository interface split: CRUD vs membership seam — when and how to split, wiring checklist, context pass-through in validation helpers](../../docs/backend/library-gotchas/fat-repository-interface-split.md)
 - [Codegen two-pass failure mode: schema field drop blocks regen until production code is fixed](../../docs/backend/library-gotchas/codegen-two-pass-schema-field-drop.md)
 - [CI bash glob `for $(ls)` silently passes on zero matches under `set -e` — use `nullglob` array form](../../docs/backend/library-gotchas/ci-bash-glob-nullglob-silent-pass.md)

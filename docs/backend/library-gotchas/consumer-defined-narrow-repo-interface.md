@@ -17,7 +17,7 @@ any change to the concrete repository:
 // CardRepoForLearn is the minimal card-repository surface that LearnUsecase needs.
 // The concrete *repository.cardRepo satisfies it automatically.
 type CardRepoForLearn interface {
-    FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error)
+    FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now, reviewedBefore time.Time, limit int) ([]domain.DueCard, error)
 }
 
 // CardgroupRepoForLearn is the minimal cardgroup-repository surface.
@@ -28,10 +28,10 @@ type CardgroupRepoForLearn interface {
 
 The shared `CardRepository` in `backend/internal/repository/card.go` keeps its full
 surface (`FindByID`, `FindByIDs`, `FindPageByCardgroup`, `FindDueCardsForUser`,
-`FindDueCardsForUserTx`, `Create`, `Update`, `Delete`, …). The `LearnUsecase` sees only
+`Create`, `Update`, `Delete`, …). The `LearnUsecase` sees only
 the two methods it calls, so:
 
-- Test stubs for `LearnUsecase` need only two methods, not the full fourteen-method
+- Test stubs for `LearnUsecase` need only two methods, not the full `CardRepository`
   interface.
 - Adding a new method to `CardRepository` for another feature never ripples into
   `LearnUsecase` test stubs.

@@ -18,18 +18,20 @@ type mockLearnCardRepo struct {
 	rows []domain.DueCard
 	err  error
 
-	cardgroupID string
-	userID      string
-	now         time.Time
-	limit       int
-	calls       int
+	cardgroupID    string
+	userID         string
+	now            time.Time
+	reviewedBefore time.Time
+	limit          int
+	calls          int
 }
 
-func (m *mockLearnCardRepo) FindDueCardsForUser(_ context.Context, userID, cardgroupID string, now time.Time, limit int) ([]domain.DueCard, error) {
+func (m *mockLearnCardRepo) FindDueCardsForUser(_ context.Context, userID, cardgroupID string, now, reviewedBefore time.Time, limit int) ([]domain.DueCard, error) {
 	m.calls++
 	m.userID = userID
 	m.cardgroupID = cardgroupID
 	m.now = now
+	m.reviewedBefore = reviewedBefore
 	m.limit = limit
 	return m.rows, m.err
 }
@@ -51,7 +53,8 @@ func TestLearnUsecaseNextDueCards(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
-	// Two review cards with distinct Due times so shuffleSameDue leaves order stable.
+	// Two review cards in the same (Review) phase; under a seeded rng the
+	// in-phase run may be permuted, so assert set equality, not order.
 	first := learnDueCard("repo-first", now.Add(-2*time.Hour), domain.FSRSStateReview)
 	second := learnDueCard("repo-second", now.Add(-time.Hour), domain.FSRSStateReview)
 	cardRepo := &mockLearnCardRepo{rows: []domain.DueCard{first, second}}
@@ -74,7 +77,9 @@ func TestLearnUsecaseNextDueCards(t *testing.T) {
 	require.Equal(t, "cg-1", cardRepo.cardgroupID)
 	require.Equal(t, now, cardRepo.now)
 	require.Equal(t, 5, cardRepo.limit)
-	require.Equal(t, []string{"repo-first", "repo-second"}, learnCardIDs(got))
+	require.True(t, cardRepo.reviewedBefore.Equal(time.Date(2026, 5, 12, 15, 0, 0, 0, time.UTC)),
+		"JST start-of-day for 2026-05-13T09:00Z")
+	require.ElementsMatch(t, []string{"repo-first", "repo-second"}, learnCardIDs(got))
 }
 
 func TestLearnUsecaseNextDueCardsAuthAndCardgroupErrors(t *testing.T) {
@@ -244,11 +249,11 @@ func TestLearnUsecaseNextDueCards_TruncatesToDueLimit(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
-	// 3 new + 3 review cards, all with distinct Due timestamps so shuffleSameDue
-	// is a no-op and the interleave order is fully deterministic.
-	// With ReviewCardRatio=4 and 3 reviews, all reviews emit before any new card:
-	// rev-1, rev-2, rev-3, new-1, new-2, new-3.  Truncating at limit=3 yields
-	// the first three review cards in their Due-sorted order.
+	// 3 new + 3 review cards. With NewCardRatio=4 : ReviewCardRatio=1 the
+	// interleave emits one review, then up to four new cards, so the first
+	// three slots are [review, new, new]. Truncating at limit=3 keeps that
+	// composition; the exact ids within a phase are shuffled, so assert the
+	// SHAPE (which slot is review vs new), not specific ids.
 	rows := []domain.DueCard{
 		learnDueCard("new-1", now.Add(-3*time.Hour), domain.FSRSStateNew),
 		learnDueCard("new-2", now.Add(-2*time.Hour), domain.FSRSStateNew),
@@ -273,8 +278,11 @@ func TestLearnUsecaseNextDueCards_TruncatesToDueLimit(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, got, 3, "result must be truncated to the requested limit")
-	require.Equal(t, []string{"rev-1", "rev-2", "rev-3"}, learnCardIDs(got),
-		"truncated result must contain the first three cards from the ordered set")
+	reviewSet := map[string]bool{"rev-1": true, "rev-2": true, "rev-3": true}
+	ids := learnCardIDs(got)
+	require.True(t, reviewSet[ids[0]], "slot 0 must be a review card, got %q", ids[0])
+	require.False(t, reviewSet[ids[1]], "slot 1 must be a new card, got %q", ids[1])
+	require.False(t, reviewSet[ids[2]], "slot 2 must be a new card, got %q", ids[2])
 }
 
 // TestLearnUsecaseNextDueCards_HappyPathReviewOnly verifies the simple path
@@ -312,7 +320,7 @@ func TestLearnUsecaseNextDueCards_HappyPathReviewOnly(t *testing.T) {
 
 // learnDueCard constructs a DueCard for use in learn tests.
 // state controls the partition (FSRSStateNew vs review).
-// due sets the DueCard.Due timestamp so shuffleSameDue groups cards correctly.
+// due sets the DueCard.Due timestamp.
 func learnDueCard(id string, due time.Time, state domain.FSRSCardState) domain.DueCard {
 	return domain.DueCard{
 		Card:  &domain.Card{ID: id},
@@ -370,4 +378,88 @@ func TestLearnUsecase_NextDueCards_FindDueCards_PropagatesDeadlineExceeded(t *te
 	)
 	_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", nil)
 	assertCancelled(t, err)
+}
+
+// TestLearnUsecaseNextDueCards_PassesJSTStartOfDayAsReviewedBefore pins the
+// contract that the usecase computes the JST previous-day boundary and the
+// repository receives it verbatim.
+func TestLearnUsecaseNextDueCards_PassesJSTStartOfDayAsReviewedBefore(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		now  time.Time
+		want time.Time
+	}{
+		{
+			name: "before JST midnight",
+			now:  time.Date(2026, 6, 5, 14, 59, 0, 0, time.UTC),
+			want: time.Date(2026, 6, 4, 15, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "after JST midnight",
+			now:  time.Date(2026, 6, 5, 15, 0, 0, 0, time.UTC),
+			want: time.Date(2026, 6, 5, 15, 0, 0, 0, time.UTC),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cardRepo := &mockLearnCardRepo{}
+			uc := NewLearnUsecase(
+				cardRepo,
+				&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+				service.NewOrderingPolicy(),
+				func() *rand.Rand { return rand.New(rand.NewSource(1)) },
+				20,
+				100,
+				fixedClock{now: tc.now},
+				newTestLogger(),
+			)
+			_, err := uc.NextDueCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
+			require.NoError(t, err)
+			require.True(t, cardRepo.reviewedBefore.Equal(tc.want),
+				"reviewedBefore: got %v, want instant %v", cardRepo.reviewedBefore, tc.want)
+		})
+	}
+}
+
+// TestStartOfDayJST pins the "previous day" boundary used by the review
+// slots: JST (UTC+9) midnight at or before now, returned as an instant.
+func TestStartOfDayJST(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		now  time.Time
+		want time.Time
+	}{
+		{
+			name: "just before JST midnight",
+			now:  time.Date(2026, 6, 5, 14, 59, 59, 0, time.UTC), // 23:59:59 JST
+			want: time.Date(2026, 6, 4, 15, 0, 0, 0, time.UTC),   // 2026-06-05 00:00 JST
+		},
+		{
+			name: "exactly JST midnight",
+			now:  time.Date(2026, 6, 5, 15, 0, 0, 0, time.UTC), // 2026-06-06 00:00 JST
+			want: time.Date(2026, 6, 5, 15, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "JST noon",
+			now:  time.Date(2026, 6, 5, 3, 0, 0, 0, time.UTC), // 12:00 JST
+			want: time.Date(2026, 6, 4, 15, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "input zone does not matter, only the instant",
+			now:  time.Date(2026, 6, 5, 12, 0, 0, 0, time.FixedZone("JST", 9*60*60)), // = 03:00 UTC
+			want: time.Date(2026, 6, 4, 15, 0, 0, 0, time.UTC),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := startOfDayJST(tc.now)
+			require.True(t, got.Equal(tc.want), "got %v, want instant %v", got, tc.want)
+		})
+	}
 }

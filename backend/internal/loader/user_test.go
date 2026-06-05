@@ -8,7 +8,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
@@ -184,9 +183,6 @@ func (r *countingCardRepo) FindByIDs(ctx context.Context, ids []string) (map[str
 func (r *countingCardRepo) FindByCardgroup(_ context.Context, _ string) ([]*domain.Card, error) {
 	panic("countingCardRepo.FindByCardgroup not configured")
 }
-func (r *countingCardRepo) FindDueCardsForUser(_ context.Context, _, _ string, _ time.Time, _ int) ([]*domain.Card, error) {
-	panic("countingCardRepo.FindDueCardsForUser not configured")
-}
 func (r *countingCardRepo) ListFrontsByCardgroupTx(_ context.Context, _ *gorm.DB, _ string) ([]string, error) {
 	panic("countingCardRepo.ListFrontsByCardgroupTx not configured")
 }
@@ -207,9 +203,6 @@ func (r *countingCardRepo) FindPageByCardgroupForUser(
 	_ *string,
 ) ([]*domain.Card, int64, error) {
 	panic("countingCardRepo.FindPageByCardgroupForUser not configured")
-}
-func (r *countingCardRepo) FindDueCardsForUserTx(_ context.Context, _ *gorm.DB, _, _ string, _ time.Time, _ int) ([]*domain.Card, error) {
-	panic("countingCardRepo.FindDueCardsForUserTx not configured")
 }
 func (r *countingCardRepo) Create(_ context.Context, _ *domain.Card) error {
 	panic("countingCardRepo.Create not configured")
