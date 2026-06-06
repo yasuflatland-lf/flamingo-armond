@@ -448,6 +448,10 @@
 #                       Guaranteed to have a scheme because Phase 4 asserts it
 #                       starts with https://.
 #
+# Trailing slashes are stripped from both URL secrets: the workflow joins
+# paths as "$URL/api/ping", and a stored trailing slash yields "//api/ping",
+# which Vercel answers with a 308 redirect that never reaches the handler.
+#
 # Mirror the RENDER_DEPLOY_HOOK_URL pattern from render.yml:
 #   - shell: + stdin: (never argv) to keep secret off ps / audit logs.
 #   - stdin_add_newline: false to prevent a trailing \n in the stored value.
@@ -489,7 +493,7 @@
 - name: Register RENDER_PING_URL as GitHub Actions secret
   ansible.builtin.shell:
     cmd: gh secret set RENDER_PING_URL --repo {{ repo }}
-    stdin: "{{ backend_url }}"
+    stdin: "{{ backend_url | regex_replace('/+$', '') }}"
     stdin_add_newline: false
   register: _gh_render_ping_url_result
   no_log: true
@@ -521,7 +525,7 @@
 - name: Register VERCEL_PING_URL as GitHub Actions secret
   ansible.builtin.shell:
     cmd: gh secret set VERCEL_PING_URL --repo {{ repo }}
-    stdin: "{{ production_url }}"
+    stdin: "{{ production_url | regex_replace('/+$', '') }}"
     stdin_add_newline: false
   register: _gh_vercel_ping_url_result
   no_log: true
@@ -562,7 +566,7 @@
 - name: Register NOTION_SYNC_URL as GitHub Actions secret
   ansible.builtin.shell:
     cmd: gh secret set NOTION_SYNC_URL --repo {{ repo }}
-    stdin: "{{ backend_url }}/internal/notion-sync"
+    stdin: "{{ backend_url | regex_replace('/+$', '') }}/internal/notion-sync"
     stdin_add_newline: false
   register: _gh_notion_url_result
   no_log: true
