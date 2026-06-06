@@ -53,6 +53,40 @@ row lock the caller needs for a read-modify-write. Note also that
 can silently break LEFT JOIN projection, so a helper that scans a joined query
 should use a flat scan target rather than embedding `gormCard`.
 
+## The same helper pattern extends to sibling window queries
+
+The drift-avoidance argument is not limited to a Tx / non-Tx pair. It applies to
+any set of queries that must share a SELECT/JOIN so their projection can never
+diverge. `findDueCardsOn` (the learn window) and `findPracticeCardsOn` (the
+inverse practice window) both call the same `dueRowsOn` helper, which owns the
+`SELECT cards.* , ucs.state, ucs.due` column list and the `LEFT JOIN
+user_card_fsrs ucs` clause. Each window passes its own WHERE predicate, ORDER
+BY, and LIMIT; the columns and join can never drift between them because there
+is one source. If the practice window inlined its own copy of the SELECT, a
+later column addition to the learn window would silently skip practice.
+
+**A shared helper serving callers with different wrap prefixes takes the
+message as a parameter.** `dueRowsOn` is called by two windows whose
+`eris.Wrap` layer prefixes differ (`repository: card: find due cards` vs.
+`repository: card: find practice cards`). A shared helper must not hardcode a
+fixed prefix — that would displace the caller-specific module attribution from
+the error chain. The prefix travels as a `wrapMsg` argument the caller supplies:
+
+```go
+func dueRowsOn(db *gorm.DB, userID, where string, whereArgs []any, order string, limit int, wrapMsg string) ([]dueCardRow, error) {
+    // ... run the shared LEFT JOIN query ...
+    if err := db. /* ... */ .Find(&rows).Error; err != nil {
+        return nil, eris.Wrap(err, wrapMsg)
+    }
+    return rows, nil
+}
+```
+
+See [`error-classifier-helper-pass-through-with-caller-prefix.md`](../error-wrapping/error-classifier-helper-pass-through-with-caller-prefix.md)
+for the full caller-supplied-prefix pattern and its double-wrap failure mode.
+
 **Reference:** `backend/internal/repository/card.go` — `FindByID`,
 `FindByIDTx`, and `findCardByID`. The `On`-suffix variant of the same idea is
-`findDueCardsOn`, the shared body behind `FindDueCardsForUser`.
+`findDueCardsOn` (the shared body behind `FindDueCardsForUser`) and
+`findPracticeCardsOn` (behind `FindPracticeCardsForUser`); both delegate to the
+shared `dueRowsOn`.

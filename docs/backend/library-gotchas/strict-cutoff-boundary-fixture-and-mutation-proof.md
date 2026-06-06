@@ -52,3 +52,38 @@ The mutation must produce a *failing* test, not merely a different one. A pin
 that survives the mutation is not testing the boundary — widen the fixture until
 the mutation breaks it. Delete nothing permanently; the mutation is a throwaway
 check, and the committed tree must show no production change.
+
+## Complementary two-window boundary
+
+When two predicates partition a timeline around a single cutoff — the learn
+window keeps `last_review < boundary` and the practice window keeps
+`last_review >= boundary` — the two comparators are the *complement* of each
+other across that one instant. Pinning them in separate tests with separate
+boundary values leaves a gap: nothing proves that the two windows agree on where
+the cutoff sits, so a card at the exact boundary could end up in both windows or
+in neither without any single test noticing.
+
+Pin both predicates in **one** test against **one** boundary instant, and assert
+two properties jointly:
+
+- **Mutual exclusion + joint exhaustiveness.** A card whose `last_review` equals
+  the boundary belongs to exactly one window (here practice, because `>=` is
+  inclusive and `<` is exclusive). A never-reviewed card (NULL `last_review`)
+  belongs to neither window's `last_review` predicate — it reaches the learn
+  queue only through the separate new-card window (see
+  [`sql-null-comparison-excludes-unreviewed-rows.md`](sql-null-comparison-excludes-unreviewed-rows.md)).
+
+`TestCardRepository_FindPracticeCards_BoundaryComplementarity`
+(`backend/internal/repository/card_test.go`) is the worked example. It inserts
+four cards reviewed before / at / after one boundary plus one never-reviewed
+card, then asserts the learn window holds `{reviewed-yesterday, never-reviewed}`
+and the practice pool holds exactly `{reviewed-at-boundary, reviewed-today}`.
+Two mutation kills prove the comparators independently:
+
+- Flip the practice `ucs.last_review >= ?` to `>`: `reviewed-at-boundary` drops
+  out of the practice pool, failing the practice `ElementsMatch`.
+- Flip the learn `ucs.last_review < ?` to `<=`: `reviewed-at-boundary` enters
+  the learn window, failing the learn `ElementsMatch`.
+
+Both predicates live in `findPracticeCardsOn` / `findDueCardsOn`
+(`backend/internal/repository/card.go`).

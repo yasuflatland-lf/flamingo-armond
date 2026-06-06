@@ -29,10 +29,11 @@ The same principle applies to **library behavior disputes** between agents or be
 agents disagree on what a library does (e.g. whether `usePathname()` returns a decoded or percent-encoded string),
 resolve the disagreement by consulting a primary source — read the installed package source, run the code, or fetch
 the official changelog — on the same edit. Do not settle the dispute by majority vote or by deferring to whichever
-side sounds more confident. Two concrete cases from this codebase:
+side sounds more confident. Three concrete cases from this codebase:
 
 - `usePathname` encoded vs decoded — settled by reading installed `next@16.2.4` source: `new URL(canonicalUrl, ...).pathname` preserves reserved characters as `%XX`. The "decoded" reading of the docs was misleading; the primary source was the installed code, not a summary.
 - `pointer-events-none` vestigial vs load-bearing — settled by reasoning about `sticky`'s overflow-overlay semantics: the dead-zone cost is invisible (no interactive element sits under the safe-area padding zone), while removing `pointer-events-none` blocks scroll gestures near the bar in overflow viewports. The primary source was the CSS spec behavior, confirmed by the layout constraints.
+- Apollo v4 `void refetch()` dead-screen dispute — two reviewers disagreed on whether a failed fire-and-forget `refetch()` leaves the `useQuery` hook with no error state (a dead screen). Settled by running an empirical vitest probe against the installed package and reading `@apollo/client@4.2.0` `ObservableQuery.js`: a transport failure is emitted to subscribers with `error` set and `networkStatus: NetworkStatus.error`, so the hook's `error` field IS populated, and the discarded promise is pre-handled by `preventUnhandledRejection`. The primary source was the installed code plus the probe, not majority vote or whichever reviewer sounded more confident. See [`docs/frontend/rsc-error-handling/apollo-v4-refetch-rejection-and-hook-error.md`](../../docs/frontend/rsc-error-handling/apollo-v4-refetch-rejection-and-hook-error.md).
 
 ## Plan-document claims about the codebase's structure must be toolchain-verified
 
@@ -131,6 +132,8 @@ go build ./...                                                    # names each n
 ```
 
 Enumerate all implementers before writing the change, not after the first build failure: a fake hidden in a resolver test is in scope for the same change that adds the method.
+
+The gqlgen-generated-interface variant has the same fan-out but a different trigger: a `.graphql` edit, not a Go interface edit. Adding a `Query` or `Mutation` field to `schema/schema.graphql` makes gqlgen regenerate `generated.QueryResolver` (or `generated.MutationResolver`) with the new method, widening the interface. Every hand-written fake that implements it then stops compiling until it gains a matching stub. The discovery tool is the same compiler (`go build ./...`), but you must remember to run it after the schema-driven `codegen` step, not just after editing Go. Worked example: adding the `practiceTodaysCards` query field forced `panicQueryResolver` in `backend/cmd/server/main_test.go` to grow a `PracticeTodaysCards` stub — the test fake implements `generated.QueryResolver`, so the regenerated interface fanned the new method out to it.
 
 ### Frontend page-behavior changes: pre-flight grep BOTH frontend test trees
 

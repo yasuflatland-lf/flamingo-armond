@@ -109,6 +109,18 @@ vi.mock("@/components/learn/learn-action-bar", () => ({
 }));
 
 // ---------------------------------------------------------------------------
+// PracticeClient mock — a stub marker so the learn-client phase switch can be
+// asserted without rendering the real practice query pipeline (covered by
+// practice-client.test.tsx). The marker is keyed by cardgroupId so the test can
+// confirm the prop is threaded through.
+// ---------------------------------------------------------------------------
+vi.mock("./practice-client", () => ({
+  PracticeClient: (props: { cardgroupId: string }) => (
+    <div data-testid="practice-client">Practice mode for {props.cardgroupId}</div>
+  ),
+}));
+
+// ---------------------------------------------------------------------------
 // File-wide MockedProvider leak spy.
 //
 // Installed as the OUTERMOST `console.warn` spy (top-level `beforeEach` runs
@@ -852,6 +864,40 @@ describe("<LearnClient> LearnActionBar integration", () => {
       ).toBeInTheDocument();
     });
     expect(screen.queryByRole("button", { name: "Rate as Easy" })).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Practice mode phase switch
+//
+// When the daily learn queue is exhausted, AllCaughtUp offers a "Study again"
+// action that hands the screen to PracticeClient (FSRS-safe re-study). The
+// PracticeClient is mocked to a stub marker above; these tests assert only the
+// learn-client-side phase transition.
+// ---------------------------------------------------------------------------
+describe("<LearnClient> practice mode phase switch", () => {
+  it("shows a Study again button on the caught-up screen when the queue starts empty", () => {
+    renderLearnClient([], []);
+
+    expect(
+      screen.getByRole("heading", { name: "Today's learning is complete" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Study again" })).toBeInTheDocument();
+    // Still on the learn phase — the practice stub is not rendered yet.
+    expect(screen.queryByTestId("practice-client")).not.toBeInTheDocument();
+  });
+
+  it("renders PracticeClient with the cardgroupId after clicking Study again", async () => {
+    const user = userEvent.setup();
+    renderLearnClient([], []);
+
+    await user.click(screen.getByRole("button", { name: "Study again" }));
+
+    expect(screen.getByTestId("practice-client")).toHaveTextContent(`Practice mode for ${CG_ID}`);
+    // The caught-up learn screen is gone — we are fully in practice mode.
+    expect(
+      screen.queryByRole("heading", { name: "Today's learning is complete" }),
+    ).not.toBeInTheDocument();
   });
 });
 

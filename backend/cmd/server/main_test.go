@@ -2453,6 +2453,9 @@ func (panicQueryResolver) Card(_ context.Context, _ string) (*model.Card, error)
 func (panicQueryResolver) LearnNextDueCards(_ context.Context, _ string, _ *int) ([]*model.Card, error) {
 	return nil, nil
 }
+func (panicQueryResolver) PracticeTodaysCards(_ context.Context, _ string, _ *int) ([]*model.Card, error) {
+	return nil, nil
+}
 func (panicQueryResolver) CardsByCardgroupConnection(_ context.Context, _ string, _ *int, _ *string, _ *int, _ *string, _ *string, _ *model.CardOrderBy, _ *model.SortOrder) (*model.CardConnection, error) {
 	return nil, nil
 }

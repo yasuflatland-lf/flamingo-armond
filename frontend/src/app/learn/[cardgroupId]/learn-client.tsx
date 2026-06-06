@@ -17,6 +17,7 @@ import type { SwipeDirection } from "@/components/learn/types";
 import type { LearnNextDueCardsQuery } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
 import { liftGraphQLCodes } from "@/lib/apollo/graphql-errors";
+import { PracticeClient } from "./practice-client";
 
 type LearnCard = LearnNextDueCardsQuery["learnNextDueCards"][number];
 /**
@@ -48,6 +49,10 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
   const [completed, setCompleted] = useState(0);
   const [localError, setLocalError] = useState<string | null>(null);
+  // Top-level phase switch. "practice" hands the whole screen to PracticeClient
+  // (FSRS-safe re-study of today's cards). It is only entered from the
+  // AllCaughtUp "Study again" action when the daily learn queue is exhausted.
+  const [phase, setPhase] = useState<"learn" | "practice">("learn");
   const swipeStackRef = useRef<SwipeCardStackHandle | null>(null);
 
   const [handleSwipe, { error }] = useMutation(HandleSwipeMutation);
@@ -266,8 +271,12 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
     swipeStackRef.current?.triggerSwipe(direction);
   }, []);
 
+  if (phase === "practice") {
+    return <PracticeClient cardgroupId={cardgroupId} />;
+  }
+
   if (queue.length === 0) {
-    return <AllCaughtUp />;
+    return <AllCaughtUp onStudyAgain={() => setPhase("practice")} />;
   }
 
   return (

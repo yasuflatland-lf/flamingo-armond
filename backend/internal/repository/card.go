@@ -101,6 +101,11 @@ type CardPageRepository interface {
 		search *string,
 	) (cards []*domain.Card, totalCount int64, err error)
 	FindDueCardsForUser(ctx context.Context, userID, cardgroupID string, now, reviewedBefore time.Time, limit int) ([]domain.DueCard, error)
+	// FindPracticeCardsForUser returns the FSRS-safe practice pool: cards the
+	// user already reviewed at or after reviewedAfter (the start-of-day cutoff).
+	// This is the inverse window of FindDueCardsForUser's review window — it
+	// consults last_review but not due, and never advances FSRS scheduling.
+	FindPracticeCardsForUser(ctx context.Context, userID, cardgroupID string, reviewedAfter time.Time, limit int) ([]domain.DueCard, error)
 }
 
 type CardWriteRepository interface {
@@ -369,6 +374,10 @@ func (r *cardRepo) FindDueCardsForUser(ctx context.Context, userID, cardgroupID 
 	return findDueCardsOn(r.db.WithContext(ctx), userID, cardgroupID, now, reviewedBefore, limit)
 }
 
+func (r *cardRepo) FindPracticeCardsForUser(ctx context.Context, userID, cardgroupID string, reviewedAfter time.Time, limit int) ([]domain.DueCard, error) {
+	return findPracticeCardsOn(r.db.WithContext(ctx), userID, cardgroupID, reviewedAfter, limit)
+}
+
 // dueCardRow is the raw scan target for findDueCardsOn. It holds all cards.*
 // columns as flat fields plus nullable FSRS columns from the LEFT JOIN.
 // Embedding gormCard is intentionally avoided: gormCard carries a TableName()
@@ -386,6 +395,14 @@ type dueCardRow struct {
 	Due         *time.Time `gorm:"column:due"`
 }
 
+// Learn window:    due IS NOT NULL AND due <= now AND last_review < boundary.
+// Practice window: last_review >= boundary; due not consulted.
+// Both usecase methods (NextDueCards and PracticeTodaysCards) derive the
+// boundary from the same startOfDayJST formula, computed once per call
+// before hitting the repository. Changing the formula or comparator for
+// one window without the other makes a card vanish from (or appear in)
+// both queues.
+//
 // findDueCardsOn fetches the cards eligible for a learning session in two
 // independent LIMIT windows and concatenates them: review cards first, then
 // new (never-reviewed) cards. Splitting the fetch is what keeps a large
@@ -417,7 +434,8 @@ func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, now, reviewedBefore
 		"cards.cardgroup_id = ? AND ucs.due IS NOT NULL AND ucs.due <= ? AND ucs.last_review < ?",
 		[]any{cardgroupID, now, reviewedBefore},
 		reviewOrder,
-		limit)
+		limit,
+		"repository: card: find due cards")
 	if err != nil {
 		return nil, err
 	}
@@ -426,7 +444,8 @@ func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, now, reviewedBefore
 		"cards.cardgroup_id = ? AND ucs.due IS NULL",
 		[]any{cardgroupID},
 		"random()",
-		limit)
+		limit,
+		"repository: card: find due cards")
 	if err != nil {
 		return nil, err
 	}
@@ -442,13 +461,42 @@ func findDueCardsOn(db *gorm.DB, userID, cardgroupID string, now, reviewedBefore
 	return out, nil
 }
 
+// findPracticeCardsOn fetches the FSRS-safe practice pool: cards the user
+// already reviewed at or after the boundary (the same startOfDayJST cutoff the
+// learn window uses). This is the INVERSE window of findDueCardsOn's review
+// window — practice consults last_review but not due, and uses >= where learn
+// uses <. random() gives a fresh arrangement per practice round.
+//
+// NULL last_review (never-reviewed cards) can never satisfy `>=`, so no
+// `IS NOT NULL` guard is needed.
+func findPracticeCardsOn(db *gorm.DB, userID, cardgroupID string, reviewedAfter time.Time, limit int) ([]domain.DueCard, error) {
+	userID = coalesceUserIDForJoin(userID)
+	if limit <= 0 {
+		return []domain.DueCard{}, nil
+	}
+
+	rows, err := dueRowsOn(db, userID,
+		"cards.cardgroup_id = ? AND ucs.last_review >= ?",
+		[]any{cardgroupID, reviewedAfter},
+		"random()",
+		limit,
+		"repository: card: find practice cards")
+	if err != nil {
+		return nil, err
+	}
+	return dueCardsFromRows(rows)
+}
+
 // dueRowsOn runs the cards-with-FSRS LEFT JOIN scoped to userID with the given
 // WHERE predicate, ORDER BY clause, and LIMIT. Shared by the review and new-card
-// fetches in findDueCardsOn so the SELECT/JOIN never drift between the two.
-func dueRowsOn(db *gorm.DB, userID, where string, whereArgs []any, order string, limit int) ([]dueCardRow, error) {
+// fetches in findDueCardsOn and the practice fetch in findPracticeCardsOn so the
+// SELECT/JOIN never drift between them. wrapMsg is supplied by the caller because
+// a shared helper must not embed a caller-specific layer prefix.
+func dueRowsOn(db *gorm.DB, userID, where string, whereArgs []any, order string, limit int, wrapMsg string) ([]dueCardRow, error) {
 	var rows []dueCardRow
-	// ucs.last_review is used in the review-window WHERE clause but is not
-	// projected into dueCardRow — it is filter-only and not needed after scan.
+	// ucs.last_review is used in WHERE clauses by both callers (findDueCardsOn
+	// review window and findPracticeCardsOn) but is not projected into
+	// dueCardRow — it is filter-only and not needed after scan.
 	if err := db.
 		Table("cards").
 		Select("cards.id, cards.cardgroup_id, cards.front, cards.back, cards.created_at, cards.updated_at, cards.position, ucs.state, ucs.due").
@@ -457,7 +505,7 @@ func dueRowsOn(db *gorm.DB, userID, where string, whereArgs []any, order string,
 		Order(order).
 		Limit(limit).
 		Find(&rows).Error; err != nil {
-		return nil, eris.Wrap(err, "repository: card: find due cards")
+		return nil, eris.Wrap(err, wrapMsg)
 	}
 	return rows, nil
 }

@@ -54,6 +54,7 @@ When migrating an existing flat list to a Connection type, keep the old field wi
 - [Migrating a flat list to a Connection: write to BOTH cached shapes during the deprecation window](../../docs/pagination/migrating-flat-list-to-connection.md)
 - [Optimistic-rollback cache key MUST track the active query variables, not the default factory](../../docs/pagination/optimistic-rollback-cache-key.md)
 - [Do not reuse one mutation's Apollo-managed error state for a sibling mutation's failure surface](../../docs/pagination/do-not-reuse-mutation-error-state.md)
+- [Seeding local state from a `network-only` query: gate on `loading` AND result identity (and show the skeleton over a stale terminal screen)](../../docs/pagination/network-only-refetch-seed-guard.md)
 
 ## Frontend pagination UX
 

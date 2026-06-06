@@ -88,6 +88,7 @@ This matters most in DataLoader batch functions, where an empty key slice is a n
 - [GraphQL resolver: synthesized domain values must be deterministic](../../docs/backend/library-gotchas/graphql-resolver-stable-synthesis.md)
 - [Raw SQL CLI: `sql.Open("pgx", dbURL)` + pgx stdlib, not GORM; validate DSN before Open; auth.users needs superuser DSN](../../docs/backend/library-gotchas/raw-sql-cli-pgx-stdlib.md)
 - [`*sql.Rows`: explicit `rows.Close()` after loop in addition to `defer rows.Close()`](../../docs/backend/library-gotchas/sql-rows-explicit-close.md)
+- [SQL comparison on a nullable LEFT JOIN column silently excludes NULL rows (three-valued logic) — deliberate, not a missing `IS NOT NULL`](../../docs/backend/library-gotchas/sql-null-comparison-excludes-unreviewed-rows.md)
 - [Named return `(retErr error)` for deferred `tx.Rollback` — local `err` can be shadowed](../../docs/backend/library-gotchas/named-return-deferred-rollback.md)
 - [Sensitive file output: use `0o600`, not `0o644`, for files containing PII](../../docs/backend/library-gotchas/sensitive-file-permissions-0o600.md)
 - [`t.Parallel()` + `slog.SetDefault()` mutation is a data race — capture `prev` and restore in `t.Cleanup`](../../docs/backend/library-gotchas/tparallel-slog-setdefault-race.md)

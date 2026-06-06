@@ -159,6 +159,15 @@ func (r *queryResolver) LearnNextDueCards(ctx context.Context, cardgroupID strin
 	return toCardModels(ctx, cards), nil
 }
 
+// PracticeTodaysCards is the resolver for the practiceTodaysCards field.
+func (r *queryResolver) PracticeTodaysCards(ctx context.Context, cardgroupID string, limit *int) ([]*model.Card, error) {
+	cards, err := r.LearnUC.PracticeTodaysCards(ctx, cardgroupID, limit)
+	if err != nil {
+		return nil, gqlerr.FromUsecaseError(ctx, err)
+	}
+	return toCardModels(ctx, cards), nil
+}
+
 // CardsByCardgroupConnection is the resolver for the cardsByCardgroupConnection field.
 func (r *queryResolver) CardsByCardgroupConnection(ctx context.Context, cardgroupID string, first *int, after *string, last *int, before *string, search *string, orderBy *model.CardOrderBy, orderDirection *model.SortOrder) (*model.CardConnection, error) {
 	out, err := r.CardUC.ListCardsByCardgroupConnection(ctx, usecase.CardConnectionInput{

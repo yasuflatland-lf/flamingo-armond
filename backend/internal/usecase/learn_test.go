@@ -24,6 +24,16 @@ type mockLearnCardRepo struct {
 	reviewedBefore time.Time
 	limit          int
 	calls          int
+
+	// Practice-mode capture fields, separate from the due-mode captures so a
+	// test exercising one window cannot read a value written by the other.
+	practiceRows          []domain.DueCard
+	practiceErr           error
+	practiceCardgroupID   string
+	practiceUserID        string
+	practiceReviewedAfter time.Time
+	practiceLimit         int
+	practiceCalls         int
 }
 
 func (m *mockLearnCardRepo) FindDueCardsForUser(_ context.Context, userID, cardgroupID string, now, reviewedBefore time.Time, limit int) ([]domain.DueCard, error) {
@@ -34,6 +44,15 @@ func (m *mockLearnCardRepo) FindDueCardsForUser(_ context.Context, userID, cardg
 	m.reviewedBefore = reviewedBefore
 	m.limit = limit
 	return m.rows, m.err
+}
+
+func (m *mockLearnCardRepo) FindPracticeCardsForUser(_ context.Context, userID, cardgroupID string, reviewedAfter time.Time, limit int) ([]domain.DueCard, error) {
+	m.practiceCalls++
+	m.practiceUserID = userID
+	m.practiceCardgroupID = cardgroupID
+	m.practiceReviewedAfter = reviewedAfter
+	m.practiceLimit = limit
+	return m.practiceRows, m.practiceErr
 }
 
 type mockLearnCardgroupRepo struct {
@@ -316,6 +335,201 @@ func TestLearnUsecaseNextDueCards_HappyPathReviewOnly(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, got, 3, "result must contain exactly the requested limit")
+}
+
+// --- PracticeTodaysCards tests ---
+
+// newPracticeUsecase builds a learnUsecase wired for practice-mode tests.
+func newPracticeUsecase(cardRepo *mockLearnCardRepo, cgRepo *mockLearnCardgroupRepo, now time.Time) LearnUsecase {
+	return NewLearnUsecase(
+		cardRepo,
+		cgRepo,
+		service.NewOrderingPolicy(),
+		func() *rand.Rand { return rand.New(rand.NewSource(1)) },
+		20,
+		100,
+		fixedClock{now: now},
+		newTestLogger(),
+	)
+}
+
+func TestLearnUsecasePracticeTodaysCardsAuthAndCardgroupErrors(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
+
+	t.Run("anonymous", func(t *testing.T) {
+		t.Parallel()
+		uc := newPracticeUsecase(&mockLearnCardRepo{}, &mockLearnCardgroupRepo{}, now)
+		_, err := uc.PracticeTodaysCards(anonCtx(), "cg-1", learnIntPtr(5))
+		assertUnauthenticated(t, err)
+	})
+
+	t.Run("missing cardgroup", func(t *testing.T) {
+		t.Parallel()
+		uc := newPracticeUsecase(
+			&mockLearnCardRepo{},
+			&mockLearnCardgroupRepo{err: repository.ErrNotFound},
+			now,
+		)
+		_, err := uc.PracticeTodaysCards(authedCtx("u-1"), "missing", learnIntPtr(5))
+		assertValidationError(t, err, "cardgroupId", "")
+	})
+
+	t.Run("non owner", func(t *testing.T) {
+		t.Parallel()
+		uc := newPracticeUsecase(
+			&mockLearnCardRepo{},
+			&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-2"}},
+			now,
+		)
+		_, err := uc.PracticeTodaysCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
+		assertUnauthenticated(t, err)
+	})
+
+	t.Run("cardgroup repo infra error", func(t *testing.T) {
+		t.Parallel()
+		uc := newPracticeUsecase(
+			&mockLearnCardRepo{},
+			&mockLearnCardgroupRepo{err: errors.New("db down")},
+			now,
+		)
+		_, err := uc.PracticeTodaysCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
+		assertInternalChain(t, err, "usecase: find cardgroup by id")
+	})
+}
+
+func TestLearnUsecasePracticeTodaysCardsCardRepoInfraError(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
+	uc := newPracticeUsecase(
+		&mockLearnCardRepo{practiceErr: errors.New("db down")},
+		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+		now,
+	)
+	_, err := uc.PracticeTodaysCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
+	assertInternalChain(t, err, "usecase: learn: find practice cards")
+}
+
+// TestLearnUsecasePracticeTodaysCards_PropagatesCancelled verifies that
+// context.Canceled returned by the card repository is propagated unwrapped,
+// preserving its identity for errors.Is at the resolver boundary.
+func TestLearnUsecasePracticeTodaysCards_PropagatesCancelled(t *testing.T) {
+	t.Parallel()
+	cardRepo := &mockLearnCardRepo{practiceErr: context.Canceled}
+	uc := newPracticeUsecase(
+		cardRepo,
+		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+		time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC),
+	)
+	_, err := uc.PracticeTodaysCards(authedCtx("u-1"), "cg-1", nil)
+	assertCancelled(t, err)
+	require.Equal(t, context.Canceled, err, "expected unwrapped context.Canceled, got %v", err)
+}
+
+func TestLearnUsecasePracticeTodaysCardsLimitClamp(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name      string
+		in        *int
+		wantLimit int
+	}{
+		// Practice default == cap == 100: the whole day's pool is the unit.
+		{"nil uses cap", nil, 100},
+		{"zero uses cap", learnIntPtr(0), 100},
+		{"over cap clamps", learnIntPtr(250), 100},
+		{"explicit passes through", learnIntPtr(7), 7},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cardRepo := &mockLearnCardRepo{practiceRows: []domain.DueCard{}}
+			uc := newPracticeUsecase(
+				cardRepo,
+				&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+				now,
+			)
+			_, err := uc.PracticeTodaysCards(authedCtx("u-1"), "cg-1", tc.in)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantLimit, cardRepo.practiceLimit)
+		})
+	}
+}
+
+// TestLearnUsecasePracticeTodaysCards_PassesJSTStartOfDayAsReviewedAfter pins
+// that the usecase computes the JST start-of-day boundary and the repository
+// receives it verbatim as reviewedAfter (the inverse window of NextDueCards),
+// and that the authenticated user's Sub is forwarded. The chosen instant has
+// distinct UTC and JST dates: 2026-06-06T16:30Z = 2026-06-07 01:30 JST.
+func TestLearnUsecasePracticeTodaysCards_PassesJSTStartOfDayAsReviewedAfter(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 6, 16, 30, 0, 0, time.UTC)
+	wantBoundary := time.Date(2026, 6, 7, 0, 0, 0, 0, jstZone)
+	cardRepo := &mockLearnCardRepo{}
+	uc := newPracticeUsecase(
+		cardRepo,
+		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+		now,
+	)
+	_, err := uc.PracticeTodaysCards(authedCtx("u-1"), "cg-1", learnIntPtr(5))
+	require.NoError(t, err)
+	require.True(t, cardRepo.practiceReviewedAfter.Equal(wantBoundary),
+		"reviewedAfter: got %v, want instant %v", cardRepo.practiceReviewedAfter, wantBoundary)
+	require.Equal(t, "u-1", cardRepo.practiceUserID)
+	require.Equal(t, "cg-1", cardRepo.practiceCardgroupID)
+}
+
+// TestLearnUsecasePracticeTodaysCards_EmptyIsNonNilSlice verifies that an empty
+// repository result maps to a non-nil empty slice, not nil.
+func TestLearnUsecasePracticeTodaysCards_EmptyIsNonNilSlice(t *testing.T) {
+	t.Parallel()
+
+	cardRepo := &mockLearnCardRepo{practiceRows: []domain.DueCard{}}
+	uc := newPracticeUsecase(
+		cardRepo,
+		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+		time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC),
+	)
+	got, err := uc.PracticeTodaysCards(authedCtx("u-1"), "cg-1", nil)
+	require.NoError(t, err)
+	require.NotNil(t, got, "empty result must be a non-nil slice")
+	require.Len(t, got, 0)
+}
+
+// TestLearnUsecasePracticeTodaysCards_PreservesRepoOrderAndPointers verifies the
+// mapping contract: the result holds the exact same *domain.Card pointers the
+// repository returned, in the same order, with no OrderingPolicy reshuffle.
+func TestLearnUsecasePracticeTodaysCards_PreservesRepoOrderAndPointers(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
+	// Distinct pointers; order chosen so that an OrderingPolicy pass (new before
+	// review or vice-versa) would visibly reorder them — proving Apply is NOT run.
+	c1 := &domain.Card{ID: "p-1"}
+	c2 := &domain.Card{ID: "p-2"}
+	c3 := &domain.Card{ID: "p-3"}
+	rows := []domain.DueCard{
+		{Card: c1, State: domain.FSRSStateReview, Due: now.Add(-time.Hour)},
+		{Card: c2, State: domain.FSRSStateNew, Due: now.Add(-2 * time.Hour)},
+		{Card: c3, State: domain.FSRSStateReview, Due: now.Add(-3 * time.Hour)},
+	}
+	cardRepo := &mockLearnCardRepo{practiceRows: rows}
+	uc := newPracticeUsecase(
+		cardRepo,
+		&mockLearnCardgroupRepo{cardgroup: &domain.Cardgroup{ID: "cg-1", OwnerID: "u-1"}},
+		now,
+	)
+	got, err := uc.PracticeTodaysCards(authedCtx("u-1"), "cg-1", nil)
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+	require.Same(t, c1, got[0], "slot 0 pointer must match repo row 0")
+	require.Same(t, c2, got[1], "slot 1 pointer must match repo row 1")
+	require.Same(t, c3, got[2], "slot 2 pointer must match repo row 2")
 }
 
 // learnDueCard constructs a DueCard for use in learn tests.
