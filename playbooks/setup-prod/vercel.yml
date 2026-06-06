@@ -378,12 +378,16 @@
   register: production_url_prompt
   when: not confirm
 
+# Trailing slashes are stripped because downstream consumers join paths as
+# "{{ production_url }}/api/ping"; a trailing slash yields "//api/ping",
+# which Vercel answers with a 308 redirect that never reaches the handler.
 - name: Resolve production_url (keep existing on empty input)
   ansible.builtin.set_fact:
     production_url: >-
-      {{ (production_url_prompt.user_input | default('') | trim)
-         if (production_url_prompt.user_input | default('') | trim | length) > 0
-         else existing_state.production_url | default('') }}
+      {{ ((production_url_prompt.user_input | default('') | trim)
+          if (production_url_prompt.user_input | default('') | trim | length) > 0
+          else existing_state.production_url | default(''))
+         | regex_replace('/+$', '') }}
 
 - name: Validate production_url shape
   ansible.builtin.assert:
