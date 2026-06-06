@@ -13,17 +13,38 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # Both steps strip a trailing slash from the base-URL secret before
+      # joining the path: a secret stored as "https://host/" would otherwise
+      # produce "https://host//api/ping", which Vercel's edge answers with a
+      # 308 redirect before the route handler runs. curl -f treats 3xx as
+      # success, so each step also asserts the final status is exactly 200.
       - name: Ping Vercel frontend
         env:
           VERCEL_PING_URL: ${{ secrets.VERCEL_PING_URL }}
         run: |
-          curl -fsS --retry 3 --retry-delay 5 --retry-all-errors --max-time 30 \
-            -o /dev/null -w "frontend status=%{http_code} time=%{time_total}s\n" \
-            "$VERCEL_PING_URL/api/ping"
+          meta=$(curl -fsS --retry 3 --retry-delay 5 --retry-all-errors --max-time 30 \
+            -o /tmp/ping-body -w "%{http_code} %{time_total}" \
+            "${VERCEL_PING_URL%/}/api/ping")
+          cat /tmp/ping-body; echo
+          status="${meta%% *}"
+          echo "frontend status=$status time=${meta#* }s"
+          if [ "$status" != "200" ]; then
+            echo "::error::Vercel ping returned HTTP $status (expected 200); the /api/ping handler was not reached."
+            exit 1
+          fi
       - name: Ping Render backend (writes to Supabase)
+        env:
+          RENDER_PING_URL: ${{ secrets.RENDER_PING_URL }}
         run: |
-          curl -fsS --retry 3 --retry-delay 5 --retry-all-errors --max-time 60 \
+          meta=$(curl -fsS --retry 3 --retry-delay 5 --retry-all-errors --max-time 60 \
             -X POST \
             -H "Authorization: Bearer ${{ secrets.PING_TOKEN }}" \
-            -w "backend status=%{http_code} time=%{time_total}s\n" \
-            "${{ secrets.RENDER_PING_URL }}/internal/ping"
+            -o /tmp/ping-body -w "%{http_code} %{time_total}" \
+            "${RENDER_PING_URL%/}/internal/ping")
+          cat /tmp/ping-body; echo
+          status="${meta%% *}"
+          echo "backend status=$status time=${meta#* }s"
+          if [ "$status" != "200" ]; then
+            echo "::error::Render ping returned HTTP $status (expected 200)."
+            exit 1
+          fi
