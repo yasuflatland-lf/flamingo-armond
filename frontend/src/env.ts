@@ -13,11 +13,15 @@ export const env = createEnv({
   client: {
     NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
     NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(20),
+    // Canonical site origin for SEO metadata (metadataBase, Open Graph URLs).
+    // Optional with a localhost default so local dev and tests work unset.
+    NEXT_PUBLIC_SITE_URL: z.string().url().default("http://localhost:3000"),
   },
   runtimeEnv: {
     BACKEND_URL: process.env.BACKEND_URL,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
   },
   emptyStringAsUndefined: true,
 });

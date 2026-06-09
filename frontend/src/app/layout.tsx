@@ -5,13 +5,35 @@ import type { ReactNode } from "react";
 import { AuthShell } from "@/components/auth-shell";
 import { AppleInstallHint } from "@/components/pwa/apple-install-hint";
 import { SwRegister } from "@/components/pwa/sw-register";
+import { env } from "@/env";
 import { readAuthContext } from "@/lib/supabase/auth-status";
 import { Providers } from "./providers";
 import "./globals.css";
 
+const siteTitle = "flamingo-armond";
+const siteDescription = "Swiping flashcard app.";
+
 export const metadata: Metadata = {
-  title: "flamingo-armond",
-  description: "Swiping flashcard app.",
+  metadataBase: new URL(env.NEXT_PUBLIC_SITE_URL),
+  title: { default: siteTitle, template: `%s | ${siteTitle}` },
+  description: siteDescription,
+  // The app is auth-gated; only the public landing surface is canonical.
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    siteName: siteTitle,
+    title: siteTitle,
+    description: siteDescription,
+    url: "/",
+    locale: "en_US",
+    images: ["/opengraph-image"],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: siteTitle,
+    description: siteDescription,
+    images: ["/opengraph-image"],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

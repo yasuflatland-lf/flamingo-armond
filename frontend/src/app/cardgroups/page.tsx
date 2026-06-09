@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
@@ -8,6 +9,8 @@ import { readAuthContext } from "@/lib/supabase/auth-status";
 import { CardgroupsSkeleton } from "./_components/cardgroups-skeleton";
 import CardgroupsClient from "./cardgroups-client";
 import { CARDGROUPS_DEFAULT_VARS, MyCardgroupsConnectionQuery } from "./queries";
+
+export const metadata: Metadata = { title: "Cardgroups" };
 
 export default async function CardgroupsPage() {
   // Auth check runs OUTSIDE the Suspense boundary so an unauthenticated request
