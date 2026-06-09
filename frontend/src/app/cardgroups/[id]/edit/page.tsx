@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
@@ -13,6 +14,9 @@ import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { readAuthContext } from "@/lib/supabase/auth-status";
 import { CardgroupManagementClient } from "./cardgroup-management-client";
+
+// Per-user private route — must not be indexed.
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 type Props = {
   params: Promise<{ id: string }>;

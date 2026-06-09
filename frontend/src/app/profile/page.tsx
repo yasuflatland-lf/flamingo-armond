@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { graphql } from "@/generated";
@@ -6,6 +7,8 @@ import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { readAuthContext } from "@/lib/supabase/auth-status";
 import { ProfilePageClient } from "./profile-page-client";
+
+export const metadata: Metadata = { title: "Profile" };
 
 const MeQuery = graphql(`
   query Me {

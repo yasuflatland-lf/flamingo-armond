@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
@@ -8,6 +9,8 @@ import { readAuthContext } from "@/lib/supabase/auth-status";
 import { CardsNewSkeleton } from "./_components/cards-new-skeleton";
 import CardsNewClient from "./cards-new-client";
 import { CardsNewBootstrapQuery } from "./queries";
+
+export const metadata: Metadata = { title: "New card" };
 
 interface CardsNewPageProps {
   searchParams: Promise<{ cardgroup?: string }>;

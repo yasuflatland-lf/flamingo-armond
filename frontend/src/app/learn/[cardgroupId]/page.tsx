@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
@@ -15,6 +16,12 @@ import { LEARN_PAGE_LIMIT, LearnNextDueCardsQuery } from "../queries";
 import { LearnAddCardSheet } from "./_components/learn-add-card-sheet";
 import { LearnSkeleton } from "./_components/learn-skeleton";
 import { LearnClient } from "./learn-client";
+
+// Per-user learning session — must not be indexed.
+export const metadata: Metadata = {
+  title: "Learn",
+  robots: { index: false, follow: false },
+};
 
 export default async function LearnPage({ params }: { params: Promise<{ cardgroupId: string }> }) {
   // Auth runs OUTSIDE the Suspense boundary so the redirect fires before any

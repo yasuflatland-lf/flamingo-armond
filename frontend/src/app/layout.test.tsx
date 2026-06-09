@@ -57,7 +57,7 @@ vi.mock("@vercel/speed-insights/next", () => ({
 // Import after mocks are registered.
 // ---------------------------------------------------------------------------
 
-import RootLayout, { viewport } from "@/app/layout";
+import RootLayout, { metadata, viewport } from "@/app/layout";
 
 // ---------------------------------------------------------------------------
 // Helper: recursive element finder
@@ -239,6 +239,49 @@ describe("RootLayout — structural branch selection", () => {
     const providersEl = findElement(tree, byName("Providers"));
     expect(providersEl).not.toBeNull();
     expect(providersEl?.props?.nonce).toBeUndefined();
+  });
+});
+
+describe("root metadata", () => {
+  // Pins the SEO surface: metadataBase resolves relative OG/canonical URLs,
+  // the title template appends the site name to per-page titles, and the
+  // canonical alternate marks the public landing surface as the only
+  // canonical route of this auth-gated app.
+  test("resolves metadataBase from NEXT_PUBLIC_SITE_URL (localhost default in tests)", () => {
+    expect(metadata.metadataBase).toBeInstanceOf(URL);
+    expect(String(metadata.metadataBase)).toBe("http://localhost:3000/");
+  });
+
+  test("keeps the default title and appends the site name via the template", () => {
+    expect(metadata.title).toMatchObject({
+      default: "flamingo-armond",
+      template: "%s | flamingo-armond",
+    });
+  });
+
+  test("declares the canonical alternate for the public landing surface", () => {
+    expect(metadata.alternates?.canonical).toBe("/");
+  });
+
+  test("carries the Open Graph fields with the generated OG image", () => {
+    expect(metadata.openGraph).toMatchObject({
+      type: "website",
+      siteName: "flamingo-armond",
+      title: "flamingo-armond",
+      description: "Swiping flashcard app.",
+      url: "/",
+      locale: "en_US",
+      images: ["/opengraph-image"],
+    });
+  });
+
+  test("carries the Twitter Card fields with the generated OG image", () => {
+    expect(metadata.twitter).toMatchObject({
+      card: "summary_large_image",
+      title: "flamingo-armond",
+      description: "Swiping flashcard app.",
+      images: ["/opengraph-image"],
+    });
   });
 });
 

@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import { readAuthContext } from "@/lib/supabase/auth-status";
 import { LoginButton } from "./login-button";
+
+export const metadata: Metadata = { title: "Login" };
 
 type SearchParams = Promise<{ error?: string }>;
 

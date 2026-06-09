@@ -1,6 +1,13 @@
+import type { Metadata } from "next";
 import { graphql } from "@/generated";
 import { gqlFetch } from "@/lib/apollo/server";
 import { AdminRolesClient, type RoleItem } from "./admin-roles-client";
+
+// Admin-only route — must not be indexed.
+export const metadata: Metadata = {
+  title: "Roles",
+  robots: { index: false, follow: false },
+};
 
 /**
  * Inline-fields query for the SSR seed (no fragment): useFragment is a React
