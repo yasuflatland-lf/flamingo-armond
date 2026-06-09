@@ -1,9 +1,12 @@
 package usecase
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"backend/internal/domain"
 )
 
 func TestValidateRelayArgs(t *testing.T) {
@@ -102,6 +105,63 @@ func TestValidateRelayArgs(t *testing.T) {
 			if tc.wantField == "" {
 				require.NoError(t, err)
 			} else {
+				require.Error(t, err)
+				assertValidationError(t, err, tc.wantField, tc.wantMsg)
+			}
+		})
+	}
+}
+
+func TestTranslateDisplayNameErr(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		input     error
+		wantField string // non-empty when a ValidationError is expected
+		wantMsg   string // exact message when a ValidationError is expected
+		wantChain string // non-empty when an internal-chain wrap is expected
+	}{
+		{
+			name:  "nil passes through",
+			input: nil,
+		},
+		{
+			name:      "required sentinel",
+			input:     domain.ErrDisplayNameRequired,
+			wantField: "displayName",
+			wantMsg:   "displayName is required",
+		},
+		{
+			name:      "too-long sentinel",
+			input:     domain.ErrDisplayNameTooLong,
+			wantField: "displayName",
+		},
+		{
+			name:      "reserved sentinel",
+			input:     domain.ErrDisplayNameReserved,
+			wantField: "displayName",
+			wantMsg:   "displayName is reserved",
+		},
+		{
+			name:      "unexpected error wraps as internal",
+			input:     errors.New("surprise"),
+			wantChain: "usecase: translate display name error",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := translateDisplayNameErr(tc.input)
+
+			switch {
+			case tc.input == nil:
+				require.NoError(t, err)
+			case tc.wantChain != "":
+				assertInternalChain(t, err, tc.wantChain)
+			default:
 				require.Error(t, err)
 				assertValidationError(t, err, tc.wantField, tc.wantMsg)
 			}
