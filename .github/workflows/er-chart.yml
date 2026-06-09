@@ -74,6 +74,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p erout
+          # The schemaspy/schemaspy image runs its process as a non-root user, so
+          # the bind-mounted /output (owned by the runner UID) is not writable by
+          # the container and SchemaSpy fails with "Unable to create directory
+          # /output/tables" (IOException, exit 7). Make the output dir writable by
+          # any UID so the container can create its subdirectories.
+          chmod 777 erout
           docker run --rm --network host -v "$PWD/erout:/output" \
             schemaspy/schemaspy:7.0.2 \
             -t pgsql11 -host localhost -port 5432 -db armond \
