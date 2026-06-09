@@ -95,6 +95,8 @@ func translateDisplayNameErr(err error) error {
 		return ucerr.NewValidationError("displayName", "displayName is required")
 	case errors.Is(err, domain.ErrDisplayNameTooLong):
 		return ucerr.NewValidationError("displayName", fmt.Sprintf("displayName must be at most %d characters", domain.DisplayNameMax))
+	case errors.Is(err, domain.ErrDisplayNameReserved):
+		return ucerr.NewValidationError("displayName", "displayName is reserved")
 	default:
 		return eris.Wrap(err, "usecase: translate display name error")
 	}

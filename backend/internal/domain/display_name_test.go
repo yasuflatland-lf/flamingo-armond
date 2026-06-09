@@ -53,6 +53,45 @@ func TestParseDisplayName(t *testing.T) {
 			input:       strings.Repeat(zwjEmoji, 51),
 			sentinelErr: ErrDisplayNameTooLong,
 		},
+
+		// Reserved-name cases.
+		{
+			name:        "reserved exact lowercase admin",
+			input:       "admin",
+			sentinelErr: ErrDisplayNameReserved,
+		},
+		{
+			name:        "reserved mixed-case Admin",
+			input:       "Admin",
+			sentinelErr: ErrDisplayNameReserved,
+		},
+		{
+			name:        "reserved all-uppercase ADMIN",
+			input:       "ADMIN",
+			sentinelErr: ErrDisplayNameReserved,
+		},
+		{
+			name:        "reserved with surrounding whitespace",
+			input:       "  admin  ",
+			sentinelErr: ErrDisplayNameReserved,
+		},
+		{
+			name:        "reserved flamingo",
+			input:       "flamingo",
+			sentinelErr: ErrDisplayNameReserved,
+		},
+		{
+			name:        "reserved system",
+			input:       "system",
+			sentinelErr: ErrDisplayNameReserved,
+		},
+
+		// Near-miss: must be accepted (substring match is NOT applied).
+		{
+			name:      "near-miss Adminah is accepted",
+			input:     "Adminah",
+			wantValue: DisplayName("Adminah"),
+		},
 	}
 
 	for _, tc := range cases {
