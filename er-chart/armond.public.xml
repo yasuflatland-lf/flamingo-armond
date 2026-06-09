@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<database name="armond" schema="public" type="PostgreSQL - 15.18 (Debian 15.18-1.pgdg13+1)">
+   <tables>
+      <table name="cardgroups" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="false" defaultValue="gen_random_uuid()" digits="0" id="0" name="id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
+            <child column="cardgroup_id" foreignKey="cards_cardgroup_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="cards"/>
+            <child column="last_viewed_cardgroup_id" foreignKey="user_preferences_last_viewed_cardgroup_id_fkey" implied="false" onDeleteCascade="false" schema="public" table="user_preferences"/>
+         </column>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="owner_id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
+            <parent column="id" foreignKey="cardgroups_owner_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="users"/>
+         </column>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="2" name="name" nullable="false" remarks="" size="2147483647" type="text" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="3" name="created_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="4" name="updated_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="cardgroups_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="idx_cardgroups_owner_id" unique="false">
+            <column ascending="true" name="owner_id"/>
+         </index>
+         <index name="idx_cardgroups_updated_at" unique="false">
+            <column ascending="true" name="updated_at"/>
+         </index>
+         <checkConstraint constraint="(((char_length(TRIM(BOTH FROM name)) &gt;= 1) AND (char_length(TRIM(BOTH FROM name)) &lt;= 100)))" name="cardgroups_name_length"/>
+      </table>
+      <table name="cards" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="false" defaultValue="gen_random_uuid()" digits="0" id="0" name="id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
+            <child column="card_id" foreignKey="swipe_records_card_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="swipe_records"/>
+            <child column="card_id" foreignKey="user_card_fsrs_card_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="user_card_fsrs"/>
+         </column>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="cardgroup_id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
+            <parent column="id" foreignKey="cards_cardgroup_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="cardgroups"/>
+         </column>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="2" name="front" nullable="false" remarks="" size="2147483647" type="text" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="3" name="back" nullable="false" remarks="" size="2147483647" type="text" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="4" name="created_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="5" name="updated_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="0" digits="0" id="6" name="position" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="cards_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="idx_cards_cardgroup_id" unique="false">
+            <column ascending="true" name="cardgroup_id"/>
+         </index>
+         <index name="uq_cards_cardgroup_front" unique="true">
+            <column ascending="true" name="cardgroup_id"/>
+            <column ascending="true" name="front"/>
+         </index>
+         <checkConstraint constraint="(((char_length(TRIM(BOTH FROM back)) &gt;= 1) AND (char_length(TRIM(BOTH FROM back)) &lt;= 500)))" name="cards_back_length"/>
+         <checkConstraint constraint="(((char_length(TRIM(BOTH FROM front)) &gt;= 1) AND (char_length(TRIM(BOTH FROM front)) &lt;= 500)))" name="cards_front_length"/>
+      </table>
+      <table name="ping_records" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="false" defaultValue="gen_random_uuid()" digits="0" id="0" name="id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111"/>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="1" name="created_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="2" name="updated_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="ping_records_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+      </table>
+      <table name="roles" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="false" defaultValue="gen_random_uuid()" digits="0" id="0" name="id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
+            <child column="role_id" foreignKey="user_roles_role_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="user_roles"/>
+         </column>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="name" nullable="false" remarks="" size="2147483647" type="text" typeCode="12"/>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="roles_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="roles_name_key" unique="true">
+            <column ascending="true" name="name"/>
+         </index>
+      </table>
+      <table name="swipe_records" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="false" defaultValue="gen_random_uuid()" digits="0" id="0" name="id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="user_id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
+            <parent column="id" foreignKey="swipe_records_user_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="users"/>
+         </column>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="2" name="card_id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
+            <parent column="id" foreignKey="swipe_records_card_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="cards"/>
+         </column>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="3" name="rating" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="4" name="reviewed_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="null" digits="6" id="5" name="due" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="null" digits="17" id="6" name="stability" nullable="false" remarks="" size="17" type="float8" typeCode="8"/>
+         <column autoUpdated="false" defaultValue="null" digits="17" id="7" name="difficulty" nullable="false" remarks="" size="17" type="float8" typeCode="8"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="8" name="elapsed_days" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="9" name="scheduled_days" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="10" name="reps" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="11" name="lapses" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="12" name="state" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="null" digits="6" id="13" name="last_review" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="14" name="cardgroup_id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111"/>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="swipe_records_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="idx_swipe_records_card_id" unique="false">
+            <column ascending="true" name="card_id"/>
+         </index>
+         <index name="idx_swipe_records_user_cardgroup" unique="false">
+            <column ascending="true" name="user_id"/>
+            <column ascending="true" name="cardgroup_id"/>
+            <column ascending="false" name="reviewed_at"/>
+         </index>
+         <index name="idx_swipe_records_user_id" unique="false">
+            <column ascending="true" name="user_id"/>
+         </index>
+         <index name="idx_swipe_records_user_reviewed" unique="false">
+            <column ascending="true" name="user_id"/>
+            <column ascending="false" name="reviewed_at"/>
+         </index>
+         <checkConstraint constraint="(((rating &gt;= 1) AND (rating &lt;= 4)))" name="swipe_records_rating_check"/>
+      </table>
+      <table name="user_card_fsrs" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="false" defaultValue="null" digits="0" id="0" name="user_id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
+            <parent column="id" foreignKey="user_card_fsrs_user_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="users"/>
+         </column>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="card_id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
+            <parent column="id" foreignKey="user_card_fsrs_card_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="cards"/>
+         </column>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="2" name="state" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="null" digits="6" id="3" name="due" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="null" digits="17" id="4" name="stability" nullable="false" remarks="" size="17" type="float8" typeCode="8"/>
+         <column autoUpdated="false" defaultValue="null" digits="17" id="5" name="difficulty" nullable="false" remarks="" size="17" type="float8" typeCode="8"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="6" name="reps" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="7" name="lapses" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="null" digits="6" id="8" name="last_review" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="9" name="elapsed_days" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="10" name="scheduled_days" nullable="false" remarks="" size="10" type="int4" typeCode="4"/>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="11" name="created_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="12" name="updated_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <primaryKey column="user_id" sequenceNumberInPK="1"/>
+         <primaryKey column="card_id" sequenceNumberInPK="2"/>
+         <index name="user_card_fsrs_pkey" unique="true">
+            <column ascending="true" name="user_id"/>
+            <column ascending="true" name="card_id"/>
+         </index>
+         <index name="idx_user_card_fsrs_user_due" unique="false">
+            <column ascending="true" name="user_id"/>
+            <column ascending="true" name="due"/>
+         </index>
+      </table>
+      <table name="user_preferences" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="false" defaultValue="null" digits="0" id="0" name="user_id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
+            <parent column="id" foreignKey="user_preferences_user_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="users"/>
+         </column>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="last_viewed_cardgroup_id" nullable="true" remarks="" size="2147483647" type="uuid" typeCode="1111">
+            <parent column="id" foreignKey="user_preferences_last_viewed_cardgroup_id_fkey" implied="false" onDeleteCascade="false" schema="public" table="cardgroups"/>
+         </column>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="2" name="updated_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <primaryKey column="user_id" sequenceNumberInPK="1"/>
+         <index name="user_preferences_pkey" unique="true">
+            <column ascending="true" name="user_id"/>
+         </index>
+         <index name="idx_user_preferences_last_viewed_cardgroup_id" unique="false">
+            <column ascending="true" name="last_viewed_cardgroup_id"/>
+         </index>
+      </table>
+      <table name="user_roles" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="false" defaultValue="null" digits="0" id="0" name="user_id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
+            <parent column="id" foreignKey="user_roles_user_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="users"/>
+         </column>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="role_id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
+            <parent column="id" foreignKey="user_roles_role_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="roles"/>
+         </column>
+         <primaryKey column="user_id" sequenceNumberInPK="1"/>
+         <primaryKey column="role_id" sequenceNumberInPK="2"/>
+         <index name="user_roles_pkey" unique="true">
+            <column ascending="true" name="user_id"/>
+            <column ascending="true" name="role_id"/>
+         </index>
+         <index name="idx_user_roles_role_id" unique="false">
+            <column ascending="true" name="role_id"/>
+         </index>
+      </table>
+      <table name="users" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="false" defaultValue="null" digits="0" id="0" name="id" nullable="false" remarks="" size="2147483647" type="uuid" typeCode="1111">
+            <child column="owner_id" foreignKey="cardgroups_owner_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="cardgroups"/>
+            <child column="user_id" foreignKey="swipe_records_user_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="swipe_records"/>
+            <child column="user_id" foreignKey="user_card_fsrs_user_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="user_card_fsrs"/>
+            <child column="user_id" foreignKey="user_preferences_user_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="user_preferences"/>
+            <child column="user_id" foreignKey="user_roles_user_id_fkey" implied="false" onDeleteCascade="true" schema="public" table="user_roles"/>
+            <parent column="id" foreignKey="users_id_fkey" implied="false" onDeleteCascade="true" schema="auth" table="users"/>
+         </column>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="1" name="display_name" nullable="true" remarks="" size="2147483647" type="text" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="2" name="bio" nullable="true" remarks="" size="2147483647" type="text" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="null" digits="0" id="3" name="avatar_url" nullable="true" remarks="" size="2147483647" type="text" typeCode="12"/>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="4" name="created_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="now()" digits="6" id="5" name="updated_at" nullable="false" remarks="" size="35" type="timestamptz" typeCode="93"/>
+         <column autoUpdated="false" defaultValue="0" digits="0" id="6" name="version" nullable="false" remarks="" size="19" type="int8" typeCode="-5"/>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="users_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="idx_users_updated_at" unique="false">
+            <column ascending="true" name="updated_at"/>
+         </index>
+      </table>
+   </tables>
+   <routines>
+      <routine dataAccess="MODIFIES" deterministic="false" name="custom_access_token_hook(event jsonb)" returnType="jsonb" securityType="DEFINER" type="FUNCTION">
+         <comment/>
+         <definition language="plpgsql"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN" name="event" type="jsonb"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="false" name="handle_new_user()" returnType="trigger" securityType="DEFINER" type="FUNCTION">
+         <comment/>
+         <definition language="plpgsql"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="false" name="set_cardgroups_updated_at()" returnType="trigger" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="plpgsql"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="false" name="set_cards_updated_at()" returnType="trigger" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="plpgsql"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="false" name="set_user_card_fsrs_updated_at()" returnType="trigger" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="plpgsql"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN"/>
+         </parameters>
+      </routine>
+      <routine dataAccess="MODIFIES" deterministic="false" name="set_users_updated_at()" returnType="trigger" securityType="INVOKER" type="FUNCTION">
+         <comment/>
+         <definition language="plpgsql"><![CDATA[Redacted, use --include-routine-definition]]></definition>
+         <parameters>
+            <parameter mode="IN"/>
+         </parameters>
+      </routine>
+   </routines>
+</database>

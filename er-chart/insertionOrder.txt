@@ -1,0 +1,9 @@
+roles
+users
+cardgroups
+cards
+swipe_records
+user_card_fsrs
+user_preferences
+user_roles
+ping_records
