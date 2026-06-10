@@ -41,11 +41,9 @@ function modeFromDirection(direction: SwipeDirection): 1 | 2 | 4 {
 type Props = {
   cardgroupId: string;
   initialCards: LearnCard[];
-  /** The id of the user's `lastViewedCardgroup` at server-render time. */
-  lastViewedCardgroupId: string | null;
 };
 
-export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }: Props) {
+export function LearnClient({ cardgroupId, initialCards }: Props) {
   const [queue, setQueue] = useState<LearnCard[]>(initialCards);
   const [completed, setCompleted] = useState(0);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -60,9 +58,12 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
   const visibleError = localError ?? backendError;
 
   // Persist this cardgroup as the user's last-viewed cardgroup so the HomePage
-  // RSC can land them here on next visit. Frontend skips the network call when
-  // the server already reports this cardgroup as last-viewed; the server has
-  // no throttle (YAGNI). Errors are non-fatal — learning continues.
+  // RSC can land them here on next visit. The sync runs once per mount and is
+  // fire-and-forget: the page deliberately does NOT fetch the current
+  // last-viewed value (that would put an extra query on the LCP critical path),
+  // so the mutation always fires even when the value is already current. The
+  // server has no throttle (YAGNI) and the redundant write is harmless. Errors
+  // are non-fatal — learning continues.
   //
   // The mutation is fired via the imperative client API rather than useMutation
   // so the cache update can run regardless of caller render state, and so we
@@ -79,7 +80,6 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
   const client = useApolloClient();
   const lastDispatchedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (lastViewedCardgroupId === cardgroupId) return;
     if (lastDispatchedRef.current === cardgroupId) return;
     lastDispatchedRef.current = cardgroupId;
     client
@@ -130,7 +130,7 @@ export function LearnClient({ cardgroupId, initialCards, lastViewedCardgroupId }
           codes: liftGraphQLCodes(err),
         });
       });
-  }, [cardgroupId, lastViewedCardgroupId, client]);
+  }, [cardgroupId, client]);
 
   // Background prefetch: the ONLY mechanism that refills the queue.
   //

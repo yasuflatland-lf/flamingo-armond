@@ -46,3 +46,7 @@ export function isUnauthenticatedGraphQLError(err: unknown): boolean {
 export function isForbiddenGraphQLError(err: unknown): boolean {
   return parseGqlErrors(err)?.some((e) => e?.extensions?.code === "FORBIDDEN") ?? false;
 }
+
+export function isBadUserInputGraphQLError(err: unknown): boolean {
+  return parseGqlErrors(err)?.some((e) => e?.extensions?.code === "BAD_USER_INPUT") ?? false;
+}

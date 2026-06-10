@@ -1,6 +1,7 @@
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { describe, expect, test, vi } from "vitest";
 import {
+  isBadUserInputGraphQLError,
   isForbiddenGraphQLError,
   isUnauthenticatedGraphQLError,
   liftGraphQLCodes,
@@ -183,5 +184,42 @@ describe("isForbiddenGraphQLError", () => {
       { extensions: { code: "FORBIDDEN" } },
     ]);
     expect(isForbiddenGraphQLError(err)).toBe(true);
+  });
+});
+
+describe("isBadUserInputGraphQLError", () => {
+  test("non-Error value returns false", () => {
+    expect(isBadUserInputGraphQLError(null)).toBe(false);
+    expect(isBadUserInputGraphQLError("some string")).toBe(false);
+  });
+
+  test("Error with wrong prefix returns false", () => {
+    expect(isBadUserInputGraphQLError(new Error("BAD_USER_INPUT"))).toBe(false);
+  });
+
+  test("Error with correct prefix but malformed JSON returns false", () => {
+    expect(isBadUserInputGraphQLError(new Error(`${PREFIX}not-json`))).toBe(false);
+  });
+
+  test("correct prefix + non-array JSON payload returns false", () => {
+    expect(isBadUserInputGraphQLError(new Error(`${PREFIX}{}`))).toBe(false);
+  });
+
+  test("Error with UNAUTHENTICATED code (not BAD_USER_INPUT) returns false", () => {
+    const err = makeErr([{ extensions: { code: "UNAUTHENTICATED" } }]);
+    expect(isBadUserInputGraphQLError(err)).toBe(false);
+  });
+
+  test("Error with BAD_USER_INPUT code returns true", () => {
+    const err = makeErr([{ extensions: { code: "BAD_USER_INPUT" } }]);
+    expect(isBadUserInputGraphQLError(err)).toBe(true);
+  });
+
+  test("mixed errors array with at least one BAD_USER_INPUT returns true", () => {
+    const err = makeErr([
+      { extensions: { code: "UNAUTHENTICATED" } },
+      { extensions: { code: "BAD_USER_INPUT", field: "cardgroupId" } },
+    ]);
+    expect(isBadUserInputGraphQLError(err)).toBe(true);
   });
 });
