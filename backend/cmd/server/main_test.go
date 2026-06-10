@@ -206,6 +206,33 @@ func TestHealthEndpoint(t *testing.T) {
 	}
 }
 
+func TestHealthEndpoint_Head(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t)
+
+	res, err := http.Head(ts.URL + "/health")
+	if err != nil {
+		t.Fatalf("HEAD %s/health: %v", ts.URL, err)
+	}
+	defer res.Body.Close()
+
+	// HEAD must succeed (not 405) so external uptime monitors that only issue
+	// HEAD requests classify the service as up while still resetting Render's
+	// free-tier idle timer.
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want %d", res.StatusCode, http.StatusOK)
+	}
+
+	// Per HTTP semantics net/http strips the body from a HEAD response.
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if len(body) != 0 {
+		t.Errorf("HEAD response body = %q, want empty", body)
+	}
+}
+
 func TestRootEndpoint(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t)
