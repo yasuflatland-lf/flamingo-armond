@@ -213,6 +213,34 @@ function makeDefaultPrefetchMocks(count = 4) {
   }));
 }
 
+/**
+ * Default `SetLastViewedCardgroup` no-op success mock.
+ *
+ * The persist-last-viewed effect fires unconditionally on mount (the page no
+ * longer fetches a last-viewed value to short-circuit it), so every render of
+ * `LearnClient` issues one `SetLastViewedCardgroup` mutation. Without a matching
+ * mock the file-wide leak spy (which includes `SetLastViewedCardgroup` in
+ * `operationNames`) records an unmatched-request warning. Tests in the dedicated
+ * persist-last-viewed describe supply their own mocks instead.
+ */
+function makeDefaultPersistMock() {
+  return {
+    request: { query: SetLastViewedCardgroupDocument, variables: { cardgroupId: CG_ID } },
+    result: {
+      data: {
+        setLastViewedCardgroup: {
+          __typename: "SetLastViewedCardgroupSuccess" as const,
+          user: {
+            __typename: "User" as const,
+            id: "u-default",
+            lastViewedCardgroup: { __typename: "Cardgroup" as const, id: CG_ID },
+          },
+        },
+      },
+    },
+  };
+}
+
 type RenderLearnClientOptions = {
   /**
    * When `true`, do NOT append default `LearnNextDueCards` no-op mocks. Used
@@ -228,19 +256,18 @@ function renderLearnClient(
   initialCards = [CARD_1],
   options: RenderLearnClientOptions = {},
 ) {
-  // Pass `lastViewedCardgroupId === CG_ID` so the persist-last-viewed effect
-  // short-circuits before issuing a mutation; that mutation is exercised in
-  // its own test below and would otherwise need a mock entry in every case.
-  //
-  // Append default no-op `LearnNextDueCards` mocks so the prefetch effect is
-  // satisfied for any test whose initial queue length is 1..PREFETCH_THRESHOLD.
-  // See `makeDefaultPrefetchMocks` JSDoc for rationale.
+  // The persist-last-viewed effect fires unconditionally on mount, so append a
+  // no-op `SetLastViewedCardgroup` mock to satisfy it; that mutation's behaviour
+  // is exercised in its own describe below. Append default no-op
+  // `LearnNextDueCards` mocks so the prefetch effect is satisfied for any test
+  // whose initial queue length is 1..PREFETCH_THRESHOLD. See the
+  // `makeDefaultPersistMock` / `makeDefaultPrefetchMocks` JSDoc for rationale.
   const mergedMocks = options.skipDefaultPrefetchMocks
-    ? mocks
-    : [...mocks, ...makeDefaultPrefetchMocks()];
+    ? [...mocks, makeDefaultPersistMock()]
+    : [...mocks, makeDefaultPersistMock(), ...makeDefaultPrefetchMocks()];
   render(
     <MockedProvider mocks={mergedMocks as never}>
-      <LearnClient cardgroupId={CG_ID} initialCards={initialCards} lastViewedCardgroupId={CG_ID} />
+      <LearnClient cardgroupId={CG_ID} initialCards={initialCards} />
     </MockedProvider>,
   );
 }
@@ -564,7 +591,7 @@ describe("<LearnClient>", () => {
     // to pass a LearnClient-compatible card with a non-null level without fighting
     // that inference — the same pattern used by the persist-last-viewed tests.
     render(
-      <MockedProvider mocks={makeDefaultPrefetchMocks()}>
+      <MockedProvider mocks={[makeDefaultPersistMock(), ...makeDefaultPrefetchMocks()]}>
         <LearnClient
           cardgroupId={CG_ID}
           initialCards={[
@@ -578,7 +605,6 @@ describe("<LearnClient>", () => {
               cardgroupId: CG_ID,
             },
           ]}
-          lastViewedCardgroupId={CG_ID}
         />
       </MockedProvider>,
     );
@@ -641,13 +667,13 @@ describe("<LearnClient> persist-last-viewed path", () => {
     consoleWarnSpy.mockRestore();
   });
 
-  it("fires SetLastViewedCardgroup mutation when ids differ", async () => {
+  it("fires SetLastViewedCardgroup mutation on mount", async () => {
     const mutationCalled = vi.fn();
     render(
       <MockedProvider
         mocks={[makePersistMock(CG_ID, mutationCalled), ...makeDefaultPrefetchMocks()]}
       >
-        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} />
       </MockedProvider>,
     );
 
@@ -661,7 +687,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
 
     render(
       <MockedProvider mocks={[makePersistMock(CG_ID), ...makeDefaultPrefetchMocks()]} cache={cache}>
-        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} />
       </MockedProvider>,
     );
 
@@ -707,7 +733,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
 
     render(
       <MockedProvider mocks={[validationMock, ...makeDefaultPrefetchMocks()]} cache={cache}>
-        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} />
       </MockedProvider>,
     );
 
@@ -757,7 +783,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
   ] as const)("swallows %s from the persist mutation without throwing", async (_, mockEntry) => {
     render(
       <MockedProvider mocks={[mockEntry, ...makeDefaultPrefetchMocks()]}>
-        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} lastViewedCardgroupId="cg-other" />
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} />
       </MockedProvider>,
     );
 
@@ -944,12 +970,8 @@ describe("<LearnClient> onSwipe identity stability", () => {
     };
 
     render(
-      <MockedProvider mocks={[swipeMock, ...makeDefaultPrefetchMocks()]}>
-        <LearnClient
-          cardgroupId={CG_ID}
-          initialCards={[CARD_1, CARD_2]}
-          lastViewedCardgroupId={CG_ID}
-        />
+      <MockedProvider mocks={[swipeMock, makeDefaultPersistMock(), ...makeDefaultPrefetchMocks()]}>
+        <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1, CARD_2]} />
       </MockedProvider>,
     );
 

@@ -21,14 +21,12 @@ vi.mock("./learn-client", () => ({
   LearnClient: ({
     cardgroupId,
     initialCards,
-    lastViewedCardgroupId,
   }: {
     cardgroupId: string;
     initialCards: unknown[];
-    lastViewedCardgroupId: string | null;
   }) => (
     <div data-testid="learn-client">
-      {cardgroupId}:{initialCards.length}:{lastViewedCardgroupId ?? "null"}
+      {cardgroupId}:{initialCards.length}
     </div>
   ),
 }));
@@ -105,7 +103,7 @@ describe("LearnPage — LearnContent gqlFetch error branches", () => {
 
       // PII-redacted payload: only `name` is logged, never `message`.
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "[learn] gqlFetch batch failed:",
+        "[learn] gqlFetch failed:",
         expect.objectContaining({ name: expect.any(String) }),
       );
       // Assert that `message` (which may carry user-supplied content) is absent.
@@ -165,7 +163,7 @@ describe("LearnPage", () => {
     expect(gqlFetch).not.toHaveBeenCalled();
   });
 
-  it("redirects to /login when the GraphQL batch returns UNAUTHENTICATED", async () => {
+  it("redirects to /login when LearnNextDueCards returns UNAUTHENTICATED", async () => {
     vi.mocked(gqlFetch).mockRejectedValue(
       new Error(`GraphQL errors: ${JSON.stringify([{ extensions: { code: "UNAUTHENTICATED" } }])}`),
     );
@@ -176,14 +174,17 @@ describe("LearnPage", () => {
     await expect(childType(childProps)).rejects.toThrow("REDIRECT:/login");
   });
 
-  it("redirects to /cardgroups when the cardgroup is not found", async () => {
-    vi.mocked(gqlFetch)
-      .mockResolvedValueOnce({ cardgroup: null } as never)
-      .mockResolvedValueOnce({ learnNextDueCards: [] } as never)
-      .mockResolvedValueOnce({
-        me: { id: "user-1", lastViewedCardgroup: null },
-        myCardgroupsConnection: { __typename: "CardgroupConnection", totalCount: 0 },
-      } as never);
+  it("redirects to /cardgroups when LearnNextDueCards returns BAD_USER_INPUT (missing cardgroup)", async () => {
+    // The usecase authorizes the cardgroup inside the cards query, so a missing
+    // cardgroup surfaces as BAD_USER_INPUT — the surviving form of the old
+    // CardgroupQuery existence guard.
+    vi.mocked(gqlFetch).mockRejectedValue(
+      new Error(
+        `GraphQL errors: ${JSON.stringify([
+          { extensions: { code: "BAD_USER_INPUT", field: "cardgroupId" } },
+        ])}`,
+      ),
+    );
 
     const jsx = await LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) });
     const { childType, childProps } = getSuspenseChild(jsx);
@@ -192,56 +193,40 @@ describe("LearnPage", () => {
   });
 
   it("server-renders the first card batch into LearnClient", async () => {
-    vi.mocked(gqlFetch)
-      .mockResolvedValueOnce({
-        cardgroup: { id: "cg-1", name: "Spanish", updatedAt: "2026-04-30T00:00:00Z" },
-      } as never)
-      .mockResolvedValueOnce({
-        learnNextDueCards: [
-          {
-            id: "c-1",
-            front: "Hello",
-            back: "Hola",
-            userCardState: {
-              due: "2026-04-30T00:00:00Z",
-              state: 0,
-            },
-            cardgroupId: "cg-1",
+    vi.mocked(gqlFetch).mockResolvedValueOnce({
+      learnNextDueCards: [
+        {
+          id: "c-1",
+          front: "Hello",
+          back: "Hola",
+          userCardState: {
+            due: "2026-04-30T00:00:00Z",
+            state: 0,
           },
-        ],
-      } as never)
-      .mockResolvedValueOnce({
-        me: { id: "user-1", lastViewedCardgroup: { id: "cg-old" } },
-        myCardgroupsConnection: { __typename: "CardgroupConnection", totalCount: 0 },
-      } as never);
+          cardgroupId: "cg-1",
+        },
+      ],
+    } as never);
 
     const jsx = await LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) });
     const { childType, childProps } = getSuspenseChild(jsx);
     const inner = await childType(childProps);
     render(inner as React.ReactElement);
 
-    // Format: cardgroupId:initialCards.length:lastViewedCardgroupId
-    expect(screen.getByTestId("learn-client")).toHaveTextContent("cg-1:1:cg-old");
+    // Format: cardgroupId:initialCards.length
+    expect(screen.getByTestId("learn-client")).toHaveTextContent("cg-1:1");
   });
 
   it("server-renders an empty due batch into LearnClient", async () => {
-    vi.mocked(gqlFetch)
-      .mockResolvedValueOnce({
-        cardgroup: { id: "cg-1", name: "Spanish", updatedAt: "2026-04-30T00:00:00Z" },
-      } as never)
-      .mockResolvedValueOnce({
-        learnNextDueCards: [],
-      } as never)
-      .mockResolvedValueOnce({
-        me: { id: "user-1", lastViewedCardgroup: null },
-        myCardgroupsConnection: { __typename: "CardgroupConnection", totalCount: 0 },
-      } as never);
+    vi.mocked(gqlFetch).mockResolvedValueOnce({
+      learnNextDueCards: [],
+    } as never);
 
     const jsx = await LearnPage({ params: Promise.resolve({ cardgroupId: "cg-1" }) });
     const { childType, childProps } = getSuspenseChild(jsx);
     const inner = await childType(childProps);
     render(inner as React.ReactElement);
 
-    expect(screen.getByTestId("learn-client")).toHaveTextContent("cg-1:0:null");
+    expect(screen.getByTestId("learn-client")).toHaveTextContent("cg-1:0");
   });
 });

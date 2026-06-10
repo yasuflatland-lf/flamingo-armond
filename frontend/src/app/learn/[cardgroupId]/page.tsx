@@ -2,14 +2,11 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
-import { CardgroupQuery } from "@/app/cardgroups/queries";
-import { MeWithLastViewedQuery } from "@/app/queries";
-import type {
-  CardgroupQuery as CardgroupQueryType,
-  LearnNextDueCardsQuery as LearnNextDueCardsQueryType,
-  MeWithLastViewedQuery as MeWithLastViewedQueryType,
-} from "@/generated/graphql";
-import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
+import type { LearnNextDueCardsQuery as LearnNextDueCardsQueryType } from "@/generated/graphql";
+import {
+  isBadUserInputGraphQLError,
+  isUnauthenticatedGraphQLError,
+} from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
 import { readAuthContext } from "@/lib/supabase/auth-status";
 import { LEARN_PAGE_LIMIT, LearnNextDueCardsQuery } from "../queries";
@@ -46,44 +43,42 @@ export default async function LearnPage({ params }: { params: Promise<{ cardgrou
 
 /**
  * Data-dependent subtree streamed inside the `<Suspense>` boundary. Auth has
- * already passed at this point; this component only loads the data needed to
- * hydrate `<LearnClient>` and handles the post-auth redirect cases (missing
- * cardgroup, GraphQL UNAUTHENTICATED).
+ * already passed at this point.
+ *
+ * The LCP element is the card text, which depends ONLY on `LearnNextDueCards`.
+ * That query is therefore the single fetch on the LCP critical path — the
+ * cardgroup-existence check and the last-viewed sync are deliberately NOT
+ * fetched here, so they cannot hold the card paint hostage (see the learn-page
+ * LCP investigation). Both concerns are recovered without an extra blocking
+ * fetch: `LearnNextDueCards` already authorizes the cardgroup in the usecase
+ * layer (`authorizeCardgroupForLearn`), so a missing cardgroup surfaces as a
+ * `BAD_USER_INPUT` rejection (-> `/cardgroups`, mirroring the prior
+ * CardgroupQuery guard) and a non-owned one as `UNAUTHENTICATED` (-> `/login`);
+ * the last-viewed sync runs client-side in `<LearnClient>`.
  */
 async function LearnContent({ cardgroupId }: { cardgroupId: string }) {
-  let cardgroupData: CardgroupQueryType;
   let cardsData: LearnNextDueCardsQueryType;
-  let meData: MeWithLastViewedQueryType;
 
   try {
-    [cardgroupData, cardsData, meData] = await Promise.all([
-      gqlFetch(CardgroupQuery, { variables: { id: cardgroupId }, revalidate: 0 }),
-      gqlFetch(LearnNextDueCardsQuery, {
-        variables: { cardgroupId, limit: LEARN_PAGE_LIMIT },
-        revalidate: 0,
-      }),
-      gqlFetch(MeWithLastViewedQuery, { revalidate: 0 }),
-    ]);
+    cardsData = await gqlFetch(LearnNextDueCardsQuery, {
+      variables: { cardgroupId, limit: LEARN_PAGE_LIMIT },
+      revalidate: 0,
+    });
   } catch (err) {
     if (isUnauthenticatedGraphQLError(err)) {
       redirect("/login");
     }
-    console.error("[learn] gqlFetch batch failed:", {
+    // `LearnNextDueCards` only returns BAD_USER_INPUT for a missing cardgroup
+    // (usecase `authorizeCardgroupForLearn` -> `NewValidationError("cardgroupId")`),
+    // so this branch is the surviving form of the old cardgroup-existence guard.
+    if (isBadUserInputGraphQLError(err)) {
+      redirect("/cardgroups");
+    }
+    console.error("[learn] gqlFetch failed:", {
       name: err instanceof Error ? err.name : "unknown",
     });
     throw err;
   }
 
-  if (!cardgroupData.cardgroup) redirect("/cardgroups");
-
-  const cards = cardsData.learnNextDueCards;
-  const lastViewedCardgroupId = meData.me?.lastViewedCardgroup?.id ?? null;
-
-  return (
-    <LearnClient
-      cardgroupId={cardgroupId}
-      initialCards={cards}
-      lastViewedCardgroupId={lastViewedCardgroupId}
-    />
-  );
+  return <LearnClient cardgroupId={cardgroupId} initialCards={cardsData.learnNextDueCards} />;
 }
