@@ -124,11 +124,19 @@ func newRouter(
 		})
 	})
 
-	e.GET("/health", func(c *echo.Context) error {
+	// /health answers both GET and HEAD. GET serves Render's deploy/liveness
+	// health checks; HEAD serves free-tier keep-warm pings from external uptime
+	// monitors that only issue HEAD requests. Echo does not auto-serve HEAD for
+	// a GET route (the router resolves HEAD to its own slot with no GET
+	// fallback), so a HEAD-only registration gap returns 405; register both
+	// methods explicitly. The HEAD response body is dropped by net/http, so the
+	// shared handler returns the same 200 payload for both.
+	healthz := func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{
 			"status": "ok",
 		})
-	})
+	}
+	e.Match([]string{http.MethodGet, http.MethodHead}, "/health", healthz)
 
 	e.POST("/internal/ping", pingHandler.Handle, pingHandler.RateLimiter())
 	if notionSyncHandler != nil {
