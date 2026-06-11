@@ -4,8 +4,8 @@ import { NetworkStatus } from "@apollo/client";
 import { useApolloClient, useMutation, useQuery } from "@apollo/client/react";
 import { Plus } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
 import { CardgroupListItem } from "@/components/cardgroups/cardgroup-list-item";
 import { CardgroupsToolbar } from "@/components/cardgroups/cardgroups-toolbar";
@@ -55,11 +55,7 @@ function CreateCardgroupSheetContent({
           data-testid="cardgroup-create-auth-error"
           className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
         >
-          <span>
-            {authError === "unauthenticated"
-              ? t("sessionExpired")
-              : t("noPermission")}
-          </span>
+          <span>{authError === "unauthenticated" ? t("sessionExpired") : t("noPermission")}</span>
           <Link href="/login" className="underline">
             {t("signInAgain")}
           </Link>
@@ -294,9 +290,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
         apollo.cache.gc();
       },
       onCommitFailed: (err) => {
-        setDeleteCommitError(
-          getBackendErrorBanner(err) ?? t("deleteReloadError"),
-        );
+        setDeleteCommitError(getBackendErrorBanner(err) ?? t("deleteReloadError"));
       },
     });
   }
@@ -334,15 +328,13 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
             searchQuery,
             endCursor,
           });
-          setFetchMoreError(
-            getBackendErrorBanner(err) ?? t("fetchMoreError"),
-          );
+          setFetchMoreError(getBackendErrorBanner(err) ?? t("fetchMoreError"));
         })
         .finally(() => {
           fetchingRef.current = false;
         });
     },
-    [fetchMore],
+    [fetchMore, t],
   );
 
   const requestNextPageFromObserver = useEffectEvent(() => {

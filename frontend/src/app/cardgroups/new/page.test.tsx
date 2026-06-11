@@ -5,13 +5,13 @@ import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor, within } from "@testing-library/react";
-import { renderWithIntl } from "@/test/render-with-intl";
 import userEvent from "@testing-library/user-event";
 import { headers } from "next/headers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CARDGROUPS_DEFAULT_VARS } from "@/app/cardgroups/queries";
 import { CreateCardgroupDocument, MyCardgroupsConnectionDocument } from "@/generated/graphql";
 import { sanitizeReturnTo } from "@/lib/sanitize-return-to";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { NewCardgroupClient } from "./new-cardgroup-client";
 import NewCardgroupPage from "./page";
 

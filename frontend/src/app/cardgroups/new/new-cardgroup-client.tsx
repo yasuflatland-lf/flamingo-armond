@@ -3,8 +3,8 @@
 import { Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { useTranslations } from "next-intl";
+import { useState } from "react";
 import { useCreateCardgroup } from "@/app/cardgroups/use-create-cardgroup";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
 
@@ -87,9 +87,7 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
               <h1 id="welcome-heading" className="text-lg font-semibold tracking-tight">
                 {t("welcomeHeading")}
               </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {t("welcomeDesc")}
-              </p>
+              <p className="mt-1 text-sm text-muted-foreground">{t("welcomeDesc")}</p>
             </div>
           </div>
         </section>
@@ -103,11 +101,7 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
           data-testid="cardgroup-new-auth-error"
           className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
         >
-          <span>
-            {authError === "unauthenticated"
-              ? t("sessionExpired")
-              : t("noPermission")}
-          </span>
+          <span>{authError === "unauthenticated" ? t("sessionExpired") : t("noPermission")}</span>
           <Link href="/login" className="underline">
             {t("signInAgain")}
           </Link>
