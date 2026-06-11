@@ -1,0 +1,43 @@
+{
+  "Common": {
+    "save": "保存",
+    "saving": "保存中...",
+    "cancel": "キャンセル",
+    "loading": "読み込み中...",
+    "retry": "再試行",
+    "undo": "元に戻す",
+    "edit": "編集",
+    "delete": "削除",
+    "somethingWentWrong": "エラーが発生しました。もう一度お試しください。"
+  },
+  "Nav": {
+    "cardgroups": "カードグループ",
+    "profile": "プロフィール",
+    "signIn": "ログイン",
+    "logout": "ログアウト",
+    "users": "ユーザー",
+    "roles": "ロール",
+    "flamingoHome": "Flamingo ホーム",
+    "navigationMenu": "ナビゲーションメニュー"
+  },
+  "Language": {
+    "label": "言語",
+    "en": "English",
+    "ja": "日本語"
+  },
+  "Meta": {
+    "description": "スワイプ式フラッシュカードアプリ。"
+  },
+  "NotFound": {
+    "heading": "ページが見つかりません",
+    "message": "お探しのページは存在しないようです。"
+  },
+  "GlobalError": {
+    "heading": "エラーが発生しました",
+    "message": "予期しないエラーが発生しました。もう一度お試しください。"
+  },
+  "Settings": {
+    "heading": "設定",
+    "description": "環境設定を管理します。"
+  }
+}

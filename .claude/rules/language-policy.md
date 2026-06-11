@@ -9,6 +9,10 @@ All committed text in this repo must be **English only**. This applies to:
 
 Chat replies between Claude Code and the user remain in 日本語 — the rule covers what gets committed, not the live conversation. When translating existing Japanese text, preserve technical terms and code identifiers as-is; only natural-language prose is translated.
 
+## Exception — translated UI copy in message catalogs
+
+The frontend ships a localized UI (English + Japanese) via `next-intl`. Deliberately-translated UI strings live **only** in the JSON message catalogs under `frontend/messages/*.json` (e.g. `frontend/messages/ja.json`, plus native-language endonyms such as `Language.ja: "日本語"` in `en.json`). These are data, not source, and are the one sanctioned place to commit non-English text. The CJK verification grep below targets `.go/.ts/.tsx/.graphql/.sql/.md` under `frontend/src` and never `.json` or `frontend/messages/`, so catalogs are exempt by construction. Never inline a Japanese string literal in a `.ts`/`.tsx` source file — extract it into the catalog and reference it via `t("…")`. See [`docs/frontend/i18n.md`](../../docs/frontend/i18n.md).
+
 ## No PR-order references
 
 Do not reference PR numbers (`PR6`, `PR11`, …) or merge order in committed text. PR numbers are unstable across squash/rebase/fork-merge and rot quickly. Phrase architectural facts as standing statements ("the Supabase SSR client uses…") rather than historical notes ("PR6 introduces…"). Issue links (`[#22]`) are permanent and may stay.

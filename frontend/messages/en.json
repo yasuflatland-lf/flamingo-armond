@@ -1,0 +1,43 @@
+{
+  "Common": {
+    "save": "Save",
+    "saving": "Saving...",
+    "cancel": "Cancel",
+    "loading": "Loading...",
+    "retry": "Retry",
+    "undo": "Undo",
+    "edit": "Edit",
+    "delete": "Delete",
+    "somethingWentWrong": "Something went wrong. Please try again."
+  },
+  "Nav": {
+    "cardgroups": "Cardgroups",
+    "profile": "Profile",
+    "signIn": "Sign in",
+    "logout": "Logout",
+    "users": "Users",
+    "roles": "Roles",
+    "flamingoHome": "Flamingo home",
+    "navigationMenu": "Navigation menu"
+  },
+  "Language": {
+    "label": "Language",
+    "en": "English",
+    "ja": "日本語"
+  },
+  "Meta": {
+    "description": "Swiping flashcard app."
+  },
+  "NotFound": {
+    "heading": "Oops! Page Not Found!",
+    "message": "It seems like the page you're looking for does not exist."
+  },
+  "GlobalError": {
+    "heading": "Something went wrong",
+    "message": "An unexpected error occurred. Please try again."
+  },
+  "Settings": {
+    "heading": "Settings",
+    "description": "Manage your preferences."
+  }
+}

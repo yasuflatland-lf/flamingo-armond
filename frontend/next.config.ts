@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
 
 // Read BACKEND_URL directly from process.env here (not via src/env.ts) because Next
 // loads this config file at build start, before the app bundle — and therefore before
@@ -74,4 +75,8 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Points next-intl at src/i18n/request.ts (auto-detected). Preserves all
+// existing rewrites/headers in `nextConfig`.
+const withNextIntl = createNextIntlPlugin();
+
+export default withNextIntl(nextConfig);
