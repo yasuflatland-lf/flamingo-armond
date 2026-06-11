@@ -3,6 +3,7 @@
 import { useMutation } from "@apollo/client/react";
 import { useForm } from "@tanstack/react-form";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +71,9 @@ export function ProfileForm({
   onSaved,
   onSubmittingChange,
 }: Props) {
+  const t = useTranslations("Profile");
+  const tCommon = useTranslations("Common");
+
   // Typed InputValidationError variant — field-level validation failure
   // surfaced by the server via the outcome union. Cleared on each new submission.
   const [validationError, setValidationError] = useState<{
@@ -118,10 +122,10 @@ export function ProfileForm({
       }).catch((err) => {
         const codes = liftGraphQLCodes(err);
         if (codes.includes("UNAUTHENTICATED")) {
-          setBannerMessage("Your session expired. Please sign in again.");
+          setBannerMessage(t("sessionExpired"));
           return null;
         }
-        const banner = getBackendErrorBanner(err) ?? "Something went wrong. Please try again.";
+        const banner = getBackendErrorBanner(err) ?? tCommon("somethingWentWrong");
         setBannerMessage(banner);
         console.error("[ProfileForm] mutation rejection", err);
         throw err; // keep formState.isSubmitSuccessful correct
@@ -147,7 +151,7 @@ export function ProfileForm({
       console.warn("[ProfileForm] unexpected updateProfile payload", {
         typename: unknownPayload?.__typename ?? null,
       });
-      setBannerMessage("Something went wrong. Please try again.");
+      setBannerMessage(tCommon("somethingWentWrong"));
     },
   });
 
@@ -176,8 +180,8 @@ export function ProfileForm({
       ) : null}
 
       <div className="mb-4 space-y-2">
-        <Label>Email</Label>
-        {email !== null ? <p>{email}</p> : <p className="italic">No email on this account</p>}
+        <Label>{t("email")}</Label>
+        {email !== null ? <p>{email}</p> : <p className="italic">{t("noEmail")}</p>}
         <Link
           href="/profile/change-email"
           className="text-sm underline"
@@ -187,7 +191,7 @@ export function ProfileForm({
             onChangeEmail();
           }}
         >
-          Change email
+          {t("changeEmail")}
         </Link>
       </div>
 
@@ -197,7 +201,7 @@ export function ProfileForm({
       >
         {(field) => (
           <div className="space-y-2">
-            <Label htmlFor={field.name}>Display name</Label>
+            <Label htmlFor={field.name}>{t("displayName")}</Label>
             <Input
               id={field.name}
               name={field.name}
@@ -216,7 +220,7 @@ export function ProfileForm({
       <form.Field name="bio" validators={{ onChange: bioSchema, onBlur: bioSchema }}>
         {(field) => (
           <div className="space-y-2">
-            <Label htmlFor={field.name}>Bio</Label>
+            <Label htmlFor={field.name}>{t("bio")}</Label>
             <Textarea
               id={field.name}
               name={field.name}
@@ -231,7 +235,7 @@ export function ProfileForm({
                 size="sm"
                 onClick={() => field.handleChange("")}
               >
-                Clear bio
+                {t("clearBio")}
               </Button>
             ) : null}
             <FieldError zodErrors={field.state.meta.errors} backendError={fieldErrors.bio} />
@@ -241,11 +245,11 @@ export function ProfileForm({
 
       <div className="flex items-center gap-2">
         <Button type="submit" variant="brand" disabled={loading}>
-          {loading ? "Saving..." : "Save"}
+          {loading ? tCommon("saving") : tCommon("save")}
         </Button>
         {onCancel ? (
           <Button type="button" variant="outline" onClick={onCancel}>
-            Cancel
+            {tCommon("cancel")}
           </Button>
         ) : null}
       </div>

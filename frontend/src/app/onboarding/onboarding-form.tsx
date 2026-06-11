@@ -3,6 +3,7 @@
 import { useMutation } from "@apollo/client/react";
 import { useForm } from "@tanstack/react-form";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +36,8 @@ const UpdateProfileMutation = graphql(`
 
 export function OnboardingForm() {
   const router = useRouter();
+  const t = useTranslations("Onboarding");
+  const tCommon = useTranslations("Common");
 
   // Typed InputValidationError variant — field-level validation failure
   // surfaced by the server via the outcome union. Cleared on each new submission.
@@ -67,10 +70,10 @@ export function OnboardingForm() {
       }).catch((err) => {
         const codes = liftGraphQLCodes(err);
         if (codes.includes("UNAUTHENTICATED")) {
-          setBannerMessage("Your session expired. Please sign in again.");
+          setBannerMessage(t("sessionExpired"));
           return null;
         }
-        const banner = getBackendErrorBanner(err) ?? "Something went wrong. Please try again.";
+        const banner = getBackendErrorBanner(err) ?? tCommon("somethingWentWrong");
         setBannerMessage(banner);
         console.error("[OnboardingForm] mutation rejection", err);
         throw err; // keep formState.isSubmitSuccessful correct
@@ -96,7 +99,7 @@ export function OnboardingForm() {
       console.warn("[OnboardingForm] unexpected updateProfile payload", {
         typename: unknownPayload?.__typename ?? null,
       });
-      setBannerMessage("Something went wrong. Please try again.");
+      setBannerMessage(tCommon("somethingWentWrong"));
     },
   });
 
@@ -118,7 +121,7 @@ export function OnboardingForm() {
       }}
       className="space-y-4"
     >
-      <h1 className="mb-6 text-2xl font-semibold">Welcome to Flamingo Armond</h1>
+      <h1 className="mb-6 text-2xl font-semibold">{t("welcome")}</h1>
 
       {bannerMessage ? (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
@@ -132,7 +135,7 @@ export function OnboardingForm() {
       >
         {(field) => (
           <div className="space-y-2">
-            <Label htmlFor={field.name}>Display name</Label>
+            <Label htmlFor={field.name}>{t("displayName")}</Label>
             <Input
               id={field.name}
               name={field.name}
@@ -140,9 +143,7 @@ export function OnboardingForm() {
               onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
             />
-            <p className="text-sm text-muted-foreground">
-              1–50 characters; visible to other users.
-            </p>
+            <p className="text-sm text-muted-foreground">{t("displayNameHint")}</p>
             <FieldError
               zodErrors={field.state.meta.errors}
               backendError={fieldErrors.displayName}
@@ -151,8 +152,8 @@ export function OnboardingForm() {
         )}
       </form.Field>
 
-      <Button type="submit" variant="brand" disabled={loading}>
-        {loading ? "Saving..." : "Continue"}
+      <Button type="submit" variant="brand" disabled={loading} data-testid="onboarding-submit">
+        {loading ? tCommon("saving") : t("continue")}
       </Button>
 
       {/* Hidden sentinel used by tests to observe formState.isSubmitSuccessful */}

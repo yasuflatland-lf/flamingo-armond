@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 
@@ -9,6 +10,9 @@ type ErrorPageProps = {
 };
 
 export default function ProfileError({ error, reset }: ErrorPageProps) {
+  const t = useTranslations("Profile");
+  const tCommon = useTranslations("Common");
+
   useEffect(() => {
     // Initial-load UNAUTHENTICATED is intercepted in page.tsx and redirects
     // to /login before this boundary is reached. This boundary handles the
@@ -22,12 +26,10 @@ export default function ProfileError({ error, reset }: ErrorPageProps) {
 
   return (
     <main className="p-8">
-      <h1 className="mb-3 text-2xl font-semibold">Couldn&apos;t load your profile</h1>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Something went wrong while loading your profile. Please try again in a moment.
-      </p>
+      <h1 className="mb-3 text-2xl font-semibold">{t("couldntLoad")}</h1>
+      <p className="mb-6 text-sm text-muted-foreground">{t("loadError")}</p>
       <Button onClick={reset} variant="outline">
-        Retry
+        {tCommon("retry")}
       </Button>
     </main>
   );

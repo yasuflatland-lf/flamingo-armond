@@ -34,12 +34,15 @@ test.describe
       await page.goto("/");
       await page.waitForURL("**/onboarding", { timeout: 10_000 });
 
-      // 2. Onboarding form is visible.
-      await expect(page.getByLabel("Display name")).toBeVisible();
+      // 2. Onboarding form is visible. The suite runs in the ja-JP locale, so
+      // target the display-name input and submit button by locale-independent
+      // attributes (input id / data-testid) rather than translated copy.
+      const displayNameInput = page.locator("#displayName");
+      await expect(displayNameInput).toBeVisible();
 
       // 3. Fill in the display name and submit.
-      await page.getByLabel("Display name").fill("E2E Onboarder");
-      await page.getByRole("button", { name: "Continue" }).click();
+      await displayNameInput.fill("E2E Onboarder");
+      await page.getByTestId("onboarding-submit").click();
 
       // 4. On success, the form's onCompleted callback pushes /cardgroups/new?welcome=1.
       await page.waitForURL("**/cardgroups/new?welcome=1", { timeout: 15_000 });
