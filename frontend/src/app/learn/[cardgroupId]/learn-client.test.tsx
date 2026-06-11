@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { gql, InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { type RefObject, useImperativeHandle, useRef } from "react";
@@ -14,6 +14,7 @@ import {
   LearnNextDueCardsDocument,
   SetLastViewedCardgroupDocument,
 } from "@/generated/graphql";
+import { renderWithIntl } from "@/test/render-with-intl";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
@@ -265,7 +266,7 @@ function renderLearnClient(
   const mergedMocks = options.skipDefaultPrefetchMocks
     ? [...mocks, makeDefaultPersistMock()]
     : [...mocks, makeDefaultPersistMock(), ...makeDefaultPrefetchMocks()];
-  render(
+  renderWithIntl(
     <MockedProvider mocks={mergedMocks as never}>
       <LearnClient cardgroupId={CG_ID} initialCards={initialCards} />
     </MockedProvider>,
@@ -590,7 +591,7 @@ describe("<LearnClient>", () => {
     // default `[CARD_1]`, which narrows `cefrLevel` to `null`. Inline the render
     // to pass a LearnClient-compatible card with a non-null level without fighting
     // that inference — the same pattern used by the persist-last-viewed tests.
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[makeDefaultPersistMock(), ...makeDefaultPrefetchMocks()]}>
         <LearnClient
           cardgroupId={CG_ID}
@@ -669,7 +670,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
 
   it("fires SetLastViewedCardgroup mutation on mount", async () => {
     const mutationCalled = vi.fn();
-    render(
+    renderWithIntl(
       <MockedProvider
         mocks={[makePersistMock(CG_ID, mutationCalled), ...makeDefaultPrefetchMocks()]}
       >
@@ -685,7 +686,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
   it("writes lastViewedCardgroup into the Apollo cache after mutation resolves", async () => {
     const cache = new InMemoryCache();
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[makePersistMock(CG_ID), ...makeDefaultPrefetchMocks()]} cache={cache}>
         <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} />
       </MockedProvider>,
@@ -731,7 +732,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
       }),
     };
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[validationMock, ...makeDefaultPrefetchMocks()]} cache={cache}>
         <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} />
       </MockedProvider>,
@@ -781,7 +782,7 @@ describe("<LearnClient> persist-last-viewed path", () => {
       },
     ],
   ] as const)("swallows %s from the persist mutation without throwing", async (_, mockEntry) => {
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[mockEntry, ...makeDefaultPrefetchMocks()]}>
         <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1]} />
       </MockedProvider>,
@@ -969,7 +970,7 @@ describe("<LearnClient> onSwipe identity stability", () => {
       },
     };
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[swipeMock, makeDefaultPersistMock(), ...makeDefaultPrefetchMocks()]}>
         <LearnClient cardgroupId={CG_ID} initialCards={[CARD_1, CARD_2]} />
       </MockedProvider>,

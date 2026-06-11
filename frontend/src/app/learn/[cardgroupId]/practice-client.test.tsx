@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { type RefObject, useImperativeHandle, useRef } from "react";
@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CardContent, type SwipeCardData } from "@/components/learn/swipe-card";
 import type { SwipeCardStackHandle } from "@/components/learn/swipe-card-stack";
 import { PracticeTodaysCardsDocument } from "@/generated/graphql";
+import { renderWithIntl } from "@/test/render-with-intl";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
@@ -169,7 +170,7 @@ function makePracticeFieldErrorMock() {
 }
 
 function renderPractice(mocks: unknown[]) {
-  render(
+  renderWithIntl(
     <MockedProvider mocks={mocks as never}>
       <PracticeClient cardgroupId={CG_ID} />
     </MockedProvider>,
