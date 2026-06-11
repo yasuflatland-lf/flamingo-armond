@@ -3,6 +3,7 @@
 import { BookOpen, Plus, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { LogoutButton } from "@/app/_components/logout-button";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import { MobileMenuTrigger } from "@/components/nav/mobile-menu-trigger";
@@ -23,6 +24,7 @@ const NAV_LINK_CLASS =
   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground active:bg-accent active:text-accent-foreground";
 
 export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
+  const t = useTranslations("Nav");
   const pathname = usePathname();
   const router = useRouter();
   // Hooks must run unconditionally (Rules of Hooks); only `open(...)` is called
@@ -73,7 +75,7 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
     <Sheet>
       <Link
         href="/"
-        aria-label="Flamingo home"
+        aria-label={t("flamingoHome")}
         className="rounded-md p-2 hover:bg-accent font-semibold"
       >
         <FlamingoMark className="size-7" aria-hidden="true" />
@@ -94,7 +96,7 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
 
       <SheetContent side="left" className="flex flex-col">
         <SheetHeader>
-          <SheetTitle className="sr-only">Navigation menu</SheetTitle>
+          <SheetTitle className="sr-only">{t("navigationMenu")}</SheetTitle>
         </SheetHeader>
 
         {user === null && pathname !== "/login" && (
@@ -111,7 +113,7 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
               <SheetClose asChild>
                 <Link href="/cardgroups" className={NAV_LINK_CLASS}>
                   <BookOpen className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  Cardgroups
+                  {t("cardgroups")}
                 </Link>
               </SheetClose>
 
@@ -122,7 +124,7 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
                     <SheetClose key={item.href} asChild>
                       <Link href={item.href} className={NAV_LINK_CLASS}>
                         <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                        {item.label}
+                        {t(item.labelKey)}
                       </Link>
                     </SheetClose>
                   );
@@ -135,7 +137,7 @@ export function LogoDrawer({ user, isAdmin }: LogoDrawerProps) {
               <SheetClose asChild>
                 <Link href="/profile" className={NAV_LINK_CLASS}>
                   <User className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  Profile
+                  {t("profile")}
                 </Link>
               </SheetClose>
 

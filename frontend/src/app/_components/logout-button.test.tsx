@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
 
 const mockReplace = vi.fn();
 const mockRefresh = vi.fn();
@@ -36,7 +37,7 @@ describe("<LogoutButton>", () => {
     mockReplace.mockImplementation((path: string) => callOrder.push(`replace:${path}`));
     mockRefresh.mockImplementation(() => callOrder.push("refresh"));
 
-    render(<LogoutButton />);
+    renderWithIntl(<LogoutButton />);
     await userEvent.click(screen.getByRole("button", { name: /logout/i }));
 
     // replace must precede refresh: refreshing on the old (protected) URL is
@@ -49,7 +50,7 @@ describe("<LogoutButton>", () => {
     mockSignOut.mockResolvedValue({ error: { message: "boom" } });
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    render(<LogoutButton />);
+    renderWithIntl(<LogoutButton />);
     await userEvent.click(screen.getByRole("button", { name: /logout/i }));
 
     expect(mockReplace).not.toHaveBeenCalled();

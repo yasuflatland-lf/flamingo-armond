@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
 
 // Mock next/link so it renders a plain <a> in jsdom.
 vi.mock("next/link", () => ({
@@ -61,7 +62,7 @@ function renderRail(
   props: React.ComponentProps<typeof GlobalRail>,
   options?: { defaultOpen?: boolean },
 ) {
-  return render(
+  return renderWithIntl(
     <SidebarProvider defaultOpen={options?.defaultOpen}>
       <GlobalRail {...props} />
     </SidebarProvider>,
