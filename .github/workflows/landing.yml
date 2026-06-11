@@ -1,0 +1,54 @@
+name: landing
+
+# Publishes the marketing landing page (site/) to the root of the gh-pages
+# branch. The ER chart workflow (er-chart.yml) publishes to gh-pages/er-chart,
+# so both coexist on the same Pages site:
+#   https://yasuflatland-lf.github.io/flamingo-armond/           <- landing (this workflow)
+#   https://yasuflatland-lf.github.io/flamingo-armond/er-chart/  <- ER chart
+# clean-exclude below preserves er-chart/ (and the legacy vercel.json) when this
+# workflow cleans the gh-pages root.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/landing.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: landing-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write          # github-pages-deploy-action needs push access to the gh-pages branch
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Verify the site has an index and externalized assets
+        run: |
+          set -euo pipefail
+          test -f site/index.html || { echo "::error::site/index.html missing" >&2; exit 1; }
+          # The landing page must reference videos by path, never re-embed base64
+          # blobs (which would balloon the HTML and wreck LCP).
+          if grep -q 'data:video/mp4;base64' site/index.html; then
+            echo "::error::site/index.html still embeds a base64 video - externalize it under site/videos/." >&2
+            exit 1
+          fi
+          for v in site/videos/learn-demo.mp4 site/videos/cardgroup-demo.mp4; do
+            test -f "$v" || { echo "::error::missing $v" >&2; exit 1; }
+          done
+
+      - name: Publish site/ to gh-pages root
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: site
+          clean: true
+          clean-exclude: |
+            er-chart
+            vercel.json
