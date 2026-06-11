@@ -10,7 +10,7 @@ const BRAND_CORAL = "#FF6F79";
 // than a design token, and it is applied as an inline style (not a Tailwind
 // `fill-*` utility) so it always paints with the first HTML chunk even before
 // the stylesheet loads — otherwise the SVG falls back to its default black fill.
-const MARK_COLOR = "#1f1f1f";
+const MARK_COLOR = "#f1f1f1";
 
 // Donut mark inlined as a path literal (Material "Donut Large") so the splash
 // needs no extra network request — it paints with the first HTML chunk.
@@ -48,8 +48,8 @@ export function BrandSplash({ spin = true, label, children }: BrandSplashProps) 
       <svg
         viewBox="0 0 24 24"
         aria-hidden="true"
-        style={{ fill: MARK_COLOR }}
-        className={`size-14${spin ? " motion-safe:animate-spin" : ""}`}
+        style={{ fill: MARK_COLOR, width: "6rem", height: "6rem" }}
+        className={spin ? "motion-safe:animate-spin" : undefined}
       >
         <path d={DONUT_PATH} />
       </svg>
