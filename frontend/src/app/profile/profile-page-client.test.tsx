@@ -70,6 +70,19 @@ describe("<ProfilePageClient>", () => {
     expect(mockPush).toHaveBeenCalledWith("/profile?edit=self", { scroll: false });
   });
 
+  it("renders the Settings section with the language switcher", () => {
+    mockSearchParamsValue = "";
+
+    renderWithIntl(
+      <MockedProvider mocks={[]}>
+        <ProfilePageClient email="alice@example.com" initial={initial} />
+      </MockedProvider>,
+    );
+
+    expect(screen.getByRole("heading", { name: /settings/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /language/i })).toBeInTheDocument();
+  });
+
   it("opens the sheet when ?edit=self (singleton sentinel) is present in the query", () => {
     mockSearchParamsValue = "edit=self";
 

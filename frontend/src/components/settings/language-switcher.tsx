@@ -28,10 +28,22 @@ export function LanguageSwitcher() {
   function handleValueChange(value: string) {
     const next = toLocale(value);
     if (next === null) {
+      // Unreachable from the UI (every SelectItem value comes from `locales`),
+      // so a null here means a SelectItem drifted out of the canonical list.
+      // Warn rather than silently swallow so the programming error is visible.
+      console.warn("[LanguageSwitcher] ignoring unsupported locale value:", value);
       return;
     }
-    startTransition(() => {
-      setUserLocale(next);
+    // `await` the Server Action so `isPending` stays true across the server
+    // roundtrip (a synchronous fire-and-forget callback resolves immediately and
+    // the disabled guard never engages). The cookie write triggers Next.js to
+    // re-render the route with the new locale, so no explicit refresh is needed.
+    startTransition(async () => {
+      try {
+        await setUserLocale(next);
+      } catch (error) {
+        console.error("[LanguageSwitcher] setUserLocale failed:", error);
+      }
     });
   }
 
