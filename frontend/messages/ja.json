@@ -39,5 +39,8 @@
   "Settings": {
     "heading": "設定",
     "description": "環境設定を管理します。"
+  },
+  "Cardgroups": {
+    "updatedAt": "{date}に更新"
   }
 }

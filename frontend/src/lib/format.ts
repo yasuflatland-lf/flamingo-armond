@@ -1,5 +1,3 @@
-const MEDIUM_DATE = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
-
-export function formatMediumDate(iso: string): string {
-  return MEDIUM_DATE.format(new Date(iso));
+export function formatMediumDate(iso: string, locale = "en-US"): string {
+  return new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(iso));
 }
