@@ -57,5 +57,13 @@
   },
   "Cardgroups": {
     "updatedAt": "{date}に更新"
+  },
+  "Login": {
+    "heading": "ログイン",
+    "googleCta": "Google アカウントでログインして続行してください。初めての方は、初回ログイン時にアカウントが作成されます。",
+    "signInFailed": "ログインに失敗しました: {error}",
+    "googleButton": "Google で続行",
+    "terms": "ログインすることで、<terms>利用規約</terms>および<privacy>プライバシーポリシー</privacy>に同意したものとみなされます。",
+    "tagline": "少ない学習で、より多く記憶。"
   }
 }

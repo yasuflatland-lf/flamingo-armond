@@ -57,5 +57,13 @@
   },
   "Cardgroups": {
     "updatedAt": "Updated {date}"
+  },
+  "Login": {
+    "heading": "Sign in",
+    "googleCta": "Sign in with your Google account to continue. New here? An account is created on first sign-in.",
+    "signInFailed": "Sign-in failed: {error}",
+    "googleButton": "Continue with Google",
+    "terms": "By signing in, you agree to our <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>.",
+    "tagline": "Remember more, study less."
   }
 }

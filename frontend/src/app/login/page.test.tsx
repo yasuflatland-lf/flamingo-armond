@@ -18,7 +18,19 @@ vi.mock("./login-button", () => ({
   LoginButton: () => <button type="button">Sign in</button>,
 }));
 
+// next-intl/server — the page resolves the Login namespace via getTranslations.
+// Back the mock with createTranslator + the real en catalog so t()/t.rich()
+// produce the original English copy (and rendered Terms/Privacy links), keeping
+// the existing English string assertions valid.
+vi.mock("next-intl/server", () => ({
+  getTranslations: vi.fn(async (namespace: "Login") =>
+    createTranslator({ locale: "en", messages: enMessages, namespace }),
+  ),
+}));
+
 import { headers } from "next/headers";
+import { createTranslator } from "next-intl";
+import enMessages from "../../../messages/en.json";
 import LoginPage from "./page";
 
 describe("LoginPage", () => {

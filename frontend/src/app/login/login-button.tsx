@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -30,6 +31,8 @@ function GoogleGLogo() {
 }
 
 export function LoginButton() {
+  const t = useTranslations("Login");
+
   async function handleSignIn() {
     const supabase = createSupabaseBrowserClient();
     const { error } = await supabase.auth.signInWithOAuth({
@@ -46,7 +49,7 @@ export function LoginButton() {
   return (
     <Button onClick={handleSignIn} type="button" variant="brand">
       <GoogleGLogo />
-      Continue with Google
+      {t("googleButton")}
     </Button>
   );
 }
