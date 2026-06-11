@@ -1,8 +1,7 @@
-// Supported UI locales. `en` is the default; `ja` is the added locale. Kept
-// module-private (the `Locale` type + `toLocale` are the public surface); a
-// consumer that needs to enumerate locales (e.g. a language switcher) promotes
-// this to an export when it wires the first use.
-const locales = ["en", "ja"] as const;
+// Supported UI locales. `en` is the default; `ja` is the added locale. Exported
+// so a consumer that enumerates locales (e.g. the language switcher) can map
+// over the canonical list rather than re-declaring it.
+export const locales = ["en", "ja"] as const;
 
 export type Locale = (typeof locales)[number];
 

@@ -2,7 +2,9 @@
 
 import { Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useCallback, useRef, useState } from "react";
+import { LanguageSwitcher } from "@/components/settings/language-switcher";
 import { Button } from "@/components/ui/button";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import { useSheetSearchParam } from "@/lib/url/use-sheet-search-param";
@@ -52,6 +54,7 @@ function ProfileSheetBody({
 const PROFILE_SHEET_SENTINEL_ID = "self";
 
 export function ProfilePageClient({ email, initial }: Props) {
+  const tSettings = useTranslations("Settings");
   const router = useRouter();
   const sheet = useSheetSearchParam();
   const [dirty, setDirty] = useState(false);
@@ -127,6 +130,14 @@ export function ProfilePageClient({ email, initial }: Props) {
             <Pencil className="h-4 w-4" />
             Edit profile
           </Button>
+        </section>
+
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-xl font-semibold">{tSettings("heading")}</h2>
+            <p className="text-sm text-muted-foreground">{tSettings("description")}</p>
+          </div>
+          <LanguageSwitcher />
         </section>
       </div>
 
