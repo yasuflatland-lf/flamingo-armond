@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
+import type { ReactNode } from "react";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import { readAuthContext } from "@/lib/supabase/auth-status";
 import { LoginButton } from "./login-button";
@@ -17,6 +18,14 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
 
   const t = await getTranslations("Login");
   const { error } = await searchParams;
+
+  // Both footer rich-text tags render the same styled link, differing only in href.
+  const footerLink = (href: string) => (chunks: ReactNode) => (
+    <a href={href} className="underline underline-offset-2 hover:text-foreground">
+      {chunks}
+    </a>
+  );
+
   return (
     <main data-testid="login-grid" className="relative grid h-svh lg:grid-cols-2">
       <div className="flex flex-col">
@@ -46,19 +55,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
 
               <footer className="border-t pt-5 text-xs text-muted-foreground text-center">
                 {t.rich("terms", {
-                  terms: (chunks) => (
-                    <a href="/terms" className="underline underline-offset-2 hover:text-foreground">
-                      {chunks}
-                    </a>
-                  ),
-                  privacy: (chunks) => (
-                    <a
-                      href="/privacy"
-                      className="underline underline-offset-2 hover:text-foreground"
-                    >
-                      {chunks}
-                    </a>
-                  ),
+                  terms: footerLink("/terms"),
+                  privacy: footerLink("/privacy"),
                 })}
               </footer>
             </div>
