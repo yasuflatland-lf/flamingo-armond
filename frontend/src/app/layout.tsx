@@ -4,8 +4,7 @@ import { headers } from "next/headers";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
 import type { ReactNode } from "react";
-import { AuthShell } from "@/components/auth-shell";
-import { AppleInstallHint } from "@/components/pwa/apple-install-hint";
+import { ConditionalShell } from "@/components/conditional-shell";
 import { SwRegister } from "@/components/pwa/sw-register";
 import { env } from "@/env";
 import { ogLocale } from "@/i18n/config";
@@ -119,11 +118,7 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  // Read the pathname forwarded by middleware so this server component can
-  // decide whether to mount the navigation shell. /login renders bare so the
-  // sign-in screen owns the entire viewport.
   const headersList = await headers();
-  const pathname = headersList.get("x-pathname") ?? "/";
   const nonce = headersList.get("x-nonce") ?? undefined;
 
   // Active locale resolved by next-intl (src/i18n/request.ts): cookie →
@@ -138,20 +133,6 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const shellUser = auth.status === "authenticated" ? { email: auth.email } : null;
   const isAdmin = auth.status === "authenticated" && auth.isAdmin;
 
-  if (pathname === "/login" || pathname === "/onboarding") {
-    return (
-      <html lang={locale}>
-        <body suppressHydrationWarning>
-          <NextIntlClientProvider>
-            <Providers nonce={nonce}>{children}</Providers>
-          </NextIntlClientProvider>
-          <SpeedInsights />
-          <SwRegister />
-        </body>
-      </html>
-    );
-  }
-
   return (
     <html lang={locale}>
       {/*
@@ -163,14 +144,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       <body suppressHydrationWarning>
         <NextIntlClientProvider>
           <Providers nonce={nonce}>
-            <AuthShell user={shellUser} isAdmin={isAdmin}>
+            {/*
+              ConditionalShell is a client component that checks usePathname() on
+              every render. This hides the navigation shell on /login and /onboarding
+              even when a soft navigation arrives from a page that SSR'd with the
+              full shell — the root layout is a server component that is not
+              re-rendered on client-side navigations, but ConditionalShell is.
+            */}
+            <ConditionalShell user={shellUser} isAdmin={isAdmin}>
               {children}
-            </AuthShell>
+            </ConditionalShell>
           </Providers>
-          {/* AppleInstallHint calls useTranslations("Pwa"), so it MUST render
-              inside NextIntlClientProvider — outside it throws a no-intl-context
-              error during SSR on every request. */}
-          <AppleInstallHint />
         </NextIntlClientProvider>
         <SpeedInsights />
         <SwRegister />
