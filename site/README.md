@@ -53,19 +53,3 @@ site/
 cd site && python3 -m http.server 8000
 # open http://localhost:8000
 ```
-
-## Optional: Cloudflare CDN + custom domain
-
-GitHub Pages already serves this site over its global CDN. To front it with a
-custom domain on Cloudflare (extra DDoS mitigation, edge rules, cache control):
-
-1. Add a `CNAME` file to this folder containing the apex/subdomain (e.g.
-   `www.example.com`) and set the same domain under repo **Settings → Pages →
-   Custom domain**.
-2. In Cloudflare DNS, point the domain at GitHub Pages:
-   - apex: four `A` records — `185.199.108.153`, `185.199.109.153`,
-     `185.199.110.153`, `185.199.111.153`
-   - or `www` as `CNAME` → `yasuflatland-lf.github.io`
-3. Set Cloudflare **SSL/TLS mode to Full** (not Flexible — Flexible causes a
-   redirect loop with the GitHub Pages HTTPS enforcement). `Full (Strict)` works
-   once GitHub has provisioned the Pages certificate for the domain.
