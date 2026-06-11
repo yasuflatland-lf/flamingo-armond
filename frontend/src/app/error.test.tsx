@@ -31,5 +31,9 @@ describe("root <RootError>", () => {
     render(<RootError error={error} reset={vi.fn()} />);
 
     expect(spy).toHaveBeenCalledWith("[error]", { name: "Error", digest: "abc123" });
+    // Assert the raw message is absent explicitly, so a future switch to a
+    // partial matcher (e.g. objectContaining) cannot silently let it through.
+    expect(JSON.stringify(spy.mock.calls[0]?.[1])).not.toContain("secret-user-content");
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });
