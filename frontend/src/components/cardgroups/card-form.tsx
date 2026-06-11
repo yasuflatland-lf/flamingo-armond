@@ -4,6 +4,7 @@
 
 import { useForm } from "@tanstack/react-form";
 import { useMemo } from "react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,6 +44,7 @@ export function CardForm({
   validationError,
   onCancel,
 }: CardFormProps) {
+  const t = useTranslations("Cards");
   const resolvedLabel = submitLabel ?? (mode === "create" ? "Add" : "Save");
   const schema = mode === "create" ? newCardSchema.omit({ cardgroupId: true }) : updateCardSchema;
   const frontSchema = schema.shape.front;
@@ -85,7 +87,7 @@ export function CardForm({
           const inputId = `${idPrefix}${field.name}-field`;
           return (
             <div className="space-y-1">
-              <Label htmlFor={inputId}>Front</Label>
+              <Label htmlFor={inputId}>{t("frontLabel")}</Label>
               <Input
                 id={inputId}
                 name={field.name}
@@ -109,7 +111,7 @@ export function CardForm({
           const inputId = `${idPrefix}${field.name}-field`;
           return (
             <div className="space-y-1">
-              <Label htmlFor={inputId}>Back</Label>
+              <Label htmlFor={inputId}>{t("backLabel")}</Label>
               <Input
                 id={inputId}
                 name={field.name}

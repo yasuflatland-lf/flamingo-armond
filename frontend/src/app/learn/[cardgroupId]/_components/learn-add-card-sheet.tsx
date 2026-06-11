@@ -2,6 +2,7 @@
 
 import { useMutation } from "@apollo/client/react";
 import { useCallback, useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { CreateCardMutation } from "@/app/cardgroups/queries";
 import { CardForm } from "@/components/cardgroups/card-form";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
@@ -47,6 +48,7 @@ function AddCardSheetContent({
  * later session via FSRS scheduling, leaving the current swipe queue untouched.
  */
 export function LearnAddCardSheet({ cardgroupId }: { cardgroupId: string }) {
+  const t = useTranslations("Cards");
   const [open, setOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [validationError, setValidationError] = useState<{
@@ -112,7 +114,7 @@ export function LearnAddCardSheet({ cardgroupId }: { cardgroupId: string }) {
 
   return (
     <FormSheet
-      title="Add card"
+      title={t("addCardSheetTitle")}
       open={open}
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
