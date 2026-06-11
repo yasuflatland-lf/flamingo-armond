@@ -47,7 +47,7 @@ The shipped `/offline.html` CSP in [`frontend/next.config.ts`](../../frontend/ne
 1. It forwards the policy into the request headers as `Content-Security-Policy` and exposes the nonce as `x-nonce`. That forwarded header is for Next's server-side rendering path, where the nonce is extracted for script tags before the browser ever sees the response.
 2. It sets the browser-visible response header to `Content-Security-Policy`, so the policy is enforced and violations are reported to the configured endpoint.
 
-The middleware also forwards `x-pathname` for server components and preserves the same forwarded CSP / nonce headers when the Supabase client refreshes cookies.
+The middleware preserves the same forwarded CSP / nonce headers when the Supabase client refreshes cookies.
 
 If `buildHtmlCsp` throws (e.g., malformed `NEXT_PUBLIC_SUPABASE_URL`), the middleware logs via `console.error` and omits both CSP headers rather than crashing all requests. Auth, cookie rotation, and routing continue to work; only CSP enforcement and violation reporting is absent.
 
@@ -76,7 +76,7 @@ Three files participate in threading the nonce from the middleware-forwarded hea
    ```ts
    const nonce = headersList.get("x-nonce") ?? undefined;
    ```
-   This follows the same forwarded-header pattern already used for `x-pathname`. The nonce is then passed to `<Providers nonce={nonce}>` in both render branches (authenticated and unauthenticated).
+   This follows the same forwarded-header pattern used for the Supabase auth-context headers (`x-auth-status`, `x-user-email`, `x-user-is-admin`). The nonce is then passed to `<Providers nonce={nonce}>`.
 
 2. **`frontend/src/app/providers.tsx`** accepts `nonce: string | undefined` as a prop and forwards it to `ApolloNextAppProvider`:
    ```ts
