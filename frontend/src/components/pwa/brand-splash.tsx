@@ -6,6 +6,12 @@ import type { ReactNode } from "react";
 // not this exact hex, so the backdrop is pinned to the literal instead.
 const BRAND_CORAL = "#FF6F79";
 
+// The donut mark color. Like BRAND_CORAL it is pinned to a literal hex rather
+// than a design token, and it is applied as an inline style (not a Tailwind
+// `fill-*` utility) so it always paints with the first HTML chunk even before
+// the stylesheet loads — otherwise the SVG falls back to its default black fill.
+const MARK_COLOR = "#1f1f1f";
+
 // Donut mark inlined as a path literal (Material "Donut Large") so the splash
 // needs no extra network request — it paints with the first HTML chunk.
 const DONUT_PATH =
@@ -42,7 +48,8 @@ export function BrandSplash({ spin = true, label, children }: BrandSplashProps) 
       <svg
         viewBox="0 0 24 24"
         aria-hidden="true"
-        className={`size-14 fill-white${spin ? " motion-safe:animate-spin" : ""}`}
+        style={{ fill: MARK_COLOR }}
+        className={`size-14${spin ? " motion-safe:animate-spin" : ""}`}
       >
         <path d={DONUT_PATH} />
       </svg>
