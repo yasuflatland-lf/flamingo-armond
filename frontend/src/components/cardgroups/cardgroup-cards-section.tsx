@@ -83,13 +83,14 @@ export function CardgroupCardsSection({
                 size="sm"
                 className="rounded-l-none border-l px-2"
                 aria-label={t("addMoreOptions")}
+                data-testid="cardgroup-add-more-options"
               >
                 <ChevronDown aria-hidden="true" className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={onAddCard}>{t("addACard")}</DropdownMenuItem>
-              <DropdownMenuItem onSelect={onBatchImport}>{t("batchImport")}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={onBatchImport} data-testid="cardgroup-batch-import-menuitem">{t("batchImport")}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
