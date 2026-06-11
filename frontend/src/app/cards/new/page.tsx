@@ -29,7 +29,9 @@ export default async function CardsNewPage({ searchParams }: CardsNewPageProps) 
 
   return (
     <main className="p-8">
-      <h1 className="mb-6 text-2xl font-semibold">{t("newCardTitle")}</h1>
+      <h1 className="mb-6 text-2xl font-semibold" data-testid="cards-new-page-heading">
+        {t("newCardTitle")}
+      </h1>
       <Suspense fallback={<CardsNewSkeleton />}>
         <CardsNewContent cardgroupParam={cardgroupParam} />
       </Suspense>

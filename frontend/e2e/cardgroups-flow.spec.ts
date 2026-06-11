@@ -77,7 +77,7 @@ test.describe
       // Check the Name input (CardgroupForm label — not yet localized) rather than
       // the translated sheet heading.
       await newCardgroupButton.click();
-      await expect(page.getByLabel("Name")).toBeVisible();
+      await expect(page.locator('input[name="name"]')).toBeVisible();
       await expect(page.getByRole("button", { name: "Create" })).toBeVisible();
 
       // The URL must NOT have navigated — the in-place drawer is the entire point.
@@ -142,11 +142,13 @@ test.describe
       // chip are not in the accessibility tree until the picker closes.
       // Assert the dialog first; the underlying page is verified below after
       // navigation back to /cards/new with ?cardgroup=<newId>.
-      const dialog = page.getByRole("dialog", { name: "Select cardgroup" });
+      // Use data-testid to avoid locale-dependent dialog name (Playwright runs ja-JP).
+      const dialog = page.getByTestId("cardgroup-picker-dialog");
       await expect(dialog).toBeVisible();
 
       // The "Create new cardgroup…" inline link must be present inside the sheet.
-      const createLink = dialog.getByRole("link", { name: /Create new cardgroup/ });
+      // Use href to avoid locale-dependent link text.
+      const createLink = dialog.locator('a[href*="/cardgroups/new"]');
       await expect(createLink).toBeVisible();
 
       // Clicking the link navigates to /cardgroups/new?returnTo=%2Fcards%2Fnew.
@@ -157,7 +159,8 @@ test.describe
 
       // Fill and submit the new cardgroup form.
       const newCgName = `E2E picker-return ${runId}`;
-      await page.getByLabel("Name").fill(newCgName);
+      // Use name attribute to avoid locale-dependent label text (Playwright runs ja-JP).
+      await page.locator('input[name="name"]').fill(newCgName);
       await page.getByRole("button", { name: "Create" }).click();
 
       // After successful creation the router pushes /cards/new?cardgroup=<newId>.
@@ -169,8 +172,9 @@ test.describe
       expect(newCgId).toMatch(UUID_RE);
 
       // The card form heading and the Name field must now be interactive.
-      await expect(page.getByRole("heading", { name: "New card" })).toBeVisible();
-      await expect(page.getByLabel("Front")).toBeVisible();
+      // Use data-testid / name attribute to avoid locale-dependent text (Playwright runs ja-JP).
+      await expect(page.getByTestId("cards-new-page-heading")).toBeVisible();
+      await expect(page.locator('input[name="front"]')).toBeVisible();
 
       // The chip must reflect the newly created cardgroup.
       await expect(
@@ -197,7 +201,7 @@ test.describe
       await expect(page.getByTestId("new-cardgroup-page-heading")).toBeVisible();
 
       const name4a = `E2E redirect-a ${runId}`;
-      await page.getByLabel("Name").fill(name4a);
+      await page.locator('input[name="name"]').fill(name4a);
       await page.getByRole("button", { name: "Create" }).click();
 
       // Must land on /cardgroups/<uuid>, never on evil.com or /cards/new.
@@ -214,7 +218,7 @@ test.describe
       await expect(page.getByTestId("new-cardgroup-page-heading")).toBeVisible();
 
       const name4b = `E2E redirect-b ${runId}`;
-      await page.getByLabel("Name").fill(name4b);
+      await page.locator('input[name="name"]').fill(name4b);
       await page.getByRole("button", { name: "Create" }).click();
 
       await page.waitForURL(/\/cardgroups\/[0-9a-f-]{36}$/, { timeout: 15_000 });

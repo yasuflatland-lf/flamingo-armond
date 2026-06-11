@@ -73,6 +73,7 @@ export default function CardgroupPickerSheet({
       <SheetContent
         side="bottom"
         className="mx-auto max-h-[70vh] w-full max-w-lg overflow-y-auto rounded-t-xl pb-safe"
+        data-testid="cardgroup-picker-dialog"
       >
         <SheetHeader className="mb-4">
           <SheetTitle>{t("pickerTitle")}</SheetTitle>
