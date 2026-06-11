@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
 import { FieldError } from "@/lib/forms/field-error";
 import { newCardgroupSchema, updateCardgroupSchema } from "@/schemas/cardgroup";
+import { useTranslations } from "next-intl";
 
 type Mode = "create" | "edit";
 
@@ -43,6 +44,7 @@ export function CardgroupForm({
   validationError,
   secondarySlot,
 }: CardgroupFormProps) {
+  const t = useTranslations("Cardgroups");
   const resolvedLabel = submitLabel ?? (mode === "create" ? "Create" : "Save");
 
   const schema = mode === "create" ? newCardgroupSchema : updateCardgroupSchema;
@@ -85,7 +87,7 @@ export function CardgroupForm({
       <form.Field name="name" validators={{ onChange: nameSchema, onBlur: nameSchema }}>
         {(field) => (
           <div className="space-y-2">
-            <Label htmlFor={field.name}>Name</Label>
+            <Label htmlFor={field.name}>{t("nameLabel")}</Label>
             <Input
               id={field.name}
               name={field.name}
