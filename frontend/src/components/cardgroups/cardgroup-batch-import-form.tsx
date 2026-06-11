@@ -184,7 +184,10 @@ function ValidateResult(props: { result: ValidationResult }): JSX.Element {
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="rounded-md border border-border">
-      <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+      <CollapsibleTrigger
+        className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        data-testid="batch-import-preview-toggle"
+      >
         <span>{triggerLabel}</span>
         <ChevronDown
           aria-hidden="true"
@@ -389,6 +392,7 @@ export function CardgroupBatchImportForm(props: {
             </label>
             <Textarea
               id="batch-import-payload"
+              data-testid="batch-import-payload"
               value={payloadText}
               onChange={(e) => setPayloadText(e.target.value)}
               rows={10}
@@ -406,6 +410,7 @@ export function CardgroupBatchImportForm(props: {
                   : "bg-destructive/10 text-destructive",
               )}
               role="status"
+              data-testid="batch-import-validate-status"
             >
               {validationResult.valid
                 ? t("validResult", { count: parsedCards.length })
@@ -427,6 +432,7 @@ export function CardgroupBatchImportForm(props: {
                 variant={buttonSpec.action !== null ? "brand" : "outline"}
                 onClick={onStep1ButtonClick}
                 disabled={buttonSpec.disabled}
+                data-testid="batch-import-step1-btn"
               >
                 {t(buttonSpec.labelKey)}
               </Button>
@@ -486,7 +492,13 @@ export function CardgroupBatchImportForm(props: {
                   </Button>
                 }
                 right={
-                  <Button type="button" variant="brand" onClick={handleImport} disabled={importing}>
+                  <Button
+                    type="button"
+                    variant="brand"
+                    onClick={handleImport}
+                    disabled={importing}
+                    data-testid="batch-import-confirm-btn"
+                  >
                     {importing ? t("importing") : t("importButton", { count: parsedCards.length })}
                   </Button>
                 }
