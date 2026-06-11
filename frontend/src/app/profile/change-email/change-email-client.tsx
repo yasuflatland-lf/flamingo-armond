@@ -21,9 +21,7 @@ type Props = {
 // Returns the translation key for the mapped user-facing message, or null when
 // the Supabase message is unmapped — null lets the caller log the raw message
 // and show generic copy.
-function classifyUpdateUserError(
-  message: string,
-): "emailRateLimited" | "emailAlreadyInUse" | null {
+function classifyUpdateUserError(message: string): "emailRateLimited" | "emailAlreadyInUse" | null {
   const lower = message.toLowerCase();
   if (lower.includes("rate limit")) {
     return "emailRateLimited";
@@ -106,11 +104,7 @@ export function ChangeEmailClient({ currentEmail }: Props) {
 
       <div className="space-y-2">
         <Label>{t("currentEmail")}</Label>
-        {currentEmail !== null ? (
-          <p>{currentEmail}</p>
-        ) : (
-          <p className="italic">{t("noEmail")}</p>
-        )}
+        {currentEmail !== null ? <p>{currentEmail}</p> : <p className="italic">{t("noEmail")}</p>}
       </div>
 
       <div className="space-y-2">
