@@ -14,9 +14,7 @@ describe("PrivacyPage", () => {
     const jsx = await PrivacyPage();
     render(jsx);
 
-    expect(
-      screen.getByRole("heading", { level: 1, name: "Privacy Policy" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Privacy Policy" })).toBeInTheDocument();
   });
 
   it("en locale: renders intro paragraph", async () => {
@@ -33,9 +31,7 @@ describe("PrivacyPage", () => {
     expect(
       screen.getByRole("heading", { level: 2, name: "1. Information We Collect" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 2, name: "9. Contact" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "9. Contact" })).toBeInTheDocument();
   });
 
   it("en locale: renders back-to-login link pointing to /login", async () => {

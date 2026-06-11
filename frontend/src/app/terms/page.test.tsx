@@ -14,9 +14,7 @@ describe("TermsPage", () => {
     const jsx = await TermsPage();
     render(jsx);
 
-    expect(
-      screen.getByRole("heading", { level: 1, name: "Terms of Service" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Terms of Service" })).toBeInTheDocument();
   });
 
   it("en locale: renders all 11 section headings", async () => {
@@ -26,9 +24,7 @@ describe("TermsPage", () => {
     expect(
       screen.getByRole("heading", { level: 2, name: "1. Acceptance of Terms" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 2, name: "11. Contact" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "11. Contact" })).toBeInTheDocument();
   });
 
   it("en locale: renders back-to-login link pointing to /login", async () => {
