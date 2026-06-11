@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import { readAuthContext } from "@/lib/supabase/auth-status";
 import { LoginButton } from "./login-button";
@@ -14,6 +15,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   // identity via x-auth-status; stale / anonymous / error all render the page.
   if (readAuthContext(await headers()).status === "authenticated") redirect("/cardgroups");
 
+  const t = await getTranslations("Login");
   const { error } = await searchParams;
   return (
     <main data-testid="login-grid" className="relative grid h-svh lg:grid-cols-2">
@@ -30,31 +32,34 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
           <div className="w-full max-w-sm">
             <div className="flex flex-col gap-6 rounded-2xl border bg-card p-8 shadow-[0_8px_40px_-12px_rgba(0,0,0,0.18)]">
               <div className="flex flex-col gap-2 text-start">
-                <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
-                <p className="text-sm text-muted-foreground">
-                  Sign in with your Google account to continue. New here? An account is created on
-                  first sign-in.
-                </p>
+                <h1 className="text-2xl font-semibold tracking-tight">{t("heading")}</h1>
+                <p className="text-sm text-muted-foreground">{t("googleCta")}</p>
               </div>
 
               {error && (
                 <p role="alert" className="text-sm text-destructive">
-                  Sign-in failed: {error}
+                  {t("signInFailed", { error })}
                 </p>
               )}
 
               <LoginButton />
 
               <footer className="border-t pt-5 text-xs text-muted-foreground text-center">
-                By signing in, you agree to our{" "}
-                <a href="/terms" className="underline underline-offset-2 hover:text-foreground">
-                  Terms of Service
-                </a>{" "}
-                and{" "}
-                <a href="/privacy" className="underline underline-offset-2 hover:text-foreground">
-                  Privacy Policy
-                </a>
-                .
+                {t.rich("terms", {
+                  terms: (chunks) => (
+                    <a href="/terms" className="underline underline-offset-2 hover:text-foreground">
+                      {chunks}
+                    </a>
+                  ),
+                  privacy: (chunks) => (
+                    <a
+                      href="/privacy"
+                      className="underline underline-offset-2 hover:text-foreground"
+                    >
+                      {chunks}
+                    </a>
+                  ),
+                })}
               </footer>
             </div>
           </div>
@@ -80,7 +85,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
               flamingo-armond
             </span>
             <span className="text-sm font-medium text-white/90 drop-shadow-[0_1px_6px_rgba(120,20,40,0.35)]">
-              Remember more, study less.
+              {t("tagline")}
             </span>
           </div>
         </div>
