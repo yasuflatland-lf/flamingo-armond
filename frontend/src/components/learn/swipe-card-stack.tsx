@@ -1,8 +1,8 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { useReducedMotion } from "@/lib/use-reduced-motion";
 import { type AnimatedCardHandle, SwipeCard, type SwipeCardData } from "./swipe-card";
@@ -172,9 +172,7 @@ export function SwipeCardStack<TCard extends SwipeCardData>({
     return (
       <div className="flex w-full max-w-xl flex-col items-center rounded-lg border border-dashed border-border p-8 text-center">
         <h1 className="mb-2 text-xl font-semibold">{t("sessionComplete")}</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
-          {t("sessionCompleteMessage")}
-        </p>
+        <p className="mb-6 text-sm text-muted-foreground">{t("sessionCompleteMessage")}</p>
         {completedCount != null && completedCount > 0 && (
           <p className="mb-6 text-sm text-muted-foreground">
             {t("reviewedCount", { count: completedCount })}

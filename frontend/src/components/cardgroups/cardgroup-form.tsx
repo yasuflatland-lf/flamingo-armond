@@ -1,6 +1,7 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
+import { useTranslations } from "next-intl";
 import type React from "react";
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,6 @@ import { Label } from "@/components/ui/label";
 import { getBackendErrorBanner, getBackendFieldErrors } from "@/lib/apollo/errors";
 import { FieldError } from "@/lib/forms/field-error";
 import { newCardgroupSchema, updateCardgroupSchema } from "@/schemas/cardgroup";
-import { useTranslations } from "next-intl";
 
 type Mode = "create" | "edit";
 

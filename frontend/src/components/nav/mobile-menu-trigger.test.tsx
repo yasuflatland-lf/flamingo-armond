@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { renderWithIntl } from "@/test/render-with-intl";
 import { Sheet } from "@/components/ui/sheet";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { MobileMenuTrigger } from "./mobile-menu-trigger";
 
 describe("<MobileMenuTrigger>", () => {

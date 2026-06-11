@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { act, fireEvent, screen } from "@testing-library/react";
-import { renderWithIntl } from "@/test/render-with-intl";
 import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
 import type { SwipeCardData } from "./swipe-card";
 import type { SwipeCardStackHandle } from "./swipe-card-stack";
 import { SwipeCardStack } from "./swipe-card-stack";

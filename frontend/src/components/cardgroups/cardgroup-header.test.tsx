@@ -5,8 +5,8 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithIntl } from "@/test/render-with-intl";
 import { DeleteCardgroupDocument, UpdateCardgroupDocument } from "@/generated/graphql";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { CardgroupHeader } from "./cardgroup-header";
 
 const mockPush = vi.fn();

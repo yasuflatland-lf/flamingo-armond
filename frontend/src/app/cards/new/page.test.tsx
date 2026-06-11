@@ -23,8 +23,9 @@ vi.mock("@/lib/apollo/server", () => ({
 vi.mock("next-intl/server", async () => {
   const enMessages = (await import("../../../../messages/en.json")).default;
   return {
-    getTranslations: vi.fn(async (namespace: string) =>
-      (key: string) => (enMessages as Record<string, Record<string, string>>)[namespace]?.[key] ?? key,
+    getTranslations: vi.fn(
+      async (namespace: string) => (key: string) =>
+        (enMessages as Record<string, Record<string, string>>)[namespace]?.[key] ?? key,
     ),
   };
 });

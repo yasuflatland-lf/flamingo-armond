@@ -4,8 +4,8 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithIntl } from "@/test/render-with-intl";
 import { UpdateCardgroupDocument } from "@/generated/graphql";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { CardgroupRenameForm } from "./cardgroup-rename-form";
 
 const mockRefresh = vi.fn();

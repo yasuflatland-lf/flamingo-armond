@@ -3,6 +3,7 @@
 import { useQuery } from "@apollo/client/react";
 import { Check, Plus } from "lucide-react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -13,7 +14,6 @@ import {
 } from "@/components/ui/sheet";
 import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
 import { cn } from "@/lib/utils";
-import { useTranslations } from "next-intl";
 
 type Props = {
   open: boolean;
@@ -81,7 +81,9 @@ export default function CardgroupPickerSheet({
           </SheetDescription>
         </SheetHeader>
 
-        {loading && <p className="py-6 text-center text-sm text-muted-foreground">{t("pickerLoading")}</p>}
+        {loading && (
+          <p className="py-6 text-center text-sm text-muted-foreground">{t("pickerLoading")}</p>
+        )}
 
         {!loading && error && (
           <div className="flex flex-col items-center gap-3 py-6 text-center">

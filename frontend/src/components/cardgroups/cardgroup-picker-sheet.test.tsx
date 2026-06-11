@@ -14,15 +14,15 @@
 import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
-import { NextIntlClientProvider } from "next-intl";
-import enMessages from "../../../messages/en.json";
 import userEvent from "@testing-library/user-event";
+import { NextIntlClientProvider } from "next-intl";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
 } from "../../../__tests__/utils/mock-apollo-paginated";
+import enMessages from "../../../messages/en.json";
 import CardgroupPickerSheet from "./cardgroup-picker-sheet";
 
 // ---------------------------------------------------------------------------

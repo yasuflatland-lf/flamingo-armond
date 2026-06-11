@@ -3,8 +3,8 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { renderWithIntl } from "@/test/render-with-intl";
 import { CreateCardDocument } from "@/generated/graphql";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { LearnAddCardSheet } from "./learn-add-card-sheet";
 
 const userCardState = (due: string, state: number) => ({

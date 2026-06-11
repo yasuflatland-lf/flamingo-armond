@@ -2,6 +2,7 @@
 
 import { ChevronDown, Play } from "lucide-react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import {
   type CardConnectionPageInfo,
@@ -15,7 +16,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useTranslations } from "next-intl";
 
 type Props = {
   cardgroupId: string;

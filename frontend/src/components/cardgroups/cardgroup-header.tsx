@@ -3,6 +3,7 @@
 import { useMutation } from "@apollo/client/react";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
 import { CARDGROUPS_DEFAULT_VARS, DeleteCardgroupMutation } from "@/app/cardgroups/queries";
 import { CardgroupRenameForm } from "@/components/cardgroups/cardgroup-rename-form";
@@ -28,7 +29,6 @@ import {
 import { FormSheet } from "@/components/ui/form-sheet";
 import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
 import { getBackendErrorBanner } from "@/lib/apollo/errors";
-import { useTranslations } from "next-intl";
 
 type Props = {
   cardgroup: { id: string; name: string };
