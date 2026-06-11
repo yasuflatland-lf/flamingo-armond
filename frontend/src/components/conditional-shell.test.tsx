@@ -38,57 +38,60 @@ afterEach(() => {
 
 describe("<ConditionalShell>", () => {
   describe("bare routes (/login, /onboarding)", () => {
-    it.each(["/login", "/onboarding"])(
-      "renders children directly without the navigation shell on %s",
-      (pathname) => {
-        mockUsePathname.mockReturnValue(pathname);
-        render(
-          <ConditionalShell user={null} isAdmin={false}>
-            <div data-testid="page" />
-          </ConditionalShell>,
-        );
+    it.each([
+      "/login",
+      "/onboarding",
+    ])("renders children directly without the navigation shell on %s", (pathname) => {
+      mockUsePathname.mockReturnValue(pathname);
+      render(
+        <ConditionalShell user={null} isAdmin={false}>
+          <div data-testid="page" />
+        </ConditionalShell>,
+      );
 
-        expect(screen.getByTestId("page")).toBeInTheDocument();
-        expect(screen.queryByTestId("auth-shell")).toBeNull();
-        expect(screen.queryByTestId("apple-install-hint")).toBeNull();
-      },
-    );
+      expect(screen.getByTestId("page")).toBeInTheDocument();
+      expect(screen.queryByTestId("auth-shell")).toBeNull();
+      expect(screen.queryByTestId("apple-install-hint")).toBeNull();
+    });
 
-    it.each(["/login", "/onboarding"])(
-      "keeps the shell hidden on %s even for an authenticated identity",
-      (pathname) => {
-        // A soft navigation can reach a bare route while the layout-computed
-        // identity is still authenticated; the shell must stay hidden regardless
-        // of identity. /onboarding in particular is reached WHILE authenticated
-        // (it is the display-name gate), so the authenticated case matters there.
-        mockUsePathname.mockReturnValue(pathname);
-        render(
-          <ConditionalShell user={{ email: "a@b.c" }} isAdmin={true}>
-            <div data-testid="page" />
-          </ConditionalShell>,
-        );
+    it.each([
+      "/login",
+      "/onboarding",
+    ])("keeps the shell hidden on %s even for an authenticated identity", (pathname) => {
+      // A soft navigation can reach a bare route while the layout-computed
+      // identity is still authenticated; the shell must stay hidden regardless
+      // of identity. /onboarding in particular is reached WHILE authenticated
+      // (it is the display-name gate), so the authenticated case matters there.
+      mockUsePathname.mockReturnValue(pathname);
+      render(
+        <ConditionalShell user={{ email: "a@b.c" }} isAdmin={true}>
+          <div data-testid="page" />
+        </ConditionalShell>,
+      );
 
-        expect(screen.queryByTestId("auth-shell")).toBeNull();
-      },
-    );
+      expect(screen.queryByTestId("auth-shell")).toBeNull();
+    });
   });
 
   describe("full-shell routes", () => {
-    it.each(["/", "/cardgroups", "/cardgroups/123", "/terms", "/admin/users"])(
-      "mounts the navigation shell and install hint on %s",
-      (pathname) => {
-        mockUsePathname.mockReturnValue(pathname);
-        render(
-          <ConditionalShell user={{ email: "a@b.c" }} isAdmin={false}>
-            <div data-testid="page" />
-          </ConditionalShell>,
-        );
+    it.each([
+      "/",
+      "/cardgroups",
+      "/cardgroups/123",
+      "/terms",
+      "/admin/users",
+    ])("mounts the navigation shell and install hint on %s", (pathname) => {
+      mockUsePathname.mockReturnValue(pathname);
+      render(
+        <ConditionalShell user={{ email: "a@b.c" }} isAdmin={false}>
+          <div data-testid="page" />
+        </ConditionalShell>,
+      );
 
-        expect(screen.getByTestId("auth-shell")).toBeInTheDocument();
-        expect(screen.getByTestId("page")).toBeInTheDocument();
-        expect(screen.getByTestId("apple-install-hint")).toBeInTheDocument();
-      },
-    );
+      expect(screen.getByTestId("auth-shell")).toBeInTheDocument();
+      expect(screen.getByTestId("page")).toBeInTheDocument();
+      expect(screen.getByTestId("apple-install-hint")).toBeInTheDocument();
+    });
 
     it("forwards user and isAdmin to AuthShell", () => {
       mockUsePathname.mockReturnValue("/cardgroups");
