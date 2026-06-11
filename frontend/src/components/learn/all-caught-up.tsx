@@ -5,9 +5,9 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 
 type Props = {
-  /** Heading copy. Defaults to the end-of-daily-learn message. */
+  /** Heading copy. Falls back to the `Learn.completeHeading` message when omitted. */
   heading?: string;
-  /** Body copy. Defaults to the end-of-daily-learn message. */
+  /** Body copy. Falls back to the `Learn.completeMessage` message when omitted. */
   message?: string;
   /**
    * When provided, render a primary "Study again" button above the always-present
