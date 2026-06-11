@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
+import jaMessages from "../../../messages/ja.json";
 import { CardgroupListItem } from "./cardgroup-list-item";
 
 // SwipeableRow uses useReducedMotion which reads matchMedia.
@@ -26,19 +28,23 @@ function stubMatchMedia(reducedMotion: boolean) {
 
 stubMatchMedia(false);
 
-function renderItem(props: {
-  id: string;
-  name: string;
-  updatedAt: string;
-  onDelete?: (id: string, name: string) => void;
-}) {
+function renderItem(
+  props: {
+    id: string;
+    name: string;
+    updatedAt: string;
+    onDelete?: (id: string, name: string) => void;
+  },
+  intl?: { locale: "en" | "ja"; messages: typeof jaMessages },
+) {
   const { onDelete = vi.fn(), ...rest } = props;
-  render(
+  renderWithIntl(
     <MockedProvider mocks={[]}>
       <ul>
         <CardgroupListItem {...rest} onDelete={onDelete} />
       </ul>
     </MockedProvider>,
+    intl,
   );
 }
 
@@ -59,9 +65,22 @@ describe("<CardgroupListItem>", () => {
 
   it("renders formatted date text", () => {
     renderItem({ id: "cg-1", name: "My Flashcards", updatedAt: fixedDate });
-    // Intl.DateTimeFormat en-US medium: "Jun 15, 2024"
+    // Default (en) catalog: "Updated <date>"; Intl medium en: "Jun 15, 2024".
     expect(screen.getByText(/Updated/)).toBeInTheDocument();
     expect(screen.getByText(/Jun 15, 2024/)).toBeInTheDocument();
+  });
+
+  it("renders the Japanese updated-at copy under the ja locale", () => {
+    renderItem(
+      { id: "cg-1", name: "My Flashcards", updatedAt: fixedDate },
+      { locale: "ja", messages: jaMessages },
+    );
+    // The ja "Cardgroups.updatedAt" message places the date before the verb, so
+    // the formatted date is year-first and the English "Updated " prefix is
+    // absent (proving the ja catalog + ja locale both took effect). Assert
+    // without a CJK literal per the language policy.
+    expect(screen.queryByText(/Updated/)).not.toBeInTheDocument();
+    expect(screen.getByText(/^2024/)).toBeInTheDocument();
   });
 
   it("renders a Delete button as a sibling of the name link (not nested inside it)", () => {
