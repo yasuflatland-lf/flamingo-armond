@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +11,7 @@ import {
   UpdateCardDocument,
 } from "@/generated/graphql";
 import { installApolloMockLeakSpy } from "../../../../__tests__/utils/mock-apollo-paginated";
+import { renderWithIntl } from "@/test/render-with-intl";
 import CardsNewClient from "./cards-new-client";
 
 // ---------------------------------------------------------------------------
@@ -250,7 +251,7 @@ function renderClient(
   } = {},
 ) {
   const { initialCardgroupId = CG_ID, forcePickerOpen = false, mocks = [] } = opts;
-  return render(
+  return renderWithIntl(
     <MockedProvider mocks={mocks}>
       <CardsNewClient
         initialCardgroupId={initialCardgroupId}

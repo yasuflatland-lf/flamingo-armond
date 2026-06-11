@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
 import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
-import { NextIntlClientProvider } from "next-intl";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CardsByCardgroupConnectionDocument,
@@ -18,7 +17,7 @@ import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
 } from "../../../../../__tests__/utils/mock-apollo-paginated";
-import enMessages from "../../../../../messages/en.json";
+import { renderWithIntl } from "@/test/render-with-intl";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -247,20 +246,18 @@ function renderClient(
       return c;
     })();
 
-  render(
+  renderWithIntl(
     <MockedProvider mocks={mocks as never} cache={cache}>
-      <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
-        <UndoDeleteProvider>
-          <CardsClient
-            cardgroupId={CG_ID}
-            cardgroupName="Test Cardgroup"
-            initialEdges={initialConn.edges}
-            initialPageInfo={initialConn.pageInfo}
-            initialTotalCount={initialConn.totalCount}
-            sectionHeader={options.sectionHeader}
-          />
-        </UndoDeleteProvider>
-      </NextIntlClientProvider>
+      <UndoDeleteProvider>
+        <CardsClient
+          cardgroupId={CG_ID}
+          cardgroupName="Test Cardgroup"
+          initialEdges={initialConn.edges}
+          initialPageInfo={initialConn.pageInfo}
+          initialTotalCount={initialConn.totalCount}
+          sectionHeader={options.sectionHeader}
+        />
+      </UndoDeleteProvider>
     </MockedProvider>,
   );
 }
@@ -824,13 +821,11 @@ describe("<CardsClient>", () => {
       );
     }
 
-    const { rerender } = render(
+    const { rerender } = renderWithIntl(
       <MockedProvider mocks={[deleteMock] as never} cache={cache}>
-        <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
-          <UndoDeleteProvider>
-            <Harness />
-          </UndoDeleteProvider>
-        </NextIntlClientProvider>
+        <UndoDeleteProvider>
+          <Harness />
+        </UndoDeleteProvider>
       </MockedProvider>,
     );
 
@@ -848,11 +843,9 @@ describe("<CardsClient>", () => {
     mockUsePathname.mockReturnValue("/cardgroups");
     rerender(
       <MockedProvider mocks={[deleteMock] as never} cache={cache}>
-        <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
-          <UndoDeleteProvider>
-            <Harness />
-          </UndoDeleteProvider>
-        </NextIntlClientProvider>
+        <UndoDeleteProvider>
+          <Harness />
+        </UndoDeleteProvider>
       </MockedProvider>,
     );
 

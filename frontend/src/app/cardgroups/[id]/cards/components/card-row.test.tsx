@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { SwipeableRowHandle } from "@/components/cardgroups/swipeable-row";
+import { renderWithIntl } from "@/test/render-with-intl";
 
 // Mock SwipeableRow as a plain div to avoid gesture library dependencies.
 // The `disabled` prop is forwarded as a data attribute so tests can assert
@@ -38,7 +39,7 @@ const CARD = { id: "c-1", front: "Hello", back: "Hola" };
 
 function renderCardRow(overrides: Partial<React.ComponentProps<typeof CardRow>> = {}) {
   const rowRef = createRef<SwipeableRowHandle | null>();
-  render(
+  renderWithIntl(
     <CardRow
       card={CARD}
       rowRef={rowRef}

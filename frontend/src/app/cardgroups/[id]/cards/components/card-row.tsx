@@ -1,6 +1,7 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import type { RefObject } from "react";
 import { SwipeableRow, type SwipeableRowHandle } from "@/components/cardgroups/swipeable-row";
 import { Button } from "@/components/ui/button";
@@ -24,8 +25,9 @@ export function CardRow({
   onEdit,
   onDelete,
 }: CardRowProps) {
+  const t = useTranslations("Cards");
   return (
-    <SwipeableRow ref={rowRef} onDelete={onDelete} disabled={disabled} ariaLabel="Delete card">
+    <SwipeableRow ref={rowRef} onDelete={onDelete} disabled={disabled} ariaLabel={t("deleteCardAriaLabel")}>
       <div className="group flex items-center justify-between gap-4 px-4 py-3 hover:bg-accent active:bg-accent transition-colors">
         {/* biome-ignore lint/a11y/noStaticElementInteractions: span is a click/keydown stopper, not an interactive element; the inner <input> is the actual control. */}
         <span
@@ -38,7 +40,7 @@ export function CardRow({
             className="h-4 w-4 cursor-pointer accent-primary"
             checked={selected}
             onChange={onSelectToggle}
-            aria-label="Select card"
+            aria-label={t("selectCardAriaLabel")}
             data-testid={`card-select-${card.id}`}
           />
         </span>
@@ -54,7 +56,7 @@ export function CardRow({
             }
           }}
           className="min-w-0 flex-1 cursor-pointer space-y-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={`Edit card ${card.front}`}
+          aria-label={t("editCardAriaLabel", { front: card.front })}
           data-testid={`card-edit-target-${card.id}`}
         >
           <p className="text-sm font-medium">{card.front}</p>
@@ -69,7 +71,7 @@ export function CardRow({
           <Button
             variant="outline"
             size="icon"
-            aria-label="Delete card"
+            aria-label={t("deleteCardAriaLabel")}
             onClick={onDelete}
             data-testid={`card-delete-${card.id}`}
             className="pointer-events-none opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 motion-reduce:pointer-events-auto motion-reduce:opacity-100 transition-opacity"
