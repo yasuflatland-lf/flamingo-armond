@@ -295,7 +295,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
       },
       onCommitFailed: (err) => {
         setDeleteCommitError(
-          getBackendErrorBanner(err) ?? "Could not delete cardgroup. Please try again.",
+          getBackendErrorBanner(err) ?? t("deleteReloadError"),
         );
       },
     });
@@ -458,7 +458,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
               fetchNextPage({ hasNextPage, endCursor, searchQuery });
             }}
           >
-            Retry
+            {tCommon("retry")}
           </Button>
         </div>
       )}
