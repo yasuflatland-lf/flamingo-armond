@@ -92,7 +92,9 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
           </div>
         </section>
       ) : (
-        <h1 className="mb-6 text-2xl font-semibold">{t("newCardgroup")}</h1>
+        <h1 className="mb-6 text-2xl font-semibold" data-testid="new-cardgroup-page-heading">
+          {t("newCardgroup")}
+        </h1>
       )}
 
       {authError ? (

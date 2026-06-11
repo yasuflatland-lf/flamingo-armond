@@ -46,9 +46,9 @@ test.describe
       // 1. Home redirects to onboarding because user has no cardgroups.
       await page.goto("/");
       await page.waitForURL("**/cardgroups/new?welcome=1", { timeout: 10_000 });
-      await expect(
-        page.getByRole("heading", { name: /Welcome!.*create your first cardgroup/i }),
-      ).toBeVisible();
+      // Use the existing id="welcome-heading" to avoid locale-dependent text matching
+      // (Playwright runs with ja-JP locale so translated text won't match English regex).
+      await expect(page.locator("#welcome-heading")).toBeVisible();
 
       // 2. Submit the create-cardgroup form. onCompleted pushes /cardgroups/<newId>,
       // which redirects server-side to /cardgroups/<newId>/edit. Wait for the
@@ -68,11 +68,8 @@ test.describe
       await addCardButton.click();
 
       // 4. FormSheet opens inline. On mobile (390x844, below md=768) FormSheet
-      // renders as a vaul Drawer with DrawerTitle "Add card".
-      await expect(page.getByRole("heading", { name: "Add card" })).toBeVisible();
-
-      // CardForm in mode="create" renders the Front field; its visibility is a
-      // stronger signal than the heading alone that the sheet content mounted.
+      // renders as a vaul Drawer. Verify the form is interactive via the Front
+      // field — a stronger locale-independent signal than the translated sheet title.
       await expect(page.getByLabel("Front")).toBeVisible();
 
       // URL must NOT have navigated to /cards/new — the inline-sheet path is
