@@ -10,12 +10,12 @@ describe("<BrandSplash>", () => {
     expect(root).toHaveStyle({ backgroundColor: "#FF6F79" });
   });
 
-  it("paints the donut mark with the pinned near-black hex via inline style", () => {
-    // The mark color must be an inline style, not a Tailwind `fill-*` class, so
-    // it survives the first paint before the stylesheet loads (the cause of the
-    // mark rendering as default black on a real PWA launch).
+  it("paints the donut mark with the pinned off-white hex via inline style", () => {
+    // The mark color (from loading.svg) must be an inline style, not a Tailwind
+    // `fill-*` class, so it survives the first paint before the stylesheet loads
+    // (the cause of the mark rendering as default black on a real PWA launch).
     const { container } = render(<BrandSplash label="Loading" />);
-    expect(container.querySelector("svg")).toHaveStyle({ fill: "#1f1f1f" });
+    expect(container.querySelector("svg")).toHaveStyle({ fill: "#f1f1f1" });
   });
 
   it("exposes the accessible label as a status region", () => {
