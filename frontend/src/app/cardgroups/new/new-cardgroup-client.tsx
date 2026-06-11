@@ -4,6 +4,7 @@ import { Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useCreateCardgroup } from "@/app/cardgroups/use-create-cardgroup";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
 
@@ -15,6 +16,8 @@ interface NewCardgroupClientProps {
 
 export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgroupClientProps) {
   const router = useRouter();
+  const t = useTranslations("Cardgroups");
+  const tCommon = useTranslations("Common");
 
   // Typed InputValidationError variant — field-level validation failure
   // surfaced by the server. Cleared on each new submission attempt.
@@ -53,7 +56,7 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
         setAuthError(outcome.kind);
         return;
       case "unexpected":
-        setUnexpectedPayloadError("Something went wrong. Please try again.");
+        setUnexpectedPayloadError(tCommon("somethingWentWrong"));
         return;
       case "rejected":
         // Transport/network failure: the hook already warned. Stay silent (no
@@ -82,16 +85,16 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
             <Sparkles aria-hidden className="mt-1 h-6 w-6 shrink-0 text-brand-primary" />
             <div>
               <h1 id="welcome-heading" className="text-lg font-semibold tracking-tight">
-                Welcome! Let's create your first cardgroup.
+                {t("welcomeHeading")}
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                A cardgroup holds the cards you study together &mdash; you can add more anytime.
+                {t("welcomeDesc")}
               </p>
             </div>
           </div>
         </section>
       ) : (
-        <h1 className="mb-6 text-2xl font-semibold">New cardgroup</h1>
+        <h1 className="mb-6 text-2xl font-semibold">{t("newCardgroup")}</h1>
       )}
 
       {authError ? (
@@ -102,11 +105,11 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
         >
           <span>
             {authError === "unauthenticated"
-              ? "Your session has expired. "
-              : "You do not have permission. "}
+              ? t("sessionExpired")
+              : t("noPermission")}
           </span>
           <Link href="/login" className="underline">
-            Sign in again
+            {t("signInAgain")}
           </Link>
           .
         </div>

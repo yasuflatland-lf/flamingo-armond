@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { CardgroupManagementClient } from "./cardgroup-management-client";
 
 // Stub the children so this test focuses on layout chrome.
@@ -49,7 +50,7 @@ const PAGE_INFO = {
 
 describe("<CardgroupManagementClient>", () => {
   it("renders the cardgroup name as the h1 page title", () => {
-    render(
+    renderWithIntl(
       <CardgroupManagementClient
         cardgroup={CARDGROUP}
         initialEdges={[]}
@@ -61,7 +62,7 @@ describe("<CardgroupManagementClient>", () => {
   });
 
   it("renders a Back link pointing to /cardgroups", () => {
-    render(
+    renderWithIntl(
       <CardgroupManagementClient
         cardgroup={CARDGROUP}
         initialEdges={[]}
@@ -76,7 +77,7 @@ describe("<CardgroupManagementClient>", () => {
   });
 
   it("passes totalCount from renderPageHeader to CardgroupHeader via the render prop", () => {
-    render(
+    renderWithIntl(
       <CardgroupManagementClient
         cardgroup={CARDGROUP}
         initialEdges={[]}
@@ -91,7 +92,7 @@ describe("<CardgroupManagementClient>", () => {
   });
 
   it("uses a single <main> landmark", () => {
-    render(
+    renderWithIntl(
       <CardgroupManagementClient
         cardgroup={CARDGROUP}
         initialEdges={[]}
