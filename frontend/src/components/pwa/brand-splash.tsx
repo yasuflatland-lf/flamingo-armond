@@ -50,8 +50,8 @@ export function BrandSplash({ spin = true, label, children }: BrandSplashProps) 
       <svg
         viewBox="0 0 24 24"
         aria-hidden="true"
-        style={{ fill: MARK_COLOR }}
-        className={`size-14${spin ? " motion-safe:animate-spin" : ""}`}
+        style={{ fill: MARK_COLOR, width: "6rem", height: "6rem" }}
+        className={spin ? "motion-safe:animate-spin" : undefined}
       >
         <path d={DONUT_PATH} />
       </svg>
