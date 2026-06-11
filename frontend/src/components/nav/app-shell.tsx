@@ -1,3 +1,4 @@
+import { getTranslations } from "next-intl/server";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { GlobalRail } from "./global-rail";
 import { LogoDrawer } from "./logo-drawer";
@@ -21,7 +22,8 @@ interface AppShellProps {
  * added to AppShell itself must remain server-side, so keep the "use client"
  * directive off this file.
  */
-export function AppShell({ user, isAdmin, children }: AppShellProps) {
+export async function AppShell({ user, isAdmin, children }: AppShellProps) {
+  const t = await getTranslations("Nav");
   return (
     <SidebarProvider>
       {/* PC layout (md+): GlobalRail is a direct child of SidebarProvider so the
@@ -31,7 +33,7 @@ export function AppShell({ user, isAdmin, children }: AppShellProps) {
       <aside
         data-testid="rail-container"
         className="hidden md:flex"
-        aria-label="Primary navigation"
+        aria-label={t("primaryNavigation")}
       >
         <GlobalRail user={user} isAdmin={isAdmin} />
       </aside>

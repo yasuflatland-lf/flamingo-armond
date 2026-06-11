@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
+import { getTranslations } from "next-intl/server";
 import type { CardsNewBootstrapQuery as CardsNewBootstrapQueryType } from "@/generated/graphql";
 import { isUnauthenticatedGraphQLError } from "@/lib/apollo/graphql-errors";
 import { gqlFetch } from "@/lib/apollo/server";
@@ -23,11 +24,12 @@ export default async function CardsNewPage({ searchParams }: CardsNewPageProps) 
   // "anonymous" so a dropped header never leaks an authenticated view.
   if (readAuthContext(await headers()).status !== "authenticated") redirect("/login");
 
+  const t = await getTranslations("Cards");
   const { cardgroup: cardgroupParam } = await searchParams;
 
   return (
     <main className="p-8">
-      <h1 className="mb-6 text-2xl font-semibold">New card</h1>
+      <h1 className="mb-6 text-2xl font-semibold">{t("newCardTitle")}</h1>
       <Suspense fallback={<CardsNewSkeleton />}>
         <CardsNewContent cardgroupParam={cardgroupParam} />
       </Suspense>
