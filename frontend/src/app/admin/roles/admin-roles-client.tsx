@@ -3,6 +3,7 @@
 import { useLazyQuery, useMutation } from "@apollo/client/react";
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
 import { RoleForm } from "@/components/admin/role-form";
 import { RoleListItem } from "@/components/admin/role-list-item";
@@ -34,19 +35,16 @@ function AuthBanner({
   testId: string;
   authError: "unauthenticated" | "forbidden";
 }) {
+  const t = useTranslations("Admin");
   return (
     <div
       role="alert"
       data-testid={testId}
       className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
     >
-      <span>
-        {authError === "unauthenticated"
-          ? "Your session has expired. "
-          : "You do not have permission. "}
-      </span>
+      <span>{authError === "unauthenticated" ? t("sessionExpired") : t("forbidden")}</span>{" "}
       <Link href="/login" className="underline">
-        Sign in again
+        {t("signInAgain")}
       </Link>
       .
     </div>
@@ -70,6 +68,7 @@ function CreateRoleSheetBody({
   onDirtyChange: (dirty: boolean) => void;
   submit: (values: { name: string }) => Promise<void>;
 }) {
+  const t = useTranslations("Admin");
   const close = useFormSheetClose();
 
   return (
@@ -97,7 +96,7 @@ function CreateRoleSheetBody({
       <RoleForm
         defaultValues={{ name: "" }}
         submit={submit}
-        submitLabel="Create"
+        submitLabel={t("createRole")}
         submitting={submitting}
         onCancel={close}
         onDirtyChange={onDirtyChange}
@@ -127,6 +126,8 @@ function EditRoleSheetBody({
   queryErrorBanner: string | undefined;
   submit: (values: { name: string }) => Promise<void>;
 }) {
+  const t = useTranslations("Admin");
+  const tCommon = useTranslations("Common");
   const close = useFormSheetClose();
 
   if (!role) {
@@ -137,14 +138,14 @@ function EditRoleSheetBody({
             {queryErrorBanner}
           </div>
         ) : loading ? (
-          <p className="text-sm text-muted-foreground">Loading role...</p>
+          <p className="text-sm text-muted-foreground">{t("loadingRole")}</p>
         ) : (
           <div
             role="alert"
             data-testid="admin-role-edit-not-found"
             className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
           >
-            Role not found.
+            {t("roleNotFound")}
           </div>
         )}
       </div>
@@ -166,7 +167,7 @@ function EditRoleSheetBody({
           data-testid="admin-role-edit-system-banner"
           className="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground"
         >
-          This is a system role. Its name cannot be changed.
+          {t("systemRoleBanner")}
         </div>
       ) : null}
       {authError ? <AuthBanner testId="admin-role-edit-auth-error" authError={authError} /> : null}
@@ -192,7 +193,7 @@ function EditRoleSheetBody({
       <RoleForm
         defaultValues={{ name: role.name }}
         submit={submit}
-        submitLabel="Save"
+        submitLabel={tCommon("save")}
         submitting={submitting}
         error={mutationError}
         readOnly={readOnly}
@@ -208,6 +209,9 @@ function toMessage(err: unknown): string {
 }
 
 export function AdminRolesClient({ initialRoles }: Props) {
+  const t = useTranslations("Admin");
+  const tCommon = useTranslations("Common");
+  const tNav = useTranslations("Nav");
   const [roles, setRoles] = useState<RoleItem[]>(initialRoles);
   const [createDirty, setCreateDirty] = useState(false);
   const [createValidationError, setCreateValidationError] = useState<ValidationError | null>(null);
@@ -327,7 +331,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
         // the backend message ("cannot delete a protected role") is what the
         // operator needs to see.
         if (codes.includes("UNAUTHENTICATED")) {
-          setDeleteError("Your session has expired. Please sign in again.");
+          setDeleteError(t("deleteAuthFailed"));
           console.warn("[admin/roles] deleteRole auth failure", { roleId: id, codes });
           return;
         }
@@ -385,7 +389,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
     console.warn("[admin/roles] unexpected createRole payload", {
       typename,
     });
-    setCreateUnexpectedPayloadError("Something went wrong. Please try again.");
+    setCreateUnexpectedPayloadError(tCommon("somethingWentWrong"));
   }
 
   async function handleEditSubmit(values: { name: string }) {
@@ -433,13 +437,13 @@ export function AdminRolesClient({ initialRoles }: Props) {
     console.warn("[admin/roles] unexpected updateRole payload", {
       typename,
     });
-    setEditUnexpectedPayloadError("Something went wrong. Please try again.");
+    setEditUnexpectedPayloadError(tCommon("somethingWentWrong"));
   }
 
   return (
     <ListingPageShell
-      title="Roles"
-      description="Manage roles available to assign to users."
+      title={tNav("roles")}
+      description={t("rolesDescription")}
       primaryActions={
         <Button
           type="button"
@@ -448,7 +452,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
           data-testid="admin-roles-new-btn"
           onClick={() => open({ mode: "new" })}
         >
-          <span>New role</span>
+          <span>{t("newRole")}</span>
           <Plus aria-hidden="true" />
         </Button>
       }
@@ -458,14 +462,14 @@ export function AdminRolesClient({ initialRoles }: Props) {
           className="flex flex-col items-center gap-3 py-8 text-center"
           data-testid="admin-roles-empty"
         >
-          <p className="text-sm text-muted-foreground">No roles yet</p>
+          <p className="text-sm text-muted-foreground">{t("noRolesYet")}</p>
           <Button
             type="button"
             variant="brand"
             onClick={() => open({ mode: "new" })}
             data-testid="admin-roles-empty-cta"
           >
-            <span>New role</span>
+            <span>{t("newRole")}</span>
             <Plus aria-hidden="true" />
           </Button>
         </div>
@@ -497,7 +501,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
       )}
 
       <FormSheet
-        title="New role"
+        title={t("newRole")}
         open={state.mode === "new"}
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
@@ -527,7 +531,7 @@ export function AdminRolesClient({ initialRoles }: Props) {
       </FormSheet>
 
       <FormSheet
-        title="Edit role"
+        title={t("editRoleTitle")}
         open={state.mode === "edit"}
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {

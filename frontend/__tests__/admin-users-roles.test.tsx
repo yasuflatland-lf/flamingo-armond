@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -7,6 +7,7 @@ import {
   type AdminUserRole,
   AdminUserRow,
 } from "@/app/admin/users/admin-user-row";
+import { renderWithIntl } from "@/test/render-with-intl";
 
 vi.mock("next/image", () => ({
   default: ({
@@ -43,7 +44,7 @@ function makeUser(overrides: Partial<AdminUserListItem> = {}): AdminUserListItem
 
 describe("AdminUserRow", () => {
   it("renders user identity without inline role toggles", () => {
-    render(
+    renderWithIntl(
       <ul>
         <AdminUserRow user={makeUser()} onEdit={vi.fn()} />
       </ul>,
@@ -57,7 +58,7 @@ describe("AdminUserRow", () => {
     const user = userEvent.setup({ delay: null });
     const onEdit = vi.fn();
 
-    render(
+    renderWithIntl(
       <ul>
         <AdminUserRow user={makeUser()} onEdit={onEdit} />
       </ul>,

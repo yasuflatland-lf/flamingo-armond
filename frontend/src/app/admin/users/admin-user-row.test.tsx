@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { type AdminUserListItem, AdminUserRow } from "./admin-user-row";
 
 vi.mock("next/image", () => ({
@@ -30,7 +31,7 @@ describe("AdminUserRow", () => {
     const user = userEvent.setup();
     const onEdit = vi.fn();
 
-    render(
+    renderWithIntl(
       <ul>
         <AdminUserRow user={makeUser()} onEdit={onEdit} />
       </ul>,
