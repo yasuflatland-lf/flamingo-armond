@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
 
 vi.mock("next/link", () => ({
   default: ({
@@ -29,7 +30,7 @@ describe("<HeaderSignInLink>", () => {
     });
 
     it("renders nothing", () => {
-      const { container } = render(<HeaderSignInLink className="foo" />);
+      const { container } = renderWithIntl(<HeaderSignInLink className="foo" />);
       expect(container.firstChild).toBeNull();
       expect(screen.queryByRole("link")).not.toBeInTheDocument();
     });
@@ -41,12 +42,12 @@ describe("<HeaderSignInLink>", () => {
     });
 
     it("renders a link to /login", () => {
-      render(<HeaderSignInLink />);
+      renderWithIntl(<HeaderSignInLink />);
       expect(screen.getByRole("link", { name: /sign in/i })).toHaveAttribute("href", "/login");
     });
 
     it("forwards className to the link", () => {
-      render(<HeaderSignInLink className="text-sm underline md:hidden" />);
+      renderWithIntl(<HeaderSignInLink className="text-sm underline md:hidden" />);
       expect(screen.getByRole("link", { name: /sign in/i })).toHaveClass(
         "text-sm",
         "underline",

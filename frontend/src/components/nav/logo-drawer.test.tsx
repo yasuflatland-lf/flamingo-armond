@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
 
 // usePathname is mocked per-test so anonymous Sign-in-link tests can set a
 // non-/login pathname (the link self-suppresses on /login).
@@ -43,7 +44,7 @@ afterEach(() => {
 describe("<LogoDrawer>", () => {
   it("logo trigger opens the drawer and shows the Cardgroups link", async () => {
     const user = userEvent.setup();
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: "Open menu" }));
 
@@ -51,7 +52,7 @@ describe("<LogoDrawer>", () => {
   });
 
   it("logo is a home link with aria-label='Flamingo home' and href='/'", () => {
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     const logoLink = screen.getByRole("link", { name: /flamingo home/i });
     expect(logoLink).toBeInTheDocument();
@@ -59,14 +60,14 @@ describe("<LogoDrawer>", () => {
   });
 
   it("the drawer trigger button is labeled 'Open menu' (was 'Open navigation menu')", () => {
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
     expect(screen.getByRole("button", { name: "Open menu" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /open navigation menu/i })).toBeNull();
   });
 
   it("Settings link is not rendered in the drawer body", async () => {
     const user = userEvent.setup();
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: "Open menu" }));
 
@@ -75,7 +76,7 @@ describe("<LogoDrawer>", () => {
 
   it("isAdmin=false does not render any admin nav links", async () => {
     const user = userEvent.setup();
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: "Open menu" }));
 
@@ -85,7 +86,7 @@ describe("<LogoDrawer>", () => {
 
   it("isAdmin=true renders the admin nav links with correct hrefs", async () => {
     const user = userEvent.setup();
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={true} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={true} />);
 
     await user.click(screen.getByRole("button", { name: "Open menu" }));
 
@@ -100,7 +101,7 @@ describe("<LogoDrawer>", () => {
 
   it("Profile link in the bottom block has href=/profile and is present for signed-in users", async () => {
     const user = userEvent.setup();
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: "Open menu" }));
 
@@ -112,7 +113,7 @@ describe("<LogoDrawer>", () => {
 
   it("anonymous user (user === null): drawer body shows a Sign in link but no nav items and no email", async () => {
     const user = userEvent.setup();
-    render(<LogoDrawer user={null} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={null} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: "Open menu" }));
 
@@ -124,7 +125,7 @@ describe("<LogoDrawer>", () => {
 
   it("anonymous user (user === null): no LogoutButton in the drawer body", async () => {
     const user = userEvent.setup();
-    render(<LogoDrawer user={null} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={null} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: "Open menu" }));
 
@@ -134,7 +135,7 @@ describe("<LogoDrawer>", () => {
   it("anonymous user on /login: Sign in link is suppressed (self-suppression behavior)", async () => {
     const user = userEvent.setup();
     mockUsePathname.mockReturnValue("/login");
-    render(<LogoDrawer user={null} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={null} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: "Open menu" }));
 
@@ -143,7 +144,7 @@ describe("<LogoDrawer>", () => {
 
   it("signed-in user: email address is not shown in the drawer body", async () => {
     const user = userEvent.setup();
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: "Open menu" }));
 
@@ -152,7 +153,7 @@ describe("<LogoDrawer>", () => {
 
   it("signed-in user: LogoutButton is visible in the drawer body", async () => {
     const user = userEvent.setup();
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: "Open menu" }));
 
@@ -161,7 +162,7 @@ describe("<LogoDrawer>", () => {
 
   it("signed-in user with null email: drawer shows nav items but no email text", async () => {
     const user = userEvent.setup();
-    render(<LogoDrawer user={{ email: null }} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={{ email: null }} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: "Open menu" }));
 
@@ -175,7 +176,7 @@ describe("<LogoDrawer>", () => {
     mockUsePathname.mockReturnValue("/cardgroups");
     const listener = vi.fn();
     window.addEventListener("flamingo:add-cardgroup", listener);
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: /add new cardgroup/i }));
 
@@ -193,7 +194,7 @@ describe("<LogoDrawer>", () => {
     mockUsePathname.mockReturnValue("/cardgroups");
     const listener = vi.fn((event: Event) => event.preventDefault());
     window.addEventListener("flamingo:add-cardgroup", listener);
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: /add new cardgroup/i }));
 
@@ -208,7 +209,7 @@ describe("<LogoDrawer>", () => {
     mockUsePathname.mockReturnValue("/cardgroups/abc-123/edit");
     const listener = vi.fn();
     window.addEventListener("flamingo:add-card", listener);
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: /add new card/i }));
 
@@ -226,7 +227,7 @@ describe("<LogoDrawer>", () => {
     mockUsePathname.mockReturnValue("/cardgroups/abc-123/edit");
     const listener = vi.fn((event: Event) => event.preventDefault());
     window.addEventListener("flamingo:add-card", listener);
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: /add new card/i }));
 
@@ -242,7 +243,7 @@ describe("<LogoDrawer>", () => {
     mockUsePathname.mockReturnValue("/cardgroups/abc%26evil/edit");
     const listener = vi.fn();
     window.addEventListener("flamingo:add-card", listener);
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: /add new card/i }));
 
@@ -259,7 +260,7 @@ describe("<LogoDrawer>", () => {
   it("malformed edit path: '+' button is not rendered when the segment is a malformed percent-escape", () => {
     // safeDecodePathSegment returns null for %ZZ -> resolver returns null -> no '+' rendered.
     mockUsePathname.mockReturnValue("/cardgroups/abc%ZZ/edit");
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
     expect(screen.queryByRole("button", { name: /add new/i })).toBeNull();
   });
 
@@ -268,7 +269,7 @@ describe("<LogoDrawer>", () => {
     mockUsePathname.mockReturnValue("/learn/abc-123");
     const listener = vi.fn();
     window.addEventListener("flamingo:add-card", listener);
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: /add new card/i }));
 
@@ -286,7 +287,7 @@ describe("<LogoDrawer>", () => {
     mockUsePathname.mockReturnValue("/learn/abc-123");
     const listener = vi.fn((event: Event) => event.preventDefault());
     window.addEventListener("flamingo:add-card", listener);
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     await user.click(screen.getByRole("button", { name: /add new card/i }));
 
@@ -299,7 +300,7 @@ describe("<LogoDrawer>", () => {
   it("S-R1: on /admin/roles the '+' (Add new role) opens the create sheet by writing ?new=true to the URL", async () => {
     const user = userEvent.setup();
     mockUsePathname.mockReturnValue("/admin/roles");
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={true} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={true} />);
 
     await user.click(screen.getByRole("button", { name: /add new role/i }));
 
@@ -310,20 +311,20 @@ describe("<LogoDrawer>", () => {
 
   it("S-G1: on an unknown route (/profile) the '+' button is not rendered", () => {
     mockUsePathname.mockReturnValue("/profile");
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
     expect(screen.queryByRole("button", { name: /add new/i })).toBeNull();
   });
 
   it("S-G2: anonymous user (user === null) sees no '+' button on any create route", () => {
     mockUsePathname.mockReturnValue("/cardgroups");
-    render(<LogoDrawer user={null} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={null} isAdmin={false} />);
     expect(screen.queryByRole("button", { name: /add new/i })).toBeNull();
   });
 
   it("S-G3: the '+' button receives keyboard focus before the menu trigger (order: logo · + · menu)", async () => {
     const user = userEvent.setup();
     mockUsePathname.mockReturnValue("/cardgroups");
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
     const addButton = screen.getByRole("button", { name: /add new cardgroup/i });
     const menuButton = screen.getByRole("button", { name: "Open menu" });
@@ -336,7 +337,7 @@ describe("<LogoDrawer>", () => {
 
   it("S-G4: the menu trigger renders alongside the '+' on create routes", () => {
     mockUsePathname.mockReturnValue("/cardgroups");
-    render(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
     expect(screen.getByRole("button", { name: /add new cardgroup/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open menu" })).toBeInTheDocument();
   });
