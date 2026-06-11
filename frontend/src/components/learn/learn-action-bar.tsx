@@ -1,6 +1,7 @@
 "use client";
 
 import { RotateCcw, Smile, Zap } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import type { SwipeDirection } from "./types";
 
@@ -12,7 +13,7 @@ type Props = {
 const DIRECTIONS = [
   {
     direction: "left",
-    label: "Again",
+    labelKey: "again",
     Icon: RotateCcw,
     shortcut: "ArrowLeft",
     colorClass:
@@ -20,7 +21,7 @@ const DIRECTIONS = [
   },
   {
     direction: "down",
-    label: "Hard",
+    labelKey: "hard",
     Icon: Zap,
     shortcut: "ArrowDown",
     colorClass:
@@ -28,7 +29,7 @@ const DIRECTIONS = [
   },
   {
     direction: "right",
-    label: "Easy",
+    labelKey: "easy",
     Icon: Smile,
     shortcut: "ArrowRight",
     colorClass:
@@ -37,14 +38,15 @@ const DIRECTIONS = [
 ] as const;
 
 export function LearnActionBar({ onRate, disabled = false }: Props) {
+  const t = useTranslations("Learn");
   return (
     <div className="pointer-events-none z-40 flex justify-center px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
       <div className="pointer-events-auto flex items-center gap-4">
-        {DIRECTIONS.map(({ direction, label, Icon, shortcut, colorClass }) => (
+        {DIRECTIONS.map(({ direction, labelKey, Icon, shortcut, colorClass }) => (
           <button
             key={direction}
             type="button"
-            aria-label={`Rate as ${label}`}
+            aria-label={t("rateAs", { label: t(labelKey) })}
             aria-keyshortcuts={shortcut}
             disabled={disabled}
             onClick={() => onRate(direction)}
