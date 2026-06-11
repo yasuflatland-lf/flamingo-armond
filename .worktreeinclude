@@ -1,0 +1,12 @@
+# Files copied from the main repo into a new worktree on creation.
+# Used by the /worktree slash command (see ~/.claude/commands/worktree.md).
+# One path per line, relative to the repo root. Lines starting with # are ignored.
+
+# Root env — Google OAuth and shared secrets consumed by the local Supabase auth server
+.env
+
+# Frontend env — Supabase URL + anon key overlaid by `make sync-env`
+frontend/.env.local
+
+# Backend env — DB connection and server config overlaid by `make sync-env`
+backend/.env.local
