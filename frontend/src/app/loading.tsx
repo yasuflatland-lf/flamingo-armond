@@ -1,3 +1,5 @@
+import { getTranslations } from "next-intl/server";
+
 import { BrandSplash } from "@/components/pwa/brand-splash";
 
 /**
@@ -14,6 +16,11 @@ import { BrandSplash } from "@/components/pwa/brand-splash";
  * It also backs any descendant route that lacks its own `loading.tsx`; routes
  * that ship their own skeleton keep theirs, since the nearest boundary wins.
  */
-export default function Loading() {
-  return <BrandSplash label="Loading" />;
+export default async function Loading() {
+  const t = await getTranslations("Common");
+  return (
+    <BrandSplash label={t("loading")}>
+      <p className="text-sm opacity-80">{t("loading")}</p>
+    </BrandSplash>
+  );
 }
