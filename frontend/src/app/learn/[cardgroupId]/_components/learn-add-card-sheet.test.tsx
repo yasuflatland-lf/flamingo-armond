@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { MockedProvider } from "@apollo/client/testing/react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CreateCardDocument } from "@/generated/graphql";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { LearnAddCardSheet } from "./learn-add-card-sheet";
 
 const userCardState = (due: string, state: number) => ({
@@ -29,7 +30,7 @@ afterEach(() => {
 
 describe("<LearnAddCardSheet>", () => {
   it("opens the add-card drawer when the event targets this cardgroup", async () => {
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[]}>
         <LearnAddCardSheet cardgroupId="cg-1" />
       </MockedProvider>,
@@ -43,7 +44,7 @@ describe("<LearnAddCardSheet>", () => {
   });
 
   it("ignores an add-card event for a different cardgroup", () => {
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[]}>
         <LearnAddCardSheet cardgroupId="cg-1" />
       </MockedProvider>,
@@ -79,7 +80,7 @@ describe("<LearnAddCardSheet>", () => {
       },
     };
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[createMock]}>
         <LearnAddCardSheet cardgroupId="cg-1" />
       </MockedProvider>,

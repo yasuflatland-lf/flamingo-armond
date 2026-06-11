@@ -1,6 +1,7 @@
 "use client";
 
 import { Trash2, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,12 +23,15 @@ export type BulkActionBarProps = {
 };
 
 export function BulkActionBar({ count, busy, onConfirm, onClear }: BulkActionBarProps) {
+  const t = useTranslations("Cards");
+  const tCommon = useTranslations("Common");
+
   return (
     <div
       className="mb-3 flex items-center gap-3 rounded-md border border-border bg-muted/50 px-4 py-2"
       data-testid="cards-bulk-action-bar"
     >
-      <span className="flex-1 text-sm font-medium">{count} selected</span>
+      <span className="flex-1 text-sm font-medium">{t("selectedCount", { count })}</span>
       <AlertDialog>
         <AlertDialogTrigger asChild>
           <Button
@@ -36,25 +40,25 @@ export function BulkActionBar({ count, busy, onConfirm, onClear }: BulkActionBar
             disabled={busy}
             data-testid="cards-bulk-delete-button"
           >
-            Delete selected
+            {tCommon("deleteSelected")}
             <Trash2 aria-hidden="true" className="ml-1.5 h-4 w-4" />
           </Button>
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {count} cards?</AlertDialogTitle>
-            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+            <AlertDialogTitle>{t("deleteCardsTitle", { count })}</AlertDialogTitle>
+            <AlertDialogDescription>{tCommon("cannotBeUndone")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tCommon("cancel")}</AlertDialogCancel>
             <AlertDialogAction data-testid="cards-bulk-confirm" onClick={onConfirm}>
-              Delete {count}
+              {t("deleteConfirmCount", { count })}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
       <Button variant="outline" size="sm" onClick={onClear}>
-        Cancel
+        {tCommon("cancel")}
         <X aria-hidden="true" className="ml-1.5 h-4 w-4" />
       </Button>
     </div>

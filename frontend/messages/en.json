@@ -8,7 +8,12 @@
     "undo": "Undo",
     "edit": "Edit",
     "delete": "Delete",
-    "somethingWentWrong": "Something went wrong. Please try again."
+    "somethingWentWrong": "Something went wrong. Please try again.",
+    "discardChanges": "Discard your changes?",
+    "keepEditing": "Keep editing",
+    "discard": "Discard",
+    "cannotBeUndone": "This action cannot be undone.",
+    "deleteSelected": "Delete selected"
   },
   "Nav": {
     "cardgroups": "Cardgroups",
@@ -18,7 +23,9 @@
     "users": "Users",
     "roles": "Roles",
     "flamingoHome": "Flamingo home",
-    "navigationMenu": "Navigation menu"
+    "navigationMenu": "Navigation menu",
+    "openMenu": "Open menu",
+    "primaryNavigation": "Primary navigation"
   },
   "Language": {
     "label": "Language",
@@ -53,7 +60,11 @@
     "practiceEmptyHeading": "No cards practiced today yet",
     "practiceEmptyMessage": "Review some cards in a learning session first, then come back to practice them.",
     "practiceCompleteHeading": "Practice complete",
-    "practiceCompleteMessage": "You finished this practice round. Study again for another pass — your progress is never affected."
+    "practiceCompleteMessage": "You finished this practice round. Study again for another pass — your progress is never affected.",
+    "sessionComplete": "Session complete",
+    "sessionCompleteMessage": "There are no due cards left in this batch.",
+    "reviewedCount": "{count, plural, one {You reviewed # card in this batch.} other {You reviewed # cards in this batch.}}",
+    "refreshCards": "Refresh cards"
   },
   "Cardgroups": {
     "updatedAt": "Updated {date}",
@@ -71,7 +82,24 @@
     "deleteAriaLabel": "Delete cardgroup {name}",
     "backLink": "← Cardgroups",
     "welcomeHeading": "Welcome! Let's create your first cardgroup.",
-    "welcomeDesc": "A cardgroup holds the cards you study together — you can add more anytime."
+    "welcomeDesc": "A cardgroup holds the cards you study together — you can add more anytime.",
+    "filterPlaceholder": "Filter cardgroups...",
+    "filterAriaLabel": "Filter cardgroups",
+    "cardgroupOptions": "Cardgroup options",
+    "rename": "Rename",
+    "renameCardgroupTitle": "Rename cardgroup",
+    "deleteCardgroupTitle": "Delete cardgroup",
+    "deleteCardgroupDesc": "This will permanently delete \"{name}\" and all its cards. This cannot be undone.",
+    "pickerTitle": "Select cardgroup",
+    "pickerLoading": "Loading…",
+    "pickerFailed": "Failed to load cardgroups",
+    "pickerNoCardgroups": "You don't have any cardgroups yet.",
+    "createNewCardgroup": "Create new cardgroup…",
+    "addMoreOptions": "More add options",
+    "addCardButton": "Add card +",
+    "addACard": "Add a card",
+    "batchImport": "Batch import",
+    "nameLabel": "Name"
   },
   "Cards": {
     "addSomeCards": "Add some new cards to get started.",
@@ -99,7 +127,14 @@
     "overwriting": "Overwriting…",
     "overwriteFailed": "Overwrite failed. Please try again.",
     "selectCardgroupPrompt": "Select a cardgroup above to add a card.",
-    "cardgroupLabel": "Cardgroup"
+    "cardgroupLabel": "Cardgroup",
+    "frontLabel": "Front",
+    "backLabel": "Back",
+    "newCardTitle": "New card",
+    "addCardSheetTitle": "Add card",
+    "selectedCount": "{count} selected",
+    "deleteCardsTitle": "Delete {count} cards?",
+    "deleteConfirmCount": "Delete {count}"
   },
   "BatchImport": {
     "cardsToImport": "Cards to import",
@@ -215,6 +250,9 @@
     "rolesDescription": "Manage roles available to assign to users.",
     "editRoleTitle": "Edit role",
     "createRole": "Create",
-    "deleteAuthFailed": "Your session has expired. Please sign in again."
+    "deleteAuthFailed": "Your session has expired. Please sign in again.",
+    "systemRole": "System role",
+    "roleNameLabel": "Name",
+    "roleNamePlaceholder": "new-role-name"
   }
 }

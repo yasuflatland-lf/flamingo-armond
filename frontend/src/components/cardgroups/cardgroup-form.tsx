@@ -1,6 +1,7 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
+import { useTranslations } from "next-intl";
 import type React from "react";
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,7 @@ export function CardgroupForm({
   validationError,
   secondarySlot,
 }: CardgroupFormProps) {
+  const t = useTranslations("Cardgroups");
   const resolvedLabel = submitLabel ?? (mode === "create" ? "Create" : "Save");
 
   const schema = mode === "create" ? newCardgroupSchema : updateCardgroupSchema;
@@ -85,7 +87,7 @@ export function CardgroupForm({
       <form.Field name="name" validators={{ onChange: nameSchema, onBlur: nameSchema }}>
         {(field) => (
           <div className="space-y-2">
-            <Label htmlFor={field.name}>Name</Label>
+            <Label htmlFor={field.name}>{t("nameLabel")}</Label>
             <Input
               id={field.name}
               name={field.name}

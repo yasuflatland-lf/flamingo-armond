@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { CardgroupCardsSection } from "./cardgroup-cards-section";
 
 const onAddCard = vi.fn();
@@ -44,7 +45,7 @@ function renderSection(
   initialTotalCount = 7,
   renderPageHeader?: (args: { totalCount: number; onBatchImport: () => void }) => ReactNode,
 ) {
-  render(
+  renderWithIntl(
     <CardgroupCardsSection
       cardgroupId={cardgroupId}
       cardgroupName="Test Cardgroup"

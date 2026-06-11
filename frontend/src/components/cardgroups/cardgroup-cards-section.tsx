@@ -2,6 +2,7 @@
 
 import { ChevronDown, Play } from "lucide-react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import {
   type CardConnectionPageInfo,
@@ -40,6 +41,7 @@ export function CardgroupCardsSection({
   renderPageHeader,
 }: Props) {
   const learnHref = `/learn/${encodeURIComponent(cardgroupId)}`;
+  const t = useTranslations("Cardgroups");
 
   // The render-prop form lets CardsClient pass its live totalCount (read from
   // Apollo cache, kept in sync with delete/bulk-delete/fetchMore) into the
@@ -71,7 +73,7 @@ export function CardgroupCardsSection({
             className="rounded-r-none"
             onClick={onAddCard}
           >
-            Add card +
+            {t("addCardButton")}
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -80,14 +82,20 @@ export function CardgroupCardsSection({
                 variant="brand"
                 size="sm"
                 className="rounded-l-none border-l px-2"
-                aria-label="More add options"
+                aria-label={t("addMoreOptions")}
+                data-testid="cardgroup-add-more-options"
               >
                 <ChevronDown aria-hidden="true" className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={onAddCard}>Add a card</DropdownMenuItem>
-              <DropdownMenuItem onSelect={onBatchImport}>Batch import</DropdownMenuItem>
+              <DropdownMenuItem onSelect={onAddCard}>{t("addACard")}</DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={onBatchImport}
+                data-testid="cardgroup-batch-import-menuitem"
+              >
+                {t("batchImport")}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

@@ -3,6 +3,7 @@
 import { useQuery } from "@apollo/client/react";
 import { Check, Plus } from "lucide-react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -51,6 +52,9 @@ export default function CardgroupPickerSheet({
     fetchPolicy: "cache-and-network",
   });
 
+  const t = useTranslations("Cardgroups");
+  const tCommon = useTranslations("Common");
+
   const rawConnection = data?.myCardgroupsConnection;
   if (data && rawConnection === null) {
     console.warn(
@@ -69,19 +73,22 @@ export default function CardgroupPickerSheet({
       <SheetContent
         side="bottom"
         className="mx-auto max-h-[70vh] w-full max-w-lg overflow-y-auto rounded-t-xl pb-safe"
+        data-testid="cardgroup-picker-dialog"
       >
         <SheetHeader className="mb-4">
-          <SheetTitle>Select cardgroup</SheetTitle>
+          <SheetTitle>{t("pickerTitle")}</SheetTitle>
           <SheetDescription className="sr-only">
             Choose the cardgroup for this card.
           </SheetDescription>
         </SheetHeader>
 
-        {loading && <p className="py-6 text-center text-sm text-muted-foreground">Loading…</p>}
+        {loading && (
+          <p className="py-6 text-center text-sm text-muted-foreground">{t("pickerLoading")}</p>
+        )}
 
         {!loading && error && (
           <div className="flex flex-col items-center gap-3 py-6 text-center">
-            <p className="text-sm text-destructive">Failed to load cardgroups</p>
+            <p className="text-sm text-destructive">{t("pickerFailed")}</p>
             <Button
               variant="outline"
               size="sm"
@@ -94,7 +101,7 @@ export default function CardgroupPickerSheet({
                 });
               }}
             >
-              Retry
+              {tCommon("retry")}
             </Button>
           </div>
         )}
@@ -103,7 +110,7 @@ export default function CardgroupPickerSheet({
           <>
             {cardgroups.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
-                You don&apos;t have any cardgroups yet.
+                {t("pickerNoCardgroups")}
               </p>
             ) : (
               <ul className="space-y-1">
@@ -145,7 +152,7 @@ export default function CardgroupPickerSheet({
                 className="flex w-full items-center gap-2 rounded-md px-3 py-3 text-sm text-brand-primary hover:bg-accent active:bg-accent transition-colors"
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
-                Create new cardgroup…
+                {t("createNewCardgroup")}
               </Link>
             </div>
           </>

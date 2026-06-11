@@ -1,6 +1,7 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
+import { useTranslations } from "next-intl";
 import { useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,6 +50,7 @@ export function RoleForm({
   onCancel,
   onDirtyChange,
 }: RoleFormProps) {
+  const t = useTranslations("Admin");
   const nameSchema = roleSchema.shape.name;
 
   const fieldErrors = useMemo(() => getBackendFieldErrors(error), [error]);
@@ -93,7 +95,7 @@ export function RoleForm({
       <form.Field name="name" validators={{ onChange: nameSchema, onBlur: nameSchema }}>
         {(field) => (
           <div className="space-y-2">
-            <Label htmlFor={field.name}>Name</Label>
+            <Label htmlFor={field.name}>{t("roleNameLabel")}</Label>
             <Input
               id={field.name}
               name={field.name}
@@ -101,7 +103,7 @@ export function RoleForm({
               onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
               disabled={readOnly}
-              placeholder="new-role-name"
+              placeholder={t("roleNamePlaceholder")}
             />
             <FieldError zodErrors={field.state.meta.errors} backendError={fieldErrors.name} />
           </div>

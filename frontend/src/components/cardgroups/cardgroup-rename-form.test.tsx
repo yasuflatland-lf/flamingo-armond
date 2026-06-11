@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UpdateCardgroupDocument } from "@/generated/graphql";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { CardgroupRenameForm } from "./cardgroup-rename-form";
 
 const mockRefresh = vi.fn();
@@ -24,7 +25,7 @@ function makeUpdateMock(
 
 function renderForm(mocks: MockedResponse[] = []) {
   const onSaved = vi.fn();
-  render(
+  renderWithIntl(
     <MockedProvider mocks={mocks}>
       <CardgroupRenameForm cardgroup={CARDGROUP} onSaved={onSaved} />
     </MockedProvider>,

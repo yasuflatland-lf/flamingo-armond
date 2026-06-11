@@ -13,6 +13,7 @@
     "format": "biome format --write .",
     "typecheck": "tsc --noEmit",
     "knip": "knip",
+    "i18n:parity": "node scripts/i18n-parity.mjs",
     "codegen": "graphql-codegen --config codegen.ts",
     "codegen:watch": "graphql-codegen --config codegen.ts --watch",
     "prebuild": "pnpm codegen && node scripts/stamp-sw-version.mjs",

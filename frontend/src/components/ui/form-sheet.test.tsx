@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { FormSheet, useFormSheetClose } from "./form-sheet";
 
 vi.mock("@/hooks/use-mobile", () => ({
@@ -40,7 +41,7 @@ describe("<FormSheet>", () => {
   });
 
   it("renders a desktop right sheet when useIsMobile returns false", () => {
-    render(
+    renderWithIntl(
       <FormSheet open onOpenChange={vi.fn()} title="Edit card">
         <p>Form body</p>
       </FormSheet>,
@@ -58,7 +59,7 @@ describe("<FormSheet>", () => {
     ["md", "sm:max-w-lg"],
     ["lg", "sm:max-w-2xl"],
   ] as const)("applies the size=%s width to the desktop sheet", (size, expectedClass) => {
-    render(
+    renderWithIntl(
       <FormSheet open onOpenChange={vi.fn()} title="Edit card" size={size}>
         <p>Form body</p>
       </FormSheet>,
@@ -68,7 +69,7 @@ describe("<FormSheet>", () => {
   });
 
   it("defaults to the medium width when size is not provided", () => {
-    render(
+    renderWithIntl(
       <FormSheet open onOpenChange={vi.fn()} title="Edit card">
         <p>Form body</p>
       </FormSheet>,
@@ -78,7 +79,7 @@ describe("<FormSheet>", () => {
   });
 
   it("constrains the desktop sheet body so tall forms can scroll", () => {
-    render(
+    renderWithIntl(
       <FormSheet open onOpenChange={vi.fn()} title="Edit card">
         <div style={{ height: 2000 }}>Tall form</div>
       </FormSheet>,
@@ -90,7 +91,7 @@ describe("<FormSheet>", () => {
   it("renders a mobile drawer dialog when useIsMobile returns true", () => {
     vi.mocked(useIsMobile).mockReturnValue(true);
 
-    render(
+    renderWithIntl(
       <FormSheet open onOpenChange={vi.fn()} title="Add card">
         <p>Mobile body</p>
       </FormSheet>,
@@ -105,7 +106,7 @@ describe("<FormSheet>", () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
-    render(
+    renderWithIntl(
       <FormSheet open onOpenChange={onOpenChange} title="Edit card">
         <ContextCancelButton />
       </FormSheet>,
@@ -120,7 +121,7 @@ describe("<FormSheet>", () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
-    render(
+    renderWithIntl(
       <FormSheet open onOpenChange={onOpenChange} title="Edit card">
         <p>Form body</p>
       </FormSheet>,
@@ -135,7 +136,7 @@ describe("<FormSheet>", () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
-    render(
+    renderWithIntl(
       <FormSheet open onOpenChange={onOpenChange} title="Edit card">
         <p>Form body</p>
       </FormSheet>,
@@ -150,7 +151,7 @@ describe("<FormSheet>", () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
-    render(
+    renderWithIntl(
       <FormSheet open onOpenChange={onOpenChange} title="Edit card">
         <p>Form body</p>
       </FormSheet>,
@@ -166,7 +167,7 @@ describe("<FormSheet>", () => {
     const onOpenChange = vi.fn();
     vi.mocked(useIsMobile).mockReturnValue(true);
 
-    render(
+    renderWithIntl(
       <FormSheet open onOpenChange={onOpenChange} title="Add card">
         <p>Mobile body</p>
       </FormSheet>,
@@ -181,7 +182,7 @@ describe("<FormSheet>", () => {
     const onOpenChange = vi.fn();
     vi.mocked(useIsMobile).mockReturnValue(true);
 
-    render(
+    renderWithIntl(
       <FormSheet open onOpenChange={onOpenChange} title="Add card">
         <p>Mobile body</p>
       </FormSheet>,
@@ -231,7 +232,7 @@ describe("<FormSheet>", () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
-    render(
+    renderWithIntl(
       <FormSheet open onOpenChange={onOpenChange} title="Edit card" confirmOnDismiss>
         <ContextCancelButton />
       </FormSheet>,
@@ -247,7 +248,7 @@ describe("<FormSheet>", () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
-    render(
+    renderWithIntl(
       <FormSheet open onOpenChange={onOpenChange} title="Add card" dirty confirmOnDismiss>
         <ContextCancelButton />
       </FormSheet>,
@@ -264,7 +265,7 @@ describe("<FormSheet>", () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
-    render(
+    renderWithIntl(
       <FormSheet open onOpenChange={onOpenChange} title="Add card" dirty confirmOnDismiss>
         <ContextCancelButton />
       </FormSheet>,
@@ -284,7 +285,7 @@ describe("<FormSheet>", () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
-    render(
+    renderWithIntl(
       <FormSheet open onOpenChange={onOpenChange} title="Add card" dirty confirmOnDismiss>
         <ContextCancelButton />
       </FormSheet>,
@@ -300,7 +301,7 @@ describe("<FormSheet>", () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
-    const { rerender } = render(
+    const { rerender } = renderWithIntl(
       <FormSheet open onOpenChange={onOpenChange} title="Add card" dirty confirmOnDismiss>
         <ContextCancelButton />
       </FormSheet>,
@@ -331,7 +332,7 @@ describe("<FormSheet>", () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
-    const { rerender } = render(
+    const { rerender } = renderWithIntl(
       <FormSheet open onOpenChange={onOpenChange} title="Add card" dirty confirmOnDismiss>
         <ContextCancelButton />
       </FormSheet>,
@@ -355,7 +356,7 @@ describe("<FormSheet>", () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
-    render(
+    renderWithIntl(
       <FormSheet open onOpenChange={onOpenChange} title="Edit card" submitting>
         <ContextCancelButton />
       </FormSheet>,
@@ -370,7 +371,7 @@ describe("<FormSheet>", () => {
   it("constrains the mobile drawer body so tall forms can scroll", () => {
     vi.mocked(useIsMobile).mockReturnValue(true);
 
-    render(
+    renderWithIntl(
       <FormSheet open onOpenChange={vi.fn()} title="Add card">
         <div style={{ height: 2000 }}>Tall form</div>
       </FormSheet>,
@@ -383,7 +384,7 @@ describe("<FormSheet>", () => {
   });
 
   it("renders a string-title desktop sheet with accessible description '<title> form'", () => {
-    render(
+    renderWithIntl(
       <FormSheet open onOpenChange={vi.fn()} title="Edit card">
         <p>Body</p>
       </FormSheet>,
@@ -401,7 +402,7 @@ describe("<FormSheet>", () => {
 
     it("exposes both verb and destination in the heading textContent", () => {
       const cardgroupName = "Yasu Cardgroup";
-      render(
+      renderWithIntl(
         <FormSheet
           open
           onOpenChange={vi.fn()}
@@ -431,7 +432,7 @@ describe("<FormSheet>", () => {
 
     it("title span carries truncation classes and tooltip attribute", () => {
       const cardgroupName = "A Very Long Cardgroup Name That Should Truncate";
-      render(
+      renderWithIntl(
         <FormSheet
           open
           onOpenChange={vi.fn()}
@@ -457,7 +458,7 @@ describe("<FormSheet>", () => {
     });
 
     it("a11yDescription falls back to 'Form' when title is a ReactNode and no description is provided", () => {
-      render(
+      renderWithIntl(
         <FormSheet open onOpenChange={vi.fn()} title={<span>Some ReactNode title</span>}>
           <p>Body</p>
         </FormSheet>,

@@ -19,6 +19,17 @@ vi.mock("@/lib/apollo/server", () => ({
   gqlFetch: vi.fn(),
 }));
 
+// next-intl/server — the page resolves the Cards namespace via getTranslations.
+vi.mock("next-intl/server", async () => {
+  const enMessages = (await import("../../../../messages/en.json")).default;
+  return {
+    getTranslations: vi.fn(
+      async (namespace: string) => (key: string) =>
+        (enMessages as Record<string, Record<string, string>>)[namespace]?.[key] ?? key,
+    ),
+  };
+});
+
 // Stub CardsNewClient — it is a "use client" component that requires an
 // ApolloProvider. The RSC page test only needs to verify props are forwarded
 // correctly; the client component has its own dedicated test file.

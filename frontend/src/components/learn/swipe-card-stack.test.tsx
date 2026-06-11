@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
 import type { SwipeCardData } from "./swipe-card";
 import type { SwipeCardStackHandle } from "./swipe-card-stack";
 import { SwipeCardStack } from "./swipe-card-stack";
@@ -132,25 +133,25 @@ describe("SwipeCardStack — Session-complete count line", () => {
   };
 
   it("renders Session-complete heading and no count line when completedCount is undefined", () => {
-    render(<SwipeCardStack {...baseProps} />);
+    renderWithIntl(<SwipeCardStack {...baseProps} />);
     expect(screen.getByRole("heading", { name: "Session complete" })).toBeInTheDocument();
     expect(screen.queryByText(/You reviewed/)).not.toBeInTheDocument();
   });
 
   it("renders Session-complete heading and no count line when completedCount is 0", () => {
-    render(<SwipeCardStack {...baseProps} completedCount={0} />);
+    renderWithIntl(<SwipeCardStack {...baseProps} completedCount={0} />);
     expect(screen.getByRole("heading", { name: "Session complete" })).toBeInTheDocument();
     expect(screen.queryByText(/You reviewed/)).not.toBeInTheDocument();
   });
 
   it("renders singular count line when completedCount is 1", () => {
-    render(<SwipeCardStack {...baseProps} completedCount={1} />);
+    renderWithIntl(<SwipeCardStack {...baseProps} completedCount={1} />);
     expect(screen.getByRole("heading", { name: "Session complete" })).toBeInTheDocument();
     expect(screen.getByText("You reviewed 1 card in this batch.")).toBeInTheDocument();
   });
 
   it("renders plural count line when completedCount is 2", () => {
-    render(<SwipeCardStack {...baseProps} completedCount={2} />);
+    renderWithIntl(<SwipeCardStack {...baseProps} completedCount={2} />);
     expect(screen.getByRole("heading", { name: "Session complete" })).toBeInTheDocument();
     expect(screen.getByText("You reviewed 2 cards in this batch.")).toBeInTheDocument();
   });
@@ -166,7 +167,7 @@ describe("SwipeCardStack — keydown listener stability (activeCardRef)", () => 
     const removeSpy = vi.spyOn(window, "removeEventListener");
 
     const onCardSwiped = vi.fn();
-    const { rerender, unmount } = render(
+    const { rerender, unmount } = renderWithIntl(
       <SwipeCardStack cards={[cardA, cardB]} onCardSwiped={onCardSwiped} />,
     );
 
@@ -191,7 +192,7 @@ describe("SwipeCardStack — keydown listener stability (activeCardRef)", () => 
 
   it("fires onCardSwiped with the correct card after activeCard advances", () => {
     const onCardSwiped = vi.fn();
-    const { rerender } = render(
+    const { rerender } = renderWithIntl(
       <SwipeCardStack cards={[cardA, cardB]} onCardSwiped={onCardSwiped} />,
     );
 
@@ -227,7 +228,7 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    render(<SwipeCardStack cards={[cardA, cardB]} onCardSwiped={onCardSwiped} ref={ref} />);
+    renderWithIntl(<SwipeCardStack cards={[cardA, cardB]} onCardSwiped={onCardSwiped} ref={ref} />);
 
     act(() => {
       ref.current?.triggerSwipe("right");
@@ -246,7 +247,7 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+    renderWithIntl(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
 
     act(() => {
       ref.current?.triggerSwipe("right");
@@ -263,7 +264,7 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    const { unmount } = render(
+    const { unmount } = renderWithIntl(
       <SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />,
     );
 
@@ -289,7 +290,7 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+    renderWithIntl(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
 
     act(() => {
       ref.current?.triggerSwipe("right");
@@ -310,7 +311,7 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+    renderWithIntl(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
 
     act(() => {
       ref.current?.triggerSwipe("left");
@@ -329,7 +330,7 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+    renderWithIntl(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
 
     act(() => {
       ref.current?.triggerSwipe("down");
@@ -348,7 +349,7 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+    renderWithIntl(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
 
     const stub = screen.getByTestId("swipe-card-stub");
 
@@ -376,7 +377,7 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    render(<SwipeCardStack cards={[]} onCardSwiped={onCardSwiped} ref={ref} />);
+    renderWithIntl(<SwipeCardStack cards={[]} onCardSwiped={onCardSwiped} ref={ref} />);
 
     act(() => {
       // Must not throw even when the deck is empty.
@@ -397,7 +398,7 @@ describe("SwipeCardStack — triggerSwipe via imperative ref", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+    renderWithIntl(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
 
     act(() => {
       ref.current?.triggerSwipe("right");
@@ -425,7 +426,7 @@ describe("SwipeCardStack — gesture-driven overlay via SwipeCard callbacks", ()
   it("shows the overlay when onSwipeProgress fires right/0.5 (pointer-down), hides it when progress resets", () => {
     const onCardSwiped = vi.fn();
 
-    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} />);
+    renderWithIntl(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} />);
 
     const stub = screen.getByTestId("swipe-card-stub");
 
@@ -469,7 +470,7 @@ describe("SwipeCardStack — triggerSwipe with reduced motion", () => {
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
+    renderWithIntl(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} ref={ref} />);
 
     act(() => {
       ref.current?.triggerSwipe("left");
@@ -501,7 +502,7 @@ describe("SwipeCardStack — keyboard triggers all three directions", () => {
   ] as const)("commits onCardSwiped with direction '%s' → '%s' on spring rest after the key is pressed", (key, expectedDirection) => {
     const onCardSwiped = vi.fn();
 
-    render(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} />);
+    renderWithIntl(<SwipeCardStack cards={[cardA]} onCardSwiped={onCardSwiped} />);
 
     fireEvent.keyDown(document, { key });
     // Commit is deferred to the fly-off spring rest — not yet fired.
@@ -524,7 +525,7 @@ describe("SwipeCardStack — overlay state resets on active card change", () => 
     const onCardSwiped = vi.fn();
     const ref = createRef<SwipeCardStackHandle | null>();
 
-    const { rerender } = render(
+    const { rerender } = renderWithIntl(
       <SwipeCardStack cards={[cardA, cardB]} onCardSwiped={onCardSwiped} ref={ref} />,
     );
 

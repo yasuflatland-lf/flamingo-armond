@@ -29,8 +29,8 @@ async function openBatchImport(page: Page) {
   expect(response?.ok(), `goto returned status ${response?.status()}`).toBe(true);
   await expect(page.getByRole("heading", { level: 1, name: cardgroup.name })).toBeVisible();
 
-  await page.getByRole("button", { name: "More add options" }).click();
-  await page.getByRole("menuitem", { name: "Batch import" }).click();
+  await page.getByTestId("cardgroup-add-more-options").click();
+  await page.getByTestId("cardgroup-batch-import-menuitem").click();
   // Use data-testid to avoid locale-dependent label matching (Playwright runs with ja-JP).
   await expect(page.getByTestId("batch-import-payload")).toBeVisible();
 }

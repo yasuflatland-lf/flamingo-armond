@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import * as React from "react";
 import {
   AlertDialog,
@@ -73,6 +74,7 @@ function FormSheet({
   size = "md",
   children,
 }: FormSheetProps) {
+  const t = useTranslations("Common");
   const a11yDescription = description ?? (typeof title === "string" ? `${title} form` : "Form");
   const isMobile = useIsMobile();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
@@ -160,13 +162,13 @@ function FormSheet({
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent className="z-[60]">
           <AlertDialogHeader>
-            <AlertDialogTitle>Discard your changes?</AlertDialogTitle>
+            <AlertDialogTitle>{t("discardChanges")}</AlertDialogTitle>
             <AlertDialogDescription>{confirmMessage}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogCancel>{t("keepEditing")}</AlertDialogCancel>
             <AlertDialogAction disabled={submitting} onClick={discard}>
-              Discard
+              {t("discard")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
