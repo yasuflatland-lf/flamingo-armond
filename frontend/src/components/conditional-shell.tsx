@@ -23,11 +23,11 @@ interface ConditionalShellProps {
  * Client component that decides whether to mount the navigation shell based on
  * the current pathname.
  *
- * This MUST be a client component reading usePathname() rather than a server
- * branch on the middleware-forwarded x-pathname header: the root layout is a
- * server component that does NOT re-render on client-side (soft) navigations,
- * so a server-side branch leaves the shell from the previously-rendered route
- * in place. A concrete repro: from /login a full-page link to /terms (a 404)
+ * This MUST be a client component reading usePathname() rather than a
+ * server-side branch in the root layout: the root layout is a server component
+ * that does NOT re-render on client-side (soft) navigations, so a server-side
+ * branch leaves the shell from the previously-rendered route in place. A
+ * concrete repro: from /login a full-page link to /terms (a 404)
  * SSRs the full shell; the not-found page's "Back to Home" link soft-navigates
  * to / which redirects to /login, and the shell — rail included — lingers over
  * the sign-in screen. usePathname() re-renders here on every navigation, so the
