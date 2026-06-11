@@ -90,7 +90,12 @@ export function CardgroupCardsSection({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={onAddCard}>{t("addACard")}</DropdownMenuItem>
-              <DropdownMenuItem onSelect={onBatchImport} data-testid="cardgroup-batch-import-menuitem">{t("batchImport")}</DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={onBatchImport}
+                data-testid="cardgroup-batch-import-menuitem"
+              >
+                {t("batchImport")}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
