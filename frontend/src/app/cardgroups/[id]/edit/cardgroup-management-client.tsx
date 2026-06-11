@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import type { CardConnectionPageInfo, CardEdge } from "@/app/cardgroups/[id]/cards/cards-client";
 import { CardgroupCardsSection } from "@/components/cardgroups/cardgroup-cards-section";
 import { CardgroupHeader } from "@/components/cardgroups/cardgroup-header";
@@ -18,11 +19,12 @@ export function CardgroupManagementClient({
   initialPageInfo,
   initialTotalCount,
 }: Props) {
+  const t = useTranslations("Cardgroups");
   return (
     <main className="p-4 md:p-8">
       <div className="mb-4">
         <Link href="/cardgroups" className="text-sm text-muted-foreground hover:underline">
-          &larr; Cardgroups
+          {t("backLink")}
         </Link>
       </div>
 

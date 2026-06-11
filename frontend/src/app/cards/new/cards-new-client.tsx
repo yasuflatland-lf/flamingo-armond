@@ -2,6 +2,7 @@
 
 import { useMutation } from "@apollo/client/react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { CreateCardMutation, UpdateCardMutation } from "@/app/cardgroups/queries";
 import { SetLastViewedCardgroupMutation } from "@/app/learn/queries";
@@ -60,6 +61,9 @@ function DuplicateOverwriteDialog({
   loading: boolean;
   error: string | null;
 }) {
+  const t = useTranslations("Cards");
+  const tCommon = useTranslations("Common");
+
   return (
     <AlertDialog
       open
@@ -74,22 +78,21 @@ function DuplicateOverwriteDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Card already exists</AlertDialogTitle>
+          <AlertDialogTitle>{t("duplicateTitle")}</AlertDialogTitle>
           <AlertDialogDescription>
-            A card with the front &ldquo;{duplicate.attemptedFront}&rdquo; already exists in this
-            cardgroup. Overwrite its back with your new content? Learning history is preserved.
+            {t("duplicateDesc", { front: duplicate.attemptedFront })}
           </AlertDialogDescription>
         </AlertDialogHeader>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
-            <div className="text-xs font-medium text-muted-foreground">Existing back</div>
+            <div className="text-xs font-medium text-muted-foreground">{t("existingBack")}</div>
             <pre className="whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-2 text-sm">
               {duplicate.existingBack}
             </pre>
           </div>
           <div className="space-y-1">
-            <div className="text-xs font-medium text-muted-foreground">New back</div>
+            <div className="text-xs font-medium text-muted-foreground">{t("newBack")}</div>
             <pre className="whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-2 text-sm">
               {duplicate.attemptedBack}
             </pre>
@@ -103,7 +106,7 @@ function DuplicateOverwriteDialog({
         ) : null}
 
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={loading}>{tCommon("cancel")}</AlertDialogCancel>
           <AlertDialogAction
             onClick={(e) => {
               // Suppress Radix's default close-on-action behaviour. Closing is
@@ -115,7 +118,7 @@ function DuplicateOverwriteDialog({
             }}
             disabled={loading}
           >
-            {loading ? "Overwriting…" : "Overwrite"}
+            {loading ? t("overwriting") : t("overwrite")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -128,6 +131,7 @@ export default function CardsNewClient({
   forcePickerOpen,
   myCardgroups,
 }: Props) {
+  const t = useTranslations("Cards");
   const router = useRouter();
   const searchParams = useSearchParams();
   const [pickerOpen, setPickerOpen] = useState(forcePickerOpen);
@@ -222,7 +226,7 @@ export default function CardsNewClient({
       // since getBackendErrorBanner skips field-level BAD_USER_INPUT.
       const fieldErrors = getBackendFieldErrors(err);
       const banner = getBackendErrorBanner(err);
-      const message = fieldErrors.back ?? banner ?? "Overwrite failed. Please try again.";
+      const message = fieldErrors.back ?? banner ?? t("overwriteFailed");
       setOverwriteError(message);
       console.error("[cards-new-client] overwrite card rejection", {
         name: err instanceof Error ? err.name : "unknown",
@@ -256,7 +260,7 @@ export default function CardsNewClient({
     console.warn("[cards-new-client] unexpected updateCard payload", {
       typename: unknownPayload?.__typename ?? null,
     });
-    setOverwriteError("Overwrite failed. Please try again.");
+    setOverwriteError(t("overwriteFailed"));
   }
 
   function handleCancelOverwrite() {
@@ -277,7 +281,7 @@ export default function CardsNewClient({
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <span className="text-sm font-medium text-muted-foreground">Cardgroup</span>
+        <span className="text-sm font-medium text-muted-foreground">{t("cardgroupLabel")}</span>
         <CardgroupChip name={currentName} onChangeRequested={() => setPickerOpen(true)} />
       </div>
 
@@ -295,13 +299,13 @@ export default function CardsNewClient({
           idPrefix="cards-new-"
           defaultValues={{ front: "", back: "" }}
           submit={handleCreate}
-          submitLabel="Add card"
+          submitLabel={t("addCard")}
           submitting={creating}
           error={createError}
           onCancel={() => router.push(returnTo ?? `/cardgroups/${currentId}/cards`)}
         />
       ) : (
-        <p className="text-sm text-muted-foreground">Select a cardgroup above to add a card.</p>
+        <p className="text-sm text-muted-foreground">{t("selectCardgroupPrompt")}</p>
       )}
 
       {duplicate !== null && (

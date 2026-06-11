@@ -2,6 +2,7 @@
 
 import { useApolloClient, useMutation } from "@apollo/client/react";
 import { Search } from "lucide-react";
+import { useTranslations } from "next-intl";
 import type { ReactNode, RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -43,38 +44,44 @@ const ErrorBanner = ({ testId, message }: { testId: string; message: string }) =
   </div>
 );
 
-const FetchMoreError = ({ message, onRetry }: { message: string; onRetry: () => void }) => (
-  <div
-    className="mt-3 flex flex-col items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
-    role="alert"
-    data-testid="cards-fetch-more-error"
-  >
-    <span>{message}</span>
-    <Button type="button" variant="outline" size="sm" onClick={onRetry}>
-      Retry
-    </Button>
-  </div>
-);
-
-const SearchInput = ({ value, onChange }: { value: string; onChange: (next: string) => void }) => (
-  <div className="mb-3">
-    <div className="relative">
-      <Search
-        aria-hidden="true"
-        className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-      />
-      <input
-        type="search"
-        placeholder="Search front or back..."
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label="Search cards"
-        data-testid="cards-search-input"
-      />
+const FetchMoreError = ({ message, onRetry }: { message: string; onRetry: () => void }) => {
+  const tCommon = useTranslations("Common");
+  return (
+    <div
+      className="mt-3 flex flex-col items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+      role="alert"
+      data-testid="cards-fetch-more-error"
+    >
+      <span>{message}</span>
+      <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+        {tCommon("retry")}
+      </Button>
     </div>
-  </div>
-);
+  );
+};
+
+const SearchInput = ({ value, onChange }: { value: string; onChange: (next: string) => void }) => {
+  const t = useTranslations("Cards");
+  return (
+    <div className="mb-3">
+      <div className="relative">
+        <Search
+          aria-hidden="true"
+          className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+        />
+        <input
+          type="search"
+          placeholder={t("searchPlaceholder")}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full rounded-md border border-input bg-background pl-8 pr-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={t("searchAriaLabel")}
+          data-testid="cards-search-input"
+        />
+      </div>
+    </div>
+  );
+};
 
 function EditCardSheetContent({
   card,
@@ -90,6 +97,7 @@ function EditCardSheetContent({
   validationError: { field: string; message: string } | null;
 }) {
   const close = useFormSheetClose();
+  const tCommon = useTranslations("Common");
 
   return (
     <CardForm
@@ -97,7 +105,7 @@ function EditCardSheetContent({
       idPrefix={`edit-${card.id}-`}
       defaultValues={{ front: card.front, back: card.back }}
       submit={submit}
-      submitLabel="Save"
+      submitLabel={tCommon("save")}
       submitting={submitting}
       error={error}
       validationError={validationError}
@@ -137,13 +145,14 @@ function AddCardSheetContent({
   );
 }
 
-const EmptyState = ({ search, onClear }: { search: string | null; onClear: () => void }) =>
-  search !== null ? (
+const EmptyState = ({ search, onClear }: { search: string | null; onClear: () => void }) => {
+  const t = useTranslations("Cards");
+  return search !== null ? (
     <div
       className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border p-6"
       data-testid="cards-empty-search"
     >
-      <p className="text-sm text-muted-foreground">No cards match "{search}"</p>
+      <p className="text-sm text-muted-foreground">{t("noMatch", { search })}</p>
       <Button
         type="button"
         variant="outline"
@@ -151,7 +160,7 @@ const EmptyState = ({ search, onClear }: { search: string | null; onClear: () =>
         onClick={onClear}
         data-testid="cards-clear-search"
       >
-        Clear search
+        {t("clearSearch")}
       </Button>
     </div>
   ) : (
@@ -159,9 +168,10 @@ const EmptyState = ({ search, onClear }: { search: string | null; onClear: () =>
       className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border p-6"
       data-testid="cards-empty"
     >
-      <p className="text-sm text-muted-foreground">Add some new cards to get started.</p>
+      <p className="text-sm text-muted-foreground">{t("addSomeCards")}</p>
     </div>
   );
+};
 
 type SectionHeaderArgs = {
   totalCount: number;
@@ -192,6 +202,7 @@ export function CardsClient({
   initialTotalCount,
   sectionHeader,
 }: Props) {
+  const t = useTranslations("Cards");
   const apollo = useApolloClient();
   const { scheduleDelete } = useUndoDelete();
   const [addOpen, setAddOpen] = useState(false);
@@ -384,7 +395,7 @@ export function CardsClient({
         typename: unknownPayload?.__typename ?? null,
         cardgroupId,
       });
-      setCreateValidationError({ field: "front", message: "Add failed. Please try again." });
+      setCreateValidationError({ field: "front", message: t("addFailed") });
     }
   }
 
@@ -426,7 +437,7 @@ export function CardsClient({
       }
       scheduleDelete({
         id: cardId,
-        label: "Card deleted",
+        label: t("cardDeleted"),
         optimisticRollback: () => {
           if (snapshot !== null) {
             apollo.writeQuery({
@@ -446,13 +457,11 @@ export function CardsClient({
           }
         },
         onCommitFailed: (err) => {
-          setDeleteCommitError(
-            getBackendErrorBanner(err) ?? "Could not delete card. Please try again.",
-          );
+          setDeleteCommitError(getBackendErrorBanner(err) ?? t("deleteError"));
         },
       });
     },
-    [apollo, deleteCardMutation, queryVariables, scheduleDelete],
+    [apollo, deleteCardMutation, queryVariables, scheduleDelete, t],
   );
 
   async function handleUpdate(id: string, values: { front: string; back: string }) {
@@ -481,7 +490,7 @@ export function CardsClient({
         cardId: id,
         cardgroupId,
       });
-      setRowValidationError({ field: "front", message: "Save failed. Please try again." });
+      setRowValidationError({ field: "front", message: t("saveFailed") });
     }
   }
 
@@ -496,7 +505,7 @@ export function CardsClient({
       <section>
         {sectionHeader === undefined ? (
           <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
-            Cards ({totalCount})
+            {t("cardsCount", { count: totalCount })}
           </h2>
         ) : typeof sectionHeader === "function" ? (
           sectionHeader({ totalCount, onAddCard: openAddSheet, onBatchImport: openBatchImport })
@@ -549,7 +558,7 @@ export function CardsClient({
         )}
 
         <FormSheet
-          title="Add card"
+          title={t("addCard")}
           open={addOpen}
           onOpenChange={(nextOpen) => {
             setAddOpen(nextOpen);
@@ -579,7 +588,7 @@ export function CardsClient({
               className="block overflow-hidden text-ellipsis whitespace-nowrap"
               title={cardgroupName}
             >
-              <span className="sr-only">Batch import into </span>
+              <span className="sr-only">{t("batchImportSrOnly")}</span>
               {cardgroupName}
             </span>
           }
@@ -596,7 +605,7 @@ export function CardsClient({
         </FormSheet>
 
         <FormSheet
-          title="Edit card"
+          title={t("editCard")}
           open={editingCard !== undefined}
           onOpenChange={(nextOpen) => {
             if (!nextOpen) {
@@ -621,7 +630,7 @@ export function CardsClient({
         <div ref={sentinelRef} aria-hidden="true" data-testid="cards-sentinel" />
         {fetchMoreError && <FetchMoreError message={fetchMoreError} onRetry={retryFetchMore} />}
         {!fetchMoreError && fetchingMore && pageInfo.hasNextPage && (
-          <p className="mt-3 text-center text-xs text-muted-foreground">Loading more cards...</p>
+          <p className="mt-3 text-center text-xs text-muted-foreground">{t("loadingMore")}</p>
         )}
       </section>
     </div>

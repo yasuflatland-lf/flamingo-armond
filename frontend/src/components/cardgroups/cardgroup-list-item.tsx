@@ -24,7 +24,7 @@ export function CardgroupListItem({
 }: CardgroupListItemProps) {
   const locale = useLocale();
   const t = useTranslations("Cardgroups");
-  const deleteLabel = `Delete cardgroup ${name}`;
+  const deleteLabel = t("deleteAriaLabel", { name });
   const requestDelete = () => onDelete(id, name);
   return (
     <SwipeableRow onDelete={requestDelete} disabled={busy} ariaLabel={deleteLabel}>

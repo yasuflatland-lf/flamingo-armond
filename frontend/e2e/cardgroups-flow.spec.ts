@@ -69,12 +69,14 @@ test.describe
       // the drawer in place rather than navigating. The desktop button carries
       // `hidden md:inline-flex`; Playwright's Desktop Chrome viewport (1280px) is
       // above the md breakpoint so the button is visible.
-      const newCardgroupButton = page.getByRole("button", { name: /New cardgroup/ });
+      // Use data-testid to avoid locale-dependent button text (Playwright runs ja-JP).
+      const newCardgroupButton = page.getByTestId("cardgroups-header-new-btn");
       await expect(newCardgroupButton).toBeVisible();
 
       // Click it and verify the FormSheet opens in place with the form interactive.
+      // Check the Name input (CardgroupForm label — not yet localized) rather than
+      // the translated sheet heading.
       await newCardgroupButton.click();
-      await expect(page.getByRole("heading", { name: "New cardgroup" })).toBeVisible();
       await expect(page.getByLabel("Name")).toBeVisible();
       await expect(page.getByRole("button", { name: "Create" })).toBeVisible();
 
@@ -100,9 +102,9 @@ test.describe
       const response = await page.goto("/cardgroups");
       expect(response?.ok(), `goto /cardgroups returned ${response?.status()}`).toBe(true);
 
-      // The empty-state copy confirms we are in the zero-cardgroup branch.
-      // After the listing-page-shell refactor the copy is "No cardgroups yet".
-      await expect(page.getByText("No cardgroups yet")).toBeVisible();
+      // The empty-state container confirms we are in the zero-cardgroup branch.
+      // Use data-testid to avoid locale-dependent text (Playwright runs ja-JP).
+      await expect(page.getByTestId("cardgroups-empty")).toBeVisible();
 
       // The page-shell header primary action carries `hidden md:inline-flex`;
       // Playwright's Desktop Chrome viewport (1280px) is above the md breakpoint
@@ -115,10 +117,9 @@ test.describe
       // breakpoint-agnostic, so it is likewise visible at the desktop viewport.
       await expect(page.getByTestId("cardgroups-empty-cta")).toBeVisible();
 
-      // The FAB was abolished by the create-navigation refactor: the only "New
-      // cardgroup" buttons in the empty state are the desktop header button and
-      // the empty-state CTA (exactly two, both matched by the name regex).
-      await expect(page.getByRole("button", { name: /New cardgroup/ })).toHaveCount(2);
+      // Verify exactly two "New cardgroup" affordances: header and empty-state CTA.
+      await expect(page.getByTestId("cardgroups-header-new-btn")).toHaveCount(1);
+      await expect(page.getByTestId("cardgroups-empty-cta")).toHaveCount(1);
     });
 
     // ── Scenario 3 ──────────────────────────────────────────────────────────────
@@ -151,7 +152,8 @@ test.describe
       // Clicking the link navigates to /cardgroups/new?returnTo=%2Fcards%2Fnew.
       await createLink.click();
       await page.waitForURL("**/cardgroups/new?returnTo=%2Fcards%2Fnew", { timeout: 10_000 });
-      await expect(page.getByRole("heading", { name: "New cardgroup" })).toBeVisible();
+      // URL confirms navigation; verify the page heading via data-testid.
+      await expect(page.getByTestId("new-cardgroup-page-heading")).toBeVisible();
 
       // Fill and submit the new cardgroup form.
       const newCgName = `E2E picker-return ${runId}`;
@@ -192,7 +194,7 @@ test.describe
       // ── 4a: protocol-relative URL ──────────────────────────────────────────────
       const response4a = await page.goto("/cardgroups/new?returnTo=//evil.com");
       expect(response4a?.ok(), `goto returned ${response4a?.status()}`).toBe(true);
-      await expect(page.getByRole("heading", { name: "New cardgroup" })).toBeVisible();
+      await expect(page.getByTestId("new-cardgroup-page-heading")).toBeVisible();
 
       const name4a = `E2E redirect-a ${runId}`;
       await page.getByLabel("Name").fill(name4a);
@@ -209,7 +211,7 @@ test.describe
       // ── 4b: absolute https URL ─────────────────────────────────────────────────
       const response4b = await page.goto("/cardgroups/new?returnTo=https://evil.com");
       expect(response4b?.ok(), `goto returned ${response4b?.status()}`).toBe(true);
-      await expect(page.getByRole("heading", { name: "New cardgroup" })).toBeVisible();
+      await expect(page.getByTestId("new-cardgroup-page-heading")).toBeVisible();
 
       const name4b = `E2E redirect-b ${runId}`;
       await page.getByLabel("Name").fill(name4b);

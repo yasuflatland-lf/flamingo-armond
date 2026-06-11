@@ -4,6 +4,7 @@ import { NetworkStatus } from "@apollo/client";
 import { useApolloClient, useMutation, useQuery } from "@apollo/client/react";
 import { Plus } from "lucide-react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { CardgroupForm } from "@/components/cardgroups/cardgroup-form";
 import { CardgroupListItem } from "@/components/cardgroups/cardgroup-list-item";
@@ -43,6 +44,8 @@ function CreateCardgroupSheetContent({
   onDirty: () => void;
 }) {
   const close = useFormSheetClose();
+  const t = useTranslations("Cardgroups");
+  const tCommon = useTranslations("Common");
 
   return (
     <div onInput={onDirty} className="space-y-4">
@@ -52,13 +55,9 @@ function CreateCardgroupSheetContent({
           data-testid="cardgroup-create-auth-error"
           className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
         >
-          <span>
-            {authError === "unauthenticated"
-              ? "Your session has expired. "
-              : "You do not have permission. "}
-          </span>
+          <span>{authError === "unauthenticated" ? t("sessionExpired") : t("noPermission")}</span>
           <Link href="/login" className="underline">
-            Sign in again
+            {t("signInAgain")}
           </Link>
           .
         </div>
@@ -82,7 +81,7 @@ function CreateCardgroupSheetContent({
         validationError={validationError}
         secondarySlot={
           <Button type="button" variant="outline" onClick={close}>
-            Cancel
+            {tCommon("cancel")}
           </Button>
         }
       />
@@ -106,6 +105,8 @@ function CreateCardgroupSheetContent({
  */
 export default function CardgroupsClient({ initialConnection }: CardgroupsClientProps) {
   const apollo = useApolloClient();
+  const t = useTranslations("Cardgroups");
+  const tCommon = useTranslations("Common");
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
@@ -166,7 +167,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
       case "rejected":
         // The drawer is modal, so surface a banner for both an unparseable
         // payload and a transport failure rather than failing silently.
-        setAddUnexpectedError("Something went wrong. Please try again.");
+        setAddUnexpectedError(tCommon("somethingWentWrong"));
         return;
       case "success":
         // The connection cache is updated inside useCreateCardgroup, so the new
@@ -257,7 +258,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
     });
     if (!snapshot) {
       console.warn("[cardgroups] handleDelete: cache miss on snapshot read", { id });
-      setDeleteCommitError("Could not delete cardgroup. Please reload and try again.");
+      setDeleteCommitError(t("deleteReloadError"));
       return;
     }
 
@@ -289,9 +290,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
         apollo.cache.gc();
       },
       onCommitFailed: (err) => {
-        setDeleteCommitError(
-          getBackendErrorBanner(err) ?? "Could not delete cardgroup. Please try again.",
-        );
+        setDeleteCommitError(getBackendErrorBanner(err) ?? t("deleteReloadError"));
       },
     });
   }
@@ -329,15 +328,13 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
             searchQuery,
             endCursor,
           });
-          setFetchMoreError(
-            getBackendErrorBanner(err) ?? "Could not load more cardgroups. Please try again.",
-          );
+          setFetchMoreError(getBackendErrorBanner(err) ?? t("fetchMoreError"));
         })
         .finally(() => {
           fetchingRef.current = false;
         });
     },
-    [fetchMore],
+    [fetchMore, t],
   );
 
   const requestNextPageFromObserver = useEffectEvent(() => {
@@ -365,8 +362,8 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
 
   return (
     <ListingPageShell
-      title="My cardgroups"
-      description="Browse and manage the cardgroups you have created."
+      title={t("myCardgroups")}
+      description={t("browseManage")}
       primaryActions={
         <Button
           type="button"
@@ -375,7 +372,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
           onClick={openAddSheet}
           data-testid="cardgroups-header-new-btn"
         >
-          <span>New cardgroup</span>
+          <span>{t("newCardgroup")}</span>
           <Plus aria-hidden="true" />
         </Button>
       }
@@ -383,7 +380,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
     >
       {initialLoading && (
         <p className="text-sm text-muted-foreground" data-testid="cardgroups-loading">
-          Loading...
+          {tCommon("loading")}
         </p>
       )}
 
@@ -392,14 +389,14 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
           className="flex flex-col items-center gap-3 py-8 text-center"
           data-testid="cardgroups-empty"
         >
-          <p className="text-sm text-muted-foreground">No cardgroups yet</p>
+          <p className="text-sm text-muted-foreground">{t("noCardgroupsYet")}</p>
           <Button
             type="button"
             variant="brand"
             onClick={openAddSheet}
             data-testid="cardgroups-empty-cta"
           >
-            <span>New cardgroup</span>
+            <span>{t("newCardgroup")}</span>
             <Plus aria-hidden="true" />
           </Button>
         </div>
@@ -407,7 +404,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
 
       {!initialLoading && edges.length === 0 && hasSearch && (
         <p className="text-sm text-muted-foreground" data-testid="cardgroups-empty-search">
-          No cardgroups match "{searchQuery}"
+          {t("noMatch", { query: searchQuery })}
         </p>
       )}
 
@@ -453,7 +450,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
               fetchNextPage({ hasNextPage, endCursor, searchQuery });
             }}
           >
-            Retry
+            {tCommon("retry")}
           </Button>
         </div>
       )}
@@ -463,12 +460,12 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
           className="mt-3 text-center text-xs text-muted-foreground"
           data-testid="cardgroups-loading-more"
         >
-          Loading more cardgroups...
+          {t("loadingMore")}
         </p>
       )}
 
       <FormSheet
-        title="New cardgroup"
+        title={t("newCardgroup")}
         open={addOpen}
         onOpenChange={(nextOpen) => {
           setAddOpen(nextOpen);
