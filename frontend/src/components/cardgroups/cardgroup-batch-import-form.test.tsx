@@ -2,7 +2,7 @@
 import { ApolloClient } from "@apollo/client";
 import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -10,6 +10,7 @@ import {
   ImportCardsDocument,
   ValidateCardImportDocument,
 } from "@/generated/graphql";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { CardgroupBatchImportForm, resolveStep1Button } from "./cardgroup-batch-import-form";
 
 const CARDGROUP_ID = "cg-1";
@@ -76,7 +77,7 @@ const INVALID_RESULT: MockedResponse["result"] = {
 function renderForm(mocks: MockedResponse[] = []) {
   const onImported = vi.fn();
   const onCancel = vi.fn();
-  const utils = render(
+  const utils = renderWithIntl(
     <MockedProvider mocks={mocks}>
       <CardgroupBatchImportForm
         cardgroupId={CARDGROUP_ID}
@@ -107,25 +108,25 @@ async function advanceToStep2(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("resolveStep1Button", () => {
-  it("empty: text blank -> Validate, no action, disabled", () => {
+  it("empty: text blank -> validate, no action, disabled", () => {
     expect(
       resolveStep1Button({ hasText: false, validating: false, result: null, isStale: false }),
-    ).toEqual({ label: "Validate", action: null, disabled: true });
+    ).toEqual({ labelKey: "validate", action: null, disabled: true });
   });
 
-  it("ready: text present, not yet validated -> Validate, validate action, enabled", () => {
+  it("ready: text present, not yet validated -> validate, validate action, enabled", () => {
     expect(
       resolveStep1Button({ hasText: true, validating: false, result: null, isStale: false }),
-    ).toEqual({ label: "Validate", action: "validate", disabled: false });
+    ).toEqual({ labelKey: "validate", action: "validate", disabled: false });
   });
 
-  it("validating: request in flight -> Validating..., no action, disabled", () => {
+  it("validating: request in flight -> validating, no action, disabled", () => {
     expect(
       resolveStep1Button({ hasText: true, validating: true, result: null, isStale: false }),
-    ).toEqual({ label: "Validating...", action: null, disabled: true });
+    ).toEqual({ labelKey: "validating", action: null, disabled: true });
   });
 
-  it("valid + fresh: -> Import, continue action, enabled", () => {
+  it("valid + fresh: -> import, continue action, enabled", () => {
     expect(
       resolveStep1Button({
         hasText: true,
@@ -133,10 +134,10 @@ describe("resolveStep1Button", () => {
         result: { valid: true, parsedCards: [{ front: "a", back: "b", line: 1 }], errors: [] },
         isStale: false,
       }),
-    ).toEqual({ label: "Import", action: "continue", disabled: false });
+    ).toEqual({ labelKey: "import", action: "continue", disabled: false });
   });
 
-  it("valid but stale (edited since validate): -> Validate, validate action, enabled", () => {
+  it("valid but stale (edited since validate): -> validate, validate action, enabled", () => {
     expect(
       resolveStep1Button({
         hasText: true,
@@ -144,10 +145,10 @@ describe("resolveStep1Button", () => {
         result: { valid: true, parsedCards: [{ front: "a", back: "b", line: 1 }], errors: [] },
         isStale: true,
       }),
-    ).toEqual({ label: "Validate", action: "validate", disabled: false });
+    ).toEqual({ labelKey: "validate", action: "validate", disabled: false });
   });
 
-  it("invalid: -> Validate (re-run), validate action, enabled", () => {
+  it("invalid: -> validate (re-run), validate action, enabled", () => {
     expect(
       resolveStep1Button({
         hasText: true,
@@ -155,7 +156,7 @@ describe("resolveStep1Button", () => {
         result: { valid: false, parsedCards: [], errors: [{ line: 1, message: "x" }] },
         isStale: false,
       }),
-    ).toEqual({ label: "Validate", action: "validate", disabled: false });
+    ).toEqual({ labelKey: "validate", action: "validate", disabled: false });
   });
 });
 
@@ -644,7 +645,7 @@ describe("CardgroupBatchImportForm footer layout", () => {
 
   it("step 1: clicking Back to Cardgroup is crash-free when onCancel is omitted", async () => {
     const user = userEvent.setup();
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[]}>
         <CardgroupBatchImportForm cardgroupId={CARDGROUP_ID} cardgroupName={CARDGROUP_NAME} />
       </MockedProvider>,

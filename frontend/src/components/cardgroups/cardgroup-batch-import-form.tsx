@@ -2,6 +2,7 @@
 
 import { useApolloClient, useLazyQuery, useMutation } from "@apollo/client/react";
 import { ChevronDown } from "lucide-react";
+import { useTranslations } from "next-intl";
 import type { JSX, ReactNode } from "react";
 import { useState } from "react";
 import { ImportCardsMutation, ValidateCardImportQuery } from "@/app/cardgroups/[id]/cards/queries";
@@ -48,14 +49,9 @@ function isWarningKind(kind: CardImportErrorKind | undefined): boolean {
  * Classify a raw Apollo error into a user-facing banner string, delegating to
  * the shared backend-error banner helper.
  */
-function classifyError(err: unknown): string {
+function classifyError(err: unknown, fallback: string): string {
   if (!err) return "";
-  return getBackendErrorBanner(err) ?? "An unexpected error occurred. Please try again.";
-}
-
-/** Pluralize a count's noun without a leading number. */
-function plural(n: number, singular: string, pluralForm = `${singular}s`): string {
-  return n === 1 ? singular : pluralForm;
+  return getBackendErrorBanner(err) ?? fallback;
 }
 
 type Step1ButtonState = {
@@ -79,8 +75,8 @@ type Step1ButtonAction = "validate" | "continue";
  * `{ action: null, disabled: false }` state unrepresentable.
  */
 type Step1ButtonSpec =
-  | { action: null; label: string; disabled: true }
-  | { action: Step1ButtonAction; label: string; disabled: false };
+  | { action: null; labelKey: "validate" | "validating"; disabled: true }
+  | { action: Step1ButtonAction; labelKey: "validate" | "import"; disabled: false };
 
 /**
  * Pure state machine for the step-1 forward button. A string discriminant for
@@ -92,15 +88,15 @@ type Step1ButtonSpec =
  */
 export function resolveStep1Button(state: Step1ButtonState): Step1ButtonSpec {
   if (!state.hasText) {
-    return { label: "Validate", action: null, disabled: true };
+    return { labelKey: "validate", action: null, disabled: true };
   }
   if (state.validating) {
-    return { label: "Validating...", action: null, disabled: true };
+    return { labelKey: "validating", action: null, disabled: true };
   }
   if (state.result?.valid === true && !state.isStale) {
-    return { label: "Import", action: "continue", disabled: false };
+    return { labelKey: "import", action: "continue", disabled: false };
   }
-  return { label: "Validate", action: "validate", disabled: false };
+  return { labelKey: "validate", action: "validate", disabled: false };
 }
 
 /** Quiet 2-segment progress bar showing the two import steps with a back affordance on step 2. */
@@ -110,15 +106,16 @@ function ImportStepper(props: {
   onBack: () => void;
 }): JSX.Element {
   const { current, importing, onBack } = props;
-  const caption = current === 1 ? "Paste & review" : "Import";
+  const t = useTranslations("BatchImport");
+  const caption = current === 1 ? t("pasteAndReview") : t("import");
   return (
-    <nav aria-label="Import steps" className="flex items-center gap-2">
+    <nav aria-label={t("importStepsAriaLabel")} className="flex items-center gap-2">
       {current === 2 ? (
         <button
           type="button"
           onClick={onBack}
           disabled={importing}
-          aria-label="Paste & review"
+          aria-label={t("pasteAndReview")}
           className="-my-2 py-2 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           <span className="block h-1 w-10 rounded-full bg-brand-primary" />
@@ -130,7 +127,7 @@ function ImportStepper(props: {
         className={cn("h-1 w-10 rounded-full", current === 2 ? "bg-brand-primary" : "bg-muted")}
       />
       <span className="ml-1 text-xs text-muted-foreground">{caption}</span>
-      <span className="sr-only">Step {current} of 2</span>
+      <span className="sr-only">{t("stepOf", { current })}</span>
     </nav>
   );
 }
@@ -147,6 +144,7 @@ function ErrorList(props: {
   role?: string;
 }): JSX.Element {
   const { errors, className, role } = props;
+  const t = useTranslations("BatchImport");
   return (
     <ul className={cn("space-y-1", className)} role={role}>
       {errors.map((err) => (
@@ -159,7 +157,7 @@ function ErrorList(props: {
               : "bg-destructive/10 text-destructive",
           )}
         >
-          <span className="font-medium">Line {err.line}:</span> {err.message}
+          <span className="font-medium">{t("errorLine", { line: err.line })}</span> {err.message}
         </li>
       ))}
     </ul>
@@ -172,15 +170,16 @@ function ErrorList(props: {
  */
 function ValidateResult(props: { result: ValidationResult }): JSX.Element {
   const { result } = props;
+  const t = useTranslations("BatchImport");
   const [open, setOpen] = useState<boolean>(!result.valid);
 
   let triggerLabel: string;
   if (result.valid) {
-    triggerLabel = `Show preview (${result.parsedCards.length})`;
+    triggerLabel = t("showPreview", { count: result.parsedCards.length });
   } else if (open) {
-    triggerLabel = "Hide errors";
+    triggerLabel = t("hideErrors");
   } else {
-    triggerLabel = `Show errors (${result.errors.length})`;
+    triggerLabel = t("showErrors", { count: result.errors.length });
   }
 
   return (
@@ -198,9 +197,15 @@ function ValidateResult(props: { result: ValidationResult }): JSX.Element {
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
                 <tr>
-                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Line</th>
-                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Front</th>
-                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Back</th>
+                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                    {t("previewLine")}
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                    {t("previewFront")}
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                    {t("previewBack")}
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -245,6 +250,7 @@ export function CardgroupBatchImportForm(props: {
   onCancel?: () => void;
 }): JSX.Element {
   const { cardgroupId, cardgroupName, onImported, onCancel } = props;
+  const t = useTranslations("BatchImport");
 
   const [step, setStep] = useState<1 | 2>(1);
   const [payloadText, setPayloadText] = useState<string>("");
@@ -280,10 +286,10 @@ export function CardgroupBatchImportForm(props: {
         setValidatedPayload(payloadText);
       }
       if (result.error) {
-        setBannerError(classifyError(result.error));
+        setBannerError(classifyError(result.error, t("unexpectedError")));
       }
     } catch (err) {
-      setBannerError(classifyError(err));
+      setBannerError(classifyError(err, t("unexpectedError")));
     }
   }
 
@@ -297,7 +303,7 @@ export function CardgroupBatchImportForm(props: {
       });
       const data = result.data?.importCards;
       if (!data) {
-        setBannerError("An unexpected error occurred. Please try again.");
+        setBannerError(t("unexpectedError"));
         return;
       }
       setImportResult(data);
@@ -324,7 +330,7 @@ export function CardgroupBatchImportForm(props: {
       // Partial failure (error rows present): keep the sheet open so the result
       // banner and error rows stay visible.
     } catch (err) {
-      setBannerError(classifyError(err));
+      setBannerError(classifyError(err, t("unexpectedError")));
     }
   }
 
@@ -378,10 +384,8 @@ export function CardgroupBatchImportForm(props: {
         <div className="space-y-4">
           <div className="space-y-2">
             <label htmlFor="batch-import-payload" className="block text-xs">
-              <span className="font-medium text-muted-foreground">Cards to import</span>
-              <span className="font-normal text-muted-foreground/70">
-                {" — separate each pair with a Tab"}
-              </span>
+              <span className="font-medium text-muted-foreground">{t("cardsToImport")}</span>
+              <span className="font-normal text-muted-foreground/70">{t("tabHint")}</span>
             </label>
             <Textarea
               id="batch-import-payload"
@@ -404,11 +408,8 @@ export function CardgroupBatchImportForm(props: {
               role="status"
             >
               {validationResult.valid
-                ? `✓ Valid — ${parsedCards.length} ${plural(parsedCards.length, "card")} parsed`
-                : `✕ Invalid — ${validationResult.errors.length} ${plural(
-                    validationResult.errors.length,
-                    "error",
-                  )}`}
+                ? t("validResult", { count: parsedCards.length })
+                : t("invalidResult", { count: validationResult.errors.length })}
             </div>
           )}
 
@@ -417,7 +418,7 @@ export function CardgroupBatchImportForm(props: {
           <WizardFooter
             left={
               <Button type="button" variant="ghost" onClick={() => onCancel?.()}>
-                Back to Cardgroup
+                {t("backToCardgroup")}
               </Button>
             }
             right={
@@ -427,7 +428,7 @@ export function CardgroupBatchImportForm(props: {
                 onClick={onStep1ButtonClick}
                 disabled={buttonSpec.disabled}
               >
-                {buttonSpec.label}
+                {t(buttonSpec.labelKey)}
               </Button>
             }
           />
@@ -439,18 +440,17 @@ export function CardgroupBatchImportForm(props: {
               <div role="status">
                 {importAllFailed ? (
                   <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                    Import failed: no cards persisted, {importErrorCount}{" "}
-                    {plural(importErrorCount, "error")}.
+                    {t("importFailed", { count: importErrorCount })}
                   </div>
                 ) : (
                   <div className="rounded-md bg-green-50 p-3 text-sm text-green-800">
-                    Import complete — {importResult.inserted} inserted, {importResult.updated}{" "}
-                    updated
-                    {importWarningCount > 0 &&
-                      `, ${importWarningCount} ${plural(importWarningCount, "warning")}`}
-                    {importErrorCount > 0 &&
-                      `, ${importErrorCount} ${plural(importErrorCount, "error")}`}
-                    .
+                    {t("importComplete", {
+                      inserted: importResult.inserted,
+                      updated: importResult.updated,
+                    })}
+                    {importWarningCount > 0 && t("withWarnings", { count: importWarningCount })}
+                    {importErrorCount > 0 && t("withErrors", { count: importErrorCount })}
+                    {"."}
                   </div>
                 )}
               </div>
@@ -458,12 +458,12 @@ export function CardgroupBatchImportForm(props: {
               <WizardFooter
                 left={
                   <Button type="button" variant="outline" onClick={goBackToStep1}>
-                    ← Back to edit
+                    {t("backToEdit")}
                   </Button>
                 }
                 right={
                   <Button type="button" variant="brand" onClick={() => onImported?.()}>
-                    Done
+                    {t("done")}
                   </Button>
                 }
               />
@@ -471,12 +471,9 @@ export function CardgroupBatchImportForm(props: {
           ) : (
             <>
               <h2 className="text-base font-semibold">
-                Import {parsedCards.length} {plural(parsedCards.length, "card")} into{" "}
-                {cardgroupName}?
+                {t("confirmHeading", { count: parsedCards.length, cardgroupName })}
               </h2>
-              <p className="text-sm text-muted-foreground">
-                New cards are inserted; existing fronts are updated.
-              </p>
+              <p className="text-sm text-muted-foreground">{t("confirmDesc")}</p>
               <WizardFooter
                 left={
                   <Button
@@ -485,14 +482,12 @@ export function CardgroupBatchImportForm(props: {
                     onClick={goBackToStep1}
                     disabled={importing}
                   >
-                    ← Back to edit
+                    {t("backToEdit")}
                   </Button>
                 }
                 right={
                   <Button type="button" variant="brand" onClick={handleImport} disabled={importing}>
-                    {importing
-                      ? "Importing..."
-                      : `Import ${parsedCards.length} ${plural(parsedCards.length, "card")}`}
+                    {importing ? t("importing") : t("importButton", { count: parsedCards.length })}
                   </Button>
                 }
               />
