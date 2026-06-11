@@ -8,7 +8,12 @@
     "undo": "元に戻す",
     "edit": "編集",
     "delete": "削除",
-    "somethingWentWrong": "エラーが発生しました。もう一度お試しください。"
+    "somethingWentWrong": "エラーが発生しました。もう一度お試しください。",
+    "discardChanges": "変更を破棄しますか？",
+    "keepEditing": "編集を続ける",
+    "discard": "破棄",
+    "cannotBeUndone": "この操作は元に戻せません。",
+    "deleteSelected": "選択を削除"
   },
   "Nav": {
     "cardgroups": "カードグループ",
@@ -18,7 +23,9 @@
     "users": "ユーザー",
     "roles": "ロール",
     "flamingoHome": "Flamingo ホーム",
-    "navigationMenu": "ナビゲーションメニュー"
+    "navigationMenu": "ナビゲーションメニュー",
+    "openMenu": "メニューを開く",
+    "primaryNavigation": "メインナビゲーション"
   },
   "Language": {
     "label": "言語",
@@ -53,7 +60,11 @@
     "practiceEmptyHeading": "今日はまだ練習したカードがありません",
     "practiceEmptyMessage": "まず学習セッションでカードを復習してから、練習しに戻ってきてください。",
     "practiceCompleteHeading": "練習完了",
-    "practiceCompleteMessage": "この練習ラウンドを終えました。もう一周したい場合はもう一度学習してください。進捗には影響しません。"
+    "practiceCompleteMessage": "この練習ラウンドを終えました。もう一周したい場合はもう一度学習してください。進捗には影響しません。",
+    "sessionComplete": "セッション完了",
+    "sessionCompleteMessage": "このバッチに期限切れのカードはありません。",
+    "reviewedCount": "{count, plural, other {このバッチで#枚のカードを復習しました。}}",
+    "refreshCards": "カードを更新"
   },
   "Cardgroups": {
     "updatedAt": "{date}に更新",
@@ -71,7 +82,24 @@
     "deleteAriaLabel": "カードグループ「{name}」を削除",
     "backLink": "← カードグループ",
     "welcomeHeading": "ようこそ！最初のカードグループを作成しましょう。",
-    "welcomeDesc": "カードグループには一緒に学習するカードをまとめます。いつでも追加できます。"
+    "welcomeDesc": "カードグループには一緒に学習するカードをまとめます。いつでも追加できます。",
+    "filterPlaceholder": "カードグループを絞り込む...",
+    "filterAriaLabel": "カードグループを絞り込む",
+    "cardgroupOptions": "カードグループのオプション",
+    "rename": "名前を変更",
+    "renameCardgroupTitle": "カードグループ名を変更",
+    "deleteCardgroupTitle": "カードグループを削除",
+    "deleteCardgroupDesc": "「{name}」とそのすべてのカードが完全に削除されます。この操作は元に戻せません。",
+    "pickerTitle": "カードグループを選択",
+    "pickerLoading": "読み込み中…",
+    "pickerFailed": "カードグループを読み込めませんでした",
+    "pickerNoCardgroups": "カードグループがまだありません。",
+    "createNewCardgroup": "新規カードグループを作成…",
+    "addMoreOptions": "追加オプション",
+    "addCardButton": "カードを追加 +",
+    "addACard": "カードを追加",
+    "batchImport": "一括インポート",
+    "nameLabel": "名前"
   },
   "Cards": {
     "addSomeCards": "新しいカードを追加して始めましょう。",
@@ -99,7 +127,14 @@
     "overwriting": "上書き中…",
     "overwriteFailed": "上書きに失敗しました。もう一度お試しください。",
     "selectCardgroupPrompt": "カードを追加するには上でカードグループを選択してください。",
-    "cardgroupLabel": "カードグループ"
+    "cardgroupLabel": "カードグループ",
+    "frontLabel": "表面",
+    "backLabel": "裏面",
+    "newCardTitle": "新しいカード",
+    "addCardSheetTitle": "カードを追加",
+    "selectedCount": "{count}件選択中",
+    "deleteCardsTitle": "{count}件のカードを削除しますか？",
+    "deleteConfirmCount": "{count}件を削除"
   },
   "BatchImport": {
     "cardsToImport": "インポートするカード",
@@ -215,6 +250,9 @@
     "rolesDescription": "ユーザーに割り当て可能なロールを管理します。",
     "editRoleTitle": "ロールを編集",
     "createRole": "作成",
-    "deleteAuthFailed": "セッションの有効期限が切れました。再度ログインしてください。"
+    "deleteAuthFailed": "セッションの有効期限が切れました。再度ログインしてください。",
+    "systemRole": "システムロール",
+    "roleNameLabel": "名前",
+    "roleNamePlaceholder": "new-role-name"
   }
 }
