@@ -3,6 +3,7 @@
 import { BookOpen, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useEffect, useRef } from "react";
 import { LogoutButton } from "@/app/_components/logout-button";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
@@ -63,6 +64,7 @@ function resolveActiveItem(pathname: string): ActiveItem {
 }
 
 export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
+  const t = useTranslations("Nav");
   const pathname = usePathname();
   const { state, setOpen, isMobile } = useSidebar();
 
@@ -127,7 +129,7 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
     >
       <SidebarHeader>
         <div className="flex size-8 items-center justify-center">
-          <Link href="/" aria-label="Flamingo home" className="shrink-0 leading-none">
+          <Link href="/" aria-label={t("flamingoHome")} className="shrink-0 leading-none">
             <FlamingoMark className="size-7" aria-hidden="true" />
           </Link>
         </div>
@@ -142,14 +144,14 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
                   <SidebarMenuButton
                     asChild
                     isActive={active === "cardgroups"}
-                    tooltip="Cardgroups"
+                    tooltip={t("cardgroups")}
                   >
                     <Link
                       href="/cardgroups"
                       aria-current={active === "cardgroups" ? "page" : undefined}
                     >
                       <BookOpen aria-hidden="true" />
-                      <span>Cardgroups</span>
+                      <span>{t("cardgroups")}</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -162,10 +164,14 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
                     const Icon = item.icon;
                     return (
                       <SidebarMenuItem key={item.href}>
-                        <SidebarMenuButton asChild isActive={isItemActive} tooltip={item.label}>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={isItemActive}
+                          tooltip={t(item.labelKey)}
+                        >
                           <Link href={item.href} aria-current={isItemActive ? "page" : undefined}>
                             <Icon aria-hidden="true" />
-                            <span>{item.label}</span>
+                            <span>{t(item.labelKey)}</span>
                           </Link>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
@@ -181,10 +187,10 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
         <SidebarFooter>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={profileActive} tooltip="Profile">
+              <SidebarMenuButton asChild isActive={profileActive} tooltip={t("profile")}>
                 <Link href="/profile" aria-current={profileActive ? "page" : undefined}>
                   <User aria-hidden="true" />
-                  <span>Profile</span>
+                  <span>{t("profile")}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -206,7 +212,7 @@ export function GlobalRail({ user, isAdmin }: GlobalRailProps) {
         <SidebarFooter>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild tooltip="Sign in">
+              <SidebarMenuButton asChild tooltip={t("signIn")}>
                 <HeaderSignInLink />
               </SidebarMenuButton>
             </SidebarMenuItem>

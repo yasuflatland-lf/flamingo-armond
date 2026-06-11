@@ -1,14 +1,13 @@
+"use client";
+
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 
-const DEFAULT_HEADING = "Today's learning is complete";
-const DEFAULT_MESSAGE =
-  "All cards for this group have been reviewed. Come back when the next review is due.";
-
 type Props = {
-  /** Heading copy. Defaults to the end-of-daily-learn message. */
+  /** Heading copy. Falls back to the `Learn.completeHeading` message when omitted. */
   heading?: string;
-  /** Body copy. Defaults to the end-of-daily-learn message. */
+  /** Body copy. Falls back to the `Learn.completeMessage` message when omitted. */
   message?: string;
   /**
    * When provided, render a primary "Study again" button above the always-present
@@ -18,24 +17,21 @@ type Props = {
   onStudyAgain?: () => void;
 };
 
-export function AllCaughtUp({
-  heading = DEFAULT_HEADING,
-  message = DEFAULT_MESSAGE,
-  onStudyAgain,
-}: Props) {
+export function AllCaughtUp({ heading, message, onStudyAgain }: Props) {
+  const t = useTranslations("Learn");
   return (
     <section className="flex flex-1 items-center justify-center">
       <div className="w-full max-w-md rounded-lg border border-dashed border-border p-8 text-center">
-        <h1 className="mb-2 text-xl font-semibold">{heading}</h1>
-        <p className="mb-6 text-sm text-muted-foreground">{message}</p>
+        <h1 className="mb-2 text-xl font-semibold">{heading ?? t("completeHeading")}</h1>
+        <p className="mb-6 text-sm text-muted-foreground">{message ?? t("completeMessage")}</p>
         <div className="flex flex-col items-center gap-3">
           {onStudyAgain ? (
             <Button type="button" variant="brand" onClick={onStudyAgain}>
-              Study again
+              {t("studyAgain")}
             </Button>
           ) : null}
           <Button asChild variant={onStudyAgain ? "outline" : "brand"}>
-            <Link href="/cardgroups">Back to cardgroups</Link>
+            <Link href="/cardgroups">{t("backToCardgroups")}</Link>
           </Button>
         </div>
       </div>

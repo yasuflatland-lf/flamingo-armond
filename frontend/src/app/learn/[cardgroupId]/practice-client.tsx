@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@apollo/client/react";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PracticeTodaysCardsQuery as PracticeTodaysCardsDocument } from "@/app/learn/queries";
 import { AllCaughtUp } from "@/components/learn/all-caught-up";
@@ -17,12 +18,9 @@ import { advancePracticeQueue, outcomeFromDirection } from "./practice-queue";
 
 type PracticeCard = PracticeTodaysCardsQuery["practiceTodaysCards"][number];
 
-/**
- * Persistent banner shown the whole time practice mode is active. Reminds the
- * learner that practice is FSRS-safe: swipes are not recorded and have no
- * impact on the card's review schedule.
- */
-const PRACTICE_BANNER = "Practice — swipes aren't recorded";
+// A persistent banner (Learn.practiceBanner) is shown the whole time practice
+// mode is active. It reminds the learner that practice is FSRS-safe: swipes are
+// not recorded and have no impact on the card's review schedule.
 
 /**
  * FSRS-safe practice mode.
@@ -45,6 +43,7 @@ const PRACTICE_BANNER = "Practice — swipes aren't recorded";
  * screen, so the button never looks like a no-op.
  */
 export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
+  const t = useTranslations("Learn");
   const { data, loading, error, refetch } = useQuery(PracticeTodaysCardsDocument, {
     variables: { cardgroupId },
     fetchPolicy: "network-only",
@@ -166,12 +165,7 @@ export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
   // nothing to practice. Terminal state — no "Study again" (a refetch would
   // return the same empty pool).
   if ((pool?.length ?? 0) === 0) {
-    return (
-      <AllCaughtUp
-        heading="No cards practiced today yet"
-        message="Review some cards in a learning session first, then come back to practice them."
-      />
-    );
+    return <AllCaughtUp heading={t("practiceEmptyHeading")} message={t("practiceEmptyMessage")} />;
   }
 
   // Round complete: the pool was non-empty but every card has been retired
@@ -179,8 +173,8 @@ export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
   if (queue.length === 0) {
     return (
       <AllCaughtUp
-        heading="Practice complete"
-        message="You finished this practice round. Study again for another pass — your progress is never affected."
+        heading={t("practiceCompleteHeading")}
+        message={t("practiceCompleteMessage")}
         onStudyAgain={studyAgain}
       />
     );
@@ -192,7 +186,7 @@ export function PracticeClient({ cardgroupId }: { cardgroupId: string }) {
         className="mx-auto w-full max-w-xl rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground"
         role="status"
       >
-        {PRACTICE_BANNER}
+        {t("practiceBanner")}
       </div>
 
       <div className="relative flex min-h-0 items-center justify-center overflow-hidden">

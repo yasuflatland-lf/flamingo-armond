@@ -3,11 +3,12 @@ import type { ComponentType } from "react";
 
 export type AdminNavItem = {
   href: "/admin/users" | "/admin/roles";
-  label: "Users" | "Roles";
+  /** Key into the `Nav` message namespace — resolved via `useTranslations("Nav")`. */
+  labelKey: "users" | "roles";
   icon: ComponentType<{ className?: string }>;
 };
 
 export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
-  { href: "/admin/users", label: "Users", icon: Users },
-  { href: "/admin/roles", label: "Roles", icon: ShieldCheck },
+  { href: "/admin/users", labelKey: "users", icon: Users },
+  { href: "/admin/roles", labelKey: "roles", icon: ShieldCheck },
 ] as const;

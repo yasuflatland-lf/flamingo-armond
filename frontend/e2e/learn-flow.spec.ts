@@ -47,7 +47,11 @@ test("swipes easy cards and advances through the deck", async ({ page }) => {
 
   // The rating buttons moved out of the swipe card into LearnActionBar
   // (sticky bar below the deck), so click at page scope, not inside activeCard.
-  const easyButton = page.getByRole("button", { name: "Rate as Easy" });
+  // Select by the stable `aria-keyshortcuts` attribute rather than the accessible
+  // name: the rating label is now localized and Playwright runs with
+  // `locale: "ja-JP"`, so the rendered name is Japanese. The ArrowRight shortcut
+  // (the "Easy" rating) is locale-independent.
+  const easyButton = page.locator('button[aria-keyshortcuts="ArrowRight"]');
 
   const seen: string[] = [];
   for (let i = 0; i < 3; i += 1) {

@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { LearnActionBar } from "./learn-action-bar";
 
 describe("<LearnActionBar>", () => {
   it("renders the three rating buttons with accessible labels and shortcuts but no visible text labels", () => {
-    render(<LearnActionBar onRate={vi.fn()} />);
+    renderWithIntl(<LearnActionBar onRate={vi.fn()} />);
 
     expect(screen.getByRole("button", { name: "Rate as Again" })).toHaveAttribute(
       "aria-keyshortcuts",
@@ -34,7 +35,7 @@ describe("<LearnActionBar>", () => {
   ] as const)("calls onRate with %s direction", async (name, direction) => {
     const user = userEvent.setup();
     const onRate = vi.fn();
-    render(<LearnActionBar onRate={onRate} />);
+    renderWithIntl(<LearnActionBar onRate={onRate} />);
 
     await user.click(screen.getByRole("button", { name }));
 
@@ -44,7 +45,7 @@ describe("<LearnActionBar>", () => {
   it("disables all rating buttons and ignores clicks while disabled", async () => {
     const user = userEvent.setup();
     const onRate = vi.fn();
-    render(<LearnActionBar onRate={onRate} disabled />);
+    renderWithIntl(<LearnActionBar onRate={onRate} disabled />);
 
     const again = screen.getByRole("button", { name: "Rate as Again" });
     const hard = screen.getByRole("button", { name: "Rate as Hard" });
@@ -63,7 +64,7 @@ describe("<LearnActionBar>", () => {
 
   it("keeps tab order as Again, Hard, Easy", async () => {
     const user = userEvent.setup();
-    render(<LearnActionBar onRate={vi.fn()} />);
+    renderWithIntl(<LearnActionBar onRate={vi.fn()} />);
 
     await user.tab();
     expect(screen.getByRole("button", { name: "Rate as Again" })).toHaveFocus();
