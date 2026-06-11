@@ -2,10 +2,9 @@
 
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
-import { NextIntlClientProvider } from "next-intl";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AdminCreateRoleDocument,
@@ -14,7 +13,7 @@ import {
   AdminUpdateRoleDocument,
 } from "@/generated/graphql";
 import { UndoDeleteProvider } from "@/lib/undo-delete";
-import enMessages from "../../../../messages/en.json";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { AdminRolesClient, type RoleItem } from "./admin-roles-client";
 
 // ---------------------------------------------------------------------------
@@ -79,13 +78,11 @@ const ADMIN_ROLE: RoleItem = { id: "r-admin", name: "admin" };
 // ---------------------------------------------------------------------------
 
 function renderRoles(roles: RoleItem[], mocks: unknown[] = []) {
-  render(
+  renderWithIntl(
     <MockedProvider mocks={mocks as never}>
-      <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
-        <UndoDeleteProvider>
-          <AdminRolesClient initialRoles={roles} />
-        </UndoDeleteProvider>
-      </NextIntlClientProvider>
+      <UndoDeleteProvider>
+        <AdminRolesClient initialRoles={roles} />
+      </UndoDeleteProvider>
     </MockedProvider>,
   );
 }
@@ -118,13 +115,11 @@ afterEach(() => {
 
 describe("AdminRolesClient", () => {
   it("wires the ListingPageShell with title, description, and New role CTA", () => {
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[]}>
-        <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
-          <UndoDeleteProvider>
-            <AdminRolesClient initialRoles={[]} />
-          </UndoDeleteProvider>
-        </NextIntlClientProvider>
+        <UndoDeleteProvider>
+          <AdminRolesClient initialRoles={[]} />
+        </UndoDeleteProvider>
       </MockedProvider>,
     );
 

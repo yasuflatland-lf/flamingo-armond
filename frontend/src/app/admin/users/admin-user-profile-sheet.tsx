@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation } from "@apollo/client/react";
+import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
@@ -22,19 +23,6 @@ type Props = {
 const DISPLAY_NAME_MAX = 50;
 const BIO_MAX = 500;
 
-const ERR_FORBIDDEN = "You do not have permission.";
-const ERR_UNAUTHENTICATED = "Your session has expired. Sign in again.";
-const ERR_UNEXPECTED = "An unexpected error occurred. Please try again.";
-const ERR_SOMETHING_WRONG = "Something went wrong. Please try again.";
-const ERR_CONCURRENT = "This user was changed by someone else. Reload and try again.";
-
-/** Pick the user-facing message for a thrown mutation error. */
-function pickAuthErrorMessage(codes: readonly string[]): string {
-  if (codes.includes("FORBIDDEN")) return ERR_FORBIDDEN;
-  if (codes.includes("UNAUTHENTICATED")) return ERR_UNAUTHENTICATED;
-  return ERR_UNEXPECTED;
-}
-
 function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
   if (a.size !== b.size) return false;
   for (const value of a) {
@@ -53,6 +41,8 @@ export function AdminUserProfileSheet({
   onSaved,
   onReloadRequested,
 }: Props) {
+  const t = useTranslations("Admin");
+  const tCommon = useTranslations("Common");
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [saveError, setSaveError] = useState("");
@@ -106,11 +96,11 @@ export function AdminUserProfileSheet({
   function validate(): string {
     if (!profileDirty) return "";
     const trimmed = displayName.trim();
-    if (trimmed.length < 1) return "Display name is required.";
+    if (trimmed.length < 1) return t("displayNameRequired");
     if (trimmed.length > DISPLAY_NAME_MAX) {
-      return `Display name must be at most ${DISPLAY_NAME_MAX} characters.`;
+      return t("displayNameTooLong", { max: DISPLAY_NAME_MAX });
     }
-    if (bio.length > BIO_MAX) return `Bio must be at most ${BIO_MAX} characters.`;
+    if (bio.length > BIO_MAX) return t("bioTooLong", { max: BIO_MAX });
     return "";
   }
 
@@ -146,7 +136,7 @@ export function AdminUserProfileSheet({
         case "ConcurrentUpdateError":
           // The banner survives the same-id reload triggered here — see the
           // form-sync effect's last-synced-id guard.
-          setSaveError(ERR_CONCURRENT);
+          setSaveError(t("concurrentError"));
           onReloadRequested?.();
           return;
         default:
@@ -154,7 +144,7 @@ export function AdminUserProfileSheet({
             userId: user.id,
             typename,
           });
-          setSaveError(ERR_SOMETHING_WRONG);
+          setSaveError(tCommon("somethingWentWrong"));
       }
     } catch (err) {
       const codes = liftGraphQLCodes(err);
@@ -163,7 +153,12 @@ export function AdminUserProfileSheet({
         name: err instanceof Error ? err.name : "unknown",
         codes,
       });
-      setSaveError(pickAuthErrorMessage(codes));
+      const msg = codes.includes("FORBIDDEN")
+        ? t("forbidden")
+        : codes.includes("UNAUTHENTICATED")
+          ? t("unauthenticated")
+          : t("unexpectedError");
+      setSaveError(msg);
     }
   }
 
@@ -184,7 +179,7 @@ export function AdminUserProfileSheet({
     <FormSheet
       open={open}
       onOpenChange={handleOpenChange}
-      title="Edit user"
+      title={t("editUserTitle")}
       size="md"
       submitting={saving}
       dirty={dirty}
@@ -247,13 +242,16 @@ function AdminUserProfileSheetBody({
   onRoleToggle: (roleId: string) => void;
   onSave: () => void;
 }) {
+  const t = useTranslations("Admin");
+  const tNav = useTranslations("Nav");
+  const tCommon = useTranslations("Common");
   const close = useFormSheetClose();
 
   return (
     <div className="space-y-6">
       {loading && (
         <p className="text-sm text-muted-foreground" data-testid="admin-user-sheet-loading">
-          Loading user...
+          {t("loadingUser")}
         </p>
       )}
 
@@ -265,7 +263,7 @@ function AdminUserProfileSheetBody({
 
       {open && !loading && !queryError && !user && (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-          User not found.
+          {t("userNotFound")}
         </div>
       )}
 
@@ -279,7 +277,7 @@ function AdminUserProfileSheetBody({
         <>
           <div className="space-y-2">
             <label htmlFor="admin-user-display-name" className="block text-sm font-medium">
-              Display name
+              {t("displayNameLabel")}
             </label>
             <input
               id="admin-user-display-name"
@@ -298,7 +296,7 @@ function AdminUserProfileSheetBody({
 
           <div className="space-y-2">
             <label htmlFor="admin-user-bio" className="block text-sm font-medium">
-              Bio
+              {t("bioLabel")}
             </label>
             <textarea
               id="admin-user-bio"
@@ -309,7 +307,7 @@ function AdminUserProfileSheetBody({
               rows={4}
               maxLength={BIO_MAX}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              placeholder="Optional bio"
+              placeholder={t("bioPlaceholder")}
             />
             <p className="text-xs text-muted-foreground">
               {bio.length}/{BIO_MAX}
@@ -317,9 +315,9 @@ function AdminUserProfileSheetBody({
           </div>
 
           <div className="space-y-3">
-            <p className="text-sm font-medium">Roles</p>
+            <p className="text-sm font-medium">{tNav("roles")}</p>
             {allRoles.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No roles available.</p>
+              <p className="text-xs text-muted-foreground">{t("noRolesAvailable")}</p>
             ) : (
               <div className="grid gap-2">
                 {allRoles.map((role) => {
@@ -347,10 +345,10 @@ function AdminUserProfileSheetBody({
 
           <div className="flex items-center gap-2">
             <Button type="button" variant="brand" onClick={onSave} disabled={saving}>
-              {saving ? "Saving..." : "Save changes"}
+              {saving ? tCommon("saving") : t("saveChanges")}
             </Button>
             <Button type="button" variant="outline" onClick={close}>
-              Cancel
+              {tCommon("cancel")}
             </Button>
           </div>
         </>
