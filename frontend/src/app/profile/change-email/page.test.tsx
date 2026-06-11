@@ -27,7 +27,18 @@ vi.mock("./change-email-client", () => ({
   ),
 }));
 
+// next-intl/server — the page resolves the Profile namespace via getTranslations.
+// Back the mock with createTranslator + the real en catalog so t() produces the
+// original English heading copy, keeping any string assertions valid.
+vi.mock("next-intl/server", () => ({
+  getTranslations: vi.fn(async (namespace: "Profile") =>
+    createTranslator({ locale: "en", messages: enMessages, namespace }),
+  ),
+}));
+
 import { headers } from "next/headers";
+import { createTranslator } from "next-intl";
+import enMessages from "../../../../messages/en.json";
 import ChangeEmailPage from "./page";
 
 describe("ChangeEmailPage — auth gate", () => {

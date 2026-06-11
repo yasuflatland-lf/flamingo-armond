@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
 
 const mockUpdateUser = vi.fn();
 vi.mock("@/lib/supabase/client", () => ({
@@ -21,7 +22,7 @@ afterEach(() => {
 
 describe("<ChangeEmailClient>", () => {
   it("S1 renders the current email and a new email input", () => {
-    render(<ChangeEmailClient currentEmail="alice@example.com" />);
+    renderWithIntl(<ChangeEmailClient currentEmail="alice@example.com" />);
 
     expect(screen.getByText("alice@example.com")).toBeInTheDocument();
     expect(screen.getByLabelText(/new email/i)).toBeInTheDocument();
@@ -31,7 +32,7 @@ describe("<ChangeEmailClient>", () => {
     const user = userEvent.setup();
     mockUpdateUser.mockResolvedValue({ data: { user: {} }, error: null });
 
-    render(<ChangeEmailClient currentEmail="alice@example.com" />);
+    renderWithIntl(<ChangeEmailClient currentEmail="alice@example.com" />);
 
     const input = screen.getByLabelText(/new email/i);
     await user.type(input, "bob@example.com");
@@ -57,7 +58,7 @@ describe("<ChangeEmailClient>", () => {
       error: { name: "AuthApiError", message: "Email rate limit exceeded" },
     });
 
-    render(<ChangeEmailClient currentEmail="alice@example.com" />);
+    renderWithIntl(<ChangeEmailClient currentEmail="alice@example.com" />);
 
     const input = screen.getByLabelText(/new email/i);
     await user.type(input, "bob@example.com");
@@ -83,7 +84,7 @@ describe("<ChangeEmailClient>", () => {
       error: { name: "AuthApiError", message: "User already registered" },
     });
 
-    render(<ChangeEmailClient currentEmail="alice@example.com" />);
+    renderWithIntl(<ChangeEmailClient currentEmail="alice@example.com" />);
 
     const input = screen.getByLabelText(/new email/i);
     await user.type(input, "bob@example.com");
@@ -106,7 +107,7 @@ describe("<ChangeEmailClient>", () => {
       error: { name: "AuthApiError", message: "some unmapped error xyz" },
     });
 
-    render(<ChangeEmailClient currentEmail="alice@example.com" />);
+    renderWithIntl(<ChangeEmailClient currentEmail="alice@example.com" />);
 
     const input = screen.getByLabelText(/new email/i);
     await user.type(input, "bob@example.com");
@@ -131,7 +132,7 @@ describe("<ChangeEmailClient>", () => {
     const transportError = Object.assign(new Error("network down"), { name: "FetchError" });
     mockUpdateUser.mockRejectedValue(transportError);
 
-    render(<ChangeEmailClient currentEmail="alice@example.com" />);
+    renderWithIntl(<ChangeEmailClient currentEmail="alice@example.com" />);
 
     const input = screen.getByLabelText(/new email/i);
     await user.type(input, "bob@example.com");
@@ -152,7 +153,7 @@ describe("<ChangeEmailClient>", () => {
     // Never-resolving promise keeps loading=true for the duration of the assertion.
     mockUpdateUser.mockReturnValue(new Promise<never>(() => {}));
 
-    render(<ChangeEmailClient currentEmail="alice@example.com" />);
+    renderWithIntl(<ChangeEmailClient currentEmail="alice@example.com" />);
 
     const input = screen.getByLabelText(/new email/i);
     await user.type(input, "bob@example.com");
@@ -167,7 +168,7 @@ describe("<ChangeEmailClient>", () => {
   });
 
   it("S4 Cancel button links to /profile", () => {
-    render(<ChangeEmailClient currentEmail="alice@example.com" />);
+    renderWithIntl(<ChangeEmailClient currentEmail="alice@example.com" />);
 
     const cancelLink = screen.getByRole("link", { name: /cancel/i });
     expect(cancelLink).toHaveAttribute("href", "/profile");

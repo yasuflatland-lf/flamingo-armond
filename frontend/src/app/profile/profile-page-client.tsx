@@ -54,6 +54,7 @@ function ProfileSheetBody({
 const PROFILE_SHEET_SENTINEL_ID = "self";
 
 export function ProfilePageClient({ email, initial }: Props) {
+  const t = useTranslations("Profile");
   const tSettings = useTranslations("Settings");
   const router = useRouter();
   const sheet = useSheetSearchParam();
@@ -102,23 +103,23 @@ export function ProfilePageClient({ email, initial }: Props) {
         <section className="flex flex-wrap items-start gap-4 border-b pb-6">
           <div className="min-w-0 flex-1 space-y-3">
             <div>
-              <h1 className="text-2xl font-semibold">Profile</h1>
-              <p className="text-sm text-muted-foreground">Read-only summary</p>
+              <h1 className="text-2xl font-semibold">{t("title")}</h1>
+              <p className="text-sm text-muted-foreground">{t("readOnlySummary")}</p>
             </div>
             <dl className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-1">
-                <dt className="text-sm font-medium text-muted-foreground">Display name</dt>
-                <dd className="break-words text-sm">{initial.displayName || "Not set"}</dd>
+                <dt className="text-sm font-medium text-muted-foreground">{t("displayName")}</dt>
+                <dd className="break-words text-sm">{initial.displayName || t("notSet")}</dd>
               </div>
               <div className="space-y-1">
-                <dt className="text-sm font-medium text-muted-foreground">Email</dt>
+                <dt className="text-sm font-medium text-muted-foreground">{t("email")}</dt>
                 <dd className="break-words text-sm">
-                  {email ?? <span className="italic">No email on this account</span>}
+                  {email ?? <span className="italic">{t("noEmail")}</span>}
                 </dd>
               </div>
               <div className="space-y-1">
-                <dt className="text-sm font-medium text-muted-foreground">Bio</dt>
-                <dd className="break-words text-sm">{initial.bio || "Not set"}</dd>
+                <dt className="text-sm font-medium text-muted-foreground">{t("bio")}</dt>
+                <dd className="break-words text-sm">{initial.bio || t("notSet")}</dd>
               </div>
             </dl>
           </div>
@@ -128,7 +129,7 @@ export function ProfilePageClient({ email, initial }: Props) {
             onClick={() => sheet.open({ mode: "edit", id: PROFILE_SHEET_SENTINEL_ID })}
           >
             <Pencil className="h-4 w-4" />
-            Edit profile
+            {t("editProfile")}
           </Button>
         </section>
 
@@ -144,7 +145,7 @@ export function ProfilePageClient({ email, initial }: Props) {
       <FormSheet
         open={open}
         onOpenChange={handleSheetOpenChange}
-        title="Edit profile"
+        title={t("editProfile")}
         dirty={dirty}
         submitting={submitting}
         size="md"
