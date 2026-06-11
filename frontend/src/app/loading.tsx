@@ -12,8 +12,7 @@ import { BrandSplash } from "@/components/pwa/brand-splash";
  * or black screen.
  *
  * It also backs any descendant route that lacks its own `loading.tsx`; routes
- * that ship a skeleton (cardgroups, learn, admin, cards/new) keep theirs, since
- * the nearest boundary wins.
+ * that ship their own skeleton keep theirs, since the nearest boundary wins.
  */
 export default function Loading() {
   return <BrandSplash label="Loading" />;

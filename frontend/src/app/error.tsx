@@ -23,9 +23,10 @@ type RootErrorProps = {
  */
 export default function RootError({ error, reset }: RootErrorProps) {
   useEffect(() => {
-    // Scope prefix for log streams. Log the error name + digest only, never the
-    // message (which may carry user-supplied content) — mirrors the middleware
-    // and global-error boundaries.
+    // Scope prefix for log streams. Log the error name + digest only — never the
+    // message, which may carry user-supplied content (the middleware redacts the
+    // message the same way). The digest correlates to the server-side log that
+    // does carry the full message.
     console.error("[error]", { name: error.name, digest: error.digest });
   }, [error]);
 

@@ -32,4 +32,11 @@ describe("<BrandSplash>", () => {
     rerender(<BrandSplash label="Loading" spin={false} />);
     expect(container.querySelector("svg")).not.toHaveClass("motion-safe:animate-spin");
   });
+
+  it("marks the donut decorative with aria-hidden so it is not announced", () => {
+    const { container } = render(<BrandSplash label="Loading" />);
+    // The status region already names the splash "Loading"; the mark must stay
+    // out of the accessibility tree to avoid double-announcing.
+    expect(container.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+  });
 });
