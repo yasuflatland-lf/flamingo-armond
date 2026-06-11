@@ -36,6 +36,7 @@ The frontend package manager is **pnpm** (pinned via `package.json` engines + `p
 - [`docs/frontend/csp.md`](../docs/frontend/csp.md) — CSP builders, middleware nonce flow, static headers, and violation reporting.
 - [`docs/frontend/pwa.md`](../docs/frontend/pwa.md) — Installable PWA, static service worker, auth-safe fetch guards, and version-stamped update propagation.
 - [`docs/frontend/profile-page-profile.md`](../docs/frontend/profile-page-profile.md) — `/profile` RSC + client form.
+- [`docs/frontend/i18n.md`](../docs/frontend/i18n.md) — next-intl (en/ja), cookie locale resolution, message catalogs, `AppConfig` augmentation, and the `renderWithIntl` test harness.
 - [`docs/frontend/shadcnui.md`](../docs/frontend/shadcnui.md) — Committed `components.json` and `cn()` helper.
 - [`docs/frontend/backend-error-code-contract.md`](../docs/frontend/backend-error-code-contract.md) — `extensions.code` handlers per layer.
 - [`docs/frontend/shared-helper-modules.md`](../docs/frontend/shared-helper-modules.md) — Field-error / banner / redirect / format helpers.

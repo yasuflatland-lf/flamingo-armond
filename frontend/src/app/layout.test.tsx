@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { beforeAll, describe, expect, test, vi } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Module mocks — must be declared before any import of the module under test.
@@ -53,11 +53,28 @@ vi.mock("@vercel/speed-insights/next", () => ({
   SpeedInsights: () => null,
 }));
 
+// next-intl — the layout reads the active locale and wraps the tree in the
+// client provider. Stub both so RootLayout/generateMetadata run without the
+// Next.js request context. The provider is a passthrough so findElement can
+// still recurse into its children to locate AuthShell/Providers.
+vi.mock("next-intl", () => ({
+  NextIntlClientProvider: function NextIntlClientProvider(props: { children?: React.ReactNode }) {
+    return props as unknown as React.ReactElement;
+  },
+}));
+vi.mock("next-intl/server", () => ({
+  getLocale: vi.fn(() => Promise.resolve("en")),
+  getTranslations: vi.fn(() =>
+    Promise.resolve((key: string) => (key === "description" ? "Swiping flashcard app." : key)),
+  ),
+}));
+
 // ---------------------------------------------------------------------------
 // Import after mocks are registered.
 // ---------------------------------------------------------------------------
 
-import RootLayout, { metadata, viewport } from "@/app/layout";
+import { getLocale } from "next-intl/server";
+import RootLayout, { generateMetadata, viewport } from "@/app/layout";
 
 // ---------------------------------------------------------------------------
 // Helper: recursive element finder
@@ -138,6 +155,17 @@ describe("RootLayout — structural branch selection", () => {
     // Anonymous classification: null user, no admin hint.
     expect(authShellEl?.props?.user).toBeNull();
     expect(authShellEl?.props?.isAdmin).toBe(false);
+  });
+
+  // The root <html> lang attribute must track the locale resolved by next-intl
+  // (src/i18n/request.ts), not a hardcoded "en".
+  test("sets <html lang> to the active locale", async () => {
+    vi.mocked(getLocale).mockResolvedValueOnce("ja");
+    mockGetHeader.mockReturnValue(null);
+
+    const tree = (await RootLayout({ children: <div /> })) as { props: { lang: string } };
+
+    expect(tree.props.lang).toBe("ja");
   });
 
   // Case: default route — the middleware-forwarded identity headers reach
@@ -243,6 +271,14 @@ describe("RootLayout — structural branch selection", () => {
 });
 
 describe("root metadata", () => {
+  // metadata is now produced by the async generateMetadata (it reads the active
+  // locale + Meta.description via next-intl), so resolve it once before the
+  // assertions below.
+  let metadata: Awaited<ReturnType<typeof generateMetadata>>;
+  beforeAll(async () => {
+    metadata = await generateMetadata();
+  });
+
   // Pins the SEO surface: metadataBase resolves relative OG/canonical URLs,
   // the title template appends the site name to per-page titles, and the
   // canonical alternate marks the public landing surface as the only
@@ -273,6 +309,12 @@ describe("root metadata", () => {
       locale: "en_US",
       images: ["/opengraph-image"],
     });
+  });
+
+  test("maps the active locale to its Open Graph locale (ja -> ja_JP)", async () => {
+    vi.mocked(getLocale).mockResolvedValueOnce("ja");
+    const jaMetadata = await generateMetadata();
+    expect(jaMetadata.openGraph).toMatchObject({ locale: "ja_JP" });
   });
 
   test("carries the Twitter Card fields with the generated OG image", () => {

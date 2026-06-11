@@ -5,4 +5,12 @@ onlyBuiltDependencies:
   - sharp
 
 allowBuilds:
+  # next-intl@4 declares @swc/core and @parcel/watcher as direct dependencies
+  # (@parcel/watcher also enters via @graphql-codegen/cli). We do not run the SWC
+  # message-extraction plugin (next-intl-swc-plugin-extractor) or @parcel/watcher's
+  # native file watcher, so skip their build scripts. Decided explicitly so
+  # `pnpm install` does not fail on ignored builds. createNextIntlPlugin() in
+  # next.config.ts is the unrelated request-config plugin and needs no native build.
+  "@parcel/watcher": false
+  "@swc/core": false
   sharp: true
