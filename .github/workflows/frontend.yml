@@ -115,7 +115,7 @@ jobs:
         # vitest. With it set, uploaded paths stay `src/...` and the
         # `flags.frontend.paths: frontend/` filter in codecov.yml drops every
         # file, leaving the flag at 0% (badge renders as "unknown").
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         continue-on-error: true
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
