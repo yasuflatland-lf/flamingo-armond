@@ -28,9 +28,11 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+import { NextIntlClientProvider } from "next-intl";
 import { CardsClient } from "@/app/cardgroups/[id]/cards/cards-client";
 import { CardsByCardgroupConnectionDocument, DeleteCardsDocument } from "@/generated/graphql";
 import { UndoDeleteProvider } from "@/lib/undo-delete";
+import enMessages from "../messages/en.json";
 
 const CG_ID = "cg-bulk-1";
 const PAGE_SIZE = 20;
@@ -119,15 +121,17 @@ function renderCardsClient(cards: Card[], mocks: object[]) {
 
   render(
     <MockedProvider mocks={mocks as never} cache={cache}>
-      <UndoDeleteProvider>
-        <CardsClient
-          cardgroupId={CG_ID}
-          cardgroupName="Test Cardgroup"
-          initialEdges={connection.edges}
-          initialPageInfo={connection.pageInfo}
-          initialTotalCount={connection.totalCount}
-        />
-      </UndoDeleteProvider>
+      <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
+        <UndoDeleteProvider>
+          <CardsClient
+            cardgroupId={CG_ID}
+            cardgroupName="Test Cardgroup"
+            initialEdges={connection.edges}
+            initialPageInfo={connection.pageInfo}
+            initialTotalCount={connection.totalCount}
+          />
+        </UndoDeleteProvider>
+      </NextIntlClientProvider>
     </MockedProvider>,
   );
 }
@@ -274,15 +278,17 @@ describe("CardsClient — bulk delete", () => {
 
     render(
       <MockedProvider mocks={mocks as never} cache={cache}>
-        <UndoDeleteProvider>
-          <CardsClient
-            cardgroupId={CG_ID}
-            cardgroupName="Test Cardgroup"
-            initialEdges={connection.edges}
-            initialPageInfo={connection.pageInfo}
-            initialTotalCount={connection.totalCount}
-          />
-        </UndoDeleteProvider>
+        <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
+          <UndoDeleteProvider>
+            <CardsClient
+              cardgroupId={CG_ID}
+              cardgroupName="Test Cardgroup"
+              initialEdges={connection.edges}
+              initialPageInfo={connection.pageInfo}
+              initialTotalCount={connection.totalCount}
+            />
+          </UndoDeleteProvider>
+        </NextIntlClientProvider>
       </MockedProvider>,
     );
 
@@ -334,15 +340,17 @@ describe("CardsClient — bulk delete", () => {
     let caughtError: unknown = null;
     render(
       <MockedProvider mocks={mocks as never} cache={cache}>
-        <UndoDeleteProvider>
-          <CardsClient
-            cardgroupId={CG_ID}
-            cardgroupName="Test Cardgroup"
-            initialEdges={connection.edges}
-            initialPageInfo={connection.pageInfo}
-            initialTotalCount={connection.totalCount}
-          />
-        </UndoDeleteProvider>
+        <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
+          <UndoDeleteProvider>
+            <CardsClient
+              cardgroupId={CG_ID}
+              cardgroupName="Test Cardgroup"
+              initialEdges={connection.edges}
+              initialPageInfo={connection.pageInfo}
+              initialTotalCount={connection.totalCount}
+            />
+          </UndoDeleteProvider>
+        </NextIntlClientProvider>
       </MockedProvider>,
     );
 

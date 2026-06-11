@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { renderWithIntl } from "@/test/render-with-intl";
 import { AppleInstallHint } from "./apple-install-hint";
 
 const DISMISSED_KEY = "pwa-ios-install-hint-dismissed";
@@ -57,7 +58,7 @@ describe("<AppleInstallHint>", () => {
     });
 
     it("renders the install banner with 'Add to Home Screen' copy", async () => {
-      render(<AppleInstallHint />);
+      renderWithIntl(<AppleInstallHint />);
       // The banner is revealed by a useEffect; wait for the state update.
       const hint = await screen.findByLabelText("Install hint");
       expect(hint).toBeInTheDocument();
@@ -65,12 +66,12 @@ describe("<AppleInstallHint>", () => {
     });
 
     it("renders the 'Install flamingo' heading", async () => {
-      render(<AppleInstallHint />);
+      renderWithIntl(<AppleInstallHint />);
       await screen.findByText("Install flamingo");
     });
 
     it("renders a dismiss button", async () => {
-      render(<AppleInstallHint />);
+      renderWithIntl(<AppleInstallHint />);
       const btn = await screen.findByRole("button", {
         name: "Dismiss install hint",
       });
@@ -79,7 +80,7 @@ describe("<AppleInstallHint>", () => {
 
     it("hides the banner and sets localStorage when dismiss is clicked", async () => {
       const user = userEvent.setup();
-      render(<AppleInstallHint />);
+      renderWithIntl(<AppleInstallHint />);
 
       const btn = await screen.findByRole("button", {
         name: "Dismiss install hint",
@@ -104,7 +105,7 @@ describe("<AppleInstallHint>", () => {
     });
 
     it("does not render the install banner", async () => {
-      render(<AppleInstallHint />);
+      renderWithIntl(<AppleInstallHint />);
       // Give effects time to run, then assert nothing appeared.
       await new Promise((r) => setTimeout(r, 0));
       expect(screen.queryByLabelText("Install hint")).not.toBeInTheDocument();
@@ -122,7 +123,7 @@ describe("<AppleInstallHint>", () => {
     });
 
     it("does not render the install banner", async () => {
-      render(<AppleInstallHint />);
+      renderWithIntl(<AppleInstallHint />);
       await new Promise((r) => setTimeout(r, 0));
       expect(screen.queryByLabelText("Install hint")).not.toBeInTheDocument();
     });
@@ -145,7 +146,7 @@ describe("<AppleInstallHint>", () => {
     });
 
     it("does not render the install banner", async () => {
-      render(<AppleInstallHint />);
+      renderWithIntl(<AppleInstallHint />);
       await new Promise((r) => setTimeout(r, 0));
       expect(screen.queryByLabelText("Install hint")).not.toBeInTheDocument();
     });
@@ -161,7 +162,7 @@ describe("<AppleInstallHint>", () => {
     });
 
     it("does not render the install banner", async () => {
-      render(<AppleInstallHint />);
+      renderWithIntl(<AppleInstallHint />);
       await new Promise((r) => setTimeout(r, 0));
       expect(screen.queryByLabelText("Install hint")).not.toBeInTheDocument();
     });

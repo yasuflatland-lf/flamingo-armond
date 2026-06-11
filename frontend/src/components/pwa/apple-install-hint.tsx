@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
 // localStorage key used to remember that the user dismissed the banner.
@@ -32,6 +33,7 @@ function shouldShowHint(): boolean {
 }
 
 export function AppleInstallHint() {
+  const t = useTranslations("Pwa");
   // Start hidden to avoid a hydration mismatch — the server never knows
   // whether the client is an iOS device or has already dismissed the hint.
   const [visible, setVisible] = useState<boolean>(false);
@@ -53,21 +55,21 @@ export function AppleInstallHint() {
 
   return (
     <section
-      aria-label="Install hint"
+      aria-label={t("hintLabel")}
       className="fixed inset-x-0 bottom-0 z-50 mx-auto max-w-md rounded-t-2xl bg-brand-primary px-4 pb-[env(safe-area-inset-bottom,1rem)] pt-4 shadow-lg"
     >
       <div className="flex items-start justify-between gap-3 pb-4">
         <div className="flex flex-col gap-1">
           <p className="font-semibold text-brand-primary-foreground text-sm leading-snug">
-            Install flamingo
+            {t("installHeading", { brand: "flamingo" })}
           </p>
           <p className="text-brand-primary-foreground text-xs opacity-90">
-            Tap the Share button, then &ldquo;Add to Home Screen&rdquo;.
+            {t("installInstruction")}
           </p>
         </div>
         <button
           type="button"
-          aria-label="Dismiss install hint"
+          aria-label={t("dismissLabel")}
           onClick={handleDismiss}
           className="mt-0.5 flex-shrink-0 rounded-full p-1 text-brand-primary-foreground opacity-80 hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary-foreground"
         >

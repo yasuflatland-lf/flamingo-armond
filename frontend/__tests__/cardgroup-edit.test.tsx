@@ -69,10 +69,12 @@ vi.mock("@/lib/apollo/server", () => ({
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { NextIntlClientProvider } from "next-intl";
 import { cardsDefaultVars } from "@/app/cardgroups/[id]/cards/queries";
 import EditCardgroupPage from "@/app/cardgroups/[id]/edit/page";
 import { gqlFetch } from "@/lib/apollo/server";
 import { UndoDeleteProvider } from "@/lib/undo-delete";
+import enMessages from "../messages/en.json";
 
 class FakeIntersectionObserver {
   observe() {}
@@ -117,7 +119,9 @@ async function renderPage(
 
   render(
     <MockedProvider mocks={[]} cache={cache}>
-      <UndoDeleteProvider>{jsx as React.ReactElement}</UndoDeleteProvider>
+      <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
+        <UndoDeleteProvider>{jsx as React.ReactElement}</UndoDeleteProvider>
+      </NextIntlClientProvider>
     </MockedProvider>,
   );
 }
