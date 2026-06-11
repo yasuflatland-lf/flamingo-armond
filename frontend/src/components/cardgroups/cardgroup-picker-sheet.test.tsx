@@ -14,6 +14,8 @@
 import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor } from "@testing-library/react";
+import { NextIntlClientProvider } from "next-intl";
+import enMessages from "../../../messages/en.json";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MyCardgroupsConnectionDocument } from "@/generated/graphql";
@@ -107,15 +109,17 @@ function renderSheet({
   const onSelect = vi.fn();
 
   render(
-    <MockedProvider mocks={mocks}>
-      <CardgroupPickerSheet
-        open={open}
-        onOpenChange={onOpenChange}
-        selectedId={selectedId}
-        onSelect={onSelect}
-        createReturnTo={createReturnTo}
-      />
-    </MockedProvider>,
+    <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
+      <MockedProvider mocks={mocks}>
+        <CardgroupPickerSheet
+          open={open}
+          onOpenChange={onOpenChange}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          createReturnTo={createReturnTo}
+        />
+      </MockedProvider>
+    </NextIntlClientProvider>,
   );
 
   return { onOpenChange, onSelect };

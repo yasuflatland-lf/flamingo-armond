@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import type { MockedResponse } from "@apollo/client/testing";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { DeleteCardgroupDocument, UpdateCardgroupDocument } from "@/generated/graphql";
 import { CardgroupHeader } from "./cardgroup-header";
 
@@ -33,7 +34,7 @@ function makeUpdateMock(
 }
 
 function renderHeader(mocks: MockedResponse[] = [], totalCount = 5) {
-  render(
+  renderWithIntl(
     <MockedProvider mocks={mocks}>
       <CardgroupHeader cardgroup={CARDGROUP} totalCount={totalCount} />
     </MockedProvider>,

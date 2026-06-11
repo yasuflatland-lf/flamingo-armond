@@ -2,10 +2,11 @@
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { useForm } from "@tanstack/react-form";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { CardgroupForm } from "./cardgroup-form";
 
 /**
@@ -55,7 +56,7 @@ function CardgroupFormWithStatus({
 // The form itself does not run a mutation, but the parent's submit might.
 function renderForm(props: Partial<Parameters<typeof CardgroupForm>[0]> = {}) {
   const submit = vi.fn().mockResolvedValue(undefined);
-  render(
+  renderWithIntl(
     <MockedProvider mocks={[]}>
       <CardgroupForm
         mode={props.mode ?? "create"}
@@ -235,7 +236,7 @@ describe("<CardgroupForm>", () => {
     const user = userEvent.setup();
     const submit = vi.fn().mockRejectedValue(new Error("network down"));
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[]}>
         <CardgroupFormWithStatus submit={submit} />
       </MockedProvider>,

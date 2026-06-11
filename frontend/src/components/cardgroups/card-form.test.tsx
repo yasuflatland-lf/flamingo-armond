@@ -1,15 +1,16 @@
 // @vitest-environment jsdom
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { CardForm } from "./card-form";
 
 function renderForm(props: Partial<Parameters<typeof CardForm>[0]> = {}) {
   const submit = vi.fn().mockResolvedValue(undefined);
-  render(
+  renderWithIntl(
     <MockedProvider mocks={[]}>
       <CardForm
         mode={props.mode ?? "create"}
