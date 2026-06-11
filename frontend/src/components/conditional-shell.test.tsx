@@ -54,18 +54,23 @@ describe("<ConditionalShell>", () => {
       },
     );
 
-    it("keeps the shell hidden on /login even for an authenticated identity", () => {
-      // A soft navigation can reach /login while the layout-computed identity is
-      // still authenticated; the shell must stay hidden regardless of identity.
-      mockUsePathname.mockReturnValue("/login");
-      render(
-        <ConditionalShell user={{ email: "a@b.c" }} isAdmin={true}>
-          <div data-testid="page" />
-        </ConditionalShell>,
-      );
+    it.each(["/login", "/onboarding"])(
+      "keeps the shell hidden on %s even for an authenticated identity",
+      (pathname) => {
+        // A soft navigation can reach a bare route while the layout-computed
+        // identity is still authenticated; the shell must stay hidden regardless
+        // of identity. /onboarding in particular is reached WHILE authenticated
+        // (it is the display-name gate), so the authenticated case matters there.
+        mockUsePathname.mockReturnValue(pathname);
+        render(
+          <ConditionalShell user={{ email: "a@b.c" }} isAdmin={true}>
+            <div data-testid="page" />
+          </ConditionalShell>,
+        );
 
-      expect(screen.queryByTestId("auth-shell")).toBeNull();
-    });
+        expect(screen.queryByTestId("auth-shell")).toBeNull();
+      },
+    );
   });
 
   describe("full-shell routes", () => {
@@ -109,6 +114,56 @@ describe("<ConditionalShell>", () => {
       const shell = screen.getByTestId("auth-shell");
       expect(shell.getAttribute("data-email")).toBe("");
       expect(shell.getAttribute("data-is-admin")).toBe("false");
+    });
+  });
+
+  // The actual bug: the shell decision must REACT to a client-side pathname
+  // change, not freeze at initial render. The root layout is a server component
+  // that does not re-render on soft navigations, so the shell lingered over
+  // /login when reached via the /terms-404 → "Back to Home" → / → /login chain.
+  // usePathname() re-renders ConditionalShell on every navigation; these tests
+  // assert the shell appears/disappears across a simulated navigation. A future
+  // change that hoists the route decision out of the render cycle (memoization,
+  // a module constant, or a move back to the server) fails here.
+  describe("reacts to a client-side navigation (regression lock)", () => {
+    it("drops the shell when navigating from a full route to a bare route", () => {
+      mockUsePathname.mockReturnValue("/cardgroups");
+      const { rerender } = render(
+        <ConditionalShell user={{ email: "a@b.c" }} isAdmin={false}>
+          <div data-testid="page" />
+        </ConditionalShell>,
+      );
+      expect(screen.getByTestId("auth-shell")).toBeInTheDocument();
+
+      // Simulate a soft navigation to /login: usePathname() now returns /login.
+      mockUsePathname.mockReturnValue("/login");
+      rerender(
+        <ConditionalShell user={{ email: "a@b.c" }} isAdmin={false}>
+          <div data-testid="page" />
+        </ConditionalShell>,
+      );
+
+      expect(screen.queryByTestId("auth-shell")).toBeNull();
+      expect(screen.getByTestId("page")).toBeInTheDocument();
+    });
+
+    it("mounts the shell when navigating from a bare route to a full route", () => {
+      mockUsePathname.mockReturnValue("/login");
+      const { rerender } = render(
+        <ConditionalShell user={{ email: "a@b.c" }} isAdmin={false}>
+          <div data-testid="page" />
+        </ConditionalShell>,
+      );
+      expect(screen.queryByTestId("auth-shell")).toBeNull();
+
+      mockUsePathname.mockReturnValue("/cardgroups");
+      rerender(
+        <ConditionalShell user={{ email: "a@b.c" }} isAdmin={false}>
+          <div data-testid="page" />
+        </ConditionalShell>,
+      );
+
+      expect(screen.getByTestId("auth-shell")).toBeInTheDocument();
     });
   });
 });

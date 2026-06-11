@@ -145,11 +145,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <NextIntlClientProvider>
           <Providers nonce={nonce}>
             {/*
-              ConditionalShell is a client component that checks usePathname() on
-              every render. This hides the navigation shell on /login and /onboarding
-              even when a soft navigation arrives from a page that SSR'd with the
-              full shell — the root layout is a server component that is not
-              re-rendered on client-side navigations, but ConditionalShell is.
+              ConditionalShell is a client component that re-renders on every
+              client navigation via usePathname(). This hides the navigation shell
+              on /login and /onboarding even when a soft navigation arrives from a
+              page that SSR'd with the full shell — the root layout is a server
+              component that is not re-rendered on client-side navigations, but
+              ConditionalShell is. See its docblock for the full repro.
             */}
             <ConditionalShell user={shellUser} isAdmin={isAdmin}>
               {children}
