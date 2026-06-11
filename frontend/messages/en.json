@@ -98,7 +98,8 @@
     "overwrite": "Overwrite",
     "overwriting": "Overwriting…",
     "overwriteFailed": "Overwrite failed. Please try again.",
-    "selectCardgroupPrompt": "Select a cardgroup above to add a card."
+    "selectCardgroupPrompt": "Select a cardgroup above to add a card.",
+    "cardgroupLabel": "Cardgroup"
   },
   "BatchImport": {
     "cardsToImport": "Cards to import",

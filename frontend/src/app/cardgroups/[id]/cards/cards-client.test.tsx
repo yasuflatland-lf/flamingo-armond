@@ -13,11 +13,11 @@ import {
   UpdateCardDocument,
 } from "@/generated/graphql";
 import { UndoDeleteProvider } from "@/lib/undo-delete";
+import { renderWithIntl } from "@/test/render-with-intl";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
 } from "../../../../../__tests__/utils/mock-apollo-paginated";
-import { renderWithIntl } from "@/test/render-with-intl";
 
 // ---------------------------------------------------------------------------
 // Mocks

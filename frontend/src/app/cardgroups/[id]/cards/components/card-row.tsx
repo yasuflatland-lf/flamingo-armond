@@ -27,7 +27,12 @@ export function CardRow({
 }: CardRowProps) {
   const t = useTranslations("Cards");
   return (
-    <SwipeableRow ref={rowRef} onDelete={onDelete} disabled={disabled} ariaLabel={t("deleteCardAriaLabel")}>
+    <SwipeableRow
+      ref={rowRef}
+      onDelete={onDelete}
+      disabled={disabled}
+      ariaLabel={t("deleteCardAriaLabel")}
+    >
       <div className="group flex items-center justify-between gap-4 px-4 py-3 hover:bg-accent active:bg-accent transition-colors">
         {/* biome-ignore lint/a11y/noStaticElementInteractions: span is a click/keydown stopper, not an interactive element; the inner <input> is the actual control. */}
         <span

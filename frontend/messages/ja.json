@@ -98,7 +98,8 @@
     "overwrite": "上書き",
     "overwriting": "上書き中…",
     "overwriteFailed": "上書きに失敗しました。もう一度お試しください。",
-    "selectCardgroupPrompt": "カードを追加するには上でカードグループを選択してください。"
+    "selectCardgroupPrompt": "カードを追加するには上でカードグループを選択してください。",
+    "cardgroupLabel": "カードグループ"
   },
   "BatchImport": {
     "cardsToImport": "インポートするカード",

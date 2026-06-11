@@ -10,8 +10,8 @@ import {
   SetLastViewedCardgroupDocument,
   UpdateCardDocument,
 } from "@/generated/graphql";
-import { installApolloMockLeakSpy } from "../../../../__tests__/utils/mock-apollo-paginated";
 import { renderWithIntl } from "@/test/render-with-intl";
+import { installApolloMockLeakSpy } from "../../../../__tests__/utils/mock-apollo-paginated";
 import CardsNewClient from "./cards-new-client";
 
 // ---------------------------------------------------------------------------

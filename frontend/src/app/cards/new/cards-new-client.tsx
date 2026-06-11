@@ -1,8 +1,8 @@
 "use client";
 
 import { useMutation } from "@apollo/client/react";
-import { useTranslations } from "next-intl";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { CreateCardMutation, UpdateCardMutation } from "@/app/cardgroups/queries";
 import { SetLastViewedCardgroupMutation } from "@/app/learn/queries";
@@ -281,7 +281,7 @@ export default function CardsNewClient({
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <span className="text-sm font-medium text-muted-foreground">Cardgroup</span>
+        <span className="text-sm font-medium text-muted-foreground">{t("cardgroupLabel")}</span>
         <CardgroupChip name={currentName} onChangeRequested={() => setPickerOpen(true)} />
       </div>
 

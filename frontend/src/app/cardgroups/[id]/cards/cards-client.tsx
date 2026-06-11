@@ -457,13 +457,11 @@ export function CardsClient({
           }
         },
         onCommitFailed: (err) => {
-          setDeleteCommitError(
-            getBackendErrorBanner(err) ?? t("deleteError"),
-          );
+          setDeleteCommitError(getBackendErrorBanner(err) ?? t("deleteError"));
         },
       });
     },
-    [apollo, deleteCardMutation, queryVariables, scheduleDelete],
+    [apollo, deleteCardMutation, queryVariables, scheduleDelete, t],
   );
 
   async function handleUpdate(id: string, values: { front: string; back: string }) {
