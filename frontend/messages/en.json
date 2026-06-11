@@ -65,5 +65,37 @@
     "googleButton": "Continue with Google",
     "terms": "By signing in, you agree to our <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>.",
     "tagline": "Remember more, study less."
+  },
+  "Profile": {
+    "title": "Profile",
+    "readOnlySummary": "Read-only summary",
+    "displayName": "Display name",
+    "email": "Email",
+    "bio": "Bio",
+    "notSet": "Not set",
+    "noEmail": "No email on this account",
+    "editProfile": "Edit profile",
+    "changeEmail": "Change email",
+    "clearBio": "Clear bio",
+    "sessionExpired": "Your session expired. Please sign in again.",
+    "couldntLoad": "Couldn't load your profile",
+    "loadError": "Something went wrong while loading your profile. Please try again in a moment.",
+    "currentEmail": "Current email",
+    "newEmail": "New email",
+    "sendConfirmationLink": "Send confirmation link",
+    "sending": "Sending...",
+    "confirmationSent": "Confirmation link sent to <strong>{email}</strong>. Open the link in your email to finish the change.",
+    "backToProfile": "Back to profile",
+    "emailRateLimited": "Too many requests. Please wait a moment and try again.",
+    "emailAlreadyInUse": "That email address is already in use.",
+    "emailCouldNotSend": "Could not send confirmation link. Please try again.",
+    "emailNetworkError": "Network error. Please check your connection and try again."
+  },
+  "Onboarding": {
+    "welcome": "Welcome to Flamingo Armond",
+    "displayName": "Display name",
+    "displayNameHint": "1–50 characters; visible to other users.",
+    "continue": "Continue",
+    "sessionExpired": "Your session expired. Please sign in again."
   }
 }
