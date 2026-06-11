@@ -40,6 +40,24 @@
     "heading": "設定",
     "description": "環境設定を管理します。"
   },
+  "Learn": {
+    "completeHeading": "本日の学習が完了しました",
+    "completeMessage": "このグループのすべてのカードを復習しました。次の復習時期になったらまたお越しください。",
+    "studyAgain": "もう一度学習",
+    "backToCardgroups": "カードグループに戻る",
+    "rateAs": "{label}と評価",
+    "again": "もう一度",
+    "hard": "むずかしい",
+    "easy": "かんたん",
+    "practiceBanner": "練習 — スワイプは記録されません",
+    "practiceEmptyHeading": "今日はまだ練習したカードがありません",
+    "practiceEmptyMessage": "まず学習セッションでカードを復習してから、練習しに戻ってきてください。",
+    "practiceCompleteHeading": "練習完了",
+    "practiceCompleteMessage": "この練習ラウンドを終えました。もう一周したい場合はもう一度学習してください。進捗には影響しません。"
+  },
+  "Cardgroups": {
+    "updatedAt": "{date}に更新"
+  },
   "Login": {
     "heading": "ログイン",
     "googleCta": "Google アカウントでログインして続行してください。初めての方は、初回ログイン時にアカウントが作成されます。",

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
 
 // Mock next/link so it renders a plain <a> in jsdom.
 vi.mock("next/link", () => ({
@@ -65,7 +66,7 @@ afterEach(() => {
 describe("<AppShell>", () => {
   describe("S1 — responsive containers are both present in the DOM", () => {
     it("rail container has the hidden-on-mobile class and mobile header has the hidden-on-desktop class", () => {
-      render(
+      renderWithIntl(
         <AppShell user={SIGNED_IN_USER} isAdmin={false}>
           <div />
         </AppShell>,
@@ -85,7 +86,7 @@ describe("<AppShell>", () => {
 
   describe("S2 — mobile menu trigger is present with the Settings icon", () => {
     it("contains a button with aria-label 'Open menu' (the Settings icon trigger)", () => {
-      render(
+      renderWithIntl(
         <AppShell user={SIGNED_IN_USER} isAdmin={false}>
           <div />
         </AppShell>,
@@ -99,7 +100,7 @@ describe("<AppShell>", () => {
 
   describe("S3 — does not render the email in the mobile header", () => {
     it("does not render the signed-in user's email inside the mobile header", () => {
-      render(
+      renderWithIntl(
         <AppShell user={SIGNED_IN_USER} isAdmin={false}>
           <div />
         </AppShell>,
@@ -115,7 +116,7 @@ describe("<AppShell>", () => {
   describe("S4 — anonymous user", () => {
     it("renders no email in the mobile header, no rail nav items, and a Sign in link when user is null", () => {
       mockUsePathname.mockReturnValue("/cardgroups");
-      render(
+      renderWithIntl(
         <AppShell user={null} isAdmin={false}>
           <div />
         </AppShell>,
@@ -139,7 +140,7 @@ describe("<AppShell>", () => {
   describe("S4b — anonymous on /login: no Sign in links", () => {
     it("anonymous on /login: zero Sign in links across both surfaces", () => {
       mockUsePathname.mockReturnValue("/login");
-      render(
+      renderWithIntl(
         <AppShell user={null} isAdmin={false}>
           <div />
         </AppShell>,
@@ -153,7 +154,7 @@ describe("<AppShell>", () => {
 
   describe("S5 — children render inside main content area", () => {
     it("a sentinel child passed via the children prop is present in the document", () => {
-      render(
+      renderWithIntl(
         <AppShell user={SIGNED_IN_USER} isAdmin={false}>
           <div data-testid="content">hello</div>
         </AppShell>,
@@ -167,7 +168,7 @@ describe("<AppShell>", () => {
   describe("S6 — isAdmin=true: Admin sub-links appear in both rail and drawer", () => {
     it("the rail body contains the admin sub-links (Users, Roles) when isAdmin=true", () => {
       mockUsePathname.mockReturnValue("/");
-      render(
+      renderWithIntl(
         <AppShell user={SIGNED_IN_USER} isAdmin={true}>
           <div />
         </AppShell>,
@@ -182,7 +183,7 @@ describe("<AppShell>", () => {
     it("the drawer body contains the admin sub-links (Users, Roles) when isAdmin=true", async () => {
       const user = userEvent.setup();
       mockUsePathname.mockReturnValue("/");
-      render(
+      renderWithIntl(
         <AppShell user={SIGNED_IN_USER} isAdmin={true}>
           <div />
         </AppShell>,

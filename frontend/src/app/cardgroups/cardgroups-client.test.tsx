@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DeleteCardgroupDocument, MyCardgroupsConnectionDocument } from "@/generated/graphql";
 import { UndoDeleteProvider } from "@/lib/undo-delete";
+import { renderWithIntl } from "@/test/render-with-intl";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
@@ -164,7 +165,7 @@ function renderClient(
   initialConnection: ReturnType<typeof makeConnection> | null = null,
   cache?: InMemoryCache,
 ) {
-  render(
+  renderWithIntl(
     <MockedProvider mocks={mocks as never} cache={cache}>
       <UndoDeleteProvider>
         <CardgroupsClient initialConnection={initialConnection} />

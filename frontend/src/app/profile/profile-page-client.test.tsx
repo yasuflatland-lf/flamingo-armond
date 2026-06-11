@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UpdateProfileDocument } from "@/generated/graphql";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { ProfilePageClient } from "./profile-page-client";
 
 const mockPush = vi.fn();
@@ -58,7 +59,7 @@ describe("<ProfilePageClient>", () => {
     const user = userEvent.setup();
     mockSearchParamsValue = "";
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[]}>
         <ProfilePageClient email="alice@example.com" initial={initial} />
       </MockedProvider>,
@@ -69,10 +70,23 @@ describe("<ProfilePageClient>", () => {
     expect(mockPush).toHaveBeenCalledWith("/profile?edit=self", { scroll: false });
   });
 
+  it("renders the Settings section with the language switcher", () => {
+    mockSearchParamsValue = "";
+
+    renderWithIntl(
+      <MockedProvider mocks={[]}>
+        <ProfilePageClient email="alice@example.com" initial={initial} />
+      </MockedProvider>,
+    );
+
+    expect(screen.getByRole("heading", { name: /settings/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /language/i })).toBeInTheDocument();
+  });
+
   it("opens the sheet when ?edit=self (singleton sentinel) is present in the query", () => {
     mockSearchParamsValue = "edit=self";
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[]}>
         <ProfilePageClient email="alice@example.com" initial={initial} />
       </MockedProvider>,
@@ -86,7 +100,7 @@ describe("<ProfilePageClient>", () => {
     mockSearchParamsValue = "edit=self";
     const mocks = [makeUpdateProfileMock({ input: { displayName: "Alice", bio: "hello" } })];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks}>
         <ProfilePageClient email="alice@example.com" initial={initial} />
       </MockedProvider>,
@@ -104,7 +118,7 @@ describe("<ProfilePageClient>", () => {
     const user = userEvent.setup();
     mockSearchParamsValue = "edit=self";
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[]}>
         <ProfilePageClient email="alice@example.com" initial={initial} />
       </MockedProvider>,
@@ -148,7 +162,7 @@ describe("<ProfilePageClient>", () => {
       },
     ];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks}>
         <ProfilePageClient email="alice@example.com" initial={initial} />
       </MockedProvider>,

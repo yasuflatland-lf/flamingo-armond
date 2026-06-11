@@ -1,5 +1,8 @@
+"use client";
+
 import { Trash2 } from "lucide-react";
 import Link from "next/link";
+import { useLocale, useTranslations } from "next-intl";
 import { SwipeableRow } from "@/components/cardgroups/swipeable-row";
 import { Button } from "@/components/ui/button";
 import { formatMediumDate } from "@/lib/format";
@@ -19,6 +22,8 @@ export function CardgroupListItem({
   busy = false,
   onDelete,
 }: CardgroupListItemProps) {
+  const locale = useLocale();
+  const t = useTranslations("Cardgroups");
   const deleteLabel = `Delete cardgroup ${name}`;
   const requestDelete = () => onDelete(id, name);
   return (
@@ -27,7 +32,7 @@ export function CardgroupListItem({
         <Link href={`/cardgroups/${id}/edit`} className="flex min-w-0 flex-1 flex-col gap-1 p-4">
           <span className="truncate font-medium text-foreground">{name}</span>
           <span className="text-sm text-muted-foreground">
-            Updated {formatMediumDate(updatedAt)}
+            {t("updatedAt", { date: formatMediumDate(updatedAt, locale) })}
           </span>
         </Link>
         <Button

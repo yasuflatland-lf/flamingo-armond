@@ -40,6 +40,24 @@
     "heading": "Settings",
     "description": "Manage your preferences."
   },
+  "Learn": {
+    "completeHeading": "Today's learning is complete",
+    "completeMessage": "All cards for this group have been reviewed. Come back when the next review is due.",
+    "studyAgain": "Study again",
+    "backToCardgroups": "Back to cardgroups",
+    "rateAs": "Rate as {label}",
+    "again": "Again",
+    "hard": "Hard",
+    "easy": "Easy",
+    "practiceBanner": "Practice — swipes aren't recorded",
+    "practiceEmptyHeading": "No cards practiced today yet",
+    "practiceEmptyMessage": "Review some cards in a learning session first, then come back to practice them.",
+    "practiceCompleteHeading": "Practice complete",
+    "practiceCompleteMessage": "You finished this practice round. Study again for another pass — your progress is never affected."
+  },
+  "Cardgroups": {
+    "updatedAt": "Updated {date}"
+  },
   "Login": {
     "heading": "Sign in",
     "googleCta": "Sign in with your Google account to continue. New here? An account is created on first sign-in.",

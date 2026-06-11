@@ -1,10 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export function LogoutButton() {
+  const t = useTranslations("Nav");
   const router = useRouter();
 
   async function handleLogout() {
@@ -24,7 +26,7 @@ export function LogoutButton() {
 
   return (
     <Button onClick={handleLogout} type="button" variant="outline" size="sm">
-      Logout
+      {t("logout")}
     </Button>
   );
 }
