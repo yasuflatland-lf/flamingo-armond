@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { UpdateProfileDocument } from "@/generated/graphql";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { OnboardingForm } from "./onboarding-form";
 
 // Stub next/navigation so OnboardingForm can render outside Next.js.
@@ -54,7 +55,7 @@ describe("<OnboardingForm>", () => {
   it("empty submit is blocked — validation error displayed", async () => {
     const user = userEvent.setup();
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[]}>
         <OnboardingForm />
       </MockedProvider>,
@@ -76,7 +77,7 @@ describe("<OnboardingForm>", () => {
 
     const mocks = [makeUpdateProfileMock({ input: { displayName: "Alice" } }, mutationCalled)];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks}>
         <OnboardingForm />
       </MockedProvider>,
@@ -97,7 +98,7 @@ describe("<OnboardingForm>", () => {
 
     const mocks = [makeUpdateProfileMock({ input: { displayName: "Alice" } })];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks}>
         <OnboardingForm />
       </MockedProvider>,
@@ -134,7 +135,7 @@ describe("<OnboardingForm>", () => {
       },
     ];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks}>
         <OnboardingForm />
       </MockedProvider>,
@@ -168,7 +169,7 @@ describe("<OnboardingForm>", () => {
       },
     ];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks}>
         <OnboardingForm />
       </MockedProvider>,
@@ -201,7 +202,7 @@ describe("<OnboardingForm>", () => {
       },
     ];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks}>
         <OnboardingForm />
       </MockedProvider>,

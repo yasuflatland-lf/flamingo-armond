@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { describe, expect, it, vi } from "vitest";
 import { FormSheet, useFormSheetClose } from "@/components/ui/form-sheet";
 import { UpdateProfileDocument } from "@/generated/graphql";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { ProfileForm } from "./profile-form";
 
 // Stub next/navigation so ProfileForm can render outside Next.js.
@@ -61,7 +62,7 @@ function makeMutationMock(
 
 describe("<ProfileForm>", () => {
   it("renders defaults", () => {
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[]}>
         <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
@@ -72,7 +73,7 @@ describe("<ProfileForm>", () => {
   });
 
   it("renders email as read-only text and a Change email link", () => {
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[]}>
         <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
@@ -87,7 +88,7 @@ describe("<ProfileForm>", () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[]}>
         <FormSheet open onOpenChange={onOpenChange} title="Edit profile" size="md">
           <ProfileFormSheetHarness
@@ -104,7 +105,7 @@ describe("<ProfileForm>", () => {
   });
 
   it("renders fallback text when email is null", () => {
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[]}>
         <ProfileForm email={null} initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
@@ -116,7 +117,7 @@ describe("<ProfileForm>", () => {
   it("displayName empty triggers Zod error before submit", async () => {
     const user = userEvent.setup();
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[]}>
         <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "" }} />
       </MockedProvider>,
@@ -134,7 +135,7 @@ describe("<ProfileForm>", () => {
   it("displayName 51 graphemes triggers Zod error", async () => {
     const user = userEvent.setup();
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[]}>
         <ProfileForm email="alice@example.com" initial={{ displayName: "", bio: "" }} />
       </MockedProvider>,
@@ -156,7 +157,7 @@ describe("<ProfileForm>", () => {
   it("bio over 500 triggers Zod error", async () => {
     const user = userEvent.setup();
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[]}>
         <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "" }} />
       </MockedProvider>,
@@ -180,7 +181,7 @@ describe("<ProfileForm>", () => {
     // bio="" in mutation variables means explicit clear
     const mocks = [makeMutationMock({ input: { displayName: "Alice", bio: "" } }, mutationCalled)];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks}>
         <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
@@ -208,7 +209,7 @@ describe("<ProfileForm>", () => {
       makeMutationMock({ input: { displayName: "Alice", bio: "hello" } }, mutationCalled),
     ];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks}>
         <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hello" }} />
       </MockedProvider>,
@@ -242,7 +243,7 @@ describe("<ProfileForm>", () => {
       },
     ];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks}>
         <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
@@ -277,7 +278,7 @@ describe("<ProfileForm>", () => {
       },
     ];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks}>
         <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
@@ -311,7 +312,7 @@ describe("<ProfileForm>", () => {
       },
     ];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks}>
         <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
@@ -337,7 +338,7 @@ describe("<ProfileForm>", () => {
       },
     ];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks}>
         <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
@@ -366,7 +367,7 @@ describe("<ProfileForm>", () => {
       },
     ];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks}>
         <ProfileForm email="alice@example.com" initial={{ displayName: "Alice", bio: "hi" }} />
       </MockedProvider>,
@@ -414,7 +415,7 @@ describe("<ProfileForm>", () => {
       },
     ];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks}>
         <ProfileForm
           email="alice@example.com"

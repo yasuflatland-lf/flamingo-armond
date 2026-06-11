@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
 import ProfileError from "./error";
 
 describe("<ProfileError>", () => {
@@ -10,7 +11,7 @@ describe("<ProfileError>", () => {
   });
 
   it("renders heading and Retry button for any error", () => {
-    render(
+    renderWithIntl(
       <ProfileError
         error={Object.assign(new Error("Network error"), { digest: undefined })}
         reset={vi.fn()}
@@ -25,7 +26,7 @@ describe("<ProfileError>", () => {
     const user = userEvent.setup();
     const reset = vi.fn();
 
-    render(
+    renderWithIntl(
       <ProfileError
         error={Object.assign(new Error("Network error"), { digest: undefined })}
         reset={reset}
@@ -40,7 +41,7 @@ describe("<ProfileError>", () => {
   it("logs error with digest to console.error", () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    render(
+    renderWithIntl(
       <ProfileError
         error={Object.assign(new Error("Something broke"), { digest: "abc123" })}
         reset={vi.fn()}
