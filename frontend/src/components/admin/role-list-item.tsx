@@ -1,6 +1,7 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { SwipeableRow } from "@/components/cardgroups/swipeable-row";
 import { Button } from "@/components/ui/button";
 
@@ -26,6 +27,7 @@ export type RoleListItemProps = {
  * frontend/src/components/cardgroups/cardgroup-list-item.tsx.
  */
 export function RoleListItem({ id, name, isSystem, busy, onEdit, onDelete }: RoleListItemProps) {
+  const t = useTranslations("Admin");
   if (isSystem) {
     return (
       <li
@@ -36,7 +38,7 @@ export function RoleListItem({ id, name, isSystem, busy, onEdit, onDelete }: Rol
           <span className="truncate font-medium text-foreground" data-testid="admin-role-name">
             {name}
           </span>
-          <span className="text-xs text-muted-foreground">System role</span>
+          <span className="text-xs text-muted-foreground">{t("systemRole")}</span>
         </div>
       </li>
     );
