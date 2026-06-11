@@ -167,10 +167,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               {children}
             </AuthShell>
           </Providers>
+          {/* AppleInstallHint calls useTranslations("Pwa"), so it MUST render
+              inside NextIntlClientProvider — outside it throws a no-intl-context
+              error during SSR on every request. */}
+          <AppleInstallHint />
         </NextIntlClientProvider>
         <SpeedInsights />
         <SwRegister />
-        <AppleInstallHint />
       </body>
     </html>
   );

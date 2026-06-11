@@ -23,6 +23,7 @@
  */
 
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   createContext,
   type ReactNode,
@@ -85,6 +86,11 @@ export function UndoDeleteProvider({ children }: { children: ReactNode }) {
   const pendingRef = useRef<Map<string, PendingDelete>>(new Map());
   const pathname = usePathname();
   const previousPathnameRef = useRef(pathname);
+  // The toast's "Undo" action label is Provider-owned UI chrome (the toast
+  // title `label` is caller-supplied content). Resolve it here so every caller
+  // gets the localized label without threading it through scheduleDelete.
+  const t = useTranslations("Common");
+  const undoLabel = t("undo");
 
   const flushPendingDeletes = useCallback(async (): Promise<void> => {
     // Snapshot then clear so a concurrent flush cannot double-commit the same entry.
@@ -178,7 +184,7 @@ export function UndoDeleteProvider({ children }: { children: ReactNode }) {
       const toastId = toast(label, {
         duration: UNDO_DELAY_MS,
         action: {
-          label: "Undo",
+          label: undoLabel,
           onClick: () => handle.undo(),
         },
       });
@@ -194,7 +200,7 @@ export function UndoDeleteProvider({ children }: { children: ReactNode }) {
 
       return handle;
     },
-    [cancelPending],
+    [cancelPending, undoLabel],
   );
 
   // Returns a point-in-time snapshot. Not reactive — the value does not trigger

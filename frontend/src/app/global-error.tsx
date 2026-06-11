@@ -21,8 +21,21 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
     });
   }, [error]);
 
+  // This component renders outside NextIntlClientProvider (it replaces the root
+  // layout on unrecoverable errors), so it cannot call useTranslations — the
+  // copy stays English. Only <html lang> reflects the persisted locale, read
+  // directly from the NEXT_LOCALE cookie client-side.
+  const lang =
+    typeof document !== "undefined" &&
+    document.cookie
+      .split("; ")
+      .find((c) => c.startsWith("NEXT_LOCALE="))
+      ?.split("=")[1] === "ja"
+      ? "ja"
+      : "en";
+
   return (
-    <html lang="en">
+    <html lang={lang}>
       <body>
         <main className="flex min-h-dvh w-full flex-col items-center justify-center gap-6 p-8 text-center">
           <div className="space-y-2">

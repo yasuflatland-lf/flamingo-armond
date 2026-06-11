@@ -9,8 +9,10 @@
  */
 
 import { act, renderHook } from "@testing-library/react";
+import { NextIntlClientProvider } from "next-intl";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import enMessages from "../../messages/en.json";
 import { UndoDeleteProvider, useUndoDelete } from "./undo-delete";
 
 // ---------------------------------------------------------------------------
@@ -46,7 +48,13 @@ vi.mock("sonner", () => {
 // ---------------------------------------------------------------------------
 
 function wrapper({ children }: { children: ReactNode }) {
-  return <UndoDeleteProvider>{children}</UndoDeleteProvider>;
+  // UndoDeleteProvider now calls useTranslations("Common") for the toast's
+  // "Undo" action label, so it must render inside NextIntlClientProvider.
+  return (
+    <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
+      <UndoDeleteProvider>{children}</UndoDeleteProvider>
+    </NextIntlClientProvider>
+  );
 }
 
 function makeOpts(

@@ -5,8 +5,8 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
+import { NextIntlClientProvider } from "next-intl";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import {
   AdminCreateRoleDocument,
   AdminDeleteRoleDocument,
@@ -14,6 +14,7 @@ import {
   AdminUpdateRoleDocument,
 } from "@/generated/graphql";
 import { UndoDeleteProvider } from "@/lib/undo-delete";
+import enMessages from "../../../../messages/en.json";
 import { AdminRolesClient, type RoleItem } from "./admin-roles-client";
 
 // ---------------------------------------------------------------------------
@@ -80,9 +81,11 @@ const ADMIN_ROLE: RoleItem = { id: "r-admin", name: "admin" };
 function renderRoles(roles: RoleItem[], mocks: unknown[] = []) {
   render(
     <MockedProvider mocks={mocks as never}>
-      <UndoDeleteProvider>
-        <AdminRolesClient initialRoles={roles} />
-      </UndoDeleteProvider>
+      <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
+        <UndoDeleteProvider>
+          <AdminRolesClient initialRoles={roles} />
+        </UndoDeleteProvider>
+      </NextIntlClientProvider>
     </MockedProvider>,
   );
 }
@@ -117,9 +120,11 @@ describe("AdminRolesClient", () => {
   it("wires the ListingPageShell with title, description, and New role CTA", () => {
     render(
       <MockedProvider mocks={[]}>
-        <UndoDeleteProvider>
-          <AdminRolesClient initialRoles={[]} />
-        </UndoDeleteProvider>
+        <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
+          <UndoDeleteProvider>
+            <AdminRolesClient initialRoles={[]} />
+          </UndoDeleteProvider>
+        </NextIntlClientProvider>
       </MockedProvider>,
     );
 

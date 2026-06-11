@@ -66,6 +66,12 @@
     "terms": "By signing in, you agree to our <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>.",
     "tagline": "Remember more, study less."
   },
+  "Pwa": {
+    "installHeading": "Install {brand}",
+    "installInstruction": "Tap the Share button, then “Add to Home Screen”.",
+    "hintLabel": "Install hint",
+    "dismissLabel": "Dismiss install hint"
+  },
   "Profile": {
     "title": "Profile",
     "readOnlySummary": "Read-only summary",

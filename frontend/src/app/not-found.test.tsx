@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntl } from "@/test/render-with-intl";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -15,7 +16,7 @@ afterEach(() => {
 
 describe("<NotFound>", () => {
   it("renders the 404 heading, message, and home link", () => {
-    render(<NotFound />);
+    renderWithIntl(<NotFound />);
 
     expect(screen.getByText("404")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /page not found/i })).toBeInTheDocument();

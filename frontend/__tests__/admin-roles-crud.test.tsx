@@ -18,10 +18,12 @@ import { MockedProvider } from "@apollo/client/testing/react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
+import { NextIntlClientProvider } from "next-intl";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminRolesClient } from "@/app/admin/roles/admin-roles-client";
 import { AdminDeleteRoleDocument } from "@/generated/graphql";
 import { UndoDeleteProvider } from "@/lib/undo-delete";
+import enMessages from "../messages/en.json";
 
 // ---------------------------------------------------------------------------
 // Module mocks
@@ -79,9 +81,11 @@ afterEach(() => {
 function renderClient(initialRoles: RoleItem[], mocks: object[]) {
   return render(
     <MockedProvider mocks={mocks as never}>
-      <UndoDeleteProvider>
-        <AdminRolesClient initialRoles={initialRoles} />
-      </UndoDeleteProvider>
+      <NextIntlClientProvider locale="en" messages={enMessages} timeZone="UTC">
+        <UndoDeleteProvider>
+          <AdminRolesClient initialRoles={initialRoles} />
+        </UndoDeleteProvider>
+      </NextIntlClientProvider>
     </MockedProvider>,
   );
 }
