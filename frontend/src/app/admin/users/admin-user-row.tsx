@@ -2,6 +2,7 @@
 
 import { Pencil } from "lucide-react";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 
@@ -30,6 +31,8 @@ type Props = {
 };
 
 export function AdminUserRow({ user, onEdit }: Props) {
+  const t = useTranslations("Admin");
+  const tCommon = useTranslations("Common");
   const avatarFallback = useMemo(
     () => (user.displayName ?? "?").charAt(0).toUpperCase(),
     [user.displayName],
@@ -45,7 +48,7 @@ export function AdminUserRow({ user, onEdit }: Props) {
           {user.avatarUrl ? (
             <Image
               src={user.avatarUrl}
-              alt={user.displayName ?? "User avatar"}
+              alt={user.displayName ?? t("userAvatarAlt")}
               width={40}
               height={40}
               className="h-10 w-10 shrink-0 rounded-full object-cover"
@@ -61,7 +64,9 @@ export function AdminUserRow({ user, onEdit }: Props) {
 
           <div className="min-w-0 flex-1 space-y-1">
             <p className="text-sm font-medium">
-              {user.displayName ?? <span className="italic text-muted-foreground">No name</span>}
+              {user.displayName ?? (
+                <span className="italic text-muted-foreground">{t("noName")}</span>
+              )}
             </p>
             {user.bio && <p className="truncate text-sm text-muted-foreground">{user.bio}</p>}
           </div>
@@ -73,10 +78,10 @@ export function AdminUserRow({ user, onEdit }: Props) {
           size="sm"
           className="shrink-0"
           onClick={() => onEdit(user.id)}
-          aria-label={`Edit ${user.displayName ?? "user"}`}
+          aria-label={t("editAriaLabel", { name: user.displayName ?? t("noName") })}
         >
           <Pencil aria-hidden="true" />
-          <span>Edit</span>
+          <span>{tCommon("edit")}</span>
         </Button>
       </div>
     </li>

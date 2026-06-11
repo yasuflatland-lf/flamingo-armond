@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import { InMemoryCache, NetworkStatus } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AdminUsersClient } from "@/app/admin/users/admin-users-client";
 import { ADMIN_USERS_PAGE_SIZE } from "@/app/admin/users/queries";
 import { AdminRolesDocument, AdminUsersDocument } from "@/generated/graphql";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { adminUserFixture, generalUserFixture, userWithoutRolesFixture } from "./fixtures/users";
 
 // ---------------------------------------------------------------------------
@@ -210,7 +211,7 @@ describe("AdminUsersClient", () => {
       data: { users: connection },
     });
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks as never} cache={cache}>
         <AdminUsersClient />
       </MockedProvider>,
@@ -277,7 +278,7 @@ describe("AdminUsersClient", () => {
       data: { users: makeConnection(initialUsers, false) },
     });
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks as never} cache={cache}>
         <AdminUsersClient />
       </MockedProvider>,
@@ -346,7 +347,7 @@ describe("AdminUsersClient", () => {
       data: { users: makeConnection(firstBatch, true) },
     });
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks as never} cache={cache}>
         <AdminUsersClient />
       </MockedProvider>,
@@ -439,7 +440,7 @@ describe("AdminUsersClient", () => {
       data: { users: makeConnection(firstBatch, true) },
     });
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks as never} cache={cache}>
         <AdminUsersClient />
       </MockedProvider>,
@@ -507,7 +508,7 @@ describe("AdminUsersClient", () => {
       data: { users: makeConnection(firstBatch, true) },
     });
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks as never} cache={cache}>
         <AdminUsersClient />
       </MockedProvider>,
@@ -570,7 +571,7 @@ describe("AdminUsersClient", () => {
       data: { users: makeConnection(firstBatch, true) },
     });
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks as never} cache={cache}>
         <AdminUsersClient />
       </MockedProvider>,
@@ -615,7 +616,7 @@ describe("AdminUsersClient", () => {
       },
     ];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks as never}>
         <AdminUsersClient />
       </MockedProvider>,
@@ -658,7 +659,7 @@ describe("AdminUsersClient", () => {
       ADMIN_ROLES_MOCK,
     ];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks as never} cache={cache}>
         <AdminUsersClient />
       </MockedProvider>,
@@ -697,7 +698,7 @@ describe("AdminUsersClient", () => {
       ADMIN_ROLES_MOCK,
     ];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks as never} cache={cache}>
         <AdminUsersClient />
       </MockedProvider>,

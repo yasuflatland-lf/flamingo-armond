@@ -4,10 +4,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AdminEditUserDocument } from "@/generated/graphql";
+import { renderWithIntl } from "@/test/render-with-intl";
 import { AdminUserProfileSheet } from "./admin-user-profile-sheet";
 import type { AdminUserListItem, AdminUserRole } from "./admin-user-row";
 
@@ -67,7 +68,7 @@ function renderSheet({
   onSaved?: () => void;
   onReloadRequested?: () => void;
 } = {}) {
-  render(
+  renderWithIntl(
     <MockedProvider mocks={mocks}>
       <AdminUserProfileSheet
         open
@@ -231,7 +232,7 @@ describe("AdminUserProfileSheet", () => {
       </MockedProvider>
     );
 
-    const { rerender } = render(renderTree(makeUser()));
+    const { rerender } = renderWithIntl(renderTree(makeUser()));
 
     await user.clear(screen.getByLabelText(/display name/i));
     await user.type(screen.getByLabelText(/display name/i), "Alice 2");
@@ -517,7 +518,7 @@ describe("AdminUserProfileSheet", () => {
   });
 
   it("shows the loading indicator while the lazy query is in flight", () => {
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[]}>
         <AdminUserProfileSheet
           open
@@ -536,7 +537,7 @@ describe("AdminUserProfileSheet", () => {
   });
 
   it("does not flash 'User not found.' while the sheet is closing", () => {
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[]}>
         <AdminUserProfileSheet
           open={false}

@@ -47,10 +47,11 @@ vi.mock("next/navigation", () => ({
 // Imports — after vi.mock declarations
 // ---------------------------------------------------------------------------
 
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AdminRolesPage from "@/app/admin/roles/page";
 import { gqlFetch } from "@/lib/apollo/server";
+import { renderWithIntl } from "@/test/render-with-intl";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -107,7 +108,7 @@ describe("AdminRolesPage (page-level SSR seed)", () => {
     mockRoles([ADMIN_ROLE, GENERAL_ROLE, EDITOR_ROLE]);
 
     const tree = await AdminRolesPage();
-    render(tree as React.ReactElement);
+    renderWithIntl(tree as React.ReactElement);
 
     const roleNames = screen.getAllByTestId("admin-role-name");
     const textContent = roleNames.map((el) => el.textContent);
@@ -130,7 +131,7 @@ describe("AdminRolesPage (page-level SSR seed)", () => {
     mockRoles([]);
 
     const tree = await AdminRolesPage();
-    render(tree as React.ReactElement);
+    renderWithIntl(tree as React.ReactElement);
 
     // No role-name spans
     expect(screen.queryAllByTestId("admin-role-name")).toHaveLength(0);
@@ -162,7 +163,7 @@ describe("AdminRolesPage (page-level SSR seed)", () => {
     mockRoles([ADMIN_ROLE, GENERAL_ROLE]);
 
     const tree = await AdminRolesPage();
-    render(tree as React.ReactElement);
+    renderWithIntl(tree as React.ReactElement);
 
     // The admin role name must be visible
     const adminRow = screen.getByTestId("admin-role-row-role-admin");

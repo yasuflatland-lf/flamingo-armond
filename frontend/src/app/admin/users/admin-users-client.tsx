@@ -3,6 +3,7 @@
 import { NetworkStatus } from "@apollo/client";
 import { useLazyQuery, useQuery } from "@apollo/client/react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useFragment } from "@/generated/fragment-masking";
 import type { AdminUsersQuery as AdminUsersQueryResult } from "@/generated/graphql";
@@ -46,19 +47,26 @@ function UserRow({ edge, onEdit }: { edge: Edge; onEdit: (id: string) => void })
 
 // Flatten the three-branch `classifyQueryError` result into a single banner
 // string for the edit sheet. Returns null when there is no error.
-function formatEditUserBannerError(kind: QueryErrorKind | null): string | null {
+function formatEditUserBannerError(
+  kind: QueryErrorKind | null,
+  editUserForbidden: string,
+  unauthenticated: string,
+): string | null {
   if (!kind) return null;
   switch (kind.kind) {
     case "forbidden":
-      return "You do not have permission to edit this user.";
+      return editUserForbidden;
     case "unauthenticated":
-      return "Your session has expired. Sign in again.";
+      return unauthenticated;
     case "banner":
       return kind.message;
   }
 }
 
 export function AdminUsersClient() {
+  const t = useTranslations("Admin");
+  const tCommon = useTranslations("Common");
+  const tNav = useTranslations("Nav");
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
   const [fetchMoreError, setFetchMoreError] = useState<string | null>(null);
@@ -152,7 +160,11 @@ export function AdminUsersClient() {
   const sheetUser = editUser?.id === editUserId ? editUser : null;
   const editUserResultMatchesSheet = editUserId !== null && editUserVariables?.id === editUserId;
   const editUserErrorKind = classifyQueryError(editUserError);
-  const editUserBannerError = formatEditUserBannerError(editUserErrorKind);
+  const editUserBannerError = formatEditUserBannerError(
+    editUserErrorKind,
+    t("editUserForbidden"),
+    t("unauthenticated"),
+  );
 
   useEffect(() => {
     if (!editUserId) return;
@@ -198,15 +210,14 @@ export function AdminUsersClient() {
             searchQuery,
             endCursor,
           });
-          const banner =
-            getBackendErrorBanner(err) ?? "Could not load more users. Please try again.";
+          const banner = getBackendErrorBanner(err) ?? t("fetchMoreFailed");
           setFetchMoreError(banner);
         })
         .finally(() => {
           fetchingRef.current = false;
         });
     },
-    [fetchMore],
+    [fetchMore, t],
   );
 
   const requestNextPageFromObserver = useEffectEvent(() => {
@@ -242,7 +253,7 @@ export function AdminUsersClient() {
   return (
     <main className="p-8">
       <div className="mb-6 flex items-center gap-4">
-        <h1 className="text-2xl font-semibold">Users</h1>
+        <h1 className="text-2xl font-semibold">{tNav("users")}</h1>
         <span className="text-sm text-muted-foreground">({totalCount})</span>
       </div>
 
@@ -250,11 +261,11 @@ export function AdminUsersClient() {
       <div className="mb-6">
         <input
           type="search"
-          placeholder="Search users..."
+          placeholder={t("searchPlaceholder")}
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label="Search users"
+          aria-label={t("searchLabel")}
         />
       </div>
 
@@ -265,7 +276,7 @@ export function AdminUsersClient() {
           role="alert"
           data-testid="admin-users-query-error"
         >
-          You do not have permission to view this page.
+          {t("viewForbidden")}
         </div>
       )}
 
@@ -283,9 +294,9 @@ export function AdminUsersClient() {
           role="alert"
           data-testid="admin-users-query-error"
         >
-          <span>Your session has expired. </span>
+          <span>{t("sessionExpired")}</span>{" "}
           <Link href="/login" className="underline">
-            Please sign in again.
+            {t("pleaseSignInAgain")}
           </Link>
         </div>
       )}
@@ -299,7 +310,7 @@ export function AdminUsersClient() {
         >
           <span>{queryBannerError}</span>
           <button type="button" className="ml-3 underline" onClick={() => refetch()}>
-            Retry
+            {tCommon("retry")}
           </button>
         </div>
       )}
@@ -317,7 +328,7 @@ export function AdminUsersClient() {
       {/* Empty state */}
       {!initialLoading && !queryErrorKind && edges.length === 0 && (
         <p className="text-sm text-muted-foreground" data-testid="admin-users-empty">
-          No users found.
+          {t("noUsersFound")}
         </p>
       )}
 
@@ -353,7 +364,7 @@ export function AdminUsersClient() {
               fetchNextPage({ hasNextPage, endCursor, searchQuery });
             }}
           >
-            Retry
+            {tCommon("retry")}
           </button>
         </div>
       )}
@@ -364,7 +375,7 @@ export function AdminUsersClient() {
           className="mt-3 text-center text-xs text-muted-foreground"
           data-testid="admin-users-loading-more"
         >
-          Loading more users...
+          {t("loadingMore")}
         </p>
       )}
 

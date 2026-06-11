@@ -2,7 +2,7 @@
 
 import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +12,7 @@ import {
   AdminUserDocument,
   AdminUsersDocument,
 } from "@/generated/graphql";
+import { renderWithIntl } from "@/test/render-with-intl";
 import {
   type ApolloMockLeakSpyResult,
   installApolloMockLeakSpy,
@@ -168,7 +169,7 @@ afterEach(() => {
 
 describe("<AdminUsersClient> initial loading", () => {
   it("renders the skeleton immediately on first render then hides it once data arrives", async () => {
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[makeUsersMock(), makeRolesMock()]}>
         <AdminUsersClient />
       </MockedProvider>,
@@ -191,7 +192,7 @@ describe("<AdminUsersClient> sheet", () => {
   it("pushes ?edit=<id> when the row Edit affordance is clicked", async () => {
     const user = userEvent.setup();
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[makeUsersMock(), makeRolesMock()]}>
         <AdminUsersClient />
       </MockedProvider>,
@@ -205,7 +206,7 @@ describe("<AdminUsersClient> sheet", () => {
   });
 
   it("does not render inline role checkboxes in the user list", async () => {
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[makeUsersMock(), makeRolesMock()]}>
         <AdminUsersClient />
       </MockedProvider>,
@@ -240,7 +241,7 @@ describe("<AdminUsersClient> edit-sheet lazy query", () => {
 
     const userMock = makeAdminUserMock("u-1");
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[makeUsersMock(), makeRolesMock(), userMock]}>
         <AdminUsersClient />
       </MockedProvider>,
@@ -267,7 +268,7 @@ describe("<AdminUsersClient> edit-sheet lazy query", () => {
       result: { errors: [forbiddenError] },
     };
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[makeUsersMock(), makeRolesMock(), userMock]}>
         <AdminUsersClient />
       </MockedProvider>,
@@ -294,7 +295,7 @@ describe("<AdminUsersClient> edit-sheet lazy query", () => {
       result: { errors: [unauthError] },
     };
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[makeUsersMock(), makeRolesMock(), userMock]}>
         <AdminUsersClient />
       </MockedProvider>,
@@ -345,7 +346,7 @@ describe("<AdminUsersClient> edit-sheet lazy query", () => {
       makeAdminUserMock("u-1", { result: { data: { adminUser: reloadedUser } } }), // reload
     ];
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={mocks}>
         <AdminUsersClient />
       </MockedProvider>,
@@ -385,7 +386,7 @@ describe("<AdminUsersClient> edit-sheet lazy query", () => {
       result: { data: { adminUser: { ...USER_2, id: "u-2", displayName: "Fresh Bob" } } },
     });
 
-    const { rerender } = render(
+    const { rerender } = renderWithIntl(
       <MockedProvider mocks={[makeUsersMock([USER_1, USER_2]), makeRolesMock(), u1Mock, u2Mock]}>
         <AdminUsersClient />
       </MockedProvider>,
@@ -445,7 +446,7 @@ describe("<AdminUsersClient> fetchMore catch", () => {
     // docs/pagination/capture-mockedprovider-warn-leaks.md § "Spy stacking".
     const consoleWarnSpy = vi.spyOn(console, "warn");
 
-    render(
+    renderWithIntl(
       <MockedProvider mocks={[initialMock, makeRolesMock(), errorMock]} cache={cache}>
         <AdminUsersClient />
       </MockedProvider>,
