@@ -1,0 +1,69 @@
+name: frontend mutation testing
+
+# Stryker mutation testing is slow (mutants × suite runtime), so it is kept off
+# the per-PR fast-feedback path. It runs on demand (workflow_dispatch) and on a
+# nightly schedule. The run is report-only — `thresholds.break` is null in
+# stryker.config.mjs, so a low mutation score never fails the job; the HTML
+# report is uploaded as an artifact for inspection.
+on:
+  workflow_dispatch:
+  schedule:
+    # 18:00 UTC = 03:00 JST, off-peak.
+    - cron: '0 18 * * *'
+
+concurrency:
+  group: frontend-mutation-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  mutation:
+    name: Stryker (src/lib)
+    runs-on: ubuntu-24.04
+    env:
+      # Mirrors frontend.yml: required by `frontend/src/env.ts` and the vitest
+      # config's per-test env. Dummy values satisfy Zod/URL validation without a
+      # running backend or Supabase instance.
+      BACKEND_URL: http://localhost:1323
+      NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ci-dummy-key-1234567890
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up mise (Node + pnpm from .tool-versions)
+        uses: jdx/mise-action@v4
+
+      - name: Resolve pnpm store path
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # src/lib/apollo/* imports generated GraphQL types from src/generated/,
+      # which is gitignored and regenerated. The vitest suite Stryker drives
+      # cannot resolve those imports without this step.
+      - name: Codegen (graphql-codegen)
+        run: pnpm --filter frontend codegen
+
+      - name: Run Stryker mutation testing
+        run: pnpm --filter frontend test:mutation
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-mutation-report
+          path: frontend/reports/mutation/
+          retention-days: 14
