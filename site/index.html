@@ -325,6 +325,13 @@
       box-shadow: 0 2px 10px rgba(255, 95, 79, 0.18);
     }
 
+    /* Mobile dropdown menu: force an opaque surface so page content never
+       bleeds through. Plain CSS (not the `bg-white` utility) so the fill is
+       independent of Tailwind's runtime JIT timing and opacity tokens. */
+    .mobile-menu-panel {
+      background-color: #fff;
+    }
+
   
     /* Senior spacing pass: golden-ratio / Fibonacci refinement */
     .hero-title-jp {
@@ -2213,7 +2220,7 @@
           </button>
 
           {open && (
-            <div className="absolute left-4 right-4 top-16 z-50 rounded-3xl border border-gray-100 bg-white p-4 shadow-float md:hidden">
+            <div className="mobile-menu-panel absolute left-4 right-4 top-16 z-50 rounded-3xl border border-gray-100 p-4 shadow-float md:hidden">
               <div className="grid gap-2">
                 {navItems.map((item) => (
                   <a key={item} href="#" className="rounded-2xl px-4 py-3 text-sm font-semibold text-gray-800 hover:bg-gray-50">
