@@ -5,6 +5,7 @@ import { getTranslations } from "next-intl/server";
 import type { ReactNode } from "react";
 import { FlamingoMark } from "@/components/brand/flamingo-mark";
 import { readAuthContext } from "@/lib/supabase/auth-status";
+import { InAppBrowserNotice } from "./in-app-browser-notice";
 import { LoginButton } from "./login-button";
 
 export const metadata: Metadata = { title: "Login" };
@@ -50,6 +51,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
                   {t("signInFailed", { error })}
                 </p>
               )}
+
+              <InAppBrowserNotice />
 
               <LoginButton />
 

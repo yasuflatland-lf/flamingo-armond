@@ -18,6 +18,13 @@ vi.mock("./login-button", () => ({
   LoginButton: () => <button type="button">Sign in</button>,
 }));
 
+// InAppBrowserNotice is a client component (useTranslations) that renders
+// nothing in a standalone browser; the broad page test has no NextIntlClient
+// provider, so mock it to null to mirror the standalone-browser DOM.
+vi.mock("./in-app-browser-notice", () => ({
+  InAppBrowserNotice: () => null,
+}));
+
 // next-intl/server — the page resolves the Login namespace via getTranslations.
 // Back the mock with createTranslator + the real en catalog so t()/t.rich()
 // produce the original English copy (and rendered Terms/Privacy links), keeping
