@@ -5,8 +5,11 @@ name: landing
 # so both coexist on the same Pages site:
 #   https://yasuflatland-lf.github.io/flamingo-armond/           <- landing (this workflow)
 #   https://yasuflatland-lf.github.io/flamingo-armond/er-chart/  <- ER chart
-# clean-exclude below preserves er-chart/ (and the legacy vercel.json) when this
-# workflow cleans the gh-pages root.
+# site/ is the single source of truth for the gh-pages root, including
+# site/vercel.json (ignoreCommand "exit 0"), which tells Vercel to skip building
+# the gh-pages branch (it carries only static Pages assets, not the Next.js app).
+# clean-exclude below preserves er-chart/ (owned by er-chart.yml, not by site/)
+# when this workflow cleans the gh-pages root.
 
 on:
   push:
@@ -51,4 +54,3 @@ jobs:
           clean: true
           clean-exclude: |
             er-chart
-            vercel.json
