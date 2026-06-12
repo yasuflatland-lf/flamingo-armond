@@ -44,6 +44,7 @@ The frontend package manager is **pnpm** (pinned via `package.json` engines + `p
 - [`docs/frontend/gotchas-encountered.md`](../docs/frontend/gotchas-encountered.md) — Cross-cutting Next.js / Apollo pitfalls.
 - [`docs/frontend/automatic-persisted-queries.md`](../docs/frontend/automatic-persisted-queries.md) — Browser link chain and APQ.
 - [`docs/frontend/testing-convention-narrow-vs-broad-page-tests.md`](../docs/frontend/testing-convention-narrow-vs-broad-page-tests.md) — Narrow vs broad page tests.
+- [`docs/frontend/mutation-testing.md`](../docs/frontend/mutation-testing.md) — Stryker mutation testing on `src/lib/**` (`test:mutation`); report-only, nightly/manual CI.
 - [`docs/frontend/typescript-conventions.md`](../docs/frontend/typescript-conventions.md) — Type-design rules: required nullable props, JSDoc sanitization contracts, assertion discriminating keys, TanStack Form re-throw.
 - [`docs/frontend/undo-toast.md`](../docs/frontend/undo-toast.md) — Delayed-DELETE undo toast, SwipeableRow, `useReducedMotion`.
 - [`docs/frontend/url-backed-sheet-state.md`](../docs/frontend/url-backed-sheet-state.md) — `useSheetSearchParam` drawer state in `?new=true` / `?edit=<id>`; singleton sentinel, lazy-query called gate, race guard.
