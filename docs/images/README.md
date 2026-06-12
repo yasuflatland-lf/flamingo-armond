@@ -52,6 +52,9 @@ The script writes `architecture.png` next to itself. Re-run after updating
   `frontend.yml` is informational (Vercel's native git integration deploys),
   `e2e.yml` runs Playwright, and `readiness-ping.yml` keeps the stack warm
   every 15 minutes by hitting `/internal/ping`.
+- **UptimeRobot** — external uptime monitor that periodically pings the Render
+  backend, keeping the instance warm and alerting on downtime independently of
+  the GitHub Actions readiness ping.
 
 For the narrative version of the same picture, see `docs/deployment.md`
 ("Topology"), `docs/backend.md`, `frontend/CLAUDE.md`, and `docs/notion-sync.md`.
