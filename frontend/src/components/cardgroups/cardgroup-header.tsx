@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation } from "@apollo/client/react";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Import, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useState } from "react";
@@ -121,6 +121,7 @@ export function CardgroupHeader({ cardgroup, totalCount, onBatchImport }: Props)
                   {/* Batch import is shown here for mobile users;
                       the desktop split button (hidden md:inline-flex) covers desktop. */}
                   <DropdownMenuItem onSelect={onBatchImport} className="gap-2 md:hidden">
+                    <Import className="h-4 w-4" />
                     {t("batchImport")}
                   </DropdownMenuItem>
                 </>
