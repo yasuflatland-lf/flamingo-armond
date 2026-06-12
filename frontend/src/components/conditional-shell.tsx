@@ -7,9 +7,10 @@ import { AppleInstallHint } from "./pwa/apple-install-hint";
 
 /**
  * Routes that own the entire viewport and must render without the navigation
- * shell. /login is the sign-in screen; /onboarding is the display-name gate.
+ * shell. /login is the sign-in screen, /onboarding the display-name gate, and
+ * /terms + /privacy the public legal pages (each renders its own `<main>`).
  */
-const BARE_ROUTES = new Set(["/login", "/onboarding"]);
+const BARE_ROUTES = new Set(["/login", "/onboarding", "/terms", "/privacy"]);
 
 interface ConditionalShellProps {
   /** Shell display identity, or null for the anonymous shell. */
@@ -27,12 +28,13 @@ interface ConditionalShellProps {
  * server-side branch in the root layout: the root layout is a server component
  * that does NOT re-render on client-side (soft) navigations, so a server-side
  * branch leaves the shell from the previously-rendered route in place. A
- * concrete repro: from /login a full-page link to /terms (a 404)
- * SSRs the full shell; the not-found page's "Back to Home" link soft-navigates
- * to / which redirects to /login, and the shell — rail included — lingers over
- * the sign-in screen. usePathname() re-renders here on every navigation, so the
- * shell is correctly dropped on bare routes regardless of how the route was
- * reached.
+ * concrete repro: /login and the public /terms + /privacy pages are all
+ * full-screen bare routes; the user opens /terms from the sign-in screen and
+ * navigates back via its in-page `<Link href="/login">`. With the decision
+ * frozen in the server layout the shell would stay mounted from whichever route
+ * triggered the last full document load, stranding the nav rail over the bare
+ * screen. usePathname() re-renders here on every navigation, so the shell is
+ * correctly dropped on every bare route regardless of how it was reached.
  */
 export function ConditionalShell({ user, isAdmin, children }: ConditionalShellProps) {
   const pathname = usePathname();

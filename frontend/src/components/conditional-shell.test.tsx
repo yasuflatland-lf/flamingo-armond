@@ -37,10 +37,12 @@ afterEach(() => {
 });
 
 describe("<ConditionalShell>", () => {
-  describe("bare routes (/login, /onboarding)", () => {
+  describe("bare routes (/login, /onboarding, /terms, /privacy)", () => {
     it.each([
       "/login",
       "/onboarding",
+      "/terms",
+      "/privacy",
     ])("renders children directly without the navigation shell on %s", (pathname) => {
       mockUsePathname.mockReturnValue(pathname);
       render(
@@ -78,7 +80,6 @@ describe("<ConditionalShell>", () => {
       "/",
       "/cardgroups",
       "/cardgroups/123",
-      "/terms",
       "/admin/users",
     ])("mounts the navigation shell and install hint on %s", (pathname) => {
       mockUsePathname.mockReturnValue(pathname);
