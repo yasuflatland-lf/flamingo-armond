@@ -15,11 +15,14 @@ interface AppShellProps {
  * a logo-triggered drawer on mobile (<md). The <SidebarProvider> lives here so
  * the rail and drawer share the same sidebar context.
  *
- * AppShell is a server component. GlobalRail, LogoDrawer, and SidebarProvider
- * are all client components — React Server Components composition rules allow
- * us to mount them as children from this server component. However, any state
- * added to AppShell itself must remain server-side, so keep the "use client"
- * directive off this file.
+ * AppShell carries no "use client" directive of its own, but it is rendered
+ * within the client boundary established by ConditionalShell (which reads
+ * usePathname() to decide whether to mount the shell on the active route), so
+ * it and its client children — GlobalRail, LogoDrawer, SidebarProvider — run on
+ * the client. The page content reaches it through the `children` prop, so it
+ * stays server-rendered. Keep this file free of any local state: AppShell is a
+ * pure presentational composition, and all interactive state belongs in the
+ * client nav components it mounts.
  */
 export function AppShell({ user, isAdmin, children }: AppShellProps) {
   return (

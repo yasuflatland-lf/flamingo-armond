@@ -55,7 +55,6 @@ export async function updateSession(request: NextRequest) {
     requestHeaders.set("Content-Security-Policy", cspPolicy);
     requestHeaders.set("x-nonce", nonce);
   }
-  requestHeaders.set("x-pathname", request.nextUrl.pathname);
 
   let supabaseResponse = createMiddlewareResponse(requestHeaders, cspPolicy);
 
