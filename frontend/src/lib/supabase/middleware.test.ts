@@ -153,13 +153,6 @@ describe("updateSession", () => {
     expect(mockGetUser).toHaveBeenCalledTimes(1);
   });
 
-  it("forwards the request pathname for server components", async () => {
-    const response = await updateSession(makeRequest("http://localhost/dashboard?tab=due"));
-
-    expect(forwardedRequestHeader(response, "x-pathname")).toBe("/dashboard");
-    expect(forwardedRequestHeaderNames(response)).toContain("x-pathname");
-  });
-
   it("returns a valid response for any request path", async () => {
     const response = await updateSession(makeRequest("http://localhost/dashboard"));
     expect(response).toBeInstanceOf(NextResponse);
@@ -221,7 +214,6 @@ describe("updateSession", () => {
       expect.stringContaining("[supabase/middleware] buildHtmlCsp failed"),
       expect.any(Error),
     );
-    expect(forwardedRequestHeader(response, "x-pathname")).toBe("/dashboard");
     expect(mockGetUser).toHaveBeenCalledTimes(1);
 
     consoleErrorSpy.mockRestore();

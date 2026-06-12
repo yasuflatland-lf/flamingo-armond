@@ -4,13 +4,14 @@ import { beforeAll, describe, expect, test, vi } from "vitest";
 // Module mocks — must be declared before any import of the module under test.
 // ---------------------------------------------------------------------------
 
-// AuthShell is opaque to this test; we only verify that the correct elements
-// appear in (or are absent from) the returned JSX tree, and that the forwarded
-// identity props reach it. Returning props as the element lets findElement
-// locate it by type.name and lets assertions read its props directly.
-// Named functions are required so findElement can locate them by type.name.
-vi.mock("@/components/auth-shell", () => ({
-  AuthShell: function AuthShell(props: {
+// ConditionalShell is opaque to this test; we only verify that it is mounted and
+// that the forwarded identity props reach it. The shell/bare routing decision it
+// makes from usePathname() is exercised in conditional-shell.test.tsx. Returning
+// props as the element lets findElement locate it by type.name and lets
+// assertions read its props directly. Named functions are required so findElement
+// can locate them by type.name.
+vi.mock("@/components/conditional-shell", () => ({
+  ConditionalShell: function ConditionalShell(props: {
     user?: { email: string | null } | null;
     isAdmin?: boolean;
     children?: React.ReactNode;
@@ -34,9 +35,8 @@ vi.mock("next/navigation", () => ({
   usePathname: vi.fn(() => "/"),
 }));
 
-// next/headers — middleware forwards the request pathname via x-pathname so
-// the layout can decide whether to mount AuthShell. Tests override the return
-// value per case.
+// next/headers — middleware forwards identity via request headers, which the
+// layout reads to compute the shell props. Tests override the return value per case.
 const mockGetHeader = vi.fn<(name: string) => string | null>(() => null);
 vi.mock("next/headers", () => ({
   headers: vi.fn(() => Promise.resolve({ get: mockGetHeader })),
@@ -46,9 +46,6 @@ vi.mock("next/headers", () => ({
 vi.mock("@/components/pwa/sw-register", () => ({
   SwRegister: () => null,
 }));
-vi.mock("@/components/pwa/apple-install-hint", () => ({
-  AppleInstallHint: () => null,
-}));
 vi.mock("@vercel/speed-insights/next", () => ({
   SpeedInsights: () => null,
 }));
@@ -56,7 +53,7 @@ vi.mock("@vercel/speed-insights/next", () => ({
 // next-intl — the layout reads the active locale and wraps the tree in the
 // client provider. Stub both so RootLayout/generateMetadata run without the
 // Next.js request context. The provider is a passthrough so findElement can
-// still recurse into its children to locate AuthShell/Providers.
+// still recurse into its children to locate ConditionalShell/Providers.
 vi.mock("next-intl", () => ({
   NextIntlClientProvider: function NextIntlClientProvider(props: { children?: React.ReactNode }) {
     return props as unknown as React.ReactElement;
@@ -134,27 +131,26 @@ function byName(name: string): (el: ReactElementLike) => boolean {
 // Test suite: root layout structural routing
 // ---------------------------------------------------------------------------
 
-describe("RootLayout — structural branch selection", () => {
-  // Case: default route (x-pathname absent / "/") — the non-bypass branch.
-  // The returned tree must mount AuthShell directly (no async boundary) and
-  // forward the layout's children to it. With no identity headers set,
-  // readAuthContext classifies the request as anonymous, so AuthShell receives
-  // user={null} isAdmin={false}.
-  test("default route: AuthShell is mounted with the layout's children and anonymous identity", async () => {
-    // x-pathname absent; mockGetHeader returns null by default.
+describe("RootLayout — shell mounting and identity forwarding", () => {
+  // The layout no longer branches on the pathname — it always mounts
+  // ConditionalShell, which makes the shell/bare decision client-side from
+  // usePathname() (see conditional-shell.test.tsx). The layout's job is to
+  // forward the layout's children and the middleware-resolved identity into it.
+  test("mounts ConditionalShell with the layout's children and anonymous identity by default", async () => {
+    // No identity headers set; readAuthContext classifies the request as anonymous.
     mockGetHeader.mockReturnValue(null);
 
     const tree = await RootLayout({ children: <div /> });
 
-    const authShellEl = findElement(tree, byName("AuthShell"));
-    expect(authShellEl).not.toBeNull();
+    const shellEl = findElement(tree, byName("ConditionalShell"));
+    expect(shellEl).not.toBeNull();
 
-    // AuthShell receives the layout's children as its own children prop.
-    expect(authShellEl?.props?.children).toBeDefined();
+    // ConditionalShell receives the layout's children as its own children prop.
+    expect(shellEl?.props?.children).toBeDefined();
 
     // Anonymous classification: null user, no admin hint.
-    expect(authShellEl?.props?.user).toBeNull();
-    expect(authShellEl?.props?.isAdmin).toBe(false);
+    expect(shellEl?.props?.user).toBeNull();
+    expect(shellEl?.props?.isAdmin).toBe(false);
   });
 
   // The root <html> lang attribute must track the locale resolved by next-intl
@@ -168,12 +164,10 @@ describe("RootLayout — structural branch selection", () => {
     expect(tree.props.lang).toBe("ja");
   });
 
-  // Case: default route — the middleware-forwarded identity headers reach
-  // AuthShell as typed props (the source of the navigation shell's display
-  // identity and admin nav hint).
-  test("passes middleware-forwarded identity into AuthShell", async () => {
+  // The middleware-forwarded identity headers reach ConditionalShell as typed
+  // props (the source of the navigation shell's display identity and admin nav hint).
+  test("passes middleware-forwarded identity into ConditionalShell", async () => {
     const headerMap: Record<string, string> = {
-      "x-pathname": "/cardgroups",
       "x-auth-status": "authenticated",
       "x-user-email": "a@b.c",
       "x-user-is-admin": "true",
@@ -182,54 +176,16 @@ describe("RootLayout — structural branch selection", () => {
 
     const tree = await RootLayout({ children: <p>child</p> });
 
-    const authShellEl = findElement(tree, byName("AuthShell"));
-    expect(authShellEl).not.toBeNull();
-    const props = authShellEl?.props as { user: { email: string | null }; isAdmin: boolean };
+    const shellEl = findElement(tree, byName("ConditionalShell"));
+    expect(shellEl).not.toBeNull();
+    const props = shellEl?.props as { user: { email: string | null }; isAdmin: boolean };
     expect(props.user.email).toBe("a@b.c");
     expect(props.isAdmin).toBe(true);
   });
 
-  // Case: /login route — the bypass branch. No AuthShell; children render
-  // directly inside Providers.
-  test("/login: layout renders bare children without AuthShell", async () => {
-    mockGetHeader.mockImplementation((name) => (name === "x-pathname" ? "/login" : null));
-
-    const tree = await RootLayout({ children: <div data-testid="login-children" /> });
-
-    const authShellEl = findElement(tree, byName("AuthShell"));
-    expect(authShellEl).toBeNull();
-  });
-
-  // Case: /onboarding route — same bare-shell early return as /login.
-  // No AuthShell.
-  test("/onboarding: layout renders bare children without AuthShell", async () => {
-    mockGetHeader.mockImplementation((name) => (name === "x-pathname" ? "/onboarding" : null));
-
-    const tree = await RootLayout({ children: <div data-testid="onboarding-children" /> });
-
-    const authShellEl = findElement(tree, byName("AuthShell"));
-    expect(authShellEl).toBeNull();
-  });
-
-  // Case: default route — nonce from x-nonce header is forwarded to Providers.
-  test("default route: nonce from x-nonce header is forwarded to Providers", async () => {
+  // Case: nonce from x-nonce header is forwarded to Providers.
+  test("nonce from x-nonce header is forwarded to Providers", async () => {
     mockGetHeader.mockImplementation((name) => (name === "x-nonce" ? "test-nonce-value" : null));
-    const tree = await RootLayout({ children: <div /> });
-    const providersEl = findElement(tree, byName("Providers"));
-    expect(providersEl).not.toBeNull();
-    expect(providersEl?.props?.nonce).toBe("test-nonce-value");
-  });
-
-  // Case: bypass routes (/login, /onboarding) — nonce from x-nonce header is forwarded to Providers.
-  test.each([
-    "/login",
-    "/onboarding",
-  ])("%s: nonce from x-nonce header is forwarded to Providers", async (pathname: string) => {
-    mockGetHeader.mockImplementation((name) => {
-      if (name === "x-pathname") return pathname;
-      if (name === "x-nonce") return "test-nonce-value";
-      return null;
-    });
     const tree = await RootLayout({ children: <div /> });
     const providersEl = findElement(tree, byName("Providers"));
     expect(providersEl).not.toBeNull();
@@ -244,7 +200,6 @@ describe("RootLayout — structural branch selection", () => {
     "error",
   ])("%s status yields an anonymous shell even if x-user-is-admin is true", async (authStatus: string) => {
     const headerMap: Record<string, string> = {
-      "x-pathname": "/cardgroups",
       "x-auth-status": authStatus,
       "x-user-email": "a@b.c",
       "x-user-is-admin": "true",
@@ -253,15 +208,15 @@ describe("RootLayout — structural branch selection", () => {
 
     const tree = await RootLayout({ children: <p>child</p> });
 
-    const authShellEl = findElement(tree, byName("AuthShell"));
-    expect(authShellEl).not.toBeNull();
-    const props = authShellEl?.props as { user: { email: string | null } | null; isAdmin: boolean };
+    const shellEl = findElement(tree, byName("ConditionalShell"));
+    expect(shellEl).not.toBeNull();
+    const props = shellEl?.props as { user: { email: string | null } | null; isAdmin: boolean };
     expect(props.user).toBeNull();
     expect(props.isAdmin).toBe(false);
   });
 
   // Case: absent x-nonce header — nonce is undefined at Providers.
-  test("default route: absent x-nonce header passes undefined nonce to Providers", async () => {
+  test("absent x-nonce header passes undefined nonce to Providers", async () => {
     mockGetHeader.mockReturnValue(null);
     const tree = await RootLayout({ children: <div /> });
     const providersEl = findElement(tree, byName("Providers"));
