@@ -172,6 +172,10 @@
     "googleCta": "Google アカウントでログインして続行してください。初めての方は、初回ログイン時にアカウントが作成されます。",
     "signInFailed": "ログインに失敗しました: {error}",
     "googleButton": "Google で続行",
+    "inAppBrowserWarning": "アプリ内ブラウザでは Google ログインを利用できません。ログインするには、このページを標準ブラウザ（Safari または Chrome）で開いてください。",
+    "openInBrowser": "ブラウザで開く",
+    "copyLink": "ページのリンクをコピー",
+    "linkCopied": "コピーしました。Safari または Chrome に貼り付けてください",
     "terms": "ログインすることで、<terms>利用規約</terms>および<privacy>プライバシーポリシー</privacy>に同意したものとみなされます。",
     "tagline": "少ない学習で、より多く記憶。"
   },
