@@ -2357,7 +2357,8 @@
           </h1>
 
           <p className="hero-copy animate-reveal" style={{ opacity: 0, animationDelay: '450ms' }}>
-            Flamingo Armondは、覚えたい単語をスワイプ式のカードに変えて、苦手な英単語を効率よく復習できる学習アプリです。退屈な暗記ではなく、毎日少しずつ続けられる英単語学習を。
+            Flamingo Armondは、覚えたい単語をスワイプ式のカードに変えて、苦手な英単語を効率よく復習できる学習アプリです。<br />
+            退屈な暗記ではなく、毎日少しずつ続けられる英単語学習を。
           </p>
 
           <div className="mt-[var(--fib-5)] md:mt-[var(--fib-6)]">
@@ -2382,7 +2383,8 @@
               <p className="review-video-eyebrow">Review Flow</p>
               <h3>迷ったカードだけ、次の復習に残る。</h3>
               <p>
-                右へ、左へ、迷ったら保留。毎回の判断が学習履歴になり、次に見るべきカードを自動で整理します。
+                右へ、左へ、迷ったら保留。<br />
+                毎回の判断が学習履歴になり、次に見るべきカードを自動で整理します。
               </p>
 
               <div className="review-video-stats">
@@ -2422,7 +2424,8 @@
               <p className="review-video-eyebrow">Card Groups</p>
               <h3>カードグループで、目的別に管理。</h3>
               <p>
-                教材やスプレッドシートの単語をCSVで一括インポート。タグやカテゴリで英検・TOEIC・受験用に整理し、開いた瞬間に復習できる状態をつくれます。
+                教材やスプレッドシートの単語をCSVで一括インポート。<br />
+                タグやカテゴリで英検・TOEIC・受験用に整理し、開いた瞬間に復習できる状態をつくれます。
               </p>
 
               <div className="review-video-stats">
@@ -2432,7 +2435,7 @@
                 </div>
                 <div>
                   <strong>Groups</strong>
-                  <span>試験・教材ごとに管理</span>
+                  <span>試験・教材ごとにカードグループを管理</span>
                 </div>
               </div>
             </div>
@@ -2482,7 +2485,8 @@
             続けるために必要な機能を、ひとつに。
           </h2>
           <p className="section-copy">
-            軽い操作感と、本格的な学習管理。日本人の英語学習・資格対策・専門用語の暗記に使える設計です。
+            軽い操作感と、本格的な学習管理。<br />
+            日本人の英語学習・資格対策・専門用語の暗記に使える設計です。
           </p>
 
           <div className="section-visual">
@@ -2516,7 +2520,7 @@
       return (
         <section id="pricing" className="copy-section">
           <h2 className="mx-auto helvetica-title text-[1.875rem] text-ink md:text-[2.5rem]">
-            まずは無料で。英単語リストが増えたら拡張。
+            まずは無料ではじめられる。
           </h2>
           <p className="section-copy">
             個人学習から本格的な試験対策まで、必要に応じて使い方を広げられます。
@@ -2549,10 +2553,11 @@
 
             <div className="relative mx-auto max-w-3xl">
               <h2 className="helvetica-title text-[2rem] text-ink md:text-[3.25rem]">
-                英単語学習に、続く勢いを。
+                続く英単語学習に。
               </h2>
               <p className="section-copy">
-                最初の単語カードを追加して、短いセッションをスワイプ。次に復習すべき単語は、Flamingo Armondがわかりやすく整理します。
+                最初の単語カードを追加して、短いセッションをスワイプ。<br />
+                次に復習すべき単語は、Flamingo Armondがわかりやすく整理します。
               </p>
               <div className="mt-[var(--fib-6)] flex justify-center">
                 <Button href="#">無料で始める</Button>
@@ -2570,7 +2575,8 @@
             <div>
               <Logo />
               <p className="mt-4 max-w-sm text-sm leading-6 text-[#6e6e73]">
-                スワイプで続ける英単語学習フラッシュカード。日本人学習者に向けた、軽くて続けやすい学習体験を届けます。
+                スワイプで続ける英単語学習フラッシュカード。<br />
+                日本人学習者に向けた、軽くて続けやすい学習体験を届けます。
               </p>
             </div>
 
@@ -2582,7 +2588,19 @@
                 <div key={title}>
                   <p className="font-bold text-ink">{title}</p>
                   <div className="mt-[var(--fib-4)] grid gap-[var(--fib-4)] text-[#6e6e73]">
-                    {links.map((link) => <a key={link} href="#" className="hover:text-flamingo-600">{link}</a>)}
+                    {links.map((link) => {
+                      const isExternal = link === 'GitHub';
+                      return (
+                        <a
+                          key={link}
+                          href={isExternal ? 'https://github.com/yasuflatland-lf/flamingo-armond' : '#'}
+                          className="hover:text-flamingo-600"
+                          {...(isExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                        >
+                          {link}
+                        </a>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
