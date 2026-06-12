@@ -14,6 +14,8 @@ Layers shown:
   - Supabase hosts Postgres (with RLS) and Auth (JWT issuer + JWKS).
   - schema/*.graphql is the shared SDL feeding both codegen tools.
   - Cards content is periodically synced from a Notion page into Postgres.
+  - UptimeRobot periodically pings the Render backend to keep it warm and alert
+    on downtime.
 """
 
 from diagrams import Cluster, Diagram, Edge
@@ -30,6 +32,7 @@ ICON_VERCEL = "icons/vercel.png"
 ICON_RENDER = "icons/render.png"
 ICON_SUPABASE = "icons/supabase.png"
 ICON_NOTION = "icons/notion.png"
+ICON_UPTIMEROBOT = "icons/uptimerobot.png"
 
 graph_attr = {
     "fontsize": "18",
@@ -40,7 +43,7 @@ graph_attr = {
 }
 
 with Diagram(
-    "flamingo-armond — Production architecture",
+    "Flamingo Armond Architecture",
     filename="architecture",
     show=False,
     direction="LR",
@@ -79,7 +82,11 @@ with Diagram(
     otel = Jaeger("OTLP collector\n(optional)")
 
     # CI / scheduled jobs — single node
-    ci = GithubActions("GitHub Actions\n(backend / frontend / e2e / readiness-ping)")
+    ci = GithubActions("GitHub Actions")
+
+    # External uptime monitor — periodically pings the Render backend to keep
+    # the instance warm and to alert on downtime.
+    uptimerobot = Custom("UptimeRobot\nUptime Monitor", ICON_UPTIMEROBOT)
 
     # ────────────────────────────── Edges ──────────────────────────────
 
@@ -129,6 +136,17 @@ with Diagram(
     # CI / scheduled
     ci >> Edge(label="deploy hook /\n15-min /internal/ping", style="dotted") >> backend
     ci >> Edge(style="dotted") >> web
+
+    # External uptime monitor pings the Render backend on a schedule.
+    # Using "backend << Edge << uptimerobot" emits the Graphviz edge
+    # "backend -> uptimerobot" (so the monitor ranks to the RIGHT of the
+    # backend, beside the OTLP collector) while drawing the arrowhead at the
+    # backend end (dir=back), matching the real ping flow uptimerobot -> backend.
+    backend << Edge(
+        label="Scheduled Ping",
+        style="dotted",
+        color="teal",
+    ) << uptimerobot
 
     # Scheduled Cards sync: Notion → backend → Postgres.
     notion >> Edge(
