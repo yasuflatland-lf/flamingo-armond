@@ -97,7 +97,7 @@ Adding `app/loading.tsx` alone does **not** fix this. `loading.tsx` wraps the `p
 
 The layout now returns `<html><body>` synchronously. Auth identity (`shellUser`, `isAdmin`) is resolved by the middleware and forwarded to the RSC render via request headers, so the layout reads it from a fast in-memory map that Next.js pre-populates before the component runs — no async Supabase await remains in the layout function body.
 
-The layout has a single render path: it reads the forwarded headers via `readAuthContext` and passes the resolved values synchronously into the client `ConditionalShell` wrapper. `ConditionalShell` reads `usePathname()` and decides per route whether to mount the navigation shell — bare `children` (no shell, no nav) on `/login` and `/onboarding`, the full `AuthShell` (plus `AppleInstallHint`) everywhere else. The decision lives in a client component because the server layout does not re-render on soft navigations, so a server-side branch would leave the shell from the previously-rendered route in place (see [`frontend/src/components/conditional-shell.tsx`](../../frontend/src/components/conditional-shell.tsx)):
+The layout has a single render path: it reads the forwarded headers via `readAuthContext` and passes the resolved values synchronously into the client `ConditionalShell` wrapper. `ConditionalShell` reads `usePathname()` and decides per route whether to mount the navigation shell — bare `children` (no shell, no nav) on the full-screen routes `/login`, `/onboarding`, `/terms`, and `/privacy`, the full `AuthShell` (plus `AppleInstallHint`) everywhere else. The decision lives in a client component because the server layout does not re-render on soft navigations, so a server-side branch would leave the shell from the previously-rendered route in place (see [`frontend/src/components/conditional-shell.tsx`](../../frontend/src/components/conditional-shell.tsx)):
 
 ```tsx
 // frontend/src/app/layout.tsx (simplified)
@@ -111,7 +111,8 @@ const isAdmin = auth.status === "authenticated" && auth.isAdmin;
   <NextIntlClientProvider>
     <Providers nonce={nonce}>
       {/* Client wrapper: mounts AuthShell (+ AppleInstallHint) only on
-          full-shell routes; renders bare children on /login + /onboarding. */}
+          full-shell routes; renders bare children on /login, /onboarding,
+          /terms, /privacy. */}
       <ConditionalShell user={shellUser} isAdmin={isAdmin}>
         {children}
       </ConditionalShell>
