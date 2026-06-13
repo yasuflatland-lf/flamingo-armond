@@ -281,13 +281,50 @@ func (r *masterCardgroupRepo) ListDefaultStarters(ctx context.Context) ([]*domai
 	return out, nil
 }
 
-// gormMasterCatalogRow extends the master cardgroup row mapping with the
-// derived card_count column produced by the correlated COUNT in
-// FindPublishedPage. It is package-private and used only as the scan target for
-// the catalog page query.
+// gormMasterCatalogRow is the flat scan target for FindPublishedPage. It holds
+// every master_cardgroups column as a flat field plus the derived card_count
+// produced by the correlated COUNT. Embedding gormMasterCardgroup is
+// intentionally avoided: gormMasterCardgroup carries a TableName() method that
+// confuses GORM's embedded-struct schema parser when the outer scan target is a
+// different type, silently leaving every embedded column at its Go zero value.
+// See docs/backend/library-gotchas/gorm-embedded-tablename-scan-confusion.md.
 type gormMasterCatalogRow struct {
-	gormMasterCardgroup
-	CardCount int64 `gorm:"column:card_count"`
+	ID               string    `gorm:"column:id"`
+	Name             string    `gorm:"column:name"`
+	Description      *string   `gorm:"column:description"`
+	Language         *string   `gorm:"column:language"`
+	Level            *string   `gorm:"column:level"`
+	Category         *string   `gorm:"column:category"`
+	CoverImageURL    *string   `gorm:"column:cover_image_url"`
+	Source           *string   `gorm:"column:source"`
+	Version          int       `gorm:"column:version"`
+	Status           string    `gorm:"column:status"`
+	IsDefaultStarter bool      `gorm:"column:is_default_starter"`
+	SortOrder        int       `gorm:"column:sort_order"`
+	CreatedAt        time.Time `gorm:"column:created_at"`
+	UpdatedAt        time.Time `gorm:"column:updated_at"`
+	CardCount        int64     `gorm:"column:card_count"`
+}
+
+// toGorm rebuilds the gormMasterCardgroup view of the row so the shared
+// masterCardgroupToDomain conversion remains the single domain boundary.
+func (r gormMasterCatalogRow) toGorm() gormMasterCardgroup {
+	return gormMasterCardgroup{
+		ID:               r.ID,
+		Name:             r.Name,
+		Description:      r.Description,
+		Language:         r.Language,
+		Level:            r.Level,
+		Category:         r.Category,
+		CoverImageURL:    r.CoverImageURL,
+		Source:           r.Source,
+		Version:          r.Version,
+		Status:           r.Status,
+		IsDefaultStarter: r.IsDefaultStarter,
+		SortOrder:        r.SortOrder,
+		CreatedAt:        r.CreatedAt,
+		UpdatedAt:        r.UpdatedAt,
+	}
 }
 
 // FindPublishedByID returns the published master cardgroup with the given id,
@@ -385,7 +422,7 @@ func (r *masterCardgroupRepo) FindPublishedPage(
 	out := make([]*MasterCatalogItem, len(rows))
 	for i := range rows {
 		out[i] = &MasterCatalogItem{
-			Cardgroup: masterCardgroupToDomain(rows[i].gormMasterCardgroup),
+			Cardgroup: masterCardgroupToDomain(rows[i].toGorm()),
 			CardCount: rows[i].CardCount,
 		}
 	}
@@ -453,7 +490,7 @@ func masterCatalogCursorFieldValue(orderBy MasterCatalogOrderBy, c *MasterCatalo
 			return *c.Name, nil
 		}
 	}
-	return nil, eris.Errorf("master catalog cursor missing %s column", orderBy)
+	return nil, eris.Errorf("repository: master cardgroup: catalog cursor missing %s column", orderBy)
 }
 
 func masterCardgroupToDomain(g gormMasterCardgroup) *domain.MasterCardgroup {
