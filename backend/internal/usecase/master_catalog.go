@@ -90,6 +90,7 @@ type MasterCatalogConnectionOutput struct {
 // admin methods additionally require AdminGate.Require to pass.
 type MasterCatalogUsecase interface {
 	ListPublishedConnection(ctx context.Context, in MasterCatalogConnectionInput) (*MasterCatalogConnectionOutput, error)
+	ImportMaster(ctx context.Context, masterID string) (ImportMasterOutcome, error)
 
 	// admin-gated management surface
 	ListAdminConnection(ctx context.Context, in MasterCatalogConnectionInput) (*MasterCatalogConnectionOutput, error)
@@ -100,23 +101,50 @@ type MasterCatalogUsecase interface {
 	DeleteMaster(ctx context.Context, id string) error
 }
 
+// ImportMasterOutcome is the usecase result of ImportMaster. On the valid paths
+// exactly one signal is set: Cardgroup on the happy path, or NotFound=true when the
+// master id is unknown or not published. The not-found case is surfaced as data (the
+// MasterNotFoundError union variant) rather than as an error so the resolver can
+// return it in `data`. The XOR is a producer contract, not a compile-time guarantee:
+// a degenerate {Cardgroup:nil, NotFound:false} result is treated as INTERNAL by the
+// resolver's defensive guard.
+type ImportMasterOutcome struct {
+	// Cardgroup is the newly created user-owned cardgroup snapshot on the happy
+	// path. Non-nil iff NotFound is false.
+	Cardgroup *domain.Cardgroup
+	// NotFound is true when the master id is unknown or not published; it subsumes
+	// draft existence so draft ids are indistinguishable from absent ids. True iff
+	// Cardgroup is nil.
+	NotFound bool
+}
+
 type masterCatalogUsecase struct {
 	repo      MasterCatalogRepository
+	copyUC    CopyMasterToUserUsecase
 	adminGate *AdminGate
 	logger    *slog.Logger
 }
 
-// NewMasterCatalogUsecase constructs a MasterCatalogUsecase. The adminGate gates
-// every admin-management method; the public ListPublishedConnection is gated by
-// authentication only. Panics on a nil adminGate or logger.
-func NewMasterCatalogUsecase(repo MasterCatalogRepository, adminGate *AdminGate, logger *slog.Logger) MasterCatalogUsecase {
+// NewMasterCatalogUsecase constructs a MasterCatalogUsecase backed by the given
+// repository. copyUC is the copy primitive (CopyMasterToUserUsecase) used by
+// ImportMaster; adminGate gates every admin-management method. The public
+// ListPublishedConnection is gated by authentication only. Panics when repo,
+// copyUC, adminGate, or logger is nil — a nil required dependency is a wiring bug
+// that must fail at startup, not at first use.
+func NewMasterCatalogUsecase(repo MasterCatalogRepository, copyUC CopyMasterToUserUsecase, adminGate *AdminGate, logger *slog.Logger) MasterCatalogUsecase {
+	if repo == nil {
+		panic("usecase: master catalog: repo is required")
+	}
+	if copyUC == nil {
+		panic("usecase: master catalog: copyUC is required")
+	}
 	if adminGate == nil {
 		panic("usecase: master catalog: adminGate is required")
 	}
 	if logger == nil {
 		panic("usecase: master catalog: logger is required")
 	}
-	return &masterCatalogUsecase{repo: repo, adminGate: adminGate, logger: logger}
+	return &masterCatalogUsecase{repo: repo, copyUC: copyUC, adminGate: adminGate, logger: logger}
 }
 
 // ListPublishedConnection paginates the published master catalog with
@@ -658,4 +686,36 @@ func (u *masterCatalogUsecase) resolveMasterAdminCursor(
 		return nil, eris.Errorf("usecase: master catalog: unhandled orderBy %q", orderBy)
 	}
 	return c, nil
+}
+
+// ImportMaster copies the published master cardgroup identified by masterID into a
+// fresh cardgroup owned by the authenticated caller. The master is gated through
+// FindPublishedByID, which returns ErrNotFound for both unknown ids and draft decks,
+// so draft existence is never disclosed — both collapse to ImportMasterOutcome{NotFound:true}.
+// Unauthenticated callers receive ucerr.ErrUnauthenticated. The copy is a one-time
+// snapshot delegated to CopyMasterToUserUsecase; FSRS/swipe state starts empty.
+func (u *masterCatalogUsecase) ImportMaster(ctx context.Context, masterID string) (ImportMasterOutcome, error) {
+	caller := auth.UserFrom(ctx)
+	if caller == nil {
+		return ImportMasterOutcome{}, ucerr.ErrUnauthenticated
+	}
+
+	if _, err := u.repo.FindPublishedByID(ctx, masterID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ImportMasterOutcome{NotFound: true}, nil
+		}
+		if isContextDone(err) {
+			return ImportMasterOutcome{}, err
+		}
+		return ImportMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: import: verify published")
+	}
+
+	cg, err := u.copyUC.CopyMasterToUser(ctx, masterID, caller.Sub)
+	if err != nil {
+		if isContextDone(err) {
+			return ImportMasterOutcome{}, err
+		}
+		return ImportMasterOutcome{}, eris.Wrap(err, "usecase: master catalog: import: copy master to user")
+	}
+	return ImportMasterOutcome{Cardgroup: cg}, nil
 }

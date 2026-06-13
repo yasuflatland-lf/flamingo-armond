@@ -52,8 +52,8 @@ type SeedForNewUserUsecase interface {
 }
 
 // CopyMasterToUserUsecase snapshots a single master deck into a user-owned
-// cardgroup. Intended for a future master-deck import mutation; the copy is a
-// one-time snapshot with empty FSRS/swipe state.
+// cardgroup. Used by the importMasterCardgroup mutation (via MasterCatalogUsecase.
+// ImportMaster); the copy is a one-time snapshot with empty FSRS/swipe state.
 type CopyMasterToUserUsecase interface {
 	CopyMasterToUser(ctx context.Context, masterID, ownerID string) (*domain.Cardgroup, error)
 }

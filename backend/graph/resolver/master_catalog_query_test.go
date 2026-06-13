@@ -37,6 +37,10 @@ type stubMasterCatalogUC struct {
 	unpublishRes *usecase.MasterWithCount
 	unpublishErr error
 	deleteErr    error
+
+	importOut usecase.ImportMasterOutcome
+	importErr error
+	gotImport string
 }
 
 func (s *stubMasterCatalogUC) ListPublishedConnection(
@@ -67,6 +71,11 @@ func (s *stubMasterCatalogUC) UnpublishMaster(_ context.Context, _ string) (*use
 }
 
 func (s *stubMasterCatalogUC) DeleteMaster(_ context.Context, _ string) error { return s.deleteErr }
+
+func (s *stubMasterCatalogUC) ImportMaster(_ context.Context, masterID string) (usecase.ImportMasterOutcome, error) {
+	s.gotImport = masterID
+	return s.importOut, s.importErr
+}
 
 // TestQueryResolver_MasterCatalog_Success verifies the resolver maps the model
 // enums to usecase enums on the way in and the usecase output to the wire
