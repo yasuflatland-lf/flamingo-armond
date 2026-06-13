@@ -231,3 +231,87 @@ func TestMasterCardgroupRepository_FindPublishedPage_ForwardAndBackward(t *testi
 	require.Equal(t, []string{m1.ID, m2.ID}, catalogIDs(oursBwd),
 		"backward before m3 yields [m1, m2] in display order")
 }
+
+// ---------------------------------------------------------------------------
+// NAME + DESC: alternate order column and the DESC `<` cursor operator
+// ---------------------------------------------------------------------------
+
+func TestMasterCardgroupRepository_FindPublishedPage_OrderByNameDesc(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewMasterCardgroupRepository(testDB.GORM)
+
+	base := uuid.NewString()
+	// Identical " "+base suffix makes the lexical order depend only on the
+	// distinct prefixes, so DESC is deterministic regardless of the base value.
+	a := insertPublishedMCG(t, ctx, "AName "+base, 1)
+	b := insertPublishedMCG(t, ctx, "BName "+base, 2)
+	c := insertPublishedMCG(t, ctx, "CName "+base, 3)
+	ourIDs := []string{a.ID, b.ID, c.ID}
+	search := base
+
+	// NAME DESC, first page of 2: highest name first → [CName, BName].
+	fwd, err := repo.FindPublishedPage(ctx, nil, nil, 2, 0,
+		repository.MasterCatalogOrderByName, repository.SortDesc, &search)
+	require.NoError(t, err)
+	require.Equal(t, []string{c.ID, b.ID}, catalogIDs(filterCatalogByIDs(fwd, ourIDs)),
+		"NAME DESC first page yields [CName, BName]")
+
+	// Cursor after CName (NAME column hydrated) exercises the DESC `<` operator in
+	// masterCatalogCursorWhere → [BName, AName].
+	cName := string(c.Name)
+	afterC := &repository.MasterCatalogCursor{ID: c.ID, Name: &cName}
+	next, err := repo.FindPublishedPage(ctx, afterC, nil, repository.PageCap, 0,
+		repository.MasterCatalogOrderByName, repository.SortDesc, &search)
+	require.NoError(t, err)
+	require.Equal(t, []string{b.ID, a.ID}, catalogIDs(filterCatalogByIDs(next, ourIDs)),
+		"NAME DESC after CName yields [BName, AName]")
+}
+
+// ---------------------------------------------------------------------------
+// Cursor missing the column required by the active orderBy is a caller bug
+// ---------------------------------------------------------------------------
+
+func TestMasterCardgroupRepository_FindPublishedPage_MissingCursorColumn(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewMasterCardgroupRepository(testDB.GORM)
+
+	// orderBy NAME but the cursor carries only ID (Name unset). A silent
+	// zero-value fallback would emit a wrong-but-valid predicate and skip rows;
+	// the repository must surface this caller bug as an error instead.
+	badCursor := &repository.MasterCatalogCursor{ID: uuid.NewString()} // Name == nil
+	_, err := repo.FindPublishedPage(ctx, badCursor, nil, 10, 0,
+		repository.MasterCatalogOrderByName, repository.SortAsc, nil)
+	require.Error(t, err)
+}
+
+// ---------------------------------------------------------------------------
+// Search escapes ILIKE metacharacters so a literal '%' matches literally
+// ---------------------------------------------------------------------------
+
+func TestMasterCardgroupRepository_SearchEscapesLikeMetacharacters(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := repository.NewMasterCardgroupRepository(testDB.GORM)
+
+	base := uuid.NewString()
+	// Deck A's name contains a literal '%' immediately before base; deck B has a
+	// plain letter there instead. A search term carrying the literal '%' must
+	// match only A. If '%' were treated as an ILIKE wildcard, the term would also
+	// match B (… "50" <anything> base …), so the count would be 2.
+	a := insertPublishedMCG(t, ctx, "pct50%"+base, 1)
+	b := insertPublishedMCG(t, ctx, "pct50x"+base, 2)
+
+	search := "50%" + base
+	total, err := repo.CountPublished(ctx, &search)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total,
+		"literal '%' search counts only the deck whose name contains '50%'+base")
+
+	page, err := repo.FindPublishedPage(ctx, nil, nil, repository.PageCap, 0,
+		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, &search)
+	require.NoError(t, err)
+	require.Equal(t, []string{a.ID}, catalogIDs(filterCatalogByIDs(page, []string{a.ID, b.ID})),
+		"literal '%' search returns only deck A, not B")
+}
