@@ -196,18 +196,26 @@ func TestMasterCardgroupRepository_FindPublishedPage_ForwardAndBackward(t *testi
 	m3 := insertPublishedMCG(t, ctx, "Page3 "+base, 3)
 	ourIDs := []string{m1.ID, m2.ID, m3.ID}
 
-	// Forward page 1: first=1, no cursor. Lowest sort_order (m1) comes first.
+	// A name search on the shared base UUID isolates this test's three rows from
+	// the shared parallel DB — every name ends with " "+base. Without it, a
+	// no-cursor first=N query returns the globally-lowest sort_order rows, which
+	// other parallel tests' published rows can occupy (the same isolation pattern
+	// used by CountPublished above).
+	search := base
+
+	// Forward page 1: first=2, no cursor. The two lowest sort_order rows of the
+	// isolated set come back in order: [m1, m2].
 	fwd1, err := repo.FindPublishedPage(ctx, nil, nil, 2, 0,
-		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, nil)
+		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, &search)
 	require.NoError(t, err)
 	ours1 := filterCatalogByIDs(fwd1, ourIDs)
-	require.GreaterOrEqual(t, len(ours1), 1)
-	require.Equal(t, m1.ID, ours1[0].Cardgroup.ID, "forward ASC: m1 (sort_order=1) first")
+	require.Equal(t, []string{m1.ID, m2.ID}, catalogIDs(ours1),
+		"forward first=2 yields the two lowest sort_order rows [m1, m2]")
 
-	// Forward from m1: cursor after m1 → m2 next.
+	// Forward from m1: cursor after m1 → [m2, m3].
 	afterM1 := &repository.MasterCatalogCursor{ID: m1.ID, SortOrder: &m1.SortOrder}
 	fwd2, err := repo.FindPublishedPage(ctx, afterM1, nil, repository.PageCap, 0,
-		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, nil)
+		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, &search)
 	require.NoError(t, err)
 	ours2 := filterCatalogByIDs(fwd2, ourIDs)
 	require.Equal(t, []string{m2.ID, m3.ID}, catalogIDs(ours2),
@@ -217,7 +225,7 @@ func TestMasterCardgroupRepository_FindPublishedPage_ForwardAndBackward(t *testi
 	// internal direction-flip + reverse.
 	beforeM3 := &repository.MasterCatalogCursor{ID: m3.ID, SortOrder: &m3.SortOrder}
 	bwd, err := repo.FindPublishedPage(ctx, nil, beforeM3, 0, repository.PageCap,
-		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, nil)
+		repository.MasterCatalogOrderBySortOrder, repository.SortAsc, &search)
 	require.NoError(t, err)
 	oursBwd := filterCatalogByIDs(bwd, ourIDs)
 	require.Equal(t, []string{m1.ID, m2.ID}, catalogIDs(oursBwd),
