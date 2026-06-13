@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { renderWithIntl } from "@/test/render-with-intl";
 import { type AdminMasterListItem, AdminMasterRow } from "./admin-master-row";
-import { AdminPublishMasterMutation } from "./queries";
+import { AdminPublishMasterMutation, AdminUnpublishMasterMutation } from "./queries";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -58,6 +58,10 @@ describe("AdminMasterRow", () => {
       "aria-disabled",
       "true",
     );
+    expect(screen.getByTestId("master-row-publish-toggle")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 
   it("disables Publish and shows a hint for a DRAFT with 0 cards", () => {
@@ -69,9 +73,12 @@ describe("AdminMasterRow", () => {
     expect(screen.getByTestId("master-publish-empty-hint")).toBeInTheDocument();
   });
 
-  it("does not fire the mutation when clicking a disabled empty-deck Publish", () => {
+  it("does not fire the mutation when clicking a disabled empty-deck Publish", async () => {
     renderRow({ ...BASE, cardCount: 0 });
     fireEvent.click(screen.getByTestId("master-row-publish-toggle"));
+    const { toast } = await import("sonner");
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
     expect(screen.getByTestId("master-publish-empty-hint")).toBeInTheDocument();
   });
 
@@ -108,5 +115,49 @@ describe("AdminMasterRow", () => {
     expect(screen.getByTestId("master-row-publish-toggle")).toHaveAccessibleName(
       /unpublish|非公開/i,
     );
+    expect(screen.getByTestId("master-row-publish-toggle")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("toasts an error when publish returns MasterCardgroupEmptyError", async () => {
+    const user = userEvent.setup();
+    const mocks = [
+      {
+        request: { query: AdminPublishMasterMutation, variables: { id: "m-1" } },
+        result: {
+          data: {
+            adminPublishMasterCardgroup: {
+              __typename: "MasterCardgroupEmptyError",
+              message: "deck is empty",
+            },
+          },
+        },
+      },
+    ];
+    renderRow(BASE, mocks);
+    await user.click(screen.getByTestId("master-row-publish-toggle"));
+    const { toast } = await import("sonner");
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+  });
+
+  it("unpublishes a PUBLISHED master and toasts success", async () => {
+    const user = userEvent.setup();
+    const mocks = [
+      {
+        request: { query: AdminUnpublishMasterMutation, variables: { id: "m-1" } },
+        result: {
+          data: {
+            adminUnpublishMasterCardgroup: {
+              __typename: "MasterCardgroup",
+              ...BASE,
+              status: "DRAFT",
+            },
+          },
+        },
+      },
+    ];
+    renderRow({ ...BASE, status: "PUBLISHED" }, mocks);
+    await user.click(screen.getByTestId("master-row-publish-toggle"));
+    const { toast } = await import("sonner");
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
   });
 });

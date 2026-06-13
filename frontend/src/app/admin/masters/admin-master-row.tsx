@@ -60,6 +60,8 @@ export function AdminMasterRow({ master, onEdit }: Props) {
       }
       const result = await runPublish({ variables: { id: master.id } });
       const payload = result.data?.adminPublishMasterCardgroup;
+      // Capture the typename before narrowing exhausts the union type below.
+      const typename = payload?.__typename ?? "null";
       if (payload?.__typename === "PublishMasterCardgroupSuccess") {
         toast.success(t("publishSuccess"));
         return;
@@ -68,6 +70,12 @@ export function AdminMasterRow({ master, onEdit }: Props) {
         toast.error(t("publishEmptyToast"));
         return;
       }
+      // Unexpected payload shape (null or unknown variant) — never fail silently.
+      console.warn("[admin-masters] publish returned unexpected payload", {
+        masterId: master.id,
+        typename,
+      });
+      toast.error(t("unexpectedError"));
     } catch (err) {
       // err.message omitted — backend messages may carry content. See
       // docs/frontend/rsc-error-handling/redact-err-message-from-console-payloads.md.
