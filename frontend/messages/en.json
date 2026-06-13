@@ -17,6 +17,7 @@
   },
   "Nav": {
     "cardgroups": "Cardgroups",
+    "catalog": "Catalog",
     "profile": "Profile",
     "signIn": "Sign in",
     "logout": "Logout",
@@ -66,6 +67,26 @@
     "sessionCompleteMessage": "There are no due cards left in this batch.",
     "reviewedCount": "{count, plural, one {You reviewed # card in this batch.} other {You reviewed # cards in this batch.}}",
     "refreshCards": "Refresh cards"
+  },
+  "Catalog": {
+    "title": "Catalog",
+    "description": "Browse published decks and import them into your cardgroups.",
+    "searchPlaceholder": "Search decks...",
+    "searchAriaLabel": "Search catalog decks",
+    "import": "Import",
+    "importing": "Importing...",
+    "imported": "Imported",
+    "cardCount": "{count, plural, one {# card} other {# cards}}",
+    "level": "Level {level}",
+    "noDecks": "No decks are available yet.",
+    "noMatch": "No decks match \"{query}\"",
+    "loadingMore": "Loading more decks...",
+    "fetchMoreError": "Could not load more decks. Please try again.",
+    "importSuccess": "Added \"{name}\" to your cardgroups.",
+    "importNotFound": "This deck is no longer available.",
+    "importError": "Could not import the deck. Please try again.",
+    "sessionExpired": "Your session has expired. ",
+    "signInAgain": "Sign in again"
   },
   "Cardgroups": {
     "updatedAt": "Updated {date}",
