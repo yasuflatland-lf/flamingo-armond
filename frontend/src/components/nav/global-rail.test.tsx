@@ -95,6 +95,13 @@ describe("<GlobalRail>", () => {
       expect(screen.getByRole("link", { name: /roles/i })).toHaveAttribute("href", "/admin/roles");
       expect(screen.queryByRole("link", { name: /settings/i })).toBeNull();
     });
+
+    it("renders the Catalog link pointing at /catalog when signed in", () => {
+      mockUsePathname.mockReturnValue("/");
+      renderRail({ user: { email: "u@example.com" }, isAdmin: false });
+
+      expect(screen.getByRole("link", { name: /catalog/i })).toHaveAttribute("href", "/catalog");
+    });
   });
 
   describe("S2 — Admin gate", () => {
@@ -132,6 +139,27 @@ describe("<GlobalRail>", () => {
       renderRail({ user: { email: "u@example.com" }, isAdmin: true });
 
       expect(screen.getByRole("link", { name: /cardgroups/i })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+    });
+
+    it("marks Catalog as the current page when pathname is /catalog (and Cardgroups is NOT current)", () => {
+      mockUsePathname.mockReturnValue("/catalog");
+      renderRail({ user: { email: "u@example.com" }, isAdmin: true });
+
+      expect(screen.getByRole("link", { name: /catalog/i })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+      expect(screen.getByRole("link", { name: /cardgroups/i })).not.toHaveAttribute("aria-current");
+    });
+
+    it("marks Catalog as the current page on a /catalog/ sub-route", () => {
+      mockUsePathname.mockReturnValue("/catalog/some-deck");
+      renderRail({ user: { email: "u@example.com" }, isAdmin: false });
+
+      expect(screen.getByRole("link", { name: /catalog/i })).toHaveAttribute(
         "aria-current",
         "page",
       );

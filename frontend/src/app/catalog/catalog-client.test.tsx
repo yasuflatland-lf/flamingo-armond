@@ -3,6 +3,7 @@ import { InMemoryCache } from "@apollo/client";
 import { MockedProvider } from "@apollo/client/testing/react";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CARDGROUPS_DEFAULT_VARS } from "@/app/cardgroups/queries";
 import {
@@ -368,5 +369,88 @@ describe("<CatalogClient>", () => {
 
     expect(await screen.findByText("JLPT N3 Kanji")).toBeInTheDocument();
     expect(screen.queryByText("Business English")).not.toBeInTheDocument();
+  });
+
+  it("surfaces the sign-in banner when the import fails with UNAUTHENTICATED", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    const importAuthMock = {
+      request: {
+        query: ImportMasterCardgroupDocument,
+        variables: { masterCardgroupId: "m-1" },
+      },
+      result: {
+        errors: [new GraphQLError("unauthenticated", { extensions: { code: "UNAUTHENTICATED" } })],
+      },
+    };
+
+    renderClient([importAuthMock], makeConnection([M1]), cache);
+
+    await user.click(await screen.findByTestId("catalog-import-m-1"));
+
+    expect(await screen.findByTestId("catalog-import-auth-error")).toBeInTheDocument();
+    const signInLink = screen.getByRole("link", { name: /sign in again/i });
+    expect(signInLink).toHaveAttribute("href", "/login");
+    // The card is NOT marked imported on an auth failure.
+    expect(screen.getByTestId("catalog-import-m-1")).not.toBeDisabled();
+  });
+
+  it("warns and falls back to a network fetch when the SSR seed is null", async () => {
+    const cache = new InMemoryCache();
+    // No initialConnection ⇒ no cache seed ⇒ cache-first useQuery must fetch.
+    const fetchMock = {
+      request: { query: MasterCatalogDocument, variables: CATALOG_DEFAULT_VARS },
+      result: { data: { masterCatalog: makeConnection([M1]) } },
+    };
+
+    renderClient([fetchMock], null, cache);
+
+    expect(await screen.findByText("Business English")).toBeInTheDocument();
+    // The null-seed degradation emits a triage warn (console.warn is the leak spy,
+    // which records calls even while swallowing output).
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("[catalog-client] initialConnection is null"),
+    );
+  });
+
+  it("serializes imports: a second import click is ignored while one is in flight", async () => {
+    const user = userEvent.setup();
+    const cache = new InMemoryCache();
+    // Only m-1 has a mock; the serialize guard must keep m-2 from firing a second
+    // mutation (an unmatched m-2 request would trip the leak spy in teardown).
+    const slowImportMock = {
+      request: {
+        query: ImportMasterCardgroupDocument,
+        variables: { masterCardgroupId: "m-1" },
+      },
+      delay: 50,
+      result: {
+        data: {
+          importMasterCardgroup: {
+            __typename: "ImportMasterCardgroupSuccess",
+            cardgroup: {
+              __typename: "Cardgroup",
+              id: "cg-new",
+              name: "Business English",
+              updatedAt: "2026-06-13T00:00:00.000Z",
+            },
+          },
+        },
+      },
+    };
+
+    renderClient([slowImportMock], makeConnection([M1, M2]), cache);
+
+    await user.click(await screen.findByTestId("catalog-import-m-1"));
+    // While m-1 is in flight, clicking m-2 must be a no-op (importingId guard).
+    await user.click(screen.getByTestId("catalog-import-m-2"));
+
+    // m-1 eventually completes (delayed mock) and flips to "Imported"; m-2 never imports.
+    await waitFor(() => {
+      const btn = screen.getByTestId("catalog-import-m-1");
+      expect(btn).toBeDisabled();
+      expect(btn).toHaveTextContent("Imported");
+    });
+    expect(screen.getByTestId("catalog-import-m-2")).not.toBeDisabled();
   });
 });

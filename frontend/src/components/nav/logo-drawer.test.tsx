@@ -51,6 +51,17 @@ describe("<LogoDrawer>", () => {
     expect(screen.getByRole("link", { name: /cardgroups/i })).toBeInTheDocument();
   });
 
+  it("drawer shows the Catalog link pointing at /catalog", async () => {
+    const user = userEvent.setup();
+    renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
+
+    await user.click(screen.getByRole("button", { name: "Open menu" }));
+
+    const catalogLink = screen.getByRole("link", { name: /catalog/i });
+    expect(catalogLink).toBeInTheDocument();
+    expect(catalogLink).toHaveAttribute("href", "/catalog");
+  });
+
   it("logo is a home link with aria-label='Flamingo home' and href='/'", () => {
     renderWithIntl(<LogoDrawer user={SIGNED_IN_USER} isAdmin={false} />);
 
