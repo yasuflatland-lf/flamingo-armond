@@ -21,8 +21,8 @@ const USE_GESTURE_THRESHOLD = 12;
 const FLY_OFF_DURATION_MS = 200;
 
 // Imperative handle the parent stack uses to fly the active card off-screen
-// programmatically (rating buttons / arrow keys). FIXED contract — consumed by
-// the stack component.
+// programmatically (rating buttons / arrow keys). Stable contract — shape is
+// consumed directly by SwipeCardStack; changes require a matching update there.
 export type AnimatedCardHandle = {
   flyOut: (direction: SwipeDirection) => void;
 };

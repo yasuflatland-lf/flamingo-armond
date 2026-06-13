@@ -80,6 +80,10 @@ async function LearnContent({ cardgroupId }: { cardgroupId: string }) {
     throw err;
   }
 
+  if (cardsData.me == null) {
+    console.warn("[learn] me.learnDisplayMode unavailable; defaulting to FLIP_TO_REVEAL");
+  }
+
   return (
     <LearnClient
       cardgroupId={cardgroupId}
