@@ -19,9 +19,12 @@ import (
 // so the resolver's input mapping and error wrapping can be unit-tested without
 // a real usecase or database.
 type stubMasterCatalogUC struct {
-	gotInput usecase.MasterCatalogConnectionInput
-	out      *usecase.MasterCatalogConnectionOutput
-	err      error
+	gotInput  usecase.MasterCatalogConnectionInput
+	out       *usecase.MasterCatalogConnectionOutput
+	err       error
+	importOut usecase.ImportMasterOutcome
+	importErr error
+	gotImport string
 }
 
 func (s *stubMasterCatalogUC) ListPublishedConnection(
@@ -29,6 +32,11 @@ func (s *stubMasterCatalogUC) ListPublishedConnection(
 ) (*usecase.MasterCatalogConnectionOutput, error) {
 	s.gotInput = in
 	return s.out, s.err
+}
+
+func (s *stubMasterCatalogUC) ImportMaster(_ context.Context, masterID string) (usecase.ImportMasterOutcome, error) {
+	s.gotImport = masterID
+	return s.importOut, s.importErr
 }
 
 // TestQueryResolver_MasterCatalog_Success verifies the resolver maps the model

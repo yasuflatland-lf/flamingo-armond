@@ -67,3 +67,30 @@ extend type Query {
     orderDirection: SortOrder = ASC
   ): MasterCatalogConnection!
 }
+
+"""Success variant of `importMasterCardgroup`: the newly created user-owned cardgroup snapshot."""
+type ImportMasterCardgroupSuccess {
+  cardgroup: Cardgroup!
+}
+
+"""
+Typed business error returned by `importMasterCardgroup` when the requested master
+cardgroup does not exist OR is not published. Draft existence is never disclosed:
+both cases collapse to this single error so a caller cannot probe for unpublished decks.
+"""
+type MasterNotFoundError implements UserError {
+  message: String!
+}
+
+"""Result of `importMasterCardgroup`: the imported cardgroup, or a typed not-found error returned as data."""
+union ImportMasterCardgroupResult = ImportMasterCardgroupSuccess | MasterNotFoundError
+
+extend type Mutation {
+  """
+  Copy a published master cardgroup into the authenticated caller's own cardgroups
+  as a one-time snapshot (no live link; FSRS/swipe state starts empty). An unknown id
+  or a draft master returns `MasterNotFoundError` — draft existence is never leaked.
+  Unauthenticated callers receive UNAUTHENTICATED.
+  """
+  importMasterCardgroup(masterCardgroupId: ID!): ImportMasterCardgroupResult!
+}

@@ -182,6 +182,18 @@ the harder-wins merge has no shared keys to arbitrate.
 
 [`docs/backend/ddd-patterns/append-only-classification-extension.md`](../../docs/backend/ddd-patterns/append-only-classification-extension.md)
 
+### Collapse "unknown" and "exists-but-hidden" into one not-found (non-disclosure gate)
+
+When a lifecycle-gated resource (draft/published, soft-deleted, other-tenant) is read by
+a caller not authorized to know it exists, return the *same* not-found for both "unknown
+id" and "exists but hidden" so the endpoint cannot be used as an existence oracle. Collapse
+at the lowest layer: the repository read is scoped to the visible set (`FindPublishedByID`
+returns `ErrNotFound` for unknown AND draft), the usecase maps it to a not-found data
+outcome, the resolver emits a state-free message. Owner-facing reads of the same resource
+may keep the distinction; erase it only across the trust boundary it protects.
+
+[`docs/backend/ddd-patterns/notfound-collapse-non-disclosure.md`](../../docs/backend/ddd-patterns/notfound-collapse-non-disclosure.md)
+
 ## Further reading (on-demand)
 
 - [Value object Parse pattern](../../docs/backend/ddd-patterns/value-object-parse-pattern.md)
@@ -201,3 +213,4 @@ the harder-wins merge has no shared keys to arbitrate.
 - [Mutation response must not carry a client-managed collection](../../docs/backend/ddd-patterns/mutation-response-must-not-carry-client-managed-collection.md)
 - [Discovery-first due ordering (80% new / 20% prior-day review)](../../docs/backend/ddd-patterns/discovery-first-due-ordering.md)
 - [Append-only extension of a classification with a secondary, independently-graded source](../../docs/backend/ddd-patterns/append-only-classification-extension.md)
+- [Collapse "unknown" and "exists-but-hidden" into one not-found (non-disclosure gate)](../../docs/backend/ddd-patterns/notfound-collapse-non-disclosure.md)
