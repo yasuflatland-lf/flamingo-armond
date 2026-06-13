@@ -110,6 +110,29 @@ The rule is: keep the DTO shape aligned with the contract the DTO encodes.
 For three-way patch DTOs, `*<primitive>` matches the contract. For
 two-way constructor DTOs, the VO matches the contract.
 
+## The convention applies to string-enum newtypes, not only struct VOs
+
+A reviewer unfamiliar with this rule may flag a `*string` field as a
+type-safety regression when the domain type is a string-enum newtype. It is
+not a regression — it is the documented pattern.
+
+**Concrete case:** `MasterCardgroupUpdate.Status` is `*string`, even though the
+domain field `MasterCardgroup.Status` is `domain.MasterCardgroupStatus` (a
+`type MasterCardgroupStatus string` enum newtype). The primitive shape is
+deliberate:
+
+- The usecase validates the proposed value via `status.IsValid()` before
+  constructing the patch, so the repository receives only pre-validated strings.
+- The repository's `Updates(map)` site takes `any` values; the primitive passes
+  through without an extra demote step.
+- The DB `CHECK (status IN ('draft', 'published'))` constraint backstops any
+  bypass.
+
+The same reasoning applies to any other string-enum newtype used as a patch field:
+validate at the usecase boundary, pass `*string` to the DTO, let the DB constraint
+enforce at the storage layer. (`MasterCardgroupUpdate.Status` is deliberately
+`*string`, not `*domain.MasterCardgroupStatus`, for this reason.)
+
 ## Reference
 
 - `backend/internal/repository/user.go` — `UserUpdate` (`*string` for `DisplayName`/`Bio`/`AvatarURL`).
