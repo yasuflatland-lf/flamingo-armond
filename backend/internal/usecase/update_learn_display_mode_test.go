@@ -2,9 +2,11 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"backend/internal/domain"
+	"backend/internal/usecase/ucerr"
 )
 
 // mockLearnModePrefRepo stubs updateLearnDisplayModePrefsRepo for
@@ -79,5 +81,78 @@ func TestUpdateLearnDisplayMode_Success(t *testing.T) {
 	}
 	if users.calls != 1 {
 		t.Fatalf("expected 1 FindByID call after update, got %d", users.calls)
+	}
+}
+
+// TestUpdateLearnDisplayMode_PrefsWriteError verifies that a generic prefs repo
+// error is eris-wrapped (not the bare UNAUTHENTICATED sentinel) and that the
+// user refetch is skipped after a write failure.
+func TestUpdateLearnDisplayMode_PrefsWriteError(t *testing.T) {
+	t.Parallel()
+
+	boom := errors.New("db unavailable")
+	prefs := &mockLearnModePrefRepo{err: boom}
+	users := &mockLearnModeUserRepo{}
+	uc := NewUpdateLearnDisplayModeWithDeps(prefs, users, newTestLogger())
+
+	_, err := uc.Set(authedCtx("u1"), domain.LearnDisplayFlipToReveal)
+	if err == nil {
+		t.Fatal("Set: expected error, got nil")
+	}
+	if errors.Is(err, ucerr.ErrUnauthenticated) {
+		t.Fatalf("Set: error must not be ErrUnauthenticated; got %v", err)
+	}
+	if users.calls != 0 {
+		t.Fatalf("FindByID must not be called after prefs write failure; got %d calls", users.calls)
+	}
+}
+
+// TestUpdateLearnDisplayMode_PrefsWriteCancelled verifies that context.Canceled
+// from the prefs repo is returned as-is (identity preserved, not eris-wrapped
+// as INTERNAL).
+func TestUpdateLearnDisplayMode_PrefsWriteCancelled(t *testing.T) {
+	t.Parallel()
+
+	prefs := &mockLearnModePrefRepo{err: context.Canceled}
+	users := &mockLearnModeUserRepo{}
+	uc := NewUpdateLearnDisplayModeWithDeps(prefs, users, newTestLogger())
+
+	_, err := uc.Set(authedCtx("u1"), domain.LearnDisplayFlipToReveal)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Set: expected errors.Is(err, context.Canceled)=true, got %v (%T)", err, err)
+	}
+}
+
+// TestUpdateLearnDisplayMode_RefetchError verifies that a generic error from
+// the user refetch step is eris-wrapped (not the bare UNAUTHENTICATED sentinel).
+func TestUpdateLearnDisplayMode_RefetchError(t *testing.T) {
+	t.Parallel()
+
+	boom := errors.New("user repo unavailable")
+	prefs := &mockLearnModePrefRepo{}
+	users := &mockLearnModeUserRepo{err: boom}
+	uc := NewUpdateLearnDisplayModeWithDeps(prefs, users, newTestLogger())
+
+	_, err := uc.Set(authedCtx("u1"), domain.LearnDisplayFlipToReveal)
+	if err == nil {
+		t.Fatal("Set: expected error on refetch failure, got nil")
+	}
+	if errors.Is(err, ucerr.ErrUnauthenticated) {
+		t.Fatalf("Set: error must not be ErrUnauthenticated; got %v", err)
+	}
+}
+
+// TestUpdateLearnDisplayMode_RefetchCancelled verifies that context.DeadlineExceeded
+// from the user refetch step is returned as-is (identity preserved).
+func TestUpdateLearnDisplayMode_RefetchCancelled(t *testing.T) {
+	t.Parallel()
+
+	prefs := &mockLearnModePrefRepo{}
+	users := &mockLearnModeUserRepo{err: context.DeadlineExceeded}
+	uc := NewUpdateLearnDisplayModeWithDeps(prefs, users, newTestLogger())
+
+	_, err := uc.Set(authedCtx("u1"), domain.LearnDisplayFlipToReveal)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Set: expected errors.Is(err, context.DeadlineExceeded)=true, got %v (%T)", err, err)
 	}
 }

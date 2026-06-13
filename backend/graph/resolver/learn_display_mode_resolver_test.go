@@ -2,16 +2,19 @@ package resolver_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
+	"github.com/graph-gophers/dataloader/v7"
 
 	"backend/graph/generated"
 	"backend/graph/model"
 	"backend/graph/resolver"
 	"backend/internal/domain"
 	"backend/internal/gqlerr"
+	"backend/internal/loader"
 	"backend/internal/usecase"
 	"backend/internal/usecase/ucerr"
 )
@@ -142,5 +145,110 @@ func TestUpdateLearnDisplayMode_Unauthenticated(t *testing.T) {
 	code := errCode(t, resp)
 	if code != string(gqlerr.CodeUnauthenticated) {
 		t.Fatalf("expected UNAUTHENTICATED, got %q; response: %v", code, resp)
+	}
+}
+
+// TestUserLearnDisplayMode_LoadersNilReturnsInternal verifies that when the
+// DataLoader middleware is absent (loader.For returns nil), the learnDisplayMode
+// field resolver returns INTERNAL rather than panicking.
+func TestUserLearnDisplayMode_LoadersNilReturnsInternal(t *testing.T) {
+	t.Parallel()
+
+	userMock := &mockUserRepository{
+		findResult: &domain.User{ID: "u-1", DisplayName: dnPtr("Alice")},
+	}
+	srv := newLearnDisplayModeSrv(userMock, nil)
+
+	// No loader installed in context — loader.For(ctx) returns nil.
+	body := `{"query":"{ me { id learnDisplayMode } }"}`
+	resp := gqlRequest(t, srv, authedCtx("u-1"), body)
+
+	code := errCode(t, resp)
+	if code != string(gqlerr.CodeInternal) {
+		t.Fatalf("expected INTERNAL when loaders not installed, got %q; response: %v", code, resp)
+	}
+}
+
+// TestUserLearnDisplayMode_GenericLoaderErrorReturnsInternal verifies that a
+// non-sentinel UserPreference loader error maps to INTERNAL.
+func TestUserLearnDisplayMode_GenericLoaderErrorReturnsInternal(t *testing.T) {
+	t.Parallel()
+
+	userMock := &mockUserRepository{
+		findResult: &domain.User{ID: "u-1", DisplayName: dnPtr("Alice")},
+	}
+	srv := newLearnDisplayModeSrv(userMock, nil)
+
+	errorLoaders := &loader.Loaders{
+		UserPreference: dataloader.NewBatchedLoader(
+			func(ctx context.Context, keys []string) []*dataloader.Result[*domain.UserPreference] {
+				out := make([]*dataloader.Result[*domain.UserPreference], len(keys))
+				for i := range keys {
+					out[i] = &dataloader.Result[*domain.UserPreference]{
+						Error: errors.New("prefs store unavailable"),
+					}
+				}
+				return out
+			},
+		),
+		Cardgroup: dataloader.NewBatchedLoader(
+			func(ctx context.Context, keys []string) []*dataloader.Result[*domain.Cardgroup] {
+				out := make([]*dataloader.Result[*domain.Cardgroup], len(keys))
+				for i := range keys {
+					out[i] = &dataloader.Result[*domain.Cardgroup]{}
+				}
+				return out
+			},
+		),
+	}
+	ctx := loader.WithContext(authedCtx("u-1"), errorLoaders)
+
+	body := `{"query":"{ me { id learnDisplayMode } }"}`
+	resp := gqlRequest(t, srv, ctx, body)
+
+	code := errCode(t, resp)
+	if code != string(gqlerr.CodeInternal) {
+		t.Fatalf("expected INTERNAL for generic loader error, got %q; response: %v", code, resp)
+	}
+}
+
+// TestUserLearnDisplayMode_ContextCancelledReturnsCancelled verifies that
+// context.Canceled from the UserPreference loader maps to CANCELLED, not INTERNAL.
+func TestUserLearnDisplayMode_ContextCancelledReturnsCancelled(t *testing.T) {
+	t.Parallel()
+
+	userMock := &mockUserRepository{
+		findResult: &domain.User{ID: "u-1", DisplayName: dnPtr("Alice")},
+	}
+	srv := newLearnDisplayModeSrv(userMock, nil)
+
+	cancelledLoaders := &loader.Loaders{
+		UserPreference: dataloader.NewBatchedLoader(
+			func(ctx context.Context, keys []string) []*dataloader.Result[*domain.UserPreference] {
+				out := make([]*dataloader.Result[*domain.UserPreference], len(keys))
+				for i := range keys {
+					out[i] = &dataloader.Result[*domain.UserPreference]{Error: context.Canceled}
+				}
+				return out
+			},
+		),
+		Cardgroup: dataloader.NewBatchedLoader(
+			func(ctx context.Context, keys []string) []*dataloader.Result[*domain.Cardgroup] {
+				out := make([]*dataloader.Result[*domain.Cardgroup], len(keys))
+				for i := range keys {
+					out[i] = &dataloader.Result[*domain.Cardgroup]{}
+				}
+				return out
+			},
+		),
+	}
+	ctx := loader.WithContext(authedCtx("u-1"), cancelledLoaders)
+
+	body := `{"query":"{ me { id learnDisplayMode } }"}`
+	resp := gqlRequest(t, srv, ctx, body)
+
+	code := errCode(t, resp)
+	if code != string(gqlerr.CodeCancelled) {
+		t.Fatalf("expected CANCELLED for context.Canceled loader error, got %q; response: %v", code, resp)
 	}
 }
