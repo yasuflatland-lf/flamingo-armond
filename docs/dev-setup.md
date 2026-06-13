@@ -8,7 +8,7 @@
 ## First-time setup
 
 ```bash
-# Install Go 1.26.3 (backend/.tool-versions), Node 24.x + pnpm 11.1.3 + Supabase CLI (./.tool-versions).
+# Install Go 1.26.4 (backend/.tool-versions), Node 24.x + pnpm 11.5.3 + Supabase CLI (./.tool-versions).
 mise install
 
 # Install workspace deps. The frontend workspace is populated with a Next.js 16 App Router scaffold (see `frontend/CLAUDE.md`).
@@ -19,7 +19,7 @@ Verify:
 
 ```bash
 node --version        # v24.x.y
-pnpm --version        # 11.1.3  (resolved by mise from .tool-versions)
+pnpm --version        # 11.5.3  (resolved by mise from .tool-versions)
 which pnpm            # ~/.local/share/mise/shims/pnpm
 ```
 
@@ -90,7 +90,7 @@ Practical consequence: when adding new required env vars consumed by a playbook 
 
 ## Why mise-managed pnpm, not global pnpm or Corepack
 
-The `[tools]` entries in `.tool-versions` are the single source of truth for pnpm in local dev and GitHub Actions. mise downloads the exact pinned version on demand, so every contributor and every CI runner uses the same pnpm — no drift, no "works on my machine". The `packageManager` field in root `package.json` is kept aligned and is **load-bearing for Vercel and for pnpm itself**: Vercel does not run mise and reads this field to install the matching pnpm on its build image, and pnpm 10 uses it as a self-consistency check that refuses execution when the declared and running versions disagree. Treat the two pins as one unit — bump them together.
+The `[tools]` entries in `.tool-versions` are the single source of truth for pnpm in local dev and GitHub Actions. mise downloads the exact pinned version on demand, so every contributor and every CI runner uses the same pnpm — no drift, no "works on my machine". The `packageManager` field in root `package.json` is kept aligned and is **load-bearing for Vercel and for pnpm itself**: Vercel does not run mise and reads this field to install the matching pnpm on its build image, and pnpm 11 uses it as a self-consistency check that refuses execution when the declared and running versions disagree. Treat the two pins as one unit — bump them together.
 
 Do **not** install pnpm via `npm i -g pnpm` or `brew install pnpm`. Those paths compete with the mise shim on PATH, and whichever wins is timing-dependent. Corepack is no longer used in this repo — `corepack enable` is unnecessary and can be skipped or disabled.
 
