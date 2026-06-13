@@ -110,10 +110,36 @@ type MasterCardgroupRepository interface {
 	// matching the optional search predicate. Returned independently of
 	// FindPublishedPage so the totalCount survives a zero-page request.
 	CountPublished(ctx context.Context, search *string) (int64, error)
+	// CountAdmin returns the total number of master cardgroups of ANY status
+	// (draft or published) matching the optional search predicate. Used by the
+	// admin list to display totalCount regardless of publication status.
+	CountAdmin(ctx context.Context, search *string) (int64, error)
+	// CountCards returns the number of master cards belonging to the given
+	// master cardgroup. Used by the admin UI to display a card count per deck.
+	CountCards(ctx context.Context, masterCardgroupID string) (int64, error)
 	// FindPublishedByID returns the PUBLISHED master cardgroup with the given
 	// id, or ErrNotFound. Draft rows return ErrNotFound — they are not part of
 	// the public catalog. Used by the usecase to hydrate a pagination cursor.
 	FindPublishedByID(ctx context.Context, id string) (*domain.MasterCardgroup, error)
+	// FindAdminPage returns a window of master cardgroups of ANY status (draft
+	// or published), each bundled with its card count. Unlike FindPublishedPage
+	// it does not filter by status, so admin users see draft decks. All other
+	// pagination, ordering, and search semantics are identical to
+	// FindPublishedPage.
+	FindAdminPage(
+		ctx context.Context,
+		after, before *MasterCatalogCursor,
+		first, last int,
+		orderBy MasterCatalogOrderBy,
+		dir SortOrder,
+		search *string,
+	) ([]*MasterCatalogItem, error)
+	// Publish atomically sets the master cardgroup status to published and
+	// increments its version by 1. Returns ErrNotFound when no row matches.
+	Publish(ctx context.Context, id string) (*domain.MasterCardgroup, error)
+	// Unpublish sets the master cardgroup status back to draft without changing
+	// the version counter. Returns ErrNotFound when no row matches.
+	Unpublish(ctx context.Context, id string) (*domain.MasterCardgroup, error)
 }
 
 type masterCardgroupRepo struct{ db *gorm.DB }
@@ -491,6 +517,135 @@ func masterCatalogCursorFieldValue(orderBy MasterCatalogOrderBy, c *MasterCatalo
 		}
 	}
 	return nil, eris.Errorf("repository: master cardgroup: catalog cursor missing %s column", orderBy)
+}
+
+// CountAdmin returns the total number of master cardgroups of any status
+// (draft or published) matching the optional search predicate.
+func (r *masterCardgroupRepo) CountAdmin(ctx context.Context, search *string) (int64, error) {
+	q := r.db.WithContext(ctx).Model(&gormMasterCardgroup{})
+	if pattern, ok := masterCatalogSearchPattern(search); ok {
+		q = q.Where("name ILIKE ?", pattern)
+	}
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return 0, eris.Wrap(err, "repository: master cardgroup: count admin")
+	}
+	return total, nil
+}
+
+// CountCards returns the number of master cards belonging to the given master
+// cardgroup.
+func (r *masterCardgroupRepo) CountCards(ctx context.Context, masterCardgroupID string) (int64, error) {
+	var total int64
+	if err := r.db.WithContext(ctx).
+		Table("master_cards").
+		Where("master_cardgroup_id = ?", masterCardgroupID).
+		Count(&total).Error; err != nil {
+		return 0, eris.Wrap(err, "repository: master cardgroup: count cards")
+	}
+	return total, nil
+}
+
+// FindAdminPage implements the cursor-paginated admin catalog list. It is
+// identical to FindPublishedPage but does NOT filter by status, so draft decks
+// are included. Order is (orderBy, id) so cursors stay deterministic even when
+// the primary sort column has duplicates. Backward paging inverts the SQL
+// direction, applies LIMIT, and reverses the slice in memory so the caller sees
+// the same display order as forward paging.
+func (r *masterCardgroupRepo) FindAdminPage(
+	ctx context.Context,
+	after, before *MasterCatalogCursor,
+	first, last int,
+	orderBy MasterCatalogOrderBy,
+	dir SortOrder,
+	search *string,
+) ([]*MasterCatalogItem, error) {
+	first = ClampPageSize(first)
+	last = ClampPageSize(last)
+
+	if first == 0 && last == 0 {
+		return []*MasterCatalogItem{}, nil
+	}
+
+	// Backward paging executes the query with the inverted direction and
+	// reverses the slice afterwards.
+	effectiveDir := dir
+	limit := first
+	cursor := after
+	reverse := false
+	if last > 0 {
+		effectiveDir = InvertDir(dir)
+		limit = last
+		cursor = before
+		reverse = true
+	}
+
+	q := r.db.WithContext(ctx).
+		Table("master_cardgroups AS mcg").
+		Select("mcg.*, (SELECT COUNT(*) FROM master_cards mc WHERE mc.master_cardgroup_id = mcg.id) AS card_count")
+	if pattern, ok := masterCatalogSearchPattern(search); ok {
+		q = q.Where("mcg.name ILIKE ?", pattern)
+	}
+	if cursor != nil {
+		clauseSQL, args, err := masterCatalogCursorWhere(orderBy, effectiveDir, cursor)
+		if err != nil {
+			return nil, eris.Wrap(err, "repository: master cardgroup: build admin cursor where")
+		}
+		q = q.Where(clauseSQL, args...)
+	}
+	q = q.Order(masterCatalogOrderClause(orderBy, effectiveDir)).Limit(limit)
+
+	var rows []gormMasterCatalogRow
+	if err := q.Find(&rows).Error; err != nil {
+		return nil, eris.Wrap(err, "repository: master cardgroup: find admin page")
+	}
+
+	if reverse {
+		ReverseSlice(rows)
+	}
+
+	out := make([]*MasterCatalogItem, len(rows))
+	for i := range rows {
+		out[i] = &MasterCatalogItem{
+			Cardgroup: masterCardgroupToDomain(rows[i].toGorm()),
+			CardCount: rows[i].CardCount,
+		}
+	}
+	return out, nil
+}
+
+// Publish atomically sets the master cardgroup status to published and
+// increments the version counter by 1. Returns ErrNotFound when no row
+// matches id.
+func (r *masterCardgroupRepo) Publish(ctx context.Context, id string) (*domain.MasterCardgroup, error) {
+	res := r.db.WithContext(ctx).Model(&gormMasterCardgroup{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"status":  string(domain.MasterStatusPublished),
+			"version": gorm.Expr("version + 1"),
+		})
+	if res.Error != nil {
+		return nil, eris.Wrap(res.Error, "repository: master cardgroup: publish")
+	}
+	if res.RowsAffected == 0 {
+		return nil, ErrNotFound
+	}
+	return r.FindByID(ctx, id)
+}
+
+// Unpublish sets the master cardgroup status back to draft without changing the
+// version counter. Returns ErrNotFound when no row matches id.
+func (r *masterCardgroupRepo) Unpublish(ctx context.Context, id string) (*domain.MasterCardgroup, error) {
+	res := r.db.WithContext(ctx).Model(&gormMasterCardgroup{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"status": string(domain.MasterStatusDraft)})
+	if res.Error != nil {
+		return nil, eris.Wrap(res.Error, "repository: master cardgroup: unpublish")
+	}
+	if res.RowsAffected == 0 {
+		return nil, ErrNotFound
+	}
+	return r.FindByID(ctx, id)
 }
 
 func masterCardgroupToDomain(g gormMasterCardgroup) *domain.MasterCardgroup {

@@ -68,6 +68,82 @@ extend type Query {
   ): MasterCatalogConnection!
 }
 
+extend type Query {
+  """
+  Admin-only. Paginated master cardgroups including DRAFT and PUBLISHED decks.
+  Non-admin callers receive FORBIDDEN. Same pagination/search/order contract as
+  `masterCatalog`, but not status-filtered. Default page size 20; max 100.
+  """
+  adminMasters(
+    first: Int,
+    after: ID,
+    last: Int,
+    before: ID,
+    search: String,
+    orderBy: MasterCatalogOrderBy = SORT_ORDER,
+    orderDirection: SortOrder = ASC
+  ): MasterCatalogConnection!
+}
+
+"""Input for `adminCreateMasterCardgroup`."""
+input CreateMasterCardgroupInput {
+  """1-100 grapheme clusters after trimming."""
+  name: String!
+  description: String
+  language: String
+  level: String
+  category: String
+  coverImageUrl: String
+  source: String
+  isDefaultStarter: Boolean
+  sortOrder: Int
+}
+
+"""Input for `adminUpdateMasterCardgroup`. null/omitted = leave unchanged."""
+input UpdateMasterCardgroupInput {
+  name: String
+  description: String
+  language: String
+  level: String
+  category: String
+  coverImageUrl: String
+  source: String
+  isDefaultStarter: Boolean
+  sortOrder: Int
+}
+
+"""Success variant of `adminCreateMasterCardgroup`."""
+type CreateMasterCardgroupSuccess {
+  master: MasterCardgroup!
+}
+
+"""Result of `adminCreateMasterCardgroup`. The created master or an input-validation failure."""
+union CreateMasterCardgroupResult = CreateMasterCardgroupSuccess | InputValidationError
+
+"""Success variant of `adminUpdateMasterCardgroup`."""
+type UpdateMasterCardgroupSuccess {
+  master: MasterCardgroup!
+}
+
+"""Result of `adminUpdateMasterCardgroup`. The updated master or an input-validation failure."""
+union UpdateMasterCardgroupResult = UpdateMasterCardgroupSuccess | InputValidationError
+
+"""Success variant of `adminPublishMasterCardgroup`."""
+type PublishMasterCardgroupSuccess {
+  master: MasterCardgroup!
+}
+
+"""
+Returned by `adminPublishMasterCardgroup` when the target deck has zero master
+cards. An empty deck cannot be published; the admin must add cards first.
+"""
+type MasterCardgroupEmptyError implements UserError {
+  message: String!
+}
+
+"""Result of `adminPublishMasterCardgroup`. The published master or a typed empty-deck error."""
+union PublishMasterCardgroupResult = PublishMasterCardgroupSuccess | MasterCardgroupEmptyError
+
 """Success variant of `importMasterCardgroup`: the newly created user-owned cardgroup snapshot."""
 type ImportMasterCardgroupSuccess {
   cardgroup: Cardgroup!
@@ -86,6 +162,16 @@ type MasterNotFoundError implements UserError {
 union ImportMasterCardgroupResult = ImportMasterCardgroupSuccess | MasterNotFoundError
 
 extend type Mutation {
+  """Admin-only. Create a DRAFT master cardgroup. Non-admin callers receive FORBIDDEN."""
+  adminCreateMasterCardgroup(input: CreateMasterCardgroupInput!): CreateMasterCardgroupResult!
+  """Admin-only. Patch master cardgroup attributes. Non-admin callers receive FORBIDDEN."""
+  adminUpdateMasterCardgroup(id: ID!, input: UpdateMasterCardgroupInput!): UpdateMasterCardgroupResult!
+  """Admin-only. Publish a master cardgroup (bumps version). Empty decks return MasterCardgroupEmptyError."""
+  adminPublishMasterCardgroup(id: ID!): PublishMasterCardgroupResult!
+  """Admin-only. Revert a master cardgroup to DRAFT. Non-admin callers receive FORBIDDEN."""
+  adminUnpublishMasterCardgroup(id: ID!): MasterCardgroup!
+  """Admin-only. Permanently delete a master cardgroup. Returns true on success."""
+  adminDeleteMasterCardgroup(id: ID!): Boolean!
   """
   Copy a published master cardgroup into the authenticated caller's own cardgroups
   as a one-time snapshot (no live link; FSRS/swipe state starts empty). An unknown id
