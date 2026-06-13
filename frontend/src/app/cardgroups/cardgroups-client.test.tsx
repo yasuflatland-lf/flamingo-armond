@@ -5,7 +5,11 @@ import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GraphQLError } from "graphql";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DeleteCardgroupDocument, MyCardgroupsConnectionDocument } from "@/generated/graphql";
+import {
+  CreateCardgroupDocument,
+  DeleteCardgroupDocument,
+  MyCardgroupsConnectionDocument,
+} from "@/generated/graphql";
 import { UndoDeleteProvider } from "@/lib/undo-delete";
 import { renderWithIntl } from "@/test/render-with-intl";
 import {
@@ -139,7 +143,7 @@ let leakSpy: ApolloMockLeakSpyResult;
 
 beforeEach(() => {
   leakSpy = installApolloMockLeakSpy({
-    operationNames: ["MyCardgroupsConnection", "DeleteCardgroup"],
+    operationNames: ["MyCardgroupsConnection", "DeleteCardgroup", "CreateCardgroup"],
   });
   ioCallbacks = [];
   lastToastLabel = undefined;
@@ -1092,5 +1096,80 @@ describe("<CardgroupsClient> connection cache update (readQuery + writeQuery)", 
     });
     expect(result?.myCardgroupsConnection.pageInfo.hasNextPage).toBe(false);
     expect(result?.myCardgroupsConnection.totalCount).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S-create-limit: in-list drawer surfaces CardgroupLimitReachedError via
+// the dedicated `cardgroup-create-limit-error` testid, not the overloaded
+// unexpected-error banner.
+// ---------------------------------------------------------------------------
+
+describe("<CardgroupsClient> create drawer — limit reached", () => {
+  it("shows the dedicated limit-error banner and not the unexpected-error banner when CardgroupLimitReachedError is returned", async () => {
+    const user = userEvent.setup();
+
+    const cache = new InMemoryCache();
+    const emptyConn = makeConnection([]);
+    cache.writeQuery({
+      query: MyCardgroupsConnectionDocument,
+      variables: { first: CARDGROUPS_PAGE_SIZE, search: null },
+      data: { myCardgroupsConnection: emptyConn },
+    });
+
+    const initialMock = {
+      request: {
+        query: MyCardgroupsConnectionDocument,
+        variables: { first: CARDGROUPS_PAGE_SIZE, search: null },
+      },
+      result: { data: { myCardgroupsConnection: emptyConn } },
+    };
+
+    // MockedProvider matches on the document object identity: CreateCardgroupDocument
+    // is the gql document produced by the same `CreateCardgroup` mutation in queries.ts.
+    const limitMock = {
+      request: {
+        query: CreateCardgroupDocument,
+        variables: { input: { name: "Over Limit" } },
+      },
+      result: () => ({
+        data: {
+          createCardgroup: {
+            __typename: "CardgroupLimitReachedError" as const,
+            message: "cardgroup limit reached",
+            limit: 5,
+            current: 5,
+          },
+        },
+      }),
+    };
+
+    renderClient([initialMock, limitMock], null, cache);
+
+    // Wait for the initial query to settle before opening the drawer.
+    await screen.findByTestId("cardgroups-header-new-btn");
+
+    // Open the in-list create drawer via the flamingo:add-cardgroup custom event
+    // (same mechanism as the nav-header "+" button).
+    act(() => {
+      window.dispatchEvent(new CustomEvent("flamingo:add-cardgroup", { cancelable: true }));
+    });
+
+    // The drawer renders a name input — wait for it.
+    const nameInput = await screen.findByRole("textbox", { name: /name/i });
+    await user.type(nameInput, "Over Limit");
+    await user.click(screen.getByRole("button", { name: /create/i }));
+
+    // The dedicated limit-error banner must appear with the localized text.
+    await waitFor(() => {
+      expect(screen.getByTestId("cardgroup-create-limit-error")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("cardgroup-create-limit-error")).toHaveTextContent(
+      "You already have 5 card groups (maximum 5).",
+    );
+
+    // The generic unexpected-error banner must NOT be shown — proving the
+    // dedicated limit state is used, not the overloaded unexpected-error path.
+    expect(screen.queryByTestId("cardgroup-create-unexpected-error")).not.toBeInTheDocument();
   });
 });

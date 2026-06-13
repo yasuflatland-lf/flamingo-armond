@@ -34,6 +34,7 @@ function CreateCardgroupSheetContent({
   validationError,
   authError,
   unexpectedError,
+  limitError,
   onDirty,
 }: {
   submit: (values: { name: string }) => Promise<void>;
@@ -41,6 +42,7 @@ function CreateCardgroupSheetContent({
   validationError: { field: string; message: string } | null;
   authError: "unauthenticated" | "forbidden" | null;
   unexpectedError: string | null;
+  limitError: string | null;
   onDirty: () => void;
 }) {
   const close = useFormSheetClose();
@@ -60,6 +62,16 @@ function CreateCardgroupSheetContent({
             {t("signInAgain")}
           </Link>
           .
+        </div>
+      ) : null}
+
+      {limitError ? (
+        <div
+          role="alert"
+          data-testid="cardgroup-create-limit-error"
+          className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          {limitError}
         </div>
       ) : null}
 
@@ -129,11 +141,13 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
   } | null>(null);
   const [addAuthError, setAddAuthError] = useState<"unauthenticated" | "forbidden" | null>(null);
   const [addUnexpectedError, setAddUnexpectedError] = useState<string | null>(null);
+  const [addLimitError, setAddLimitError] = useState<string | null>(null);
 
   const openAddSheet = useCallback(() => {
     setAddValidationError(null);
     setAddAuthError(null);
     setAddUnexpectedError(null);
+    setAddLimitError(null);
     setAddDirty(false);
     setAddOpen(true);
   }, []);
@@ -153,6 +167,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
     setAddValidationError(null);
     setAddAuthError(null);
     setAddUnexpectedError(null);
+    setAddLimitError(null);
 
     const outcome = await createCardgroup(values.name);
 
@@ -164,7 +179,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
         setAddAuthError(outcome.kind);
         return;
       case "limit":
-        setAddUnexpectedError(t("limitReached", { limit: outcome.limit }));
+        setAddLimitError(t("limitReached", { limit: outcome.limit, current: outcome.current }));
         return;
       case "unexpected":
       case "rejected":
@@ -477,6 +492,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
             setAddValidationError(null);
             setAddAuthError(null);
             setAddUnexpectedError(null);
+            setAddLimitError(null);
           }
         }}
         submitting={creating}
@@ -490,6 +506,7 @@ export default function CardgroupsClient({ initialConnection }: CardgroupsClient
           validationError={addValidationError}
           authError={addAuthError}
           unexpectedError={addUnexpectedError}
+          limitError={addLimitError}
           onDirty={() => setAddDirty(true)}
         />
       </FormSheet>

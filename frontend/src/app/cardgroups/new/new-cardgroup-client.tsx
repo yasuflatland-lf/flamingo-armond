@@ -61,7 +61,7 @@ export function NewCardgroupClient({ showWelcome = false, returnTo }: NewCardgro
         setAuthError(outcome.kind);
         return;
       case "limit":
-        setLimitError(t("limitReached", { limit: outcome.limit }));
+        setLimitError(t("limitReached", { limit: outcome.limit, current: outcome.current }));
         return;
       case "unexpected":
         setUnexpectedPayloadError(tCommon("somethingWentWrong"));

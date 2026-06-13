@@ -421,7 +421,7 @@ describe("<NewCardgroupPage> (client)", () => {
       expect(screen.getByTestId("cardgroup-new-limit-error")).toBeInTheDocument();
     });
     expect(screen.getByTestId("cardgroup-new-limit-error")).toHaveTextContent(
-      "You can create up to 5 card groups.",
+      "You already have 5 card groups (maximum 5).",
     );
     // No navigation: the limit variant is data, not a success.
     expect(mockPush).not.toHaveBeenCalled();

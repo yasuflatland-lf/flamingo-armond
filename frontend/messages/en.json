@@ -100,7 +100,7 @@
     "addACard": "Add a card",
     "batchImport": "Batch import",
     "nameLabel": "Name",
-    "limitReached": "You can create up to {limit} card groups."
+    "limitReached": "You already have {current} card groups (maximum {limit})."
   },
   "Cards": {
     "addSomeCards": "Add some new cards to get started.",
